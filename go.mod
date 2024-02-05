@@ -1,4 +1,4 @@
-module github.com/reecepbcups/manifest
+module github.com/liftedinit/manifest-ledger
 
 go 1.21
 

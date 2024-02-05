@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	wasmbinding "github.com/reecepbcups/manifest/x/tokenfactory/bindings"
-	bindings "github.com/reecepbcups/manifest/x/tokenfactory/bindings/types"
-	"github.com/reecepbcups/manifest/x/tokenfactory/types"
+	wasmbinding "github.com/liftedinit/manifest-ledger/x/tokenfactory/bindings"
+	bindings "github.com/liftedinit/manifest-ledger/x/tokenfactory/bindings/types"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 	"github.com/stretchr/testify/require"
 
 	sdkmath "cosmossdk.io/math"

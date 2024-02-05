@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	bindingstypes "github.com/reecepbcups/manifest/x/tokenfactory/bindings/types"
-	tokenfactorykeeper "github.com/reecepbcups/manifest/x/tokenfactory/keeper"
+	bindingstypes "github.com/liftedinit/manifest-ledger/x/tokenfactory/bindings/types"
+	tokenfactorykeeper "github.com/liftedinit/manifest-ledger/x/tokenfactory/keeper"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"

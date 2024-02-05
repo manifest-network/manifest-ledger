@@ -15,11 +15,11 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
-	"github.com/reecepbcups/manifest/x/tokenfactory/client/cli"
-	"github.com/reecepbcups/manifest/x/tokenfactory/exported"
-	"github.com/reecepbcups/manifest/x/tokenfactory/keeper"
-	simulation "github.com/reecepbcups/manifest/x/tokenfactory/simulation"
-	"github.com/reecepbcups/manifest/x/tokenfactory/types"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/client/cli"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/exported"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/keeper"
+	simulation "github.com/liftedinit/manifest-ledger/x/tokenfactory/simulation"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 	"github.com/spf13/cobra"
 
 	abci "github.com/cometbft/cometbft/abci/types"

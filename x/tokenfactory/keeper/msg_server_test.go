@@ -3,7 +3,7 @@ package keeper_test
 import (
 	"fmt"
 
-	"github.com/reecepbcups/manifest/x/tokenfactory/types"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 	"github.com/strangelove-ventures/poa"
 
 	sdkmath "cosmossdk.io/math"

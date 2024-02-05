@@ -3,7 +3,7 @@ package keeper
 import (
 	"context"
 
-	"github.com/reecepbcups/manifest/x/tokenfactory/types"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 
 	"cosmossdk.io/errors"
 

@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/reecepbcups/manifest/x/tokenfactory/types"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 	"github.com/spf13/cobra"
 
 	"github.com/cosmos/cosmos-sdk/client"

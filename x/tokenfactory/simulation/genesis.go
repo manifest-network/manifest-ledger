@@ -3,8 +3,8 @@ package simulation
 import (
 	"math/rand"
 
-	appparams "github.com/reecepbcups/manifest/app/params"
-	"github.com/reecepbcups/manifest/x/tokenfactory/types"
+	appparams "github.com/liftedinit/manifest-ledger/app/params"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 
 	sdkmath "cosmossdk.io/math"
 

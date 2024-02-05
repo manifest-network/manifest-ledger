@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/reecepbcups/manifest/app"
-	appparams "github.com/reecepbcups/manifest/app/params"
+	"github.com/liftedinit/manifest-ledger/app"
+	appparams "github.com/liftedinit/manifest-ledger/app/params"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"

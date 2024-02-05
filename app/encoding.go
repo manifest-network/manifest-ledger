@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
-	"github.com/reecepbcups/manifest/app/params"
+	"github.com/liftedinit/manifest-ledger/app/params"
 
 	dbm "github.com/cosmos/cosmos-db"
 

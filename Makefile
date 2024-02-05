@@ -50,7 +50,7 @@ ldflags = -X github.com/cosmos/cosmos-sdk/version.Name=manifest \
 		  -X github.com/cosmos/cosmos-sdk/version.AppName=manifestd \
 		  -X github.com/cosmos/cosmos-sdk/version.Version=$(VERSION) \
 		  -X github.com/cosmos/cosmos-sdk/version.Commit=$(COMMIT) \
-		  -X github.com/reecepbcups/manifest/app.Bech32Prefix=manifest \
+		  -X github.com/liftedinit/manifest-ledger/app.Bech32Prefix=manifest \
 		  -X "github.com/cosmos/cosmos-sdk/version.BuildTags=$(build_tags_comma_sep)"
 
 ifeq ($(WITH_CLEVELDB),yes)

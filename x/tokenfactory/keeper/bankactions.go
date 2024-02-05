@@ -3,7 +3,7 @@ package keeper
 import (
 	"fmt"
 
-	"github.com/reecepbcups/manifest/x/tokenfactory/types"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )

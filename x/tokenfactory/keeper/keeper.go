@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/reecepbcups/manifest/x/tokenfactory/types"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 
 	"cosmossdk.io/log"
 	"cosmossdk.io/store/prefix"

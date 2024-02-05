@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	wasmvmtypes "github.com/CosmWasm/wasmvm/types"
-	"github.com/reecepbcups/manifest/app"
-	bindings "github.com/reecepbcups/manifest/x/tokenfactory/bindings/types"
+	"github.com/liftedinit/manifest-ledger/app"
+	bindings "github.com/liftedinit/manifest-ledger/x/tokenfactory/bindings/types"
 	"github.com/stretchr/testify/require"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"

@@ -4,8 +4,8 @@ import (
 	fmt "fmt"
 	"testing"
 
-	"github.com/reecepbcups/manifest/x/tokenfactory/testhelpers"
-	"github.com/reecepbcups/manifest/x/tokenfactory/types"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/testhelpers"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"

@@ -13,10 +13,10 @@ import (
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	"github.com/reecepbcups/manifest/x/tokenfactory"
-	"github.com/reecepbcups/manifest/x/tokenfactory/bindings"
-	tokenfactorykeeper "github.com/reecepbcups/manifest/x/tokenfactory/keeper"
-	tokenfactorytypes "github.com/reecepbcups/manifest/x/tokenfactory/types"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/bindings"
+	tokenfactorykeeper "github.com/liftedinit/manifest-ledger/x/tokenfactory/keeper"
+	tokenfactorytypes "github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 	"github.com/spf13/cast"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -144,11 +144,11 @@ import (
 	poakeeper "github.com/strangelove-ventures/poa/keeper"
 	poamodule "github.com/strangelove-ventures/poa/module"
 
-	manifestkeeper "github.com/reecepbcups/manifest/x/manifest/keeper"
+	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 )
 
 // !IMPORTANT: testnet only (reece's addr)
-const POATestnetAdmin = "manifest10r39fueph9fq7a6lgswu4zdsg8t3gxlqdwwncm"
+const POAAdmin = "manifest10r39fueph9fq7a6lgswu4zdsg8t3gxlqdwwncm"
 
 // We pull these out so we can set them with LDFLAGS in the Makefile
 var (
@@ -353,7 +353,7 @@ func NewApp(
 	app.ConsensusParamsKeeper = consensusparamkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[consensusparamtypes.StoreKey]),
-		POATestnetAdmin,
+		POAAdmin,
 		runtime.EventService{},
 	)
 	bApp.SetParamStore(app.ConsensusParamsKeeper.ParamsStore)
@@ -381,14 +381,14 @@ func NewApp(
 		maccPerms,
 		authcodec.NewBech32Codec(sdk.GetConfig().GetBech32AccountAddrPrefix()),
 		sdk.GetConfig().GetBech32AccountAddrPrefix(),
-		POATestnetAdmin,
+		POAAdmin,
 	)
 	app.BankKeeper = bankkeeper.NewBaseKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[banktypes.StoreKey]),
 		app.AccountKeeper,
 		BlockedAddresses(),
-		POATestnetAdmin,
+		POAAdmin,
 		logger,
 	)
 
@@ -397,7 +397,7 @@ func NewApp(
 		runtime.NewKVStoreService(keys[stakingtypes.StoreKey]),
 		app.AccountKeeper,
 		app.BankKeeper,
-		POATestnetAdmin,
+		POAAdmin,
 		authcodec.NewBech32Codec(sdk.GetConfig().GetBech32ValidatorAddrPrefix()),
 		authcodec.NewBech32Codec(sdk.GetConfig().GetBech32ConsensusAddrPrefix()),
 	)
@@ -408,7 +408,7 @@ func NewApp(
 		app.AccountKeeper,
 		app.BankKeeper,
 		authtypes.FeeCollectorName,
-		POATestnetAdmin,
+		POAAdmin,
 	)
 
 	app.DistrKeeper = distrkeeper.NewKeeper(
@@ -418,7 +418,7 @@ func NewApp(
 		app.BankKeeper,
 		app.StakingKeeper,
 		authtypes.FeeCollectorName,
-		POATestnetAdmin,
+		POAAdmin,
 	)
 
 	app.SlashingKeeper = slashingkeeper.NewKeeper(
@@ -426,7 +426,7 @@ func NewApp(
 		legacyAmino,
 		runtime.NewKVStoreService(keys[slashingtypes.StoreKey]),
 		app.StakingKeeper,
-		POATestnetAdmin,
+		POAAdmin,
 	)
 
 	app.POAKeeper = poakeeper.NewKeeper(
@@ -445,7 +445,7 @@ func NewApp(
 		invCheckPeriod,
 		app.BankKeeper,
 		authtypes.FeeCollectorName,
-		POATestnetAdmin,
+		POAAdmin,
 		app.AccountKeeper.AddressCodec(),
 	)
 
@@ -460,7 +460,7 @@ func NewApp(
 	app.CircuitKeeper = circuitkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[circuittypes.StoreKey]),
-		POATestnetAdmin,
+		POAAdmin,
 		app.AccountKeeper.AddressCodec(),
 	)
 	app.BaseApp.SetCircuitBreaker(&app.CircuitKeeper)
@@ -496,7 +496,7 @@ func NewApp(
 		appCodec,
 		homePath,
 		app.BaseApp,
-		POATestnetAdmin,
+		POAAdmin,
 	)
 
 	app.IBCKeeper = ibckeeper.NewKeeper(
@@ -506,7 +506,7 @@ func NewApp(
 		app.StakingKeeper,
 		app.UpgradeKeeper,
 		scopedIBCKeeper,
-		POATestnetAdmin,
+		POAAdmin,
 	)
 
 	// Register the proposal types
@@ -532,7 +532,7 @@ func NewApp(
 		app.DistrKeeper,
 		app.MsgServiceRouter(),
 		govConfig,
-		POATestnetAdmin,
+		POAAdmin,
 	)
 
 	app.GovKeeper = *govKeeper.SetHooks(
@@ -571,7 +571,7 @@ func NewApp(
 		app.BankKeeper,
 		app.DistrKeeper,
 		tokenFactoryCapabilities,
-		POATestnetAdmin,
+		POAAdmin,
 		app.POAKeeper.IsAdmin,
 		manifestKeeper.IsManualMintingEnabled,
 	)
@@ -595,7 +595,7 @@ func NewApp(
 		app.AccountKeeper,
 		app.BankKeeper,
 		scopedTransferKeeper,
-		POATestnetAdmin,
+		POAAdmin,
 	)
 
 	app.ICAHostKeeper = icahostkeeper.NewKeeper(
@@ -608,7 +608,7 @@ func NewApp(
 		app.AccountKeeper,
 		scopedICAHostKeeper,
 		app.MsgServiceRouter(),
-		POATestnetAdmin,
+		POAAdmin,
 	)
 	app.ICAControllerKeeper = icacontrollerkeeper.NewKeeper(
 		appCodec,
@@ -619,7 +619,7 @@ func NewApp(
 		app.IBCKeeper.PortKeeper,
 		scopedICAControllerKeeper,
 		app.MsgServiceRouter(),
-		POATestnetAdmin,
+		POAAdmin,
 	)
 
 	wasmDir := filepath.Join(homePath, "wasm")
@@ -652,7 +652,7 @@ func NewApp(
 		wasmDir,
 		wasmConfig,
 		strings.Join(wasmd.AllCapabilities(), ","),
-		POATestnetAdmin,
+		POAAdmin,
 		wasmOpts...,
 	)
 
@@ -1186,7 +1186,7 @@ func BlockedAddresses() map[string]bool {
 	}
 
 	// allow the following addresses to receive funds
-	delete(modAccAddrs, POATestnetAdmin)
+	delete(modAccAddrs, POAAdmin)
 
 	return modAccAddrs
 }

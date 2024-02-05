@@ -1,8 +1,8 @@
 package v2
 
 import (
-	"github.com/reecepbcups/manifest/x/tokenfactory/exported"
-	"github.com/reecepbcups/manifest/x/tokenfactory/types"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/exported"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 
 	sdkstore "cosmossdk.io/store/types"
 

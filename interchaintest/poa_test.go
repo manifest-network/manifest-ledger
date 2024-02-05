@@ -17,7 +17,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
 
-	"github.com/reecepbcups/manifest/interchaintest/helpers"
+	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
 )
 
 const (

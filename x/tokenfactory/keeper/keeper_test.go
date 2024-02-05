@@ -3,9 +3,9 @@ package keeper_test
 import (
 	"testing"
 
-	"github.com/reecepbcups/manifest/app/apptesting"
-	"github.com/reecepbcups/manifest/x/tokenfactory/keeper"
-	"github.com/reecepbcups/manifest/x/tokenfactory/types"
+	"github.com/liftedinit/manifest-ledger/app/apptesting"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/keeper"
+	"github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 	"github.com/stretchr/testify/suite"
 
 	sdkmath "cosmossdk.io/math"

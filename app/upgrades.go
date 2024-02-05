@@ -3,8 +3,8 @@ package app
 import (
 	"fmt"
 
-	"github.com/reecepbcups/manifest/app/upgrades"
-	"github.com/reecepbcups/manifest/app/upgrades/noop"
+	"github.com/liftedinit/manifest-ledger/app/upgrades"
+	"github.com/liftedinit/manifest-ledger/app/upgrades/noop"
 
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 )

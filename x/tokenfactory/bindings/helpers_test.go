@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/CosmWasm/wasmd/x/wasm/keeper"
-	"github.com/reecepbcups/manifest/app"
+	"github.com/liftedinit/manifest-ledger/app"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/crypto"

@@ -1,7 +1,7 @@
 package interchaintest
 
 import (
-	tokenfactorytypes "github.com/reecepbcups/manifest/x/tokenfactory/types"
+	tokenfactorytypes "github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
 
 	sdkmath "cosmossdk.io/math"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"

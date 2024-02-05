@@ -10,8 +10,8 @@ import (
 
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
-	apphelpers "github.com/reecepbcups/manifest/app/helpers"
-	appparams "github.com/reecepbcups/manifest/app/params"
+	apphelpers "github.com/liftedinit/manifest-ledger/app/helpers"
+	appparams "github.com/liftedinit/manifest-ledger/app/params"
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/cometbft/cometbft/abci/types"

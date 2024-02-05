@@ -3,7 +3,7 @@ package noop
 import (
 	"context"
 
-	"github.com/reecepbcups/manifest/app/upgrades"
+	"github.com/liftedinit/manifest-ledger/app/upgrades"
 
 	storetypes "cosmossdk.io/store/types"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
