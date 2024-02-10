@@ -98,6 +98,8 @@ func (EmptyAppOptions) Get(_ string) interface{} { return nil }
 func Setup(t *testing.T) (sdk.Context, *ManifestApp) {
 	t.Helper()
 
+	appparams.SetAddressPrefixes()
+
 	privVal := apphelpers.NewPV()
 	pubKey, err := privVal.GetPubKey()
 	require.NoError(t, err)
@@ -128,8 +130,6 @@ func Setup(t *testing.T) (sdk.Context, *ManifestApp) {
 // account. A Nop logger is set in app.
 func SetupWithGenesisValSet(t *testing.T, valSet *tmtypes.ValidatorSet, genAccs []authtypes.GenesisAccount, balances ...banktypes.Balance) (sdk.Context, *ManifestApp) {
 	t.Helper()
-
-	appparams.SetAddressPrefixes()
 
 	app, genesisState := setup(t, true)
 
