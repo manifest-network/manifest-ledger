@@ -15,8 +15,9 @@ require (
 	cosmossdk.io/math v1.2.0
 	github.com/cosmos/cosmos-sdk v0.50.3
 	github.com/cosmos/ibc-go/v8 v8.0.0
-	github.com/liftedinit/manifest-ledger v0.0.0-00000000000000-000000000000
+	github.com/reecepbcups/tokenfactory v0.50.0-alpha.3
 	github.com/strangelove-ventures/interchaintest/v8 v8.0.1-0.20240124225619-c55143141632
+	github.com/strangelove-ventures/poa v0.0.1-alpha.2
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/zap v1.26.0
 )
@@ -210,7 +211,6 @@ require (
 	github.com/spf13/cobra v1.8.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/spf13/viper v1.18.1 // indirect
-	github.com/strangelove-ventures/poa v0.0.1-alpha.2 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d // indirect
 	github.com/tendermint/go-amino v0.16.0 // indirect

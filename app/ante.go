@@ -1,23 +1,25 @@
 package app
 
 import (
+	"context"
 	"errors"
 
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmTypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	"github.com/liftedinit/manifest-ledger/app/decorators"
+	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	poaante "github.com/strangelove-ventures/poa/ante"
 
 	ibcante "github.com/cosmos/ibc-go/v8/modules/core/ante"
 	"github.com/cosmos/ibc-go/v8/modules/core/keeper"
 
-	sdkmath "cosmossdk.io/math"
-
 	corestoretypes "cosmossdk.io/core/store"
+	sdkmath "cosmossdk.io/math"
 	circuitante "cosmossdk.io/x/circuit/ante"
 	circuitkeeper "cosmossdk.io/x/circuit/keeper"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
-	poaante "github.com/strangelove-ventures/poa/ante"
 )
 
 // HandlerOptions extend the SDK's AnteHandler options by requiring the IBC
@@ -30,6 +32,9 @@ type HandlerOptions struct {
 	WasmKeeper            *wasmkeeper.Keeper
 	TXCounterStoreService corestoretypes.KVStoreService
 	CircuitKeeper         *circuitkeeper.Keeper
+
+	ManifestKeeper  *manifestkeeper.Keeper
+	IsSudoAdminFunc func(ctx context.Context, fromAddr string) bool
 }
 
 func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
@@ -75,6 +80,7 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		ante.NewIncrementSequenceDecorator(options.AccountKeeper),
 		poaante.NewPOADisableStakingDecorator(),
 		poaante.NewCommissionLimitDecorator(doGenTxRateValidation, rateFloor, rateCeil),
+		decorators.NewMsgManualMintFilterDecorator(options.ManifestKeeper, options.IsSudoAdminFunc),
 		ibcante.NewRedundantRelayDecorator(options.IBCKeeper),
 	}
 

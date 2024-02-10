@@ -13,11 +13,15 @@ import (
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	"github.com/liftedinit/manifest-ledger/x/tokenfactory"
-	"github.com/liftedinit/manifest-ledger/x/tokenfactory/bindings"
-	tokenfactorykeeper "github.com/liftedinit/manifest-ledger/x/tokenfactory/keeper"
-	tokenfactorytypes "github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
+	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	"github.com/reecepbcups/tokenfactory/x/tokenfactory"
+	"github.com/reecepbcups/tokenfactory/x/tokenfactory/bindings"
+	tokenfactorykeeper "github.com/reecepbcups/tokenfactory/x/tokenfactory/keeper"
+	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
 	"github.com/spf13/cast"
+	"github.com/strangelove-ventures/poa"
+	poakeeper "github.com/strangelove-ventures/poa/keeper"
+	poamodule "github.com/strangelove-ventures/poa/module"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -138,13 +142,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
-
-	"github.com/strangelove-ventures/poa"
-	poatypes "github.com/strangelove-ventures/poa"
-	poakeeper "github.com/strangelove-ventures/poa/keeper"
-	poamodule "github.com/strangelove-ventures/poa/module"
-
-	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 )
 
 // !IMPORTANT: testnet only (reece's addr)
@@ -160,7 +157,7 @@ var (
 		tokenfactorytypes.EnableBurnFrom,
 		tokenfactorytypes.EnableForceTransfer,
 		tokenfactorytypes.EnableSetMetadata,
-		tokenfactorytypes.EnableAuthoritiesSudoMint,
+		tokenfactorytypes.EnableSudoMint,
 	}
 )
 
@@ -252,6 +249,8 @@ type ManifestApp struct {
 	ICAHostKeeper       icahostkeeper.Keeper
 	TransferKeeper      ibctransferkeeper.Keeper
 	WasmKeeper          wasmkeeper.Keeper
+
+	ManifestKeeper manifestkeeper.Keeper
 
 	ScopedIBCKeeper           capabilitykeeper.ScopedKeeper
 	ScopedICAHostKeeper       capabilitykeeper.ScopedKeeper
@@ -431,7 +430,7 @@ func NewApp(
 
 	app.POAKeeper = poakeeper.NewKeeper(
 		appCodec,
-		runtime.NewKVStoreService(keys[poatypes.StoreKey]),
+		runtime.NewKVStoreService(keys[poa.StoreKey]),
 		app.StakingKeeper,
 		app.SlashingKeeper,
 		authcodec.NewBech32Codec(sdk.Bech32PrefixValAddr),
@@ -560,8 +559,9 @@ func NewApp(
 	// If evidence needs to be handled for the app, set routes in router here and seal
 	app.EvidenceKeeper = *evidenceKeeper
 
+	// TODO: will need to do this properly for storing who gets inflation (mint/distr fork?)
 	// Setup the Manifest 'keeper'
-	manifestKeeper := manifestkeeper.NewKeeper(app.MintKeeper)
+	app.ManifestKeeper = manifestkeeper.NewKeeper(app.MintKeeper)
 
 	// Create the TokenFactory Keeper
 	app.TokenFactoryKeeper = tokenfactorykeeper.NewKeeper(
@@ -571,9 +571,8 @@ func NewApp(
 		app.BankKeeper,
 		app.DistrKeeper,
 		tokenFactoryCapabilities,
-		POAAdmin,
 		app.POAKeeper.IsAdmin,
-		manifestKeeper.IsManualMintingEnabled,
+		POAAdmin,
 	)
 
 	// IBC Fee Module keeper
@@ -827,7 +826,7 @@ func NewApp(
 		// wasm after ibc transfer
 		wasmtypes.ModuleName,
 		tokenfactorytypes.ModuleName,
-		poatypes.ModuleName,
+		poa.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
 	app.ModuleManager.SetOrderExportGenesis(genesisModuleOrder...)
@@ -962,6 +961,10 @@ func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, wasmConfig wasm
 			WasmKeeper:            &app.WasmKeeper,
 			TXCounterStoreService: runtime.NewKVStoreService(txCounterStoreKey),
 			CircuitKeeper:         &app.CircuitKeeper,
+
+			// Manifest specific logic for inflation disabled manual minting / disabled if inflation is on.
+			ManifestKeeper:  &app.ManifestKeeper,
+			IsSudoAdminFunc: app.POAKeeper.IsAdmin,
 		},
 	)
 	if err != nil {
@@ -984,12 +987,12 @@ func (app *ManifestApp) setPostHandler() {
 // Name returns the name of the App
 func (app *ManifestApp) Name() string { return app.BaseApp.Name() }
 
-func (app *ManifestApp) ProcessProposalHandler(ctx sdk.Context, req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
+func (app *ManifestApp) ProcessProposalHandler(_ sdk.Context, _ *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
 	return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
 }
 
 // PreBlocker application updates every pre block
-func (app *ManifestApp) PreBlocker(ctx sdk.Context, req *abci.RequestFinalizeBlock) (*sdk.ResponsePreBlock, error) {
+func (app *ManifestApp) PreBlocker(ctx sdk.Context, _ *abci.RequestFinalizeBlock) (*sdk.ResponsePreBlock, error) {
 	return app.ModuleManager.PreBlock(ctx)
 }
 

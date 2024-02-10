@@ -34,23 +34,24 @@ require (
 	github.com/CosmWasm/wasmd v0.50.0
 	github.com/cometbft/cometbft v0.38.5
 	github.com/cosmos/cosmos-db v1.0.0
-	github.com/cosmos/cosmos-proto v1.0.0-beta.3
+	github.com/cosmos/cosmos-proto v1.0.0-beta.3 // indirect
 	github.com/cosmos/cosmos-sdk v0.50.3
 	github.com/cosmos/gogoproto v1.4.11
 	github.com/cosmos/ibc-go/modules/capability v1.0.0
 	github.com/cosmos/ibc-go/v8 v8.0.0
-	github.com/golang/protobuf v1.5.3
-	github.com/grpc-ecosystem/grpc-gateway v1.16.0
+	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/prometheus/client_golang v1.17.0
+	github.com/reecepbcups/tokenfactory v0.50.0-alpha.3
 	github.com/rs/zerolog v1.31.0 // indirect
 	github.com/spf13/cast v1.6.0
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.18.1
 	github.com/stretchr/testify v1.8.4
-	google.golang.org/genproto/googleapis/api v0.0.0-20231120223509-83a465c0220f
-	google.golang.org/grpc v1.60.1
-	google.golang.org/protobuf v1.32.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20231120223509-83a465c0220f // indirect
+	google.golang.org/grpc v1.60.1 // indirect
+	google.golang.org/protobuf v1.32.0
 )
 
 require (
@@ -62,7 +63,7 @@ require (
 	filippo.io/edwards25519 v1.0.0 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.1 // indirect
-	github.com/CosmWasm/wasmvm v1.5.2
+	github.com/CosmWasm/wasmvm v1.5.2 // indirect
 	github.com/DataDog/datadog-go v3.2.0+incompatible // indirect
 	github.com/DataDog/zstd v1.5.5 // indirect
 	github.com/aws/aws-sdk-go v1.44.224 // indirect
@@ -124,7 +125,7 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.0 // indirect
 	github.com/gorilla/handlers v1.5.2 // indirect
-	github.com/gorilla/mux v1.8.1
+	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
@@ -214,9 +215,3 @@ require (
 )
 
 require github.com/strangelove-ventures/poa v0.0.1-alpha.2
-
-require (
-	github.com/opencontainers/image-spec v1.1.0-rc5 // indirect
-	github.com/opencontainers/runc v1.1.5 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
-)
