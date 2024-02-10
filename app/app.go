@@ -7,15 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
-	wasmd "github.com/CosmWasm/wasmd/app"
-	"github.com/CosmWasm/wasmd/x/wasm"
-	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	"github.com/reecepbcups/tokenfactory/x/tokenfactory"
-	"github.com/reecepbcups/tokenfactory/x/tokenfactory/bindings"
 	tokenfactorykeeper "github.com/reecepbcups/tokenfactory/x/tokenfactory/keeper"
 	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
 	"github.com/spf13/cast"
@@ -24,7 +18,6 @@ import (
 	poamodule "github.com/strangelove-ventures/poa/module"
 
 	abci "github.com/cometbft/cometbft/abci/types"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/gogoproto/proto"
@@ -201,7 +194,6 @@ var maccPerms = map[string][]string{
 	ibctransfertypes.ModuleName:  {authtypes.Minter, authtypes.Burner},
 	ibcfeetypes.ModuleName:       nil,
 	icatypes.ModuleName:          nil,
-	wasmtypes.ModuleName:         {authtypes.Burner},
 	tokenfactorytypes.ModuleName: {authtypes.Minter, authtypes.Burner},
 }
 
@@ -248,7 +240,6 @@ type ManifestApp struct {
 	ICAControllerKeeper icacontrollerkeeper.Keeper
 	ICAHostKeeper       icahostkeeper.Keeper
 	TransferKeeper      ibctransferkeeper.Keeper
-	WasmKeeper          wasmkeeper.Keeper
 
 	ManifestKeeper manifestkeeper.Keeper
 
@@ -257,7 +248,6 @@ type ManifestApp struct {
 	ScopedICAControllerKeeper capabilitykeeper.ScopedKeeper
 	ScopedTransferKeeper      capabilitykeeper.ScopedKeeper
 	ScopedIBCFeeKeeper        capabilitykeeper.ScopedKeeper
-	ScopedWasmKeeper          capabilitykeeper.ScopedKeeper
 
 	TokenFactoryKeeper tokenfactorykeeper.Keeper
 	POAKeeper          poakeeper.Keeper
@@ -280,7 +270,6 @@ func NewApp(
 	traceStore io.Writer,
 	loadLatest bool,
 	appOpts servertypes.AppOptions,
-	wasmOpts []wasmkeeper.Option,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *ManifestApp {
 	interfaceRegistry, err := types.NewInterfaceRegistryWithOptions(types.InterfaceRegistryOptions{
@@ -318,7 +307,7 @@ func NewApp(
 		authzkeeper.StoreKey, nftkeeper.StoreKey, group.StoreKey,
 		// non sdk store keys
 		capabilitytypes.StoreKey, ibcexported.StoreKey, ibctransfertypes.StoreKey, ibcfeetypes.StoreKey,
-		wasmtypes.StoreKey, icahosttypes.StoreKey,
+		icahosttypes.StoreKey,
 		icacontrollertypes.StoreKey, tokenfactorytypes.StoreKey, poa.StoreKey,
 	)
 
@@ -368,7 +357,6 @@ func NewApp(
 	scopedICAHostKeeper := app.CapabilityKeeper.ScopeToModule(icahosttypes.SubModuleName)
 	scopedICAControllerKeeper := app.CapabilityKeeper.ScopeToModule(icacontrollertypes.SubModuleName)
 	scopedTransferKeeper := app.CapabilityKeeper.ScopeToModule(ibctransfertypes.ModuleName)
-	scopedWasmKeeper := app.CapabilityKeeper.ScopeToModule(wasmtypes.ModuleName)
 	app.CapabilityKeeper.Seal()
 
 	// add keepers
@@ -621,40 +609,6 @@ func NewApp(
 		POAAdmin,
 	)
 
-	wasmDir := filepath.Join(homePath, "wasm")
-	wasmConfig, err := wasm.ReadWasmConfig(appOpts)
-	if err != nil {
-		panic(fmt.Sprintf("error while reading wasm config: %s", err))
-	}
-
-	// Move custom query of token factory to stargate, still use custom msg which is tfOpts[1]
-	tfOpts := bindings.RegisterCustomPlugins(app.BankKeeper, &app.TokenFactoryKeeper)
-	wasmOpts = append(wasmOpts, tfOpts...)
-
-	// The last arguments can contain custom message handlers, and custom query handlers,
-	// if we want to allow any custom callbacks
-	// availableCapabilities := strings.Join(AllCapabilities(), ",")
-	app.WasmKeeper = wasmkeeper.NewKeeper(
-		appCodec,
-		runtime.NewKVStoreService(keys[wasmtypes.StoreKey]),
-		app.AccountKeeper,
-		app.BankKeeper,
-		app.StakingKeeper,
-		distrkeeper.NewQuerier(app.DistrKeeper),
-		app.IBCFeeKeeper, // ISC4 Wrapper: fee IBC middleware
-		app.IBCKeeper.ChannelKeeper,
-		app.IBCKeeper.PortKeeper,
-		scopedWasmKeeper,
-		app.TransferKeeper,
-		app.MsgServiceRouter(),
-		app.GRPCQueryRouter(),
-		wasmDir,
-		wasmConfig,
-		strings.Join(wasmd.AllCapabilities(), ","),
-		POAAdmin,
-		wasmOpts...,
-	)
-
 	// Set legacy router for backwards compatibility with gov v1beta1
 	app.GovKeeper.SetLegacyRouter(govRouter)
 
@@ -679,15 +633,9 @@ func NewApp(
 	icaHostStack = icahost.NewIBCModule(app.ICAHostKeeper)
 	icaHostStack = ibcfee.NewIBCMiddleware(icaHostStack, app.IBCFeeKeeper)
 
-	// Create fee enabled wasm ibc Stack
-	var wasmStack porttypes.IBCModule
-	wasmStack = wasm.NewIBCHandler(app.WasmKeeper, app.IBCKeeper.ChannelKeeper, app.IBCFeeKeeper)
-	wasmStack = ibcfee.NewIBCMiddleware(wasmStack, app.IBCFeeKeeper)
-
 	// Create static IBC router, add app routes, then set and seal it
 	ibcRouter := porttypes.NewRouter().
 		AddRoute(ibctransfertypes.ModuleName, transferStack).
-		AddRoute(wasmtypes.ModuleName, wasmStack).
 		AddRoute(icacontrollertypes.SubModuleName, icaControllerStack).
 		AddRoute(icahosttypes.SubModuleName, icaHostStack)
 	app.IBCKeeper.SetRouter(ibcRouter)
@@ -726,7 +674,6 @@ func NewApp(
 		circuit.NewAppModule(appCodec, app.CircuitKeeper),
 		// non sdk modules
 		capability.NewAppModule(appCodec, *app.CapabilityKeeper, false),
-		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
 		ibc.NewAppModule(app.IBCKeeper),
 		transfer.NewAppModule(app.TransferKeeper),
 		ibcfee.NewAppModule(app.IBCFeeKeeper),
@@ -780,7 +727,6 @@ func NewApp(
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
 		ibcfeetypes.ModuleName,
-		wasmtypes.ModuleName,
 		tokenfactorytypes.ModuleName,
 	)
 
@@ -798,7 +744,6 @@ func NewApp(
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
 		ibcfeetypes.ModuleName,
-		wasmtypes.ModuleName,
 		tokenfactorytypes.ModuleName,
 	)
 
@@ -823,8 +768,6 @@ func NewApp(
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
 		ibcfeetypes.ModuleName,
-		// wasm after ibc transfer
-		wasmtypes.ModuleName,
 		tokenfactorytypes.ModuleName,
 		poa.ModuleName,
 	}
@@ -877,24 +820,10 @@ func NewApp(
 	app.SetPreBlocker(app.PreBlocker)
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetEndBlocker(app.EndBlocker)
-	app.setAnteHandler(txConfig, wasmConfig, keys[wasmtypes.StoreKey])
 	app.SetProcessProposal(app.ProcessProposalHandler)
-
-	// must be before Loading version
-	// requires the snapshot store to be created and registered as a BaseAppOption
-	// see cmd/wasmd/root.go: 206 - 214 approx
-	if manager := app.SnapshotManager(); manager != nil {
-		err := manager.RegisterExtensions(
-			wasmkeeper.NewWasmSnapshotter(app.CommitMultiStore(), &app.WasmKeeper),
-		)
-		if err != nil {
-			panic(fmt.Errorf("failed to register snapshot extension: %s", err))
-		}
-	}
 
 	app.ScopedIBCKeeper = scopedIBCKeeper
 	app.ScopedTransferKeeper = scopedTransferKeeper
-	app.ScopedWasmKeeper = scopedWasmKeeper
 	app.ScopedICAHostKeeper = scopedICAHostKeeper
 	app.ScopedICAControllerKeeper = scopedICAControllerKeeper
 
@@ -935,18 +864,12 @@ func NewApp(
 		if err := app.LoadLatestVersion(); err != nil {
 			panic(fmt.Errorf("error loading last version: %w", err))
 		}
-		ctx := app.BaseApp.NewUncachedContext(true, tmproto.Header{})
-
-		// Initialize pinned codes in wasmvm as they are not persisted there
-		if err := app.WasmKeeper.InitializePinnedCodes(ctx); err != nil {
-			panic(fmt.Sprintf("failed initialize pinned codes %s", err))
-		}
 	}
 
 	return app
 }
 
-func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, wasmConfig wasmtypes.WasmConfig, txCounterStoreKey *storetypes.KVStoreKey) {
+func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig) {
 	anteHandler, err := NewAnteHandler(
 		HandlerOptions{
 			HandlerOptions: ante.HandlerOptions{
@@ -956,11 +879,8 @@ func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, wasmConfig wasm
 				FeegrantKeeper:  app.FeeGrantKeeper,
 				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
 			},
-			IBCKeeper:             app.IBCKeeper,
-			WasmConfig:            &wasmConfig,
-			WasmKeeper:            &app.WasmKeeper,
-			TXCounterStoreService: runtime.NewKVStoreService(txCounterStoreKey),
-			CircuitKeeper:         &app.CircuitKeeper,
+			IBCKeeper:     app.IBCKeeper,
+			CircuitKeeper: &app.CircuitKeeper,
 
 			// Manifest specific logic for inflation disabled manual minting / disabled if inflation is on.
 			ManifestKeeper:  &app.ManifestKeeper,
@@ -1211,6 +1131,5 @@ func initParamsKeeper(appCodec codec.BinaryCodec, legacyAmino *codec.LegacyAmino
 	paramsKeeper.Subspace(icahosttypes.SubModuleName)
 	paramsKeeper.Subspace(tokenfactorytypes.ModuleName)
 	paramsKeeper.Subspace(icacontrollertypes.SubModuleName)
-	paramsKeeper.Subspace(wasmtypes.ModuleName)
 	return paramsKeeper
 }
