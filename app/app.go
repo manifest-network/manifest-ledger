@@ -13,10 +13,10 @@ import (
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	"github.com/liftedinit/manifest-ledger/x/tokenfactory"
-	"github.com/liftedinit/manifest-ledger/x/tokenfactory/bindings"
-	tokenfactorykeeper "github.com/liftedinit/manifest-ledger/x/tokenfactory/keeper"
-	tokenfactorytypes "github.com/liftedinit/manifest-ledger/x/tokenfactory/types"
+	"github.com/reecepbcups/tokenfactory/x/tokenfactory"
+	"github.com/reecepbcups/tokenfactory/x/tokenfactory/bindings"
+	tokenfactorykeeper "github.com/reecepbcups/tokenfactory/x/tokenfactory/keeper"
+	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
 	"github.com/spf13/cast"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -160,7 +160,7 @@ var (
 		tokenfactorytypes.EnableBurnFrom,
 		tokenfactorytypes.EnableForceTransfer,
 		tokenfactorytypes.EnableSetMetadata,
-		tokenfactorytypes.EnableAuthoritiesSudoMint,
+		tokenfactorytypes.EnableSudoMint,
 	}
 )
 
@@ -252,6 +252,8 @@ type ManifestApp struct {
 	ICAHostKeeper       icahostkeeper.Keeper
 	TransferKeeper      ibctransferkeeper.Keeper
 	WasmKeeper          wasmkeeper.Keeper
+
+	ManifestKeeper manifestkeeper.Keeper
 
 	ScopedIBCKeeper           capabilitykeeper.ScopedKeeper
 	ScopedICAHostKeeper       capabilitykeeper.ScopedKeeper
@@ -560,8 +562,9 @@ func NewApp(
 	// If evidence needs to be handled for the app, set routes in router here and seal
 	app.EvidenceKeeper = *evidenceKeeper
 
+	// TODO: will need to do this properly for storing who gets inflation (mint/distr fork?)
 	// Setup the Manifest 'keeper'
-	manifestKeeper := manifestkeeper.NewKeeper(app.MintKeeper)
+	app.ManifestKeeper = manifestkeeper.NewKeeper(app.MintKeeper)
 
 	// Create the TokenFactory Keeper
 	app.TokenFactoryKeeper = tokenfactorykeeper.NewKeeper(
@@ -571,9 +574,8 @@ func NewApp(
 		app.BankKeeper,
 		app.DistrKeeper,
 		tokenFactoryCapabilities,
-		POAAdmin,
 		app.POAKeeper.IsAdmin,
-		manifestKeeper.IsManualMintingEnabled,
+		POAAdmin,
 	)
 
 	// IBC Fee Module keeper
@@ -962,6 +964,10 @@ func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, wasmConfig wasm
 			WasmKeeper:            &app.WasmKeeper,
 			TXCounterStoreService: runtime.NewKVStoreService(txCounterStoreKey),
 			CircuitKeeper:         &app.CircuitKeeper,
+
+			// Manifest specific logic for inflation disabled manual minting / disabled if inflation is on.
+			ManifestKeeper:  &app.ManifestKeeper,
+			IsSudoAdminFunc: app.POAKeeper.IsAdmin,
 		},
 	)
 	if err != nil {

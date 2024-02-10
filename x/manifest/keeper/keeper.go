@@ -2,11 +2,14 @@ package keeper
 
 import (
 	"context"
-	"fmt"
 
 	sdkmath "cosmossdk.io/math"
 
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
+)
+
+const (
+	ModuleName = "manifest"
 )
 
 type (
@@ -21,12 +24,11 @@ func NewKeeper(mintKeeper mintkeeper.Keeper) Keeper {
 	}
 }
 
-// IsManualMintingEnabled returns true if inflation mint is 0% (disabled).
-// Then used in TokenFactory
+// IsManualMintingEnabled returns nil if inflation mint is 0% (disabled)
 func (k Keeper) IsManualMintingEnabled(ctx context.Context) error {
 	minter, err := k.mintKeeper.Minter.Get(ctx)
 	if err != nil {
-		return fmt.Errorf("IsManualMintingEnabled error getting minter: %s", err)
+		return ErrGettingMinter.Wrapf("error getting minter: %s", err.Error())
 	}
 
 	// if inflation is 0, then manual minting is enabled for the PoA admin
@@ -34,5 +36,5 @@ func (k Keeper) IsManualMintingEnabled(ctx context.Context) error {
 		return nil
 	}
 
-	return fmt.Errorf("manual minting is disabled due to inflation being >0: %s", minter.Inflation.String())
+	return ErrManualMintingDisabled.Wrapf("inflation: %s", minter.Inflation.String())
 }
