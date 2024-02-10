@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 
-	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
-	wasmTypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/liftedinit/manifest-ledger/app/decorators"
 	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	poaante "github.com/strangelove-ventures/poa/ante"
@@ -13,7 +11,6 @@ import (
 	ibcante "github.com/cosmos/ibc-go/v8/modules/core/ante"
 	"github.com/cosmos/ibc-go/v8/modules/core/keeper"
 
-	corestoretypes "cosmossdk.io/core/store"
 	sdkmath "cosmossdk.io/math"
 	circuitante "cosmossdk.io/x/circuit/ante"
 	circuitkeeper "cosmossdk.io/x/circuit/keeper"
@@ -27,11 +24,8 @@ import (
 type HandlerOptions struct {
 	ante.HandlerOptions
 
-	IBCKeeper             *keeper.Keeper
-	WasmConfig            *wasmTypes.WasmConfig
-	WasmKeeper            *wasmkeeper.Keeper
-	TXCounterStoreService corestoretypes.KVStoreService
-	CircuitKeeper         *circuitkeeper.Keeper
+	IBCKeeper     *keeper.Keeper
+	CircuitKeeper *circuitkeeper.Keeper
 
 	ManifestKeeper  *manifestkeeper.Keeper
 	IsSudoAdminFunc func(ctx context.Context, fromAddr string) bool
@@ -47,12 +41,6 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 	if options.SignModeHandler == nil {
 		return nil, errors.New("sign mode handler is required for ante builder")
 	}
-	if options.WasmConfig == nil {
-		return nil, errors.New("wasm config is required for ante builder")
-	}
-	if options.TXCounterStoreService == nil {
-		return nil, errors.New("wasm store service is required for ante builder")
-	}
 	if options.CircuitKeeper == nil {
 		return nil, errors.New("circuit keeper is required for ante builder")
 	}
@@ -63,9 +51,6 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 
 	anteDecorators := []sdk.AnteDecorator{
 		ante.NewSetUpContextDecorator(),
-		wasmkeeper.NewLimitSimulationGasDecorator(options.WasmConfig.SimulationGasLimit), // after setup context to enforce limits early
-		wasmkeeper.NewCountTXDecorator(options.TXCounterStoreService),
-		wasmkeeper.NewGasRegisterDecorator(options.WasmKeeper.GetGasRegister()),
 		circuitante.NewCircuitBreakerDecorator(options.CircuitKeeper),
 		ante.NewExtensionOptionsDecorator(options.ExtensionOptionChecker),
 		ante.NewValidateBasicDecorator(),

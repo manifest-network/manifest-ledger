@@ -5,7 +5,6 @@ import (
 
 	sdkmath "cosmossdk.io/math"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
-	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos/wasm"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 
 	sdktestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
@@ -65,9 +64,9 @@ var (
 )
 
 func AppEncoding() *sdktestutil.TestEncodingConfig {
-	enc := wasm.WasmEncoding()
+	enc := cosmos.DefaultEncoding()
 
 	tokenfactorytypes.RegisterInterfaces(enc.InterfaceRegistry)
 
-	return enc
+	return &enc
 }
