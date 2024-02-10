@@ -13,11 +13,15 @@ import (
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	"github.com/reecepbcups/tokenfactory/x/tokenfactory"
 	"github.com/reecepbcups/tokenfactory/x/tokenfactory/bindings"
 	tokenfactorykeeper "github.com/reecepbcups/tokenfactory/x/tokenfactory/keeper"
 	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
 	"github.com/spf13/cast"
+	"github.com/strangelove-ventures/poa"
+	poakeeper "github.com/strangelove-ventures/poa/keeper"
+	poamodule "github.com/strangelove-ventures/poa/module"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -138,13 +142,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
-
-	"github.com/strangelove-ventures/poa"
-	poatypes "github.com/strangelove-ventures/poa"
-	poakeeper "github.com/strangelove-ventures/poa/keeper"
-	poamodule "github.com/strangelove-ventures/poa/module"
-
-	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 )
 
 // !IMPORTANT: testnet only (reece's addr)
@@ -433,7 +430,7 @@ func NewApp(
 
 	app.POAKeeper = poakeeper.NewKeeper(
 		appCodec,
-		runtime.NewKVStoreService(keys[poatypes.StoreKey]),
+		runtime.NewKVStoreService(keys[poa.StoreKey]),
 		app.StakingKeeper,
 		app.SlashingKeeper,
 		authcodec.NewBech32Codec(sdk.Bech32PrefixValAddr),
@@ -829,7 +826,7 @@ func NewApp(
 		// wasm after ibc transfer
 		wasmtypes.ModuleName,
 		tokenfactorytypes.ModuleName,
-		poatypes.ModuleName,
+		poa.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
 	app.ModuleManager.SetOrderExportGenesis(genesisModuleOrder...)
@@ -990,12 +987,12 @@ func (app *ManifestApp) setPostHandler() {
 // Name returns the name of the App
 func (app *ManifestApp) Name() string { return app.BaseApp.Name() }
 
-func (app *ManifestApp) ProcessProposalHandler(ctx sdk.Context, req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
+func (app *ManifestApp) ProcessProposalHandler(_ sdk.Context, _ *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
 	return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
 }
 
 // PreBlocker application updates every pre block
-func (app *ManifestApp) PreBlocker(ctx sdk.Context, req *abci.RequestFinalizeBlock) (*sdk.ResponsePreBlock, error) {
+func (app *ManifestApp) PreBlocker(ctx sdk.Context, _ *abci.RequestFinalizeBlock) (*sdk.ResponsePreBlock, error) {
 	return app.ModuleManager.PreBlock(ctx)
 }
 

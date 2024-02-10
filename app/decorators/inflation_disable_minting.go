@@ -3,10 +3,10 @@ package decorators
 import (
 	"context"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
-
 	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 type IsSudoAdminFunc func(ctx context.Context, fromAddr string) bool

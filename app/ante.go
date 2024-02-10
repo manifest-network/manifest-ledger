@@ -7,21 +7,19 @@ import (
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmTypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/liftedinit/manifest-ledger/app/decorators"
+	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	poaante "github.com/strangelove-ventures/poa/ante"
 
 	ibcante "github.com/cosmos/ibc-go/v8/modules/core/ante"
 	"github.com/cosmos/ibc-go/v8/modules/core/keeper"
 
-	sdkmath "cosmossdk.io/math"
-
 	corestoretypes "cosmossdk.io/core/store"
+	sdkmath "cosmossdk.io/math"
 	circuitante "cosmossdk.io/x/circuit/ante"
 	circuitkeeper "cosmossdk.io/x/circuit/keeper"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
-	poaante "github.com/strangelove-ventures/poa/ante"
-
-	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 )
 
 // HandlerOptions extend the SDK's AnteHandler options by requiring the IBC

@@ -12,6 +12,7 @@ import (
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	apphelpers "github.com/liftedinit/manifest-ledger/app/helpers"
 	appparams "github.com/liftedinit/manifest-ledger/app/params"
+	"github.com/strangelove-ventures/poa"
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -49,8 +50,6 @@ import (
 	govv1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
-
-	"github.com/strangelove-ventures/poa"
 )
 
 // SimAppChainID hardcoded chainID for simulation

@@ -1,8 +1,9 @@
 package decorators
 
 import (
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	protov2 "google.golang.org/protobuf/proto"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 type MockTx struct {
