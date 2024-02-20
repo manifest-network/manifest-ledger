@@ -1,8 +1,9 @@
 package keeper
 
 import (
-	"cosmossdk.io/errors"
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"
+
+	"cosmossdk.io/errors"
 )
 
 var (

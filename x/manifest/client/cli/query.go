@@ -1,12 +1,11 @@
 package cli
 
 import (
+	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/spf13/cobra"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
-
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
 func GetQueryCmd() *cobra.Command {

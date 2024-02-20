@@ -3,7 +3,8 @@ package module
 import (
 	"os"
 
-	"github.com/cosmos/cosmos-sdk/codec"
+	modulev1 "github.com/liftedinit/manifest-ledger/api/manifest/module/v1"
+	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 
 	"cosmossdk.io/core/address"
 	"cosmossdk.io/core/appmodule"
@@ -11,9 +12,7 @@ import (
 	"cosmossdk.io/depinject"
 	"cosmossdk.io/log"
 
-	modulev1 "github.com/liftedinit/manifest-ledger/api/manifest/module/v1"
-	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
-
+	"github.com/cosmos/cosmos-sdk/codec"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 )
 

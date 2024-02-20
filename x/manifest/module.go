@@ -6,10 +6,15 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	manifestv1 "github.com/liftedinit/manifest-ledger/api/manifest/v1"
+	"github.com/liftedinit/manifest-ledger/x/manifest/client/cli"
+	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/spf13/cobra"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 
+	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
 	"cosmossdk.io/client/v2/autocli"
 	errorsmod "cosmossdk.io/errors"
 
@@ -18,13 +23,6 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
-
-	"github.com/liftedinit/manifest-ledger/x/manifest/client/cli"
-	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
-
-	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
-	manifestv1 "github.com/liftedinit/manifest-ledger/api/manifest/v1"
 )
 
 const (
@@ -98,10 +96,11 @@ func (a AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx client.Context, mux 
 }
 
 // AutoCLIOptions implements the autocli.HasAutoCLIConfig interface.
-func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
+func (a AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 	return &autocliv1.ModuleOptions{
 		Query: &autocliv1.ServiceCommandDescriptor{
-			Service: manifestv1.Query_ServiceDesc.ServiceName,
+			Service:           manifestv1.Query_ServiceDesc.ServiceName,
+			RpcCommandOptions: []*autocliv1.RpcCommandOptions{},
 		},
 		Tx: &autocliv1.ServiceCommandDescriptor{
 			Service:           manifestv1.Msg_ServiceDesc.ServiceName,
