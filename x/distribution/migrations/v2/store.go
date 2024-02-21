@@ -5,7 +5,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/runtime"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	v1 "github.com/cosmos/cosmos-sdk/x/distribution/migrations/v1"
+	v1 "github.com/liftedinit/manifest-ledger/x/distribution/migrations/v1"
 )
 
 // MigrateStore performs in-place store migrations from v0.40 to v0.43. The

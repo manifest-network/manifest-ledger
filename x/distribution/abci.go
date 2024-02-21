@@ -5,8 +5,8 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/x/distribution/keeper"
-	"github.com/cosmos/cosmos-sdk/x/distribution/types"
+	"github.com/liftedinit/manifest-ledger/x/distribution/keeper"
+	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
 // BeginBlocker sets the proposer for determining distribution during endblock

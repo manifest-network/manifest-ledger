@@ -22,12 +22,12 @@ import (
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	banktestutil "github.com/cosmos/cosmos-sdk/x/bank/testutil"
-	"github.com/cosmos/cosmos-sdk/x/distribution/keeper"
-	"github.com/cosmos/cosmos-sdk/x/distribution/simulation"
-	distrtestutil "github.com/cosmos/cosmos-sdk/x/distribution/testutil"
-	"github.com/cosmos/cosmos-sdk/x/distribution/types"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	"github.com/liftedinit/manifest-ledger/x/distribution/keeper"
+	"github.com/liftedinit/manifest-ledger/x/distribution/simulation"
+	distrtestutil "github.com/liftedinit/manifest-ledger/x/distribution/testutil"
+	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
 // TestWeightedOperations tests the weights of the operations.

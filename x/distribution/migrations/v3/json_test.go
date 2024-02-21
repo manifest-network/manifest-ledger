@@ -10,9 +10,9 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/client"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
-	"github.com/cosmos/cosmos-sdk/x/distribution"
-	v3 "github.com/cosmos/cosmos-sdk/x/distribution/migrations/v3"
-	"github.com/cosmos/cosmos-sdk/x/distribution/types"
+	"github.com/liftedinit/manifest-ledger/x/distribution"
+	v3 "github.com/liftedinit/manifest-ledger/x/distribution/migrations/v3"
+	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
 func TestMigrateJSON(t *testing.T) {

@@ -12,9 +12,9 @@ import (
 	"github.com/cosmos/cosmos-sdk/testutil"
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	v1 "github.com/cosmos/cosmos-sdk/x/distribution/migrations/v1"
-	v2 "github.com/cosmos/cosmos-sdk/x/distribution/migrations/v2"
-	"github.com/cosmos/cosmos-sdk/x/distribution/types"
+	v1 "github.com/liftedinit/manifest-ledger/x/distribution/migrations/v1"
+	v2 "github.com/liftedinit/manifest-ledger/x/distribution/migrations/v2"
+	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
 func TestStoreMigration(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/x/distribution/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
 // initialize starting info for a new delegation

@@ -6,8 +6,8 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/x/distribution/exported"
-	"github.com/cosmos/cosmos-sdk/x/distribution/types"
+	"github.com/liftedinit/manifest-ledger/x/distribution/exported"
+	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
 const (

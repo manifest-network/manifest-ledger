@@ -21,13 +21,13 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	"github.com/cosmos/cosmos-sdk/x/distribution/client/cli"
-	"github.com/cosmos/cosmos-sdk/x/distribution/exported"
-	"github.com/cosmos/cosmos-sdk/x/distribution/keeper"
-	"github.com/cosmos/cosmos-sdk/x/distribution/simulation"
-	"github.com/cosmos/cosmos-sdk/x/distribution/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	staking "github.com/cosmos/cosmos-sdk/x/staking/types"
+	"github.com/liftedinit/manifest-ledger/x/distribution/client/cli"
+	"github.com/liftedinit/manifest-ledger/x/distribution/exported"
+	"github.com/liftedinit/manifest-ledger/x/distribution/keeper"
+	"github.com/liftedinit/manifest-ledger/x/distribution/simulation"
+	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
 // ConsensusVersion defines the current x/distribution module consensus version.

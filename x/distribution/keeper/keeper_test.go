@@ -17,10 +17,10 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	"github.com/cosmos/cosmos-sdk/x/distribution"
-	"github.com/cosmos/cosmos-sdk/x/distribution/keeper"
-	distrtestutil "github.com/cosmos/cosmos-sdk/x/distribution/testutil"
-	"github.com/cosmos/cosmos-sdk/x/distribution/types"
+	"github.com/liftedinit/manifest-ledger/x/distribution"
+	"github.com/liftedinit/manifest-ledger/x/distribution/keeper"
+	distrtestutil "github.com/liftedinit/manifest-ledger/x/distribution/testutil"
+	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
 func TestSetWithdrawAddr(t *testing.T) {

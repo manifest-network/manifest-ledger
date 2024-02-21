@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/x/distribution/types"
+	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
 // InitGenesis sets distribution information for genesis

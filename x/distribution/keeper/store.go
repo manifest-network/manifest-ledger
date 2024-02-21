@@ -10,7 +10,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/runtime"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/x/distribution/types"
+	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
 // get the delegator withdraw address, defaulting to the delegator address
