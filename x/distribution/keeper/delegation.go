@@ -7,6 +7,7 @@ import (
 	"cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
@@ -210,7 +211,7 @@ func (k Keeper) withdrawDelegationRewards(ctx context.Context, val stakingtypes.
 	}
 
 	if !hasInfo {
-		return nil, types.ErrEmptyDelegationDistInfo
+		return nil, distrtypes.ErrEmptyDelegationDistInfo
 	}
 
 	// end current period and calculate rewards

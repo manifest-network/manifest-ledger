@@ -1,8 +1,8 @@
 syntax = "proto3";
-package manifest.v1;
+package manifest.manifest.v1;
 
 import "cosmos/msg/v1/msg.proto";
-import "manifest/v1/genesis.proto";
+import "manifest/manifest/v1/genesis.proto";
 import "gogoproto/gogo.proto";
 import "cosmos_proto/cosmos.proto";
 import "cosmos/base/v1beta1/coin.proto";

@@ -10,6 +10,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
@@ -190,7 +191,7 @@ func (k msgServer) DepositValidatorRewardsPool(ctx context.Context, msg *types.M
 	}
 
 	if validator == nil {
-		return nil, errors.Wrapf(types.ErrNoValidatorExists, msg.ValidatorAddress)
+		return nil, errors.Wrapf(distrtypes.ErrNoValidatorExists, msg.ValidatorAddress)
 	}
 
 	// Allocate tokens from the distribution module to the validator, which are

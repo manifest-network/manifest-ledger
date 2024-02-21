@@ -1,6 +1,7 @@
 package types
 
 import (
+	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 )
 
@@ -23,10 +24,10 @@ func (csp *CommunityPoolSpendProposal) ValidateBasic() error {
 		return err
 	}
 	if !csp.Amount.IsValid() {
-		return ErrInvalidProposalAmount
+		return distrtypes.ErrInvalidProposalAmount
 	}
 	if csp.Recipient == "" {
-		return ErrEmptyProposalRecipient
+		return distrtypes.ErrEmptyProposalRecipient
 	}
 
 	return nil

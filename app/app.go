@@ -110,9 +110,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/crisis"
 	crisiskeeper "github.com/cosmos/cosmos-sdk/x/crisis/keeper"
 	crisistypes "github.com/cosmos/cosmos-sdk/x/crisis/types"
-	distr "github.com/liftedinit/manifest-ledger/x/distribution"
-	distrkeeper "github.com/liftedinit/manifest-ledger/x/distribution/keeper"
-	distrtypes "github.com/liftedinit/manifest-ledger/x/distribution/types"
 	"github.com/cosmos/cosmos-sdk/x/genutil"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
 	"github.com/cosmos/cosmos-sdk/x/gov"
@@ -137,6 +134,9 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	distr "github.com/liftedinit/manifest-ledger/x/distribution"
+	distrkeeper "github.com/liftedinit/manifest-ledger/x/distribution/keeper"
+	distrtypes "github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
 // !IMPORTANT: testnet only (reece's addr)

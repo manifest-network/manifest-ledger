@@ -4,6 +4,7 @@ import (
 	"context"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
@@ -20,7 +21,7 @@ func (k Keeper) DistributeFromFeePool(ctx context.Context, amount sdk.Coins, rec
 	// must be reduced separately from the SendCoinsFromModuleToAccount call
 	newPool, negative := feePool.CommunityPool.SafeSub(sdk.NewDecCoinsFromCoins(amount...))
 	if negative {
-		return types.ErrBadDistribution
+		return distrtypes.ErrBadDistribution
 	}
 
 	feePool.CommunityPool = newPool

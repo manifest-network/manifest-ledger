@@ -31,6 +31,6 @@ for module in $custom_modules; do
   dirPath=`basename $(dirname $module)`
   mkdir -p api/$dirPath
 
-  mv $dirPath/* ./api/$dirPath/
+  cp -r $dirPath/* ./api/$dirPath/
   rm -rf $dirPath
 done

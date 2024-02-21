@@ -12,6 +12,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
 
@@ -88,7 +89,7 @@ func (k Keeper) SetWithdrawAddr(ctx context.Context, delegatorAddr, withdrawAddr
 	}
 
 	if !withdrawAddrEnabled {
-		return types.ErrSetWithdrawAddrDisabled
+		return distrtypes.ErrSetWithdrawAddrDisabled
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -111,7 +112,7 @@ func (k Keeper) WithdrawDelegationRewards(ctx context.Context, delAddr sdk.AccAd
 	}
 
 	if val == nil {
-		return nil, types.ErrNoValidatorDistInfo
+		return nil, distrtypes.ErrNoValidatorDistInfo
 	}
 
 	del, err := k.stakingKeeper.Delegation(ctx, delAddr, valAddr)
@@ -120,7 +121,7 @@ func (k Keeper) WithdrawDelegationRewards(ctx context.Context, delAddr sdk.AccAd
 	}
 
 	if del == nil {
-		return nil, types.ErrEmptyDelegationDistInfo
+		return nil, distrtypes.ErrEmptyDelegationDistInfo
 	}
 
 	// withdraw rewards
@@ -146,7 +147,7 @@ func (k Keeper) WithdrawValidatorCommission(ctx context.Context, valAddr sdk.Val
 	}
 
 	if accumCommission.Commission.IsZero() {
-		return nil, types.ErrNoValidatorCommission
+		return nil, distrtypes.ErrNoValidatorCommission
 	}
 
 	commission, remainder := accumCommission.Commission.TruncateDecimal()

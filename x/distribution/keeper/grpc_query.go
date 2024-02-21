@@ -12,6 +12,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/runtime"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
+	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/liftedinit/manifest-ledger/x/distribution/types"
 )
@@ -58,7 +59,7 @@ func (k Querier) ValidatorDistributionInfo(ctx context.Context, req *types.Query
 	}
 
 	if val == nil {
-		return nil, errors.Wrap(types.ErrNoValidatorExists, req.ValidatorAddress)
+		return nil, errors.Wrap(distrtypes.ErrNoValidatorExists, req.ValidatorAddress)
 	}
 
 	delAdr := sdk.AccAddress(valAdr)
@@ -69,7 +70,7 @@ func (k Querier) ValidatorDistributionInfo(ctx context.Context, req *types.Query
 	}
 
 	if del == nil {
-		return nil, types.ErrNoDelegationExists
+		return nil, distrtypes.ErrNoDelegationExists
 	}
 
 	endingPeriod, err := k.IncrementValidatorPeriod(ctx, val)
@@ -116,7 +117,7 @@ func (k Querier) ValidatorOutstandingRewards(ctx context.Context, req *types.Que
 	}
 
 	if validator == nil {
-		return nil, errors.Wrapf(types.ErrNoValidatorExists, req.ValidatorAddress)
+		return nil, errors.Wrapf(distrtypes.ErrNoValidatorExists, req.ValidatorAddress)
 	}
 
 	rewards, err := k.GetValidatorOutstandingRewards(ctx, valAdr)
@@ -148,7 +149,7 @@ func (k Querier) ValidatorCommission(ctx context.Context, req *types.QueryValida
 	}
 
 	if validator == nil {
-		return nil, errors.Wrapf(types.ErrNoValidatorExists, req.ValidatorAddress)
+		return nil, errors.Wrapf(distrtypes.ErrNoValidatorExists, req.ValidatorAddress)
 	}
 	commission, err := k.GetValidatorAccumulatedCommission(ctx, valAdr)
 	if err != nil {
@@ -226,7 +227,7 @@ func (k Querier) DelegationRewards(ctx context.Context, req *types.QueryDelegati
 	}
 
 	if val == nil {
-		return nil, errors.Wrap(types.ErrNoValidatorExists, req.ValidatorAddress)
+		return nil, errors.Wrap(distrtypes.ErrNoValidatorExists, req.ValidatorAddress)
 	}
 
 	delAdr, err := k.authKeeper.AddressCodec().StringToBytes(req.DelegatorAddress)
@@ -239,7 +240,7 @@ func (k Querier) DelegationRewards(ctx context.Context, req *types.QueryDelegati
 	}
 
 	if del == nil {
-		return nil, types.ErrNoDelegationExists
+		return nil, distrtypes.ErrNoDelegationExists
 	}
 
 	endingPeriod, err := k.IncrementValidatorPeriod(ctx, val)
