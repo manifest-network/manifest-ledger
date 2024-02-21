@@ -1,0 +1,67 @@
+syntax = "proto3";
+package manifest.v1;
+
+import "cosmos/msg/v1/msg.proto";
+import "manifest/v1/genesis.proto";
+import "gogoproto/gogo.proto";
+import "cosmos_proto/cosmos.proto";
+import "cosmos/base/v1beta1/coin.proto";
+import "amino/amino.proto";
+
+option go_package = "github.com/liftedinit/manifest-ledger/x/manifest/types";
+
+// Msg defines the Msg service.
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+
+  // UpdateParams defines a governance operation for updating the parameters.
+  //
+  // Since: cosmos-sdk 0.47
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+
+  rpc PayoutStakeholders(MsgPayoutStakeholders) returns (MsgPayoutStakeholdersResponse);
+}
+
+// MsgUpdateParams is the Msg/UpdateParams request type.
+//
+// Since: cosmos-sdk 0.47
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+
+  // authority is the address of the governance account.
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // params defines the parameters to update.
+  //
+  // NOTE: All parameters must be supplied.
+  Params params = 2 [(gogoproto.nullable) = false];
+}
+
+// MsgUpdateParamsResponse defines the response structure for executing a
+// MsgUpdateParams message.
+//
+// Since: cosmos-sdk 0.47
+message MsgUpdateParamsResponse {}
+
+message MsgPayoutStakeholders {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (gogoproto.equal) = false;
+
+  // option (gogoproto.equal) = true;
+  // option (gogoproto.goproto_stringer) = false;
+
+  // authority is the address of the governance account.
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // old: types "github.com/cosmos/cosmos-sdk/types"
+	// new: types "cosmossdk.io/api/cosmos/base/v1beta1"
+
+  cosmos.base.v1beta1.Coin payout = 2 [
+    (gogoproto.nullable)     = false,
+    (amino.dont_omitempty)   = true,
+    (amino.encoding)         = "legacy_coins",
+    (gogoproto.castrepeated) = "cosmossdk.io/api/cosmos/base/v1beta1.Coins"
+  ];
+}
+
+message MsgPayoutStakeholdersResponse {}

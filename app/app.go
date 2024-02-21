@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"sort"
 
+	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
 	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/reecepbcups/tokenfactory/x/tokenfactory"
 	tokenfactorykeeper "github.com/reecepbcups/tokenfactory/x/tokenfactory/keeper"
 	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
@@ -195,6 +197,7 @@ var maccPerms = map[string][]string{
 	ibcfeetypes.ModuleName:       nil,
 	icatypes.ModuleName:          nil,
 	tokenfactorytypes.ModuleName: {authtypes.Minter, authtypes.Burner},
+	manifesttypes.ModuleName:     {authtypes.Minter},
 }
 
 var (
@@ -241,8 +244,6 @@ type ManifestApp struct {
 	ICAHostKeeper       icahostkeeper.Keeper
 	TransferKeeper      ibctransferkeeper.Keeper
 
-	ManifestKeeper manifestkeeper.Keeper
-
 	ScopedIBCKeeper           capabilitykeeper.ScopedKeeper
 	ScopedICAHostKeeper       capabilitykeeper.ScopedKeeper
 	ScopedICAControllerKeeper capabilitykeeper.ScopedKeeper
@@ -251,6 +252,7 @@ type ManifestApp struct {
 
 	TokenFactoryKeeper tokenfactorykeeper.Keeper
 	POAKeeper          poakeeper.Keeper
+	ManifestKeeper     manifestkeeper.Keeper
 
 	// the module manager
 	ModuleManager      *module.Manager
@@ -309,6 +311,7 @@ func NewApp(
 		capabilitytypes.StoreKey, ibcexported.StoreKey, ibctransfertypes.StoreKey, ibcfeetypes.StoreKey,
 		icahosttypes.StoreKey,
 		icacontrollertypes.StoreKey, tokenfactorytypes.StoreKey, poa.StoreKey,
+		manifesttypes.StoreKey,
 	)
 
 	tkeys := storetypes.NewTransientStoreKeys(paramstypes.TStoreKey)
@@ -547,9 +550,15 @@ func NewApp(
 	// If evidence needs to be handled for the app, set routes in router here and seal
 	app.EvidenceKeeper = *evidenceKeeper
 
-	// TODO: will need to do this properly for storing who gets inflation (mint/distr fork?)
-	// Setup the Manifest 'keeper'
-	app.ManifestKeeper = manifestkeeper.NewKeeper(app.MintKeeper)
+	// Create the manifest Keeper
+	app.ManifestKeeper = manifestkeeper.NewKeeper(
+		appCodec,
+		runtime.NewKVStoreService(keys[manifesttypes.StoreKey]),
+		app.MintKeeper,
+		app.BankKeeper,
+		logger,
+		POAAdmin,
+	)
 
 	// Create the TokenFactory Keeper
 	app.TokenFactoryKeeper = tokenfactorykeeper.NewKeeper(
@@ -683,6 +692,7 @@ func NewApp(
 		poamodule.NewAppModule(appCodec, app.POAKeeper),
 		// sdk
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)), // always be last to make sure that it checks for all invariants and not only part of them
+		manifest.NewAppModule(appCodec, app.ManifestKeeper),
 	)
 
 	// BasicModuleManager defines the module BasicManager is in charge of setting up basic,
@@ -728,6 +738,7 @@ func NewApp(
 		icatypes.ModuleName,
 		ibcfeetypes.ModuleName,
 		tokenfactorytypes.ModuleName,
+		manifesttypes.ModuleName,
 	)
 
 	app.ModuleManager.SetOrderEndBlockers(
@@ -745,6 +756,7 @@ func NewApp(
 		icatypes.ModuleName,
 		ibcfeetypes.ModuleName,
 		tokenfactorytypes.ModuleName,
+		manifesttypes.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -770,6 +782,7 @@ func NewApp(
 		ibcfeetypes.ModuleName,
 		tokenfactorytypes.ModuleName,
 		poa.ModuleName,
+		manifesttypes.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
 	app.ModuleManager.SetOrderExportGenesis(genesisModuleOrder...)
@@ -1130,6 +1143,7 @@ func initParamsKeeper(appCodec codec.BinaryCodec, legacyAmino *codec.LegacyAmino
 	paramsKeeper.Subspace(ibcexported.ModuleName)
 	paramsKeeper.Subspace(icahosttypes.SubModuleName)
 	paramsKeeper.Subspace(tokenfactorytypes.ModuleName)
+	paramsKeeper.Subspace(manifesttypes.ModuleName)
 	paramsKeeper.Subspace(icacontrollertypes.SubModuleName)
 	return paramsKeeper
 }

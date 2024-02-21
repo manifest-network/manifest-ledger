@@ -1,0 +1,33 @@
+syntax = "proto3";
+package manifest.v1;
+
+import "gogoproto/gogo.proto";
+import "amino/amino.proto";
+
+option go_package = "github.com/liftedinit/manifest-ledger/x/manifest/types";
+
+// GenesisState defines the module genesis state
+message GenesisState {
+  // Params defines all the paramaters of the module.
+  Params params = 1 [(gogoproto.nullable) = false];
+}
+
+// Params defines the set of module parameters.
+message Params {
+  option (amino.name) = "manifest/params";
+  option (gogoproto.equal) = true;
+  option (gogoproto.goproto_stringer) = false;
+
+  repeated StakeHolders stake_holders = 1;
+}
+
+message StakeHolders {
+  option (gogoproto.equal) = true;
+
+  // manifest address
+  string address = 1;
+
+  // percentage is the micro denom % of tokens this address gets on a distribution.
+  // 100% = 100_000_000 total. so 1_000000 = 1%.
+  int32 percentage = 2;
+}
