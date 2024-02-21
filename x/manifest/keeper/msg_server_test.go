@@ -91,12 +91,20 @@ func TestUpdateParams(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
+			// Set the params
 			_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
 				Authority: tc.sender,
 				Params:    types.NewParams(tc.sh),
 			})
 			require.Equal(t, tc.success, err == nil, err)
+
+			// Ensure they are set the same as the expected
+			if tc.success && len(tc.sh) > 0 {
+				params, err := f.App.ManifestKeeper.Params.Get(f.Ctx)
+				require.NoError(t, err)
+
+				require.Equal(t, tc.sh, params.StakeHolders)
+			}
 		})
 	}
-
 }
