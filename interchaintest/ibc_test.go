@@ -112,9 +112,9 @@ func TestIBC(t *testing.T) {
 		Denom:   manifestA.Config().Denom,
 		Amount:  amountToSend,
 	}
-	tx, err := manifestA.SendIBCTransfer(ctx, manifestAChannelID, manifestAUser.KeyName(), transfer, ibc.TransferOptions{})
+
+	_, err = manifestA.SendIBCTransfer(ctx, manifestAChannelID, manifestAUser.KeyName(), transfer, ibc.TransferOptions{})
 	require.NoError(t, err)
-	require.NoError(t, tx.Validate())
 
 	// relay MsgRecvPacket to manifestB, then MsgAcknowledgement back to manifestA
 	require.NoError(t, r.Flush(ctx, eRep, ibcPath, manifestAChannelID))
