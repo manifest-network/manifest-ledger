@@ -11,6 +11,7 @@ import (
 	sdkmath "cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/codec"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 )
 
@@ -80,6 +81,15 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 	}
 }
 
+func (k *Keeper) GetShareHolders(ctx context.Context) []*types.StakeHolders {
+	params, err := k.Params.Get(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	return params.StakeHolders
+}
+
 // IsManualMintingEnabled returns nil if inflation mint is 0% (disabled)
 func (k Keeper) IsManualMintingEnabled(ctx context.Context) error {
 	minter, err := k.mintKeeper.Minter.Get(ctx)
@@ -93,4 +103,26 @@ func (k Keeper) IsManualMintingEnabled(ctx context.Context) error {
 	}
 
 	return ErrManualMintingDisabled.Wrapf("inflation: %s", minter.Inflation.String())
+}
+
+// Returns the amount of coins to be distributed to the holders
+func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin) map[string]sdk.Coin {
+	sh := k.GetShareHolders(ctx)
+
+	pairs := make(map[string]sdk.Coin, len(sh))
+
+	// iter each stakeholder, get their percent of the total 100%, and then split up their amount of coin cost
+	for _, s := range sh {
+		pct := sdkmath.NewInt(int64(s.Percentage)).ToLegacyDec().QuoInt64(types.MaxPercentShare)
+		coinAmt := pct.MulInt(c.Amount).RoundInt()
+
+		if coinAmt.IsZero() {
+			// too small of an amount to matter (< 1 utoken)
+			continue
+		}
+
+		pairs[s.Address] = sdk.NewCoin(c.Denom, coinAmt)
+	}
+
+	return pairs
 }

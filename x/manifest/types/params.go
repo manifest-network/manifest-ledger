@@ -7,7 +7,7 @@ import (
 
 const (
 	// uses a precision of 6 decimal places.
-	maxPercentShare = 100_000_000
+	MaxPercentShare = 100_000_000
 )
 
 // DefaultParams returns default module parameters.
@@ -47,8 +47,8 @@ func (p Params) Validate() error {
 		total += int64(sh.Percentage)
 	}
 
-	if total != maxPercentShare {
-		return fmt.Errorf("stakeholders should add up to %d, got %d", maxPercentShare, total)
+	if total != MaxPercentShare {
+		return fmt.Errorf("stakeholders should add up to %d, got %d", MaxPercentShare, total)
 	}
 
 	seen := make(map[string]struct{})

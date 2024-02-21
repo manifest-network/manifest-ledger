@@ -3,11 +3,65 @@ package keeper_test
 import (
 	"testing"
 
+	sdkmath "cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/stretchr/testify/require"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
+
+func TestCalculatePayoutLogic(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, acc := testdata.KeyTestPubAddr()
+	_, _, acc2 := testdata.KeyTestPubAddr()
+	_, _, acc3 := testdata.KeyTestPubAddr()
+	_, _, acc4 := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.ManifestKeeper
+
+	k.SetAuthority(f.Ctx, authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	sh := []*types.StakeHolders{
+		{
+			Address:    acc.String(),
+			Percentage: 50_000_000, // 50%
+		},
+		{
+			Address:    acc2.String(),
+			Percentage: 49_000_000,
+		},
+		{
+			Address:    acc3.String(),
+			Percentage: 500_001, // 0.5%
+		},
+		{
+			Address:    acc4.String(),
+			Percentage: 499_999,
+		},
+	}
+
+	_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
+		Authority: authority.String(),
+		Params:    types.NewParams(sh),
+	})
+	require.NoError(t, err)
+
+	// validate the full payout of 100 tokens got split up between all fractional shares as expected
+	res := k.CalculateShareHolderTokenPayout(f.Ctx, sdk.NewCoin("stake", sdkmath.NewInt(100_000_000)))
+	for _, s := range sh {
+		for w, coin := range res {
+			if s.Address == w {
+				require.EqualValues(t, s.Percentage, coin.Amount.Int64())
+			}
+		}
+	}
+
+}
 
 func TestUpdateParams(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
