@@ -12,6 +12,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 )
 
@@ -21,6 +22,7 @@ type Keeper struct {
 	logger log.Logger
 
 	mintKeeper mintkeeper.Keeper
+	bankKeeper bankkeeper.Keeper
 
 	// state management
 	Schema collections.Schema
@@ -34,6 +36,7 @@ func NewKeeper(
 	cdc codec.BinaryCodec,
 	storeService storetypes.KVStoreService,
 	mintKeeper mintkeeper.Keeper,
+	bankKeeper bankkeeper.Keeper,
 	logger log.Logger,
 	authority string,
 ) Keeper {
@@ -46,6 +49,7 @@ func NewKeeper(
 		logger: logger,
 
 		mintKeeper: mintKeeper,
+		bankKeeper: bankKeeper,
 
 		// Stores
 		Params: collections.NewItem(sb, types.ParamsKey, "params", codec.CollValue[types.Params](cdc)),
@@ -125,4 +129,26 @@ func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin)
 	}
 
 	return pairs
+}
+
+func (k Keeper) PayoutStakeholders(ctx context.Context, c sdk.Coin) error {
+	pairs := k.CalculateShareHolderTokenPayout(ctx, c)
+
+	if err := k.bankKeeper.MintCoins(ctx, types.ModuleName, sdk.NewCoins(c)); err != nil {
+		return err
+	}
+
+	for addr, coin := range pairs {
+		accAddr, err := sdk.AccAddressFromBech32(addr)
+		if err != nil {
+			return err
+		}
+
+		// send from the mintKeeper -> the stakeholder
+		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, accAddr, sdk.NewCoins(coin)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

@@ -197,6 +197,7 @@ var maccPerms = map[string][]string{
 	ibcfeetypes.ModuleName:       nil,
 	icatypes.ModuleName:          nil,
 	tokenfactorytypes.ModuleName: {authtypes.Minter, authtypes.Burner},
+	manifesttypes.ModuleName:     {authtypes.Minter},
 }
 
 var (
@@ -554,6 +555,7 @@ func NewApp(
 		appCodec,
 		runtime.NewKVStoreService(keys[manifesttypes.StoreKey]),
 		app.MintKeeper,
+		app.BankKeeper,
 		logger,
 		POAAdmin,
 	)

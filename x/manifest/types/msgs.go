@@ -46,3 +46,41 @@ func (msg *MsgUpdateParams) Validate() error {
 
 	return msg.Params.Validate()
 }
+
+var _ sdk.Msg = &MsgPayoutStakeholders{}
+
+func NewMsgPayoutStakeholders(
+	sender sdk.Address,
+	coin sdk.Coin,
+) *MsgPayoutStakeholders {
+	return &MsgPayoutStakeholders{
+		Authority: sender.String(),
+		Payout:    coin,
+	}
+}
+
+// Route returns the name of the module
+func (msg MsgPayoutStakeholders) Route() string { return ModuleName }
+
+// Type returns the the action
+func (msg MsgPayoutStakeholders) Type() string { return "payout" }
+
+// GetSignBytes implements the LegacyMsg interface.
+func (msg MsgPayoutStakeholders) GetSignBytes() []byte {
+	return sdk.MustSortJSON(AminoCdc.MustMarshalJSON(&msg))
+}
+
+// GetSigners returns the expected signers for the message.
+func (msg *MsgPayoutStakeholders) GetSigners() []sdk.AccAddress {
+	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
+	return []sdk.AccAddress{addr}
+}
+
+// ValidateBasic does a sanity check on the provided data.
+func (msg *MsgPayoutStakeholders) Validate() error {
+	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
+		return errors.Wrap(err, "invalid authority address")
+	}
+
+	return msg.Payout.Validate()
+}

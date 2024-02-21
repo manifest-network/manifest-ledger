@@ -29,3 +29,12 @@ func (ms msgServer) UpdateParams(ctx context.Context, req *types.MsgUpdateParams
 
 	return nil, ms.k.Params.Set(ctx, req.Params)
 }
+
+// PayoutStakeholders implements types.MsgServer.
+func (ms msgServer) PayoutStakeholders(ctx context.Context, req *types.MsgPayoutStakeholders) (*types.MsgPayoutStakeholdersResponse, error) {
+	if ms.k.authority != req.Authority {
+		return nil, fmt.Errorf("invalid authority; expected %s, got %s", ms.k.authority, req.Authority)
+	}
+
+	return nil, ms.k.PayoutStakeholders(ctx, req.Payout)
+}
