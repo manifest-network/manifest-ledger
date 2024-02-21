@@ -555,6 +555,7 @@ func NewApp(
 		runtime.NewKVStoreService(keys[manifesttypes.StoreKey]),
 		app.MintKeeper,
 		logger,
+		POAAdmin,
 	)
 
 	// Create the TokenFactory Keeper

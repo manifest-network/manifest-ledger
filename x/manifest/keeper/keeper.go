@@ -24,6 +24,8 @@ type Keeper struct {
 	// state management
 	Schema collections.Schema
 	Params collections.Item[types.Params]
+
+	authority string
 }
 
 // NewKeeper creates a new poa Keeper instance
@@ -32,6 +34,7 @@ func NewKeeper(
 	storeService storetypes.KVStoreService,
 	mintKeeper mintkeeper.Keeper,
 	logger log.Logger,
+	authority string,
 ) Keeper {
 	logger = logger.With(log.ModuleKey, "x/"+types.ModuleName)
 
@@ -59,6 +62,10 @@ func NewKeeper(
 
 func (k Keeper) Logger() log.Logger {
 	return k.logger
+}
+
+func (k *Keeper) SetAuthority(ctx context.Context, authority string) {
+	k.authority = authority
 }
 
 // ExportGenesis exports the module's state to a genesis state.

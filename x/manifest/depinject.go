@@ -13,6 +13,8 @@ import (
 	"cosmossdk.io/log"
 
 	"github.com/cosmos/cosmos-sdk/codec"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 )
 
@@ -49,7 +51,7 @@ type ModuleOutputs struct {
 }
 
 func ProvideModule(in ModuleInputs) ModuleOutputs {
-	k := keeper.NewKeeper(in.Cdc, in.StoreService, in.MintKeeper, log.NewLogger(os.Stderr))
+	k := keeper.NewKeeper(in.Cdc, in.StoreService, in.MintKeeper, log.NewLogger(os.Stderr), authtypes.NewModuleAddress(govtypes.ModuleName).String())
 	m := NewAppModule(in.Cdc, k)
 
 	return ModuleOutputs{Module: m, Keeper: k, Out: depinject.Out{}}

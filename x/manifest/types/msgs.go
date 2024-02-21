@@ -11,12 +11,12 @@ var _ sdk.Msg = &MsgUpdateParams{}
 // NewMsgUpdateParams creates new instance of MsgUpdateParams
 func NewMsgUpdateParams(
 	sender sdk.Address,
-	someValue bool,
+	stakeHolders []*StakeHolders,
 ) *MsgUpdateParams {
 	return &MsgUpdateParams{
 		Authority: sender.String(),
 		Params: Params{
-			SomeValue: someValue,
+			StakeHolders: stakeHolders,
 		},
 	}
 }

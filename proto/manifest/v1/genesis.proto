@@ -18,5 +18,16 @@ message Params {
   option (gogoproto.equal) = true;
   option (gogoproto.goproto_stringer) = false;
 
-  bool some_value = 2;
+  repeated StakeHolders stake_holders = 1;
+}
+
+message StakeHolders {
+  option (gogoproto.equal) = true;
+
+  // manifest address
+  string address = 1;
+
+  // percentage is the micro denom % of tokens this address gets on a distribution.
+  // 100% = 100_000_000 total. so 1_000000 = 1%.
+  int32 percentage = 2;
 }

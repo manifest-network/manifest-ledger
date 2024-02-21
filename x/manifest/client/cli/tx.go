@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/spf13/cobra"
@@ -32,7 +34,7 @@ func NewTxCmd() *cobra.Command {
 // contract for the module.
 func MsgUpdateParams() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "update-params [some-value]",
+		Use:   "update-params address:1_000_000,address2:99_000_000",
 		Short: "Update the params (must be submitted from the authority)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -43,16 +45,14 @@ func MsgUpdateParams() *cobra.Command {
 
 			senderAddress := cliCtx.GetFromAddress()
 
-			someValue, err := strconv.ParseBool(args[0])
+			sh, err := fromStrToStakeholders(args[0])
 			if err != nil {
 				return err
 			}
 
 			msg := &types.MsgUpdateParams{
 				Authority: senderAddress.String(),
-				Params: types.Params{
-					SomeValue: someValue,
-				},
+				Params:    types.NewParams(sh),
 			}
 
 			if err := msg.Validate(); err != nil {
@@ -65,4 +65,30 @@ func MsgUpdateParams() *cobra.Command {
 
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
+}
+
+// address:1_000_000,address2:99_000_000
+func fromStrToStakeholders(s string) ([]*types.StakeHolders, error) {
+	stakeHolders := make([]*types.StakeHolders, 0)
+
+	for _, stakeholder := range strings.Split(s, ",") {
+		parts := strings.Split(stakeholder, ":")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid stakeholder: %s", stakeholder)
+		}
+
+		percentage, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid percentage: %s", parts[1])
+		}
+
+		sh := &types.StakeHolders{
+			Address:    parts[0],
+			Percentage: int32(percentage),
+		}
+
+		stakeHolders = append(stakeHolders, sh)
+	}
+
+	return stakeHolders, nil
 }
