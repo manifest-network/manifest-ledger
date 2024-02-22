@@ -25,9 +25,9 @@ import (
 	testutilmod "github.com/cosmos/cosmos-sdk/types/module/testutil"
 	"github.com/cosmos/cosmos-sdk/x/bank"
 	"github.com/cosmos/cosmos-sdk/x/gov"
-	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	"github.com/liftedinit/manifest-ledger/x/distribution/client/cli"
 	distrtestutil "github.com/liftedinit/manifest-ledger/x/distribution/testutil"
+	minttypes "github.com/liftedinit/manifest-ledger/x/mint/types"
 )
 
 type CLITestSuite struct {

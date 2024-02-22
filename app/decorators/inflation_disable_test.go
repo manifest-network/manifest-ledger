@@ -17,8 +17,8 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
-	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
+	mintkeeper "github.com/liftedinit/manifest-ledger/x/mint/keeper"
+	minttypes "github.com/liftedinit/manifest-ledger/x/mint/types"
 )
 
 // Define an empty ante handle

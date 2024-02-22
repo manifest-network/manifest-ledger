@@ -45,9 +45,9 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	govv1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
-	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	distrtypes "github.com/liftedinit/manifest-ledger/x/distribution/types"
+	minttypes "github.com/liftedinit/manifest-ledger/x/mint/types"
 )
 
 // SimAppChainID hardcoded chainID for simulation

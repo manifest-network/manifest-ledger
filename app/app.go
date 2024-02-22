@@ -120,9 +120,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/group"
 	groupkeeper "github.com/cosmos/cosmos-sdk/x/group/keeper"
 	groupmodule "github.com/cosmos/cosmos-sdk/x/group/module"
-	"github.com/cosmos/cosmos-sdk/x/mint"
-	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
-	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	"github.com/cosmos/cosmos-sdk/x/params"
 	paramsclient "github.com/cosmos/cosmos-sdk/x/params/client"
 	paramskeeper "github.com/cosmos/cosmos-sdk/x/params/keeper"
@@ -137,6 +134,9 @@ import (
 	distr "github.com/liftedinit/manifest-ledger/x/distribution"
 	distrkeeper "github.com/liftedinit/manifest-ledger/x/distribution/keeper"
 	distrtypes "github.com/liftedinit/manifest-ledger/x/distribution/types"
+	"github.com/liftedinit/manifest-ledger/x/mint"
+	mintkeeper "github.com/liftedinit/manifest-ledger/x/mint/keeper"
+	minttypes "github.com/liftedinit/manifest-ledger/x/mint/types"
 )
 
 // !IMPORTANT: testnet only (reece's addr)
