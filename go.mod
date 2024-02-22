@@ -7,6 +7,11 @@ toolchain go1.21.0
 replace (
 	// core v0.12 was tagged wrong (SDK v51)
 	cosmossdk.io/core => cosmossdk.io/core v0.11.0
+
+	// go get github.com/liftedinit/cosmos-sdk@24d6e6cf46beb55d9789c041db68a5ab3093c064
+	// https://github.com/liftedinit/cosmos-sdk/pull/1
+	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.5-0.20240222003859-24d6e6cf46be
+
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	github.com/gin-gonic/gin => github.com/gin-gonic/gin v1.7.0
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides
