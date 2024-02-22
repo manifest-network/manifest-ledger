@@ -16,6 +16,7 @@ import (
 
 	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
 	"cosmossdk.io/client/v2/autocli"
+	"cosmossdk.io/core/appmodule"
 	errorsmod "cosmossdk.io/errors"
 
 	"github.com/cosmos/cosmos-sdk/client"
@@ -23,6 +24,8 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 )
 
 const (
@@ -34,6 +37,8 @@ var (
 	_ module.AppModuleBasic   = AppModuleBasic{}
 	_ module.AppModuleGenesis = AppModule{}
 	_ module.AppModule        = AppModule{}
+
+	_ appmodule.HasBeginBlocker = AppModule{}
 
 	_ autocli.HasAutoCLIConfig      = AppModule{}
 	_ autocli.HasCustomQueryCommand = AppModule{}
@@ -49,16 +54,22 @@ type AppModule struct {
 	AppModuleBasic
 
 	keeper keeper.Keeper
+	mk     mintkeeper.Keeper
+	bk     bankkeeper.Keeper
 }
 
 // NewAppModule constructor
 func NewAppModule(
 	cdc codec.Codec,
 	keeper keeper.Keeper,
+	mintkeeper mintkeeper.Keeper,
+	bankkeeper bankkeeper.Keeper,
 ) *AppModule {
 	return &AppModule{
 		AppModuleBasic: AppModuleBasic{cdc: cdc},
 		keeper:         keeper,
+		mk:             mintkeeper,
+		bk:             bankkeeper,
 	}
 }
 
@@ -151,6 +162,10 @@ func (a AppModule) QuerierRoute() string {
 func (a AppModule) RegisterServices(cfg module.Configurator) {
 	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImpl(a.keeper))
 	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQuerier(a.keeper))
+}
+
+func (a AppModule) BeginBlock(ctx context.Context) error {
+	return BeginBlocker(ctx, a.keeper, a.mk, a.bk)
 }
 
 // ConsensusVersion is a sequence number for state-breaking change of the
