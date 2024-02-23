@@ -36,12 +36,8 @@ func BeginBlocker(ctx context.Context, k keeper.Keeper, mk mintkeeper.Keeper, bk
 	// recalculate inflation rate
 	totalSupply := bk.GetSupply(ctx, "umfx").Amount
 
-	// bondedRatio, err := k.BondedRatio(ctx)
-	// if err != nil {
-	// 	return err
-	// }
-	// always 0 for us
-	bondedRatio := sdkmath.LegacyZeroDec()
+	// TODO(reece): max bond ratio will always use the minimum inflation value. This is likely desired.
+	bondedRatio := sdkmath.LegacyOneDec()
 
 	minter.Inflation = ic(ctx, minter, params, bondedRatio)
 	minter.AnnualProvisions = minter.NextAnnualProvisions(params, totalSupply)
