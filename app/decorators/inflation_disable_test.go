@@ -8,6 +8,7 @@ import (
 	"github.com/liftedinit/manifest-ledger/app/decorators"
 	appparams "github.com/liftedinit/manifest-ledger/app/params"
 	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
 	poa "github.com/strangelove-ventures/poa"
 	poakeeper "github.com/strangelove-ventures/poa/keeper"
@@ -26,6 +27,9 @@ var (
 	EmptyAnte = func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		return ctx, nil
 	}
+
+	coin   = sdk.NewCoin(appparams.BondDenom, sdkmath.NewInt(1))
+	tfCoin = sdk.NewCoin("factory", sdkmath.NewInt(1))
 )
 
 type AnteTestSuite struct {
@@ -72,25 +76,59 @@ func (s *AnteTestSuite) TestAnteInflationAndMinting() {
 	inflation := sdkmath.LegacyNewDecWithPrec(1, 2) // 1%
 	zero := sdkmath.LegacyZeroDec()
 
-	// tx: inflation is 0 so manual minting is allowed from the poa admin
-	s.Require().NoError(s.mintKeeper.Minter.Set(s.ctx, minttypes.InitialMinter(zero)))
-	msg := tokenfactorytypes.NewMsgMint(poaAdmin.String(), sdk.NewCoin(appparams.BondDenom, sdkmath.NewInt(1)))
-	_, err := ante.AnteHandle(s.ctx, decorators.NewMockTx(msg), false, EmptyAnte)
-	s.Require().NoError(err)
+	type tc struct {
+		name      string
+		inflation sdkmath.LegacyDec
+		msg       sdk.Msg
+		err       string
+	}
 
-	// minting is allowed from the stdUser too
-	msg = tokenfactorytypes.NewMsgMint(stdUser.String(), sdk.NewCoin(appparams.BondDenom, sdkmath.NewInt(1)))
-	_, err = ante.AnteHandle(s.ctx, decorators.NewMockTx(msg), false, EmptyAnte)
-	s.Require().NoError(err)
+	tcs := []tc{
+		{
+			name:      "success; 0 inflation tokenfactory mint",
+			inflation: zero,
+			msg:       tokenfactorytypes.NewMsgMint(poaAdmin.String(), coin),
+		},
+		{
+			name:      "success; 0 inflation payout stakeholders",
+			inflation: zero,
+			msg:       manifesttypes.NewMsgPayoutStakeholders(poaAdmin, coin),
+		},
+		{
+			name:      "success; TF mint from standard user",
+			inflation: zero,
+			msg:       tokenfactorytypes.NewMsgMint(stdUser.String(), tfCoin),
+		},
+		{
+			name:      "success; TF mint from standard user with inflation still allowed",
+			inflation: inflation,
+			msg:       tokenfactorytypes.NewMsgMint(stdUser.String(), tfCoin),
+		},
+		{
+			name:      "fail; inflation enabled, no manual mint from admin",
+			inflation: inflation,
+			msg:       tokenfactorytypes.NewMsgMint(poaAdmin.String(), coin),
+			err:       manifestkeeper.ErrManualMintingDisabled.Error(),
+		},
+		{
+			name:      "fail; inflation enabled, no manual payout from admin",
+			inflation: inflation,
+			msg:       manifesttypes.NewMsgPayoutStakeholders(poaAdmin, coin),
+			err:       manifestkeeper.ErrManualMintingDisabled.Error(),
+		},
+	}
 
-	// tx: inflation is 1% so manual minting is not allowed from the poa admin
-	s.Require().NoError(s.mintKeeper.Minter.Set(s.ctx, minttypes.InitialMinter(inflation)))
-	msg = tokenfactorytypes.NewMsgMint(poaAdmin.String(), sdk.NewCoin(appparams.BondDenom, sdkmath.NewInt(1)))
-	_, err = ante.AnteHandle(s.ctx, decorators.NewMockTx(msg), false, EmptyAnte)
-	s.Require().Contains(err.Error(), manifestkeeper.ErrManualMintingDisabled.Error())
+	for _, tc := range tcs {
+		tc := tc
 
-	// tx: inflation is still 1%, but normal users can still mint (non admins)
-	msg = tokenfactorytypes.NewMsgMint(stdUser.String(), sdk.NewCoin(appparams.BondDenom, sdkmath.NewInt(1)))
-	_, err = ante.AnteHandle(s.ctx, decorators.NewMockTx(msg), false, EmptyAnte)
-	s.Require().NoError(err)
+		s.Require().NoError(s.mintKeeper.Minter.Set(s.ctx, minttypes.InitialMinter(tc.inflation)))
+		_, err := ante.AnteHandle(s.ctx, decorators.NewMockTx(tc.msg), false, EmptyAnte)
+
+		if tc.err == "" {
+			s.Require().NoError(err)
+		} else {
+			s.Require().Error(err)
+			s.Require().Contains(err.Error(), tc.err)
+		}
+	}
 }
