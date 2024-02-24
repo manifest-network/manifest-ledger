@@ -23,6 +23,7 @@ func TestStakeholderAutoMint(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, acc := testdata.KeyTestPubAddr()
 
+	// fixture
 	f := initFixture(t)
 
 	k := f.App.ManifestKeeper
