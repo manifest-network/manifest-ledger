@@ -104,13 +104,13 @@ func (s *AnteTestSuite) TestAnteInflationAndMinting() {
 			name:      "fail; inflation enabled, no manual mint from admin",
 			inflation: true,
 			msg:       tokenfactorytypes.NewMsgMint(poaAdmin.String(), coin),
-			err:       manifestkeeper.ErrManualMintingDisabled.Error(),
+			err:       manifesttypes.ErrManualMintingDisabled.Error(),
 		},
 		{
 			name:      "fail; inflation enabled, no manual payout from admin",
 			inflation: true,
 			msg:       manifesttypes.NewMsgPayoutStakeholders(poaAdmin, coin),
-			err:       manifestkeeper.ErrManualMintingDisabled.Error(),
+			err:       manifesttypes.ErrManualMintingDisabled.Error(),
 		},
 	}
 

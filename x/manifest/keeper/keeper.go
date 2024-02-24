@@ -96,17 +96,13 @@ func (k *Keeper) GetShareHolders(ctx context.Context) []*types.StakeHolders {
 }
 
 // IsManualMintingEnabled returns nil if inflation mint is 0% (disabled)
-func (k Keeper) IsManualMintingEnabled(ctx context.Context) error {
+func (k Keeper) IsManualMintingEnabled(ctx context.Context) bool {
 	params, err := k.Params.Get(ctx)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	if !params.Inflation.AutomaticEnabled {
-		return nil
-	}
-
-	return ErrManualMintingDisabled.Wrapf("token inflation: %d", params.Inflation.YearlyAmount)
+	return !params.Inflation.AutomaticEnabled
 }
 
 // Returns the amount of coins to be distributed to the holders
