@@ -25,6 +25,7 @@ message Params {
 
 }
 
+// StakeHolders is the list of addresses and their percentage of the inflation distribution
 message StakeHolders {
   option (gogoproto.equal) = true;
 
@@ -36,6 +37,7 @@ message StakeHolders {
   int32 percentage = 2;
 }
 
+// Inflation is the automatic inflation and distribution coins to the stake holders
 message Inflation {
   option (gogoproto.equal) = true;
   // if automatic inflation is enabled for distribution

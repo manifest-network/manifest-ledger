@@ -122,6 +122,7 @@ func (m *Params) GetInflation() *Inflation {
 	return nil
 }
 
+// StakeHolders is the list of addresses and their percentage of the inflation distribution
 type StakeHolders struct {
 	// manifest address
 	Address string `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
@@ -177,6 +178,7 @@ func (m *StakeHolders) GetPercentage() int32 {
 	return 0
 }
 
+// Inflation is the automatic inflation and distribution coins to the stake holders
 type Inflation struct {
 	// if automatic inflation is enabled for distribution
 	AutomaticEnabled bool `protobuf:"varint,1,opt,name=automatic_enabled,json=automaticEnabled,proto3" json:"automatic_enabled,omitempty"`

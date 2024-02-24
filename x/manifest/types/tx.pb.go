@@ -131,6 +131,7 @@ func (m *MsgUpdateParamsResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_MsgUpdateParamsResponse proto.InternalMessageInfo
 
+// MsgPayoutStakeholders manually pays out previously saved stakeholders.
 type MsgPayoutStakeholders struct {
 	// authority is the address of the controlling account.
 	Authority string     `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
@@ -184,6 +185,7 @@ func (m *MsgPayoutStakeholders) GetPayout() types.Coin {
 	return types.Coin{}
 }
 
+// MsgPayoutStakeholdersResponse
 type MsgPayoutStakeholdersResponse struct {
 }
 

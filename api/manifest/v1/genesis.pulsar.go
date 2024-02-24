@@ -2106,6 +2106,7 @@ func (x *Params) GetInflation() *Inflation {
 	return nil
 }
 
+// StakeHolders is the list of addresses and their percentage of the inflation distribution
 type StakeHolders struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -2152,6 +2153,7 @@ func (x *StakeHolders) GetPercentage() int32 {
 	return 0
 }
 
+// Inflation is the automatic inflation and distribution coins to the stake holders
 type Inflation struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

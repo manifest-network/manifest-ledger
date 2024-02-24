@@ -1820,6 +1820,7 @@ func (*MsgUpdateParamsResponse) Descriptor() ([]byte, []int) {
 	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{1}
 }
 
+// MsgPayoutStakeholders manually pays out previously saved stakeholders.
 type MsgPayoutStakeholders struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1864,6 +1865,7 @@ func (x *MsgPayoutStakeholders) GetPayout() *types.Coin {
 	return nil
 }
 
+// MsgPayoutStakeholdersResponse
 type MsgPayoutStakeholdersResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
