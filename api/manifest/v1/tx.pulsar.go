@@ -1748,7 +1748,7 @@ type MsgUpdateParams struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// authority is the address of the governance account.
+	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
 	// params defines the parameters to update.
 	//
@@ -1825,7 +1825,7 @@ type MsgPayoutStakeholders struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// authority is the address of the governance account.
+	// authority is the address of the controlling account.
 	Authority string      `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
 	Payout    *types.Coin `protobuf:"bytes,2,opt,name=payout,proto3" json:"payout,omitempty"`
 }
