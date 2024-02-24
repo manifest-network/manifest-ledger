@@ -19,7 +19,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
-	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 )
 
 // Define an empty ante handle
@@ -73,12 +72,9 @@ func (s *AnteTestSuite) TestAnteInflationAndMinting() {
 
 	ante := decorators.NewMsgManualMintFilterDecorator(&s.manifestKeeper, s.poakeeper.IsAdmin)
 
-	inflation := sdkmath.LegacyNewDecWithPrec(1, 2) // 1%
-	zero := sdkmath.LegacyZeroDec()
-
 	type tc struct {
 		name      string
-		inflation sdkmath.LegacyDec
+		inflation bool
 		msg       sdk.Msg
 		err       string
 	}
@@ -86,33 +82,33 @@ func (s *AnteTestSuite) TestAnteInflationAndMinting() {
 	tcs := []tc{
 		{
 			name:      "success; 0 inflation tokenfactory mint",
-			inflation: zero,
+			inflation: false,
 			msg:       tokenfactorytypes.NewMsgMint(poaAdmin.String(), coin),
 		},
 		{
 			name:      "success; 0 inflation payout stakeholders",
-			inflation: zero,
+			inflation: false,
 			msg:       manifesttypes.NewMsgPayoutStakeholders(poaAdmin, coin),
 		},
 		{
 			name:      "success; TF mint from standard user",
-			inflation: zero,
+			inflation: false,
 			msg:       tokenfactorytypes.NewMsgMint(stdUser.String(), tfCoin),
 		},
 		{
 			name:      "success; TF mint from standard user with inflation still allowed",
-			inflation: inflation,
+			inflation: true,
 			msg:       tokenfactorytypes.NewMsgMint(stdUser.String(), tfCoin),
 		},
 		{
 			name:      "fail; inflation enabled, no manual mint from admin",
-			inflation: inflation,
+			inflation: true,
 			msg:       tokenfactorytypes.NewMsgMint(poaAdmin.String(), coin),
 			err:       manifestkeeper.ErrManualMintingDisabled.Error(),
 		},
 		{
 			name:      "fail; inflation enabled, no manual payout from admin",
-			inflation: inflation,
+			inflation: true,
 			msg:       manifesttypes.NewMsgPayoutStakeholders(poaAdmin, coin),
 			err:       manifestkeeper.ErrManualMintingDisabled.Error(),
 		},
@@ -121,8 +117,13 @@ func (s *AnteTestSuite) TestAnteInflationAndMinting() {
 	for _, tc := range tcs {
 		tc := tc
 
-		s.Require().NoError(s.mintKeeper.Minter.Set(s.ctx, minttypes.InitialMinter(tc.inflation)))
-		_, err := ante.AnteHandle(s.ctx, decorators.NewMockTx(tc.msg), false, EmptyAnte)
+		// set auto inflation (or not)
+		currParams, err := s.manifestKeeper.Params.Get(s.ctx)
+		s.Require().NoError(err)
+		currParams.Inflation = manifesttypes.NewInflation(tc.inflation, 50_000_000000, "umfx")
+		s.manifestKeeper.Params.Set(s.ctx, currParams)
+
+		_, err = ante.AnteHandle(s.ctx, decorators.NewMockTx(tc.msg), false, EmptyAnte)
 
 		if tc.err == "" {
 			s.Require().NoError(err)

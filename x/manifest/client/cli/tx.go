@@ -34,7 +34,7 @@ func NewTxCmd() *cobra.Command {
 // contract for the module.
 func MsgUpdateParams() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "update-params address:1_000_000,address2:99_000_000",
+		Use:   "update-params address:1_000_000,address2:99_000_000 [inflation-enabled] [inflation-per-year-amount] [mint-denom]",
 		Short: "Update the params (must be submitted from the authority)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -50,9 +50,24 @@ func MsgUpdateParams() *cobra.Command {
 				return err
 			}
 
+			isInflationEnabled, err := cmd.Flags().GetBool("inflation-enabled")
+			if err != nil {
+				return err
+			}
+
+			inflationPerYearAmount, err := cmd.Flags().GetUint64("inflation-per-year-amount")
+			if err != nil {
+				return err
+			}
+
+			mintDenom, err := cmd.Flags().GetString("mint-denom")
+			if err != nil {
+				return err
+			}
+
 			msg := &types.MsgUpdateParams{
 				Authority: senderAddress.String(),
-				Params:    types.NewParams(sh),
+				Params:    types.NewParams(sh, isInflationEnabled, inflationPerYearAmount, mintDenom),
 			}
 
 			if err := msg.Validate(); err != nil {

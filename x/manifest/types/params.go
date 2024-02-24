@@ -14,12 +14,23 @@ const (
 func DefaultParams() Params {
 	return Params{
 		StakeHolders: []*StakeHolders{},
+		Inflation:    NewInflation(false, 0, "stake"),
 	}
 }
 
-func NewParams(stakeHolders []*StakeHolders) Params {
+// Params defines the parameters for the module.
+func NewParams(stakeHolders []*StakeHolders, autoInflationEnabled bool, perYearInflation uint64, denom string) Params {
 	return Params{
 		StakeHolders: stakeHolders,
+		Inflation:    NewInflation(autoInflationEnabled, perYearInflation, denom),
+	}
+}
+
+func NewInflation(autoInflationEnabled bool, perYearInflation uint64, denom string) *Inflation {
+	return &Inflation{
+		AutomaticEnabled: autoInflationEnabled,
+		YearlyAmount:     perYearInflation,
+		MintDenom:        denom,
 	}
 }
 

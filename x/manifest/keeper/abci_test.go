@@ -4,10 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	sdkmath "cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
 	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"
@@ -32,12 +29,6 @@ func TestStakeholderAutoMint(t *testing.T) {
 	k.SetAuthority(f.Ctx, authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	// set the mint keeper params
-	defaultParams := minttypes.DefaultParams()
-	defaultParams.MintDenom = MintDenom
-	defaultParams.InflationMax = sdkmath.LegacyNewDec(1)
-	f.App.MintKeeper.Params.Set(f.Ctx, defaultParams)
-
 	sh := []*types.StakeHolders{
 		{
 			Address:    acc.String(),
@@ -46,12 +37,9 @@ func TestStakeholderAutoMint(t *testing.T) {
 	}
 	_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
 		Authority: authority.String(),
-		Params:    types.NewParams(sh),
+		Params:    types.NewParams(sh, true, 100_000_000_000, MintDenom),
 	})
 	require.NoError(t, err)
-
-	// mint a bunch of total supply 100_000_000_000 umfx
-	f.App.BankKeeper.MintCoins(f.Ctx, "mint", sdk.NewCoins(sdk.NewCoin(MintDenom, sdkmath.NewInt(100_000_000_000))))
 
 	// get balance of acc
 	balance := f.App.BankKeeper.GetBalance(f.Ctx, acc, MintDenom)

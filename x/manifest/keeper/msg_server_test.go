@@ -46,7 +46,7 @@ func TestMsgServerPayoutStakeholdersLogic(t *testing.T) {
 	}
 	_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
 		Authority: authority.String(),
-		Params:    types.NewParams(sh),
+		Params:    types.NewParams(sh, false, 0, "umfx"),
 	})
 	require.NoError(t, err)
 
@@ -86,35 +86,35 @@ func TestUpdateParams(t *testing.T) {
 	for _, tc := range []struct {
 		desc    string
 		sender  string
-		sh      []*types.StakeHolders
+		p       types.Params
 		success bool
 	}{
 		{
 			desc:   "invalid authority",
 			sender: acc.String(),
-			sh: []*types.StakeHolders{
+			p: types.NewParams([]*types.StakeHolders{
 				{
 					Address:    acc.String(),
 					Percentage: 100_000_000,
 				},
-			},
+			}, false, 0, "umfx"),
 			success: false,
 		},
 		{
 			desc:   "invalid percent",
 			sender: authority.String(),
-			sh: []*types.StakeHolders{
+			p: types.NewParams([]*types.StakeHolders{
 				{
 					Address:    acc.String(),
 					Percentage: 7,
 				},
-			},
+			}, false, 0, "umfx"),
 			success: false,
 		},
 		{
 			desc:   "duplicate address",
 			sender: authority.String(),
-			sh: []*types.StakeHolders{
+			p: types.NewParams([]*types.StakeHolders{
 				{
 					Address:    acc.String(),
 					Percentage: 50_000_000,
@@ -123,19 +123,19 @@ func TestUpdateParams(t *testing.T) {
 					Address:    acc.String(),
 					Percentage: 50_000_000,
 				},
-			},
+			}, false, 0, "umfx"),
 			success: false,
 		},
 		{
 			desc:    "success none",
 			sender:  authority.String(),
-			sh:      []*types.StakeHolders{},
+			p:       types.NewParams([]*types.StakeHolders{}, false, 0, "umfx"),
 			success: true,
 		},
 		{
 			desc:   "success many stake holders",
 			sender: authority.String(),
-			sh: []*types.StakeHolders{
+			p: types.NewParams([]*types.StakeHolders{
 				{
 					Address:    acc.String(),
 					Percentage: 1_000_000,
@@ -148,7 +148,7 @@ func TestUpdateParams(t *testing.T) {
 					Address:    authority.String(),
 					Percentage: 98_000_000,
 				},
-			},
+			}, false, 0, "umfx"),
 			success: true,
 		},
 	} {
@@ -157,16 +157,16 @@ func TestUpdateParams(t *testing.T) {
 			// Set the params
 			_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
 				Authority: tc.sender,
-				Params:    types.NewParams(tc.sh),
+				Params:    tc.p,
 			})
 			require.Equal(t, tc.success, err == nil, err)
 
 			// Ensure they are set the same as the expected
-			if tc.success && len(tc.sh) > 0 {
+			if tc.success && len(tc.p.StakeHolders) > 0 {
 				params, err := f.App.ManifestKeeper.Params.Get(f.Ctx)
 				require.NoError(t, err)
 
-				require.Equal(t, tc.sh, params.StakeHolders)
+				require.Equal(t, tc.p.StakeHolders, params.StakeHolders)
 			}
 		})
 	}
@@ -208,7 +208,7 @@ func TestCalculatePayoutLogic(t *testing.T) {
 
 	_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
 		Authority: authority.String(),
-		Params:    types.NewParams(sh),
+		Params:    types.NewParams(sh, false, 0, "umfx"),
 	})
 	require.NoError(t, err)
 
