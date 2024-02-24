@@ -4,6 +4,7 @@ import (
 	"context"
 
 	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -24,27 +25,33 @@ func NewMsgManualMintFilterDecorator(mk *manifestkeeper.Keeper, isSudoAdminFunc 
 }
 
 func (mfd MsgManualMintFilterDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, simulate bool, next sdk.AnteHandler) (newCtx sdk.Context, err error) {
-	// iterate all messages, see if any are a tokenfactory message from a sudo admin.
-	// if there is and inflation is current >0%, return an error
-	if err := mfd.hasInvalidTokenFactoryMsg(ctx, tx.GetMsgs()); err != nil {
+	if err := mfd.hasInvalidMsgFromPoAAdmin(ctx, tx.GetMsgs()); err != nil {
 		return ctx, err
 	}
 
 	return next(ctx, tx, simulate)
 }
 
-func (mfd MsgManualMintFilterDecorator) hasInvalidTokenFactoryMsg(ctx sdk.Context, msgs []sdk.Msg) error {
+func (mfd MsgManualMintFilterDecorator) hasInvalidMsgFromPoAAdmin(ctx sdk.Context, msgs []sdk.Msg) error {
 	for _, msg := range msgs {
-		if m, ok := msg.(*tokenfactorytypes.MsgMint); ok {
-			if mfd.isSudoAdminFunc(ctx, m.Sender) {
-				isInflationEnabled := mfd.mk.IsManualMintingEnabled(ctx)
-				if isInflationEnabled != nil {
-					return isInflationEnabled
-				}
-			}
-
-			return nil
+		// only payout stakeholders manually if inflation is 0% & the sender is the admin.
+		if m, ok := msg.(*manifesttypes.MsgPayoutStakeholders); ok {
+			return mfd.senderAdminOnMintWithInflation(ctx, m.Authority)
 		}
+
+		// if the sender is not the admin, continue as normal
+		// if they are the admin, check if inflation is 0%. if it is, allow. Else, error.
+		if m, ok := msg.(*tokenfactorytypes.MsgMint); ok {
+			return mfd.senderAdminOnMintWithInflation(ctx, m.Sender)
+		}
+	}
+
+	return nil
+}
+
+func (mfd MsgManualMintFilterDecorator) senderAdminOnMintWithInflation(ctx context.Context, sender string) error {
+	if mfd.isSudoAdminFunc(ctx, sender) {
+		return mfd.mk.IsManualMintingEnabled(ctx)
 	}
 
 	return nil

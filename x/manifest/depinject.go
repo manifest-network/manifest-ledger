@@ -54,7 +54,7 @@ type ModuleOutputs struct {
 
 func ProvideModule(in ModuleInputs) ModuleOutputs {
 	k := keeper.NewKeeper(in.Cdc, in.StoreService, in.MintKeeper, in.BankKeeper, log.NewLogger(os.Stderr), authtypes.NewModuleAddress(govtypes.ModuleName).String())
-	m := NewAppModule(in.Cdc, k)
+	m := NewAppModule(in.Cdc, k, in.MintKeeper, in.BankKeeper)
 
 	return ModuleOutputs{Module: m, Keeper: k, Out: depinject.Out{}}
 }

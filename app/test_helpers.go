@@ -10,6 +10,7 @@ import (
 
 	apphelpers "github.com/liftedinit/manifest-ledger/app/helpers"
 	appparams "github.com/liftedinit/manifest-ledger/app/params"
+	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/strangelove-ventures/poa"
 	"github.com/stretchr/testify/require"
 
@@ -215,6 +216,7 @@ func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 	app.GovKeeper.Constitution.Set(ctx, "")
 	app.GovKeeper.Params.Set(ctx, govv1types.DefaultParams())
 	app.ConsensusParamsKeeper.ParamsStore.Set(ctx, *simtestutil.DefaultConsensusParams)
+	app.ManifestKeeper.Params.Set(ctx, types.DefaultParams())
 
 	if withGenesis {
 		return app, NewDefaultGenesisState(t)

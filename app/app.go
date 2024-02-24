@@ -424,6 +424,7 @@ func NewApp(
 		runtime.NewKVStoreService(keys[poa.StoreKey]),
 		app.StakingKeeper,
 		app.SlashingKeeper,
+		app.BankKeeper,
 		authcodec.NewBech32Codec(sdk.Bech32PrefixValAddr),
 		logger,
 	)
@@ -692,7 +693,7 @@ func NewApp(
 		poamodule.NewAppModule(appCodec, app.POAKeeper),
 		// sdk
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)), // always be last to make sure that it checks for all invariants and not only part of them
-		manifest.NewAppModule(appCodec, app.ManifestKeeper),
+		manifest.NewAppModule(appCodec, app.ManifestKeeper, app.MintKeeper, app.BankKeeper),
 	)
 
 	// BasicModuleManager defines the module BasicManager is in charge of setting up basic,
@@ -723,7 +724,8 @@ func NewApp(
 	// NOTE: staking module is required if HistoricalEntries param > 0
 	// NOTE: capability module's beginblocker must come before any modules using capabilities (e.g. IBC)
 	app.ModuleManager.SetOrderBeginBlockers(
-		minttypes.ModuleName,
+		// minttypes.ModuleName, // we override with the manifest module logic
+		manifesttypes.ModuleName, // minter to stakeholders
 		distrtypes.ModuleName,
 		slashingtypes.ModuleName,
 		evidencetypes.ModuleName,
@@ -738,7 +740,6 @@ func NewApp(
 		icatypes.ModuleName,
 		ibcfeetypes.ModuleName,
 		tokenfactorytypes.ModuleName,
-		manifesttypes.ModuleName,
 	)
 
 	app.ModuleManager.SetOrderEndBlockers(

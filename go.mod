@@ -7,6 +7,11 @@ toolchain go1.21.0
 replace (
 	// core v0.12 was tagged wrong (SDK v51)
 	cosmossdk.io/core => cosmossdk.io/core v0.11.0
+
+	// go get github.com/liftedinit/cosmos-sdk@24d6e6cf46beb55d9789c041db68a5ab3093c064
+	// https://github.com/liftedinit/cosmos-sdk/pull/1
+	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.5-0.20240222003859-24d6e6cf46be
+
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	github.com/gin-gonic/gin => github.com/gin-gonic/gin v1.7.0
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides
@@ -39,6 +44,7 @@ require (
 	github.com/cosmos/ibc-go/modules/capability v1.0.0
 	github.com/cosmos/ibc-go/v8 v8.0.0
 	github.com/golang/protobuf v1.5.3
+	github.com/gorilla/mux v1.8.1
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/prometheus/client_golang v1.18.0 // indirect
 	github.com/reecepbcups/tokenfactory v0.50.0-alpha.3
@@ -47,6 +53,7 @@ require (
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.18.2
+	github.com/strangelove-ventures/poa v0.0.1-alpha.3
 	github.com/stretchr/testify v1.8.4
 	google.golang.org/genproto/googleapis/api v0.0.0-20231120223509-83a465c0220f
 	google.golang.org/grpc v1.60.1
@@ -205,9 +212,4 @@ require (
 	nhooyr.io/websocket v1.8.10 // indirect
 	pgregory.net/rapid v1.1.0 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
-)
-
-require (
-	github.com/gorilla/mux v1.8.1
-	github.com/strangelove-ventures/poa v0.0.1-alpha.2
 )
