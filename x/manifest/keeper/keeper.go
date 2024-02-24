@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 
@@ -95,18 +96,13 @@ func (k *Keeper) GetShareHolders(ctx context.Context) []*types.StakeHolders {
 }
 
 // IsManualMintingEnabled returns nil if inflation mint is 0% (disabled)
-func (k Keeper) IsManualMintingEnabled(ctx context.Context) error {
-	minter, err := k.mintKeeper.Minter.Get(ctx)
+func (k Keeper) IsManualMintingEnabled(ctx context.Context) bool {
+	params, err := k.Params.Get(ctx)
 	if err != nil {
-		return ErrGettingMinter.Wrapf("error getting minter: %s", err.Error())
+		panic(err)
 	}
 
-	// if inflation is 0, then manual minting is enabled for the PoA admin
-	if minter.Inflation.Equal(sdkmath.LegacyZeroDec()) {
-		return nil
-	}
-
-	return ErrManualMintingDisabled.Wrapf("inflation: %s", minter.Inflation.String())
+	return !params.Inflation.AutomaticEnabled
 }
 
 // Returns the amount of coins to be distributed to the holders
@@ -134,6 +130,8 @@ func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin)
 func (k Keeper) PayoutStakeholders(ctx context.Context, c sdk.Coin) error {
 	pairs := k.CalculateShareHolderTokenPayout(ctx, c)
 
+	fmt.Println("payouts", pairs)
+
 	if err := k.bankKeeper.MintCoins(ctx, types.ModuleName, sdk.NewCoins(c)); err != nil {
 		return err
 	}
@@ -151,4 +149,24 @@ func (k Keeper) PayoutStakeholders(ctx context.Context, c sdk.Coin) error {
 	}
 
 	return nil
+}
+
+// BlockRewardsProvision Gets the amount of coins that are automatically minted every block
+// per the automatic inflation
+func (k Keeper) BlockRewardsProvision(ctx context.Context, denom string) sdk.Coin {
+	mkParams, err := k.mintKeeper.Params.Get(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	params, err := k.Params.Get(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	amtPerYear := params.Inflation.YearlyAmount
+	blocksPerYear := mkParams.BlocksPerYear
+
+	// return the amount of coins to be minted per block
+	return sdk.NewCoin(denom, sdkmath.NewIntFromUint64(amtPerYear/blocksPerYear))
 }

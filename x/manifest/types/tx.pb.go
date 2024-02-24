@@ -36,7 +36,7 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 //
 // Since: cosmos-sdk 0.47
 type MsgUpdateParams struct {
-	// authority is the address of the governance account.
+	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
 	// params defines the parameters to update.
 	//
@@ -131,8 +131,9 @@ func (m *MsgUpdateParamsResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_MsgUpdateParamsResponse proto.InternalMessageInfo
 
+// MsgPayoutStakeholders manually pays out previously saved stakeholders.
 type MsgPayoutStakeholders struct {
-	// authority is the address of the governance account.
+	// authority is the address of the controlling account.
 	Authority string     `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
 	Payout    types.Coin `protobuf:"bytes,2,opt,name=payout,proto3,castrepeated=cosmossdk.io/api/cosmos/base/v1beta1.Coins" json:"payout"`
 }
@@ -184,6 +185,7 @@ func (m *MsgPayoutStakeholders) GetPayout() types.Coin {
 	return types.Coin{}
 }
 
+// MsgPayoutStakeholdersResponse
 type MsgPayoutStakeholdersResponse struct {
 }
 
@@ -280,6 +282,7 @@ type MsgClient interface {
 	//
 	// Since: cosmos-sdk 0.47
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
+	// manual payout mint
 	PayoutStakeholders(ctx context.Context, in *MsgPayoutStakeholders, opts ...grpc.CallOption) (*MsgPayoutStakeholdersResponse, error)
 }
 
@@ -315,6 +318,7 @@ type MsgServer interface {
 	//
 	// Since: cosmos-sdk 0.47
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
+	// manual payout mint
 	PayoutStakeholders(context.Context, *MsgPayoutStakeholders) (*MsgPayoutStakeholdersResponse, error)
 }
 

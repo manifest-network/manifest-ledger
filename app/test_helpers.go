@@ -302,6 +302,9 @@ func genesisStateWithValSet(t *testing.T,
 	poaGenesis := poa.NewGenesisState()
 	genesisState[poa.ModuleName] = codec.MustMarshalJSON(poaGenesis)
 
+	manifestGenesis := types.NewGenesisState()
+	genesisState[types.ModuleName] = codec.MustMarshalJSON(manifestGenesis)
+
 	return genesisState
 }
 

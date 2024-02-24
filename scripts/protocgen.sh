@@ -32,5 +32,9 @@ for module in $custom_modules; do
   mkdir -p api/$dirPath
 
   mv $dirPath/* ./api/$dirPath/
+
+  # incorrect ref
+  find api/$dirPath -type f -name '*.go' -exec sed -i '' -e 's|types "github.com/cosmos/cosmos-sdk/types"|types "cosmossdk.io/api/cosmos/base/v1beta1"|g' {} \;
+
   rm -rf $dirPath
 done

@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/spf13/cobra"
 
@@ -34,15 +36,15 @@ func NewTxCmd() *cobra.Command {
 // contract for the module.
 func MsgUpdateParams() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "update-params address:1_000_000,address2:99_000_000",
-		Short: "Update the params (must be submitted from the authority)",
-		Args:  cobra.ExactArgs(1),
+		Use:     "update-params [address_pairs] [automatic_inflation_enabled] [inflation_per_year]",
+		Short:   "Update the params (must be submitted from the authority)",
+		Example: `update-params address:1_000_000,address2:99_000_000 true 500000000umfx`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cliCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
 				return err
 			}
-
 			senderAddress := cliCtx.GetFromAddress()
 
 			sh, err := fromStrToStakeholders(args[0])
@@ -50,9 +52,19 @@ func MsgUpdateParams() *cobra.Command {
 				return err
 			}
 
+			isInflationEnabled, err := strconv.ParseBool(args[1])
+			if err != nil {
+				return err
+			}
+
+			coin, err := sdk.ParseCoinNormalized(args[2])
+			if err != nil {
+				return err
+			}
+
 			msg := &types.MsgUpdateParams{
 				Authority: senderAddress.String(),
-				Params:    types.NewParams(sh),
+				Params:    types.NewParams(sh, isInflationEnabled, coin.Amount.Uint64(), coin.Denom),
 			}
 
 			if err := msg.Validate(); err != nil {

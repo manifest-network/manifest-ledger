@@ -19,8 +19,13 @@ message Params {
   option (gogoproto.goproto_stringer) = false;
 
   repeated StakeHolders stake_holders = 1;
+
+  Inflation inflation = 2;
+
+
 }
 
+// StakeHolders is the list of addresses and their percentage of the inflation distribution
 message StakeHolders {
   option (gogoproto.equal) = true;
 
@@ -30,4 +35,15 @@ message StakeHolders {
   // percentage is the micro denom % of tokens this address gets on a distribution.
   // 100% = 100_000_000 total. so 1_000000 = 1%.
   int32 percentage = 2;
+}
+
+// Inflation is the automatic inflation and distribution coins to the stake holders
+message Inflation {
+  option (gogoproto.equal) = true;
+  // if automatic inflation is enabled for distribution
+  bool automatic_enabled = 1;
+  // amount of umfx tokens distributed per year
+  uint64 yearly_amount = 2;
+  // the token to distribute (i.e. 'umfx')
+  string mint_denom = 3;
 }

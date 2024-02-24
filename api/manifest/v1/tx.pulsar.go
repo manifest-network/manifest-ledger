@@ -1748,7 +1748,7 @@ type MsgUpdateParams struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// authority is the address of the governance account.
+	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
 	// params defines the parameters to update.
 	//
@@ -1820,12 +1820,13 @@ func (*MsgUpdateParamsResponse) Descriptor() ([]byte, []int) {
 	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{1}
 }
 
+// MsgPayoutStakeholders manually pays out previously saved stakeholders.
 type MsgPayoutStakeholders struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// authority is the address of the governance account.
+	// authority is the address of the controlling account.
 	Authority string      `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
 	Payout    *types.Coin `protobuf:"bytes,2,opt,name=payout,proto3" json:"payout,omitempty"`
 }
@@ -1864,6 +1865,7 @@ func (x *MsgPayoutStakeholders) GetPayout() *types.Coin {
 	return nil
 }
 
+// MsgPayoutStakeholdersResponse
 type MsgPayoutStakeholdersResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

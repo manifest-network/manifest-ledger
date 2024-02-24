@@ -31,6 +31,7 @@ type MsgClient interface {
 	//
 	// Since: cosmos-sdk 0.47
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
+	// manual payout mint
 	PayoutStakeholders(ctx context.Context, in *MsgPayoutStakeholders, opts ...grpc.CallOption) (*MsgPayoutStakeholdersResponse, error)
 }
 
@@ -68,6 +69,7 @@ type MsgServer interface {
 	//
 	// Since: cosmos-sdk 0.47
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
+	// manual payout mint
 	PayoutStakeholders(context.Context, *MsgPayoutStakeholders) (*MsgPayoutStakeholdersResponse, error)
 	mustEmbedUnimplementedMsgServer()
 }

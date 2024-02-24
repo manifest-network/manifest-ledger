@@ -51,7 +51,9 @@ func (mfd MsgManualMintFilterDecorator) hasInvalidMsgFromPoAAdmin(ctx sdk.Contex
 
 func (mfd MsgManualMintFilterDecorator) senderAdminOnMintWithInflation(ctx context.Context, sender string) error {
 	if mfd.isSudoAdminFunc(ctx, sender) {
-		return mfd.mk.IsManualMintingEnabled(ctx)
+		if !mfd.mk.IsManualMintingEnabled(ctx) {
+			return manifesttypes.ErrManualMintingDisabled
+		}
 	}
 
 	return nil
