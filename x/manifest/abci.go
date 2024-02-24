@@ -51,12 +51,17 @@ func BeginBlocker(ctx context.Context, k keeper.Keeper, mk mintkeeper.Keeper, bk
 		defer telemetry.ModuleSetGauge(minttypes.ModuleName, float32(mintedCoin.Amount.Int64()), "minted_tokens")
 	}
 
+	bondedRatio, err := mk.BondedRatio(ctx)
+	if err != nil {
+		return err
+	}
+
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			minttypes.EventTypeMint,
-			// sdk.NewAttribute(minttypes.AttributeKeyBondedRatio, bondedRatio.String()),
-			// sdk.NewAttribute(minttypes.AttributeKeyInflation, minter.Inflation.String()),
+			sdk.NewAttribute(minttypes.AttributeKeyBondedRatio, bondedRatio.String()),
+			sdk.NewAttribute(minttypes.AttributeKeyInflation, mintedCoin.String()),
 			// sdk.NewAttribute(minttypes.AttributeKeyAnnualProvisions, minter.AnnualProvisions.String()),
 			sdk.NewAttribute(sdk.AttributeKeyAmount, mintedCoin.Amount.String()),
 		),
