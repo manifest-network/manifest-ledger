@@ -39,7 +39,7 @@ func MsgUpdateParams() *cobra.Command {
 		Use:     "update-params [address_pairs] [automatic_inflation_enabled] [inflation_per_year]",
 		Short:   "Update the params (must be submitted from the authority)",
 		Example: `update-params address:1_000_000,address2:99_000_000 true 500000000umfx`,
-		Args:    cobra.ExactArgs(1),
+		Args:    cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cliCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
@@ -82,6 +82,8 @@ func MsgUpdateParams() *cobra.Command {
 // address:1_000_000,address2:99_000_000
 func fromStrToStakeholders(s string) ([]*types.StakeHolders, error) {
 	stakeHolders := make([]*types.StakeHolders, 0)
+
+	s = strings.ReplaceAll(s, "_", "")
 
 	for _, stakeholder := range strings.Split(s, ",") {
 		parts := strings.Split(stakeholder, ":")

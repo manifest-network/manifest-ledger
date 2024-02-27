@@ -141,7 +141,7 @@ import (
 
 func GetPoAAdmin() string {
 	// used only in e2e testing with interchaintest
-	if address := os.Getenv("OVERRIDE_POA_ADMIN_ADDRESS"); address != "" {
+	if address := os.Getenv("POA_ADMIN_ADDRESS"); address != "" {
 		return address
 	}
 

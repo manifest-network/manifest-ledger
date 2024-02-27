@@ -28,6 +28,11 @@ func BeginBlocker(ctx context.Context, k keeper.Keeper, mk mintkeeper.Keeper, bk
 		return nil
 	}
 
+	if !params.Inflation.AutomaticEnabled {
+		k.Logger().Debug("Automatic inflation is disabled")
+		return nil
+	}
+
 	// Calculate the per block inflation rewards to pay out in coins
 	mintedCoin := k.BlockRewardsProvision(ctx, params.Inflation.MintDenom)
 	mintedCoins := sdk.NewCoins(mintedCoin)

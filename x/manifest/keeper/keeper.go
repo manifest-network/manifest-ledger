@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 
@@ -51,6 +50,8 @@ func NewKeeper(
 
 		mintKeeper: mintKeeper,
 		bankKeeper: bankKeeper,
+
+		authority: authority,
 
 		// Stores
 		Params: collections.NewItem(sb, types.ParamsKey, "params", codec.CollValue[types.Params](cdc)),
@@ -167,7 +168,7 @@ func (k Keeper) BlockRewardsProvision(ctx context.Context, denom string) sdk.Coi
 
 	div := amtPerYear / blocksPerYear
 
-	fmt.Printf("amtPerYear: %d, blocksPerYear: %d. div: %d\n", amtPerYear, blocksPerYear, div)
+	k.logger.Debug("amtPerYear", "amt", amtPerYear, "blocksPerYear", blocksPerYear, "div", div)
 
 	// return the amount of coins to be minted per block
 	return sdk.NewCoin(denom, sdkmath.NewIntFromUint64(div))

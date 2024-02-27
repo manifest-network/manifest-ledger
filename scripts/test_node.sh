@@ -2,7 +2,7 @@
 # Run this script to quickly install, setup, and run the current chain without docker.
 #
 # Example:
-# OVERRIDE_POA_ADMIN_ADDRESS=manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct CHAIN_ID="local-1" HOME_DIR="~/.manifest" TIMEOUT_COMMIT="2500ms" CLEAN=true sh scripts/test_node.sh
+# POA_ADMIN_ADDRESS=manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct CHAIN_ID="local-1" HOME_DIR="~/.manifest" TIMEOUT_COMMIT="2500ms" CLEAN=true sh scripts/test_node.sh
 # CHAIN_ID="local-2" HOME_DIR="~/.manifest2" CLEAN=true RPC=36657 REST=2317 PROFF=6061 P2P=36656 GRPC=8090 GRPC_WEB=8091 ROSETTA=8081 TIMEOUT_COMMIT="500ms" sh scripts/test_node.sh
 #
 # To use unoptomized wasm files up to ~5mb, add: MAX_WASM_SIZE=5000000
@@ -64,12 +64,12 @@ from_scratch () {
   update_test_genesis '.app_state["staking"]["params"]["bond_denom"]="ustake"' # PoA Token
   update_test_genesis '.app_state["staking"]["params"]["min_commission_rate"]="0.000000000000000000"'
   # mint
-  update_test_genesis '.app_state["mint"]["params"]["mint_denom"]="umfx"'
+  update_test_genesis '.app_state["mint"]["params"]["mint_denom"]="umfx"' # not used
   update_test_genesis '.app_state["mint"]["params"]["blocks_per_year"]="6311520"'
-  update_test_genesis '.app_state["mint"]["minter"]["inflation"]="0.100000000000000000"' # no manual minting if this is >0
-  update_test_genesis '.app_state["mint"]["params"]["inflation_rate_change"]="1.000000000000000000"'
-  update_test_genesis '.app_state["mint"]["params"]["inflation_min"]="0.000000000000000000"'
-  update_test_genesis '.app_state["mint"]["params"]["inflation_max"]="1.000000000000000000"'
+  # update_test_genesis '.app_state["mint"]["minter"]["inflation"]="0.000000000000000000"' # does not matter
+  # update_test_genesis '.app_state["mint"]["params"]["inflation_rate_change"]="1.000000000000000000"'
+  # update_test_genesis '.app_state["mint"]["params"]["inflation_min"]="0.000000000000000000"'
+  # update_test_genesis '.app_state["mint"]["params"]["inflation_max"]="1.000000000000000000"'
   # crisis
   # update_test_genesis '.app_state["crisis"]["constant_fee"]={"denom": "umfx","amount": "1000"}'
 
@@ -86,7 +86,7 @@ from_scratch () {
 
   # Allocate genesis accounts
   BINARY genesis add-genesis-account $KEY 1000000ustake,10000000umfx,1000utest --keyring-backend $KEYRING
-  BINARY genesis add-genesis-account $KEY2 100000000000000000000000umfx,1000utest --keyring-backend $KEYRING
+  BINARY genesis add-genesis-account $KEY2 100000umfx,1000utest --keyring-backend $KEYRING
 
   # Set 1 POAToken -> user
   GenTxFlags="--commission-rate=0.0 --commission-max-rate=1.0 --commission-max-change-rate=0.1"
@@ -132,4 +132,4 @@ sed -i 's/address = ":8080"/address = "0.0.0.0:'$ROSETTA'"/g' $HOME_DIR/config/a
 sed -i 's/timeout_commit = "5s"/timeout_commit = "'$TIMEOUT_COMMIT'"/g' $HOME_DIR/config/config.toml
 
 # Start the node
-BINARY start --pruning=nothing  --minimum-gas-prices=0umfx --rpc.laddr="tcp://0.0.0.0:$RPC"
+BINARY start --pruning=nothing  --minimum-gas-prices=0umfx --rpc.laddr="tcp://0.0.0.0:$RPC" --log_level=debug
