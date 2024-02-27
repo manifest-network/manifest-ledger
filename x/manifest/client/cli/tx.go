@@ -28,6 +28,7 @@ func NewTxCmd() *cobra.Command {
 
 	txCmd.AddCommand(
 		MsgUpdateParams(),
+		MsgDeployStakeholderPayout(),
 	)
 	return txCmd
 }
@@ -65,6 +66,41 @@ func MsgUpdateParams() *cobra.Command {
 			msg := &types.MsgUpdateParams{
 				Authority: senderAddress.String(),
 				Params:    types.NewParams(sh, isInflationEnabled, coin.Amount.Uint64(), coin.Denom),
+			}
+
+			if err := msg.Validate(); err != nil {
+				return err
+			}
+
+			return tx.GenerateOrBroadcastTxCLI(cliCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+func MsgDeployStakeholderPayout() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "stakeholder-payout [coin_amount]",
+		Short:   "Payout current stakeholders (from authority)",
+		Example: `stakeholder-payout 50000umfx`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cliCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+			senderAddress := cliCtx.GetFromAddress()
+
+			coin, err := sdk.ParseCoinNormalized(args[0])
+			if err != nil {
+				return err
+			}
+
+			msg := &types.MsgPayoutStakeholders{
+				Authority: senderAddress.String(),
+				Payout:    coin,
 			}
 
 			if err := msg.Validate(); err != nil {

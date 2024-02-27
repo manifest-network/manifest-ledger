@@ -904,10 +904,6 @@ func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig) {
 			},
 			IBCKeeper:     app.IBCKeeper,
 			CircuitKeeper: &app.CircuitKeeper,
-
-			// Manifest specific logic for inflation disabled manual minting / disabled if inflation is on.
-			ManifestKeeper:  &app.ManifestKeeper,
-			IsSudoAdminFunc: app.POAKeeper.IsAdmin,
 		},
 	)
 	if err != nil {

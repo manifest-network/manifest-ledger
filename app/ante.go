@@ -1,11 +1,8 @@
 package app
 
 import (
-	"context"
 	"errors"
 
-	"github.com/liftedinit/manifest-ledger/app/decorators"
-	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	poaante "github.com/strangelove-ventures/poa/ante"
 
 	ibcante "github.com/cosmos/ibc-go/v8/modules/core/ante"
@@ -26,9 +23,6 @@ type HandlerOptions struct {
 
 	IBCKeeper     *keeper.Keeper
 	CircuitKeeper *circuitkeeper.Keeper
-
-	ManifestKeeper  *manifestkeeper.Keeper
-	IsSudoAdminFunc func(ctx context.Context, fromAddr string) bool
 }
 
 func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
@@ -65,7 +59,6 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		ante.NewIncrementSequenceDecorator(options.AccountKeeper),
 		poaante.NewPOADisableStakingDecorator(),
 		poaante.NewCommissionLimitDecorator(doGenTxRateValidation, rateFloor, rateCeil),
-		decorators.NewMsgManualMintFilterDecorator(options.ManifestKeeper, options.IsSudoAdminFunc),
 		ibcante.NewRedundantRelayDecorator(options.IBCKeeper),
 	}
 
