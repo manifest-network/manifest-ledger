@@ -85,7 +85,7 @@ func TestManifestModule(t *testing.T) {
 		oldBal, err := appChain.GetBalance(ctx, inflationAddr, Denom)
 		require.NoError(t, err)
 
-		require.NoError(t, testutil.WaitForBlocks(ctx, 1, appChain))
+		require.NoError(t, testutil.WaitForBlocks(ctx, 2, appChain))
 
 		newBal, err := appChain.GetBalance(ctx, inflationAddr, Denom)
 		require.NoError(t, err)
