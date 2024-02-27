@@ -42,6 +42,7 @@ func ExecuteExec(ctx context.Context, chain *cosmos.CosmosChain, cmd []string, i
 func ExecuteTransaction(ctx context.Context, chain *cosmos.CosmosChain, cmd []string) (sdk.TxResponse, error) {
 	var err error
 	var stdout []byte
+	var res sdk.TxResponse
 
 	stdout, _, err = chain.Exec(ctx, cmd, nil)
 	if err != nil {
@@ -52,9 +53,8 @@ func ExecuteTransaction(ctx context.Context, chain *cosmos.CosmosChain, cmd []st
 		return sdk.TxResponse{}, err
 	}
 
-	var res sdk.TxResponse
 	if err := json.Unmarshal(stdout, &res); err != nil {
-		return sdk.TxResponse{}, err
+		return res, nil
 	}
 
 	return res, err

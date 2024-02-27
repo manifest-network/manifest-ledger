@@ -34,6 +34,7 @@ func init() {
 	)
 }
 
+//nolint:revive
 type ModuleInputs struct {
 	depinject.In
 
@@ -45,6 +46,7 @@ type ModuleInputs struct {
 	BankKeeper bankkeeper.Keeper
 }
 
+//nolint:revive
 type ModuleOutputs struct {
 	depinject.Out
 
@@ -54,7 +56,7 @@ type ModuleOutputs struct {
 
 func ProvideModule(in ModuleInputs) ModuleOutputs {
 	k := keeper.NewKeeper(in.Cdc, in.StoreService, in.MintKeeper, in.BankKeeper, log.NewLogger(os.Stderr), authtypes.NewModuleAddress(govtypes.ModuleName).String())
-	m := NewAppModule(in.Cdc, k, in.MintKeeper, in.BankKeeper)
+	m := NewAppModule(in.Cdc, k, in.MintKeeper)
 
 	return ModuleOutputs{Module: m, Keeper: k, Out: depinject.Out{}}
 }

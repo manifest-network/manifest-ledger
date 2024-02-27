@@ -36,5 +36,14 @@ func (ms msgServer) PayoutStakeholders(ctx context.Context, req *types.MsgPayout
 		return nil, fmt.Errorf("invalid authority; expected %s, got %s", ms.k.authority, req.Authority)
 	}
 
+	params, err := ms.k.Params.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if params.Inflation.AutomaticEnabled {
+		return nil, types.ErrManualMintingDisabled
+	}
+
 	return nil, ms.k.PayoutStakeholders(ctx, req.Payout)
 }

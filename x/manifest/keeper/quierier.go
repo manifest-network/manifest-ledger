@@ -18,7 +18,7 @@ func NewQuerier(keeper Keeper) Querier {
 	return Querier{Keeper: keeper}
 }
 
-func (k Querier) Params(c context.Context, req *types.QueryParamsRequest) (*types.QueryParamsResponse, error) {
+func (k Querier) Params(c context.Context, _ *types.QueryParamsRequest) (*types.QueryParamsResponse, error) {
 	ctx := sdk.UnwrapSDKContext(c)
 
 	p, err := k.Keeper.Params.Get(ctx)

@@ -5,14 +5,13 @@ import (
 	"strconv"
 	"strings"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
-
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/spf13/cobra"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/tx"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 // NewTxCmd returns a root CLI command handler for certain modules
@@ -28,6 +27,7 @@ func NewTxCmd() *cobra.Command {
 
 	txCmd.AddCommand(
 		MsgUpdateParams(),
+		MsgDeployStakeholderPayout(),
 	)
 	return txCmd
 }
@@ -39,13 +39,14 @@ func MsgUpdateParams() *cobra.Command {
 		Use:     "update-params [address_pairs] [automatic_inflation_enabled] [inflation_per_year]",
 		Short:   "Update the params (must be submitted from the authority)",
 		Example: `update-params address:1_000_000,address2:99_000_000 true 500000000umfx`,
-		Args:    cobra.ExactArgs(1),
+		Args:    cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cliCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
 				return err
 			}
-			senderAddress := cliCtx.GetFromAddress()
+
+			sender := cliCtx.GetFromAddress()
 
 			sh, err := fromStrToStakeholders(args[0])
 			if err != nil {
@@ -63,8 +64,44 @@ func MsgUpdateParams() *cobra.Command {
 			}
 
 			msg := &types.MsgUpdateParams{
-				Authority: senderAddress.String(),
+				Authority: sender.String(),
 				Params:    types.NewParams(sh, isInflationEnabled, coin.Amount.Uint64(), coin.Denom),
+			}
+
+			if err := msg.Validate(); err != nil {
+				return err
+			}
+
+			return tx.GenerateOrBroadcastTxCLI(cliCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+func MsgDeployStakeholderPayout() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "stakeholder-payout [coin_amount]",
+		Short:   "Payout current stakeholders (from authority)",
+		Example: `stakeholder-payout 50000umfx`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cliCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			authority := cliCtx.GetFromAddress()
+
+			coin, err := sdk.ParseCoinNormalized(args[0])
+			if err != nil {
+				return err
+			}
+
+			msg := &types.MsgPayoutStakeholders{
+				Authority: authority.String(),
+				Payout:    coin,
 			}
 
 			if err := msg.Validate(); err != nil {
@@ -82,6 +119,8 @@ func MsgUpdateParams() *cobra.Command {
 // address:1_000_000,address2:99_000_000
 func fromStrToStakeholders(s string) ([]*types.StakeHolders, error) {
 	stakeHolders := make([]*types.StakeHolders, 0)
+
+	s = strings.ReplaceAll(s, "_", "")
 
 	for _, stakeholder := range strings.Split(s, ",") {
 		parts := strings.Split(stakeholder, ":")

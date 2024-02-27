@@ -3,12 +3,13 @@ package keeper_test
 import (
 	"testing"
 
-	sdkmath "cosmossdk.io/math"
-	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/stretchr/testify/require"
 
+	sdkmath "cosmossdk.io/math"
+
+	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -23,7 +24,7 @@ func TestMsgServerPayoutStakeholdersLogic(t *testing.T) {
 
 	k := f.App.ManifestKeeper
 
-	k.SetAuthority(f.Ctx, authority.String())
+	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
 	sh := []*types.StakeHolders{
@@ -79,7 +80,7 @@ func TestUpdateParams(t *testing.T) {
 
 	f := initFixture(t)
 
-	f.App.ManifestKeeper.SetAuthority(f.Ctx, authority.String())
+	f.App.ManifestKeeper.SetAuthority(authority.String())
 
 	ms := keeper.NewMsgServerImpl(f.App.ManifestKeeper)
 
@@ -184,7 +185,7 @@ func TestCalculatePayoutLogic(t *testing.T) {
 
 	k := f.App.ManifestKeeper
 
-	k.SetAuthority(f.Ctx, authority.String())
+	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
 	sh := []*types.StakeHolders{

@@ -24,7 +24,6 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
-	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 )
 
@@ -55,7 +54,6 @@ type AppModule struct {
 
 	keeper keeper.Keeper
 	mk     mintkeeper.Keeper
-	bk     bankkeeper.Keeper
 }
 
 // NewAppModule constructor
@@ -63,13 +61,11 @@ func NewAppModule(
 	cdc codec.Codec,
 	keeper keeper.Keeper,
 	mintkeeper mintkeeper.Keeper,
-	bankkeeper bankkeeper.Keeper,
 ) *AppModule {
 	return &AppModule{
 		AppModuleBasic: AppModuleBasic{cdc: cdc},
 		keeper:         keeper,
 		mk:             mintkeeper,
-		bk:             bankkeeper,
 	}
 }
 
@@ -107,6 +103,8 @@ func (a AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx client.Context, mux 
 }
 
 // AutoCLIOptions implements the autocli.HasAutoCLIConfig interface.
+//
+//nolint:stylecheck
 func (a AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 	return &autocliv1.ModuleOptions{
 		Query: &autocliv1.ServiceCommandDescriptor{
@@ -165,7 +163,7 @@ func (a AppModule) RegisterServices(cfg module.Configurator) {
 }
 
 func (a AppModule) BeginBlock(ctx context.Context) error {
-	return BeginBlocker(ctx, a.keeper, a.mk, a.bk)
+	return BeginBlocker(ctx, a.keeper, a.mk)
 }
 
 // ConsensusVersion is a sequence number for state-breaking change of the

@@ -139,8 +139,15 @@ import (
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
-// !IMPORTANT: testnet only (reece's addr)
-const POAAdmin = "manifest10r39fueph9fq7a6lgswu4zdsg8t3gxlqdwwncm"
+func GetPoAAdmin() string {
+	// used only in e2e testing with interchaintest
+	if address := os.Getenv("POA_ADMIN_ADDRESS"); address != "" {
+		return address
+	}
+
+	// !IMPORTANT: testnet only (reece's addr). Change this to a mainnet address
+	return "manifest10r39fueph9fq7a6lgswu4zdsg8t3gxlqdwwncm"
+}
 
 // We pull these out so we can set them with LDFLAGS in the Makefile
 var (
@@ -344,7 +351,7 @@ func NewApp(
 	app.ConsensusParamsKeeper = consensusparamkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[consensusparamtypes.StoreKey]),
-		POAAdmin,
+		GetPoAAdmin(),
 		runtime.EventService{},
 	)
 	bApp.SetParamStore(app.ConsensusParamsKeeper.ParamsStore)
@@ -371,14 +378,14 @@ func NewApp(
 		maccPerms,
 		authcodec.NewBech32Codec(sdk.GetConfig().GetBech32AccountAddrPrefix()),
 		sdk.GetConfig().GetBech32AccountAddrPrefix(),
-		POAAdmin,
+		GetPoAAdmin(),
 	)
 	app.BankKeeper = bankkeeper.NewBaseKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[banktypes.StoreKey]),
 		app.AccountKeeper,
 		BlockedAddresses(),
-		POAAdmin,
+		GetPoAAdmin(),
 		logger,
 	)
 
@@ -387,7 +394,7 @@ func NewApp(
 		runtime.NewKVStoreService(keys[stakingtypes.StoreKey]),
 		app.AccountKeeper,
 		app.BankKeeper,
-		POAAdmin,
+		GetPoAAdmin(),
 		authcodec.NewBech32Codec(sdk.GetConfig().GetBech32ValidatorAddrPrefix()),
 		authcodec.NewBech32Codec(sdk.GetConfig().GetBech32ConsensusAddrPrefix()),
 	)
@@ -398,7 +405,7 @@ func NewApp(
 		app.AccountKeeper,
 		app.BankKeeper,
 		authtypes.FeeCollectorName,
-		POAAdmin,
+		GetPoAAdmin(),
 	)
 
 	app.DistrKeeper = distrkeeper.NewKeeper(
@@ -408,7 +415,7 @@ func NewApp(
 		app.BankKeeper,
 		app.StakingKeeper,
 		authtypes.FeeCollectorName,
-		POAAdmin,
+		GetPoAAdmin(),
 	)
 
 	app.SlashingKeeper = slashingkeeper.NewKeeper(
@@ -416,7 +423,7 @@ func NewApp(
 		legacyAmino,
 		runtime.NewKVStoreService(keys[slashingtypes.StoreKey]),
 		app.StakingKeeper,
-		POAAdmin,
+		GetPoAAdmin(),
 	)
 
 	app.POAKeeper = poakeeper.NewKeeper(
@@ -436,7 +443,7 @@ func NewApp(
 		invCheckPeriod,
 		app.BankKeeper,
 		authtypes.FeeCollectorName,
-		POAAdmin,
+		GetPoAAdmin(),
 		app.AccountKeeper.AddressCodec(),
 	)
 
@@ -451,7 +458,7 @@ func NewApp(
 	app.CircuitKeeper = circuitkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[circuittypes.StoreKey]),
-		POAAdmin,
+		GetPoAAdmin(),
 		app.AccountKeeper.AddressCodec(),
 	)
 	app.BaseApp.SetCircuitBreaker(&app.CircuitKeeper)
@@ -487,7 +494,7 @@ func NewApp(
 		appCodec,
 		homePath,
 		app.BaseApp,
-		POAAdmin,
+		GetPoAAdmin(),
 	)
 
 	app.IBCKeeper = ibckeeper.NewKeeper(
@@ -497,7 +504,7 @@ func NewApp(
 		app.StakingKeeper,
 		app.UpgradeKeeper,
 		scopedIBCKeeper,
-		POAAdmin,
+		GetPoAAdmin(),
 	)
 
 	// Register the proposal types
@@ -523,7 +530,7 @@ func NewApp(
 		app.DistrKeeper,
 		app.MsgServiceRouter(),
 		govConfig,
-		POAAdmin,
+		GetPoAAdmin(),
 	)
 
 	app.GovKeeper = *govKeeper.SetHooks(
@@ -558,7 +565,7 @@ func NewApp(
 		app.MintKeeper,
 		app.BankKeeper,
 		logger,
-		POAAdmin,
+		GetPoAAdmin(),
 	)
 
 	// Create the TokenFactory Keeper
@@ -570,7 +577,7 @@ func NewApp(
 		app.DistrKeeper,
 		tokenFactoryCapabilities,
 		app.POAKeeper.IsAdmin,
-		POAAdmin,
+		GetPoAAdmin(),
 	)
 
 	// IBC Fee Module keeper
@@ -592,7 +599,7 @@ func NewApp(
 		app.AccountKeeper,
 		app.BankKeeper,
 		scopedTransferKeeper,
-		POAAdmin,
+		GetPoAAdmin(),
 	)
 
 	app.ICAHostKeeper = icahostkeeper.NewKeeper(
@@ -605,7 +612,7 @@ func NewApp(
 		app.AccountKeeper,
 		scopedICAHostKeeper,
 		app.MsgServiceRouter(),
-		POAAdmin,
+		GetPoAAdmin(),
 	)
 	app.ICAControllerKeeper = icacontrollerkeeper.NewKeeper(
 		appCodec,
@@ -616,7 +623,7 @@ func NewApp(
 		app.IBCKeeper.PortKeeper,
 		scopedICAControllerKeeper,
 		app.MsgServiceRouter(),
-		POAAdmin,
+		GetPoAAdmin(),
 	)
 
 	// Set legacy router for backwards compatibility with gov v1beta1
@@ -693,7 +700,7 @@ func NewApp(
 		poamodule.NewAppModule(appCodec, app.POAKeeper),
 		// sdk
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)), // always be last to make sure that it checks for all invariants and not only part of them
-		manifest.NewAppModule(appCodec, app.ManifestKeeper, app.MintKeeper, app.BankKeeper),
+		manifest.NewAppModule(appCodec, app.ManifestKeeper, app.MintKeeper),
 	)
 
 	// BasicModuleManager defines the module BasicManager is in charge of setting up basic,
@@ -841,6 +848,8 @@ func NewApp(
 	app.ScopedICAHostKeeper = scopedICAHostKeeper
 	app.ScopedICAControllerKeeper = scopedICAControllerKeeper
 
+	app.setAnteHandler(txConfig)
+
 	// In v0.46, the SDK introduces _postHandlers_. PostHandlers are like
 	// antehandlers, but are run _after_ the `runMsgs` execution. They are also
 	// defined as a chain, and have the same signature as antehandlers.
@@ -895,10 +904,6 @@ func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig) {
 			},
 			IBCKeeper:     app.IBCKeeper,
 			CircuitKeeper: &app.CircuitKeeper,
-
-			// Manifest specific logic for inflation disabled manual minting / disabled if inflation is on.
-			ManifestKeeper:  &app.ManifestKeeper,
-			IsSudoAdminFunc: app.POAKeeper.IsAdmin,
 		},
 	)
 	if err != nil {
@@ -1123,7 +1128,7 @@ func BlockedAddresses() map[string]bool {
 	}
 
 	// allow the following addresses to receive funds
-	delete(modAccAddrs, POAAdmin)
+	delete(modAccAddrs, govtypes.ModuleName)
 
 	return modAccAddrs
 }

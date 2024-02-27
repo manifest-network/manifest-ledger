@@ -56,6 +56,7 @@ jobs:
         test:
           - "ictest-ibc"
           - "ictest-tokenfactory"
+          - "ictest-manifest"
       fail-fast: false
 
     steps:
