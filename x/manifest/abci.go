@@ -4,18 +4,17 @@ import (
 	"context"
 	"time"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
-
-	"github.com/cosmos/cosmos-sdk/telemetry"
-	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
-	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
-	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
+
+	"github.com/cosmos/cosmos-sdk/telemetry"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
+	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 )
 
 // BeginBlocker mints new tokens for the previous block.
-func BeginBlocker(ctx context.Context, k keeper.Keeper, mk mintkeeper.Keeper, bk bankkeeper.Keeper) error {
+func BeginBlocker(ctx context.Context, k keeper.Keeper, mk mintkeeper.Keeper) error {
 	defer telemetry.ModuleMeasureSince(manifesttypes.ModuleName, time.Now(), telemetry.MetricKeyBeginBlocker)
 
 	params, err := k.Params.Get(ctx)

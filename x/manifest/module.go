@@ -165,7 +165,7 @@ func (a AppModule) RegisterServices(cfg module.Configurator) {
 }
 
 func (a AppModule) BeginBlock(ctx context.Context) error {
-	return BeginBlocker(ctx, a.keeper, a.mk, a.bk)
+	return BeginBlocker(ctx, a.keeper, a.mk)
 }
 
 // ConsensusVersion is a sequence number for state-breaking change of the

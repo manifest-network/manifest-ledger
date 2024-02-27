@@ -71,7 +71,7 @@ func (k Keeper) Logger() log.Logger {
 	return k.logger
 }
 
-func (k *Keeper) SetAuthority(ctx context.Context, authority string) {
+func (k *Keeper) SetAuthority(authority string) {
 	k.authority = authority
 }
 

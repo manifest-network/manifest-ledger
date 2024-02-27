@@ -29,7 +29,7 @@ func (msg MsgUpdateParams) Type() string { return "update_params" }
 
 // GetSignBytes implements the LegacyMsg interface.
 func (msg MsgUpdateParams) GetSignBytes() []byte {
-	return sdk.MustSortJSON(AminoCdc.MustMarshalJSON(&msg))
+	return sdk.MustSortJSON(amino.MustMarshalJSON(&msg))
 }
 
 // GetSigners returns the expected signers for a MsgUpdateParams message.
@@ -67,7 +67,7 @@ func (msg MsgPayoutStakeholders) Type() string { return "payout" }
 
 // GetSignBytes implements the LegacyMsg interface.
 func (msg MsgPayoutStakeholders) GetSignBytes() []byte {
-	return sdk.MustSortJSON(AminoCdc.MustMarshalJSON(&msg))
+	return sdk.MustSortJSON(amino.MustMarshalJSON(&msg))
 }
 
 // GetSigners returns the expected signers for the message.

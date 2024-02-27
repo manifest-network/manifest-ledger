@@ -46,7 +46,6 @@ func (p Params) String() string {
 
 // Validate does the sanity check on the params.
 func (p Params) Validate() error {
-
 	// TODO: if stakeholders is empty, then we can allow I assume. Will ignore upsteram
 	if len(p.StakeHolders) == 0 {
 		return nil
