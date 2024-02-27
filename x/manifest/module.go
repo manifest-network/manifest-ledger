@@ -24,7 +24,6 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
-	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 )
 
@@ -55,7 +54,6 @@ type AppModule struct {
 
 	keeper keeper.Keeper
 	mk     mintkeeper.Keeper
-	bk     bankkeeper.Keeper
 }
 
 // NewAppModule constructor
@@ -63,13 +61,11 @@ func NewAppModule(
 	cdc codec.Codec,
 	keeper keeper.Keeper,
 	mintkeeper mintkeeper.Keeper,
-	bankkeeper bankkeeper.Keeper,
 ) *AppModule {
 	return &AppModule{
 		AppModuleBasic: AppModuleBasic{cdc: cdc},
 		keeper:         keeper,
 		mk:             mintkeeper,
-		bk:             bankkeeper,
 	}
 }
 

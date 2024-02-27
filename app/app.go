@@ -700,7 +700,7 @@ func NewApp(
 		poamodule.NewAppModule(appCodec, app.POAKeeper),
 		// sdk
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)), // always be last to make sure that it checks for all invariants and not only part of them
-		manifest.NewAppModule(appCodec, app.ManifestKeeper, app.MintKeeper, app.BankKeeper),
+		manifest.NewAppModule(appCodec, app.ManifestKeeper, app.MintKeeper),
 	)
 
 	// BasicModuleManager defines the module BasicManager is in charge of setting up basic,
