@@ -130,8 +130,6 @@ func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin)
 func (k Keeper) PayoutStakeholders(ctx context.Context, c sdk.Coin) error {
 	pairs := k.CalculateShareHolderTokenPayout(ctx, c)
 
-	fmt.Println("payouts", pairs)
-
 	if err := k.bankKeeper.MintCoins(ctx, types.ModuleName, sdk.NewCoins(c)); err != nil {
 		return err
 	}
@@ -167,6 +165,10 @@ func (k Keeper) BlockRewardsProvision(ctx context.Context, denom string) sdk.Coi
 	amtPerYear := params.Inflation.YearlyAmount
 	blocksPerYear := mkParams.BlocksPerYear
 
+	div := amtPerYear / blocksPerYear
+
+	fmt.Printf("amtPerYear: %d, blocksPerYear: %d. div: %d\n", amtPerYear, blocksPerYear, div)
+
 	// return the amount of coins to be minted per block
-	return sdk.NewCoin(denom, sdkmath.NewIntFromUint64(amtPerYear/blocksPerYear))
+	return sdk.NewCoin(denom, sdkmath.NewIntFromUint64(div))
 }

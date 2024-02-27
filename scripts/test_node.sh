@@ -2,7 +2,7 @@
 # Run this script to quickly install, setup, and run the current chain without docker.
 #
 # Example:
-# CHAIN_ID="local-1" HOME_DIR="~/.manifest" TIMEOUT_COMMIT="500ms" CLEAN=true sh scripts/test_node.sh
+# OVERRIDE_POA_ADMIN_ADDRESS=manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct CHAIN_ID="local-1" HOME_DIR="~/.manifest" TIMEOUT_COMMIT="2500ms" CLEAN=true sh scripts/test_node.sh
 # CHAIN_ID="local-2" HOME_DIR="~/.manifest2" CLEAN=true RPC=36657 REST=2317 PROFF=6061 P2P=36656 GRPC=8090 GRPC_WEB=8091 ROSETTA=8081 TIMEOUT_COMMIT="500ms" sh scripts/test_node.sh
 #
 # To use unoptomized wasm files up to ~5mb, add: MAX_WASM_SIZE=5000000
@@ -32,8 +32,8 @@ alias BINARY="$BINARY --home=$HOME_DIR"
 command -v $BINARY > /dev/null 2>&1 || { echo >&2 "$BINARY command not found. Ensure this is setup / properly installed in your GOPATH (make install)."; exit 1; }
 command -v jq > /dev/null 2>&1 || { echo >&2 "jq not installed. More info: https://stedolan.github.io/jq/download/"; exit 1; }
 
-$BINARY config set client keyring-backend $KEYRING
 $BINARY config set client chain-id $CHAIN_ID
+$BINARY config set client keyring-backend $KEYRING
 
 from_scratch () {
   # Fresh install on current branch
@@ -65,7 +65,7 @@ from_scratch () {
   update_test_genesis '.app_state["staking"]["params"]["min_commission_rate"]="0.000000000000000000"'
   # mint
   update_test_genesis '.app_state["mint"]["params"]["mint_denom"]="umfx"'
-  update_test_genesis '.app_state["mint"]["params"]["blocks_per_year"]="10"'
+  update_test_genesis '.app_state["mint"]["params"]["blocks_per_year"]="6311520"'
   update_test_genesis '.app_state["mint"]["minter"]["inflation"]="0.100000000000000000"' # no manual minting if this is >0
   update_test_genesis '.app_state["mint"]["params"]["inflation_rate_change"]="1.000000000000000000"'
   update_test_genesis '.app_state["mint"]["params"]["inflation_min"]="0.000000000000000000"'
@@ -78,6 +78,11 @@ from_scratch () {
   # TokenFactory
   update_test_genesis '.app_state["tokenfactory"]["params"]["denom_creation_fee"]=[]'
   update_test_genesis '.app_state["tokenfactory"]["params"]["denom_creation_gas_consume"]=2000000'
+  # manifest
+  update_test_genesis '.app_state["manifest"]["params"]["inflation"]["mint_denom"]="umfx"'
+  update_test_genesis '.app_state["manifest"]["params"]["inflation"]["yearly_amount"]="500000000000"' # in micro format (1MFX = 10**6)
+  update_test_genesis '.app_state["manifest"]["params"]["inflation"]["automatic_enabled"]=true'
+  update_test_genesis '.app_state["manifest"]["params"]["stake_holders"]=[{"address":"manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct","percentage":100000000}]'
 
   # Allocate genesis accounts
   BINARY genesis add-genesis-account $KEY 1000000ustake,10000000umfx,1000utest --keyring-backend $KEYRING
