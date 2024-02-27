@@ -114,6 +114,7 @@ func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin)
 
 	// iter each stakeholder, get their percent of the total 100%, and then split up their amount of coin cost
 	for _, s := range sh {
+		s := s
 		pct := sdkmath.NewInt(int64(s.Percentage)).ToLegacyDec().QuoInt64(types.MaxPercentShare)
 		coinAmt := pct.MulInt(c.Amount).RoundInt()
 
@@ -128,6 +129,10 @@ func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin)
 	return pairs
 }
 
+// PayoutStakeholders mints coins and sends them to the stakeholders.
+// This is called from the endblocker, so panics should never happen.
+// If it does, something is very wrong w/ the SDK. Any logic specific to auto minting
+// should be kept out of this to properly handle and return nil instead.
 func (k Keeper) PayoutStakeholders(ctx context.Context, c sdk.Coin) error {
 	pairs := k.CalculateShareHolderTokenPayout(ctx, c)
 
@@ -166,9 +171,12 @@ func (k Keeper) BlockRewardsProvision(ctx context.Context, denom string) sdk.Coi
 	amtPerYear := params.Inflation.YearlyAmount
 	blocksPerYear := mkParams.BlocksPerYear
 
-	div := amtPerYear / blocksPerYear
+	if blocksPerYear < 10 {
+		k.logger.Error("x/mint blocks per year param is too low", "blocks", blocksPerYear)
+		return sdk.NewCoin(denom, sdkmath.ZeroInt())
+	}
 
-	k.logger.Debug("amtPerYear", "amt", amtPerYear, "blocksPerYear", blocksPerYear, "div", div)
+	div := amtPerYear / blocksPerYear
 
 	// return the amount of coins to be minted per block
 	return sdk.NewCoin(denom, sdkmath.NewIntFromUint64(div))

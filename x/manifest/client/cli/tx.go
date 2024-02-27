@@ -45,7 +45,8 @@ func MsgUpdateParams() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			senderAddress := cliCtx.GetFromAddress()
+
+			sender := cliCtx.GetFromAddress()
 
 			sh, err := fromStrToStakeholders(args[0])
 			if err != nil {
@@ -63,7 +64,7 @@ func MsgUpdateParams() *cobra.Command {
 			}
 
 			msg := &types.MsgUpdateParams{
-				Authority: senderAddress.String(),
+				Authority: sender.String(),
 				Params:    types.NewParams(sh, isInflationEnabled, coin.Amount.Uint64(), coin.Denom),
 			}
 
@@ -90,7 +91,8 @@ func MsgDeployStakeholderPayout() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			senderAddress := cliCtx.GetFromAddress()
+
+			authority := cliCtx.GetFromAddress()
 
 			coin, err := sdk.ParseCoinNormalized(args[0])
 			if err != nil {
@@ -98,7 +100,7 @@ func MsgDeployStakeholderPayout() *cobra.Command {
 			}
 
 			msg := &types.MsgPayoutStakeholders{
-				Authority: senderAddress.String(),
+				Authority: authority.String(),
 				Payout:    coin,
 			}
 

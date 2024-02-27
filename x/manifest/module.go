@@ -103,6 +103,8 @@ func (a AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx client.Context, mux 
 }
 
 // AutoCLIOptions implements the autocli.HasAutoCLIConfig interface.
+//
+//nolint:stylecheck
 func (a AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 	return &autocliv1.ModuleOptions{
 		Query: &autocliv1.ServiceCommandDescriptor{
