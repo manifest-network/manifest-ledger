@@ -21,6 +21,8 @@ var (
 	accAddr     = "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"
 	accMnemonic = "decorate bright ozone fork gallery riot bus exhaust worth way bone indoor calm squirrel merry zero scheme cotton until shop any excess stage laundry"
 
+	acc2Addr = "manifest1efd63aw40lxf3n4mhf7dzhjkr453axurm6rp3z"
+
 	CosmosGovModuleAcc = "manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm"
 
 	vals      = 1
@@ -40,7 +42,7 @@ var (
 		// Mint - this is the only param the manifest module depends on from mint
 		cosmos.NewGenesisKV("app_state.mint.params.blocks_per_year", "6311520"),
 		// Manifest
-		cosmos.NewGenesisKV("app_state.manifest.params.stake_holders", types.NewStakeHolders(types.NewStakeHolder(accAddr, 100_000_000))), // 100% of the inflation payout goes to them
+		cosmos.NewGenesisKV("app_state.manifest.params.stake_holders", types.NewStakeHolders(types.NewStakeHolder(acc2Addr, 100_000_000))), // 100% of the inflation payout goes to them
 		cosmos.NewGenesisKV("app_state.manifest.params.inflation.automatic_enabled", true),
 		cosmos.NewGenesisKV("app_state.manifest.params.inflation.mint_denom", Denom),
 		cosmos.NewGenesisKV("app_state.manifest.params.inflation.yearly_amount", "500000000000"), // in micro denom
