@@ -195,7 +195,6 @@ func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 	})
 
 	// Set Default Params
-	// TODO: can maybe change to set these on start if no params are found.
 	// Ref: wasmd https://github.com/CosmWasm/wasmd/blob/main/app/app.go#L927-L946
 	app.MintKeeper.Minter.Set(ctx, minttypes.DefaultInitialMinter())
 	app.MintKeeper.Params.Set(ctx, minttypes.DefaultParams())

@@ -173,7 +173,6 @@ func TestUpdateParams(t *testing.T) {
 	}
 }
 
-// TODO: Very similar to  TestMsgServerPayoutStakeholdersLogic.
 func TestCalculatePayoutLogic(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, acc := testdata.KeyTestPubAddr()
