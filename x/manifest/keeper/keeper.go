@@ -51,10 +51,10 @@ func NewKeeper(
 		mintKeeper: mintKeeper,
 		bankKeeper: bankKeeper,
 
-		authority: authority,
-
 		// Stores
 		Params: collections.NewItem(sb, types.ParamsKey, "params", codec.CollValue[types.Params](cdc)),
+
+		authority: authority,
 	}
 
 	schema, err := sb.Build()
