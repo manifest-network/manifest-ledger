@@ -131,11 +131,12 @@ func (m *MsgUpdateParamsResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_MsgUpdateParamsResponse proto.InternalMessageInfo
 
-// MsgPayoutStakeholders manually pays out previously saved stakeholders.
+// MsgPayoutStakeholders is the Msg/PayoutStakeholders request type.
 type MsgPayoutStakeholders struct {
 	// authority is the address of the controlling account.
-	Authority string     `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	Payout    types.Coin `protobuf:"bytes,2,opt,name=payout,proto3,castrepeated=cosmossdk.io/api/cosmos/base/v1beta1.Coins" json:"payout"`
+	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
+	// payout is the amount of tokens paid to the current stakeholders.
+	Payout types.Coin `protobuf:"bytes,2,opt,name=payout,proto3,castrepeated=cosmossdk.io/api/cosmos/base/v1beta1.Coins" json:"payout"`
 }
 
 func (m *MsgPayoutStakeholders) Reset()         { *m = MsgPayoutStakeholders{} }
@@ -185,7 +186,7 @@ func (m *MsgPayoutStakeholders) GetPayout() types.Coin {
 	return types.Coin{}
 }
 
-// MsgPayoutStakeholdersResponse
+// MsgPayoutStakeholdersResponse defines the response structure for executing a MsgPayoutStakeholders message.
 type MsgPayoutStakeholdersResponse struct {
 }
 
@@ -282,7 +283,7 @@ type MsgClient interface {
 	//
 	// Since: cosmos-sdk 0.47
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
-	// manual payout mint
+	// PayoutStakeholders allows the authority to manually pay out stakeholders.
 	PayoutStakeholders(ctx context.Context, in *MsgPayoutStakeholders, opts ...grpc.CallOption) (*MsgPayoutStakeholdersResponse, error)
 }
 
@@ -318,7 +319,7 @@ type MsgServer interface {
 	//
 	// Since: cosmos-sdk 0.47
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
-	// manual payout mint
+	// PayoutStakeholders allows the authority to manually pay out stakeholders.
 	PayoutStakeholders(context.Context, *MsgPayoutStakeholders) (*MsgPayoutStakeholdersResponse, error)
 }
 
