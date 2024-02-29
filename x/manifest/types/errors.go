@@ -5,6 +5,5 @@ import (
 )
 
 var (
-	ErrGettingMinter         = errors.Register(ModuleName, 1, "getting minter in ante handler")
-	ErrManualMintingDisabled = errors.Register(ModuleName, 2, "manual minting is disabled due to automatic inflation being on")
+	ErrManualMintingDisabled = errors.Register(ModuleName, 1, "manual minting is disabled due to automatic inflation being on")
 )
