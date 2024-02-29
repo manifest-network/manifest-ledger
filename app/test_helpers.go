@@ -8,10 +8,6 @@ import (
 	"testing"
 	"time"
 
-	apphelpers "github.com/liftedinit/manifest-ledger/app/helpers"
-	appparams "github.com/liftedinit/manifest-ledger/app/params"
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
-	"github.com/strangelove-ventures/poa"
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -49,6 +45,12 @@ import (
 	govv1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+
+	"github.com/strangelove-ventures/poa"
+
+	apphelpers "github.com/liftedinit/manifest-ledger/app/helpers"
+	appparams "github.com/liftedinit/manifest-ledger/app/params"
+	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
 // SimAppChainID hardcoded chainID for simulation
@@ -195,7 +197,6 @@ func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 	})
 
 	// Set Default Params
-	// TODO: can maybe change to set these on start if no params are found.
 	// Ref: wasmd https://github.com/CosmWasm/wasmd/blob/main/app/app.go#L927-L946
 	app.MintKeeper.Minter.Set(ctx, minttypes.DefaultInitialMinter())
 	app.MintKeeper.Params.Set(ctx, minttypes.DefaultParams())

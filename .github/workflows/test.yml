@@ -23,5 +23,4 @@ jobs:
           check-latest: true
 
       - name: unit tests
-        run: |
-          make test
+        run: make test

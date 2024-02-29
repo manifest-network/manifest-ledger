@@ -21,8 +21,6 @@ message Params {
   repeated StakeHolders stake_holders = 1;
 
   Inflation inflation = 2;
-
-
 }
 
 // StakeHolders is the list of addresses and their percentage of the inflation distribution

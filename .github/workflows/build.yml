@@ -1,4 +1,4 @@
-name: Build appd
+name: Build Manifest
 
 on:
   pull_request:

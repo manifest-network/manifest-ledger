@@ -8,16 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
-	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
-	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
-	"github.com/reecepbcups/tokenfactory/x/tokenfactory"
-	tokenfactorykeeper "github.com/reecepbcups/tokenfactory/x/tokenfactory/keeper"
-	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
 	"github.com/spf13/cast"
-	"github.com/strangelove-ventures/poa"
-	poakeeper "github.com/strangelove-ventures/poa/keeper"
-	poamodule "github.com/strangelove-ventures/poa/module"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 
@@ -137,6 +128,18 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+
+	"github.com/strangelove-ventures/poa"
+	poakeeper "github.com/strangelove-ventures/poa/keeper"
+	poamodule "github.com/strangelove-ventures/poa/module"
+
+	"github.com/reecepbcups/tokenfactory/x/tokenfactory"
+	tokenfactorykeeper "github.com/reecepbcups/tokenfactory/x/tokenfactory/keeper"
+	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
+
+	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
+	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
 func GetPoAAdmin() string {

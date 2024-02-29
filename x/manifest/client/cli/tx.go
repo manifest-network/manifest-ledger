@@ -5,13 +5,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/spf13/cobra"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/tx"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
 // NewTxCmd returns a root CLI command handler for certain modules
@@ -37,7 +38,7 @@ func NewTxCmd() *cobra.Command {
 func MsgUpdateParams() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "update-params [address_pairs] [automatic_inflation_enabled] [inflation_per_year]",
-		Short:   "Update the params (must be submitted from the authority)",
+		Short:   "Update the params (authority only)",
 		Example: `update-params address:1_000_000,address2:99_000_000 true 500000000umfx`,
 		Args:    cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -83,7 +84,7 @@ func MsgUpdateParams() *cobra.Command {
 func MsgDeployStakeholderPayout() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "stakeholder-payout [coin_amount]",
-		Short:   "Payout current stakeholders (from authority)",
+		Short:   "Payout current stakeholders (authority)",
 		Example: `stakeholder-payout 50000umfx`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

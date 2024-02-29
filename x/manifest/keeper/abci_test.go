@@ -4,15 +4,14 @@ import (
 	"fmt"
 	"testing"
 
-	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
-	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
-)
 
-// Call BeginBlocker and make sure values are as expected
+	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
+	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	"github.com/liftedinit/manifest-ledger/x/manifest/types"
+)
 
 const (
 	MintDenom = "umfx"
@@ -23,7 +22,6 @@ func TestStakeholderAutoMint(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, acc := testdata.KeyTestPubAddr()
 
-	// fixture
 	f := initFixture(t)
 
 	k := f.App.ManifestKeeper
@@ -42,7 +40,6 @@ func TestStakeholderAutoMint(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// get balance of acc
 	balance := f.App.BankKeeper.GetBalance(f.Ctx, acc, MintDenom)
 	require.EqualValues(t, 0, balance.Amount.Int64())
 
@@ -51,6 +48,5 @@ func TestStakeholderAutoMint(t *testing.T) {
 
 	balance = f.App.BankKeeper.GetBalance(f.Ctx, acc, MintDenom)
 	require.True(t, balance.Amount.Int64() > 0)
-
 	fmt.Println("balance", balance.Amount.Int64())
 }

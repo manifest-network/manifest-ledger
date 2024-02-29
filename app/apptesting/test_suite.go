@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/liftedinit/manifest-ledger/app"
-	appparams "github.com/liftedinit/manifest-ledger/app/params"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
@@ -32,6 +30,9 @@ import (
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakinghelper "github.com/cosmos/cosmos-sdk/x/staking/testutil"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+
+	"github.com/liftedinit/manifest-ledger/app"
+	appparams "github.com/liftedinit/manifest-ledger/app/params"
 )
 
 type KeeperTestHelper struct {
@@ -249,6 +250,21 @@ func (s *KeeperTestHelper) ConfirmUpgradeSucceeded(upgradeName string, upgradeHe
 		_, err := s.App.BeginBlocker(s.Ctx)
 		s.Require().NoError(err)
 	})
+}
+
+// AssertEventEmitted asserts that ctx's event manager has emitted the given number of events
+// of the given type.
+func (s *KeeperTestHelper) AssertEventEmitted(ctx sdk.Context, eventTypeExpected string, numEventsExpected int) {
+	allEvents := ctx.EventManager().Events()
+
+	// filter out other events
+	actualEvents := make([]sdk.Event, 0)
+	for _, event := range allEvents {
+		if event.Type == eventTypeExpected {
+			actualEvents = append(actualEvents, event)
+		}
+	}
+	s.Equal(numEventsExpected, len(actualEvents))
 }
 
 // CreateRandomAccounts is a function return a list of randomly generated AccAddresses

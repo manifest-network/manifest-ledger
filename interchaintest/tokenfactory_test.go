@@ -107,8 +107,6 @@ func TestTokenFactory(t *testing.T) {
 		t.Fatal("balance not 0", err, res)
 	}
 
-	// TODO: Mint from correct admin but with inflation enabled (see setup.go)
-
 	t.Log("Mint TF Denom to another user")
 	node.TokenFactoryMintDenomTo(ctx, user.FormattedAddress(), tfDenom, 70, user2.FormattedAddress())
 	if balance, err := appChain.GetBalance(ctx, uaddr2, tfDenom); err != nil {

@@ -3,13 +3,13 @@ package app
 import (
 	"testing"
 
-	"github.com/liftedinit/manifest-ledger/app/params"
-
 	dbm "github.com/cosmos/cosmos-db"
 
 	"cosmossdk.io/log"
 
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
+
+	"github.com/liftedinit/manifest-ledger/app/params"
 )
 
 // MakeEncodingConfig creates a new EncodingConfig with all modules registered. For testing only

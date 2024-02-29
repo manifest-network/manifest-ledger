@@ -2,6 +2,7 @@ package interchaintest
 
 import (
 	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
+	poatypes "github.com/strangelove-ventures/poa"
 
 	types "github.com/liftedinit/manifest-ledger/x/manifest/types"
 
@@ -78,6 +79,7 @@ func AppEncoding() *sdktestutil.TestEncodingConfig {
 	enc := cosmos.DefaultEncoding()
 
 	tokenfactorytypes.RegisterInterfaces(enc.InterfaceRegistry)
+	poatypes.RegisterInterfaces(enc.InterfaceRegistry)
 
 	return &enc
 }

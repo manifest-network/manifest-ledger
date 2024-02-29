@@ -1820,15 +1820,16 @@ func (*MsgUpdateParamsResponse) Descriptor() ([]byte, []int) {
 	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{1}
 }
 
-// MsgPayoutStakeholders manually pays out previously saved stakeholders.
+// MsgPayoutStakeholders is the Msg/PayoutStakeholders request type.
 type MsgPayoutStakeholders struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
 	// authority is the address of the controlling account.
-	Authority string      `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	Payout    *types.Coin `protobuf:"bytes,2,opt,name=payout,proto3" json:"payout,omitempty"`
+	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
+	// payout is the amount of tokens paid to the current stakeholders.
+	Payout *types.Coin `protobuf:"bytes,2,opt,name=payout,proto3" json:"payout,omitempty"`
 }
 
 func (x *MsgPayoutStakeholders) Reset() {
@@ -1865,7 +1866,7 @@ func (x *MsgPayoutStakeholders) GetPayout() *types.Coin {
 	return nil
 }
 
-// MsgPayoutStakeholdersResponse
+// MsgPayoutStakeholdersResponse defines the response structure for executing a MsgPayoutStakeholders message.
 type MsgPayoutStakeholdersResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

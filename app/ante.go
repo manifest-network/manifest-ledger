@@ -3,8 +3,6 @@ package app
 import (
 	"errors"
 
-	poaante "github.com/strangelove-ventures/poa/ante"
-
 	ibcante "github.com/cosmos/ibc-go/v8/modules/core/ante"
 	"github.com/cosmos/ibc-go/v8/modules/core/keeper"
 
@@ -14,6 +12,8 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
+
+	poaante "github.com/strangelove-ventures/poa/ante"
 )
 
 // HandlerOptions extend the SDK's AnteHandler options by requiring the IBC

@@ -3,8 +3,6 @@ package cmd
 import (
 	"os"
 
-	"github.com/liftedinit/manifest-ledger/app"
-	"github.com/liftedinit/manifest-ledger/app/params"
 	"github.com/spf13/cobra"
 
 	dbm "github.com/cosmos/cosmos-db"
@@ -21,6 +19,9 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/auth/tx"
 	txmodule "github.com/cosmos/cosmos-sdk/x/auth/tx/config"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+
+	"github.com/liftedinit/manifest-ledger/app"
+	"github.com/liftedinit/manifest-ledger/app/params"
 )
 
 // NewRootCmd creates a new root commaxnd for wasmd. It is called once in the

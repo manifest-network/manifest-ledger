@@ -3,14 +3,15 @@ package keeper_test
 import (
 	"testing"
 
-	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/stretchr/testify/require"
 
 	sdkmath "cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
 func TestMsgServerPayoutStakeholdersLogic(t *testing.T) {
@@ -173,7 +174,6 @@ func TestUpdateParams(t *testing.T) {
 	}
 }
 
-// TODO: Very similar to  TestMsgServerPayoutStakeholdersLogic.
 func TestCalculatePayoutLogic(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, acc := testdata.KeyTestPubAddr()
