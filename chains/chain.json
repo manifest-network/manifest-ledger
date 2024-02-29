@@ -51,16 +51,35 @@
                         ]
                     },
                     {
-                        "key": "app_state.mint.minter.inflation",
-                        "value": "0.000000000000000000"
+                        "key": "app_state.tokenfactory.params.denom_creation_fee",
+                        "value": []
                     },
                     {
-                        "key": "app_state.mint.params.inflation_rate_change",
-                        "value": "0.000000000000000000"
+                        "key": "app_state.tokenfactory.params.denom_creation_gas_consume",
+                        "value": 500
                     },
                     {
-                        "key": "app_state.mint.params.inflation_min",
-                        "value": "0.000000000000000000"
+                        "key": "app_state.mint.params.blocks_per_year",
+                        "value": "6311520"
+                    },
+                    {
+                        "key": "app_state.manifest.params.inflation.mint_denom",
+                        "value": "umfx"
+                    },
+                    {
+                        "key": "app_state.manifest.params.inflation.yearly_amount",
+                        "value": "500000000000"
+                    },
+                    {
+                        "key": "app_state.manifest.params.inflation.automatic_enabled",
+                        "value": true
+                    },
+                    {
+                        "key": "app_state.manifest.params.stake_holders",
+                        "value": [
+                            {"address":"manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct","percentage":80000000},
+                            {"address":"manifest1efd63aw40lxf3n4mhf7dzhjkr453axurm6rp3z","percentage":20000000}
+                        ]
                     }
                 ],
                 "accounts": [
