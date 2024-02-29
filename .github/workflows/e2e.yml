@@ -55,6 +55,7 @@ jobs:
         # names of `make` commands to run tests
         test:
           - "ictest-ibc"
+          - "ictest-poa"
           - "ictest-tokenfactory"
           - "ictest-manifest"
       fail-fast: false

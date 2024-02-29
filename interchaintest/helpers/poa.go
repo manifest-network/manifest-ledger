@@ -58,7 +58,7 @@ func POACreatePendingValidator(
 }
 
 func SubmitGovernanceProposalForValidatorChanges(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, validator string, power uint64, unsafe bool) string {
-	govAddr := "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn"
+	govAddr := "manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm"
 
 	powerMsg := []cosmos.ProtoMessage{
 		&poa.MsgSetPower{
@@ -72,7 +72,7 @@ func SubmitGovernanceProposalForValidatorChanges(t *testing.T, ctx context.Conte
 	title := fmt.Sprintf("Update" + validator + "Power")
 	desc := fmt.Sprintf("Updating power for validator %s to %d", validator, power)
 
-	proposal, err := chain.BuildProposal(powerMsg, title, desc, desc, fmt.Sprintf(`50%s`, chain.Config().Denom), user.FormattedAddress(), false)
+	proposal, err := chain.BuildProposal(powerMsg, title, desc, desc, fmt.Sprintf(`10000000%s`, chain.Config().Denom), user.FormattedAddress(), false)
 	require.NoError(t, err, "error building proposal")
 
 	fmt.Printf("proposal: %+v\n", proposal)

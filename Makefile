@@ -104,6 +104,9 @@ ictest-tokenfactory:
 ictest-manifest:
 	cd interchaintest && go test -race -v -run TestManifestModule . -count=1
 
+ictest-poa:
+	cd interchaintest && go test -race -v -run TestPOA . -count=1
+
 
 .PHONY: ictest-ibc ictest-tokenfactory
 
