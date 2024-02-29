@@ -3,9 +3,6 @@ package module
 import (
 	"os"
 
-	modulev1 "github.com/liftedinit/manifest-ledger/api/manifest/module/v1"
-	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
-
 	"cosmossdk.io/core/address"
 	"cosmossdk.io/core/appmodule"
 	"cosmossdk.io/core/store"
@@ -17,6 +14,9 @@ import (
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
+
+	modulev1 "github.com/liftedinit/manifest-ledger/api/manifest/module/v1"
+	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 )
 
 var _ appmodule.AppModule = AppModule{}

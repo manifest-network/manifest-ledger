@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/liftedinit/manifest-ledger/app"
-	appparams "github.com/liftedinit/manifest-ledger/app/params"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
@@ -32,6 +30,9 @@ import (
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakinghelper "github.com/cosmos/cosmos-sdk/x/staking/testutil"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+
+	"github.com/liftedinit/manifest-ledger/app"
+	appparams "github.com/liftedinit/manifest-ledger/app/params"
 )
 
 type KeeperTestHelper struct {

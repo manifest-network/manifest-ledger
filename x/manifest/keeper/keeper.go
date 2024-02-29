@@ -3,8 +3,6 @@ package keeper
 import (
 	"context"
 
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
-
 	"cosmossdk.io/collections"
 	storetypes "cosmossdk.io/core/store"
 	"cosmossdk.io/log"
@@ -14,6 +12,8 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
+
+	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
 type Keeper struct {

@@ -3,14 +3,15 @@ package keeper_test
 import (
 	"testing"
 
-	"github.com/liftedinit/manifest-ledger/app"
-	"github.com/liftedinit/manifest-ledger/app/apptesting"
-	appparams "github.com/liftedinit/manifest-ledger/app/params"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
+
+	"github.com/liftedinit/manifest-ledger/app"
+	"github.com/liftedinit/manifest-ledger/app/apptesting"
+	appparams "github.com/liftedinit/manifest-ledger/app/params"
 )
 
 type testFixture struct {

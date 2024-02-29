@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"testing"
 
-	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
-	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
+
+	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
+	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
 const (

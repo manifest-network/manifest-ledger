@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
-	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
-
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
+
+	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
 // BeginBlocker mints new tokens for the previous block.

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
+	svrcmd "github.com/cosmos/cosmos-sdk/server/cmd"
+
 	"github.com/liftedinit/manifest-ledger/app"
 	"github.com/liftedinit/manifest-ledger/cmd/manifestd/cmd"
-
-	svrcmd "github.com/cosmos/cosmos-sdk/server/cmd"
 )
 
 func main() {

@@ -3,9 +3,9 @@ package keeper
 import (
 	"context"
 
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
-
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
 var _ types.QueryServer = Querier{}

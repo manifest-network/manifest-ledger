@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/liftedinit/manifest-ledger/app"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -32,6 +31,8 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/crisis"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
+
+	"github.com/liftedinit/manifest-ledger/app"
 )
 
 // initCometBFTConfig helps to override default CometBFT Config values.
