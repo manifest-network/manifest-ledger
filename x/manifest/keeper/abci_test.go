@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"testing"
 
+	sdkmath "cosmossdk.io/math"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
 	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
@@ -42,11 +44,19 @@ func TestStakeholderAutoMint(t *testing.T) {
 
 	balance := f.App.BankKeeper.GetBalance(f.Ctx, acc, MintDenom)
 	require.EqualValues(t, 0, balance.Amount.Int64())
+	fmt.Println("before balance", balance.Amount.Int64())
 
 	err = manifest.BeginBlocker(f.Ctx, k, f.App.MintKeeper)
 	require.NoError(t, err)
 
 	balance = f.App.BankKeeper.GetBalance(f.Ctx, acc, MintDenom)
 	require.True(t, balance.Amount.Int64() > 0)
-	fmt.Println("balance", balance.Amount.Int64())
+	fmt.Println("after balance", balance.Amount.Int64())
+
+	// try to perform a manual mint (fails due to auto-inflation being enable)
+	_, err = ms.PayoutStakeholders(f.Ctx, &types.MsgPayoutStakeholders{
+		Authority: authority.String(),
+		Payout:    sdk.NewCoin(MintDenom, sdkmath.NewInt(100_000_000)),
+	})
+	require.Error(t, err)
 }

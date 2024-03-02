@@ -33,8 +33,7 @@ func NewTxCmd() *cobra.Command {
 	return txCmd
 }
 
-// Returns a CLI command handler for registering a
-// contract for the module.
+// Returns a CLI command handler for updating the params.
 func MsgUpdateParams() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "update-params [address_pairs] [automatic_inflation_enabled] [inflation_per_year]",
@@ -81,6 +80,7 @@ func MsgUpdateParams() *cobra.Command {
 	return cmd
 }
 
+// Returns a CLI command handler for deploying a stakeholder payout (where stakeholders are set in the current params).
 func MsgDeployStakeholderPayout() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "stakeholder-payout [coin_amount]",
@@ -117,7 +117,8 @@ func MsgDeployStakeholderPayout() *cobra.Command {
 	return cmd
 }
 
-// address:1_000_000,address2:99_000_000
+// fromStrToStakeholders converts a string to a slice of StakeHolders.
+// ex: address:1_000_000,address2:99_000_000
 func fromStrToStakeholders(s string) ([]*types.StakeHolders, error) {
 	stakeHolders := make([]*types.StakeHolders, 0)
 
