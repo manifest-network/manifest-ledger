@@ -15,7 +15,15 @@
           "sig_verify_cost_ed25519": "590",
           "sig_verify_cost_secp256k1": "1000"
         },
-        "accounts": []
+        "accounts": [
+          {
+            "@type": "/cosmos.auth.v1beta1.BaseAccount",
+            "address": "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct",
+            "pub_key": null,
+            "account_number": "0",
+            "sequence": "0"
+          }
+        ]
       },
       "authz": {
         "authorization": []
@@ -25,9 +33,44 @@
           "send_enabled": [],
           "default_send_enabled": true
         },
-        "balances": [],
-        "supply": [],
-        "denom_metadata": [],
+        "balances": [
+          {
+            "address": "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct",
+            "coins": [
+              {
+                "denom": "umfx",
+                "amount": "1"
+              }
+            ]
+          }
+        ],
+        "supply": [
+          {
+            "denom": "umfx",
+            "amount": "1"
+          }
+        ],
+        "denom_metadata": [
+          {
+            "base": "umfx",
+            "denom_units": [
+              {
+                "aliases": [],
+                "denom": "umfx",
+                "exponent": 0
+              },
+              {
+                "aliases": [],
+                "denom": "MFX",
+                "exponent": 6
+              }
+            ],
+            "description": "Denom metadata for MFX (umfx)",
+            "display": "MFX",
+            "name": "MFX",
+            "symbol": "MFX"
+          }
+        ],
         "send_enabled": []
       },
       "capability": {
