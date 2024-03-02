@@ -1,18 +1,14 @@
-syntax = "proto3";
-package manifest.v1;
+<!--
+order: 2
+-->
 
-import "gogoproto/gogo.proto";
-import "amino/amino.proto";
+# State
 
-option go_package = "github.com/liftedinit/manifest-ledger/x/manifest/types";
+## State Objects
 
-// GenesisState defines the module genesis state
-message GenesisState {
-  // Params defines all the paramaters of the module.
-  Params params = 1 [(gogoproto.nullable) = false];
-}
+The `x/manifest` module only manages the following object in state: Params. This object holds all the required information for the module to operate. For automatic inflation, the x/mint modules `Params` is used to take the per year reward coins and divide it by the number of blocks per year, resulting in the per block reward amount.
 
-// Params defines the set of module parameters.
+```proto
 message Params {
   option (amino.name) = "manifest/params";
   option (gogoproto.equal) = true;
@@ -27,21 +23,31 @@ message Params {
 message StakeHolders {
   option (gogoproto.equal) = true;
 
-  // manifest address
+  // manifest address that receives the distribution
   string address = 1;
 
   // percentage is the micro denom % of tokens this address gets on a distribution.
-  // 100% = 100_000_000 total. so 1_000000 = 1%.
+  // 100% = 100000000 total. so 1000000 = 1%.
   int32 percentage = 2;
 }
 
 // Inflation is the distribution coins to the stake holders
 message Inflation {
   option (gogoproto.equal) = true;
-  // if automatic inflation is enabled for distribution
+
+  // if auto payouts are done per block
   bool automatic_enabled = 1;
+
   // amount of umfx tokens distributed per year
   uint64 yearly_amount = 2;
+
   // the token to distribute (i.e. 'umfx')
   string mint_denom = 3;
 }
+```
+
+## State Transitions
+
+The following state transitions are possible:
+
+- Update params for stakeholders percent, and inflation values (denom, and automatic)
