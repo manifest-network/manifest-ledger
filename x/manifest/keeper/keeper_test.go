@@ -14,6 +14,8 @@ import (
 	appparams "github.com/liftedinit/manifest-ledger/app/params"
 )
 
+// Sets up the keeper test suite.
+
 type testFixture struct {
 	suite.Suite
 

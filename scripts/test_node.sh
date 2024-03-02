@@ -55,7 +55,7 @@ from_scratch () {
   }
 
   # Block
-  update_test_genesis '.consensus_params["block"]["max_gas"]="1000000000"'
+  update_test_genesis '.consensus["params"]["block"]["max_gas"]="1000000000"'
   # Gov
   update_test_genesis '.app_state["gov"]["params"]["min_deposit"]=[{"denom": "umfx","amount": "1000000"}]'
   update_test_genesis '.app_state["gov"]["params"]["voting_period"]="15s"'

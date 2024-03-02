@@ -2153,7 +2153,7 @@ func (x *StakeHolders) GetPercentage() int32 {
 	return 0
 }
 
-// Inflation is the automatic inflation and distribution coins to the stake holders
+// Inflation is the distribution coins to the stake holders
 type Inflation struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
