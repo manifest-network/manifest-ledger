@@ -1,12 +1,14 @@
 # Takes a default genesis from manifestd and creates a new genesis file.
 
+CHAIN_ID=manifest-1
+
 make install
 
 export HOME_DIR=$(eval echo "${HOME_DIR:-"~/.manifest"}")
 
 rm -rf $HOME_DIR && echo "Removed $HOME_DIR"
 
-manifestd init moniker --chain-id=manifest-1 --default-denom=umfx
+manifestd init moniker --chain-id=$CHAIN_ID --default-denom=umfx
 
 update_genesis () {
     cat $HOME_DIR/config/genesis.json | jq "$1" > $HOME_DIR/config/tmp_genesis.json && mv $HOME_DIR/config/tmp_genesis.json $HOME_DIR/config/genesis.json
@@ -78,8 +80,10 @@ update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_fee"]=[]'
 update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_gas_consume"]="250000"'
 
 # TODO: gov,multisig
-# update_test_genesis '.app_state["poa"]["params"]["admins"]=["manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm","MULTISIG-HERE"]'
+# update_genesis '.app_state["poa"]["params"]["admins"]=["manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm","MULTISIG-HERE"]'
 
 # add genesis accounts
 # TODO:
 manifestd genesis add-genesis-account manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct 1umfx --append
+
+cp ~/.manifest/config/genesis.json ./network/$CHAIN_ID/genesis.json
