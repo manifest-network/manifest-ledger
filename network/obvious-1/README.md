@@ -69,7 +69,7 @@ sudo apt-get install git gcc make jq
 # Clone git repository
 git clone https://github.com/liftedinit/manifest-ledger.git
 cd manifest-ledger
-git checkout VERSION
+git checkout v0.0.1-alpha.1
 
 make install # go install ./...
 # For ledger support `go install -tags ledger ./...`
@@ -103,11 +103,11 @@ rm $HOME/.manifest/config/genesis.json
 rm $HOME/.manifest/config/gentx/*.json
 
 # Give yourself 1POASTAKE for the genesis Tx signed
-manifestd init "$MONIKER" --chain-id $CHAIN_ID --staking-bond-denom poastake
-manifestd add-genesis-account $KEYNAME_ADDR 1000000poastake --append
+manifestd init "$MONIKER" --chain-id $CHAIN_ID --default-denom poastake
+manifestd genesis add-genesis-account $KEYNAME_ADDR 1000000poastake --append
 
 # genesis transaction using all above variables
-manifestd gentx $KEYNAME 1000000poastake \
+manifestd genesis gentx $KEYNAME 1000000poastake \
     --home=$PROJECT_HOME \
     --chain-id=$CHAIN_ID \
     --moniker="$MONIKER" \
@@ -122,11 +122,5 @@ manifestd gentx $KEYNAME 1000000poastake \
 cat ${PROJECT_HOME}/config/gentx/gentx-*.json
 
 # get your peer
-echo $(manifestd tendermint show-node-id)@$(curl -s ifconfig.me):26656`
-```
-
-> Update minimum gas prices
-```bash
-# nano ${HOME}/.manifest/config/app.toml # minimum-gas-prices -> "0umfx"
-sed -i 's/minimum-gas-prices = "0stake"/minimum-gas-prices = "0umfx"/g' ${HOME}/.manifest/config/app.toml
+echo $(manifestd tendermint show-node-id)@$(curl -s ifconfig.me):26656
 ```
