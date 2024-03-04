@@ -6,24 +6,29 @@
 CHAIN_ID='obvious-1'
 
 # Add keys for multisig
-manifestd keys add alice-ledger --pubkey <alice-pubkey-here>
-manifestd keys add bob-ledger --pubkey <bob-pubkey-here>
+manifestd keys add chandrastation --pubkey '{"@type":"/cosmos.crypto.secp256k1.PubKey","key":"A9hZjm7++QBixsH4QTQadXPrnhVBDk+MPLE74U0/GoJp"}' # manifest1wxjfftrc0emj5f7ldcvtpj05lxtz3t2npghwsf
+manifestd keys add reece-testnet --pubkey '{"@type":"/cosmos.crypto.secp256k1.PubKey","key":"A57Cxv5vgwE6pAJ9oYtnOdU4ehKixMj6gufF8jBRq4IC"}'  # manifest1aucdev30u9505dx9t6q5fkcm70sjg4rh7rn5nf
 
 # Create multisig with those keys and name it
-manifestd keys add alice-bob-multisig --multisig reece-testnet,reece-other --multisig-threshold 1
+manifestd keys add obvious-1-multisig --multisig reece-testnet,chandrastation --multisig-threshold 1
+
+# - address: manifest1nzpct7tq52rckgnvr55e2m0kmyr0asdrgayq9p
+#   name: obvious-1-multisig
+#   pubkey: '{"@type":"/cosmos.crypto.multisig.LegacyAminoPubKey","threshold":1,"public_keys":[{"@type":"/cosmos.crypto.secp256k1.PubKey","key":"A9hZjm7++QBixsH4QTQadXPrnhVBDk+MPLE74U0/GoJp"},{"@type":"/cosmos.crypto.secp256k1.PubKey","key":"A57Cxv5vgwE6pAJ9oYtnOdU4ehKixMj6gufF8jBRq4IC"}]}'
+#   type: multi
 
 # Generate a Tx
-manifestd tx bank send $(manifestd keys show alice-bob-multisig -a) manifest12wfd44kmcetyg98e7mt7zlp0ul4wnmg9yuuv6l 10000000umfx --generate-only --chain-id=$CHAIN_ID | jq . > tx.json
+manifestd tx bank send $(manifestd keys show obvious-1-multisig -a) manifest1aucdev30u9505dx9t6q5fkcm70sjg4rh7rn5nf 10000000umfx --generate-only --chain-id=$CHAIN_ID | jq . > tx.json
 
 # both sign
-manifestd tx sign --from $(manifestd keys show -a reece-testnet) --multisig $(manifestd keys show -a alice-bob-multisig) tx.json --sign-mode amino-json --chain-id=$CHAIN_ID >> tx-signed-alice.json
-# and for bob if required
+manifestd tx sign --from $(manifestd keys show -a reece-testnet) --multisig $(manifestd keys show -a obvious-1-multisig) tx.json --sign-mode amino-json --chain-id=$CHAIN_ID >> tx-signed-reece.json
+# and for chandra station
 
 # combine into a single Tx
-manifestd tx multisign --from alice-bob-multisig tx.json alice-bob-multisig tx-signed-alice.json tx-signed-bob.json --chain-id=$CHAIN_ID > tx_ms.json
+manifestd tx multisign --from obvious-1-multisig tx.json obvious-1-multisig tx-signed-reece.json tx-signed-chandra.json --chain-id=$CHAIN_ID > tx_ms.json
 
 # Anyone can Broadcast tx
-manifestd tx broadcast ms/tx_ms.json --chain-id=$CHAIN_ID
+manifestd tx broadcast tx_ms.json --chain-id=$CHAIN_ID
 ```
 
 
