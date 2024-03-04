@@ -77,6 +77,9 @@ update_genesis '.app_state["staking"]["params"]["bond_denom"]="poastake"'
 update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_fee"]=[]'
 update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_gas_consume"]="250000"'
 
+# TODO: gov,multisig
+# update_test_genesis '.app_state["poa"]["params"]["admins"]=["manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm","MULTISIG-HERE"]'
+
 # add genesis accounts
 # TODO:
 manifestd genesis add-genesis-account manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct 1umfx --append
