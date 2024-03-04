@@ -69,7 +69,7 @@ git checkout VERSION
 make install # go install ./...
 # For ledger support `go install -tags ledger ./...`
 
-manifestd config set client chain-id manifest-1
+manifestd config set client chain-id obvious-1
 ```
 
 ### Generate keys
@@ -88,7 +88,7 @@ WEBSITE="https://domain.com"
 MAX_RATE='0.20'        # 20%
 COMMISSION_RATE='0.00' # 0%
 MAX_CHANGE='0.01'      # 1%
-CHAIN_ID='manifest-1'
+CHAIN_ID='obvious-1'
 PROJECT_HOME="${HOME}/.manifest"
 KEYNAME_ADDR=$(manifestd keys show $KEYNAME -a)
 

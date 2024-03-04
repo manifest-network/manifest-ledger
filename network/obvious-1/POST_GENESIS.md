@@ -2,7 +2,7 @@
 
 ### Become a validator
 * Install the manifest binary
-* manifestd init <moniker> --chain-id manifest-1 --default-denom poastake
+* manifestd init <moniker> --chain-id obvious-1 --default-denom poastake
 * Replace your genesis with the public one found in this repo
 * Find peers and seeds here.
 * Update your minimum-gas-prices in the app.toml
