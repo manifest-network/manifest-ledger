@@ -124,3 +124,26 @@ cat ${PROJECT_HOME}/config/gentx/gentx-*.json
 # get your peer
 echo $(manifestd tendermint show-node-id)@$(curl -s ifconfig.me):26656
 ```
+
+
+maintainer only:
+```bash
+
+cd networks/obvious-1
+
+cp genesis.json $HOME/.manifest/config
+
+# iterate through the gentx directory, print the files
+# https://github.com/strangelove-ventures/bech32cli
+for filename in gentx/*.json; do
+    addr=`cat $filename | jq -r .body.messages[0].validator_address | xargs -I {} bech32 transform {} manifest`
+    raw_coin=`cat $filename | jq -r .body.messages[0].value` # { "denom": "poastake", "amount": "1000000" }
+    coin=$(echo $raw_coin | jq -r '.amount + .denom') # make coin = 1000000poastake
+    manifestd genesis add-genesis-account $addr $coin --append
+done
+
+manifestd genesis collect-gentxs --gentx-dir gentx --home $HOME/.manifest
+
+cp $HOME/.manifest/config/genesis.json live_genesis.json
+
+```
