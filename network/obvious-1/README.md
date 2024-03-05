@@ -146,4 +146,6 @@ manifestd genesis collect-gentxs --gentx-dir gentx --home $HOME/.manifest
 
 cp $HOME/.manifest/config/genesis.json live_genesis.json
 
+# curl https://raw.githubusercontent.com/liftedinit/manifest-ledger/reece/test-network-launch/network/obvious-1/live_genesis.json > $HOME/.manifest/config/genesis.json
+
 ```
