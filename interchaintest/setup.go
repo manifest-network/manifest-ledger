@@ -1,8 +1,8 @@
 package interchaintest
 
 import (
-	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
 	poatypes "github.com/strangelove-ventures/poa"
+	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 
 	types "github.com/liftedinit/manifest-ledger/x/manifest/types"
 
