@@ -133,9 +133,9 @@ import (
 	poakeeper "github.com/strangelove-ventures/poa/keeper"
 	poamodule "github.com/strangelove-ventures/poa/module"
 
-	"github.com/reecepbcups/tokenfactory/x/tokenfactory"
-	tokenfactorykeeper "github.com/reecepbcups/tokenfactory/x/tokenfactory/keeper"
-	tokenfactorytypes "github.com/reecepbcups/tokenfactory/x/tokenfactory/types"
+	"github.com/strangelove-ventures/tokenfactory/x/tokenfactory"
+	tokenfactorykeeper "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/keeper"
+	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 
 	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
 	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"

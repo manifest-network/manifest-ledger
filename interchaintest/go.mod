@@ -14,11 +14,11 @@ replace (
 require (
 	cosmossdk.io/math v1.2.0
 	github.com/cosmos/cosmos-sdk v0.50.4
-	github.com/cosmos/ibc-go/v8 v8.0.0
+	github.com/cosmos/ibc-go/v8 v8.1.0
 	github.com/liftedinit/manifest-ledger v0.0.0-00000000000000-000000000000
-	github.com/reecepbcups/tokenfactory v0.50.0-alpha.3
 	github.com/strangelove-ventures/interchaintest/v8 v8.1.0
 	github.com/strangelove-ventures/poa v0.0.1-alpha.3
+	github.com/strangelove-ventures/tokenfactory v0.50.0-alpha.4
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/zap v1.26.0
 )
