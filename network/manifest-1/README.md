@@ -1,35 +1,44 @@
 # Mainnet Genesis
 
 TODO:
+
 - Update PoA Admin(s) from manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm
 - Remove manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct once others are given genesis allocations
 
 # Post Genesis Validators
+
 If you are a validator joining the network after the initial genesis launch, follow the [post genesis document here](./POST_GENESIS.md).
 
 ## Hardware Requirements
+
 **Minimal**
-* 4 GB RAM
-* 100 GB SSD
-* 3.2 x4 GHz CPU
+
+- 4 GB RAM
+- 100 GB SSD
+- 3.2 x4 GHz CPU
 
 **Recommended**
-* 8 GB RAM
-* 100 GB NVME SSD
-* 4.2 GHz x6 CPU
+
+- 8 GB RAM
+- 100 GB NVME SSD
+- 4.2 GHz x6 CPU
 
 **Operating System**
-* Linux (x86_64) or Linux (amd64) Recommended Arch Linux
+
+- Linux (x86_64) or Linux (amd64) Recommended Arch Linux
 
 ### Dependencies
->Prerequisite: go1.21+, git, gcc, make, jq
+
+> Prerequisite: go1.21+, git, gcc, make, jq
 
 **Arch Linux:**
+
 ```
 pacman -S go git gcc make
 ```
 
 **Ubuntu Linux:**
+
 ```
 sudo snap install go --classic
 sudo apt-get install git gcc make jq
@@ -45,17 +54,27 @@ git checkout VERSION
 
 make install # go install ./...
 # For ledger support `go install -tags ledger ./...`
-
 manifestd config set client chain-id manifest-1
 ```
 
+OR
+
+```bash
+wget <link to manifest precompile>
+chmod +x manifestd
+mv manifestd /usr/local/bin
+```
+
 ### Generate keys
-* `manifestd keys add [key_name]`
-* `manifestd keys add [key_name] --recover` to regenerate keys with your BIP39 mnemonic to add ledger key
-* `manifestd keys add [key_name] --ledger` to add a ledger key
+
+- `manifestd keys add [key_name]`
+- `manifestd keys add [key_name] --recover` to regenerate keys with your BIP39 mnemonic to add ledger key
+- `manifestd keys add [key_name] --ledger` to add a ledger key
 
 # Validator setup instructions
+
 ## Genesis Tx:
+
 ```bash
 # Validator variables
 KEYNAME='validator' # your keyname
@@ -98,6 +117,7 @@ echo $(manifestd tendermint show-node-id)@$(curl -s ifconfig.me):26656`
 ```
 
 > Update minimum gas prices
+
 ```bash
 # nano ${HOME}/.manifest/config/app.toml # minimum-gas-prices -> "0umfx"
 sed -i 's/minimum-gas-prices = "0stake"/minimum-gas-prices = "0umfx"/g' ${HOME}/.manifest/config/app.toml
