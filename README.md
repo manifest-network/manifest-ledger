@@ -20,7 +20,7 @@
 
 The Manifest Network, built on the Cosmos SDK, is a blockchain tailored for decentralized AI infrastructure access. Initially employing a Proof of Authority (PoA) model it ensures a secure and efficient launch phase, with a trusted validator set managing consensus.
 
-While PoA offers immediate stability and control, the Manifest Network aspires for greater decentralization. The future roadmap includes evolving towards a Proof of Stake (PoS) mechanism, utilizing the underlying CometBft algorithm inherent in the Cosmos SDK.
+While PoA offers immediate stability and control, the Manifest Network aspires for greater decentralization. The future roadmap includes evolving towards a Proof of Stake (PoS) network, utilizing the underlying CometBft consensus mechanism inherent in the Cosmos SDK.
 
 ## Table of Contents
 
