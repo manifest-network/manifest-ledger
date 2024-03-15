@@ -1,7 +1,5 @@
 # Contributing to Manifest Ledger
 
-#TODO: add doc links
-
 All types of contributions are encouraged and valued. See the [Table of Contents](#table-of-contents) for different ways to help and details about how this project handles them. Please make sure to read the relevant section before making your contribution.
 
 ## Table of Contents
@@ -13,7 +11,7 @@ All types of contributions are encouraged and valued. See the [Table of Contents
 
 ## I Have a Question
 
-> If you want to ask a question, we assume that you have read the available [Documentation]().
+> If you want to ask a question, we assume that you have read the available [Documentation](./README.md).
 
 Before you ask a question, it is best to search for existing [Issues](/issues) that might help you. In case you have found a suitable issue and still need clarification, you can write your question in this issue. It is also advisable to search the internet for answers first.
 
@@ -37,8 +35,8 @@ When contributing to this project, you must agree that you have authored 100% of
 Please complete the following steps in advance to help us fix any potential bug as fast as possible.
 
 - Make sure that you are using the latest version.
-- Determine if your bug is really a bug and not an error on your side e.g. using incompatible environment components/versions (Make sure that you have read the [documentation](). If you are looking for support, you might want to check [this section](#i-have-a-question)).
-- To see if other users have experienced (and potentially already solved) the same issue you are having, check if there is not already a bug report existing for your bug or error in the [bug tracker](issues?q=label%3Abug).
+- Determine if your bug is really a bug and not an error on your side e.g. using incompatible environment components/versions (Make sure that you have read the [documentation](./README.md). If you are looking for support, you might want to check [this section](#i-have-a-question)).
+- To see if other users have experienced (and potentially already solved) the same issue you are having, check if there is not already a bug report existing for your bug or issue.
 - Collect information about the bug:
 - Stack trace (Traceback)
 - OS, Platform and Version (Windows, Linux, macOS, x86, ARM)
@@ -47,7 +45,7 @@ Please complete the following steps in advance to help us fix any potential bug 
 
 #### How Do I Submit a Good Bug Report?
 
-> You must never report security related issues, vulnerabilities or bugs including sensitive information to the issue tracker, or elsewhere in public. Instead sensitive bugs must be sent by email to <security@>. See [SECURITY.md](SECURITY.md) for further details.
+> You must never report security related issues, vulnerabilities or bugs including sensitive information to the issue tracker, or elsewhere in public. Instead sensitive bugs must be sent by email to <security-operations@liftedinit.org>. See [SECURITY.md](SECURITY.md) for further details.
 
 We use GitHub issues to track bugs and errors. If you run into an issue with the project:
 
@@ -58,4 +56,8 @@ We use GitHub issues to track bugs and errors. If you run into an issue with the
 
 ## I Want To Open A Pull Request
 
-//TODO: Consult with engineering for PR guidelines
+Before opening a pull request, please make sure to read the [Contributing Guidelines](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+We are using the [GitHub Flow](https://guides.github.com/introduction/flow/index.html) for our development process. This means that you should fork this repository and create a branch for your changes. After you are done with your changes, open a pull request to the `main` branch of this repository.
+
+Any PR's created without the PR template will be ignored and closed. Please follow the template as best as you can, removing any irrelevant sections and filling in the rest to the best of your ability.

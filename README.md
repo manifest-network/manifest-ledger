@@ -30,10 +30,9 @@ While PoA offers immediate stability and control, the Manifest Network aspires f
 - [Helper](#helper)
 - [Modules](./MODULE.md)
 - [Validators](./network/manifest-1/POST_GENESIS.md)
-- [PoA Guide](./network/manifest-1/POA_GUIDE.md)
+- [Multi Sig Guide](./network/manifest-1/MULTI_SIG.md)
 - [Contributing](./CONTRIBUTING.md)
 - [Security/Bug Reporting](./SECURITY.md)
-- [Project Documentation]() #add docs link
 
 ## System Requirements
 

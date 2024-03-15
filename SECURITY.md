@@ -1,13 +1,13 @@
 # Security
 
-#TODO: add security email
 #TODO: add PGP KEY
 
-> **🚨IMPORTANT🚨**: If you find a security issue, please report it to our [security mailing list](mailto:) _PLEASE DO NOT_ create a public issue.
+> **🚨IMPORTANT🚨**: If you find a security issue, please report it to our [security mailing list](mailto:security-operations@liftedinit.org) _PLEASE DO NOT_ create a public issue.
 
 ## Reporting
 
-Please report to our security mailing list at [security@](mailto:) and we shall respond to you within 72 hours.
+Please report to our security mailing list at [security-operations@liftedinit.org
+](mailto:security-operations@liftedinit.org) and we shall respond to you within 72 hours.
 
 ###
 
