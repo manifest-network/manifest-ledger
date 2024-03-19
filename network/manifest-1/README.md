@@ -25,7 +25,7 @@ If you are a validator joining the network after the initial genesis launch, fol
 
 **Operating System**
 
-- Linux (x86_64) or Linux (amd64) Recommended Arch Linux
+- Linux (x86_64) or Linux (amd64)
 
 ### Dependencies
 

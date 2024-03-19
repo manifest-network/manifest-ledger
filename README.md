@@ -57,7 +57,7 @@ While PoA offers immediate stability and control, the Manifest Network aspires f
 
 **Operating System**
 
-- Linux (x86_64) or Linux (amd64) Recommended Arch Linux
+- Linux (x86_64) or Linux (arm64)
 
 **Arch Linux:**
 
