@@ -51,7 +51,7 @@ This multi-sig wallet will serve as the administrator for the Proof of Authority
 1. **Generate the Transaction:** Start by generating the transaction. For example, to stake tokens:
 
    ```bash
-   manifestd tx staking delegate <validator> 1umfx --generate-only --chain-id manifest-1 --from <multi-sig-name> > tx.json
+   manifestd tx poa set-power <validator> 1000000 --generate-only --chain-id manifest-1 --from <multi-sig-name> > tx.json
    ```
 
    This command creates a `tx.json` file to distribute to other wallet members.
