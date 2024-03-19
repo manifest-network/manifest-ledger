@@ -40,7 +40,7 @@ While PoA offers immediate stability and control, the Manifest Network aspires f
 
 - 4 GB RAM
 - 100 GB SSD
-- 3.2 x4 GHz CPU
+- 3.2 GHz x4 CPU
 
 **Recommended**
 
