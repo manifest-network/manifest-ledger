@@ -97,5 +97,6 @@ You can find your pubkey information by running `manifestd tendermint show-valid
 - #### Submit creation transaction
   `manifestd tx poa create-validator path/to/validator.json --from keyname`
 
-**Following these instructions, your validator will be put into a queue for the chain admins to accept or reject. Once accepted, you will be a validator on the network.
-The chain admin's will set your amount if they accept.**
+**Following these instructions, your validator will be put into a queue for the chain admins to accept or reject.**. You can view this queue by running `manifestd q poa pending-validators`.
+
+If accepted, you will become a validator on the network with the PoA admin's desired power for you.
