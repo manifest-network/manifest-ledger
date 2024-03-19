@@ -47,20 +47,20 @@ Stakeholder Management: Allows the PoA admin to designate stakeholders, who can 
 
 - Manual Issuance: The PoA admin can manually mint and disburse a specified amount of tokens to the stakeholders.
 
-- Automatic Inflation: When enabled, tokens are minted every block, aiming for a predetermined total over a year.
+- Automatic Inflation: When enabled, umfx tokens are minted every block as set in the module parameters, aiming for a predetermined total amount of tokens over a year.
 
 #### Commands
 
 ##### Update Parameters (update-params):
 
-- Syntax: `manifestd tx manifest update-params [address:percent_share] [inflation_on_off] [annual_total_mint]`
+- Syntax: `manifestd tx manifest update-params [address:percent_share,address2:percent_share2] [inflation_on_off] [annual_total_mint]`
 
   - Parameters:
-    - `address:percent_share`: Specifies the wallet address and its share of the total rewards (to the ninth exponent).
+    - `address:percent_share`: Specifies the destination wallet address and its percent share of the total rewards (to the sixth exponent).
     - `inflation_on_off`: A boolean value (true or false) to toggle automatic inflation.
-    - `annual_total_mint`: The total amount of tokens to be minted annually.
+    - `annual_total_mint`: The total amount of tokens to be minted annually (used only if automatic inflation is enabled).
 
-  **Example:** `manifestd tx manifest update-params manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct:100_000_000 false 500000000umfx`
+  **Example:** `manifestd tx manifest update-params manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct:100_000_000 false 0umfx`
 
 ##### Stakeholder Payout (stakeholder-payout):
 
@@ -89,16 +89,6 @@ The PoA admin has several capabilities for managing the chain and its validators
 - Specify the voting power for each validator.
 - Approve the addition of new validators.
 
-#### Staking Parameters Update:
-
-- The PoA admin can update various staking parameters, including:
-  - `unbondingTime`: The time period for unbonding tokens.
-  - `maxVals`: The maximum number of validators.
-  - `maxEntries`: The maximum number of entries.
-  - `historicalEntries`: The number of historical entries to store.
-  - `bondDenom`: The denomination for bonding and staking.
-  - `minCommissionRate`: The minimum commission rate for validators.
-
 #### Administrative Rights:
 
 - Assign or revoke administrative privileges.
@@ -122,12 +112,12 @@ The PoA admin has several capabilities for managing the chain and its validators
 
   - Parameters:
 
-    - `unbondingTime`: The amount of time it takes to unbond tokens.
-    - `maxVals`: The maximum number of validators.
-    - `maxEntries`: The maximum number of entries.
-    - `historicalEntries`: The number of historical entries to store.
-    - `bondDenom`: The denomination for bonding and staking.
-    - `minCommissionRate`: The minimum commission rate for validators.
+    - `unbondingTime`: The time period for tokens to move from a bonded to released state. Not applicable for Proof of Authority.
+    - `maxVals`: The maximum number of validators in the active set who can sign blocks. Default is 100
+    - `maxEntries`: The maximum number of unbonding entries a delegator can have during the unbonding time. Not applicable for Proof of Authority.
+    - `historicalEntries`: The number of historical staking entries to account for. Not applicable for Proof of Authority.
+    - `bondDenom`: The denomination for bonding and staking. Not applicable for Proof of Authority.
+    - `minCommissionRate`: The minimum commission rate for validators to get a percent cut of fees generated. Not applicable for Proof of Authority.
 
   **Example:** `manifestd tx poa update-staking-params 1814400 100 7 1000 umfx 0.01`
 
@@ -139,7 +129,6 @@ The PoA admin has several capabilities for managing the chain and its validators
 
     - `validator`: The validator's operator address.
     - `power`: The voting power to give the validator.
-    - `--unsafe`: A flag to allow the PoA admin to set the voting power of a validator that is not in the active set.
 
     **Example:** `manifestd tx poa set-power manifestvaloper1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct 1000000000 --unsafe`
 
