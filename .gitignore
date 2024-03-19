@@ -28,3 +28,5 @@ state
 
 configs/logs.json
 dist/*
+
+coverage.txt
