@@ -77,16 +77,20 @@ sudo apt-get install git gcc make jq
 Clone the repository from GitHub and enter the directory:
 
 ```bash
-    git clone https://github.com/liftedinit/manifest-ledger.git
-    cd manifest-ledger
+git clone https://github.com/liftedinit/manifest-ledger.git
+cd manifest-ledger
 ```
 
 Then run:
 
 ```bash
-    make install
-    mv $GOPATH/bin/manifestd /usr/local/bin
-    manifestd
+# build the base binary for interaction
+make install
+mv $GOPATH/bin/manifestd /usr/local/bin
+manifestd
+
+# build docker image for e2e testing
+make local-image
 ```
 
 ## Testing
