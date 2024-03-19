@@ -98,6 +98,8 @@ The PoA admin has several capabilities for managing the chain and its validators
 
 ##### Update Parameters (update-params):
 
+Add more chain administrators to the module and change the ability for validators to self-exit the set gracefully.
+
 - Syntax: `manifestd tx poa update-params [admin1,admin2,admin3,...] [allow-validator-self-exit-bool]`
 
   - Parameters:
@@ -107,6 +109,8 @@ The PoA admin has several capabilities for managing the chain and its validators
   **Example:** `manifestd tx poa update-params manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct,manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct false`
 
 ##### Update Staking Parameters (update-staking-params):
+
+Updates the defaults of the staking module from the PoA admin. For most cases, this should never be touched when using PoA.
 
 - Syntax: `manifestd tx poa update-staking-params [unbondingTime] [maxVals] [maxEntries] [historicalEntries] [bondDenom] [minCommissionRate]`
 
@@ -123,16 +127,22 @@ The PoA admin has several capabilities for managing the chain and its validators
 
 ##### Set Voting Power (set-power):
 
+Update a validators vote power weighting in the network. A higher vote power results in more blocks being signed. This also accepts pending validators into the active set as an approval from the PoA admin.
+
 - Syntax: `manifestd tx poa set-power [validator] [power] [--unsafe]`
 
   - Parameters:
 
     - `validator`: The validator's operator address.
-    - `power`: The voting power to give the validator.
+    - `power`: The voting power to give the validator. This is relative to the total current power of all PoA validators on the network. Uses 10^6 exponent.
 
-    **Example:** `manifestd tx poa set-power manifestvaloper1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct 1000000000 --unsafe`
+    **Example:** `manifestd tx poa set-power manifestvaloper1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct 1000000`
+
+    **NOTE**: A network of 2 validators each with 1_000_000 power will have a total power of 2_000_000. So each have 50% of the network. If one validator increases, then the others network percentage decreases, but remains at the same fixed 1_000_000 power as before.
 
 ##### Remove Pending Validator (remove-pending):
+
+In PoA networks, any user (validator) can submit to the chain a transaction to signal intent of becoming a chain validator. Since the PoA admin has the final say on who becomes a validator, they can remove any pending validators from the list who they wish not to add. This command is used to remove a pending validator from the list.
 
 - Syntax: `manifestd tx poa remove-pending [validator]`
 
@@ -154,7 +164,7 @@ The PoA admin has several capabilities for managing the chain and its validators
 
 ## Token Factory Module
 
-The Token Factory module as it is implemented on the Manifest Network, allows the PoA admin to have granular control over the creation and management of tokens on the Manifest Network. The admin can mint, burn, edit, and transfer tokens to other accounts from any account.
+The Token Factory module as it is implemented on the Manifest Network, allows any user to have granular control over the creation and management of tokens on the Manifest Network. The creator can mint, burn, edit, and transfer tokens to other accounts from any account.
 
 ### Module Functionality
 
