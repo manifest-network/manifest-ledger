@@ -154,6 +154,8 @@ In PoA networks, any user (validator) can submit to the chain a transaction to s
 
 ##### Remove Validator (remove):
 
+If the PoA admin decides they no longer wish for a validator to be signing blocks on the network, they can forcably remove them from the active set for signing blocks. This command removes the validator from signing blocks.
+
 - Syntax: `manifestd tx poa remove [validator]`
 
   - Parameters:
