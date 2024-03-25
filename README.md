@@ -135,7 +135,7 @@ This is a script to assist with configuring and testing the inflation and stakeh
 
 `scripts/test_node.sh`
 
-This is a script to assist with intializing and configuring a node. Ensure you properly congigure the environment variables within the script.
+This is a script to assist with initializing and configuring a node. Ensure you properly configure the environment variables within the script.
 
 Also in this script are examples of how you could run it
 
