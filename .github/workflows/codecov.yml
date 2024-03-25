@@ -10,6 +10,8 @@ jobs:
       - uses: actions/setup-go@v4
         with:
           go-version: 'stable'
+      - name: Make local image
+        run: make local-image
       - name: Run coverage
         run: make coverage
       - name: Upload coverage to Codecov
