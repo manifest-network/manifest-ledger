@@ -51,7 +51,7 @@ This multi-sig wallet will serve as the administrator for the Proof of Authority
 1. **Generate the Transaction:** Start by generating the transaction. For example, to stake tokens:
 
    ```bash
-   manifestd tx staking delegate <validator> 1umfx --generate-only --chain-id manifest-1 --from <multi-sig-name> > tx.json
+   manifestd tx manifest update-params manifest1aucdev30u9505dx9t6q5fkcm70sjg4rh7rn5nf:100_000_000 true 6000000000000umfx --from=obvious-1-multisig --chain-id obvious-1 --generate-only > tx.json
    ```
 
    This command creates a `tx.json` file to distribute to other wallet members.
@@ -59,7 +59,7 @@ This multi-sig wallet will serve as the administrator for the Proof of Authority
 2. **Signing the Transaction:** Each member signs the `tx.json`:
 
    ```bash
-   manifestd tx sign tx.json --from <multi-sig-member-key-name> >> <key-name>.json
+   manifestd tx sign tx.json --from=reece-testnet --chain-id=obvious-1 --multisig=obvious-1-multisig >> reece.json
    ```
 
    After signing, members pass their signed JSON files back to the transaction coordinator.
@@ -67,13 +67,13 @@ This multi-sig wallet will serve as the administrator for the Proof of Authority
 3. **Combining Signatures:** The coordinating member aggregates all signatures:
 
    ```bash
-   manifestd tx multisign --from <multi-sig-name> tx.json <key-name1>.json <key-name2>.json ...
+   manifestd tx multisign --from obvious-1-multisig tx.json obvious-1-multisig reece.json --chain-id obvious-1 > tx_ms.json
    ```
 
 4. **Broadcasting the Transaction:** With all required signatures, the final transaction can be broadcast to the network:
 
    ```bash
-   manifestd tx broadcast transaction.json
+   manifestd tx broadcast tx_ms.json --chain-id obvious-1
    ```
 
    You can utilize this example to build any other transaction type, just be sure to replace or add any flags as necessary.

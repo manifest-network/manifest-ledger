@@ -2,6 +2,41 @@
 
 ## Become a validator
 
+### Hardware Requirements
+
+**Minimal**
+
+- 4 GB RAM
+- 100 GB SSD
+- 3.2 x4 GHz CPU
+
+**Recommended**
+
+- 8 GB RAM
+- 100 GB NVME SSD
+- 4.2 GHz x6 CPU
+
+**Operating System**
+
+- Linux (x86_64) or Linux (amd64) Recommended Arch Linux
+
+### Dependencies
+
+> Prerequisite: go1.21+, git, gcc, make, jq
+
+**Arch Linux:**
+
+```
+pacman -S go git gcc make
+```
+
+**Ubuntu Linux:**
+
+```
+sudo snap install go --classic
+sudo apt-get install git gcc make jq
+```
+
 ### Install the manifest binary
 
 ```bash
@@ -22,6 +57,12 @@ wget <link to manifest precompile>
 chmod +x manifestd
 mv manifestd /usr/local/bin
 ```
+
+### Generate keys
+
+- `manifestd keys add [key_name]`
+- `manifestd keys add [key_name] --recover` to regenerate keys with your BIP39 mnemonic to add ledger key
+- `manifestd keys add [key_name] --ledger` to add a ledger key
 
 ### Configure & start your node
 

@@ -139,9 +139,8 @@ The PoA admin has several capabilities for managing the chain and its validators
 
     - `validator`: The validator's operator address.
     - `power`: The voting power to give the validator.
-    - `--unsafe`: A flag to allow the PoA admin to set the voting power of a validator that is not in the active set.
 
-    **Example:** `manifestd tx poa set-power manifestvaloper1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct 1000000000 --unsafe`
+    **Example:** `manifestd tx poa set-power manifestvaloper1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct 1000000000`
 
 ##### Remove Pending Validator (remove-pending):
 
@@ -233,10 +232,12 @@ The Token Factory module as it is implemented on the Manifest Network, allows th
 
 - Syntax: `manifestd tx token-factory create-denom [subdenom]`
 
-  - Parameters:
-    - `subdenom`: The smallest denomination for your token e.g. udenom.
+> _note:_ the createor of the denom is the denoms admin.
 
-  **Example:** `manifestd tx tokenfactory create-denom <subdenom>`
+- Parameters:
+  - `subdenom`: The smallest denomination for your token e.g. udenom.
+
+**Example:** `manifestd tx tokenfactory create-denom <subdenom>`
 
 ##### Force Transfer (force-transfer):
 
