@@ -47,20 +47,20 @@ Stakeholder Management: Allows the PoA admin to designate stakeholders, who can 
 
 - Manual Issuance: The PoA admin can manually mint and disburse a specified amount of tokens to the stakeholders.
 
-- Automatic Inflation: When enabled, tokens are minted every block, aiming for a predetermined total over a year.
+- Automatic Inflation: When enabled, umfx tokens are minted every block as set in the module parameters, aiming for a predetermined total amount of tokens over a year.
 
 #### Commands
 
 ##### Update Parameters (update-params):
 
-- Syntax: `manifestd tx manifest update-params [address:percent_share] [inflation_on_off] [annual_total_mint]`
+- Syntax: `manifestd tx manifest update-params [address:percent_share,address2:percent_share2] [inflation_on_off] [annual_total_mint]`
 
   - Parameters:
-    - `address:percent_share`: Specifies the wallet address and its share of the total rewards (to the ninth exponent).
+    - `address:percent_share`: Specifies the destination wallet address and its percent share of the total rewards (to the sixth exponent).
     - `inflation_on_off`: A boolean value (true or false) to toggle automatic inflation.
-    - `annual_total_mint`: The total amount of tokens to be minted annually.
+    - `annual_total_mint`: The total amount of tokens to be minted annually (used only if automatic inflation is enabled).
 
-  **Example:** `manifestd tx manifest update-params manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct:100_000_000 false 500000000umfx`
+  **Example:** `manifestd tx manifest update-params manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct:100_000_000 false 0umfx`
 
 ##### Stakeholder Payout (stakeholder-payout):
 
@@ -89,16 +89,6 @@ The PoA admin has several capabilities for managing the chain and its validators
 - Specify the voting power for each validator.
 - Approve the addition of new validators.
 
-#### Staking Parameters Update:
-
-- The PoA admin can update various staking parameters, including:
-  - `unbondingTime`: The time period for unbonding tokens.
-  - `maxVals`: The maximum number of validators.
-  - `maxEntries`: The maximum number of entries.
-  - `historicalEntries`: The number of historical entries to store.
-  - `bondDenom`: The denomination for bonding and staking.
-  - `minCommissionRate`: The minimum commission rate for validators.
-
 #### Administrative Rights:
 
 - Assign or revoke administrative privileges.
@@ -107,6 +97,8 @@ The PoA admin has several capabilities for managing the chain and its validators
 #### Commands
 
 ##### Update Parameters (update-params):
+
+Add more chain administrators to the module and change the ability for validators to self-exit the set gracefully.
 
 - Syntax: `manifestd tx poa update-params [admin1,admin2,admin3,...] [allow-validator-self-exit-bool]`
 
@@ -118,31 +110,39 @@ The PoA admin has several capabilities for managing the chain and its validators
 
 ##### Update Staking Parameters (update-staking-params):
 
+Updates the defaults of the staking module from the PoA admin. For most cases, this should never be touched when using PoA.
+
 - Syntax: `manifestd tx poa update-staking-params [unbondingTime] [maxVals] [maxEntries] [historicalEntries] [bondDenom] [minCommissionRate]`
 
   - Parameters:
 
-    - `unbondingTime`: The amount of time it takes to unbond tokens.
-    - `maxVals`: The maximum number of validators.
-    - `maxEntries`: The maximum number of entries.
-    - `historicalEntries`: The number of historical entries to store.
-    - `bondDenom`: The denomination for bonding and staking.
-    - `minCommissionRate`: The minimum commission rate for validators.
+    - `unbondingTime`: The time period for tokens to move from a bonded to released state. Not applicable for Proof of Authority.
+    - `maxVals`: The maximum number of validators in the active set who can sign blocks. Default is 100
+    - `maxEntries`: The maximum number of unbonding entries a delegator can have during the unbonding time. Not applicable for Proof of Authority.
+    - `historicalEntries`: The number of historical staking entries to account for. Not applicable for Proof of Authority.
+    - `bondDenom`: The denomination for bonding and staking. Not applicable for Proof of Authority.
+    - `minCommissionRate`: The minimum commission rate for validators to get a percent cut of fees generated. Not applicable for Proof of Authority.
 
   **Example:** `manifestd tx poa update-staking-params 1814400 100 7 1000 umfx 0.01`
 
 ##### Set Voting Power (set-power):
+
+Update a validators vote power weighting in the network. A higher vote power results in more blocks being signed. This also accepts pending validators into the active set as an approval from the PoA admin.
 
 - Syntax: `manifestd tx poa set-power [validator] [power] [--unsafe]`
 
   - Parameters:
 
     - `validator`: The validator's operator address.
-    - `power`: The voting power to give the validator.
+    - `power`: The voting power to give the validator. This is relative to the total current power of all PoA validators on the network. Uses 10^6 exponent.
 
-    **Example:** `manifestd tx poa set-power manifestvaloper1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct 1000000000`
+    **Example:** `manifestd tx poa set-power manifestvaloper1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct 1000000`
+
+    **NOTE**: A network of 2 validators each with 1_000_000 power will have a total power of 2_000_000. So each have 50% of the network. If one validator increases, then the others network percentage decreases, but remains at the same fixed 1_000_000 power as before.
 
 ##### Remove Pending Validator (remove-pending):
+
+In PoA networks, any user (validator) can submit to the chain a transaction to signal intent of becoming a chain validator. Since the PoA admin has the final say on who becomes a validator, they can remove any pending validators from the list who they wish not to add. This command is used to remove a pending validator from the list.
 
 - Syntax: `manifestd tx poa remove-pending [validator]`
 
@@ -154,6 +154,8 @@ The PoA admin has several capabilities for managing the chain and its validators
 
 ##### Remove Validator (remove):
 
+If the PoA admin decides they no longer wish for a validator to be signing blocks on the network, they can forcably remove them from the active set for signing blocks. This command removes the validator from signing blocks.
+
 - Syntax: `manifestd tx poa remove [validator]`
 
   - Parameters:
@@ -164,7 +166,7 @@ The PoA admin has several capabilities for managing the chain and its validators
 
 ## Token Factory Module
 
-The Token Factory module as it is implemented on the Manifest Network, allows the PoA admin to have granular control over the creation and management of tokens on the Manifest Network. The admin can mint, burn, edit, and transfer tokens to other accounts from any account.
+The Token Factory module as it is implemented on the Manifest Network, allows any user to have granular control over the creation and management of tokens on the Manifest Network. The creator can mint, burn, edit, and transfer tokens to other accounts from any account.
 
 ### Module Functionality
 

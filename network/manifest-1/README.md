@@ -15,7 +15,7 @@ If you are a validator joining the network after the initial genesis launch, fol
 
 - 4 GB RAM
 - 100 GB SSD
-- 3.2 x4 GHz CPU
+- 3.2 GHz x4 CPU
 
 **Recommended**
 
@@ -25,7 +25,7 @@ If you are a validator joining the network after the initial genesis launch, fol
 
 **Operating System**
 
-- Linux (x86_64) or Linux (amd64) Recommended Arch Linux
+- Linux (x86_64) or Linux (amd64)
 
 ### Dependencies
 

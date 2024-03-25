@@ -112,13 +112,13 @@ sudo sytemctl start manifestd && journalctl -u manifestd -f -o cat --no-hostname
 
 - #### Generate your validator file
 
-Use this command to generate your validator file and change the entries to your own information.
+Use this command to generate your validator file and change all the entries to your own information. `amount` should remain the same unless the team specifies otherwise. 1 POA power is 1000000poastake.
 
 ```bash
 cat <<EOF > validator.json
 {
   "pubkey": {"@type":"/cosmos.crypto.ed25519.PubKey","key":"oWg2ISpLF405Jcm2vXV+2v4fnjodh6aafuIdeoW+rUw="},
-  "amount": "1poastake",
+  "amount": "1000000poastake",
   "moniker": "validator's name",
   "identity": "keybase-identity",
   "website": "validator's (optional) website",
@@ -138,5 +138,6 @@ You can find your pubkey information by running `manifestd tendermint show-valid
 - #### Submit creation transaction
   `manifestd tx poa create-validator path/to/validator.json --from keyname`
 
-**Following these instructions, your validator will be put into a queue for the chain admins to accept or reject. Once accepted, you will be a validator on the network.
-The chain admin's will set your amount if they accept.**
+**Following these instructions, your validator will be put into a queue for the chain admins to accept or reject.**. You can view this queue by running `manifestd q poa pending-validators`.
+
+If accepted, you will become a validator on the network with the PoA admin's desired power for you.

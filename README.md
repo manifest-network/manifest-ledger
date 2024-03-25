@@ -40,7 +40,7 @@ While PoA offers immediate stability and control, the Manifest Network aspires f
 
 - 4 GB RAM
 - 100 GB SSD
-- 3.2 x4 GHz CPU
+- 3.2 GHz x4 CPU
 
 **Recommended**
 
@@ -57,7 +57,7 @@ While PoA offers immediate stability and control, the Manifest Network aspires f
 
 **Operating System**
 
-- Linux (x86_64) or Linux (amd64) Recommended Arch Linux
+- Linux (x86_64) or Linux (arm64)
 
 **Arch Linux:**
 
@@ -77,16 +77,20 @@ sudo apt-get install git gcc make jq
 Clone the repository from GitHub and enter the directory:
 
 ```bash
-    git clone https://github.com/liftedinit/manifest-ledger.git
-    cd manifest-ledger
+git clone https://github.com/liftedinit/manifest-ledger.git
+cd manifest-ledger
 ```
 
 Then run:
 
 ```bash
-    make install
-    mv $GOPATH/bin/manifestd /usr/local/bin
-    manifestd
+# build the base binary for interaction
+make install
+mv $GOPATH/bin/manifestd /usr/local/bin
+manifestd
+
+# build docker image for e2e testing
+make local-image
 ```
 
 ## Testing
@@ -131,7 +135,7 @@ This is a script to assist with configuring and testing the inflation and stakeh
 
 `scripts/test_node.sh`
 
-This is a script to assist with intializing and configuring a node. Ensure you properly congigure the environment variables within the script.
+This is a script to assist with initializing and configuring a node. Ensure you properly configure the environment variables within the script.
 
 Also in this script are examples of how you could run it
 

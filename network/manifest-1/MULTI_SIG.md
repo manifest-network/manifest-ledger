@@ -78,14 +78,8 @@ This multi-sig wallet will serve as the administrator for the Proof of Authority
 
    You can utilize this example to build any other transaction type, just be sure to replace or add any flags as necessary.
 
-## PoA Admin
+## Module Operations
 
-Please refer to the [Module Documentation](../../MODULE.md) for more information on the PoA module and its operations.
-
-Any of the transactions listed in the module documentation can be executed using the multi-sig wallet. The multi-sig wallet will be the only entity capable of executing these transactions. You must follow the process of creating, signing, and broadcasting a transaction as outlined in the previous section just be sure to replace the transaction type and flags as necessary.
-
-## Inflation Controls
-
-Please refer to the [Manifest Module Documentation](../../MODULE.md) for more information on controlling inflation via the Manifest module.
+Please refer to the [Module Documentation](../../MODULE.md) for more information on the PoA module and controlling inflation.
 
 Any of the transactions listed in the module documentation can be executed using the multi-sig wallet. The multi-sig wallet will be the only entity capable of executing these transactions. You must follow the process of creating, signing, and broadcasting a transaction as outlined in the previous section just be sure to replace the transaction type and flags as necessary.
