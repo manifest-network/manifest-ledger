@@ -10,6 +10,8 @@ jobs:
       - uses: actions/setup-go@v4
         with:
           go-version: 'stable'
+      - name: Get heighliner
+        run: make get-heighliner
       - name: Make local image
         run: make local-image
       - name: Run coverage
