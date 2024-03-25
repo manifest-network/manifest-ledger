@@ -11,8 +11,10 @@ jobs:
         with:
           go-version: 'stable'
       - name: Run coverage
-        run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+        run: make coverage
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4-beta
+        with:
+          file: coverage-filtered.out
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
