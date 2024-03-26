@@ -147,7 +147,7 @@ test-integration:
 
 coverage: ## Run coverage report
 	@echo "--> Running coverage"
-	@go test -race -cpu=$$(nproc) -covermode=atomic -coverprofile=coverage.out $$(go list ./...) ./interchaintest/... -coverpkg=github.com/liftedinit/manifest-ledger/...
+	@go test -race -cpu=$$(nproc) -covermode=atomic -coverprofile=coverage.out $$(go list ./...) ./interchaintest/... -coverpkg=github.com/liftedinit/manifest-ledger/... > /dev/null 2>&1
 	@echo "--> Running coverage filter"
 	@./scripts/filter-coverage.sh
 	@echo "--> Running coverage report"
