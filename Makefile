@@ -11,6 +11,15 @@ export GO111MODULE = on
 
 # process build tags
 
+# don't override user values
+ifeq (,$(VERSION))
+  VERSION := $(shell git describe --tags --always)
+  # if VERSION is empty, then populate it with branch's name and raw commit hash
+  ifeq (,$(VERSION))
+    VERSION := $(BRANCH)-$(COMMIT)
+  endif
+endif
+
 build_tags = netgo
 ifeq ($(LEDGER_ENABLED),true)
   ifeq ($(OS),Windows_NT)
