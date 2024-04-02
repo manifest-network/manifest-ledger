@@ -1,6 +1,6 @@
 # Takes a default genesis from manifestd and creates a new genesis file.
 
-CHAIN_ID=manifest-1
+CHAIN_ID=obvious-1
 
 make install
 
@@ -79,11 +79,15 @@ update_genesis '.app_state["staking"]["params"]["bond_denom"]="poastake"'
 update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_fee"]=[]'
 update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_gas_consume"]="250000"'
 
-# TODO: gov,multisig
-# update_genesis '.app_state["poa"]["params"]["admins"]=["manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm","MULTISIG-HERE"]'
+# TODO: chalabi / the multisig
+# gov, reece-testnet, chandrastation, chandra-reece-multisig
+update_genesis '.app_state["poa"]["params"]["admins"]=["manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm","manifest1aucdev30u9505dx9t6q5fkcm70sjg4rh7rn5nf","manifest1wxjfftrc0emj5f7ldcvtpj05lxtz3t2npghwsf","manifest1nzpct7tq52rckgnvr55e2m0kmyr0asdrgayq9p"]'
 
 # add genesis accounts
 # TODO:
 manifestd genesis add-genesis-account manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct 1umfx --append
+manifestd genesis add-genesis-account manifest1aucdev30u9505dx9t6q5fkcm70sjg4rh7rn5nf 5000000000000umfx --append # reece-testnet (5m UMFX). Is a validator
+manifestd genesis add-genesis-account manifest1wxjfftrc0emj5f7ldcvtpj05lxtz3t2npghwsf 5000000000000umfx --append # chandrastation
+manifestd genesis add-genesis-account manifest1nzpct7tq52rckgnvr55e2m0kmyr0asdrgayq9p 5000000000000umfx --append # multisig
 
 cp ~/.manifest/config/genesis.json ./network/$CHAIN_ID/genesis.json

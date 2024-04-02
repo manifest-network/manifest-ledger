@@ -95,7 +95,7 @@ rm $HOME/.manifest/config/gentx/*.json
 
 # Give yourself 1POASTAKE for the genesis Tx signed
 manifestd init "$MONIKER" --chain-id $CHAIN_ID --staking-bond-denom poastake
-manifestd add-genesis-account $KEYNAME_ADDR 1000000poastake
+manifestd add-genesis-account $KEYNAME_ADDR 1000000poastake --append
 
 # genesis transaction using all above variables
 manifestd gentx $KEYNAME 1000000poastake \
