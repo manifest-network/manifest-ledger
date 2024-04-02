@@ -12,6 +12,9 @@ replace (
 	// https://github.com/liftedinit/cosmos-sdk/pull/1
 	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.5-0.20240222003859-24d6e6cf46be
 
+	// TODO: testnet only
+	github.com/cosmos/ibc-go/v8 => github.com/cosmos/ibc-go/v8 v8.0.0
+
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	github.com/gin-gonic/gin => github.com/gin-gonic/gin v1.7.0
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides
