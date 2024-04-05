@@ -5,9 +5,9 @@
 </p>
 
 <p align="center">
-  <a href="https://codecov.io/gh/liftedinit/manifest-ledger">
-    <img src="https://codecov.io/gh/liftedinit/manifest-ledger/branch/reece/codecov/graph/badge.svg" alt="codecov"/>
-  </a>
+ <a href="https://codecov.io/gh/liftedinit/manifest-ledger" > 
+     <img src="https://codecov.io/gh/liftedinit/manifest-ledger/graph/badge.svg?token=s7zzdGQ7Gh"/> 
+ </a>
   <a href="https://goreportcard.com/report/github.com/liftedinit/manifest-ledger">
     <img src="https://goreportcard.com/badge/github.com/liftedinit/manifest-ledger" alt="Go Report Card"/>
   </a>
