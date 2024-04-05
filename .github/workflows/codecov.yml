@@ -1,6 +1,13 @@
 name: Codecov
 
-on: [pull_request]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types: [opened, reopened, synchronize]
 
 jobs:
   build:
