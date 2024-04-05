@@ -14,7 +14,7 @@ replace (
 require (
 	cosmossdk.io/math v1.3.0
 	github.com/cosmos/cosmos-sdk v0.50.5
-	github.com/cosmos/ibc-go/v8 v8.1.0
+	github.com/cosmos/ibc-go/v8 v8.2.0
 	github.com/liftedinit/manifest-ledger v0.0.0-00000000000000-000000000000
 	github.com/strangelove-ventures/interchaintest/v8 v8.1.0
 	github.com/strangelove-ventures/poa v0.0.1-alpha.3
