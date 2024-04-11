@@ -87,7 +87,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=${HOME}
-Environment="POA_ADMIN_ADDRESS=manifest1nzpct7tq52rckgnvr55e2m0kmyr0asdrgayq9p"
+Environment="POA_ADMIN_ADDRESS=manifest1wxjfftrc0emj5f7ldcvtpj05lxtz3t2npghwsf"
 ExecStart=/usr/local/bin/manifestd start
 Restart=on-failure
 StartLimitInterval=0
