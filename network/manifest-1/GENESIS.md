@@ -94,7 +94,7 @@ rm $HOME/.manifest/config/genesis.json
 rm $HOME/.manifest/config/gentx/*.json
 wget https://raw.githubusercontent.com/liftedinit/manifest-ledger/main/network/manifest-1/genesis.json -O $HOME/.manifest/config/genesis.json
 
-# Give yourself 1POASTAKE for the genesis Tx signed
+# Give yourself 1POA for the genesis Tx signed
 manifestd init "$MONIKER" --chain-id $CHAIN_ID --staking-bond-denom upoa
 manifestd add-genesis-account $KEYNAME_ADDR 1000000upoa
 
