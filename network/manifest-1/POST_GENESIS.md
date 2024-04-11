@@ -67,9 +67,9 @@ mv manifestd /usr/local/bin
 ### Configure & start your node
 
 - #### Intialize
-  `manifestd init <moniker> --chain-id manifest-1 --default-denom poastake`
+  `manifestd init <moniker> --chain-id manifest-1 --default-denom upoa`
 - #### Genesis
-  `cp github.com/liftedinit/manifest-ledger/network/manifest-1/genesis.json ~/.manifestd/config/genesis.json`
+  `cp github.com/liftedinit/manifest-ledger/network/manifest-1/manifest-1_genesis.json ~/.manifestd/config/genesis.json`
 - #### Peers
   `sed -i 's/seeds = ""/seeds = "SEED_ADDRESS"/g' ${HOME}/.manifest/config/config.toml`
 - #### Minimum Gas
@@ -112,13 +112,13 @@ sudo sytemctl start manifestd && journalctl -u manifestd -f -o cat --no-hostname
 
 - #### Generate your validator file
 
-Use this command to generate your validator file and change all the entries to your own information. `amount` should remain the same unless the team specifies otherwise. 1 POA power is 1000000poastake.
+Use this command to generate your validator file and change all the entries to your own information. `amount` should remain the same unless the team specifies otherwise. 1 POA power is 1000000upoa.
 
 ```bash
 cat <<EOF > validator.json
 {
   "pubkey": {"@type":"/cosmos.crypto.ed25519.PubKey","key":"oWg2ISpLF405Jcm2vXV+2v4fnjodh6aafuIdeoW+rUw="},
-  "amount": "1000000poastake",
+  "amount": "1000000upoa",
   "moniker": "validator's name",
   "identity": "keybase-identity",
   "website": "validator's (optional) website",
