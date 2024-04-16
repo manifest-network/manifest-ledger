@@ -33,7 +33,7 @@ func NewTxCmd() *cobra.Command {
 	return txCmd
 }
 
-// Returns a CLI command handler for updating the params.
+// MsgUpdateParams returns a CLI command handler for updating the params.
 func MsgUpdateParams() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "update-params [address_pairs] [automatic_inflation_enabled] [inflation_per_year]",
@@ -80,7 +80,7 @@ func MsgUpdateParams() *cobra.Command {
 	return cmd
 }
 
-// Returns a CLI command handler for deploying a stakeholder payout (where stakeholders are set in the current params).
+// MsgDeployStakeholderPayout returns a CLI command handler for deploying a stakeholder payout (where stakeholders are set in the current params).
 func MsgDeployStakeholderPayout() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "stakeholder-payout [coin_amount]",
@@ -130,9 +130,14 @@ func fromStrToStakeholders(s string) ([]*types.StakeHolders, error) {
 			return nil, fmt.Errorf("invalid stakeholder: %s", stakeholder)
 		}
 
-		percentage, err := strconv.ParseInt(parts[1], 10, 64)
+		percentage, err := strconv.ParseInt(parts[1], 10, 32)
 		if err != nil {
 			return nil, fmt.Errorf("invalid percentage: %s", parts[1])
+		}
+
+		_, err = sdk.AccAddressFromBech32(parts[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid address: %s", parts[0])
 		}
 
 		sh := &types.StakeHolders{
