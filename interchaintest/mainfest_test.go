@@ -138,6 +138,17 @@ func TestManifestModule(t *testing.T) {
 
 	})
 
+	t.Run("fail: invalid stakeholder addr", func(t *testing.T) {
+		_, err := helpers.ManifestUpdateParams(
+			t, ctx, appChain, poaAdmin,
+			fmt.Sprintf("%s:1_000_000,%s:99_000_000", uaddr, "foobar"),
+			false,
+			sdk.NewCoin(Denom, sdkmath.NewIntFromUint64(p.Inflation.YearlyAmount)), // it's off, this just matches genesis
+		)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "invalid address")
+	})
+
 	t.Cleanup(func() {
 		_ = ic.Close()
 	})
