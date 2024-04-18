@@ -105,6 +105,9 @@ func CopyCoverageFromContainer(ctx context.Context, t *testing.T, client *client
 	require.NoError(t, err)
 	defer r.Close()
 
+	err = os.MkdirAll(ExternalGoCoverDir, os.ModePerm)
+	require.NoError(t, err)
+
 	tr := tar.NewReader(r)
 	for {
 		hdr, err := tr.Next()
