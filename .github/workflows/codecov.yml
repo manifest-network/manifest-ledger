@@ -22,7 +22,7 @@ jobs:
           wget -c https://github.com/strangelove-ventures/heighliner/releases/download/v1.5.4/heighliner_1.5.4_linux_amd64.tar.gz -O - | tar -xz heighliner
           mv heighliner /usr/local/bin
       - name: Make local image
-        run: make local-image
+        run: make local-image-cov
       - name: Run coverage
         run: make coverage
       - name: Upload coverage to Codecov

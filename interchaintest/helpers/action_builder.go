@@ -27,7 +27,7 @@ func ExecuteExec(ctx context.Context, chain *cosmos.CosmosChain, cmd []string, i
 	command = append(command, extraFlags...)
 	fmt.Println(command)
 
-	stdout, _, err := chain.Exec(ctx, command, nil)
+	stdout, _, err := chain.Exec(ctx, command, chain.Config().Env)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -44,7 +44,7 @@ func ExecuteTransaction(ctx context.Context, chain *cosmos.CosmosChain, cmd []st
 	var stdout []byte
 	var res sdk.TxResponse
 
-	stdout, _, err = chain.Exec(ctx, cmd, nil)
+	stdout, _, err = chain.Exec(ctx, cmd, chain.Config().Env)
 	if err != nil {
 		return sdk.TxResponse{}, err
 	}
