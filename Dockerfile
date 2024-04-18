@@ -1,4 +1,5 @@
 FROM golang:1.22-alpine AS go-builder
+ARG BUILD_CMD=build
 
 SHELL ["/bin/sh", "-ecuxo", "pipefail"]
 
@@ -21,7 +22,7 @@ COPY . /code
 # force it to use static lib (from above) not standard libgo_cosmwasm.so file
 # then log output of file /code/bin/manifestd
 # then ensure static linking
-RUN LEDGER_ENABLED=false BUILD_TAGS=muslc LINK_STATICALLY=true make build \
+RUN LEDGER_ENABLED=false BUILD_TAGS=muslc LINK_STATICALLY=true make $BUILD_CMD \
   && file /code/build/manifestd \
   && echo "Ensuring binary is statically linked ..." \
   && (file /code/build/manifestd | grep "statically linked")

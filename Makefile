@@ -102,10 +102,18 @@ else
 	go build -mod=readonly $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 endif
 
+build-cover:
+ifeq ($(OS),Windows_NT)
+	$(error demo server not supported)
+	exit 1
+else
+	go build -mod=readonly $(BUILD_FLAGS) -cover -covermode=atomic -coverpkg=github.com/liftedinit/manifest-ledger/... -o $(BUILD_DIR)/manifestd ./cmd/manifestd
+endif
+
 build-vendored:
 	go build -mod=vendor $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 
-.PHONY: all build build-linux install init lint build-vendored
+.PHONY: all build build-linux install init lint build-vendored build-cover
 
 ###############################################################################
 ###                          INTERCHAINTEST (ictest)                        ###
