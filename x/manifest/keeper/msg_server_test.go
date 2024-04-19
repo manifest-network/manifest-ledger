@@ -114,6 +114,17 @@ func TestUpdateParams(t *testing.T) {
 			success: false,
 		},
 		{
+			desc:   "invalid stakeholder address",
+			sender: authority.String(),
+			p: types.NewParams([]*types.StakeHolders{
+				{
+					Address:    "invalid",
+					Percentage: 100_000_000,
+				},
+			}, false, 0, "umfx"),
+			success: false,
+		},
+		{
 			desc:   "duplicate address",
 			sender: authority.String(),
 			p: types.NewParams([]*types.StakeHolders{

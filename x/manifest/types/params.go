@@ -3,6 +3,8 @@ package types
 import (
 	"encoding/json"
 	fmt "fmt"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 const (
@@ -62,6 +64,9 @@ func (p Params) Validate() error {
 
 	seen := make(map[string]struct{})
 	for _, sh := range p.StakeHolders {
+		if _, err := sdk.AccAddressFromBech32(sh.Address); err != nil {
+			return fmt.Errorf("invalid address: %s", sh.Address)
+		}
 		if _, ok := seen[sh.Address]; ok {
 			return fmt.Errorf("duplicate address: %s", sh.Address)
 		}
