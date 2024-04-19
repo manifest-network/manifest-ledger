@@ -95,7 +95,7 @@ func TestManifestModule(t *testing.T) {
 
 	t.Run("fail; Perform a manual distribution payout from the PoA admin (fails due to auto inflation being on)", func(t *testing.T) {
 		c := sdk.NewCoin(Denom, sdkmath.NewInt(9999999999))
-		txRes, _ := helpers.ManifestStakeholderPayout(t, ctx, appChain, poaAdmin, c)
+		txRes, _ := helpers.ManifestStakeholderPayout(t, ctx, appChain, poaAdmin, c.String())
 		require.EqualValues(t, 0, txRes.Code)
 
 		// ensure the new balance is not > c.Amount (a manual payout)
@@ -108,8 +108,8 @@ func TestManifestModule(t *testing.T) {
 		txRes, _ := helpers.ManifestUpdateParams(
 			t, ctx, appChain, poaAdmin,
 			fmt.Sprintf("%s:1_000_000,%s:99_000_000", uaddr, addr2),
-			false,
-			sdk.NewCoin(Denom, sdkmath.NewIntFromUint64(p.Inflation.YearlyAmount)), // it's off, this just matches genesis
+			"false",
+			sdk.NewCoin(Denom, sdkmath.NewIntFromUint64(p.Inflation.YearlyAmount)).String(), // it's off, this just matches genesis
 		)
 		require.EqualValues(t, 0, txRes.Code)
 
@@ -125,7 +125,7 @@ func TestManifestModule(t *testing.T) {
 		beforeBal2, _ := appChain.GetBalance(ctx, addr2, Denom)
 
 		c := sdk.NewCoin(Denom, sdkmath.NewInt(100_000000))
-		txRes, _ := helpers.ManifestStakeholderPayout(t, ctx, appChain, poaAdmin, c)
+		txRes, _ := helpers.ManifestStakeholderPayout(t, ctx, appChain, poaAdmin, c.String())
 		require.EqualValues(t, 0, txRes.Code)
 
 		user1bal, err := appChain.GetBalance(ctx, uaddr, Denom)
@@ -138,15 +138,88 @@ func TestManifestModule(t *testing.T) {
 
 	})
 
+	t.Run("fail: invalid payout coin", func(t *testing.T) {
+		_, err := helpers.ManifestStakeholderPayout(t, ctx, appChain, poaAdmin, "foobar")
+		require.Error(t, err)
+		require.ErrorContains(t, err, "invalid decimal coin expression")
+	})
+
 	t.Run("fail: invalid stakeholder addr", func(t *testing.T) {
 		_, err := helpers.ManifestUpdateParams(
 			t, ctx, appChain, poaAdmin,
 			fmt.Sprintf("%s:1_000_000,%s:99_000_000", uaddr, "foobar"),
-			false,
-			sdk.NewCoin(Denom, sdkmath.NewIntFromUint64(p.Inflation.YearlyAmount)), // it's off, this just matches genesis
+			"false",
+			sdk.NewCoin(Denom, sdkmath.NewIntFromUint64(p.Inflation.YearlyAmount)).String(), // it's off, this just matches genesis
 		)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "invalid address")
+	})
+
+	t.Run("fail: invalid stakeholder percentage (>100%)", func(t *testing.T) {
+		_, err := helpers.ManifestUpdateParams(
+			t, ctx, appChain, poaAdmin,
+			fmt.Sprintf("%s:2_000_000,%s:99_000_000", uaddr, addr2),
+			"false",
+			sdk.NewCoin(Denom, sdkmath.NewIntFromUint64(p.Inflation.YearlyAmount)).String(), // it's off, this just matches genesis
+		)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "stakeholders should add up to")
+	})
+
+	t.Run("fail: invalid stakeholder percentage (<100%)", func(t *testing.T) {
+		_, err := helpers.ManifestUpdateParams(
+			t, ctx, appChain, poaAdmin,
+			fmt.Sprintf("%s:1_000_000,%s:98_000_000", uaddr, addr2),
+			"false",
+			sdk.NewCoin(Denom, sdkmath.NewIntFromUint64(p.Inflation.YearlyAmount)).String(), // it's off, this just matches genesis
+		)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "stakeholders should add up to")
+	})
+
+	t.Run("fail: invalid stakeholder", func(t *testing.T) {
+		_, err := helpers.ManifestUpdateParams(
+			t, ctx, appChain, poaAdmin,
+			"foobar",
+			"false",
+			sdk.NewCoin(Denom, sdkmath.NewIntFromUint64(p.Inflation.YearlyAmount)).String(), // it's off, this just matches genesis
+		)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "invalid stakeholder")
+	})
+
+	t.Run("fail: invalid percentage", func(t *testing.T) {
+		_, err := helpers.ManifestUpdateParams(
+			t, ctx, appChain, poaAdmin,
+			fmt.Sprintf("%s:foobar", uaddr),
+			"false",
+			sdk.NewCoin(Denom, sdkmath.NewIntFromUint64(p.Inflation.YearlyAmount)).String(), // it's off, this just matches genesis
+		)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "invalid percentage")
+	})
+
+	t.Run("fail: invalid automatic inflation", func(t *testing.T) {
+		_, err := helpers.ManifestUpdateParams(
+			t, ctx, appChain, poaAdmin,
+			fmt.Sprintf("%s:1_000_000,%s:99_000_000", uaddr, addr2),
+			"foobar",
+			sdk.NewCoin(Denom, sdkmath.NewIntFromUint64(p.Inflation.YearlyAmount)).String(), // it's off, this just matches genesis
+		)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "invalid syntax")
+		require.ErrorContains(t, err, "strconv.ParseBool")
+	})
+
+	t.Run("fail: invalid inflation coin", func(t *testing.T) {
+		_, err := helpers.ManifestUpdateParams(
+			t, ctx, appChain, poaAdmin,
+			fmt.Sprintf("%s:1_000_000,%s:99_000_000", uaddr, addr2),
+			"false",
+			"foobar",
+		)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "invalid decimal coin expression")
 	})
 
 	t.Cleanup(func() {

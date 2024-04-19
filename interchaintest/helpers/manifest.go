@@ -11,15 +11,15 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 )
 
-func ManifestUpdateParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, poaAdmin ibc.Wallet, addressPairs string, automaticInflation bool, coinInflationPerYear sdk.Coin, flags ...string) (sdk.TxResponse, error) {
-	txCmd := []string{"tx", "manifest", "update-params", addressPairs, fmt.Sprintf("%v", automaticInflation), coinInflationPerYear.String()}
+func ManifestUpdateParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, poaAdmin ibc.Wallet, addressPairs string, automaticInflation string, coinInflationPerYear string, flags ...string) (sdk.TxResponse, error) {
+	txCmd := []string{"tx", "manifest", "update-params", addressPairs, automaticInflation, coinInflationPerYear}
 	fmt.Println("ManifestUpdateParams", txCmd)
 	cmd := TxCommandBuilder(ctx, chain, txCmd, poaAdmin.KeyName(), flags...)
 	return ExecuteTransaction(ctx, chain, cmd)
 }
 
-func ManifestStakeholderPayout(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, poaAdmin ibc.Wallet, coinAmount sdk.Coin, flags ...string) (sdk.TxResponse, error) {
-	txCmd := []string{"tx", "manifest", "stakeholder-payout", coinAmount.String()}
+func ManifestStakeholderPayout(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, poaAdmin ibc.Wallet, coinAmount string, flags ...string) (sdk.TxResponse, error) {
+	txCmd := []string{"tx", "manifest", "stakeholder-payout", coinAmount}
 	fmt.Println("ManifestStakeholderPayout", txCmd)
 	cmd := TxCommandBuilder(ctx, chain, txCmd, poaAdmin.KeyName(), flags...)
 	return ExecuteTransaction(ctx, chain, cmd)
