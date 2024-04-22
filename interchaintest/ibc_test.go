@@ -2,6 +2,8 @@ package interchaintest
 
 import (
 	"context"
+	"fmt"
+	"path"
 	"testing"
 
 	"cosmossdk.io/math"
@@ -20,11 +22,22 @@ func TestIBC(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
+	// Same as ChainNode.HomeDir() but we need it before the chain is created
+	// The node volume is always mounted at /var/cosmos-chain/[chain-name]
+	// This is a hackish way to get the coverage files from the ephemeral containers
 	cfgA := LocalChainConfig
 	cfgA.ChainID = "manifest-9"
+	internalGoCoverDirA := path.Join("/var/cosmos-chain", cfgA.ChainID)
+	cfgA.Env = []string{
+		fmt.Sprintf("GOCOVERDIR=%s", internalGoCoverDirA),
+	}
 
 	cfgB := LocalChainConfig
 	cfgB.ChainID = "manifest-10"
+	internalGoCoverDirB := path.Join("/var/cosmos-chain", cfgB.ChainID)
+	cfgB.Env = []string{
+		fmt.Sprintf("GOCOVERDIR=%s", internalGoCoverDirB),
+	}
 
 	cf := interchaintest.NewBuiltinChainFactory(zaptest.NewLogger(t, zaptest.Level(zapcore.DebugLevel)), []*interchaintest.ChainSpec{
 		{
@@ -133,4 +146,9 @@ func TestIBC(t *testing.T) {
 	osmosUserBalNew, err := manifestB.GetBalance(ctx, manifestBUser.FormattedAddress(), dstIbcDenom)
 	require.NoError(t, err)
 	require.True(t, osmosUserBalNew.Equal(amountToSend))
+
+	t.Cleanup(func() {
+		CopyCoverageFromContainer(ctx, t, client, manifestA.GetNode().ContainerID(), manifestA.HomeDir())
+		CopyCoverageFromContainer(ctx, t, client, manifestB.GetNode().ContainerID(), manifestB.HomeDir())
+	})
 }

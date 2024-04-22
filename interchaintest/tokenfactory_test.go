@@ -2,6 +2,8 @@ package interchaintest
 
 import (
 	"context"
+	"fmt"
+	"path"
 	"testing"
 
 	"github.com/strangelove-ventures/interchaintest/v8"
@@ -16,7 +18,15 @@ func TestTokenFactory(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
+
+	// Same as ChainNode.HomeDir() but we need it before the chain is created
+	// The node volume is always mounted at /var/cosmos-chain/[chain-name]
+	// This is a hackish way to get the coverage files from the ephemeral containers
 	cfgA := LocalChainConfig
+	internalGoCoverDir := path.Join("/var/cosmos-chain", cfgA.ChainID)
+	cfgA.Env = []string{
+		fmt.Sprintf("GOCOVERDIR=%s", internalGoCoverDir),
+	}
 
 	cf := interchaintest.NewBuiltinChainFactory(zaptest.NewLogger(t, zaptest.Level(zapcore.DebugLevel)), []*interchaintest.ChainSpec{
 		{
@@ -128,6 +138,7 @@ func TestTokenFactory(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
+		CopyCoverageFromContainer(ctx, t, client, appChain.GetNode().ContainerID(), appChain.HomeDir())
 		_ = ic.Close()
 	})
 }

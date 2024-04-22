@@ -85,6 +85,12 @@ install:
 	@echo "--> installing manifestd"
 	@go install $(BUILD_FLAGS) -mod=readonly ./cmd/manifestd
 
+install-cover:
+	@echo "--> ensure dependencies have not been modified"
+	@go mod verify
+	@echo "--> installing manifestd instrumented for coverage"
+	@go install $(BUILD_FLAGS) -cover -covermode=atomic -mod=readonly -coverpkg=github.com/liftedinit/manifest-ledger/... ./cmd/manifestd
+
 init:
 	./scripts/init.sh
 
@@ -96,10 +102,18 @@ else
 	go build -mod=readonly $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 endif
 
+build-cover:
+ifeq ($(OS),Windows_NT)
+	$(error demo server not supported)
+	exit 1
+else
+	go build -mod=readonly $(BUILD_FLAGS) -cover -covermode=atomic -coverpkg=github.com/liftedinit/manifest-ledger/... -o $(BUILD_DIR)/manifestd ./cmd/manifestd
+endif
+
 build-vendored:
 	go build -mod=vendor $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 
-.PHONY: all build build-linux install init lint build-vendored
+.PHONY: all build build-linux install init lint build-vendored build-cover
 
 ###############################################################################
 ###                          INTERCHAINTEST (ictest)                        ###
@@ -135,7 +149,14 @@ else
 	heighliner build -c manifest --local -f ./chains.yaml
 endif
 
-.PHONY: get-heighliner local-image
+local-image-cov:
+ifeq (,$(shell which heighliner))
+	echo 'heighliner' binary not found. Consider running `make get-heighliner`
+else
+	heighliner build -c manifest-cov --local -f ./chains.yaml
+endif
+
+.PHONY: get-heighliner local-image local-image-cov
 
 #################
 ###   Test    ###
@@ -156,17 +177,23 @@ test-integration:
 #################
 
 coverage: ## Run coverage report
+	@echo "--> Creating GOCOVERDIR"
+	@mkdir -p /tmp/manifest-ledger-coverage
+	@echo "--> Cleaning up coverage files, if any"
+	@rm -rf /tmp/manifest-ledger-coverage/*
 	@echo "--> Running coverage"
-	@go test -race -cpu=$$(nproc) -covermode=atomic -coverprofile=coverage.out $$(go list ./...) ./interchaintest/... -coverpkg=github.com/liftedinit/manifest-ledger/... > /dev/null 2>&1
-	@echo "--> Running coverage filter"
+	@go test -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=github.com/liftedinit/manifest-ledger/... -args -test.gocoverdir="/tmp/manifest-ledger-coverage" > /dev/null 2>&1
+	@echo "--> Converting binary coverage report to text format"
+	@go tool covdata textfmt -i=/tmp/manifest-ledger-coverage -o coverage.out
+	@echo "--> Filtering coverage report"
 	@./scripts/filter-coverage.sh
-	@echo "--> Running coverage report"
+	@echo "--> Generating coverage report"
 	@go tool cover -func=coverage-filtered.out
-	@echo "--> Running coverage html"
+	@echo "--> Generating HTML coverage report"
 	@go tool cover -html=coverage-filtered.out -o coverage.html
 	@echo "--> Coverage report available at coverage.html"
 	@echo "--> Cleaning up coverage files"
-	@rm coverage.out
+	@rm coverage.out /tmp/manifest-ledger-coverage/*
 	@echo "--> Running coverage complete"
 
 .PHONY: coverage

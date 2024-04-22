@@ -1,8 +1,20 @@
 package interchaintest
 
 import (
+	"archive/tar"
+	"bytes"
+	"context"
+	"io"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/docker/docker/client"
 	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
+	"github.com/stretchr/testify/require"
 
 	types "github.com/liftedinit/manifest-ledger/x/manifest/types"
 
@@ -11,6 +23,10 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 
 	sdktestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
+)
+
+const (
+	ExternalGoCoverDir = "/tmp/manifest-ledger-coverage"
 )
 
 var (
@@ -56,7 +72,7 @@ var (
 		ChainID: "manifest-2",
 		Images: []ibc.DockerImage{
 			{
-				Repository: "manifest",
+				Repository: "manifest-cov",
 				Version:    "local",
 				UidGid:     "1025:1025",
 			},
@@ -82,4 +98,42 @@ func AppEncoding() *sdktestutil.TestEncodingConfig {
 	poatypes.RegisterInterfaces(enc.InterfaceRegistry)
 
 	return &enc
+}
+
+func CopyCoverageFromContainer(ctx context.Context, t *testing.T, client *client.Client, containerId string, internalGoCoverDir string) {
+	r, _, err := client.CopyFromContainer(ctx, containerId, internalGoCoverDir)
+	require.NoError(t, err)
+	defer r.Close()
+
+	err = os.MkdirAll(ExternalGoCoverDir, os.ModePerm)
+	require.NoError(t, err)
+
+	tr := tar.NewReader(r)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break // End of archive
+		}
+		require.NoError(t, err)
+
+		var fileBuff bytes.Buffer
+		_, err = io.Copy(&fileBuff, tr)
+		require.NoError(t, err)
+
+		name := hdr.Name
+		extractedFileName := path.Base(name)
+
+		//Only extract coverage files
+		if !strings.HasPrefix(extractedFileName, "cov") {
+			continue
+		}
+		isDirectory := extractedFileName == ""
+		if isDirectory {
+			continue
+		}
+
+		filePath := filepath.Join(ExternalGoCoverDir, extractedFileName)
+		err = os.WriteFile(filePath, fileBuff.Bytes(), os.ModePerm)
+		require.NoError(t, err)
+	}
 }

@@ -121,6 +121,15 @@ make ictest-manifest
 make ictest-ibc
 ```
 
+## Coverage
+
+To generate a coverage report for the modules run:
+
+```bash
+make local-image-cov
+make coverage
+````
+
 ## Helper
 
 There are scripts for testing, installing, and initializing. Use this section to help you navigate the various scripts and their use cases.
