@@ -74,8 +74,9 @@ func TestManifestModule(t *testing.T) {
 	}
 
 	users := interchaintest.GetAndFundTestUsers(t, ctx, "default", DefaultGenesisAmt, appChain, appChain, appChain)
-	user1, user2 := users[0], users[1]
-	uaddr, addr2 := user1.FormattedAddress(), user2.FormattedAddress()
+	t.Log("Users:", len(users))
+	user1, user2, user3 := users[0], users[1], users[2]
+	uaddr, addr2, addr3 := user1.FormattedAddress(), user2.FormattedAddress(), user3.FormattedAddress()
 
 	node := appChain.GetNode()
 
@@ -113,7 +114,7 @@ func TestManifestModule(t *testing.T) {
 	t.Run("success; disable auto inflation. Set new stakeholders", func(t *testing.T) {
 		txRes, _ := helpers.ManifestUpdateParams(
 			t, ctx, appChain, poaAdmin,
-			fmt.Sprintf("%s:1_000_000,%s:99_000_000", uaddr, addr2),
+			fmt.Sprintf("%s:1_000_000,%s:98_000_000,%s:1_000_000", uaddr, addr2, addr3),
 			"false",
 			sdk.NewCoin(Denom, sdkmath.NewIntFromUint64(p.Inflation.YearlyAmount)).String(), // it's off, this just matches genesis
 		)
@@ -122,13 +123,14 @@ func TestManifestModule(t *testing.T) {
 		p, err = helpers.ManifestQueryParams(ctx, node)
 		require.NoError(t, err)
 		require.False(t, p.Inflation.AutomaticEnabled)
-		require.Len(t, p.StakeHolders, 2)
+		require.Len(t, p.StakeHolders, 3)
 	})
 
 	t.Run("success; Perform a manual distribution payout from the PoA admin", func(t *testing.T) {
 
 		beforeBal1, _ := appChain.GetBalance(ctx, uaddr, Denom)
 		beforeBal2, _ := appChain.GetBalance(ctx, addr2, Denom)
+		beforeBal3, _ := appChain.GetBalance(ctx, addr3, Denom)
 
 		c := sdk.NewCoin(Denom, sdkmath.NewInt(100_000000))
 		txRes, _ := helpers.ManifestStakeholderPayout(t, ctx, appChain, poaAdmin, c.String())
@@ -140,7 +142,11 @@ func TestManifestModule(t *testing.T) {
 
 		user2bal, err := appChain.GetBalance(ctx, addr2, Denom)
 		require.NoError(t, err)
-		require.EqualValues(t, user2bal.Uint64(), beforeBal2.Uint64()+99_000_000)
+		require.EqualValues(t, user2bal.Uint64(), beforeBal2.Uint64()+98_000_000)
+
+		user3bal, err := appChain.GetBalance(ctx, addr3, Denom)
+		require.NoError(t, err)
+		require.EqualValues(t, user3bal.Uint64(), beforeBal3.Uint64()+1_000_000)
 
 	})
 
