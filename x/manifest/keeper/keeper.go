@@ -106,13 +106,17 @@ func (k Keeper) IsManualMintingEnabled(ctx context.Context) bool {
 	return !params.Inflation.AutomaticEnabled
 }
 
+type StakeHolderPayout struct {
+	Address string
+	Coin    sdk.Coin
+}
+
 // Returns the amount of coins to be distributed to the holders
-func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin) map[string]sdk.Coin {
+func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin) []StakeHolderPayout {
 	sh := k.GetShareHolders(ctx)
 
-	pairs := make(map[string]sdk.Coin, len(sh))
+	pairs := make([]StakeHolderPayout, 0, len(sh))
 
-	// iter each stakeholder, get their percent of the total 100%, and then split up their amount of coin cost
 	for _, s := range sh {
 		s := s
 		pct := sdkmath.NewInt(int64(s.Percentage)).ToLegacyDec().QuoInt64(types.MaxPercentShare)
@@ -123,7 +127,11 @@ func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin)
 			continue
 		}
 
-		pairs[s.Address] = sdk.NewCoin(c.Denom, coinAmt)
+		pairs = append(pairs, StakeHolderPayout{
+			Address: s.Address,
+			Coin:    sdk.NewCoin(c.Denom, coinAmt),
+		})
+
 	}
 
 	return pairs
@@ -140,14 +148,13 @@ func (k Keeper) PayoutStakeholders(ctx context.Context, c sdk.Coin) error {
 		return err
 	}
 
-	for addr, coin := range pairs {
-		accAddr, err := sdk.AccAddressFromBech32(addr)
+	for _, p := range pairs {
+		accAddr, err := sdk.AccAddressFromBech32(p.Address)
 		if err != nil {
 			return err
 		}
 
-		// send from the mintKeeper -> the stakeholder
-		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, accAddr, sdk.NewCoins(coin)); err != nil {
+		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, accAddr, sdk.NewCoins(p.Coin)); err != nil {
 			return err
 		}
 	}
