@@ -42,7 +42,7 @@ var (
 
 	CosmosGovModuleAcc = "manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm"
 
-	vals      = 1
+	vals      = 2
 	fullNodes = 0
 
 	DefaultGenesis = []cosmos.GenesisKV{
