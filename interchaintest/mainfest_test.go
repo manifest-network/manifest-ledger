@@ -74,7 +74,6 @@ func TestManifestModule(t *testing.T) {
 	}
 
 	users := interchaintest.GetAndFundTestUsers(t, ctx, "default", DefaultGenesisAmt, appChain, appChain, appChain)
-	t.Log("Users:", len(users))
 	user1, user2, user3 := users[0], users[1], users[2]
 	uaddr, addr2, addr3 := user1.FormattedAddress(), user2.FormattedAddress(), user3.FormattedAddress()
 
