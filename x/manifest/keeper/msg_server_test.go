@@ -225,7 +225,8 @@ func TestCalculatePayoutLogic(t *testing.T) {
 	require.NoError(t, err)
 
 	// validate the full payout of 100 tokens got split up between all fractional shares as expected
-	res := k.CalculateShareHolderTokenPayout(f.Ctx, sdk.NewCoin("stake", sdkmath.NewInt(100_000_000)))
+	res, err := k.CalculateShareHolderTokenPayout(f.Ctx, sdk.NewCoin("stake", sdkmath.NewInt(100_000_000)))
+	require.NoError(t, err)
 	for _, s := range sh {
 		for w, shp := range res {
 			if s.Address == shp.Address {

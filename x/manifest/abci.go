@@ -33,7 +33,10 @@ func BeginBlocker(ctx context.Context, k keeper.Keeper, mk mintkeeper.Keeper) er
 	}
 
 	// Calculate the per block inflation rewards to pay out in coins
-	mintedCoin := k.BlockRewardsProvision(ctx, params.Inflation.MintDenom)
+	mintedCoin, err := k.BlockRewardsProvision(ctx, params.Inflation.MintDenom)
+	if err != nil {
+		return err
+	}
 	mintedCoins := sdk.NewCoins(mintedCoin)
 
 	// If no inflation payout this block, skip
