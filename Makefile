@@ -244,7 +244,7 @@ format-install:
 format: ## Run formatter (goimports)
 	@echo "--> Running goimports"
 	$(MAKE) format-install
-	@find . -name '*.go' -exec goimports -w -local github.com/liftedinit/manifest-ledger {} \;
+	@find . -name '*.go' -not -name '*.pulsar.go' -not -name '*.pb.go' -exec goimports -w -local github.com/liftedinit/manifest-ledger {} \;
 
 #### GOVULNCHECK ####
 govulncheck_version=latest
