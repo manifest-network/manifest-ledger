@@ -166,15 +166,7 @@ test:
 	@echo "--> Running tests"
 	go test -v ./...
 
-test-integration:
-	@echo "--> Running integration tests"
-	cd integration; go test -v ./...
-
-.PHONY: test test-integration
-
-#################
-###   Test    ###
-#################
+.PHONY: test
 
 coverage: ## Run coverage report
 	@echo "--> Creating GOCOVERDIR"
@@ -227,7 +219,7 @@ proto-lint:
 #################
 
 golangci_lint_cmd=golangci-lint
-golangci_version=v1.51.2
+golangci_version=v1.58.0
 
 lint:
 	@echo "--> Running linter"
@@ -240,3 +232,37 @@ lint-fix:
 	@$(golangci_lint_cmd) run ./... --fix --timeout 15m
 
 .PHONY: lint lint-fix
+
+#### FORMAT ####
+goimports_version=latest
+
+format-install:
+	@echo "--> Installing goimports $(goimports_version)"
+	@go install golang.org/x/tools/cmd/goimports@$(goimports_version)
+	@echo "--> Installing goimports $(goimports_version) complete"
+
+format: ## Run formatter (goimports)
+	@echo "--> Running goimports"
+	$(MAKE) format-install
+	@find . -name '*.go' -exec goimports -w -local github.com/liftedinit/manifest-ledger {} \;
+
+#### GOVULNCHECK ####
+govulncheck_version=latest
+
+govulncheck-install:
+	@echo "--> Installing govulncheck $(govulncheck_version)"
+	@go install golang.org/x/vuln/cmd/govulncheck@$(govulncheck_version)
+	@echo "--> Installing govulncheck $(govulncheck_version) complete"
+
+govulncheck: ## Run govulncheck
+	@echo "--> Running govulncheck"
+	$(MAKE) govulncheck-install
+	@govulncheck ./...
+
+#### VET ####
+
+vet: ## Run go vet
+	@echo "--> Running go vet"
+	@go vet ./...
+
+.PHONY: vet
