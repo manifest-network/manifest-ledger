@@ -36,7 +36,10 @@ jobs:
         env:
           GOOS: ${{ matrix.targetos }}
           GOARCH: ${{ matrix.arch }}
-
+      - name: lint
+        run: make lint
+      - name: govulncheck
+        run: make govulncheck
       - name: Compile binary
         run: |
           go mod download
