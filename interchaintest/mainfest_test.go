@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	sdkmath "cosmossdk.io/math"
-	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/testreporter"
@@ -15,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest"
+
+	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
