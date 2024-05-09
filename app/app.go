@@ -153,7 +153,7 @@ func GetPoAAdmin() string {
 
 // We pull these out so we can set them with LDFLAGS in the Makefile
 var (
-	appName         = "manifest"
+	AppName         = "manifest"
 	Bech32Prefix    = "manifest"
 	DefaultNodeHome = ".manifest"
 
@@ -304,7 +304,7 @@ func NewApp(
 	std.RegisterLegacyAminoCodec(legacyAmino)
 	std.RegisterInterfaces(interfaceRegistry)
 
-	bApp := baseapp.NewBaseApp(appName, logger, db, txConfig.TxDecoder(), baseAppOptions...)
+	bApp := baseapp.NewBaseApp(AppName, logger, db, txConfig.TxDecoder(), baseAppOptions...)
 	bApp.SetCommitMultiStoreTracer(traceStore)
 	bApp.SetVersion(version.Version)
 	bApp.SetInterfaceRegistry(interfaceRegistry)
@@ -821,7 +821,6 @@ func NewApp(
 		authtypes.ModuleName: auth.NewAppModule(app.appCodec, app.AccountKeeper, authsims.RandomGenesisAccounts, app.GetSubspace(authtypes.ModuleName)),
 	}
 	app.sm = module.NewSimulationManagerFromAppModules(app.ModuleManager.Modules, overrideModules)
-
 	app.sm.RegisterStoreDecoders()
 
 	// initialize stores
