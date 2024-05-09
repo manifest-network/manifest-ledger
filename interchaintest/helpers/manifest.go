@@ -6,9 +6,10 @@ import (
 	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
+
+	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
 func ManifestUpdateParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, poaAdmin ibc.Wallet, addressPairs string, automaticInflation string, coinInflationPerYear string, flags ...string) (sdk.TxResponse, error) {
