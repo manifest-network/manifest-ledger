@@ -11,7 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cosmos/cosmos-sdk/x/group"
 	"github.com/docker/docker/client"
+	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 	"github.com/stretchr/testify/require"
@@ -94,6 +96,8 @@ var (
 func AppEncoding() *sdktestutil.TestEncodingConfig {
 	enc := cosmos.DefaultEncoding()
 
+	manifesttypes.RegisterInterfaces(enc.InterfaceRegistry)
+	group.RegisterInterfaces(enc.InterfaceRegistry)
 	tokenfactorytypes.RegisterInterfaces(enc.InterfaceRegistry)
 	poatypes.RegisterInterfaces(enc.InterfaceRegistry)
 

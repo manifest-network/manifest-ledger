@@ -27,6 +27,12 @@ func BeginBlocker(ctx context.Context, k keeper.Keeper, mk mintkeeper.Keeper) er
 		return nil
 	}
 
+	// Fix for https://github.com/liftedinit/manifest-ledger/issues/61
+	if params.Inflation == nil {
+		k.Logger().Debug("Inflation parameters not set")
+		return nil
+	}
+
 	if !params.Inflation.AutomaticEnabled {
 		k.Logger().Debug("Automatic inflation is disabled")
 		return nil
