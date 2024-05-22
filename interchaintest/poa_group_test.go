@@ -11,7 +11,7 @@ import (
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/x/group"
+	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
@@ -29,7 +29,7 @@ const (
 )
 
 var (
-	groupInfo = group.GroupInfo{
+	groupInfo = grouptypes.GroupInfo{
 		Id:          1,
 		Admin:       groupAddr, // The Group Policy is the admin of the Group (--group-policy-as-admin)
 		Metadata:    metadata,
@@ -38,31 +38,31 @@ var (
 		CreatedAt:   time.Now(),
 	}
 
-	member1 = group.Member{
+	member1 = grouptypes.Member{
 		Address:  accAddr,
 		Weight:   "1",
 		Metadata: "user1",
 		AddedAt:  time.Now(),
 	}
 
-	member2 = group.Member{
+	member2 = grouptypes.Member{
 		Address:  acc2Addr,
 		Weight:   "1",
 		Metadata: "user2",
 		AddedAt:  time.Now(),
 	}
 
-	groupMember1 = group.GroupMember{
+	groupMember1 = grouptypes.GroupMember{
 		GroupId: 1,
 		Member:  &member1,
 	}
 
-	groupMember2 = group.GroupMember{
+	groupMember2 = grouptypes.GroupMember{
 		GroupId: 1,
 		Member:  &member2,
 	}
 
-	groupPolicy = &group.GroupPolicyInfo{
+	groupPolicy = &grouptypes.GroupPolicyInfo{
 		Address:  groupAddr,
 		GroupId:  1,
 		Admin:    groupAddr,
@@ -109,9 +109,9 @@ func TestGroupPOA(t *testing.T) {
 	name := "group-poa"
 	internalGoCoverDir := path.Join("/var/cosmos-chain", name)
 
-	err := groupPolicy.SetDecisionPolicy(&group.ThresholdDecisionPolicy{
+	err := groupPolicy.SetDecisionPolicy(&grouptypes.ThresholdDecisionPolicy{
 		Threshold: "1",
-		Windows: &group.DecisionPolicyWindows{
+		Windows: &grouptypes.DecisionPolicyWindows{
 			VotingPeriod:       10 * time.Second,
 			MinExecutionPeriod: 0 * time.Second,
 		},
@@ -121,7 +121,7 @@ func TestGroupPOA(t *testing.T) {
 	// TODO: The following block is needed in order for the GroupPolicy to get properly serialized in the ModifyGenesis function
 	// https://github.com/strangelove-ventures/interchaintest/issues/1138
 	enc := AppEncoding()
-	group.RegisterInterfaces(enc.InterfaceRegistry)
+	grouptypes.RegisterInterfaces(enc.InterfaceRegistry)
 	cdc := codec.NewProtoCodec(enc.InterfaceRegistry)
 	_, err = cdc.MarshalJSON(groupPolicy)
 	require.NoError(t, err)
@@ -129,10 +129,10 @@ func TestGroupPOA(t *testing.T) {
 	groupGenesis := DefaultGenesis
 	// Define the new Group and Group Policy to be used as the POA Admin
 	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.group_seq", "1"))
-	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.groups", []group.GroupInfo{groupInfo}))
-	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.group_members", []group.GroupMember{groupMember1, groupMember2}))
+	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.groups", []grouptypes.GroupInfo{groupInfo}))
+	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.group_members", []grouptypes.GroupMember{groupMember1, groupMember2}))
 	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.group_policy_seq", "1"))
-	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.group_policies", []*group.GroupPolicyInfo{groupPolicy}))
+	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.group_policies", []*grouptypes.GroupPolicyInfo{groupPolicy}))
 
 	// Set the POA Admin as the new Group
 	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.poa.params.admins", []string{groupAddr}))
@@ -165,6 +165,7 @@ func TestGroupPOA(t *testing.T) {
 	testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr)
 	testManifestParamsUpdate(t, ctx, chain, &cfgA, accAddr)
 	testManifestParamsUpdateWithInflation(t, ctx, chain, &cfgA, accAddr)
+	testManifestParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
 
 	t.Cleanup(func() {
 		// Copy coverage files from the container
@@ -205,9 +206,12 @@ func testManifestParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.C
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal (without Inflation param)", "Update the manifest params (without Inflation param). https://github.com/liftedinit/manifest-ledger/issues/61")
 	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
 
-	pc, err := chain.QueryParam(ctx, "manifest", "stakeholders")
+	resp, err := manifesttypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &manifesttypes.QueryParamsRequest{})
 	require.NoError(t, err)
-	t.Log(pc)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Params)
+	require.Nil(t, resp.Params.Inflation)
+	require.Len(t, resp.Params.StakeHolders, 2)
 }
 
 func testManifestParamsUpdateWithInflation(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
@@ -225,25 +229,49 @@ func testManifestParamsUpdateWithInflation(t *testing.T, ctx context.Context, ch
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal (with Inflation param)", "Update the manifest params (with Inflation param)")
 	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
 
-	pc, err := chain.QueryParam(ctx, "manifest", "stakeholders")
+	resp, err := manifesttypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &manifesttypes.QueryParamsRequest{})
 	require.NoError(t, err)
-	t.Log(pc)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Params)
+	require.NotNil(t, resp.Params.Inflation)
+	require.Equal(t, manifestUpdateProposal2.Params.Inflation, resp.Params.Inflation)
+	require.Len(t, resp.Params.StakeHolders, 2)
 }
 
-func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string, prop *group.MsgSubmitProposal) {
+func testManifestParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
+	t.Log("\n===== TEST GROUP MANIFEST PARAMS UPDATE (EMPTY) =====")
+	manifestUpdateEmptyProposal := &manifesttypes.MsgUpdateParams{
+		Authority: groupAddr,
+		Params:    manifesttypes.Params{},
+	}
+	manifestUpdateProposalAny, err := types.NewAnyWithValue(manifestUpdateEmptyProposal)
+	require.NoError(t, err)
+
+	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal (empty)", "Update the manifest params (empty)")
+	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+
+	resp, err := manifesttypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &manifesttypes.QueryParamsRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Params)
+	require.Nil(t, resp.Params.Inflation)
+	require.Len(t, resp.Params.StakeHolders, 0)
+}
+
+func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string, prop *grouptypes.MsgSubmitProposal) {
 	pid := strconv.Itoa(proposalId)
 
 	marshalProposal(t, prop)
 
 	helpers.SubmitGroupProposal(ctx, t, chain, config, accAddr, prop)
-	helpers.VoteGroupProposal(ctx, t, chain, config, pid, accAddr, group.VOTE_OPTION_YES.String(), metadata)
+	helpers.VoteGroupProposal(ctx, t, chain, config, pid, accAddr, grouptypes.VOTE_OPTION_YES.String(), metadata)
 	helpers.ExecGroupProposal(ctx, t, chain, config, accAddr, pid)
 
 	proposalId = proposalId + 1
 }
 
-func createProposal(groupPolicyAddress string, proposers []string, messages []*types.Any, title string, summary string) *group.MsgSubmitProposal {
-	return &group.MsgSubmitProposal{
+func createProposal(groupPolicyAddress string, proposers []string, messages []*types.Any, title string, summary string) *grouptypes.MsgSubmitProposal {
+	return &grouptypes.MsgSubmitProposal{
 		GroupPolicyAddress: groupPolicyAddress,
 		Proposers:          proposers,
 		Metadata:           metadata,
@@ -257,9 +285,9 @@ func createProposal(groupPolicyAddress string, proposers []string, messages []*t
 // marshalProposal is a hackish way to ensure the prop is properly serialized
 // TODO: The following block is needed in order for the prop to get properly serialized
 // https://github.com/strangelove-ventures/interchaintest/issues/1138
-func marshalProposal(t *testing.T, prop *group.MsgSubmitProposal) {
+func marshalProposal(t *testing.T, prop *grouptypes.MsgSubmitProposal) {
 	enc := AppEncoding()
-	group.RegisterInterfaces(enc.InterfaceRegistry)
+	grouptypes.RegisterInterfaces(enc.InterfaceRegistry)
 	cdc := codec.NewProtoCodec(enc.InterfaceRegistry)
 	_, err := cdc.MarshalJSON(prop)
 	require.NoError(t, err)
