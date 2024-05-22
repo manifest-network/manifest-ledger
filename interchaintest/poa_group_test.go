@@ -184,30 +184,8 @@ func testSoftwareUpgrade(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	upgradeProposalAny, err := types.NewAnyWithValue(upgradeProposal)
 	require.NoError(t, err)
 
-	prop := &group.MsgSubmitProposal{
-		GroupPolicyAddress: groupAddr,
-		Proposers:          []string{accAddr}, // Proposer is user1
-		Metadata:           metadata,
-		Messages:           []*types.Any{upgradeProposalAny},
-		Exec:               0,
-		Title:              "Software Upgrade Proposal",
-		Summary:            "Upgrade the software to the latest version",
-	}
-	pid := strconv.Itoa(proposalId)
-
-	// TODO: I have absolutely no idea why but the following block is needed in order for the GroupPolicy to get properly serialized in the ModifyGenesis function
-	// I don't know why the cdc.MarshalJSON is required but it is...
-	enc := AppEncoding()
-	group.RegisterInterfaces(enc.InterfaceRegistry)
-	cdc := codec.NewProtoCodec(enc.InterfaceRegistry)
-	_, err = cdc.MarshalJSON(prop)
-	require.NoError(t, err)
-
-	helpers.SubmitGroupProposal(ctx, t, chain, config, accAddr, prop)
-	helpers.VoteGroupProposal(ctx, t, chain, config, pid, accAddr, group.VOTE_OPTION_YES.String(), metadata)
-	helpers.ExecGroupProposal(ctx, t, chain, config, accAddr, pid)
-
-	proposalId = proposalId + 1
+	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{upgradeProposalAny}, "Software Upgrade Proposal", "Upgrade the software to the latest version")
+	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
 
 	plan, err := chain.UpgradeQueryPlan(ctx)
 	require.NoError(t, err)
@@ -224,30 +202,8 @@ func testManifestParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.C
 	manifestUpdateProposalAny, err := types.NewAnyWithValue(manifestUpdateProposal)
 	require.NoError(t, err)
 
-	prop := &group.MsgSubmitProposal{
-		GroupPolicyAddress: groupAddr,
-		Proposers:          []string{accAddr}, // Proposer is user1
-		Metadata:           metadata,
-		Messages:           []*types.Any{manifestUpdateProposalAny},
-		Exec:               0,
-		Title:              "Manifest Params Update Proposal (without Inflation param)",
-		Summary:            "Update the manifest params (without Inflation param). https://github.com/liftedinit/manifest-ledger/issues/61",
-	}
-	pid := strconv.Itoa(proposalId)
-
-	// TODO: I have absolutely no idea why but the following block is needed in order for the MsgUpdateParams to get properly serialized in the ModifyGenesis function
-	// I don't know why the cdc.MarshalJSON is required but it is...
-	enc := AppEncoding()
-	group.RegisterInterfaces(enc.InterfaceRegistry)
-	cdc := codec.NewProtoCodec(enc.InterfaceRegistry)
-	_, err = cdc.MarshalJSON(prop)
-	require.NoError(t, err)
-
-	helpers.SubmitGroupProposal(ctx, t, chain, config, accAddr, prop)
-	helpers.VoteGroupProposal(ctx, t, chain, config, pid, accAddr, group.VOTE_OPTION_YES.String(), metadata)
-	helpers.ExecGroupProposal(ctx, t, chain, config, accAddr, pid)
-
-	proposalId = proposalId + 1
+	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal (without Inflation param)", "Update the manifest params (without Inflation param). https://github.com/liftedinit/manifest-ledger/issues/61")
+	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
 
 	pc, err := chain.QueryParam(ctx, "manifest", "stakeholders")
 	require.NoError(t, err)
@@ -266,32 +222,45 @@ func testManifestParamsUpdateWithInflation(t *testing.T, ctx context.Context, ch
 	manifestUpdateProposalAny, err := types.NewAnyWithValue(manifestUpdateProposal)
 	require.NoError(t, err)
 
-	prop := &group.MsgSubmitProposal{
-		GroupPolicyAddress: groupAddr,
-		Proposers:          []string{accAddr}, // Proposer is user1
-		Metadata:           metadata,
-		Messages:           []*types.Any{manifestUpdateProposalAny},
-		Exec:               0,
-		Title:              "Manifest Params Update Proposal (with Inflation param)",
-		Summary:            "Update the manifest params (with Inflation param)",
-	}
+	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal (with Inflation param)", "Update the manifest params (with Inflation param)")
+	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+
+	pc, err := chain.QueryParam(ctx, "manifest", "stakeholders")
+	require.NoError(t, err)
+	t.Log(pc)
+}
+
+func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string, prop *group.MsgSubmitProposal) {
 	pid := strconv.Itoa(proposalId)
 
-	// TODO: I have absolutely no idea why but the following block is needed in order for the MsgUpdateParams to get properly serialized in the ModifyGenesis function
-	// I don't know why the cdc.MarshalJSON is required but it is...
-	enc := AppEncoding()
-	group.RegisterInterfaces(enc.InterfaceRegistry)
-	cdc := codec.NewProtoCodec(enc.InterfaceRegistry)
-	_, err = cdc.MarshalJSON(prop)
-	require.NoError(t, err)
+	marshalProposal(t, prop)
 
 	helpers.SubmitGroupProposal(ctx, t, chain, config, accAddr, prop)
 	helpers.VoteGroupProposal(ctx, t, chain, config, pid, accAddr, group.VOTE_OPTION_YES.String(), metadata)
 	helpers.ExecGroupProposal(ctx, t, chain, config, accAddr, pid)
 
 	proposalId = proposalId + 1
+}
 
-	pc, err := chain.QueryParam(ctx, "manifest", "stakeholders")
+func createProposal(groupPolicyAddress string, proposers []string, messages []*types.Any, title string, summary string) *group.MsgSubmitProposal {
+	return &group.MsgSubmitProposal{
+		GroupPolicyAddress: groupPolicyAddress,
+		Proposers:          proposers,
+		Metadata:           metadata,
+		Messages:           messages,
+		Exec:               0,
+		Title:              title,
+		Summary:            summary,
+	}
+}
+
+// marshalProposal is a hackish way to ensure the prop is properly serialized
+// TODO: I have absolutely no idea why but the following block is needed in order for the prop to get properly serialized
+// I don't know why the cdc.MarshalJSON is required but it is...
+func marshalProposal(t *testing.T, prop *group.MsgSubmitProposal) {
+	enc := AppEncoding()
+	group.RegisterInterfaces(enc.InterfaceRegistry)
+	cdc := codec.NewProtoCodec(enc.InterfaceRegistry)
+	_, err := cdc.MarshalJSON(prop)
 	require.NoError(t, err)
-	t.Log(pc)
 }
