@@ -118,8 +118,8 @@ func TestGroupPOA(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// TODO: I have absolutely no idea why but the following block is needed in order for the GroupPolicy to get properly serialized in the ModifyGenesis function
-	// I don't know why the cdc.MarshalJSON is required but it is...
+	// TODO: The following block is needed in order for the GroupPolicy to get properly serialized in the ModifyGenesis function
+	// https://github.com/strangelove-ventures/interchaintest/issues/1138
 	enc := AppEncoding()
 	group.RegisterInterfaces(enc.InterfaceRegistry)
 	cdc := codec.NewProtoCodec(enc.InterfaceRegistry)
@@ -255,8 +255,8 @@ func createProposal(groupPolicyAddress string, proposers []string, messages []*t
 }
 
 // marshalProposal is a hackish way to ensure the prop is properly serialized
-// TODO: I have absolutely no idea why but the following block is needed in order for the prop to get properly serialized
-// I don't know why the cdc.MarshalJSON is required but it is...
+// TODO: The following block is needed in order for the prop to get properly serialized
+// https://github.com/strangelove-ventures/interchaintest/issues/1138
 func marshalProposal(t *testing.T, prop *group.MsgSubmitProposal) {
 	enc := AppEncoding()
 	group.RegisterInterfaces(enc.InterfaceRegistry)
