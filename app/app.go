@@ -52,8 +52,6 @@ import (
 	"cosmossdk.io/x/feegrant"
 	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
 	feegrantmodule "cosmossdk.io/x/feegrant/module"
-	"cosmossdk.io/x/nft"
-	nftkeeper "cosmossdk.io/x/nft/keeper"
 	"cosmossdk.io/x/tx/signing"
 	"cosmossdk.io/x/upgrade"
 	upgradekeeper "cosmossdk.io/x/upgrade/keeper"
@@ -200,7 +198,7 @@ var maccPerms = map[string][]string{
 	stakingtypes.BondedPoolName:    {authtypes.Burner, authtypes.Staking},
 	stakingtypes.NotBondedPoolName: {authtypes.Burner, authtypes.Staking},
 	govtypes.ModuleName:            {authtypes.Burner},
-	nft.ModuleName:                 nil,
+
 	// non sdk modules
 	ibctransfertypes.ModuleName:  {authtypes.Minter, authtypes.Burner},
 	ibcfeetypes.ModuleName:       nil,
@@ -243,7 +241,6 @@ type ManifestApp struct {
 	EvidenceKeeper        evidencekeeper.Keeper
 	FeeGrantKeeper        feegrantkeeper.Keeper
 	GroupKeeper           groupkeeper.Keeper
-	NFTKeeper             nftkeeper.Keeper
 	ConsensusParamsKeeper consensusparamkeeper.Keeper
 	CircuitKeeper         circuitkeeper.Keeper
 
@@ -315,7 +312,7 @@ func NewApp(
 		minttypes.StoreKey, distrtypes.StoreKey, slashingtypes.StoreKey,
 		govtypes.StoreKey, paramstypes.StoreKey, consensusparamtypes.StoreKey, upgradetypes.StoreKey, feegrant.StoreKey,
 		evidencetypes.StoreKey, circuittypes.StoreKey,
-		authzkeeper.StoreKey, nftkeeper.StoreKey, group.StoreKey,
+		authzkeeper.StoreKey, group.StoreKey,
 		// non sdk store keys
 		capabilitytypes.StoreKey, ibcexported.StoreKey, ibctransfertypes.StoreKey, ibcfeetypes.StoreKey,
 		icahosttypes.StoreKey,
@@ -774,7 +771,7 @@ func NewApp(
 		authtypes.ModuleName, banktypes.ModuleName,
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
 		minttypes.ModuleName, crisistypes.ModuleName, genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
-		feegrant.ModuleName, nft.ModuleName, group.ModuleName, paramstypes.ModuleName, upgradetypes.ModuleName,
+		feegrant.ModuleName, group.ModuleName, paramstypes.ModuleName, upgradetypes.ModuleName,
 		vestingtypes.ModuleName, consensusparamtypes.ModuleName, circuittypes.ModuleName,
 		// additional non simd modules
 		ibctransfertypes.ModuleName,
