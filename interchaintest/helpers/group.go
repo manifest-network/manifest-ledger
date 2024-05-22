@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cosmos/cosmos-sdk/x/group"
+	"github.com/pkg/errors"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
@@ -39,7 +40,7 @@ func SubmitGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.Cosmos
 // QueryGroupProposal queries a group proposal on the chain.
 // TODO: This function should be part of `interchaintest`
 // See https://github.com/strangelove-ventures/interchaintest/issues/1138
-func QueryGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposalId string) string {
+func QueryGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposalId string) (string, error) {
 	query := []string{
 		"group", "proposal", proposalId,
 	}
@@ -47,16 +48,22 @@ func QueryGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosC
 	tn := chain.GetNode()
 
 	o, _, err := tn.Exec(ctx, tn.QueryCommand(query...), config.Env)
-	require.NoError(t, err)
+	if err != nil {
+		return "", errors.WithMessage(err, "failed to query group proposal")
+	}
 
 	var data interface{}
-	err = json.Unmarshal([]byte(o), &data)
-	require.NoError(t, err)
+	if err := json.Unmarshal([]byte(o), &data); err != nil {
+		return "", errors.WithMessage(err, "failed to unmarshal group proposal")
+
+	}
 
 	prettyJSON, err := json.MarshalIndent(data, "", "  ")
-	require.NoError(t, err)
+	if err != nil {
+		return "", errors.WithMessage(err, "failed to marshal group proposal")
+	}
 
-	return string(prettyJSON)
+	return string(prettyJSON), nil
 }
 
 // VoteGroupProposal votes on a group proposal on the chain.
