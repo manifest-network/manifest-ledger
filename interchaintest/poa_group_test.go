@@ -113,6 +113,11 @@ var (
 		},
 	}
 
+	poaDefaultParams = &poatypes.Params{
+		Admins:                 []string{groupAddr},
+		AllowValidatorSelfExit: true,
+	}
+
 	proposalId = 1
 )
 
@@ -251,12 +256,7 @@ func testManifestParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.C
 	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
 
 	// Verify the updated manifest params
-	resp, err := manifesttypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &manifesttypes.QueryParamsRequest{})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Params)
-	require.Nil(t, resp.Params.Inflation)
-	require.Len(t, resp.Params.StakeHolders, 2)
+	checkManifestParams(ctx, t, chain, &manifestUpdateProposal.Params)
 
 	// Reset the manifest params back to the default
 	resetManifestParams(t, ctx, chain, config, accAddr)
@@ -281,13 +281,7 @@ func testManifestParamsUpdateWithInflation(t *testing.T, ctx context.Context, ch
 	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
 
 	// Verify the updated manifest params
-	resp, err := manifesttypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &manifesttypes.QueryParamsRequest{})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Params)
-	require.NotNil(t, resp.Params.Inflation)
-	require.Equal(t, manifestUpdateProposal2.Params.Inflation, resp.Params.Inflation)
-	require.Len(t, resp.Params.StakeHolders, 2)
+	checkManifestParams(ctx, t, chain, &manifestUpdateProposal2.Params)
 
 	// Reset the manifest params back to the default
 	resetManifestParams(t, ctx, chain, config, accAddr)
@@ -309,18 +303,13 @@ func testManifestParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cos
 	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
 
 	// Verify the updated manifest params
-	resp, err := manifesttypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &manifesttypes.QueryParamsRequest{})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Params)
-	require.Nil(t, resp.Params.Inflation)
-	require.Len(t, resp.Params.StakeHolders, 0)
+	checkManifestParams(ctx, t, chain, &manifestUpdateEmptyProposal.Params)
 
 	// Reset the manifest params back to the default
 	resetManifestParams(t, ctx, chain, config, accAddr)
 }
 
-// testPOAParamsUpdateEmpty tests the submission, voting, and execution of a POA params update proposal
+// testPOAParamsUpdateEmpty tests the submission, voting, and execution of an empty POA params update proposal
 // This proposal tests that the Admins field cannot be empty
 func testPOAParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP POA PARAMS UPDATE (EMPTY ADMINS) =====")
@@ -337,16 +326,11 @@ func testPOAParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cosmos.C
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{poaUpdateProposalAny}, "POA Params Update Proposal", "Update the POA params")
 	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
 
-	resp, err := poatypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &poatypes.QueryParamsRequest{})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Params)
-	require.NotNil(t, resp.Params.Admins)               // Admins should not be empty
-	require.Len(t, resp.Params.Admins, 1)               // Admins should have one address
-	require.Equal(t, groupAddr, resp.Params.Admins[0])  // Admins should be the Group address
-	require.True(t, resp.Params.AllowValidatorSelfExit) // AllowValidatorSelfExit should be true (unchanged from Genesis)
+	// Verify the POA params are unchanged
+	checkPOAParams(ctx, t, chain, poaDefaultParams)
 }
 
+// testPOAParamsUpdate tests the submission, voting, and execution of a POA params update proposal
 func testPOAParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string, user ibc.Wallet) {
 	t.Log("\n===== TEST GROUP POA PARAMS UPDATE =====")
 	poaUpdateProposal := &poatypes.MsgUpdateParams{
@@ -362,14 +346,7 @@ func testPOAParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{poaUpdateProposalAny}, "POA Params Update Proposal", "Update the POA params")
 	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
 
-	resp, err := poatypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &poatypes.QueryParamsRequest{})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Params)
-	require.NotNil(t, resp.Params.Admins)                // Admins should not be empty
-	require.Len(t, resp.Params.Admins, 1)                // Admins should have one address
-	require.Equal(t, accAddr, resp.Params.Admins[0])     // Admins should be the new address
-	require.False(t, resp.Params.AllowValidatorSelfExit) // AllowValidatorSelfExit should be false
+	checkPOAParams(ctx, t, chain, &poaUpdateProposal.Params)
 
 	// NOTE:
 	// At this point, the POA_ADMIN_ADDRESS is still the Group address, but the POA module admin field is now `accAddr`
@@ -383,14 +360,8 @@ func testPOAParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	require.NotNil(t, r)
 	require.Equal(t, uint32(0x0), r.Code)
 
-	resp, err = poatypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &poatypes.QueryParamsRequest{})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Params)
-	require.NotNil(t, resp.Params.Admins)               // Admins should not be empty
-	require.Len(t, resp.Params.Admins, 1)               // Admins should have one address
-	require.Equal(t, groupAddr, resp.Params.Admins[0])  // Admins should be the Group address
-	require.True(t, resp.Params.AllowValidatorSelfExit) // AllowValidatorSelfExit should be true
+	// Verify the POA params are reset
+	checkPOAParams(ctx, t, chain, poaDefaultParams)
 }
 
 // resetManifestParams resets the manifest params back to the default
@@ -410,14 +381,29 @@ func checkManifestParams(ctx context.Context, t *testing.T, chain *cosmos.Cosmos
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Params)
-	require.Equal(t, expectedParams.Inflation.MintDenom, resp.Params.Inflation.MintDenom)
-	require.Equal(t, expectedParams.Inflation.YearlyAmount, resp.Params.Inflation.YearlyAmount)
-	require.Equal(t, expectedParams.Inflation.AutomaticEnabled, resp.Params.Inflation.AutomaticEnabled)
+	if expectedParams.Inflation != nil {
+		require.Equal(t, expectedParams.Inflation.MintDenom, resp.Params.Inflation.MintDenom)
+		require.Equal(t, expectedParams.Inflation.YearlyAmount, resp.Params.Inflation.YearlyAmount)
+		require.Equal(t, expectedParams.Inflation.AutomaticEnabled, resp.Params.Inflation.AutomaticEnabled)
+	}
 	require.Len(t, expectedParams.StakeHolders, len(resp.Params.StakeHolders))
 	for i, sh := range expectedParams.StakeHolders {
 		require.Equal(t, sh.Address, resp.Params.StakeHolders[i].Address)
 		require.Equal(t, sh.Percentage, resp.Params.StakeHolders[i].Percentage)
 	}
+}
+
+// checkPOAParams checks the POA params against the expected params
+func checkPOAParams(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, expectedParams *poatypes.Params) {
+	resp, err := poatypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &poatypes.QueryParamsRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Params)
+	require.Len(t, resp.Params.Admins, len(expectedParams.Admins))
+	for i, admin := range expectedParams.Admins {
+		require.Equal(t, admin, resp.Params.Admins[i])
+	}
+	require.Equal(t, expectedParams.AllowValidatorSelfExit, resp.Params.AllowValidatorSelfExit)
 }
 
 // submitVoteAndExecProposal submits, votes, and executes a group proposal
