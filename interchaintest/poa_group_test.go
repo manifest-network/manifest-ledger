@@ -12,12 +12,13 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/x/group"
-	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
-	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/stretchr/testify/require"
+
+	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
+	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
 const (
@@ -161,9 +162,9 @@ func TestGroupPOA(t *testing.T) {
 	// Make sure the chain's HomeDir and the GOCOVERDIR are the same
 	require.Equal(t, internalGoCoverDir, chain.GetNode().HomeDir())
 
-	testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr, acc2Addr)
-	testManifestParamsUpdate(t, ctx, chain, &cfgA, accAddr, acc2Addr)
-	testManifestParamsUpdateWithInflation(t, ctx, chain, &cfgA, accAddr, acc2Addr)
+	testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr)
+	testManifestParamsUpdate(t, ctx, chain, &cfgA, accAddr)
+	testManifestParamsUpdateWithInflation(t, ctx, chain, &cfgA, accAddr)
 
 	t.Cleanup(func() {
 		// Copy coverage files from the container
@@ -172,7 +173,7 @@ func TestGroupPOA(t *testing.T) {
 }
 
 // testSoftwareUpgrade tests the submission, voting, and execution of a software upgrade proposal
-func testSoftwareUpgrade(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr, acc2Addr string) {
+func testSoftwareUpgrade(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP SOFTWARE UPGRADE =====")
 
 	// Verify the Upgrade module authority is the Group address
@@ -217,7 +218,7 @@ func testSoftwareUpgrade(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 
 // testManifestParamsUpdate tests the submission, voting, and execution of a manifest params update proposal
 // This proposal tests for https://github.com/liftedinit/manifest-ledger/issues/61
-func testManifestParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr, acc2Addr string) {
+func testManifestParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP MANIFEST PARAMS UPDATE =====")
 	t.Log("\n===== TEST FIX FOR https://github.com/liftedinit/manifest-ledger/issues/61 =====")
 	manifestUpdateProposalAny, err := types.NewAnyWithValue(manifestUpdateProposal)
@@ -234,7 +235,7 @@ func testManifestParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.C
 	}
 	pid := strconv.Itoa(proposalId)
 
-	// TODO: I have absolutely no idea why but the following block is needed in order for the GroupPolicy to get properly serialized in the ModifyGenesis function
+	// TODO: I have absolutely no idea why but the following block is needed in order for the MsgUpdateParams to get properly serialized in the ModifyGenesis function
 	// I don't know why the cdc.MarshalJSON is required but it is...
 	enc := AppEncoding()
 	group.RegisterInterfaces(enc.InterfaceRegistry)
@@ -253,7 +254,7 @@ func testManifestParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.C
 	t.Log(pc)
 }
 
-func testManifestParamsUpdateWithInflation(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr, acc2Addr string) {
+func testManifestParamsUpdateWithInflation(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP MANIFEST PARAMS UPDATE (WITH INFLATION) =====")
 	manifestUpdateProposal2 := manifestUpdateProposal
 	manifestUpdateProposal2.Params.Inflation = &manifesttypes.Inflation{
@@ -276,7 +277,7 @@ func testManifestParamsUpdateWithInflation(t *testing.T, ctx context.Context, ch
 	}
 	pid := strconv.Itoa(proposalId)
 
-	// TODO: I have absolutely no idea why but the following block is needed in order for the GroupPolicy to get properly serialized in the ModifyGenesis function
+	// TODO: I have absolutely no idea why but the following block is needed in order for the MsgUpdateParams to get properly serialized in the ModifyGenesis function
 	// I don't know why the cdc.MarshalJSON is required but it is...
 	enc := AppEncoding()
 	group.RegisterInterfaces(enc.InterfaceRegistry)

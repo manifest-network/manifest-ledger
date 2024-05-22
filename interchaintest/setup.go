@@ -13,10 +13,11 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/x/group"
 	"github.com/docker/docker/client"
-	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 	"github.com/stretchr/testify/require"
+
+	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 
 	types "github.com/liftedinit/manifest-ledger/x/manifest/types"
 
