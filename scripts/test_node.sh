@@ -94,8 +94,21 @@ from_scratch () {
   update_test_genesis '.app_state["manifest"]["params"]["inflation"]["automatic_enabled"]=false'
   update_test_genesis '.app_state["manifest"]["params"]["stake_holders"]=[{"address":"manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct","percentage":100000000}]'
 
+  # tokenfactory
+  # SPDT
+  update_test_genesis '.app_state["tokenfactory"]["factory_denoms"]=[{"denom": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt", "authority_metadata": {"admin": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj"}}]'
+  update_test_genesis '.app_state["bank"]["denom_metadata"]=[{"description": "SpaceData", "denom_units": [{"denom": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt", "exponent": 0, "aliases": ["SPDT"]}, {"denom": "SPDT", "exponent": 6, "aliases": ["factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt"]}], "base": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt", "display": "SPDT", "name": "SpaceData", "symbol": "SPDT", "uri": "", "uri_hash": ""}]'
+
+  #ABUS
+  update_test_genesis '.app_state["tokenfactory"]["factory_denoms"] |= . + [{"denom": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uabus", "authority_metadata": {"admin": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj"}}]'
+  update_test_genesis '.app_state["bank"]["denom_metadata"] |= . + [{"description": "Arebus Gas Token", "denom_units": [{"denom": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uabus", "exponent": 0, "aliases": ["ABUS"]}, {"denom": "ABUS", "exponent": 6, "aliases": ["factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uabus"]}], "base": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uabus", "display": "ABUS", "name": "Arebus Gas Token", "symbol": "ABUS", "uri": "", "uri_hash": ""}]'
+
+  # Add all other MANY tokens
+  # ...
+  # ...
+
   # Allocate genesis accounts
-  BINARY genesis add-genesis-account $KEY 1000000upoa,10000000umfx,1000utest --keyring-backend $KEYRING
+  BINARY genesis add-genesis-account $KEY 1000000upoa,10000000umfx,1000utest,1000000000000000000000factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt,100000000000000000000000factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uabus --keyring-backend $KEYRING
   BINARY genesis add-genesis-account $KEY2 100000umfx,1000utest --keyring-backend $KEYRING
 
   # Set 1 POAToken -> user

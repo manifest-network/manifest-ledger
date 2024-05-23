@@ -8,9 +8,12 @@ import (
 	"testing"
 	"time"
 
+	sdkmath "cosmossdk.io/math"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
@@ -118,6 +121,12 @@ var (
 		AllowValidatorSelfExit: true,
 	}
 
+	bankSendProposal = &banktypes.MsgSend{
+		FromAddress: groupAddr,
+		ToAddress:   accAddr,
+		Amount:      sdk.NewCoins(sdk.NewInt64Coin(Denom, 1)),
+	}
+
 	proposalId = 1
 )
 
@@ -194,6 +203,9 @@ func TestGroupPOA(t *testing.T) {
 	// POA Update
 	testPOAParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
 	testPOAParamsUpdate(t, ctx, chain, &cfgA, accAddr, user1)
+	// Bank
+	testBankSend(t, ctx, chain, &cfgA, accAddr)
+	testBankSendIllegal(t, ctx, chain, &cfgA, accAddr)
 
 	t.Cleanup(func() {
 		// Copy coverage files from the container
@@ -219,7 +231,8 @@ func testSoftwareUpgrade(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	require.NoError(t, err)
 
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{upgradeProposalAny}, "Software Upgrade Proposal", "Upgrade the software to the latest version")
-	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	require.NoError(t, err)
 
 	// Verify the upgrade plan is set
 	plan, err = chain.UpgradeQueryPlan(ctx)
@@ -232,7 +245,8 @@ func testSoftwareUpgrade(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	require.NoError(t, err)
 
 	prop = createProposal(groupAddr, []string{accAddr}, []*types.Any{cancelUpgradeProposalAny}, "Cancel Upgrade Proposal", "Cancel the software upgrade")
-	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	require.NoError(t, err)
 
 	// Verify the upgrade plan is cancelled
 	plan, err = chain.UpgradeQueryPlan(ctx)
@@ -253,7 +267,8 @@ func testManifestParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.C
 	require.NoError(t, err)
 
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal (without Inflation param)", "Update the manifest params (without Inflation param). https://github.com/liftedinit/manifest-ledger/issues/61")
-	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	require.NoError(t, err)
 
 	// Verify the updated manifest params
 	checkManifestParams(ctx, t, chain, &manifestUpdateProposal.Params)
@@ -278,7 +293,8 @@ func testManifestParamsUpdateWithInflation(t *testing.T, ctx context.Context, ch
 	require.NoError(t, err)
 
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal (with Inflation param)", "Update the manifest params (with Inflation param)")
-	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	require.NoError(t, err)
 
 	// Verify the updated manifest params
 	checkManifestParams(ctx, t, chain, &manifestUpdateProposal2.Params)
@@ -300,7 +316,8 @@ func testManifestParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cos
 	require.NoError(t, err)
 
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal (empty)", "Update the manifest params (empty)")
-	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	require.NoError(t, err)
 
 	// Verify the updated manifest params
 	checkManifestParams(ctx, t, chain, &manifestUpdateEmptyProposal.Params)
@@ -324,7 +341,8 @@ func testPOAParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cosmos.C
 	require.NoError(t, err)
 
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{poaUpdateProposalAny}, "POA Params Update Proposal", "Update the POA params")
-	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	require.NoError(t, err)
 
 	// Verify the POA params are unchanged
 	checkPOAParams(ctx, t, chain, poaDefaultParams)
@@ -344,7 +362,8 @@ func testPOAParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	require.NoError(t, err)
 
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{poaUpdateProposalAny}, "POA Params Update Proposal", "Update the POA params")
-	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	require.NoError(t, err)
 
 	checkPOAParams(ctx, t, chain, &poaUpdateProposal.Params)
 
@@ -364,13 +383,91 @@ func testPOAParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	checkPOAParams(ctx, t, chain, poaDefaultParams)
 }
 
+// testBankSend tests the sending of funds from one account to another using a group proposal
+func testBankSend(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
+	t.Log("\n===== TEST GROUP BANK SEND =====")
+
+	// Verify the initial balances
+	accAddrInitialBal, err := chain.BankQueryBalance(ctx, accAddr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, DefaultGenesisAmt, accAddrInitialBal)
+
+	groupAddrInitialBal, err := chain.BankQueryBalance(ctx, groupAddr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(0), groupAddrInitialBal)
+
+	// Send funds from accAddr to groupAddr
+	err = chain.SendFunds(ctx, accAddr, ibc.WalletAmount{
+		Address: groupAddr,
+		Denom:   Denom,
+		Amount:  sdkmath.NewInt(1),
+	})
+	require.NoError(t, err)
+
+	// Verify the funds were sent
+	groupAddrBal, err := chain.BankQueryBalance(ctx, groupAddr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(1), groupAddrBal)
+
+	// Send funds from groupAddr back to accAddr using a Group Proposal
+	bankSendProposalAny, err := types.NewAnyWithValue(bankSendProposal)
+	require.NoError(t, err)
+
+	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{bankSendProposalAny}, "Bank Send Proposal", "Send funds from groupAddr back to accAddr")
+	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	require.NoError(t, err)
+
+	// Verify the funds were sent
+	accAddrBal, err := chain.BankQueryBalance(ctx, accAddr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, DefaultGenesisAmt, accAddrBal)
+
+	groupAddrBal, err = chain.BankQueryBalance(ctx, groupAddr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(0), groupAddrBal)
+}
+
+func testBankSendIllegal(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
+	t.Log("\n===== TEST GROUP BANK SEND (ILLEGAL) =====")
+	newProp := bankSendProposal
+	newProp.FromAddress = accAddr
+	newProp.ToAddress = acc2Addr
+
+	// Verify initial balances
+	accAddrBal, err := chain.BankQueryBalance(ctx, accAddr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, DefaultGenesisAmt, accAddrBal)
+
+	acc2AddrBal, err := chain.BankQueryBalance(ctx, acc2Addr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, DefaultGenesisAmt, acc2AddrBal)
+
+	// Send funds from groupAddr back to accAddr using a Group Proposal
+	bankSendProposalAny, err := types.NewAnyWithValue(newProp)
+	require.NoError(t, err)
+
+	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{bankSendProposalAny}, "Bank Send Proposal (Illegal)", "Should not be executed")
+	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	require.Error(t, err)
+
+	// Verify the funds were not sent
+	accAddrBal, err = chain.BankQueryBalance(ctx, accAddr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, DefaultGenesisAmt, accAddrBal)
+
+	acc2AddrBal, err = chain.BankQueryBalance(ctx, acc2Addr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, DefaultGenesisAmt, acc2AddrBal)
+}
+
 // resetManifestParams resets the manifest params back to the default
 func resetManifestParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	manifestDefaultProposalAny, err := types.NewAnyWithValue(manifestDefaultProposal)
 	require.NoError(t, err)
 
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestDefaultProposalAny}, "Manifest Params Update Proposal (reset)", "Reset the manifest params to the default")
-	submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	require.NoError(t, err)
 
 	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
 }
@@ -407,16 +504,26 @@ func checkPOAParams(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain
 }
 
 // submitVoteAndExecProposal submits, votes, and executes a group proposal
-func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string, prop *grouptypes.MsgSubmitProposal) {
+func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string, prop *grouptypes.MsgSubmitProposal) error {
 	pid := strconv.Itoa(proposalId)
 
 	marshalProposal(t, prop)
 
-	helpers.SubmitGroupProposal(ctx, t, chain, config, accAddr, prop)
-	helpers.VoteGroupProposal(ctx, t, chain, config, pid, accAddr, grouptypes.VOTE_OPTION_YES.String(), metadata)
-	helpers.ExecGroupProposal(ctx, t, chain, config, accAddr, pid)
+	_, err := helpers.SubmitGroupProposal(ctx, t, chain, config, accAddr, prop)
+	if err != nil {
+		return err
+	}
+	_, err = helpers.VoteGroupProposal(ctx, t, chain, config, pid, accAddr, grouptypes.VOTE_OPTION_YES.String(), metadata)
+	if err != nil {
+		return err
+	}
+	_, err = helpers.ExecGroupProposal(ctx, t, chain, config, accAddr, pid)
+	if err != nil {
+		return err
+	}
 
 	proposalId = proposalId + 1
+	return nil
 }
 
 // createProposal creates a group proposal
