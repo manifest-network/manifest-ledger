@@ -41,9 +41,6 @@ func (ms msgServer) PayoutStakeholders(ctx context.Context, req *types.MsgPayout
 		return nil, err
 	}
 
-	if params.Inflation == nil {
-		return nil, types.ErrInflationParamsNotSet
-	}
 	if params.Inflation.AutomaticEnabled {
 		return nil, types.ErrManualMintingDisabled
 	}

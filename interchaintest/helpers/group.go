@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path"
+	"strconv"
 	"testing"
 
 	"github.com/cockroachdb/errors"
@@ -105,8 +106,35 @@ func exec(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *
 		return "", errors.WithMessage(err, "failed to get transaction")
 	}
 
-	// Check the transaction was successful
-	require.Equal(t, uint32(0x0), txResp.Code)
+	if txResp.Code != 0 {
+		return "", errors.Errorf("failed to execute group proposal: %s", txResp.RawLog)
+	}
+
+	// The transaction itself can be successful but the proposal can fail
+	// Check for proposal execution failure
+	var logs string
+	success := true
+	expectedProposalResult := strconv.Quote(group.PROPOSAL_EXECUTOR_RESULT_SUCCESS.String())
+	for _, event := range txResp.Events {
+		if event.GetType() != "cosmos.group.v1.EventExec" {
+			continue
+		}
+		for _, attr := range event.GetAttributes() {
+			switch attr.Key {
+			case "logs":
+				logs = attr.Value
+			case "result":
+				if attr.Value != expectedProposalResult {
+					success = false
+				}
+			}
+		}
+	}
+
+	// The proposal failed, return the logs
+	if !success {
+		return "", errors.Newf("failed to execute group proposal: %s", logs)
+	}
 
 	return txResp.TxHash, nil
 }
