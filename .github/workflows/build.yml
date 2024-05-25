@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: 1.22.2
+  GO_VERSION: 1.22.3
 
 jobs:
   build:
@@ -36,7 +36,10 @@ jobs:
         env:
           GOOS: ${{ matrix.targetos }}
           GOARCH: ${{ matrix.arch }}
-
+      - name: lint
+        run: make lint
+      - name: govulncheck
+        run: make govulncheck
       - name: Compile binary
         run: |
           go mod download

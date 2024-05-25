@@ -87,13 +87,13 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 	}
 }
 
-func (k *Keeper) GetShareHolders(ctx context.Context) []*types.StakeHolders {
+func (k *Keeper) GetShareHolders(ctx context.Context) ([]*types.StakeHolders, error) {
 	params, err := k.Params.Get(ctx)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return params.StakeHolders
+	return params.StakeHolders, nil
 }
 
 // IsManualMintingEnabled returns nil if inflation mint is 0% (disabled)
@@ -112,8 +112,11 @@ type StakeHolderPayout struct {
 }
 
 // Returns the amount of coins to be distributed to the holders
-func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin) []StakeHolderPayout {
-	sh := k.GetShareHolders(ctx)
+func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin) ([]StakeHolderPayout, error) {
+	sh, err := k.GetShareHolders(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	pairs := make([]StakeHolderPayout, 0, len(sh))
 
@@ -134,7 +137,7 @@ func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin)
 
 	}
 
-	return pairs
+	return pairs, nil
 }
 
 // PayoutStakeholders mints coins and sends them to the stakeholders.
@@ -142,7 +145,10 @@ func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin)
 // If it does, something is very wrong w/ the SDK. Any logic specific to auto minting
 // should be kept out of this to properly handle and return nil instead.
 func (k Keeper) PayoutStakeholders(ctx context.Context, c sdk.Coin) error {
-	pairs := k.CalculateShareHolderTokenPayout(ctx, c)
+	pairs, err := k.CalculateShareHolderTokenPayout(ctx, c)
+	if err != nil {
+		return err
+	}
 
 	if err := k.bankKeeper.MintCoins(ctx, types.ModuleName, sdk.NewCoins(c)); err != nil {
 		return err
@@ -164,15 +170,15 @@ func (k Keeper) PayoutStakeholders(ctx context.Context, c sdk.Coin) error {
 
 // BlockRewardsProvision Gets the amount of coins that are automatically minted every block
 // per the automatic inflation
-func (k Keeper) BlockRewardsProvision(ctx context.Context, denom string) sdk.Coin {
+func (k Keeper) BlockRewardsProvision(ctx context.Context, denom string) (sdk.Coin, error) {
 	mkParams, err := k.mintKeeper.Params.Get(ctx)
 	if err != nil {
-		panic(err)
+		return sdk.NewCoin(denom, sdkmath.ZeroInt()), err
 	}
 
 	params, err := k.Params.Get(ctx)
 	if err != nil {
-		panic(err)
+		return sdk.NewCoin(denom, sdkmath.ZeroInt()), err
 	}
 
 	amtPerYear := params.Inflation.YearlyAmount
@@ -180,11 +186,11 @@ func (k Keeper) BlockRewardsProvision(ctx context.Context, denom string) sdk.Coi
 
 	if blocksPerYear < 10 {
 		k.logger.Error("x/mint blocks per year param is too low", "blocks", blocksPerYear)
-		return sdk.NewCoin(denom, sdkmath.ZeroInt())
+		return sdk.NewCoin(denom, sdkmath.ZeroInt()), nil
 	}
 
 	div := amtPerYear / blocksPerYear
 
 	// return the amount of coins to be minted per block
-	return sdk.NewCoin(denom, sdkmath.NewIntFromUint64(div))
+	return sdk.NewCoin(denom, sdkmath.NewIntFromUint64(div)), nil
 }
