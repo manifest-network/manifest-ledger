@@ -307,5 +307,4 @@ func TestBurnCoins(t *testing.T) {
 			require.Equal(t, c.expected, f.App.BankKeeper.GetAllBalances(f.Ctx, acc))
 		})
 	}
-
 }
