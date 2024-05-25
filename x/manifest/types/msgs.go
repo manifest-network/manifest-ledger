@@ -1,6 +1,8 @@
 package types
 
 import (
+	fmt "fmt"
+
 	"cosmossdk.io/errors"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -118,6 +120,10 @@ func (msg *MsgBurnHeldBalance) GetSigners() []sdk.AccAddress {
 func (msg *MsgBurnHeldBalance) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Sender); err != nil {
 		return errors.Wrap(err, "invalid authority address")
+	}
+
+	if msg.BurnCoins.Len() == 0 {
+		return fmt.Errorf("burn coins cannot be empty")
 	}
 
 	return msg.BurnCoins.Validate()

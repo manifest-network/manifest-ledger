@@ -250,6 +250,7 @@ func TestBurnCoins(t *testing.T) {
 		initial  sdk.Coins
 		burn     sdk.Coins
 		expected sdk.Coins
+		address  string
 		success  bool
 	}
 
@@ -262,6 +263,13 @@ func TestBurnCoins(t *testing.T) {
 			initial:  sdk.NewCoins(),
 			burn:     sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(7))),
 			expected: sdk.NewCoins(),
+		},
+		{
+			name:     "fail; bad address",
+			initial:  sdk.NewCoins(),
+			burn:     sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(7))),
+			expected: sdk.NewCoins(),
+			address:  "xyz",
 		},
 		{
 			name:     "success; burn 1 token successfully",
@@ -283,6 +291,9 @@ func TestBurnCoins(t *testing.T) {
 		c := c
 		t.Run(c.name, func(t *testing.T) {
 			_, _, acc := testdata.KeyTestPubAddr()
+			if c.address == "" {
+				c.address = acc.String()
+			}
 
 			// setup initial balances for the new account
 			if len(c.initial) > 0 {
@@ -295,7 +306,7 @@ func TestBurnCoins(t *testing.T) {
 
 			// burn coins
 			_, err := ms.BurnHeldBalance(f.Ctx, &types.MsgBurnHeldBalance{
-				Sender:    acc.String(),
+				Sender:    c.address,
 				BurnCoins: c.burn,
 			})
 			if c.success {
