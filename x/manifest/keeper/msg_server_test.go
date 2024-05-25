@@ -235,3 +235,77 @@ func TestCalculatePayoutLogic(t *testing.T) {
 		}
 	}
 }
+
+func TestBurnCoins(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.ManifestKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	type tc struct {
+		name     string
+		initial  sdk.Coins
+		burn     sdk.Coins
+		expected sdk.Coins
+		success  bool
+	}
+
+	stake := sdk.NewCoin("stake", sdkmath.NewInt(100_000_000))
+	mfx := sdk.NewCoin("umfx", sdkmath.NewInt(100_000_000))
+
+	cases := []tc{
+		{
+			name:     "fail; not enough balance to burn",
+			initial:  sdk.NewCoins(),
+			burn:     sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(7))),
+			expected: sdk.NewCoins(),
+		},
+		{
+			name:     "success; burn 1 token successfully",
+			initial:  sdk.NewCoins(stake, mfx),
+			burn:     sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(7))),
+			expected: sdk.NewCoins(mfx, stake.SubAmount(sdkmath.NewInt(7))),
+			success:  true,
+		},
+		{
+			name:     "success; burn many tokens successfully",
+			initial:  sdk.NewCoins(stake, mfx),
+			burn:     sdk.NewCoins(sdk.NewCoin("umfx", sdkmath.NewInt(9)), sdk.NewCoin("stake", sdkmath.NewInt(7))),
+			expected: sdk.NewCoins(mfx.SubAmount(sdkmath.NewInt(9)), stake.SubAmount(sdkmath.NewInt(7))),
+			success:  true,
+		},
+	}
+
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			_, _, acc := testdata.KeyTestPubAddr()
+
+			// setup initial balances for the new account
+			if len(c.initial) > 0 {
+				require.NoError(t, f.App.BankKeeper.MintCoins(f.Ctx, "mint", c.initial))
+				require.NoError(t, f.App.BankKeeper.SendCoinsFromModuleToAccount(f.Ctx, "mint", acc, c.initial))
+			}
+
+			// validate initial balance
+			require.Equal(t, c.initial, f.App.BankKeeper.GetAllBalances(f.Ctx, acc))
+
+			// burn coins
+			_, err := ms.BurnHeldBalance(f.Ctx, &types.MsgBurnHeldBalance{
+				Sender:    acc.String(),
+				BurnCoins: c.burn,
+			})
+			if c.success {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+
+			require.Equal(t, c.expected, f.App.BankKeeper.GetAllBalances(f.Ctx, acc))
+		})
+	}
+
+}

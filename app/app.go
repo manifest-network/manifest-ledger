@@ -204,7 +204,7 @@ var maccPerms = map[string][]string{
 	ibcfeetypes.ModuleName:       nil,
 	icatypes.ModuleName:          nil,
 	tokenfactorytypes.ModuleName: {authtypes.Minter, authtypes.Burner},
-	manifesttypes.ModuleName:     {authtypes.Minter},
+	manifesttypes.ModuleName:     {authtypes.Minter, authtypes.Burner},
 }
 
 var (

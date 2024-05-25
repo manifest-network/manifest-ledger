@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
@@ -46,4 +47,18 @@ func (ms msgServer) PayoutStakeholders(ctx context.Context, req *types.MsgPayout
 	}
 
 	return nil, ms.k.PayoutStakeholders(ctx, req.Payout)
+}
+
+// BurnHeldBalance implements types.MsgServer.
+func (ms msgServer) BurnHeldBalance(ctx context.Context, msg *types.MsgBurnHeldBalance) (*types.MsgBurnHeldBalanceResponse, error) {
+	addr, err := sdk.AccAddressFromBech32(msg.Sender)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ms.k.bankKeeper.SendCoinsFromAccountToModule(ctx, addr, types.ModuleName, msg.BurnCoins); err != nil {
+		return nil, fmt.Errorf("not enough balance to burn %s: %w", msg.BurnCoins, err)
+	}
+
+	return &types.MsgBurnHeldBalanceResponse{}, ms.k.bankKeeper.BurnCoins(ctx, types.ModuleName, msg.BurnCoins)
 }
