@@ -84,3 +84,41 @@ func (msg *MsgPayoutStakeholders) Validate() error {
 
 	return msg.Payout.Validate()
 }
+
+var _ sdk.Msg = &MsgBurnHeldBalance{}
+
+func NewMsgBurnHeldBalance(
+	sender sdk.Address,
+	coins sdk.Coins,
+) *MsgBurnHeldBalance {
+	return &MsgBurnHeldBalance{
+		Sender:    sender.String(),
+		BurnCoins: coins,
+	}
+}
+
+// Route returns the name of the module
+func (msg MsgBurnHeldBalance) Route() string { return ModuleName }
+
+// Type returns the the action
+func (msg MsgBurnHeldBalance) Type() string { return "burn_coins" }
+
+// GetSignBytes implements the LegacyMsg interface.
+func (msg MsgBurnHeldBalance) GetSignBytes() []byte {
+	return sdk.MustSortJSON(amino.MustMarshalJSON(&msg))
+}
+
+// GetSigners returns the expected signers for the message.
+func (msg *MsgBurnHeldBalance) GetSigners() []sdk.AccAddress {
+	addr, _ := sdk.AccAddressFromBech32(msg.Sender)
+	return []sdk.AccAddress{addr}
+}
+
+// ValidateBasic does a sanity check on the provided data.
+func (msg *MsgBurnHeldBalance) Validate() error {
+	if _, err := sdk.AccAddressFromBech32(msg.Sender); err != nil {
+		return errors.Wrap(err, "invalid authority address")
+	}
+
+	return msg.BurnCoins.Validate()
+}

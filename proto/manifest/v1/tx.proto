@@ -21,6 +21,9 @@ service Msg {
 
   // PayoutStakeholders allows the authority to manually pay out stakeholders.
   rpc PayoutStakeholders(MsgPayoutStakeholders) returns (MsgPayoutStakeholdersResponse);
+
+  // BurnHeldBalance allows a tokenholder to burn coins they own.
+  rpc BurnHeldBalance(MsgBurnHeldBalance) returns (MsgBurnHeldBalanceResponse);
 }
 
 // MsgUpdateParams is the Msg/UpdateParams request type.
@@ -63,3 +66,23 @@ message MsgPayoutStakeholders {
 
 // MsgPayoutStakeholdersResponse defines the response structure for executing a MsgPayoutStakeholders message.
 message MsgPayoutStakeholdersResponse {}
+
+// MsgPayoutStakeholders is the Msg/BurnHeldBalance request type.
+message MsgBurnHeldBalance {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (gogoproto.equal) = false;
+
+  // sender is the address of the tokenholder.
+  string sender = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // burn_coins are the coins to be burned by the tokenholder.
+  repeated cosmos.base.v1beta1.Coin burn_coins = 2 [
+    (gogoproto.nullable)     = false,
+    (amino.dont_omitempty)   = true,
+    (amino.encoding)         = "legacy_coins",
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
+  ];
+}
+
+// MsgBurnHeldBalanceResponse defines the response structure for executing a MsgBurnHeldBalance message.
+message MsgBurnHeldBalanceResponse {}
