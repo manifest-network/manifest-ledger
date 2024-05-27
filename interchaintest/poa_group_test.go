@@ -19,7 +19,6 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	poatypes "github.com/strangelove-ventures/poa"
-	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
@@ -75,7 +74,7 @@ var (
 		Metadata: "policy metadata",
 	}
 
-	upgradeProposal = &upgradetypes.MsgSoftwareUpgrade{
+	upgradeProposal = upgradetypes.MsgSoftwareUpgrade{
 		Authority: groupAddr,
 		Plan: upgradetypes.Plan{
 			Name:   planName,
@@ -84,11 +83,11 @@ var (
 		},
 	}
 
-	cancelUpgradeProposal = &upgradetypes.MsgCancelUpgrade{
+	cancelUpgradeProposal = upgradetypes.MsgCancelUpgrade{
 		Authority: groupAddr,
 	}
 
-	manifestUpdateProposal = &manifesttypes.MsgUpdateParams{
+	manifestUpdateProposal = manifesttypes.MsgUpdateParams{
 		Authority: groupAddr,
 		Params: manifesttypes.Params{
 			StakeHolders: []*manifesttypes.StakeHolders{
@@ -126,22 +125,22 @@ var (
 		},
 	}
 
-	manifestPayoutProposal = &manifesttypes.MsgPayoutStakeholders{
+	manifestPayoutProposal = manifesttypes.MsgPayoutStakeholders{
 		Authority: groupAddr,
 		Payout:    sdk.NewInt64Coin(Denom, 50),
 	}
 
-	tfBurnProposal = &tokenfactorytypes.MsgBurn{
-		Sender: groupAddr,
-		Amount: sdk.NewInt64Coin(Denom, 25),
+	tfBurnProposal = manifesttypes.MsgBurnHeldBalance{
+		Sender:    groupAddr,
+		BurnCoins: sdk.NewCoins(sdk.NewInt64Coin(Denom, 50)),
 	}
 
-	poaDefaultParams = &poatypes.Params{
+	poaDefaultParams = poatypes.Params{
 		Admins:                 []string{groupAddr},
 		AllowValidatorSelfExit: true,
 	}
 
-	bankSendProposal = &banktypes.MsgSend{
+	bankSendProposal = banktypes.MsgSend{
 		FromAddress: groupAddr,
 		ToAddress:   accAddr,
 		Amount:      sdk.NewCoins(sdk.NewInt64Coin(Denom, 1)),
@@ -249,7 +248,7 @@ func testSoftwareUpgrade(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	require.NoError(t, err)
 	require.Equal(t, upgradeAuth, groupAddr)
 
-	upgradeProposalAny, err := types.NewAnyWithValue(upgradeProposal)
+	upgradeProposalAny, err := types.NewAnyWithValue(&upgradeProposal)
 	require.NoError(t, err)
 
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{upgradeProposalAny}, "Software Upgrade Proposal", "Upgrade the software to the latest version")
@@ -263,7 +262,7 @@ func testSoftwareUpgrade(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	require.Equal(t, planHeight, plan.Height)
 
 	// Cancel the upgrade
-	cancelUpgradeProposalAny, err := types.NewAnyWithValue(cancelUpgradeProposal)
+	cancelUpgradeProposalAny, err := types.NewAnyWithValue(&cancelUpgradeProposal)
 	require.NoError(t, err)
 
 	prop = createProposal(groupAddr, []string{accAddr}, []*types.Any{cancelUpgradeProposalAny}, "Cancel Upgrade Proposal", "Cancel the software upgrade")
@@ -307,7 +306,7 @@ func testManifestParamsUpdateWithInflation(t *testing.T, ctx context.Context, ch
 	// Verify the initial manifest params
 	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
 
-	manifestUpdateProposalAny, err := types.NewAnyWithValue(manifestUpdateProposal)
+	manifestUpdateProposalAny, err := types.NewAnyWithValue(&manifestUpdateProposal)
 	require.NoError(t, err)
 
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal", "Update the manifest params")
@@ -343,8 +342,10 @@ func testManifestParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cos
 	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
 }
 
+// testManifestStakeholdersPayout tests the submission, voting, and execution of a manifest stakeholders payout proposal.
+// The stakeholders are paid out and the newly minted tokens are burned
 func testManifestStakeholdersPayout(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
-	t.Log("\n===== TEST GROUP MANIFEST STAKEHOLDERS PAYOUT =====")
+	t.Log("\n===== TEST GROUP MANIFEST STAKEHOLDERS PAYOUT (MINT) & BURN =====")
 	// Verify the initial balances
 	accAddrInitialBal, err := chain.BankQueryBalance(ctx, accAddr, Denom)
 	require.NoError(t, err)
@@ -354,7 +355,7 @@ func testManifestStakeholdersPayout(t *testing.T, ctx context.Context, chain *co
 	require.NoError(t, err)
 	require.Equal(t, sdkmath.NewInt(0), groupAddrInitialBal)
 
-	manifestUpdateProposalAny, err := types.NewAnyWithValue(manifestUpdateProposal)
+	manifestUpdateProposalAny, err := types.NewAnyWithValue(&manifestUpdateProposal)
 	require.NoError(t, err)
 
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal", "Update the manifest params")
@@ -369,7 +370,7 @@ func testManifestStakeholdersPayout(t *testing.T, ctx context.Context, chain *co
 	require.Equal(t, resp.Params.StakeHolders[1].Address, acc4Addr)
 
 	// Stakeholders payout
-	manifestPayoutProposalAny, err := types.NewAnyWithValue(manifestPayoutProposal)
+	manifestPayoutProposalAny, err := types.NewAnyWithValue(&manifestPayoutProposal)
 	require.NoError(t, err)
 
 	prop = createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestPayoutProposalAny}, "Manifest Stakeholders Payout Proposal", "Payout the stakeholders")
@@ -385,46 +386,55 @@ func testManifestStakeholdersPayout(t *testing.T, ctx context.Context, chain *co
 	require.NoError(t, err)
 	require.Equal(t, sdkmath.NewInt(25), acc4AddrBal)
 
-	// TODO: Burn the funds when https://github.com/liftedinit/manifest-ledger/issues/63 is done
-	// It fails with "proposal execution failed on proposal 4, because of error message /osmosis.tokenfactory.v1beta1.MsgBurn at position 0: unauthorized account"
-	//// Burn the newly minted tokens from acc3 using a Group Proposal
-	//tfBurnProposalAcc3 := tfBurnProposal
-	//tfBurnProposalAcc3.BurnFromAddress = acc3Addr
-	//
-	//tfBurnProposalAny, err := types.NewAnyWithValue(tfBurnProposalAcc3)
-	//require.NoError(t, err)
-	//
-	//prop = createProposal(groupAddr, []string{accAddr}, []*types.Any{tfBurnProposalAny}, "Token Factory Burn Proposal", "Burn the newly minted tokens from acc3")
-	//err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	//require.NoError(t, err)
-	//
-	//// Burn the newly minted tokens from acc4 using a Group Proposal
-	//tfBurnProposalAcc4 := tfBurnProposal
-	//tfBurnProposalAcc4.BurnFromAddress = acc4Addr
-	//
-	//tfBurnProposalAny, err = types.NewAnyWithValue(tfBurnProposalAcc4)
-	//require.NoError(t, err)
-	//
-	//prop = createProposal(groupAddr, []string{accAddr}, []*types.Any{tfBurnProposalAny}, "Token Factory Burn Proposal", "Burn the newly minted tokens from acc4")
-	//err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	//require.NoError(t, err)
-	//
-	//a, err := helpers.QueryGroupProposal(ctx, t, chain, config, strconv.Itoa(proposalId-1))
-	//require.NoError(t, err)
-	//t.Log("Burn proposal acc4", a)
+	_, err = chain.BuildWallet(ctx, acc3Addr, acc3Mnemonic)
+	require.NoError(t, err)
+	_, err = chain.BuildWallet(ctx, acc4Addr, acc4Mnemonic)
+	require.NoError(t, err)
 
-	//// Verify the funds
+	// Send back the funds to the Group address
+	err = chain.SendFunds(ctx, acc3Addr, ibc.WalletAmount{
+		Address: groupAddr,
+		Denom:   Denom,
+		Amount:  sdkmath.NewInt(25),
+	})
+	require.NoError(t, err)
+
+	err = chain.SendFunds(ctx, acc4Addr, ibc.WalletAmount{
+		Address: groupAddr,
+		Denom:   Denom,
+		Amount:  sdkmath.NewInt(25),
+	})
+
+	// Verify the funds were sent
+	acc3AddrBal, err = chain.BankQueryBalance(ctx, acc3Addr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(0), acc3AddrBal)
+
+	acc4AddrBal, err = chain.BankQueryBalance(ctx, acc4Addr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(0), acc4AddrBal)
+
+	// Burn the newly minted tokens using a Group Proposal
+	tfBurnProposalAcc3 := tfBurnProposal
+	tfBurnProposalAny, err := types.NewAnyWithValue(&tfBurnProposalAcc3)
+	require.NoError(t, err)
+
+	prop = createProposal(groupAddr, []string{accAddr}, []*types.Any{tfBurnProposalAny}, "Token Factory Burn Proposal", "Burn the newly minted tokens")
+	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	require.NoError(t, err)
+
+	// Verify the funds
 	accAddrBal, err := chain.BankQueryBalance(ctx, accAddr, Denom)
 	require.NoError(t, err)
 	require.Equal(t, DefaultGenesisAmt, accAddrBal)
 
-	//acc3AddrBal, err = chain.BankQueryBalance(ctx, acc3Addr, Denom)
-	//require.NoError(t, err)
-	//require.Equal(t, sdkmath.NewInt(0), acc3AddrBal)
-	//
-	//acc4AddrBal, err = chain.BankQueryBalance(ctx, acc4Addr, Denom)
-	//require.NoError(t, err)
-	//require.Equal(t, sdkmath.NewInt(0), acc4AddrBal)
+	acc3AddrBal, err = chain.BankQueryBalance(ctx, acc3Addr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(0), acc3AddrBal)
+
+	acc4AddrBal, err = chain.BankQueryBalance(ctx, acc4Addr, Denom)
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(0), acc4AddrBal)
 
 	groupAddrBal, err := chain.BankQueryBalance(ctx, groupAddr, Denom)
 	require.NoError(t, err)
@@ -451,7 +461,7 @@ func testPOAParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cosmos.C
 	require.ErrorContains(t, err, poatypes.ErrMustProvideAtLeastOneAddress.Error())
 
 	// Verify the POA params are unchanged
-	checkPOAParams(ctx, t, chain, poaDefaultParams)
+	checkPOAParams(ctx, t, chain, &poaDefaultParams)
 }
 
 // testPOAParamsUpdate tests the submission, voting, and execution of a POA params update proposal
@@ -486,7 +496,7 @@ func testPOAParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	require.Equal(t, uint32(0x0), r.Code)
 
 	// Verify the POA params are reset
-	checkPOAParams(ctx, t, chain, poaDefaultParams)
+	checkPOAParams(ctx, t, chain, &poaDefaultParams)
 }
 
 // testBankSend tests the sending of funds from one account to another using a group proposal
@@ -516,7 +526,7 @@ func testBankSend(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 	require.Equal(t, sdkmath.NewInt(1), groupAddrBal)
 
 	// Send funds from groupAddr back to accAddr using a Group Proposal
-	bankSendProposalAny, err := types.NewAnyWithValue(bankSendProposal)
+	bankSendProposalAny, err := types.NewAnyWithValue(&bankSendProposal)
 	require.NoError(t, err)
 
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{bankSendProposalAny}, "Bank Send Proposal", "Send funds from groupAddr back to accAddr")
@@ -549,7 +559,7 @@ func testBankSendIllegal(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	require.Equal(t, DefaultGenesisAmt, acc2AddrBal)
 
 	// Send funds from groupAddr back to accAddr using a Group Proposal
-	bankSendProposalAny, err := types.NewAnyWithValue(newProp)
+	bankSendProposalAny, err := types.NewAnyWithValue(&newProp)
 	require.NoError(t, err)
 
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{bankSendProposalAny}, "Bank Send Proposal (invalid sender)", "Should not be executed")
@@ -569,7 +579,6 @@ func testBankSendIllegal(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 
 // resetManifestParams resets the manifest params back to the default
 func resetManifestParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
-	t.Log("DEFAULT MANIFEST PARAMS", manifestDefaultProposal)
 	manifestDefaultProposalAny, err := types.NewAnyWithValue(&manifestDefaultProposal)
 	require.NoError(t, err)
 
