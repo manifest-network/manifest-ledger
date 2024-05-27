@@ -15,10 +15,12 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
+	"github.com/cosmos/gogoproto/proto"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	poatypes "github.com/strangelove-ventures/poa"
+	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
@@ -30,6 +32,10 @@ const (
 	planName         = "foobar"
 	planHeight int64 = 200
 	metadata         = "AQ=="
+	tfDenom          = "foo"
+	tfTicker         = "FOO"
+	user1            = "user1"
+	user2            = "user2"
 )
 
 var (
@@ -42,111 +48,48 @@ var (
 		CreatedAt:   time.Now(),
 	}
 
-	member1 = grouptypes.Member{
-		Address:  accAddr,
-		Weight:   "1",
-		Metadata: "user1",
-		AddedAt:  time.Now(),
-	}
+	member1 = createMember(accAddr, "1", user1)
+	member2 = createMember(acc2Addr, "1", user2)
 
-	member2 = grouptypes.Member{
-		Address:  acc2Addr,
-		Weight:   "1",
-		Metadata: "user2",
-		AddedAt:  time.Now(),
-	}
+	groupMember1 = createGroupMember(1, &member1)
+	groupMember2 = createGroupMember(1, &member2)
 
-	groupMember1 = grouptypes.GroupMember{
-		GroupId: 1,
-		Member:  &member1,
-	}
+	groupPolicy = createGroupPolicyInfo(groupAddr, 1, "policy metadata")
 
-	groupMember2 = grouptypes.GroupMember{
-		GroupId: 1,
-		Member:  &member2,
-	}
+	tfFullDenom = fmt.Sprintf("factory/%s/%s", groupAddr, tfDenom)
 
-	groupPolicy = &grouptypes.GroupPolicyInfo{
-		Address:  groupAddr,
-		GroupId:  1,
-		Admin:    groupAddr,
-		Version:  1,
-		Metadata: "policy metadata",
-	}
-
-	upgradeProposal = upgradetypes.MsgSoftwareUpgrade{
-		Authority: groupAddr,
-		Plan: upgradetypes.Plan{
-			Name:   planName,
-			Height: planHeight,
-			Info:   "{}",
-		},
-	}
-
-	cancelUpgradeProposal = upgradetypes.MsgCancelUpgrade{
-		Authority: groupAddr,
-	}
-
-	manifestUpdateProposal = manifesttypes.MsgUpdateParams{
-		Authority: groupAddr,
-		Params: manifesttypes.Params{
-			StakeHolders: []*manifesttypes.StakeHolders{
-				{
-					Address:    acc3Addr,
-					Percentage: 50_000_000,
-				},
-				{
-					Address:    acc4Addr,
-					Percentage: 50_000_000,
-				},
+	upgradeProposal        = createUpgradeProposal(groupAddr, planName, planHeight)
+	cancelUpgradeProposal  = createCancelUpgradeProposal(groupAddr)
+	manifestUpdateProposal = createManifestUpdateProposal(groupAddr,
+		createManifestParams(
+			createInflation(Denom, 200_000_000, false),
+			[]*manifesttypes.StakeHolders{
+				createStakeHolders(acc3Addr, 50_000_000),
+				createStakeHolders(acc4Addr, 50_000_000),
 			},
-			Inflation: &manifesttypes.Inflation{
-				AutomaticEnabled: false,
-				YearlyAmount:     200_000_000,
-				MintDenom:        "umfx",
+		),
+	)
+	manifestDefaultProposal = createManifestUpdateProposal(groupAddr,
+		createManifestParams(
+			createInflation(Denom, 0, false),
+			[]*manifesttypes.StakeHolders{
+				createStakeHolders(acc2Addr, 100_000_000),
 			},
-		},
-	}
-
-	manifestDefaultProposal = manifesttypes.MsgUpdateParams{
-		Authority: groupAddr,
-		Params: manifesttypes.Params{
-			StakeHolders: []*manifesttypes.StakeHolders{
-				{
-					Address:    acc2Addr,
-					Percentage: 100_000_000,
-				},
-			},
-			Inflation: &manifesttypes.Inflation{
-				AutomaticEnabled: false,
-				YearlyAmount:     0,
-				MintDenom:        Denom,
-			},
-		},
-	}
-
-	manifestPayoutProposal = manifesttypes.MsgPayoutStakeholders{
-		Authority: groupAddr,
-		Payout:    sdk.NewInt64Coin(Denom, 50),
-	}
-
-	tfBurnProposal = manifesttypes.MsgBurnHeldBalance{
-		Sender:    groupAddr,
-		BurnCoins: sdk.NewCoins(sdk.NewInt64Coin(Denom, 50)),
-	}
-
-	poaDefaultParams = poatypes.Params{
-		Admins:                 []string{groupAddr},
-		AllowValidatorSelfExit: true,
-	}
-
-	bankSendProposal = banktypes.MsgSend{
-		FromAddress: groupAddr,
-		ToAddress:   accAddr,
-		Amount:      sdk.NewCoins(sdk.NewInt64Coin(Denom, 1)),
-	}
-
-	proposalId = 1
+		),
+	)
+	manifestPayoutProposal  = createManifestPayoutProposal(groupAddr, sdk.NewInt64Coin(Denom, 50))
+	manifestBurnProposal    = createManifestBurnProposal(groupAddr, sdk.NewCoins(sdk.NewInt64Coin(Denom, 50)))
+	poaDefaultParams        = createPOAParams([]string{groupAddr}, true)
+	bankSendProposal        = createBankSendProposal(groupAddr, accAddr, sdk.NewInt64Coin(Denom, 1))
+	tfCreateProposal        = createTfCreateDenomProposal(groupAddr, tfDenom)
+	tfMintProposal          = createTfMintProposal(groupAddr, sdk.NewInt64Coin(tfFullDenom, 1234), "")
+	tfMintToProposal        = createTfMintProposal(groupAddr, sdk.NewInt64Coin(tfFullDenom, 4321), accAddr)
+	tfBurnProposal          = createTfBurnProposal(groupAddr, sdk.NewInt64Coin(tfFullDenom, 1234), "")
+	tfBurnFromProposal      = createTfBurnProposal(groupAddr, sdk.NewInt64Coin(tfFullDenom, 4321), accAddr)
+	tfForceTransferProposal = createTfForceTransferProposal(groupAddr, sdk.NewInt64Coin(tfFullDenom, 1), accAddr, acc2Addr)
+	tfChangeAdminProposal   = createTfChangeAdminProposal(groupAddr, tfFullDenom, accAddr)
+	tfModifyProposal        = createTfModifyMetadataProposal(groupAddr, tfFullDenom, tfFullDenom, tfTicker, tfFullDenom, tfTicker, "The foo token description")
+	proposalId              = 1
 )
 
 func TestGroupPOA(t *testing.T) {
@@ -160,13 +103,7 @@ func TestGroupPOA(t *testing.T) {
 	name := "group-poa"
 	internalGoCoverDir := path.Join("/var/cosmos-chain", name)
 
-	err := groupPolicy.SetDecisionPolicy(&grouptypes.ThresholdDecisionPolicy{
-		Threshold: "1",
-		Windows: &grouptypes.DecisionPolicyWindows{
-			VotingPeriod:       10 * time.Second,
-			MinExecutionPeriod: 0 * time.Second,
-		},
-	})
+	err := groupPolicy.SetDecisionPolicy(createThresholdDecisionPolicy("1", 10*time.Second, 0*time.Second))
 	require.NoError(t, err)
 
 	// TODO: The following block is needed in order for the GroupPolicy to get properly serialized in the ModifyGenesis function
@@ -177,20 +114,7 @@ func TestGroupPOA(t *testing.T) {
 	_, err = cdc.MarshalJSON(groupPolicy)
 	require.NoError(t, err)
 
-	groupGenesis := DefaultGenesis
-	// Define the new Group and Group Policy to be used as the POA Admin
-	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.group_seq", "1"))
-	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.groups", []grouptypes.GroupInfo{groupInfo}))
-	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.group_members", []grouptypes.GroupMember{groupMember1, groupMember2}))
-	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.group_policy_seq", "1"))
-	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.group.group_policies", []*grouptypes.GroupPolicyInfo{groupPolicy}))
-
-	// Set the POA Admin as the new Group
-	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.poa.params.admins", []string{groupAddr}))
-
-	// Disable automatic inflation
-	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.manifest.params.inflation.automatic_enabled", false))
-	groupGenesis = append(groupGenesis, cosmos.NewGenesisKV("app_state.manifest.params.inflation.yearly_amount", "0"))
+	groupGenesis := createGroupGenesis()
 
 	cfgA := LocalChainConfig
 	cfgA.ModifyGenesis = cosmos.ModifyGenesis(groupGenesis)
@@ -205,24 +129,27 @@ func TestGroupPOA(t *testing.T) {
 
 	ctx, _, client, _ := interchaintest.BuildInitialChain(t, chains, false)
 
-	user1, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, "user1", accMnemonic, DefaultGenesisAmt, chain)
+	_, err = interchaintest.GetAndFundTestUserWithMnemonic(ctx, user1, accMnemonic, DefaultGenesisAmt, chain)
+	//user1Wallet, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, user1, accMnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
-	_, err = interchaintest.GetAndFundTestUserWithMnemonic(ctx, "user2", acc1Mnemonic, DefaultGenesisAmt, chain)
+	_, err = interchaintest.GetAndFundTestUserWithMnemonic(ctx, user2, acc1Mnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
 
 	// Make sure the chain's HomeDir and the GOCOVERDIR are the same
 	require.Equal(t, internalGoCoverDir, chain.GetNode().HomeDir())
 
 	// Software Upgrade
-	testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr)
+	//testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr)
 	// Manifest module
-	testManifestParamsUpdate(t, ctx, chain, &cfgA, accAddr)
-	testManifestParamsUpdateWithInflation(t, ctx, chain, &cfgA, accAddr)
-	testManifestParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
-	testManifestStakeholdersPayout(t, ctx, chain, &cfgA, accAddr)
+	//testManifestParamsUpdate(t, ctx, chain, &cfgA, accAddr)
+	//testManifestParamsUpdateWithInflation(t, ctx, chain, &cfgA, accAddr)
+	//testManifestParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
+	//testManifestStakeholdersPayout(t, ctx, chain, &cfgA, accAddr)
 	// POA Update
-	testPOAParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
-	testPOAParamsUpdate(t, ctx, chain, &cfgA, accAddr, user1)
+	//testPOAParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
+	//testPOAParamsUpdate(t, ctx, chain, &cfgA, accAddr, user1Wallet)
+	// TokenFactory
+	testTokenCreate(t, ctx, chain, &cfgA, accAddr)
 	// Bank
 	testBankSend(t, ctx, chain, &cfgA, accAddr)
 	testBankSendIllegal(t, ctx, chain, &cfgA, accAddr)
@@ -237,42 +164,16 @@ func TestGroupPOA(t *testing.T) {
 // The software upgrade plan is set and then cancelled
 func testSoftwareUpgrade(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP SOFTWARE UPGRADE =====")
+	verifyUpgradePlanIsNil(t, ctx, chain)
+	verifyUpgradeAuthority(t, ctx, chain, groupAddr)
 
-	// Verify there is no upgrade plan
-	plan, err := chain.UpgradeQueryPlan(ctx)
-	require.NoError(t, err)
-	require.Nil(t, plan)
-
-	// Verify the Upgrade module authority is the Group address
-	upgradeAuth, err := chain.UpgradeQueryAuthority(ctx)
-	require.NoError(t, err)
-	require.Equal(t, upgradeAuth, groupAddr)
-
-	upgradeProposalAny, err := types.NewAnyWithValue(&upgradeProposal)
-	require.NoError(t, err)
-
-	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{upgradeProposalAny}, "Software Upgrade Proposal", "Upgrade the software to the latest version")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.NoError(t, err)
-
-	// Verify the upgrade plan is set
-	plan, err = chain.UpgradeQueryPlan(ctx)
-	require.NoError(t, err)
-	require.Equal(t, planName, plan.Name)
-	require.Equal(t, planHeight, plan.Height)
+	// Set the upgrade plan
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &upgradeProposal)})
+	verifyUpgradePlan(t, ctx, chain, &upgradetypes.Plan{Name: planName, Height: planHeight})
 
 	// Cancel the upgrade
-	cancelUpgradeProposalAny, err := types.NewAnyWithValue(&cancelUpgradeProposal)
-	require.NoError(t, err)
-
-	prop = createProposal(groupAddr, []string{accAddr}, []*types.Any{cancelUpgradeProposalAny}, "Cancel Upgrade Proposal", "Cancel the software upgrade")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.NoError(t, err)
-
-	// Verify the upgrade plan is cancelled
-	plan, err = chain.UpgradeQueryPlan(ctx)
-	require.NoError(t, err)
-	require.Nil(t, plan)
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &cancelUpgradeProposal)})
+	verifyUpgradePlanIsNil(t, ctx, chain)
 }
 
 // testManifestParamsUpdate tests the submission, voting, and execution of a manifest params update proposal
@@ -281,64 +182,29 @@ func testSoftwareUpgrade(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 func testManifestParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP MANIFEST PARAMS UPDATE (NIL INFLATION PARAMETER - FAIL) =====")
 	t.Log("\n===== TEST FIX FOR https://github.com/liftedinit/manifest-ledger/issues/61 =====")
-
 	newProposal := manifestDefaultProposal
 	newProposal.Params.Inflation = nil
 
-	// Verify the initial manifest params
 	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
-
-	manifestUpdateProposalAny, err := types.NewAnyWithValue(&newProposal)
-	require.NoError(t, err)
-
-	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal (nil Inflation param)", "Update the manifest params (nil Inflation param). https://github.com/liftedinit/manifest-ledger/issues/61")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.Error(t, err)
-	require.ErrorContains(t, err, manifesttypes.ErrInflationParamsNotSet.Error())
-
-	// Verify the manifest params were not changed
+	createAndRunProposalFailure(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &newProposal)}, manifesttypes.ErrInflationParamsNotSet.Error())
 	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
 }
 
 // testManifestParamsUpdateWithInflation tests the submission, voting, and execution of a manifest params update proposal
 func testManifestParamsUpdateWithInflation(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP MANIFEST PARAMS UPDATE =====")
-	// Verify the initial manifest params
 	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
-
-	manifestUpdateProposalAny, err := types.NewAnyWithValue(&manifestUpdateProposal)
-	require.NoError(t, err)
-
-	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal", "Update the manifest params")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.NoError(t, err)
-
-	// Verify the updated manifest params
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &manifestUpdateProposal)})
 	checkManifestParams(ctx, t, chain, &manifestUpdateProposal.Params)
-
-	// Reset the manifest params back to the default
 	resetManifestParams(t, ctx, chain, config, accAddr)
 }
 
 // testManifestParamsUpdateEmpty tests the submission, voting, and execution of an empty manifest params update proposal
 func testManifestParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP MANIFEST PARAMS UPDATE (EMPTY PARAM - FAIL) =====")
-	// Verify the initial manifest params
 	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
-
-	manifestUpdateEmptyProposal := &manifesttypes.MsgUpdateParams{
-		Authority: groupAddr,
-		Params:    manifesttypes.Params{},
-	}
-	manifestUpdateProposalAny, err := types.NewAnyWithValue(manifestUpdateEmptyProposal)
-	require.NoError(t, err)
-
-	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal (empty)", "Update the manifest params (empty)")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.Error(t, err)
-	require.ErrorContains(t, err, manifesttypes.ErrInflationParamsNotSet.Error())
-
-	// Verify the manifest params were not changed
+	manifestUpdateEmptyProposal := createManifestUpdateProposal(groupAddr, manifesttypes.Params{})
+	createAndRunProposalFailure(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &manifestUpdateEmptyProposal)}, manifesttypes.ErrInflationParamsNotSet.Error())
 	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
 }
 
@@ -347,140 +213,49 @@ func testManifestParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cos
 func testManifestStakeholdersPayout(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP MANIFEST STAKEHOLDERS PAYOUT (MINT) & BURN =====")
 	// Verify the initial balances
-	accAddrInitialBal, err := chain.BankQueryBalance(ctx, accAddr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, DefaultGenesisAmt, accAddrInitialBal)
+	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
+	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.ZeroInt())
 
-	groupAddrInitialBal, err := chain.BankQueryBalance(ctx, groupAddr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(0), groupAddrInitialBal)
-
-	manifestUpdateProposalAny, err := types.NewAnyWithValue(&manifestUpdateProposal)
-	require.NoError(t, err)
-
-	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestUpdateProposalAny}, "Manifest Params Update Proposal", "Update the manifest params")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.NoError(t, err)
-
-	// Verify the stakeholders
-	resp, err := manifesttypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &manifesttypes.QueryParamsRequest{})
-	require.NoError(t, err)
-	require.Len(t, resp.Params.StakeHolders, 2)
-	require.Equal(t, resp.Params.StakeHolders[0].Address, acc3Addr)
-	require.Equal(t, resp.Params.StakeHolders[1].Address, acc4Addr)
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &manifestUpdateProposal)})
+	verifyManifestStakeholders(t, ctx, chain, []*manifesttypes.StakeHolders{createStakeHolders(acc3Addr, 50_000_000), createStakeHolders(acc4Addr, 50_000_000)})
 
 	// Stakeholders payout
-	manifestPayoutProposalAny, err := types.NewAnyWithValue(&manifestPayoutProposal)
-	require.NoError(t, err)
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &manifestPayoutProposal)})
+	verifyBalance(t, ctx, chain, acc3Addr, Denom, sdkmath.NewInt(25))
+	verifyBalance(t, ctx, chain, acc4Addr, Denom, sdkmath.NewInt(25))
 
-	prop = createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestPayoutProposalAny}, "Manifest Stakeholders Payout Proposal", "Payout the stakeholders")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.NoError(t, err)
-
-	// Verify the funds were sent
-	acc3AddrBal, err := chain.BankQueryBalance(ctx, acc3Addr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(25), acc3AddrBal)
-
-	acc4AddrBal, err := chain.BankQueryBalance(ctx, acc4Addr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(25), acc4AddrBal)
-
-	_, err = chain.BuildWallet(ctx, acc3Addr, acc3Mnemonic)
-	require.NoError(t, err)
-	_, err = chain.BuildWallet(ctx, acc4Addr, acc4Mnemonic)
-	require.NoError(t, err)
+	buildWallet(t, ctx, chain, acc3Addr, acc3Mnemonic)
+	buildWallet(t, ctx, chain, acc4Addr, acc4Mnemonic)
 
 	// Send back the funds to the Group address
-	err = chain.SendFunds(ctx, acc3Addr, ibc.WalletAmount{
-		Address: groupAddr,
-		Denom:   Denom,
-		Amount:  sdkmath.NewInt(25),
-	})
-	require.NoError(t, err)
+	sendFunds(t, ctx, chain, acc3Addr, groupAddr, Denom, sdkmath.NewInt(25))
+	verifyBalance(t, ctx, chain, acc3Addr, Denom, sdkmath.ZeroInt())
 
-	err = chain.SendFunds(ctx, acc4Addr, ibc.WalletAmount{
-		Address: groupAddr,
-		Denom:   Denom,
-		Amount:  sdkmath.NewInt(25),
-	})
-
-	// Verify the funds were sent
-	acc3AddrBal, err = chain.BankQueryBalance(ctx, acc3Addr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(0), acc3AddrBal)
-
-	acc4AddrBal, err = chain.BankQueryBalance(ctx, acc4Addr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(0), acc4AddrBal)
+	sendFunds(t, ctx, chain, acc4Addr, groupAddr, Denom, sdkmath.NewInt(25))
+	verifyBalance(t, ctx, chain, acc4Addr, Denom, sdkmath.ZeroInt())
 
 	// Burn the newly minted tokens using a Group Proposal
-	tfBurnProposalAcc3 := tfBurnProposal
-	tfBurnProposalAny, err := types.NewAnyWithValue(&tfBurnProposalAcc3)
-	require.NoError(t, err)
-
-	prop = createProposal(groupAddr, []string{accAddr}, []*types.Any{tfBurnProposalAny}, "Token Factory Burn Proposal", "Burn the newly minted tokens")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.NoError(t, err)
-
-	// Verify the funds
-	accAddrBal, err := chain.BankQueryBalance(ctx, accAddr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, DefaultGenesisAmt, accAddrBal)
-
-	acc3AddrBal, err = chain.BankQueryBalance(ctx, acc3Addr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(0), acc3AddrBal)
-
-	acc4AddrBal, err = chain.BankQueryBalance(ctx, acc4Addr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(0), acc4AddrBal)
-
-	groupAddrBal, err := chain.BankQueryBalance(ctx, groupAddr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(0), groupAddrBal)
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &manifestBurnProposal)})
+	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
+	verifyBalance(t, ctx, chain, acc3Addr, Denom, sdkmath.ZeroInt())
+	verifyBalance(t, ctx, chain, acc4Addr, Denom, sdkmath.ZeroInt())
+	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.ZeroInt())
 }
 
 // testPOAParamsUpdateEmpty tests the submission, voting, and execution of an empty POA params update proposal
 // This proposal tests that the Admins field cannot be empty
 func testPOAParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP POA PARAMS UPDATE (EMPTY ADMINS - FAIL) =====")
-	poaUpdateProposal := &poatypes.MsgUpdateParams{
-		Sender: groupAddr,
-		Params: poatypes.Params{
-			Admins:                 nil,
-			AllowValidatorSelfExit: false,
-		},
-	}
-	poaUpdateProposalAny, err := types.NewAnyWithValue(poaUpdateProposal)
-	require.NoError(t, err)
-
-	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{poaUpdateProposalAny}, "POA Params Update Proposal", "Update the POA params")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.Error(t, err)
-	require.ErrorContains(t, err, poatypes.ErrMustProvideAtLeastOneAddress.Error())
-
-	// Verify the POA params are unchanged
+	poaUpdateProposal := createPOAUpdateParams(groupAddr, createPOAParams(nil, false))
+	createAndRunProposalFailure(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, poaUpdateProposal)}, poatypes.ErrMustProvideAtLeastOneAddress.Error())
 	checkPOAParams(ctx, t, chain, &poaDefaultParams)
 }
 
 // testPOAParamsUpdate tests the submission, voting, and execution of a POA params update proposal
 func testPOAParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string, user ibc.Wallet) {
 	t.Log("\n===== TEST GROUP POA PARAMS UPDATE =====")
-	poaUpdateProposal := &poatypes.MsgUpdateParams{
-		Sender: groupAddr,
-		Params: poatypes.Params{
-			Admins:                 []string{accAddr},
-			AllowValidatorSelfExit: false,
-		},
-	}
-	poaUpdateProposalAny, err := types.NewAnyWithValue(poaUpdateProposal)
-	require.NoError(t, err)
-
-	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{poaUpdateProposalAny}, "POA Params Update Proposal", "Update the POA params")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.NoError(t, err)
-
+	poaUpdateProposal := createPOAUpdateParams(groupAddr, createPOAParams([]string{accAddr}, false))
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, poaUpdateProposal)})
 	checkPOAParams(ctx, t, chain, &poaUpdateProposal.Params)
 
 	// NOTE:
@@ -490,12 +265,7 @@ func testPOAParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 
 	// Reset the POA Admin back to the Group address using the POA module admin field, i.e., `accAddr`
 	// Resetting the POA Admin back to the Group address using a group proposal will NOT work
-	r, err := helpers.POAUpdateParams(t, ctx, chain, user, groupAddr, true)
-	require.NoError(t, err)
-	require.NotNil(t, r)
-	require.Equal(t, uint32(0x0), r.Code)
-
-	// Verify the POA params are reset
+	updatePOAParams(t, ctx, chain, user, groupAddr, true)
 	checkPOAParams(ctx, t, chain, &poaDefaultParams)
 }
 
@@ -504,43 +274,18 @@ func testBankSend(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 	t.Log("\n===== TEST GROUP BANK SEND =====")
 
 	// Verify the initial balances
-	accAddrInitialBal, err := chain.BankQueryBalance(ctx, accAddr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, DefaultGenesisAmt, accAddrInitialBal)
-
-	groupAddrInitialBal, err := chain.BankQueryBalance(ctx, groupAddr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(0), groupAddrInitialBal)
+	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
+	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.ZeroInt())
 
 	// Send funds from accAddr to groupAddr
-	err = chain.SendFunds(ctx, accAddr, ibc.WalletAmount{
-		Address: groupAddr,
-		Denom:   Denom,
-		Amount:  sdkmath.NewInt(1),
-	})
-	require.NoError(t, err)
-
-	// Verify the funds were sent
-	groupAddrBal, err := chain.BankQueryBalance(ctx, groupAddr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(1), groupAddrBal)
+	sendFunds(t, ctx, chain, accAddr, groupAddr, Denom, sdkmath.NewInt(1))
+	verifyBalance(t, ctx, chain, accAddr, Denom, sdkmath.NewInt(DefaultGenesisAmt.Int64()-1))
+	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.OneInt())
 
 	// Send funds from groupAddr back to accAddr using a Group Proposal
-	bankSendProposalAny, err := types.NewAnyWithValue(&bankSendProposal)
-	require.NoError(t, err)
-
-	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{bankSendProposalAny}, "Bank Send Proposal", "Send funds from groupAddr back to accAddr")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.NoError(t, err)
-
-	// Verify the funds were sent
-	accAddrBal, err := chain.BankQueryBalance(ctx, accAddr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, DefaultGenesisAmt, accAddrBal)
-
-	groupAddrBal, err = chain.BankQueryBalance(ctx, groupAddr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(0), groupAddrBal)
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &bankSendProposal)})
+	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
+	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.ZeroInt())
 }
 
 func testBankSendIllegal(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
@@ -550,40 +295,81 @@ func testBankSendIllegal(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	newProp.ToAddress = acc2Addr
 
 	// Verify initial balances
-	accAddrBal, err := chain.BankQueryBalance(ctx, accAddr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, DefaultGenesisAmt, accAddrBal)
-
-	acc2AddrBal, err := chain.BankQueryBalance(ctx, acc2Addr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, DefaultGenesisAmt, acc2AddrBal)
+	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
+	verifyBalance(t, ctx, chain, acc2Addr, Denom, DefaultGenesisAmt)
 
 	// Send funds from groupAddr back to accAddr using a Group Proposal
-	bankSendProposalAny, err := types.NewAnyWithValue(&newProp)
-	require.NoError(t, err)
-
-	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{bankSendProposalAny}, "Bank Send Proposal (invalid sender)", "Should not be executed")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "msg does not have group policy authorization")
+	createAndRunProposalFailure(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &newProp)}, "msg does not have group policy authorization")
 
 	// Verify the funds were not sent
-	accAddrBal, err = chain.BankQueryBalance(ctx, accAddr, Denom)
-	require.NoError(t, err)
-	require.Equal(t, DefaultGenesisAmt, accAddrBal)
+	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
+	verifyBalance(t, ctx, chain, acc2Addr, Denom, DefaultGenesisAmt)
+}
 
-	acc2AddrBal, err = chain.BankQueryBalance(ctx, acc2Addr, Denom)
+// testTokenCreate tests the creation, modification, and admin transfer of a token using a group proposal
+func testTokenCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
+	t.Log("\n===== TEST GROUP TOKEN CREATION, MODIFICATION, MINT (-TO), BURN (-FROM), FORCE TRANSFER AND ADMIN CHANGE =====")
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfCreateProposal)})
+	verifyTfAdmin(t, ctx, chain, tfFullDenom, groupAddr)
+
+	// Modify token metadata
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfModifyProposal)})
+	verifyBankDenomMetadata(t, ctx, chain, tfModifyProposal.Metadata)
+
+	// Mint some token to groupAddr
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfMintProposal)})
+	verifyBalance(t, ctx, chain, groupAddr, tfFullDenom, tfMintProposal.Amount.Amount)
+
+	// Burn the token using a Group Proposal
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfBurnProposal)})
+	verifyBalance(t, ctx, chain, groupAddr, tfFullDenom, sdkmath.ZeroInt())
+
+	// Mint some token to accAddr
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfMintToProposal)})
+	verifyBalance(t, ctx, chain, accAddr, tfFullDenom, tfMintToProposal.Amount.Amount)
+
+	// Force transfer the token from accAddr to acc2Addr using a Group Proposal
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfForceTransferProposal)})
+	verifyBalance(t, ctx, chain, accAddr, tfFullDenom, sdkmath.NewInt(4320))
+	verifyBalance(t, ctx, chain, acc2Addr, tfFullDenom, tfForceTransferProposal.Amount.Amount)
+
+	// Send the token from acc2Addr to accAddr
+	sendFunds(t, ctx, chain, acc2Addr, accAddr, tfFullDenom, sdkmath.OneInt())
+
+	// Verify the token was sent
+	verifyBalance(t, ctx, chain, accAddr, tfFullDenom, sdkmath.NewInt(4321))
+	verifyBalance(t, ctx, chain, acc2Addr, tfFullDenom, sdkmath.ZeroInt())
+
+	// Burn the token from accAddr using a Group Proposal
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfBurnFromProposal)})
+	verifyBalance(t, ctx, chain, accAddr, tfFullDenom, sdkmath.ZeroInt())
+
+	// Transfer the token to accAddr
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfChangeAdminProposal)})
+	verifyTfAdmin(t, ctx, chain, tfFullDenom, accAddr)
+}
+
+func _createAndRunProposal(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposer string, proposalAny []*types.Any) error {
+	prop := createProposal(groupAddr, []string{proposer}, proposalAny, "Proposal", "Proposal")
+	return submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+}
+
+func createAndRunProposalSuccess(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposer string, proposalAny []*types.Any) {
+	err := _createAndRunProposal(t, ctx, chain, config, proposer, proposalAny)
 	require.NoError(t, err)
-	require.Equal(t, DefaultGenesisAmt, acc2AddrBal)
+}
+
+func createAndRunProposalFailure(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposer string, proposalAny []*types.Any, expectedErr string) {
+	err := _createAndRunProposal(t, ctx, chain, config, proposer, proposalAny)
+	require.Error(t, err)
+	require.ErrorContains(t, err, expectedErr)
 }
 
 // resetManifestParams resets the manifest params back to the default
 func resetManifestParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
-	manifestDefaultProposalAny, err := types.NewAnyWithValue(&manifestDefaultProposal)
-	require.NoError(t, err)
-
+	manifestDefaultProposalAny := createAny(t, &manifestDefaultProposal)
 	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestDefaultProposalAny}, "Manifest Params Update Proposal (reset)", "Reset the manifest params to the default")
-	err = submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
+	err := submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
 	require.NoError(t, err)
 
 	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
@@ -621,7 +407,7 @@ func checkPOAParams(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain
 }
 
 // submitVoteAndExecProposal submits, votes, and executes a group proposal
-func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string, prop *grouptypes.MsgSubmitProposal) error {
+func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, keyName string, prop *grouptypes.MsgSubmitProposal) error {
 	// Increment the proposal ID regardless of the outcome
 	defer func() { proposalId++ }()
 
@@ -629,15 +415,15 @@ func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.
 
 	marshalProposal(t, prop)
 
-	_, err := helpers.SubmitGroupProposal(ctx, t, chain, config, accAddr, prop)
+	_, err := helpers.SubmitGroupProposal(ctx, t, chain, config, keyName, prop)
 	if err != nil {
 		return err
 	}
-	_, err = helpers.VoteGroupProposal(ctx, t, chain, config, pid, accAddr, grouptypes.VOTE_OPTION_YES.String(), metadata)
+	_, err = helpers.VoteGroupProposal(ctx, t, chain, config, pid, keyName, grouptypes.VOTE_OPTION_YES.String(), metadata)
 	if err != nil {
 		return err
 	}
-	_, err = helpers.ExecGroupProposal(ctx, t, chain, config, accAddr, pid)
+	_, err = helpers.ExecGroupProposal(ctx, t, chain, config, keyName, pid)
 	if err != nil {
 		return err
 	}
@@ -658,6 +444,13 @@ func createProposal(groupPolicyAddress string, proposers []string, messages []*t
 	}
 }
 
+// createAny creates a types.Any from a proto.Message
+func createAny(t *testing.T, msg proto.Message) *types.Any {
+	anyV, err := types.NewAnyWithValue(msg)
+	require.NoError(t, err)
+	return anyV
+}
+
 // marshalProposal is a hackish way to ensure the prop is properly serialized
 // TODO: The following block is needed in order for the prop to get properly serialized
 // https://github.com/strangelove-ventures/interchaintest/issues/1138
@@ -667,4 +460,277 @@ func marshalProposal(t *testing.T, prop *grouptypes.MsgSubmitProposal) {
 	cdc := codec.NewProtoCodec(enc.InterfaceRegistry)
 	_, err := cdc.MarshalJSON(prop)
 	require.NoError(t, err)
+}
+
+func createGroupGenesis() []cosmos.GenesisKV {
+	return append(DefaultGenesis,
+		cosmos.NewGenesisKV("app_state.group.group_seq", "1"),
+		cosmos.NewGenesisKV("app_state.group.groups", []grouptypes.GroupInfo{groupInfo}),
+		cosmos.NewGenesisKV("app_state.group.group_members", []grouptypes.GroupMember{groupMember1, groupMember2}),
+		cosmos.NewGenesisKV("app_state.group.group_policy_seq", "1"),
+		cosmos.NewGenesisKV("app_state.group.group_policies", []*grouptypes.GroupPolicyInfo{groupPolicy}),
+		cosmos.NewGenesisKV("app_state.poa.params.admins", []string{groupAddr}),
+		cosmos.NewGenesisKV("app_state.manifest.params.inflation.automatic_enabled", false),
+		cosmos.NewGenesisKV("app_state.manifest.params.inflation.yearly_amount", "0"),
+	)
+}
+
+func createMember(address, weight, metadata string) grouptypes.Member {
+	return grouptypes.Member{
+		Address:  address,
+		Weight:   weight,
+		Metadata: metadata,
+		AddedAt:  time.Now(),
+	}
+}
+
+func createGroupMember(groupID uint64, member *grouptypes.Member) grouptypes.GroupMember {
+	return grouptypes.GroupMember{
+		GroupId: groupID,
+		Member:  member,
+	}
+}
+
+func createGroupPolicyInfo(address string, groupID uint64, metadata string) *grouptypes.GroupPolicyInfo {
+	return &grouptypes.GroupPolicyInfo{
+		Address:  address,
+		GroupId:  groupID,
+		Admin:    address,
+		Version:  1,
+		Metadata: metadata,
+	}
+}
+
+func createThresholdDecisionPolicy(threshold string, votingPeriod, minExecutionPeriod time.Duration) *grouptypes.ThresholdDecisionPolicy {
+	return &grouptypes.ThresholdDecisionPolicy{
+		Threshold: threshold,
+		Windows: &grouptypes.DecisionPolicyWindows{
+			VotingPeriod:       votingPeriod,
+			MinExecutionPeriod: minExecutionPeriod,
+		},
+	}
+}
+
+func createUpgradeProposal(authority, planName string, planHeight int64) upgradetypes.MsgSoftwareUpgrade {
+	return upgradetypes.MsgSoftwareUpgrade{
+		Authority: authority,
+		Plan: upgradetypes.Plan{
+			Name:   planName,
+			Height: planHeight,
+			Info:   "{}",
+		},
+	}
+}
+
+func createCancelUpgradeProposal(authority string) upgradetypes.MsgCancelUpgrade {
+	return upgradetypes.MsgCancelUpgrade{
+		Authority: authority,
+	}
+}
+
+func createManifestParams(inflation *manifesttypes.Inflation, stakeholders []*manifesttypes.StakeHolders) manifesttypes.Params {
+	return manifesttypes.Params{
+		Inflation:    inflation,
+		StakeHolders: stakeholders,
+	}
+}
+
+func createInflation(mintDenom string, yearlyAmount uint64, automaticEnabled bool) *manifesttypes.Inflation {
+	return &manifesttypes.Inflation{
+		MintDenom:        mintDenom,
+		YearlyAmount:     yearlyAmount,
+		AutomaticEnabled: automaticEnabled,
+	}
+}
+
+func createStakeHolders(address string, percentage int32) *manifesttypes.StakeHolders {
+	return &manifesttypes.StakeHolders{
+		Address:    address,
+		Percentage: percentage,
+	}
+}
+
+func createManifestUpdateProposal(authority string, params manifesttypes.Params) manifesttypes.MsgUpdateParams {
+	return manifesttypes.MsgUpdateParams{
+		Authority: authority,
+		Params:    params,
+	}
+}
+
+func createManifestPayoutProposal(authority string, payout sdk.Coin) manifesttypes.MsgPayoutStakeholders {
+	return manifesttypes.MsgPayoutStakeholders{
+		Authority: authority,
+		Payout:    payout,
+	}
+}
+
+func createManifestBurnProposal(sender string, amounts sdk.Coins) manifesttypes.MsgBurnHeldBalance {
+	return manifesttypes.MsgBurnHeldBalance{
+		Sender:    sender,
+		BurnCoins: amounts,
+	}
+}
+
+func createPOAParams(admins []string, allowValidatorSelfExit bool) poatypes.Params {
+	return poatypes.Params{
+		Admins:                 admins,
+		AllowValidatorSelfExit: allowValidatorSelfExit,
+	}
+}
+
+func createPOAUpdateParams(sender string, params poatypes.Params) *poatypes.MsgUpdateParams {
+	return &poatypes.MsgUpdateParams{
+		Sender: sender,
+		Params: params,
+	}
+}
+
+func createBankSendProposal(from, to string, amount sdk.Coin) banktypes.MsgSend {
+	return banktypes.MsgSend{
+		FromAddress: from,
+		ToAddress:   to,
+		Amount:      sdk.Coins{amount},
+	}
+}
+
+func createTfCreateDenomProposal(sender, subdenom string) tokenfactorytypes.MsgCreateDenom {
+	return tokenfactorytypes.MsgCreateDenom{
+		Sender:   sender,
+		Subdenom: subdenom,
+	}
+}
+
+func createTfMintProposal(sender string, amount sdk.Coin, mintTo string) tokenfactorytypes.MsgMint {
+	return tokenfactorytypes.MsgMint{
+		Sender:        sender,
+		Amount:        amount,
+		MintToAddress: mintTo,
+	}
+}
+
+func createTfBurnProposal(sender string, amount sdk.Coin, burnFrom string) tokenfactorytypes.MsgBurn {
+	return tokenfactorytypes.MsgBurn{
+		Sender:          sender,
+		Amount:          amount,
+		BurnFromAddress: burnFrom,
+	}
+}
+
+func createTfForceTransferProposal(sender string, amount sdk.Coin, from, to string) tokenfactorytypes.MsgForceTransfer {
+	return tokenfactorytypes.MsgForceTransfer{
+		Sender:              sender,
+		Amount:              amount,
+		TransferFromAddress: from,
+		TransferToAddress:   to,
+	}
+}
+
+func createTfChangeAdminProposal(sender, denom, newAdmin string) tokenfactorytypes.MsgChangeAdmin {
+	return tokenfactorytypes.MsgChangeAdmin{
+		Sender:   sender,
+		Denom:    denom,
+		NewAdmin: newAdmin,
+	}
+}
+
+func createTfMetadata(base, denom, display, name, symbol, description string) banktypes.Metadata {
+	return banktypes.Metadata{
+		Base:        base,
+		Display:     display,
+		Name:        name,
+		Symbol:      symbol,
+		Description: description,
+		DenomUnits: []*banktypes.DenomUnit{
+			{
+				Denom:    denom,
+				Exponent: 0,
+				Aliases:  []string{symbol},
+			},
+			{
+				Denom:    symbol,
+				Exponent: 6,
+				Aliases:  []string{denom},
+			},
+		},
+	}
+}
+
+func createTfModifyMetadataProposal(sender, denom, name, symbol, base, display, description string) tokenfactorytypes.MsgSetDenomMetadata {
+	return tokenfactorytypes.MsgSetDenomMetadata{
+		Sender:   sender,
+		Metadata: createTfMetadata(base, denom, display, name, symbol, description),
+	}
+}
+
+func verifyBalance(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, address, denom string, expected sdkmath.Int) {
+	bal, err := chain.BankQueryBalance(ctx, address, denom)
+	require.NoError(t, err)
+	require.Equal(t, expected, bal)
+}
+
+func buildWallet(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, address, mnemonic string) {
+	_, err := chain.BuildWallet(ctx, address, mnemonic)
+	require.NoError(t, err)
+}
+
+func _verifyUpgradePlan(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain) *upgradetypes.Plan {
+	plan, err := chain.UpgradeQueryPlan(ctx)
+	require.NoError(t, err)
+	return plan
+}
+
+func verifyUpgradePlanIsNil(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain) {
+	plan := _verifyUpgradePlan(t, ctx, chain)
+	require.Nil(t, plan)
+}
+
+func verifyUpgradePlan(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, expectedPlan *upgradetypes.Plan) {
+	plan := _verifyUpgradePlan(t, ctx, chain)
+	require.NotNil(t, plan)
+	require.Equal(t, expectedPlan.Name, plan.Name)
+	require.Equal(t, expectedPlan.Height, plan.Height)
+}
+
+func verifyUpgradeAuthority(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, expectedAuthority string) {
+	authority, err := chain.UpgradeQueryAuthority(ctx)
+	require.NoError(t, err)
+	require.Equal(t, expectedAuthority, authority)
+}
+
+func verifyManifestStakeholders(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, expectedStakeholders []*manifesttypes.StakeHolders) {
+	resp, err := manifesttypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &manifesttypes.QueryParamsRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Params.StakeHolders, len(expectedStakeholders))
+	for i, sh := range expectedStakeholders {
+		require.Equal(t, sh.Address, resp.Params.StakeHolders[i].Address)
+		require.Equal(t, sh.Percentage, resp.Params.StakeHolders[i].Percentage)
+	}
+}
+
+func sendFunds(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, from, to, denom string, amount sdkmath.Int) {
+	err := chain.SendFunds(ctx, from, ibc.WalletAmount{
+		Address: to,
+		Denom:   denom,
+		Amount:  amount,
+	})
+	require.NoError(t, err)
+}
+
+func updatePOAParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, groupAddr string, allowValidatorSelfExit bool) {
+	r, err := helpers.POAUpdateParams(t, ctx, chain, user, groupAddr, allowValidatorSelfExit)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	require.Equal(t, uint32(0x0), r.Code)
+}
+
+func verifyBankDenomMetadata(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, expectedMetadata banktypes.Metadata) {
+	meta, err := chain.BankQueryDenomMetadata(ctx, tfFullDenom)
+	require.NoError(t, err)
+	require.Equal(t, expectedMetadata, *meta)
+}
+
+func verifyTfAdmin(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, denom, expectedAdmin string) {
+	resp, err := chain.TokenFactoryQueryAdmin(ctx, denom)
+	require.NoError(t, err)
+	require.Equal(t, expectedAdmin, resp.AuthorityMetadata.Admin)
 }

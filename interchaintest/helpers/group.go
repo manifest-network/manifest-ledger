@@ -19,7 +19,7 @@ import (
 // SubmitGroupProposal submits a group proposal to the chain.
 // TODO: This function should be part of `interchaintest`
 // See https://github.com/strangelove-ventures/interchaintest/issues/1138
-func SubmitGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string, prop *group.MsgSubmitProposal) (string, error) {
+func SubmitGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, keyName string, prop *group.MsgSubmitProposal) (string, error) {
 	file := "proposal.json"
 	propJson, err := json.MarshalIndent(prop, "", " ")
 	require.NoError(t, err)
@@ -35,7 +35,7 @@ func SubmitGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.Cosmos
 		path.Join(tn.HomeDir(), file), "--gas", "auto",
 	}
 
-	return exec(ctx, t, chain, config, tn.TxCommand(accAddr, submitCommand...))
+	return exec(ctx, t, chain, config, tn.TxCommand(keyName, submitCommand...))
 }
 
 //// QueryGroupProposal queries a group proposal on the chain.
