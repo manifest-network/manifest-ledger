@@ -129,8 +129,7 @@ func TestGroupPOA(t *testing.T) {
 
 	ctx, _, client, _ := interchaintest.BuildInitialChain(t, chains, false)
 
-	_, err = interchaintest.GetAndFundTestUserWithMnemonic(ctx, user1, accMnemonic, DefaultGenesisAmt, chain)
-	//user1Wallet, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, user1, accMnemonic, DefaultGenesisAmt, chain)
+	user1Wallet, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, user1, accMnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
 	_, err = interchaintest.GetAndFundTestUserWithMnemonic(ctx, user2, acc1Mnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
@@ -139,15 +138,15 @@ func TestGroupPOA(t *testing.T) {
 	require.Equal(t, internalGoCoverDir, chain.GetNode().HomeDir())
 
 	// Software Upgrade
-	//testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr)
+	testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr)
 	// Manifest module
-	//testManifestParamsUpdate(t, ctx, chain, &cfgA, accAddr)
-	//testManifestParamsUpdateWithInflation(t, ctx, chain, &cfgA, accAddr)
-	//testManifestParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
-	//testManifestStakeholdersPayout(t, ctx, chain, &cfgA, accAddr)
+	testManifestParamsUpdate(t, ctx, chain, &cfgA, accAddr)
+	testManifestParamsUpdateWithInflation(t, ctx, chain, &cfgA, accAddr)
+	testManifestParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
+	testManifestStakeholdersPayout(t, ctx, chain, &cfgA, accAddr)
 	// POA Update
-	//testPOAParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
-	//testPOAParamsUpdate(t, ctx, chain, &cfgA, accAddr, user1Wallet)
+	testPOAParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
+	testPOAParamsUpdate(t, ctx, chain, &cfgA, accAddr, user1Wallet)
 	// TokenFactory
 	testTokenCreate(t, ctx, chain, &cfgA, accAddr)
 	// Bank
@@ -419,11 +418,11 @@ func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.
 	if err != nil {
 		return err
 	}
-	_, err = helpers.VoteGroupProposal(ctx, t, chain, config, pid, keyName, grouptypes.VOTE_OPTION_YES.String(), metadata)
+	_, err = helpers.VoteGroupProposal(ctx, chain, config, pid, keyName, grouptypes.VOTE_OPTION_YES.String(), metadata)
 	if err != nil {
 		return err
 	}
-	_, err = helpers.ExecGroupProposal(ctx, t, chain, config, keyName, pid)
+	_, err = helpers.ExecGroupProposal(ctx, chain, config, keyName, pid)
 	if err != nil {
 		return err
 	}
@@ -717,7 +716,7 @@ func sendFunds(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, fro
 }
 
 func updatePOAParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, groupAddr string, allowValidatorSelfExit bool) {
-	r, err := helpers.POAUpdateParams(t, ctx, chain, user, groupAddr, allowValidatorSelfExit)
+	r, err := helpers.POAUpdateParams(ctx, chain, user, groupAddr, allowValidatorSelfExit)
 	require.NoError(t, err)
 	require.NotNil(t, r)
 	require.Equal(t, uint32(0x0), r.Code)

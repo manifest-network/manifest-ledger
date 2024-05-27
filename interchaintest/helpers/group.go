@@ -35,7 +35,7 @@ func SubmitGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.Cosmos
 		path.Join(tn.HomeDir(), file), "--gas", "auto",
 	}
 
-	return exec(ctx, t, chain, config, tn.TxCommand(keyName, submitCommand...))
+	return exec(ctx, chain, config, tn.TxCommand(keyName, submitCommand...))
 }
 
 //// QueryGroupProposal queries a group proposal on the chain.
@@ -70,21 +70,21 @@ func SubmitGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.Cosmos
 // VoteGroupProposal votes on a group proposal on the chain.
 // TODO: This function should be part of `interchaintest`
 // See https://github.com/strangelove-ventures/interchaintest/issues/1138
-func VoteGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposalId, accAddr, vote, metadata string) (string, error) {
+func VoteGroupProposal(ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposalId, accAddr, vote, metadata string) (string, error) {
 	voteCommand := []string{
 		"group", "vote", proposalId, accAddr, vote, metadata,
 	}
-	return exec(ctx, t, chain, config, chain.GetNode().TxCommand(accAddr, voteCommand...))
+	return exec(ctx, chain, config, chain.GetNode().TxCommand(accAddr, voteCommand...))
 }
 
-func ExecGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr, proposalId string) (string, error) {
+func ExecGroupProposal(ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr, proposalId string) (string, error) {
 	execCommand := []string{
 		"group", "exec", proposalId,
 	}
-	return exec(ctx, t, chain, config, chain.GetNode().TxCommand(accAddr, execCommand...))
+	return exec(ctx, chain, config, chain.GetNode().TxCommand(accAddr, execCommand...))
 }
 
-func exec(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, command []string) (string, error) {
+func exec(ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, command []string) (string, error) {
 	tn := chain.GetNode()
 
 	o, _, err := tn.Exec(ctx, command, config.Env)
