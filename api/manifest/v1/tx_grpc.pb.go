@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion7
 const (
 	Msg_UpdateParams_FullMethodName       = "/manifest.v1.Msg/UpdateParams"
 	Msg_PayoutStakeholders_FullMethodName = "/manifest.v1.Msg/PayoutStakeholders"
+	Msg_BurnHeldBalance_FullMethodName    = "/manifest.v1.Msg/BurnHeldBalance"
 )
 
 // MsgClient is the client API for Msg service.
@@ -33,6 +34,8 @@ type MsgClient interface {
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
 	// PayoutStakeholders allows the authority to manually pay out stakeholders.
 	PayoutStakeholders(ctx context.Context, in *MsgPayoutStakeholders, opts ...grpc.CallOption) (*MsgPayoutStakeholdersResponse, error)
+	// BurnHeldBalance allows a tokenholder to burn coins they own.
+	BurnHeldBalance(ctx context.Context, in *MsgBurnHeldBalance, opts ...grpc.CallOption) (*MsgBurnHeldBalanceResponse, error)
 }
 
 type msgClient struct {
@@ -61,6 +64,15 @@ func (c *msgClient) PayoutStakeholders(ctx context.Context, in *MsgPayoutStakeho
 	return out, nil
 }
 
+func (c *msgClient) BurnHeldBalance(ctx context.Context, in *MsgBurnHeldBalance, opts ...grpc.CallOption) (*MsgBurnHeldBalanceResponse, error) {
+	out := new(MsgBurnHeldBalanceResponse)
+	err := c.cc.Invoke(ctx, Msg_BurnHeldBalance_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MsgServer is the server API for Msg service.
 // All implementations must embed UnimplementedMsgServer
 // for forward compatibility
@@ -71,6 +83,8 @@ type MsgServer interface {
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
 	// PayoutStakeholders allows the authority to manually pay out stakeholders.
 	PayoutStakeholders(context.Context, *MsgPayoutStakeholders) (*MsgPayoutStakeholdersResponse, error)
+	// BurnHeldBalance allows a tokenholder to burn coins they own.
+	BurnHeldBalance(context.Context, *MsgBurnHeldBalance) (*MsgBurnHeldBalanceResponse, error)
 	mustEmbedUnimplementedMsgServer()
 }
 
@@ -83,6 +97,9 @@ func (UnimplementedMsgServer) UpdateParams(context.Context, *MsgUpdateParams) (*
 }
 func (UnimplementedMsgServer) PayoutStakeholders(context.Context, *MsgPayoutStakeholders) (*MsgPayoutStakeholdersResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PayoutStakeholders not implemented")
+}
+func (UnimplementedMsgServer) BurnHeldBalance(context.Context, *MsgBurnHeldBalance) (*MsgBurnHeldBalanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BurnHeldBalance not implemented")
 }
 func (UnimplementedMsgServer) mustEmbedUnimplementedMsgServer() {}
 
@@ -133,6 +150,24 @@ func _Msg_PayoutStakeholders_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Msg_BurnHeldBalance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgBurnHeldBalance)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).BurnHeldBalance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_BurnHeldBalance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).BurnHeldBalance(ctx, req.(*MsgBurnHeldBalance))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Msg_ServiceDesc is the grpc.ServiceDesc for Msg service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -147,6 +182,10 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PayoutStakeholders",
 			Handler:    _Msg_PayoutStakeholders_Handler,
+		},
+		{
+			MethodName: "BurnHeldBalance",
+			Handler:    _Msg_BurnHeldBalance_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
