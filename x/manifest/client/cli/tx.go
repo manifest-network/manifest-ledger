@@ -27,6 +27,7 @@ func NewTxCmd() *cobra.Command {
 	}
 
 	txCmd.AddCommand(
+		MsgBurnCoins(),
 		MsgUpdateParams(),
 		MsgDeployStakeholderPayout(),
 	)
@@ -103,6 +104,43 @@ func MsgDeployStakeholderPayout() *cobra.Command {
 			msg := &types.MsgPayoutStakeholders{
 				Authority: authority.String(),
 				Payout:    coin,
+			}
+
+			if err := msg.Validate(); err != nil {
+				return err
+			}
+
+			return tx.GenerateOrBroadcastTxCLI(cliCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+// MsgBurnCoins returns a CLI command handler for burning held coins.
+func MsgBurnCoins() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "burn-coins [coins]",
+		Short:   "Burn held coins",
+		Example: `burn-coins 50000umfx,100other`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cliCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			sender := cliCtx.GetFromAddress()
+
+			coins, err := sdk.ParseCoinsNormalized(args[0])
+			if err != nil {
+				return err
+			}
+
+			msg := &types.MsgBurnHeldBalance{
+				Sender:    sender.String(),
+				BurnCoins: coins,
 			}
 
 			if err := msg.Validate(); err != nil {
