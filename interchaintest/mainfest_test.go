@@ -21,8 +21,6 @@ import (
 )
 
 func TestManifestModule(t *testing.T) {
-	t.Parallel()
-
 	ctx := context.Background()
 
 	// Same as ChainNode.HomeDir() but we need it before the chain is created

@@ -176,7 +176,7 @@ coverage: ## Run coverage report
 	@echo "--> Cleaning up coverage files, if any"
 	@rm -rf /tmp/manifest-ledger-coverage/*
 	@echo "--> Running coverage"
-	@go test -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=github.com/liftedinit/manifest-ledger/... -args -test.gocoverdir="/tmp/manifest-ledger-coverage" > /dev/null 2>&1
+	@go test -timeout 30m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=github.com/liftedinit/manifest-ledger/... -args -test.gocoverdir="/tmp/manifest-ledger-coverage" > /dev/null 2>&1
 	@echo "--> Converting binary coverage report to text format"
 	@go tool covdata textfmt -i=/tmp/manifest-ledger-coverage -o coverage.out
 	@echo "--> Filtering coverage report"
