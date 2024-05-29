@@ -27,6 +27,11 @@ export GRPC_WEB=${GRPC_WEB:-"9091"}
 export ROSETTA=${ROSETTA:-"8080"}
 export TIMEOUT_COMMIT=${TIMEOUT_COMMIT:-"5s"}
 
+export DAEMON_NAME=manifestd
+export DAEMON_HOME=$HOME_DIR
+export DAEMON_ALLOW_DOWNLOAD_BINARIES=false
+export DAEMON_RESTART_AFTER_UPGRADE=true
+
 alias BINARY="$BINARY --home=$HOME_DIR"
 
 command -v $BINARY > /dev/null 2>&1 || { echo >&2 "$BINARY command not found. Ensure this is setup / properly installed in your GOPATH (make install)."; exit 1; }
@@ -61,13 +66,23 @@ from_scratch () {
   update_test_genesis '.app_state["gov"]["params"]["voting_period"]="15s"'
   update_test_genesis '.app_state["gov"]["params"]["expedited_voting_period"]="10s"'
   # staking
-  update_test_genesis '.app_state["staking"]["params"]["bond_denom"]="ustake"' # PoA Token
+  update_test_genesis '.app_state["staking"]["params"]["bond_denom"]="upoa"' # PoA Token
   update_test_genesis '.app_state["staking"]["params"]["min_commission_rate"]="0.000000000000000000"'
   # mint
   update_test_genesis '.app_state["mint"]["params"]["mint_denom"]="umfx"' # not used
   update_test_genesis '.app_state["mint"]["params"]["blocks_per_year"]="6311520"'
 
+  # group
+  update_test_genesis '.app_state["group"]["group_seq"]="1"'
+  update_test_genesis '.app_state["group"]["groups"]=[{"id": "1", "admin": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj", "metadata": "AQ==", "version": "2", "total_weight": "2", "created_at": "2024-05-16T15:10:54.372190727Z"}]'
+  update_test_genesis '.app_state["group"]["group_members"]=[{"group_id": "1", "member": {"address": "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct", "weight": "1", "metadata": "user1", "added_at": "2024-05-16T15:10:54.372190727Z"}}, {"group_id": "1", "member": {"address": "manifest1efd63aw40lxf3n4mhf7dzhjkr453axurm6rp3z", "weight": "1", "metadata": "user2", "added_at": "2024-05-16T15:10:54.372190727Z"}}]'
+  update_test_genesis '.app_state["group"]["group_policy_seq"]="1"'
+  update_test_genesis '.app_state["group"]["group_policies"]=[{"address": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj", "group_id": "1", "admin": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj", "metadata": "AQ==", "version": "2", "decision_policy": { "@type": "/cosmos.group.v1.ThresholdDecisionPolicy", "threshold": "1", "windows": {"voting_period": "30s", "min_execution_period": "0s"}}, "created_at": "2024-05-16T15:10:54.372190727Z"}]'
+
   # Custom Modules
+
+  # POA
+  update_test_genesis '.app_state["poa"]["params"]["admins"]=["'$POA_ADMIN_ADDRESS'"]'
 
   # TokenFactory
   update_test_genesis '.app_state["tokenfactory"]["params"]["denom_creation_fee"]=[]'
@@ -75,17 +90,31 @@ from_scratch () {
 
   # manifest
   update_test_genesis '.app_state["manifest"]["params"]["inflation"]["mint_denom"]="umfx"'
-  update_test_genesis '.app_state["manifest"]["params"]["inflation"]["yearly_amount"]="500000000000"' # in micro format (1MFX = 10**6)
-  update_test_genesis '.app_state["manifest"]["params"]["inflation"]["automatic_enabled"]=true'
+  update_test_genesis '.app_state["manifest"]["params"]["inflation"]["yearly_amount"]="0"' # in micro format (1MFX = 10**6)
+  update_test_genesis '.app_state["manifest"]["params"]["inflation"]["automatic_enabled"]=false'
   update_test_genesis '.app_state["manifest"]["params"]["stake_holders"]=[{"address":"manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct","percentage":100000000}]'
 
+  # tokenfactory
+  # SPDT
+#  update_test_genesis '.app_state["tokenfactory"]["factory_denoms"]=[{"denom": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt", "authority_metadata": {"admin": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj"}}]'
+#  update_test_genesis '.app_state["bank"]["denom_metadata"]=[{"description": "SpaceData", "denom_units": [{"denom": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt", "exponent": 0, "aliases": ["SPDT"]}, {"denom": "SPDT", "exponent": 6, "aliases": ["factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt"]}], "base": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt", "display": "SPDT", "name": "SpaceData", "symbol": "SPDT", "uri": "", "uri_hash": ""}]'
+
+  #ABUS
+#  update_test_genesis '.app_state["tokenfactory"]["factory_denoms"] |= . + [{"denom": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uabus", "authority_metadata": {"admin": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj"}}]'
+#  update_test_genesis '.app_state["bank"]["denom_metadata"] |= . + [{"description": "Arebus Gas Token", "denom_units": [{"denom": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uabus", "exponent": 0, "aliases": ["ABUS"]}, {"denom": "ABUS", "exponent": 6, "aliases": ["factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uabus"]}], "base": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uabus", "display": "ABUS", "name": "Arebus Gas Token", "symbol": "ABUS", "uri": "", "uri_hash": ""}]'
+
+  # Add all other MANY tokens
+  # ...
+  # ...
+
   # Allocate genesis accounts
-  BINARY genesis add-genesis-account $KEY 1000000ustake,10000000umfx,1000utest --keyring-backend $KEYRING
+#  BINARY genesis add-genesis-account $KEY 1000000upoa,10000000umfx,1000utest,1000000000000000000000factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt,100000000000000000000000factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uabus --keyring-backend $KEYRING
+  BINARY genesis add-genesis-account $KEY 1000000upoa,10000000umfx,1000utest --keyring-backend $KEYRING
   BINARY genesis add-genesis-account $KEY2 100000umfx,1000utest --keyring-backend $KEYRING
 
   # Set 1 POAToken -> user
   GenTxFlags="--commission-rate=0.0 --commission-max-rate=1.0 --commission-max-change-rate=0.1"
-  BINARY genesis gentx $KEY 1000000ustake --keyring-backend $KEYRING --chain-id $CHAIN_ID $GenTxFlags
+  BINARY genesis gentx $KEY 1000000upoa --keyring-backend $KEYRING --chain-id $CHAIN_ID $GenTxFlags
 
   # Collect genesis tx
   BINARY genesis collect-gentxs --home=$HOME_DIR
@@ -128,3 +157,5 @@ sed -i 's/timeout_commit = "5s"/timeout_commit = "'$TIMEOUT_COMMIT'"/g' $HOME_DI
 
 # Start the node
 BINARY start --pruning=nothing  --minimum-gas-prices=0umfx --rpc.laddr="tcp://0.0.0.0:$RPC"
+#cosmovisor init $(which $BINARY)
+#cosmovisor run start --pruning=nothing  --minimum-gas-prices=0umfx --rpc.laddr="tcp://0.0.0.0:$RPC" --home $HOME_DIR

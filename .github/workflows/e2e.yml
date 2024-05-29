@@ -65,6 +65,7 @@ jobs:
           - "ictest-poa"
           - "ictest-tokenfactory"
           - "ictest-manifest"
+          - "ictest-group-poa"
       fail-fast: false
 
     steps:

@@ -164,14 +164,14 @@ func testPowerErrors(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 	var err error
 
 	t.Run("fail: set-power message from a non authorized user", func(t *testing.T) {
-		res, _ = helpers.POASetPower(t, ctx, chain, incorrectUser, validators[1], 1_000_000)
+		res, _ = helpers.POASetPower(ctx, chain, incorrectUser, validators[1], 1_000_000)
 		res, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Contains(t, res.RawLog, poa.ErrNotAnAuthority.Error())
 	})
 
 	t.Run("fail: set-power message below minimum power requirement (self bond)", func(t *testing.T) {
-		res, err = helpers.POASetPower(t, ctx, chain, admin, validators[0], 1)
+		res, err = helpers.POASetPower(ctx, chain, admin, validators[0], 1)
 		require.Error(t, err) // cli validate error
 		require.ErrorContains(t, err, poa.ErrPowerBelowMinimum.Error())
 	})

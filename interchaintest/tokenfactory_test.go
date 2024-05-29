@@ -15,8 +15,6 @@ import (
 )
 
 func TestTokenFactory(t *testing.T) {
-	t.Parallel()
-
 	ctx := context.Background()
 
 	// Same as ChainNode.HomeDir() but we need it before the chain is created
@@ -131,7 +129,6 @@ func TestTokenFactory(t *testing.T) {
 
 	// ensure the admin is the contract
 	admin, err := appChain.TokenFactoryQueryAdmin(ctx, tfDenom)
-	t.Log("admin", admin)
 	require.NoError(t, err)
 	if admin.AuthorityMetadata.Admin != uaddr2 {
 		t.Fatal("admin not uaddr2. Did not properly transfer.")

@@ -16,7 +16,11 @@ import (
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 	"github.com/stretchr/testify/require"
 
-	types "github.com/liftedinit/manifest-ledger/x/manifest/types"
+	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
+
+	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
+
+	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 
 	sdkmath "cosmossdk.io/math"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
@@ -38,7 +42,11 @@ var (
 	accAddr     = "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"
 	accMnemonic = "decorate bright ozone fork gallery riot bus exhaust worth way bone indoor calm squirrel merry zero scheme cotton until shop any excess stage laundry"
 
-	acc2Addr = "manifest1efd63aw40lxf3n4mhf7dzhjkr453axurm6rp3z"
+	acc2Addr     = "manifest1efd63aw40lxf3n4mhf7dzhjkr453axurm6rp3z"
+	acc3Addr     = "manifest1sc0aw0e6mcrm7ex5v3ll5gh4dq5whn3acmkupn"
+	acc3Mnemonic = "pelican gasp plunge better swallow school infant magic mercy portion candy beauty intact soldier scan must plate logic trial horror theory scrub sorry stand"
+	acc4Addr     = "manifest1g292xgmcclhq4au5p7580m2s3f8tpwjra644jm"
+	acc4Mnemonic = "myself bamboo retire day exile cancel peanut agree come method odor innocent welcome royal engage key surprise practice capable sauce orient young divert mirror"
 
 	CosmosGovModuleAcc = "manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm"
 
@@ -94,6 +102,8 @@ var (
 func AppEncoding() *sdktestutil.TestEncodingConfig {
 	enc := cosmos.DefaultEncoding()
 
+	manifesttypes.RegisterInterfaces(enc.InterfaceRegistry)
+	grouptypes.RegisterInterfaces(enc.InterfaceRegistry)
 	tokenfactorytypes.RegisterInterfaces(enc.InterfaceRegistry)
 	poatypes.RegisterInterfaces(enc.InterfaceRegistry)
 

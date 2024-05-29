@@ -48,6 +48,10 @@ func (p Params) String() string {
 
 // Validate does the sanity check on the params.
 func (p Params) Validate() error {
+	// Fix for https://github.com/liftedinit/manifest-ledger/issues/61
+	if p.Inflation == nil {
+		return ErrInflationParamsNotSet
+	}
 	if len(p.StakeHolders) == 0 {
 		return nil
 	}
