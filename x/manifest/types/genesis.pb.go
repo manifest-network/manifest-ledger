@@ -122,12 +122,13 @@ func (m *Params) GetInflation() *Inflation {
 	return nil
 }
 
-// StakeHolders is the list of addresses and their percentage of the inflation distribution
+// StakeHolders is the list of addresses and their percentage of the inflation
+// distribution
 type StakeHolders struct {
 	// manifest address
 	Address string `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
-	// percentage is the micro denom % of tokens this address gets on a distribution.
-	// 100% = 100_000_000 total. so 1_000000 = 1%.
+	// percentage is the micro denom % of tokens this address gets on a
+	// distribution. 100% = 100_000_000 total. so 1_000000 = 1%.
 	Percentage int32 `protobuf:"varint,2,opt,name=percentage,proto3" json:"percentage,omitempty"`
 }
 

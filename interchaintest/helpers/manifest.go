@@ -31,3 +31,10 @@ func ManifestQueryParams(ctx context.Context, node *cosmos.ChainNode) (*manifest
 	res, err := manifesttypes.NewQueryClient(node.GrpcConn).Params(ctx, &manifesttypes.QueryParamsRequest{})
 	return res.GetParams(), err
 }
+
+func ManifestBurnTokens(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, keyName string, amount string, flags ...string) (sdk.TxResponse, error) {
+	txCmd := []string{"tx", "manifest", "burn-coins", amount}
+	fmt.Println("ManifestBurnTokens", txCmd)
+	cmd := TxCommandBuilder(ctx, chain, txCmd, keyName, flags...)
+	return ExecuteTransaction(ctx, chain, cmd)
+}

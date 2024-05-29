@@ -94,7 +94,7 @@ func NewMsgBurnHeldBalance(
 	coins sdk.Coins,
 ) *MsgBurnHeldBalance {
 	return &MsgBurnHeldBalance{
-		Sender:    sender.String(),
+		Authority: sender.String(),
 		BurnCoins: coins,
 	}
 }
@@ -112,13 +112,13 @@ func (msg MsgBurnHeldBalance) GetSignBytes() []byte {
 
 // GetSigners returns the expected signers for the message.
 func (msg *MsgBurnHeldBalance) GetSigners() []sdk.AccAddress {
-	addr, _ := sdk.AccAddressFromBech32(msg.Sender)
+	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
 	return []sdk.AccAddress{addr}
 }
 
 // ValidateBasic does a sanity check on the provided data.
 func (msg *MsgBurnHeldBalance) Validate() error {
-	if _, err := sdk.AccAddressFromBech32(msg.Sender); err != nil {
+	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
 		return errors.Wrap(err, "invalid authority address")
 	}
 

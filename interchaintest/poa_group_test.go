@@ -565,7 +565,7 @@ func createManifestPayoutProposal(authority string, payout sdk.Coin) manifesttyp
 
 func createManifestBurnProposal(sender string, amounts sdk.Coins) manifesttypes.MsgBurnHeldBalance {
 	return manifesttypes.MsgBurnHeldBalance{
-		Sender:    sender,
+		Authority: sender,
 		BurnCoins: amounts,
 	}
 }

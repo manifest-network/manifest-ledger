@@ -139,7 +139,7 @@ func MsgBurnCoins() *cobra.Command {
 			}
 
 			msg := &types.MsgBurnHeldBalance{
-				Sender:    sender.String(),
+				Authority: sender.String(),
 				BurnCoins: coins,
 			}
 

@@ -244,13 +244,14 @@ func TestBurnCoins(t *testing.T) {
 	k := f.App.ManifestKeeper
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
+	_, _, acc := testdata.KeyTestPubAddr()
 
 	type tc struct {
 		name     string
 		initial  sdk.Coins
 		burn     sdk.Coins
 		expected sdk.Coins
-		address  string
+		address  sdk.AccAddress
 		success  bool
 	}
 
@@ -263,19 +264,21 @@ func TestBurnCoins(t *testing.T) {
 			initial:  sdk.NewCoins(),
 			burn:     sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(7))),
 			expected: sdk.NewCoins(),
+			address:  authority,
 		},
 		{
 			name:     "fail; bad address",
 			initial:  sdk.NewCoins(),
 			burn:     sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(7))),
 			expected: sdk.NewCoins(),
-			address:  "xyz",
+			address:  sdk.AccAddress{0x0},
 		},
 		{
-			name:     "success; burn 1 token successfully",
+			name:     "success; burn tokens successfully",
 			initial:  sdk.NewCoins(stake, mfx),
 			burn:     sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(7))),
 			expected: sdk.NewCoins(mfx, stake.SubAmount(sdkmath.NewInt(7))),
+			address:  authority,
 			success:  true,
 		},
 		{
@@ -283,30 +286,33 @@ func TestBurnCoins(t *testing.T) {
 			initial:  sdk.NewCoins(stake, mfx),
 			burn:     sdk.NewCoins(sdk.NewCoin("umfx", sdkmath.NewInt(9)), sdk.NewCoin("stake", sdkmath.NewInt(7))),
 			expected: sdk.NewCoins(mfx.SubAmount(sdkmath.NewInt(9)), stake.SubAmount(sdkmath.NewInt(7))),
+			address:  authority,
 			success:  true,
+		},
+		{
+			name:     "fail; invalid authority",
+			initial:  sdk.NewCoins(stake, mfx),
+			burn:     sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(7))),
+			expected: sdk.NewCoins(stake, mfx),
+			address:  acc,
 		},
 	}
 
 	for _, c := range cases {
 		c := c
 		t.Run(c.name, func(t *testing.T) {
-			_, _, acc := testdata.KeyTestPubAddr()
-			if c.address == "" {
-				c.address = acc.String()
-			}
-
 			// setup initial balances for the new account
 			if len(c.initial) > 0 {
 				require.NoError(t, f.App.BankKeeper.MintCoins(f.Ctx, "mint", c.initial))
-				require.NoError(t, f.App.BankKeeper.SendCoinsFromModuleToAccount(f.Ctx, "mint", acc, c.initial))
+				require.NoError(t, f.App.BankKeeper.SendCoinsFromModuleToAccount(f.Ctx, "mint", c.address, c.initial))
 			}
 
 			// validate initial balance
-			require.Equal(t, c.initial, f.App.BankKeeper.GetAllBalances(f.Ctx, acc))
+			require.Equal(t, c.initial, f.App.BankKeeper.GetAllBalances(f.Ctx, c.address))
 
 			// burn coins
 			_, err := ms.BurnHeldBalance(f.Ctx, &types.MsgBurnHeldBalance{
-				Sender:    c.address,
+				Authority: c.address.String(),
 				BurnCoins: c.burn,
 			})
 			if c.success {
@@ -315,7 +321,17 @@ func TestBurnCoins(t *testing.T) {
 				require.Error(t, err)
 			}
 
-			require.Equal(t, c.expected, f.App.BankKeeper.GetAllBalances(f.Ctx, acc))
+			allBalance := f.App.BankKeeper.GetAllBalances(f.Ctx, c.address)
+			require.Equal(t, c.expected, allBalance)
+
+			// burn the rest of the coins to reset the balance to 0 for the next test if the test was successful
+			if c.success {
+				_, err = ms.BurnHeldBalance(f.Ctx, &types.MsgBurnHeldBalance{
+					Authority: c.address.String(),
+					BurnCoins: allBalance,
+				})
+				require.NoError(t, err)
+			}
 		})
 	}
 }
