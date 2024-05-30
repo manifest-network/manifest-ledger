@@ -53,8 +53,8 @@ func MsgPayout() *cobra.Command {
 			}
 
 			msg := &types.MsgPayout{
-				Authority: authority.String(),
-				Payouts:   payoutPairs,
+				Authority:   authority.String(),
+				PayoutPairs: payoutPairs,
 			}
 
 			if err := msg.Validate(); err != nil {
@@ -108,8 +108,8 @@ func MsgBurnCoins() *cobra.Command {
 
 // fromStrToPayout converts a string to a slice of StakeHolders.
 // ex: manifest1abc:50_000umfx,manifest1xyz:1_000_000umfx
-func fromStrToPayout(s string) (map[string]sdk.Coin, error) {
-	payouts := make(map[string]sdk.Coin, 0)
+func fromStrToPayout(s string) ([]types.PayoutPair, error) {
+	payouts := make([]types.PayoutPair, 0)
 
 	s = strings.ReplaceAll(s, "_", "")
 
@@ -134,7 +134,10 @@ func fromStrToPayout(s string) (map[string]sdk.Coin, error) {
 			return nil, fmt.Errorf("invalid coin: %s for address: %s", strCoin, strAddr)
 		}
 
-		payouts[strAddr] = coin
+		payouts = append(payouts, types.PayoutPair{
+			Address: strAddr,
+			Coin:    coin,
+		})
 	}
 
 	return payouts, nil

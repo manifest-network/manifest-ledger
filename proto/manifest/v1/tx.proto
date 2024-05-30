@@ -55,10 +55,20 @@ message MsgPayout {
   // authority is the address of the controlling account.
   string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
 
-  // payout is the amount of tokens paid to accounts.
-  map<string, cosmos.base.v1beta1.Coin> payouts = 2 [
+  // payout_pairs are the pairs of addresses and coins to be paid out.
+  repeated PayoutPair payout_pairs = 2 [
     (gogoproto.nullable)     = false,
     (amino.dont_omitempty)   = true
+  ];
+}
+
+message PayoutPair {
+  string address = 1;
+  cosmos.base.v1beta1.Coin coin = 2 [
+    (gogoproto.nullable)     = false,
+    (amino.dont_omitempty)   = true,
+    (amino.encoding)         = "legacy_coin",
+    (gogoproto.casttype)     = "github.com/cosmos/cosmos-sdk/types.Coin"
   ];
 }
 

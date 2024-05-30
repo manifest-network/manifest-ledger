@@ -4,6 +4,7 @@ import (
 	fmt "fmt"
 
 	"cosmossdk.io/errors"
+	"cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -50,11 +51,18 @@ var _ sdk.Msg = &MsgPayout{}
 
 func NewMsgPayout(
 	sender sdk.Address,
-	payouts map[string]sdk.Coin,
+	payouts []PayoutPair,
 ) *MsgPayout {
 	return &MsgPayout{
-		Authority: sender.String(),
-		Payouts:   payouts,
+		Authority:   sender.String(),
+		PayoutPairs: payouts,
+	}
+}
+
+func NewPayoutPair(addr sdk.AccAddress, denom string, amt int64) PayoutPair {
+	return PayoutPair{
+		Address: addr.String(),
+		Coin:    sdk.NewCoin(denom, math.NewInt(amt)),
 	}
 }
 
@@ -81,11 +89,16 @@ func (msg *MsgPayout) Validate() error {
 		return errors.Wrap(err, "invalid authority address")
 	}
 
-	if len(msg.Payouts) == 0 {
-		return fmt.Errorf("accounts cannot be empty")
+	if len(msg.PayoutPairs) == 0 {
+		return fmt.Errorf("payouts cannot be empty")
 	}
 
-	for addr, coin := range msg.Payouts {
+	for _, p := range msg.PayoutPairs {
+		p := p
+
+		addr := p.Address
+		coin := p.Coin
+
 		if _, err := sdk.AccAddressFromBech32(addr); err != nil {
 			return errors.Wrapf(err, "invalid address %s", addr)
 		}

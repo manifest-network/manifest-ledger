@@ -88,33 +88,36 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 }
 
 // PayoutStakeholders mints and sends coins to stakeholders.
-func (k Keeper) PayoutStakeholders(ctx context.Context, payouts map[string]sdk.Coin) error {
-	for addr, p := range payouts {
-		addr := addr
+func (k Keeper) PayoutStakeholders(ctx context.Context, payouts []types.PayoutPair) error {
+	for _, p := range payouts {
 		p := p
+		addr := p.Address
+		coin := p.Coin
 
 		sdkAddr, err := sdk.AccAddressFromBech32(addr)
 		if err != nil {
 			return err
 		}
 
-		// ensure p is valid
-		if !p.IsValid() {
+		if !coin.IsValid() {
 			return fmt.Errorf("invalid payout: %v for address: %s", p, addr)
 		}
 
-		// mint & send coins
-		coins := sdk.NewCoins(p)
-		if err := k.bankKeeper.MintCoins(ctx, types.ModuleName, coins); err != nil {
+		if err := k.mintCoinsToAccount(ctx, sdkAddr, coin); err != nil {
 			return err
 		}
 
-		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sdkAddr, coins); err != nil {
-			return err
-		}
-
-		k.Logger().Info("Payout", "address", addr, "amount", coins)
+		k.Logger().Info("Payout", "address", addr, "amount", coin)
 	}
 
 	return nil
+}
+
+func (k Keeper) mintCoinsToAccount(ctx context.Context, sdkAddr sdk.AccAddress, coin sdk.Coin) error {
+	coins := sdk.NewCoins(coin)
+	if err := k.bankKeeper.MintCoins(ctx, types.ModuleName, coins); err != nil {
+		return err
+	}
+
+	return k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sdkAddr, coins)
 }

@@ -29,7 +29,7 @@ func TestPerformPayout(t *testing.T) {
 	type testcase struct {
 		name       string
 		sender     string
-		payouts    map[string]sdk.Coin
+		payouts    []types.PayoutPair
 		shouldFail bool
 	}
 
@@ -37,44 +37,44 @@ func TestPerformPayout(t *testing.T) {
 		{
 			name:   "success; payout token to 3 stakeholders",
 			sender: authority.String(),
-			payouts: map[string]sdk.Coin{
-				acc.String():  sdk.NewCoin("umfx", sdkmath.NewInt(1)),
-				acc2.String(): sdk.NewCoin("umfx", sdkmath.NewInt(2)),
-				acc3.String(): sdk.NewCoin("umfx", sdkmath.NewInt(3)),
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+				types.NewPayoutPair(acc2, "umfx", 2),
+				types.NewPayoutPair(acc3, "umfx", 3),
 			},
 		},
 		{
 			name:   "fail; bad authority",
 			sender: acc.String(),
-			payouts: map[string]sdk.Coin{
-				acc.String(): sdk.NewCoin("umfx", sdkmath.NewInt(1)),
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
 			},
 			shouldFail: true,
 		},
 		{
 			name:   "fail; bad bech32 authority",
 			sender: "bad",
-			payouts: map[string]sdk.Coin{
-				acc.String(): sdk.NewCoin("umfx", sdkmath.NewInt(1)),
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
 			},
 			shouldFail: true,
 		},
 		{
 			name:   "fail; payout to bad address",
 			sender: authority.String(),
-			payouts: map[string]sdk.Coin{
-				acc.String():  sdk.NewCoin("umfx", sdkmath.NewInt(1)),
-				"badaddr":     sdk.NewCoin("umfx", sdkmath.NewInt(2)),
-				acc3.String(): sdk.NewCoin("umfx", sdkmath.NewInt(3)),
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+				{Address: "badaddr", Coin: sdk.NewCoin("umfx", sdkmath.NewInt(2))},
+				types.NewPayoutPair(acc3, "umfx", 3),
 			},
 			shouldFail: true,
 		},
 		{
 			name:   "fail; payout with a 0 token",
 			sender: authority.String(),
-			payouts: map[string]sdk.Coin{
-				acc.String():  sdk.NewCoin("umfx", sdkmath.NewInt(1)),
-				acc2.String(): sdk.NewCoin("umfx", sdkmath.NewInt(0)),
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+				types.NewPayoutPair(acc2, "umfx", 0),
 			},
 			shouldFail: true,
 		},
@@ -85,8 +85,8 @@ func TestPerformPayout(t *testing.T) {
 
 		t.Run(c.name, func(t *testing.T) {
 			payoutMsg := &types.MsgPayout{
-				Authority: c.sender,
-				Payouts:   c.payouts,
+				Authority:   c.sender,
+				PayoutPairs: c.payouts,
 			}
 
 			_, err := ms.Payout(f.Ctx, payoutMsg)
@@ -96,7 +96,11 @@ func TestPerformPayout(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			for addr, coin := range c.payouts {
+			for _, p := range c.payouts {
+				p := p
+				addr := p.Address
+				coin := p.Coin
+
 				accAddr, err := sdk.AccAddressFromBech32(addr)
 				require.NoError(t, err)
 

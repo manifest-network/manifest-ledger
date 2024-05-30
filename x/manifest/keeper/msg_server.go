@@ -42,7 +42,7 @@ func (ms msgServer) Payout(ctx context.Context, req *types.MsgPayout) (*types.Ms
 		return nil, fmt.Errorf("invalid payout message: %w", err)
 	}
 
-	return nil, ms.k.PayoutStakeholders(ctx, req.Payouts)
+	return nil, ms.k.PayoutStakeholders(ctx, req.PayoutPairs)
 }
 
 // BurnHeldBalance implements types.MsgServer.

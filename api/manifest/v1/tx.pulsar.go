@@ -14,7 +14,6 @@ import (
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	io "io"
 	reflect "reflect"
-	sort "sort"
 	sync "sync"
 )
 
@@ -873,107 +872,68 @@ func (x *fastReflection_MsgUpdateParamsResponse) ProtoMethods() *protoiface.Meth
 	}
 }
 
-var _ protoreflect.Map = (*_MsgPayout_2_map)(nil)
+var _ protoreflect.List = (*_MsgPayout_2_list)(nil)
 
-type _MsgPayout_2_map struct {
-	m *map[string]*types.Coin
+type _MsgPayout_2_list struct {
+	list *[]*PayoutPair
 }
 
-func (x *_MsgPayout_2_map) Len() int {
-	if x.m == nil {
+func (x *_MsgPayout_2_list) Len() int {
+	if x.list == nil {
 		return 0
 	}
-	return len(*x.m)
+	return len(*x.list)
 }
 
-func (x *_MsgPayout_2_map) Range(f func(protoreflect.MapKey, protoreflect.Value) bool) {
-	if x.m == nil {
-		return
-	}
-	for k, v := range *x.m {
-		mapKey := (protoreflect.MapKey)(protoreflect.ValueOfString(k))
-		mapValue := protoreflect.ValueOfMessage(v.ProtoReflect())
-		if !f(mapKey, mapValue) {
-			break
-		}
-	}
+func (x *_MsgPayout_2_list) Get(i int) protoreflect.Value {
+	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
 }
 
-func (x *_MsgPayout_2_map) Has(key protoreflect.MapKey) bool {
-	if x.m == nil {
-		return false
-	}
-	keyUnwrapped := key.String()
-	concreteValue := keyUnwrapped
-	_, ok := (*x.m)[concreteValue]
-	return ok
-}
-
-func (x *_MsgPayout_2_map) Clear(key protoreflect.MapKey) {
-	if x.m == nil {
-		return
-	}
-	keyUnwrapped := key.String()
-	concreteKey := keyUnwrapped
-	delete(*x.m, concreteKey)
-}
-
-func (x *_MsgPayout_2_map) Get(key protoreflect.MapKey) protoreflect.Value {
-	if x.m == nil {
-		return protoreflect.Value{}
-	}
-	keyUnwrapped := key.String()
-	concreteKey := keyUnwrapped
-	v, ok := (*x.m)[concreteKey]
-	if !ok {
-		return protoreflect.Value{}
-	}
-	return protoreflect.ValueOfMessage(v.ProtoReflect())
-}
-
-func (x *_MsgPayout_2_map) Set(key protoreflect.MapKey, value protoreflect.Value) {
-	if !key.IsValid() || !value.IsValid() {
-		panic("invalid key or value provided")
-	}
-	keyUnwrapped := key.String()
-	concreteKey := keyUnwrapped
+func (x *_MsgPayout_2_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
-	(*x.m)[concreteKey] = concreteValue
+	concreteValue := valueUnwrapped.Interface().(*PayoutPair)
+	(*x.list)[i] = concreteValue
 }
 
-func (x *_MsgPayout_2_map) Mutable(key protoreflect.MapKey) protoreflect.Value {
-	keyUnwrapped := key.String()
-	concreteKey := keyUnwrapped
-	v, ok := (*x.m)[concreteKey]
-	if ok {
-		return protoreflect.ValueOfMessage(v.ProtoReflect())
-	}
-	newValue := new(types.Coin)
-	(*x.m)[concreteKey] = newValue
-	return protoreflect.ValueOfMessage(newValue.ProtoReflect())
+func (x *_MsgPayout_2_list) Append(value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*PayoutPair)
+	*x.list = append(*x.list, concreteValue)
 }
 
-func (x *_MsgPayout_2_map) NewValue() protoreflect.Value {
-	v := new(types.Coin)
+func (x *_MsgPayout_2_list) AppendMutable() protoreflect.Value {
+	v := new(PayoutPair)
+	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
-func (x *_MsgPayout_2_map) IsValid() bool {
-	return x.m != nil
+func (x *_MsgPayout_2_list) Truncate(n int) {
+	for i := n; i < len(*x.list); i++ {
+		(*x.list)[i] = nil
+	}
+	*x.list = (*x.list)[:n]
+}
+
+func (x *_MsgPayout_2_list) NewElement() protoreflect.Value {
+	v := new(PayoutPair)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_MsgPayout_2_list) IsValid() bool {
+	return x.list != nil
 }
 
 var (
-	md_MsgPayout           protoreflect.MessageDescriptor
-	fd_MsgPayout_authority protoreflect.FieldDescriptor
-	fd_MsgPayout_payouts   protoreflect.FieldDescriptor
+	md_MsgPayout              protoreflect.MessageDescriptor
+	fd_MsgPayout_authority    protoreflect.FieldDescriptor
+	fd_MsgPayout_payout_pairs protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_manifest_v1_tx_proto_init()
 	md_MsgPayout = File_manifest_v1_tx_proto.Messages().ByName("MsgPayout")
 	fd_MsgPayout_authority = md_MsgPayout.Fields().ByName("authority")
-	fd_MsgPayout_payouts = md_MsgPayout.Fields().ByName("payouts")
+	fd_MsgPayout_payout_pairs = md_MsgPayout.Fields().ByName("payout_pairs")
 }
 
 var _ protoreflect.Message = (*fastReflection_MsgPayout)(nil)
@@ -1047,9 +1007,9 @@ func (x *fastReflection_MsgPayout) Range(f func(protoreflect.FieldDescriptor, pr
 			return
 		}
 	}
-	if len(x.Payouts) != 0 {
-		value := protoreflect.ValueOfMap(&_MsgPayout_2_map{m: &x.Payouts})
-		if !f(fd_MsgPayout_payouts, value) {
+	if len(x.PayoutPairs) != 0 {
+		value := protoreflect.ValueOfList(&_MsgPayout_2_list{list: &x.PayoutPairs})
+		if !f(fd_MsgPayout_payout_pairs, value) {
 			return
 		}
 	}
@@ -1070,8 +1030,8 @@ func (x *fastReflection_MsgPayout) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
 	case "manifest.v1.MsgPayout.authority":
 		return x.Authority != ""
-	case "manifest.v1.MsgPayout.payouts":
-		return len(x.Payouts) != 0
+	case "manifest.v1.MsgPayout.payout_pairs":
+		return len(x.PayoutPairs) != 0
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayout"))
@@ -1090,8 +1050,8 @@ func (x *fastReflection_MsgPayout) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
 	case "manifest.v1.MsgPayout.authority":
 		x.Authority = ""
-	case "manifest.v1.MsgPayout.payouts":
-		x.Payouts = nil
+	case "manifest.v1.MsgPayout.payout_pairs":
+		x.PayoutPairs = nil
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayout"))
@@ -1111,12 +1071,12 @@ func (x *fastReflection_MsgPayout) Get(descriptor protoreflect.FieldDescriptor) 
 	case "manifest.v1.MsgPayout.authority":
 		value := x.Authority
 		return protoreflect.ValueOfString(value)
-	case "manifest.v1.MsgPayout.payouts":
-		if len(x.Payouts) == 0 {
-			return protoreflect.ValueOfMap(&_MsgPayout_2_map{})
+	case "manifest.v1.MsgPayout.payout_pairs":
+		if len(x.PayoutPairs) == 0 {
+			return protoreflect.ValueOfList(&_MsgPayout_2_list{})
 		}
-		mapValue := &_MsgPayout_2_map{m: &x.Payouts}
-		return protoreflect.ValueOfMap(mapValue)
+		listValue := &_MsgPayout_2_list{list: &x.PayoutPairs}
+		return protoreflect.ValueOfList(listValue)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayout"))
@@ -1139,10 +1099,10 @@ func (x *fastReflection_MsgPayout) Set(fd protoreflect.FieldDescriptor, value pr
 	switch fd.FullName() {
 	case "manifest.v1.MsgPayout.authority":
 		x.Authority = value.Interface().(string)
-	case "manifest.v1.MsgPayout.payouts":
-		mv := value.Map()
-		cmv := mv.(*_MsgPayout_2_map)
-		x.Payouts = *cmv.m
+	case "manifest.v1.MsgPayout.payout_pairs":
+		lv := value.List()
+		clv := lv.(*_MsgPayout_2_list)
+		x.PayoutPairs = *clv.list
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayout"))
@@ -1163,12 +1123,12 @@ func (x *fastReflection_MsgPayout) Set(fd protoreflect.FieldDescriptor, value pr
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgPayout) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "manifest.v1.MsgPayout.payouts":
-		if x.Payouts == nil {
-			x.Payouts = make(map[string]*types.Coin)
+	case "manifest.v1.MsgPayout.payout_pairs":
+		if x.PayoutPairs == nil {
+			x.PayoutPairs = []*PayoutPair{}
 		}
-		value := &_MsgPayout_2_map{m: &x.Payouts}
-		return protoreflect.ValueOfMap(value)
+		value := &_MsgPayout_2_list{list: &x.PayoutPairs}
+		return protoreflect.ValueOfList(value)
 	case "manifest.v1.MsgPayout.authority":
 		panic(fmt.Errorf("field authority of message manifest.v1.MsgPayout is not mutable"))
 	default:
@@ -1186,9 +1146,9 @@ func (x *fastReflection_MsgPayout) NewField(fd protoreflect.FieldDescriptor) pro
 	switch fd.FullName() {
 	case "manifest.v1.MsgPayout.authority":
 		return protoreflect.ValueOfString("")
-	case "manifest.v1.MsgPayout.payouts":
-		m := make(map[string]*types.Coin)
-		return protoreflect.ValueOfMap(&_MsgPayout_2_map{m: &m})
+	case "manifest.v1.MsgPayout.payout_pairs":
+		list := []*PayoutPair{}
+		return protoreflect.ValueOfList(&_MsgPayout_2_list{list: &list})
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayout"))
@@ -1262,30 +1222,10 @@ func (x *fastReflection_MsgPayout) ProtoMethods() *protoiface.Methods {
 		if l > 0 {
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
-		if len(x.Payouts) > 0 {
-			SiZeMaP := func(k string, v *types.Coin) {
-				l := 0
-				if v != nil {
-					l = options.Size(v)
-				}
-				l += 1 + runtime.Sov(uint64(l))
-				mapEntrySize := 1 + len(k) + runtime.Sov(uint64(len(k))) + l
-				n += mapEntrySize + 1 + runtime.Sov(uint64(mapEntrySize))
-			}
-			if options.Deterministic {
-				sortme := make([]string, 0, len(x.Payouts))
-				for k := range x.Payouts {
-					sortme = append(sortme, k)
-				}
-				sort.Strings(sortme)
-				for _, k := range sortme {
-					v := x.Payouts[k]
-					SiZeMaP(k, v)
-				}
-			} else {
-				for k, v := range x.Payouts {
-					SiZeMaP(k, v)
-				}
+		if len(x.PayoutPairs) > 0 {
+			for _, e := range x.PayoutPairs {
+				l = options.Size(e)
+				n += 1 + l + runtime.Sov(uint64(l))
 			}
 		}
 		if x.unknownFields != nil {
@@ -1317,10 +1257,9 @@ func (x *fastReflection_MsgPayout) ProtoMethods() *protoiface.Methods {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
 		}
-		if len(x.Payouts) > 0 {
-			MaRsHaLmAp := func(k string, v *types.Coin) (protoiface.MarshalOutput, error) {
-				baseI := i
-				encoded, err := options.Marshal(v)
+		if len(x.PayoutPairs) > 0 {
+			for iNdEx := len(x.PayoutPairs) - 1; iNdEx >= 0; iNdEx-- {
+				encoded, err := options.Marshal(x.PayoutPairs[iNdEx])
 				if err != nil {
 					return protoiface.MarshalOutput{
 						NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -1332,39 +1271,6 @@ func (x *fastReflection_MsgPayout) ProtoMethods() *protoiface.Methods {
 				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
 				i--
 				dAtA[i] = 0x12
-				i -= len(k)
-				copy(dAtA[i:], k)
-				i = runtime.EncodeVarint(dAtA, i, uint64(len(k)))
-				i--
-				dAtA[i] = 0xa
-				i = runtime.EncodeVarint(dAtA, i, uint64(baseI-i))
-				i--
-				dAtA[i] = 0x12
-				return protoiface.MarshalOutput{}, nil
-			}
-			if options.Deterministic {
-				keysForPayouts := make([]string, 0, len(x.Payouts))
-				for k := range x.Payouts {
-					keysForPayouts = append(keysForPayouts, string(k))
-				}
-				sort.Slice(keysForPayouts, func(i, j int) bool {
-					return keysForPayouts[i] < keysForPayouts[j]
-				})
-				for iNdEx := len(keysForPayouts) - 1; iNdEx >= 0; iNdEx-- {
-					v := x.Payouts[string(keysForPayouts[iNdEx])]
-					out, err := MaRsHaLmAp(keysForPayouts[iNdEx], v)
-					if err != nil {
-						return out, err
-					}
-				}
-			} else {
-				for k := range x.Payouts {
-					v := x.Payouts[k]
-					out, err := MaRsHaLmAp(k, v)
-					if err != nil {
-						return out, err
-					}
-				}
 			}
 		}
 		if len(x.Authority) > 0 {
@@ -1457,7 +1363,7 @@ func (x *fastReflection_MsgPayout) ProtoMethods() *protoiface.Methods {
 				iNdEx = postIndex
 			case 2:
 				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Payouts", wireType)
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field PayoutPairs", wireType)
 				}
 				var msglen int
 				for shift := uint(0); ; shift += 7 {
@@ -1484,105 +1390,509 @@ func (x *fastReflection_MsgPayout) ProtoMethods() *protoiface.Methods {
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				if x.Payouts == nil {
-					x.Payouts = make(map[string]*types.Coin)
+				x.PayoutPairs = append(x.PayoutPairs, &PayoutPair{})
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.PayoutPairs[len(x.PayoutPairs)-1]); err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
-				var mapkey string
-				var mapvalue *types.Coin
-				for iNdEx < postIndex {
-					entryPreIndex := iNdEx
-					var wire uint64
-					for shift := uint(0); ; shift += 7 {
-						if shift >= 64 {
-							return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-						}
-						if iNdEx >= l {
-							return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-						}
-						b := dAtA[iNdEx]
-						iNdEx++
-						wire |= uint64(b&0x7F) << shift
-						if b < 0x80 {
-							break
-						}
+				iNdEx = postIndex
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var (
+	md_PayoutPair         protoreflect.MessageDescriptor
+	fd_PayoutPair_address protoreflect.FieldDescriptor
+	fd_PayoutPair_coin    protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_manifest_v1_tx_proto_init()
+	md_PayoutPair = File_manifest_v1_tx_proto.Messages().ByName("PayoutPair")
+	fd_PayoutPair_address = md_PayoutPair.Fields().ByName("address")
+	fd_PayoutPair_coin = md_PayoutPair.Fields().ByName("coin")
+}
+
+var _ protoreflect.Message = (*fastReflection_PayoutPair)(nil)
+
+type fastReflection_PayoutPair PayoutPair
+
+func (x *PayoutPair) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_PayoutPair)(x)
+}
+
+func (x *PayoutPair) slowProtoReflect() protoreflect.Message {
+	mi := &file_manifest_v1_tx_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_PayoutPair_messageType fastReflection_PayoutPair_messageType
+var _ protoreflect.MessageType = fastReflection_PayoutPair_messageType{}
+
+type fastReflection_PayoutPair_messageType struct{}
+
+func (x fastReflection_PayoutPair_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_PayoutPair)(nil)
+}
+func (x fastReflection_PayoutPair_messageType) New() protoreflect.Message {
+	return new(fastReflection_PayoutPair)
+}
+func (x fastReflection_PayoutPair_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_PayoutPair
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_PayoutPair) Descriptor() protoreflect.MessageDescriptor {
+	return md_PayoutPair
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_PayoutPair) Type() protoreflect.MessageType {
+	return _fastReflection_PayoutPair_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_PayoutPair) New() protoreflect.Message {
+	return new(fastReflection_PayoutPair)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_PayoutPair) Interface() protoreflect.ProtoMessage {
+	return (*PayoutPair)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_PayoutPair) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.Address != "" {
+		value := protoreflect.ValueOfString(x.Address)
+		if !f(fd_PayoutPair_address, value) {
+			return
+		}
+	}
+	if x.Coin != nil {
+		value := protoreflect.ValueOfMessage(x.Coin.ProtoReflect())
+		if !f(fd_PayoutPair_coin, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_PayoutPair) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "manifest.v1.PayoutPair.address":
+		return x.Address != ""
+	case "manifest.v1.PayoutPair.coin":
+		return x.Coin != nil
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.PayoutPair"))
+		}
+		panic(fmt.Errorf("message manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_PayoutPair) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "manifest.v1.PayoutPair.address":
+		x.Address = ""
+	case "manifest.v1.PayoutPair.coin":
+		x.Coin = nil
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.PayoutPair"))
+		}
+		panic(fmt.Errorf("message manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_PayoutPair) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "manifest.v1.PayoutPair.address":
+		value := x.Address
+		return protoreflect.ValueOfString(value)
+	case "manifest.v1.PayoutPair.coin":
+		value := x.Coin
+		return protoreflect.ValueOfMessage(value.ProtoReflect())
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.PayoutPair"))
+		}
+		panic(fmt.Errorf("message manifest.v1.PayoutPair does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_PayoutPair) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "manifest.v1.PayoutPair.address":
+		x.Address = value.Interface().(string)
+	case "manifest.v1.PayoutPair.coin":
+		x.Coin = value.Message().Interface().(*types.Coin)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.PayoutPair"))
+		}
+		panic(fmt.Errorf("message manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_PayoutPair) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "manifest.v1.PayoutPair.coin":
+		if x.Coin == nil {
+			x.Coin = new(types.Coin)
+		}
+		return protoreflect.ValueOfMessage(x.Coin.ProtoReflect())
+	case "manifest.v1.PayoutPair.address":
+		panic(fmt.Errorf("field address of message manifest.v1.PayoutPair is not mutable"))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.PayoutPair"))
+		}
+		panic(fmt.Errorf("message manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_PayoutPair) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "manifest.v1.PayoutPair.address":
+		return protoreflect.ValueOfString("")
+	case "manifest.v1.PayoutPair.coin":
+		m := new(types.Coin)
+		return protoreflect.ValueOfMessage(m.ProtoReflect())
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.PayoutPair"))
+		}
+		panic(fmt.Errorf("message manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_PayoutPair) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in manifest.v1.PayoutPair", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_PayoutPair) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_PayoutPair) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_PayoutPair) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_PayoutPair) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*PayoutPair)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		l = len(x.Address)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.Coin != nil {
+			l = options.Size(x.Coin)
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*PayoutPair)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.Coin != nil {
+			encoded, err := options.Marshal(x.Coin)
+			if err != nil {
+				return protoiface.MarshalOutput{
+					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+					Buf:               input.Buf,
+				}, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			i--
+			dAtA[i] = 0x12
+		}
+		if len(x.Address) > 0 {
+			i -= len(x.Address)
+			copy(dAtA[i:], x.Address)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Address)))
+			i--
+			dAtA[i] = 0xa
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*PayoutPair)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PayoutPair: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PayoutPair: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Address", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
 					}
-					fieldNum := int32(wire >> 3)
-					if fieldNum == 1 {
-						var stringLenmapkey uint64
-						for shift := uint(0); ; shift += 7 {
-							if shift >= 64 {
-								return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-							}
-							if iNdEx >= l {
-								return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-							}
-							b := dAtA[iNdEx]
-							iNdEx++
-							stringLenmapkey |= uint64(b&0x7F) << shift
-							if b < 0x80 {
-								break
-							}
-						}
-						intStringLenmapkey := int(stringLenmapkey)
-						if intStringLenmapkey < 0 {
-							return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-						}
-						postStringIndexmapkey := iNdEx + intStringLenmapkey
-						if postStringIndexmapkey < 0 {
-							return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-						}
-						if postStringIndexmapkey > l {
-							return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-						}
-						mapkey = string(dAtA[iNdEx:postStringIndexmapkey])
-						iNdEx = postStringIndexmapkey
-					} else if fieldNum == 2 {
-						var mapmsglen int
-						for shift := uint(0); ; shift += 7 {
-							if shift >= 64 {
-								return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-							}
-							if iNdEx >= l {
-								return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-							}
-							b := dAtA[iNdEx]
-							iNdEx++
-							mapmsglen |= int(b&0x7F) << shift
-							if b < 0x80 {
-								break
-							}
-						}
-						if mapmsglen < 0 {
-							return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-						}
-						postmsgIndex := iNdEx + mapmsglen
-						if postmsgIndex < 0 {
-							return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-						}
-						if postmsgIndex > l {
-							return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-						}
-						mapvalue = &types.Coin{}
-						if err := options.Unmarshal(dAtA[iNdEx:postmsgIndex], mapvalue); err != nil {
-							return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
-						}
-						iNdEx = postmsgIndex
-					} else {
-						iNdEx = entryPreIndex
-						skippy, err := runtime.Skip(dAtA[iNdEx:])
-						if err != nil {
-							return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
-						}
-						if (skippy < 0) || (iNdEx+skippy) < 0 {
-							return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-						}
-						if (iNdEx + skippy) > postIndex {
-							return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-						}
-						iNdEx += skippy
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
 					}
 				}
-				x.Payouts[mapkey] = mapvalue
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Address = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			case 2:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Coin", wireType)
+				}
+				var msglen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					msglen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if msglen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + msglen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if x.Coin == nil {
+					x.Coin = &types.Coin{}
+				}
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Coin); err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
 				iNdEx = postIndex
 			default:
 				iNdEx = preIndex
@@ -1637,7 +1947,7 @@ func (x *MsgPayoutResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *MsgPayoutResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_manifest_v1_tx_proto_msgTypes[3]
+	mi := &file_manifest_v1_tx_proto_msgTypes[4]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2048,7 +2358,7 @@ func (x *MsgBurnHeldBalance) ProtoReflect() protoreflect.Message {
 }
 
 func (x *MsgBurnHeldBalance) slowProtoReflect() protoreflect.Message {
-	mi := &file_manifest_v1_tx_proto_msgTypes[4]
+	mi := &file_manifest_v1_tx_proto_msgTypes[5]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2551,7 +2861,7 @@ func (x *MsgBurnHeldBalanceResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *MsgBurnHeldBalanceResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_manifest_v1_tx_proto_msgTypes[5]
+	mi := &file_manifest_v1_tx_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2990,8 +3300,8 @@ type MsgPayout struct {
 
 	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	// payout is the amount of tokens paid to accounts.
-	Payouts map[string]*types.Coin `protobuf:"bytes,2,rep,name=payouts,proto3" json:"payouts,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+	// payout_pairs are the pairs of addresses and coins to be paid out.
+	PayoutPairs []*PayoutPair `protobuf:"bytes,2,rep,name=payout_pairs,json=payoutPairs,proto3" json:"payout_pairs,omitempty"`
 }
 
 func (x *MsgPayout) Reset() {
@@ -3021,9 +3331,52 @@ func (x *MsgPayout) GetAuthority() string {
 	return ""
 }
 
-func (x *MsgPayout) GetPayouts() map[string]*types.Coin {
+func (x *MsgPayout) GetPayoutPairs() []*PayoutPair {
 	if x != nil {
-		return x.Payouts
+		return x.PayoutPairs
+	}
+	return nil
+}
+
+type PayoutPair struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Address string      `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	Coin    *types.Coin `protobuf:"bytes,2,opt,name=coin,proto3" json:"coin,omitempty"`
+}
+
+func (x *PayoutPair) Reset() {
+	*x = PayoutPair{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_manifest_v1_tx_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *PayoutPair) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PayoutPair) ProtoMessage() {}
+
+// Deprecated: Use PayoutPair.ProtoReflect.Descriptor instead.
+func (*PayoutPair) Descriptor() ([]byte, []int) {
+	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *PayoutPair) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *PayoutPair) GetCoin() *types.Coin {
+	if x != nil {
+		return x.Coin
 	}
 	return nil
 }
@@ -3038,7 +3391,7 @@ type MsgPayoutResponse struct {
 func (x *MsgPayoutResponse) Reset() {
 	*x = MsgPayoutResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_manifest_v1_tx_proto_msgTypes[3]
+		mi := &file_manifest_v1_tx_proto_msgTypes[4]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3052,7 +3405,7 @@ func (*MsgPayoutResponse) ProtoMessage() {}
 
 // Deprecated: Use MsgPayoutResponse.ProtoReflect.Descriptor instead.
 func (*MsgPayoutResponse) Descriptor() ([]byte, []int) {
-	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{3}
+	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{4}
 }
 
 // MsgPayout is the Msg/BurnHeldBalance request type.
@@ -3070,7 +3423,7 @@ type MsgBurnHeldBalance struct {
 func (x *MsgBurnHeldBalance) Reset() {
 	*x = MsgBurnHeldBalance{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_manifest_v1_tx_proto_msgTypes[4]
+		mi := &file_manifest_v1_tx_proto_msgTypes[5]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3084,7 +3437,7 @@ func (*MsgBurnHeldBalance) ProtoMessage() {}
 
 // Deprecated: Use MsgBurnHeldBalance.ProtoReflect.Descriptor instead.
 func (*MsgBurnHeldBalance) Descriptor() ([]byte, []int) {
-	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{4}
+	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *MsgBurnHeldBalance) GetSender() string {
@@ -3111,7 +3464,7 @@ type MsgBurnHeldBalanceResponse struct {
 func (x *MsgBurnHeldBalanceResponse) Reset() {
 	*x = MsgBurnHeldBalanceResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_manifest_v1_tx_proto_msgTypes[5]
+		mi := &file_manifest_v1_tx_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3125,7 +3478,7 @@ func (*MsgBurnHeldBalanceResponse) ProtoMessage() {}
 
 // Deprecated: Use MsgBurnHeldBalanceResponse.ProtoReflect.Descriptor instead.
 func (*MsgBurnHeldBalanceResponse) Descriptor() ([]byte, []int) {
-	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{5}
+	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{6}
 }
 
 var File_manifest_v1_tx_proto protoreflect.FileDescriptor
@@ -3153,67 +3506,71 @@ var file_manifest_v1_tx_proto_rawDesc = []byte{
 	0x1f, 0x00, 0x52, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x3a, 0x0e, 0x82, 0xe7, 0xb0, 0x2a,
 	0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x22, 0x19, 0x0a, 0x17, 0x4d, 0x73,
 	0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73,
-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0xf8, 0x01, 0x0a, 0x09, 0x4d, 0x73, 0x67, 0x50, 0x61, 0x79,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x9e, 0x01, 0x0a, 0x09, 0x4d, 0x73, 0x67, 0x50, 0x61, 0x79,
 	0x6f, 0x75, 0x74, 0x12, 0x36, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79,
 	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d,
 	0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67,
-	0x52, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x48, 0x0a, 0x07, 0x70,
-	0x61, 0x79, 0x6f, 0x75, 0x74, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x23, 0x2e, 0x6d,
-	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x50, 0x61,
-	0x79, 0x6f, 0x75, 0x74, 0x2e, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x73, 0x45, 0x6e, 0x74, 0x72,
-	0x79, 0x42, 0x09, 0xc8, 0xde, 0x1f, 0x00, 0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x07, 0x70, 0x61,
-	0x79, 0x6f, 0x75, 0x74, 0x73, 0x1a, 0x55, 0x0a, 0x0c, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x73,
-	0x45, 0x6e, 0x74, 0x72, 0x79, 0x12, 0x10, 0x0a, 0x03, 0x6b, 0x65, 0x79, 0x18, 0x01, 0x20, 0x01,
-	0x28, 0x09, 0x52, 0x03, 0x6b, 0x65, 0x79, 0x12, 0x2f, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65,
-	0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e,
-	0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69,
-	0x6e, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x3a, 0x02, 0x38, 0x01, 0x3a, 0x12, 0xe8, 0xa0,
-	0x1f, 0x00, 0x82, 0xe7, 0xb0, 0x2a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79,
-	0x22, 0x13, 0x0a, 0x11, 0x4d, 0x73, 0x67, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x52, 0x65, 0x73,
-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0xda, 0x01, 0x0a, 0x12, 0x4d, 0x73, 0x67, 0x42, 0x75, 0x72,
-	0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x12, 0x30, 0x0a, 0x06,
-	0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xd2, 0xb4,
-	0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73,
-	0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x12, 0x80,
-	0x01, 0x0a, 0x0a, 0x62, 0x75, 0x72, 0x6e, 0x5f, 0x63, 0x6f, 0x69, 0x6e, 0x73, 0x18, 0x02, 0x20,
-	0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73,
-	0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x46,
-	0xc8, 0xde, 0x1f, 0x00, 0xaa, 0xdf, 0x1f, 0x28, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63,
-	0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73,
-	0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x73,
-	0x9a, 0xe7, 0xb0, 0x2a, 0x0c, 0x6c, 0x65, 0x67, 0x61, 0x63, 0x79, 0x5f, 0x63, 0x6f, 0x69, 0x6e,
-	0x73, 0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x09, 0x62, 0x75, 0x72, 0x6e, 0x43, 0x6f, 0x69, 0x6e,
-	0x73, 0x3a, 0x0f, 0xe8, 0xa0, 0x1f, 0x00, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e, 0x64,
-	0x65, 0x72, 0x22, 0x1c, 0x0a, 0x1a, 0x4d, 0x73, 0x67, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c,
-	0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
-	0x32, 0xff, 0x01, 0x0a, 0x03, 0x4d, 0x73, 0x67, 0x12, 0x52, 0x0a, 0x0c, 0x55, 0x70, 0x64, 0x61,
-	0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x1c, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66,
-	0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65,
-	0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x1a, 0x24, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73,
-	0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61,
-	0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x40, 0x0a, 0x06,
-	0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x12, 0x16, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73,
-	0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x1a, 0x1e,
-	0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67,
-	0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x5b,
-	0x0a, 0x0f, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63,
-	0x65, 0x12, 0x1f, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e,
-	0x4d, 0x73, 0x67, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e,
-	0x63, 0x65, 0x1a, 0x27, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31,
-	0x2e, 0x4d, 0x73, 0x67, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61,
-	0x6e, 0x63, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x1a, 0x05, 0x80, 0xe7, 0xb0,
-	0x2a, 0x01, 0x42, 0xa9, 0x01, 0x0a, 0x0f, 0x63, 0x6f, 0x6d, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66,
-	0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x42, 0x07, 0x54, 0x78, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50,
-	0x01, 0x5a, 0x40, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x69,
-	0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73,
-	0x74, 0x2d, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x6d, 0x61, 0x6e,
-	0x69, 0x66, 0x65, 0x73, 0x74, 0x2f, 0x76, 0x31, 0x3b, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73,
-	0x74, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x4d, 0x58, 0x58, 0xaa, 0x02, 0x0b, 0x4d, 0x61, 0x6e, 0x69,
-	0x66, 0x65, 0x73, 0x74, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x0b, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65,
-	0x73, 0x74, 0x5c, 0x56, 0x31, 0xe2, 0x02, 0x17, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74,
-	0x5c, 0x56, 0x31, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea,
-	0x02, 0x0c, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x3a, 0x3a, 0x56, 0x31, 0x62, 0x06,
-	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x52, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x45, 0x0a, 0x0c, 0x70,
+	0x61, 0x79, 0x6f, 0x75, 0x74, 0x5f, 0x70, 0x61, 0x69, 0x72, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28,
+	0x0b, 0x32, 0x17, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e,
+	0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x50, 0x61, 0x69, 0x72, 0x42, 0x09, 0xc8, 0xde, 0x1f, 0x00,
+	0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x0b, 0x70, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x50, 0x61, 0x69,
+	0x72, 0x73, 0x3a, 0x12, 0xe8, 0xa0, 0x1f, 0x00, 0x82, 0xe7, 0xb0, 0x2a, 0x09, 0x61, 0x75, 0x74,
+	0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x22, 0x9b, 0x01, 0x0a, 0x0a, 0x50, 0x61, 0x79, 0x6f, 0x75,
+	0x74, 0x50, 0x61, 0x69, 0x72, 0x12, 0x18, 0x0a, 0x07, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x12,
+	0x73, 0x0a, 0x04, 0x63, 0x6f, 0x69, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e,
+	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65,
+	0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x44, 0xc8, 0xde, 0x1f, 0x00, 0xfa, 0xde,
+	0x1f, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73,
+	0x6d, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74,
+	0x79, 0x70, 0x65, 0x73, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x9a, 0xe7, 0xb0, 0x2a, 0x0b, 0x6c, 0x65,
+	0x67, 0x61, 0x63, 0x79, 0x5f, 0x63, 0x6f, 0x69, 0x6e, 0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x04,
+	0x63, 0x6f, 0x69, 0x6e, 0x22, 0x13, 0x0a, 0x11, 0x4d, 0x73, 0x67, 0x50, 0x61, 0x79, 0x6f, 0x75,
+	0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0xda, 0x01, 0x0a, 0x12, 0x4d, 0x73,
+	0x67, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65,
+	0x12, 0x30, 0x0a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09,
+	0x42, 0x18, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64,
+	0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x06, 0x73, 0x65, 0x6e, 0x64,
+	0x65, 0x72, 0x12, 0x80, 0x01, 0x0a, 0x0a, 0x62, 0x75, 0x72, 0x6e, 0x5f, 0x63, 0x6f, 0x69, 0x6e,
+	0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73,
+	0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f,
+	0x69, 0x6e, 0x42, 0x46, 0xc8, 0xde, 0x1f, 0x00, 0xaa, 0xdf, 0x1f, 0x28, 0x67, 0x69, 0x74, 0x68,
+	0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x63, 0x6f,
+	0x73, 0x6d, 0x6f, 0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73, 0x2e, 0x43,
+	0x6f, 0x69, 0x6e, 0x73, 0x9a, 0xe7, 0xb0, 0x2a, 0x0c, 0x6c, 0x65, 0x67, 0x61, 0x63, 0x79, 0x5f,
+	0x63, 0x6f, 0x69, 0x6e, 0x73, 0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x09, 0x62, 0x75, 0x72, 0x6e,
+	0x43, 0x6f, 0x69, 0x6e, 0x73, 0x3a, 0x0f, 0xe8, 0xa0, 0x1f, 0x00, 0x82, 0xe7, 0xb0, 0x2a, 0x06,
+	0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x22, 0x1c, 0x0a, 0x1a, 0x4d, 0x73, 0x67, 0x42, 0x75, 0x72,
+	0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x32, 0xff, 0x01, 0x0a, 0x03, 0x4d, 0x73, 0x67, 0x12, 0x52, 0x0a, 0x0c,
+	0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x1c, 0x2e, 0x6d,
+	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70,
+	0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x1a, 0x24, 0x2e, 0x6d, 0x61, 0x6e,
+	0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61,
+	0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x12, 0x40, 0x0a, 0x06, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x12, 0x16, 0x2e, 0x6d, 0x61, 0x6e,
+	0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x50, 0x61, 0x79, 0x6f,
+	0x75, 0x74, 0x1a, 0x1e, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31,
+	0x2e, 0x4d, 0x73, 0x67, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x12, 0x5b, 0x0a, 0x0f, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61,
+	0x6c, 0x61, 0x6e, 0x63, 0x65, 0x12, 0x1f, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74,
+	0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42,
+	0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x1a, 0x27, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73,
+	0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64,
+	0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x1a,
+	0x05, 0x80, 0xe7, 0xb0, 0x2a, 0x01, 0x42, 0xa9, 0x01, 0x0a, 0x0f, 0x63, 0x6f, 0x6d, 0x2e, 0x6d,
+	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x42, 0x07, 0x54, 0x78, 0x50, 0x72,
+	0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x40, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f,
+	0x6d, 0x2f, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x6d, 0x61, 0x6e,
+	0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x72, 0x2f, 0x61, 0x70, 0x69,
+	0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2f, 0x76, 0x31, 0x3b, 0x6d, 0x61, 0x6e,
+	0x69, 0x66, 0x65, 0x73, 0x74, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x4d, 0x58, 0x58, 0xaa, 0x02, 0x0b,
+	0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x0b, 0x4d, 0x61,
+	0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x5c, 0x56, 0x31, 0xe2, 0x02, 0x17, 0x4d, 0x61, 0x6e, 0x69,
+	0x66, 0x65, 0x73, 0x74, 0x5c, 0x56, 0x31, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64,
+	0x61, 0x74, 0x61, 0xea, 0x02, 0x0c, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x3a, 0x3a,
+	0x56, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -3233,24 +3590,24 @@ var file_manifest_v1_tx_proto_goTypes = []interface{}{
 	(*MsgUpdateParams)(nil),            // 0: manifest.v1.MsgUpdateParams
 	(*MsgUpdateParamsResponse)(nil),    // 1: manifest.v1.MsgUpdateParamsResponse
 	(*MsgPayout)(nil),                  // 2: manifest.v1.MsgPayout
-	(*MsgPayoutResponse)(nil),          // 3: manifest.v1.MsgPayoutResponse
-	(*MsgBurnHeldBalance)(nil),         // 4: manifest.v1.MsgBurnHeldBalance
-	(*MsgBurnHeldBalanceResponse)(nil), // 5: manifest.v1.MsgBurnHeldBalanceResponse
-	nil,                                // 6: manifest.v1.MsgPayout.PayoutsEntry
+	(*PayoutPair)(nil),                 // 3: manifest.v1.PayoutPair
+	(*MsgPayoutResponse)(nil),          // 4: manifest.v1.MsgPayoutResponse
+	(*MsgBurnHeldBalance)(nil),         // 5: manifest.v1.MsgBurnHeldBalance
+	(*MsgBurnHeldBalanceResponse)(nil), // 6: manifest.v1.MsgBurnHeldBalanceResponse
 	(*Params)(nil),                     // 7: manifest.v1.Params
 	(*types.Coin)(nil),                 // 8: cosmos.base.v1beta1.Coin
 }
 var file_manifest_v1_tx_proto_depIdxs = []int32{
 	7, // 0: manifest.v1.MsgUpdateParams.params:type_name -> manifest.v1.Params
-	6, // 1: manifest.v1.MsgPayout.payouts:type_name -> manifest.v1.MsgPayout.PayoutsEntry
-	8, // 2: manifest.v1.MsgBurnHeldBalance.burn_coins:type_name -> cosmos.base.v1beta1.Coin
-	8, // 3: manifest.v1.MsgPayout.PayoutsEntry.value:type_name -> cosmos.base.v1beta1.Coin
+	3, // 1: manifest.v1.MsgPayout.payout_pairs:type_name -> manifest.v1.PayoutPair
+	8, // 2: manifest.v1.PayoutPair.coin:type_name -> cosmos.base.v1beta1.Coin
+	8, // 3: manifest.v1.MsgBurnHeldBalance.burn_coins:type_name -> cosmos.base.v1beta1.Coin
 	0, // 4: manifest.v1.Msg.UpdateParams:input_type -> manifest.v1.MsgUpdateParams
 	2, // 5: manifest.v1.Msg.Payout:input_type -> manifest.v1.MsgPayout
-	4, // 6: manifest.v1.Msg.BurnHeldBalance:input_type -> manifest.v1.MsgBurnHeldBalance
+	5, // 6: manifest.v1.Msg.BurnHeldBalance:input_type -> manifest.v1.MsgBurnHeldBalance
 	1, // 7: manifest.v1.Msg.UpdateParams:output_type -> manifest.v1.MsgUpdateParamsResponse
-	3, // 8: manifest.v1.Msg.Payout:output_type -> manifest.v1.MsgPayoutResponse
-	5, // 9: manifest.v1.Msg.BurnHeldBalance:output_type -> manifest.v1.MsgBurnHeldBalanceResponse
+	4, // 8: manifest.v1.Msg.Payout:output_type -> manifest.v1.MsgPayoutResponse
+	6, // 9: manifest.v1.Msg.BurnHeldBalance:output_type -> manifest.v1.MsgBurnHeldBalanceResponse
 	7, // [7:10] is the sub-list for method output_type
 	4, // [4:7] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
@@ -3302,7 +3659,7 @@ func file_manifest_v1_tx_proto_init() {
 			}
 		}
 		file_manifest_v1_tx_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*MsgPayoutResponse); i {
+			switch v := v.(*PayoutPair); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3314,7 +3671,7 @@ func file_manifest_v1_tx_proto_init() {
 			}
 		}
 		file_manifest_v1_tx_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*MsgBurnHeldBalance); i {
+			switch v := v.(*MsgPayoutResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3326,6 +3683,18 @@ func file_manifest_v1_tx_proto_init() {
 			}
 		}
 		file_manifest_v1_tx_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MsgBurnHeldBalance); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_manifest_v1_tx_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*MsgBurnHeldBalanceResponse); i {
 			case 0:
 				return &v.state
