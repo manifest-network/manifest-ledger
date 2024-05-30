@@ -33,21 +33,16 @@ func (ms msgServer) UpdateParams(ctx context.Context, req *types.MsgUpdateParams
 }
 
 // PayoutStakeholders implements types.MsgServer.
-func (ms msgServer) PayoutStakeholders(ctx context.Context, req *types.MsgPayoutStakeholders) (*types.MsgPayoutStakeholdersResponse, error) {
+func (ms msgServer) Payout(ctx context.Context, req *types.MsgPayout) (*types.MsgPayoutResponse, error) {
 	if ms.k.authority != req.Authority {
 		return nil, fmt.Errorf("invalid authority; expected %s, got %s", ms.k.authority, req.Authority)
 	}
 
-	params, err := ms.k.Params.Get(ctx)
-	if err != nil {
-		return nil, err
+	if err := req.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid payout message: %w", err)
 	}
 
-	if params.Inflation.AutomaticEnabled {
-		return nil, types.ErrManualMintingDisabled
-	}
-
-	return nil, ms.k.PayoutStakeholders(ctx, req.Payout)
+	return nil, ms.k.PayoutStakeholders(ctx, req.Payouts)
 }
 
 // BurnHeldBalance implements types.MsgServer.

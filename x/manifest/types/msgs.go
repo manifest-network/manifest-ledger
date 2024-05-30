@@ -13,13 +13,10 @@ var _ sdk.Msg = &MsgUpdateParams{}
 // NewMsgUpdateParams creates new instance of MsgUpdateParams
 func NewMsgUpdateParams(
 	sender sdk.Address,
-	stakeHolders []*StakeHolders,
 ) *MsgUpdateParams {
 	return &MsgUpdateParams{
 		Authority: sender.String(),
-		Params: Params{
-			StakeHolders: stakeHolders,
-		},
+		Params:    NewParams(),
 	}
 }
 
@@ -49,42 +46,64 @@ func (msg *MsgUpdateParams) Validate() error {
 	return msg.Params.Validate()
 }
 
-var _ sdk.Msg = &MsgPayoutStakeholders{}
+var _ sdk.Msg = &MsgPayout{}
 
-func NewMsgPayoutStakeholders(
+func NewMsgPayout(
 	sender sdk.Address,
-	coin sdk.Coin,
-) *MsgPayoutStakeholders {
-	return &MsgPayoutStakeholders{
+	payouts map[string]sdk.Coin,
+) *MsgPayout {
+	return &MsgPayout{
 		Authority: sender.String(),
-		Payout:    coin,
+		Payouts:   payouts,
 	}
 }
 
 // Route returns the name of the module
-func (msg MsgPayoutStakeholders) Route() string { return ModuleName }
+func (msg MsgPayout) Route() string { return ModuleName }
 
 // Type returns the the action
-func (msg MsgPayoutStakeholders) Type() string { return "payout" }
+func (msg MsgPayout) Type() string { return "payout" }
 
 // GetSignBytes implements the LegacyMsg interface.
-func (msg MsgPayoutStakeholders) GetSignBytes() []byte {
+func (msg MsgPayout) GetSignBytes() []byte {
 	return sdk.MustSortJSON(amino.MustMarshalJSON(&msg))
 }
 
 // GetSigners returns the expected signers for the message.
-func (msg *MsgPayoutStakeholders) GetSigners() []sdk.AccAddress {
+func (msg *MsgPayout) GetSigners() []sdk.AccAddress {
 	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
 	return []sdk.AccAddress{addr}
 }
 
 // ValidateBasic does a sanity check on the provided data.
-func (msg *MsgPayoutStakeholders) Validate() error {
+func (msg *MsgPayout) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
 		return errors.Wrap(err, "invalid authority address")
 	}
 
-	return msg.Payout.Validate()
+	if len(msg.Payouts) == 0 {
+		return fmt.Errorf("accounts cannot be empty")
+	}
+
+	for addr, coin := range msg.Payouts {
+		if _, err := sdk.AccAddressFromBech32(addr); err != nil {
+			return errors.Wrapf(err, "invalid address %s", addr)
+		}
+
+		if coin.IsZero() {
+			return fmt.Errorf("coin cannot be zero for address: %s", addr)
+		}
+
+		if coin.IsNegative() {
+			return fmt.Errorf("coin cannot be negative for address: %s", addr)
+		}
+
+		if err := coin.Validate(); err != nil {
+			return errors.Wrapf(err, "invalid coin: %v for address: %s", coin, addr)
+		}
+	}
+
+	return nil
 }
 
 var _ sdk.Msg = &MsgBurnHeldBalance{}
