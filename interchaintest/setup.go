@@ -20,9 +20,8 @@ import (
 
 	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
-
 	sdkmath "cosmossdk.io/math"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 
@@ -66,14 +65,9 @@ var (
 		cosmos.NewGenesisKV("app_state.poa.params.admins", []string{CosmosGovModuleAcc, accAddr}),
 		// Mint - this is the only param the manifest module depends on from mint
 		cosmos.NewGenesisKV("app_state.mint.params.blocks_per_year", "6311520"),
-		// Manifest
-		cosmos.NewGenesisKV("app_state.manifest.params.stake_holders", types.NewStakeHolders(types.NewStakeHolder(acc2Addr, 100_000_000))), // 100% of the inflation payout goes to them
-		cosmos.NewGenesisKV("app_state.manifest.params.inflation.automatic_enabled", true),
-		cosmos.NewGenesisKV("app_state.manifest.params.inflation.mint_denom", Denom),
-		cosmos.NewGenesisKV("app_state.manifest.params.inflation.yearly_amount", "500000000000"), // in micro denom
 	}
 
-	// `make local-image`
+	// `make local-image-cov`
 	LocalChainConfig = ibc.ChainConfig{
 		Type:    "cosmos",
 		Name:    "manifest",
@@ -98,6 +92,10 @@ var (
 
 	DefaultGenesisAmt = sdkmath.NewInt(10_000_000)
 )
+
+func init() {
+	sdk.GetConfig().SetBech32PrefixForAccount(LocalChainConfig.Bech32Prefix, LocalChainConfig.Bech32Prefix+"pub")
+}
 
 func AppEncoding() *sdktestutil.TestEncodingConfig {
 	enc := cosmos.DefaultEncoding()

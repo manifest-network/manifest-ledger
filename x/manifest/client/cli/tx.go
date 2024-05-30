@@ -52,11 +52,7 @@ func MsgPayout() *cobra.Command {
 				return err
 			}
 
-			msg := &types.MsgPayout{
-				Authority:   authority.String(),
-				PayoutPairs: payoutPairs,
-			}
-
+			msg := types.NewMsgPayout(authority, payoutPairs)
 			if err := msg.Validate(); err != nil {
 				return err
 			}
@@ -89,11 +85,7 @@ func MsgBurnCoins() *cobra.Command {
 				return err
 			}
 
-			msg := &types.MsgBurnHeldBalance{
-				Sender:    sender.String(),
-				BurnCoins: coins,
-			}
-
+			msg := types.NewMsgBurnHeldBalance(sender, coins)
 			if err := msg.Validate(); err != nil {
 				return err
 			}

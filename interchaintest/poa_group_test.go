@@ -61,23 +61,12 @@ var (
 	upgradeProposal        = createUpgradeProposal(groupAddr, planName, planHeight)
 	cancelUpgradeProposal  = createCancelUpgradeProposal(groupAddr)
 	manifestUpdateProposal = createManifestUpdateProposal(groupAddr,
-		createManifestParams(
-			createInflation(Denom, 200_000_000, false),
-			[]*manifesttypes.StakeHolders{
-				createStakeHolders(acc3Addr, 50_000_000),
-				createStakeHolders(acc4Addr, 50_000_000),
-			},
-		),
+		manifesttypes.NewParams(),
 	)
 	manifestDefaultProposal = createManifestUpdateProposal(groupAddr,
-		createManifestParams(
-			createInflation(Denom, 0, false),
-			[]*manifesttypes.StakeHolders{
-				createStakeHolders(acc2Addr, 100_000_000),
-			},
-		),
+		manifesttypes.NewParams(),
 	)
-	manifestPayoutProposal  = createManifestPayoutProposal(groupAddr, sdk.NewInt64Coin(Denom, 50))
+
 	manifestBurnProposal    = createManifestBurnProposal(groupAddr, sdk.NewCoins(sdk.NewInt64Coin(Denom, 50)))
 	poaDefaultParams        = createPOAParams([]string{groupAddr}, true)
 	bankSendProposal        = createBankSendProposal(groupAddr, accAddr, sdk.NewInt64Coin(Denom, 1))
@@ -140,9 +129,6 @@ func TestGroupPOA(t *testing.T) {
 	// Software Upgrade
 	testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr)
 	// Manifest module
-	testManifestParamsUpdate(t, ctx, chain, &cfgA, accAddr)
-	testManifestParamsUpdateWithInflation(t, ctx, chain, &cfgA, accAddr)
-	testManifestParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
 	testManifestStakeholdersPayout(t, ctx, chain, &cfgA, accAddr)
 	// POA Update
 	testPOAParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
@@ -152,7 +138,6 @@ func TestGroupPOA(t *testing.T) {
 	// Bank
 	testBankSend(t, ctx, chain, &cfgA, accAddr)
 	testBankSendIllegal(t, ctx, chain, &cfgA, accAddr)
-
 	t.Cleanup(func() {
 		// Copy coverage files from the container
 		CopyCoverageFromContainer(ctx, t, client, chain.GetNode().ContainerID(), chain.HomeDir())
@@ -175,38 +160,6 @@ func testSoftwareUpgrade(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	verifyUpgradePlanIsNil(t, ctx, chain)
 }
 
-// testManifestParamsUpdate tests the submission, voting, and execution of a manifest params update proposal
-// This proposal tests for https://github.com/liftedinit/manifest-ledger/issues/61
-// `nil` inflation parameter is allowed and should be handled correctly
-func testManifestParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
-	t.Log("\n===== TEST GROUP MANIFEST PARAMS UPDATE (NIL INFLATION PARAMETER - FAIL) =====")
-	t.Log("\n===== TEST FIX FOR https://github.com/liftedinit/manifest-ledger/issues/61 =====")
-	newProposal := manifestDefaultProposal
-	newProposal.Params.Inflation = nil
-
-	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
-	createAndRunProposalFailure(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &newProposal)}, manifesttypes.ErrInflationParamsNotSet.Error())
-	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
-}
-
-// testManifestParamsUpdateWithInflation tests the submission, voting, and execution of a manifest params update proposal
-func testManifestParamsUpdateWithInflation(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
-	t.Log("\n===== TEST GROUP MANIFEST PARAMS UPDATE =====")
-	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &manifestUpdateProposal)})
-	checkManifestParams(ctx, t, chain, &manifestUpdateProposal.Params)
-	resetManifestParams(t, ctx, chain, config, accAddr)
-}
-
-// testManifestParamsUpdateEmpty tests the submission, voting, and execution of an empty manifest params update proposal
-func testManifestParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
-	t.Log("\n===== TEST GROUP MANIFEST PARAMS UPDATE (EMPTY PARAM - FAIL) =====")
-	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
-	manifestUpdateEmptyProposal := createManifestUpdateProposal(groupAddr, manifesttypes.Params{})
-	createAndRunProposalFailure(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &manifestUpdateEmptyProposal)}, manifesttypes.ErrInflationParamsNotSet.Error())
-	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
-}
-
 // testManifestStakeholdersPayout tests the submission, voting, and execution of a manifest stakeholders payout proposal.
 // The stakeholders are paid out and the newly minted tokens are burned
 func testManifestStakeholdersPayout(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
@@ -216,9 +169,12 @@ func testManifestStakeholdersPayout(t *testing.T, ctx context.Context, chain *co
 	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.ZeroInt())
 
 	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &manifestUpdateProposal)})
-	verifyManifestStakeholders(t, ctx, chain, []*manifesttypes.StakeHolders{createStakeHolders(acc3Addr, 50_000_000), createStakeHolders(acc4Addr, 50_000_000)})
 
 	// Stakeholders payout
+	manifestPayoutProposal := createManifestPayoutProposal(groupAddr, []manifesttypes.PayoutPair{
+		manifesttypes.NewPayoutPair(sdk.MustAccAddressFromBech32(acc3Addr), "umfx", 25),
+		manifesttypes.NewPayoutPair(sdk.MustAccAddressFromBech32(acc4Addr), "umfx", 25),
+	})
 	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &manifestPayoutProposal)})
 	verifyBalance(t, ctx, chain, acc3Addr, Denom, sdkmath.NewInt(25))
 	verifyBalance(t, ctx, chain, acc4Addr, Denom, sdkmath.NewInt(25))
@@ -380,16 +336,6 @@ func checkManifestParams(ctx context.Context, t *testing.T, chain *cosmos.Cosmos
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Params)
-	if expectedParams.Inflation != nil {
-		require.Equal(t, expectedParams.Inflation.MintDenom, resp.Params.Inflation.MintDenom)
-		require.Equal(t, expectedParams.Inflation.YearlyAmount, resp.Params.Inflation.YearlyAmount)
-		require.Equal(t, expectedParams.Inflation.AutomaticEnabled, resp.Params.Inflation.AutomaticEnabled)
-	}
-	require.Len(t, expectedParams.StakeHolders, len(resp.Params.StakeHolders))
-	for i, sh := range expectedParams.StakeHolders {
-		require.Equal(t, sh.Address, resp.Params.StakeHolders[i].Address)
-		require.Equal(t, sh.Percentage, resp.Params.StakeHolders[i].Percentage)
-	}
 }
 
 // checkPOAParams checks the POA params against the expected params
@@ -469,8 +415,6 @@ func createGroupGenesis() []cosmos.GenesisKV {
 		cosmos.NewGenesisKV("app_state.group.group_policy_seq", "1"),
 		cosmos.NewGenesisKV("app_state.group.group_policies", []*grouptypes.GroupPolicyInfo{groupPolicy}),
 		cosmos.NewGenesisKV("app_state.poa.params.admins", []string{groupAddr}),
-		cosmos.NewGenesisKV("app_state.manifest.params.inflation.automatic_enabled", false),
-		cosmos.NewGenesisKV("app_state.manifest.params.inflation.yearly_amount", "0"),
 	)
 }
 
@@ -527,27 +471,24 @@ func createCancelUpgradeProposal(authority string) upgradetypes.MsgCancelUpgrade
 	}
 }
 
-func createManifestParams(inflation *manifesttypes.Inflation, stakeholders []*manifesttypes.StakeHolders) manifesttypes.Params {
-	return manifesttypes.Params{
-		Inflation:    inflation,
-		StakeHolders: stakeholders,
-	}
+func createManifestParams() manifesttypes.Params {
+	return manifesttypes.NewParams()
 }
 
-func createInflation(mintDenom string, yearlyAmount uint64, automaticEnabled bool) *manifesttypes.Inflation {
-	return &manifesttypes.Inflation{
-		MintDenom:        mintDenom,
-		YearlyAmount:     yearlyAmount,
-		AutomaticEnabled: automaticEnabled,
-	}
-}
+// func createInflation(mintDenom string, yearlyAmount uint64, automaticEnabled bool) *manifesttypes.Inflation {
+// 	return &manifesttypes.Inflation{
+// 		MintDenom:        mintDenom,
+// 		YearlyAmount:     yearlyAmount,
+// 		AutomaticEnabled: automaticEnabled,
+// 	}
+// }
 
-func createStakeHolders(address string, percentage int32) *manifesttypes.StakeHolders {
-	return &manifesttypes.StakeHolders{
-		Address:    address,
-		Percentage: percentage,
-	}
-}
+// func createStakeHolders(address string, percentage int32) *manifesttypes.StakeHolders {
+// 	return &manifesttypes.StakeHolders{
+// 		Address:    address,
+// 		Percentage: percentage,
+// 	}
+// }
 
 func createManifestUpdateProposal(authority string, params manifesttypes.Params) manifesttypes.MsgUpdateParams {
 	return manifesttypes.MsgUpdateParams{
@@ -556,10 +497,10 @@ func createManifestUpdateProposal(authority string, params manifesttypes.Params)
 	}
 }
 
-func createManifestPayoutProposal(authority string, payout sdk.Coin) manifesttypes.MsgPayoutStakeholders {
-	return manifesttypes.MsgPayoutStakeholders{
-		Authority: authority,
-		Payout:    payout,
+func createManifestPayoutProposal(authority string, payouts []manifesttypes.PayoutPair) manifesttypes.MsgPayout {
+	return manifesttypes.MsgPayout{
+		Authority:   authority,
+		PayoutPairs: payouts,
 	}
 }
 
@@ -664,7 +605,7 @@ func createTfModifyMetadataProposal(sender, denom, name, symbol, base, display, 
 func verifyBalance(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, address, denom string, expected sdkmath.Int) {
 	bal, err := chain.BankQueryBalance(ctx, address, denom)
 	require.NoError(t, err)
-	require.Equal(t, expected, bal)
+	require.Equal(t, expected, bal, fmt.Sprintf("expected balance %s to be %s, got %s", address, expected, bal))
 }
 
 func buildWallet(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, address, mnemonic string) {
@@ -694,16 +635,6 @@ func verifyUpgradeAuthority(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	authority, err := chain.UpgradeQueryAuthority(ctx)
 	require.NoError(t, err)
 	require.Equal(t, expectedAuthority, authority)
-}
-
-func verifyManifestStakeholders(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, expectedStakeholders []*manifesttypes.StakeHolders) {
-	resp, err := manifesttypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &manifesttypes.QueryParamsRequest{})
-	require.NoError(t, err)
-	require.Len(t, resp.Params.StakeHolders, len(expectedStakeholders))
-	for i, sh := range expectedStakeholders {
-		require.Equal(t, sh.Address, resp.Params.StakeHolders[i].Address)
-		require.Equal(t, sh.Percentage, resp.Params.StakeHolders[i].Percentage)
-	}
 }
 
 func sendFunds(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, from, to, denom string, amount sdkmath.Int) {
