@@ -199,40 +199,126 @@ func TestCalculatePayoutLogic(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	sh := []*types.StakeHolders{
+	type testcases struct {
+		name        string
+		distrTokens int64
+		sh          []*types.StakeHolders
+		// expected overrides the default sh values for when the SDK deterministically rounds
+		expected []*types.StakeHolders
+	}
+
+	cases := []testcases{
 		{
-			Address:    acc.String(),
-			Percentage: 50_000_000, // 50%
+			name:        "success; tokens split between 2 stakeholders",
+			distrTokens: 1_000_000,
+			sh: []*types.StakeHolders{
+				{
+					Address:    acc.String(),
+					Percentage: 49_999_999, // 50%
+				},
+				{
+					Address:    acc2.String(),
+					Percentage: 50_000_001,
+				},
+			},
+			// 1m tokens split between 2
+			expected: []*types.StakeHolders{
+				{
+					Address:    acc.String(),
+					Percentage: 500_000,
+				},
+				{
+					Address:    acc2.String(),
+					Percentage: 500_000,
+				},
+			},
 		},
 		{
-			Address:    acc2.String(),
-			Percentage: 49_000_000,
+			name:        "success; small amount of tokens split between 2 stakeholders",
+			distrTokens: 1,
+			sh: []*types.StakeHolders{
+				{
+					Address:    acc.String(),
+					Percentage: 49_999_999, // 50%
+				},
+				{
+					Address:    acc2.String(),
+					Percentage: 50_000_001,
+				},
+			},
+			// 1 tokens split between 2, the one with slightly more gets the actual token
+			expected: []*types.StakeHolders{
+				{
+					Address:    acc.String(),
+					Percentage: 0,
+				},
+				{
+					Address:    acc2.String(),
+					Percentage: 1,
+				},
+			},
 		},
 		{
-			Address:    acc3.String(),
-			Percentage: 500_001, // 0.5%
-		},
-		{
-			Address:    acc4.String(),
-			Percentage: 499_999,
+			name:        "success; tokens split between 4 stakeholders",
+			distrTokens: 100_000_000,
+			sh: []*types.StakeHolders{
+				{
+					Address:    acc.String(),
+					Percentage: 50_000_000, // 50%
+				},
+				{
+					Address:    acc2.String(),
+					Percentage: 49_000_000,
+				},
+				{
+					Address:    acc3.String(),
+					Percentage: 500_001, // 0.5%
+				},
+				{
+					Address:    acc4.String(),
+					Percentage: 499_999,
+				},
+			},
 		},
 	}
 
-	_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
-		Authority: authority.String(),
-		Params:    types.NewParams(sh, false, 0, "umfx"),
-	})
-	require.NoError(t, err)
+	for _, c := range cases {
+		c := c
 
-	// validate the full payout of 100 tokens got split up between all fractional shares as expected
-	res, err := k.CalculateShareHolderTokenPayout(f.Ctx, sdk.NewCoin("stake", sdkmath.NewInt(100_000_000)))
-	require.NoError(t, err)
-	for _, s := range sh {
-		for w, shp := range res {
-			if s.Address == shp.Address {
-				require.EqualValues(t, s.Percentage, shp.Coin.Amount.Int64(), "stakeholder %d", w)
+		t.Run(c.name, func(t *testing.T) {
+			sh := c.sh
+			distrTokens := c.distrTokens
+			expected := c.expected
+
+			_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
+				Authority: authority.String(),
+				Params:    types.NewParams(sh, false, 0, "umfx"),
+			})
+			require.NoError(t, err)
+
+			// validate the full payout of 100 tokens got split up between all fractional shares as expected
+			res, err := k.CalculateShareHolderTokenPayout(f.Ctx, sdk.NewCoin("stake", sdkmath.NewInt(distrTokens)))
+			require.NoError(t, err)
+			for _, s := range sh {
+				for w, shp := range res {
+
+					// if expected is set, then check that value
+					if expected != nil {
+						for _, e := range expected {
+							e := e
+							if e.Address == shp.Address {
+								require.EqualValues(t, e.Percentage, shp.Coin.Amount.Int64(), "stakeholder %d", w)
+							}
+						}
+					} else {
+						if s.Address == shp.Address {
+							require.EqualValues(t, s.Percentage, shp.Coin.Amount.Int64(), "stakeholder %d", w)
+						}
+					}
+
+				}
 			}
-		}
+		})
 	}
 }
 
