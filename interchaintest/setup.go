@@ -74,7 +74,7 @@ var (
 		ChainID: "manifest-2",
 		Images: []ibc.DockerImage{
 			{
-				Repository: "manifest-cov",
+				Repository: "manifest",
 				Version:    "local",
 				UidGid:     "1025:1025",
 			},

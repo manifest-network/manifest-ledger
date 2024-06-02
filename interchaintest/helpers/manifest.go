@@ -13,13 +13,6 @@ import (
 	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
-// func ManifestUpdateParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, poaAdmin ibc.Wallet, addressPairs string, automaticInflation string, coinInflationPerYear string, flags ...string) (sdk.TxResponse, error) {
-// 	txCmd := []string{"tx", "manifest", "update-params", addressPairs, automaticInflation, coinInflationPerYear}
-// 	fmt.Println("ManifestUpdateParams", txCmd)
-// 	cmd := TxCommandBuilder(ctx, chain, txCmd, poaAdmin.KeyName(), flags...)
-// 	return ExecuteTransaction(ctx, chain, cmd)
-// }
-
 func ManifestStakeholderPayout(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, poaAdmin ibc.Wallet, payouts []manifesttypes.PayoutPair, flags ...string) (sdk.TxResponse, error) {
 	output := ""
 	for _, payout := range payouts {

@@ -475,21 +475,6 @@ func createManifestParams() manifesttypes.Params {
 	return manifesttypes.NewParams()
 }
 
-// func createInflation(mintDenom string, yearlyAmount uint64, automaticEnabled bool) *manifesttypes.Inflation {
-// 	return &manifesttypes.Inflation{
-// 		MintDenom:        mintDenom,
-// 		YearlyAmount:     yearlyAmount,
-// 		AutomaticEnabled: automaticEnabled,
-// 	}
-// }
-
-// func createStakeHolders(address string, percentage int32) *manifesttypes.StakeHolders {
-// 	return &manifesttypes.StakeHolders{
-// 		Address:    address,
-// 		Percentage: percentage,
-// 	}
-// }
-
 func createManifestUpdateProposal(authority string, params manifesttypes.Params) manifesttypes.MsgUpdateParams {
 	return manifesttypes.MsgUpdateParams{
 		Authority: authority,
