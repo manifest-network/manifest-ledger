@@ -107,10 +107,6 @@ func (msg *MsgPayout) Validate() error {
 			return fmt.Errorf("coin cannot be zero for address: %s", addr)
 		}
 
-		if coin.IsNegative() {
-			return fmt.Errorf("coin cannot be negative for address: %s", addr)
-		}
-
 		if err := coin.Validate(); err != nil {
 			return errors.Wrapf(err, "invalid coin: %v for address: %s", coin, addr)
 		}

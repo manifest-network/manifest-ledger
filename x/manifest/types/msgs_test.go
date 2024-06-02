@@ -11,6 +11,40 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
+func TestMsgUpdateParams(t *testing.T) {
+	_, _, acc := testdata.KeyTestPubAddr()
+
+	type tc struct {
+		name    string
+		msg     *MsgUpdateParams
+		success bool
+	}
+
+	for _, c := range []tc{
+		{
+			name:    "success; valid update params",
+			msg:     NewMsgUpdateParams(acc),
+			success: true,
+		},
+		{
+			name: "fail; bad address",
+			msg: &MsgUpdateParams{
+				Authority: "bad",
+				Params:    NewParams(),
+			},
+		},
+	} {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			if c.success {
+				require.NoError(t, c.msg.Validate())
+			} else {
+				require.Error(t, c.msg.Validate())
+			}
+		})
+	}
+}
+
 func TestMsgBurn(t *testing.T) {
 	_, _, acc := testdata.KeyTestPubAddr()
 
@@ -36,6 +70,55 @@ func TestMsgBurn(t *testing.T) {
 		{
 			name:    "success; valid burn",
 			msg:     NewMsgBurnHeldBalance(acc, sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(5)))),
+			success: true,
+		},
+	} {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			if c.success {
+				require.NoError(t, c.msg.Validate())
+			} else {
+				require.Error(t, c.msg.Validate())
+			}
+		})
+	}
+}
+
+func TestMsgPayout(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, acc := testdata.KeyTestPubAddr()
+
+	type tc struct {
+		name    string
+		msg     *MsgPayout
+		success bool
+	}
+
+	for _, c := range []tc{
+		{
+			name: "fail; no payouts",
+			msg:  NewMsgPayout(authority, []PayoutPair{}),
+		},
+		{
+			name: "fail; bad payout address",
+			msg: NewMsgPayout(authority, []PayoutPair{
+				{
+					Address: "bad",
+					Coin:    sdk.NewCoin("stake", sdkmath.NewInt(5)),
+				},
+			}),
+		},
+		{
+			name: "fail; 0 payout coins",
+			msg: NewMsgPayout(authority, []PayoutPair{
+				NewPayoutPair(acc, "stake", 0),
+			}),
+		},
+		{
+			name: "success; payout",
+			msg: NewMsgPayout(authority, []PayoutPair{
+				NewPayoutPair(acc, "stake", 5),
+			}),
 			success: true,
 		},
 	} {

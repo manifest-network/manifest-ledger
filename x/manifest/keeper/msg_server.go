@@ -32,7 +32,6 @@ func (ms msgServer) UpdateParams(ctx context.Context, req *types.MsgUpdateParams
 	return nil, ms.k.Params.Set(ctx, req.Params)
 }
 
-// PayoutStakeholders implements types.MsgServer.
 func (ms msgServer) Payout(ctx context.Context, req *types.MsgPayout) (*types.MsgPayoutResponse, error) {
 	if ms.k.authority != req.Authority {
 		return nil, fmt.Errorf("invalid authority; expected %s, got %s", ms.k.authority, req.Authority)
@@ -45,7 +44,6 @@ func (ms msgServer) Payout(ctx context.Context, req *types.MsgPayout) (*types.Ms
 	return nil, ms.k.PayoutStakeholders(ctx, req.PayoutPairs)
 }
 
-// BurnHeldBalance implements types.MsgServer.
 func (ms msgServer) BurnHeldBalance(ctx context.Context, msg *types.MsgBurnHeldBalance) (*types.MsgBurnHeldBalanceResponse, error) {
 	addr, err := sdk.AccAddressFromBech32(msg.Sender)
 	if err != nil {
