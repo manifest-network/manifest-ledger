@@ -126,7 +126,7 @@ make ictest-ibc
 To generate a coverage report for the modules run:
 
 ```bash
-make local-image-cov
+make local-image
 make coverage
 ````
 

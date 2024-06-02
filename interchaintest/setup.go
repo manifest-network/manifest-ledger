@@ -67,7 +67,7 @@ var (
 		cosmos.NewGenesisKV("app_state.mint.params.blocks_per_year", "6311520"),
 	}
 
-	// `make local-image-cov`
+	// `make local-image`
 	LocalChainConfig = ibc.ChainConfig{
 		Type:    "cosmos",
 		Name:    "manifest",
