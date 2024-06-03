@@ -93,6 +93,8 @@ func (msg *MsgPayout) Validate() error {
 		return fmt.Errorf("payouts cannot be empty")
 	}
 
+	dupCheck := make([]string, 0, len(msg.PayoutPairs))
+
 	for _, p := range msg.PayoutPairs {
 		p := p
 
@@ -110,6 +112,15 @@ func (msg *MsgPayout) Validate() error {
 		if err := coin.Validate(); err != nil {
 			return errors.Wrapf(err, "invalid coin: %v for address: %s", coin, addr)
 		}
+
+		for _, d := range dupCheck {
+			d := d
+			if d == addr {
+				return fmt.Errorf("duplicate address: %s", addr)
+			}
+		}
+
+		dupCheck = append(dupCheck, addr)
 	}
 
 	return nil

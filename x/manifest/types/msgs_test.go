@@ -109,6 +109,13 @@ func TestMsgPayout(t *testing.T) {
 			}),
 		},
 		{
+			name: "fail; duplicate address",
+			msg: NewMsgPayout(authority, []PayoutPair{
+				NewPayoutPair(acc, "stake", 1),
+				NewPayoutPair(acc, "stake", 2),
+			}),
+		},
+		{
 			name: "fail; 0 payout coins",
 			msg: NewMsgPayout(authority, []PayoutPair{
 				NewPayoutPair(acc, "stake", 0),

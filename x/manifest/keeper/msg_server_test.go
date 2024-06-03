@@ -60,6 +60,15 @@ func TestPerformPayout(t *testing.T) {
 			shouldFail: true,
 		},
 		{
+			name:   "fail; duplicate address",
+			sender: authority.String(),
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+				types.NewPayoutPair(acc, "umfx", 1),
+			},
+			shouldFail: true,
+		},
+		{
 			name:   "fail; payout to bad address",
 			sender: authority.String(),
 			payouts: []types.PayoutPair{

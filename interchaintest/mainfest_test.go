@@ -132,6 +132,14 @@ func TestManifestModule(t *testing.T) {
 
 	t.Run("fail: invalid payout addr", func(t *testing.T) {
 		_, err = helpers.ManifestStakeholderPayout(t, ctx, appChain, poaAdmin, []manifesttypes.PayoutPair{
+			manifesttypes.NewPayoutPair(sdk.MustAccAddressFromBech32(uaddr), Denom, 1),
+			manifesttypes.NewPayoutPair(sdk.MustAccAddressFromBech32(uaddr), Denom, 2),
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("fail: duplicate address payout", func(t *testing.T) {
+		_, err = helpers.ManifestStakeholderPayout(t, ctx, appChain, poaAdmin, []manifesttypes.PayoutPair{
 			{
 				Address: "abcdefg",
 				Coin:    sdk.NewCoin(Denom, sdkmath.NewInt(1)),
