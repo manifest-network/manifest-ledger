@@ -87,8 +87,8 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 	}
 }
 
-// PayoutStakeholders mints and sends coins to stakeholders.
-func (k Keeper) PayoutStakeholders(ctx context.Context, payouts []types.PayoutPair) error {
+// Payout mints and sends coins to stakeholders.
+func (k Keeper) Payout(ctx context.Context, payouts []types.PayoutPair) error {
 	for _, p := range payouts {
 		p := p
 		addr := p.Address
