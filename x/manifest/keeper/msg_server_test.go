@@ -14,225 +14,110 @@ import (
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
-func TestMsgServerPayoutStakeholdersLogic(t *testing.T) {
+func TestPerformPayout(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, acc := testdata.KeyTestPubAddr()
 	_, _, acc2 := testdata.KeyTestPubAddr()
 	_, _, acc3 := testdata.KeyTestPubAddr()
-	_, _, acc4 := testdata.KeyTestPubAddr()
 
 	f := initFixture(t)
 
 	k := f.App.ManifestKeeper
-
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	sh := []*types.StakeHolders{
-		{
-			Address:    acc.String(),
-			Percentage: 50_000_000, // 50%
-		},
-		{
-			Address:    acc2.String(),
-			Percentage: 49_000_000,
-		},
-		{
-			Address:    acc3.String(),
-			Percentage: 500_001, // 0.5%
-		},
-		{
-			Address:    acc4.String(),
-			Percentage: 499_999,
-		},
+	type testcase struct {
+		name       string
+		sender     string
+		payouts    []types.PayoutPair
+		shouldFail bool
 	}
-	_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
-		Authority: authority.String(),
-		Params:    types.NewParams(sh, false, 0, "umfx"),
-	})
-	require.NoError(t, err)
 
-	// wrong acc
-	_, err = ms.PayoutStakeholders(f.Ctx, &types.MsgPayoutStakeholders{
-		Authority: acc.String(),
-		Payout:    sdk.NewCoin("stake", sdkmath.NewInt(100_000_000)),
-	})
-	require.Error(t, err)
-
-	// success
-	_, err = ms.PayoutStakeholders(f.Ctx, &types.MsgPayoutStakeholders{
-		Authority: authority.String(),
-		Payout:    sdk.NewCoin("stake", sdkmath.NewInt(100_000_000)),
-	})
-	require.NoError(t, err)
-
-	for _, s := range sh {
-		addr := sdk.MustAccAddressFromBech32(s.Address)
-
-		accBal := f.App.BankKeeper.GetBalance(f.Ctx, addr, "stake")
-		require.EqualValues(t, s.Percentage, accBal.Amount.Int64())
-	}
-}
-
-func TestUpdateParams(t *testing.T) {
-	_, _, authority := testdata.KeyTestPubAddr()
-	_, _, acc := testdata.KeyTestPubAddr()
-	_, _, acc2 := testdata.KeyTestPubAddr()
-
-	f := initFixture(t)
-
-	f.App.ManifestKeeper.SetAuthority(authority.String())
-
-	ms := keeper.NewMsgServerImpl(f.App.ManifestKeeper)
-
-	for _, tc := range []struct {
-		desc    string
-		sender  string
-		p       types.Params
-		success bool
-	}{
+	cases := []testcase{
 		{
-			desc:   "invalid authority",
+			name:   "success; payout token to 3 stakeholders",
+			sender: authority.String(),
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+				types.NewPayoutPair(acc2, "umfx", 2),
+				types.NewPayoutPair(acc3, "umfx", 3),
+			},
+		},
+		{
+			name:   "fail; bad authority",
 			sender: acc.String(),
-			p: types.NewParams([]*types.StakeHolders{
-				{
-					Address:    acc.String(),
-					Percentage: 100_000_000,
-				},
-			}, false, 0, "umfx"),
-			success: false,
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+			},
+			shouldFail: true,
 		},
 		{
-			desc:   "invalid percent",
+			name:   "fail; bad bech32 authority",
+			sender: "bad",
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+			},
+			shouldFail: true,
+		},
+		{
+			name:   "fail; duplicate address",
 			sender: authority.String(),
-			p: types.NewParams([]*types.StakeHolders{
-				{
-					Address:    acc.String(),
-					Percentage: 7,
-				},
-			}, false, 0, "umfx"),
-			success: false,
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+				types.NewPayoutPair(acc, "umfx", 1),
+			},
+			shouldFail: true,
 		},
 		{
-			desc:   "invalid stakeholder address",
+			name:   "fail; payout to bad address",
 			sender: authority.String(),
-			p: types.NewParams([]*types.StakeHolders{
-				{
-					Address:    "invalid",
-					Percentage: 100_000_000,
-				},
-			}, false, 0, "umfx"),
-			success: false,
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+				{Address: "badaddr", Coin: sdk.NewCoin("umfx", sdkmath.NewInt(2))},
+				types.NewPayoutPair(acc3, "umfx", 3),
+			},
+			shouldFail: true,
 		},
 		{
-			desc:   "duplicate address",
+			name:   "fail; payout with a 0 token",
 			sender: authority.String(),
-			p: types.NewParams([]*types.StakeHolders{
-				{
-					Address:    acc.String(),
-					Percentage: 50_000_000,
-				},
-				{
-					Address:    acc.String(),
-					Percentage: 50_000_000,
-				},
-			}, false, 0, "umfx"),
-			success: false,
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+				types.NewPayoutPair(acc2, "umfx", 0),
+			},
+			shouldFail: true,
 		},
-		{
-			desc:    "success none",
-			sender:  authority.String(),
-			p:       types.NewParams([]*types.StakeHolders{}, false, 0, "umfx"),
-			success: true,
-		},
-		{
-			desc:   "success many stake holders",
-			sender: authority.String(),
-			p: types.NewParams([]*types.StakeHolders{
-				{
-					Address:    acc.String(),
-					Percentage: 1_000_000,
-				},
-				{
-					Address:    acc2.String(),
-					Percentage: 1_000_000,
-				},
-				{
-					Address:    authority.String(),
-					Percentage: 98_000_000,
-				},
-			}, false, 0, "umfx"),
-			success: true,
-		},
-	} {
-		tc := tc
-		t.Run(tc.desc, func(t *testing.T) {
-			// Set the params
-			_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
-				Authority: tc.sender,
-				Params:    tc.p,
-			})
-			require.Equal(t, tc.success, err == nil, err)
+	}
 
-			// Ensure they are set the same as the expected
-			if tc.success && len(tc.p.StakeHolders) > 0 {
-				params, err := f.App.ManifestKeeper.Params.Get(f.Ctx)
+	for _, c := range cases {
+		c := c
+
+		t.Run(c.name, func(t *testing.T) {
+			payoutMsg := &types.MsgPayout{
+				Authority:   c.sender,
+				PayoutPairs: c.payouts,
+			}
+
+			_, err := ms.Payout(f.Ctx, payoutMsg)
+			if c.shouldFail {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			for _, p := range c.payouts {
+				p := p
+				addr := p.Address
+				coin := p.Coin
+
+				accAddr, err := sdk.AccAddressFromBech32(addr)
 				require.NoError(t, err)
 
-				require.Equal(t, tc.p.StakeHolders, params.StakeHolders)
+				balance := f.App.BankKeeper.GetBalance(f.Ctx, accAddr, coin.Denom)
+				require.EqualValues(t, coin.Amount, balance.Amount, "expected %s, got %s", coin.Amount, balance.Amount)
 			}
 		})
-	}
-}
 
-func TestCalculatePayoutLogic(t *testing.T) {
-	_, _, authority := testdata.KeyTestPubAddr()
-	_, _, acc := testdata.KeyTestPubAddr()
-	_, _, acc2 := testdata.KeyTestPubAddr()
-	_, _, acc3 := testdata.KeyTestPubAddr()
-	_, _, acc4 := testdata.KeyTestPubAddr()
-
-	f := initFixture(t)
-
-	k := f.App.ManifestKeeper
-
-	k.SetAuthority(authority.String())
-	ms := keeper.NewMsgServerImpl(k)
-
-	sh := []*types.StakeHolders{
-		{
-			Address:    acc.String(),
-			Percentage: 50_000_000, // 50%
-		},
-		{
-			Address:    acc2.String(),
-			Percentage: 49_000_000,
-		},
-		{
-			Address:    acc3.String(),
-			Percentage: 500_001, // 0.5%
-		},
-		{
-			Address:    acc4.String(),
-			Percentage: 499_999,
-		},
-	}
-
-	_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
-		Authority: authority.String(),
-		Params:    types.NewParams(sh, false, 0, "umfx"),
-	})
-	require.NoError(t, err)
-
-	// validate the full payout of 100 tokens got split up between all fractional shares as expected
-	res, err := k.CalculateShareHolderTokenPayout(f.Ctx, sdk.NewCoin("stake", sdkmath.NewInt(100_000_000)))
-	require.NoError(t, err)
-	for _, s := range sh {
-		for w, shp := range res {
-			if s.Address == shp.Address {
-				require.EqualValues(t, s.Percentage, shp.Coin.Amount.Int64(), "stakeholder %d", w)
-			}
-		}
 	}
 }
 

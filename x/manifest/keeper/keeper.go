@@ -2,11 +2,11 @@ package keeper
 
 import (
 	"context"
+	"fmt"
 
 	"cosmossdk.io/collections"
 	storetypes "cosmossdk.io/core/store"
 	"cosmossdk.io/log"
-	sdkmath "cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -87,110 +87,37 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 	}
 }
 
-func (k *Keeper) GetShareHolders(ctx context.Context) ([]*types.StakeHolders, error) {
-	params, err := k.Params.Get(ctx)
-	if err != nil {
-		return nil, err
-	}
+// Payout mints and sends coins to stakeholders.
+func (k Keeper) Payout(ctx context.Context, payouts []types.PayoutPair) error {
+	for _, p := range payouts {
+		p := p
+		addr := p.Address
+		coin := p.Coin
 
-	return params.StakeHolders, nil
-}
-
-// IsManualMintingEnabled returns nil if inflation mint is 0% (disabled)
-func (k Keeper) IsManualMintingEnabled(ctx context.Context) bool {
-	params, err := k.Params.Get(ctx)
-	if err != nil {
-		panic(err)
-	}
-
-	return !params.Inflation.AutomaticEnabled
-}
-
-type StakeHolderPayout struct {
-	Address string
-	Coin    sdk.Coin
-}
-
-// Returns the amount of coins to be distributed to the holders
-func (k Keeper) CalculateShareHolderTokenPayout(ctx context.Context, c sdk.Coin) ([]StakeHolderPayout, error) {
-	sh, err := k.GetShareHolders(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	pairs := make([]StakeHolderPayout, 0, len(sh))
-
-	for _, s := range sh {
-		s := s
-		pct := sdkmath.NewInt(int64(s.Percentage)).ToLegacyDec().QuoInt64(types.MaxPercentShare)
-		coinAmt := pct.MulInt(c.Amount).RoundInt()
-
-		if coinAmt.IsZero() {
-			// too small of an amount to matter (< 1 utoken)
-			continue
-		}
-
-		pairs = append(pairs, StakeHolderPayout{
-			Address: s.Address,
-			Coin:    sdk.NewCoin(c.Denom, coinAmt),
-		})
-
-	}
-
-	return pairs, nil
-}
-
-// PayoutStakeholders mints coins and sends them to the stakeholders.
-// This is called from the endblocker, so panics should never happen.
-// If it does, something is very wrong w/ the SDK. Any logic specific to auto minting
-// should be kept out of this to properly handle and return nil instead.
-func (k Keeper) PayoutStakeholders(ctx context.Context, c sdk.Coin) error {
-	pairs, err := k.CalculateShareHolderTokenPayout(ctx, c)
-	if err != nil {
-		return err
-	}
-
-	if err := k.bankKeeper.MintCoins(ctx, types.ModuleName, sdk.NewCoins(c)); err != nil {
-		return err
-	}
-
-	for _, p := range pairs {
-		accAddr, err := sdk.AccAddressFromBech32(p.Address)
+		sdkAddr, err := sdk.AccAddressFromBech32(addr)
 		if err != nil {
 			return err
 		}
 
-		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, accAddr, sdk.NewCoins(p.Coin)); err != nil {
+		if !coin.IsValid() {
+			return fmt.Errorf("invalid payout: %v for address: %s", p, addr)
+		}
+
+		if err := k.mintCoinsToAccount(ctx, sdkAddr, coin); err != nil {
 			return err
 		}
+
+		k.Logger().Info("Payout", "address", addr, "amount", coin)
 	}
 
 	return nil
 }
 
-// BlockRewardsProvision Gets the amount of coins that are automatically minted every block
-// per the automatic inflation
-func (k Keeper) BlockRewardsProvision(ctx context.Context, denom string) (sdk.Coin, error) {
-	mkParams, err := k.mintKeeper.Params.Get(ctx)
-	if err != nil {
-		return sdk.NewCoin(denom, sdkmath.ZeroInt()), err
+func (k Keeper) mintCoinsToAccount(ctx context.Context, sdkAddr sdk.AccAddress, coin sdk.Coin) error {
+	coins := sdk.NewCoins(coin)
+	if err := k.bankKeeper.MintCoins(ctx, types.ModuleName, coins); err != nil {
+		return err
 	}
 
-	params, err := k.Params.Get(ctx)
-	if err != nil {
-		return sdk.NewCoin(denom, sdkmath.ZeroInt()), err
-	}
-
-	amtPerYear := params.Inflation.YearlyAmount
-	blocksPerYear := mkParams.BlocksPerYear
-
-	if blocksPerYear < 10 {
-		k.logger.Error("x/mint blocks per year param is too low", "blocks", blocksPerYear)
-		return sdk.NewCoin(denom, sdkmath.ZeroInt()), nil
-	}
-
-	div := amtPerYear / blocksPerYear
-
-	// return the amount of coins to be minted per block
-	return sdk.NewCoin(denom, sdkmath.NewIntFromUint64(div)), nil
+	return k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sdkAddr, coins)
 }

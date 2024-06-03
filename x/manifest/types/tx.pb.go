@@ -132,26 +132,26 @@ func (m *MsgUpdateParamsResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_MsgUpdateParamsResponse proto.InternalMessageInfo
 
-// MsgPayoutStakeholders is the Msg/PayoutStakeholders request type.
-type MsgPayoutStakeholders struct {
+// MsgPayout is the Msg/Payout request type.
+type MsgPayout struct {
 	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	// payout is the amount of tokens paid to the current stakeholders.
-	Payout types.Coin `protobuf:"bytes,2,opt,name=payout,proto3,castrepeated=cosmossdk.io/api/cosmos/base/v1beta1.Coins" json:"payout"`
+	// payout_pairs are the pairs of addresses and coins to be paid out.
+	PayoutPairs []PayoutPair `protobuf:"bytes,2,rep,name=payout_pairs,json=payoutPairs,proto3" json:"payout_pairs"`
 }
 
-func (m *MsgPayoutStakeholders) Reset()         { *m = MsgPayoutStakeholders{} }
-func (m *MsgPayoutStakeholders) String() string { return proto.CompactTextString(m) }
-func (*MsgPayoutStakeholders) ProtoMessage()    {}
-func (*MsgPayoutStakeholders) Descriptor() ([]byte, []int) {
+func (m *MsgPayout) Reset()         { *m = MsgPayout{} }
+func (m *MsgPayout) String() string { return proto.CompactTextString(m) }
+func (*MsgPayout) ProtoMessage()    {}
+func (*MsgPayout) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7e3feee7606c5280, []int{2}
 }
-func (m *MsgPayoutStakeholders) XXX_Unmarshal(b []byte) error {
+func (m *MsgPayout) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *MsgPayoutStakeholders) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *MsgPayout) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_MsgPayoutStakeholders.Marshal(b, m, deterministic)
+		return xxx_messageInfo_MsgPayout.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -161,48 +161,50 @@ func (m *MsgPayoutStakeholders) XXX_Marshal(b []byte, deterministic bool) ([]byt
 		return b[:n], nil
 	}
 }
-func (m *MsgPayoutStakeholders) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_MsgPayoutStakeholders.Merge(m, src)
+func (m *MsgPayout) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgPayout.Merge(m, src)
 }
-func (m *MsgPayoutStakeholders) XXX_Size() int {
+func (m *MsgPayout) XXX_Size() int {
 	return m.Size()
 }
-func (m *MsgPayoutStakeholders) XXX_DiscardUnknown() {
-	xxx_messageInfo_MsgPayoutStakeholders.DiscardUnknown(m)
+func (m *MsgPayout) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgPayout.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_MsgPayoutStakeholders proto.InternalMessageInfo
+var xxx_messageInfo_MsgPayout proto.InternalMessageInfo
 
-func (m *MsgPayoutStakeholders) GetAuthority() string {
+func (m *MsgPayout) GetAuthority() string {
 	if m != nil {
 		return m.Authority
 	}
 	return ""
 }
 
-func (m *MsgPayoutStakeholders) GetPayout() types.Coin {
+func (m *MsgPayout) GetPayoutPairs() []PayoutPair {
 	if m != nil {
-		return m.Payout
+		return m.PayoutPairs
 	}
-	return types.Coin{}
+	return nil
 }
 
-// MsgPayoutStakeholdersResponse defines the response structure for executing a MsgPayoutStakeholders message.
-type MsgPayoutStakeholdersResponse struct {
+// PayoutPair is the object that pairs an address with a coin to be paid out.
+type PayoutPair struct {
+	Address string                                  `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	Coin    github_com_cosmos_cosmos_sdk_types.Coin `protobuf:"bytes,2,opt,name=coin,proto3,casttype=github.com/cosmos/cosmos-sdk/types.Coin" json:"coin"`
 }
 
-func (m *MsgPayoutStakeholdersResponse) Reset()         { *m = MsgPayoutStakeholdersResponse{} }
-func (m *MsgPayoutStakeholdersResponse) String() string { return proto.CompactTextString(m) }
-func (*MsgPayoutStakeholdersResponse) ProtoMessage()    {}
-func (*MsgPayoutStakeholdersResponse) Descriptor() ([]byte, []int) {
+func (m *PayoutPair) Reset()         { *m = PayoutPair{} }
+func (m *PayoutPair) String() string { return proto.CompactTextString(m) }
+func (*PayoutPair) ProtoMessage()    {}
+func (*PayoutPair) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7e3feee7606c5280, []int{3}
 }
-func (m *MsgPayoutStakeholdersResponse) XXX_Unmarshal(b []byte) error {
+func (m *PayoutPair) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *MsgPayoutStakeholdersResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *PayoutPair) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_MsgPayoutStakeholdersResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_PayoutPair.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -212,23 +214,74 @@ func (m *MsgPayoutStakeholdersResponse) XXX_Marshal(b []byte, deterministic bool
 		return b[:n], nil
 	}
 }
-func (m *MsgPayoutStakeholdersResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_MsgPayoutStakeholdersResponse.Merge(m, src)
+func (m *PayoutPair) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PayoutPair.Merge(m, src)
 }
-func (m *MsgPayoutStakeholdersResponse) XXX_Size() int {
+func (m *PayoutPair) XXX_Size() int {
 	return m.Size()
 }
-func (m *MsgPayoutStakeholdersResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_MsgPayoutStakeholdersResponse.DiscardUnknown(m)
+func (m *PayoutPair) XXX_DiscardUnknown() {
+	xxx_messageInfo_PayoutPair.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_MsgPayoutStakeholdersResponse proto.InternalMessageInfo
+var xxx_messageInfo_PayoutPair proto.InternalMessageInfo
 
-// MsgPayoutStakeholders is the Msg/BurnHeldBalance request type.
+func (m *PayoutPair) GetAddress() string {
+	if m != nil {
+		return m.Address
+	}
+	return ""
+}
+
+func (m *PayoutPair) GetCoin() github_com_cosmos_cosmos_sdk_types.Coin {
+	if m != nil {
+		return m.Coin
+	}
+	return github_com_cosmos_cosmos_sdk_types.Coin{}
+}
+
+// MsgPayoutResponse defines the response structure for executing a MsgPayout message.
+type MsgPayoutResponse struct {
+}
+
+func (m *MsgPayoutResponse) Reset()         { *m = MsgPayoutResponse{} }
+func (m *MsgPayoutResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgPayoutResponse) ProtoMessage()    {}
+func (*MsgPayoutResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7e3feee7606c5280, []int{4}
+}
+func (m *MsgPayoutResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgPayoutResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgPayoutResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgPayoutResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgPayoutResponse.Merge(m, src)
+}
+func (m *MsgPayoutResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgPayoutResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgPayoutResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgPayoutResponse proto.InternalMessageInfo
+
+// MsgPayout is the Msg/BurnHeldBalance request type.
 type MsgBurnHeldBalance struct {
-	// authority is the address of the controlling account.
+	// sender is the address of the tokenholder.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// payout is the amount of tokens paid to the current stakeholders.
+	// burn_coins are the coins to be burned by the tokenholder.
 	BurnCoins github_com_cosmos_cosmos_sdk_types.Coins `protobuf:"bytes,2,rep,name=burn_coins,json=burnCoins,proto3,castrepeated=github.com/cosmos/cosmos-sdk/types.Coins" json:"burn_coins"`
 }
 
@@ -236,7 +289,7 @@ func (m *MsgBurnHeldBalance) Reset()         { *m = MsgBurnHeldBalance{} }
 func (m *MsgBurnHeldBalance) String() string { return proto.CompactTextString(m) }
 func (*MsgBurnHeldBalance) ProtoMessage()    {}
 func (*MsgBurnHeldBalance) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7e3feee7606c5280, []int{4}
+	return fileDescriptor_7e3feee7606c5280, []int{5}
 }
 func (m *MsgBurnHeldBalance) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -287,7 +340,7 @@ func (m *MsgBurnHeldBalanceResponse) Reset()         { *m = MsgBurnHeldBalanceRe
 func (m *MsgBurnHeldBalanceResponse) String() string { return proto.CompactTextString(m) }
 func (*MsgBurnHeldBalanceResponse) ProtoMessage()    {}
 func (*MsgBurnHeldBalanceResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7e3feee7606c5280, []int{5}
+	return fileDescriptor_7e3feee7606c5280, []int{6}
 }
 func (m *MsgBurnHeldBalanceResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -319,8 +372,9 @@ var xxx_messageInfo_MsgBurnHeldBalanceResponse proto.InternalMessageInfo
 func init() {
 	proto.RegisterType((*MsgUpdateParams)(nil), "manifest.v1.MsgUpdateParams")
 	proto.RegisterType((*MsgUpdateParamsResponse)(nil), "manifest.v1.MsgUpdateParamsResponse")
-	proto.RegisterType((*MsgPayoutStakeholders)(nil), "manifest.v1.MsgPayoutStakeholders")
-	proto.RegisterType((*MsgPayoutStakeholdersResponse)(nil), "manifest.v1.MsgPayoutStakeholdersResponse")
+	proto.RegisterType((*MsgPayout)(nil), "manifest.v1.MsgPayout")
+	proto.RegisterType((*PayoutPair)(nil), "manifest.v1.PayoutPair")
+	proto.RegisterType((*MsgPayoutResponse)(nil), "manifest.v1.MsgPayoutResponse")
 	proto.RegisterType((*MsgBurnHeldBalance)(nil), "manifest.v1.MsgBurnHeldBalance")
 	proto.RegisterType((*MsgBurnHeldBalanceResponse)(nil), "manifest.v1.MsgBurnHeldBalanceResponse")
 }
@@ -328,44 +382,47 @@ func init() {
 func init() { proto.RegisterFile("manifest/v1/tx.proto", fileDescriptor_7e3feee7606c5280) }
 
 var fileDescriptor_7e3feee7606c5280 = []byte{
-	// 588 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x54, 0xb1, 0x6b, 0xdb, 0x4e,
-	0x14, 0xb6, 0x92, 0xdf, 0x2f, 0xe0, 0x4b, 0xa8, 0xa9, 0xea, 0x12, 0x5b, 0xa4, 0xb2, 0x31, 0x85,
-	0x1a, 0x83, 0x75, 0x75, 0x0a, 0x19, 0xbc, 0x55, 0x85, 0x92, 0xc5, 0x60, 0x1c, 0xba, 0xb4, 0x43,
-	0x38, 0x5b, 0x97, 0xf3, 0x61, 0xe9, 0x4e, 0xe8, 0xce, 0x26, 0xa6, 0x4b, 0xe8, 0xdc, 0xa1, 0x73,
-	0xa7, 0x42, 0x97, 0xd2, 0xc9, 0x43, 0xff, 0x88, 0x8c, 0xa1, 0x53, 0xe9, 0xd0, 0x06, 0x7b, 0x70,
-	0xff, 0x8c, 0x22, 0xe9, 0xe4, 0x38, 0x8a, 0xb1, 0xa1, 0x8b, 0x74, 0xba, 0xf7, 0xbd, 0xef, 0xbd,
-	0xef, 0x7b, 0x0f, 0x81, 0xbc, 0x87, 0x18, 0x3d, 0xc3, 0x42, 0xc2, 0x51, 0x03, 0xca, 0x73, 0xcb,
-	0x0f, 0xb8, 0xe4, 0xfa, 0x6e, 0x72, 0x6b, 0x8d, 0x1a, 0xc6, 0x7e, 0x8f, 0x0b, 0x8f, 0x0b, 0xe8,
-	0x09, 0x12, 0x82, 0x3c, 0x41, 0x62, 0x94, 0x51, 0x5c, 0xce, 0x25, 0x98, 0x61, 0x41, 0x85, 0x0a,
-	0xe5, 0x09, 0x27, 0x3c, 0x3a, 0xc2, 0xf0, 0x94, 0x24, 0xc4, 0x4c, 0xa7, 0x71, 0x20, 0xfe, 0x50,
-	0x21, 0x53, 0x15, 0xe9, 0x22, 0x81, 0xe1, 0xa8, 0xd1, 0xc5, 0x12, 0x35, 0x60, 0x8f, 0x53, 0xa6,
-	0xe2, 0xf7, 0x91, 0x47, 0x19, 0x87, 0xd1, 0x33, 0xbe, 0xaa, 0xbc, 0xd7, 0x40, 0xae, 0x25, 0xc8,
-	0x2b, 0xdf, 0x41, 0x12, 0xb7, 0x51, 0x80, 0x3c, 0xa1, 0x1f, 0x81, 0x2c, 0x1a, 0xca, 0x3e, 0x0f,
-	0xa8, 0x1c, 0x17, 0xb4, 0xb2, 0x56, 0xcd, 0xda, 0x85, 0xef, 0xdf, 0xea, 0x79, 0x55, 0xeb, 0xb9,
-	0xe3, 0x04, 0x58, 0x88, 0x13, 0x19, 0x50, 0x46, 0x3a, 0x37, 0x50, 0xbd, 0x01, 0x76, 0xfc, 0x88,
-	0xa1, 0xb0, 0x55, 0xd6, 0xaa, 0xbb, 0x87, 0x0f, 0xac, 0x25, 0x07, 0xac, 0x98, 0xdc, 0xfe, 0xef,
-	0xf2, 0x57, 0x29, 0xd3, 0x51, 0xc0, 0xe6, 0xbd, 0x77, 0xf3, 0x49, 0xed, 0x86, 0xa2, 0x52, 0x04,
-	0xfb, 0xa9, 0x6e, 0x3a, 0x58, 0xf8, 0x9c, 0x09, 0x5c, 0xb9, 0xd6, 0xc0, 0xc3, 0x96, 0x20, 0x6d,
-	0x34, 0xe6, 0x43, 0x79, 0x22, 0xd1, 0x00, 0xf7, 0xb9, 0xeb, 0xe0, 0xe0, 0xdf, 0xfb, 0x7d, 0x1b,
-	0xf6, 0x1b, 0xb2, 0xa9, 0x7e, 0x8b, 0x96, 0xca, 0x08, 0xfd, 0xb3, 0x94, 0x7f, 0xd6, 0x0b, 0x4e,
-	0x99, 0x7d, 0x1c, 0x76, 0xfd, 0xf5, 0x77, 0xa9, 0x16, 0x23, 0x84, 0x33, 0xb0, 0x28, 0x87, 0xc8,
-	0xa7, 0x70, 0x85, 0xe5, 0x51, 0x8a, 0xf8, 0x38, 0x9f, 0xd4, 0xf6, 0x5c, 0x4c, 0x50, 0x6f, 0x7c,
-	0x1a, 0xce, 0x40, 0x7c, 0x99, 0x4f, 0x6a, 0x5a, 0x47, 0x95, 0x6c, 0xea, 0x7f, 0x3e, 0x95, 0x32,
-	0x29, 0xf5, 0x25, 0xf0, 0x68, 0xa5, 0xc2, 0x85, 0x07, 0x3f, 0x35, 0xa0, 0xb7, 0x04, 0xb1, 0x87,
-	0x01, 0x3b, 0xc6, 0xae, 0x63, 0x23, 0x17, 0xb1, 0x1e, 0xd6, 0x9f, 0x82, 0x1d, 0x81, 0x99, 0x83,
-	0x83, 0x8d, 0xea, 0x15, 0x4e, 0xbf, 0xd0, 0x00, 0xe8, 0x0e, 0x03, 0x16, 0x77, 0x56, 0xd8, 0x2a,
-	0x6f, 0xaf, 0xd7, 0xff, 0x52, 0xe9, 0xaf, 0x12, 0x2a, 0xfb, 0xc3, 0xae, 0xd5, 0xe3, 0x5e, 0xa2,
-	0x3c, 0x7e, 0xd5, 0x85, 0x33, 0x80, 0x72, 0xec, 0x63, 0xb1, 0x56, 0x7d, 0x36, 0x2c, 0x1a, 0x01,
-	0x9a, 0xb9, 0xc4, 0x00, 0xd5, 0x53, 0xe5, 0x00, 0x18, 0x77, 0xb5, 0x25, 0xd2, 0x0f, 0x3f, 0x6f,
-	0x81, 0xed, 0x96, 0x20, 0x7a, 0x07, 0xec, 0xdd, 0x5a, 0xd6, 0x83, 0x5b, 0x4b, 0x96, 0x5a, 0x1e,
-	0xe3, 0xf1, 0xba, 0x68, 0xc2, 0xad, 0x3b, 0x40, 0x5f, 0xb1, 0x56, 0x95, 0x74, 0xee, 0x5d, 0x8c,
-	0x51, 0xdb, 0x8c, 0x59, 0x54, 0x79, 0x03, 0x72, 0xe9, 0xc1, 0x95, 0xd2, 0xe9, 0x29, 0x80, 0xf1,
-	0x64, 0x03, 0x20, 0x21, 0x37, 0xfe, 0xbf, 0x08, 0xfd, 0xb5, 0xdb, 0x97, 0x53, 0x53, 0xbb, 0x9a,
-	0x9a, 0xda, 0xf5, 0xd4, 0xd4, 0x3e, 0xcc, 0xcc, 0xcc, 0xd5, 0xcc, 0xcc, 0xfc, 0x98, 0x99, 0x99,
-	0xd7, 0x47, 0x4b, 0x93, 0x73, 0xe9, 0x99, 0xc4, 0x0e, 0x65, 0x54, 0xc2, 0x84, 0xbe, 0xee, 0x62,
-	0x87, 0xe0, 0x00, 0x9e, 0x2f, 0x6e, 0xe2, 0x69, 0x76, 0x77, 0xa2, 0xff, 0xc4, 0xb3, 0xbf, 0x01,
-	0x00, 0x00, 0xff, 0xff, 0xe9, 0x1e, 0xeb, 0x7c, 0xe4, 0x04, 0x00, 0x00,
+	// 626 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x54, 0xcf, 0x6b, 0x13, 0x4f,
+	0x14, 0xcf, 0x7c, 0xdb, 0x6f, 0x24, 0x93, 0x62, 0xe9, 0xb6, 0xd8, 0x74, 0x29, 0x9b, 0x12, 0x84,
+	0x86, 0x42, 0x77, 0x4d, 0x85, 0x1e, 0x7a, 0xd2, 0xf5, 0x07, 0x5e, 0x02, 0x61, 0xc5, 0x8b, 0x1e,
+	0xca, 0x24, 0x3b, 0x9d, 0x0e, 0x66, 0x77, 0x96, 0x7d, 0x93, 0xd2, 0xdc, 0x8a, 0x67, 0x0f, 0x9e,
+	0x15, 0xc4, 0xa3, 0x78, 0xea, 0xc1, 0x3f, 0xa2, 0xc7, 0xe2, 0x49, 0x3c, 0x54, 0x69, 0x0f, 0xf5,
+	0x6f, 0xf0, 0xa2, 0xcc, 0xce, 0x6c, 0x92, 0xae, 0xd2, 0x8a, 0x97, 0x64, 0xf7, 0xbd, 0xcf, 0xfb,
+	0xbc, 0xcf, 0x7b, 0x9f, 0xc7, 0xe2, 0x85, 0x88, 0xc4, 0x7c, 0x87, 0x82, 0xf4, 0xf6, 0x5a, 0x9e,
+	0xdc, 0x77, 0x93, 0x54, 0x48, 0x61, 0x55, 0xf3, 0xa8, 0xbb, 0xd7, 0xb2, 0x17, 0x7b, 0x02, 0x22,
+	0x01, 0x5e, 0x04, 0x4c, 0x81, 0x22, 0x60, 0x1a, 0x65, 0x2f, 0x4d, 0xd6, 0x32, 0x1a, 0x53, 0xe0,
+	0x60, 0x52, 0x0b, 0x4c, 0x30, 0x91, 0x3d, 0x7a, 0xea, 0x29, 0x2f, 0xd0, 0x4c, 0xdb, 0x3a, 0xa1,
+	0x5f, 0x4c, 0xca, 0x31, 0x4d, 0xba, 0x04, 0xa8, 0xb7, 0xd7, 0xea, 0x52, 0x49, 0x5a, 0x5e, 0x4f,
+	0xf0, 0xd8, 0xe4, 0xe7, 0x48, 0xc4, 0x63, 0xe1, 0x65, 0xbf, 0x3a, 0xd4, 0x78, 0x89, 0xf0, 0x6c,
+	0x1b, 0xd8, 0x93, 0x24, 0x24, 0x92, 0x76, 0x48, 0x4a, 0x22, 0xb0, 0x36, 0x71, 0x85, 0x0c, 0xe4,
+	0xae, 0x48, 0xb9, 0x1c, 0xd6, 0xd0, 0x0a, 0x6a, 0x56, 0xfc, 0xda, 0xa7, 0x8f, 0xeb, 0x0b, 0xa6,
+	0xd7, 0xdd, 0x30, 0x4c, 0x29, 0xc0, 0x63, 0x99, 0xf2, 0x98, 0x05, 0x63, 0xa8, 0xd5, 0xc2, 0xe5,
+	0x24, 0x63, 0xa8, 0xfd, 0xb7, 0x82, 0x9a, 0xd5, 0x8d, 0x79, 0x77, 0x62, 0x03, 0xae, 0x26, 0xf7,
+	0xa7, 0x8f, 0x4e, 0xea, 0xa5, 0xc0, 0x00, 0xb7, 0xae, 0xbf, 0x38, 0x3f, 0x5c, 0x1b, 0x53, 0x34,
+	0x96, 0xf0, 0x62, 0x41, 0x4d, 0x40, 0x21, 0x11, 0x31, 0xd0, 0xc6, 0x5b, 0x84, 0x2b, 0x6d, 0x60,
+	0x1d, 0x32, 0x14, 0x03, 0xf9, 0xcf, 0x1a, 0x1f, 0xe0, 0x99, 0x24, 0x63, 0xd8, 0x4e, 0x08, 0x4f,
+	0x95, 0xd2, 0xa9, 0x66, 0x75, 0x63, 0xb1, 0xa0, 0x54, 0x01, 0x3a, 0x84, 0xa7, 0x7e, 0x45, 0xa9,
+	0x7d, 0x7f, 0x7e, 0xb8, 0x86, 0x82, 0x6a, 0x32, 0x0a, 0xc3, 0x96, 0xf5, 0xfd, 0x5d, 0xbd, 0x54,
+	0xd0, 0xfe, 0x06, 0x61, 0x3c, 0x2e, 0xb5, 0x6a, 0xf8, 0x1a, 0xd1, 0x2a, 0xb4, 0xbe, 0x20, 0x7f,
+	0xb5, 0x00, 0x4f, 0x2b, 0x53, 0xcc, 0x96, 0x96, 0x5c, 0xa3, 0x59, 0xb9, 0xe6, 0x1a, 0xd7, 0xdc,
+	0x7b, 0x82, 0xc7, 0xfe, 0x7d, 0xd5, 0xfd, 0xc7, 0x49, 0x7d, 0x95, 0x71, 0xb9, 0x3b, 0xe8, 0xba,
+	0x3d, 0x11, 0x19, 0xc3, 0xcd, 0xdf, 0x3a, 0x84, 0xcf, 0x3d, 0x39, 0x4c, 0x28, 0x64, 0x05, 0xaf,
+	0xcf, 0x0f, 0xd7, 0xaa, 0x7d, 0xca, 0x48, 0x6f, 0xb8, 0xad, 0x3a, 0x68, 0xe1, 0x59, 0xb3, 0xc6,
+	0x3c, 0x9e, 0x1b, 0x6d, 0x6f, 0xb4, 0xd3, 0x2f, 0x08, 0x5b, 0x6d, 0x60, 0xfe, 0x20, 0x8d, 0x1f,
+	0xd1, 0x7e, 0xe8, 0x93, 0x3e, 0x89, 0x7b, 0xd4, 0xba, 0x85, 0xcb, 0x40, 0xe3, 0x90, 0xa6, 0x57,
+	0x6e, 0xd6, 0xe0, 0xac, 0x03, 0x84, 0x71, 0x77, 0x90, 0xc6, 0x59, 0xdb, 0x7c, 0xab, 0x97, 0x4c,
+	0xf6, 0x50, 0x4d, 0xf6, 0xe1, 0x6b, 0xbd, 0xf9, 0x97, 0x93, 0x81, 0x1a, 0x6d, 0x66, 0x62, 0x34,
+	0xd0, 0xb3, 0x55, 0x54, 0xd3, 0x0c, 0xb0, 0x35, 0x9b, 0x5b, 0x62, 0x34, 0x35, 0x96, 0xb1, 0xfd,
+	0xfb, 0x6c, 0xf9, 0xe8, 0x1b, 0x3f, 0x11, 0x9e, 0x6a, 0x03, 0xb3, 0x02, 0x3c, 0x73, 0xe1, 0xf8,
+	0x97, 0x2f, 0x9c, 0x42, 0xe1, 0x18, 0xed, 0x9b, 0x97, 0x65, 0x73, 0x6e, 0xeb, 0x0e, 0x2e, 0x9b,
+	0x33, 0xbd, 0x51, 0xc4, 0xeb, 0xb8, 0xed, 0xfc, 0x39, 0x3e, 0x62, 0x78, 0x86, 0x67, 0x8b, 0xa6,
+	0xd4, 0x8b, 0x25, 0x05, 0x80, 0xbd, 0x7a, 0x05, 0x20, 0x27, 0xb7, 0xff, 0x3f, 0x50, 0xbb, 0xf3,
+	0x3b, 0x47, 0xa7, 0x0e, 0x3a, 0x3e, 0x75, 0xd0, 0xb7, 0x53, 0x07, 0xbd, 0x3a, 0x73, 0x4a, 0xc7,
+	0x67, 0x4e, 0xe9, 0xf3, 0x99, 0x53, 0x7a, 0xba, 0x39, 0xe1, 0x4a, 0x9f, 0xef, 0x48, 0x1a, 0xf2,
+	0x98, 0x4b, 0x2f, 0xa7, 0x5f, 0xef, 0xd3, 0x90, 0xd1, 0xd4, 0xdb, 0x1f, 0x45, 0xb4, 0x53, 0xdd,
+	0x72, 0xf6, 0x4d, 0xb9, 0xfd, 0x2b, 0x00, 0x00, 0xff, 0xff, 0xac, 0x96, 0xaa, 0x1f, 0x10, 0x05,
+	0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -384,8 +441,8 @@ type MsgClient interface {
 	//
 	// Since: cosmos-sdk 0.47
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
-	// PayoutStakeholders allows the authority to manually pay out stakeholders.
-	PayoutStakeholders(ctx context.Context, in *MsgPayoutStakeholders, opts ...grpc.CallOption) (*MsgPayoutStakeholdersResponse, error)
+	// Payout allows the authority to manually pay out stakeholders.
+	Payout(ctx context.Context, in *MsgPayout, opts ...grpc.CallOption) (*MsgPayoutResponse, error)
 	// BurnHeldBalance allows a tokenholder to burn coins they own.
 	BurnHeldBalance(ctx context.Context, in *MsgBurnHeldBalance, opts ...grpc.CallOption) (*MsgBurnHeldBalanceResponse, error)
 }
@@ -407,9 +464,9 @@ func (c *msgClient) UpdateParams(ctx context.Context, in *MsgUpdateParams, opts 
 	return out, nil
 }
 
-func (c *msgClient) PayoutStakeholders(ctx context.Context, in *MsgPayoutStakeholders, opts ...grpc.CallOption) (*MsgPayoutStakeholdersResponse, error) {
-	out := new(MsgPayoutStakeholdersResponse)
-	err := c.cc.Invoke(ctx, "/manifest.v1.Msg/PayoutStakeholders", in, out, opts...)
+func (c *msgClient) Payout(ctx context.Context, in *MsgPayout, opts ...grpc.CallOption) (*MsgPayoutResponse, error) {
+	out := new(MsgPayoutResponse)
+	err := c.cc.Invoke(ctx, "/manifest.v1.Msg/Payout", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -431,8 +488,8 @@ type MsgServer interface {
 	//
 	// Since: cosmos-sdk 0.47
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
-	// PayoutStakeholders allows the authority to manually pay out stakeholders.
-	PayoutStakeholders(context.Context, *MsgPayoutStakeholders) (*MsgPayoutStakeholdersResponse, error)
+	// Payout allows the authority to manually pay out stakeholders.
+	Payout(context.Context, *MsgPayout) (*MsgPayoutResponse, error)
 	// BurnHeldBalance allows a tokenholder to burn coins they own.
 	BurnHeldBalance(context.Context, *MsgBurnHeldBalance) (*MsgBurnHeldBalanceResponse, error)
 }
@@ -444,8 +501,8 @@ type UnimplementedMsgServer struct {
 func (*UnimplementedMsgServer) UpdateParams(ctx context.Context, req *MsgUpdateParams) (*MsgUpdateParamsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateParams not implemented")
 }
-func (*UnimplementedMsgServer) PayoutStakeholders(ctx context.Context, req *MsgPayoutStakeholders) (*MsgPayoutStakeholdersResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PayoutStakeholders not implemented")
+func (*UnimplementedMsgServer) Payout(ctx context.Context, req *MsgPayout) (*MsgPayoutResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Payout not implemented")
 }
 func (*UnimplementedMsgServer) BurnHeldBalance(ctx context.Context, req *MsgBurnHeldBalance) (*MsgBurnHeldBalanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BurnHeldBalance not implemented")
@@ -473,20 +530,20 @@ func _Msg_UpdateParams_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Msg_PayoutStakeholders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MsgPayoutStakeholders)
+func _Msg_Payout_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgPayout)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MsgServer).PayoutStakeholders(ctx, in)
+		return srv.(MsgServer).Payout(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/manifest.v1.Msg/PayoutStakeholders",
+		FullMethod: "/manifest.v1.Msg/Payout",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MsgServer).PayoutStakeholders(ctx, req.(*MsgPayoutStakeholders))
+		return srv.(MsgServer).Payout(ctx, req.(*MsgPayout))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -518,8 +575,8 @@ var _Msg_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Msg_UpdateParams_Handler,
 		},
 		{
-			MethodName: "PayoutStakeholders",
-			Handler:    _Msg_PayoutStakeholders_Handler,
+			MethodName: "Payout",
+			Handler:    _Msg_Payout_Handler,
 		},
 		{
 			MethodName: "BurnHeldBalance",
@@ -593,7 +650,7 @@ func (m *MsgUpdateParamsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
-func (m *MsgPayoutStakeholders) Marshal() (dAtA []byte, err error) {
+func (m *MsgPayout) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -603,26 +660,30 @@ func (m *MsgPayoutStakeholders) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *MsgPayoutStakeholders) MarshalTo(dAtA []byte) (int, error) {
+func (m *MsgPayout) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *MsgPayoutStakeholders) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *MsgPayout) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	{
-		size, err := m.Payout.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
+	if len(m.PayoutPairs) > 0 {
+		for iNdEx := len(m.PayoutPairs) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.PayoutPairs[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTx(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
 		}
-		i -= size
-		i = encodeVarintTx(dAtA, i, uint64(size))
 	}
-	i--
-	dAtA[i] = 0x12
 	if len(m.Authority) > 0 {
 		i -= len(m.Authority)
 		copy(dAtA[i:], m.Authority)
@@ -633,7 +694,7 @@ func (m *MsgPayoutStakeholders) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *MsgPayoutStakeholdersResponse) Marshal() (dAtA []byte, err error) {
+func (m *PayoutPair) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -643,12 +704,52 @@ func (m *MsgPayoutStakeholdersResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *MsgPayoutStakeholdersResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *PayoutPair) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *MsgPayoutStakeholdersResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *PayoutPair) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	{
+		size, err := m.Coin.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintTx(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x12
+	if len(m.Address) > 0 {
+		i -= len(m.Address)
+		copy(dAtA[i:], m.Address)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Address)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgPayoutResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgPayoutResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgPayoutResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -758,7 +859,7 @@ func (m *MsgUpdateParamsResponse) Size() (n int) {
 	return n
 }
 
-func (m *MsgPayoutStakeholders) Size() (n int) {
+func (m *MsgPayout) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -768,12 +869,31 @@ func (m *MsgPayoutStakeholders) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovTx(uint64(l))
 	}
-	l = m.Payout.Size()
+	if len(m.PayoutPairs) > 0 {
+		for _, e := range m.PayoutPairs {
+			l = e.Size()
+			n += 1 + l + sovTx(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *PayoutPair) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Address)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = m.Coin.Size()
 	n += 1 + l + sovTx(uint64(l))
 	return n
 }
 
-func (m *MsgPayoutStakeholdersResponse) Size() (n int) {
+func (m *MsgPayoutResponse) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -981,7 +1101,7 @@ func (m *MsgUpdateParamsResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *MsgPayoutStakeholders) Unmarshal(dAtA []byte) error {
+func (m *MsgPayout) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1004,10 +1124,10 @@ func (m *MsgPayoutStakeholders) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: MsgPayoutStakeholders: wiretype end group for non-group")
+			return fmt.Errorf("proto: MsgPayout: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MsgPayoutStakeholders: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: MsgPayout: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -1044,7 +1164,7 @@ func (m *MsgPayoutStakeholders) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Payout", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field PayoutPairs", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -1071,7 +1191,8 @@ func (m *MsgPayoutStakeholders) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.Payout.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			m.PayoutPairs = append(m.PayoutPairs, PayoutPair{})
+			if err := m.PayoutPairs[len(m.PayoutPairs)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -1096,7 +1217,7 @@ func (m *MsgPayoutStakeholders) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *MsgPayoutStakeholdersResponse) Unmarshal(dAtA []byte) error {
+func (m *PayoutPair) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1119,10 +1240,125 @@ func (m *MsgPayoutStakeholdersResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: MsgPayoutStakeholdersResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: PayoutPair: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MsgPayoutStakeholdersResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: PayoutPair: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Address", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Address = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Coin", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.Coin.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgPayoutResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgPayoutResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgPayoutResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:

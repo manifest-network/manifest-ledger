@@ -88,12 +88,6 @@ from_scratch () {
   update_test_genesis '.app_state["tokenfactory"]["params"]["denom_creation_fee"]=[]'
   update_test_genesis '.app_state["tokenfactory"]["params"]["denom_creation_gas_consume"]=2000000'
 
-  # manifest
-  update_test_genesis '.app_state["manifest"]["params"]["inflation"]["mint_denom"]="umfx"'
-  update_test_genesis '.app_state["manifest"]["params"]["inflation"]["yearly_amount"]="0"' # in micro format (1MFX = 10**6)
-  update_test_genesis '.app_state["manifest"]["params"]["inflation"]["automatic_enabled"]=false'
-  update_test_genesis '.app_state["manifest"]["params"]["stake_holders"]=[{"address":"manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct","percentage":100000000}]'
-
   # tokenfactory
   # SPDT
 #  update_test_genesis '.app_state["tokenfactory"]["factory_denoms"]=[{"denom": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt", "authority_metadata": {"admin": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj"}}]'

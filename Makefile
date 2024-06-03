@@ -82,12 +82,6 @@ all: install
 install:
 	@echo "--> ensure dependencies have not been modified"
 	@go mod verify
-	@echo "--> installing manifestd"
-	@go install $(BUILD_FLAGS) -mod=readonly ./cmd/manifestd
-
-install-cover:
-	@echo "--> ensure dependencies have not been modified"
-	@go mod verify
 	@echo "--> installing manifestd instrumented for coverage"
 	@go install $(BUILD_FLAGS) -cover -covermode=atomic -mod=readonly -coverpkg=github.com/liftedinit/manifest-ledger/... ./cmd/manifestd
 
@@ -99,21 +93,13 @@ ifeq ($(OS),Windows_NT)
 	$(error demo server not supported)
 	exit 1
 else
-	go build -mod=readonly $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
-endif
-
-build-cover:
-ifeq ($(OS),Windows_NT)
-	$(error demo server not supported)
-	exit 1
-else
 	go build -mod=readonly $(BUILD_FLAGS) -cover -covermode=atomic -coverpkg=github.com/liftedinit/manifest-ledger/... -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 endif
 
 build-vendored:
 	go build -mod=vendor $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 
-.PHONY: all build build-linux install init lint build-vendored build-cover
+.PHONY: all build build-linux install init lint build-vendored
 
 ###############################################################################
 ###                          INTERCHAINTEST (ictest)                        ###
@@ -151,14 +137,7 @@ else
 	heighliner build -c manifest --local -f ./chains.yaml
 endif
 
-local-image-cov:
-ifeq (,$(shell which heighliner))
-	echo 'heighliner' binary not found. Consider running `make get-heighliner`
-else
-	heighliner build -c manifest-cov --local -f ./chains.yaml
-endif
-
-.PHONY: get-heighliner local-image local-image-cov
+.PHONY: get-heighliner local-image
 
 #################
 ###   Test    ###
