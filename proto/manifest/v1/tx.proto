@@ -62,6 +62,7 @@ message MsgPayout {
   ];
 }
 
+// PayoutPair is the object that pairs an address with a coin to be paid out.
 message PayoutPair {
   string address = 1;
   cosmos.base.v1beta1.Coin coin = 2 [

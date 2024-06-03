@@ -3338,6 +3338,7 @@ func (x *MsgPayout) GetPayoutPairs() []*PayoutPair {
 	return nil
 }
 
+// PayoutPair is the object that pairs an address with a coin to be paid out.
 type PayoutPair struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

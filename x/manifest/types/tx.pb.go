@@ -187,6 +187,7 @@ func (m *MsgPayout) GetPayoutPairs() []PayoutPair {
 	return nil
 }
 
+// PayoutPair is the object that pairs an address with a coin to be paid out.
 type PayoutPair struct {
 	Address string                                  `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
 	Coin    github_com_cosmos_cosmos_sdk_types.Coin `protobuf:"bytes,2,opt,name=coin,proto3,casttype=github.com/cosmos/cosmos-sdk/types.Coin" json:"coin"`
