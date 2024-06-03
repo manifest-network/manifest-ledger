@@ -9,12 +9,3 @@
   build-env:
     - LEDGER_ENABLED=false
     - BUILD_TAGS=muslc
-
-- name: manifest-cov
-  dockerfile: cosmos
-  build-target: make install-cover
-  binaries:
-    - /go/bin/manifestd
-  build-env:
-    - LEDGER_ENABLED=false
-    - BUILD_TAGS=muslc

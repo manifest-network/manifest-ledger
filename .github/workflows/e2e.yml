@@ -43,10 +43,10 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          tags: manifest-cov:local
+          tags: manifest:local
           outputs: type=docker,dest=${{ env.TAR_PATH }}
           build-args: |
-            BUILD_CMD=build-cover
+            BUILD_CMD=build
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
