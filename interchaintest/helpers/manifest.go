@@ -20,7 +20,7 @@ func ManifestStakeholderPayout(t *testing.T, ctx context.Context, chain *cosmos.
 	}
 
 	if strings.HasSuffix(output, ",") {
-		output = output[:len(output)-1]
+		output = strings.Trim(output, ",")
 	}
 
 	txCmd := []string{"tx", "manifest", "payout", output}
