@@ -148,6 +148,61 @@ func TestManifestModule(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("fail: invalid burn authority", func(t *testing.T) {
+		accBal, err := appChain.GetBalance(ctx, uaddr, Denom)
+		require.NoError(t, err)
+		o, err := helpers.ManifestBurnTokens(t, ctx, appChain, uaddr, "1"+Denom)
+		require.NoError(t, err) // The tx is successful but the burn fails
+		tx, err := appChain.GetTransaction(o.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, tx.Code, uint32(0x0)) // The burn failed
+		require.Contains(t, tx.RawLog, "invalid authority")
+		accBal2, err := appChain.GetBalance(ctx, uaddr, Denom)
+		require.NoError(t, err)
+		require.EqualValues(t, accBal, accBal2)
+	})
+
+	t.Run("success: burn tokens as poa admin", func(t *testing.T) {
+		poaAdminAddr := poaAdmin.FormattedAddress()
+		accBal, err := appChain.GetBalance(ctx, poaAdminAddr, Denom)
+		require.NoError(t, err)
+		o, err := helpers.ManifestBurnTokens(t, ctx, appChain, poaAdminAddr, "1"+Denom)
+		require.NoError(t, err)
+		tx, err := appChain.GetTransaction(o.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, tx.Code, uint32(0x0))
+		accBal2, err := appChain.GetBalance(ctx, poaAdminAddr, Denom)
+		require.NoError(t, err)
+		require.EqualValues(t, accBal2, accBal.Sub(sdkmath.OneInt()))
+	})
+
+	t.Run("fail: burn unknown denom as poa admin", func(t *testing.T) {
+		poaAdminAddr := poaAdmin.FormattedAddress()
+		accBal, err := appChain.GetBalance(ctx, poaAdminAddr, Denom)
+		require.NoError(t, err)
+		o, err := helpers.ManifestBurnTokens(t, ctx, appChain, poaAdminAddr, "1foobar")
+		require.NoError(t, err) // The tx is successful but the burn fails
+		tx, err := appChain.GetTransaction(o.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, tx.Code, uint32(0x0)) // The burn failed
+		require.Contains(t, tx.RawLog, "insufficient funds ")
+		accBal2, err := appChain.GetBalance(ctx, poaAdminAddr, Denom)
+		require.NoError(t, err)
+		require.EqualValues(t, accBal, accBal2)
+	})
+
+	t.Run("fail: burn invalid coin expression as poa admin", func(t *testing.T) {
+		poaAdminAddr := poaAdmin.FormattedAddress()
+		accBal, err := appChain.GetBalance(ctx, poaAdminAddr, Denom)
+		require.NoError(t, err)
+		_, err = helpers.ManifestBurnTokens(t, ctx, appChain, poaAdminAddr, "foobar")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid decimal coin expression")
+		accBal2, err := appChain.GetBalance(ctx, poaAdminAddr, Denom)
+		require.NoError(t, err)
+		require.EqualValues(t, accBal, accBal2)
+	})
+
 	t.Cleanup(func() {
 		CopyCoverageFromContainer(ctx, t, client, appChain.GetNode().ContainerID(), appChain.HomeDir())
 		_ = ic.Close()

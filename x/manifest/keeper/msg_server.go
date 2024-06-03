@@ -44,15 +44,18 @@ func (ms msgServer) Payout(ctx context.Context, req *types.MsgPayout) (*types.Ms
 	return nil, ms.k.Payout(ctx, req.PayoutPairs)
 }
 
-func (ms msgServer) BurnHeldBalance(ctx context.Context, msg *types.MsgBurnHeldBalance) (*types.MsgBurnHeldBalanceResponse, error) {
-	addr, err := sdk.AccAddressFromBech32(msg.Sender)
+func (ms msgServer) BurnHeldBalance(ctx context.Context, req *types.MsgBurnHeldBalance) (*types.MsgBurnHeldBalanceResponse, error) {
+	if ms.k.authority != req.Authority {
+		return nil, fmt.Errorf("invalid authority; expected %s, got %s", ms.k.authority, req.Authority)
+	}
+	addr, err := sdk.AccAddressFromBech32(req.Authority)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := ms.k.bankKeeper.SendCoinsFromAccountToModule(ctx, addr, types.ModuleName, msg.BurnCoins); err != nil {
-		return nil, fmt.Errorf("not enough balance to burn %s: %w", msg.BurnCoins, err)
+	if err := ms.k.bankKeeper.SendCoinsFromAccountToModule(ctx, addr, types.ModuleName, req.BurnCoins); err != nil {
+		return nil, fmt.Errorf("not enough balance to burn %s: %w", req.BurnCoins, err)
 	}
 
-	return &types.MsgBurnHeldBalanceResponse{}, ms.k.bankKeeper.BurnCoins(ctx, types.ModuleName, msg.BurnCoins)
+	return &types.MsgBurnHeldBalanceResponse{}, ms.k.bankKeeper.BurnCoins(ctx, types.ModuleName, req.BurnCoins)
 }
