@@ -220,3 +220,50 @@ func TestBurnCoins(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateParams(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.ManifestKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	type tc struct {
+		name   string
+		sender string
+		param  types.Params
+		errMsg string
+	}
+
+	cases := []tc{
+		{
+			name:   "success; update params",
+			sender: authority.String(),
+			param:  types.NewParams(),
+		},
+		{
+			name:   "fail; bad authority",
+			sender: "bad",
+			param:  types.NewParams(),
+			errMsg: "invalid authority",
+		},
+	}
+
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
+				Authority: c.sender,
+				Params:    c.param,
+			})
+			if c.errMsg != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), c.errMsg)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
