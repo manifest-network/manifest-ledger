@@ -10,10 +10,10 @@ import (
 )
 
 // Upgrades list of chain upgrades
-var Upgrades = []upgrades.Upgrade{}
+var Upgrades []upgrades.Upgrade
 
 // RegisterUpgradeHandlers registers the chain upgrade handlers
-func (app ManifestApp) RegisterUpgradeHandlers() {
+func (app *ManifestApp) RegisterUpgradeHandlers() {
 	if len(Upgrades) == 0 {
 		// always have a unique upgrade registered for the current version to test in system tests
 		Upgrades = append(Upgrades, noop.NewUpgrade(app.Version()))
