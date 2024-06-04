@@ -24,13 +24,8 @@ func NewMsgUpdateParams(
 // Route returns the name of the module
 func (msg *MsgUpdateParams) Route() string { return ModuleName }
 
-// Type returns the the action
+// Type returns the action
 func (msg *MsgUpdateParams) Type() string { return "update_params" }
-
-// GetSignBytes implements the LegacyMsg interface.
-func (msg *MsgUpdateParams) GetSignBytes() []byte {
-	return sdk.MustSortJSON(amino.MustMarshalJSON(&msg))
-}
 
 // GetSigners returns the expected signers for a MsgUpdateParams message.
 func (msg *MsgUpdateParams) GetSigners() []sdk.AccAddress {
@@ -69,12 +64,8 @@ func NewPayoutPair(addr sdk.AccAddress, denom string, amt int64) PayoutPair {
 // Route returns the name of the module
 func (msg *MsgPayout) Route() string { return ModuleName }
 
-// Type returns the the action
+// Type returns the action
 func (msg *MsgPayout) Type() string { return "payout" }
-
-func (msg *MsgPayout) GetSignBytes() []byte {
-	return sdk.MustSortJSON(amino.MustMarshalJSON(&msg))
-}
 
 // GetSigners returns the expected signers for the message.
 func (msg *MsgPayout) GetSigners() []sdk.AccAddress {
@@ -140,13 +131,8 @@ func NewMsgBurnHeldBalance(
 // Route returns the name of the module
 func (msg *MsgBurnHeldBalance) Route() string { return ModuleName }
 
-// Type returns the the action
+// Type returns the action
 func (msg *MsgBurnHeldBalance) Type() string { return "burn_coins" }
-
-// GetSignBytes implements the LegacyMsg interface.
-func (msg *MsgBurnHeldBalance) GetSignBytes() []byte {
-	return sdk.MustSortJSON(amino.MustMarshalJSON(&msg))
-}
 
 // GetSigners returns the expected signers for the message.
 func (msg *MsgBurnHeldBalance) GetSigners() []sdk.AccAddress {
