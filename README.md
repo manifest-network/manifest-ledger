@@ -121,6 +121,12 @@ make ictest-manifest
 make ictest-ibc
 ```
 
+**To test the Proof of Authority implementation where the administrator is a group run:**
+
+```bash
+make ictest-group-poa
+```
+
 ## Coverage
 
 To generate a coverage report for the modules run:
