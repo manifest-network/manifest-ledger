@@ -22,10 +22,10 @@ import (
 var _ appmodule.AppModule = AppModule{}
 
 // IsOnePerModuleType implements the depinject.OnePerModuleType interface.
-func (a AppModule) IsOnePerModuleType() {}
+func (am AppModule) IsOnePerModuleType() {}
 
 // IsAppModule implements the appmodule.AppModule interface.
-func (a AppModule) IsAppModule() {}
+func (am AppModule) IsAppModule() {}
 
 func init() {
 	appmodule.Register(
