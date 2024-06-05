@@ -67,10 +67,11 @@ func NewKeeper(
 	return k
 }
 
-func (k Keeper) Logger() log.Logger {
+func (k *Keeper) Logger() log.Logger {
 	return k.logger
 }
 
+// SetAuthority is only used for testing
 func (k *Keeper) SetAuthority(authority string) {
 	k.authority = authority
 }
@@ -88,7 +89,7 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 }
 
 // Payout mints and sends coins to stakeholders.
-func (k Keeper) Payout(ctx context.Context, payouts []types.PayoutPair) error {
+func (k *Keeper) Payout(ctx context.Context, payouts []types.PayoutPair) error {
 	for _, p := range payouts {
 		p := p
 		addr := p.Address
@@ -113,7 +114,7 @@ func (k Keeper) Payout(ctx context.Context, payouts []types.PayoutPair) error {
 	return nil
 }
 
-func (k Keeper) mintCoinsToAccount(ctx context.Context, sdkAddr sdk.AccAddress, coin sdk.Coin) error {
+func (k *Keeper) mintCoinsToAccount(ctx context.Context, sdkAddr sdk.AccAddress, coin sdk.Coin) error {
 	coins := sdk.NewCoins(coin)
 	if err := k.bankKeeper.MintCoins(ctx, types.ModuleName, coins); err != nil {
 		return err

@@ -9,13 +9,13 @@ func DefaultParams() Params {
 	return NewParams()
 }
 
-// Params defines the parameters for the module.
+// NewParams defines the parameters for the module.
 func NewParams() Params {
 	return Params{}
 }
 
 // Stringer method for Params.
-func (p Params) String() string {
+func (p *Params) String() string {
 	bz, err := json.Marshal(p)
 	if err != nil {
 		panic(err)
@@ -25,6 +25,6 @@ func (p Params) String() string {
 }
 
 // Validate does the sanity check on the params.
-func (p Params) Validate() error {
+func (p *Params) Validate() error {
 	return nil
 }

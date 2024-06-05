@@ -22,15 +22,10 @@ func NewMsgUpdateParams(
 }
 
 // Route returns the name of the module
-func (msg MsgUpdateParams) Route() string { return ModuleName }
+func (msg *MsgUpdateParams) Route() string { return ModuleName }
 
-// Type returns the the action
-func (msg MsgUpdateParams) Type() string { return "update_params" }
-
-// GetSignBytes implements the LegacyMsg interface.
-func (msg MsgUpdateParams) GetSignBytes() []byte {
-	return sdk.MustSortJSON(amino.MustMarshalJSON(&msg))
-}
+// Type returns the action
+func (msg *MsgUpdateParams) Type() string { return "update_params" }
 
 // GetSigners returns the expected signers for a MsgUpdateParams message.
 func (msg *MsgUpdateParams) GetSigners() []sdk.AccAddress {
@@ -38,7 +33,7 @@ func (msg *MsgUpdateParams) GetSigners() []sdk.AccAddress {
 	return []sdk.AccAddress{addr}
 }
 
-// ValidateBasic does a sanity check on the provided data.
+// Validate does a sanity check on the provided data.
 func (msg *MsgUpdateParams) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
 		return errors.Wrap(err, "invalid authority address")
@@ -67,15 +62,10 @@ func NewPayoutPair(addr sdk.AccAddress, denom string, amt int64) PayoutPair {
 }
 
 // Route returns the name of the module
-func (msg MsgPayout) Route() string { return ModuleName }
+func (msg *MsgPayout) Route() string { return ModuleName }
 
-// Type returns the the action
-func (msg MsgPayout) Type() string { return "payout" }
-
-// GetSignBytes implements the LegacyMsg interface.
-func (msg MsgPayout) GetSignBytes() []byte {
-	return sdk.MustSortJSON(amino.MustMarshalJSON(&msg))
-}
+// Type returns the action
+func (msg *MsgPayout) Type() string { return "payout" }
 
 // GetSigners returns the expected signers for the message.
 func (msg *MsgPayout) GetSigners() []sdk.AccAddress {
@@ -83,7 +73,7 @@ func (msg *MsgPayout) GetSigners() []sdk.AccAddress {
 	return []sdk.AccAddress{addr}
 }
 
-// ValidateBasic does a sanity check on the provided data.
+// Validate does a sanity check on the provided data.
 func (msg *MsgPayout) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
 		return errors.Wrap(err, "invalid authority address")
@@ -139,15 +129,10 @@ func NewMsgBurnHeldBalance(
 }
 
 // Route returns the name of the module
-func (msg MsgBurnHeldBalance) Route() string { return ModuleName }
+func (msg *MsgBurnHeldBalance) Route() string { return ModuleName }
 
-// Type returns the the action
-func (msg MsgBurnHeldBalance) Type() string { return "burn_coins" }
-
-// GetSignBytes implements the LegacyMsg interface.
-func (msg MsgBurnHeldBalance) GetSignBytes() []byte {
-	return sdk.MustSortJSON(amino.MustMarshalJSON(&msg))
-}
+// Type returns the action
+func (msg *MsgBurnHeldBalance) Type() string { return "burn_coins" }
 
 // GetSigners returns the expected signers for the message.
 func (msg *MsgBurnHeldBalance) GetSigners() []sdk.AccAddress {
@@ -155,7 +140,7 @@ func (msg *MsgBurnHeldBalance) GetSigners() []sdk.AccAddress {
 	return []sdk.AccAddress{addr}
 }
 
-// ValidateBasic does a sanity check on the provided data.
+// Validate does a sanity check on the provided data.
 func (msg *MsgBurnHeldBalance) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
 		return errors.Wrap(err, "invalid authority address")
