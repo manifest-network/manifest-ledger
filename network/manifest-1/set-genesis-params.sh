@@ -51,12 +51,6 @@ update_genesis '.app_state["gov"]["params"]["expedited_min_deposit"]=[{"denom":"
 update_genesis '.app_state["gov"]["params"]["min_deposit_ratio"]="0.100000000000000000"' # 10%
 # update_genesis '.app_state["gov"]["params"]["constitution"]=""' # ?
 
-# TODO:
-# update_genesis '.app_state["manifest"]["params"]["stake_holders"]=[{"address":"manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct","percentage":100000000}]' # TODO:
-update_genesis '.app_state["manifest"]["params"]["inflation"]["automatic_enabled"]=false'
-update_genesis '.app_state["manifest"]["params"]["inflation"]["yearly_amount"]="365000000"' # in micro format (1MFX = 10**6)
-update_genesis '.app_state["manifest"]["params"]["inflation"]["mint_denom"]="umfx"'
-
 # not used
 update_genesis '.app_state["mint"]["minter"]["inflation"]="0.000000000000000000"'
 update_genesis '.app_state["mint"]["minter"]["annual_provisions"]="0.000000000000000000"'
