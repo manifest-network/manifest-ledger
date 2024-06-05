@@ -134,7 +134,7 @@ local-image:
 ifeq (,$(shell which heighliner))
 	echo 'heighliner' binary not found. Consider running `make get-heighliner`
 else
-	heighliner build -c manifest --local -f ./chains.yaml
+	heighliner build -c manifest --local -f ./chains.yaml --alpine-version 3.20
 endif
 
 .PHONY: get-heighliner local-image
