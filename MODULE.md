@@ -160,7 +160,7 @@ If the PoA admin decides they no longer wish for a validator to be signing block
 
 The Token Factory module as it is implemented on the Manifest Network, allows any user to have granular control over the creation and management of tokens on the Manifest Network. The creator can mint, burn, edit, and transfer tokens to other accounts from any account.
 
->_note:_ Native tokens are not supported by the Token Factory module. The module is designed to work with tokens created by the module itself.
+>_note:_ The module is designed to work with tokens created by the module itself.
 
 ### Module Functionality
 
