@@ -30,7 +30,6 @@ While PoA offers immediate stability and control, the Manifest Network aspires f
 - [Helper](#helper)
 - [Modules](./MODULE.md)
 - [Validators](./network/manifest-1/POST_GENESIS.md)
-- [Multi Sig Guide](./network/manifest-1/MULTI_SIG.md)
 - [Contributing](./CONTRIBUTING.md)
 - [Security/Bug Reporting](./SECURITY.md)
 
@@ -109,7 +108,7 @@ make ictest-poa
 make ictest-tokenfactory
 ```
 
-**To test the Manifest module which includes inflation changes run:**
+**To test the Manifest module run:**
 
 ```bash
 make ictest-manifest
@@ -119,6 +118,12 @@ make ictest-manifest
 
 ```bash
 make ictest-ibc
+```
+
+**To test the Proof of Authority implementation where the administrator is a group run:**
+
+```bash
+make ictest-group-poa
 ```
 
 ## Coverage
@@ -133,12 +138,6 @@ make coverage
 ## Helper
 
 There are scripts for testing, installing, and initializing. Use this section to help you navigate the various scripts and their use cases.
-
-#### Manifest Module script
-
-`scripts/manifest_testing.sh`
-
-This is a script to assist with configuring and testing the inflation and stakeholders. To better understand the script and what exactly it is testing please refer to the [Manifest Module](#manifest-module) section.
 
 #### Node Initialization script
 

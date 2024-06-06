@@ -185,14 +185,7 @@
       }
     },
     "manifest": {
-      "params": {
-        "stake_holders": [],
-        "inflation": {
-          "automatic_enabled": false,
-          "yearly_amount": "0",
-          "mint_denom": "stake"
-        }
-      }
+      "params": {}
     },
     "mint": {
       "minter": {

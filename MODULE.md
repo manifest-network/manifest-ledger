@@ -37,42 +37,34 @@
 
 ## Manifest Module
 
-The Manifest module is responsible for handling inflation and manual minting events. Below is a structured breakdown of its components and functionalities:
+The Manifest module is responsible for handling manual minting and coin burning events. Below is a structured breakdown of its components and functionalities:
 
 ### Module Functionality
 
-Stakeholder Management: Allows the PoA admin to designate stakeholders, who can be one or multiple manifest wallet addresses. These stakeholders are eligible to receive assets issued by the PoA admin.
-
-#### Asset Issuance:
-
-- Manual Issuance: The PoA admin can manually mint and disburse a specified amount of tokens to the stakeholders.
-
-- Automatic Inflation: When enabled, umfx tokens are minted every block as set in the module parameters, aiming for a predetermined total amount of tokens over a year.
+- Manual Minting: The PoA admin can manually mint and disburse a specified amount of tokens.
+- Manual Burning: The PoA admin can manually burn tokens from the PoA admin account.
 
 #### Commands
 
-##### Update Parameters (update-params):
+##### Mint and disburse native tokens (payout):
 
-- Syntax: `manifestd tx manifest update-params [address:percent_share,address2:percent_share2] [inflation_on_off] [annual_total_mint]`
-
-  - Parameters:
-    - `address:percent_share`: Specifies the destination wallet address and its percent share of the total rewards (to the sixth exponent).
-    - `inflation_on_off`: A boolean value (true or false) to toggle automatic inflation.
-    - `annual_total_mint`: The total amount of tokens to be minted annually (used only if automatic inflation is enabled).
-
-  **Example:** `manifestd tx manifest update-params manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct:100_000_000 false 0umfx`
-
-##### Stakeholder Payout (stakeholder-payout):
-
-- Syntax: `manifestd tx manifest stakeholder-payout [amount]`
+- Syntax: `manifestd tx manifest payout [address:coin_amount,...]`
 
   - Parameters:
 
-    - `amount`: The amount of tokens to mint from the yearly allocated inflation.
+    - `address:coin_amount`: Pair of destination address and amount of coin to mint.
 
-    This command will fail if automatic inflation is enabled.
+  **Example:** `manifestd tx manifest payout manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct:777umfx,manifest1efd63aw40lxf3n4mhf7dzhjkr453axurm6rp3z:1000umfx`
 
-  **Example:** `manifestd tx manifest stakeholder-payout 777umfx`
+##### Burn native tokens (burn-coins):
+
+- Syntax: `manifestd tx manifest burn-coins [coins,...]`
+
+  - Parameters:
+
+    - `coins`: The amount of coins to burn from the POA admin account.
+
+  **Example:** `manifestd tx manifest burn-coins 777umfx,1000othercoin`
 
 ## Proof of Authority Module
 
@@ -167,6 +159,8 @@ If the PoA admin decides they no longer wish for a validator to be signing block
 ## Token Factory Module
 
 The Token Factory module as it is implemented on the Manifest Network, allows any user to have granular control over the creation and management of tokens on the Manifest Network. The creator can mint, burn, edit, and transfer tokens to other accounts from any account.
+
+>_note:_ The module is designed to work with tokens created by the module itself.
 
 ### Module Functionality
 
