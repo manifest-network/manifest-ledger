@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Msg_UpdateParams_FullMethodName       = "/manifest.v1.Msg/UpdateParams"
-	Msg_PayoutStakeholders_FullMethodName = "/manifest.v1.Msg/PayoutStakeholders"
+	Msg_UpdateParams_FullMethodName    = "/manifest.v1.Msg/UpdateParams"
+	Msg_Payout_FullMethodName          = "/manifest.v1.Msg/Payout"
+	Msg_BurnHeldBalance_FullMethodName = "/manifest.v1.Msg/BurnHeldBalance"
 )
 
 // MsgClient is the client API for Msg service.
@@ -31,8 +32,10 @@ type MsgClient interface {
 	//
 	// Since: cosmos-sdk 0.47
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
-	// PayoutStakeholders allows the authority to manually pay out stakeholders.
-	PayoutStakeholders(ctx context.Context, in *MsgPayoutStakeholders, opts ...grpc.CallOption) (*MsgPayoutStakeholdersResponse, error)
+	// Payout allows the authority to manually pay out stakeholders.
+	Payout(ctx context.Context, in *MsgPayout, opts ...grpc.CallOption) (*MsgPayoutResponse, error)
+	// BurnHeldBalance allows a tokenholder to burn coins they own.
+	BurnHeldBalance(ctx context.Context, in *MsgBurnHeldBalance, opts ...grpc.CallOption) (*MsgBurnHeldBalanceResponse, error)
 }
 
 type msgClient struct {
@@ -52,9 +55,18 @@ func (c *msgClient) UpdateParams(ctx context.Context, in *MsgUpdateParams, opts 
 	return out, nil
 }
 
-func (c *msgClient) PayoutStakeholders(ctx context.Context, in *MsgPayoutStakeholders, opts ...grpc.CallOption) (*MsgPayoutStakeholdersResponse, error) {
-	out := new(MsgPayoutStakeholdersResponse)
-	err := c.cc.Invoke(ctx, Msg_PayoutStakeholders_FullMethodName, in, out, opts...)
+func (c *msgClient) Payout(ctx context.Context, in *MsgPayout, opts ...grpc.CallOption) (*MsgPayoutResponse, error) {
+	out := new(MsgPayoutResponse)
+	err := c.cc.Invoke(ctx, Msg_Payout_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) BurnHeldBalance(ctx context.Context, in *MsgBurnHeldBalance, opts ...grpc.CallOption) (*MsgBurnHeldBalanceResponse, error) {
+	out := new(MsgBurnHeldBalanceResponse)
+	err := c.cc.Invoke(ctx, Msg_BurnHeldBalance_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +81,10 @@ type MsgServer interface {
 	//
 	// Since: cosmos-sdk 0.47
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
-	// PayoutStakeholders allows the authority to manually pay out stakeholders.
-	PayoutStakeholders(context.Context, *MsgPayoutStakeholders) (*MsgPayoutStakeholdersResponse, error)
+	// Payout allows the authority to manually pay out stakeholders.
+	Payout(context.Context, *MsgPayout) (*MsgPayoutResponse, error)
+	// BurnHeldBalance allows a tokenholder to burn coins they own.
+	BurnHeldBalance(context.Context, *MsgBurnHeldBalance) (*MsgBurnHeldBalanceResponse, error)
 	mustEmbedUnimplementedMsgServer()
 }
 
@@ -81,8 +95,11 @@ type UnimplementedMsgServer struct {
 func (UnimplementedMsgServer) UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateParams not implemented")
 }
-func (UnimplementedMsgServer) PayoutStakeholders(context.Context, *MsgPayoutStakeholders) (*MsgPayoutStakeholdersResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PayoutStakeholders not implemented")
+func (UnimplementedMsgServer) Payout(context.Context, *MsgPayout) (*MsgPayoutResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Payout not implemented")
+}
+func (UnimplementedMsgServer) BurnHeldBalance(context.Context, *MsgBurnHeldBalance) (*MsgBurnHeldBalanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BurnHeldBalance not implemented")
 }
 func (UnimplementedMsgServer) mustEmbedUnimplementedMsgServer() {}
 
@@ -115,20 +132,38 @@ func _Msg_UpdateParams_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Msg_PayoutStakeholders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MsgPayoutStakeholders)
+func _Msg_Payout_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgPayout)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MsgServer).PayoutStakeholders(ctx, in)
+		return srv.(MsgServer).Payout(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Msg_PayoutStakeholders_FullMethodName,
+		FullMethod: Msg_Payout_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MsgServer).PayoutStakeholders(ctx, req.(*MsgPayoutStakeholders))
+		return srv.(MsgServer).Payout(ctx, req.(*MsgPayout))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_BurnHeldBalance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgBurnHeldBalance)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).BurnHeldBalance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_BurnHeldBalance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).BurnHeldBalance(ctx, req.(*MsgBurnHeldBalance))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -145,8 +180,12 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Msg_UpdateParams_Handler,
 		},
 		{
-			MethodName: "PayoutStakeholders",
-			Handler:    _Msg_PayoutStakeholders_Handler,
+			MethodName: "Payout",
+			Handler:    _Msg_Payout_Handler,
+		},
+		{
+			MethodName: "BurnHeldBalance",
+			Handler:    _Msg_BurnHeldBalance_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

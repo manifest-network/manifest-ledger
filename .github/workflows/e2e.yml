@@ -16,7 +16,7 @@ permissions:
   packages: write
 
 env:
-  GO_VERSION: 1.22.2
+  GO_VERSION: 1.22.4
   TAR_PATH: /tmp/manifest-docker-image.tar
   IMAGE_NAME: manifest-docker-image
 
@@ -43,10 +43,10 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          tags: manifest-cov:local
+          tags: manifest:local
           outputs: type=docker,dest=${{ env.TAR_PATH }}
           build-args: |
-            BUILD_CMD=build-cover
+            BUILD_CMD=build
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
@@ -65,6 +65,7 @@ jobs:
           - "ictest-poa"
           - "ictest-tokenfactory"
           - "ictest-manifest"
+          - "ictest-group-poa"
       fail-fast: false
 
     steps:

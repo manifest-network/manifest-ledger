@@ -14,7 +14,6 @@ import (
 
 	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
 	"cosmossdk.io/client/v2/autocli"
-	"cosmossdk.io/core/appmodule"
 	errorsmod "cosmossdk.io/errors"
 
 	"github.com/cosmos/cosmos-sdk/client"
@@ -39,8 +38,6 @@ var (
 	_ module.AppModuleBasic   = AppModuleBasic{}
 	_ module.AppModuleGenesis = AppModule{}
 	_ module.AppModule        = AppModule{}
-
-	_ appmodule.HasBeginBlocker = AppModule{}
 
 	_ autocli.HasAutoCLIConfig      = AppModule{}
 	_ autocli.HasCustomQueryCommand = AppModule{}
@@ -165,10 +162,6 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQuerier(am.keeper))
 }
 
-func (am AppModule) BeginBlock(ctx context.Context) error {
-	return BeginBlocker(ctx, am.keeper, am.mk)
-}
-
 // ConsensusVersion is a sequence number for state-breaking change of the
 // module. It should be incremented on each consensus-breaking change
 // introduced by the module. To avoid wrong/empty versions, the initial version
@@ -178,7 +171,6 @@ func (am AppModule) ConsensusVersion() uint64 {
 }
 
 func (AppModule) GenerateGenesisState(simState *module.SimulationState) {
-	simulation.RandomizedGenState(simState)
 }
 
 // ProposalMsgs returns msgs used for governance proposals for simulations.

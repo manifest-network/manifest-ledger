@@ -385,14 +385,7 @@
       }
     },
     "manifest": {
-      "params": {
-        "stake_holders": [],
-        "inflation": {
-          "automatic_enabled": false,
-          "yearly_amount": "365000000",
-          "mint_denom": "umfx"
-        }
-      }
+      "params": {}
     },
     "mint": {
       "minter": {

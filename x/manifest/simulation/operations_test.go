@@ -85,11 +85,11 @@ func (suite *SimTestSuite) TestSimulateMsgShareholdersPayout() {
 	r := rand.New(s)
 	accounts := suite.getTestingAccounts(r, 3)
 
-	op := simulation.SimulateMsgPayoutStakeholders(suite.manifestKeeper)
+	op := simulation.SimulateMsgPayout(suite.manifestKeeper)
 	operationMsg, futureOperations, err := op(r, suite.app.BaseApp, suite.ctx, accounts, "")
 	suite.Require().NoError(err)
 
-	var msg types.MsgPayoutStakeholders
+	var msg types.MsgPayout
 	err = proto.Unmarshal(operationMsg.Msg, &msg)
 	suite.Require().NoError(err)
 	suite.Require().True(operationMsg.OK)

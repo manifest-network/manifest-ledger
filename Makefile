@@ -6,7 +6,7 @@ DOCKER := $(shell which docker)
 LEDGER_ENABLED ?= true
 BINDIR ?= $(GOPATH)/bin
 BUILD_DIR = ./build
-VERSION = v0.0.1-alpha.5
+VERSION = v0.0.1-alpha.9
 
 export GO111MODULE = on
 
@@ -82,12 +82,6 @@ all: install
 install:
 	@echo "--> ensure dependencies have not been modified"
 	@go mod verify
-	@echo "--> installing manifestd"
-	@go install $(BUILD_FLAGS) -mod=readonly ./cmd/manifestd
-
-install-cover:
-	@echo "--> ensure dependencies have not been modified"
-	@go mod verify
 	@echo "--> installing manifestd instrumented for coverage"
 	@go install $(BUILD_FLAGS) -cover -covermode=atomic -mod=readonly -coverpkg=github.com/liftedinit/manifest-ledger/... ./cmd/manifestd
 
@@ -99,21 +93,13 @@ ifeq ($(OS),Windows_NT)
 	$(error demo server not supported)
 	exit 1
 else
-	go build -mod=readonly $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
-endif
-
-build-cover:
-ifeq ($(OS),Windows_NT)
-	$(error demo server not supported)
-	exit 1
-else
 	go build -mod=readonly $(BUILD_FLAGS) -cover -covermode=atomic -coverpkg=github.com/liftedinit/manifest-ledger/... -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 endif
 
 build-vendored:
 	go build -mod=vendor $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 
-.PHONY: all build build-linux install init lint build-vendored build-cover
+.PHONY: all build build-linux install init lint build-vendored
 
 ###############################################################################
 ###                          INTERCHAINTEST (ictest)                        ###
@@ -131,6 +117,8 @@ ictest-manifest:
 ictest-poa:
 	cd interchaintest && go test -race -v -run TestPOA . -count=1
 
+ictest-group-poa:
+	cd interchaintest && go test -race -v -run TestGroupPOA . -count=1
 
 .PHONY: ictest-ibc ictest-tokenfactory
 
@@ -146,17 +134,10 @@ local-image:
 ifeq (,$(shell which heighliner))
 	echo 'heighliner' binary not found. Consider running `make get-heighliner`
 else
-	heighliner build -c manifest --local -f ./chains.yaml
+	heighliner build -c manifest --local -f ./chains.yaml --alpine-version 3.20
 endif
 
-local-image-cov:
-ifeq (,$(shell which heighliner))
-	echo 'heighliner' binary not found. Consider running `make get-heighliner`
-else
-	heighliner build -c manifest-cov --local -f ./chains.yaml
-endif
-
-.PHONY: get-heighliner local-image local-image-cov
+.PHONY: get-heighliner local-image
 
 #################
 ###   Test    ###
@@ -166,15 +147,7 @@ test:
 	@echo "--> Running tests"
 	go test -v ./...
 
-test-integration:
-	@echo "--> Running integration tests"
-	cd integration; go test -v ./...
-
-.PHONY: test test-integration
-
-#################
-###   Test    ###
-#################
+.PHONY: test
 
 coverage: ## Run coverage report
 	@echo "--> Creating GOCOVERDIR"
@@ -182,7 +155,7 @@ coverage: ## Run coverage report
 	@echo "--> Cleaning up coverage files, if any"
 	@rm -rf /tmp/manifest-ledger-coverage/*
 	@echo "--> Running coverage"
-	@go test -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=github.com/liftedinit/manifest-ledger/... -args -test.gocoverdir="/tmp/manifest-ledger-coverage" > /dev/null 2>&1
+	@go test -timeout 30m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=github.com/liftedinit/manifest-ledger/... -args -test.gocoverdir="/tmp/manifest-ledger-coverage" > /dev/null 2>&1
 	@echo "--> Converting binary coverage report to text format"
 	@go tool covdata textfmt -i=/tmp/manifest-ledger-coverage -o coverage.out
 	@echo "--> Filtering coverage report"
@@ -227,7 +200,7 @@ proto-lint:
 #################
 
 golangci_lint_cmd=golangci-lint
-golangci_version=v1.51.2
+golangci_version=v1.58.0
 
 lint:
 	@echo "--> Running linter"
@@ -240,3 +213,37 @@ lint-fix:
 	@$(golangci_lint_cmd) run ./... --fix --timeout 15m
 
 .PHONY: lint lint-fix
+
+#### FORMAT ####
+goimports_version=latest
+
+format-install:
+	@echo "--> Installing goimports $(goimports_version)"
+	@go install golang.org/x/tools/cmd/goimports@$(goimports_version)
+	@echo "--> Installing goimports $(goimports_version) complete"
+
+format: ## Run formatter (goimports)
+	@echo "--> Running goimports"
+	$(MAKE) format-install
+	@find . -name '*.go' -not -name '*.pulsar.go' -not -name '*.pb.go' -exec goimports -w -local github.com/liftedinit/manifest-ledger {} \;
+
+#### GOVULNCHECK ####
+govulncheck_version=latest
+
+govulncheck-install:
+	@echo "--> Installing govulncheck $(govulncheck_version)"
+	@go install golang.org/x/vuln/cmd/govulncheck@$(govulncheck_version)
+	@echo "--> Installing govulncheck $(govulncheck_version) complete"
+
+govulncheck: ## Run govulncheck
+	@echo "--> Running govulncheck"
+	$(MAKE) govulncheck-install
+	@govulncheck ./...
+
+#### VET ####
+
+vet: ## Run go vet
+	@echo "--> Running go vet"
+	@go vet ./...
+
+.PHONY: vet

@@ -28,7 +28,7 @@ RUN LEDGER_ENABLED=false BUILD_TAGS=muslc LINK_STATICALLY=true make $BUILD_CMD \
   && (file /code/build/manifestd | grep "statically linked")
 
 # --------------------------------------------------------
-FROM alpine:3.16
+FROM alpine:3.20
 
 COPY --from=go-builder /code/build/manifestd /usr/bin/manifestd
 

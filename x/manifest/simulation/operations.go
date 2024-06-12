@@ -32,16 +32,16 @@ func WeightedOperations(appParams simtypes.AppParams,
 
 	operations = append(operations, simulation.NewWeightedOperation(
 		weightMsgPayoutStakeholders,
-		SimulateMsgPayoutStakeholders(k),
+		SimulateMsgPayout(k),
 	))
 
 	return operations
 }
 
-func SimulateMsgPayoutStakeholders(k keeper.Keeper) simtypes.Operation {
+func SimulateMsgPayout(k keeper.Keeper) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, chainID string,
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
-		msgType := sdk.MsgTypeURL(&types.MsgPayoutStakeholders{})
+		msgType := sdk.MsgTypeURL(&types.MsgPayout{})
 
 		//msg := types.NewMsgPayoutStakeholders()
 		//return simtypes.NewOperationMsg(msg, true, ""), nil, nil

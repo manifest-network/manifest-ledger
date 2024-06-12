@@ -14,224 +14,259 @@ import (
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
-func TestMsgServerPayoutStakeholdersLogic(t *testing.T) {
+func TestPerformPayout(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, acc := testdata.KeyTestPubAddr()
 	_, _, acc2 := testdata.KeyTestPubAddr()
 	_, _, acc3 := testdata.KeyTestPubAddr()
-	_, _, acc4 := testdata.KeyTestPubAddr()
 
 	f := initFixture(t)
 
 	k := f.App.ManifestKeeper
-
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	sh := []*types.StakeHolders{
+	type testcase struct {
+		name    string
+		sender  string
+		payouts []types.PayoutPair
+		errMsg  string
+	}
+
+	cases := []testcase{
 		{
-			Address:    acc.String(),
-			Percentage: 50_000_000, // 50%
+			name:   "success; payout token to 3 stakeholders",
+			sender: authority.String(),
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+				types.NewPayoutPair(acc2, "umfx", 2),
+				types.NewPayoutPair(acc3, "umfx", 3),
+			},
 		},
 		{
-			Address:    acc2.String(),
-			Percentage: 49_000_000,
+			name:   "fail; bad authority",
+			sender: acc.String(),
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+			},
+			errMsg: "invalid authority",
 		},
 		{
-			Address:    acc3.String(),
-			Percentage: 500_001, // 0.5%
+			name:   "fail; bad bech32 authority",
+			sender: "bad",
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+			},
+			errMsg: "invalid authority",
 		},
 		{
-			Address:    acc4.String(),
-			Percentage: 499_999,
+			name:   "fail; duplicate address",
+			sender: authority.String(),
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+				types.NewPayoutPair(acc, "umfx", 1),
+			},
+			errMsg: "duplicate address",
+		},
+		{
+			name:   "fail; payout to bad address",
+			sender: authority.String(),
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+				{Address: "badaddr", Coin: sdk.NewCoin("umfx", sdkmath.NewInt(2))},
+				types.NewPayoutPair(acc3, "umfx", 3),
+			},
+			errMsg: "decoding bech32 failed",
+		},
+		{
+			name:   "fail; payout with a 0 token",
+			sender: authority.String(),
+			payouts: []types.PayoutPair{
+				types.NewPayoutPair(acc, "umfx", 1),
+				types.NewPayoutPair(acc2, "umfx", 0),
+			},
+			errMsg: "invalid payout",
 		},
 	}
-	_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
-		Authority: authority.String(),
-		Params:    types.NewParams(sh, false, 0, "umfx"),
-	})
-	require.NoError(t, err)
 
-	// wrong acc
-	_, err = ms.PayoutStakeholders(f.Ctx, &types.MsgPayoutStakeholders{
-		Authority: acc.String(),
-		Payout:    sdk.NewCoin("stake", sdkmath.NewInt(100_000_000)),
-	})
-	require.Error(t, err)
+	for _, c := range cases {
+		c := c
 
-	// success
-	_, err = ms.PayoutStakeholders(f.Ctx, &types.MsgPayoutStakeholders{
-		Authority: authority.String(),
-		Payout:    sdk.NewCoin("stake", sdkmath.NewInt(100_000_000)),
-	})
-	require.NoError(t, err)
+		t.Run(c.name, func(t *testing.T) {
+			payoutMsg := &types.MsgPayout{
+				Authority:   c.sender,
+				PayoutPairs: c.payouts,
+			}
 
-	for _, s := range sh {
-		addr := sdk.MustAccAddressFromBech32(s.Address)
+			_, err := ms.Payout(f.Ctx, payoutMsg)
+			if c.errMsg != "" {
+				require.Error(t, err)
+				require.ErrorContains(t, err, c.errMsg)
+				return
+			}
+			require.NoError(t, err)
 
-		accBal := f.App.BankKeeper.GetBalance(f.Ctx, addr, "stake")
-		require.EqualValues(t, s.Percentage, accBal.Amount.Int64())
+			for _, p := range c.payouts {
+				p := p
+				addr := p.Address
+				coin := p.Coin
+
+				accAddr, err := sdk.AccAddressFromBech32(addr)
+				require.NoError(t, err)
+
+				balance := f.App.BankKeeper.GetBalance(f.Ctx, accAddr, coin.Denom)
+				require.EqualValues(t, coin.Amount, balance.Amount, "expected %s, got %s", coin.Amount, balance.Amount)
+			}
+		})
+
 	}
 }
 
-func TestUpdateParams(t *testing.T) {
+func TestBurnCoins(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
-	_, _, acc := testdata.KeyTestPubAddr()
-	_, _, acc2 := testdata.KeyTestPubAddr()
 
 	f := initFixture(t)
 
-	f.App.ManifestKeeper.SetAuthority(authority.String())
+	k := f.App.ManifestKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+	_, _, acc := testdata.KeyTestPubAddr()
 
-	ms := keeper.NewMsgServerImpl(f.App.ManifestKeeper)
+	type tc struct {
+		name     string
+		initial  sdk.Coins
+		burn     sdk.Coins
+		expected sdk.Coins
+		address  sdk.AccAddress
+		errMsg   string
+	}
 
-	for _, tc := range []struct {
-		desc    string
-		sender  string
-		p       types.Params
-		success bool
-	}{
+	stake := sdk.NewCoin("stake", sdkmath.NewInt(100_000_000))
+	mfx := sdk.NewCoin("umfx", sdkmath.NewInt(100_000_000))
+
+	cases := []tc{
 		{
-			desc:   "invalid authority",
-			sender: acc.String(),
-			p: types.NewParams([]*types.StakeHolders{
-				{
-					Address:    acc.String(),
-					Percentage: 100_000_000,
-				},
-			}, false, 0, "umfx"),
-			success: false,
+			name:     "fail; not enough balance to burn",
+			initial:  sdk.NewCoins(),
+			burn:     sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(7))),
+			expected: sdk.NewCoins(),
+			address:  authority,
+			errMsg:   "insufficient funds",
 		},
 		{
-			desc:   "invalid percent",
-			sender: authority.String(),
-			p: types.NewParams([]*types.StakeHolders{
-				{
-					Address:    acc.String(),
-					Percentage: 7,
-				},
-			}, false, 0, "umfx"),
-			success: false,
+			name:     "fail; bad address",
+			initial:  sdk.NewCoins(),
+			burn:     sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(7))),
+			expected: sdk.NewCoins(),
+			address:  sdk.AccAddress{0x0},
+			errMsg:   "invalid authority",
 		},
 		{
-			desc:   "invalid stakeholder address",
-			sender: authority.String(),
-			p: types.NewParams([]*types.StakeHolders{
-				{
-					Address:    "invalid",
-					Percentage: 100_000_000,
-				},
-			}, false, 0, "umfx"),
-			success: false,
+			name:     "success; burn tokens successfully",
+			initial:  sdk.NewCoins(stake, mfx),
+			burn:     sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(7))),
+			expected: sdk.NewCoins(mfx, stake.SubAmount(sdkmath.NewInt(7))),
+			address:  authority,
 		},
 		{
-			desc:   "duplicate address",
-			sender: authority.String(),
-			p: types.NewParams([]*types.StakeHolders{
-				{
-					Address:    acc.String(),
-					Percentage: 50_000_000,
-				},
-				{
-					Address:    acc.String(),
-					Percentage: 50_000_000,
-				},
-			}, false, 0, "umfx"),
-			success: false,
+			name:     "success; burn many tokens successfully",
+			initial:  sdk.NewCoins(stake, mfx),
+			burn:     sdk.NewCoins(sdk.NewCoin("umfx", sdkmath.NewInt(9)), sdk.NewCoin("stake", sdkmath.NewInt(7))),
+			expected: sdk.NewCoins(mfx.SubAmount(sdkmath.NewInt(9)), stake.SubAmount(sdkmath.NewInt(7))),
+			address:  authority,
 		},
 		{
-			desc:    "success none",
-			sender:  authority.String(),
-			p:       types.NewParams([]*types.StakeHolders{}, false, 0, "umfx"),
-			success: true,
+			name:     "fail; invalid authority",
+			initial:  sdk.NewCoins(stake, mfx),
+			burn:     sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(7))),
+			expected: sdk.NewCoins(stake, mfx),
+			address:  acc,
+			errMsg:   "invalid authority",
 		},
-		{
-			desc:   "success many stake holders",
-			sender: authority.String(),
-			p: types.NewParams([]*types.StakeHolders{
-				{
-					Address:    acc.String(),
-					Percentage: 1_000_000,
-				},
-				{
-					Address:    acc2.String(),
-					Percentage: 1_000_000,
-				},
-				{
-					Address:    authority.String(),
-					Percentage: 98_000_000,
-				},
-			}, false, 0, "umfx"),
-			success: true,
-		},
-	} {
-		tc := tc
-		t.Run(tc.desc, func(t *testing.T) {
-			// Set the params
-			_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
-				Authority: tc.sender,
-				Params:    tc.p,
+	}
+
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			// setup initial balances for the new account
+			if len(c.initial) > 0 {
+				require.NoError(t, f.App.BankKeeper.MintCoins(f.Ctx, "mint", c.initial))
+				require.NoError(t, f.App.BankKeeper.SendCoinsFromModuleToAccount(f.Ctx, "mint", c.address, c.initial))
+			}
+
+			// validate initial balance
+			require.Equal(t, c.initial, f.App.BankKeeper.GetAllBalances(f.Ctx, c.address))
+
+			// burn coins
+			_, err := ms.BurnHeldBalance(f.Ctx, &types.MsgBurnHeldBalance{
+				Authority: c.address.String(),
+				BurnCoins: c.burn,
 			})
-			require.Equal(t, tc.success, err == nil, err)
-
-			// Ensure they are set the same as the expected
-			if tc.success && len(tc.p.StakeHolders) > 0 {
-				params, err := f.App.ManifestKeeper.Params.Get(f.Ctx)
+			if c.errMsg == "" {
 				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.ErrorContains(t, err, c.errMsg)
+			}
 
-				require.Equal(t, tc.p.StakeHolders, params.StakeHolders)
+			allBalance := f.App.BankKeeper.GetAllBalances(f.Ctx, c.address)
+			require.Equal(t, c.expected, allBalance)
+
+			// burn the rest of the coins to reset the balance to 0 for the next test if the test was successful
+			if c.errMsg == "" {
+				_, err = ms.BurnHeldBalance(f.Ctx, &types.MsgBurnHeldBalance{
+					Authority: c.address.String(),
+					BurnCoins: allBalance,
+				})
+				require.NoError(t, err)
 			}
 		})
 	}
 }
 
-func TestCalculatePayoutLogic(t *testing.T) {
+func TestUpdateParams(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
-	_, _, acc := testdata.KeyTestPubAddr()
-	_, _, acc2 := testdata.KeyTestPubAddr()
-	_, _, acc3 := testdata.KeyTestPubAddr()
-	_, _, acc4 := testdata.KeyTestPubAddr()
 
 	f := initFixture(t)
 
 	k := f.App.ManifestKeeper
-
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	sh := []*types.StakeHolders{
+	type tc struct {
+		name   string
+		sender string
+		param  types.Params
+		errMsg string
+	}
+
+	cases := []tc{
 		{
-			Address:    acc.String(),
-			Percentage: 50_000_000, // 50%
+			name:   "success; update params",
+			sender: authority.String(),
+			param:  types.NewParams(),
 		},
 		{
-			Address:    acc2.String(),
-			Percentage: 49_000_000,
-		},
-		{
-			Address:    acc3.String(),
-			Percentage: 500_001, // 0.5%
-		},
-		{
-			Address:    acc4.String(),
-			Percentage: 499_999,
+			name:   "fail; bad authority",
+			sender: "bad",
+			param:  types.NewParams(),
+			errMsg: "invalid authority",
 		},
 	}
 
-	_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
-		Authority: authority.String(),
-		Params:    types.NewParams(sh, false, 0, "umfx"),
-	})
-	require.NoError(t, err)
-
-	// validate the full payout of 100 tokens got split up between all fractional shares as expected
-	res, err := k.CalculateShareHolderTokenPayout(f.Ctx, sdk.NewCoin("stake", sdkmath.NewInt(100_000_000)))
-	require.NoError(t, err)
-	for _, s := range sh {
-		for w, shp := range res {
-			if s.Address == shp.Address {
-				require.EqualValues(t, s.Percentage, shp.Coin.Amount.Int64(), "stakeholder %d", w)
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			_, err := ms.UpdateParams(f.Ctx, &types.MsgUpdateParams{
+				Authority: c.sender,
+				Params:    c.param,
+			})
+			if c.errMsg != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), c.errMsg)
+				return
 			}
-		}
+			require.NoError(t, err)
+		})
 	}
 }
