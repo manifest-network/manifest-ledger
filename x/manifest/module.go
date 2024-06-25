@@ -23,7 +23,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 
-	manifestv1 "github.com/liftedinit/manifest-ledger/api/manifest/v1"
+	manifestv1 "github.com/liftedinit/manifest-ledger/api/liftedinit/manifest/v1"
 	"github.com/liftedinit/manifest-ledger/x/manifest/client/cli"
 	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	"github.com/liftedinit/manifest-ledger/x/manifest/types"

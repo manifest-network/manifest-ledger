@@ -15,7 +15,7 @@ import (
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 
-	modulev1 "github.com/liftedinit/manifest-ledger/api/manifest/module/v1"
+	modulev1 "github.com/liftedinit/manifest-ledger/api/liftedinit/manifest/module/v1"
 	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 )
 

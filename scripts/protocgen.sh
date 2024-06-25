@@ -28,7 +28,7 @@ rm -rf github.com
 rm -rf api && mkdir api
 custom_modules=$(find . -name 'module' -type d -not -path "./proto/*")
 for module in $custom_modules; do
-  dirPath=`basename $(dirname $module)`
+  dirPath=$(dirname $module)
   mkdir -p api/$dirPath
 
   mv $dirPath/* ./api/$dirPath/
