@@ -555,6 +555,7 @@ func NewApp(
 		runtime.NewKVStoreService(keys[manifesttypes.StoreKey]),
 		app.MintKeeper,
 		app.BankKeeper,
+		app.AccountKeeper,
 		logger,
 		GetPoAAdmin(),
 	)
