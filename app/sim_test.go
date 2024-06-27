@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	sdkmath "cosmossdk.io/math"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 
@@ -44,6 +45,11 @@ const (
 )
 
 var FlagEnableStreamingValue bool
+
+var SimulatorCommissionRateMinMax = app.RateMinMax{
+	Floor: sdkmath.LegacyMustNewDecFromStr("0.1"),
+	Ceil:  sdkmath.LegacyMustNewDecFromStr("0.5"),
+}
 
 // Get flags every time the simulator is run
 func init() {
@@ -98,7 +104,10 @@ func BenchmarkSimulation(b *testing.B) {
 	cfg.SetBech32PrefixForConsensusNode(app.Bech32PrefixConsAddr, app.Bech32PrefixConsPub)
 	cfg.Seal()
 
-	bApp := app.NewApp(logger, db, nil, true, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	err = setPOAAdmin(config)
+	require.NoError(b, err)
+
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(b, app.AppName, bApp.Name())
 
 	// run randomized simulation
@@ -149,15 +158,10 @@ func TestFullAppSimulation(t *testing.T) {
 	cfg.SetBech32PrefixForConsensusNode(app.Bech32PrefixConsAddr, app.Bech32PrefixConsPub)
 	cfg.Seal()
 
-	r := rand.New(rand.NewSource(config.Seed))
-	params := simulation.RandomParams(r)
-	accs := simulationtypes.RandomAccounts(r, params.NumKeys())
-	poaAdminAddr := accs[0]
-	err = os.Setenv("POA_ADMIN_ADDRESS", poaAdminAddr.Address.String())
-
+	err = setPOAAdmin(config)
 	require.NoError(t, err)
 
-	bApp := app.NewApp(logger, db, nil, true, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// run randomized simulation
@@ -193,6 +197,15 @@ func TestAppImportExport(t *testing.T) {
 	}
 	require.NoError(t, err, "simulation setup failed")
 
+	cfg := sdk.GetConfig()
+	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
+	cfg.SetBech32PrefixForValidator(app.Bech32PrefixValAddr, app.Bech32PrefixValPub)
+	cfg.SetBech32PrefixForConsensusNode(app.Bech32PrefixConsAddr, app.Bech32PrefixConsPub)
+	cfg.Seal()
+
+	err = setPOAAdmin(config)
+	require.NoError(t, err)
+
 	defer func() {
 		require.NoError(t, db.Close())
 		require.NoError(t, os.RemoveAll(dir))
@@ -202,13 +215,7 @@ func TestAppImportExport(t *testing.T) {
 	appOptions[flags.FlagHome] = app.DefaultNodeHome
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
-	cfg := sdk.GetConfig()
-	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
-	cfg.SetBech32PrefixForValidator(app.Bech32PrefixValAddr, app.Bech32PrefixValPub)
-	cfg.SetBech32PrefixForConsensusNode(app.Bech32PrefixConsAddr, app.Bech32PrefixConsPub)
-	cfg.Seal()
-
-	bApp := app.NewApp(logger, db, nil, true, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// Run randomized simulation
@@ -248,7 +255,7 @@ func TestAppImportExport(t *testing.T) {
 		require.NoError(t, os.RemoveAll(newDir))
 	}()
 
-	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, newApp.Name())
 
 	var genesisState app.GenesisState
@@ -310,6 +317,15 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	config := simcli.NewConfigFromFlags()
 	config.ChainID = SimAppChainID
 
+	cfg := sdk.GetConfig()
+	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
+	cfg.SetBech32PrefixForValidator(app.Bech32PrefixValAddr, app.Bech32PrefixValPub)
+	cfg.SetBech32PrefixForConsensusNode(app.Bech32PrefixConsAddr, app.Bech32PrefixConsPub)
+	cfg.Seal()
+
+	err := setPOAAdmin(config)
+	require.NoError(t, err)
+
 	db, dir, logger, skip, err := simtestutil.SetupSimulation(config, "leveldb-app-sim", "Simulation", simcli.FlagVerboseValue, simcli.FlagEnabledValue)
 	if skip {
 		t.Skip("skipping application simulation after import")
@@ -325,13 +341,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	appOptions[flags.FlagHome] = app.DefaultNodeHome
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
-	cfg := sdk.GetConfig()
-	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
-	cfg.SetBech32PrefixForValidator(app.Bech32PrefixValAddr, app.Bech32PrefixValPub)
-	cfg.SetBech32PrefixForConsensusNode(app.Bech32PrefixConsAddr, app.Bech32PrefixConsPub)
-	cfg.Seal()
-
-	bApp := app.NewApp(logger, db, nil, true, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// Run randomized simulation
@@ -376,7 +386,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		require.NoError(t, os.RemoveAll(newDir))
 	}()
 
-	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, newApp.Name())
 
 	_, err = newApp.InitChain(&abci.RequestInitChain{
@@ -457,12 +467,16 @@ func TestAppStateDeterminism(t *testing.T) {
 			chainID := fmt.Sprintf("chain-id-%d-%d", i, j)
 			config.ChainID = chainID
 
+			err := setPOAAdmin(config)
+			require.NoError(t, err)
+
 			db := dbm.NewMemDB()
 			bApp := app.NewApp(
 				logger,
 				db,
 				nil,
 				true,
+				SimulatorCommissionRateMinMax,
 				appOptions,
 				interBlockCacheOpt(),
 				baseapp.SetChainID(chainID),
@@ -473,7 +487,7 @@ func TestAppStateDeterminism(t *testing.T) {
 				config.Seed, i+1, numSeeds, j+1, numTimesToRunPerSeed,
 			)
 
-			_, _, err := simulation.SimulateFromSeed(
+			_, _, err = simulation.SimulateFromSeed(
 				t,
 				os.Stdout,
 				bApp.BaseApp,
@@ -505,4 +519,17 @@ func TestAppStateDeterminism(t *testing.T) {
 			}
 		}
 	}
+}
+
+// setPOAAdmin sets the POA admin address in the environment variable POA_ADMIN_ADDRESS
+func setPOAAdmin(config simulationtypes.Config) error {
+	r := rand.New(rand.NewSource(config.Seed))
+	params := simulation.RandomParams(r)
+	accs := simulationtypes.RandomAccounts(r, params.NumKeys())
+	poaAdminAddr := accs[0]
+	err := os.Setenv("POA_ADMIN_ADDRESS", poaAdminAddr.Address.String())
+	if err != nil {
+		return err
+	}
+	return nil
 }

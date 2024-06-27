@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	sdkmath "cosmossdk.io/math"
 	"github.com/spf13/cast"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -151,9 +152,13 @@ func GetPoAAdmin() string {
 
 // We pull these out so we can set them with LDFLAGS in the Makefile
 var (
-	AppName         = "manifest"
-	Bech32Prefix    = "manifest"
-	DefaultNodeHome = ".manifest"
+	AppName                     = "manifest"
+	Bech32Prefix                = "manifest"
+	DefaultNodeHome             = ".manifest"
+	DefaultCommissionRateMinMax = RateMinMax{
+		Floor: sdkmath.LegacyZeroDec(),
+		Ceil:  sdkmath.LegacyZeroDec(),
+	}
 
 	tokenFactoryCapabilities = []string{
 		tokenfactorytypes.EnableBurnFrom,
@@ -277,6 +282,7 @@ func NewApp(
 	db dbm.DB,
 	traceStore io.Writer,
 	loadLatest bool,
+	commissionRateMinMax RateMinMax,
 	appOpts servertypes.AppOptions,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *ManifestApp {
@@ -839,7 +845,7 @@ func NewApp(
 	app.ScopedICAHostKeeper = scopedICAHostKeeper
 	app.ScopedICAControllerKeeper = scopedICAControllerKeeper
 
-	app.setAnteHandler(txConfig)
+	app.setAnteHandler(txConfig, commissionRateMinMax)
 
 	// In v0.46, the SDK introduces _postHandlers_. PostHandlers are like
 	// antehandlers, but are run _after_ the `runMsgs` execution. They are also
@@ -883,7 +889,7 @@ func NewApp(
 	return app
 }
 
-func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig) {
+func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, commissionRateMinMax RateMinMax) {
 	anteHandler, err := NewAnteHandler(
 		HandlerOptions{
 			HandlerOptions: ante.HandlerOptions{
@@ -895,6 +901,7 @@ func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig) {
 			},
 			IBCKeeper:     app.IBCKeeper,
 			CircuitKeeper: &app.CircuitKeeper,
+			RateMinMax:    commissionRateMinMax,
 		},
 	)
 	if err != nil {

@@ -16,6 +16,11 @@ import (
 	poaante "github.com/strangelove-ventures/poa/ante"
 )
 
+type RateMinMax struct {
+	Floor sdkmath.LegacyDec
+	Ceil  sdkmath.LegacyDec
+}
+
 // HandlerOptions extend the SDK's AnteHandler options by requiring the IBC
 // channel keeper.
 type HandlerOptions struct {
@@ -23,6 +28,7 @@ type HandlerOptions struct {
 
 	IBCKeeper     *keeper.Keeper
 	CircuitKeeper *circuitkeeper.Keeper
+	RateMinMax    RateMinMax
 }
 
 func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
@@ -38,10 +44,20 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 	if options.CircuitKeeper == nil {
 		return nil, errors.New("circuit keeper is required for ante builder")
 	}
+	if options.RateMinMax.Floor.IsNil() {
+		return nil, errors.New("rate floor is required for ante builder")
+	}
+	if options.RateMinMax.Ceil.IsNil() {
+		return nil, errors.New("rate ceil is required for ante builder")
+	}
+	if options.RateMinMax.Floor.IsNegative() {
+		return nil, errors.New("rate floor must be non-negative")
+	}
+	if options.RateMinMax.Ceil.IsNegative() {
+		return nil, errors.New("rate ceil must be non-negative")
+	}
 
 	doGenTxRateValidation := false
-	rateFloor := sdkmath.LegacyMustNewDecFromStr("0.00") // can use this or Staking params. Which even is higher will be used. Will set that to 0
-	rateCeil := sdkmath.LegacyMustNewDecFromStr("0.00")
 
 	anteDecorators := []sdk.AnteDecorator{
 		ante.NewSetUpContextDecorator(),
@@ -58,7 +74,7 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		ante.NewSigVerificationDecorator(options.AccountKeeper, options.SignModeHandler),
 		ante.NewIncrementSequenceDecorator(options.AccountKeeper),
 		poaante.NewPOADisableStakingDecorator(),
-		poaante.NewCommissionLimitDecorator(doGenTxRateValidation, rateFloor, rateCeil),
+		poaante.NewCommissionLimitDecorator(doGenTxRateValidation, options.RateMinMax.Floor, options.RateMinMax.Ceil),
 		ibcante.NewRedundantRelayDecorator(options.IBCKeeper),
 	}
 
