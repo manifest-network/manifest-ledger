@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -425,6 +426,7 @@ func TestAppStateDeterminism(t *testing.T) {
 	config.ExportParamsPath = ""
 	config.OnOperation = true
 	config.AllInvariants = true
+	config.ChainID = SimAppChainID
 
 	numSeeds := 3
 	numTimesToRunPerSeed := 3 // This used to be set to 5, but we've temporarily reduced it to 3 for the sake of faster CI.
@@ -464,8 +466,6 @@ func TestAppStateDeterminism(t *testing.T) {
 			} else {
 				logger = log.NewNopLogger()
 			}
-			chainID := fmt.Sprintf("chain-id-%d-%d", i, j)
-			config.ChainID = chainID
 
 			err := setPOAAdmin(config)
 			require.NoError(t, err)
@@ -479,7 +479,7 @@ func TestAppStateDeterminism(t *testing.T) {
 				SimulatorCommissionRateMinMax,
 				appOptions,
 				interBlockCacheOpt(),
-				baseapp.SetChainID(chainID),
+				baseapp.SetChainID(SimAppChainID),
 			)
 
 			fmt.Printf(
@@ -513,7 +513,7 @@ func TestAppStateDeterminism(t *testing.T) {
 
 			if j != 0 {
 				require.Equal(
-					t, string(appHashList[0]), string(appHashList[j]),
+					t, hex.EncodeToString(appHashList[0]), hex.EncodeToString(appHashList[j]),
 					"non-determinism in seed %d: %d/%d, attempt: %d/%d\n", config.Seed, i+1, numSeeds, j+1, numTimesToRunPerSeed,
 				)
 			}
