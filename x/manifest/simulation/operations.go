@@ -104,7 +104,7 @@ func newOperationInput(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, txGe
 		Msg:           msg,
 		Context:       ctx,
 		SimAccount:    simAccount,
-		AccountKeeper: k.GetAccountKeeper(),
+		AccountKeeper: k.GetTestAccountKeeper(),
 		Bankkeeper:    k.GetBankKeeper(),
 		ModuleName:    types.ModuleName,
 	}

@@ -24,7 +24,7 @@ type Keeper struct {
 
 	mintKeeper    mintkeeper.Keeper
 	bankKeeper    bankkeeper.Keeper
-	accountKeeper accountkeeper.AccountKeeper
+	accountKeeper accountkeeper.AccountKeeper // for testing
 
 	// state management
 	Schema collections.Schema
@@ -39,7 +39,6 @@ func NewKeeper(
 	storeService storetypes.KVStoreService,
 	mintKeeper mintkeeper.Keeper,
 	bankKeeper bankkeeper.Keeper,
-	accountKeeper accountkeeper.AccountKeeper,
 	logger log.Logger,
 	authority string,
 ) Keeper {
@@ -51,9 +50,8 @@ func NewKeeper(
 		cdc:    cdc,
 		logger: logger,
 
-		mintKeeper:    mintKeeper,
-		bankKeeper:    bankKeeper,
-		accountKeeper: accountKeeper,
+		mintKeeper: mintKeeper,
+		bankKeeper: bankKeeper,
 
 		// Stores
 		Params: collections.NewItem(sb, types.ParamsKey, "params", codec.CollValue[types.Params](cdc)),
@@ -88,7 +86,11 @@ func (k *Keeper) GetBankKeeper() bankkeeper.Keeper {
 	return k.bankKeeper
 }
 
-func (k *Keeper) GetAccountKeeper() accountkeeper.AccountKeeper {
+func (k *Keeper) SetTestAccountKeeper(ak accountkeeper.AccountKeeper) {
+	k.accountKeeper = ak
+}
+
+func (k *Keeper) GetTestAccountKeeper() accountkeeper.AccountKeeper {
 	return k.accountKeeper
 }
 

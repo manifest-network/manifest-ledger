@@ -561,10 +561,10 @@ func NewApp(
 		runtime.NewKVStoreService(keys[manifesttypes.StoreKey]),
 		app.MintKeeper,
 		app.BankKeeper,
-		app.AccountKeeper,
 		logger,
 		GetPoAAdmin(),
 	)
+	app.ManifestKeeper.SetTestAccountKeeper(app.AccountKeeper)
 
 	// Create the TokenFactory Keeper
 	app.TokenFactoryKeeper = tokenfactorykeeper.NewKeeper(

@@ -56,6 +56,7 @@ func TestPayout(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.ManifestKeeper
+	k.SetTestAccountKeeper(f.App.AccountKeeper)
 	k.SetAuthority(authority.String())
 
 	type testcase struct {
