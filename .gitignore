@@ -32,3 +32,5 @@ dist/*
 coverage.txt
 
 go.work.sum
+
+.idea/
