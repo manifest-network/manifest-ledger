@@ -1,6 +1,6 @@
 module github.com/liftedinit/manifest-ledger
 
-go 1.22.4
+go 1.22.5
 
 replace (
 	// core v0.12 was tagged wrong (SDK v51)
