@@ -1,6 +1,6 @@
 module github.com/liftedinit/manifest-ledger/interchaintest
 
-go 1.22.4
+go 1.22.5
 
 replace (
 	cosmossdk.io/core => cosmossdk.io/core v0.11.0 // proper SDK v50 version
