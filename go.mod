@@ -1,6 +1,6 @@
 module github.com/liftedinit/manifest-ledger
 
-go 1.22.4
+go 1.22.5
 
 replace (
 	// core v0.12 was tagged wrong (SDK v51)
@@ -11,8 +11,8 @@ replace (
 	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.6
 
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
-	github.com/gin-gonic/gin => github.com/gin-gonic/gin v1.7.0
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides
+
 	// Downgraded to avoid bugs in following commits which caused simulations to fail.
 	github.com/syndtr/goleveldb => github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 )
@@ -33,7 +33,7 @@ require (
 	cosmossdk.io/x/feegrant v0.1.1
 	cosmossdk.io/x/tx v0.13.3
 	cosmossdk.io/x/upgrade v0.1.2
-	github.com/cometbft/cometbft v0.38.8
+	github.com/cometbft/cometbft v0.38.9
 	github.com/cosmos/cosmos-db v1.0.2
 	github.com/cosmos/cosmos-proto v1.0.0-beta.5
 	github.com/cosmos/cosmos-sdk v0.50.6
