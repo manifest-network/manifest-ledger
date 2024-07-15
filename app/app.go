@@ -721,7 +721,9 @@ func NewApp(
 	// CanWithdrawInvariant invariant.
 	// NOTE: staking module is required if HistoricalEntries param > 0
 	// NOTE: capability module's beginblocker must come before any modules using capabilities (e.g. IBC)
-	app.ModuleManager.SetOrderBeginBlockers(
+
+	// Bypass app.ModuleManager.SetOrderBeginBlockers as we need to override the missing `mint` module check
+	app.ModuleManager.OrderBeginBlockers = []string{
 		// minttypes.ModuleName, // we override with the manifest module logic
 		manifesttypes.ModuleName, // minter to stakeholders
 		distrtypes.ModuleName,
@@ -738,7 +740,7 @@ func NewApp(
 		icatypes.ModuleName,
 		ibcfeetypes.ModuleName,
 		tokenfactorytypes.ModuleName,
-	)
+	}
 
 	app.ModuleManager.SetOrderEndBlockers(
 		crisistypes.ModuleName,
