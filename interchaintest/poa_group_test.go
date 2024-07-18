@@ -3,7 +3,6 @@ package interchaintest
 import (
 	"context"
 	"fmt"
-	"path"
 	"strconv"
 	"testing"
 	"time"
@@ -18,6 +17,7 @@ import (
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
+	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
@@ -86,11 +86,7 @@ func TestGroupPOA(t *testing.T) {
 		t.Skip("skipping in short mode")
 	}
 
-	// Same as ChainNode.HomeDir() but we need it before the chain is created
-	// The node volume is always mounted at /var/cosmos-chain/[chain-name]
-	// This is a hackish way to get the coverage files from the ephemeral containers
 	name := "group-poa"
-	internalGoCoverDir := path.Join("/var/cosmos-chain", name)
 
 	err := groupPolicy.SetDecisionPolicy(createThresholdDecisionPolicy("1", 10*time.Second, 0*time.Second))
 	require.NoError(t, err)
@@ -106,25 +102,23 @@ func TestGroupPOA(t *testing.T) {
 	groupGenesis := createGroupGenesis()
 
 	cfgA := LocalChainConfig
+	cfgA.Name = name
 	cfgA.ModifyGenesis = cosmos.ModifyGenesis(groupGenesis)
 	cfgA.Env = []string{
-		fmt.Sprintf("GOCOVERDIR=%s", internalGoCoverDir),
 		fmt.Sprintf("POA_ADMIN_ADDRESS=%s", groupAddr), // This is required in order for GetPoAAdmin to return the Group address
 	}
+	cfgA.WithCodeCoverage()
 
 	// setup base chain
 	chains := interchaintest.CreateChainWithConfig(t, numVals, numNodes, name, "", cfgA)
 	chain := chains[0].(*cosmos.CosmosChain)
 
-	ctx, _, client, _ := interchaintest.BuildInitialChain(t, chains, false)
+	ctx, ic, client, _ := interchaintest.BuildInitialChain(t, chains, false)
 
 	user1Wallet, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, user1, accMnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
 	_, err = interchaintest.GetAndFundTestUserWithMnemonic(ctx, user2, acc1Mnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
-
-	// Make sure the chain's HomeDir and the GOCOVERDIR are the same
-	require.Equal(t, internalGoCoverDir, chain.GetNode().HomeDir())
 
 	// Software Upgrade
 	testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr)
@@ -139,8 +133,8 @@ func TestGroupPOA(t *testing.T) {
 	testBankSend(t, ctx, chain, &cfgA, accAddr)
 	testBankSendIllegal(t, ctx, chain, &cfgA, accAddr)
 	t.Cleanup(func() {
-		// Copy coverage files from the container
-		CopyCoverageFromContainer(ctx, t, client, chain.GetNode().ContainerID(), chain.HomeDir())
+		dockerutil.CopyCoverageFromContainer(ctx, t, client, chain.GetNode().ContainerID(), chain.HomeDir(), ExternalGoCoverDir)
+		_ = ic.Close()
 	})
 }
 
