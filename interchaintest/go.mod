@@ -4,9 +4,13 @@ go 1.22.5
 
 replace (
 	cosmossdk.io/core => cosmossdk.io/core v0.11.0 // proper SDK v50 version
+
 	// use cosmos compatible ChainSafe/go-schnorrkel
 	github.com/ChainSafe/go-schnorrkel => github.com/ChainSafe/go-schnorrkel v0.0.0-20200405005733-88cbf1b4c40d
 	github.com/ChainSafe/go-schnorrkel/1 => github.com/ChainSafe/go-schnorrkel v1.0.0
+
+	// https://github.com/liftedinit/cosmos-sdk/pull/1
+	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.8-liftedinit.1
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/liftedinit/manifest-ledger => ../
 )
@@ -15,8 +19,8 @@ require (
 	cosmossdk.io/math v1.3.0
 	cosmossdk.io/x/upgrade v0.1.2
 	github.com/cockroachdb/errors v1.11.1
-	github.com/cosmos/cosmos-sdk v0.50.6
-	github.com/cosmos/gogoproto v1.4.12
+	github.com/cosmos/cosmos-sdk v0.50.8
+	github.com/cosmos/gogoproto v1.5.0
 	github.com/cosmos/ibc-go/v8 v8.2.1
 	github.com/docker/docker v24.0.9+incompatible
 	github.com/liftedinit/manifest-ledger v0.0.0-00000000000000-000000000000
@@ -34,7 +38,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	cloud.google.com/go/iam v1.1.7 // indirect
 	cloud.google.com/go/storage v1.40.0 // indirect
-	cosmossdk.io/api v0.7.4 // indirect
+	cosmossdk.io/api v0.7.5 // indirect
 	cosmossdk.io/collections v0.4.0 // indirect
 	cosmossdk.io/core v0.12.0 // indirect
 	cosmossdk.io/depinject v1.0.0-alpha.4 // indirect

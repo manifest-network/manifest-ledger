@@ -8,7 +8,7 @@ replace (
 
 	// go list -m github.com/liftedinit/cosmos-sdk@aef2f6d97fa0611cd51334d9665d6f363867b89b
 	// https://github.com/liftedinit/cosmos-sdk/pull/1
-	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.6
+	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.8-liftedinit.1
 
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides
@@ -18,7 +18,7 @@ replace (
 )
 
 require (
-	cosmossdk.io/api v0.7.4
+	cosmossdk.io/api v0.7.5
 	cosmossdk.io/client/v2 v2.0.0-beta.1
 	cosmossdk.io/collections v0.4.0
 	cosmossdk.io/core v0.12.0
@@ -36,8 +36,8 @@ require (
 	github.com/cometbft/cometbft v0.38.9
 	github.com/cosmos/cosmos-db v1.0.2
 	github.com/cosmos/cosmos-proto v1.0.0-beta.5
-	github.com/cosmos/cosmos-sdk v0.50.6
-	github.com/cosmos/gogoproto v1.4.12
+	github.com/cosmos/cosmos-sdk v0.50.8
+	github.com/cosmos/gogoproto v1.5.0
 	github.com/cosmos/ibc-go/modules/capability v1.0.0
 	github.com/cosmos/ibc-go/v8 v8.2.1
 	github.com/golang/protobuf v1.5.4
