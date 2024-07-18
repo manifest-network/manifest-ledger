@@ -8,7 +8,7 @@ replace (
 
 	// go list -m github.com/liftedinit/cosmos-sdk@aef2f6d97fa0611cd51334d9665d6f363867b89b
 	// https://github.com/liftedinit/cosmos-sdk/pull/1
-	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.8-liftedinit
+	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.8-liftedinit.1
 
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides

@@ -10,7 +10,7 @@ replace (
 	github.com/ChainSafe/go-schnorrkel/1 => github.com/ChainSafe/go-schnorrkel v1.0.0
 
 	// https://github.com/liftedinit/cosmos-sdk/pull/1
-	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.8-liftedinit
+	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.8-liftedinit.1
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/liftedinit/manifest-ledger => ../
 )
