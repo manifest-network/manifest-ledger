@@ -126,6 +126,28 @@ make ictest-ibc
 make ictest-group-poa
 ```
 
+## Simulation
+
+**To execute the full application simulation run:**
+
+```bash
+make sim-full-app
+````
+
+**To execute the application simulation after state import run:**
+
+```bash
+make sim-after-import
+```
+
+**To test the application determinism run:**
+
+```bash
+make sim-app-determinism
+```
+
+Append `-random` to the end of the commands above to run the simulation with a random seed, e.g., `make sim-full-app-random`.
+
 ## Coverage
 
 To generate a coverage report for the modules run:
