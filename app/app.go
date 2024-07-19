@@ -439,6 +439,7 @@ func NewApp(
 		app.BankKeeper,
 		logger,
 	)
+	app.POAKeeper.SetTestAccountKeeper(app.AccountKeeper)
 
 	invCheckPeriod := cast.ToUint(appOpts.Get(server.FlagInvCheckPeriod))
 	app.CrisisKeeper = crisiskeeper.NewKeeper(

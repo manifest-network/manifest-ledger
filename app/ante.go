@@ -74,6 +74,7 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		ante.NewSigVerificationDecorator(options.AccountKeeper, options.SignModeHandler),
 		ante.NewIncrementSequenceDecorator(options.AccountKeeper),
 		poaante.NewPOADisableStakingDecorator(),
+		poaante.NewPOADisableWithdrawDelegatorRewards(),
 		poaante.NewCommissionLimitDecorator(doGenTxRateValidation, options.RateMinMax.Floor, options.RateMinMax.Ceil),
 		ibcante.NewRedundantRelayDecorator(options.IBCKeeper),
 	}
