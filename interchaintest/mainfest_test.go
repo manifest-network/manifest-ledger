@@ -3,12 +3,12 @@ package interchaintest
 import (
 	"context"
 	"fmt"
-	"path"
 	"testing"
 
 	sdkmath "cosmossdk.io/math"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
+	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/testreporter"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
@@ -23,15 +23,11 @@ import (
 func TestManifestModule(t *testing.T) {
 	ctx := context.Background()
 
-	// Same as ChainNode.HomeDir() but we need it before the chain is created
-	// The node volume is always mounted at /var/cosmos-chain/[chain-name]
-	// This is a hackish way to get the coverage files from the ephemeral containers
 	cfgA := LocalChainConfig
-	internalGoCoverDir := path.Join("/var/cosmos-chain", cfgA.ChainID)
 	cfgA.Env = []string{
 		fmt.Sprintf("POA_ADMIN_ADDRESS=%s", accAddr),
-		fmt.Sprintf("GOCOVERDIR=%s", internalGoCoverDir),
 	}
+	cfgA.WithCodeCoverage()
 
 	cf := interchaintest.NewBuiltinChainFactory(zaptest.NewLogger(t, zaptest.Level(zapcore.DebugLevel)), []*interchaintest.ChainSpec{
 		{
@@ -204,7 +200,7 @@ func TestManifestModule(t *testing.T) {
 	})
 
 	t.Cleanup(func() {
-		CopyCoverageFromContainer(ctx, t, client, appChain.GetNode().ContainerID(), appChain.HomeDir())
+		dockerutil.CopyCoverageFromContainer(ctx, t, client, manifestA.GetNode().ContainerID(), manifestA.HomeDir(), ExternalGoCoverDir)
 		_ = ic.Close()
 	})
 }

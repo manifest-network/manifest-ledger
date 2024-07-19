@@ -4,9 +4,13 @@ go 1.22.5
 
 replace (
 	cosmossdk.io/core => cosmossdk.io/core v0.11.0 // proper SDK v50 version
+
 	// use cosmos compatible ChainSafe/go-schnorrkel
 	github.com/ChainSafe/go-schnorrkel => github.com/ChainSafe/go-schnorrkel v0.0.0-20200405005733-88cbf1b4c40d
 	github.com/ChainSafe/go-schnorrkel/1 => github.com/ChainSafe/go-schnorrkel v1.0.0
+
+	// https://github.com/liftedinit/cosmos-sdk/pull/1
+	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.8-liftedinit.1
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/liftedinit/manifest-ledger => ../
 )
@@ -15,12 +19,11 @@ require (
 	cosmossdk.io/math v1.3.0
 	cosmossdk.io/x/upgrade v0.1.2
 	github.com/cockroachdb/errors v1.11.1
-	github.com/cosmos/cosmos-sdk v0.50.6
-	github.com/cosmos/gogoproto v1.4.12
+	github.com/cosmos/cosmos-sdk v0.50.8
+	github.com/cosmos/gogoproto v1.5.0
 	github.com/cosmos/ibc-go/v8 v8.2.1
-	github.com/docker/docker v24.0.9+incompatible
 	github.com/liftedinit/manifest-ledger v0.0.0-00000000000000-000000000000
-	github.com/strangelove-ventures/interchaintest/v8 v8.4.0
+	github.com/strangelove-ventures/interchaintest/v8 v8.5.1-0.20240715163423-cbcd20f44321
 	github.com/strangelove-ventures/poa v0.50.1
 	github.com/strangelove-ventures/tokenfactory v0.50.1
 	github.com/stretchr/testify v1.9.0
@@ -34,7 +37,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	cloud.google.com/go/iam v1.1.7 // indirect
 	cloud.google.com/go/storage v1.40.0 // indirect
-	cosmossdk.io/api v0.7.4 // indirect
+	cosmossdk.io/api v0.7.5 // indirect
 	cosmossdk.io/collections v0.4.0 // indirect
 	cosmossdk.io/core v0.12.0 // indirect
 	cosmossdk.io/depinject v1.0.0-alpha.4 // indirect
@@ -72,7 +75,7 @@ require (
 	github.com/cockroachdb/pebble v1.1.0 // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
-	github.com/cometbft/cometbft v0.38.8 // indirect
+	github.com/cometbft/cometbft v0.38.9 // indirect
 	github.com/cometbft/cometbft-db v0.12.0 // indirect
 	github.com/cosmos/btcutil v1.0.5 // indirect
 	github.com/cosmos/cosmos-db v1.0.2 // indirect
@@ -95,6 +98,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.2.0 // indirect
 	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/docker/distribution v2.8.2+incompatible // indirect
+	github.com/docker/docker v24.0.9+incompatible // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -171,7 +175,7 @@ require (
 	github.com/mimoo/StrobeGo v0.0.0-20220103164710-9a04d6ca976b // indirect
 	github.com/minio/highwayhash v1.0.2 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
-	github.com/misko9/go-substrate-rpc-client/v4 v4.0.0-20230913220906-b988ea7da0c2 // indirect
+	github.com/misko9/go-substrate-rpc-client/v4 v4.0.0-20240603204351-26b456ae3afe // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect

@@ -2,12 +2,11 @@ package interchaintest
 
 import (
 	"context"
-	"fmt"
-	"path"
 	"testing"
 
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
+	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/testreporter"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
@@ -17,14 +16,8 @@ import (
 func TestTokenFactory(t *testing.T) {
 	ctx := context.Background()
 
-	// Same as ChainNode.HomeDir() but we need it before the chain is created
-	// The node volume is always mounted at /var/cosmos-chain/[chain-name]
-	// This is a hackish way to get the coverage files from the ephemeral containers
 	cfgA := LocalChainConfig
-	internalGoCoverDir := path.Join("/var/cosmos-chain", cfgA.ChainID)
-	cfgA.Env = []string{
-		fmt.Sprintf("GOCOVERDIR=%s", internalGoCoverDir),
-	}
+	cfgA.WithCodeCoverage()
 
 	cf := interchaintest.NewBuiltinChainFactory(zaptest.NewLogger(t, zaptest.Level(zapcore.DebugLevel)), []*interchaintest.ChainSpec{
 		{
@@ -82,7 +75,8 @@ func TestTokenFactory(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Log("Mint TF Denom to user")
-	node.TokenFactoryMintDenom(ctx, user.FormattedAddress(), tfDenom, 100)
+	_, err = node.TokenFactoryMintDenom(ctx, user.FormattedAddress(), tfDenom, 100)
+	require.NoError(t, err)
 	if balance, err := appChain.GetBalance(ctx, uaddr, tfDenom); err != nil {
 		t.Fatal(err)
 	} else if balance.Int64() != 100 {
@@ -107,7 +101,8 @@ func TestTokenFactory(t *testing.T) {
 	}
 
 	t.Log("SudoMint from non PoA Admin (fail) - Manifest specific")
-	node.TokenFactoryMintDenom(ctx, user.FormattedAddress(), sudoToken, 7)
+	_, err = node.TokenFactoryMintDenom(ctx, user.FormattedAddress(), sudoToken, 7)
+	require.Error(t, err)
 	if balance, err := appChain.GetBalance(ctx, uaddr, sudoToken); err != nil {
 		t.Fatal(err)
 	} else if balance.Int64() != 0 {
@@ -116,7 +111,8 @@ func TestTokenFactory(t *testing.T) {
 	}
 
 	t.Log("Mint TF Denom to another user")
-	node.TokenFactoryMintDenomTo(ctx, user.FormattedAddress(), tfDenom, 70, user2.FormattedAddress())
+	_, err = node.TokenFactoryMintDenomTo(ctx, user.FormattedAddress(), tfDenom, 70, user2.FormattedAddress())
+	require.NoError(t, err)
 	if balance, err := appChain.GetBalance(ctx, uaddr2, tfDenom); err != nil {
 		t.Fatal(err)
 	} else if balance.Int64() != 70 {
@@ -135,7 +131,7 @@ func TestTokenFactory(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		CopyCoverageFromContainer(ctx, t, client, appChain.GetNode().ContainerID(), appChain.HomeDir())
+		dockerutil.CopyCoverageFromContainer(ctx, t, client, manifestA.GetNode().ContainerID(), manifestA.HomeDir(), ExternalGoCoverDir)
 		_ = ic.Close()
 	})
 }
