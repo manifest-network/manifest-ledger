@@ -41,6 +41,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module/testutil"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	govv1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
@@ -201,6 +202,10 @@ func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 	app.MintKeeper.Minter.Set(ctx, minttypes.DefaultInitialMinter())
 	app.MintKeeper.Params.Set(ctx, minttypes.DefaultParams())
 	app.CrisisKeeper.ConstantFee.Set(ctx, sdk.NewCoin(sdk.DefaultBondDenom, sdkmath.NewInt(100000)))
+	app.DistrKeeper.Params.Set(ctx, distrtypes.DefaultParams())
+	app.DistrKeeper.FeePool.Set(ctx, distrtypes.FeePool{
+		CommunityPool: sdk.NewDecCoins(),
+	})
 	app.TransferKeeper.SetParams(ctx, transfertypes.DefaultParams())
 	app.StakingKeeper.SetParams(ctx, stakingtypes.DefaultParams())
 	app.IBCKeeper.ClientKeeper.SetParams(ctx, clienttypes.DefaultParams())
