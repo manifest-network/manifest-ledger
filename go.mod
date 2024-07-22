@@ -13,6 +13,9 @@ replace (
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides
 
+	// TODO: Remove this once 0.50.3 is released
+	github.com/strangelove-ventures/poa => github.com/strangelove-ventures/poa v0.50.3-0.20240720145936-3595e3d47ba0
+
 	// Downgraded to avoid bugs in following commits which caused simulations to fail.
 	github.com/syndtr/goleveldb => github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 )
