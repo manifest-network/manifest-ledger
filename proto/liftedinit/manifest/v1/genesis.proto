@@ -1,5 +1,5 @@
 syntax = "proto3";
-package manifest.v1;
+package liftedinit.manifest.v1;
 
 import "gogoproto/gogo.proto";
 import "amino/amino.proto";

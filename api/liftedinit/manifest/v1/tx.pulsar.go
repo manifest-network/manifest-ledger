@@ -24,8 +24,8 @@ var (
 )
 
 func init() {
-	file_manifest_v1_tx_proto_init()
-	md_MsgUpdateParams = File_manifest_v1_tx_proto.Messages().ByName("MsgUpdateParams")
+	file_liftedinit_manifest_v1_tx_proto_init()
+	md_MsgUpdateParams = File_liftedinit_manifest_v1_tx_proto.Messages().ByName("MsgUpdateParams")
 	fd_MsgUpdateParams_authority = md_MsgUpdateParams.Fields().ByName("authority")
 	fd_MsgUpdateParams_params = md_MsgUpdateParams.Fields().ByName("params")
 }
@@ -39,7 +39,7 @@ func (x *MsgUpdateParams) ProtoReflect() protoreflect.Message {
 }
 
 func (x *MsgUpdateParams) slowProtoReflect() protoreflect.Message {
-	mi := &file_manifest_v1_tx_proto_msgTypes[0]
+	mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[0]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -122,15 +122,15 @@ func (x *fastReflection_MsgUpdateParams) Range(f func(protoreflect.FieldDescript
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_MsgUpdateParams) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "manifest.v1.MsgUpdateParams.authority":
+	case "liftedinit.manifest.v1.MsgUpdateParams.authority":
 		return x.Authority != ""
-	case "manifest.v1.MsgUpdateParams.params":
+	case "liftedinit.manifest.v1.MsgUpdateParams.params":
 		return x.Params != nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgUpdateParams"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgUpdateParams"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgUpdateParams does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgUpdateParams does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -142,15 +142,15 @@ func (x *fastReflection_MsgUpdateParams) Has(fd protoreflect.FieldDescriptor) bo
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgUpdateParams) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "manifest.v1.MsgUpdateParams.authority":
+	case "liftedinit.manifest.v1.MsgUpdateParams.authority":
 		x.Authority = ""
-	case "manifest.v1.MsgUpdateParams.params":
+	case "liftedinit.manifest.v1.MsgUpdateParams.params":
 		x.Params = nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgUpdateParams"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgUpdateParams"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgUpdateParams does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgUpdateParams does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -162,17 +162,17 @@ func (x *fastReflection_MsgUpdateParams) Clear(fd protoreflect.FieldDescriptor) 
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_MsgUpdateParams) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "manifest.v1.MsgUpdateParams.authority":
+	case "liftedinit.manifest.v1.MsgUpdateParams.authority":
 		value := x.Authority
 		return protoreflect.ValueOfString(value)
-	case "manifest.v1.MsgUpdateParams.params":
+	case "liftedinit.manifest.v1.MsgUpdateParams.params":
 		value := x.Params
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgUpdateParams"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgUpdateParams"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgUpdateParams does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgUpdateParams does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -188,15 +188,15 @@ func (x *fastReflection_MsgUpdateParams) Get(descriptor protoreflect.FieldDescri
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgUpdateParams) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "manifest.v1.MsgUpdateParams.authority":
+	case "liftedinit.manifest.v1.MsgUpdateParams.authority":
 		x.Authority = value.Interface().(string)
-	case "manifest.v1.MsgUpdateParams.params":
+	case "liftedinit.manifest.v1.MsgUpdateParams.params":
 		x.Params = value.Message().Interface().(*Params)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgUpdateParams"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgUpdateParams"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgUpdateParams does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgUpdateParams does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -212,18 +212,18 @@ func (x *fastReflection_MsgUpdateParams) Set(fd protoreflect.FieldDescriptor, va
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgUpdateParams) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "manifest.v1.MsgUpdateParams.params":
+	case "liftedinit.manifest.v1.MsgUpdateParams.params":
 		if x.Params == nil {
 			x.Params = new(Params)
 		}
 		return protoreflect.ValueOfMessage(x.Params.ProtoReflect())
-	case "manifest.v1.MsgUpdateParams.authority":
-		panic(fmt.Errorf("field authority of message manifest.v1.MsgUpdateParams is not mutable"))
+	case "liftedinit.manifest.v1.MsgUpdateParams.authority":
+		panic(fmt.Errorf("field authority of message liftedinit.manifest.v1.MsgUpdateParams is not mutable"))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgUpdateParams"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgUpdateParams"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgUpdateParams does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgUpdateParams does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -232,16 +232,16 @@ func (x *fastReflection_MsgUpdateParams) Mutable(fd protoreflect.FieldDescriptor
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_MsgUpdateParams) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "manifest.v1.MsgUpdateParams.authority":
+	case "liftedinit.manifest.v1.MsgUpdateParams.authority":
 		return protoreflect.ValueOfString("")
-	case "manifest.v1.MsgUpdateParams.params":
+	case "liftedinit.manifest.v1.MsgUpdateParams.params":
 		m := new(Params)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgUpdateParams"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgUpdateParams"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgUpdateParams does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgUpdateParams does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -251,7 +251,7 @@ func (x *fastReflection_MsgUpdateParams) NewField(fd protoreflect.FieldDescripto
 func (x *fastReflection_MsgUpdateParams) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in manifest.v1.MsgUpdateParams", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.manifest.v1.MsgUpdateParams", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -521,8 +521,8 @@ var (
 )
 
 func init() {
-	file_manifest_v1_tx_proto_init()
-	md_MsgUpdateParamsResponse = File_manifest_v1_tx_proto.Messages().ByName("MsgUpdateParamsResponse")
+	file_liftedinit_manifest_v1_tx_proto_init()
+	md_MsgUpdateParamsResponse = File_liftedinit_manifest_v1_tx_proto.Messages().ByName("MsgUpdateParamsResponse")
 }
 
 var _ protoreflect.Message = (*fastReflection_MsgUpdateParamsResponse)(nil)
@@ -534,7 +534,7 @@ func (x *MsgUpdateParamsResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *MsgUpdateParamsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_manifest_v1_tx_proto_msgTypes[1]
+	mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[1]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -607,9 +607,9 @@ func (x *fastReflection_MsgUpdateParamsResponse) Has(fd protoreflect.FieldDescri
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgUpdateParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgUpdateParamsResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgUpdateParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgUpdateParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -623,9 +623,9 @@ func (x *fastReflection_MsgUpdateParamsResponse) Clear(fd protoreflect.FieldDesc
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgUpdateParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgUpdateParamsResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgUpdateParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgUpdateParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -639,9 +639,9 @@ func (x *fastReflection_MsgUpdateParamsResponse) Get(descriptor protoreflect.Fie
 	switch descriptor.FullName() {
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgUpdateParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgUpdateParamsResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgUpdateParamsResponse does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgUpdateParamsResponse does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -659,9 +659,9 @@ func (x *fastReflection_MsgUpdateParamsResponse) Set(fd protoreflect.FieldDescri
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgUpdateParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgUpdateParamsResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgUpdateParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgUpdateParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -679,9 +679,9 @@ func (x *fastReflection_MsgUpdateParamsResponse) Mutable(fd protoreflect.FieldDe
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgUpdateParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgUpdateParamsResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgUpdateParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgUpdateParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -692,9 +692,9 @@ func (x *fastReflection_MsgUpdateParamsResponse) NewField(fd protoreflect.FieldD
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgUpdateParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgUpdateParamsResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgUpdateParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgUpdateParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -704,7 +704,7 @@ func (x *fastReflection_MsgUpdateParamsResponse) NewField(fd protoreflect.FieldD
 func (x *fastReflection_MsgUpdateParamsResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in manifest.v1.MsgUpdateParamsResponse", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.manifest.v1.MsgUpdateParamsResponse", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -930,8 +930,8 @@ var (
 )
 
 func init() {
-	file_manifest_v1_tx_proto_init()
-	md_MsgPayout = File_manifest_v1_tx_proto.Messages().ByName("MsgPayout")
+	file_liftedinit_manifest_v1_tx_proto_init()
+	md_MsgPayout = File_liftedinit_manifest_v1_tx_proto.Messages().ByName("MsgPayout")
 	fd_MsgPayout_authority = md_MsgPayout.Fields().ByName("authority")
 	fd_MsgPayout_payout_pairs = md_MsgPayout.Fields().ByName("payout_pairs")
 }
@@ -945,7 +945,7 @@ func (x *MsgPayout) ProtoReflect() protoreflect.Message {
 }
 
 func (x *MsgPayout) slowProtoReflect() protoreflect.Message {
-	mi := &file_manifest_v1_tx_proto_msgTypes[2]
+	mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[2]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1028,15 +1028,15 @@ func (x *fastReflection_MsgPayout) Range(f func(protoreflect.FieldDescriptor, pr
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_MsgPayout) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "manifest.v1.MsgPayout.authority":
+	case "liftedinit.manifest.v1.MsgPayout.authority":
 		return x.Authority != ""
-	case "manifest.v1.MsgPayout.payout_pairs":
+	case "liftedinit.manifest.v1.MsgPayout.payout_pairs":
 		return len(x.PayoutPairs) != 0
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayout"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgPayout"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgPayout does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgPayout does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1048,15 +1048,15 @@ func (x *fastReflection_MsgPayout) Has(fd protoreflect.FieldDescriptor) bool {
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgPayout) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "manifest.v1.MsgPayout.authority":
+	case "liftedinit.manifest.v1.MsgPayout.authority":
 		x.Authority = ""
-	case "manifest.v1.MsgPayout.payout_pairs":
+	case "liftedinit.manifest.v1.MsgPayout.payout_pairs":
 		x.PayoutPairs = nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayout"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgPayout"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgPayout does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgPayout does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1068,10 +1068,10 @@ func (x *fastReflection_MsgPayout) Clear(fd protoreflect.FieldDescriptor) {
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_MsgPayout) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "manifest.v1.MsgPayout.authority":
+	case "liftedinit.manifest.v1.MsgPayout.authority":
 		value := x.Authority
 		return protoreflect.ValueOfString(value)
-	case "manifest.v1.MsgPayout.payout_pairs":
+	case "liftedinit.manifest.v1.MsgPayout.payout_pairs":
 		if len(x.PayoutPairs) == 0 {
 			return protoreflect.ValueOfList(&_MsgPayout_2_list{})
 		}
@@ -1079,9 +1079,9 @@ func (x *fastReflection_MsgPayout) Get(descriptor protoreflect.FieldDescriptor) 
 		return protoreflect.ValueOfList(listValue)
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayout"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgPayout"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgPayout does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgPayout does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -1097,17 +1097,17 @@ func (x *fastReflection_MsgPayout) Get(descriptor protoreflect.FieldDescriptor) 
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgPayout) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "manifest.v1.MsgPayout.authority":
+	case "liftedinit.manifest.v1.MsgPayout.authority":
 		x.Authority = value.Interface().(string)
-	case "manifest.v1.MsgPayout.payout_pairs":
+	case "liftedinit.manifest.v1.MsgPayout.payout_pairs":
 		lv := value.List()
 		clv := lv.(*_MsgPayout_2_list)
 		x.PayoutPairs = *clv.list
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayout"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgPayout"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgPayout does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgPayout does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1123,19 +1123,19 @@ func (x *fastReflection_MsgPayout) Set(fd protoreflect.FieldDescriptor, value pr
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgPayout) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "manifest.v1.MsgPayout.payout_pairs":
+	case "liftedinit.manifest.v1.MsgPayout.payout_pairs":
 		if x.PayoutPairs == nil {
 			x.PayoutPairs = []*PayoutPair{}
 		}
 		value := &_MsgPayout_2_list{list: &x.PayoutPairs}
 		return protoreflect.ValueOfList(value)
-	case "manifest.v1.MsgPayout.authority":
-		panic(fmt.Errorf("field authority of message manifest.v1.MsgPayout is not mutable"))
+	case "liftedinit.manifest.v1.MsgPayout.authority":
+		panic(fmt.Errorf("field authority of message liftedinit.manifest.v1.MsgPayout is not mutable"))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayout"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgPayout"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgPayout does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgPayout does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1144,16 +1144,16 @@ func (x *fastReflection_MsgPayout) Mutable(fd protoreflect.FieldDescriptor) prot
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_MsgPayout) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "manifest.v1.MsgPayout.authority":
+	case "liftedinit.manifest.v1.MsgPayout.authority":
 		return protoreflect.ValueOfString("")
-	case "manifest.v1.MsgPayout.payout_pairs":
+	case "liftedinit.manifest.v1.MsgPayout.payout_pairs":
 		list := []*PayoutPair{}
 		return protoreflect.ValueOfList(&_MsgPayout_2_list{list: &list})
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayout"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgPayout"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgPayout does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgPayout does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1163,7 +1163,7 @@ func (x *fastReflection_MsgPayout) NewField(fd protoreflect.FieldDescriptor) pro
 func (x *fastReflection_MsgPayout) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in manifest.v1.MsgPayout", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.manifest.v1.MsgPayout", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -1437,8 +1437,8 @@ var (
 )
 
 func init() {
-	file_manifest_v1_tx_proto_init()
-	md_PayoutPair = File_manifest_v1_tx_proto.Messages().ByName("PayoutPair")
+	file_liftedinit_manifest_v1_tx_proto_init()
+	md_PayoutPair = File_liftedinit_manifest_v1_tx_proto.Messages().ByName("PayoutPair")
 	fd_PayoutPair_address = md_PayoutPair.Fields().ByName("address")
 	fd_PayoutPair_coin = md_PayoutPair.Fields().ByName("coin")
 }
@@ -1452,7 +1452,7 @@ func (x *PayoutPair) ProtoReflect() protoreflect.Message {
 }
 
 func (x *PayoutPair) slowProtoReflect() protoreflect.Message {
-	mi := &file_manifest_v1_tx_proto_msgTypes[3]
+	mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[3]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1535,15 +1535,15 @@ func (x *fastReflection_PayoutPair) Range(f func(protoreflect.FieldDescriptor, p
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_PayoutPair) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "manifest.v1.PayoutPair.address":
+	case "liftedinit.manifest.v1.PayoutPair.address":
 		return x.Address != ""
-	case "manifest.v1.PayoutPair.coin":
+	case "liftedinit.manifest.v1.PayoutPair.coin":
 		return x.Coin != nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.PayoutPair"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.PayoutPair"))
 		}
-		panic(fmt.Errorf("message manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1555,15 +1555,15 @@ func (x *fastReflection_PayoutPair) Has(fd protoreflect.FieldDescriptor) bool {
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_PayoutPair) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "manifest.v1.PayoutPair.address":
+	case "liftedinit.manifest.v1.PayoutPair.address":
 		x.Address = ""
-	case "manifest.v1.PayoutPair.coin":
+	case "liftedinit.manifest.v1.PayoutPair.coin":
 		x.Coin = nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.PayoutPair"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.PayoutPair"))
 		}
-		panic(fmt.Errorf("message manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1575,17 +1575,17 @@ func (x *fastReflection_PayoutPair) Clear(fd protoreflect.FieldDescriptor) {
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_PayoutPair) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "manifest.v1.PayoutPair.address":
+	case "liftedinit.manifest.v1.PayoutPair.address":
 		value := x.Address
 		return protoreflect.ValueOfString(value)
-	case "manifest.v1.PayoutPair.coin":
+	case "liftedinit.manifest.v1.PayoutPair.coin":
 		value := x.Coin
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.PayoutPair"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.PayoutPair"))
 		}
-		panic(fmt.Errorf("message manifest.v1.PayoutPair does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.PayoutPair does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -1601,15 +1601,15 @@ func (x *fastReflection_PayoutPair) Get(descriptor protoreflect.FieldDescriptor)
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_PayoutPair) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "manifest.v1.PayoutPair.address":
+	case "liftedinit.manifest.v1.PayoutPair.address":
 		x.Address = value.Interface().(string)
-	case "manifest.v1.PayoutPair.coin":
+	case "liftedinit.manifest.v1.PayoutPair.coin":
 		x.Coin = value.Message().Interface().(*types.Coin)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.PayoutPair"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.PayoutPair"))
 		}
-		panic(fmt.Errorf("message manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1625,18 +1625,18 @@ func (x *fastReflection_PayoutPair) Set(fd protoreflect.FieldDescriptor, value p
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_PayoutPair) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "manifest.v1.PayoutPair.coin":
+	case "liftedinit.manifest.v1.PayoutPair.coin":
 		if x.Coin == nil {
 			x.Coin = new(types.Coin)
 		}
 		return protoreflect.ValueOfMessage(x.Coin.ProtoReflect())
-	case "manifest.v1.PayoutPair.address":
-		panic(fmt.Errorf("field address of message manifest.v1.PayoutPair is not mutable"))
+	case "liftedinit.manifest.v1.PayoutPair.address":
+		panic(fmt.Errorf("field address of message liftedinit.manifest.v1.PayoutPair is not mutable"))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.PayoutPair"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.PayoutPair"))
 		}
-		panic(fmt.Errorf("message manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1645,16 +1645,16 @@ func (x *fastReflection_PayoutPair) Mutable(fd protoreflect.FieldDescriptor) pro
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_PayoutPair) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "manifest.v1.PayoutPair.address":
+	case "liftedinit.manifest.v1.PayoutPair.address":
 		return protoreflect.ValueOfString("")
-	case "manifest.v1.PayoutPair.coin":
+	case "liftedinit.manifest.v1.PayoutPair.coin":
 		m := new(types.Coin)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.PayoutPair"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.PayoutPair"))
 		}
-		panic(fmt.Errorf("message manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.PayoutPair does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1664,7 +1664,7 @@ func (x *fastReflection_PayoutPair) NewField(fd protoreflect.FieldDescriptor) pr
 func (x *fastReflection_PayoutPair) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in manifest.v1.PayoutPair", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.manifest.v1.PayoutPair", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -1934,8 +1934,8 @@ var (
 )
 
 func init() {
-	file_manifest_v1_tx_proto_init()
-	md_MsgPayoutResponse = File_manifest_v1_tx_proto.Messages().ByName("MsgPayoutResponse")
+	file_liftedinit_manifest_v1_tx_proto_init()
+	md_MsgPayoutResponse = File_liftedinit_manifest_v1_tx_proto.Messages().ByName("MsgPayoutResponse")
 }
 
 var _ protoreflect.Message = (*fastReflection_MsgPayoutResponse)(nil)
@@ -1947,7 +1947,7 @@ func (x *MsgPayoutResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *MsgPayoutResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_manifest_v1_tx_proto_msgTypes[4]
+	mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[4]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2020,9 +2020,9 @@ func (x *fastReflection_MsgPayoutResponse) Has(fd protoreflect.FieldDescriptor) 
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayoutResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgPayoutResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgPayoutResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgPayoutResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2036,9 +2036,9 @@ func (x *fastReflection_MsgPayoutResponse) Clear(fd protoreflect.FieldDescriptor
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayoutResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgPayoutResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgPayoutResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgPayoutResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2052,9 +2052,9 @@ func (x *fastReflection_MsgPayoutResponse) Get(descriptor protoreflect.FieldDesc
 	switch descriptor.FullName() {
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayoutResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgPayoutResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgPayoutResponse does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgPayoutResponse does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -2072,9 +2072,9 @@ func (x *fastReflection_MsgPayoutResponse) Set(fd protoreflect.FieldDescriptor, 
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayoutResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgPayoutResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgPayoutResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgPayoutResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2092,9 +2092,9 @@ func (x *fastReflection_MsgPayoutResponse) Mutable(fd protoreflect.FieldDescript
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayoutResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgPayoutResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgPayoutResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgPayoutResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2105,9 +2105,9 @@ func (x *fastReflection_MsgPayoutResponse) NewField(fd protoreflect.FieldDescrip
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgPayoutResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgPayoutResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgPayoutResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgPayoutResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2117,7 +2117,7 @@ func (x *fastReflection_MsgPayoutResponse) NewField(fd protoreflect.FieldDescrip
 func (x *fastReflection_MsgPayoutResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in manifest.v1.MsgPayoutResponse", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.manifest.v1.MsgPayoutResponse", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -2343,8 +2343,8 @@ var (
 )
 
 func init() {
-	file_manifest_v1_tx_proto_init()
-	md_MsgBurnHeldBalance = File_manifest_v1_tx_proto.Messages().ByName("MsgBurnHeldBalance")
+	file_liftedinit_manifest_v1_tx_proto_init()
+	md_MsgBurnHeldBalance = File_liftedinit_manifest_v1_tx_proto.Messages().ByName("MsgBurnHeldBalance")
 	fd_MsgBurnHeldBalance_authority = md_MsgBurnHeldBalance.Fields().ByName("authority")
 	fd_MsgBurnHeldBalance_burn_coins = md_MsgBurnHeldBalance.Fields().ByName("burn_coins")
 }
@@ -2358,7 +2358,7 @@ func (x *MsgBurnHeldBalance) ProtoReflect() protoreflect.Message {
 }
 
 func (x *MsgBurnHeldBalance) slowProtoReflect() protoreflect.Message {
-	mi := &file_manifest_v1_tx_proto_msgTypes[5]
+	mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[5]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2441,15 +2441,15 @@ func (x *fastReflection_MsgBurnHeldBalance) Range(f func(protoreflect.FieldDescr
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_MsgBurnHeldBalance) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "manifest.v1.MsgBurnHeldBalance.authority":
+	case "liftedinit.manifest.v1.MsgBurnHeldBalance.authority":
 		return x.Authority != ""
-	case "manifest.v1.MsgBurnHeldBalance.burn_coins":
+	case "liftedinit.manifest.v1.MsgBurnHeldBalance.burn_coins":
 		return len(x.BurnCoins) != 0
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgBurnHeldBalance"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgBurnHeldBalance"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgBurnHeldBalance does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgBurnHeldBalance does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2461,15 +2461,15 @@ func (x *fastReflection_MsgBurnHeldBalance) Has(fd protoreflect.FieldDescriptor)
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgBurnHeldBalance) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "manifest.v1.MsgBurnHeldBalance.authority":
+	case "liftedinit.manifest.v1.MsgBurnHeldBalance.authority":
 		x.Authority = ""
-	case "manifest.v1.MsgBurnHeldBalance.burn_coins":
+	case "liftedinit.manifest.v1.MsgBurnHeldBalance.burn_coins":
 		x.BurnCoins = nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgBurnHeldBalance"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgBurnHeldBalance"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgBurnHeldBalance does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgBurnHeldBalance does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2481,10 +2481,10 @@ func (x *fastReflection_MsgBurnHeldBalance) Clear(fd protoreflect.FieldDescripto
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_MsgBurnHeldBalance) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "manifest.v1.MsgBurnHeldBalance.authority":
+	case "liftedinit.manifest.v1.MsgBurnHeldBalance.authority":
 		value := x.Authority
 		return protoreflect.ValueOfString(value)
-	case "manifest.v1.MsgBurnHeldBalance.burn_coins":
+	case "liftedinit.manifest.v1.MsgBurnHeldBalance.burn_coins":
 		if len(x.BurnCoins) == 0 {
 			return protoreflect.ValueOfList(&_MsgBurnHeldBalance_2_list{})
 		}
@@ -2492,9 +2492,9 @@ func (x *fastReflection_MsgBurnHeldBalance) Get(descriptor protoreflect.FieldDes
 		return protoreflect.ValueOfList(listValue)
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgBurnHeldBalance"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgBurnHeldBalance"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgBurnHeldBalance does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgBurnHeldBalance does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -2510,17 +2510,17 @@ func (x *fastReflection_MsgBurnHeldBalance) Get(descriptor protoreflect.FieldDes
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgBurnHeldBalance) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "manifest.v1.MsgBurnHeldBalance.authority":
+	case "liftedinit.manifest.v1.MsgBurnHeldBalance.authority":
 		x.Authority = value.Interface().(string)
-	case "manifest.v1.MsgBurnHeldBalance.burn_coins":
+	case "liftedinit.manifest.v1.MsgBurnHeldBalance.burn_coins":
 		lv := value.List()
 		clv := lv.(*_MsgBurnHeldBalance_2_list)
 		x.BurnCoins = *clv.list
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgBurnHeldBalance"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgBurnHeldBalance"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgBurnHeldBalance does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgBurnHeldBalance does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2536,19 +2536,19 @@ func (x *fastReflection_MsgBurnHeldBalance) Set(fd protoreflect.FieldDescriptor,
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgBurnHeldBalance) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "manifest.v1.MsgBurnHeldBalance.burn_coins":
+	case "liftedinit.manifest.v1.MsgBurnHeldBalance.burn_coins":
 		if x.BurnCoins == nil {
 			x.BurnCoins = []*types.Coin{}
 		}
 		value := &_MsgBurnHeldBalance_2_list{list: &x.BurnCoins}
 		return protoreflect.ValueOfList(value)
-	case "manifest.v1.MsgBurnHeldBalance.authority":
-		panic(fmt.Errorf("field authority of message manifest.v1.MsgBurnHeldBalance is not mutable"))
+	case "liftedinit.manifest.v1.MsgBurnHeldBalance.authority":
+		panic(fmt.Errorf("field authority of message liftedinit.manifest.v1.MsgBurnHeldBalance is not mutable"))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgBurnHeldBalance"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgBurnHeldBalance"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgBurnHeldBalance does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgBurnHeldBalance does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2557,16 +2557,16 @@ func (x *fastReflection_MsgBurnHeldBalance) Mutable(fd protoreflect.FieldDescrip
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_MsgBurnHeldBalance) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "manifest.v1.MsgBurnHeldBalance.authority":
+	case "liftedinit.manifest.v1.MsgBurnHeldBalance.authority":
 		return protoreflect.ValueOfString("")
-	case "manifest.v1.MsgBurnHeldBalance.burn_coins":
+	case "liftedinit.manifest.v1.MsgBurnHeldBalance.burn_coins":
 		list := []*types.Coin{}
 		return protoreflect.ValueOfList(&_MsgBurnHeldBalance_2_list{list: &list})
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgBurnHeldBalance"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgBurnHeldBalance"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgBurnHeldBalance does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgBurnHeldBalance does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2576,7 +2576,7 @@ func (x *fastReflection_MsgBurnHeldBalance) NewField(fd protoreflect.FieldDescri
 func (x *fastReflection_MsgBurnHeldBalance) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in manifest.v1.MsgBurnHeldBalance", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.manifest.v1.MsgBurnHeldBalance", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -2848,8 +2848,8 @@ var (
 )
 
 func init() {
-	file_manifest_v1_tx_proto_init()
-	md_MsgBurnHeldBalanceResponse = File_manifest_v1_tx_proto.Messages().ByName("MsgBurnHeldBalanceResponse")
+	file_liftedinit_manifest_v1_tx_proto_init()
+	md_MsgBurnHeldBalanceResponse = File_liftedinit_manifest_v1_tx_proto.Messages().ByName("MsgBurnHeldBalanceResponse")
 }
 
 var _ protoreflect.Message = (*fastReflection_MsgBurnHeldBalanceResponse)(nil)
@@ -2861,7 +2861,7 @@ func (x *MsgBurnHeldBalanceResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *MsgBurnHeldBalanceResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_manifest_v1_tx_proto_msgTypes[6]
+	mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2934,9 +2934,9 @@ func (x *fastReflection_MsgBurnHeldBalanceResponse) Has(fd protoreflect.FieldDes
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgBurnHeldBalanceResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgBurnHeldBalanceResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgBurnHeldBalanceResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgBurnHeldBalanceResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2950,9 +2950,9 @@ func (x *fastReflection_MsgBurnHeldBalanceResponse) Clear(fd protoreflect.FieldD
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgBurnHeldBalanceResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgBurnHeldBalanceResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgBurnHeldBalanceResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgBurnHeldBalanceResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2966,9 +2966,9 @@ func (x *fastReflection_MsgBurnHeldBalanceResponse) Get(descriptor protoreflect.
 	switch descriptor.FullName() {
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgBurnHeldBalanceResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgBurnHeldBalanceResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgBurnHeldBalanceResponse does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgBurnHeldBalanceResponse does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -2986,9 +2986,9 @@ func (x *fastReflection_MsgBurnHeldBalanceResponse) Set(fd protoreflect.FieldDes
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgBurnHeldBalanceResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgBurnHeldBalanceResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgBurnHeldBalanceResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgBurnHeldBalanceResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3006,9 +3006,9 @@ func (x *fastReflection_MsgBurnHeldBalanceResponse) Mutable(fd protoreflect.Fiel
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgBurnHeldBalanceResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgBurnHeldBalanceResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgBurnHeldBalanceResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgBurnHeldBalanceResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3019,9 +3019,9 @@ func (x *fastReflection_MsgBurnHeldBalanceResponse) NewField(fd protoreflect.Fie
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.MsgBurnHeldBalanceResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.MsgBurnHeldBalanceResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.MsgBurnHeldBalanceResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.MsgBurnHeldBalanceResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3031,7 +3031,7 @@ func (x *fastReflection_MsgBurnHeldBalanceResponse) NewField(fd protoreflect.Fie
 func (x *fastReflection_MsgBurnHeldBalanceResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in manifest.v1.MsgBurnHeldBalanceResponse", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.manifest.v1.MsgBurnHeldBalanceResponse", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -3203,7 +3203,7 @@ func (x *fastReflection_MsgBurnHeldBalanceResponse) ProtoMethods() *protoiface.M
 // versions:
 // 	protoc-gen-go v1.27.0
 // 	protoc        (unknown)
-// source: manifest/v1/tx.proto
+// source: liftedinit/manifest/v1/tx.proto
 
 const (
 	// Verify that this generated code is sufficiently up-to-date.
@@ -3231,7 +3231,7 @@ type MsgUpdateParams struct {
 func (x *MsgUpdateParams) Reset() {
 	*x = MsgUpdateParams{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_manifest_v1_tx_proto_msgTypes[0]
+		mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[0]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3245,7 +3245,7 @@ func (*MsgUpdateParams) ProtoMessage() {}
 
 // Deprecated: Use MsgUpdateParams.ProtoReflect.Descriptor instead.
 func (*MsgUpdateParams) Descriptor() ([]byte, []int) {
-	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{0}
+	return file_liftedinit_manifest_v1_tx_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *MsgUpdateParams) GetAuthority() string {
@@ -3275,7 +3275,7 @@ type MsgUpdateParamsResponse struct {
 func (x *MsgUpdateParamsResponse) Reset() {
 	*x = MsgUpdateParamsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_manifest_v1_tx_proto_msgTypes[1]
+		mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[1]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3289,7 +3289,7 @@ func (*MsgUpdateParamsResponse) ProtoMessage() {}
 
 // Deprecated: Use MsgUpdateParamsResponse.ProtoReflect.Descriptor instead.
 func (*MsgUpdateParamsResponse) Descriptor() ([]byte, []int) {
-	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{1}
+	return file_liftedinit_manifest_v1_tx_proto_rawDescGZIP(), []int{1}
 }
 
 // MsgPayout is the Msg/Payout request type.
@@ -3307,7 +3307,7 @@ type MsgPayout struct {
 func (x *MsgPayout) Reset() {
 	*x = MsgPayout{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_manifest_v1_tx_proto_msgTypes[2]
+		mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[2]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3321,7 +3321,7 @@ func (*MsgPayout) ProtoMessage() {}
 
 // Deprecated: Use MsgPayout.ProtoReflect.Descriptor instead.
 func (*MsgPayout) Descriptor() ([]byte, []int) {
-	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{2}
+	return file_liftedinit_manifest_v1_tx_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *MsgPayout) GetAuthority() string {
@@ -3351,7 +3351,7 @@ type PayoutPair struct {
 func (x *PayoutPair) Reset() {
 	*x = PayoutPair{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_manifest_v1_tx_proto_msgTypes[3]
+		mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[3]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3365,7 +3365,7 @@ func (*PayoutPair) ProtoMessage() {}
 
 // Deprecated: Use PayoutPair.ProtoReflect.Descriptor instead.
 func (*PayoutPair) Descriptor() ([]byte, []int) {
-	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{3}
+	return file_liftedinit_manifest_v1_tx_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *PayoutPair) GetAddress() string {
@@ -3392,7 +3392,7 @@ type MsgPayoutResponse struct {
 func (x *MsgPayoutResponse) Reset() {
 	*x = MsgPayoutResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_manifest_v1_tx_proto_msgTypes[4]
+		mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[4]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3406,7 +3406,7 @@ func (*MsgPayoutResponse) ProtoMessage() {}
 
 // Deprecated: Use MsgPayoutResponse.ProtoReflect.Descriptor instead.
 func (*MsgPayoutResponse) Descriptor() ([]byte, []int) {
-	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{4}
+	return file_liftedinit_manifest_v1_tx_proto_rawDescGZIP(), []int{4}
 }
 
 // MsgPayout is the Msg/BurnHeldBalance request type.
@@ -3424,7 +3424,7 @@ type MsgBurnHeldBalance struct {
 func (x *MsgBurnHeldBalance) Reset() {
 	*x = MsgBurnHeldBalance{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_manifest_v1_tx_proto_msgTypes[5]
+		mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[5]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3438,7 +3438,7 @@ func (*MsgBurnHeldBalance) ProtoMessage() {}
 
 // Deprecated: Use MsgBurnHeldBalance.ProtoReflect.Descriptor instead.
 func (*MsgBurnHeldBalance) Descriptor() ([]byte, []int) {
-	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{5}
+	return file_liftedinit_manifest_v1_tx_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *MsgBurnHeldBalance) GetAuthority() string {
@@ -3465,7 +3465,7 @@ type MsgBurnHeldBalanceResponse struct {
 func (x *MsgBurnHeldBalanceResponse) Reset() {
 	*x = MsgBurnHeldBalanceResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_manifest_v1_tx_proto_msgTypes[6]
+		mi := &file_liftedinit_manifest_v1_tx_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3479,137 +3479,148 @@ func (*MsgBurnHeldBalanceResponse) ProtoMessage() {}
 
 // Deprecated: Use MsgBurnHeldBalanceResponse.ProtoReflect.Descriptor instead.
 func (*MsgBurnHeldBalanceResponse) Descriptor() ([]byte, []int) {
-	return file_manifest_v1_tx_proto_rawDescGZIP(), []int{6}
+	return file_liftedinit_manifest_v1_tx_proto_rawDescGZIP(), []int{6}
 }
 
-var File_manifest_v1_tx_proto protoreflect.FileDescriptor
+var File_liftedinit_manifest_v1_tx_proto protoreflect.FileDescriptor
 
-var file_manifest_v1_tx_proto_rawDesc = []byte{
-	0x0a, 0x14, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2f, 0x76, 0x31, 0x2f, 0x74, 0x78,
-	0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x12, 0x0b, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74,
-	0x2e, 0x76, 0x31, 0x1a, 0x17, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x6d, 0x73, 0x67, 0x2f,
-	0x76, 0x31, 0x2f, 0x6d, 0x73, 0x67, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x19, 0x6d, 0x61,
-	0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2f, 0x76, 0x31, 0x2f, 0x67, 0x65, 0x6e, 0x65, 0x73, 0x69,
-	0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x14, 0x67, 0x6f, 0x67, 0x6f, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x2f, 0x67, 0x6f, 0x67, 0x6f, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x19, 0x63,
-	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x63, 0x6f, 0x73, 0x6d,
-	0x6f, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x1e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73,
-	0x2f, 0x62, 0x61, 0x73, 0x65, 0x2f, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2f, 0x63, 0x6f,
-	0x69, 0x6e, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x11, 0x61, 0x6d, 0x69, 0x6e, 0x6f, 0x2f,
-	0x61, 0x6d, 0x69, 0x6e, 0x6f, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0x8c, 0x01, 0x0a, 0x0f,
-	0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12,
-	0x36, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x18, 0x01, 0x20, 0x01,
-	0x28, 0x09, 0x42, 0x18, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41,
-	0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x09, 0x61, 0x75,
-	0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x31, 0x0a, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d,
-	0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65,
-	0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x42, 0x04, 0xc8, 0xde,
-	0x1f, 0x00, 0x52, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x3a, 0x0e, 0x82, 0xe7, 0xb0, 0x2a,
-	0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x22, 0x19, 0x0a, 0x17, 0x4d, 0x73,
-	0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73,
-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x9e, 0x01, 0x0a, 0x09, 0x4d, 0x73, 0x67, 0x50, 0x61, 0x79,
-	0x6f, 0x75, 0x74, 0x12, 0x36, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79,
-	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d,
-	0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67,
-	0x52, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x45, 0x0a, 0x0c, 0x70,
-	0x61, 0x79, 0x6f, 0x75, 0x74, 0x5f, 0x70, 0x61, 0x69, 0x72, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28,
-	0x0b, 0x32, 0x17, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e,
-	0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x50, 0x61, 0x69, 0x72, 0x42, 0x09, 0xc8, 0xde, 0x1f, 0x00,
-	0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x0b, 0x70, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x50, 0x61, 0x69,
-	0x72, 0x73, 0x3a, 0x12, 0xe8, 0xa0, 0x1f, 0x00, 0x82, 0xe7, 0xb0, 0x2a, 0x09, 0x61, 0x75, 0x74,
-	0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x22, 0x9b, 0x01, 0x0a, 0x0a, 0x50, 0x61, 0x79, 0x6f, 0x75,
-	0x74, 0x50, 0x61, 0x69, 0x72, 0x12, 0x18, 0x0a, 0x07, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73,
-	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x12,
-	0x73, 0x0a, 0x04, 0x63, 0x6f, 0x69, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e,
-	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65,
-	0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x44, 0xc8, 0xde, 0x1f, 0x00, 0xfa, 0xde,
-	0x1f, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73,
-	0x6d, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74,
-	0x79, 0x70, 0x65, 0x73, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x9a, 0xe7, 0xb0, 0x2a, 0x0b, 0x6c, 0x65,
-	0x67, 0x61, 0x63, 0x79, 0x5f, 0x63, 0x6f, 0x69, 0x6e, 0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x04,
-	0x63, 0x6f, 0x69, 0x6e, 0x22, 0x13, 0x0a, 0x11, 0x4d, 0x73, 0x67, 0x50, 0x61, 0x79, 0x6f, 0x75,
-	0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0xe3, 0x01, 0x0a, 0x12, 0x4d, 0x73,
-	0x67, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65,
+var file_liftedinit_manifest_v1_tx_proto_rawDesc = []byte{
+	0x0a, 0x1f, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x6d, 0x61, 0x6e,
+	0x69, 0x66, 0x65, 0x73, 0x74, 0x2f, 0x76, 0x31, 0x2f, 0x74, 0x78, 0x2e, 0x70, 0x72, 0x6f, 0x74,
+	0x6f, 0x12, 0x16, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x6d, 0x61,
+	0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x1a, 0x17, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
+	0x73, 0x2f, 0x6d, 0x73, 0x67, 0x2f, 0x76, 0x31, 0x2f, 0x6d, 0x73, 0x67, 0x2e, 0x70, 0x72, 0x6f,
+	0x74, 0x6f, 0x1a, 0x24, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x6d,
+	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2f, 0x76, 0x31, 0x2f, 0x67, 0x65, 0x6e, 0x65, 0x73,
+	0x69, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x14, 0x67, 0x6f, 0x67, 0x6f, 0x70, 0x72,
+	0x6f, 0x74, 0x6f, 0x2f, 0x67, 0x6f, 0x67, 0x6f, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x19,
+	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x63, 0x6f, 0x73,
+	0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x1e, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
+	0x73, 0x2f, 0x62, 0x61, 0x73, 0x65, 0x2f, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2f, 0x63,
+	0x6f, 0x69, 0x6e, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x11, 0x61, 0x6d, 0x69, 0x6e, 0x6f,
+	0x2f, 0x61, 0x6d, 0x69, 0x6e, 0x6f, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0x97, 0x01, 0x0a,
+	0x0f, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73,
 	0x12, 0x36, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x18, 0x01, 0x20,
 	0x01, 0x28, 0x09, 0x42, 0x18, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e,
 	0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x09, 0x61,
-	0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x80, 0x01, 0x0a, 0x0a, 0x62, 0x75, 0x72,
-	0x6e, 0x5f, 0x63, 0x6f, 0x69, 0x6e, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e,
-	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65,
-	0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x46, 0xc8, 0xde, 0x1f, 0x00, 0xaa, 0xdf,
-	0x1f, 0x28, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73,
-	0x6d, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74,
-	0x79, 0x70, 0x65, 0x73, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x73, 0x9a, 0xe7, 0xb0, 0x2a, 0x0c, 0x6c,
-	0x65, 0x67, 0x61, 0x63, 0x79, 0x5f, 0x63, 0x6f, 0x69, 0x6e, 0x73, 0xa8, 0xe7, 0xb0, 0x2a, 0x01,
-	0x52, 0x09, 0x62, 0x75, 0x72, 0x6e, 0x43, 0x6f, 0x69, 0x6e, 0x73, 0x3a, 0x12, 0xe8, 0xa0, 0x1f,
-	0x00, 0x82, 0xe7, 0xb0, 0x2a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x22,
-	0x1c, 0x0a, 0x1a, 0x4d, 0x73, 0x67, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61,
-	0x6c, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0xff, 0x01,
-	0x0a, 0x03, 0x4d, 0x73, 0x67, 0x12, 0x52, 0x0a, 0x0c, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50,
-	0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x1c, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74,
-	0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72,
-	0x61, 0x6d, 0x73, 0x1a, 0x24, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76,
-	0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d,
-	0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x40, 0x0a, 0x06, 0x50, 0x61, 0x79,
-	0x6f, 0x75, 0x74, 0x12, 0x16, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76,
-	0x31, 0x2e, 0x4d, 0x73, 0x67, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x1a, 0x1e, 0x2e, 0x6d, 0x61,
+	0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x3c, 0x0a, 0x06, 0x70, 0x61, 0x72, 0x61,
+	0x6d, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1e, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65,
+	0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76,
+	0x31, 0x2e, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x42, 0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52, 0x06,
+	0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x3a, 0x0e, 0x82, 0xe7, 0xb0, 0x2a, 0x09, 0x61, 0x75, 0x74,
+	0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x22, 0x19, 0x0a, 0x17, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64,
+	0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x22, 0xa9, 0x01, 0x0a, 0x09, 0x4d, 0x73, 0x67, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x12,
+	0x36, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x09, 0x42, 0x18, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41,
+	0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x09, 0x61, 0x75,
+	0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x50, 0x0a, 0x0c, 0x70, 0x61, 0x79, 0x6f, 0x75,
+	0x74, 0x5f, 0x70, 0x61, 0x69, 0x72, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x22, 0x2e,
+	0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66,
+	0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x50, 0x61, 0x69,
+	0x72, 0x42, 0x09, 0xc8, 0xde, 0x1f, 0x00, 0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x0b, 0x70, 0x61,
+	0x79, 0x6f, 0x75, 0x74, 0x50, 0x61, 0x69, 0x72, 0x73, 0x3a, 0x12, 0xe8, 0xa0, 0x1f, 0x00, 0x82,
+	0xe7, 0xb0, 0x2a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x22, 0x9b, 0x01,
+	0x0a, 0x0a, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x50, 0x61, 0x69, 0x72, 0x12, 0x18, 0x0a, 0x07,
+	0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x61,
+	0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x12, 0x73, 0x0a, 0x04, 0x63, 0x6f, 0x69, 0x6e, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61,
+	0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42,
+	0x44, 0xc8, 0xde, 0x1f, 0x00, 0xfa, 0xde, 0x1f, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e,
+	0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
+	0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73, 0x2e, 0x43, 0x6f, 0x69, 0x6e,
+	0x9a, 0xe7, 0xb0, 0x2a, 0x0b, 0x6c, 0x65, 0x67, 0x61, 0x63, 0x79, 0x5f, 0x63, 0x6f, 0x69, 0x6e,
+	0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x04, 0x63, 0x6f, 0x69, 0x6e, 0x22, 0x13, 0x0a, 0x11, 0x4d,
+	0x73, 0x67, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x22, 0xe3, 0x01, 0x0a, 0x12, 0x4d, 0x73, 0x67, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64,
+	0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x12, 0x36, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f,
+	0x72, 0x69, 0x74, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xd2, 0xb4, 0x2d, 0x14,
+	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74,
+	0x72, 0x69, 0x6e, 0x67, 0x52, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12,
+	0x80, 0x01, 0x0a, 0x0a, 0x62, 0x75, 0x72, 0x6e, 0x5f, 0x63, 0x6f, 0x69, 0x6e, 0x73, 0x18, 0x02,
+	0x20, 0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61,
+	0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42,
+	0x46, 0xc8, 0xde, 0x1f, 0x00, 0xaa, 0xdf, 0x1f, 0x28, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e,
+	0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
+	0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73, 0x2e, 0x43, 0x6f, 0x69, 0x6e,
+	0x73, 0x9a, 0xe7, 0xb0, 0x2a, 0x0c, 0x6c, 0x65, 0x67, 0x61, 0x63, 0x79, 0x5f, 0x63, 0x6f, 0x69,
+	0x6e, 0x73, 0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x09, 0x62, 0x75, 0x72, 0x6e, 0x43, 0x6f, 0x69,
+	0x6e, 0x73, 0x3a, 0x12, 0xe8, 0xa0, 0x1f, 0x00, 0x82, 0xe7, 0xb0, 0x2a, 0x09, 0x61, 0x75, 0x74,
+	0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x22, 0x1c, 0x0a, 0x1a, 0x4d, 0x73, 0x67, 0x42, 0x75, 0x72,
+	0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x32, 0xc1, 0x02, 0x0a, 0x03, 0x4d, 0x73, 0x67, 0x12, 0x68, 0x0a, 0x0c,
+	0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x27, 0x2e, 0x6c,
+	0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65,
+	0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50,
+	0x61, 0x72, 0x61, 0x6d, 0x73, 0x1a, 0x2f, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e,
+	0x69, 0x74, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d,
+	0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x56, 0x0a, 0x06, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74,
+	0x12, 0x21, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x6d, 0x61,
 	0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x50, 0x61, 0x79,
-	0x6f, 0x75, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x5b, 0x0a, 0x0f, 0x42,
-	0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x12, 0x1f,
+	0x6f, 0x75, 0x74, 0x1a, 0x29, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74,
 	0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67,
-	0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x1a,
-	0x27, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73,
-	0x67, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x1a, 0x05, 0x80, 0xe7, 0xb0, 0x2a, 0x01, 0x42,
-	0xa9, 0x01, 0x0a, 0x0f, 0x63, 0x6f, 0x6d, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74,
-	0x2e, 0x76, 0x31, 0x42, 0x07, 0x54, 0x78, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x40,
-	0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x69, 0x66, 0x74, 0x65,
-	0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6c,
-	0x65, 0x64, 0x67, 0x65, 0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65,
-	0x73, 0x74, 0x2f, 0x76, 0x31, 0x3b, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x76, 0x31,
-	0xa2, 0x02, 0x03, 0x4d, 0x58, 0x58, 0xaa, 0x02, 0x0b, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73,
-	0x74, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x0b, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x5c,
-	0x56, 0x31, 0xe2, 0x02, 0x17, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x5c, 0x56, 0x31,
-	0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x0c, 0x4d,
-	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x3a, 0x3a, 0x56, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x33,
+	0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x71,
+	0x0a, 0x0f, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63,
+	0x65, 0x12, 0x2a, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x6d,
+	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x42, 0x75,
+	0x72, 0x6e, 0x48, 0x65, 0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x1a, 0x32, 0x2e,
+	0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66,
+	0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x42, 0x75, 0x72, 0x6e, 0x48, 0x65,
+	0x6c, 0x64, 0x42, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x1a, 0x05, 0x80, 0xe7, 0xb0, 0x2a, 0x01, 0x42, 0xec, 0x01, 0x0a, 0x1a, 0x63, 0x6f, 0x6d,
+	0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x6d, 0x61, 0x6e, 0x69,
+	0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x42, 0x07, 0x54, 0x78, 0x50, 0x72, 0x6f, 0x74, 0x6f,
+	0x50, 0x01, 0x5a, 0x4b, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c,
+	0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65,
+	0x73, 0x74, 0x2d, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x6c, 0x69,
+	0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73,
+	0x74, 0x2f, 0x76, 0x31, 0x3b, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x76, 0x31, 0xa2,
+	0x02, 0x03, 0x4c, 0x4d, 0x58, 0xaa, 0x02, 0x16, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e,
+	0x69, 0x74, 0x2e, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x56, 0x31, 0xca, 0x02,
+	0x16, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x4d, 0x61, 0x6e, 0x69,
+	0x66, 0x65, 0x73, 0x74, 0x5c, 0x56, 0x31, 0xe2, 0x02, 0x22, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64,
+	0x69, 0x6e, 0x69, 0x74, 0x5c, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x5c, 0x56, 0x31,
+	0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x18, 0x4c,
+	0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x3a, 0x3a, 0x4d, 0x61, 0x6e, 0x69, 0x66,
+	0x65, 0x73, 0x74, 0x3a, 0x3a, 0x56, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
-	file_manifest_v1_tx_proto_rawDescOnce sync.Once
-	file_manifest_v1_tx_proto_rawDescData = file_manifest_v1_tx_proto_rawDesc
+	file_liftedinit_manifest_v1_tx_proto_rawDescOnce sync.Once
+	file_liftedinit_manifest_v1_tx_proto_rawDescData = file_liftedinit_manifest_v1_tx_proto_rawDesc
 )
 
-func file_manifest_v1_tx_proto_rawDescGZIP() []byte {
-	file_manifest_v1_tx_proto_rawDescOnce.Do(func() {
-		file_manifest_v1_tx_proto_rawDescData = protoimpl.X.CompressGZIP(file_manifest_v1_tx_proto_rawDescData)
+func file_liftedinit_manifest_v1_tx_proto_rawDescGZIP() []byte {
+	file_liftedinit_manifest_v1_tx_proto_rawDescOnce.Do(func() {
+		file_liftedinit_manifest_v1_tx_proto_rawDescData = protoimpl.X.CompressGZIP(file_liftedinit_manifest_v1_tx_proto_rawDescData)
 	})
-	return file_manifest_v1_tx_proto_rawDescData
+	return file_liftedinit_manifest_v1_tx_proto_rawDescData
 }
 
-var file_manifest_v1_tx_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
-var file_manifest_v1_tx_proto_goTypes = []interface{}{
-	(*MsgUpdateParams)(nil),            // 0: manifest.v1.MsgUpdateParams
-	(*MsgUpdateParamsResponse)(nil),    // 1: manifest.v1.MsgUpdateParamsResponse
-	(*MsgPayout)(nil),                  // 2: manifest.v1.MsgPayout
-	(*PayoutPair)(nil),                 // 3: manifest.v1.PayoutPair
-	(*MsgPayoutResponse)(nil),          // 4: manifest.v1.MsgPayoutResponse
-	(*MsgBurnHeldBalance)(nil),         // 5: manifest.v1.MsgBurnHeldBalance
-	(*MsgBurnHeldBalanceResponse)(nil), // 6: manifest.v1.MsgBurnHeldBalanceResponse
-	(*Params)(nil),                     // 7: manifest.v1.Params
+var file_liftedinit_manifest_v1_tx_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_liftedinit_manifest_v1_tx_proto_goTypes = []interface{}{
+	(*MsgUpdateParams)(nil),            // 0: liftedinit.manifest.v1.MsgUpdateParams
+	(*MsgUpdateParamsResponse)(nil),    // 1: liftedinit.manifest.v1.MsgUpdateParamsResponse
+	(*MsgPayout)(nil),                  // 2: liftedinit.manifest.v1.MsgPayout
+	(*PayoutPair)(nil),                 // 3: liftedinit.manifest.v1.PayoutPair
+	(*MsgPayoutResponse)(nil),          // 4: liftedinit.manifest.v1.MsgPayoutResponse
+	(*MsgBurnHeldBalance)(nil),         // 5: liftedinit.manifest.v1.MsgBurnHeldBalance
+	(*MsgBurnHeldBalanceResponse)(nil), // 6: liftedinit.manifest.v1.MsgBurnHeldBalanceResponse
+	(*Params)(nil),                     // 7: liftedinit.manifest.v1.Params
 	(*types.Coin)(nil),                 // 8: cosmos.base.v1beta1.Coin
 }
-var file_manifest_v1_tx_proto_depIdxs = []int32{
-	7, // 0: manifest.v1.MsgUpdateParams.params:type_name -> manifest.v1.Params
-	3, // 1: manifest.v1.MsgPayout.payout_pairs:type_name -> manifest.v1.PayoutPair
-	8, // 2: manifest.v1.PayoutPair.coin:type_name -> cosmos.base.v1beta1.Coin
-	8, // 3: manifest.v1.MsgBurnHeldBalance.burn_coins:type_name -> cosmos.base.v1beta1.Coin
-	0, // 4: manifest.v1.Msg.UpdateParams:input_type -> manifest.v1.MsgUpdateParams
-	2, // 5: manifest.v1.Msg.Payout:input_type -> manifest.v1.MsgPayout
-	5, // 6: manifest.v1.Msg.BurnHeldBalance:input_type -> manifest.v1.MsgBurnHeldBalance
-	1, // 7: manifest.v1.Msg.UpdateParams:output_type -> manifest.v1.MsgUpdateParamsResponse
-	4, // 8: manifest.v1.Msg.Payout:output_type -> manifest.v1.MsgPayoutResponse
-	6, // 9: manifest.v1.Msg.BurnHeldBalance:output_type -> manifest.v1.MsgBurnHeldBalanceResponse
+var file_liftedinit_manifest_v1_tx_proto_depIdxs = []int32{
+	7, // 0: liftedinit.manifest.v1.MsgUpdateParams.params:type_name -> liftedinit.manifest.v1.Params
+	3, // 1: liftedinit.manifest.v1.MsgPayout.payout_pairs:type_name -> liftedinit.manifest.v1.PayoutPair
+	8, // 2: liftedinit.manifest.v1.PayoutPair.coin:type_name -> cosmos.base.v1beta1.Coin
+	8, // 3: liftedinit.manifest.v1.MsgBurnHeldBalance.burn_coins:type_name -> cosmos.base.v1beta1.Coin
+	0, // 4: liftedinit.manifest.v1.Msg.UpdateParams:input_type -> liftedinit.manifest.v1.MsgUpdateParams
+	2, // 5: liftedinit.manifest.v1.Msg.Payout:input_type -> liftedinit.manifest.v1.MsgPayout
+	5, // 6: liftedinit.manifest.v1.Msg.BurnHeldBalance:input_type -> liftedinit.manifest.v1.MsgBurnHeldBalance
+	1, // 7: liftedinit.manifest.v1.Msg.UpdateParams:output_type -> liftedinit.manifest.v1.MsgUpdateParamsResponse
+	4, // 8: liftedinit.manifest.v1.Msg.Payout:output_type -> liftedinit.manifest.v1.MsgPayoutResponse
+	6, // 9: liftedinit.manifest.v1.Msg.BurnHeldBalance:output_type -> liftedinit.manifest.v1.MsgBurnHeldBalanceResponse
 	7, // [7:10] is the sub-list for method output_type
 	4, // [4:7] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
@@ -3617,14 +3628,14 @@ var file_manifest_v1_tx_proto_depIdxs = []int32{
 	0, // [0:4] is the sub-list for field type_name
 }
 
-func init() { file_manifest_v1_tx_proto_init() }
-func file_manifest_v1_tx_proto_init() {
-	if File_manifest_v1_tx_proto != nil {
+func init() { file_liftedinit_manifest_v1_tx_proto_init() }
+func file_liftedinit_manifest_v1_tx_proto_init() {
+	if File_liftedinit_manifest_v1_tx_proto != nil {
 		return
 	}
-	file_manifest_v1_genesis_proto_init()
+	file_liftedinit_manifest_v1_genesis_proto_init()
 	if !protoimpl.UnsafeEnabled {
-		file_manifest_v1_tx_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+		file_liftedinit_manifest_v1_tx_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*MsgUpdateParams); i {
 			case 0:
 				return &v.state
@@ -3636,7 +3647,7 @@ func file_manifest_v1_tx_proto_init() {
 				return nil
 			}
 		}
-		file_manifest_v1_tx_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
+		file_liftedinit_manifest_v1_tx_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*MsgUpdateParamsResponse); i {
 			case 0:
 				return &v.state
@@ -3648,7 +3659,7 @@ func file_manifest_v1_tx_proto_init() {
 				return nil
 			}
 		}
-		file_manifest_v1_tx_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
+		file_liftedinit_manifest_v1_tx_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*MsgPayout); i {
 			case 0:
 				return &v.state
@@ -3660,7 +3671,7 @@ func file_manifest_v1_tx_proto_init() {
 				return nil
 			}
 		}
-		file_manifest_v1_tx_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+		file_liftedinit_manifest_v1_tx_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*PayoutPair); i {
 			case 0:
 				return &v.state
@@ -3672,7 +3683,7 @@ func file_manifest_v1_tx_proto_init() {
 				return nil
 			}
 		}
-		file_manifest_v1_tx_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+		file_liftedinit_manifest_v1_tx_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*MsgPayoutResponse); i {
 			case 0:
 				return &v.state
@@ -3684,7 +3695,7 @@ func file_manifest_v1_tx_proto_init() {
 				return nil
 			}
 		}
-		file_manifest_v1_tx_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+		file_liftedinit_manifest_v1_tx_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*MsgBurnHeldBalance); i {
 			case 0:
 				return &v.state
@@ -3696,7 +3707,7 @@ func file_manifest_v1_tx_proto_init() {
 				return nil
 			}
 		}
-		file_manifest_v1_tx_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
+		file_liftedinit_manifest_v1_tx_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*MsgBurnHeldBalanceResponse); i {
 			case 0:
 				return &v.state
@@ -3713,18 +3724,18 @@ func file_manifest_v1_tx_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: file_manifest_v1_tx_proto_rawDesc,
+			RawDescriptor: file_liftedinit_manifest_v1_tx_proto_rawDesc,
 			NumEnums:      0,
 			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_manifest_v1_tx_proto_goTypes,
-		DependencyIndexes: file_manifest_v1_tx_proto_depIdxs,
-		MessageInfos:      file_manifest_v1_tx_proto_msgTypes,
+		GoTypes:           file_liftedinit_manifest_v1_tx_proto_goTypes,
+		DependencyIndexes: file_liftedinit_manifest_v1_tx_proto_depIdxs,
+		MessageInfos:      file_liftedinit_manifest_v1_tx_proto_msgTypes,
 	}.Build()
-	File_manifest_v1_tx_proto = out.File
-	file_manifest_v1_tx_proto_rawDesc = nil
-	file_manifest_v1_tx_proto_goTypes = nil
-	file_manifest_v1_tx_proto_depIdxs = nil
+	File_liftedinit_manifest_v1_tx_proto = out.File
+	file_liftedinit_manifest_v1_tx_proto_rawDesc = nil
+	file_liftedinit_manifest_v1_tx_proto_goTypes = nil
+	file_liftedinit_manifest_v1_tx_proto_depIdxs = nil
 }

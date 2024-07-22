@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	ExternalGoCoverDir = "/tmp/manifest-ledger-coverage"
+	ExternalGoCoverDir = "/tmp/manifest-ledger-coverage/unit-e2e"
 )
 
 var (

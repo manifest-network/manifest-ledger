@@ -10,6 +10,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	accountkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 
@@ -21,8 +22,9 @@ type Keeper struct {
 
 	logger log.Logger
 
-	mintKeeper mintkeeper.Keeper
-	bankKeeper bankkeeper.Keeper
+	mintKeeper    mintkeeper.Keeper
+	bankKeeper    bankkeeper.Keeper
+	accountKeeper accountkeeper.AccountKeeper // for testing
 
 	// state management
 	Schema collections.Schema
@@ -74,6 +76,22 @@ func (k *Keeper) Logger() log.Logger {
 // SetAuthority is only used for testing
 func (k *Keeper) SetAuthority(authority string) {
 	k.authority = authority
+}
+
+func (k *Keeper) GetAuthority() string {
+	return k.authority
+}
+
+func (k *Keeper) GetBankKeeper() bankkeeper.Keeper {
+	return k.bankKeeper
+}
+
+func (k *Keeper) SetTestAccountKeeper(ak accountkeeper.AccountKeeper) {
+	k.accountKeeper = ak
+}
+
+func (k *Keeper) GetTestAccountKeeper() accountkeeper.AccountKeeper {
+	return k.accountKeeper
 }
 
 // ExportGenesis exports the module's state to a genesis state.

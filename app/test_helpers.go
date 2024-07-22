@@ -184,6 +184,7 @@ func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 		db,
 		nil,
 		true,
+		DefaultCommissionRateMinMax,
 		EmptyAppOptions{},
 		bam.SetChainID(SimAppChainID),
 		bam.SetSnapshot(snapshotStore, snapshottypes.SnapshotOptions{KeepRecent: 2}),
@@ -329,10 +330,10 @@ func NewTestNetworkFixture() network.TestFixture {
 	}
 	defer os.RemoveAll(dir)
 
-	app := NewApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true, simtestutil.NewAppOptionsWithFlagHome(dir))
+	app := NewApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true, DefaultCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(dir))
 	appCtr := func(val network.ValidatorI) servertypes.Application {
 		return NewApp(
-			val.GetCtx().Logger, dbm.NewMemDB(), nil, true,
+			val.GetCtx().Logger, dbm.NewMemDB(), nil, true, DefaultCommissionRateMinMax,
 			simtestutil.NewAppOptionsWithFlagHome(val.GetCtx().Config.RootDir),
 			bam.SetPruning(pruningtypes.NewPruningOptionsFromString(val.GetAppConfig().Pruning)),
 			bam.SetMinGasPrices(val.GetAppConfig().MinGasPrices),

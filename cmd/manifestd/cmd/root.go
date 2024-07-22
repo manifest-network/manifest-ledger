@@ -34,7 +34,7 @@ func NewRootCmd() *cobra.Command {
 	cfg.Seal()
 	// we "pre"-instantiate the application for getting the injected/configured encoding configuration
 	// note, this is not necessary when using app wiring, as depinject can be directly used (see root_v2.go)
-	tempApp := app.NewApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true, simtestutil.NewAppOptionsWithFlagHome(tempDir()))
+	tempApp := app.NewApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true, app.DefaultCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(tempDir()))
 	encodingConfig := params.EncodingConfig{
 		InterfaceRegistry: tempApp.InterfaceRegistry(),
 		Codec:             tempApp.AppCodec(),

@@ -26,6 +26,6 @@ func NewDefaultGenesisState(t *testing.T) GenesisState {
 	t.Helper()
 	// we "pre"-instantiate the application for getting the injected/configured encoding configuration
 	// note, this is not necessary when using app wiring, as depinject can be directly used (see root_v2.go)
-	tempApp := NewApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true, simtestutil.NewAppOptionsWithFlagHome(t.TempDir()))
+	tempApp := NewApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true, DefaultCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(t.TempDir()))
 	return tempApp.DefaultGenesis()
 }

@@ -42,6 +42,7 @@ import (
 	"cosmossdk.io/client/v2/autocli"
 	"cosmossdk.io/core/appmodule"
 	"cosmossdk.io/log"
+	sdkmath "cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
 	"cosmossdk.io/x/circuit"
 	circuitkeeper "cosmossdk.io/x/circuit/keeper"
@@ -151,9 +152,13 @@ func GetPoAAdmin() string {
 
 // We pull these out so we can set them with LDFLAGS in the Makefile
 var (
-	appName         = "manifest"
-	Bech32Prefix    = "manifest"
-	DefaultNodeHome = ".manifest"
+	AppName                     = "manifest"
+	Bech32Prefix                = "manifest"
+	DefaultNodeHome             = ".manifest"
+	DefaultCommissionRateMinMax = RateMinMax{
+		Floor: sdkmath.LegacyZeroDec(),
+		Ceil:  sdkmath.LegacyZeroDec(),
+	}
 
 	tokenFactoryCapabilities = []string{
 		tokenfactorytypes.EnableBurnFrom,
@@ -277,6 +282,7 @@ func NewApp(
 	db dbm.DB,
 	traceStore io.Writer,
 	loadLatest bool,
+	commissionRateMinMax RateMinMax,
 	appOpts servertypes.AppOptions,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *ManifestApp {
@@ -301,7 +307,7 @@ func NewApp(
 	std.RegisterLegacyAminoCodec(legacyAmino)
 	std.RegisterInterfaces(interfaceRegistry)
 
-	bApp := baseapp.NewBaseApp(appName, logger, db, txConfig.TxDecoder(), baseAppOptions...)
+	bApp := baseapp.NewBaseApp(AppName, logger, db, txConfig.TxDecoder(), baseAppOptions...)
 	bApp.SetCommitMultiStoreTracer(traceStore)
 	bApp.SetVersion(version.Version)
 	bApp.SetInterfaceRegistry(interfaceRegistry)
@@ -433,6 +439,7 @@ func NewApp(
 		app.BankKeeper,
 		logger,
 	)
+	app.POAKeeper.SetTestAccountKeeper(app.AccountKeeper)
 
 	invCheckPeriod := cast.ToUint(appOpts.Get(server.FlagInvCheckPeriod))
 	app.CrisisKeeper = crisiskeeper.NewKeeper(
@@ -558,6 +565,7 @@ func NewApp(
 		logger,
 		GetPoAAdmin(),
 	)
+	app.ManifestKeeper.SetTestAccountKeeper(app.AccountKeeper)
 
 	// Create the TokenFactory Keeper
 	app.TokenFactoryKeeper = tokenfactorykeeper.NewKeeper(
@@ -820,7 +828,6 @@ func NewApp(
 		authtypes.ModuleName: auth.NewAppModule(app.appCodec, app.AccountKeeper, authsims.RandomGenesisAccounts, app.GetSubspace(authtypes.ModuleName)),
 	}
 	app.sm = module.NewSimulationManagerFromAppModules(app.ModuleManager.Modules, overrideModules)
-
 	app.sm.RegisterStoreDecoders()
 
 	// initialize stores
@@ -840,7 +847,7 @@ func NewApp(
 	app.ScopedICAHostKeeper = scopedICAHostKeeper
 	app.ScopedICAControllerKeeper = scopedICAControllerKeeper
 
-	app.setAnteHandler(txConfig)
+	app.setAnteHandler(txConfig, commissionRateMinMax)
 
 	// In v0.46, the SDK introduces _postHandlers_. PostHandlers are like
 	// antehandlers, but are run _after_ the `runMsgs` execution. They are also
@@ -884,7 +891,7 @@ func NewApp(
 	return app
 }
 
-func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig) {
+func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, commissionRateMinMax RateMinMax) {
 	anteHandler, err := NewAnteHandler(
 		HandlerOptions{
 			HandlerOptions: ante.HandlerOptions{
@@ -896,6 +903,7 @@ func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig) {
 			},
 			IBCKeeper:     app.IBCKeeper,
 			CircuitKeeper: &app.CircuitKeeper,
+			RateMinMax:    commissionRateMinMax,
 		},
 	)
 	if err != nil {

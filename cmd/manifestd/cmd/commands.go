@@ -207,7 +207,7 @@ func newApp(
 	baseappOptions := server.DefaultBaseappOptions(appOpts)
 
 	return app.NewApp(
-		logger, db, traceStore, true,
+		logger, db, traceStore, true, app.DefaultCommissionRateMinMax,
 		appOpts,
 		baseappOptions...,
 	)
@@ -242,13 +242,13 @@ func appExport(
 	appOpts = viperAppOpts
 
 	if height != -1 {
-		chainApp = app.NewApp(logger, db, traceStore, false, appOpts)
+		chainApp = app.NewApp(logger, db, traceStore, false, app.DefaultCommissionRateMinMax, appOpts)
 
 		if err := chainApp.LoadHeight(height); err != nil {
 			return servertypes.ExportedApp{}, err
 		}
 	} else {
-		chainApp = app.NewApp(logger, db, traceStore, true, appOpts)
+		chainApp = app.NewApp(logger, db, traceStore, true, app.DefaultCommissionRateMinMax, appOpts)
 	}
 
 	return chainApp.ExportAppStateAndValidators(forZeroHeight, jailAllowedAddrs, modulesToExport)

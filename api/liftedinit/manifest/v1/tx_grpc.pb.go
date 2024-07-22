@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             (unknown)
-// source: manifest/v1/tx.proto
+// source: liftedinit/manifest/v1/tx.proto
 
 package manifestv1
 
@@ -19,9 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Msg_UpdateParams_FullMethodName    = "/manifest.v1.Msg/UpdateParams"
-	Msg_Payout_FullMethodName          = "/manifest.v1.Msg/Payout"
-	Msg_BurnHeldBalance_FullMethodName = "/manifest.v1.Msg/BurnHeldBalance"
+	Msg_UpdateParams_FullMethodName    = "/liftedinit.manifest.v1.Msg/UpdateParams"
+	Msg_Payout_FullMethodName          = "/liftedinit.manifest.v1.Msg/Payout"
+	Msg_BurnHeldBalance_FullMethodName = "/liftedinit.manifest.v1.Msg/BurnHeldBalance"
 )
 
 // MsgClient is the client API for Msg service.
@@ -172,7 +172,7 @@ func _Msg_BurnHeldBalance_Handler(srv interface{}, ctx context.Context, dec func
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Msg_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "manifest.v1.Msg",
+	ServiceName: "liftedinit.manifest.v1.Msg",
 	HandlerType: (*MsgServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -189,5 +189,5 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "manifest/v1/tx.proto",
+	Metadata: "liftedinit/manifest/v1/tx.proto",
 }

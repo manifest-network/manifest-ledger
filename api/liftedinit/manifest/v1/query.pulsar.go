@@ -18,8 +18,8 @@ var (
 )
 
 func init() {
-	file_manifest_v1_query_proto_init()
-	md_QueryParamsRequest = File_manifest_v1_query_proto.Messages().ByName("QueryParamsRequest")
+	file_liftedinit_manifest_v1_query_proto_init()
+	md_QueryParamsRequest = File_liftedinit_manifest_v1_query_proto.Messages().ByName("QueryParamsRequest")
 }
 
 var _ protoreflect.Message = (*fastReflection_QueryParamsRequest)(nil)
@@ -31,7 +31,7 @@ func (x *QueryParamsRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryParamsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_manifest_v1_query_proto_msgTypes[0]
+	mi := &file_liftedinit_manifest_v1_query_proto_msgTypes[0]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -104,9 +104,9 @@ func (x *fastReflection_QueryParamsRequest) Has(fd protoreflect.FieldDescriptor)
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.QueryParamsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.QueryParamsRequest"))
 		}
-		panic(fmt.Errorf("message manifest.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -120,9 +120,9 @@ func (x *fastReflection_QueryParamsRequest) Clear(fd protoreflect.FieldDescripto
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.QueryParamsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.QueryParamsRequest"))
 		}
-		panic(fmt.Errorf("message manifest.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -136,9 +136,9 @@ func (x *fastReflection_QueryParamsRequest) Get(descriptor protoreflect.FieldDes
 	switch descriptor.FullName() {
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.QueryParamsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.QueryParamsRequest"))
 		}
-		panic(fmt.Errorf("message manifest.v1.QueryParamsRequest does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.QueryParamsRequest does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -156,9 +156,9 @@ func (x *fastReflection_QueryParamsRequest) Set(fd protoreflect.FieldDescriptor,
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.QueryParamsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.QueryParamsRequest"))
 		}
-		panic(fmt.Errorf("message manifest.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -176,9 +176,9 @@ func (x *fastReflection_QueryParamsRequest) Mutable(fd protoreflect.FieldDescrip
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.QueryParamsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.QueryParamsRequest"))
 		}
-		panic(fmt.Errorf("message manifest.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -189,9 +189,9 @@ func (x *fastReflection_QueryParamsRequest) NewField(fd protoreflect.FieldDescri
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.QueryParamsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.QueryParamsRequest"))
 		}
-		panic(fmt.Errorf("message manifest.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -201,7 +201,7 @@ func (x *fastReflection_QueryParamsRequest) NewField(fd protoreflect.FieldDescri
 func (x *fastReflection_QueryParamsRequest) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in manifest.v1.QueryParamsRequest", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.manifest.v1.QueryParamsRequest", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -375,8 +375,8 @@ var (
 )
 
 func init() {
-	file_manifest_v1_query_proto_init()
-	md_QueryParamsResponse = File_manifest_v1_query_proto.Messages().ByName("QueryParamsResponse")
+	file_liftedinit_manifest_v1_query_proto_init()
+	md_QueryParamsResponse = File_liftedinit_manifest_v1_query_proto.Messages().ByName("QueryParamsResponse")
 	fd_QueryParamsResponse_params = md_QueryParamsResponse.Fields().ByName("params")
 }
 
@@ -389,7 +389,7 @@ func (x *QueryParamsResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryParamsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_manifest_v1_query_proto_msgTypes[1]
+	mi := &file_liftedinit_manifest_v1_query_proto_msgTypes[1]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -466,13 +466,13 @@ func (x *fastReflection_QueryParamsResponse) Range(f func(protoreflect.FieldDesc
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_QueryParamsResponse) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "manifest.v1.QueryParamsResponse.params":
+	case "liftedinit.manifest.v1.QueryParamsResponse.params":
 		return x.Params != nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.QueryParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.QueryParamsResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -484,13 +484,13 @@ func (x *fastReflection_QueryParamsResponse) Has(fd protoreflect.FieldDescriptor
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryParamsResponse) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "manifest.v1.QueryParamsResponse.params":
+	case "liftedinit.manifest.v1.QueryParamsResponse.params":
 		x.Params = nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.QueryParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.QueryParamsResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -502,14 +502,14 @@ func (x *fastReflection_QueryParamsResponse) Clear(fd protoreflect.FieldDescript
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_QueryParamsResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "manifest.v1.QueryParamsResponse.params":
+	case "liftedinit.manifest.v1.QueryParamsResponse.params":
 		value := x.Params
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.QueryParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.QueryParamsResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.QueryParamsResponse does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.QueryParamsResponse does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -525,13 +525,13 @@ func (x *fastReflection_QueryParamsResponse) Get(descriptor protoreflect.FieldDe
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryParamsResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "manifest.v1.QueryParamsResponse.params":
+	case "liftedinit.manifest.v1.QueryParamsResponse.params":
 		x.Params = value.Message().Interface().(*Params)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.QueryParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.QueryParamsResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -547,16 +547,16 @@ func (x *fastReflection_QueryParamsResponse) Set(fd protoreflect.FieldDescriptor
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryParamsResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "manifest.v1.QueryParamsResponse.params":
+	case "liftedinit.manifest.v1.QueryParamsResponse.params":
 		if x.Params == nil {
 			x.Params = new(Params)
 		}
 		return protoreflect.ValueOfMessage(x.Params.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.QueryParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.QueryParamsResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -565,14 +565,14 @@ func (x *fastReflection_QueryParamsResponse) Mutable(fd protoreflect.FieldDescri
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_QueryParamsResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "manifest.v1.QueryParamsResponse.params":
+	case "liftedinit.manifest.v1.QueryParamsResponse.params":
 		m := new(Params)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: manifest.v1.QueryParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.QueryParamsResponse"))
 		}
-		panic(fmt.Errorf("message manifest.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.manifest.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -582,7 +582,7 @@ func (x *fastReflection_QueryParamsResponse) NewField(fd protoreflect.FieldDescr
 func (x *fastReflection_QueryParamsResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in manifest.v1.QueryParamsResponse", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.manifest.v1.QueryParamsResponse", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -808,7 +808,7 @@ func (x *fastReflection_QueryParamsResponse) ProtoMethods() *protoiface.Methods 
 // versions:
 // 	protoc-gen-go v1.27.0
 // 	protoc        (unknown)
-// source: manifest/v1/query.proto
+// source: liftedinit/manifest/v1/query.proto
 
 const (
 	// Verify that this generated code is sufficiently up-to-date.
@@ -827,7 +827,7 @@ type QueryParamsRequest struct {
 func (x *QueryParamsRequest) Reset() {
 	*x = QueryParamsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_manifest_v1_query_proto_msgTypes[0]
+		mi := &file_liftedinit_manifest_v1_query_proto_msgTypes[0]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -841,7 +841,7 @@ func (*QueryParamsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryParamsRequest.ProtoReflect.Descriptor instead.
 func (*QueryParamsRequest) Descriptor() ([]byte, []int) {
-	return file_manifest_v1_query_proto_rawDescGZIP(), []int{0}
+	return file_liftedinit_manifest_v1_query_proto_rawDescGZIP(), []int{0}
 }
 
 // QueryParamsResponse is the response type for the Query/Params RPC method.
@@ -857,7 +857,7 @@ type QueryParamsResponse struct {
 func (x *QueryParamsResponse) Reset() {
 	*x = QueryParamsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_manifest_v1_query_proto_msgTypes[1]
+		mi := &file_liftedinit_manifest_v1_query_proto_msgTypes[1]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -871,7 +871,7 @@ func (*QueryParamsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryParamsResponse.ProtoReflect.Descriptor instead.
 func (*QueryParamsResponse) Descriptor() ([]byte, []int) {
-	return file_manifest_v1_query_proto_rawDescGZIP(), []int{1}
+	return file_liftedinit_manifest_v1_query_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *QueryParamsResponse) GetParams() *Params {
@@ -881,64 +881,72 @@ func (x *QueryParamsResponse) GetParams() *Params {
 	return nil
 }
 
-var File_manifest_v1_query_proto protoreflect.FileDescriptor
+var File_liftedinit_manifest_v1_query_proto protoreflect.FileDescriptor
 
-var file_manifest_v1_query_proto_rawDesc = []byte{
-	0x0a, 0x17, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2f, 0x76, 0x31, 0x2f, 0x71, 0x75,
-	0x65, 0x72, 0x79, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x12, 0x0b, 0x6d, 0x61, 0x6e, 0x69, 0x66,
-	0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x1a, 0x1c, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2f, 0x61,
-	0x70, 0x69, 0x2f, 0x61, 0x6e, 0x6e, 0x6f, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x2e, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x19, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2f, 0x76,
-	0x31, 0x2f, 0x67, 0x65, 0x6e, 0x65, 0x73, 0x69, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22,
-	0x14, 0x0a, 0x12, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65,
-	0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x42, 0x0a, 0x13, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x61,
-	0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2b, 0x0a, 0x06,
-	0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x6d,
-	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x72, 0x61, 0x6d,
-	0x73, 0x52, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x32, 0x71, 0x0a, 0x05, 0x51, 0x75, 0x65,
-	0x72, 0x79, 0x12, 0x68, 0x0a, 0x06, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x1f, 0x2e, 0x6d,
-	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79,
-	0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x20, 0x2e,
-	0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72,
-	0x79, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22,
-	0x1b, 0x82, 0xd3, 0xe4, 0x93, 0x02, 0x15, 0x12, 0x13, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65,
-	0x73, 0x74, 0x2f, 0x76, 0x31, 0x2f, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x42, 0xac, 0x01, 0x0a,
-	0x0f, 0x63, 0x6f, 0x6d, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31,
-	0x42, 0x0a, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x40,
-	0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x69, 0x66, 0x74, 0x65,
-	0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6c,
-	0x65, 0x64, 0x67, 0x65, 0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65,
-	0x73, 0x74, 0x2f, 0x76, 0x31, 0x3b, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x76, 0x31,
-	0xa2, 0x02, 0x03, 0x4d, 0x58, 0x58, 0xaa, 0x02, 0x0b, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73,
-	0x74, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x0b, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x5c,
-	0x56, 0x31, 0xe2, 0x02, 0x17, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x5c, 0x56, 0x31,
-	0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x0c, 0x4d,
-	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x3a, 0x3a, 0x56, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x33,
+var file_liftedinit_manifest_v1_query_proto_rawDesc = []byte{
+	0x0a, 0x22, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x6d, 0x61, 0x6e,
+	0x69, 0x66, 0x65, 0x73, 0x74, 0x2f, 0x76, 0x31, 0x2f, 0x71, 0x75, 0x65, 0x72, 0x79, 0x2e, 0x70,
+	0x72, 0x6f, 0x74, 0x6f, 0x12, 0x16, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74,
+	0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x1a, 0x1c, 0x67, 0x6f,
+	0x6f, 0x67, 0x6c, 0x65, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x61, 0x6e, 0x6e, 0x6f, 0x74, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x24, 0x6c, 0x69, 0x66, 0x74,
+	0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2f,
+	0x76, 0x31, 0x2f, 0x67, 0x65, 0x6e, 0x65, 0x73, 0x69, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x22, 0x14, 0x0a, 0x12, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x4d, 0x0a, 0x13, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50,
+	0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x36, 0x0a,
+	0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1e, 0x2e,
+	0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66,
+	0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x06, 0x70,
+	0x61, 0x72, 0x61, 0x6d, 0x73, 0x32, 0x87, 0x01, 0x0a, 0x05, 0x51, 0x75, 0x65, 0x72, 0x79, 0x12,
+	0x7e, 0x0a, 0x06, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x2a, 0x2e, 0x6c, 0x69, 0x66, 0x74,
+	0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e,
+	0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2b, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e,
+	0x69, 0x74, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x2e, 0x51,
+	0x75, 0x65, 0x72, 0x79, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x22, 0x1b, 0x82, 0xd3, 0xe4, 0x93, 0x02, 0x15, 0x12, 0x13, 0x2f, 0x6d, 0x61, 0x6e,
+	0x69, 0x66, 0x65, 0x73, 0x74, 0x2f, 0x76, 0x31, 0x2f, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x42,
+	0xef, 0x01, 0x0a, 0x1a, 0x63, 0x6f, 0x6d, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e,
+	0x69, 0x74, 0x2e, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x76, 0x31, 0x42, 0x0a,
+	0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x4b, 0x67, 0x69,
+	0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69,
+	0x6e, 0x69, 0x74, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6c, 0x65, 0x64,
+	0x67, 0x65, 0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e,
+	0x69, 0x74, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2f, 0x76, 0x31, 0x3b, 0x6d,
+	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x4c, 0x4d, 0x58, 0xaa,
+	0x02, 0x16, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x4d, 0x61, 0x6e,
+	0x69, 0x66, 0x65, 0x73, 0x74, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x16, 0x4c, 0x69, 0x66, 0x74, 0x65,
+	0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x5c, 0x56,
+	0x31, 0xe2, 0x02, 0x22, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x4d,
+	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x5c, 0x56, 0x31, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65,
+	0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x18, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69,
+	0x6e, 0x69, 0x74, 0x3a, 0x3a, 0x4d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x3a, 0x3a, 0x56,
+	0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
-	file_manifest_v1_query_proto_rawDescOnce sync.Once
-	file_manifest_v1_query_proto_rawDescData = file_manifest_v1_query_proto_rawDesc
+	file_liftedinit_manifest_v1_query_proto_rawDescOnce sync.Once
+	file_liftedinit_manifest_v1_query_proto_rawDescData = file_liftedinit_manifest_v1_query_proto_rawDesc
 )
 
-func file_manifest_v1_query_proto_rawDescGZIP() []byte {
-	file_manifest_v1_query_proto_rawDescOnce.Do(func() {
-		file_manifest_v1_query_proto_rawDescData = protoimpl.X.CompressGZIP(file_manifest_v1_query_proto_rawDescData)
+func file_liftedinit_manifest_v1_query_proto_rawDescGZIP() []byte {
+	file_liftedinit_manifest_v1_query_proto_rawDescOnce.Do(func() {
+		file_liftedinit_manifest_v1_query_proto_rawDescData = protoimpl.X.CompressGZIP(file_liftedinit_manifest_v1_query_proto_rawDescData)
 	})
-	return file_manifest_v1_query_proto_rawDescData
+	return file_liftedinit_manifest_v1_query_proto_rawDescData
 }
 
-var file_manifest_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_manifest_v1_query_proto_goTypes = []interface{}{
-	(*QueryParamsRequest)(nil),  // 0: manifest.v1.QueryParamsRequest
-	(*QueryParamsResponse)(nil), // 1: manifest.v1.QueryParamsResponse
-	(*Params)(nil),              // 2: manifest.v1.Params
+var file_liftedinit_manifest_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_liftedinit_manifest_v1_query_proto_goTypes = []interface{}{
+	(*QueryParamsRequest)(nil),  // 0: liftedinit.manifest.v1.QueryParamsRequest
+	(*QueryParamsResponse)(nil), // 1: liftedinit.manifest.v1.QueryParamsResponse
+	(*Params)(nil),              // 2: liftedinit.manifest.v1.Params
 }
-var file_manifest_v1_query_proto_depIdxs = []int32{
-	2, // 0: manifest.v1.QueryParamsResponse.params:type_name -> manifest.v1.Params
-	0, // 1: manifest.v1.Query.Params:input_type -> manifest.v1.QueryParamsRequest
-	1, // 2: manifest.v1.Query.Params:output_type -> manifest.v1.QueryParamsResponse
+var file_liftedinit_manifest_v1_query_proto_depIdxs = []int32{
+	2, // 0: liftedinit.manifest.v1.QueryParamsResponse.params:type_name -> liftedinit.manifest.v1.Params
+	0, // 1: liftedinit.manifest.v1.Query.Params:input_type -> liftedinit.manifest.v1.QueryParamsRequest
+	1, // 2: liftedinit.manifest.v1.Query.Params:output_type -> liftedinit.manifest.v1.QueryParamsResponse
 	2, // [2:3] is the sub-list for method output_type
 	1, // [1:2] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
@@ -946,14 +954,14 @@ var file_manifest_v1_query_proto_depIdxs = []int32{
 	0, // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_manifest_v1_query_proto_init() }
-func file_manifest_v1_query_proto_init() {
-	if File_manifest_v1_query_proto != nil {
+func init() { file_liftedinit_manifest_v1_query_proto_init() }
+func file_liftedinit_manifest_v1_query_proto_init() {
+	if File_liftedinit_manifest_v1_query_proto != nil {
 		return
 	}
-	file_manifest_v1_genesis_proto_init()
+	file_liftedinit_manifest_v1_genesis_proto_init()
 	if !protoimpl.UnsafeEnabled {
-		file_manifest_v1_query_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+		file_liftedinit_manifest_v1_query_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*QueryParamsRequest); i {
 			case 0:
 				return &v.state
@@ -965,7 +973,7 @@ func file_manifest_v1_query_proto_init() {
 				return nil
 			}
 		}
-		file_manifest_v1_query_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
+		file_liftedinit_manifest_v1_query_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*QueryParamsResponse); i {
 			case 0:
 				return &v.state
@@ -982,18 +990,18 @@ func file_manifest_v1_query_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: file_manifest_v1_query_proto_rawDesc,
+			RawDescriptor: file_liftedinit_manifest_v1_query_proto_rawDesc,
 			NumEnums:      0,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_manifest_v1_query_proto_goTypes,
-		DependencyIndexes: file_manifest_v1_query_proto_depIdxs,
-		MessageInfos:      file_manifest_v1_query_proto_msgTypes,
+		GoTypes:           file_liftedinit_manifest_v1_query_proto_goTypes,
+		DependencyIndexes: file_liftedinit_manifest_v1_query_proto_depIdxs,
+		MessageInfos:      file_liftedinit_manifest_v1_query_proto_msgTypes,
 	}.Build()
-	File_manifest_v1_query_proto = out.File
-	file_manifest_v1_query_proto_rawDesc = nil
-	file_manifest_v1_query_proto_goTypes = nil
-	file_manifest_v1_query_proto_depIdxs = nil
+	File_liftedinit_manifest_v1_query_proto = out.File
+	file_liftedinit_manifest_v1_query_proto_rawDesc = nil
+	file_liftedinit_manifest_v1_query_proto_goTypes = nil
+	file_liftedinit_manifest_v1_query_proto_depIdxs = nil
 }
