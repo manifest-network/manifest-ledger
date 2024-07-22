@@ -183,7 +183,7 @@ coverage: ## Run coverage report
 	@go tool cover -html=${COV_ROOT}/coverage-merged-filtered.out -o coverage.html
 	@echo "--> Coverage report available at coverage.html"
 	@echo "--> Cleaning up coverage files"
-#	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/*
+	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/*
 	@echo "--> Running coverage complete"
 
 .PHONY: coverage
