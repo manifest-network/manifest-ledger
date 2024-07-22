@@ -28,6 +28,4 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4.3.0
         with:
-          file: coverage-filtered.out
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          file: /tmp/manifest-ledger-coverage/coverage-merged-filtered.out
