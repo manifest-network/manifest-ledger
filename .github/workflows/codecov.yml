@@ -26,8 +26,9 @@ jobs:
       - name: Run coverage
         run: make coverage
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4.3.0
+        uses: codecov/codecov-action@v4
         with:
-          file: coverage-filtered.out
+          file: /tmp/manifest-ledger-coverage/coverage-merged-filtered.out
+          token: ${{ secrets.CODECOV_TOKEN }}
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
