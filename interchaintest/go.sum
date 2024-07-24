@@ -353,8 +353,8 @@ github.com/cockroachdb/redact v1.1.5/go.mod h1:BVNblN9mBWFyMyqK1k3AAiSxhvhfK2oOZ
 github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 h1:zuQyyAKVxetITBuuhv3BI9cMrmStnpT18zmgmTxunpo=
 github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06/go.mod h1:7nc4anLGjupUW/PeY5qiNYsdNXj7zopG+eqsS7To5IQ=
 github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd/go.mod h1:sE/e/2PUdi/liOCUjSTXgM1o87ZssimdTWN964YiIeI=
-github.com/cometbft/cometbft v0.38.9 h1:cJBJBG0mPKz+sqelCi/hlfZjadZQGdDNnu6YQ1ZsUHQ=
-github.com/cometbft/cometbft v0.38.9/go.mod h1:xOoGZrtUT+A5izWfHSJgl0gYZUE7lu7Z2XIS1vWG/QQ=
+github.com/cometbft/cometbft v0.38.10 h1:2ePuglchT+j0Iao+cfmt/nw5U7K2lnGDzXSUPGVdXaU=
+github.com/cometbft/cometbft v0.38.10/go.mod h1:jHPx9vQpWzPHEAiYI/7EDKaB1NXhK6o3SArrrY8ExKc=
 github.com/cometbft/cometbft-db v0.12.0 h1:v77/z0VyfSU7k682IzZeZPFZrQAKiQwkqGN0QzAjMi0=
 github.com/cometbft/cometbft-db v0.12.0/go.mod h1:aX2NbCrjNVd2ZajYxt1BsiFf/Z+TQ2MN0VxdicheYuw=
 github.com/containerd/continuity v0.3.0 h1:nisirsYROK15TAMVukJOUyGJjz4BNQJBVsNvAXZJ/eg=
@@ -1047,8 +1047,8 @@ github.com/strangelove-ventures/interchaintest/v8 v8.5.1-0.20240715163423-cbcd20
 github.com/strangelove-ventures/interchaintest/v8 v8.5.1-0.20240715163423-cbcd20f44321/go.mod h1:UPMvR1joIXO8RMxDozoHIInLZWmd2345PSGLJYWyrwY=
 github.com/strangelove-ventures/poa v0.50.3-0.20240720145936-3595e3d47ba0 h1:9h8TJL5qnTrYOyJmT2xQzUrrLv4cfLmgfvTtTUoBmHY=
 github.com/strangelove-ventures/poa v0.50.3-0.20240720145936-3595e3d47ba0/go.mod h1:0cOydjyn8T6gZKvLkpXgBYVD636od00GmCddaoOkS2E=
-github.com/strangelove-ventures/tokenfactory v0.50.2 h1:Bb6xKHzd+VIJgQpjLc7wuvqnWXmBo1+FllwzF5sIgMI=
-github.com/strangelove-ventures/tokenfactory v0.50.2/go.mod h1:VIByIP8F8jJz8Exk8RrPwJZnyhAnvD6dD7a6tqHOcGY=
+github.com/strangelove-ventures/tokenfactory v0.50.3 h1:MccxHYUHjMHDOxcmx/HJs1mU4zVhli1f4sz3126Wzr8=
+github.com/strangelove-ventures/tokenfactory v0.50.3/go.mod h1:z0hlFofihDchAZxyzu0P/XxM+FSUAC+RmncklvTdcDg=
 github.com/streadway/amqp v0.0.0-20190404075320-75d898a42a94/go.mod h1:AZpEONHx3DKn8O/DFsRAY58/XVQiIPMTMB1SddzLXVw=
 github.com/streadway/amqp v0.0.0-20190827072141-edfb9018d271/go.mod h1:AZpEONHx3DKn8O/DFsRAY58/XVQiIPMTMB1SddzLXVw=
 github.com/streadway/handy v0.0.0-20190108123426-d5acb3125c2a/go.mod h1:qNTQ5P5JnDBl6z3cMAg/SywNDC5ABu5ApDIw6lUbRmI=
