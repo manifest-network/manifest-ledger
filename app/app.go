@@ -141,13 +141,11 @@ import (
 )
 
 func GetPoAAdmin() string {
-	// used only in e2e testing with interchaintest
-	if address := os.Getenv("POA_ADMIN_ADDRESS"); address != "" {
-		return address
+	if addr := os.Getenv("POA_ADMIN_ADDRESS"); addr != "" {
+		return addr
 	}
 
-	// !IMPORTANT: testnet only (reece's addr). Change this to a mainnet address
-	return "manifest10r39fueph9fq7a6lgswu4zdsg8t3gxlqdwwncm"
+	panic("POA_ADMIN_ADDRESS environment variable not set")
 }
 
 // We pull these out so we can set them with LDFLAGS in the Makefile
@@ -438,6 +436,7 @@ func NewApp(
 		app.SlashingKeeper,
 		app.BankKeeper,
 		logger,
+		GetPoAAdmin(),
 	)
 	app.POAKeeper.SetTestAccountKeeper(app.AccountKeeper)
 

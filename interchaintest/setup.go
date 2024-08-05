@@ -1,6 +1,8 @@
 package interchaintest
 
 import (
+	"fmt"
+
 	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
 	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
@@ -34,8 +36,6 @@ var (
 	acc4Addr     = "manifest1g292xgmcclhq4au5p7580m2s3f8tpwjra644jm"
 	acc4Mnemonic = "myself bamboo retire day exile cancel peanut agree come method odor innocent welcome royal engage key surprise practice capable sauce orient young divert mirror"
 
-	CosmosGovModuleAcc = "manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm"
-
 	vals      = 2
 	fullNodes = 0
 
@@ -48,8 +48,6 @@ var (
 		// TokenFactory
 		cosmos.NewGenesisKV("app_state.tokenfactory.params.denom_creation_fee", nil),
 		cosmos.NewGenesisKV("app_state.tokenfactory.params.denom_creation_gas_consume", "1"),
-		// PoA
-		cosmos.NewGenesisKV("app_state.poa.params.admins", []string{CosmosGovModuleAcc, accAddr}),
 		// Mint - this is the only param the manifest module depends on from mint
 		cosmos.NewGenesisKV("app_state.mint.params.blocks_per_year", "6311520"),
 	}
@@ -59,6 +57,9 @@ var (
 		Type:    "cosmos",
 		Name:    "manifest",
 		ChainID: "manifest-2",
+		Env: []string{
+			fmt.Sprintf("POA_ADMIN_ADDRESS=%s", accAddr),
+		},
 		Images: []ibc.DockerImage{
 			{
 				Repository: "manifest",

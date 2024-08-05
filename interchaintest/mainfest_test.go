@@ -24,9 +24,6 @@ func TestManifestModule(t *testing.T) {
 	ctx := context.Background()
 
 	cfgA := LocalChainConfig
-	cfgA.Env = []string{
-		fmt.Sprintf("POA_ADMIN_ADDRESS=%s", accAddr),
-	}
 	cfgA.WithCodeCoverage()
 
 	cf := interchaintest.NewBuiltinChainFactory(zaptest.NewLogger(t, zaptest.Level(zapcore.DebugLevel)), []*interchaintest.ChainSpec{
