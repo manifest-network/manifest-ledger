@@ -140,12 +140,14 @@ import (
 	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
 
+// GetPoAAdmin returns the address of the PoA admin.
+// The default PoA admin is the governance module account.
 func GetPoAAdmin() string {
 	if addr := os.Getenv("POA_ADMIN_ADDRESS"); addr != "" {
 		return addr
 	}
 
-	panic("POA_ADMIN_ADDRESS environment variable not set")
+	return authtypes.NewModuleAddress(govtypes.ModuleName).String()
 }
 
 // We pull these out so we can set them with LDFLAGS in the Makefile
