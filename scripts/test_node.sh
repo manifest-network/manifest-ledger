@@ -3,7 +3,7 @@
 #
 # Example:
 # POA_ADMIN_ADDRESS=manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct CHAIN_ID="local-1" HOME_DIR="~/.manifest" TIMEOUT_COMMIT="500ms" CLEAN=true sh scripts/test_node.sh
-# CHAIN_ID="local-2" HOME_DIR="~/.manifest2" CLEAN=true RPC=36657 REST=2317 PROFF=6061 P2P=36656 GRPC=8090 GRPC_WEB=8091 ROSETTA=8081 TIMEOUT_COMMIT="500ms" sh scripts/test_node.sh
+# POA_ADMIN_ADDRESS=manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct CHAIN_ID="local-2" HOME_DIR="~/.manifest2" CLEAN=true RPC=36657 REST=2317 PROFF=6061 P2P=36656 GRPC=8090 GRPC_WEB=8091 ROSETTA=8081 TIMEOUT_COMMIT="500ms" sh scripts/test_node.sh
 #
 # To use unoptomized wasm files up to ~5mb, add: MAX_WASM_SIZE=5000000
 
@@ -80,9 +80,6 @@ from_scratch () {
   update_test_genesis '.app_state["group"]["group_policies"]=[{"address": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj", "group_id": "1", "admin": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj", "metadata": "AQ==", "version": "2", "decision_policy": { "@type": "/cosmos.group.v1.ThresholdDecisionPolicy", "threshold": "1", "windows": {"voting_period": "30s", "min_execution_period": "0s"}}, "created_at": "2024-05-16T15:10:54.372190727Z"}]'
 
   # Custom Modules
-
-  # POA
-  update_test_genesis '.app_state["poa"]["params"]["admins"]=["'$POA_ADMIN_ADDRESS'"]'
 
   # TokenFactory
   update_test_genesis '.app_state["tokenfactory"]["params"]["denom_creation_fee"]=[]'

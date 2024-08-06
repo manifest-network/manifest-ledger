@@ -44,13 +44,6 @@
                         "value": "umfx"
                     },
                     {
-                        "key": "app_state.poa.params.admins",
-                        "value": [
-                            "manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm",
-                            "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"
-                        ]
-                    },
-                    {
                         "key": "app_state.tokenfactory.params.denom_creation_fee",
                         "value": []
                     },

@@ -15,7 +15,6 @@
       - [Staking Parameters Update](#staking-parameters-update)
       - [Administrative Rights](#administrative-rights)
       - [Commands](#commands-1)
-        - [Update Parameters (update-params)](#update-parameters-update-params-1)
         - [Update Staking Parameters (update-staking-params)](#update-staking-parameters-update-staking-params)
         - [Set Voting Power (set-power)](#set-voting-power-set-power)
         - [Remove Pending Validator (remove-pending)](#remove-pending-validator-remove-pending)
@@ -87,18 +86,6 @@ The PoA admin has several capabilities for managing the chain and its validators
 - Determine if validators have the ability to self-revoke.
 
 #### Commands
-
-##### Update Parameters (update-params):
-
-Add more chain administrators to the module and change the ability for validators to self-exit the set gracefully.
-
-- Syntax: `manifestd tx poa update-params [admin1,admin2,admin3,...] [allow-validator-self-exit-bool]`
-
-  - Parameters:
-    - `admin1,admin2,admin3,...`: A list of admin addresses which can be multisig addresses.
-    - `allow-validator-self-exit-bool`: A boolean value (true or false) to allow validators to self-exit.
-
-  **Example:** `manifestd tx poa update-params manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct,manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct false`
 
 ##### Update Staking Parameters (update-staking-params):
 

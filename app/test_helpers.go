@@ -37,6 +37,7 @@ import (
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	"github.com/cosmos/cosmos-sdk/testutil/network"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
+	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module/testutil"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
@@ -178,6 +179,13 @@ func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 	// var emptyWasmOpts []wasm.Option
 	appOptions := make(simtestutil.AppOptionsMap, 0)
 	appOptions[flags.FlagHome] = nodeHome // ensure unique folder
+
+	// Set the POA admin address if not already set
+	if adminAddr := os.Getenv("POA_ADMIN_ADDRESS"); adminAddr == "" {
+		_, _, newAdminAddr := testdata.KeyTestPubAddr()
+		err = os.Setenv("POA_ADMIN_ADDRESS", newAdminAddr.String())
+		require.NoError(t, err)
+	}
 
 	app := NewApp(
 		log.NewNopLogger(),

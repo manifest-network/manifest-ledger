@@ -72,8 +72,6 @@ update_genesis '.app_state["staking"]["params"]["bond_denom"]="upoa"'
 update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_fee"]=[]'
 update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_gas_consume"]="250000"'
 
-update_genesis '.app_state["poa"]["params"]["admins"]=["manifest1wxjfftrc0emj5f7ldcvtpj05lxtz3t2npghwsf"]'
-
 # # add genesis accounts
 # # TODO:
 # manifestd genesis add-genesis-account manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct 1umfx --append

@@ -19,7 +19,6 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
-	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 	"github.com/stretchr/testify/require"
 
@@ -68,7 +67,6 @@ var (
 	)
 
 	manifestBurnProposal    = createManifestBurnProposal(groupAddr, sdk.NewCoins(sdk.NewInt64Coin(Denom, 50)))
-	poaDefaultParams        = createPOAParams([]string{groupAddr}, true)
 	bankSendProposal        = createBankSendProposal(groupAddr, accAddr, sdk.NewInt64Coin(Denom, 1))
 	tfCreateProposal        = createTfCreateDenomProposal(groupAddr, tfDenom)
 	tfMintProposal          = createTfMintProposal(groupAddr, sdk.NewInt64Coin(tfFullDenom, 1234), "")
@@ -115,7 +113,7 @@ func TestGroupPOA(t *testing.T) {
 
 	ctx, ic, client, _ := interchaintest.BuildInitialChain(t, chains, false)
 
-	user1Wallet, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, user1, accMnemonic, DefaultGenesisAmt, chain)
+	_, err = interchaintest.GetAndFundTestUserWithMnemonic(ctx, user1, accMnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
 	_, err = interchaintest.GetAndFundTestUserWithMnemonic(ctx, user2, acc1Mnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
@@ -124,9 +122,6 @@ func TestGroupPOA(t *testing.T) {
 	testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr)
 	// Manifest module
 	testManifestStakeholdersPayout(t, ctx, chain, &cfgA, accAddr)
-	// POA Update
-	testPOAParamsUpdateEmpty(t, ctx, chain, &cfgA, accAddr)
-	testPOAParamsUpdate(t, ctx, chain, &cfgA, accAddr, user1Wallet)
 	// TokenFactory
 	testTokenCreate(t, ctx, chain, &cfgA, accAddr)
 	// Bank
@@ -189,33 +184,6 @@ func testManifestStakeholdersPayout(t *testing.T, ctx context.Context, chain *co
 	verifyBalance(t, ctx, chain, acc3Addr, Denom, sdkmath.ZeroInt())
 	verifyBalance(t, ctx, chain, acc4Addr, Denom, sdkmath.ZeroInt())
 	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.ZeroInt())
-}
-
-// testPOAParamsUpdateEmpty tests the submission, voting, and execution of an empty POA params update proposal
-// This proposal tests that the Admins field cannot be empty
-func testPOAParamsUpdateEmpty(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
-	t.Log("\n===== TEST GROUP POA PARAMS UPDATE (EMPTY ADMINS - FAIL) =====")
-	poaUpdateProposal := createPOAUpdateParams(groupAddr, createPOAParams(nil, false))
-	createAndRunProposalFailure(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, poaUpdateProposal)}, poatypes.ErrMustProvideAtLeastOneAddress.Error())
-	checkPOAParams(ctx, t, chain, &poaDefaultParams)
-}
-
-// testPOAParamsUpdate tests the submission, voting, and execution of a POA params update proposal
-func testPOAParamsUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string, user ibc.Wallet) {
-	t.Log("\n===== TEST GROUP POA PARAMS UPDATE =====")
-	poaUpdateProposal := createPOAUpdateParams(groupAddr, createPOAParams([]string{accAddr}, false))
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, poaUpdateProposal)})
-	checkPOAParams(ctx, t, chain, &poaUpdateProposal.Params)
-
-	// NOTE:
-	// At this point, the POA_ADMIN_ADDRESS is still the Group address, but the POA module admin field is now `accAddr`
-	// What this means is that the POA_ADMIN_ADDRESS is the authority for all CosmosSDK modules, including the Group module,
-	// but the POA module admin field is the authority for the POA module itself.
-
-	// Reset the POA Admin back to the Group address using the POA module admin field, i.e., `accAddr`
-	// Resetting the POA Admin back to the Group address using a group proposal will NOT work
-	updatePOAParams(t, ctx, chain, user, groupAddr, true)
-	checkPOAParams(ctx, t, chain, &poaDefaultParams)
 }
 
 // testBankSend tests the sending of funds from one account to another using a group proposal
@@ -332,19 +300,6 @@ func checkManifestParams(ctx context.Context, t *testing.T, chain *cosmos.Cosmos
 	require.NotNil(t, resp.Params)
 }
 
-// checkPOAParams checks the POA params against the expected params
-func checkPOAParams(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, expectedParams *poatypes.Params) {
-	resp, err := poatypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &poatypes.QueryParamsRequest{})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Params)
-	require.Len(t, resp.Params.Admins, len(expectedParams.Admins))
-	for i, admin := range expectedParams.Admins {
-		require.Equal(t, admin, resp.Params.Admins[i])
-	}
-	require.Equal(t, expectedParams.AllowValidatorSelfExit, resp.Params.AllowValidatorSelfExit)
-}
-
 // submitVoteAndExecProposal submits, votes, and executes a group proposal
 func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, keyName string, prop *grouptypes.MsgSubmitProposal) error {
 	// Increment the proposal ID regardless of the outcome
@@ -408,7 +363,6 @@ func createGroupGenesis() []cosmos.GenesisKV {
 		cosmos.NewGenesisKV("app_state.group.group_members", []grouptypes.GroupMember{groupMember1, groupMember2}),
 		cosmos.NewGenesisKV("app_state.group.group_policy_seq", "1"),
 		cosmos.NewGenesisKV("app_state.group.group_policies", []*grouptypes.GroupPolicyInfo{groupPolicy}),
-		cosmos.NewGenesisKV("app_state.poa.params.admins", []string{groupAddr}),
 	)
 }
 
@@ -487,20 +441,6 @@ func createManifestBurnProposal(sender string, amounts sdk.Coins) manifesttypes.
 	return manifesttypes.MsgBurnHeldBalance{
 		Authority: sender,
 		BurnCoins: amounts,
-	}
-}
-
-func createPOAParams(admins []string, allowValidatorSelfExit bool) poatypes.Params {
-	return poatypes.Params{
-		Admins:                 admins,
-		AllowValidatorSelfExit: allowValidatorSelfExit,
-	}
-}
-
-func createPOAUpdateParams(sender string, params poatypes.Params) *poatypes.MsgUpdateParams {
-	return &poatypes.MsgUpdateParams{
-		Sender: sender,
-		Params: params,
 	}
 }
 

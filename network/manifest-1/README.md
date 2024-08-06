@@ -8,7 +8,7 @@ This guide will assist you in setting up a Manifest-1 network. There are three p
 
 ## [Genesis](./GENESIS.md)
 
-This section is tailored for validators intending to participate in the genesis ceremony. Prospective validators must download the genesis file and adhere to the provided steps to join the network. The genesis file originates from the [set-genesis-params.sh](./set-genesis-params.sh) script, which facilitates the generation of a bespoke genesis file. This file allows for the specification of network parameters, such as the Proof of Authority (PoA) token denomination and PoA administrators.
+This section is tailored for validators intending to participate in the genesis ceremony. Prospective validators must download the genesis file and adhere to the provided steps to join the network. The genesis file originates from the [set-genesis-params.sh](./set-genesis-params.sh) script, which facilitates the generation of a bespoke genesis file. This file allows for the specification of network parameters, such as the Proof of Authority (PoA) token denomination.
 
 ## [Post Genesis](./POST_GENESIS.md)
 
@@ -16,12 +16,11 @@ This section addresses validators aiming to join the network post-initial launch
 
 ## Custom Genesis
 
-This section is for those who wish to construct their genesis file for the network, enabling the modification of PoA administrator details and other parameters. Utilizing the [set-genesis-params.sh](./set-genesis-params.sh) script, you can alter the PoA administrator, the PoA denomination, among other settings.
+This section is for those who wish to construct their genesis file for the network, enabling the modification of PoA administrator details and other parameters. Utilizing the [set-genesis-params.sh](./set-genesis-params.sh) script, you can alter the PoA denomination, among other settings.
 
-In the script, you will encounter the following lines:
+In the script, you will encounter the following line:
 
 ```bash
-update_genesis '.app_state["poa"]["params"]["admins"]=["manifest1wxjfftrc0emj5f7ldcvtpj05lxtz3t2npghwsf"]'
 update_genesis '.app_state["staking"]["params"]["bond_denom"]="upoa"'
 ```
 
