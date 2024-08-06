@@ -13,9 +13,6 @@ replace (
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides
 
-	// TODO: Remove this once 0.50.3 is released
-	github.com/strangelove-ventures/poa => github.com/strangelove-ventures/poa v0.50.3-0.20240805145915-d321226154be
-
 	// Downgraded to avoid bugs in following commits which caused simulations to fail.
 	github.com/syndtr/goleveldb => github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 )
@@ -50,7 +47,7 @@ require (
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.18.2
-	github.com/strangelove-ventures/poa v0.50.2
+	github.com/strangelove-ventures/poa v0.50.3-0.20240805145915-d321226154be
 	github.com/strangelove-ventures/tokenfactory v0.50.3
 	github.com/stretchr/testify v1.9.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20240528184218-531527333157

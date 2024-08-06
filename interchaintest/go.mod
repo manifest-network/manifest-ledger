@@ -13,8 +13,6 @@ replace (
 	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.8-liftedinit.1
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/liftedinit/manifest-ledger => ../
-	// TODO: Remove this once 0.50.3 is released
-	github.com/strangelove-ventures/poa => github.com/strangelove-ventures/poa v0.50.3-0.20240805145915-d321226154be
 )
 
 require (
@@ -26,7 +24,7 @@ require (
 	github.com/cosmos/ibc-go/v8 v8.2.1
 	github.com/liftedinit/manifest-ledger v0.0.0-00000000000000-000000000000
 	github.com/strangelove-ventures/interchaintest/v8 v8.5.1-0.20240715163423-cbcd20f44321
-	github.com/strangelove-ventures/poa v0.50.2
+	github.com/strangelove-ventures/poa v0.50.3-0.20240805145915-d321226154be
 	github.com/strangelove-ventures/tokenfactory v0.50.3
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.27.0
