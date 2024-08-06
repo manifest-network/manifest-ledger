@@ -144,6 +144,11 @@ import (
 // The default PoA admin is the governance module account.
 func GetPoAAdmin() string {
 	if addr := os.Getenv("POA_ADMIN_ADDRESS"); addr != "" {
+		// Panic if the address is invalid
+		_, err := sdk.AccAddressFromBech32(addr)
+		if err != nil {
+			panic(fmt.Sprintf("invalid POA_ADMIN_ADDRESS: %s", addr))
+		}
 		return addr
 	}
 
