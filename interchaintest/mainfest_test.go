@@ -69,18 +69,6 @@ func TestManifestModule(t *testing.T) {
 	user1, user2, user3 := users[0], users[1], users[2]
 	uaddr, addr2, addr3 := user1.FormattedAddress(), user2.FormattedAddress(), user3.FormattedAddress()
 
-	node := appChain.GetNode()
-
-	// Base Query Check of genesis defaults
-	p, err := helpers.ManifestQueryParams(ctx, node)
-	require.NoError(t, err)
-	fmt.Println(p)
-
-	t.Run("success; query params", func(t *testing.T) {
-		p, err = helpers.ManifestQueryParams(ctx, node)
-		require.NoError(t, err)
-	})
-
 	t.Run("success; Perform a manual distribution payout from the PoA admin", func(t *testing.T) {
 		beforeBal1, _ := appChain.GetBalance(ctx, uaddr, Denom)
 		beforeBal2, _ := appChain.GetBalance(ctx, addr2, Denom)

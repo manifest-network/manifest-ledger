@@ -226,7 +226,6 @@ func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 	app.GovKeeper.Constitution.Set(ctx, "")
 	app.GovKeeper.Params.Set(ctx, govv1types.DefaultParams())
 	app.ConsensusParamsKeeper.ParamsStore.Set(ctx, *simtestutil.DefaultConsensusParams)
-	app.ManifestKeeper.Params.Set(ctx, types.DefaultParams())
 
 	if withGenesis {
 		return app, NewDefaultGenesisState(t)

@@ -19,10 +19,8 @@ import (
 const (
 	OpWeightMsgPayout                  = "op_weight_msg_manifest_payout"            // nolint: gosec
 	OpWeightMsgBurnHeldBalance         = "op_weight_msg_manifest_burn_held_balance" // nolint: gosec
-	OpWeightMsgUpdateParams            = "op_weight_msg_manifest_update_params"     // nolint: gosec
 	DefaultWeightMsgPayoutStakeholders = 100
 	DefaultWeightMsgBurnHeldBalance    = 100
-	DefaultWeightMsgUpdateParams       = 100
 )
 
 // WeightedOperations returns the all the gov module operations with their respective weights.
@@ -43,11 +41,6 @@ func WeightedOperations(appParams simtypes.AppParams,
 		weightMsgBurnHeldBalance = DefaultWeightMsgBurnHeldBalance
 	})
 
-	var weightMsgUpdateParams int
-	appParams.GetOrGenerate(OpWeightMsgUpdateParams, &weightMsgUpdateParams, nil, func(_ *rand.Rand) {
-		weightMsgUpdateParams = DefaultWeightMsgUpdateParams
-	})
-
 	operations = append(operations, simulation.NewWeightedOperation(
 		weightMsgPayoutStakeholders,
 		SimulateMsgPayout(txGen, k),
@@ -56,11 +49,6 @@ func WeightedOperations(appParams simtypes.AppParams,
 	operations = append(operations, simulation.NewWeightedOperation(
 		weightMsgBurnHeldBalance,
 		SimulateMsgBurnHeldBalance(txGen, k),
-	))
-
-	operations = append(operations, simulation.NewWeightedOperation(
-		weightMsgUpdateParams,
-		SimulateMsgUpdateParams(txGen, k),
 	))
 
 	return operations
@@ -154,24 +142,6 @@ func SimulateMsgBurnHeldBalance(txGen client.TxConfig, k keeper.Keeper) simtypes
 		}
 
 		return genAndDeliverTx(r, app, ctx, txGen, simAccount, &msg, k, fees)
-	}
-}
-
-func SimulateMsgUpdateParams(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
-	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
-	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
-		msgType := sdk.MsgTypeURL(&types.MsgUpdateParams{})
-		simAccount := accs[0]
-		if simAccount.Address.String() != k.GetAuthority() {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "invalid authority"), nil, nil
-		}
-
-		msg := types.MsgUpdateParams{
-			Authority: simAccount.Address.String(),
-			Params:    types.Params{},
-		}
-
-		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, &msg, k)
 	}
 }
 

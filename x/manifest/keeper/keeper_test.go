@@ -126,10 +126,7 @@ func TestExportGenesis(t *testing.T) {
 
 	k := f.App.ManifestKeeper
 
-	_, err := k.Params.Get(f.Ctx)
-	require.NoError(t, err)
-
 	genState := k.ExportGenesis(f.Ctx)
 
-	require.NotNil(t, genState.Params)
+	require.NotNil(t, genState)
 }
