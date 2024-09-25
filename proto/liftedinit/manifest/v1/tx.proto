@@ -2,7 +2,6 @@ syntax = "proto3";
 package liftedinit.manifest.v1;
 
 import "cosmos/msg/v1/msg.proto";
-import "liftedinit/manifest/v1/genesis.proto";
 import "gogoproto/gogo.proto";
 import "cosmos_proto/cosmos.proto";
 import "cosmos/base/v1beta1/coin.proto";
@@ -14,11 +13,6 @@ option go_package = "github.com/liftedinit/manifest-ledger/x/manifest/types";
 service Msg {
   option (cosmos.msg.v1.service) = true;
 
-  // UpdateParams defines a governance operation for updating the parameters.
-  //
-  // Since: cosmos-sdk 0.47
-  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
-
   // Payout allows the authority to manually pay out stakeholders.
   rpc Payout(MsgPayout) returns (MsgPayoutResponse);
 
@@ -26,72 +20,55 @@ service Msg {
   rpc BurnHeldBalance(MsgBurnHeldBalance) returns (MsgBurnHeldBalanceResponse);
 }
 
-// MsgUpdateParams is the Msg/UpdateParams request type.
-//
-// Since: cosmos-sdk 0.47
-message MsgUpdateParams {
-  option (cosmos.msg.v1.signer) = "authority";
-
-  // authority is the address of the controlling account.
-  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
-
-  // params defines the parameters to update.
-  //
-  // NOTE: All parameters must be supplied.
-  Params params = 2 [(gogoproto.nullable) = false];
-}
-
-// MsgUpdateParamsResponse defines the response structure for executing a
-// MsgUpdateParams message.
-//
-// Since: cosmos-sdk 0.47
-message MsgUpdateParamsResponse {}
-
 // MsgPayout is the Msg/Payout request type.
 message MsgPayout {
   option (cosmos.msg.v1.signer) = "authority";
   option (gogoproto.equal) = false;
+  option (amino.name) = "lifted/manifest/MsgPayout";
 
   // authority is the address of the controlling account.
-  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
   // payout_pairs are the pairs of addresses and coins to be paid out.
-  repeated PayoutPair payout_pairs = 2 [
-    (gogoproto.nullable)     = false,
-    (amino.dont_omitempty)   = true
-  ];
+  repeated PayoutPair payout_pairs = 2
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
 }
 
 // PayoutPair is the object that pairs an address with a coin to be paid out.
 message PayoutPair {
+  option (amino.name) = "lifted/manifest/payout-pair";
+
   string address = 1;
   cosmos.base.v1beta1.Coin coin = 2 [
-    (gogoproto.nullable)     = false,
-    (amino.dont_omitempty)   = true,
-    (amino.encoding)         = "legacy_coin",
-    (gogoproto.casttype)     = "github.com/cosmos/cosmos-sdk/types.Coin"
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true,
+    (amino.encoding) = "legacy_coin",
+    (gogoproto.casttype) = "github.com/cosmos/cosmos-sdk/types.Coin"
   ];
 }
 
-// MsgPayoutResponse defines the response structure for executing a MsgPayout message.
+// MsgPayoutResponse defines the response structure for executing a MsgPayout
+// message.
 message MsgPayoutResponse {}
 
 // MsgPayout is the Msg/BurnHeldBalance request type.
 message MsgBurnHeldBalance {
   option (cosmos.msg.v1.signer) = "authority";
   option (gogoproto.equal) = false;
+  option (amino.name) = "lifted/manifest/MsgBurnHeldBalance";
 
   // sender is the address of the tokenholder.
-  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
   // burn_coins are the coins to be burned by the tokenholder.
   repeated cosmos.base.v1beta1.Coin burn_coins = 2 [
-    (gogoproto.nullable)     = false,
-    (amino.dont_omitempty)   = true,
-    (amino.encoding)         = "legacy_coins",
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true,
+    (amino.encoding) = "legacy_coins",
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
   ];
 }
 
-// MsgBurnHeldBalanceResponse defines the response structure for executing a MsgBurnHeldBalance message.
+// MsgBurnHeldBalanceResponse defines the response structure for executing a
+// MsgBurnHeldBalance message.
 message MsgBurnHeldBalanceResponse {}

@@ -11,40 +11,6 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-func TestMsgUpdateParams(t *testing.T) {
-	_, _, acc := testdata.KeyTestPubAddr()
-
-	type tc struct {
-		name    string
-		msg     *MsgUpdateParams
-		success bool
-	}
-
-	for _, c := range []tc{
-		{
-			name:    "success; valid update params",
-			msg:     NewMsgUpdateParams(acc),
-			success: true,
-		},
-		{
-			name: "fail; bad address",
-			msg: &MsgUpdateParams{
-				Authority: "bad",
-				Params:    NewParams(),
-			},
-		},
-	} {
-		c := c
-		t.Run(c.name, func(t *testing.T) {
-			if c.success {
-				require.NoError(t, c.msg.Validate())
-			} else {
-				require.Error(t, c.msg.Validate())
-			}
-		})
-	}
-}
-
 func TestMsgBurn(t *testing.T) {
 	_, _, acc := testdata.KeyTestPubAddr()
 

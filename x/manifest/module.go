@@ -1,8 +1,8 @@
 package module
 
 import (
-	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/gorilla/mux"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
@@ -12,7 +12,6 @@ import (
 
 	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
 	"cosmossdk.io/client/v2/autocli"
-	errorsmod "cosmossdk.io/errors"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -74,33 +73,21 @@ func (a AppModuleBasic) Name() string {
 }
 
 func (a AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
-	return cdc.MustMarshalJSON(&types.GenesisState{
-		Params: types.DefaultParams(),
-	})
+	return cdc.MustMarshalJSON(&types.GenesisState{})
 }
 
 func (a AppModuleBasic) ValidateGenesis(marshaler codec.JSONCodec, _ client.TxEncodingConfig, message json.RawMessage) error {
 	var data types.GenesisState
-	err := marshaler.UnmarshalJSON(message, &data)
-	if err != nil {
-		return err
+	if err := marshaler.UnmarshalJSON(message, &data); err != nil {
+		return fmt.Errorf("failed to unmarshal %s genesis state: %w", types.ModuleName, err)
 	}
-	if err := data.Params.Validate(); err != nil {
-		return errorsmod.Wrap(err, "params")
-	}
-	return nil
+	return data.Validate()
 }
 
 func (a AppModuleBasic) RegisterRESTRoutes(_ client.Context, _ *mux.Router) {
 }
 
-func (a AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx client.Context, mux *runtime.ServeMux) {
-	err := types.RegisterQueryHandlerClient(context.Background(), mux, types.NewQueryClient(clientCtx))
-	if err != nil {
-		// same behavior as in cosmos-sdk
-		panic(err)
-	}
-}
+func (a AppModuleBasic) RegisterGRPCGatewayRoutes(client.Context, *runtime.ServeMux) {}
 
 // AutoCLIOptions implements the autocli.HasAutoCLIConfig interface.
 //
@@ -138,7 +125,7 @@ func (am AppModule) InitGenesis(ctx sdk.Context, marshaler codec.JSONCodec, mess
 	var genesisState types.GenesisState
 	marshaler.MustUnmarshalJSON(message, &genesisState)
 
-	if err := am.keeper.Params.Set(ctx, genesisState.Params); err != nil {
+	if err := am.keeper.InitGenesis(ctx, &genesisState); err != nil {
 		panic(err)
 	}
 

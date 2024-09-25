@@ -28,7 +28,6 @@ type Keeper struct {
 
 	// state management
 	Schema collections.Schema
-	Params collections.Item[types.Params]
 
 	authority string
 }
@@ -52,9 +51,6 @@ func NewKeeper(
 
 		mintKeeper: mintKeeper,
 		bankKeeper: bankKeeper,
-
-		// Stores
-		Params: collections.NewItem(sb, types.ParamsKey, "params", codec.CollValue[types.Params](cdc)),
 
 		authority: authority,
 	}
@@ -94,16 +90,13 @@ func (k *Keeper) GetTestAccountKeeper() accountkeeper.AccountKeeper {
 	return k.accountKeeper
 }
 
-// ExportGenesis exports the module's state to a genesis state.
-func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
-	params, err := k.Params.Get(ctx)
-	if err != nil {
-		panic(err)
-	}
+func (k *Keeper) InitGenesis(_ context.Context, _ *types.GenesisState) error {
+	return nil
+}
 
-	return &types.GenesisState{
-		Params: params,
-	}
+// ExportGenesis exports the module's state to a genesis state.
+func (k *Keeper) ExportGenesis(_ context.Context) *types.GenesisState {
+	return &types.GenesisState{}
 }
 
 // Payout mints and sends coins to stakeholders.

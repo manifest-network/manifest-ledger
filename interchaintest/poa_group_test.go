@@ -57,14 +57,8 @@ var (
 
 	tfFullDenom = fmt.Sprintf("factory/%s/%s", groupAddr, tfDenom)
 
-	upgradeProposal        = createUpgradeProposal(groupAddr, planName, planHeight)
-	cancelUpgradeProposal  = createCancelUpgradeProposal(groupAddr)
-	manifestUpdateProposal = createManifestUpdateProposal(groupAddr,
-		manifesttypes.NewParams(),
-	)
-	manifestDefaultProposal = createManifestUpdateProposal(groupAddr,
-		manifesttypes.NewParams(),
-	)
+	upgradeProposal       = createUpgradeProposal(groupAddr, planName, planHeight)
+	cancelUpgradeProposal = createCancelUpgradeProposal(groupAddr)
 
 	manifestBurnProposal    = createManifestBurnProposal(groupAddr, sdk.NewCoins(sdk.NewInt64Coin(Denom, 50)))
 	bankSendProposal        = createBankSendProposal(groupAddr, accAddr, sdk.NewInt64Coin(Denom, 1))
@@ -156,8 +150,6 @@ func testManifestStakeholdersPayout(t *testing.T, ctx context.Context, chain *co
 	// Verify the initial balances
 	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
 	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.ZeroInt())
-
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &manifestUpdateProposal)})
 
 	// Stakeholders payout
 	manifestPayoutProposal := createManifestPayoutProposal(groupAddr, []manifesttypes.PayoutPair{
@@ -282,24 +274,6 @@ func createAndRunProposalFailure(t *testing.T, ctx context.Context, chain *cosmo
 	require.ErrorContains(t, err, expectedErr)
 }
 
-// resetManifestParams resets the manifest params back to the default
-func resetManifestParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
-	manifestDefaultProposalAny := createAny(t, &manifestDefaultProposal)
-	prop := createProposal(groupAddr, []string{accAddr}, []*types.Any{manifestDefaultProposalAny}, "Manifest Params Update Proposal (reset)", "Reset the manifest params to the default")
-	err := submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
-	require.NoError(t, err)
-
-	checkManifestParams(ctx, t, chain, &manifestDefaultProposal.Params)
-}
-
-// checkManifestParams checks the manifest params against the expected params
-func checkManifestParams(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, expectedParams *manifesttypes.Params) {
-	resp, err := manifesttypes.NewQueryClient(chain.GetNode().GrpcConn).Params(ctx, &manifesttypes.QueryParamsRequest{})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Params)
-}
-
 // submitVoteAndExecProposal submits, votes, and executes a group proposal
 func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, keyName string, prop *grouptypes.MsgSubmitProposal) error {
 	// Increment the proposal ID regardless of the outcome
@@ -416,17 +390,6 @@ func createUpgradeProposal(authority, planName string, planHeight int64) upgrade
 func createCancelUpgradeProposal(authority string) upgradetypes.MsgCancelUpgrade {
 	return upgradetypes.MsgCancelUpgrade{
 		Authority: authority,
-	}
-}
-
-func createManifestParams() manifesttypes.Params {
-	return manifesttypes.NewParams()
-}
-
-func createManifestUpdateProposal(authority string, params manifesttypes.Params) manifesttypes.MsgUpdateParams {
-	return manifesttypes.MsgUpdateParams{
-		Authority: authority,
-		Params:    params,
 	}
 }
 

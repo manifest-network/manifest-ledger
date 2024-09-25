@@ -18,10 +18,9 @@ func TestCodecRegisterInterfaces(t *testing.T) {
 
 	impls := registry.ListImplementations(sdk.MsgInterfaceProtoName)
 
-	require.Len(t, impls, 3)
+	require.Len(t, impls, 2)
 	require.ElementsMatch(t, []string{
 		prefix + "MsgPayout",
 		prefix + "MsgBurnHeldBalance",
-		prefix + "MsgUpdateParams",
 	}, impls)
 }

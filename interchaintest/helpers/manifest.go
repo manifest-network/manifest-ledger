@@ -29,12 +29,6 @@ func ManifestStakeholderPayout(t *testing.T, ctx context.Context, chain *cosmos.
 	return ExecuteTransaction(ctx, chain, cmd)
 }
 
-// queries
-func ManifestQueryParams(ctx context.Context, node *cosmos.ChainNode) (*manifesttypes.Params, error) {
-	res, err := manifesttypes.NewQueryClient(node.GrpcConn).Params(ctx, &manifesttypes.QueryParamsRequest{})
-	return res.GetParams(), err
-}
-
 func ManifestBurnTokens(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, keyName string, amount string, flags ...string) (sdk.TxResponse, error) {
 	txCmd := []string{"tx", "manifest", "burn-coins", amount}
 	fmt.Println("ManifestBurnTokens", txCmd)
