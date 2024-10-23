@@ -784,6 +784,7 @@ func NewApp(
 	genesisModuleOrder := []string{
 		capabilitytypes.ModuleName,
 		// simd modules
+		tokenfactorytypes.ModuleName, // before bank
 		authtypes.ModuleName, banktypes.ModuleName,
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
 		minttypes.ModuleName, crisistypes.ModuleName, genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
@@ -794,7 +795,6 @@ func NewApp(
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
 		ibcfeetypes.ModuleName,
-		tokenfactorytypes.ModuleName,
 		poa.ModuleName,
 		manifesttypes.ModuleName,
 	}
