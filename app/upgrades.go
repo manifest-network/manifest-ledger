@@ -6,11 +6,12 @@ import (
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 
 	"github.com/liftedinit/manifest-ledger/app/upgrades"
+	"github.com/liftedinit/manifest-ledger/app/upgrades/next"
 	"github.com/liftedinit/manifest-ledger/app/upgrades/noop"
 )
 
 // Upgrades list of chain upgrades
-var Upgrades []upgrades.Upgrade
+var Upgrades = []upgrades.Upgrade{next.NewUpgrade()}
 
 // RegisterUpgradeHandlers registers the chain upgrade handlers
 func (app *ManifestApp) RegisterUpgradeHandlers() {
@@ -19,7 +20,7 @@ func (app *ManifestApp) RegisterUpgradeHandlers() {
 		Upgrades = append(Upgrades, noop.NewUpgrade(app.Version()))
 	}
 
-	keepers := upgrades.AppKeepers{AccountKeeper: app.AccountKeeper}
+	keepers := upgrades.AppKeepers{AccountKeeper: app.AccountKeeper, BankKeeper: app.BankKeeper}
 	// register all upgrade handlers
 	for _, upgrade := range Upgrades {
 		app.UpgradeKeeper.SetUpgradeHandler(

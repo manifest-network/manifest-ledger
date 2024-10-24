@@ -6,10 +6,12 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/types/module"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 )
 
 type AppKeepers struct {
-	authkeeper.AccountKeeper
+	AccountKeeper authkeeper.AccountKeeper
+	BankKeeper    bankkeeper.BaseKeeper
 }
 
 // Upgrade defines a struct containing necessary fields that a SoftwareUpgradeProposal
