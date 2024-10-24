@@ -7,13 +7,8 @@ import (
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-	"github.com/liftedinit/manifest-ledger/app"
 	"github.com/liftedinit/manifest-ledger/app/upgrades"
 )
-
-func init() {
-	app.Upgrades = append(app.Upgrades, NewUpgrade())
-}
 
 func NewUpgrade() upgrades.Upgrade {
 	return upgrades.Upgrade{
