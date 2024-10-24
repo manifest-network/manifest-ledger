@@ -44,6 +44,7 @@ func CreateUpgradeHandler(
 			Base:    "umfx",
 			Display: "MFX",
 			Symbol:  "MFX",
+			Name:    "Manifest Token",
 		}
 
 		// Set the new metadata in the bank keeper
