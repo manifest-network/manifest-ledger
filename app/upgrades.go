@@ -19,7 +19,7 @@ func (app *ManifestApp) RegisterUpgradeHandlers() {
 		Upgrades = append(Upgrades, noop.NewUpgrade(app.Version()))
 	}
 
-	keepers := upgrades.AppKeepers{AccountKeeper: app.AccountKeeper}
+	keepers := upgrades.AppKeepers{AccountKeeper: app.AccountKeeper, BankKeeper: app.BankKeeper}
 	// register all upgrade handlers
 	for _, upgrade := range Upgrades {
 		app.UpgradeKeeper.SetUpgradeHandler(
