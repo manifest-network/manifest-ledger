@@ -5,8 +5,10 @@ import (
 
 	storetypes "cosmossdk.io/store/types"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
+
 	"github.com/cosmos/cosmos-sdk/types/module"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+
 	"github.com/liftedinit/manifest-ledger/app/upgrades"
 )
 
@@ -42,9 +44,9 @@ func CreateUpgradeHandler(
 				},
 			},
 			Base:    "umfx",
-			Display: "mfx",
+			Display: "MFX",
 			Symbol:  "MFX",
-			Name:    "Manifest Token",
+			Name:    "Manifest Network Token",
 		}
 
 		// Set the new metadata in the bank keeper

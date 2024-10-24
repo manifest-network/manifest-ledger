@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	upgradetypes "cosmossdk.io/x/upgrade/types"
-	"github.com/liftedinit/manifest-ledger/app/upgrades/next"
 
 	"github.com/liftedinit/manifest-ledger/app/upgrades"
+	"github.com/liftedinit/manifest-ledger/app/upgrades/next"
 	"github.com/liftedinit/manifest-ledger/app/upgrades/noop"
 )
 
