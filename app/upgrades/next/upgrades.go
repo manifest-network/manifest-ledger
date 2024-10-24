@@ -36,13 +36,13 @@ func CreateUpgradeHandler(
 					Aliases:  []string{},
 				},
 				{
-					Denom:    "MFX",
+					Denom:    "mfx",
 					Exponent: 6,
 					Aliases:  []string{},
 				},
 			},
 			Base:    "umfx",
-			Display: "MFX",
+			Display: "mfx",
 			Symbol:  "MFX",
 			Name:    "Manifest Token",
 		}
