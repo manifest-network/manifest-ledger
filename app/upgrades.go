@@ -7,18 +7,14 @@ import (
 
 	"github.com/liftedinit/manifest-ledger/app/upgrades"
 	"github.com/liftedinit/manifest-ledger/app/upgrades/next"
-	"github.com/liftedinit/manifest-ledger/app/upgrades/noop"
 )
 
 // Upgrades list of chain upgrades
-var Upgrades = []upgrades.Upgrade{next.NewUpgrade()}
+var Upgrades []upgrades.Upgrade
 
 // RegisterUpgradeHandlers registers the chain upgrade handlers
 func (app *ManifestApp) RegisterUpgradeHandlers() {
-	if len(Upgrades) == 0 {
-		// always have a unique upgrade registered for the current version to test in system tests
-		Upgrades = append(Upgrades, noop.NewUpgrade(app.Version()))
-	}
+	Upgrades = append(Upgrades, next.NewUpgrade(app.Version()))
 
 	keepers := upgrades.AppKeepers{AccountKeeper: app.AccountKeeper, BankKeeper: app.BankKeeper}
 	// register all upgrade handlers
