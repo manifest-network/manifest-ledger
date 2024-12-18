@@ -46,8 +46,8 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.19.0
-	github.com/strangelove-ventures/poa v0.50.5-0.20240926191454-6922e22a617a
-	github.com/strangelove-ventures/tokenfactory v0.50.5-wasmvm2
+	github.com/strangelove-ventures/poa v0.50.6
+	github.com/strangelove-ventures/tokenfactory v0.50.6-wasmvm2
 	github.com/stretchr/testify v1.9.0
 	google.golang.org/grpc v1.67.1
 	google.golang.org/protobuf v1.35.1
