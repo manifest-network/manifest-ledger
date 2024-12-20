@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"context"
-	"fmt"
 
 	"cosmossdk.io/collections"
 	storetypes "cosmossdk.io/core/store"
@@ -109,10 +108,6 @@ func (k *Keeper) Payout(ctx context.Context, payouts []types.PayoutPair) error {
 		sdkAddr, err := sdk.AccAddressFromBech32(addr)
 		if err != nil {
 			return err
-		}
-
-		if !coin.IsValid() {
-			return fmt.Errorf("invalid payout: %v for address: %s", p, addr)
 		}
 
 		if err := k.mintCoinsToAccount(ctx, sdkAddr, coin); err != nil {
