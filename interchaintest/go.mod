@@ -24,8 +24,8 @@ require (
 	github.com/cosmos/ibc-go/v8 v8.2.1
 	github.com/liftedinit/manifest-ledger v0.0.0-00000000000000-000000000000
 	github.com/strangelove-ventures/interchaintest/v8 v8.5.1-0.20240715163423-cbcd20f44321
-	github.com/strangelove-ventures/poa v0.50.5-0.20240926191454-6922e22a617a
-	github.com/strangelove-ventures/tokenfactory v0.50.5-wasmvm2
+	github.com/strangelove-ventures/poa v0.50.6
+	github.com/strangelove-ventures/tokenfactory v0.50.6-wasmvm2
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.27.0
 )
