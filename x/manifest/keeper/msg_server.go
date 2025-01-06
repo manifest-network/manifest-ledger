@@ -36,6 +36,11 @@ func (ms msgServer) BurnHeldBalance(ctx context.Context, req *types.MsgBurnHeldB
 	if ms.k.authority != req.Authority {
 		return nil, fmt.Errorf("invalid authority; expected %s, got %s", ms.k.authority, req.Authority)
 	}
+
+	if err := req.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid burn held message: %w", err)
+	}
+
 	addr, err := sdk.AccAddressFromBech32(req.Authority)
 	if err != nil {
 		return nil, err
