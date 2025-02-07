@@ -4,8 +4,7 @@ import (
     "context"
     "testing"
     "encoding/json"
-    "os"
-
+    "strconv"
     "github.com/strangelove-ventures/interchaintest/v8"
     "github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
     "github.com/stretchr/testify/require"
@@ -56,18 +55,23 @@ func TestCosmWasm(t *testing.T) {
     users := interchaintest.GetAndFundTestUsers(t, ctx, "default", DefaultGenesisAmt, chain)
     user := users[0]
 
-    // Test contract upload & instantiation
-    t.Run("upload and instantiate contract", func(t *testing.T) {
-        // Read wasm file
-        wasmFile := "../contracts/cw_template.wasm"
-        wasmBytes, err := os.ReadFile(wasmFile)
-        require.NoError(t, err)
+    var contractAddr string
+    var codeId uint64
 
-        // Upload contract - convert []byte to string
-        codeId, err := chain.StoreContract(ctx, user.KeyName(), string(wasmBytes))
+    // Test contract upload & instantiation
+    t.Run("upload contract", func(t *testing.T) {
+        // Store contract directly using local file path
+        wasmFile := "../scripts/cw_template.wasm"
+        t.Logf("Storing contract from local path: %s", wasmFile)
+        codeIdStr, err := chain.GetNode().StoreContract(ctx, user.KeyName(), wasmFile)
+        require.NoError(t, err)
+        t.Logf("Received code ID: %s", codeIdStr)
+        codeId, err = strconv.ParseUint(codeIdStr, 10, 64)
         require.NoError(t, err)
         require.Greater(t, codeId, uint64(0))
+    })
 
+    t.Run("instantiate contract", func(t *testing.T) {
         // Prepare init message
         initMsg := map[string]interface{}{
             "count": 0,
@@ -75,26 +79,34 @@ func TestCosmWasm(t *testing.T) {
         initMsgBz, err := json.Marshal(initMsg)
         require.NoError(t, err)
         
-        // Instantiate contract with JSON string
-        contractAddr, err := chain.InstantiateContract(ctx, user.KeyName(), codeId, string(initMsgBz), true)
+        // Instantiate contract with JSON string and required flags
+        contractAddr, err = chain.GetNode().InstantiateContract(
+            ctx, 
+            user.KeyName(), 
+            strconv.FormatUint(codeId, 10),
+            string(initMsgBz), 
+            true,
+        )
         require.NoError(t, err)
         require.NotEmpty(t, contractAddr)
+    })
 
-        // Test contract query
+    t.Run("query contract info", func(t *testing.T) {
         queryMsg := map[string]interface{}{
             "get_count": struct{}{},
         }
         queryMsgBz, err := json.Marshal(queryMsg)
         require.NoError(t, err)
         
-        // Query contract and have the result unmarshaled into resp
         var resp struct {
             Count int `json:"count"`
         }
         err = chain.QueryContract(ctx, contractAddr, string(queryMsgBz), &resp)
         require.NoError(t, err)
         require.Equal(t, 0, resp.Count)
+    })
 
+    t.Run("increment and query count", func(t *testing.T) {
         // Test contract execute
         executeMsg := map[string]interface{}{
             "increment": struct{}{},
@@ -106,7 +118,16 @@ func TestCosmWasm(t *testing.T) {
         require.NoError(t, err)
 
         // Query again to verify execution
-		err = chain.QueryContract(ctx, contractAddr, string(queryMsgBz), &resp)
+        queryMsg := map[string]interface{}{
+            "get_count": struct{}{},
+        }
+        queryMsgBz, err := json.Marshal(queryMsg)
+        require.NoError(t, err)
+
+        var resp struct {
+            Count int `json:"count"`
+        }
+        err = chain.QueryContract(ctx, contractAddr, string(queryMsgBz), &resp)
         require.NoError(t, err)
         require.Equal(t, 0, resp.Count)
     })

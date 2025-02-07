@@ -6,6 +6,8 @@ import (
 	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
 	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+
 
 	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 
@@ -92,6 +94,7 @@ func AppEncoding() *sdktestutil.TestEncodingConfig {
 	grouptypes.RegisterInterfaces(enc.InterfaceRegistry)
 	tokenfactorytypes.RegisterInterfaces(enc.InterfaceRegistry)
 	poatypes.RegisterInterfaces(enc.InterfaceRegistry)
+	wasmtypes.RegisterInterfaces(enc.InterfaceRegistry)
 
 	return &enc
 }
