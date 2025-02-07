@@ -42,6 +42,8 @@ linters-settings:
       - prefix(github.com/cosmos/cosmos-sdk)
       - prefix(github.com/strangelove-ventures/poa)
       - prefix(github.com/strangelove-ventures/tokenfactory)
+      - prefix(github.com/CosmWasm/wasmd)
+      - prefix(github.com/CosmWasm/wasmvm)
       - prefix(github.com/liftedinit/manifest-ledger)
   gosec:
     excludes:

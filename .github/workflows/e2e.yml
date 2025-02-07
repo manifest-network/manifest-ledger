@@ -66,6 +66,7 @@ jobs:
           - "ictest-tokenfactory"
           - "ictest-manifest"
           - "ictest-group-poa"
+          - "ictest-cosmwasm"
       fail-fast: false
 
     steps:

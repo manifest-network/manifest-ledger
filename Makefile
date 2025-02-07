@@ -120,6 +120,9 @@ ictest-poa:
 ictest-group-poa:
 	cd interchaintest && go test -race -v -run TestGroupPOA . -count=1
 
+ictest-cosmwasm:
+	cd interchaintest && go test -race -v -run TestCosmWasm . -count=1
+
 .PHONY: ictest-ibc ictest-tokenfactory
 
 ###############################################################################

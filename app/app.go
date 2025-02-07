@@ -138,6 +138,9 @@ import (
 	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
 	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
+	wasm "github.com/CosmWasm/wasmd/x/wasm"
+	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 // GetPoAAdmin returns the address of the PoA admin.
@@ -215,6 +218,7 @@ var maccPerms = map[string][]string{
 	icatypes.ModuleName:          nil,
 	tokenfactorytypes.ModuleName: {authtypes.Minter, authtypes.Burner},
 	manifesttypes.ModuleName:     {authtypes.Minter, authtypes.Burner},
+	wasmtypes.ModuleName:         {authtypes.Burner},
 }
 
 var (
@@ -269,6 +273,7 @@ type ManifestApp struct {
 	TokenFactoryKeeper tokenfactorykeeper.Keeper
 	POAKeeper          poakeeper.Keeper
 	ManifestKeeper     manifestkeeper.Keeper
+	WasmKeeper         wasmkeeper.Keeper
 
 	// the module manager
 	ModuleManager      *module.Manager
@@ -329,6 +334,7 @@ func NewApp(
 		icahosttypes.StoreKey,
 		icacontrollertypes.StoreKey, tokenfactorytypes.StoreKey, poa.StoreKey,
 		manifesttypes.StoreKey,
+		wasmtypes.StoreKey,
 	)
 
 	tkeys := storetypes.NewTransientStoreKeys(paramstypes.TStoreKey)
@@ -377,10 +383,22 @@ func NewApp(
 	scopedICAHostKeeper := app.CapabilityKeeper.ScopeToModule(icahosttypes.SubModuleName)
 	scopedICAControllerKeeper := app.CapabilityKeeper.ScopeToModule(icacontrollertypes.SubModuleName)
 	scopedTransferKeeper := app.CapabilityKeeper.ScopeToModule(ibctransfertypes.ModuleName)
-	app.CapabilityKeeper.Seal()
+	scopedWasmKeeper := app.CapabilityKeeper.ScopeToModule(wasmtypes.ModuleName)
+
+	// get skipUpgradeHeights from the app options
+	skipUpgradeHeights := map[int64]bool{}
+	for _, h := range cast.ToIntSlice(appOpts.Get(server.FlagUnsafeSkipUpgrades)) {
+		skipUpgradeHeights[int64(h)] = true
+	}
+	homePath := cast.ToString(appOpts.Get(flags.FlagHome))
+
+	// Read wasm config
+	wasmConfig, err := wasm.ReadWasmConfig(appOpts)
+	if err != nil {
+		panic(fmt.Errorf("error while reading wasm config: %w", err))
+	}
 
 	// add keepers
-
 	app.AccountKeeper = authkeeper.NewAccountKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[authtypes.StoreKey]),
@@ -390,6 +408,7 @@ func NewApp(
 		sdk.GetConfig().GetBech32AccountAddrPrefix(),
 		GetPoAAdmin(),
 	)
+
 	app.BankKeeper = bankkeeper.NewBaseKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[banktypes.StoreKey]),
@@ -408,6 +427,7 @@ func NewApp(
 		authcodec.NewBech32Codec(sdk.GetConfig().GetBech32ValidatorAddrPrefix()),
 		authcodec.NewBech32Codec(sdk.GetConfig().GetBech32ConsensusAddrPrefix()),
 	)
+
 	app.MintKeeper = mintkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[minttypes.StoreKey]),
@@ -492,12 +512,6 @@ func NewApp(
 		groupConfig,
 	)
 
-	// get skipUpgradeHeights from the app options
-	skipUpgradeHeights := map[int64]bool{}
-	for _, h := range cast.ToIntSlice(appOpts.Get(server.FlagUnsafeSkipUpgrades)) {
-		skipUpgradeHeights[int64(h)] = true
-	}
-	homePath := cast.ToString(appOpts.Get(flags.FlagHome))
 	// set the governance module account as the authority for conducting upgrades
 	app.UpgradeKeeper = upgradekeeper.NewKeeper(
 		skipUpgradeHeights,
@@ -635,6 +649,28 @@ func NewApp(
 	// Set legacy router for backwards compatibility with gov v1beta1
 	app.GovKeeper.SetLegacyRouter(govRouter)
 
+	app.WasmKeeper = wasmkeeper.NewKeeper(
+		appCodec,
+		runtime.NewKVStoreService(keys[wasmtypes.StoreKey]),
+		app.AccountKeeper,
+		app.BankKeeper,
+		app.StakingKeeper,
+		distrkeeper.NewQuerier(app.DistrKeeper),
+		app.IBCKeeper.ChannelKeeper,
+		app.IBCKeeper.ChannelKeeper,
+		app.IBCKeeper.PortKeeper,
+		scopedWasmKeeper,
+		app.TransferKeeper,
+		app.MsgServiceRouter(),
+		app.GRPCQueryRouter(),
+		filepath.Join(homePath, "wasm"),
+		wasmConfig,
+		[]string{"iterator", "staking", "stargate", "cosmwasm_1_1", "cosmwasm_1_2", "cosmwasm_1_3", "cosmwasm_1_4"},
+		GetPoAAdmin(),
+	)
+
+	app.CapabilityKeeper.Seal()
+
 	// Create Transfer Stack
 	var transferStack porttypes.IBCModule
 	transferStack = transfer.NewIBCModule(app.TransferKeeper)
@@ -704,8 +740,38 @@ func NewApp(
 		tokenfactory.NewAppModule(app.TokenFactoryKeeper, app.AccountKeeper, app.BankKeeper, app.GetSubspace(tokenfactorytypes.ModuleName)),
 		poamodule.NewAppModule(appCodec, app.POAKeeper),
 		// sdk
-		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)), // always be last to make sure that it checks for all invariants and not only part of them
+		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)),
 		manifest.NewAppModule(appCodec, app.ManifestKeeper, app.MintKeeper),
+		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
+	)
+
+	// Add wasm module to the app module manager
+	app.ModuleManager.Modules[wasmtypes.ModuleName] = wasm.NewAppModule(
+		appCodec,
+		&app.WasmKeeper,
+		app.StakingKeeper,
+		app.AccountKeeper,
+		app.BankKeeper,
+		app.MsgServiceRouter(),
+		app.GetSubspace(wasmtypes.ModuleName),
+	)
+
+	// Add wasm to begin blockers
+	app.ModuleManager.OrderBeginBlockers = append(
+		app.ModuleManager.OrderBeginBlockers,
+		wasmtypes.ModuleName,
+	)
+
+	// Add wasm to end blockers
+	app.ModuleManager.OrderEndBlockers = append(
+		app.ModuleManager.OrderEndBlockers,
+		wasmtypes.ModuleName,
+	)
+
+	// Add wasm to init genesis
+	app.ModuleManager.OrderInitGenesis = append(
+		app.ModuleManager.OrderInitGenesis,
+		wasmtypes.ModuleName,
 	)
 
 	// BasicModuleManager defines the module BasicManager is in charge of setting up basic,
@@ -753,6 +819,7 @@ func NewApp(
 		icatypes.ModuleName,
 		ibcfeetypes.ModuleName,
 		tokenfactorytypes.ModuleName,
+		wasmtypes.ModuleName,
 	)
 
 	app.ModuleManager.SetOrderEndBlockers(
@@ -771,6 +838,7 @@ func NewApp(
 		ibcfeetypes.ModuleName,
 		tokenfactorytypes.ModuleName,
 		manifesttypes.ModuleName,
+		wasmtypes.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -797,6 +865,7 @@ func NewApp(
 		ibcfeetypes.ModuleName,
 		poa.ModuleName,
 		manifesttypes.ModuleName,
+		wasmtypes.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
 	app.ModuleManager.SetOrderExportGenesis(genesisModuleOrder...)
@@ -853,7 +922,7 @@ func NewApp(
 	app.ScopedICAHostKeeper = scopedICAHostKeeper
 	app.ScopedICAControllerKeeper = scopedICAControllerKeeper
 
-	app.setAnteHandler(txConfig, commissionRateMinMax)
+	app.setAnteHandler(txConfig, commissionRateMinMax, appOpts)
 
 	// In v0.46, the SDK introduces _postHandlers_. PostHandlers are like
 	// antehandlers, but are run _after_ the `runMsgs` execution. They are also
@@ -897,19 +966,27 @@ func NewApp(
 	return app
 }
 
-func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, commissionRateMinMax RateMinMax) {
+func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, commissionRateMinMax RateMinMax, appOpts servertypes.AppOptions) {
+	// Read wasm config
+	wasmConfig, err := wasm.ReadWasmConfig(appOpts)
+	if err != nil {
+		panic(fmt.Errorf("error while reading wasm config: %w", err))
+	}
+
 	anteHandler, err := NewAnteHandler(
 		HandlerOptions{
 			HandlerOptions: ante.HandlerOptions{
 				AccountKeeper:   app.AccountKeeper,
-				BankKeeper:      app.BankKeeper,
+				BankKeeper:     app.BankKeeper,
 				SignModeHandler: txConfig.SignModeHandler(),
-				FeegrantKeeper:  app.FeeGrantKeeper,
-				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+				FeegrantKeeper: app.FeeGrantKeeper,
+				SigGasConsumer: ante.DefaultSigVerificationGasConsumer,
 			},
 			IBCKeeper:     app.IBCKeeper,
 			CircuitKeeper: &app.CircuitKeeper,
 			RateMinMax:    commissionRateMinMax,
+			WasmConfig:    &wasmConfig,
+			StoreKey:      app.GetKey(wasmtypes.StoreKey),
 		},
 	)
 	if err != nil {

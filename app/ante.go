@@ -9,11 +9,16 @@ import (
 	sdkmath "cosmossdk.io/math"
 	circuitante "cosmossdk.io/x/circuit/ante"
 	circuitkeeper "cosmossdk.io/x/circuit/keeper"
+	"cosmossdk.io/store/types"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
+	"github.com/cosmos/cosmos-sdk/runtime"
 
 	poaante "github.com/strangelove-ventures/poa/ante"
+
+	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 type RateMinMax struct {
@@ -29,6 +34,8 @@ type HandlerOptions struct {
 	IBCKeeper     *keeper.Keeper
 	CircuitKeeper *circuitkeeper.Keeper
 	RateMinMax    RateMinMax
+	WasmConfig    *wasmtypes.WasmConfig
+	StoreKey      *types.KVStoreKey
 }
 
 func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
@@ -61,6 +68,8 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 
 	anteDecorators := []sdk.AnteDecorator{
 		ante.NewSetUpContextDecorator(),
+		wasmkeeper.NewLimitSimulationGasDecorator(options.WasmConfig.SimulationGasLimit),
+		wasmkeeper.NewCountTXDecorator(runtime.NewKVStoreService(options.StoreKey)),
 		circuitante.NewCircuitBreakerDecorator(options.CircuitKeeper),
 		ante.NewExtensionOptionsDecorator(options.ExtensionOptionChecker),
 		ante.NewValidateBasicDecorator(),

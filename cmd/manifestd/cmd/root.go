@@ -13,15 +13,19 @@ import (
 	"github.com/cosmos/cosmos-sdk/client/config"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/cosmos/cosmos-sdk/server"
+	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	"github.com/cosmos/cosmos-sdk/x/auth/tx"
 	txmodule "github.com/cosmos/cosmos-sdk/x/auth/tx/config"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/cosmos/cosmos-sdk/x/crisis"
 
 	"github.com/liftedinit/manifest-ledger/app"
 	"github.com/liftedinit/manifest-ledger/app/params"
+	wasm "github.com/CosmWasm/wasmd/x/wasm"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 // NewRootCmd creates a new root commaxnd for wasmd. It is called once in the
@@ -96,7 +100,7 @@ func NewRootCmd() *cobra.Command {
 				return err
 			}
 
-			customAppTemplate, customAppConfig := initAppConfig()
+			customAppTemplate, customAppConfig := initWasmConfig()
 			customCMTConfig := initCometBFTConfig()
 
 			return server.InterceptConfigsPreRunHandler(cmd, customAppTemplate, customAppConfig, customCMTConfig)
@@ -116,4 +120,28 @@ func NewRootCmd() *cobra.Command {
 	}
 
 	return rootCmd
+}
+
+func initWasmConfig() (string, interface{}) {
+	type CustomAppConfig struct {
+		serverconfig.Config
+		WASM wasmtypes.WasmConfig `mapstructure:"wasm"`
+	}
+
+	srvCfg := serverconfig.DefaultConfig()
+	srvCfg.MinGasPrices = "0stake"
+
+	customAppConfig := CustomAppConfig{
+		Config: *srvCfg,
+		WASM:   wasmtypes.DefaultWasmConfig(),
+	}
+
+	customAppTemplate := serverconfig.DefaultConfigTemplate + wasmtypes.DefaultConfigTemplate()
+
+	return customAppTemplate, customAppConfig
+}
+
+func initWasmFlags(startCmd *cobra.Command) {
+	crisis.AddModuleInitFlags(startCmd)
+	wasm.AddModuleInitFlags(startCmd)
 }
