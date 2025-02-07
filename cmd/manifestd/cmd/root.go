@@ -22,10 +22,11 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/x/crisis"
 
-	"github.com/liftedinit/manifest-ledger/app"
-	"github.com/liftedinit/manifest-ledger/app/params"
 	wasm "github.com/CosmWasm/wasmd/x/wasm"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+
+	"github.com/liftedinit/manifest-ledger/app"
+	"github.com/liftedinit/manifest-ledger/app/params"
 )
 
 // NewRootCmd creates a new root commaxnd for wasmd. It is called once in the

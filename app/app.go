@@ -138,6 +138,7 @@ import (
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+
 	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
 	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
