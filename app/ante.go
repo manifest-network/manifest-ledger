@@ -7,13 +7,13 @@ import (
 	"github.com/cosmos/ibc-go/v8/modules/core/keeper"
 
 	sdkmath "cosmossdk.io/math"
+	"cosmossdk.io/store/types"
 	circuitante "cosmossdk.io/x/circuit/ante"
 	circuitkeeper "cosmossdk.io/x/circuit/keeper"
-	"cosmossdk.io/store/types"
 
+	"github.com/cosmos/cosmos-sdk/runtime"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
-	"github.com/cosmos/cosmos-sdk/runtime"
 
 	poaante "github.com/strangelove-ventures/poa/ante"
 
