@@ -37,7 +37,6 @@ import (
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	"github.com/cosmos/cosmos-sdk/testutil/network"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
-	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module/testutil"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
@@ -166,27 +165,25 @@ func SetupWithGenesisValSet(t *testing.T, valSet *tmtypes.ValidatorSet, genAccs 
 
 //nolint:all
 func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
-	db := dbm.NewMemDB()
-	nodeHome := t.TempDir()
-	snapshotDir := filepath.Join(nodeHome, "data", "snapshots")
-
-	snapshotDB, err := dbm.NewDB("metadata", dbm.GoLevelDBBackend, snapshotDir)
+	t.Helper()
+	
+	// Create a unique temporary directory for each test
+	tempDir, err := os.MkdirTemp("", "wasm")
 	require.NoError(t, err)
-	t.Cleanup(func() { snapshotDB.Close() })
+	t.Cleanup(func() {
+		os.RemoveAll(tempDir)
+	})
+
+	// Create unique DB path
+	db := dbm.NewMemDB()
+	
+	// Create snapshot store with unique path
+	snapshotDir := filepath.Join(tempDir, "snapshot")
+	snapshotDB := dbm.NewMemDB()
 	snapshotStore, err := snapshots.NewStore(snapshotDB, snapshotDir)
 	require.NoError(t, err)
 
-	// var emptyWasmOpts []wasm.Option
-	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = nodeHome // ensure unique folder
-
-	// Set the POA admin address if not already set
-	if adminAddr := os.Getenv("POA_ADMIN_ADDRESS"); adminAddr == "" {
-		_, _, newAdminAddr := testdata.KeyTestPubAddr()
-		err = os.Setenv("POA_ADMIN_ADDRESS", newAdminAddr.String())
-		require.NoError(t, err)
-	}
-
+	// Initialize app with unique wasm directory
 	app := NewApp(
 		log.NewNopLogger(),
 		db,
@@ -358,4 +355,15 @@ func NewTestNetworkFixture() network.TestFixture {
 			Amino:             app.LegacyAmino(),
 		},
 	}
+}
+
+// Add helper to create unique test directories
+func makeTestDir(t *testing.T) string {
+	t.Helper()
+	tempDir, err := os.MkdirTemp("", "manifest-test")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		os.RemoveAll(tempDir)
+	})
+	return tempDir
 }
