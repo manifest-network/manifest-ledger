@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -166,22 +167,25 @@ func SetupWithGenesisValSet(t *testing.T, valSet *tmtypes.ValidatorSet, genAccs 
 //nolint:all
 func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 	t.Helper()
-	
-	// Create a unique temporary directory for each test
-	tempDir, err := os.MkdirTemp("", "wasm")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		os.RemoveAll(tempDir)
-	})
-
-	// Create unique DB path
 	db := dbm.NewMemDB()
-	
-	// Create snapshot store with unique path
-	snapshotDir := filepath.Join(tempDir, "snapshot")
-	snapshotDB := dbm.NewMemDB()
+	nodeHome := t.TempDir()
+	snapshotDir := filepath.Join(nodeHome, "data", "snapshots")
+
+	snapshotDB, err := dbm.NewDB("metadata", dbm.GoLevelDBBackend, snapshotDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { snapshotDB.Close() })
 	snapshotStore, err := snapshots.NewStore(snapshotDB, snapshotDir)
 	require.NoError(t, err)
+
+	appOptions := make(simtestutil.AppOptionsMap, 0)
+	appOptions[flags.FlagHome] = nodeHome // ensure unique folder
+
+	// Set the POA admin address if not already set
+	if adminAddr := os.Getenv("POA_ADMIN_ADDRESS"); adminAddr == "" {
+		_, _, newAdminAddr := testdata.KeyTestPubAddr()
+		err = os.Setenv("POA_ADMIN_ADDRESS", newAdminAddr.String())
+		require.NoError(t, err)
+	}
 
 	// Initialize app with unique wasm directory
 	app := NewApp(
@@ -190,7 +194,7 @@ func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 		nil,
 		true,
 		DefaultCommissionRateMinMax,
-		EmptyAppOptions{},
+		appOptions,
 		bam.SetChainID(SimAppChainID),
 		bam.SetSnapshot(snapshotStore, snapshottypes.SnapshotOptions{KeepRecent: 2}),
 	)
