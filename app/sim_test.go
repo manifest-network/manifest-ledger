@@ -138,7 +138,6 @@ func BenchmarkSimulation(b *testing.B) {
 func TestFullAppSimulation(t *testing.T) {
 	config := simcli.NewConfigFromFlags()
 	config.ChainID = SimAppChainID
-	nodeHome := t.TempDir()
 
 	db, dir, logger, skip, err := simtestutil.SetupSimulation(config, "leveldb-app-sim", "Simulation", simcli.FlagVerboseValue, simcli.FlagEnabledValue)
 	if skip {
@@ -152,7 +151,7 @@ func TestFullAppSimulation(t *testing.T) {
 	}()
 
 	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = nodeHome
+	appOptions[flags.FlagHome] = t.TempDir()
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
 	cfg := sdk.GetConfig()
@@ -193,7 +192,6 @@ func TestFullAppSimulation(t *testing.T) {
 func TestAppImportExport(t *testing.T) {
 	config := simcli.NewConfigFromFlags()
 	config.ChainID = SimAppChainID
-	nodeHome := t.TempDir()
 
 	db, dir, logger, skip, err := simtestutil.SetupSimulation(config, "leveldb-app-sim", "Simulation", simcli.FlagVerboseValue, simcli.FlagEnabledValue)
 	if skip {
@@ -216,7 +214,7 @@ func TestAppImportExport(t *testing.T) {
 	}()
 
 	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = nodeHome
+	appOptions[flags.FlagHome] = t.TempDir()
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
 	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
@@ -259,6 +257,7 @@ func TestAppImportExport(t *testing.T) {
 		require.NoError(t, os.RemoveAll(newDir))
 	}()
 
+	appOptions[flags.FlagHome] = t.TempDir()
 	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, newApp.Name())
 
@@ -320,7 +319,6 @@ func TestAppImportExport(t *testing.T) {
 func TestAppSimulationAfterImport(t *testing.T) {
 	config := simcli.NewConfigFromFlags()
 	config.ChainID = SimAppChainID
-	nodeHome := t.TempDir()
 
 	cfg := sdk.GetConfig()
 	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
@@ -343,7 +341,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	}()
 
 	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = nodeHome
+	appOptions[flags.FlagHome] = t.TempDir()
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
 	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
@@ -391,6 +389,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		require.NoError(t, os.RemoveAll(newDir))
 	}()
 
+	appOptions[flags.FlagHome] = t.TempDir()
 	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, newApp.Name())
 
@@ -418,8 +417,6 @@ func TestAppStateDeterminism(t *testing.T) {
 	if !simcli.FlagEnabledValue {
 		t.Skip("skipping application simulation")
 	}
-
-	nodeHome := t.TempDir()
 
 	cfg := sdk.GetConfig()
 	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
@@ -453,7 +450,7 @@ func TestAppStateDeterminism(t *testing.T) {
 			appOptions.SetDefault(key, value)
 		}
 	}
-	appOptions.SetDefault(flags.FlagHome, nodeHome)
+	appOptions.SetDefault(flags.FlagHome, t.TempDir())
 	appOptions.SetDefault(server.FlagInvCheckPeriod, simcli.FlagPeriodValue)
 	if simcli.FlagVerboseValue {
 		appOptions.SetDefault(flags.FlagLogLevel, "debug")
@@ -475,6 +472,8 @@ func TestAppStateDeterminism(t *testing.T) {
 
 			err := setPOAAdmin(config)
 			require.NoError(t, err)
+
+			appOptions.SetDefault(flags.FlagHome, t.TempDir())
 
 			db := dbm.NewMemDB()
 			bApp := app.NewApp(
