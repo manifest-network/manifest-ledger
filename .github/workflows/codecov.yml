@@ -19,7 +19,7 @@ jobs:
           go-version: 'stable'
       - name: Get heighliner
         run: |
-          wget -c https://github.com/strangelove-ventures/heighliner/releases/download/v1.5.4/heighliner_1.5.4_linux_amd64.tar.gz -O - | tar -xz heighliner
+          wget -c https://github.com/strangelove-ventures/heighliner/releases/download/v1.7.1/heighliner_1.7.1_linux_amd64.tar.gz -O - | tar -xz heighliner
           mv heighliner /usr/local/bin
       - name: Make local image
         run: make local-image

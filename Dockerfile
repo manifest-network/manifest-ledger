@@ -10,13 +10,13 @@ WORKDIR /code
 ADD go.mod go.sum ./
 RUN set -eux; \
     export ARCH=$(uname -m); \
-    if [ "$ARCH" = "x86_64" ]; then ARCH=amd64; fi; \
-    WASM_VERSION=$(go list -m all | grep github.com/CosmWasm/wasmvm | awk '{print $2}'); \
+    WASM_VERSION=$(go list -m all | grep github.com/CosmWasm/wasmvm/v2); \
     if [ ! -z "${WASM_VERSION}" ]; then \
       WASMVM_REPO=$(echo $WASM_VERSION | awk '{print $1}'); \
       WASMVM_VERS=$(echo $WASM_VERSION | awk '{print $2}'); \
-      wget -O /lib/libwasmvm_muslc.a https://${WASMVM_REPO}/releases/download/${WASMVM_VERS}/libwasmvm_muslc.${ARCH}.a; \
-      ln /lib/libwasmvm_muslc.a /lib/libwasmvm_muslc.${ARCH}.a; \
+      wget -O /lib/libwasmvm_muslc.a https://${WASMVM_REPO%/v2}/releases/download/${WASMVM_VERS}/libwasmvm_muslc.${ARCH}.a; \
+      chmod +x /lib/libwasmvm_muslc.a; \
+      ln -s /lib/libwasmvm_muslc.a /lib/libwasmvm_muslc.${ARCH}.a; \
     fi; \
     go mod download;
 
