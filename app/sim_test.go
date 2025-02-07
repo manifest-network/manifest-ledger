@@ -1,7 +1,7 @@
 package app_test
 
 import (
-
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	SimAppChainID = "testing"
+	SimAppChainID = "manifest-ledger-simapp"
 )
 
 var FlagEnableStreamingValue bool
@@ -80,6 +80,7 @@ func BenchmarkSimulation(b *testing.B) {
 	simcli.FlagVerboseValue = true
 	simcli.FlagCommitValue = true
 	simcli.FlagEnabledValue = true
+	nodeHome := b.TempDir()
 
 	config := simcli.NewConfigFromFlags()
 	config.ChainID = SimAppChainID
@@ -96,7 +97,7 @@ func BenchmarkSimulation(b *testing.B) {
 	}()
 
 	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = app.DefaultNodeHome
+	appOptions[flags.FlagHome] = nodeHome
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
 	cfg := sdk.GetConfig()
@@ -108,7 +109,7 @@ func BenchmarkSimulation(b *testing.B) {
 	err = setPOAAdmin(config)
 	require.NoError(b, err)
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(dir), fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(b, app.AppName, bApp.Name())
 
 	// run randomized simulation
@@ -137,6 +138,7 @@ func BenchmarkSimulation(b *testing.B) {
 func TestFullAppSimulation(t *testing.T) {
 	config := simcli.NewConfigFromFlags()
 	config.ChainID = SimAppChainID
+	nodeHome := t.TempDir()
 
 	db, dir, logger, skip, err := simtestutil.SetupSimulation(config, "leveldb-app-sim", "Simulation", simcli.FlagVerboseValue, simcli.FlagEnabledValue)
 	if skip {
@@ -150,10 +152,19 @@ func TestFullAppSimulation(t *testing.T) {
 	}()
 
 	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = app.DefaultNodeHome
+	appOptions[flags.FlagHome] = nodeHome
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(dir), fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	cfg := sdk.GetConfig()
+	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
+	cfg.SetBech32PrefixForValidator(app.Bech32PrefixValAddr, app.Bech32PrefixValPub)
+	cfg.SetBech32PrefixForConsensusNode(app.Bech32PrefixConsAddr, app.Bech32PrefixConsPub)
+	cfg.Seal()
+
+	err = setPOAAdmin(config)
+	require.NoError(t, err)
+
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// run randomized simulation
@@ -162,7 +173,7 @@ func TestFullAppSimulation(t *testing.T) {
 		os.Stdout,
 		bApp.BaseApp,
 		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
-		simulationtypes.RandomAccounts,
+		simulationtypes.RandomAccounts, // Replace with own random account function if using keys other than secp256k1
 		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
 		app.BlockedAddresses(),
 		config,
@@ -182,10 +193,9 @@ func TestFullAppSimulation(t *testing.T) {
 func TestAppImportExport(t *testing.T) {
 	config := simcli.NewConfigFromFlags()
 	config.ChainID = SimAppChainID
+	nodeHome := t.TempDir()
 
-	// Create a unique directory for the first app
-	dir := makeTestDir(t)
-	db, _, logger, skip, err := simtestutil.SetupSimulation(config, "leveldb-app-sim", "Simulation", simcli.FlagVerboseValue, simcli.FlagEnabledValue)
+	db, dir, logger, skip, err := simtestutil.SetupSimulation(config, "leveldb-app-sim", "Simulation", simcli.FlagVerboseValue, simcli.FlagEnabledValue)
 	if skip {
 		t.Skip("skipping application import/export simulation")
 	}
@@ -202,16 +212,17 @@ func TestAppImportExport(t *testing.T) {
 
 	defer func() {
 		require.NoError(t, db.Close())
+		require.NoError(t, os.RemoveAll(dir))
 	}()
 
 	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = dir
+	appOptions[flags.FlagHome] = nodeHome
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
 	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, bApp.Name())
 
-	// run randomized simulation
+	// Run randomized simulation
 	_, simParams, simErr := simulation.SimulateFromSeed(
 		t,
 		os.Stdout,
@@ -240,20 +251,15 @@ func TestAppImportExport(t *testing.T) {
 
 	fmt.Printf("importing genesis...\n")
 
-	// Create a separate unique directory for the second app
-	newDir := makeTestDir(t)
-	newDB, _, _, _, err := simtestutil.SetupSimulation(config, "leveldb-app-sim-2", "Simulation-2", simcli.FlagVerboseValue, simcli.FlagEnabledValue)
+	newDB, newDir, _, _, err := simtestutil.SetupSimulation(config, "leveldb-app-sim-2", "Simulation-2", simcli.FlagVerboseValue, simcli.FlagEnabledValue)
 	require.NoError(t, err, "simulation setup failed")
 
 	defer func() {
 		require.NoError(t, newDB.Close())
+		require.NoError(t, os.RemoveAll(newDir))
 	}()
 
-	newAppOptions := make(simtestutil.AppOptionsMap, 0)
-	newAppOptions[flags.FlagHome] = newDir
-	newAppOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
-
-	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, newAppOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, newApp.Name())
 
 	var genesisState app.GenesisState
@@ -314,6 +320,7 @@ func TestAppImportExport(t *testing.T) {
 func TestAppSimulationAfterImport(t *testing.T) {
 	config := simcli.NewConfigFromFlags()
 	config.ChainID = SimAppChainID
+	nodeHome := t.TempDir()
 
 	cfg := sdk.GetConfig()
 	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
@@ -324,9 +331,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	err := setPOAAdmin(config)
 	require.NoError(t, err)
 
-	// Create unique directory for first app
-	dir := makeTestDir(t)
-	db, _, logger, skip, err := simtestutil.SetupSimulation(config, "leveldb-app-sim", "Simulation", simcli.FlagVerboseValue, simcli.FlagEnabledValue)
+	db, dir, logger, skip, err := simtestutil.SetupSimulation(config, "leveldb-app-sim", "Simulation", simcli.FlagVerboseValue, simcli.FlagEnabledValue)
 	if skip {
 		t.Skip("skipping application simulation after import")
 	}
@@ -334,10 +339,11 @@ func TestAppSimulationAfterImport(t *testing.T) {
 
 	defer func() {
 		require.NoError(t, db.Close())
+		require.NoError(t, os.RemoveAll(dir))
 	}()
 
 	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = dir  // Use the unique directory
+	appOptions[flags.FlagHome] = nodeHome
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
 	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
@@ -377,9 +383,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 
 	fmt.Printf("importing genesis...\n")
 
-	// Create unique directory for second app
-	newDir := makeTestDir(t)
-	newDB, _, _, _, err := simtestutil.SetupSimulation(config, "leveldb-app-sim-2", "Simulation-2", simcli.FlagVerboseValue, simcli.FlagEnabledValue)
+	newDB, newDir, _, _, err := simtestutil.SetupSimulation(config, "leveldb-app-sim-2", "Simulation-2", simcli.FlagVerboseValue, simcli.FlagEnabledValue)
 	require.NoError(t, err, "simulation setup failed")
 
 	defer func() {
@@ -387,11 +391,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		require.NoError(t, os.RemoveAll(newDir))
 	}()
 
-	newAppOptions := make(simtestutil.AppOptionsMap, 0)
-	newAppOptions[flags.FlagHome] = newDir  // Use the new unique directory
-	newAppOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
-
-	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, newAppOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, newApp.Name())
 
 	_, err = newApp.InitChain(&abci.RequestInitChain{
@@ -419,54 +419,112 @@ func TestAppStateDeterminism(t *testing.T) {
 		t.Skip("skipping application simulation")
 	}
 
+	nodeHome := t.TempDir()
+
+	cfg := sdk.GetConfig()
+	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
+	cfg.SetBech32PrefixForValidator(app.Bech32PrefixValAddr, app.Bech32PrefixValPub)
+	cfg.SetBech32PrefixForConsensusNode(app.Bech32PrefixConsAddr, app.Bech32PrefixConsPub)
+	cfg.Seal()
+
 	config := simcli.NewConfigFromFlags()
 	config.InitialBlockHeight = 1
 	config.ExportParamsPath = ""
-	config.OnOperation = false
-	config.AllInvariants = false
-	config.ChainID = ""  // Set to empty string to match expected value
+	config.OnOperation = true
+	config.AllInvariants = true
+	config.ChainID = SimAppChainID
 
-	// Create separate temp dirs for each simulation
-	dir1 := makeTestDir(t)
-	dir2 := makeTestDir(t)
+	numSeeds := 3
+	numTimesToRunPerSeed := 3 // This used to be set to 5, but we've temporarily reduced it to 3 for the sake of faster CI.
+	appHashList := make([]json.RawMessage, numTimesToRunPerSeed)
 
-	db1 := dbm.NewMemDB()
-	db2 := dbm.NewMemDB()
+	// We will be overriding the random seed and just run a single simulation on the provided seed value
+	if config.Seed != simcli.DefaultSeedValue {
+		numSeeds = 1
+	}
 
-	// Create apps with different dirs but same seed
-	app1 := app.NewApp(log.NewNopLogger(), db1, nil, true, SimulatorCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(dir1), baseapp.SetChainID(""))
-	app2 := app.NewApp(log.NewNopLogger(), db2, nil, true, SimulatorCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(dir2), baseapp.SetChainID(""))
+	appOptions := viper.New()
+	if FlagEnableStreamingValue {
+		m := make(map[string]interface{})
+		m["streaming.abci.keys"] = []string{"*"}
+		m["streaming.abci.plugin"] = "abci_v1"
+		m["streaming.abci.stop-node-on-err"] = true
+		for key, value := range m {
+			appOptions.SetDefault(key, value)
+		}
+	}
+	appOptions.SetDefault(flags.FlagHome, nodeHome)
+	appOptions.SetDefault(server.FlagInvCheckPeriod, simcli.FlagPeriodValue)
+	if simcli.FlagVerboseValue {
+		appOptions.SetDefault(flags.FlagLogLevel, "debug")
+	}
 
-	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = app.DefaultNodeHome
-	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
+	for i := 0; i < numSeeds; i++ {
+		if config.Seed == simcli.DefaultSeedValue {
+			config.Seed = rand.Int63()
+		}
+		fmt.Println("config.Seed: ", config.Seed)
 
-	_, simParams, simErr := simulation.SimulateFromSeed(
-		t,
-		os.Stdout,
-		app1.BaseApp,
-		simtestutil.AppStateFn(app1.AppCodec(), app1.SimulationManager(), app1.DefaultGenesis()),
-		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(app1, app1.AppCodec(), config),
-		app.BlockedAddresses(),
-		config,
-		app1.AppCodec(),
-	)
-	require.NoError(t, simErr)
+		for j := 0; j < numTimesToRunPerSeed; j++ {
+			var logger log.Logger
+			if simcli.FlagVerboseValue {
+				logger = log.NewTestLogger(t)
+			} else {
+				logger = log.NewNopLogger()
+			}
 
-	_, simParams2, simErr2 := simulation.SimulateFromSeed(
-		t,
-		os.Stdout,
-		app2.BaseApp,
-		simtestutil.AppStateFn(app2.AppCodec(), app2.SimulationManager(), app2.DefaultGenesis()),
-		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(app2, app2.AppCodec(), config),
-		app.BlockedAddresses(),
-		config,
-		app2.AppCodec(),
-	)
-	require.NoError(t, simErr2)
-	require.Equal(t, simParams, simParams2)
+			err := setPOAAdmin(config)
+			require.NoError(t, err)
+
+			db := dbm.NewMemDB()
+			bApp := app.NewApp(
+				logger,
+				db,
+				nil,
+				true,
+				SimulatorCommissionRateMinMax,
+				appOptions,
+				interBlockCacheOpt(),
+				baseapp.SetChainID(SimAppChainID),
+			)
+
+			fmt.Printf(
+				"running non-determinism simulation; seed %d: %d/%d, attempt: %d/%d\n",
+				config.Seed, i+1, numSeeds, j+1, numTimesToRunPerSeed,
+			)
+
+			_, _, err = simulation.SimulateFromSeed(
+				t,
+				os.Stdout,
+				bApp.BaseApp,
+				simtestutil.AppStateFn(
+					bApp.AppCodec(),
+					bApp.SimulationManager(),
+					bApp.DefaultGenesis(),
+				),
+				simulationtypes.RandomAccounts,
+				simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
+				app.BlockedAddresses(),
+				config,
+				bApp.AppCodec(),
+			)
+			require.NoError(t, err)
+
+			if config.Commit {
+				simtestutil.PrintStats(db)
+			}
+
+			appHash := bApp.LastCommitID().Hash
+			appHashList[j] = appHash
+
+			if j != 0 {
+				require.Equal(
+					t, hex.EncodeToString(appHashList[0]), hex.EncodeToString(appHashList[j]),
+					"non-determinism in seed %d: %d/%d, attempt: %d/%d\n", config.Seed, i+1, numSeeds, j+1, numTimesToRunPerSeed,
+				)
+			}
+		}
+	}
 }
 
 // setPOAAdmin sets the POA admin address in the environment variable POA_ADMIN_ADDRESS
@@ -480,15 +538,4 @@ func setPOAAdmin(config simulationtypes.Config) error {
 		return err
 	}
 	return nil
-}
-
-// Add helper to create unique test directories
-func makeTestDir(t *testing.T) string {
-	t.Helper()
-	tempDir, err := os.MkdirTemp("", "manifest-test")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		os.RemoveAll(tempDir)
-	})
-	return tempDir
 }
