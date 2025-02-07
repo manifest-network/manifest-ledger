@@ -108,7 +108,7 @@ func BenchmarkSimulation(b *testing.B) {
 	err = setPOAAdmin(config)
 	require.NoError(b, err)
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(dir), fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(b, app.AppName, bApp.Name())
 
 	// run randomized simulation
@@ -153,16 +153,7 @@ func TestFullAppSimulation(t *testing.T) {
 	appOptions[flags.FlagHome] = app.DefaultNodeHome
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
-	cfg := sdk.GetConfig()
-	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
-	cfg.SetBech32PrefixForValidator(app.Bech32PrefixValAddr, app.Bech32PrefixValPub)
-	cfg.SetBech32PrefixForConsensusNode(app.Bech32PrefixConsAddr, app.Bech32PrefixConsPub)
-	cfg.Seal()
-
-	err = setPOAAdmin(config)
-	require.NoError(t, err)
-
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(dir), fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// run randomized simulation
@@ -171,7 +162,7 @@ func TestFullAppSimulation(t *testing.T) {
 		os.Stdout,
 		bApp.BaseApp,
 		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
-		simulationtypes.RandomAccounts, // Replace with own random account function if using keys other than secp256k1
+		simulationtypes.RandomAccounts,
 		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
 		app.BlockedAddresses(),
 		config,
