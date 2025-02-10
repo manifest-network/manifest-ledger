@@ -666,7 +666,7 @@ func NewApp(
 		app.GRPCQueryRouter(),
 		filepath.Join(homePath, "wasm"),
 		wasmConfig,
-		[]string{"iterator", "staking", "stargate", "cosmwasm_1_1", "cosmwasm_1_2", "cosmwasm_1_3", "cosmwasm_1_4", "cosmwasm_2_0"},
+		wasmkeeper.BuiltInCapabilities(),
 		GetPoAAdmin(),
 	)
 
