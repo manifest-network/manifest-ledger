@@ -6,12 +6,11 @@ import (
 	ibcante "github.com/cosmos/ibc-go/v8/modules/core/ante"
 	"github.com/cosmos/ibc-go/v8/modules/core/keeper"
 
+	corestoretypes "cosmossdk.io/core/store"
 	sdkmath "cosmossdk.io/math"
-	"cosmossdk.io/store/types"
 	circuitante "cosmossdk.io/x/circuit/ante"
 	circuitkeeper "cosmossdk.io/x/circuit/keeper"
 
-	"github.com/cosmos/cosmos-sdk/runtime"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
 
@@ -31,11 +30,11 @@ type RateMinMax struct {
 type HandlerOptions struct {
 	ante.HandlerOptions
 
-	IBCKeeper     *keeper.Keeper
-	CircuitKeeper *circuitkeeper.Keeper
-	RateMinMax    RateMinMax
-	WasmConfig    *wasmtypes.WasmConfig
-	StoreKey      *types.KVStoreKey
+	IBCKeeper         *keeper.Keeper
+	CircuitKeeper     *circuitkeeper.Keeper
+	RateMinMax        RateMinMax
+	WasmConfig        *wasmtypes.WasmConfig
+	TxCounterStoreKey corestoretypes.KVStoreService
 }
 
 func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
@@ -69,7 +68,7 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 	anteDecorators := []sdk.AnteDecorator{
 		ante.NewSetUpContextDecorator(),
 		wasmkeeper.NewLimitSimulationGasDecorator(options.WasmConfig.SimulationGasLimit),
-		wasmkeeper.NewCountTXDecorator(runtime.NewKVStoreService(options.StoreKey)),
+		wasmkeeper.NewCountTXDecorator(options.TxCounterStoreKey),
 		circuitante.NewCircuitBreakerDecorator(options.CircuitKeeper),
 		ante.NewExtensionOptionsDecorator(options.ExtensionOptionChecker),
 		ante.NewValidateBasicDecorator(),

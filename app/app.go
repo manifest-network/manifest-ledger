@@ -561,7 +561,7 @@ func NewApp(
 
 	app.GovKeeper = *govKeeper.SetHooks(
 		govtypes.NewMultiGovHooks(
-		// register the governance hooks
+			// register the governance hooks
 		),
 	)
 
@@ -923,7 +923,7 @@ func NewApp(
 	app.ScopedICAHostKeeper = scopedICAHostKeeper
 	app.ScopedICAControllerKeeper = scopedICAControllerKeeper
 
-	app.setAnteHandler(txConfig, commissionRateMinMax, appOpts)
+	app.setAnteHandler(txConfig, commissionRateMinMax, appOpts, keys[wasmtypes.StoreKey])
 
 	// In v0.46, the SDK introduces _postHandlers_. PostHandlers are like
 	// antehandlers, but are run _after_ the `runMsgs` execution. They are also
@@ -967,7 +967,7 @@ func NewApp(
 	return app
 }
 
-func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, commissionRateMinMax RateMinMax, appOpts servertypes.AppOptions) {
+func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, commissionRateMinMax RateMinMax, appOpts servertypes.AppOptions, txCounterStoreKey *storetypes.KVStoreKey) {
 	// Read wasm config
 	wasmConfig, err := wasm.ReadWasmConfig(appOpts)
 	if err != nil {
@@ -983,11 +983,11 @@ func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, commissionRateM
 				FeegrantKeeper:  app.FeeGrantKeeper,
 				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
 			},
-			IBCKeeper:     app.IBCKeeper,
-			CircuitKeeper: &app.CircuitKeeper,
-			RateMinMax:    commissionRateMinMax,
-			WasmConfig:    &wasmConfig,
-			StoreKey:      app.GetKey(wasmtypes.StoreKey),
+			IBCKeeper:         app.IBCKeeper,
+			CircuitKeeper:     &app.CircuitKeeper,
+			RateMinMax:        commissionRateMinMax,
+			WasmConfig:        &wasmConfig,
+			TxCounterStoreKey: runtime.NewKVStoreService(txCounterStoreKey),
 		},
 	)
 	if err != nil {
