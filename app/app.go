@@ -394,7 +394,7 @@ func NewApp(
 	homePath := cast.ToString(appOpts.Get(flags.FlagHome))
 
 	// Read wasm config
-	wasmConfig, err := wasm.ReadWasmConfig(appOpts)
+	wasmConfig, err := wasm.ReadNodeConfig(appOpts)
 	if err != nil {
 		panic(fmt.Errorf("error while reading wasm config: %w", err))
 	}
@@ -635,6 +635,8 @@ func NewApp(
 		app.MsgServiceRouter(),
 		GetPoAAdmin(),
 	)
+	app.ICAHostKeeper.WithQueryRouter(app.GRPCQueryRouter())
+
 	app.ICAControllerKeeper = icacontrollerkeeper.NewKeeper(
 		appCodec,
 		keys[icacontrollertypes.StoreKey],
@@ -657,16 +659,17 @@ func NewApp(
 		app.BankKeeper,
 		app.StakingKeeper,
 		distrkeeper.NewQuerier(app.DistrKeeper),
-		app.IBCKeeper.ChannelKeeper,
+		app.IBCFeeKeeper,
 		app.IBCKeeper.ChannelKeeper,
 		app.IBCKeeper.PortKeeper,
 		scopedWasmKeeper,
 		app.TransferKeeper,
 		app.MsgServiceRouter(),
 		app.GRPCQueryRouter(),
-		filepath.Join(homePath, "wasm"),
+		homePath,
 		wasmConfig,
-		[]string{"iterator", "staking", "stargate", "cosmwasm_1_1", "cosmwasm_1_2", "cosmwasm_1_3", "cosmwasm_1_4", "cosmwasm_2_0"},
+		wasmtypes.VMConfig{},
+		wasmkeeper.BuiltInCapabilities(),
 		GetPoAAdmin(),
 	)
 
@@ -744,35 +747,6 @@ func NewApp(
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)),
 		manifest.NewAppModule(appCodec, app.ManifestKeeper, app.MintKeeper),
 		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
-	)
-
-	// Add wasm module to the app module manager
-	app.ModuleManager.Modules[wasmtypes.ModuleName] = wasm.NewAppModule(
-		appCodec,
-		&app.WasmKeeper,
-		app.StakingKeeper,
-		app.AccountKeeper,
-		app.BankKeeper,
-		app.MsgServiceRouter(),
-		app.GetSubspace(wasmtypes.ModuleName),
-	)
-
-	// Add wasm to begin blockers
-	app.ModuleManager.OrderBeginBlockers = append(
-		app.ModuleManager.OrderBeginBlockers,
-		wasmtypes.ModuleName,
-	)
-
-	// Add wasm to end blockers
-	app.ModuleManager.OrderEndBlockers = append(
-		app.ModuleManager.OrderEndBlockers,
-		wasmtypes.ModuleName,
-	)
-
-	// Add wasm to init genesis
-	app.ModuleManager.OrderInitGenesis = append(
-		app.ModuleManager.OrderInitGenesis,
-		wasmtypes.ModuleName,
 	)
 
 	// BasicModuleManager defines the module BasicManager is in charge of setting up basic,
@@ -923,7 +897,7 @@ func NewApp(
 	app.ScopedICAHostKeeper = scopedICAHostKeeper
 	app.ScopedICAControllerKeeper = scopedICAControllerKeeper
 
-	app.setAnteHandler(txConfig, commissionRateMinMax, appOpts)
+	app.setAnteHandler(txConfig, commissionRateMinMax, appOpts, keys[wasmtypes.StoreKey])
 
 	// In v0.46, the SDK introduces _postHandlers_. PostHandlers are like
 	// antehandlers, but are run _after_ the `runMsgs` execution. They are also
@@ -967,9 +941,9 @@ func NewApp(
 	return app
 }
 
-func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, commissionRateMinMax RateMinMax, appOpts servertypes.AppOptions) {
+func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, commissionRateMinMax RateMinMax, appOpts servertypes.AppOptions, txCounterStoreKey *storetypes.KVStoreKey) {
 	// Read wasm config
-	wasmConfig, err := wasm.ReadWasmConfig(appOpts)
+	wasmConfig, err := wasm.ReadNodeConfig(appOpts)
 	if err != nil {
 		panic(fmt.Errorf("error while reading wasm config: %w", err))
 	}
@@ -983,11 +957,12 @@ func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, commissionRateM
 				FeegrantKeeper:  app.FeeGrantKeeper,
 				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
 			},
-			IBCKeeper:     app.IBCKeeper,
-			CircuitKeeper: &app.CircuitKeeper,
-			RateMinMax:    commissionRateMinMax,
-			WasmConfig:    &wasmConfig,
-			StoreKey:      app.GetKey(wasmtypes.StoreKey),
+			IBCKeeper:         app.IBCKeeper,
+			CircuitKeeper:     &app.CircuitKeeper,
+			RateMinMax:        commissionRateMinMax,
+			WasmKeeper:        &app.WasmKeeper,
+			WasmConfig:        &wasmConfig,
+			TxCounterStoreKey: runtime.NewKVStoreService(txCounterStoreKey),
 		},
 	)
 	if err != nil {

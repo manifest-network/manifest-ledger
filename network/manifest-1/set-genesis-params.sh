@@ -73,8 +73,8 @@ update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_fee"]=[]'
 update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_gas_consume"]="250000"'
 
 # Add CosmWasm configuration
-update_genesis '.app_state["wasm"]["params"]["code_upload_access"]["permission"]="Everybody"'
-update_genesis '.app_state["wasm"]["params"]["instantiate_default_permission"]="Everybody"'
+#update_genesis '.app_state["wasm"]["params"]["code_upload_access"]["permission"]="Everybody"'
+#update_genesis '.app_state["wasm"]["params"]["instantiate_default_permission"]="Everybody"'
 
 # # add genesis accounts
 # # TODO:

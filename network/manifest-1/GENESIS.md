@@ -29,7 +29,7 @@ If you are a validator joining the network after the initial genesis launch, fol
 
 ### Dependencies
 
-> Prerequisite: go1.22+, git, gcc, make, jq
+> Prerequisite: go1.23+, git, gcc, make, jq
 
 **Arch Linux:**
 

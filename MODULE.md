@@ -312,4 +312,4 @@ The WASM module provides several key functionalities for managing smart contract
     - `json-encoded-args`: Execute message in JSON format
     - Optional flags for sending funds with execution
 
-  **Example:** `manifestd tx wasm execute manifest14hj2tavq8fpesdwxxcu44rty3hh90vhujrvcmstl4zr3txmfvw9s0phg4d '{"increment": {}}' --from mykey`
+  **Example:** `manifestd tx wasm execute manifest14hj2tavq8fpesdwxxcu44rty3hh90vhujrvcmstl4zr3txmfvw9s0phg4d '{"increment":{}}' --from mykey`
