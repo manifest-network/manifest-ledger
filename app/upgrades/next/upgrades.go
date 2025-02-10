@@ -1,18 +1,17 @@
 package next
 
 import (
-	errorsmod "cosmossdk.io/errors"
-
 	"context"
 
+	errorsmod "cosmossdk.io/errors"
 	storetypes "cosmossdk.io/store/types"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 
 	"github.com/cosmos/cosmos-sdk/types/module"
 
-	"github.com/liftedinit/manifest-ledger/app/upgrades"
-
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+
+	"github.com/liftedinit/manifest-ledger/app/upgrades"
 )
 
 func NewUpgrade(name string) upgrades.Upgrade {

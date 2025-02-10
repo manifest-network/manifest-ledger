@@ -3,11 +3,10 @@ package interchaintest
 import (
 	"fmt"
 
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
 	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-
 
 	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 

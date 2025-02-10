@@ -220,7 +220,7 @@ proto-lint:
 #################
 
 golangci_lint_cmd=golangci-lint
-golangci_version=v1.58.0
+golangci_version=v1.63.4
 
 lint:
 	@echo "--> Running linter"
