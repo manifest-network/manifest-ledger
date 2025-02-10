@@ -32,7 +32,9 @@ func SubmitGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.Cosmos
 
 	submitCommand := []string{
 		"group", "submit-proposal",
-		path.Join(tn.HomeDir(), file), "--gas", "auto",
+		path.Join(tn.HomeDir(), file),
+		"--gas", "8000000",
+		"--gas-adjustment", "2.0",
 	}
 
 	return exec(ctx, chain, config, tn.TxCommand(keyName, submitCommand...))
@@ -78,10 +80,14 @@ func VoteGroupProposal(ctx context.Context, chain *cosmos.CosmosChain, config *i
 }
 
 func ExecGroupProposal(ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr, proposalId string) (string, error) {
+	tn := chain.GetNode()
+
 	execCommand := []string{
 		"group", "exec", proposalId,
+		"--gas", "8000000",
+		"--gas-adjustment", "2.0",
 	}
-	return exec(ctx, chain, config, chain.GetNode().TxCommand(accAddr, execCommand...))
+	return exec(ctx, chain, config, tn.TxCommand(accAddr, execCommand...))
 }
 
 func exec(ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, command []string) (string, error) {

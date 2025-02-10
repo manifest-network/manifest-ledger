@@ -3,11 +3,10 @@ package interchaintest
 import (
 	"fmt"
 
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
 	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-
 
 	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 
@@ -52,6 +51,12 @@ var (
 		cosmos.NewGenesisKV("app_state.tokenfactory.params.denom_creation_gas_consume", "1"),
 		// Mint - this is the only param the manifest module depends on from mint
 		cosmos.NewGenesisKV("app_state.mint.params.blocks_per_year", "6311520"),
+		// Block and auth params
+		cosmos.NewGenesisKV("consensus.params.block.max_gas", "100000000"), // 100M gas limit
+		cosmos.NewGenesisKV("app_state.auth.params.tx_size_cost_per_byte", "1"),
+		// Wasm params
+		cosmos.NewGenesisKV("app_state.wasm.params.code_upload_access", wasmtypes.AllowEverybody),
+		cosmos.NewGenesisKV("app_state.wasm.params.instantiate_default_permission", wasmtypes.AccessTypeEverybody),
 	}
 
 	// `make local-image`
@@ -73,7 +78,7 @@ var (
 		Bech32Prefix:   "manifest",
 		Denom:          Denom,
 		GasPrices:      "0" + Denom,
-		GasAdjustment:  1.3,
+		GasAdjustment:  2.0,
 		TrustingPeriod: "508h",
 		NoHostMount:    false,
 		EncodingConfig: AppEncoding(),
