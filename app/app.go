@@ -749,35 +749,6 @@ func NewApp(
 		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
 	)
 
-	// Add wasm module to the app module manager
-	app.ModuleManager.Modules[wasmtypes.ModuleName] = wasm.NewAppModule(
-		appCodec,
-		&app.WasmKeeper,
-		app.StakingKeeper,
-		app.AccountKeeper,
-		app.BankKeeper,
-		app.MsgServiceRouter(),
-		app.GetSubspace(wasmtypes.ModuleName),
-	)
-
-	// Add wasm to begin blockers
-	app.ModuleManager.OrderBeginBlockers = append(
-		app.ModuleManager.OrderBeginBlockers,
-		wasmtypes.ModuleName,
-	)
-
-	// Add wasm to end blockers
-	app.ModuleManager.OrderEndBlockers = append(
-		app.ModuleManager.OrderEndBlockers,
-		wasmtypes.ModuleName,
-	)
-
-	// Add wasm to init genesis
-	app.ModuleManager.OrderInitGenesis = append(
-		app.ModuleManager.OrderInitGenesis,
-		wasmtypes.ModuleName,
-	)
-
 	// BasicModuleManager defines the module BasicManager is in charge of setting up basic,
 	// non-dependant module elements, such as codec registration and genesis verification.
 	// By default it is composed of all the module from the module manager.
