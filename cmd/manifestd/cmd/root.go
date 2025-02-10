@@ -126,7 +126,7 @@ func NewRootCmd() *cobra.Command {
 func initWasmConfig() (string, interface{}) {
 	type CustomAppConfig struct {
 		serverconfig.Config
-		WASM wasmtypes.WasmConfig `mapstructure:"wasm"`
+		WASM wasmtypes.NodeConfig `mapstructure:"wasm"`
 	}
 
 	srvCfg := serverconfig.DefaultConfig()
@@ -134,7 +134,7 @@ func initWasmConfig() (string, interface{}) {
 
 	customAppConfig := CustomAppConfig{
 		Config: *srvCfg,
-		WASM:   wasmtypes.DefaultWasmConfig(),
+		WASM:   wasmtypes.DefaultNodeConfig(),
 	}
 
 	customAppTemplate := serverconfig.DefaultConfigTemplate + wasmtypes.DefaultConfigTemplate()

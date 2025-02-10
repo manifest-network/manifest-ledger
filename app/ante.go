@@ -33,7 +33,8 @@ type HandlerOptions struct {
 	IBCKeeper         *keeper.Keeper
 	CircuitKeeper     *circuitkeeper.Keeper
 	RateMinMax        RateMinMax
-	WasmConfig        *wasmtypes.WasmConfig
+	WasmKeeper        *wasmkeeper.Keeper
+	WasmConfig        *wasmtypes.NodeConfig
 	TxCounterStoreKey corestoretypes.KVStoreService
 }
 
@@ -69,6 +70,8 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		ante.NewSetUpContextDecorator(),
 		wasmkeeper.NewLimitSimulationGasDecorator(options.WasmConfig.SimulationGasLimit),
 		wasmkeeper.NewCountTXDecorator(options.TxCounterStoreKey),
+		wasmkeeper.NewGasRegisterDecorator(options.WasmKeeper.GetGasRegister()),
+		wasmkeeper.NewTxContractsDecorator(),
 		circuitante.NewCircuitBreakerDecorator(options.CircuitKeeper),
 		ante.NewExtensionOptionsDecorator(options.ExtensionOptionChecker),
 		ante.NewValidateBasicDecorator(),

@@ -394,7 +394,7 @@ func NewApp(
 	homePath := cast.ToString(appOpts.Get(flags.FlagHome))
 
 	// Read wasm config
-	wasmConfig, err := wasm.ReadWasmConfig(appOpts)
+	wasmConfig, err := wasm.ReadNodeConfig(appOpts)
 	if err != nil {
 		panic(fmt.Errorf("error while reading wasm config: %w", err))
 	}
@@ -635,6 +635,8 @@ func NewApp(
 		app.MsgServiceRouter(),
 		GetPoAAdmin(),
 	)
+	app.ICAHostKeeper.WithQueryRouter(app.GRPCQueryRouter())
+
 	app.ICAControllerKeeper = icacontrollerkeeper.NewKeeper(
 		appCodec,
 		keys[icacontrollertypes.StoreKey],
@@ -657,7 +659,7 @@ func NewApp(
 		app.BankKeeper,
 		app.StakingKeeper,
 		distrkeeper.NewQuerier(app.DistrKeeper),
-		app.IBCKeeper.ChannelKeeper,
+		app.IBCFeeKeeper,
 		app.IBCKeeper.ChannelKeeper,
 		app.IBCKeeper.PortKeeper,
 		scopedWasmKeeper,
@@ -666,6 +668,7 @@ func NewApp(
 		app.GRPCQueryRouter(),
 		homePath,
 		wasmConfig,
+		wasmtypes.VMConfig{},
 		wasmkeeper.BuiltInCapabilities(),
 		GetPoAAdmin(),
 	)
@@ -969,7 +972,7 @@ func NewApp(
 
 func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, commissionRateMinMax RateMinMax, appOpts servertypes.AppOptions, txCounterStoreKey *storetypes.KVStoreKey) {
 	// Read wasm config
-	wasmConfig, err := wasm.ReadWasmConfig(appOpts)
+	wasmConfig, err := wasm.ReadNodeConfig(appOpts)
 	if err != nil {
 		panic(fmt.Errorf("error while reading wasm config: %w", err))
 	}
@@ -986,6 +989,7 @@ func (app *ManifestApp) setAnteHandler(txConfig client.TxConfig, commissionRateM
 			IBCKeeper:         app.IBCKeeper,
 			CircuitKeeper:     &app.CircuitKeeper,
 			RateMinMax:        commissionRateMinMax,
+			WasmKeeper:        &app.WasmKeeper,
 			WasmConfig:        &wasmConfig,
 			TxCounterStoreKey: runtime.NewKVStoreService(txCounterStoreKey),
 		},
