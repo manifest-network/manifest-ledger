@@ -664,7 +664,7 @@ func NewApp(
 		app.TransferKeeper,
 		app.MsgServiceRouter(),
 		app.GRPCQueryRouter(),
-		filepath.Join(homePath, "wasm"),
+		homePath,
 		wasmConfig,
 		wasmkeeper.BuiltInCapabilities(),
 		GetPoAAdmin(),
