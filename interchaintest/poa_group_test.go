@@ -100,10 +100,14 @@ func TestGroupPOA(t *testing.T) {
 	require.NoError(t, err)
 
 	groupGenesis := createGroupGenesis()
+	wasmGenesis := append(groupGenesis,
+		cosmos.NewGenesisKV("app_state.wasm.params.code_upload_access.permission", "AnyOfAddresses"),
+		cosmos.NewGenesisKV("app_state.wasm.params.code_upload_access.addresses", []string{groupAddr}), // Only the Group address can upload code
+	)
 
 	cfgA := LocalChainConfig
 	cfgA.Name = name
-	cfgA.ModifyGenesis = cosmos.ModifyGenesis(groupGenesis)
+	cfgA.ModifyGenesis = cosmos.ModifyGenesis(wasmGenesis)
 	cfgA.Env = []string{
 		fmt.Sprintf("POA_ADMIN_ADDRESS=%s", groupAddr), // This is required in order for GetPoAAdmin to return the Group address
 	}
@@ -122,7 +126,8 @@ func TestGroupPOA(t *testing.T) {
 
 	// CosmWasm store and instantiate
 	testWasmContract(t, ctx, chain, &cfgA, accAddr)
-
+	testWasmContractInvalidUploader(t, ctx, chain, accAddr)
+	testWasmContractInvalidInstantiater(t, ctx, chain, accAddr)
 	// Software Upgrade
 	testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr)
 	// Manifest module
@@ -177,6 +182,27 @@ func testWasmContract(t *testing.T, ctx context.Context, chain *cosmos.CosmosCha
 	err = chain.QueryContract(ctx, contractAddr, string(queryMsgBz), &resp)
 	require.NoError(t, err)
 	require.Equal(t, 0, resp.Count)
+}
+
+// Only the POA admin should be able to store contracts
+func testWasmContractInvalidUploader(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, accAddr string) {
+	t.Log("\n===== TEST GROUP WASM STORE AND INSTANTIATE (INVALID UPLOADER) =====")
+
+	_, err := chain.GetNode().StoreContract(ctx, accAddr, wasmFile)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "can not create code: unauthorized")
+}
+
+// Only the POA admin should be able to instantiate contracts
+func testWasmContractInvalidInstantiater(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, accAddr string) {
+	t.Log("\n===== TEST GROUP WASM STORE AND INSTANTIATE (INVALID INSTANTIATER) =====")
+	codeId := queryLatestCodeId(t, ctx, chain)
+	require.Equal(t, uint64(1), codeId)
+
+	initMsg := `{"count":0}`
+	_, err := chain.InstantiateContract(ctx, accAddr, strconv.FormatUint(codeId, 10), initMsg, true)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "can not instantiate: unauthorized")
 }
 
 // testSoftwareUpgrade tests the submission, voting, and execution of a software upgrade proposal
@@ -438,7 +464,8 @@ func createWasmStoreProposal(sender string, wasmFile string) wasmtypes.MsgStoreC
 		Sender:       sender,
 		WASMByteCode: wasmBytes,
 		InstantiatePermission: &wasmtypes.AccessConfig{
-			Permission: wasmtypes.AccessTypeEverybody,
+			Permission: wasmtypes.AccessTypeAnyOfAddresses,
+			Addresses:  []string{groupAddr}, // Only the Group address can instantiate the contract
 		},
 	}
 }
@@ -593,13 +620,6 @@ func sendFunds(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, fro
 		Amount:  amount,
 	})
 	require.NoError(t, err)
-}
-
-func updatePOAParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, groupAddr string, allowValidatorSelfExit bool) {
-	r, err := helpers.POAUpdateParams(ctx, chain, user, groupAddr, allowValidatorSelfExit)
-	require.NoError(t, err)
-	require.NotNil(t, r)
-	require.Equal(t, uint32(0x0), r.Code)
 }
 
 func verifyBankDenomMetadata(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, expectedMetadata banktypes.Metadata) {
