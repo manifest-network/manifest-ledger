@@ -23,7 +23,7 @@ import (
 
 const (
 	// Hardcoding the upgrade name to match what's registered in app.RegisterUpgradeHandlers()
-	upgradeName = "v2" // This matches the package name in app/upgrades/v2/
+	upgradeName = "v0.0.1-rc.5"
 
 	haltHeightDelta    = int64(15) // will propose upgrade this many blocks in the future
 	blocksAfterUpgrade = int64(7)

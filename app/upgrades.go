@@ -6,7 +6,7 @@ import (
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 
 	"github.com/liftedinit/manifest-ledger/app/upgrades"
-	v2 "github.com/liftedinit/manifest-ledger/app/upgrades/v2"
+	v001rc5 "github.com/liftedinit/manifest-ledger/app/upgrades/testnet/v0.0.1-rc.5"
 )
 
 // Upgrades list of chain upgrades
@@ -15,7 +15,7 @@ var Upgrades []upgrades.Upgrade
 // RegisterUpgradeHandlers registers the chain upgrade handlers
 func (app *ManifestApp) RegisterUpgradeHandlers() {
 	// Use "v2" to match the package name in app/upgrades/v2/
-	Upgrades = append(Upgrades, v2.NewUpgrade("v2"))
+	Upgrades = append(Upgrades, v001rc5.NewUpgrade("v0.0.1-rc.5"))
 
 	keepers := upgrades.AppKeepers{
 		AccountKeeper: app.AccountKeeper,

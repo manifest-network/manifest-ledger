@@ -1,4 +1,4 @@
-package v2
+package v001rc5
 
 import (
 	"context"
@@ -15,9 +15,7 @@ import (
 	"github.com/liftedinit/manifest-ledger/app/upgrades"
 )
 
-var (
-	PoaAdminAddress = os.Getenv("POA_ADMIN_ADDRESS")
-)
+var PoaAdminAddress = os.Getenv("POA_ADMIN_ADDRESS")
 
 func NewUpgrade(name string) upgrades.Upgrade {
 	return upgrades.Upgrade{
