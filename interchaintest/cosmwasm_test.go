@@ -54,8 +54,8 @@ func TestCosmWasm(t *testing.T) {
 	}))
 
 	// Get test users
-	users := interchaintest.GetAndFundTestUsers(t, ctx, "default", DefaultGenesisAmt, chain)
-	user := users[0]
+	user1Wallet, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, "user1", accMnemonic, DefaultGenesisAmt, chain)
+	require.NoError(t, err)
 
 	var contractAddr string
 	var codeId uint64
@@ -65,7 +65,7 @@ func TestCosmWasm(t *testing.T) {
 		// Store contract directly using local file path
 		wasmFile := "../scripts/cw_template.wasm"
 		t.Logf("Storing contract from local path: %s", wasmFile)
-		codeIdStr, err := chain.GetNode().StoreContract(ctx, user.KeyName(), wasmFile)
+		codeIdStr, err := chain.GetNode().StoreContract(ctx, user1Wallet.KeyName(), wasmFile)
 		require.NoError(t, err)
 		t.Logf("Received code ID: %s", codeIdStr)
 		codeId, err = strconv.ParseUint(codeIdStr, 10, 64)
@@ -84,7 +84,7 @@ func TestCosmWasm(t *testing.T) {
 		// Instantiate contract with JSON string and required flags
 		contractAddr, err = chain.GetNode().InstantiateContract(
 			ctx,
-			user.KeyName(),
+			user1Wallet.KeyName(),
 			strconv.FormatUint(codeId, 10),
 			string(initMsgBz),
 			true,
@@ -116,7 +116,7 @@ func TestCosmWasm(t *testing.T) {
 		executeMsgBz, err := json.Marshal(executeMsg)
 		require.NoError(t, err)
 
-		_, err = chain.ExecuteContract(ctx, user.KeyName(), contractAddr, string(executeMsgBz))
+		_, err = chain.ExecuteContract(ctx, user1Wallet.KeyName(), contractAddr, string(executeMsgBz))
 		require.NoError(t, err)
 
 		// Query again to verify execution
