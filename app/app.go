@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/liftedinit/manifest-ledger/app/helpers"
 	"github.com/spf13/cast"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -143,21 +144,6 @@ import (
 	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
 )
-
-// GetPoAAdmin returns the address of the PoA admin.
-// The default PoA admin is the governance module account.
-func GetPoAAdmin() string {
-	if addr := os.Getenv("POA_ADMIN_ADDRESS"); addr != "" {
-		// Panic if the address is invalid
-		_, err := sdk.AccAddressFromBech32(addr)
-		if err != nil {
-			panic(fmt.Sprintf("invalid POA_ADMIN_ADDRESS: %s", addr))
-		}
-		return addr
-	}
-
-	return authtypes.NewModuleAddress(govtypes.ModuleName).String()
-}
 
 // We pull these out so we can set them with LDFLAGS in the Makefile
 var (
@@ -368,7 +354,7 @@ func NewApp(
 	app.ConsensusParamsKeeper = consensusparamkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[consensusparamtypes.StoreKey]),
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 		runtime.EventService{},
 	)
 	bApp.SetParamStore(app.ConsensusParamsKeeper.ParamsStore)
@@ -407,7 +393,7 @@ func NewApp(
 		maccPerms,
 		authcodec.NewBech32Codec(sdk.GetConfig().GetBech32AccountAddrPrefix()),
 		sdk.GetConfig().GetBech32AccountAddrPrefix(),
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 
 	app.BankKeeper = bankkeeper.NewBaseKeeper(
@@ -415,7 +401,7 @@ func NewApp(
 		runtime.NewKVStoreService(keys[banktypes.StoreKey]),
 		app.AccountKeeper,
 		BlockedAddresses(),
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 		logger,
 	)
 
@@ -424,7 +410,7 @@ func NewApp(
 		runtime.NewKVStoreService(keys[stakingtypes.StoreKey]),
 		app.AccountKeeper,
 		app.BankKeeper,
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 		authcodec.NewBech32Codec(sdk.GetConfig().GetBech32ValidatorAddrPrefix()),
 		authcodec.NewBech32Codec(sdk.GetConfig().GetBech32ConsensusAddrPrefix()),
 	)
@@ -436,7 +422,7 @@ func NewApp(
 		app.AccountKeeper,
 		app.BankKeeper,
 		authtypes.FeeCollectorName,
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 
 	app.DistrKeeper = distrkeeper.NewKeeper(
@@ -446,7 +432,7 @@ func NewApp(
 		app.BankKeeper,
 		app.StakingKeeper,
 		authtypes.FeeCollectorName,
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 
 	app.SlashingKeeper = slashingkeeper.NewKeeper(
@@ -454,7 +440,7 @@ func NewApp(
 		legacyAmino,
 		runtime.NewKVStoreService(keys[slashingtypes.StoreKey]),
 		app.StakingKeeper,
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 
 	app.POAKeeper = poakeeper.NewKeeper(
@@ -464,7 +450,7 @@ func NewApp(
 		app.SlashingKeeper,
 		app.BankKeeper,
 		logger,
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 	app.POAKeeper.SetTestAccountKeeper(app.AccountKeeper)
 
@@ -475,7 +461,7 @@ func NewApp(
 		invCheckPeriod,
 		app.BankKeeper,
 		authtypes.FeeCollectorName,
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 		app.AccountKeeper.AddressCodec(),
 	)
 
@@ -490,7 +476,7 @@ func NewApp(
 	app.CircuitKeeper = circuitkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[circuittypes.StoreKey]),
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 		app.AccountKeeper.AddressCodec(),
 	)
 	app.BaseApp.SetCircuitBreaker(&app.CircuitKeeper)
@@ -520,7 +506,7 @@ func NewApp(
 		appCodec,
 		homePath,
 		app.BaseApp,
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 
 	app.IBCKeeper = ibckeeper.NewKeeper(
@@ -530,7 +516,7 @@ func NewApp(
 		app.StakingKeeper,
 		app.UpgradeKeeper,
 		scopedIBCKeeper,
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 
 	// Register the proposal types
@@ -556,12 +542,12 @@ func NewApp(
 		app.DistrKeeper,
 		app.MsgServiceRouter(),
 		govConfig,
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 
 	app.GovKeeper = *govKeeper.SetHooks(
 		govtypes.NewMultiGovHooks(
-		// register the governance hooks
+			// register the governance hooks
 		),
 	)
 
@@ -584,7 +570,7 @@ func NewApp(
 		app.MintKeeper,
 		app.BankKeeper,
 		logger,
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 	app.ManifestKeeper.SetTestAccountKeeper(app.AccountKeeper)
 
@@ -598,7 +584,7 @@ func NewApp(
 		app.DistrKeeper,
 		tokenFactoryCapabilities,
 		app.POAKeeper.IsAdmin,
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 
 	// IBC Fee Module keeper
@@ -620,7 +606,7 @@ func NewApp(
 		app.AccountKeeper,
 		app.BankKeeper,
 		scopedTransferKeeper,
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 
 	app.ICAHostKeeper = icahostkeeper.NewKeeper(
@@ -633,7 +619,7 @@ func NewApp(
 		app.AccountKeeper,
 		scopedICAHostKeeper,
 		app.MsgServiceRouter(),
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 	app.ICAHostKeeper.WithQueryRouter(app.GRPCQueryRouter())
 
@@ -646,7 +632,7 @@ func NewApp(
 		app.IBCKeeper.PortKeeper,
 		scopedICAControllerKeeper,
 		app.MsgServiceRouter(),
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 
 	// Set legacy router for backwards compatibility with gov v1beta1
@@ -670,7 +656,7 @@ func NewApp(
 		wasmConfig,
 		wasmtypes.VMConfig{},
 		wasmkeeper.BuiltInCapabilities(),
-		GetPoAAdmin(),
+		helpers.GetPoAAdmin(),
 	)
 
 	app.CapabilityKeeper.Seal()

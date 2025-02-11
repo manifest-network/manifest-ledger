@@ -2,11 +2,11 @@ package v001rc5
 
 import (
 	"context"
-	"os"
 
 	errorsmod "cosmossdk.io/errors"
 	storetypes "cosmossdk.io/store/types"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
+	"github.com/liftedinit/manifest-ledger/app/helpers"
 
 	"github.com/cosmos/cosmos-sdk/types/module"
 
@@ -14,8 +14,6 @@ import (
 
 	"github.com/liftedinit/manifest-ledger/app/upgrades"
 )
-
-var PoaAdminAddress = os.Getenv("POA_ADMIN_ADDRESS")
 
 func NewUpgrade(name string) upgrades.Upgrade {
 	return upgrades.Upgrade{
@@ -45,7 +43,7 @@ func CreateUpgradeHandler(
 		wasmParams := wasmtypes.DefaultParams()
 		wasmParams.CodeUploadAccess = wasmtypes.AccessConfig{
 			Permission: wasmtypes.AccessTypeAnyOfAddresses,
-			Addresses:  []string{PoaAdminAddress},
+			Addresses:  []string{helpers.GetPoAAdmin()},
 		}
 		wasmParams.InstantiateDefaultPermission = wasmtypes.AccessTypeAnyOfAddresses
 
