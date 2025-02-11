@@ -2,6 +2,7 @@ package v2
 
 import (
 	"context"
+	"os"
 
 	errorsmod "cosmossdk.io/errors"
 	storetypes "cosmossdk.io/store/types"
@@ -12,6 +13,10 @@ import (
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
 	"github.com/liftedinit/manifest-ledger/app/upgrades"
+)
+
+var (
+	PoaAdminAddress = os.Getenv("POA_ADMIN_ADDRESS")
 )
 
 func NewUpgrade(name string) upgrades.Upgrade {
@@ -40,7 +45,10 @@ func CreateUpgradeHandler(
 
 		// Set CosmWasm params
 		wasmParams := wasmtypes.DefaultParams()
-		wasmParams.CodeUploadAccess = wasmtypes.AllowNobody
+		wasmParams.CodeUploadAccess = wasmtypes.AccessConfig{
+			Permission: wasmtypes.AccessTypeAnyOfAddresses,
+			Addresses:  []string{PoaAdminAddress},
+		}
 		wasmParams.InstantiateDefaultPermission = wasmtypes.AccessTypeAnyOfAddresses
 
 		if err := keepers.WasmKeeper.SetParams(ctx, wasmParams); err != nil {
