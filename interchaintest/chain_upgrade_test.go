@@ -7,23 +7,21 @@ import (
 	"testing"
 	"time"
 
+	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
-
-	upgradetypes "cosmossdk.io/x/upgrade/types"
+	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/strangelove-ventures/interchaintest/v8/testreporter"
-	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
 
 const (
-	chainName = "manifest"
 	// Hardcoding the upgrade name to match what's registered in app.RegisterUpgradeHandlers()
 	upgradeName = "v2" // This matches the package name in app/upgrades/v2/
 
@@ -36,7 +34,7 @@ var (
 	baseChain = ibc.DockerImage{
 		Repository: "ghcr.io/liftedinit/manifest-ledger", // GitHub Container Registry path
 		Version:    "v0.0.1-rc.4",                        // The version we're upgrading from
-		UidGid:     "1025:1025",
+		UIDGID:     "1025:1025",
 	}
 
 	// Initialize group policy with decision policy
@@ -86,7 +84,7 @@ func TestBasicManifestUpgrade(t *testing.T) {
 
 	chains, err := interchaintest.NewBuiltinChainFactory(zaptest.NewLogger(t), []*interchaintest.ChainSpec{
 		{
-			Name:          "manifest",
+			Name:          "manifest-2",
 			Version:       baseChain.Version, // Use the base version initially
 			ChainName:     cfg.ChainID,
 			NumValidators: &vals,
