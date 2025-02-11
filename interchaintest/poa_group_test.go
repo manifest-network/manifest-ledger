@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,7 +79,6 @@ var (
 	tfForceTransferProposal = createTfForceTransferProposal(groupAddr, sdk.NewInt64Coin(tfFullDenom, 1), accAddr, acc2Addr)
 	tfChangeAdminProposal   = createTfChangeAdminProposal(groupAddr, tfFullDenom, accAddr)
 	tfModifyProposal        = createTfModifyMetadataProposal(groupAddr, tfFullDenom, tfFullDenom, tfTicker, tfFullDenom, tfTicker, "The foo token description")
-	proposalId              = 1
 )
 
 func TestGroupPOA(t *testing.T) {
@@ -355,21 +355,39 @@ func createAndRunProposalFailure(t *testing.T, ctx context.Context, chain *cosmo
 // submitVoteAndExecProposal submits, votes, and executes a group proposal
 func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, keyName string, prop *grouptypes.MsgSubmitProposal) error {
 	// Increment the proposal ID regardless of the outcome
-	defer func() { proposalId++ }()
-
-	pid := strconv.Itoa(proposalId)
-
 	marshalProposal(t, prop)
 
-	_, err := helpers.SubmitGroupProposal(ctx, t, chain, config, keyName, prop)
+	txHash, err := helpers.SubmitGroupProposal(ctx, t, chain, config, keyName, prop)
 	if err != nil {
 		return err
 	}
-	_, err = helpers.VoteGroupProposal(ctx, chain, config, pid, keyName, grouptypes.VOTE_OPTION_YES.String(), metadata)
+
+	// Get the proposal ID from the transaction response
+	txResp, err := chain.GetTransaction(txHash)
 	if err != nil {
 		return err
 	}
-	_, err = helpers.ExecGroupProposal(ctx, chain, config, keyName, pid)
+	var pid string
+	for _, ev := range txResp.Events {
+		if ev.GetType() != "cosmos.group.v1.EventSubmitProposal" {
+			continue
+		}
+		for _, attr := range ev.GetAttributes() {
+			if attr.Key == "proposal_id" {
+				pid = attr.Value
+			}
+		}
+	}
+	if pid == "" {
+		return fmt.Errorf("failed to get proposal ID")
+	}
+	cleanedPid := strings.ReplaceAll(pid, "\"", "")
+
+	_, err = helpers.VoteGroupProposal(ctx, chain, config, cleanedPid, keyName, grouptypes.VOTE_OPTION_YES.String(), metadata)
+	if err != nil {
+		return err
+	}
+	_, err = helpers.ExecGroupProposal(ctx, chain, config, keyName, cleanedPid)
 	if err != nil {
 		return err
 	}
