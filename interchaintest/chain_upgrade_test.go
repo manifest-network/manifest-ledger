@@ -2,8 +2,8 @@ package interchaintest
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-
 	"testing"
 	"time"
 
@@ -178,27 +178,47 @@ func TestBasicManifestUpgrade(t *testing.T) {
 
 	// Test CosmWasm functionality after upgrade
 	t.Log("Testing CosmWasm functionality after upgrade")
-	StoreAndInstantiateContract(t, ctx, chain, user1Wallet)
+	StoreAndInstantiateContract(t, ctx, chain, user1Wallet, accAddr)
 }
 
-func StoreAndInstantiateContract(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet) string {
+func StoreAndInstantiateContract(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, accAddr string) string {
+	// Get the current chain config
+	chainConfig := chain.Config()
+
 	// Store contract
 	wasmFile := "../scripts/cw_template.wasm"
-	codeId, err := chain.StoreContract(ctx, user.KeyName(), wasmFile)
-	require.NoError(t, err)
-	require.NotEmpty(t, codeId)
+	wasmStoreProposal = createWasmStoreProposal(groupAddr, wasmFile)
+	createAndRunProposalSuccess(t, ctx, chain, &chainConfig, accAddr, []*types.Any{createAny(t, &wasmStoreProposal)})
 
-	// Instantiate contract
-	initMsg := `{"count": 0}`
-	contractAddr, err := chain.InstantiateContract(ctx, user.KeyName(), codeId, initMsg, true)
+	// Query the code ID
+	codeId := queryLatestCodeId(t, ctx, chain)
+	require.Equal(t, uint64(1), codeId)
+
+	// Instantiate the contract
+	initMsg := map[string]interface{}{
+		"count": 0,
+	}
+	initMsgBz, err := json.Marshal(initMsg)
 	require.NoError(t, err)
+
+	wasmInstantiateProposal := createWasmInstantiateProposal(groupAddr, codeId, string(initMsgBz))
+	createAndRunProposalSuccess(t, ctx, chain, &chainConfig, accAddr, []*types.Any{createAny(t, &wasmInstantiateProposal)})
+
+	// Query the contract address
+	contractAddr := queryLatestContractAddress(t, ctx, chain, codeId)
 	require.NotEmpty(t, contractAddr)
 
-	// Query contract to verify instantiation
+	// Query contract state to verify instantiation
 	var resp struct {
 		Count int `json:"count"`
 	}
-	err = chain.QueryContract(ctx, contractAddr, map[string]interface{}{"get_count": struct{}{}}, &resp)
+	queryMsg := map[string]interface{}{
+		"get_count": struct{}{},
+	}
+	queryMsgBz, err := json.Marshal(queryMsg)
+	require.NoError(t, err)
+
+	err = chain.QueryContract(ctx, contractAddr, string(queryMsgBz), &resp)
 	require.NoError(t, err)
 	require.Equal(t, 0, resp.Count)
 
