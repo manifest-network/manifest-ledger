@@ -75,7 +75,7 @@ var (
 		Bech32Prefix:   "manifest",
 		Denom:          Denom,
 		GasPrices:      "0" + Denom,
-		GasAdjustment:  1.0,
+		GasAdjustment:  1.3,
 		TrustingPeriod: "508h",
 		NoHostMount:    false,
 		EncodingConfig: AppEncoding(),
