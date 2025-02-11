@@ -128,6 +128,18 @@ make ictest-ibc
 make ictest-group-poa
 ```
 
+**To test the chain upgrade run:**
+
+```bash
+make ictest-chain-upgrade
+```
+
+**To Test cosmwasm functionality run:**
+
+```bash
+make ictest-cosmwasm
+```
+
 ## Simulation
 
 **To execute the full application simulation run:**

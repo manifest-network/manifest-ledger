@@ -1,4 +1,4 @@
-package next
+package v2
 
 import (
 	"context"

@@ -67,6 +67,7 @@ jobs:
           - "ictest-manifest"
           - "ictest-group-poa"
           - "ictest-cosmwasm"
+          - "ictest-chain-upgrade"
       fail-fast: false
 
     steps:

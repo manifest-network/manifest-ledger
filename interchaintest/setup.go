@@ -54,9 +54,6 @@ var (
 		// Block and auth params
 		cosmos.NewGenesisKV("consensus.params.block.max_gas", "100000000"), // 100M gas limit
 		cosmos.NewGenesisKV("app_state.auth.params.tx_size_cost_per_byte", "1"),
-		// Wasm params
-		cosmos.NewGenesisKV("app_state.wasm.params.code_upload_access", wasmtypes.AllowEverybody),
-		cosmos.NewGenesisKV("app_state.wasm.params.instantiate_default_permission", wasmtypes.AccessTypeEverybody),
 	}
 
 	// `make local-image`

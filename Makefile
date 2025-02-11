@@ -123,6 +123,9 @@ ictest-group-poa:
 ictest-cosmwasm:
 	cd interchaintest && go test -race -v -run TestCosmWasm . -count=1
 
+ictest-chain-upgrade:
+	cd interchaintest && go test -race -v -run TestBasicManifestUpgrade . -count=1
+
 .PHONY: ictest-ibc ictest-tokenfactory
 
 ###############################################################################
