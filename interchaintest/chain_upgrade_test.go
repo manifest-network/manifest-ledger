@@ -25,7 +25,7 @@ const (
 	// Hardcoding the upgrade name to match what's registered in app.RegisterUpgradeHandlers()
 	upgradeName = "v2" // This matches the package name in app/upgrades/v2/
 
-	haltHeightDelta    = int64(9) // will propose upgrade this many blocks in the future
+	haltHeightDelta    = int64(15) // will propose upgrade this many blocks in the future
 	blocksAfterUpgrade = int64(7)
 )
 
@@ -63,8 +63,6 @@ func TestBasicManifestUpgrade(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}
-
-	t.Parallel()
 
 	// Setup chain with group-based governance
 	previousVersionGenesis := append(DefaultGenesis,
@@ -152,16 +150,21 @@ func TestBasicManifestUpgrade(t *testing.T) {
 	require.Equal(t, haltHeight, height, "height is not equal to halt height")
 
 	// Upgrade nodes
-	t.Log("Upgrading nodes to new version")
+	t.Log("Stopping all nodes...")
 	err = chain.StopAllNodes(ctx)
 	require.NoError(t, err, "error stopping node(s)")
+
+	t.Log("Waiting for chain to stop...")
+	time.Sleep(5 * time.Second)
 
 	// Use local build for upgrade
 	t.Log("Using local build for upgrade")
 	chain.UpgradeVersion(ctx, client, "manifest", "local")
 
+	t.Log("Starting upgraded nodes...")
+	time.Sleep(5 * time.Second)
+
 	// Make sure we have the v2 upgrade handler in the local build
-	t.Log("Starting upgraded nodes with v2 upgrade handler")
 	err = chain.StartAllNodes(ctx)
 	require.NoError(t, err, "error starting upgraded node(s)")
 
