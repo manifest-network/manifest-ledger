@@ -6,12 +6,12 @@ import (
 	errorsmod "cosmossdk.io/errors"
 	storetypes "cosmossdk.io/store/types"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
-	"github.com/liftedinit/manifest-ledger/app/helpers"
 
 	"github.com/cosmos/cosmos-sdk/types/module"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
+	"github.com/liftedinit/manifest-ledger/app/helpers"
 	"github.com/liftedinit/manifest-ledger/app/upgrades"
 )
 

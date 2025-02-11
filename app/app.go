@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/liftedinit/manifest-ledger/app/helpers"
 	"github.com/spf13/cast"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -140,6 +139,7 @@ import (
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
+	"github.com/liftedinit/manifest-ledger/app/helpers"
 	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
 	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
 	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
@@ -547,7 +547,7 @@ func NewApp(
 
 	app.GovKeeper = *govKeeper.SetHooks(
 		govtypes.NewMultiGovHooks(
-			// register the governance hooks
+		// register the governance hooks
 		),
 	)
 
