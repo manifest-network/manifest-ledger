@@ -75,6 +75,8 @@ func SubmitGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.Cosmos
 func VoteGroupProposal(ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposalId, accAddr, vote, metadata string) (string, error) {
 	voteCommand := []string{
 		"group", "vote", proposalId, accAddr, vote, metadata,
+		"--gas", "1000000",
+		"--gas-adjustment", "2.0",
 	}
 	return exec(ctx, chain, config, chain.GetNode().TxCommand(accAddr, voteCommand...))
 }
@@ -84,7 +86,7 @@ func ExecGroupProposal(ctx context.Context, chain *cosmos.CosmosChain, config *i
 
 	execCommand := []string{
 		"group", "exec", proposalId,
-		"--gas", "8000000",
+		"--gas", "20000000",
 		"--gas-adjustment", "2.0",
 	}
 	return exec(ctx, chain, config, tn.TxCommand(accAddr, execCommand...))
