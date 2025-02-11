@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/cosmos/cosmos-sdk/types"
-	types2 "github.com/cosmos/cosmos-sdk/x/auth/types"
-	types3 "github.com/cosmos/cosmos-sdk/x/gov/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 )
 
 // GetPoAAdmin returns the address of the PoA admin.
@@ -21,5 +21,5 @@ func GetPoAAdmin() string {
 		return addr
 	}
 
-	return types2.NewModuleAddress(types3.ModuleName).String()
+	return authtypes.NewModuleAddress(govtypes.ModuleName).String()
 }
