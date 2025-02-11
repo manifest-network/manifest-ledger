@@ -68,7 +68,7 @@ var (
 			{
 				Repository: "manifest",
 				Version:    "local",
-				UidGid:     "1025:1025",
+				UIDGID:     "1025:1025",
 			},
 		},
 		Bin:            "manifestd",
