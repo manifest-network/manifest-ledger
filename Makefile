@@ -132,18 +132,11 @@ ictest-chain-upgrade:
 ###                                Build Image                              ###
 ###############################################################################
 
-get-heighliner:
-	git clone https://github.com/strangelove-ventures/heighliner.git
-	cd heighliner && go install
-
 local-image:
-ifeq (,$(shell which heighliner))
-	echo 'heighliner' binary not found. Consider running `make get-heighliner`
-else
-	heighliner build -c manifest --local -f ./chains.yaml --alpine-version 3.20
-endif
+	@echo "--> Building local image"
+	docker build . -t manifest:local
 
-.PHONY: get-heighliner local-image
+.PHONY: local-image
 
 #################
 ###   Test    ###
