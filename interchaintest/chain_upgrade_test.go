@@ -155,14 +155,14 @@ func TestBasicManifestUpgrade(t *testing.T) {
 	require.NoError(t, err, "error stopping node(s)")
 
 	t.Log("Waiting for chain to stop...")
-	time.Sleep(5 * time.Second)
+	time.Sleep(30 * time.Second)
 
 	// Use local build for upgrade
 	t.Log("Using local build for upgrade")
 	chain.UpgradeVersion(ctx, client, "manifest", "local")
 
 	t.Log("Starting upgraded nodes...")
-	time.Sleep(5 * time.Second)
+	time.Sleep(30 * time.Second)
 
 	// Make sure we have the v2 upgrade handler in the local build
 	err = chain.StartAllNodes(ctx)
