@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	// Hardcoding the upgrade name to match what's registered in app.RegisterUpgradeHandlers()
 	upgradeName = "v0.0.1-rc.5"
 
 	haltHeightDelta    = int64(15) // will propose upgrade this many blocks in the future
@@ -124,15 +123,13 @@ func TestBasicManifestUpgrade(t *testing.T) {
 
 	haltHeight := height + haltHeightDelta
 
-	// Create and submit upgrade proposal through group
+	t.Log("Upgrade name:", upgradeName)
 	t.Log("Submitting upgrade proposal through group")
 	upgradeMsg := createUpgradeProposal(groupAddr, upgradeName, haltHeight)
 
-	// Set the upgrade plan
 	createAndRunProposalSuccess(t, ctx, chain, &cfg, accAddr, []*types.Any{createAny(t, &upgradeMsg)})
 	verifyUpgradePlan(t, ctx, chain, &upgradetypes.Plan{Name: upgradeName, Height: haltHeight})
 
-	// Wait for chain to halt
 	t.Log("Waiting for chain to halt at upgrade height")
 	timeoutCtx, timeoutCtxCancel := context.WithTimeout(ctx, time.Second*45)
 	defer timeoutCtxCancel()
