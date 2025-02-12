@@ -73,8 +73,9 @@ update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_fee"]=[]'
 update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_gas_consume"]="250000"'
 
 # Add CosmWasm configuration
-#update_genesis '.app_state["wasm"]["params"]["code_upload_access"]["permission"]="Everybody"'
-#update_genesis '.app_state["wasm"]["params"]["instantiate_default_permission"]="Everybody"'
+update_genesis '.app_state["wasm"]["params"]["code_upload_access"]["permission"]="AnyOfAddresses"'
+update_genesis '.app_state["wasm"]["params"]["code_upload_access"]["addresses"]=["manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj"]' # The POA Admin
+update_genesis '.app_state["wasm"]["params"]["instantiate_default_permission"]="AnyOfAddresses"'
 
 # # add genesis accounts
 # # TODO:
