@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/CosmWasm/wasmd/x/wasm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -109,8 +110,8 @@ lru_size = {{ .WASM.LruSize }}
 func initRootCmd(
 	rootCmd *cobra.Command,
 	txConfig client.TxConfig,
-	//	interfaceRegistry codectypes.InterfaceRegistry,
-	//	appCodec codec.Codec,
+//	interfaceRegistry codectypes.InterfaceRegistry,
+//	appCodec codec.Codec,
 	basicManager module.BasicManager,
 ) {
 	cfg := sdk.GetConfig()
@@ -139,6 +140,7 @@ func initRootCmd(
 
 func addModuleInitFlags(startCmd *cobra.Command) {
 	crisis.AddModuleInitFlags(startCmd)
+	wasm.AddModuleInitFlags(startCmd)
 }
 
 // genesisCommand builds genesis-related `simd genesis` command. Users may provide application specific commands as a parameter

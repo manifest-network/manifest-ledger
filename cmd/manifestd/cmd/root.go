@@ -9,6 +9,7 @@ import (
 
 	"cosmossdk.io/log"
 
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/config"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
@@ -20,10 +21,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/auth/tx"
 	txmodule "github.com/cosmos/cosmos-sdk/x/auth/tx/config"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	"github.com/cosmos/cosmos-sdk/x/crisis"
-
-	wasm "github.com/CosmWasm/wasmd/x/wasm"
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
 	"github.com/liftedinit/manifest-ledger/app"
 	"github.com/liftedinit/manifest-ledger/app/params"
@@ -130,7 +127,7 @@ func initWasmConfig() (string, interface{}) {
 	}
 
 	srvCfg := serverconfig.DefaultConfig()
-	srvCfg.MinGasPrices = "0stake"
+	srvCfg.MinGasPrices = "0umfx"
 
 	customAppConfig := CustomAppConfig{
 		Config: *srvCfg,
@@ -140,9 +137,4 @@ func initWasmConfig() (string, interface{}) {
 	customAppTemplate := serverconfig.DefaultConfigTemplate + wasmtypes.DefaultConfigTemplate()
 
 	return customAppTemplate, customAppConfig
-}
-
-func initWasmFlags(startCmd *cobra.Command) {
-	crisis.AddModuleInitFlags(startCmd)
-	wasm.AddModuleInitFlags(startCmd)
 }
