@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/CosmWasm/wasmd/x/wasm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -32,6 +31,8 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/crisis"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
+
+	"github.com/CosmWasm/wasmd/x/wasm"
 
 	"github.com/liftedinit/manifest-ledger/app"
 )
@@ -110,8 +111,8 @@ lru_size = {{ .WASM.LruSize }}
 func initRootCmd(
 	rootCmd *cobra.Command,
 	txConfig client.TxConfig,
-//	interfaceRegistry codectypes.InterfaceRegistry,
-//	appCodec codec.Codec,
+	//	interfaceRegistry codectypes.InterfaceRegistry,
+	//	appCodec codec.Codec,
 	basicManager module.BasicManager,
 ) {
 	cfg := sdk.GetConfig()
