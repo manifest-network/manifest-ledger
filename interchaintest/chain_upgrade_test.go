@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	upgradeName = "v0.0.1-rc.5"
+	upgradeName = "v0.0.1-rc.6"
 
 	haltHeightDelta    = int64(15) // will propose upgrade this many blocks in the future
 	blocksAfterUpgrade = int64(7)
