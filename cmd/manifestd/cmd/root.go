@@ -128,7 +128,6 @@ func initWasmConfig() (string, interface{}) {
 	}
 
 	srvCfg := serverconfig.DefaultConfig()
-	srvCfg.MinGasPrices = "0umfx"
 
 	customAppConfig := CustomAppConfig{
 		Config: *srvCfg,
