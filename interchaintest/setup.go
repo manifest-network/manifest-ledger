@@ -3,6 +3,7 @@ package interchaintest
 import (
 	"fmt"
 
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
 	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
@@ -50,6 +51,9 @@ var (
 		cosmos.NewGenesisKV("app_state.tokenfactory.params.denom_creation_gas_consume", "1"),
 		// Mint - this is the only param the manifest module depends on from mint
 		cosmos.NewGenesisKV("app_state.mint.params.blocks_per_year", "6311520"),
+		// Block and auth params
+		cosmos.NewGenesisKV("consensus.params.block.max_gas", "100000000"), // 100M gas limit
+		cosmos.NewGenesisKV("app_state.auth.params.tx_size_cost_per_byte", "1"),
 	}
 
 	// `make local-image`
@@ -64,7 +68,7 @@ var (
 			{
 				Repository: "manifest",
 				Version:    "local",
-				UidGid:     "1025:1025",
+				UIDGID:     "1025:1025",
 			},
 		},
 		Bin:            "manifestd",
@@ -92,6 +96,7 @@ func AppEncoding() *sdktestutil.TestEncodingConfig {
 	grouptypes.RegisterInterfaces(enc.InterfaceRegistry)
 	tokenfactorytypes.RegisterInterfaces(enc.InterfaceRegistry)
 	poatypes.RegisterInterfaces(enc.InterfaceRegistry)
+	wasmtypes.RegisterInterfaces(enc.InterfaceRegistry)
 
 	return &enc
 }

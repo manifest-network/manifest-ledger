@@ -72,6 +72,11 @@ update_genesis '.app_state["staking"]["params"]["bond_denom"]="upoa"'
 update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_fee"]=[]'
 update_genesis '.app_state["tokenfactory"]["params"]["denom_creation_gas_consume"]="250000"'
 
+# Add CosmWasm configuration
+update_genesis '.app_state["wasm"]["params"]["code_upload_access"]["permission"]="AnyOfAddresses"'
+update_genesis '.app_state["wasm"]["params"]["code_upload_access"]["addresses"]=["manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj"]' # The POA Admin
+update_genesis '.app_state["wasm"]["params"]["instantiate_default_permission"]="AnyOfAddresses"'
+
 # # add genesis accounts
 # # TODO:
 # manifestd genesis add-genesis-account manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct 1umfx --append

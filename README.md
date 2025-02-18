@@ -56,7 +56,9 @@ While PoA offers immediate stability and control, the Manifest Network aspires f
 
 **Operating System**
 
-- Linux (x86_64) or Linux (arm64)
+- Linux (x86_64 with SSSE3 support) or Linux (arm64 with NEON support)
+
+> Note: CosmWasm requires x86-64 processors to support SSSE3 instructions (Intel Core 2 or newer) or ARM64 processors with NEON support.
 
 **Arch Linux:**
 
@@ -126,13 +128,25 @@ make ictest-ibc
 make ictest-group-poa
 ```
 
+**To test the chain upgrade run:**
+
+```bash
+make ictest-chain-upgrade
+```
+
+**To Test cosmwasm functionality run:**
+
+```bash
+make ictest-cosmwasm
+```
+
 ## Simulation
 
 **To execute the full application simulation run:**
 
 ```bash
 make sim-full-app
-````
+```
 
 **To execute the application simulation after state import run:**
 
@@ -155,7 +169,7 @@ To generate a coverage report for the modules run:
 ```bash
 make local-image
 make coverage
-````
+```
 
 ## Helper
 
@@ -175,3 +189,13 @@ CHAIN_ID="local-2" HOME_DIR="~/.manifest2" CLEAN=true RPC=36657 REST=2317 PROFF=
 ```
 
 The succesful executation of these commands will result in 2 ibc connected instances of manifestd running on your local machine.
+
+#### Upload Contract script
+
+`scripts/upload_contract.sh`
+
+This script is used to upload a contract to the network. It is used to upload the cosmwasm template contract to the network.
+
+`sh scripts/upload_contract.sh`
+
+> Running this script with no arguments will utilize the same environment variables as the test_node.sh script.

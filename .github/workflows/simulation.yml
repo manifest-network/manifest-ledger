@@ -10,7 +10,7 @@ on:
     types: [opened, reopened, synchronize]
 
 env:
-    GO_VERSION: 1.22.11
+    GO_VERSION: 1.23.6
 
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}

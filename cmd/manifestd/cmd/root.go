@@ -13,12 +13,15 @@ import (
 	"github.com/cosmos/cosmos-sdk/client/config"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/cosmos/cosmos-sdk/server"
+	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	"github.com/cosmos/cosmos-sdk/x/auth/tx"
 	txmodule "github.com/cosmos/cosmos-sdk/x/auth/tx/config"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
 	"github.com/liftedinit/manifest-ledger/app"
 	"github.com/liftedinit/manifest-ledger/app/params"
@@ -96,7 +99,7 @@ func NewRootCmd() *cobra.Command {
 				return err
 			}
 
-			customAppTemplate, customAppConfig := initAppConfig()
+			customAppTemplate, customAppConfig := initWasmConfig()
 			customCMTConfig := initCometBFTConfig()
 
 			return server.InterceptConfigsPreRunHandler(cmd, customAppTemplate, customAppConfig, customCMTConfig)
@@ -116,4 +119,22 @@ func NewRootCmd() *cobra.Command {
 	}
 
 	return rootCmd
+}
+
+func initWasmConfig() (string, interface{}) {
+	type CustomAppConfig struct {
+		serverconfig.Config
+		WASM wasmtypes.NodeConfig `mapstructure:"wasm"`
+	}
+
+	srvCfg := serverconfig.DefaultConfig()
+
+	customAppConfig := CustomAppConfig{
+		Config: *srvCfg,
+		WASM:   wasmtypes.DefaultNodeConfig(),
+	}
+
+	customAppTemplate := serverconfig.DefaultConfigTemplate + wasmtypes.DefaultConfigTemplate()
+
+	return customAppTemplate, customAppConfig
 }

@@ -3,34 +3,42 @@
 ## Table of Contents
 
 <!-- TOC -->
-  * [Manifest Module](#manifest-module)
-    * [Module Functionality](#module-functionality)
-      * [Commands](#commands)
-        * [Mint and disburse native tokens (payout):](#mint-and-disburse-native-tokens-payout)
-        * [Burn native tokens (burn-coins):](#burn-native-tokens-burn-coins)
-  * [Proof of Authority Module](#proof-of-authority-module)
-    * [Module Functionality](#module-functionality-1)
-      * [Validator Management:](#validator-management)
-      * [Administrative Rights:](#administrative-rights)
-      * [Commands](#commands-1)
-        * [Update Staking Parameters (update-staking-params):](#update-staking-parameters-update-staking-params)
-        * [Set Voting Power (set-power):](#set-voting-power-set-power)
-        * [Remove Pending Validator (remove-pending):](#remove-pending-validator-remove-pending)
-        * [Remove Validator (remove):](#remove-validator-remove)
-  * [Token Factory Module](#token-factory-module)
-    * [Module Functionality](#module-functionality-2)
-      * [Token Minting:](#token-minting)
-      * [Token Burning:](#token-burning)
-      * [Token Administration:](#token-administration)
-      * [Metadata Management:](#metadata-management)
-      * [Commands](#commands-2)
-        * [Burn (burn):](#burn-burn)
-        * [Burn From (burn-from):](#burn-from-burn-from)
-        * [Mint (mint):](#mint-mint)
-        * [Change Admin (change-admin):](#change-admin-change-admin)
-        * [Create Denom (create-denom):](#create-denom-create-denom)
-        * [Force Transfer (force-transfer):](#force-transfer-force-transfer)
-        * [Modify Metadata (modify-metadata):](#modify-metadata-modify-metadata)
+
+- [Manifest Module](#manifest-module)
+  - [Module Functionality](#module-functionality)
+    - [Commands](#commands)
+      - [Mint and disburse native tokens (payout):](#mint-and-disburse-native-tokens-payout)
+      - [Burn native tokens (burn-coins):](#burn-native-tokens-burn-coins)
+- [Proof of Authority Module](#proof-of-authority-module)
+  - [Module Functionality](#module-functionality-1)
+    - [Validator Management:](#validator-management)
+    - [Administrative Rights:](#administrative-rights)
+    - [Commands](#commands-1)
+      - [Update Staking Parameters (update-staking-params):](#update-staking-parameters-update-staking-params)
+      - [Set Voting Power (set-power):](#set-voting-power-set-power)
+      - [Remove Pending Validator (remove-pending):](#remove-pending-validator-remove-pending)
+      - [Remove Validator (remove):](#remove-validator-remove)
+- [Token Factory Module](#token-factory-module)
+  - [Module Functionality](#module-functionality-2)
+    - [Token Minting:](#token-minting)
+    - [Token Burning:](#token-burning)
+    - [Token Administration:](#token-administration)
+    - [Metadata Management:](#metadata-management)
+    - [Commands](#commands-2)
+      - [Burn (burn):](#burn-burn)
+      - [Burn From (burn-from):](#burn-from-burn-from)
+      - [Mint (mint):](#mint-mint)
+      - [Change Admin (change-admin):](#change-admin-change-admin)
+      - [Create Denom (create-denom):](#create-denom-create-denom)
+      - [Force Transfer (force-transfer):](#force-transfer-force-transfer)
+      - [Modify Metadata (modify-metadata):](#modify-metadata-modify-metadata)
+- [COSM WASM Module](#cosm-wasm-module)
+  - [Module Functionality](#module-functionality-3)
+    - [Commands](#commands-3)
+      - [Upload Contract (upload-contract):](#upload-contract-upload-contract)
+      - [Instantiate Contract (instantiate-contract):](#instantiate-contract-instantiate-contract)
+      - [Execute Contract (execute-contract):](#execute-contract-execute-contract)
+
 <!-- TOC -->
 
 ## Manifest Module
@@ -146,7 +154,7 @@ If the PoA admin decides they no longer wish for a validator to be signing block
 
 The Token Factory module as it is implemented on the Manifest Network, allows any user to have granular control over the creation and management of tokens on the Manifest Network. The creator can mint, burn, edit, and transfer tokens to other accounts from any account.
 
->_note:_ The module is designed to work with tokens created by the module itself.
+> _note:_ The module is designed to work with tokens created by the module itself.
 
 ### Module Functionality
 
@@ -243,3 +251,65 @@ The Token Factory module as it is implemented on the Manifest Network, allows an
     - `exponent`: The exponent for the token e.g. how many zeros.
 
   **Example:** `manifestd tx tokenfactory modify-metadata utoken TOKEN "A token" 6`
+
+## COSM WASM Module
+
+The WASM module is responsible for handling the deployment and execution of WASM contracts on the Manifest Network.
+
+### Module Functionality
+
+The WASM module provides several key functionalities for managing smart contracts:
+
+#### Contract Deployment:
+
+- Upload WASM contract code to the blockchain
+- Instantiate contracts with initial parameters
+- Support for predictable contract addresses using instantiate2
+
+#### Contract Administration:
+
+- Set and clear contract administrators
+- Migrate contracts to new code versions
+- Update contract labels and configurations
+- Manage instantiation permissions
+
+#### Contract Execution:
+
+- Execute contract functions with custom messages
+- Support for contract-to-contract calls
+- Handle contract queries and responses
+
+#### Commands
+
+##### Upload Contract (upload-contract):
+
+- Syntax: `manifestd tx wasm store [wasm-file] [flags]`
+
+  - Parameters:
+    - `wasm-file`: Path to the .wasm contract file to upload
+    - Optional flags for instantiation permissions and access control
+
+  **Example:** `manifestd tx wasm store contract.wasm --from mykey`
+
+##### Instantiate Contract (instantiate-contract):
+
+- Syntax: `manifestd tx wasm instantiate [code-id] [json-encoded-args] --label [text] [flags]`
+
+  - Parameters:
+    - `code-id`: The ID of the uploaded contract code
+    - `json-encoded-args`: Init message for the contract in JSON format
+    - `label`: Human-readable label for the contract instance
+    - Optional flags for admin, funds, and other parameters
+
+  **Example:** `manifestd tx wasm instantiate 1 '{"count": 0}' --label "counter" --from mykey`
+
+##### Execute Contract (execute-contract):
+
+- Syntax: `manifestd tx wasm execute [contract-addr] [json-encoded-args] [flags]`
+
+  - Parameters:
+    - `contract-addr`: The address of the instantiated contract
+    - `json-encoded-args`: Execute message in JSON format
+    - Optional flags for sending funds with execution
+
+  **Example:** `manifestd tx wasm execute manifest14hj2tavq8fpesdwxxcu44rty3hh90vhujrvcmstl4zr3txmfvw9s0phg4d '{"increment":{}}' --from mykey`

@@ -32,6 +32,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/crisis"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
 
+	"github.com/CosmWasm/wasmd/x/wasm"
+
 	"github.com/liftedinit/manifest-ledger/app"
 )
 
@@ -139,6 +141,7 @@ func initRootCmd(
 
 func addModuleInitFlags(startCmd *cobra.Command) {
 	crisis.AddModuleInitFlags(startCmd)
+	wasm.AddModuleInitFlags(startCmd)
 }
 
 // genesisCommand builds genesis-related `simd genesis` command. Users may provide application specific commands as a parameter

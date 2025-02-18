@@ -17,13 +17,13 @@ builds:
     ldflags:
       - -s -w -X main.commit={{.Commit}} -X main.date={{ .CommitDate }} -X github.com/cosmos/cosmos-sdk/version.Name=manifest -X github.com/cosmos/cosmos-sdk/version.AppName=manifestd -X github.com/cosmos/cosmos-sdk/version.Version=v{{ .Version }} -X github.com/cosmos/cosmos-sdk/version.Commit={{ .Commit }} -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,ledger -X github.com/liftedinit/manifest-ledger/app.Bech32Prefix=manifest
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     goos:
       - linux
-      - darwin
+#      - darwin
     goarch:
       - amd64
-      - arm64
+#      - arm64
 
 archives:
   - format: tar.gz

@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS go-builder
+FROM golang:1.23-alpine AS go-builder
 ARG BUILD_CMD=build
 
 SHELL ["/bin/sh", "-ecuxo", "pipefail"]
@@ -10,9 +10,13 @@ WORKDIR /code
 ADD go.mod go.sum ./
 RUN set -eux; \
     export ARCH=$(uname -m); \
-    WASM_VERSION=$(go list -m all | grep github.com/CosmWasm/wasmvm | awk '{print $2}'); \
+    WASM_VERSION=$(go list -m all | grep github.com/CosmWasm/wasmvm/v2); \
     if [ ! -z "${WASM_VERSION}" ]; then \
-      wget -O /lib/libwasmvm_muslc.a https://github.com/CosmWasm/wasmvm/releases/download/${WASM_VERSION}/libwasmvm_muslc.${ARCH}.a; \
+      WASMVM_REPO=$(echo $WASM_VERSION | awk '{print $1}'); \
+      WASMVM_VERS=$(echo $WASM_VERSION | awk '{print $2}'); \
+      wget -O /lib/libwasmvm_muslc.a https://${WASMVM_REPO%/v2}/releases/download/${WASMVM_VERS}/libwasmvm_muslc.${ARCH}.a; \
+      chmod +x /lib/libwasmvm_muslc.a; \
+      ln -s /lib/libwasmvm_muslc.a /lib/libwasmvm_muslc.${ARCH}.a; \
     fi; \
     go mod download;
 

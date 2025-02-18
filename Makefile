@@ -6,7 +6,7 @@ DOCKER := $(shell which docker)
 LEDGER_ENABLED ?= true
 BINDIR ?= $(GOPATH)/bin
 BUILD_DIR = ./build
-VERSION = v0.0.1-rc.4
+VERSION = v0.0.1-rc.5
 
 export GO111MODULE = on
 
@@ -120,24 +120,23 @@ ictest-poa:
 ictest-group-poa:
 	cd interchaintest && go test -race -v -run TestGroupPOA . -count=1
 
+ictest-cosmwasm:
+	cd interchaintest && go test -race -v -run TestCosmWasm . -count=1
+
+ictest-chain-upgrade:
+	cd interchaintest && go test -race -v -run TestBasicManifestUpgrade . -count=1
+
 .PHONY: ictest-ibc ictest-tokenfactory
 
 ###############################################################################
 ###                                Build Image                              ###
 ###############################################################################
 
-get-heighliner:
-	git clone https://github.com/strangelove-ventures/heighliner.git
-	cd heighliner && go install
-
 local-image:
-ifeq (,$(shell which heighliner))
-	echo 'heighliner' binary not found. Consider running `make get-heighliner`
-else
-	heighliner build -c manifest --local -f ./chains.yaml --alpine-version 3.20
-endif
+	@echo "--> Building local image"
+	docker build . -t manifest:local
 
-.PHONY: get-heighliner local-image
+.PHONY: local-image
 
 #################
 ###   Test    ###
@@ -170,7 +169,7 @@ coverage: ## Run coverage report
 	@echo "  --> Running App State Determinism Simulation"
 	@${COV_SIM_CMD} -test.run TestAppStateDeterminism ${COV_SIM_COMMON} > /dev/null 2>&1
 	@echo "--> Running unit & e2e tests coverage"
-	@go test -timeout 30m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}" > /dev/null 2>&1
+	@go test -p 1 -timeout 30m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
 	@echo "--> Merging coverage reports"
 	@go tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_ROOT}
 	@echo "--> Converting binary coverage report to text format"
@@ -217,7 +216,7 @@ proto-lint:
 #################
 
 golangci_lint_cmd=golangci-lint
-golangci_version=v1.58.0
+golangci_version=v1.63.4
 
 lint:
 	@echo "--> Running linter"

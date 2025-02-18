@@ -16,7 +16,12 @@ var Upgrades []upgrades.Upgrade
 func (app *ManifestApp) RegisterUpgradeHandlers() {
 	Upgrades = append(Upgrades, next.NewUpgrade(app.Version()))
 
-	keepers := upgrades.AppKeepers{AccountKeeper: app.AccountKeeper, BankKeeper: app.BankKeeper}
+	keepers := upgrades.AppKeepers{
+		AccountKeeper: app.AccountKeeper,
+		BankKeeper:    app.BankKeeper,
+		WasmKeeper:    app.WasmKeeper,
+	}
+
 	// register all upgrade handlers
 	for _, upgrade := range Upgrades {
 		app.UpgradeKeeper.SetUpgradeHandler(

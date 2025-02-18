@@ -2,8 +2,11 @@ package interchaintest
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,6 +27,8 @@ import (
 
 	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
 	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
+
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 const (
@@ -57,8 +62,12 @@ var (
 
 	tfFullDenom = fmt.Sprintf("factory/%s/%s", groupAddr, tfDenom)
 
+	wasmFile = "../scripts/cw_template.wasm"
+
 	upgradeProposal       = createUpgradeProposal(groupAddr, planName, planHeight)
 	cancelUpgradeProposal = createCancelUpgradeProposal(groupAddr)
+
+	wasmStoreProposal = createWasmStoreProposal(groupAddr, wasmFile)
 
 	manifestBurnProposal    = createManifestBurnProposal(groupAddr, sdk.NewCoins(sdk.NewInt64Coin(Denom, 50)))
 	bankSendProposal        = createBankSendProposal(groupAddr, accAddr, sdk.NewInt64Coin(Denom, 1))
@@ -70,7 +79,6 @@ var (
 	tfForceTransferProposal = createTfForceTransferProposal(groupAddr, sdk.NewInt64Coin(tfFullDenom, 1), accAddr, acc2Addr)
 	tfChangeAdminProposal   = createTfChangeAdminProposal(groupAddr, tfFullDenom, accAddr)
 	tfModifyProposal        = createTfModifyMetadataProposal(groupAddr, tfFullDenom, tfFullDenom, tfTicker, tfFullDenom, tfTicker, "The foo token description")
-	proposalId              = 1
 )
 
 func TestGroupPOA(t *testing.T) {
@@ -92,10 +100,14 @@ func TestGroupPOA(t *testing.T) {
 	require.NoError(t, err)
 
 	groupGenesis := createGroupGenesis()
+	wasmGenesis := append(groupGenesis,
+		cosmos.NewGenesisKV("app_state.wasm.params.code_upload_access.permission", "AnyOfAddresses"),
+		cosmos.NewGenesisKV("app_state.wasm.params.code_upload_access.addresses", []string{groupAddr}), // Only the Group address can upload code
+	)
 
 	cfgA := LocalChainConfig
 	cfgA.Name = name
-	cfgA.ModifyGenesis = cosmos.ModifyGenesis(groupGenesis)
+	cfgA.ModifyGenesis = cosmos.ModifyGenesis(wasmGenesis)
 	cfgA.Env = []string{
 		fmt.Sprintf("POA_ADMIN_ADDRESS=%s", groupAddr), // This is required in order for GetPoAAdmin to return the Group address
 	}
@@ -112,6 +124,10 @@ func TestGroupPOA(t *testing.T) {
 	_, err = interchaintest.GetAndFundTestUserWithMnemonic(ctx, user2, acc1Mnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
 
+	// CosmWasm store and instantiate
+	testWasmContract(t, ctx, chain, &cfgA, accAddr)
+	testWasmContractInvalidUploader(t, ctx, chain, accAddr)
+	testWasmContractInvalidInstantiater(t, ctx, chain, accAddr)
 	// Software Upgrade
 	testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr)
 	// Manifest module
@@ -121,10 +137,72 @@ func TestGroupPOA(t *testing.T) {
 	// Bank
 	testBankSend(t, ctx, chain, &cfgA, accAddr)
 	testBankSendIllegal(t, ctx, chain, &cfgA, accAddr)
+
 	t.Cleanup(func() {
 		dockerutil.CopyCoverageFromContainer(ctx, t, client, chain.GetNode().ContainerID(), chain.HomeDir(), ExternalGoCoverDir)
 		_ = ic.Close()
 	})
+}
+
+// testWasmStore tests the submission, voting, and execution of a wasm store proposal
+func testWasmContract(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
+	t.Log("\n===== TEST GROUP WASM STORE AND INSTANTIATE =====")
+
+	// Store the wasm code
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &wasmStoreProposal)})
+
+	// Query the code ID
+	codeId := queryLatestCodeId(t, ctx, chain)
+	require.Equal(t, uint64(1), codeId)
+
+	// Instantiate the contract
+	initMsg := map[string]interface{}{
+		"count": 0,
+	}
+	initMsgBz, err := json.Marshal(initMsg)
+	require.NoError(t, err)
+
+	wasmInstantiateProposal := createWasmInstantiateProposal(groupAddr, codeId, string(initMsgBz))
+	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &wasmInstantiateProposal)})
+
+	// Query the contract address
+	contractAddr := queryLatestContractAddress(t, ctx, chain, codeId)
+	require.NotEmpty(t, contractAddr)
+
+	// Query contract state to verify instantiation
+	var resp struct {
+		Count int `json:"count"`
+	}
+	queryMsg := map[string]interface{}{
+		"get_count": struct{}{},
+	}
+	queryMsgBz, err := json.Marshal(queryMsg)
+	require.NoError(t, err)
+
+	err = chain.QueryContract(ctx, contractAddr, string(queryMsgBz), &resp)
+	require.NoError(t, err)
+	require.Equal(t, 0, resp.Count)
+}
+
+// Only the POA admin should be able to store contracts
+func testWasmContractInvalidUploader(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, accAddr string) {
+	t.Log("\n===== TEST GROUP WASM STORE AND INSTANTIATE (INVALID UPLOADER) =====")
+
+	_, err := chain.GetNode().StoreContract(ctx, accAddr, wasmFile)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "can not create code: unauthorized")
+}
+
+// Only the POA admin should be able to instantiate contracts
+func testWasmContractInvalidInstantiater(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, accAddr string) {
+	t.Log("\n===== TEST GROUP WASM STORE AND INSTANTIATE (INVALID INSTANTIATER) =====")
+	codeId := queryLatestCodeId(t, ctx, chain)
+	require.Equal(t, uint64(1), codeId)
+
+	initMsg := `{"count":0}`
+	_, err := chain.InstantiateContract(ctx, accAddr, strconv.FormatUint(codeId, 10), initMsg, true)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "can not instantiate: unauthorized")
 }
 
 // testSoftwareUpgrade tests the submission, voting, and execution of a software upgrade proposal
@@ -277,21 +355,39 @@ func createAndRunProposalFailure(t *testing.T, ctx context.Context, chain *cosmo
 // submitVoteAndExecProposal submits, votes, and executes a group proposal
 func submitVoteAndExecProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, keyName string, prop *grouptypes.MsgSubmitProposal) error {
 	// Increment the proposal ID regardless of the outcome
-	defer func() { proposalId++ }()
-
-	pid := strconv.Itoa(proposalId)
-
 	marshalProposal(t, prop)
 
-	_, err := helpers.SubmitGroupProposal(ctx, t, chain, config, keyName, prop)
+	txHash, err := helpers.SubmitGroupProposal(ctx, t, chain, config, keyName, prop)
 	if err != nil {
 		return err
 	}
-	_, err = helpers.VoteGroupProposal(ctx, chain, config, pid, keyName, grouptypes.VOTE_OPTION_YES.String(), metadata)
+
+	// Get the proposal ID from the transaction response
+	txResp, err := chain.GetTransaction(txHash)
 	if err != nil {
 		return err
 	}
-	_, err = helpers.ExecGroupProposal(ctx, chain, config, keyName, pid)
+	var pid string
+	for _, ev := range txResp.Events {
+		if ev.GetType() != "cosmos.group.v1.EventSubmitProposal" {
+			continue
+		}
+		for _, attr := range ev.GetAttributes() {
+			if attr.Key == "proposal_id" {
+				pid = attr.Value
+			}
+		}
+	}
+	if pid == "" {
+		return fmt.Errorf("failed to get proposal ID")
+	}
+	cleanedPid := strings.ReplaceAll(pid, "\"", "")
+
+	_, err = helpers.VoteGroupProposal(ctx, chain, config, cleanedPid, keyName, grouptypes.VOTE_OPTION_YES.String(), metadata)
+	if err != nil {
+		return err
+	}
+	_, err = helpers.ExecGroupProposal(ctx, chain, config, keyName, cleanedPid)
 	if err != nil {
 		return err
 	}
@@ -372,6 +468,22 @@ func createThresholdDecisionPolicy(threshold string, votingPeriod, minExecutionP
 		Windows: &grouptypes.DecisionPolicyWindows{
 			VotingPeriod:       votingPeriod,
 			MinExecutionPeriod: minExecutionPeriod,
+		},
+	}
+}
+
+func createWasmStoreProposal(sender string, wasmFile string) wasmtypes.MsgStoreCode {
+	wasmBytes, err := os.ReadFile(wasmFile)
+	if err != nil {
+		panic(fmt.Sprintf("failed to read wasm file: %v", err))
+	}
+
+	return wasmtypes.MsgStoreCode{
+		Sender:       sender,
+		WASMByteCode: wasmBytes,
+		InstantiatePermission: &wasmtypes.AccessConfig{
+			Permission: wasmtypes.AccessTypeAnyOfAddresses,
+			Addresses:  []string{groupAddr}, // Only the Group address can instantiate the contract
 		},
 	}
 }
@@ -528,13 +640,6 @@ func sendFunds(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, fro
 	require.NoError(t, err)
 }
 
-func updatePOAParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, groupAddr string, allowValidatorSelfExit bool) {
-	r, err := helpers.POAUpdateParams(ctx, chain, user, groupAddr, allowValidatorSelfExit)
-	require.NoError(t, err)
-	require.NotNil(t, r)
-	require.Equal(t, uint32(0x0), r.Code)
-}
-
 func verifyBankDenomMetadata(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, expectedMetadata banktypes.Metadata) {
 	meta, err := chain.BankQueryDenomMetadata(ctx, tfFullDenom)
 	require.NoError(t, err)
@@ -545,4 +650,47 @@ func verifyTfAdmin(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	resp, err := chain.TokenFactoryQueryAdmin(ctx, denom)
 	require.NoError(t, err)
 	require.Equal(t, expectedAdmin, resp.AuthorityMetadata.Admin)
+}
+
+func createWasmInstantiateProposal(sender string, codeId uint64, msg string) wasmtypes.MsgInstantiateContract {
+	return wasmtypes.MsgInstantiateContract{
+		Sender: sender,
+		Admin:  sender, // Set group as admin
+		CodeID: codeId,
+		Label:  "wasm-contract",
+		Msg:    []byte(msg),
+		Funds:  sdk.Coins{},
+	}
+}
+
+func queryLatestCodeId(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain) uint64 {
+	stdout, _, err := chain.GetNode().ExecQuery(ctx, "wasm", "list-code", "--reverse")
+	require.NoError(t, err)
+
+	var res struct {
+		CodeInfos []struct {
+			CodeID string `json:"code_id"`
+		} `json:"code_infos"`
+	}
+	err = json.Unmarshal(stdout, &res)
+	require.NoError(t, err)
+	require.NotEmpty(t, res.CodeInfos)
+
+	codeId, err := strconv.ParseUint(res.CodeInfos[0].CodeID, 10, 64)
+	require.NoError(t, err)
+	return codeId
+}
+
+func queryLatestContractAddress(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, codeId uint64) string {
+	stdout, _, err := chain.GetNode().ExecQuery(ctx, "wasm", "list-contract-by-code", fmt.Sprintf("%d", codeId))
+	require.NoError(t, err)
+
+	var res struct {
+		Contracts []string `json:"contracts"`
+	}
+	err = json.Unmarshal(stdout, &res)
+	require.NoError(t, err)
+	require.NotEmpty(t, res.Contracts)
+
+	return res.Contracts[len(res.Contracts)-1]
 }

@@ -72,7 +72,7 @@ func (ao EmptyBaseAppOptions) Get(_ string) interface{} {
 var DefaultConsensusParams = &tmproto.ConsensusParams{
 	Block: &tmproto.BlockParams{
 		MaxBytes: 200000,
-		MaxGas:   2000000,
+		MaxGas:   8000000,
 	},
 	Evidence: &tmproto.EvidenceParams{
 		MaxAgeNumBlocks: 302400,
@@ -166,6 +166,7 @@ func SetupWithGenesisValSet(t *testing.T, valSet *tmtypes.ValidatorSet, genAccs 
 
 //nolint:all
 func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
+	t.Helper()
 	db := dbm.NewMemDB()
 	nodeHome := t.TempDir()
 	snapshotDir := filepath.Join(nodeHome, "data", "snapshots")
@@ -176,7 +177,6 @@ func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 	snapshotStore, err := snapshots.NewStore(snapshotDB, snapshotDir)
 	require.NoError(t, err)
 
-	// var emptyWasmOpts []wasm.Option
 	appOptions := make(simtestutil.AppOptionsMap, 0)
 	appOptions[flags.FlagHome] = nodeHome // ensure unique folder
 
@@ -187,13 +187,14 @@ func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 		require.NoError(t, err)
 	}
 
+	// Initialize app with unique wasm directory
 	app := NewApp(
 		log.NewNopLogger(),
 		db,
 		nil,
 		true,
 		DefaultCommissionRateMinMax,
-		EmptyAppOptions{},
+		appOptions,
 		bam.SetChainID(SimAppChainID),
 		bam.SetSnapshot(snapshotStore, snapshottypes.SnapshotOptions{KeepRecent: 2}),
 	)
@@ -358,4 +359,15 @@ func NewTestNetworkFixture() network.TestFixture {
 			Amino:             app.LegacyAmino(),
 		},
 	}
+}
+
+// Add helper to create unique test directories
+func makeTestDir(t *testing.T) string {
+	t.Helper()
+	tempDir, err := os.MkdirTemp("", "manifest-test")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		os.RemoveAll(tempDir)
+	})
+	return tempDir
 }

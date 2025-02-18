@@ -85,6 +85,11 @@ from_scratch () {
   update_test_genesis '.app_state["tokenfactory"]["params"]["denom_creation_fee"]=[]'
   update_test_genesis '.app_state["tokenfactory"]["params"]["denom_creation_gas_consume"]=2000000'
 
+  # WASM Configuration
+  update_test_genesis '.app_state["wasm"]["params"]["code_upload_access"]["permission"]="Everybody"'
+  update_test_genesis '.app_state["wasm"]["params"]["instantiate_default_permission"]="Everybody"'
+
+
   # tokenfactory
   # SPDT
 #  update_test_genesis '.app_state["tokenfactory"]["factory_denoms"]=[{"denom": "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt", "authority_metadata": {"admin": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj"}}]'
