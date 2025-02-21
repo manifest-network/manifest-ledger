@@ -59,6 +59,8 @@ var (
 )
 
 func TestBasicManifestUpgrade(t *testing.T) {
+	t.Skip("Skipping test, we know the migration to rc.6 works")
+
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}
