@@ -2,8 +2,6 @@ package interchaintest
 
 import (
 	"context"
-	"encoding/json"
-	"strconv"
 	"testing"
 
 	"github.com/strangelove-ventures/interchaintest/v8"
@@ -13,6 +11,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
+
+type GetCountResponse struct {
+	Data struct {
+		Count int `json:"count"`
+	} `json:"data"`
+}
+
+const wasmFile = "../scripts/cw_template.wasm"
 
 func TestCosmWasm(t *testing.T) {
 	ctx := context.Background()
@@ -58,7 +64,7 @@ func TestCosmWasm(t *testing.T) {
 	require.NoError(t, err)
 
 	var contractAddr string
-	var codeId uint64
+	var codeId string
 
 	// Test contract upload & instantiation
 	t.Run("upload contract", func(t *testing.T) {
@@ -66,27 +72,17 @@ func TestCosmWasm(t *testing.T) {
 		wasmFile := "../scripts/cw_template.wasm"
 		t.Logf("Storing contract from local path: %s", wasmFile)
 		codeIdStr, err := chain.GetNode().StoreContract(ctx, user1Wallet.KeyName(), wasmFile)
+		codeId = codeIdStr
 		require.NoError(t, err)
-		t.Logf("Received code ID: %s", codeIdStr)
-		codeId, err = strconv.ParseUint(codeIdStr, 10, 64)
-		require.NoError(t, err)
-		require.Greater(t, codeId, uint64(0))
+		t.Logf("Received code ID: %s", codeId)
 	})
 
 	t.Run("instantiate contract", func(t *testing.T) {
-		// Prepare init message
-		initMsg := map[string]interface{}{
-			"count": 0,
-		}
-		initMsgBz, err := json.Marshal(initMsg)
-		require.NoError(t, err)
-
-		// Instantiate contract with JSON string and required flags
 		contractAddr, err = chain.GetNode().InstantiateContract(
 			ctx,
 			user1Wallet.KeyName(),
-			strconv.FormatUint(codeId, 10),
-			string(initMsgBz),
+			codeId,
+			`{"count":1}`,
 			true,
 		)
 		require.NoError(t, err)
@@ -94,44 +90,21 @@ func TestCosmWasm(t *testing.T) {
 	})
 
 	t.Run("query contract info", func(t *testing.T) {
-		queryMsg := map[string]interface{}{
-			"get_count": struct{}{},
-		}
-		queryMsgBz, err := json.Marshal(queryMsg)
+		var resp GetCountResponse
+		err = chain.QueryContract(ctx, contractAddr, `{"get_count":{}}`, &resp)
 		require.NoError(t, err)
-
-		var resp struct {
-			Count int `json:"count"`
-		}
-		err = chain.QueryContract(ctx, contractAddr, string(queryMsgBz), &resp)
-		require.NoError(t, err)
-		require.Equal(t, 0, resp.Count)
+		require.Equal(t, 1, resp.Data.Count)
 	})
 
 	t.Run("increment and query count", func(t *testing.T) {
-		// Test contract execute
-		executeMsg := map[string]interface{}{
-			"increment": struct{}{},
-		}
-		executeMsgBz, err := json.Marshal(executeMsg)
-		require.NoError(t, err)
-
-		_, err = chain.ExecuteContract(ctx, user1Wallet.KeyName(), contractAddr, string(executeMsgBz))
+		_, err := chain.ExecuteContract(ctx, user1Wallet.KeyName(), contractAddr, `{"increment":{}}`)
 		require.NoError(t, err)
 
 		// Query again to verify execution
-		queryMsg := map[string]interface{}{
-			"get_count": struct{}{},
-		}
-		queryMsgBz, err := json.Marshal(queryMsg)
+		var resp GetCountResponse
+		err = chain.QueryContract(ctx, contractAddr, `{"get_count":{}}`, &resp)
 		require.NoError(t, err)
-
-		var resp struct {
-			Count int `json:"count"`
-		}
-		err = chain.QueryContract(ctx, contractAddr, string(queryMsgBz), &resp)
-		require.NoError(t, err)
-		require.Equal(t, 0, resp.Count)
+		require.Equal(t, 2, resp.Data.Count)
 	})
 
 	t.Cleanup(func() {
