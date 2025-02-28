@@ -62,8 +62,6 @@ var (
 
 	tfFullDenom = fmt.Sprintf("factory/%s/%s", groupAddr, tfDenom)
 
-	wasmFile = "../scripts/cw_template.wasm"
-
 	upgradeProposal       = createUpgradeProposal(groupAddr, planName, planHeight)
 	cancelUpgradeProposal = createCancelUpgradeProposal(groupAddr)
 
@@ -155,14 +153,7 @@ func testWasmContract(t *testing.T, ctx context.Context, chain *cosmos.CosmosCha
 	codeId := queryLatestCodeId(t, ctx, chain)
 	require.Equal(t, uint64(1), codeId)
 
-	// Instantiate the contract
-	initMsg := map[string]interface{}{
-		"count": 0,
-	}
-	initMsgBz, err := json.Marshal(initMsg)
-	require.NoError(t, err)
-
-	wasmInstantiateProposal := createWasmInstantiateProposal(groupAddr, codeId, string(initMsgBz))
+	wasmInstantiateProposal := createWasmInstantiateProposal(groupAddr, codeId, `{"count":1}`)
 	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &wasmInstantiateProposal)})
 
 	// Query the contract address
@@ -170,18 +161,10 @@ func testWasmContract(t *testing.T, ctx context.Context, chain *cosmos.CosmosCha
 	require.NotEmpty(t, contractAddr)
 
 	// Query contract state to verify instantiation
-	var resp struct {
-		Count int `json:"count"`
-	}
-	queryMsg := map[string]interface{}{
-		"get_count": struct{}{},
-	}
-	queryMsgBz, err := json.Marshal(queryMsg)
+	var resp GetCountResponse
+	err := chain.QueryContract(ctx, contractAddr, `{"get_count":{}}`, &resp)
 	require.NoError(t, err)
-
-	err = chain.QueryContract(ctx, contractAddr, string(queryMsgBz), &resp)
-	require.NoError(t, err)
-	require.Equal(t, 0, resp.Count)
+	require.Equal(t, 1, resp.Data.Count)
 }
 
 // Only the POA admin should be able to store contracts
@@ -199,8 +182,7 @@ func testWasmContractInvalidInstantiater(t *testing.T, ctx context.Context, chai
 	codeId := queryLatestCodeId(t, ctx, chain)
 	require.Equal(t, uint64(1), codeId)
 
-	initMsg := `{"count":0}`
-	_, err := chain.InstantiateContract(ctx, accAddr, strconv.FormatUint(codeId, 10), initMsg, true)
+	_, err := chain.InstantiateContract(ctx, accAddr, strconv.FormatUint(codeId, 10), `{"count":1}`, true)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "can not instantiate: unauthorized")
 }
