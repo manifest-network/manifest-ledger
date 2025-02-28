@@ -7,7 +7,7 @@ replace (
 	cosmossdk.io/core => cosmossdk.io/core v0.11.0
 
 	// Amino issue
-	cosmossdk.io/x/tx => cosmossdk.io/x/tx v0.13.5
+	cosmossdk.io/x/tx => cosmossdk.io/x/tx v0.13.4
 
 	// go list -m github.com/liftedinit/cosmos-sdk@aef2f6d97fa0611cd51334d9665d6f363867b89b
 	// https://github.com/liftedinit/cosmos-sdk/pull/1
