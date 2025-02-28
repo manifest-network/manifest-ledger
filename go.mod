@@ -6,6 +6,9 @@ replace (
 	// core v0.12 was tagged wrong (SDK v51)
 	cosmossdk.io/core => cosmossdk.io/core v0.11.0
 
+	// Amino issue
+	cosmossdk.io/x/tx => cosmossdk.io/x/tx v0.13.3
+
 	// go list -m github.com/liftedinit/cosmos-sdk@aef2f6d97fa0611cd51334d9665d6f363867b89b
 	// https://github.com/liftedinit/cosmos-sdk/pull/1
 	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.12-liftedinit.1
