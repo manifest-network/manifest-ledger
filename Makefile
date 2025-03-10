@@ -126,6 +126,9 @@ ictest-cosmwasm:
 ictest-chain-upgrade:
 	cd interchaintest && go test -race -v -run TestBasicManifestUpgrade . -count=1
 
+ictest-group:
+	cd interchaintest && go test -race -v -run TestGroupMetadataLimits . -count=1
+
 .PHONY: ictest-ibc ictest-tokenfactory
 
 ###############################################################################

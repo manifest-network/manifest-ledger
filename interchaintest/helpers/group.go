@@ -40,6 +40,42 @@ func SubmitGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.Cosmos
 	return exec(ctx, chain, config, tn.TxCommand(keyName, submitCommand...))
 }
 
+func CreateGroupWithMetadata(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, keyName, metadata string) (string, error) {
+	file := "members.json"
+
+	type MembersWrapper struct {
+		Members []group.MemberRequest `json:"members"`
+	}
+
+	members := MembersWrapper{
+		Members: []group.MemberRequest{
+			{
+				Address:  keyName,
+				Weight:   "1",
+				Metadata: "user",
+			},
+		},
+	}
+	membersJson, err := json.MarshalIndent(members, "", " ")
+	require.NoError(t, err)
+
+	tn := chain.GetNode()
+
+	fw := dockerutil.NewFileWriter(nil, tn.DockerClient, tn.TestName)
+	err = fw.WriteFile(ctx, tn.VolumeName, file, membersJson)
+	require.NoError(t, err)
+
+	createCommand := []string{
+		"group", "create-group",
+		keyName, metadata,
+		path.Join(tn.HomeDir(), file),
+		"--gas", "20000000",
+		"--gas-adjustment", "2.0",
+	}
+
+	return tn.ExecTx(ctx, keyName, createCommand...)
+}
+
 //// QueryGroupProposal queries a group proposal on the chain.
 //// TODO: This function should be part of `interchaintest`
 //// See https://github.com/strangelove-ventures/interchaintest/issues/1138
