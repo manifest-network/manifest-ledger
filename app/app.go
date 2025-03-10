@@ -489,7 +489,7 @@ func NewApp(
 	)
 
 	groupConfig := group.DefaultConfig()
-	groupConfig.MaxMetadataLen = 100_000
+	groupConfig.MaxMetadataLen = 2048 // 2KB
 	app.GroupKeeper = groupkeeper.NewKeeper(
 		keys[group.StoreKey],
 		// runtime.NewKVStoreService(keys[group.StoreKey]),
