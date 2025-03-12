@@ -10,7 +10,7 @@ replace (
 	github.com/ChainSafe/go-schnorrkel/1 => github.com/ChainSafe/go-schnorrkel v1.0.0
 
 	// https://github.com/liftedinit/cosmos-sdk/pull/1
-	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.12-liftedinit.1
+	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.13-liftedinit.1
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/liftedinit/manifest-ledger => ../
 )
@@ -20,9 +20,9 @@ require (
 	cosmossdk.io/x/upgrade v0.1.4
 	github.com/CosmWasm/wasmd v0.54.0
 	github.com/cockroachdb/errors v1.11.3
-	github.com/cosmos/cosmos-sdk v0.50.12
+	github.com/cosmos/cosmos-sdk v0.50.13
 	github.com/cosmos/gogoproto v1.7.0
-	github.com/cosmos/ibc-go/v8 v8.6.1
+	github.com/cosmos/ibc-go/v8 v8.7.0
 	github.com/liftedinit/manifest-ledger v0.0.0-00000000000000-000000000000
 	github.com/strangelove-ventures/interchaintest/v8 v8.8.1
 	github.com/strangelove-ventures/poa v0.50.6
