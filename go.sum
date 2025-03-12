@@ -379,8 +379,8 @@ github.com/cosmos/ibc-go/modules/apps/callbacks v0.2.1-0.20231113120333-342c00b0
 github.com/cosmos/ibc-go/modules/apps/callbacks v0.2.1-0.20231113120333-342c00b0f8bd/go.mod h1:JWfpWVKJKiKtd53/KbRoKfxWl8FsT2GPcNezTOk0o5Q=
 github.com/cosmos/ibc-go/modules/capability v1.0.1 h1:ibwhrpJ3SftEEZRxCRkH0fQZ9svjthrX2+oXdZvzgGI=
 github.com/cosmos/ibc-go/modules/capability v1.0.1/go.mod h1:rquyOV262nGJplkumH+/LeYs04P3eV8oB7ZM4Ygqk4E=
-github.com/cosmos/ibc-go/v8 v8.6.1 h1:35JQ9HttSDNLjy4J/ZxmmFbzw0cRVjoCRKkc3ngDZms=
-github.com/cosmos/ibc-go/v8 v8.6.1/go.mod h1:Hd3kDFNOhQ/EnYt8qb84/r78tA/lOYC3IkLMbpurs3I=
+github.com/cosmos/ibc-go/v8 v8.7.0 h1:HqhVOkO8bDpClXE81DFQgFjroQcTvtpm0tCS7SQVKVY=
+github.com/cosmos/ibc-go/v8 v8.7.0/go.mod h1:G2z+Q6ZQSMcyHI2+BVcJdvfOupb09M2h/tgpXOEdY6k=
 github.com/cosmos/ics23/go v0.11.0 h1:jk5skjT0TqX5e5QJbEnwXIS2yI2vnmLOgpQPeM5RtnU=
 github.com/cosmos/ics23/go v0.11.0/go.mod h1:A8OjxPE67hHST4Icw94hOxxFEJMBG031xIGF/JHNIY0=
 github.com/cosmos/ledger-cosmos-go v0.14.0 h1:WfCHricT3rPbkPSVKRH+L4fQGKYHuGOK9Edpel8TYpE=
@@ -768,8 +768,8 @@ github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+
 github.com/leodido/go-urn v1.2.0/go.mod h1:+8+nEpDfqqsY+g338gtMEUOtuK+4dEMhiQEgxpxOKII=
 github.com/lib/pq v1.10.9 h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=
 github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
-github.com/liftedinit/cosmos-sdk v0.50.12-liftedinit.1 h1:ioFaJJ2dfHdDzzrwwGLVmrKuFiOrrNTq8ISIHS5A9Vo=
-github.com/liftedinit/cosmos-sdk v0.50.12-liftedinit.1/go.mod h1:hrWEFMU1eoXqLJeE6VVESpJDQH67FS1nnMrQIjO2daw=
+github.com/liftedinit/cosmos-sdk v0.50.13-liftedinit.1 h1:z5AmZANrs33wrD2jqbzaE65ITAGRmticOvqTWkJ0ppE=
+github.com/liftedinit/cosmos-sdk v0.50.13-liftedinit.1/go.mod h1:hrWEFMU1eoXqLJeE6VVESpJDQH67FS1nnMrQIjO2daw=
 github.com/lightstep/lightstep-tracer-common/golang/gogo v0.0.0-20190605223551-bc2310a04743/go.mod h1:qklhhLq1aX+mtWk9cPHPzaBjWImj5ULL6C7HFJtXQMM=
 github.com/lightstep/lightstep-tracer-go v0.18.1/go.mod h1:jlF1pusYV4pidLvZ+XD0UBX0ZE6WURAspgAczcDHrL4=
 github.com/linxGnu/grocksdb v1.8.14 h1:HTgyYalNwBSG/1qCQUIott44wU5b2Y9Kr3z7SK5OfGQ=
