@@ -5,13 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/testreporter"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest"
+
+	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
 )
 
 const GroupMetadataLimit = 2048

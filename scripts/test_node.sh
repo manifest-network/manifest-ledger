@@ -74,7 +74,7 @@ from_scratch () {
 
   # group
   update_test_genesis '.app_state["group"]["group_seq"]="1"'
-  update_test_genesis '.app_state["group"]["groups"]=[{"id": "1", "admin": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj", "metadata": "AQ==", "version": "2", "total_weight": "2", "created_at": "2024-05-16T15:10:54.372190727Z"}]'
+  update_test_genesis '.app_state["group"]["groups"]=[{"id": "1", "admin": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj", "metadata": "'\{\\\"title\\\":\\\"POA\ Admin\\\",\\\"authors\\\":\[\\\"manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj\\\"\],\\\"details\\\":\\\"The\ Manifest\ network\ governance\ body\\\"\}'", "version": "2", "total_weight": "2", "created_at": "2024-05-16T15:10:54.372190727Z"}]'
   update_test_genesis '.app_state["group"]["group_members"]=[{"group_id": "1", "member": {"address": "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct", "weight": "1", "metadata": "user1", "added_at": "2024-05-16T15:10:54.372190727Z"}}, {"group_id": "1", "member": {"address": "manifest1efd63aw40lxf3n4mhf7dzhjkr453axurm6rp3z", "weight": "1", "metadata": "user2", "added_at": "2024-05-16T15:10:54.372190727Z"}}]'
   update_test_genesis '.app_state["group"]["group_policy_seq"]="1"'
   update_test_genesis '.app_state["group"]["group_policies"]=[{"address": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj", "group_id": "1", "admin": "manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj", "metadata": "AQ==", "version": "2", "decision_policy": { "@type": "/cosmos.group.v1.ThresholdDecisionPolicy", "threshold": "1", "windows": {"voting_period": "30s", "min_execution_period": "0s"}}, "created_at": "2024-05-16T15:10:54.372190727Z"}]'
