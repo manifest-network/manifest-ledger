@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"cosmossdk.io/math"
+	transfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
@@ -101,9 +102,9 @@ func TestIBC(t *testing.T) {
 	require.NoError(t, err)
 	manifestAChannelID := manifestAChannelInfo[0].ChannelID
 
-	//osmoChannelInfo, err := r.GetChannels(ctx, eRep, manifestB.Config().ChainID)
-	//require.NoError(t, err)
-	//osmoChannelID := osmoChannelInfo[0].ChannelID
+	osmoChannelInfo, err := r.GetChannels(ctx, eRep, manifestB.Config().ChainID)
+	require.NoError(t, err)
+	osmoChannelID := osmoChannelInfo[0].ChannelID
 
 	// Send Transaction
 	amountToSend := math.NewInt(1_000_000)
@@ -114,29 +115,26 @@ func TestIBC(t *testing.T) {
 		Amount:  amountToSend,
 	}
 
-	// TODO: Re-enable once IBC Transfer are allowed again
 	_, err = manifestA.SendIBCTransfer(ctx, manifestAChannelID, manifestAUser.KeyName(), transfer, ibc.TransferOptions{})
-	require.Error(t, err)
-	require.ErrorContains(t, err, "tx contains unsupported message types")
-	//require.NoError(t, err)
-	//
-	//// relay MsgRecvPacket to manifestB, then MsgAcknowledgement back to manifestA
-	//require.NoError(t, r.Flush(ctx, eRep, ibcPath, manifestAChannelID))
-	//
-	//// test source wallet has decreased funds
-	//expectedBal := manifestAUserBalInitial.Sub(amountToSend)
-	//manifestAUserBalNew, err := manifestA.GetBalance(ctx, manifestAUser.FormattedAddress(), manifestA.Config().Denom)
-	//require.NoError(t, err)
-	//require.True(t, manifestAUserBalNew.Equal(expectedBal))
-	//
-	//// Trace IBC Denom
-	//srcDenomTrace := transfertypes.ParseDenomTrace(transfertypes.GetPrefixedDenom("transfer", osmoChannelID, manifestA.Config().Denom))
-	//dstIbcDenom := srcDenomTrace.IBCDenom()
-	//
-	//// Test destination wallet has increased funds
-	//osmosUserBalNew, err := manifestB.GetBalance(ctx, manifestBUser.FormattedAddress(), dstIbcDenom)
-	//require.NoError(t, err)
-	//require.True(t, osmosUserBalNew.Equal(amountToSend))
+	require.NoError(t, err)
+
+	// relay MsgRecvPacket to manifestB, then MsgAcknowledgement back to manifestA
+	require.NoError(t, r.Flush(ctx, eRep, ibcPath, manifestAChannelID))
+
+	// test source wallet has decreased funds
+	expectedBal := manifestAUserBalInitial.Sub(amountToSend)
+	manifestAUserBalNew, err := manifestA.GetBalance(ctx, manifestAUser.FormattedAddress(), manifestA.Config().Denom)
+	require.NoError(t, err)
+	require.True(t, manifestAUserBalNew.Equal(expectedBal))
+
+	// Trace IBC Denom
+	srcDenomTrace := transfertypes.ParseDenomTrace(transfertypes.GetPrefixedDenom("transfer", osmoChannelID, manifestA.Config().Denom))
+	dstIbcDenom := srcDenomTrace.IBCDenom()
+
+	// Test destination wallet has increased funds
+	osmosUserBalNew, err := manifestB.GetBalance(ctx, manifestBUser.FormattedAddress(), dstIbcDenom)
+	require.NoError(t, err)
+	require.True(t, osmosUserBalNew.Equal(amountToSend))
 
 	t.Cleanup(func() {
 		dockerutil.CopyCoverageFromContainer(ctx, t, client, manifestA.GetNode().ContainerID(), manifestA.HomeDir(), ExternalGoCoverDir)
