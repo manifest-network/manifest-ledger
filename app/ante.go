@@ -3,7 +3,6 @@ package app
 import (
 	"errors"
 
-	"github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
 	ibcante "github.com/cosmos/ibc-go/v8/modules/core/ante"
 	"github.com/cosmos/ibc-go/v8/modules/core/keeper"
 
@@ -19,8 +18,6 @@ import (
 
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-
-	"github.com/liftedinit/manifest-ledger/app/decorators"
 )
 
 type RateMinMax struct {
@@ -91,7 +88,6 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		poaante.NewPOADisableWithdrawDelegatorRewards(),
 		poaante.NewCommissionLimitDecorator(doGenTxRateValidation, options.RateMinMax.Floor, options.RateMinMax.Ceil),
 		ibcante.NewRedundantRelayDecorator(options.IBCKeeper),
-		decorators.FilterDecorator(&types.MsgTransfer{}), // TODO: Remove this when we allow IBC transfers
 	}
 
 	return sdk.ChainAnteDecorators(anteDecorators...), nil
