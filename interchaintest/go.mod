@@ -1,6 +1,6 @@
 module github.com/liftedinit/manifest-ledger/interchaintest
 
-go 1.23.6
+go 1.23.10
 
 toolchain go1.24.1
 
