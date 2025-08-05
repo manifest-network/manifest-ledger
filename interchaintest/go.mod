@@ -21,7 +21,7 @@ require (
 	cosmossdk.io/x/upgrade v0.1.4
 	github.com/CosmWasm/wasmd v0.54.1
 	github.com/cockroachdb/errors v1.11.3
-	github.com/cosmos/cosmos-sdk v0.50.13
+	github.com/cosmos/cosmos-sdk v0.50.14
 	github.com/cosmos/gogoproto v1.7.0
 	github.com/cosmos/ibc-go/v8 v8.7.0
 	github.com/liftedinit/manifest-ledger v0.0.0-00000000000000-000000000000
