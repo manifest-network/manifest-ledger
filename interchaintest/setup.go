@@ -8,7 +8,7 @@ import (
 	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 
-	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
+	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
 
 	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"

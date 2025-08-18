@@ -139,10 +139,10 @@ import (
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
-	"github.com/liftedinit/manifest-ledger/app/helpers"
-	manifest "github.com/liftedinit/manifest-ledger/x/manifest"
-	manifestkeeper "github.com/liftedinit/manifest-ledger/x/manifest/keeper"
-	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
+	"github.com/manifest-network/manifest-ledger/app/helpers"
+	manifest "github.com/manifest-network/manifest-ledger/x/manifest"
+	manifestkeeper "github.com/manifest-network/manifest-ledger/x/manifest/keeper"
+	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
 // We pull these out so we can set them with LDFLAGS in the Makefile

@@ -7,7 +7,7 @@ import "cosmos_proto/cosmos.proto";
 import "cosmos/base/v1beta1/coin.proto";
 import "amino/amino.proto";
 
-option go_package = "github.com/liftedinit/manifest-ledger/x/manifest/types";
+option go_package = "github.com/manifest-network/manifest-ledger/x/manifest/types";
 
 // Msg defines the Msg service.
 service Msg {

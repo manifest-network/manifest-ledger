@@ -49,9 +49,9 @@ import (
 
 	"github.com/strangelove-ventures/poa"
 
-	apphelpers "github.com/liftedinit/manifest-ledger/app/helpers"
-	appparams "github.com/liftedinit/manifest-ledger/app/params"
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
+	apphelpers "github.com/manifest-network/manifest-ledger/app/helpers"
+	appparams "github.com/manifest-network/manifest-ledger/app/params"
+	"github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
 // SimAppChainID hardcoded chainID for simulation

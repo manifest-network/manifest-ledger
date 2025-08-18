@@ -44,7 +44,7 @@ linters-settings:
       - prefix(github.com/strangelove-ventures/tokenfactory)
       - prefix(github.com/CosmWasm/wasmd)
       - prefix(github.com/CosmWasm/wasmvm)
-      - prefix(github.com/liftedinit/manifest-ledger)
+      - prefix(github.com/manifest-network/manifest-ledger)
   gosec:
     excludes:
       - G404

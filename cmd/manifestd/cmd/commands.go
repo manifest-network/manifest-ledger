@@ -34,7 +34,7 @@ import (
 
 	"github.com/CosmWasm/wasmd/x/wasm"
 
-	"github.com/liftedinit/manifest-ledger/app"
+	"github.com/manifest-network/manifest-ledger/app"
 )
 
 // initCometBFTConfig helps to override default CometBFT Config values.

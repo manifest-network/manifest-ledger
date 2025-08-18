@@ -31,8 +31,8 @@ const (
 var (
 	// baseChain is the current version of the chain that will be upgraded from
 	baseChain = ibc.DockerImage{
-		Repository: "ghcr.io/liftedinit/manifest-ledger", // GitHub Container Registry path
-		Version:    "v0.0.1-rc.4",                        // The version we're upgrading from
+		Repository: "ghcr.io/manifest-network/manifest-ledger", // GitHub Container Registry path
+		Version:    "v0.0.1-rc.4",                              // The version we're upgrading from
 		UIDGID:     "1025:1025",
 	}
 

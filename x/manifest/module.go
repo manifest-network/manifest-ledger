@@ -21,11 +21,11 @@ import (
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 
-	manifestv1 "github.com/liftedinit/manifest-ledger/api/liftedinit/manifest/v1"
-	"github.com/liftedinit/manifest-ledger/x/manifest/client/cli"
-	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
-	"github.com/liftedinit/manifest-ledger/x/manifest/simulation"
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
+	manifestv1 "github.com/manifest-network/manifest-ledger/api/liftedinit/manifest/v1"
+	"github.com/manifest-network/manifest-ledger/x/manifest/client/cli"
+	"github.com/manifest-network/manifest-ledger/x/manifest/keeper"
+	"github.com/manifest-network/manifest-ledger/x/manifest/simulation"
+	"github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
 const (

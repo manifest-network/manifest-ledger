@@ -60,7 +60,7 @@ ldflags = -X github.com/cosmos/cosmos-sdk/version.Name=manifest \
 		  -X github.com/cosmos/cosmos-sdk/version.AppName=manifestd \
 		  -X github.com/cosmos/cosmos-sdk/version.Version=$(VERSION) \
 		  -X github.com/cosmos/cosmos-sdk/version.Commit=$(COMMIT) \
-		  -X github.com/liftedinit/manifest-ledger/app.Bech32Prefix=manifest \
+		  -X github.com/manifest-network/manifest-ledger/app.Bech32Prefix=manifest \
 		  -X "github.com/cosmos/cosmos-sdk/version.BuildTags=$(build_tags_comma_sep)"
 
 ifeq ($(WITH_CLEVELDB),yes)
@@ -83,7 +83,7 @@ install:
 	@echo "--> ensure dependencies have not been modified"
 	@go mod verify
 	@echo "--> installing manifestd instrumented for coverage"
-	@go install $(BUILD_FLAGS) -cover -covermode=atomic -mod=readonly -coverpkg=github.com/liftedinit/manifest-ledger/... ./cmd/manifestd
+	@go install $(BUILD_FLAGS) -cover -covermode=atomic -mod=readonly -coverpkg=github.com/manifest-network/manifest-ledger/... ./cmd/manifestd
 
 init:
 	./scripts/init.sh
@@ -93,7 +93,7 @@ ifeq ($(OS),Windows_NT)
 	$(error demo server not supported)
 	exit 1
 else
-	go build -mod=readonly $(BUILD_FLAGS) -cover -covermode=atomic -coverpkg=github.com/liftedinit/manifest-ledger/... -o $(BUILD_DIR)/manifestd ./cmd/manifestd
+	go build -mod=readonly $(BUILD_FLAGS) -cover -covermode=atomic -coverpkg=github.com/manifest-network/manifest-ledger/... -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 endif
 
 build-vendored:
@@ -154,7 +154,7 @@ test:
 COV_ROOT="/tmp/manifest-ledger-coverage"
 COV_UNIT_E2E="${COV_ROOT}/unit-e2e"
 COV_SIMULATION="${COV_ROOT}/simulation"
-COV_PKG="github.com/liftedinit/manifest-ledger/..."
+COV_PKG="github.com/manifest-network/manifest-ledger/..."
 COV_SIM_CMD=${COV_SIMULATION}/simulation.test
 COV_SIM_COMMON=-Enabled=True -NumBlocks=100 -Commit=true -Period=5 -Params=$(shell pwd)/simulation/sim_params.json -Verbose=false -test.v -test.gocoverdir=${COV_SIMULATION}
 
@@ -244,7 +244,7 @@ format-install:
 format: ## Run formatter (goimports)
 	@echo "--> Running goimports"
 	$(MAKE) format-install
-	@find . -name '*.go' -not -name '*.pulsar.go' -not -name '*.pb.go' -exec goimports -w -local github.com/liftedinit/manifest-ledger {} \;
+	@find . -name '*.go' -not -name '*.pulsar.go' -not -name '*.pb.go' -exec goimports -w -local github.com/manifest-network/manifest-ledger {} \;
 
 #### GOVULNCHECK ####
 govulncheck_version=latest

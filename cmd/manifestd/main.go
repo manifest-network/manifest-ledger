@@ -6,8 +6,8 @@ import (
 
 	svrcmd "github.com/cosmos/cosmos-sdk/server/cmd"
 
-	"github.com/liftedinit/manifest-ledger/app"
-	"github.com/liftedinit/manifest-ledger/cmd/manifestd/cmd"
+	"github.com/manifest-network/manifest-ledger/app"
+	"github.com/manifest-network/manifest-ledger/cmd/manifestd/cmd"
 )
 
 func main() {

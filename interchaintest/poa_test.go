@@ -13,7 +13,7 @@ import (
 	"github.com/strangelove-ventures/poa"
 	"github.com/stretchr/testify/require"
 
-	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
+	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 )
 
 const (

@@ -41,7 +41,7 @@ sudo apt-get install git gcc make jq
 
 ```bash
 # Clone git repository
-git clone https://github.com/liftedinit/manifest-ledger.git
+git clone https://github.com/manifest-network/manifest-ledger.git
 cd manifest-ledger
 git checkout VERSION
 
@@ -69,7 +69,7 @@ mv manifestd /usr/local/bin
 - #### Intialize
   `manifestd init <moniker> --chain-id manifest-1 --default-denom upoa`
 - #### Genesis
-  `cp github.com/liftedinit/manifest-ledger/network/manifest-1/manifest-1_genesis.json ~/.manifestd/config/genesis.json`
+  `cp github.com/manifest-network/manifest-ledger/network/manifest-1/manifest-1_genesis.json ~/.manifestd/config/genesis.json`
 - #### Peers
   `sed -i 's/seeds = ""/seeds = "SEED_ADDRESS"/g' ${HOME}/.manifest/config/config.toml`
 - #### Minimum Gas

@@ -13,10 +13,10 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
 
-	"github.com/liftedinit/manifest-ledger/app"
-	"github.com/liftedinit/manifest-ledger/app/apptesting"
-	appparams "github.com/liftedinit/manifest-ledger/app/params"
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
+	"github.com/manifest-network/manifest-ledger/app"
+	"github.com/manifest-network/manifest-ledger/app/apptesting"
+	appparams "github.com/manifest-network/manifest-ledger/app/params"
+	"github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
 // Sets up the keeper test suite.

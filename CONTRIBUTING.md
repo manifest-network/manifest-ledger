@@ -45,7 +45,7 @@ Please complete the following steps in advance to help us fix any potential bug 
 
 #### How Do I Submit a Good Bug Report?
 
-> You must never report security related issues, vulnerabilities or bugs including sensitive information to the issue tracker, or elsewhere in public. Instead sensitive bugs must be sent by email to <security-operations@liftedinit.org>. See [SECURITY.md](SECURITY.md) for further details.
+> You must never report security related issues, vulnerabilities or bugs including sensitive information to the issue tracker, or elsewhere in public. Instead sensitive bugs must be sent by email to <security@manifest.network>. See [SECURITY.md](SECURITY.md) for further details.
 
 We use GitHub issues to track bugs and errors. If you run into an issue with the project:
 

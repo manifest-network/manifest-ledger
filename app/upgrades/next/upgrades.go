@@ -8,7 +8,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/types/module"
 
-	"github.com/liftedinit/manifest-ledger/app/upgrades"
+	"github.com/manifest-network/manifest-ledger/app/upgrades"
 )
 
 func NewUpgrade(name string) upgrades.Upgrade {

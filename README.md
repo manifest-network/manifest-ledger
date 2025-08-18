@@ -5,11 +5,11 @@
 </p>
 
 <p align="center">
- <a href="https://codecov.io/gh/liftedinit/manifest-ledger" >
-     <img src="https://codecov.io/gh/liftedinit/manifest-ledger/graph/badge.svg?token=s7zzdGQ7Gh"/>
+ <a href="https://codecov.io/gh/manifest-network/manifest-ledger" >
+     <img src="https://codecov.io/gh/manifest-network/manifest-ledger/graph/badge.svg?token=s7zzdGQ7Gh"/>
  </a>
-  <a href="https://goreportcard.com/report/github.com/liftedinit/manifest-ledger">
-    <img src="https://goreportcard.com/badge/github.com/liftedinit/manifest-ledger" alt="Go Report Card"/>
+  <a href="https://goreportcard.com/report/github.com/manifest-network/manifest-ledger">
+    <img src="https://goreportcard.com/badge/github.com/manifest-network/manifest-ledger" alt="Go Report Card"/>
   </a>
   <a href="https://discord.gg/kQkaJzxvk9">
     <img src="https://badgen.net/badge/icon/discord?icon=discord&label" alt="Discord"/>
@@ -78,7 +78,7 @@ sudo apt-get install git gcc make jq
 Clone the repository from GitHub and enter the directory:
 
 ```bash
-git clone https://github.com/liftedinit/manifest-ledger.git
+git clone https://github.com/manifest-network/manifest-ledger.git
 cd manifest-ledger
 ```
 

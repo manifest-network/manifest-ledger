@@ -5,8 +5,8 @@ import (
 
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 
-	"github.com/liftedinit/manifest-ledger/app/upgrades"
-	"github.com/liftedinit/manifest-ledger/app/upgrades/next"
+	"github.com/manifest-network/manifest-ledger/app/upgrades"
+	"github.com/manifest-network/manifest-ledger/app/upgrades/next"
 )
 
 // Upgrades list of chain upgrades

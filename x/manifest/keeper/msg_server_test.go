@@ -10,8 +10,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
-	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
+	"github.com/manifest-network/manifest-ledger/x/manifest/keeper"
+	"github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
 func TestPerformPayout(t *testing.T) {
