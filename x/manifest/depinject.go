@@ -15,8 +15,8 @@ import (
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 
-	modulev1 "github.com/liftedinit/manifest-ledger/api/liftedinit/manifest/module/v1"
-	"github.com/liftedinit/manifest-ledger/x/manifest/keeper"
+	modulev1 "github.com/manifest-network/manifest-ledger/api/liftedinit/manifest/module/v1"
+	"github.com/manifest-network/manifest-ledger/x/manifest/keeper"
 )
 
 var _ appmodule.AppModule = AppModule{}

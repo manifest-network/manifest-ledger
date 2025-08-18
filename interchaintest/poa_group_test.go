@@ -25,8 +25,8 @@ import (
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 	"github.com/stretchr/testify/require"
 
-	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
-	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
+	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
+	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 )

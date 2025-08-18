@@ -2,11 +2,11 @@
 #
 # On every new `vX.Y.Z` tag the following images are pushed:
 #
-# liftedinit/manifest-ledger:vX.Y.Z   # is pushed
-# liftedinit/manifest-ledger:X.Y.Z    # is pushed
-# liftedinit/manifest-ledger:X.Y      # is updated to X.Y.Z
-# liftedinit/manifest-ledger:X        # is updated to X.Y.Z
-# liftedinit/manifest-ledger:latest   # is updated to X.Y.Z
+# manifest-network/manifest-ledger:vX.Y.Z   # is pushed
+# manifest-network/manifest-ledger:X.Y.Z    # is pushed
+# manifest-network/manifest-ledger:X.Y      # is updated to X.Y.Z
+# manifest-network/manifest-ledger:X        # is updated to X.Y.Z
+# manifest-network/manifest-ledger:latest   # is updated to X.Y.Z
 #
 # All the images above have support for linux/amd64 and linux/arm64.
 #
@@ -63,8 +63,8 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/liftedinit/manifest-ledger:latest
-            ghcr.io/liftedinit/manifest-ledger:${{ env.MAJOR_VERSION }}
-            ghcr.io/liftedinit/manifest-ledger:${{ env.MAJOR_VERSION }}.${{ env.MINOR_VERSION }}
-            ghcr.io/liftedinit/manifest-ledger:${{ env.MAJOR_VERSION }}.${{ env.MINOR_VERSION }}.${{ env.PATCH_VERSION }}
-            ghcr.io/liftedinit/manifest-ledger:v${{ env.MAJOR_VERSION }}.${{ env.MINOR_VERSION }}.${{ env.PATCH_VERSION }}
+            ghcr.io/manifest-network/manifest-ledger:latest
+            ghcr.io/manifest-network/manifest-ledger:${{ env.MAJOR_VERSION }}
+            ghcr.io/manifest-network/manifest-ledger:${{ env.MAJOR_VERSION }}.${{ env.MINOR_VERSION }}
+            ghcr.io/manifest-network/manifest-ledger:${{ env.MAJOR_VERSION }}.${{ env.MINOR_VERSION }}.${{ env.PATCH_VERSION }}
+            ghcr.io/manifest-network/manifest-ledger:v${{ env.MAJOR_VERSION }}.${{ env.MINOR_VERSION }}.${{ env.PATCH_VERSION }}

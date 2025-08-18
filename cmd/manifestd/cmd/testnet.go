@@ -38,7 +38,7 @@ import (
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
-	"github.com/liftedinit/manifest-ledger/app"
+	"github.com/manifest-network/manifest-ledger/app"
 )
 
 var (

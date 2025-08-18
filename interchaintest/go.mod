@@ -1,6 +1,6 @@
-module github.com/liftedinit/manifest-ledger/interchaintest
+module github.com/manifest-network/manifest-ledger/interchaintest
 
-go 1.24.5
+go 1.24.6
 
 replace (
 	cosmossdk.io/core => cosmossdk.io/core v0.11.0 // proper SDK v50 version
@@ -9,10 +9,10 @@ replace (
 	github.com/ChainSafe/go-schnorrkel => github.com/ChainSafe/go-schnorrkel v0.0.0-20200405005733-88cbf1b4c40d
 	github.com/ChainSafe/go-schnorrkel/1 => github.com/ChainSafe/go-schnorrkel v1.0.0
 
-	// https://github.com/liftedinit/cosmos-sdk/pull/1
-	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.14-liftedinit.1
+	// https://github.com/manifest-network/cosmos-sdk/pull/1
+	github.com/cosmos/cosmos-sdk => github.com/manifest-network/cosmos-sdk v0.50.14-liftedinit.1
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
-	github.com/liftedinit/manifest-ledger => ../
+	github.com/manifest-network/manifest-ledger => ../
 	github.com/strangelove-ventures/interchaintest/v8 => github.com/strangelove-ventures/interchaintest/v8 v8.8.2-0.20250401215817-34a13b0e5f11
 )
 
@@ -24,7 +24,7 @@ require (
 	github.com/cosmos/cosmos-sdk v0.50.14
 	github.com/cosmos/gogoproto v1.7.0
 	github.com/cosmos/ibc-go/v8 v8.7.0
-	github.com/liftedinit/manifest-ledger v0.0.0-00000000000000-000000000000
+	github.com/manifest-network/manifest-ledger v0.0.0-00000000000000-000000000000
 	github.com/strangelove-ventures/interchaintest/v8 v8.8.1
 	github.com/strangelove-ventures/poa v0.50.6
 	github.com/strangelove-ventures/tokenfactory v0.50.6-wasmvm2
@@ -156,7 +156,7 @@ require (
 	github.com/gtank/merlin v0.1.1 // indirect
 	github.com/gtank/ristretto255 v0.1.2 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
-	github.com/hashicorp/go-getter v1.7.5 // indirect
+	github.com/hashicorp/go-getter v1.7.9 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-metrics v0.5.3 // indirect

@@ -38,7 +38,7 @@ import (
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
-	"github.com/liftedinit/manifest-ledger/app"
+	"github.com/manifest-network/manifest-ledger/app"
 )
 
 const (

@@ -48,7 +48,7 @@ sudo apt-get install git gcc make jq
 
 ```bash
 # Clone git repository
-git clone https://github.com/liftedinit/manifest-ledger.git
+git clone https://github.com/manifest-network/manifest-ledger.git
 cd manifest-ledger
 git checkout VERSION
 

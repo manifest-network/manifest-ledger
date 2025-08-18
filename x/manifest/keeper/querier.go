@@ -1,7 +1,7 @@
 package keeper
 
 import (
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
+	"github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
 var _ types.QueryServer = Querier{}

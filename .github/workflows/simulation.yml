@@ -10,7 +10,7 @@ on:
     types: [opened, reopened, synchronize]
 
 env:
-    GO_VERSION: 1.24.5
+    GO_VERSION: 1.24.6
 
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
@@ -32,7 +32,7 @@ jobs:
       - name: Simulation after state import (fixed seed)
         run: make sim-after-import
       #      #  Requires wiring v2
-      #      # https://github.com/liftedinit/manifest-ledger/issues/82
+      #      # https://github.com/manifest-network/manifest-ledger/issues/82
       #      - name: Simulation export/import (fixed seed)
       #        run: make sim-export-import
       - name: Simulate application state determinism (fixed seed)

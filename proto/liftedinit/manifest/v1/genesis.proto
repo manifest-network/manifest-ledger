@@ -1,7 +1,7 @@
 syntax = "proto3";
 package liftedinit.manifest.v1;
 
-option go_package = "github.com/liftedinit/manifest-ledger/x/manifest/types";
+option go_package = "github.com/manifest-network/manifest-ledger/x/manifest/types";
 
 // GenesisState defines the module genesis state
 message GenesisState {}

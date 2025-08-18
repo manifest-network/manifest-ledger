@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest"
 
-	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
+	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 )
 
 const GroupMetadataLimit = 2048

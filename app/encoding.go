@@ -9,7 +9,7 @@ import (
 
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 
-	"github.com/liftedinit/manifest-ledger/app/params"
+	"github.com/manifest-network/manifest-ledger/app/params"
 )
 
 // MakeEncodingConfig creates a new EncodingConfig with all modules registered. For testing only

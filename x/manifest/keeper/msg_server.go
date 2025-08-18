@@ -6,7 +6,7 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
+	"github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
 type msgServer struct {

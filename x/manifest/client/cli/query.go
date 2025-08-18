@@ -5,7 +5,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/client"
 
-	"github.com/liftedinit/manifest-ledger/x/manifest/types"
+	"github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
 func GetQueryCmd() *cobra.Command {

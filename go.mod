@@ -1,14 +1,14 @@
-module github.com/liftedinit/manifest-ledger
+module github.com/manifest-network/manifest-ledger
 
-go 1.24.5
+go 1.24.6
 
 replace (
 	// core v0.12 was tagged wrong (SDK v51)
 	cosmossdk.io/core => cosmossdk.io/core v0.11.0
 
-	// go list -m github.com/liftedinit/cosmos-sdk@aef2f6d97fa0611cd51334d9665d6f363867b89b
-	// https://github.com/liftedinit/cosmos-sdk/pull/1
-	github.com/cosmos/cosmos-sdk => github.com/liftedinit/cosmos-sdk v0.50.14-liftedinit.1
+	// go list -m github.com/manifest-network/cosmos-sdk@aef2f6d97fa0611cd51334d9665d6f363867b89b
+	// https://github.com/manifest-network/cosmos-sdk/pull/1
+	github.com/cosmos/cosmos-sdk => github.com/manifest-network/cosmos-sdk v0.50.14-liftedinit.1
 
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides
@@ -138,7 +138,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
-	github.com/hashicorp/go-getter v1.7.5 // indirect
+	github.com/hashicorp/go-getter v1.7.9 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-metrics v0.5.3 // indirect

@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest"
 
-	"github.com/liftedinit/manifest-ledger/interchaintest/helpers"
-	manifesttypes "github.com/liftedinit/manifest-ledger/x/manifest/types"
+	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
+	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )

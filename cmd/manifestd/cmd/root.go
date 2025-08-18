@@ -22,8 +22,8 @@ import (
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
-	"github.com/liftedinit/manifest-ledger/app"
-	"github.com/liftedinit/manifest-ledger/app/params"
+	"github.com/manifest-network/manifest-ledger/app"
+	"github.com/manifest-network/manifest-ledger/app/params"
 )
 
 // NewRootCmd creates a new root commaxnd for wasmd. It is called once in the

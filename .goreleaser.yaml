@@ -3,7 +3,7 @@ project_name: manifest-ledger
 
 release:
   github:
-    owner: liftedinit
+    owner: manifest-network
     name: manifest-ledger
 
 builds:
@@ -15,7 +15,7 @@ builds:
       - -tags=netgo ledger
       - -trimpath
     ldflags:
-      - -s -w -X main.commit={{.Commit}} -X main.date={{ .CommitDate }} -X github.com/cosmos/cosmos-sdk/version.Name=manifest -X github.com/cosmos/cosmos-sdk/version.AppName=manifestd -X github.com/cosmos/cosmos-sdk/version.Version=v{{ .Version }} -X github.com/cosmos/cosmos-sdk/version.Commit={{ .Commit }} -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,ledger -X github.com/liftedinit/manifest-ledger/app.Bech32Prefix=manifest
+      - -s -w -X main.commit={{.Commit}} -X main.date={{ .CommitDate }} -X github.com/cosmos/cosmos-sdk/version.Name=manifest -X github.com/cosmos/cosmos-sdk/version.AppName=manifestd -X github.com/cosmos/cosmos-sdk/version.Version=v{{ .Version }} -X github.com/cosmos/cosmos-sdk/version.Commit={{ .Commit }} -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,ledger -X github.com/manifest-network/manifest-ledger/app.Bech32Prefix=manifest
     env:
       - CGO_ENABLED=1
     goos:
@@ -40,4 +40,4 @@ git:
   tag_sort: -version:refname
 
 github_urls:
-  download: https://github.com/liftedinit/manifest-ledger/releases
+  download: https://github.com/manifest-network/manifest-ledger/releases

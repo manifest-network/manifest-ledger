@@ -17,7 +17,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 
-	"github.com/liftedinit/manifest-ledger/app/decorators"
+	"github.com/manifest-network/manifest-ledger/app/decorators"
 )
 
 type AnteTestSuite struct {
