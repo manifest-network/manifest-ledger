@@ -2,16 +2,23 @@ package interchaintest
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"path"
 	"testing"
 	"time"
 
 	upgradetypes "cosmossdk.io/x/upgrade/types"
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
+	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
 	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
+	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
+	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
+	poatypes "github.com/strangelove-ventures/poa"
 
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
@@ -22,17 +29,18 @@ import (
 )
 
 const (
-	upgradeName = "v0.0.1-rc.6"
+	upgradeName = "v1.0.9"
 
 	haltHeightDelta    = int64(15) // will propose upgrade this many blocks in the future
 	blocksAfterUpgrade = int64(7)
+	val1               = "val1"
 )
 
 var (
 	// baseChain is the current version of the chain that will be upgraded from
 	baseChain = ibc.DockerImage{
-		Repository: "ghcr.io/manifest-network/manifest-ledger", // GitHub Container Registry path
-		Version:    "v0.0.1-rc.4",                              // The version we're upgrading from
+		Repository: "ghcr.io/liftedinit/manifest-ledger", // GitHub Container Registry path
+		Version:    "v1.0.5",                             // The version we're upgrading from
 		UIDGID:     "1025:1025",
 	}
 
@@ -59,8 +67,6 @@ var (
 )
 
 func TestBasicManifestUpgrade(t *testing.T) {
-	t.Skip("Skipping test, we know the migration to rc.6 works")
-
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}
@@ -81,7 +87,7 @@ func TestBasicManifestUpgrade(t *testing.T) {
 		fmt.Sprintf("POA_ADMIN_ADDRESS=%s", groupAddr), // Set group address as POA admin
 	}
 
-	v := 16
+	v := 12
 	chains, err := interchaintest.NewBuiltinChainFactory(zaptest.NewLogger(t), []*interchaintest.ChainSpec{
 		{
 			Name:          "manifest-2",
@@ -115,10 +121,40 @@ func TestBasicManifestUpgrade(t *testing.T) {
 	}))
 
 	// Get test users
-	user1Wallet, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, user1, accMnemonic, DefaultGenesisAmt, chain)
+	_, err = interchaintest.GetAndFundTestUserWithMnemonic(ctx, user1, accMnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
 	_, err = interchaintest.GetAndFundTestUserWithMnemonic(ctx, user2, acc1Mnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
+
+	// We'll add this validator after the upgrade
+	val1Wallet, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, val1, val1Mnemonic, DefaultGenesisAmt, chain)
+	require.NoError(t, err)
+
+	// Checking current unbounding time
+	sparams, err := chain.StakingQueryParams(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 504*time.Hour, sparams.UnbondingTime)
+
+	// Update unbonding time to 6 seconds for faster test
+	// ********** WARNING **********
+	// Removing a validator, upgrading the chain while the validator is UNBOUNDING, then adding a new validator will CRASH THE CHAIN.
+	// See https://github.com/strangelove-ventures/poa/issues/245
+	// TODO: Fix POA to handle this case.
+	// ********** WARNING **********
+	updateStaking := createSetStakingParamsProposal(groupAddr, 6*time.Second, sparams.MaxValidators, sparams.MaxEntries, sparams.HistoricalEntries, Denom)
+	createAndRunProposalSuccess(t, ctx, chain, &cfg, accAddr, []*types.Any{createAny(t, &updateStaking)})
+
+	// Verify the staking param change
+	sparams, err = chain.StakingQueryParams(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 6*time.Second, sparams.UnbondingTime)
+
+	beforeVals, err := chain.StakingQueryValidators(ctx, "")
+	require.NoError(t, err)
+	valToRemove := beforeVals[0]
+	t.Log("Removing validator", valToRemove.Description.Moniker, "with operator address", valToRemove.OperatorAddress)
+	p := createRemoveValidatorProposal(groupAddr, valToRemove.OperatorAddress)
+	createAndRunProposalSuccess(t, ctx, chain, &cfg, accAddr, []*types.Any{createAny(t, &p)})
 
 	// Get current height and calculate halt height
 	height, err := chain.Height(ctx)
@@ -181,10 +217,14 @@ func TestBasicManifestUpgrade(t *testing.T) {
 
 	// Test CosmWasm functionality after upgrade
 	t.Log("Testing CosmWasm functionality after upgrade")
-	StoreAndInstantiateContract(t, ctx, chain, user1Wallet, accAddr)
+	storeAndInstantiateContract(t, ctx, chain, accAddr)
+
+	// Test inducting a new validator after upgrade
+	t.Log("Testing adding a new validator after upgrade")
+	createAndInductValidator(t, ctx, chain, val1Wallet)
 }
 
-func StoreAndInstantiateContract(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, accAddr string) string {
+func storeAndInstantiateContract(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, accAddr string) string {
 	// Get the current chain config
 	chainConfig := chain.Config()
 
@@ -226,4 +266,83 @@ func StoreAndInstantiateContract(t *testing.T, ctx context.Context, chain *cosmo
 	require.Equal(t, 0, resp.Count)
 
 	return contractAddr
+}
+
+func createAndInductValidator(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, val ibc.Wallet) {
+	chainConfig := chain.Config()
+	enc := chainConfig.EncodingConfig
+
+	beforeVals, err := chain.StakingQueryValidators(ctx, "")
+	require.NoError(t, err)
+	numBefore := len(beforeVals)
+
+	bz, err := base64.StdEncoding.DecodeString(val1Pubkey)
+	require.NoError(t, err)
+
+	if len(bz) != 32 {
+		t.Fatalf("invalid pubkey length: expected 32, got %d", len(bz))
+	}
+
+	tmpPk := ed25519.PubKey(bz)
+	pk, err := cryptocodec.FromCmtPubKeyInterface(tmpPk)
+	require.NoError(t, err)
+
+	anyPk, err := types.NewAnyWithValue(pk)
+	require.NoError(t, err)
+
+	// Encode MsgCreateValidator to valid JSON using the chain's codec
+	msgCreateValidator := createValidator("my-test-validator", val.FormattedAddress(), anyPk)
+	pkJSON, err := enc.Codec.MarshalJSON(msgCreateValidator.Pubkey)
+	require.NoError(t, err)
+
+	payload := map[string]any{
+		"pubkey":                     json.RawMessage(pkJSON),
+		"amount":                     "1000000upoa",
+		"moniker":                    msgCreateValidator.Description.Moniker,
+		"identity":                   msgCreateValidator.Description.Identity,
+		"website":                    msgCreateValidator.Description.Website,
+		"security-contact":           msgCreateValidator.Description.SecurityContact,
+		"details":                    msgCreateValidator.Description.Details,
+		"commission-rate":            msgCreateValidator.Commission.Rate.String(),
+		"commission-max-rate":        msgCreateValidator.Commission.MaxRate.String(),
+		"commission-max-change-rate": msgCreateValidator.Commission.MaxChangeRate.String(),
+		"min-self-delegation":        msgCreateValidator.MinSelfDelegation.String(),
+	}
+
+	out, err := json.MarshalIndent(payload, "", "  ")
+	require.NoError(t, err)
+
+	tn := chain.GetNode()
+
+	file := "validator_json.json"
+	fw := dockerutil.NewFileWriter(nil, tn.DockerClient, tn.TestName)
+	err = fw.WriteFile(ctx, tn.VolumeName, file, out)
+	require.NoError(t, err)
+
+	resp, err := helpers.POACreateValidator(ctx, chain, val, path.Join(tn.HomeDir(), file), "--gas", "auto", "--gas-adjustment", "2.0", "--gas-prices", "1.0umfx")
+	require.NoError(t, err)
+	t.Log("Create validator response:", resp.String())
+	require.Equal(t, resp.Code, uint32(0))
+
+	r, err := poatypes.NewQueryClient(tn.GrpcConn).PendingValidators(ctx, &poatypes.QueryPendingValidatorsRequest{})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(r.GetPending()))
+
+	t.Log("Pending validator before induction", r.GetPending())
+
+	setPowerProposal := createSetPowerProposal(groupAddr, val1Addr, 5000000000000, false)
+	createAndRunProposalSuccess(t, ctx, chain, &chainConfig, accAddr, []*types.Any{createAny(t, &setPowerProposal)})
+
+	afterVals, err := chain.StakingQueryValidators(ctx, "")
+	require.NoError(t, err)
+	numAfter := len(afterVals)
+
+	r, err = poatypes.NewQueryClient(tn.GrpcConn).PendingValidators(ctx, &poatypes.QueryPendingValidatorsRequest{})
+	require.NoError(t, err)
+	require.Equal(t, 0, len(r.GetPending()))
+
+	t.Log("Pending validator after induction", r.GetPending())
+
+	// Should have one more validator after inducting
+	require.Equal(t, numBefore+1, numAfter)
 }

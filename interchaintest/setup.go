@@ -37,6 +37,11 @@ var (
 	acc4Addr     = "manifest1g292xgmcclhq4au5p7580m2s3f8tpwjra644jm"
 	acc4Mnemonic = "myself bamboo retire day exile cancel peanut agree come method odor innocent welcome royal engage key surprise practice capable sauce orient young divert mirror"
 
+	// Taken from https://github.com/manifest-network/manifestjs/blob/main/starship/src/test_helper.ts
+	val1Mnemonic = "venture obtain second cricket please sheriff hybrid eyebrow weasel saddle switch abuse artwork clump ivory vault response diary plunge weekend wheat breeze gaze occur"
+	val1Addr     = "manifestvaloper19h4chfdz729096nm5hhakc22puwwezgg7mz99x"
+	val1Pubkey   = "lnfZyOEx8KQVO1Z3jPxn/03BIPx0Nwu6ApxyEBEWtYM="
+
 	vals      = 2
 	fullNodes = 0
 
@@ -74,7 +79,7 @@ var (
 		Bin:            "manifestd",
 		Bech32Prefix:   "manifest",
 		Denom:          Denom,
-		GasPrices:      "0" + Denom,
+		GasPrices:      "1.0" + Denom,
 		GasAdjustment:  1.3,
 		TrustingPeriod: "508h",
 		NoHostMount:    false,
@@ -82,7 +87,7 @@ var (
 		ModifyGenesis:  cosmos.ModifyGenesis(DefaultGenesis),
 	}
 
-	DefaultGenesisAmt = sdkmath.NewInt(10_000_000)
+	DefaultGenesisAmt = sdkmath.NewInt(10_000_000_000_000)
 )
 
 func init() {
