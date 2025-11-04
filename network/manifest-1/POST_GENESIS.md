@@ -22,7 +22,7 @@
 
 ### Dependencies
 
-> Prerequisite: go1.24+, git, gcc, make, jq
+> Prerequisite: go1.25+, git, gcc, make, jq
 
 **Arch Linux:**
 
