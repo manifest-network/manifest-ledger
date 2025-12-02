@@ -1,0 +1,53 @@
+syntax = "proto3";
+package liftedinit.sku.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos/base/v1beta1/coin.proto";
+import "amino/amino.proto";
+
+option go_package = "github.com/manifest-network/manifest-ledger/x/sku/types";
+
+// Unit defines the billing unit for a SKU.
+enum Unit {
+  // UNIT_UNSPECIFIED is the default unspecified unit.
+  UNIT_UNSPECIFIED = 0;
+  // UNIT_PER_HOUR is a per-hour billing unit.
+  UNIT_PER_HOUR = 1;
+  // UNIT_PER_DAY is a per-day billing unit.
+  UNIT_PER_DAY = 2;
+  // UNIT_PER_MONTH is a per-month billing unit.
+  UNIT_PER_MONTH = 3;
+  // UNIT_PER_UNIT is a per-unit billing unit.
+  UNIT_PER_UNIT = 4;
+}
+
+// SKU defines a stock keeping unit for on-chain billing.
+message SKU {
+  option (amino.name) = "lifted/sku/SKU";
+
+  // id is the unique identifier for the SKU.
+  uint64 id = 1;
+
+  // provider is the address of the SKU provider.
+  string provider = 2;
+
+  // name is the human-readable name of the SKU.
+  string name = 3;
+
+  // unit is the billing unit for the SKU.
+  Unit unit = 4;
+
+  // base_price is the base price for the SKU.
+  cosmos.base.v1beta1.Coin base_price = 5 [
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true,
+    (amino.encoding) = "legacy_coin",
+    (gogoproto.casttype) = "github.com/cosmos/cosmos-sdk/types.Coin"
+  ];
+
+  // meta_hash is a hash of the off-chain metadata.
+  bytes meta_hash = 6;
+
+  // active indicates whether the SKU is active.
+  bool active = 7;
+}

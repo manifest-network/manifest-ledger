@@ -1,0 +1,75 @@
+syntax = "proto3";
+package liftedinit.sku.v1;
+
+import "google/api/annotations.proto";
+import "cosmos/base/query/v1beta1/pagination.proto";
+import "gogoproto/gogo.proto";
+import "liftedinit/sku/v1/types.proto";
+
+option go_package = "github.com/manifest-network/manifest-ledger/x/sku/types";
+
+// Query defines the gRPC querier service for the sku module.
+service Query {
+  // SKU queries a SKU by id.
+  rpc SKU(QuerySKURequest) returns (QuerySKUResponse) {
+    option (google.api.http).get = "/liftedinit/sku/v1/sku/{id}";
+  }
+
+  // SKUs queries all SKUs.
+  rpc SKUs(QuerySKUsRequest) returns (QuerySKUsResponse) {
+    option (google.api.http).get = "/liftedinit/sku/v1/skus";
+  }
+
+  // SKUsByProvider queries SKUs by provider.
+  rpc SKUsByProvider(QuerySKUsByProviderRequest)
+      returns (QuerySKUsByProviderResponse) {
+    option (google.api.http).get = "/liftedinit/sku/v1/skus/{provider}";
+  }
+}
+
+// QuerySKURequest is the request type for the Query/SKU RPC method.
+message QuerySKURequest {
+  // id is the unique identifier of the SKU.
+  uint64 id = 1;
+}
+
+// QuerySKUResponse is the response type for the Query/SKU RPC method.
+message QuerySKUResponse {
+  // sku is the SKU.
+  SKU sku = 1 [ (gogoproto.nullable) = false ];
+}
+
+// QuerySKUsRequest is the request type for the Query/SKUs RPC method.
+message QuerySKUsRequest {
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+// QuerySKUsResponse is the response type for the Query/SKUs RPC method.
+message QuerySKUsResponse {
+  // skus is the list of SKUs.
+  repeated SKU skus = 1 [ (gogoproto.nullable) = false ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QuerySKUsByProviderRequest is the request type for the Query/SKUsByProvider
+// RPC method.
+message QuerySKUsByProviderRequest {
+  // provider is the address of the SKU provider.
+  string provider = 1;
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+}
+
+// QuerySKUsByProviderResponse is the response type for the Query/SKUsByProvider
+// RPC method.
+message QuerySKUsByProviderResponse {
+  // skus is the list of SKUs.
+  repeated SKU skus = 1 [ (gogoproto.nullable) = false ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}

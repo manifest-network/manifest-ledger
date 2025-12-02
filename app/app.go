@@ -143,6 +143,9 @@ import (
 	manifest "github.com/manifest-network/manifest-ledger/x/manifest"
 	manifestkeeper "github.com/manifest-network/manifest-ledger/x/manifest/keeper"
 	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
+	sku "github.com/manifest-network/manifest-ledger/x/sku"
+	skukeeper "github.com/manifest-network/manifest-ledger/x/sku/keeper"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 // We pull these out so we can set them with LDFLAGS in the Makefile
@@ -260,6 +263,7 @@ type ManifestApp struct {
 	TokenFactoryKeeper tokenfactorykeeper.Keeper
 	POAKeeper          poakeeper.Keeper
 	ManifestKeeper     manifestkeeper.Keeper
+	SKUKeeper          skukeeper.Keeper
 	WasmKeeper         wasmkeeper.Keeper
 
 	// the module manager
@@ -320,7 +324,7 @@ func NewApp(
 		capabilitytypes.StoreKey, ibcexported.StoreKey, ibctransfertypes.StoreKey, ibcfeetypes.StoreKey,
 		icahosttypes.StoreKey,
 		icacontrollertypes.StoreKey, tokenfactorytypes.StoreKey, poa.StoreKey,
-		manifesttypes.StoreKey,
+		manifesttypes.StoreKey, skutypes.StoreKey,
 		wasmtypes.StoreKey,
 	)
 
@@ -574,6 +578,14 @@ func NewApp(
 	)
 	app.ManifestKeeper.SetTestAccountKeeper(app.AccountKeeper)
 
+	// Create the SKU Keeper
+	app.SKUKeeper = skukeeper.NewKeeper(
+		appCodec,
+		runtime.NewKVStoreService(keys[skutypes.StoreKey]),
+		logger,
+		helpers.GetPoAAdmin(),
+	)
+
 	// Create the TokenFactory Keeper
 	app.TokenFactoryKeeper = tokenfactorykeeper.NewKeeper(
 		appCodec,
@@ -732,6 +744,7 @@ func NewApp(
 		// sdk
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)),
 		manifest.NewAppModule(appCodec, app.ManifestKeeper, app.MintKeeper),
+		sku.NewAppModule(appCodec, app.SKUKeeper),
 		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
 	)
 
@@ -826,6 +839,7 @@ func NewApp(
 		ibcfeetypes.ModuleName,
 		poa.ModuleName,
 		manifesttypes.ModuleName,
+		skutypes.ModuleName,
 		wasmtypes.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)

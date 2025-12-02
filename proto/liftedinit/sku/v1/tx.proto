@@ -1,0 +1,119 @@
+syntax = "proto3";
+package liftedinit.sku.v1;
+
+import "cosmos/msg/v1/msg.proto";
+import "gogoproto/gogo.proto";
+import "cosmos_proto/cosmos.proto";
+import "cosmos/base/v1beta1/coin.proto";
+import "amino/amino.proto";
+import "liftedinit/sku/v1/types.proto";
+
+option go_package = "github.com/manifest-network/manifest-ledger/x/sku/types";
+
+// Msg defines the Msg service.
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+
+  // CreateSKU creates a new SKU.
+  rpc CreateSKU(MsgCreateSKU) returns (MsgCreateSKUResponse);
+
+  // UpdateSKU updates an existing SKU.
+  rpc UpdateSKU(MsgUpdateSKU) returns (MsgUpdateSKUResponse);
+
+  // DeleteSKU deletes a SKU.
+  rpc DeleteSKU(MsgDeleteSKU) returns (MsgDeleteSKUResponse);
+}
+
+// MsgCreateSKU is the Msg/CreateSKU request type.
+message MsgCreateSKU {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (gogoproto.equal) = false;
+  option (amino.name) = "lifted/sku/MsgCreateSKU";
+
+  // authority is the address of the controlling account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // provider is the identifier of the SKU provider.
+  string provider = 2;
+
+  // name is the human-readable name of the SKU.
+  string name = 3;
+
+  // unit is the billing unit for the SKU.
+  Unit unit = 4;
+
+  // base_price is the base price for the SKU.
+  cosmos.base.v1beta1.Coin base_price = 5 [
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true,
+    (amino.encoding) = "legacy_coin",
+    (gogoproto.casttype) = "github.com/cosmos/cosmos-sdk/types.Coin"
+  ];
+
+  // meta_hash is a hash of the off-chain metadata.
+  bytes meta_hash = 6;
+}
+
+// MsgCreateSKUResponse is the Msg/CreateSKU response type.
+message MsgCreateSKUResponse {
+  // id is the unique identifier of the created SKU.
+  uint64 id = 1;
+}
+
+// MsgUpdateSKU is the Msg/UpdateSKU request type.
+message MsgUpdateSKU {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (gogoproto.equal) = false;
+  option (amino.name) = "lifted/sku/MsgUpdateSKU";
+
+  // authority is the address of the controlling account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // provider is the identifier of the SKU provider.
+  string provider = 2;
+
+  // id is the unique identifier of the SKU to update.
+  uint64 id = 3;
+
+  // name is the human-readable name of the SKU.
+  string name = 4;
+
+  // unit is the billing unit for the SKU.
+  Unit unit = 5;
+
+  // base_price is the base price for the SKU.
+  cosmos.base.v1beta1.Coin base_price = 6 [
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true,
+    (amino.encoding) = "legacy_coin",
+    (gogoproto.casttype) = "github.com/cosmos/cosmos-sdk/types.Coin"
+  ];
+
+  // meta_hash is a hash of the off-chain metadata.
+  bytes meta_hash = 7;
+
+  // active indicates whether the SKU is active.
+  bool active = 8;
+}
+
+// MsgUpdateSKUResponse is the Msg/UpdateSKU response type.
+message MsgUpdateSKUResponse {}
+
+// MsgDeleteSKU is the Msg/DeleteSKU request type.
+message MsgDeleteSKU {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (gogoproto.equal) = false;
+  option (amino.name) = "lifted/sku/MsgDeleteSKU";
+
+  // authority is the address of the controlling account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // provider is the identifier of the SKU provider.
+  string provider = 2;
+
+  // id is the unique identifier of the SKU to delete.
+  uint64 id = 3;
+}
+
+// MsgDeleteSKUResponse is the Msg/DeleteSKU response type.
+message MsgDeleteSKUResponse {}
