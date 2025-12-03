@@ -9,6 +9,7 @@ import (
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 
 	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 
 	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -93,6 +94,7 @@ func AppEncoding() *sdktestutil.TestEncodingConfig {
 	enc := cosmos.DefaultEncoding()
 
 	manifesttypes.RegisterInterfaces(enc.InterfaceRegistry)
+	skutypes.RegisterInterfaces(enc.InterfaceRegistry)
 	grouptypes.RegisterInterfaces(enc.InterfaceRegistry)
 	tokenfactorytypes.RegisterInterfaces(enc.InterfaceRegistry)
 	poatypes.RegisterInterfaces(enc.InterfaceRegistry)
