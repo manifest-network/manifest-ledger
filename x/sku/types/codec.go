@@ -13,6 +13,7 @@ func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	legacy.RegisterAminoMsg(cdc, &MsgCreateSKU{}, "lifted/sku/MsgCreateSKU")
 	legacy.RegisterAminoMsg(cdc, &MsgUpdateSKU{}, "lifted/sku/MsgUpdateSKU")
 	legacy.RegisterAminoMsg(cdc, &MsgDeleteSKU{}, "lifted/sku/MsgDeleteSKU")
+	legacy.RegisterAminoMsg(cdc, &MsgUpdateParams{}, "lifted/sku/MsgUpdateParams")
 }
 
 // RegisterInterfaces registers the module's interface types.
@@ -22,6 +23,7 @@ func RegisterInterfaces(registry types.InterfaceRegistry) {
 		&MsgCreateSKU{},
 		&MsgUpdateSKU{},
 		&MsgDeleteSKU{},
+		&MsgUpdateParams{},
 	)
 
 	msgservice.RegisterMsgServiceDesc(registry, &_Msg_serviceDesc)

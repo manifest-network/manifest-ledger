@@ -51,13 +51,13 @@ func TestCreateSKU(t *testing.T) {
 			metaHash:  []byte("testhash"),
 		},
 		{
-			name:      "fail; invalid authority",
+			name:      "fail; unauthorized sender",
 			sender:    acc.String(),
 			provider:  "provider1",
 			skuName:   "Test SKU",
 			unit:      types.Unit_UNIT_PER_HOUR,
 			basePrice: basePrice,
-			errMsg:    "invalid authority",
+			errMsg:    "unauthorized",
 		},
 		{
 			name:      "fail; empty provider",
@@ -179,7 +179,7 @@ func TestUpdateSKU(t *testing.T) {
 			active:    false,
 		},
 		{
-			name:      "fail; invalid authority",
+			name:      "fail; unauthorized sender",
 			sender:    acc.String(),
 			provider:  "provider1",
 			id:        1,
@@ -187,7 +187,7 @@ func TestUpdateSKU(t *testing.T) {
 			unit:      types.Unit_UNIT_PER_DAY,
 			basePrice: newPrice,
 			active:    true,
-			errMsg:    "invalid authority",
+			errMsg:    "unauthorized",
 		},
 		{
 			name:      "fail; SKU not found",
@@ -284,11 +284,11 @@ func TestDeleteSKUMsg(t *testing.T) {
 			id:       1,
 		},
 		{
-			name:     "fail; invalid authority",
+			name:     "fail; unauthorized sender",
 			sender:   acc.String(),
 			provider: "provider1",
 			id:       2,
-			errMsg:   "invalid authority",
+			errMsg:   "unauthorized",
 		},
 		{
 			name:     "fail; SKU not found",
@@ -374,4 +374,187 @@ func TestCreateMultipleSKUs(t *testing.T) {
 	allSKUs, err := k.GetAllSKUs(f.Ctx)
 	require.NoError(t, err)
 	require.Len(t, allSKUs, 5)
+}
+
+func TestUpdateParams(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, allowedAddr := testdata.KeyTestPubAddr()
+	_, _, otherAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	type testcase struct {
+		name   string
+		sender string
+		params types.Params
+		errMsg string
+	}
+
+	cases := []testcase{
+		{
+			name:   "success; update params with allowed list",
+			sender: authority.String(),
+			params: types.Params{
+				AllowedList: []string{allowedAddr.String()},
+			},
+		},
+		{
+			name:   "fail; unauthorized sender",
+			sender: otherAddr.String(),
+			params: types.Params{
+				AllowedList: []string{allowedAddr.String()},
+			},
+			errMsg: "unauthorized",
+		},
+		{
+			name:   "success; empty allowed list",
+			sender: authority.String(),
+			params: types.Params{
+				AllowedList: []string{},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		c := c
+
+		t.Run(c.name, func(t *testing.T) {
+			msg := &types.MsgUpdateParams{
+				Authority: c.sender,
+				Params:    c.params,
+			}
+
+			_, err := ms.UpdateParams(f.Ctx, msg)
+			if c.errMsg != "" {
+				require.Error(t, err)
+				require.ErrorContains(t, err, c.errMsg)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestAllowedListCreateSKU(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, allowedAddr := testdata.KeyTestPubAddr()
+	_, _, unauthorizedAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	err := k.NextID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Set params with allowedAddr in allowed list
+	params := types.Params{
+		AllowedList: []string{allowedAddr.String()},
+	}
+	err = k.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+
+	// Test that allowed address can create SKU
+	msg := &types.MsgCreateSKU{
+		Authority: allowedAddr.String(),
+		Provider:  "provider1",
+		Name:      "Test SKU",
+		Unit:      types.Unit_UNIT_PER_HOUR,
+		BasePrice: basePrice,
+	}
+
+	resp, err := ms.CreateSKU(f.Ctx, msg)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, uint64(1), resp.Id)
+
+	// Test that unauthorized address cannot create SKU
+	msg = &types.MsgCreateSKU{
+		Authority: unauthorizedAddr.String(),
+		Provider:  "provider2",
+		Name:      "Test SKU 2",
+		Unit:      types.Unit_UNIT_PER_HOUR,
+		BasePrice: basePrice,
+	}
+
+	_, err = ms.CreateSKU(f.Ctx, msg)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "unauthorized")
+
+	// Test that authority can still create SKU
+	msg = &types.MsgCreateSKU{
+		Authority: authority.String(),
+		Provider:  "provider3",
+		Name:      "Test SKU 3",
+		Unit:      types.Unit_UNIT_PER_HOUR,
+		BasePrice: basePrice,
+	}
+
+	resp, err = ms.CreateSKU(f.Ctx, msg)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+}
+
+func TestParamsAllowedListRemoval(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, allowedAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	err := k.NextID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Set params with allowedAddr
+	params := types.Params{
+		AllowedList: []string{allowedAddr.String()},
+	}
+	err = k.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Verify address is in allowed list
+	gotParams, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	require.True(t, gotParams.IsAllowed(allowedAddr.String()))
+
+	// Remove via UpdateParams message
+	updateMsg := &types.MsgUpdateParams{
+		Authority: authority.String(),
+		Params: types.Params{
+			AllowedList: []string{}, // Empty list removes the address
+		},
+	}
+
+	_, err = ms.UpdateParams(f.Ctx, updateMsg)
+	require.NoError(t, err)
+
+	// Verify address is no longer in allowed list
+	gotParams, err = k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	require.False(t, gotParams.IsAllowed(allowedAddr.String()))
+
+	// Verify removed address cannot create SKU
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+	createMsg := &types.MsgCreateSKU{
+		Authority: allowedAddr.String(),
+		Provider:  "provider1",
+		Name:      "Test SKU",
+		Unit:      types.Unit_UNIT_PER_HOUR,
+		BasePrice: basePrice,
+	}
+
+	_, err = ms.CreateSKU(f.Ctx, createMsg)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "unauthorized")
 }

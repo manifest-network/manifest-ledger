@@ -23,6 +23,20 @@ func NewQuerier(keeper Keeper) Querier {
 	return Querier{Keeper: keeper}
 }
 
+// Params queries the module parameters.
+func (q Querier) Params(ctx context.Context, req *types.QueryParamsRequest) (*types.QueryParamsResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid request")
+	}
+
+	params, err := q.Keeper.GetParams(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &types.QueryParamsResponse{Params: params}, nil
+}
+
 // SKU queries a SKU by its ID.
 func (q Querier) SKU(ctx context.Context, req *types.QuerySKURequest) (*types.QuerySKUResponse, error) {
 	if req == nil {
@@ -71,12 +85,23 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 		return nil, status.Error(codes.InvalidArgument, "provider cannot be empty")
 	}
 
-	skus, err := q.Keeper.GetSKUsByProvider(ctx, req.Provider)
+	skus, pageRes, err := query.CollectionFilteredPaginate(
+		ctx,
+		q.Keeper.SKUs,
+		req.Pagination,
+		func(_ uint64, sku types.SKU) (bool, error) {
+			return sku.Provider == req.Provider, nil
+		},
+		func(_ uint64, sku types.SKU) (types.SKU, error) {
+			return sku, nil
+		},
+	)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &types.QuerySKUsByProviderResponse{
-		Skus: skus,
+		Skus:       skus,
+		Pagination: pageRes,
 	}, nil
 }

@@ -47,6 +47,10 @@ func initFixture(t *testing.T) *testFixture {
 
 	s.EncodingCfg = encCfg
 
+	// Initialize default params
+	err := s.App.SKUKeeper.SetParams(s.Ctx, types.DefaultParams())
+	require.NoError(t, err)
+
 	return &s
 }
 
@@ -58,6 +62,7 @@ func TestInitGenesis(t *testing.T) {
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
 	genesisState := &types.GenesisState{
+		Params: types.DefaultParams(),
 		Skus: []types.SKU{
 			{
 				Id:        1,
@@ -305,4 +310,129 @@ func TestGetNextID(t *testing.T) {
 	id3, err := k.GetNextID(f.Ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), id3)
+}
+
+func TestInitGenesisWithParams(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+
+	genesisState := &types.GenesisState{
+		Params: types.Params{
+			AllowedList: []string{f.TestAccs[0].String(), f.TestAccs[1].String()},
+		},
+		Skus: []types.SKU{
+			{
+				Id:        1,
+				Provider:  "provider1",
+				Name:      "SKU 1",
+				Unit:      types.Unit_UNIT_PER_HOUR,
+				BasePrice: basePrice,
+				Active:    true,
+			},
+		},
+		NextId: 2,
+	}
+
+	err := k.InitGenesis(f.Ctx, genesisState)
+	require.NoError(t, err)
+
+	// Verify params were initialized
+	params, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	require.Len(t, params.AllowedList, 2)
+	require.True(t, params.IsAllowed(f.TestAccs[0].String()))
+	require.True(t, params.IsAllowed(f.TestAccs[1].String()))
+	require.False(t, params.IsAllowed(f.TestAccs[2].String()))
+}
+
+func TestExportGenesisWithParams(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+
+	// Set params with allowed list
+	params := types.Params{
+		AllowedList: []string{f.TestAccs[0].String(), f.TestAccs[1].String()},
+	}
+	err := k.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	err = k.NextID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	genState := k.ExportGenesis(f.Ctx)
+
+	require.NotNil(t, genState)
+	require.Len(t, genState.Params.AllowedList, 2)
+	require.Contains(t, genState.Params.AllowedList, f.TestAccs[0].String())
+	require.Contains(t, genState.Params.AllowedList, f.TestAccs[1].String())
+}
+
+func TestGetParams(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+
+	// Set params
+	params := types.Params{
+		AllowedList: []string{f.TestAccs[0].String(), f.TestAccs[1].String()},
+	}
+	err := k.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Get params
+	gotParams, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	require.Len(t, gotParams.AllowedList, 2)
+}
+
+func TestSKUsByProviderPagination(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+
+	// Create multiple SKUs for different providers
+	for i := uint64(1); i <= 5; i++ {
+		sku := types.SKU{
+			Id:        i,
+			Provider:  "provider1",
+			Name:      "SKU " + string(rune('0'+i)),
+			Unit:      types.Unit_UNIT_PER_HOUR,
+			BasePrice: basePrice,
+			Active:    true,
+		}
+		err := k.SKUs.Set(f.Ctx, i, sku)
+		require.NoError(t, err)
+	}
+
+	for i := uint64(6); i <= 8; i++ {
+		sku := types.SKU{
+			Id:        i,
+			Provider:  "provider2",
+			Name:      "SKU " + string(rune('0'+i)),
+			Unit:      types.Unit_UNIT_PER_DAY,
+			BasePrice: basePrice,
+			Active:    true,
+		}
+		err := k.SKUs.Set(f.Ctx, i, sku)
+		require.NoError(t, err)
+	}
+
+	// Test GetSKUsByProvider
+	skus, err := k.GetSKUsByProvider(f.Ctx, "provider1")
+	require.NoError(t, err)
+	require.Len(t, skus, 5)
+
+	skus, err = k.GetSKUsByProvider(f.Ctx, "provider2")
+	require.NoError(t, err)
+	require.Len(t, skus, 3)
+
+	skus, err = k.GetSKUsByProvider(f.Ctx, "nonexistent")
+	require.NoError(t, err)
+	require.Len(t, skus, 0)
 }

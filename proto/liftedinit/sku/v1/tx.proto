@@ -22,6 +22,9 @@ service Msg {
 
   // DeleteSKU deletes a SKU.
   rpc DeleteSKU(MsgDeleteSKU) returns (MsgDeleteSKUResponse);
+
+  // UpdateParams updates the module parameters.
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
 }
 
 // MsgCreateSKU is the Msg/CreateSKU request type.
@@ -117,3 +120,19 @@ message MsgDeleteSKU {
 
 // MsgDeleteSKUResponse is the Msg/DeleteSKU response type.
 message MsgDeleteSKUResponse {}
+
+// MsgUpdateParams is the Msg/UpdateParams request type.
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (gogoproto.equal) = false;
+  option (amino.name) = "lifted/sku/MsgUpdateParams";
+
+  // authority is the address of the governance account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // params defines the module parameters to update.
+  Params params = 2 [ (gogoproto.nullable) = false ];
+}
+
+// MsgUpdateParamsResponse is the Msg/UpdateParams response type.
+message MsgUpdateParamsResponse {}

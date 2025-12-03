@@ -10,6 +10,7 @@ var (
 	_ sdk.Msg = &MsgCreateSKU{}
 	_ sdk.Msg = &MsgUpdateSKU{}
 	_ sdk.Msg = &MsgDeleteSKU{}
+	_ sdk.Msg = &MsgUpdateParams{}
 )
 
 // NewMsgCreateSKU creates a new MsgCreateSKU instance.
@@ -172,4 +173,33 @@ func (msg *MsgDeleteSKU) Validate() error {
 	}
 
 	return nil
+}
+
+// NewMsgUpdateParams creates a new MsgUpdateParams instance.
+func NewMsgUpdateParams(authority string, params Params) *MsgUpdateParams {
+	return &MsgUpdateParams{
+		Authority: authority,
+		Params:    params,
+	}
+}
+
+// Route returns the message route.
+func (msg *MsgUpdateParams) Route() string { return ModuleName }
+
+// Type returns the message type.
+func (msg *MsgUpdateParams) Type() string { return "update_params" }
+
+// GetSigners returns the expected signers for the message.
+func (msg *MsgUpdateParams) GetSigners() []sdk.AccAddress {
+	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
+	return []sdk.AccAddress{addr}
+}
+
+// Validate performs basic validation.
+func (msg *MsgUpdateParams) Validate() error {
+	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
+		return errors.Wrap(err, "invalid authority address")
+	}
+
+	return msg.Params.Validate()
 }

@@ -23,6 +23,7 @@ func GetQueryCmd() *cobra.Command {
 	}
 
 	queryCmd.AddCommand(
+		GetCmdQueryParams(),
 		GetCmdQuerySKU(),
 		GetCmdQuerySKUs(),
 		GetCmdQuerySKUsByProvider(),
@@ -129,5 +130,32 @@ func GetCmdQuerySKUsByProvider() *cobra.Command {
 
 	flags.AddQueryFlagsToCmd(cmd)
 	flags.AddPaginationFlagsToCmd(cmd, "skus-by-provider")
+	return cmd
+}
+
+// GetCmdQueryParams returns the command to query the module parameters.
+func GetCmdQueryParams() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "params",
+		Short:   "Query the module parameters",
+		Example: "params",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			queryClient := types.NewQueryClient(clientCtx)
+			res, err := queryClient.Params(cmd.Context(), &types.QueryParamsRequest{})
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
 	return cmd
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -30,6 +31,7 @@ func NewTxCmd() *cobra.Command {
 		MsgCreateSKU(),
 		MsgUpdateSKU(),
 		MsgDeleteSKU(),
+		MsgUpdateParams(),
 	)
 
 	return txCmd
@@ -220,4 +222,61 @@ func MsgDeleteSKU() *cobra.Command {
 
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
+}
+
+// MsgUpdateParams returns a CLI command handler for updating the module parameters.
+func MsgUpdateParams() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "update-params",
+		Short: "Update the module parameters",
+		Long: `Update the module parameters including the allowed list.
+Only the module authority can execute this command.`,
+		Example: "update-params --allowed-list manifest1abc...,manifest1def...",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			authority := clientCtx.GetFromAddress()
+
+			allowedListStr, _ := cmd.Flags().GetString("allowed-list")
+			var allowedList []string
+			if allowedListStr != "" {
+				allowedList = splitAddresses(allowedListStr)
+			}
+
+			params := types.Params{
+				AllowedList: allowedList,
+			}
+
+			msg := types.NewMsgUpdateParams(authority.String(), params)
+
+			if err := msg.Validate(); err != nil {
+				return err
+			}
+
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	cmd.Flags().String("allowed-list", "", "Comma-separated list of addresses allowed to manage SKUs")
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+// splitAddresses splits a comma-separated string into a slice of addresses.
+func splitAddresses(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var result []string
+	for _, addr := range strings.Split(s, ",") {
+		addr = strings.TrimSpace(addr)
+		if addr != "" {
+			result = append(result, addr)
+		}
+	}
+	return result
 }

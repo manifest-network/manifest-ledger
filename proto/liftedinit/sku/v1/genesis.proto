@@ -8,9 +8,12 @@ option go_package = "github.com/manifest-network/manifest-ledger/x/sku/types";
 
 // GenesisState defines the sku module's genesis state.
 message GenesisState {
+  // params defines the module parameters.
+  Params params = 1 [ (gogoproto.nullable) = false ];
+
   // skus is the list of SKUs.
-  repeated SKU skus = 1 [ (gogoproto.nullable) = false ];
+  repeated SKU skus = 2 [ (gogoproto.nullable) = false ];
 
   // next_id is the next SKU id to be assigned.
-  uint64 next_id = 2;
+  uint64 next_id = 3;
 }

@@ -2,17 +2,20 @@ package types
 
 import "cosmossdk.io/collections"
 
-// ParamsKey saves the current module params.
-var ParamsKey = collections.NewPrefix(0)
+// Storage prefixes for collections.
+var (
+	// ParamsKey saves the module parameters.
+	ParamsKey = collections.NewPrefix(0)
 
-// SKUKey saves the SKUs.
-var SKUKey = collections.NewPrefix(1)
+	// SKUKey saves the SKUs.
+	SKUKey = collections.NewPrefix(1)
 
-// SequenceKey saves the next SKU id.
-var SequenceKey = collections.NewPrefix(2)
+	// SequenceKey saves the next SKU id.
+	SequenceKey = collections.NewPrefix(2)
 
-// SKUByProviderPrefix is the prefix for indexing SKUs by provider.
-var SKUByProviderPrefix = collections.NewPrefix(3)
+	// SKUByProviderIndexKey saves the provider index for SKUs.
+	SKUByProviderIndexKey = collections.NewPrefix(3)
+)
 
 const (
 	ModuleName = "sku"
@@ -20,4 +23,16 @@ const (
 	StoreKey = ModuleName
 
 	QuerierRoute = ModuleName
+)
+
+// Event types for the sku module.
+const (
+	EventTypeSKUCreated    = "sku_created"
+	EventTypeSKUUpdated    = "sku_updated"
+	EventTypeSKUDeleted    = "sku_deleted"
+	EventTypeParamsUpdated = "params_updated"
+
+	AttributeKeySKUID    = "sku_id"
+	AttributeKeyProvider = "provider"
+	AttributeKeyName     = "name"
 )

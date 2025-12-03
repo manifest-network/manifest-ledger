@@ -1,15 +1,20 @@
 syntax = "proto3";
 package liftedinit.sku.v1;
 
-import "google/api/annotations.proto";
 import "cosmos/base/query/v1beta1/pagination.proto";
 import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
 import "liftedinit/sku/v1/types.proto";
 
 option go_package = "github.com/manifest-network/manifest-ledger/x/sku/types";
 
 // Query defines the gRPC querier service for the sku module.
 service Query {
+  // Params queries the module parameters.
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/liftedinit/sku/v1/params";
+  }
+
   // SKU queries a SKU by id.
   rpc SKU(QuerySKURequest) returns (QuerySKUResponse) {
     option (google.api.http).get = "/liftedinit/sku/v1/sku/{id}";
@@ -25,6 +30,15 @@ service Query {
       returns (QuerySKUsByProviderResponse) {
     option (google.api.http).get = "/liftedinit/sku/v1/skus/{provider}";
   }
+}
+
+// QueryParamsRequest is the request type for the Query/Params RPC method.
+message QueryParamsRequest {}
+
+// QueryParamsResponse is the response type for the Query/Params RPC method.
+message QueryParamsResponse {
+  // params defines the module parameters.
+  Params params = 1 [ (gogoproto.nullable) = false ];
 }
 
 // QuerySKURequest is the request type for the Query/SKU RPC method.

@@ -26,6 +26,7 @@ func RandomizedGenState(simState *module.SimulationState) {
 	}
 
 	genesisState := types.GenesisState{
+		Params: types.DefaultParams(),
 		Skus:   skus,
 		NextId: nextID,
 	}

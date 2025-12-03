@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"cosmossdk.io/collections"
+	"cosmossdk.io/collections/indexes"
 	storetypes "cosmossdk.io/core/store"
 	"cosmossdk.io/log"
 
@@ -13,6 +14,40 @@ import (
 
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
+
+// SKUIndexes defines the indexes for the SKU collection.
+// It enables efficient lookups and queries on SKUs by specific fields.
+// Currently, it provides a multi-index on the Provider field, allowing fast retrieval
+// of all SKUs associated with a given provider without scanning the entire collection.
+type SKUIndexes struct {
+	// Provider is a multi-index that indexes SKUs by provider.
+	// This index maps a provider string to one or more SKU IDs.
+	// It is implemented using indexes.NewMulti, which extracts the Provider field
+	// from each SKU for indexing.
+	Provider *indexes.Multi[string, uint64, types.SKU]
+}
+
+// IndexesList returns all indexes defined for the SKU collection.
+// This is used by the collections framework to register and manage indexes.
+func (i SKUIndexes) IndexesList() []collections.Index[uint64, types.SKU] {
+	return []collections.Index[uint64, types.SKU]{i.Provider}
+}
+
+// NewSKUIndexes creates a new SKUIndexes instance.
+func NewSKUIndexes(sb *collections.SchemaBuilder) SKUIndexes {
+	return SKUIndexes{
+		Provider: indexes.NewMulti(
+			sb,
+			types.SKUByProviderIndexKey,
+			"skus_by_provider",
+			collections.StringKey,
+			collections.Uint64Key,
+			func(_ uint64, sku types.SKU) (string, error) {
+				return sku.Provider, nil
+			},
+		),
+	}
+}
 
 // Keeper of the sku store.
 type Keeper struct {
@@ -25,7 +60,8 @@ type Keeper struct {
 
 	// state management
 	Schema collections.Schema
-	SKUs   collections.Map[uint64, types.SKU]
+	Params collections.Item[types.Params]
+	SKUs   *collections.IndexedMap[uint64, types.SKU, SKUIndexes]
 	NextID collections.Sequence
 
 	authority string
@@ -47,12 +83,19 @@ func NewKeeper(
 		logger:    logger,
 		authority: authority,
 
-		SKUs: collections.NewMap(
+		Params: collections.NewItem(
+			sb,
+			types.ParamsKey,
+			"params",
+			codec.CollValue[types.Params](cdc),
+		),
+		SKUs: collections.NewIndexedMap(
 			sb,
 			types.SKUKey,
 			"skus",
 			collections.Uint64Key,
 			codec.CollValue[types.SKU](cdc),
+			NewSKUIndexes(sb),
 		),
 		NextID: collections.NewSequence(
 			sb,
@@ -106,8 +149,22 @@ func (k *Keeper) GetBankKeeper() bankkeeper.Keeper {
 	return k.bankKeeper
 }
 
+// GetParams returns the module parameters.
+func (k *Keeper) GetParams(ctx context.Context) (types.Params, error) {
+	return k.Params.Get(ctx)
+}
+
+// SetParams sets the module parameters.
+func (k *Keeper) SetParams(ctx context.Context, params types.Params) error {
+	return k.Params.Set(ctx, params)
+}
+
 // InitGenesis initializes the module's state from a provided genesis state.
 func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error {
+	if err := k.Params.Set(ctx, gs.Params); err != nil {
+		return err
+	}
+
 	for _, sku := range gs.Skus {
 		if err := k.SKUs.Set(ctx, sku.Id, sku); err != nil {
 			return err
@@ -123,20 +180,18 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 
 // ExportGenesis exports the module's state to a genesis state.
 func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
-	skus := make([]types.SKU, 0)
-
-	iter, err := k.SKUs.Iterate(ctx, nil)
+	params, err := k.Params.Get(ctx)
 	if err != nil {
 		panic(err)
 	}
-	defer iter.Close()
 
-	for ; iter.Valid(); iter.Next() {
-		sku, err := iter.Value()
-		if err != nil {
-			panic(err)
-		}
+	var skus []types.SKU
+	err = k.SKUs.Walk(ctx, nil, func(_ uint64, sku types.SKU) (bool, error) {
 		skus = append(skus, sku)
+		return false, nil
+	})
+	if err != nil {
+		panic(err)
 	}
 
 	nextID, err := k.NextID.Peek(ctx)
@@ -145,6 +200,7 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 	}
 
 	return &types.GenesisState{
+		Params: params,
 		Skus:   skus,
 		NextId: nextID,
 	}
@@ -176,43 +232,39 @@ func (k *Keeper) GetNextID(ctx context.Context) (uint64, error) {
 
 // GetAllSKUs returns all SKUs in the store.
 func (k *Keeper) GetAllSKUs(ctx context.Context) ([]types.SKU, error) {
-	skus := make([]types.SKU, 0)
+	var skus []types.SKU
 
-	iter, err := k.SKUs.Iterate(ctx, nil)
+	err := k.SKUs.Walk(ctx, nil, func(_ uint64, sku types.SKU) (bool, error) {
+		skus = append(skus, sku)
+		return false, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	defer iter.Close()
-
-	for ; iter.Valid(); iter.Next() {
-		sku, err := iter.Value()
-		if err != nil {
-			return nil, err
-		}
-		skus = append(skus, sku)
 	}
 
 	return skus, nil
 }
 
-// GetSKUsByProvider returns all SKUs for a given provider.
+// GetSKUsByProvider returns all SKUs for a given provider using the provider index.
 func (k *Keeper) GetSKUsByProvider(ctx context.Context, provider string) ([]types.SKU, error) {
-	skus := make([]types.SKU, 0)
+	var skus []types.SKU
 
-	iter, err := k.SKUs.Iterate(ctx, nil)
+	iter, err := k.SKUs.Indexes.Provider.MatchExact(ctx, provider)
 	if err != nil {
 		return nil, err
 	}
 	defer iter.Close()
 
 	for ; iter.Valid(); iter.Next() {
-		sku, err := iter.Value()
+		skuID, err := iter.PrimaryKey()
 		if err != nil {
 			return nil, err
 		}
-		if sku.Provider == provider {
-			skus = append(skus, sku)
+		sku, err := k.SKUs.Get(ctx, skuID)
+		if err != nil {
+			return nil, err
 		}
+		skus = append(skus, sku)
 	}
 
 	return skus, nil

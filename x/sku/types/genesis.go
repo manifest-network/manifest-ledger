@@ -5,14 +5,16 @@ import "fmt"
 // DefaultGenesis returns the default genesis state.
 func DefaultGenesis() *GenesisState {
 	return &GenesisState{
+		Params: DefaultParams(),
 		Skus:   []SKU{},
 		NextId: 1,
 	}
 }
 
 // NewGenesisState creates a new genesis state with the given parameters.
-func NewGenesisState(skus []SKU, nextID uint64) *GenesisState {
+func NewGenesisState(params Params, skus []SKU, nextID uint64) *GenesisState {
 	return &GenesisState{
+		Params: params,
 		Skus:   skus,
 		NextId: nextID,
 	}
@@ -20,6 +22,10 @@ func NewGenesisState(skus []SKU, nextID uint64) *GenesisState {
 
 // Validate performs basic genesis state validation.
 func (gs *GenesisState) Validate() error {
+	if err := gs.Params.Validate(); err != nil {
+		return fmt.Errorf("invalid params: %w", err)
+	}
+
 	seenIDs := make(map[uint64]bool)
 	for _, sku := range gs.Skus {
 		if seenIDs[sku.Id] {
@@ -39,8 +45,12 @@ func (gs *GenesisState) Validate() error {
 			return fmt.Errorf("sku %d has empty name", sku.Id)
 		}
 
-		if !sku.BasePrice.IsValid() {
-			return fmt.Errorf("sku %d has invalid base price", sku.Id)
+		if sku.Unit == Unit_UNIT_UNSPECIFIED {
+			return fmt.Errorf("sku %d has unspecified unit", sku.Id)
+		}
+
+		if !sku.BasePrice.IsValid() || sku.BasePrice.IsZero() {
+			return fmt.Errorf("sku %d has invalid or zero base price", sku.Id)
 		}
 	}
 
