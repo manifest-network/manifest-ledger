@@ -8,6 +8,8 @@ import (
 	"cosmossdk.io/log"
 
 	"github.com/cosmos/cosmos-sdk/codec"
+	accountkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
@@ -16,6 +18,10 @@ import (
 type Keeper struct {
 	cdc    codec.BinaryCodec
 	logger log.Logger
+
+	// keepers for simulation
+	accountKeeper accountkeeper.AccountKeeper
+	bankKeeper    bankkeeper.Keeper
 
 	// state management
 	Schema collections.Schema
@@ -78,6 +84,26 @@ func (k *Keeper) GetAuthority() string {
 // SetAuthority sets the module's authority (used for testing).
 func (k *Keeper) SetAuthority(authority string) {
 	k.authority = authority
+}
+
+// SetAccountKeeper sets the account keeper (used for simulation/testing).
+func (k *Keeper) SetAccountKeeper(ak accountkeeper.AccountKeeper) {
+	k.accountKeeper = ak
+}
+
+// GetAccountKeeper returns the account keeper.
+func (k *Keeper) GetAccountKeeper() accountkeeper.AccountKeeper {
+	return k.accountKeeper
+}
+
+// SetBankKeeper sets the bank keeper (used for simulation/testing).
+func (k *Keeper) SetBankKeeper(bk bankkeeper.Keeper) {
+	k.bankKeeper = bk
+}
+
+// GetBankKeeper returns the bank keeper.
+func (k *Keeper) GetBankKeeper() bankkeeper.Keeper {
+	return k.bankKeeper
 }
 
 // InitGenesis initializes the module's state from a provided genesis state.

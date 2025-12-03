@@ -19,10 +19,12 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
+	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 
 	skuv1 "github.com/manifest-network/manifest-ledger/api/liftedinit/sku/v1"
 	"github.com/manifest-network/manifest-ledger/x/sku/client/cli"
 	"github.com/manifest-network/manifest-ledger/x/sku/keeper"
+	"github.com/manifest-network/manifest-ledger/x/sku/simulation"
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
@@ -164,4 +166,24 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 // ConsensusVersion implements AppModule/ConsensusVersion.
 func (AppModule) ConsensusVersion() uint64 {
 	return ConsensusVersion
+}
+
+// GenerateGenesisState creates a randomized GenState of the sku module.
+func (AppModule) GenerateGenesisState(simState *module.SimulationState) {
+	simulation.RandomizedGenState(simState)
+}
+
+// ProposalMsgs returns msgs used for governance proposals for simulations.
+func (AppModule) ProposalMsgs(_ module.SimulationState) []simtypes.WeightedProposalMsg {
+	return simulation.ProposalMsgs()
+}
+
+// RegisterStoreDecoder registers a decoder for sku module's types.
+func (am AppModule) RegisterStoreDecoder(sdr simtypes.StoreDecoderRegistry) {
+	sdr[types.StoreKey] = simtypes.NewStoreDecoderFuncFromCollectionsSchema(am.keeper.Schema)
+}
+
+// WeightedOperations returns the all the sku module operations with their respective weights.
+func (am AppModule) WeightedOperations(simState module.SimulationState) []simtypes.WeightedOperation {
+	return simulation.WeightedOperations(simState.AppParams, simState.Cdc, simState.TxConfig, am.keeper)
 }

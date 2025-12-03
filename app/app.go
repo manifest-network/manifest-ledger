@@ -585,6 +585,8 @@ func NewApp(
 		logger,
 		helpers.GetPoAAdmin(),
 	)
+	app.SKUKeeper.SetAccountKeeper(app.AccountKeeper)
+	app.SKUKeeper.SetBankKeeper(app.BankKeeper)
 
 	// Create the TokenFactory Keeper
 	app.TokenFactoryKeeper = tokenfactorykeeper.NewKeeper(

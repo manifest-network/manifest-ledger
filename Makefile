@@ -7,6 +7,9 @@ LEDGER_ENABLED ?= true
 BINDIR ?= $(GOPATH)/bin
 BUILD_DIR = ./build
 VERSION = v1.0.13
+GO ?= go
+GOROOT := $(shell $(GO) env GOROOT)
+export GOROOT
 
 export GO111MODULE = on
 
@@ -159,6 +162,9 @@ COV_SIM_CMD=${COV_SIMULATION}/simulation.test
 COV_SIM_COMMON=-Enabled=True -NumBlocks=100 -Commit=true -Period=5 -Params=$(shell pwd)/simulation/sim_params.json -Verbose=false -test.v -test.gocoverdir=${COV_SIMULATION}
 
 coverage: ## Run coverage report
+	@echo "--> Using Go: $(shell $(GO) version)"
+	@echo "--> GOROOT: $(GOROOT)"
+
 	@echo "--> Creating GOCOVERDIR"
 	@mkdir -p ${COV_UNIT_E2E} ${COV_SIMULATION}
 	@echo "--> Cleaning up coverage files, if any"
