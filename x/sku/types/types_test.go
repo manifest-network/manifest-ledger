@@ -41,6 +41,13 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
+// Test addresses used throughout the tests.
+const (
+	testAddr1 = "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"
+	testAddr2 = "manifest1efd63aw40lxf3n4mhf7dzhjkr453axurm6rp3z"
+	testAddr3 = "manifest1sc0aw0e6mcrm7ex5v3ll5gh4dq5whn3acmkupn"
+)
+
 func init() {
 	appparams.SetAddressPrefixes()
 }
@@ -59,14 +66,14 @@ func TestParamsValidate(t *testing.T) {
 		},
 		{
 			name:    "valid single address",
-			params:  types.Params{AllowedList: []string{"manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"}},
+			params:  types.Params{AllowedList: []string{testAddr1}},
 			wantErr: false,
 		},
 		{
 			name: "valid multiple addresses",
 			params: types.Params{AllowedList: []string{
-				"manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct",
-				"manifest1efd63aw40lxf3n4mhf7dzhjkr453axurm6rp3z",
+				testAddr1,
+				testAddr2,
 			}},
 			wantErr: false,
 		},
@@ -79,8 +86,8 @@ func TestParamsValidate(t *testing.T) {
 		{
 			name: "duplicate addresses",
 			params: types.Params{AllowedList: []string{
-				"manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct",
-				"manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct",
+				testAddr1,
+				testAddr1,
 			}},
 			wantErr: true,
 			errMsg:  "duplicate address",
@@ -88,7 +95,7 @@ func TestParamsValidate(t *testing.T) {
 		{
 			name: "one valid one invalid",
 			params: types.Params{AllowedList: []string{
-				"manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct",
+				testAddr1,
 				"bad-address",
 			}},
 			wantErr: true,
@@ -110,15 +117,11 @@ func TestParamsValidate(t *testing.T) {
 }
 
 func TestParamsIsAllowed(t *testing.T) {
-	addr1 := "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"
-	addr2 := "manifest1efd63aw40lxf3n4mhf7dzhjkr453axurm6rp3z"
-	addr3 := "manifest1sc0aw0e6mcrm7ex5v3ll5gh4dq5whn3acmkupn"
+	params := types.Params{AllowedList: []string{testAddr1, testAddr2}}
 
-	params := types.Params{AllowedList: []string{addr1, addr2}}
-
-	require.True(t, params.IsAllowed(addr1))
-	require.True(t, params.IsAllowed(addr2))
-	require.False(t, params.IsAllowed(addr3))
+	require.True(t, params.IsAllowed(testAddr1))
+	require.True(t, params.IsAllowed(testAddr2))
+	require.False(t, params.IsAllowed(testAddr3))
 	require.False(t, params.IsAllowed(""))
 }
 
@@ -268,7 +271,7 @@ func TestGenesisStateValidate(t *testing.T) {
 
 func TestNewGenesisState(t *testing.T) {
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
-	params := types.Params{AllowedList: []string{"manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"}}
+	params := types.Params{AllowedList: []string{testAddr1}}
 	skus := []types.SKU{
 		{Id: 1, Provider: "p1", Name: "SKU 1", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
 	}
@@ -281,7 +284,7 @@ func TestNewGenesisState(t *testing.T) {
 }
 
 func TestMsgCreateSKUValidate(t *testing.T) {
-	validAddr := "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"
+	validAddr := testAddr1
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
 	tests := []struct {
@@ -377,7 +380,7 @@ func TestMsgCreateSKUValidate(t *testing.T) {
 }
 
 func TestMsgUpdateSKUValidate(t *testing.T) {
-	validAddr := "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"
+	validAddr := testAddr1
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
 	tests := []struct {
@@ -457,7 +460,7 @@ func TestMsgUpdateSKUValidate(t *testing.T) {
 }
 
 func TestMsgDeleteSKUValidate(t *testing.T) {
-	validAddr := "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"
+	validAddr := testAddr1
 
 	tests := []struct {
 		name    string
@@ -520,7 +523,7 @@ func TestMsgDeleteSKUValidate(t *testing.T) {
 }
 
 func TestMsgUpdateParamsValidate(t *testing.T) {
-	validAddr := "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"
+	validAddr := testAddr1
 
 	tests := []struct {
 		name    string
@@ -693,7 +696,7 @@ func TestUnitJSONUnmarshaling(t *testing.T) {
 }
 
 func TestMsgGetSigners(t *testing.T) {
-	validAddr := "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"
+	validAddr := testAddr1
 	expectedAddr, _ := sdk.AccAddressFromBech32(validAddr)
 
 	t.Run("MsgCreateSKU", func(t *testing.T) {
@@ -752,7 +755,7 @@ func TestMsgRouteAndType(t *testing.T) {
 }
 
 func TestNewMsgConstructors(t *testing.T) {
-	validAddr := "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"
+	validAddr := testAddr1
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
 	t.Run("NewMsgCreateSKU", func(t *testing.T) {
