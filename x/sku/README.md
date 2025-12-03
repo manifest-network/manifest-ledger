@@ -24,24 +24,46 @@ A SKU (Stock Keeping Unit) is a unique identifier for a billable item or service
 
 The module supports the following billing unit types:
 
-- `UNIT_UNSPECIFIED`: Default unspecified unit (invalid for SKUs)
-- `UNIT_PER_HOUR`: Per-hour billing
-- `UNIT_PER_DAY`: Per-day billing
-- `UNIT_PER_MONTH`: Per-month billing
-- `UNIT_PER_UNIT`: Per-unit billing (one-time charges)
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | `UNIT_UNSPECIFIED` | Default unspecified unit (invalid for SKUs) |
+| 1 | `UNIT_PER_HOUR` | Per-hour billing |
+| 2 | `UNIT_PER_DAY` | Per-day billing |
+| 3 | `UNIT_PER_MONTH` | Per-month billing |
+| 4 | `UNIT_PER_UNIT` | Per-unit billing (one-time charges) |
+
+### Authorization
+
+SKU operations (create, update, delete) can be performed by:
+
+1. **Module Authority**: The governance address (typically `manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm`)
+2. **Allowed List**: Addresses explicitly added to the `allowed_list` parameter
+
+Only the module authority can update the parameters (including the allowed list).
 
 ## State
 
 The module stores the following state:
 
-- **SKUs**: A map of SKU ID to SKU data
-- **NextID**: A sequence tracking the next available SKU ID
+| Key | Description |
+|-----|-------------|
+| `Params` | Module parameters including the allowed list |
+| `SKUs` | A map of SKU ID to SKU data with a secondary index on provider |
+| `NextID` | A sequence tracking the next available SKU ID |
+
+## Parameters
+
+The module has the following configurable parameters:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `allowed_list` | `[]string` | List of addresses authorized to manage SKUs |
 
 ## Messages
 
 ### MsgCreateSKU
 
-Creates a new SKU. Only the module authority can create SKUs.
+Creates a new SKU. Can be executed by the module authority or addresses in the allowed list.
 
 ```protobuf
 message MsgCreateSKU {
@@ -54,9 +76,18 @@ message MsgCreateSKU {
 }
 ```
 
+**CLI Example:**
+
+```bash
+manifestd tx sku create-sku "provider1" "Compute Small" 1 100umfx \
+  --meta-hash deadbeef \
+  --from mykey \
+  --chain-id manifest-1
+```
+
 ### MsgUpdateSKU
 
-Updates an existing SKU. Only the module authority can update SKUs.
+Updates an existing SKU. Can be executed by the module authority or addresses in the allowed list.
 
 ```protobuf
 message MsgUpdateSKU {
@@ -71,9 +102,18 @@ message MsgUpdateSKU {
 }
 ```
 
+**CLI Example:**
+
+```bash
+manifestd tx sku update-sku "provider1" 1 "Compute Medium" 2 200umfx true \
+  --meta-hash cafebabe \
+  --from mykey \
+  --chain-id manifest-1
+```
+
 ### MsgDeleteSKU
 
-Deletes an existing SKU. Only the module authority can delete SKUs.
+Deletes an existing SKU. Can be executed by the module authority or addresses in the allowed list.
 
 ```protobuf
 message MsgDeleteSKU {
@@ -83,7 +123,50 @@ message MsgDeleteSKU {
 }
 ```
 
+**CLI Example:**
+
+```bash
+manifestd tx sku delete-sku "provider1" 1 \
+  --from mykey \
+  --chain-id manifest-1
+```
+
+### MsgUpdateParams
+
+Updates the module parameters. Only the module authority can execute this message.
+
+```protobuf
+message MsgUpdateParams {
+  string authority = 1;
+  Params params = 2;
+}
+```
+
+**CLI Example:**
+
+```bash
+# Add addresses to the allowed list
+manifestd tx sku update-params \
+  --allowed-list "manifest1abc...,manifest1def..." \
+  --from authority \
+  --chain-id manifest-1
+
+# Clear the allowed list
+manifestd tx sku update-params \
+  --allowed-list "" \
+  --from authority \
+  --chain-id manifest-1
+```
+
 ## Queries
+
+### Params
+
+Query the module parameters.
+
+```bash
+manifestd query sku params
+```
 
 ### SKU
 
@@ -99,52 +182,95 @@ Query all SKUs with pagination.
 
 ```bash
 manifestd query sku skus
+
+# With pagination
+manifestd query sku skus --limit 10 --offset 0
 ```
 
 ### SKUsByProvider
 
-Query all SKUs for a specific provider.
+Query all SKUs for a specific provider with pagination.
 
 ```bash
 manifestd query sku skus-by-provider [provider]
+
+# With pagination
+manifestd query sku skus-by-provider "provider1" --limit 10
 ```
+
+## Events
+
+The module emits the following events:
+
+| Event Type | Attributes | Description |
+|------------|------------|-------------|
+| `sku_created` | `sku_id`, `provider`, `name` | Emitted when a SKU is created |
+| `sku_updated` | `sku_id`, `provider` | Emitted when a SKU is updated |
+| `sku_deleted` | `sku_id`, `provider` | Emitted when a SKU is deleted |
+| `params_updated` | - | Emitted when module parameters are updated |
 
 ## Genesis
 
 The module's genesis state contains:
 
-- **skus**: List of existing SKUs
-- **next_id**: The next SKU ID to be assigned
+```protobuf
+message GenesisState {
+  Params params = 1;
+  repeated SKU skus = 2;
+  uint64 next_id = 3;
+}
+```
 
 Example genesis configuration:
 
 ```json
 {
   "sku": {
-    "skus": [],
-    "next_id": "1"
+    "params": {
+      "allowed_list": ["manifest1abc..."]
+    },
+    "skus": [
+      {
+        "id": "1",
+        "provider": "provider1",
+        "name": "Compute Small",
+        "unit": "UNIT_PER_HOUR",
+        "base_price": {
+          "denom": "umfx",
+          "amount": "100"
+        },
+        "meta_hash": "",
+        "active": true
+      }
+    ],
+    "next_id": "2"
   }
 }
 ```
-
-## Events
-
-The module emits events for SKU operations through standard Cosmos SDK logging.
-
-## Parameters
-
-The module currently has no configurable parameters.
 
 ## Client
 
 ### CLI
 
-The module provides CLI commands for querying SKUs. Transaction commands are available through the autocli interface.
+The module provides CLI commands for both queries and transactions:
+
+**Query Commands:**
+- `manifestd query sku params` - Query module parameters
+- `manifestd query sku sku [id]` - Query a specific SKU
+- `manifestd query sku skus` - Query all SKUs
+- `manifestd query sku skus-by-provider [provider]` - Query SKUs by provider
+
+**Transaction Commands:**
+- `manifestd tx sku create-sku` - Create a new SKU
+- `manifestd tx sku update-sku` - Update an existing SKU
+- `manifestd tx sku delete-sku` - Delete a SKU
+- `manifestd tx sku update-params` - Update module parameters
 
 ### gRPC
 
 The module exposes gRPC endpoints for all queries:
 
+- `liftedinit.sku.v1.Query/Params`
 - `liftedinit.sku.v1.Query/SKU`
 - `liftedinit.sku.v1.Query/SKUs`
 - `liftedinit.sku.v1.Query/SKUsByProvider`
@@ -153,6 +279,7 @@ The module exposes gRPC endpoints for all queries:
 
 REST endpoints are available through the gRPC gateway:
 
+- `GET /liftedinit/sku/v1/params`
 - `GET /liftedinit/sku/v1/sku/{id}`
 - `GET /liftedinit/sku/v1/skus`
 - `GET /liftedinit/sku/v1/skus/{provider}`

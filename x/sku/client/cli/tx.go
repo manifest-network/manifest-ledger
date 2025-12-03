@@ -233,7 +233,7 @@ func MsgUpdateParams() *cobra.Command {
 Only the module authority can execute this command.`,
 		Example: "update-params --allowed-list manifest1abc...,manifest1def...",
 		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
 				return err
