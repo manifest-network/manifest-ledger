@@ -13,59 +13,60 @@ import (
 	sync "sync"
 )
 
-var _ protoreflect.List = (*_GenesisState_1_list)(nil)
+var _ protoreflect.List = (*_GenesisState_2_list)(nil)
 
-type _GenesisState_1_list struct {
+type _GenesisState_2_list struct {
 	list *[]*SKU
 }
 
-func (x *_GenesisState_1_list) Len() int {
+func (x *_GenesisState_2_list) Len() int {
 	if x.list == nil {
 		return 0
 	}
 	return len(*x.list)
 }
 
-func (x *_GenesisState_1_list) Get(i int) protoreflect.Value {
+func (x *_GenesisState_2_list) Get(i int) protoreflect.Value {
 	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
 }
 
-func (x *_GenesisState_1_list) Set(i int, value protoreflect.Value) {
+func (x *_GenesisState_2_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
 	concreteValue := valueUnwrapped.Interface().(*SKU)
 	(*x.list)[i] = concreteValue
 }
 
-func (x *_GenesisState_1_list) Append(value protoreflect.Value) {
+func (x *_GenesisState_2_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
 	concreteValue := valueUnwrapped.Interface().(*SKU)
 	*x.list = append(*x.list, concreteValue)
 }
 
-func (x *_GenesisState_1_list) AppendMutable() protoreflect.Value {
+func (x *_GenesisState_2_list) AppendMutable() protoreflect.Value {
 	v := new(SKU)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
-func (x *_GenesisState_1_list) Truncate(n int) {
+func (x *_GenesisState_2_list) Truncate(n int) {
 	for i := n; i < len(*x.list); i++ {
 		(*x.list)[i] = nil
 	}
 	*x.list = (*x.list)[:n]
 }
 
-func (x *_GenesisState_1_list) NewElement() protoreflect.Value {
+func (x *_GenesisState_2_list) NewElement() protoreflect.Value {
 	v := new(SKU)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
-func (x *_GenesisState_1_list) IsValid() bool {
+func (x *_GenesisState_2_list) IsValid() bool {
 	return x.list != nil
 }
 
 var (
 	md_GenesisState         protoreflect.MessageDescriptor
+	fd_GenesisState_params  protoreflect.FieldDescriptor
 	fd_GenesisState_skus    protoreflect.FieldDescriptor
 	fd_GenesisState_next_id protoreflect.FieldDescriptor
 )
@@ -73,6 +74,7 @@ var (
 func init() {
 	file_liftedinit_sku_v1_genesis_proto_init()
 	md_GenesisState = File_liftedinit_sku_v1_genesis_proto.Messages().ByName("GenesisState")
+	fd_GenesisState_params = md_GenesisState.Fields().ByName("params")
 	fd_GenesisState_skus = md_GenesisState.Fields().ByName("skus")
 	fd_GenesisState_next_id = md_GenesisState.Fields().ByName("next_id")
 }
@@ -142,8 +144,14 @@ func (x *fastReflection_GenesisState) Interface() protoreflect.ProtoMessage {
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
 func (x *fastReflection_GenesisState) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.Params != nil {
+		value := protoreflect.ValueOfMessage(x.Params.ProtoReflect())
+		if !f(fd_GenesisState_params, value) {
+			return
+		}
+	}
 	if len(x.Skus) != 0 {
-		value := protoreflect.ValueOfList(&_GenesisState_1_list{list: &x.Skus})
+		value := protoreflect.ValueOfList(&_GenesisState_2_list{list: &x.Skus})
 		if !f(fd_GenesisState_skus, value) {
 			return
 		}
@@ -169,6 +177,8 @@ func (x *fastReflection_GenesisState) Range(f func(protoreflect.FieldDescriptor,
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_GenesisState) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
+	case "liftedinit.sku.v1.GenesisState.params":
+		return x.Params != nil
 	case "liftedinit.sku.v1.GenesisState.skus":
 		return len(x.Skus) != 0
 	case "liftedinit.sku.v1.GenesisState.next_id":
@@ -189,6 +199,8 @@ func (x *fastReflection_GenesisState) Has(fd protoreflect.FieldDescriptor) bool 
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_GenesisState) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
+	case "liftedinit.sku.v1.GenesisState.params":
+		x.Params = nil
 	case "liftedinit.sku.v1.GenesisState.skus":
 		x.Skus = nil
 	case "liftedinit.sku.v1.GenesisState.next_id":
@@ -209,11 +221,14 @@ func (x *fastReflection_GenesisState) Clear(fd protoreflect.FieldDescriptor) {
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_GenesisState) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
+	case "liftedinit.sku.v1.GenesisState.params":
+		value := x.Params
+		return protoreflect.ValueOfMessage(value.ProtoReflect())
 	case "liftedinit.sku.v1.GenesisState.skus":
 		if len(x.Skus) == 0 {
-			return protoreflect.ValueOfList(&_GenesisState_1_list{})
+			return protoreflect.ValueOfList(&_GenesisState_2_list{})
 		}
-		listValue := &_GenesisState_1_list{list: &x.Skus}
+		listValue := &_GenesisState_2_list{list: &x.Skus}
 		return protoreflect.ValueOfList(listValue)
 	case "liftedinit.sku.v1.GenesisState.next_id":
 		value := x.NextId
@@ -238,9 +253,11 @@ func (x *fastReflection_GenesisState) Get(descriptor protoreflect.FieldDescripto
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_GenesisState) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
+	case "liftedinit.sku.v1.GenesisState.params":
+		x.Params = value.Message().Interface().(*Params)
 	case "liftedinit.sku.v1.GenesisState.skus":
 		lv := value.List()
-		clv := lv.(*_GenesisState_1_list)
+		clv := lv.(*_GenesisState_2_list)
 		x.Skus = *clv.list
 	case "liftedinit.sku.v1.GenesisState.next_id":
 		x.NextId = value.Uint()
@@ -264,11 +281,16 @@ func (x *fastReflection_GenesisState) Set(fd protoreflect.FieldDescriptor, value
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_GenesisState) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
+	case "liftedinit.sku.v1.GenesisState.params":
+		if x.Params == nil {
+			x.Params = new(Params)
+		}
+		return protoreflect.ValueOfMessage(x.Params.ProtoReflect())
 	case "liftedinit.sku.v1.GenesisState.skus":
 		if x.Skus == nil {
 			x.Skus = []*SKU{}
 		}
-		value := &_GenesisState_1_list{list: &x.Skus}
+		value := &_GenesisState_2_list{list: &x.Skus}
 		return protoreflect.ValueOfList(value)
 	case "liftedinit.sku.v1.GenesisState.next_id":
 		panic(fmt.Errorf("field next_id of message liftedinit.sku.v1.GenesisState is not mutable"))
@@ -285,9 +307,12 @@ func (x *fastReflection_GenesisState) Mutable(fd protoreflect.FieldDescriptor) p
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_GenesisState) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
+	case "liftedinit.sku.v1.GenesisState.params":
+		m := new(Params)
+		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	case "liftedinit.sku.v1.GenesisState.skus":
 		list := []*SKU{}
-		return protoreflect.ValueOfList(&_GenesisState_1_list{list: &list})
+		return protoreflect.ValueOfList(&_GenesisState_2_list{list: &list})
 	case "liftedinit.sku.v1.GenesisState.next_id":
 		return protoreflect.ValueOfUint64(uint64(0))
 	default:
@@ -359,6 +384,10 @@ func (x *fastReflection_GenesisState) ProtoMethods() *protoiface.Methods {
 		var n int
 		var l int
 		_ = l
+		if x.Params != nil {
+			l = options.Size(x.Params)
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
 		if len(x.Skus) > 0 {
 			for _, e := range x.Skus {
 				l = options.Size(e)
@@ -400,7 +429,7 @@ func (x *fastReflection_GenesisState) ProtoMethods() *protoiface.Methods {
 		if x.NextId != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.NextId))
 			i--
-			dAtA[i] = 0x10
+			dAtA[i] = 0x18
 		}
 		if len(x.Skus) > 0 {
 			for iNdEx := len(x.Skus) - 1; iNdEx >= 0; iNdEx-- {
@@ -415,8 +444,22 @@ func (x *fastReflection_GenesisState) ProtoMethods() *protoiface.Methods {
 				copy(dAtA[i:], encoded)
 				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
 				i--
-				dAtA[i] = 0xa
+				dAtA[i] = 0x12
 			}
+		}
+		if x.Params != nil {
+			encoded, err := options.Marshal(x.Params)
+			if err != nil {
+				return protoiface.MarshalOutput{
+					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+					Buf:               input.Buf,
+				}, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			i--
+			dAtA[i] = 0xa
 		}
 		if input.Buf != nil {
 			input.Buf = append(input.Buf, dAtA...)
@@ -469,6 +512,42 @@ func (x *fastReflection_GenesisState) ProtoMethods() *protoiface.Methods {
 			switch fieldNum {
 			case 1:
 				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Params", wireType)
+				}
+				var msglen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					msglen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if msglen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + msglen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if x.Params == nil {
+					x.Params = &Params{}
+				}
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Params); err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				iNdEx = postIndex
+			case 2:
+				if wireType != 2 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Skus", wireType)
 				}
 				var msglen int
@@ -501,7 +580,7 @@ func (x *fastReflection_GenesisState) ProtoMethods() *protoiface.Methods {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
 				iNdEx = postIndex
-			case 2:
+			case 3:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field NextId", wireType)
 				}
@@ -574,10 +653,12 @@ type GenesisState struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// params defines the module parameters.
+	Params *Params `protobuf:"bytes,1,opt,name=params,proto3" json:"params,omitempty"`
 	// skus is the list of SKUs.
-	Skus []*SKU `protobuf:"bytes,1,rep,name=skus,proto3" json:"skus,omitempty"`
+	Skus []*SKU `protobuf:"bytes,2,rep,name=skus,proto3" json:"skus,omitempty"`
 	// next_id is the next SKU id to be assigned.
-	NextId uint64 `protobuf:"varint,2,opt,name=next_id,json=nextId,proto3" json:"next_id,omitempty"`
+	NextId uint64 `protobuf:"varint,3,opt,name=next_id,json=nextId,proto3" json:"next_id,omitempty"`
 }
 
 func (x *GenesisState) Reset() {
@@ -598,6 +679,13 @@ func (*GenesisState) ProtoMessage() {}
 // Deprecated: Use GenesisState.ProtoReflect.Descriptor instead.
 func (*GenesisState) Descriptor() ([]byte, []int) {
 	return file_liftedinit_sku_v1_genesis_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *GenesisState) GetParams() *Params {
+	if x != nil {
+		return x.Params
+	}
+	return nil
 }
 
 func (x *GenesisState) GetSkus() []*SKU {
@@ -623,27 +711,30 @@ var file_liftedinit_sku_v1_genesis_proto_rawDesc = []byte{
 	0x75, 0x2e, 0x76, 0x31, 0x1a, 0x14, 0x67, 0x6f, 0x67, 0x6f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f,
 	0x67, 0x6f, 0x67, 0x6f, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x1d, 0x6c, 0x69, 0x66, 0x74,
 	0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x73, 0x6b, 0x75, 0x2f, 0x76, 0x31, 0x2f, 0x74, 0x79,
-	0x70, 0x65, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0x59, 0x0a, 0x0c, 0x47, 0x65, 0x6e,
-	0x65, 0x73, 0x69, 0x73, 0x53, 0x74, 0x61, 0x74, 0x65, 0x12, 0x30, 0x0a, 0x04, 0x73, 0x6b, 0x75,
-	0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x16, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64,
-	0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x4b, 0x55, 0x42,
-	0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52, 0x04, 0x73, 0x6b, 0x75, 0x73, 0x12, 0x17, 0x0a, 0x07, 0x6e,
-	0x65, 0x78, 0x74, 0x5f, 0x69, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x52, 0x06, 0x6e, 0x65,
-	0x78, 0x74, 0x49, 0x64, 0x42, 0xd4, 0x01, 0x0a, 0x15, 0x63, 0x6f, 0x6d, 0x2e, 0x6c, 0x69, 0x66,
-	0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x42, 0x0c,
-	0x47, 0x65, 0x6e, 0x65, 0x73, 0x69, 0x73, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x47,
-	0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66,
-	0x65, 0x73, 0x74, 0x2d, 0x6e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x2f, 0x6d, 0x61, 0x6e, 0x69,
-	0x66, 0x65, 0x73, 0x74, 0x2d, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f,
-	0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x73, 0x6b, 0x75, 0x2f, 0x76,
-	0x31, 0x3b, 0x73, 0x6b, 0x75, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x4c, 0x53, 0x58, 0xaa, 0x02, 0x11,
-	0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x53, 0x6b, 0x75, 0x2e, 0x56,
-	0x31, 0xca, 0x02, 0x11, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x53,
-	0x6b, 0x75, 0x5c, 0x56, 0x31, 0xe2, 0x02, 0x1d, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e,
-	0x69, 0x74, 0x5c, 0x53, 0x6b, 0x75, 0x5c, 0x56, 0x31, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74,
-	0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x13, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e,
-	0x69, 0x74, 0x3a, 0x3a, 0x53, 0x6b, 0x75, 0x3a, 0x3a, 0x56, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x33,
+	0x70, 0x65, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0x92, 0x01, 0x0a, 0x0c, 0x47, 0x65,
+	0x6e, 0x65, 0x73, 0x69, 0x73, 0x53, 0x74, 0x61, 0x74, 0x65, 0x12, 0x37, 0x0a, 0x06, 0x70, 0x61,
+	0x72, 0x61, 0x6d, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x6c, 0x69, 0x66,
+	0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x50,
+	0x61, 0x72, 0x61, 0x6d, 0x73, 0x42, 0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52, 0x06, 0x70, 0x61, 0x72,
+	0x61, 0x6d, 0x73, 0x12, 0x30, 0x0a, 0x04, 0x73, 0x6b, 0x75, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28,
+	0x0b, 0x32, 0x16, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73,
+	0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x4b, 0x55, 0x42, 0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52,
+	0x04, 0x73, 0x6b, 0x75, 0x73, 0x12, 0x17, 0x0a, 0x07, 0x6e, 0x65, 0x78, 0x74, 0x5f, 0x69, 0x64,
+	0x18, 0x03, 0x20, 0x01, 0x28, 0x04, 0x52, 0x06, 0x6e, 0x65, 0x78, 0x74, 0x49, 0x64, 0x42, 0xd4,
+	0x01, 0x0a, 0x15, 0x63, 0x6f, 0x6d, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69,
+	0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x42, 0x0c, 0x47, 0x65, 0x6e, 0x65, 0x73, 0x69,
+	0x73, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x47, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
+	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6e, 0x65,
+	0x74, 0x77, 0x6f, 0x72, 0x6b, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6c,
+	0x65, 0x64, 0x67, 0x65, 0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64,
+	0x69, 0x6e, 0x69, 0x74, 0x2f, 0x73, 0x6b, 0x75, 0x2f, 0x76, 0x31, 0x3b, 0x73, 0x6b, 0x75, 0x76,
+	0x31, 0xa2, 0x02, 0x03, 0x4c, 0x53, 0x58, 0xaa, 0x02, 0x11, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64,
+	0x69, 0x6e, 0x69, 0x74, 0x2e, 0x53, 0x6b, 0x75, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x11, 0x4c, 0x69,
+	0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x53, 0x6b, 0x75, 0x5c, 0x56, 0x31, 0xe2,
+	0x02, 0x1d, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x53, 0x6b, 0x75,
+	0x5c, 0x56, 0x31, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea,
+	0x02, 0x13, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x3a, 0x3a, 0x53, 0x6b,
+	0x75, 0x3a, 0x3a, 0x56, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -661,15 +752,17 @@ func file_liftedinit_sku_v1_genesis_proto_rawDescGZIP() []byte {
 var file_liftedinit_sku_v1_genesis_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_liftedinit_sku_v1_genesis_proto_goTypes = []interface{}{
 	(*GenesisState)(nil), // 0: liftedinit.sku.v1.GenesisState
-	(*SKU)(nil),          // 1: liftedinit.sku.v1.SKU
+	(*Params)(nil),       // 1: liftedinit.sku.v1.Params
+	(*SKU)(nil),          // 2: liftedinit.sku.v1.SKU
 }
 var file_liftedinit_sku_v1_genesis_proto_depIdxs = []int32{
-	1, // 0: liftedinit.sku.v1.GenesisState.skus:type_name -> liftedinit.sku.v1.SKU
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	1, // 0: liftedinit.sku.v1.GenesisState.params:type_name -> liftedinit.sku.v1.Params
+	2, // 1: liftedinit.sku.v1.GenesisState.skus:type_name -> liftedinit.sku.v1.SKU
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_liftedinit_sku_v1_genesis_proto_init() }

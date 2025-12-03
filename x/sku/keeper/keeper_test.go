@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/stretchr/testify/suite"
 
 	sdkmath "cosmossdk.io/math"
 
@@ -20,8 +19,6 @@ import (
 )
 
 type testFixture struct {
-	suite.Suite
-
 	App         *app.ManifestApp
 	EncodingCfg moduletestutil.TestEncodingConfig
 	Ctx         sdk.Context

@@ -132,7 +132,10 @@ ictest-chain-upgrade:
 ictest-group:
 	cd interchaintest && go test -race -v -run TestGroupMetadataLimits . -count=1
 
-.PHONY: ictest-ibc ictest-tokenfactory
+ictest-sku:
+	cd interchaintest && go test -race -v -run TestSKU . -count=1
+
+.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku
 
 ###############################################################################
 ###                                Build Image                              ###

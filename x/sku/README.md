@@ -32,6 +32,9 @@ The module supports the following billing unit types:
 | 3 | `UNIT_PER_MONTH` | Per-month billing |
 | 4 | `UNIT_PER_UNIT` | Per-unit billing (one-time charges) |
 
+> **Note:** In JSON/REST responses, the unit is returned as a string (e.g., `"UNIT_PER_HOUR"`).
+> Both string names and integer values are accepted when unmarshaling JSON.
+
 ### Authorization
 
 SKU operations (create, update, delete) can be performed by:
@@ -183,8 +186,11 @@ Query all SKUs with pagination.
 ```bash
 manifestd query sku skus
 
-# With pagination
+# With pagination (limit and offset)
 manifestd query sku skus --limit 10 --offset 0
+
+# With pagination (using page key from previous response)
+manifestd query sku skus --limit 10 --page-key "AAAAAAAAAAM="
 ```
 
 ### SKUsByProvider
@@ -196,6 +202,9 @@ manifestd query sku skus-by-provider [provider]
 
 # With pagination
 manifestd query sku skus-by-provider "provider1" --limit 10
+
+# With page key from previous response
+manifestd query sku skus-by-provider "provider1" --limit 10 --page-key "AAAAAAAAAAM="
 ```
 
 ## Events
