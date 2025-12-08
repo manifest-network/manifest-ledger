@@ -69,7 +69,7 @@ func GetCmdQuerySKUs() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "skus",
 		Short:   "Query all SKUs",
-		Example: "skus",
+		Example: "skus --active-only",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -87,8 +87,16 @@ func GetCmdQuerySKUs() *cobra.Command {
 				return err
 			}
 
+			activeOnly, err := cmd.Flags().GetBool("active-only")
+			if err != nil {
+				return err
+			}
+
 			queryClient := types.NewQueryClient(clientCtx)
-			res, err := queryClient.SKUs(cmd.Context(), &types.QuerySKUsRequest{Pagination: pageReq})
+			res, err := queryClient.SKUs(cmd.Context(), &types.QuerySKUsRequest{
+				Pagination: pageReq,
+				ActiveOnly: activeOnly,
+			})
 			if err != nil {
 				return err
 			}
@@ -97,6 +105,7 @@ func GetCmdQuerySKUs() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().Bool("active-only", false, "Filter to return only active SKUs")
 	flags.AddQueryFlagsToCmd(cmd)
 	flags.AddPaginationFlagsToCmd(cmd, "skus")
 	return cmd
@@ -107,7 +116,7 @@ func GetCmdQuerySKUsByProvider() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "skus-by-provider [provider]",
 		Short:   "Query SKUs by provider",
-		Example: "skus-by-provider manifest1...",
+		Example: "skus-by-provider manifest1... --active-only",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -125,10 +134,16 @@ func GetCmdQuerySKUsByProvider() *cobra.Command {
 				return err
 			}
 
+			activeOnly, err := cmd.Flags().GetBool("active-only")
+			if err != nil {
+				return err
+			}
+
 			queryClient := types.NewQueryClient(clientCtx)
 			res, err := queryClient.SKUsByProvider(cmd.Context(), &types.QuerySKUsByProviderRequest{
 				Provider:   args[0],
 				Pagination: pageReq,
+				ActiveOnly: activeOnly,
 			})
 			if err != nil {
 				return err
@@ -138,6 +153,7 @@ func GetCmdQuerySKUsByProvider() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().Bool("active-only", false, "Filter to return only active SKUs")
 	flags.AddQueryFlagsToCmd(cmd)
 	flags.AddPaginationFlagsToCmd(cmd, "skus-by-provider")
 	return cmd

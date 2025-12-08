@@ -57,6 +57,29 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 		return nil, status.Error(codes.InvalidArgument, "invalid request")
 	}
 
+	// Use filtered pagination if active_only is set
+	if req.ActiveOnly {
+		skus, pageRes, err := query.CollectionFilteredPaginate(
+			ctx,
+			q.Keeper.SKUs,
+			req.Pagination,
+			func(_ uint64, sku types.SKU) (bool, error) {
+				return sku.Active, nil
+			},
+			func(_ uint64, sku types.SKU) (types.SKU, error) {
+				return sku, nil
+			},
+		)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		return &types.QuerySKUsResponse{
+			Skus:       skus,
+			Pagination: pageRes,
+		}, nil
+	}
+
 	skus, pageRes, err := query.CollectionPaginate(
 		ctx,
 		q.Keeper.SKUs,
@@ -90,7 +113,13 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 		q.Keeper.SKUs,
 		req.Pagination,
 		func(_ uint64, sku types.SKU) (bool, error) {
-			return sku.Provider == req.Provider, nil
+			if sku.Provider != req.Provider {
+				return false, nil
+			}
+			if req.ActiveOnly && !sku.Active {
+				return false, nil
+			}
+			return true, nil
 		},
 		func(_ uint64, sku types.SKU) (types.SKU, error) {
 			return sku, nil

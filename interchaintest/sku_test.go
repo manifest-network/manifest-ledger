@@ -61,8 +61,8 @@ func TestSKU(t *testing.T) {
 		testSKUUpdate(t, ctx, chain, authority, user1)
 	})
 
-	t.Run("DeleteSKU", func(t *testing.T) {
-		testSKUDelete(t, ctx, chain, authority, user1)
+	t.Run("DeactivateSKU", func(t *testing.T) {
+		testSKUDeactivate(t, ctx, chain, authority, user1)
 	})
 
 	t.Run("UpdateParams", func(t *testing.T) {
@@ -231,14 +231,14 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	})
 }
 
-func testSKUDelete(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet) {
-	t.Log("=== Testing SKU Delete ===")
+func testSKUDeactivate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet) {
+	t.Log("=== Testing SKU Deactivate ===")
 
 	provider := testProvider
 
-	// Create a SKU specifically for deletion
-	t.Run("setup: create SKU for deletion", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, provider, "To Be Deleted", 1, "50umfx", "")
+	// Create a SKU specifically for deactivation
+	t.Run("setup: create SKU for deactivation", func(t *testing.T) {
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, provider, "To Be Deactivated", 1, "50umfx", "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -246,8 +246,8 @@ func testSKUDelete(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.Equal(t, uint32(0), txRes.Code)
 	})
 
-	t.Run("fail: unauthorized user deletes SKU", func(t *testing.T) {
-		res, err := helpers.SKUDeleteSKU(ctx, chain, user1, provider, 3)
+	t.Run("fail: unauthorized user deactivates SKU", func(t *testing.T) {
+		res, err := helpers.SKUDeactivateSKU(ctx, chain, user1, provider, 3)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -256,8 +256,8 @@ func testSKUDelete(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.Contains(t, txRes.RawLog, "unauthorized")
 	})
 
-	t.Run("fail: delete with wrong provider", func(t *testing.T) {
-		res, err := helpers.SKUDeleteSKU(ctx, chain, authority, "wrong-provider", 3)
+	t.Run("fail: deactivate with wrong provider", func(t *testing.T) {
+		res, err := helpers.SKUDeactivateSKU(ctx, chain, authority, "wrong-provider", 3)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -266,17 +266,32 @@ func testSKUDelete(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.Contains(t, txRes.RawLog, "provider mismatch")
 	})
 
-	t.Run("success: authority deletes SKU", func(t *testing.T) {
-		res, err := helpers.SKUDeleteSKU(ctx, chain, authority, provider, 3)
+	t.Run("success: authority deactivates SKU", func(t *testing.T) {
+		res, err := helpers.SKUDeactivateSKU(ctx, chain, authority, provider, 3)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		// Verify SKU is still queryable but inactive
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, 3)
+		require.NoError(t, err)
+		require.False(t, skuRes.Sku.Active, "SKU should be inactive after deactivation")
 	})
 
-	t.Run("fail: delete non-existent SKU", func(t *testing.T) {
-		res, err := helpers.SKUDeleteSKU(ctx, chain, authority, provider, 999)
+	t.Run("fail: deactivate already inactive SKU", func(t *testing.T) {
+		res, err := helpers.SKUDeactivateSKU(ctx, chain, authority, provider, 3)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "tx should fail")
+		require.Contains(t, txRes.RawLog, "already inactive")
+	})
+
+	t.Run("fail: deactivate non-existent SKU", func(t *testing.T) {
+		res, err := helpers.SKUDeactivateSKU(ctx, chain, authority, provider, 999)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -391,8 +406,8 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 		require.Contains(t, txRes.RawLog, "unauthorized")
 	})
 
-	t.Run("success: allowed user deletes SKU", func(t *testing.T) {
-		res, err := helpers.SKUDeleteSKU(ctx, chain, user1, provider, allowedSKUID)
+	t.Run("success: allowed user deactivates SKU", func(t *testing.T) {
+		res, err := helpers.SKUDeactivateSKU(ctx, chain, user1, provider, allowedSKUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)

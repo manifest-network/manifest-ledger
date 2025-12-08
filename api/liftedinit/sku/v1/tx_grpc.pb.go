@@ -19,10 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Msg_CreateSKU_FullMethodName    = "/liftedinit.sku.v1.Msg/CreateSKU"
-	Msg_UpdateSKU_FullMethodName    = "/liftedinit.sku.v1.Msg/UpdateSKU"
-	Msg_DeleteSKU_FullMethodName    = "/liftedinit.sku.v1.Msg/DeleteSKU"
-	Msg_UpdateParams_FullMethodName = "/liftedinit.sku.v1.Msg/UpdateParams"
+	Msg_CreateSKU_FullMethodName     = "/liftedinit.sku.v1.Msg/CreateSKU"
+	Msg_UpdateSKU_FullMethodName     = "/liftedinit.sku.v1.Msg/UpdateSKU"
+	Msg_DeactivateSKU_FullMethodName = "/liftedinit.sku.v1.Msg/DeactivateSKU"
+	Msg_UpdateParams_FullMethodName  = "/liftedinit.sku.v1.Msg/UpdateParams"
 )
 
 // MsgClient is the client API for Msg service.
@@ -33,8 +33,9 @@ type MsgClient interface {
 	CreateSKU(ctx context.Context, in *MsgCreateSKU, opts ...grpc.CallOption) (*MsgCreateSKUResponse, error)
 	// UpdateSKU updates an existing SKU.
 	UpdateSKU(ctx context.Context, in *MsgUpdateSKU, opts ...grpc.CallOption) (*MsgUpdateSKUResponse, error)
-	// DeleteSKU deletes a SKU.
-	DeleteSKU(ctx context.Context, in *MsgDeleteSKU, opts ...grpc.CallOption) (*MsgDeleteSKUResponse, error)
+	// DeactivateSKU deactivates a SKU (soft delete).
+	// Deactivated SKUs cannot be used for new leases but existing leases continue.
+	DeactivateSKU(ctx context.Context, in *MsgDeactivateSKU, opts ...grpc.CallOption) (*MsgDeactivateSKUResponse, error)
 	// UpdateParams updates the module parameters.
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
 }
@@ -65,9 +66,9 @@ func (c *msgClient) UpdateSKU(ctx context.Context, in *MsgUpdateSKU, opts ...grp
 	return out, nil
 }
 
-func (c *msgClient) DeleteSKU(ctx context.Context, in *MsgDeleteSKU, opts ...grpc.CallOption) (*MsgDeleteSKUResponse, error) {
-	out := new(MsgDeleteSKUResponse)
-	err := c.cc.Invoke(ctx, Msg_DeleteSKU_FullMethodName, in, out, opts...)
+func (c *msgClient) DeactivateSKU(ctx context.Context, in *MsgDeactivateSKU, opts ...grpc.CallOption) (*MsgDeactivateSKUResponse, error) {
+	out := new(MsgDeactivateSKUResponse)
+	err := c.cc.Invoke(ctx, Msg_DeactivateSKU_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -91,8 +92,9 @@ type MsgServer interface {
 	CreateSKU(context.Context, *MsgCreateSKU) (*MsgCreateSKUResponse, error)
 	// UpdateSKU updates an existing SKU.
 	UpdateSKU(context.Context, *MsgUpdateSKU) (*MsgUpdateSKUResponse, error)
-	// DeleteSKU deletes a SKU.
-	DeleteSKU(context.Context, *MsgDeleteSKU) (*MsgDeleteSKUResponse, error)
+	// DeactivateSKU deactivates a SKU (soft delete).
+	// Deactivated SKUs cannot be used for new leases but existing leases continue.
+	DeactivateSKU(context.Context, *MsgDeactivateSKU) (*MsgDeactivateSKUResponse, error)
 	// UpdateParams updates the module parameters.
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
 	mustEmbedUnimplementedMsgServer()
@@ -108,8 +110,8 @@ func (UnimplementedMsgServer) CreateSKU(context.Context, *MsgCreateSKU) (*MsgCre
 func (UnimplementedMsgServer) UpdateSKU(context.Context, *MsgUpdateSKU) (*MsgUpdateSKUResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateSKU not implemented")
 }
-func (UnimplementedMsgServer) DeleteSKU(context.Context, *MsgDeleteSKU) (*MsgDeleteSKUResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteSKU not implemented")
+func (UnimplementedMsgServer) DeactivateSKU(context.Context, *MsgDeactivateSKU) (*MsgDeactivateSKUResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeactivateSKU not implemented")
 }
 func (UnimplementedMsgServer) UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateParams not implemented")
@@ -163,20 +165,20 @@ func _Msg_UpdateSKU_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Msg_DeleteSKU_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MsgDeleteSKU)
+func _Msg_DeactivateSKU_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgDeactivateSKU)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MsgServer).DeleteSKU(ctx, in)
+		return srv.(MsgServer).DeactivateSKU(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Msg_DeleteSKU_FullMethodName,
+		FullMethod: Msg_DeactivateSKU_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MsgServer).DeleteSKU(ctx, req.(*MsgDeleteSKU))
+		return srv.(MsgServer).DeactivateSKU(ctx, req.(*MsgDeactivateSKU))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -215,8 +217,8 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Msg_UpdateSKU_Handler,
 		},
 		{
-			MethodName: "DeleteSKU",
-			Handler:    _Msg_DeleteSKU_Handler,
+			MethodName: "DeactivateSKU",
+			Handler:    _Msg_DeactivateSKU_Handler,
 		},
 		{
 			MethodName: "UpdateParams",

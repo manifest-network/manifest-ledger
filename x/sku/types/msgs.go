@@ -9,7 +9,7 @@ import (
 var (
 	_ sdk.Msg = &MsgCreateSKU{}
 	_ sdk.Msg = &MsgUpdateSKU{}
-	_ sdk.Msg = &MsgDeleteSKU{}
+	_ sdk.Msg = &MsgDeactivateSKU{}
 	_ sdk.Msg = &MsgUpdateParams{}
 )
 
@@ -133,13 +133,13 @@ func (msg *MsgUpdateSKU) Validate() error {
 	return nil
 }
 
-// NewMsgDeleteSKU creates a new MsgDeleteSKU instance.
-func NewMsgDeleteSKU(
+// NewMsgDeactivateSKU creates a new MsgDeactivateSKU instance.
+func NewMsgDeactivateSKU(
 	authority string,
 	provider string,
 	id uint64,
-) *MsgDeleteSKU {
-	return &MsgDeleteSKU{
+) *MsgDeactivateSKU {
+	return &MsgDeactivateSKU{
 		Authority: authority,
 		Provider:  provider,
 		Id:        id,
@@ -147,19 +147,19 @@ func NewMsgDeleteSKU(
 }
 
 // Route returns the message route.
-func (msg *MsgDeleteSKU) Route() string { return ModuleName }
+func (msg *MsgDeactivateSKU) Route() string { return ModuleName }
 
 // Type returns the message type.
-func (msg *MsgDeleteSKU) Type() string { return "delete_sku" }
+func (msg *MsgDeactivateSKU) Type() string { return "deactivate_sku" }
 
 // GetSigners returns the expected signers for the message.
-func (msg *MsgDeleteSKU) GetSigners() []sdk.AccAddress {
+func (msg *MsgDeactivateSKU) GetSigners() []sdk.AccAddress {
 	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
 	return []sdk.AccAddress{addr}
 }
 
 // Validate performs basic validation.
-func (msg *MsgDeleteSKU) Validate() error {
+func (msg *MsgDeactivateSKU) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
 		return errors.Wrap(err, "invalid authority address")
 	}

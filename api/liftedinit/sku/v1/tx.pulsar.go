@@ -2362,29 +2362,29 @@ func (x *fastReflection_MsgUpdateSKUResponse) ProtoMethods() *protoiface.Methods
 }
 
 var (
-	md_MsgDeleteSKU           protoreflect.MessageDescriptor
-	fd_MsgDeleteSKU_authority protoreflect.FieldDescriptor
-	fd_MsgDeleteSKU_provider  protoreflect.FieldDescriptor
-	fd_MsgDeleteSKU_id        protoreflect.FieldDescriptor
+	md_MsgDeactivateSKU           protoreflect.MessageDescriptor
+	fd_MsgDeactivateSKU_authority protoreflect.FieldDescriptor
+	fd_MsgDeactivateSKU_provider  protoreflect.FieldDescriptor
+	fd_MsgDeactivateSKU_id        protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_liftedinit_sku_v1_tx_proto_init()
-	md_MsgDeleteSKU = File_liftedinit_sku_v1_tx_proto.Messages().ByName("MsgDeleteSKU")
-	fd_MsgDeleteSKU_authority = md_MsgDeleteSKU.Fields().ByName("authority")
-	fd_MsgDeleteSKU_provider = md_MsgDeleteSKU.Fields().ByName("provider")
-	fd_MsgDeleteSKU_id = md_MsgDeleteSKU.Fields().ByName("id")
+	md_MsgDeactivateSKU = File_liftedinit_sku_v1_tx_proto.Messages().ByName("MsgDeactivateSKU")
+	fd_MsgDeactivateSKU_authority = md_MsgDeactivateSKU.Fields().ByName("authority")
+	fd_MsgDeactivateSKU_provider = md_MsgDeactivateSKU.Fields().ByName("provider")
+	fd_MsgDeactivateSKU_id = md_MsgDeactivateSKU.Fields().ByName("id")
 }
 
-var _ protoreflect.Message = (*fastReflection_MsgDeleteSKU)(nil)
+var _ protoreflect.Message = (*fastReflection_MsgDeactivateSKU)(nil)
 
-type fastReflection_MsgDeleteSKU MsgDeleteSKU
+type fastReflection_MsgDeactivateSKU MsgDeactivateSKU
 
-func (x *MsgDeleteSKU) ProtoReflect() protoreflect.Message {
-	return (*fastReflection_MsgDeleteSKU)(x)
+func (x *MsgDeactivateSKU) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_MsgDeactivateSKU)(x)
 }
 
-func (x *MsgDeleteSKU) slowProtoReflect() protoreflect.Message {
+func (x *MsgDeactivateSKU) slowProtoReflect() protoreflect.Message {
 	mi := &file_liftedinit_sku_v1_tx_proto_msgTypes[4]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2396,43 +2396,43 @@ func (x *MsgDeleteSKU) slowProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-var _fastReflection_MsgDeleteSKU_messageType fastReflection_MsgDeleteSKU_messageType
-var _ protoreflect.MessageType = fastReflection_MsgDeleteSKU_messageType{}
+var _fastReflection_MsgDeactivateSKU_messageType fastReflection_MsgDeactivateSKU_messageType
+var _ protoreflect.MessageType = fastReflection_MsgDeactivateSKU_messageType{}
 
-type fastReflection_MsgDeleteSKU_messageType struct{}
+type fastReflection_MsgDeactivateSKU_messageType struct{}
 
-func (x fastReflection_MsgDeleteSKU_messageType) Zero() protoreflect.Message {
-	return (*fastReflection_MsgDeleteSKU)(nil)
+func (x fastReflection_MsgDeactivateSKU_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_MsgDeactivateSKU)(nil)
 }
-func (x fastReflection_MsgDeleteSKU_messageType) New() protoreflect.Message {
-	return new(fastReflection_MsgDeleteSKU)
+func (x fastReflection_MsgDeactivateSKU_messageType) New() protoreflect.Message {
+	return new(fastReflection_MsgDeactivateSKU)
 }
-func (x fastReflection_MsgDeleteSKU_messageType) Descriptor() protoreflect.MessageDescriptor {
-	return md_MsgDeleteSKU
+func (x fastReflection_MsgDeactivateSKU_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgDeactivateSKU
 }
 
 // Descriptor returns message descriptor, which contains only the protobuf
 // type information for the message.
-func (x *fastReflection_MsgDeleteSKU) Descriptor() protoreflect.MessageDescriptor {
-	return md_MsgDeleteSKU
+func (x *fastReflection_MsgDeactivateSKU) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgDeactivateSKU
 }
 
 // Type returns the message type, which encapsulates both Go and protobuf
 // type information. If the Go type information is not needed,
 // it is recommended that the message descriptor be used instead.
-func (x *fastReflection_MsgDeleteSKU) Type() protoreflect.MessageType {
-	return _fastReflection_MsgDeleteSKU_messageType
+func (x *fastReflection_MsgDeactivateSKU) Type() protoreflect.MessageType {
+	return _fastReflection_MsgDeactivateSKU_messageType
 }
 
 // New returns a newly allocated and mutable empty message.
-func (x *fastReflection_MsgDeleteSKU) New() protoreflect.Message {
-	return new(fastReflection_MsgDeleteSKU)
+func (x *fastReflection_MsgDeactivateSKU) New() protoreflect.Message {
+	return new(fastReflection_MsgDeactivateSKU)
 }
 
 // Interface unwraps the message reflection interface and
 // returns the underlying ProtoMessage interface.
-func (x *fastReflection_MsgDeleteSKU) Interface() protoreflect.ProtoMessage {
-	return (*MsgDeleteSKU)(x)
+func (x *fastReflection_MsgDeactivateSKU) Interface() protoreflect.ProtoMessage {
+	return (*MsgDeactivateSKU)(x)
 }
 
 // Range iterates over every populated field in an undefined order,
@@ -2440,22 +2440,22 @@ func (x *fastReflection_MsgDeleteSKU) Interface() protoreflect.ProtoMessage {
 // Range returns immediately if f returns false.
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
-func (x *fastReflection_MsgDeleteSKU) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+func (x *fastReflection_MsgDeactivateSKU) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
 	if x.Authority != "" {
 		value := protoreflect.ValueOfString(x.Authority)
-		if !f(fd_MsgDeleteSKU_authority, value) {
+		if !f(fd_MsgDeactivateSKU_authority, value) {
 			return
 		}
 	}
 	if x.Provider != "" {
 		value := protoreflect.ValueOfString(x.Provider)
-		if !f(fd_MsgDeleteSKU_provider, value) {
+		if !f(fd_MsgDeactivateSKU_provider, value) {
 			return
 		}
 	}
 	if x.Id != uint64(0) {
 		value := protoreflect.ValueOfUint64(x.Id)
-		if !f(fd_MsgDeleteSKU_id, value) {
+		if !f(fd_MsgDeactivateSKU_id, value) {
 			return
 		}
 	}
@@ -2472,19 +2472,19 @@ func (x *fastReflection_MsgDeleteSKU) Range(f func(protoreflect.FieldDescriptor,
 // In other cases (aside from the nullable cases above),
 // a proto3 scalar field is populated if it contains a non-zero value, and
 // a repeated field is populated if it is non-empty.
-func (x *fastReflection_MsgDeleteSKU) Has(fd protoreflect.FieldDescriptor) bool {
+func (x *fastReflection_MsgDeactivateSKU) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "liftedinit.sku.v1.MsgDeleteSKU.authority":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.authority":
 		return x.Authority != ""
-	case "liftedinit.sku.v1.MsgDeleteSKU.provider":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.provider":
 		return x.Provider != ""
-	case "liftedinit.sku.v1.MsgDeleteSKU.id":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.id":
 		return x.Id != uint64(0)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeleteSKU"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeactivateSKU"))
 		}
-		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeleteSKU does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeactivateSKU does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2494,19 +2494,19 @@ func (x *fastReflection_MsgDeleteSKU) Has(fd protoreflect.FieldDescriptor) bool 
 // associated with the given field number.
 //
 // Clear is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_MsgDeleteSKU) Clear(fd protoreflect.FieldDescriptor) {
+func (x *fastReflection_MsgDeactivateSKU) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "liftedinit.sku.v1.MsgDeleteSKU.authority":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.authority":
 		x.Authority = ""
-	case "liftedinit.sku.v1.MsgDeleteSKU.provider":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.provider":
 		x.Provider = ""
-	case "liftedinit.sku.v1.MsgDeleteSKU.id":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.id":
 		x.Id = uint64(0)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeleteSKU"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeactivateSKU"))
 		}
-		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeleteSKU does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeactivateSKU does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2516,22 +2516,22 @@ func (x *fastReflection_MsgDeleteSKU) Clear(fd protoreflect.FieldDescriptor) {
 // the default value of a bytes scalar is guaranteed to be a copy.
 // For unpopulated composite types, it returns an empty, read-only view
 // of the value; to obtain a mutable reference, use Mutable.
-func (x *fastReflection_MsgDeleteSKU) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_MsgDeactivateSKU) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "liftedinit.sku.v1.MsgDeleteSKU.authority":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.authority":
 		value := x.Authority
 		return protoreflect.ValueOfString(value)
-	case "liftedinit.sku.v1.MsgDeleteSKU.provider":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.provider":
 		value := x.Provider
 		return protoreflect.ValueOfString(value)
-	case "liftedinit.sku.v1.MsgDeleteSKU.id":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.id":
 		value := x.Id
 		return protoreflect.ValueOfUint64(value)
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeleteSKU"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeactivateSKU"))
 		}
-		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeleteSKU does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeactivateSKU does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -2545,19 +2545,19 @@ func (x *fastReflection_MsgDeleteSKU) Get(descriptor protoreflect.FieldDescripto
 // empty, read-only value, then it panics.
 //
 // Set is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_MsgDeleteSKU) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+func (x *fastReflection_MsgDeactivateSKU) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "liftedinit.sku.v1.MsgDeleteSKU.authority":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.authority":
 		x.Authority = value.Interface().(string)
-	case "liftedinit.sku.v1.MsgDeleteSKU.provider":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.provider":
 		x.Provider = value.Interface().(string)
-	case "liftedinit.sku.v1.MsgDeleteSKU.id":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.id":
 		x.Id = value.Uint()
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeleteSKU"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeactivateSKU"))
 		}
-		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeleteSKU does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeactivateSKU does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2571,48 +2571,48 @@ func (x *fastReflection_MsgDeleteSKU) Set(fd protoreflect.FieldDescriptor, value
 // It panics if the field does not contain a composite type.
 //
 // Mutable is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_MsgDeleteSKU) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_MsgDeactivateSKU) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.sku.v1.MsgDeleteSKU.authority":
-		panic(fmt.Errorf("field authority of message liftedinit.sku.v1.MsgDeleteSKU is not mutable"))
-	case "liftedinit.sku.v1.MsgDeleteSKU.provider":
-		panic(fmt.Errorf("field provider of message liftedinit.sku.v1.MsgDeleteSKU is not mutable"))
-	case "liftedinit.sku.v1.MsgDeleteSKU.id":
-		panic(fmt.Errorf("field id of message liftedinit.sku.v1.MsgDeleteSKU is not mutable"))
+	case "liftedinit.sku.v1.MsgDeactivateSKU.authority":
+		panic(fmt.Errorf("field authority of message liftedinit.sku.v1.MsgDeactivateSKU is not mutable"))
+	case "liftedinit.sku.v1.MsgDeactivateSKU.provider":
+		panic(fmt.Errorf("field provider of message liftedinit.sku.v1.MsgDeactivateSKU is not mutable"))
+	case "liftedinit.sku.v1.MsgDeactivateSKU.id":
+		panic(fmt.Errorf("field id of message liftedinit.sku.v1.MsgDeactivateSKU is not mutable"))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeleteSKU"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeactivateSKU"))
 		}
-		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeleteSKU does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeactivateSKU does not contain field %s", fd.FullName()))
 	}
 }
 
 // NewField returns a new value that is assignable to the field
 // for the given descriptor. For scalars, this returns the default value.
 // For lists, maps, and messages, this returns a new, empty, mutable value.
-func (x *fastReflection_MsgDeleteSKU) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_MsgDeactivateSKU) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.sku.v1.MsgDeleteSKU.authority":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.authority":
 		return protoreflect.ValueOfString("")
-	case "liftedinit.sku.v1.MsgDeleteSKU.provider":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.provider":
 		return protoreflect.ValueOfString("")
-	case "liftedinit.sku.v1.MsgDeleteSKU.id":
+	case "liftedinit.sku.v1.MsgDeactivateSKU.id":
 		return protoreflect.ValueOfUint64(uint64(0))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeleteSKU"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeactivateSKU"))
 		}
-		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeleteSKU does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeactivateSKU does not contain field %s", fd.FullName()))
 	}
 }
 
 // WhichOneof reports which field within the oneof is populated,
 // returning nil if none are populated.
 // It panics if the oneof descriptor does not belong to this message.
-func (x *fastReflection_MsgDeleteSKU) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+func (x *fastReflection_MsgDeactivateSKU) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in liftedinit.sku.v1.MsgDeleteSKU", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.sku.v1.MsgDeactivateSKU", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -2620,7 +2620,7 @@ func (x *fastReflection_MsgDeleteSKU) WhichOneof(d protoreflect.OneofDescriptor)
 // GetUnknown retrieves the entire list of unknown fields.
 // The caller may only mutate the contents of the RawFields
 // if the mutated bytes are stored back into the message with SetUnknown.
-func (x *fastReflection_MsgDeleteSKU) GetUnknown() protoreflect.RawFields {
+func (x *fastReflection_MsgDeactivateSKU) GetUnknown() protoreflect.RawFields {
 	return x.unknownFields
 }
 
@@ -2631,7 +2631,7 @@ func (x *fastReflection_MsgDeleteSKU) GetUnknown() protoreflect.RawFields {
 // An empty RawFields may be passed to clear the fields.
 //
 // SetUnknown is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_MsgDeleteSKU) SetUnknown(fields protoreflect.RawFields) {
+func (x *fastReflection_MsgDeactivateSKU) SetUnknown(fields protoreflect.RawFields) {
 	x.unknownFields = fields
 }
 
@@ -2643,7 +2643,7 @@ func (x *fastReflection_MsgDeleteSKU) SetUnknown(fields protoreflect.RawFields) 
 // message type, but the details are implementation dependent.
 // Validity is not part of the protobuf data model, and may not
 // be preserved in marshaling or other operations.
-func (x *fastReflection_MsgDeleteSKU) IsValid() bool {
+func (x *fastReflection_MsgDeactivateSKU) IsValid() bool {
 	return x != nil
 }
 
@@ -2653,9 +2653,9 @@ func (x *fastReflection_MsgDeleteSKU) IsValid() bool {
 // The returned methods type is identical to
 // "google.golang.org/protobuf/runtime/protoiface".Methods.
 // Consult the protoiface package documentation for details.
-func (x *fastReflection_MsgDeleteSKU) ProtoMethods() *protoiface.Methods {
+func (x *fastReflection_MsgDeactivateSKU) ProtoMethods() *protoiface.Methods {
 	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
-		x := input.Message.Interface().(*MsgDeleteSKU)
+		x := input.Message.Interface().(*MsgDeactivateSKU)
 		if x == nil {
 			return protoiface.SizeOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -2688,7 +2688,7 @@ func (x *fastReflection_MsgDeleteSKU) ProtoMethods() *protoiface.Methods {
 	}
 
 	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
-		x := input.Message.Interface().(*MsgDeleteSKU)
+		x := input.Message.Interface().(*MsgDeactivateSKU)
 		if x == nil {
 			return protoiface.MarshalOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -2737,7 +2737,7 @@ func (x *fastReflection_MsgDeleteSKU) ProtoMethods() *protoiface.Methods {
 		}, nil
 	}
 	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
-		x := input.Message.Interface().(*MsgDeleteSKU)
+		x := input.Message.Interface().(*MsgDeactivateSKU)
 		if x == nil {
 			return protoiface.UnmarshalOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -2769,10 +2769,10 @@ func (x *fastReflection_MsgDeleteSKU) ProtoMethods() *protoiface.Methods {
 			fieldNum := int32(wire >> 3)
 			wireType := int(wire & 0x7)
 			if wireType == 4 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgDeleteSKU: wiretype end group for non-group")
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgDeactivateSKU: wiretype end group for non-group")
 			}
 			if fieldNum <= 0 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgDeleteSKU: illegal tag %d (wire type %d)", fieldNum, wire)
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgDeactivateSKU: illegal tag %d (wire type %d)", fieldNum, wire)
 			}
 			switch fieldNum {
 			case 1:
@@ -2894,23 +2894,23 @@ func (x *fastReflection_MsgDeleteSKU) ProtoMethods() *protoiface.Methods {
 }
 
 var (
-	md_MsgDeleteSKUResponse protoreflect.MessageDescriptor
+	md_MsgDeactivateSKUResponse protoreflect.MessageDescriptor
 )
 
 func init() {
 	file_liftedinit_sku_v1_tx_proto_init()
-	md_MsgDeleteSKUResponse = File_liftedinit_sku_v1_tx_proto.Messages().ByName("MsgDeleteSKUResponse")
+	md_MsgDeactivateSKUResponse = File_liftedinit_sku_v1_tx_proto.Messages().ByName("MsgDeactivateSKUResponse")
 }
 
-var _ protoreflect.Message = (*fastReflection_MsgDeleteSKUResponse)(nil)
+var _ protoreflect.Message = (*fastReflection_MsgDeactivateSKUResponse)(nil)
 
-type fastReflection_MsgDeleteSKUResponse MsgDeleteSKUResponse
+type fastReflection_MsgDeactivateSKUResponse MsgDeactivateSKUResponse
 
-func (x *MsgDeleteSKUResponse) ProtoReflect() protoreflect.Message {
-	return (*fastReflection_MsgDeleteSKUResponse)(x)
+func (x *MsgDeactivateSKUResponse) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_MsgDeactivateSKUResponse)(x)
 }
 
-func (x *MsgDeleteSKUResponse) slowProtoReflect() protoreflect.Message {
+func (x *MsgDeactivateSKUResponse) slowProtoReflect() protoreflect.Message {
 	mi := &file_liftedinit_sku_v1_tx_proto_msgTypes[5]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2922,43 +2922,43 @@ func (x *MsgDeleteSKUResponse) slowProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-var _fastReflection_MsgDeleteSKUResponse_messageType fastReflection_MsgDeleteSKUResponse_messageType
-var _ protoreflect.MessageType = fastReflection_MsgDeleteSKUResponse_messageType{}
+var _fastReflection_MsgDeactivateSKUResponse_messageType fastReflection_MsgDeactivateSKUResponse_messageType
+var _ protoreflect.MessageType = fastReflection_MsgDeactivateSKUResponse_messageType{}
 
-type fastReflection_MsgDeleteSKUResponse_messageType struct{}
+type fastReflection_MsgDeactivateSKUResponse_messageType struct{}
 
-func (x fastReflection_MsgDeleteSKUResponse_messageType) Zero() protoreflect.Message {
-	return (*fastReflection_MsgDeleteSKUResponse)(nil)
+func (x fastReflection_MsgDeactivateSKUResponse_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_MsgDeactivateSKUResponse)(nil)
 }
-func (x fastReflection_MsgDeleteSKUResponse_messageType) New() protoreflect.Message {
-	return new(fastReflection_MsgDeleteSKUResponse)
+func (x fastReflection_MsgDeactivateSKUResponse_messageType) New() protoreflect.Message {
+	return new(fastReflection_MsgDeactivateSKUResponse)
 }
-func (x fastReflection_MsgDeleteSKUResponse_messageType) Descriptor() protoreflect.MessageDescriptor {
-	return md_MsgDeleteSKUResponse
+func (x fastReflection_MsgDeactivateSKUResponse_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgDeactivateSKUResponse
 }
 
 // Descriptor returns message descriptor, which contains only the protobuf
 // type information for the message.
-func (x *fastReflection_MsgDeleteSKUResponse) Descriptor() protoreflect.MessageDescriptor {
-	return md_MsgDeleteSKUResponse
+func (x *fastReflection_MsgDeactivateSKUResponse) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgDeactivateSKUResponse
 }
 
 // Type returns the message type, which encapsulates both Go and protobuf
 // type information. If the Go type information is not needed,
 // it is recommended that the message descriptor be used instead.
-func (x *fastReflection_MsgDeleteSKUResponse) Type() protoreflect.MessageType {
-	return _fastReflection_MsgDeleteSKUResponse_messageType
+func (x *fastReflection_MsgDeactivateSKUResponse) Type() protoreflect.MessageType {
+	return _fastReflection_MsgDeactivateSKUResponse_messageType
 }
 
 // New returns a newly allocated and mutable empty message.
-func (x *fastReflection_MsgDeleteSKUResponse) New() protoreflect.Message {
-	return new(fastReflection_MsgDeleteSKUResponse)
+func (x *fastReflection_MsgDeactivateSKUResponse) New() protoreflect.Message {
+	return new(fastReflection_MsgDeactivateSKUResponse)
 }
 
 // Interface unwraps the message reflection interface and
 // returns the underlying ProtoMessage interface.
-func (x *fastReflection_MsgDeleteSKUResponse) Interface() protoreflect.ProtoMessage {
-	return (*MsgDeleteSKUResponse)(x)
+func (x *fastReflection_MsgDeactivateSKUResponse) Interface() protoreflect.ProtoMessage {
+	return (*MsgDeactivateSKUResponse)(x)
 }
 
 // Range iterates over every populated field in an undefined order,
@@ -2966,7 +2966,7 @@ func (x *fastReflection_MsgDeleteSKUResponse) Interface() protoreflect.ProtoMess
 // Range returns immediately if f returns false.
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
-func (x *fastReflection_MsgDeleteSKUResponse) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+func (x *fastReflection_MsgDeactivateSKUResponse) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
 }
 
 // Has reports whether a field is populated.
@@ -2980,13 +2980,13 @@ func (x *fastReflection_MsgDeleteSKUResponse) Range(f func(protoreflect.FieldDes
 // In other cases (aside from the nullable cases above),
 // a proto3 scalar field is populated if it contains a non-zero value, and
 // a repeated field is populated if it is non-empty.
-func (x *fastReflection_MsgDeleteSKUResponse) Has(fd protoreflect.FieldDescriptor) bool {
+func (x *fastReflection_MsgDeactivateSKUResponse) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeleteSKUResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeactivateSKUResponse"))
 		}
-		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeleteSKUResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeactivateSKUResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2996,13 +2996,13 @@ func (x *fastReflection_MsgDeleteSKUResponse) Has(fd protoreflect.FieldDescripto
 // associated with the given field number.
 //
 // Clear is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_MsgDeleteSKUResponse) Clear(fd protoreflect.FieldDescriptor) {
+func (x *fastReflection_MsgDeactivateSKUResponse) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeleteSKUResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeactivateSKUResponse"))
 		}
-		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeleteSKUResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeactivateSKUResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3012,13 +3012,13 @@ func (x *fastReflection_MsgDeleteSKUResponse) Clear(fd protoreflect.FieldDescrip
 // the default value of a bytes scalar is guaranteed to be a copy.
 // For unpopulated composite types, it returns an empty, read-only view
 // of the value; to obtain a mutable reference, use Mutable.
-func (x *fastReflection_MsgDeleteSKUResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_MsgDeactivateSKUResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeleteSKUResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeactivateSKUResponse"))
 		}
-		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeleteSKUResponse does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeactivateSKUResponse does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -3032,13 +3032,13 @@ func (x *fastReflection_MsgDeleteSKUResponse) Get(descriptor protoreflect.FieldD
 // empty, read-only value, then it panics.
 //
 // Set is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_MsgDeleteSKUResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+func (x *fastReflection_MsgDeactivateSKUResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeleteSKUResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeactivateSKUResponse"))
 		}
-		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeleteSKUResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeactivateSKUResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3052,36 +3052,36 @@ func (x *fastReflection_MsgDeleteSKUResponse) Set(fd protoreflect.FieldDescripto
 // It panics if the field does not contain a composite type.
 //
 // Mutable is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_MsgDeleteSKUResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_MsgDeactivateSKUResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeleteSKUResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeactivateSKUResponse"))
 		}
-		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeleteSKUResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeactivateSKUResponse does not contain field %s", fd.FullName()))
 	}
 }
 
 // NewField returns a new value that is assignable to the field
 // for the given descriptor. For scalars, this returns the default value.
 // For lists, maps, and messages, this returns a new, empty, mutable value.
-func (x *fastReflection_MsgDeleteSKUResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_MsgDeactivateSKUResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeleteSKUResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.MsgDeactivateSKUResponse"))
 		}
-		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeleteSKUResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message liftedinit.sku.v1.MsgDeactivateSKUResponse does not contain field %s", fd.FullName()))
 	}
 }
 
 // WhichOneof reports which field within the oneof is populated,
 // returning nil if none are populated.
 // It panics if the oneof descriptor does not belong to this message.
-func (x *fastReflection_MsgDeleteSKUResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+func (x *fastReflection_MsgDeactivateSKUResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in liftedinit.sku.v1.MsgDeleteSKUResponse", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.sku.v1.MsgDeactivateSKUResponse", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -3089,7 +3089,7 @@ func (x *fastReflection_MsgDeleteSKUResponse) WhichOneof(d protoreflect.OneofDes
 // GetUnknown retrieves the entire list of unknown fields.
 // The caller may only mutate the contents of the RawFields
 // if the mutated bytes are stored back into the message with SetUnknown.
-func (x *fastReflection_MsgDeleteSKUResponse) GetUnknown() protoreflect.RawFields {
+func (x *fastReflection_MsgDeactivateSKUResponse) GetUnknown() protoreflect.RawFields {
 	return x.unknownFields
 }
 
@@ -3100,7 +3100,7 @@ func (x *fastReflection_MsgDeleteSKUResponse) GetUnknown() protoreflect.RawField
 // An empty RawFields may be passed to clear the fields.
 //
 // SetUnknown is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_MsgDeleteSKUResponse) SetUnknown(fields protoreflect.RawFields) {
+func (x *fastReflection_MsgDeactivateSKUResponse) SetUnknown(fields protoreflect.RawFields) {
 	x.unknownFields = fields
 }
 
@@ -3112,7 +3112,7 @@ func (x *fastReflection_MsgDeleteSKUResponse) SetUnknown(fields protoreflect.Raw
 // message type, but the details are implementation dependent.
 // Validity is not part of the protobuf data model, and may not
 // be preserved in marshaling or other operations.
-func (x *fastReflection_MsgDeleteSKUResponse) IsValid() bool {
+func (x *fastReflection_MsgDeactivateSKUResponse) IsValid() bool {
 	return x != nil
 }
 
@@ -3122,9 +3122,9 @@ func (x *fastReflection_MsgDeleteSKUResponse) IsValid() bool {
 // The returned methods type is identical to
 // "google.golang.org/protobuf/runtime/protoiface".Methods.
 // Consult the protoiface package documentation for details.
-func (x *fastReflection_MsgDeleteSKUResponse) ProtoMethods() *protoiface.Methods {
+func (x *fastReflection_MsgDeactivateSKUResponse) ProtoMethods() *protoiface.Methods {
 	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
-		x := input.Message.Interface().(*MsgDeleteSKUResponse)
+		x := input.Message.Interface().(*MsgDeactivateSKUResponse)
 		if x == nil {
 			return protoiface.SizeOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -3146,7 +3146,7 @@ func (x *fastReflection_MsgDeleteSKUResponse) ProtoMethods() *protoiface.Methods
 	}
 
 	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
-		x := input.Message.Interface().(*MsgDeleteSKUResponse)
+		x := input.Message.Interface().(*MsgDeactivateSKUResponse)
 		if x == nil {
 			return protoiface.MarshalOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -3176,7 +3176,7 @@ func (x *fastReflection_MsgDeleteSKUResponse) ProtoMethods() *protoiface.Methods
 		}, nil
 	}
 	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
-		x := input.Message.Interface().(*MsgDeleteSKUResponse)
+		x := input.Message.Interface().(*MsgDeactivateSKUResponse)
 		if x == nil {
 			return protoiface.UnmarshalOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -3208,10 +3208,10 @@ func (x *fastReflection_MsgDeleteSKUResponse) ProtoMethods() *protoiface.Methods
 			fieldNum := int32(wire >> 3)
 			wireType := int(wire & 0x7)
 			if wireType == 4 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgDeleteSKUResponse: wiretype end group for non-group")
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgDeactivateSKUResponse: wiretype end group for non-group")
 			}
 			if fieldNum <= 0 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgDeleteSKUResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgDeactivateSKUResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 			}
 			switch fieldNum {
 			default:
@@ -4363,8 +4363,9 @@ func (*MsgUpdateSKUResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_sku_v1_tx_proto_rawDescGZIP(), []int{3}
 }
 
-// MsgDeleteSKU is the Msg/DeleteSKU request type.
-type MsgDeleteSKU struct {
+// MsgDeactivateSKU is the Msg/DeactivateSKU request type.
+// This performs a soft delete - the SKU remains in state but is marked inactive.
+type MsgDeactivateSKU struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -4373,12 +4374,12 @@ type MsgDeleteSKU struct {
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
 	// provider is the identifier of the SKU provider.
 	Provider string `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"`
-	// id is the unique identifier of the SKU to delete.
+	// id is the unique identifier of the SKU to deactivate.
 	Id uint64 `protobuf:"varint,3,opt,name=id,proto3" json:"id,omitempty"`
 }
 
-func (x *MsgDeleteSKU) Reset() {
-	*x = MsgDeleteSKU{}
+func (x *MsgDeactivateSKU) Reset() {
+	*x = MsgDeactivateSKU{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_liftedinit_sku_v1_tx_proto_msgTypes[4]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4386,47 +4387,47 @@ func (x *MsgDeleteSKU) Reset() {
 	}
 }
 
-func (x *MsgDeleteSKU) String() string {
+func (x *MsgDeactivateSKU) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*MsgDeleteSKU) ProtoMessage() {}
+func (*MsgDeactivateSKU) ProtoMessage() {}
 
-// Deprecated: Use MsgDeleteSKU.ProtoReflect.Descriptor instead.
-func (*MsgDeleteSKU) Descriptor() ([]byte, []int) {
+// Deprecated: Use MsgDeactivateSKU.ProtoReflect.Descriptor instead.
+func (*MsgDeactivateSKU) Descriptor() ([]byte, []int) {
 	return file_liftedinit_sku_v1_tx_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *MsgDeleteSKU) GetAuthority() string {
+func (x *MsgDeactivateSKU) GetAuthority() string {
 	if x != nil {
 		return x.Authority
 	}
 	return ""
 }
 
-func (x *MsgDeleteSKU) GetProvider() string {
+func (x *MsgDeactivateSKU) GetProvider() string {
 	if x != nil {
 		return x.Provider
 	}
 	return ""
 }
 
-func (x *MsgDeleteSKU) GetId() uint64 {
+func (x *MsgDeactivateSKU) GetId() uint64 {
 	if x != nil {
 		return x.Id
 	}
 	return 0
 }
 
-// MsgDeleteSKUResponse is the Msg/DeleteSKU response type.
-type MsgDeleteSKUResponse struct {
+// MsgDeactivateSKUResponse is the Msg/DeactivateSKU response type.
+type MsgDeactivateSKUResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 }
 
-func (x *MsgDeleteSKUResponse) Reset() {
-	*x = MsgDeleteSKUResponse{}
+func (x *MsgDeactivateSKUResponse) Reset() {
+	*x = MsgDeactivateSKUResponse{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_liftedinit_sku_v1_tx_proto_msgTypes[5]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4434,14 +4435,14 @@ func (x *MsgDeleteSKUResponse) Reset() {
 	}
 }
 
-func (x *MsgDeleteSKUResponse) String() string {
+func (x *MsgDeactivateSKUResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*MsgDeleteSKUResponse) ProtoMessage() {}
+func (*MsgDeactivateSKUResponse) ProtoMessage() {}
 
-// Deprecated: Use MsgDeleteSKUResponse.ProtoReflect.Descriptor instead.
-func (*MsgDeleteSKUResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use MsgDeactivateSKUResponse.ProtoReflect.Descriptor instead.
+func (*MsgDeactivateSKUResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_sku_v1_tx_proto_rawDescGZIP(), []int{5}
 }
 
@@ -4586,69 +4587,70 @@ var file_liftedinit_sku_v1_tx_proto_rawDesc = []byte{
 	0x6f, 0x72, 0x69, 0x74, 0x79, 0x8a, 0xe7, 0xb0, 0x2a, 0x17, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64,
 	0x2f, 0x73, 0x6b, 0x75, 0x2f, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x53, 0x4b,
 	0x55, 0x22, 0x16, 0x0a, 0x14, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x53, 0x4b,
-	0x55, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0xa2, 0x01, 0x0a, 0x0c, 0x4d, 0x73,
-	0x67, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x12, 0x36, 0x0a, 0x09, 0x61, 0x75,
-	0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xd2,
-	0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73,
-	0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69,
-	0x74, 0x79, 0x12, 0x1a, 0x0a, 0x08, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x18, 0x02,
-	0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x12, 0x0e,
-	0x0a, 0x02, 0x69, 0x64, 0x18, 0x03, 0x20, 0x01, 0x28, 0x04, 0x52, 0x02, 0x69, 0x64, 0x3a, 0x2e,
-	0xe8, 0xa0, 0x1f, 0x00, 0x82, 0xe7, 0xb0, 0x2a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69,
-	0x74, 0x79, 0x8a, 0xe7, 0xb0, 0x2a, 0x17, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x73, 0x6b,
-	0x75, 0x2f, 0x4d, 0x73, 0x67, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x22, 0x16,
-	0x0a, 0x14, 0x4d, 0x73, 0x67, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x52, 0x65,
-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0xb5, 0x01, 0x0a, 0x0f, 0x4d, 0x73, 0x67, 0x55, 0x70,
-	0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x36, 0x0a, 0x09, 0x61, 0x75,
-	0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xd2,
-	0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73,
-	0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69,
-	0x74, 0x79, 0x12, 0x37, 0x0a, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x18, 0x02, 0x20, 0x01,
-	0x28, 0x0b, 0x32, 0x19, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e,
-	0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x42, 0x04, 0xc8,
-	0xde, 0x1f, 0x00, 0x52, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x3a, 0x31, 0xe8, 0xa0, 0x1f,
-	0x00, 0x82, 0xe7, 0xb0, 0x2a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x8a,
-	0xe7, 0xb0, 0x2a, 0x1a, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x73, 0x6b, 0x75, 0x2f, 0x4d,
-	0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x22, 0x19,
-	0x0a, 0x17, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d,
-	0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0xf1, 0x02, 0x0a, 0x03, 0x4d, 0x73,
-	0x67, 0x12, 0x55, 0x0a, 0x09, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x12, 0x1f,
+	0x55, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0xaa, 0x01, 0x0a, 0x10, 0x4d, 0x73,
+	0x67, 0x44, 0x65, 0x61, 0x63, 0x74, 0x69, 0x76, 0x61, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x12, 0x36,
+	0x0a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x09, 0x42, 0x18, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64,
+	0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x09, 0x61, 0x75, 0x74,
+	0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x1a, 0x0a, 0x08, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64,
+	0x65, 0x72, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64,
+	0x65, 0x72, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x03, 0x20, 0x01, 0x28, 0x04, 0x52, 0x02,
+	0x69, 0x64, 0x3a, 0x32, 0xe8, 0xa0, 0x1f, 0x00, 0x82, 0xe7, 0xb0, 0x2a, 0x09, 0x61, 0x75, 0x74,
+	0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x8a, 0xe7, 0xb0, 0x2a, 0x1b, 0x6c, 0x69, 0x66, 0x74, 0x65,
+	0x64, 0x2f, 0x73, 0x6b, 0x75, 0x2f, 0x4d, 0x73, 0x67, 0x44, 0x65, 0x61, 0x63, 0x74, 0x69, 0x76,
+	0x61, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x22, 0x1a, 0x0a, 0x18, 0x4d, 0x73, 0x67, 0x44, 0x65, 0x61,
+	0x63, 0x74, 0x69, 0x76, 0x61, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x22, 0xb5, 0x01, 0x0a, 0x0f, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65,
+	0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x36, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72,
+	0x69, 0x74, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xd2, 0xb4, 0x2d, 0x14, 0x63,
+	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72,
+	0x69, 0x6e, 0x67, 0x52, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x37,
+	0x0a, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19,
 	0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e,
-	0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x1a,
-	0x27, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75,
-	0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x53, 0x4b, 0x55,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x55, 0x0a, 0x09, 0x55, 0x70, 0x64, 0x61,
-	0x74, 0x65, 0x53, 0x4b, 0x55, 0x12, 0x1f, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e,
-	0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64,
-	0x61, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x1a, 0x27, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69,
-	0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70,
-	0x64, 0x61, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12,
-	0x55, 0x0a, 0x09, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x12, 0x1f, 0x2e, 0x6c,
-	0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31,
-	0x2e, 0x4d, 0x73, 0x67, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x1a, 0x27, 0x2e,
-	0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76,
-	0x31, 0x2e, 0x4d, 0x73, 0x67, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x52, 0x65,
-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x5e, 0x0a, 0x0c, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65,
-	0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x22, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69,
-	0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70,
-	0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x1a, 0x2a, 0x2e, 0x6c, 0x69, 0x66,
+	0x76, 0x31, 0x2e, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x42, 0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52,
+	0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x3a, 0x31, 0xe8, 0xa0, 0x1f, 0x00, 0x82, 0xe7, 0xb0,
+	0x2a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x8a, 0xe7, 0xb0, 0x2a, 0x1a,
+	0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x73, 0x6b, 0x75, 0x2f, 0x4d, 0x73, 0x67, 0x55, 0x70,
+	0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x22, 0x19, 0x0a, 0x17, 0x4d, 0x73,
+	0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0xfd, 0x02, 0x0a, 0x03, 0x4d, 0x73, 0x67, 0x12, 0x55, 0x0a,
+	0x09, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x12, 0x1f, 0x2e, 0x6c, 0x69, 0x66,
 	0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x4d,
-	0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65,
-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x1a, 0x05, 0x80, 0xe7, 0xb0, 0x2a, 0x01, 0x42, 0xcf, 0x01,
-	0x0a, 0x15, 0x63, 0x6f, 0x6d, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74,
-	0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x42, 0x07, 0x54, 0x78, 0x50, 0x72, 0x6f, 0x74, 0x6f,
-	0x50, 0x01, 0x5a, 0x47, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6d,
-	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x2f,
-	0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x72, 0x2f,
-	0x61, 0x70, 0x69, 0x2f, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x73,
-	0x6b, 0x75, 0x2f, 0x76, 0x31, 0x3b, 0x73, 0x6b, 0x75, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x4c, 0x53,
-	0x58, 0xaa, 0x02, 0x11, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x53,
-	0x6b, 0x75, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x11, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e,
-	0x69, 0x74, 0x5c, 0x53, 0x6b, 0x75, 0x5c, 0x56, 0x31, 0xe2, 0x02, 0x1d, 0x4c, 0x69, 0x66, 0x74,
-	0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x53, 0x6b, 0x75, 0x5c, 0x56, 0x31, 0x5c, 0x47, 0x50,
-	0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x13, 0x4c, 0x69, 0x66, 0x74,
-	0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x3a, 0x3a, 0x53, 0x6b, 0x75, 0x3a, 0x3a, 0x56, 0x31, 0x62,
-	0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x1a, 0x27, 0x2e, 0x6c, 0x69,
+	0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e,
+	0x4d, 0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x12, 0x55, 0x0a, 0x09, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x53, 0x4b,
+	0x55, 0x12, 0x1f, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73,
+	0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x53,
+	0x4b, 0x55, 0x1a, 0x27, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e,
+	0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65,
+	0x53, 0x4b, 0x55, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x61, 0x0a, 0x0d, 0x44,
+	0x65, 0x61, 0x63, 0x74, 0x69, 0x76, 0x61, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x12, 0x23, 0x2e, 0x6c,
+	0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31,
+	0x2e, 0x4d, 0x73, 0x67, 0x44, 0x65, 0x61, 0x63, 0x74, 0x69, 0x76, 0x61, 0x74, 0x65, 0x53, 0x4b,
+	0x55, 0x1a, 0x2b, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73,
+	0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x44, 0x65, 0x61, 0x63, 0x74, 0x69, 0x76,
+	0x61, 0x74, 0x65, 0x53, 0x4b, 0x55, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x5e,
+	0x0a, 0x0c, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x22,
+	0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e,
+	0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61,
+	0x6d, 0x73, 0x1a, 0x2a, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e,
+	0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65,
+	0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x1a, 0x05,
+	0x80, 0xe7, 0xb0, 0x2a, 0x01, 0x42, 0xcf, 0x01, 0x0a, 0x15, 0x63, 0x6f, 0x6d, 0x2e, 0x6c, 0x69,
+	0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x42,
+	0x07, 0x54, 0x78, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x47, 0x67, 0x69, 0x74, 0x68,
+	0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d,
+	0x6e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74,
+	0x2d, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x6c, 0x69, 0x66, 0x74,
+	0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x73, 0x6b, 0x75, 0x2f, 0x76, 0x31, 0x3b, 0x73, 0x6b,
+	0x75, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x4c, 0x53, 0x58, 0xaa, 0x02, 0x11, 0x4c, 0x69, 0x66, 0x74,
+	0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x53, 0x6b, 0x75, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x11,
+	0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x53, 0x6b, 0x75, 0x5c, 0x56,
+	0x31, 0xe2, 0x02, 0x1d, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x53,
+	0x6b, 0x75, 0x5c, 0x56, 0x31, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74,
+	0x61, 0xea, 0x02, 0x13, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x3a, 0x3a,
+	0x53, 0x6b, 0x75, 0x3a, 0x3a, 0x56, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -4665,17 +4667,17 @@ func file_liftedinit_sku_v1_tx_proto_rawDescGZIP() []byte {
 
 var file_liftedinit_sku_v1_tx_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_liftedinit_sku_v1_tx_proto_goTypes = []interface{}{
-	(*MsgCreateSKU)(nil),            // 0: liftedinit.sku.v1.MsgCreateSKU
-	(*MsgCreateSKUResponse)(nil),    // 1: liftedinit.sku.v1.MsgCreateSKUResponse
-	(*MsgUpdateSKU)(nil),            // 2: liftedinit.sku.v1.MsgUpdateSKU
-	(*MsgUpdateSKUResponse)(nil),    // 3: liftedinit.sku.v1.MsgUpdateSKUResponse
-	(*MsgDeleteSKU)(nil),            // 4: liftedinit.sku.v1.MsgDeleteSKU
-	(*MsgDeleteSKUResponse)(nil),    // 5: liftedinit.sku.v1.MsgDeleteSKUResponse
-	(*MsgUpdateParams)(nil),         // 6: liftedinit.sku.v1.MsgUpdateParams
-	(*MsgUpdateParamsResponse)(nil), // 7: liftedinit.sku.v1.MsgUpdateParamsResponse
-	(Unit)(0),                       // 8: liftedinit.sku.v1.Unit
-	(*types.Coin)(nil),              // 9: cosmos.base.v1beta1.Coin
-	(*Params)(nil),                  // 10: liftedinit.sku.v1.Params
+	(*MsgCreateSKU)(nil),             // 0: liftedinit.sku.v1.MsgCreateSKU
+	(*MsgCreateSKUResponse)(nil),     // 1: liftedinit.sku.v1.MsgCreateSKUResponse
+	(*MsgUpdateSKU)(nil),             // 2: liftedinit.sku.v1.MsgUpdateSKU
+	(*MsgUpdateSKUResponse)(nil),     // 3: liftedinit.sku.v1.MsgUpdateSKUResponse
+	(*MsgDeactivateSKU)(nil),         // 4: liftedinit.sku.v1.MsgDeactivateSKU
+	(*MsgDeactivateSKUResponse)(nil), // 5: liftedinit.sku.v1.MsgDeactivateSKUResponse
+	(*MsgUpdateParams)(nil),          // 6: liftedinit.sku.v1.MsgUpdateParams
+	(*MsgUpdateParamsResponse)(nil),  // 7: liftedinit.sku.v1.MsgUpdateParamsResponse
+	(Unit)(0),                        // 8: liftedinit.sku.v1.Unit
+	(*types.Coin)(nil),               // 9: cosmos.base.v1beta1.Coin
+	(*Params)(nil),                   // 10: liftedinit.sku.v1.Params
 }
 var file_liftedinit_sku_v1_tx_proto_depIdxs = []int32{
 	8,  // 0: liftedinit.sku.v1.MsgCreateSKU.unit:type_name -> liftedinit.sku.v1.Unit
@@ -4685,11 +4687,11 @@ var file_liftedinit_sku_v1_tx_proto_depIdxs = []int32{
 	10, // 4: liftedinit.sku.v1.MsgUpdateParams.params:type_name -> liftedinit.sku.v1.Params
 	0,  // 5: liftedinit.sku.v1.Msg.CreateSKU:input_type -> liftedinit.sku.v1.MsgCreateSKU
 	2,  // 6: liftedinit.sku.v1.Msg.UpdateSKU:input_type -> liftedinit.sku.v1.MsgUpdateSKU
-	4,  // 7: liftedinit.sku.v1.Msg.DeleteSKU:input_type -> liftedinit.sku.v1.MsgDeleteSKU
+	4,  // 7: liftedinit.sku.v1.Msg.DeactivateSKU:input_type -> liftedinit.sku.v1.MsgDeactivateSKU
 	6,  // 8: liftedinit.sku.v1.Msg.UpdateParams:input_type -> liftedinit.sku.v1.MsgUpdateParams
 	1,  // 9: liftedinit.sku.v1.Msg.CreateSKU:output_type -> liftedinit.sku.v1.MsgCreateSKUResponse
 	3,  // 10: liftedinit.sku.v1.Msg.UpdateSKU:output_type -> liftedinit.sku.v1.MsgUpdateSKUResponse
-	5,  // 11: liftedinit.sku.v1.Msg.DeleteSKU:output_type -> liftedinit.sku.v1.MsgDeleteSKUResponse
+	5,  // 11: liftedinit.sku.v1.Msg.DeactivateSKU:output_type -> liftedinit.sku.v1.MsgDeactivateSKUResponse
 	7,  // 12: liftedinit.sku.v1.Msg.UpdateParams:output_type -> liftedinit.sku.v1.MsgUpdateParamsResponse
 	9,  // [9:13] is the sub-list for method output_type
 	5,  // [5:9] is the sub-list for method input_type
@@ -4754,7 +4756,7 @@ func file_liftedinit_sku_v1_tx_proto_init() {
 			}
 		}
 		file_liftedinit_sku_v1_tx_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*MsgDeleteSKU); i {
+			switch v := v.(*MsgDeactivateSKU); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -4766,7 +4768,7 @@ func file_liftedinit_sku_v1_tx_proto_init() {
 			}
 		}
 		file_liftedinit_sku_v1_tx_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*MsgDeleteSKUResponse); i {
+			switch v := v.(*MsgDeactivateSKUResponse); i {
 			case 0:
 				return &v.state
 			case 1:

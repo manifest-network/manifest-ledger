@@ -16,10 +16,6 @@ enum Unit {
   UNIT_PER_HOUR = 1;
   // UNIT_PER_DAY is a per-day billing unit.
   UNIT_PER_DAY = 2;
-  // UNIT_PER_MONTH is a per-month billing unit.
-  UNIT_PER_MONTH = 3;
-  // UNIT_PER_UNIT is a per-unit billing unit.
-  UNIT_PER_UNIT = 4;
 }
 
 // Params defines the parameters for the sku module.

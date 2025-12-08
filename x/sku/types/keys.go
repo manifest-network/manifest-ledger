@@ -27,10 +27,10 @@ const (
 
 // Event types for the sku module.
 const (
-	EventTypeSKUCreated    = "sku_created"
-	EventTypeSKUUpdated    = "sku_updated"
-	EventTypeSKUDeleted    = "sku_deleted"
-	EventTypeParamsUpdated = "params_updated"
+	EventTypeSKUCreated     = "sku_created"
+	EventTypeSKUUpdated     = "sku_updated"
+	EventTypeSKUDeactivated = "sku_deactivated"
+	EventTypeParamsUpdated  = "params_updated"
 
 	AttributeKeySKUID    = "sku_id"
 	AttributeKeyProvider = "provider"

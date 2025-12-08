@@ -12,7 +12,7 @@ import (
 func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	legacy.RegisterAminoMsg(cdc, &MsgCreateSKU{}, "lifted/sku/MsgCreateSKU")
 	legacy.RegisterAminoMsg(cdc, &MsgUpdateSKU{}, "lifted/sku/MsgUpdateSKU")
-	legacy.RegisterAminoMsg(cdc, &MsgDeleteSKU{}, "lifted/sku/MsgDeleteSKU")
+	legacy.RegisterAminoMsg(cdc, &MsgDeactivateSKU{}, "lifted/sku/MsgDeactivateSKU")
 	legacy.RegisterAminoMsg(cdc, &MsgUpdateParams{}, "lifted/sku/MsgUpdateParams")
 }
 
@@ -22,7 +22,7 @@ func RegisterInterfaces(registry types.InterfaceRegistry) {
 		(*sdk.Msg)(nil),
 		&MsgCreateSKU{},
 		&MsgUpdateSKU{},
-		&MsgDeleteSKU{},
+		&MsgDeactivateSKU{},
 		&MsgUpdateParams{},
 	)
 

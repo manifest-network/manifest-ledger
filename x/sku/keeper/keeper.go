@@ -220,11 +220,6 @@ func (k *Keeper) SetSKU(ctx context.Context, sku types.SKU) error {
 	return k.SKUs.Set(ctx, sku.Id, sku)
 }
 
-// DeleteSKU removes a SKU from the store.
-func (k *Keeper) DeleteSKU(ctx context.Context, id uint64) error {
-	return k.SKUs.Remove(ctx, id)
-}
-
 // GetNextID returns the next SKU ID and increments the sequence.
 func (k *Keeper) GetNextID(ctx context.Context) (uint64, error) {
 	return k.NextID.Next(ctx)

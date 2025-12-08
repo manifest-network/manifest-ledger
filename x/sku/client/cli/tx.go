@@ -30,7 +30,7 @@ func NewTxCmd() *cobra.Command {
 	txCmd.AddCommand(
 		MsgCreateSKU(),
 		MsgUpdateSKU(),
-		MsgDeleteSKU(),
+		MsgDeactivateSKU(),
 		MsgUpdateParams(),
 	)
 
@@ -185,12 +185,14 @@ Active values:
 	return cmd
 }
 
-// MsgDeleteSKU returns a CLI command handler for deleting a SKU.
-func MsgDeleteSKU() *cobra.Command {
+// MsgDeactivateSKU returns a CLI command handler for deactivating a SKU.
+func MsgDeactivateSKU() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "delete-sku [provider] [id]",
-		Short:   "Delete a SKU",
-		Example: "delete-sku provider1 1",
+		Use:   "deactivate-sku [provider] [id]",
+		Short: "Deactivate a SKU (soft delete)",
+		Long: `Deactivate a SKU. This is a soft delete - the SKU remains in state but is marked inactive.
+Inactive SKUs cannot be used for new leases but existing leases continue with their locked prices.`,
+		Example: "deactivate-sku provider1 1",
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -206,7 +208,7 @@ func MsgDeleteSKU() *cobra.Command {
 				return fmt.Errorf("invalid SKU ID: %w", err)
 			}
 
-			msg := types.NewMsgDeleteSKU(
+			msg := types.NewMsgDeactivateSKU(
 				authority.String(),
 				provider,
 				id,

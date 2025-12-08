@@ -101,9 +101,9 @@ func SKUUpdateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Walle
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
-// SKUDeleteSKU deletes a SKU.
-func SKUDeleteSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, provider string, id uint64, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "delete-sku", provider, strconv.FormatUint(id, 10)}
+// SKUDeactivateSKU deactivates a SKU (soft delete).
+func SKUDeactivateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, provider string, id uint64, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "sku", "deactivate-sku", provider, strconv.FormatUint(id, 10)}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 

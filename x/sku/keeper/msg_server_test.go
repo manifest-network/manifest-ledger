@@ -256,7 +256,7 @@ func TestUpdateSKU(t *testing.T) {
 	}
 }
 
-func TestDeleteSKUMsg(t *testing.T) {
+func TestDeactivateSKUMsg(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, acc := testdata.KeyTestPubAddr()
 
@@ -268,6 +268,32 @@ func TestDeleteSKUMsg(t *testing.T) {
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
+	// Create SKUs for testing
+	for i := 1; i <= 4; i++ {
+		sku := types.SKU{
+			Id:        uint64(i), //nolint:gosec // test code
+			Provider:  "provider1",
+			Name:      "Test SKU",
+			Unit:      types.Unit_UNIT_PER_HOUR,
+			BasePrice: basePrice,
+			Active:    true,
+		}
+		err := k.SetSKU(f.Ctx, sku)
+		require.NoError(t, err)
+	}
+
+	// Create an already inactive SKU
+	inactiveSKU := types.SKU{
+		Id:        5,
+		Provider:  "provider1",
+		Name:      "Inactive SKU",
+		Unit:      types.Unit_UNIT_PER_HOUR,
+		BasePrice: basePrice,
+		Active:    false,
+	}
+	err := k.SetSKU(f.Ctx, inactiveSKU)
+	require.NoError(t, err)
+
 	type testcase struct {
 		name     string
 		sender   string
@@ -278,7 +304,7 @@ func TestDeleteSKUMsg(t *testing.T) {
 
 	cases := []testcase{
 		{
-			name:     "success; delete SKU",
+			name:     "success; deactivate SKU",
 			sender:   authority.String(),
 			provider: "provider1",
 			id:       1,
@@ -304,31 +330,26 @@ func TestDeleteSKUMsg(t *testing.T) {
 			id:       3,
 			errMsg:   "provider mismatch",
 		},
+		{
+			name:     "fail; already inactive",
+			sender:   authority.String(),
+			provider: "provider1",
+			id:       5,
+			errMsg:   "already inactive",
+		},
 	}
 
-	for i, c := range cases {
+	for _, c := range cases {
 		c := c
-		idx := i
-
-		sku := types.SKU{
-			Id:        uint64(idx + 1), //nolint:gosec // test code, i is always small
-			Provider:  "provider1",
-			Name:      "Test SKU",
-			Unit:      types.Unit_UNIT_PER_HOUR,
-			BasePrice: basePrice,
-			Active:    true,
-		}
-		err := k.SetSKU(f.Ctx, sku)
-		require.NoError(t, err)
 
 		t.Run(c.name, func(t *testing.T) {
-			msg := &types.MsgDeleteSKU{
+			msg := &types.MsgDeactivateSKU{
 				Authority: c.sender,
 				Provider:  c.provider,
 				Id:        c.id,
 			}
 
-			_, err := ms.DeleteSKU(f.Ctx, msg)
+			_, err := ms.DeactivateSKU(f.Ctx, msg)
 			if c.errMsg != "" {
 				require.Error(t, err)
 				require.ErrorContains(t, err, c.errMsg)
@@ -336,9 +357,10 @@ func TestDeleteSKUMsg(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			_, err = k.GetSKU(f.Ctx, c.id)
-			require.Error(t, err)
-			require.ErrorIs(t, err, types.ErrSKUNotFound)
+			// Verify SKU still exists but is inactive
+			sku, err := k.GetSKU(f.Ctx, c.id)
+			require.NoError(t, err)
+			require.False(t, sku.Active, "SKU should be inactive after deactivation")
 		})
 	}
 }

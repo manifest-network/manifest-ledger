@@ -29,15 +29,13 @@ The module supports the following billing unit types:
 | 0 | `UNIT_UNSPECIFIED` | Default unspecified unit (invalid for SKUs) |
 | 1 | `UNIT_PER_HOUR` | Per-hour billing |
 | 2 | `UNIT_PER_DAY` | Per-day billing |
-| 3 | `UNIT_PER_MONTH` | Per-month billing |
-| 4 | `UNIT_PER_UNIT` | Per-unit billing (one-time charges) |
 
 > **Note:** In JSON/REST responses, the unit is returned as a string (e.g., `"UNIT_PER_HOUR"`).
 > Both string names and integer values are accepted when unmarshaling JSON.
 
 ### Authorization
 
-SKU operations (create, update, delete) can be performed by:
+SKU operations (create, update, deactivate) can be performed by:
 
 1. **Module Authority**: The governance address (typically `manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm`)
 2. **Allowed List**: Addresses explicitly added to the `allowed_list` parameter
@@ -114,12 +112,14 @@ manifestd tx sku update-sku "provider1" 1 "Compute Medium" 2 200umfx true \
   --chain-id manifest-1
 ```
 
-### MsgDeleteSKU
+### MsgDeactivateSKU
 
-Deletes an existing SKU. Can be executed by the module authority or addresses in the allowed list.
+Deactivates an existing SKU (soft delete). The SKU remains in state but is marked as inactive.
+Inactive SKUs cannot be used for new leases but existing leases continue with their locked prices.
+Can be executed by the module authority or addresses in the allowed list.
 
 ```protobuf
-message MsgDeleteSKU {
+message MsgDeactivateSKU {
   string authority = 1;
   string provider = 2;
   uint64 id = 3;
@@ -129,7 +129,7 @@ message MsgDeleteSKU {
 **CLI Example:**
 
 ```bash
-manifestd tx sku delete-sku "provider1" 1 \
+manifestd tx sku deactivate-sku "provider1" 1 \
   --from mykey \
   --chain-id manifest-1
 ```
@@ -191,6 +191,9 @@ manifestd query sku skus --limit 10 --offset 0
 
 # With pagination (using page key from previous response)
 manifestd query sku skus --limit 10 --page-key "AAAAAAAAAAM="
+
+# Filter to return only active SKUs
+manifestd query sku skus --active-only
 ```
 
 ### SKUsByProvider
@@ -205,6 +208,9 @@ manifestd query sku skus-by-provider "provider1" --limit 10
 
 # With page key from previous response
 manifestd query sku skus-by-provider "provider1" --limit 10 --page-key "AAAAAAAAAAM="
+
+# Filter to return only active SKUs
+manifestd query sku skus-by-provider "provider1" --active-only
 ```
 
 ## Events
@@ -215,7 +221,7 @@ The module emits the following events:
 |------------|------------|-------------|
 | `sku_created` | `sku_id`, `provider`, `name` | Emitted when a SKU is created |
 | `sku_updated` | `sku_id`, `provider` | Emitted when a SKU is updated |
-| `sku_deleted` | `sku_id`, `provider` | Emitted when a SKU is deleted |
+| `sku_deactivated` | `sku_id`, `provider` | Emitted when a SKU is deactivated (soft delete) |
 | `params_updated` | - | Emitted when module parameters are updated |
 
 ## Genesis
@@ -272,7 +278,7 @@ The module provides CLI commands for both queries and transactions:
 **Transaction Commands:**
 - `manifestd tx sku create-sku` - Create a new SKU
 - `manifestd tx sku update-sku` - Update an existing SKU
-- `manifestd tx sku delete-sku` - Delete a SKU
+- `manifestd tx sku deactivate-sku` - Deactivate a SKU (soft delete)
 - `manifestd tx sku update-params` - Update module parameters
 
 ### gRPC

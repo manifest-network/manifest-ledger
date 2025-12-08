@@ -17,7 +17,7 @@
 //     (invalid authority, empty provider/name, unspecified unit, zero price)
 //   - TestMsgUpdateSKUValidate: Validates MsgUpdateSKU with valid messages and error cases
 //     (invalid authority, zero ID, empty provider)
-//   - TestMsgDeleteSKUValidate: Validates MsgDeleteSKU with valid messages and error cases
+//   - TestMsgDeactivateSKUValidate: Validates MsgDeactivateSKU with valid messages and error cases
 //   - TestMsgUpdateParamsValidate: Validates MsgUpdateParams with valid/invalid authority and params
 //   - TestMsgGetSigners: Verifies GetSigners() returns correct signer for all message types
 //   - TestMsgRouteAndType: Verifies Route() and Type() return correct values for all messages
@@ -195,6 +195,16 @@ func TestGenesisStateValidate(t *testing.T) {
 			},
 			wantErr: true,
 			errMsg:  "greater than or equal to next_id",
+		},
+		{
+			name: "invalid: NextId is zero",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Skus:   []types.SKU{},
+				NextId: 0,
+			},
+			wantErr: true,
+			errMsg:  "next_id cannot be zero",
 		},
 		{
 			name: "invalid: empty provider",
@@ -459,18 +469,18 @@ func TestMsgUpdateSKUValidate(t *testing.T) {
 	}
 }
 
-func TestMsgDeleteSKUValidate(t *testing.T) {
+func TestMsgDeactivateSKUValidate(t *testing.T) {
 	validAddr := testAddr1
 
 	tests := []struct {
 		name    string
-		msg     *types.MsgDeleteSKU
+		msg     *types.MsgDeactivateSKU
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "valid message",
-			msg: &types.MsgDeleteSKU{
+			msg: &types.MsgDeactivateSKU{
 				Authority: validAddr,
 				Provider:  "provider1",
 				Id:        1,
@@ -479,7 +489,7 @@ func TestMsgDeleteSKUValidate(t *testing.T) {
 		},
 		{
 			name: "invalid authority address",
-			msg: &types.MsgDeleteSKU{
+			msg: &types.MsgDeactivateSKU{
 				Authority: "invalid",
 				Provider:  "provider1",
 				Id:        1,
@@ -489,7 +499,7 @@ func TestMsgDeleteSKUValidate(t *testing.T) {
 		},
 		{
 			name: "zero ID",
-			msg: &types.MsgDeleteSKU{
+			msg: &types.MsgDeactivateSKU{
 				Authority: validAddr,
 				Provider:  "provider1",
 				Id:        0,
@@ -499,7 +509,7 @@ func TestMsgDeleteSKUValidate(t *testing.T) {
 		},
 		{
 			name: "empty provider",
-			msg: &types.MsgDeleteSKU{
+			msg: &types.MsgDeactivateSKU{
 				Authority: validAddr,
 				Provider:  "",
 				Id:        1,
@@ -601,16 +611,6 @@ func TestUnitJSONMarshaling(t *testing.T) {
 			unit:     types.Unit_UNIT_PER_DAY,
 			expected: `"UNIT_PER_DAY"`,
 		},
-		{
-			name:     "UNIT_PER_MONTH",
-			unit:     types.Unit_UNIT_PER_MONTH,
-			expected: `"UNIT_PER_MONTH"`,
-		},
-		{
-			name:     "UNIT_PER_UNIT",
-			unit:     types.Unit_UNIT_PER_UNIT,
-			expected: `"UNIT_PER_UNIT"`,
-		},
 	}
 
 	for _, tt := range tests {
@@ -643,16 +643,6 @@ func TestUnitJSONUnmarshaling(t *testing.T) {
 			name:     "string UNIT_PER_DAY",
 			input:    `"UNIT_PER_DAY"`,
 			expected: types.Unit_UNIT_PER_DAY,
-		},
-		{
-			name:     "string UNIT_PER_MONTH",
-			input:    `"UNIT_PER_MONTH"`,
-			expected: types.Unit_UNIT_PER_MONTH,
-		},
-		{
-			name:     "string UNIT_PER_UNIT",
-			input:    `"UNIT_PER_UNIT"`,
-			expected: types.Unit_UNIT_PER_UNIT,
 		},
 		{
 			name:     "integer 0",
@@ -713,8 +703,8 @@ func TestMsgGetSigners(t *testing.T) {
 		require.Equal(t, expectedAddr, signers[0])
 	})
 
-	t.Run("MsgDeleteSKU", func(t *testing.T) {
-		msg := &types.MsgDeleteSKU{Authority: validAddr}
+	t.Run("MsgDeactivateSKU", func(t *testing.T) {
+		msg := &types.MsgDeactivateSKU{Authority: validAddr}
 		signers := msg.GetSigners()
 		require.Len(t, signers, 1)
 		require.Equal(t, expectedAddr, signers[0])
@@ -741,10 +731,10 @@ func TestMsgRouteAndType(t *testing.T) {
 		require.Equal(t, "update_sku", msg.Type())
 	})
 
-	t.Run("MsgDeleteSKU", func(t *testing.T) {
-		msg := &types.MsgDeleteSKU{}
+	t.Run("MsgDeactivateSKU", func(t *testing.T) {
+		msg := &types.MsgDeactivateSKU{}
 		require.Equal(t, types.ModuleName, msg.Route())
-		require.Equal(t, "delete_sku", msg.Type())
+		require.Equal(t, "deactivate_sku", msg.Type())
 	})
 
 	t.Run("MsgUpdateParams", func(t *testing.T) {
@@ -780,8 +770,8 @@ func TestNewMsgConstructors(t *testing.T) {
 		require.True(t, msg.Active)
 	})
 
-	t.Run("NewMsgDeleteSKU", func(t *testing.T) {
-		msg := types.NewMsgDeleteSKU(validAddr, "provider", 1)
+	t.Run("NewMsgDeactivateSKU", func(t *testing.T) {
+		msg := types.NewMsgDeactivateSKU(validAddr, "provider", 1)
 		require.Equal(t, validAddr, msg.Authority)
 		require.Equal(t, "provider", msg.Provider)
 		require.Equal(t, uint64(1), msg.Id)

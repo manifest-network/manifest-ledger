@@ -26,6 +26,11 @@ func (gs *GenesisState) Validate() error {
 		return fmt.Errorf("invalid params: %w", err)
 	}
 
+	// NextId must be at least 1
+	if gs.NextId == 0 {
+		return fmt.Errorf("next_id cannot be zero")
+	}
+
 	seenIDs := make(map[uint64]bool)
 	for _, sku := range gs.Skus {
 		if seenIDs[sku.Id] {

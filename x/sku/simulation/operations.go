@@ -17,19 +17,19 @@ import (
 )
 
 const (
-	OpWeightMsgCreateSKU = "op_weight_msg_sku_create" //nolint:gosec
-	OpWeightMsgUpdateSKU = "op_weight_msg_sku_update" //nolint:gosec
-	OpWeightMsgDeleteSKU = "op_weight_msg_sku_delete" //nolint:gosec
+	OpWeightMsgCreateSKU     = "op_weight_msg_sku_create"     //nolint:gosec
+	OpWeightMsgUpdateSKU     = "op_weight_msg_sku_update"     //nolint:gosec
+	OpWeightMsgDeactivateSKU = "op_weight_msg_sku_deactivate" //nolint:gosec
 
-	DefaultWeightMsgCreateSKU = 50
-	DefaultWeightMsgUpdateSKU = 30
-	DefaultWeightMsgDeleteSKU = 20
+	DefaultWeightMsgCreateSKU     = 50
+	DefaultWeightMsgUpdateSKU     = 30
+	DefaultWeightMsgDeactivateSKU = 20
 )
 
 var (
 	providers = []string{"provider1", "provider2", "provider3", "provider4", "provider5"}
 	skuNames  = []string{"Compute Small", "Compute Medium", "Compute Large", "Storage 100GB", "Storage 1TB", "Bandwidth 1Gbps"}
-	units     = []types.Unit{types.Unit_UNIT_PER_HOUR, types.Unit_UNIT_PER_DAY, types.Unit_UNIT_PER_MONTH, types.Unit_UNIT_PER_UNIT}
+	units     = []types.Unit{types.Unit_UNIT_PER_HOUR, types.Unit_UNIT_PER_DAY}
 )
 
 // WeightedOperations returns the all the sku module operations with their respective weights.
@@ -51,9 +51,9 @@ func WeightedOperations(
 		weightMsgUpdateSKU = DefaultWeightMsgUpdateSKU
 	})
 
-	var weightMsgDeleteSKU int
-	appParams.GetOrGenerate(OpWeightMsgDeleteSKU, &weightMsgDeleteSKU, nil, func(_ *rand.Rand) {
-		weightMsgDeleteSKU = DefaultWeightMsgDeleteSKU
+	var weightMsgDeactivateSKU int
+	appParams.GetOrGenerate(OpWeightMsgDeactivateSKU, &weightMsgDeactivateSKU, nil, func(_ *rand.Rand) {
+		weightMsgDeactivateSKU = DefaultWeightMsgDeactivateSKU
 	})
 
 	operations = append(operations, simulation.NewWeightedOperation(
@@ -67,8 +67,8 @@ func WeightedOperations(
 	))
 
 	operations = append(operations, simulation.NewWeightedOperation(
-		weightMsgDeleteSKU,
-		SimulateMsgDeleteSKU(txGen, k),
+		weightMsgDeactivateSKU,
+		SimulateMsgDeactivateSKU(txGen, k),
 	))
 
 	return operations
@@ -141,11 +141,11 @@ func SimulateMsgUpdateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 	}
 }
 
-// SimulateMsgDeleteSKU generates a MsgDeleteSKU with random values.
-func SimulateMsgDeleteSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
+// SimulateMsgDeactivateSKU generates a MsgDeactivateSKU with random values.
+func SimulateMsgDeactivateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
-		msgType := sdk.MsgTypeURL(&types.MsgDeleteSKU{})
+		msgType := sdk.MsgTypeURL(&types.MsgDeactivateSKU{})
 
 		simAccount, found := findAuthority(accs, k.GetAuthority())
 		if !found {
@@ -154,12 +154,24 @@ func SimulateMsgDeleteSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 
 		allSKUs, err := k.GetAllSKUs(ctx)
 		if err != nil || len(allSKUs) == 0 {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "no SKUs found to delete"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no SKUs found to deactivate"), nil, nil
 		}
 
-		sku := allSKUs[r.Intn(len(allSKUs))]
+		// Find an active SKU to deactivate
+		var activeSKUs []types.SKU
+		for _, sku := range allSKUs {
+			if sku.Active {
+				activeSKUs = append(activeSKUs, sku)
+			}
+		}
 
-		msg := &types.MsgDeleteSKU{
+		if len(activeSKUs) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no active SKUs found to deactivate"), nil, nil
+		}
+
+		sku := activeSKUs[r.Intn(len(activeSKUs))]
+
+		msg := &types.MsgDeactivateSKU{
 			Authority: simAccount.Address.String(),
 			Provider:  sku.Provider,
 			Id:        sku.Id,

@@ -57,6 +57,9 @@ message QuerySKUResponse {
 message QuerySKUsRequest {
   // pagination defines an optional pagination for the request.
   cosmos.base.query.v1beta1.PageRequest pagination = 1;
+
+  // active_only filters to return only active SKUs when true.
+  bool active_only = 2;
 }
 
 // QuerySKUsResponse is the response type for the Query/SKUs RPC method.
@@ -76,6 +79,9 @@ message QuerySKUsByProviderRequest {
 
   // pagination defines an optional pagination for the request.
   cosmos.base.query.v1beta1.PageRequest pagination = 2;
+
+  // active_only filters to return only active SKUs when true.
+  bool active_only = 3;
 }
 
 // QuerySKUsByProviderResponse is the response type for the Query/SKUsByProvider

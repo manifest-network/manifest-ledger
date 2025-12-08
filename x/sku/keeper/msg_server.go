@@ -131,8 +131,10 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 	return &types.MsgUpdateSKUResponse{}, nil
 }
 
-// DeleteSKU deletes a SKU.
-func (ms msgServer) DeleteSKU(ctx context.Context, req *types.MsgDeleteSKU) (*types.MsgDeleteSKUResponse, error) {
+// DeactivateSKU deactivates a SKU (soft delete).
+// The SKU remains in state but is marked as inactive.
+// Inactive SKUs cannot be used for new leases but existing leases continue.
+func (ms msgServer) DeactivateSKU(ctx context.Context, req *types.MsgDeactivateSKU) (*types.MsgDeactivateSKUResponse, error) {
 	authorized, err := ms.isAuthorizedSender(ctx, req.Authority)
 	if err != nil {
 		return nil, types.ErrUnauthorized.Wrapf("failed to check authorization: %s", err)
@@ -142,7 +144,7 @@ func (ms msgServer) DeleteSKU(ctx context.Context, req *types.MsgDeleteSKU) (*ty
 	}
 
 	if err := req.Validate(); err != nil {
-		return nil, types.ErrInvalidSKU.Wrapf("invalid delete sku message: %s", err)
+		return nil, types.ErrInvalidSKU.Wrapf("invalid deactivate sku message: %s", err)
 	}
 
 	existingSKU, err := ms.k.GetSKU(ctx, req.Id)
@@ -154,22 +156,28 @@ func (ms msgServer) DeleteSKU(ctx context.Context, req *types.MsgDeleteSKU) (*ty
 		return nil, types.ErrInvalidSKU.Wrapf("provider mismatch; expected %s, got %s", existingSKU.Provider, req.Provider)
 	}
 
-	if err := ms.k.DeleteSKU(ctx, req.Id); err != nil {
+	if !existingSKU.Active {
+		return nil, types.ErrInvalidSKU.Wrapf("sku %d is already inactive", req.Id)
+	}
+
+	// Soft delete: set Active to false instead of removing from state
+	existingSKU.Active = false
+	if err := ms.k.SetSKU(ctx, existingSKU); err != nil {
 		return nil, err
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
-			types.EventTypeSKUDeleted,
+			types.EventTypeSKUDeactivated,
 			sdk.NewAttribute(types.AttributeKeySKUID, strconv.FormatUint(req.Id, 10)),
 			sdk.NewAttribute(types.AttributeKeyProvider, req.Provider),
 		),
 	})
 
-	ms.k.Logger().Info("SKU deleted", "id", req.Id, "provider", req.Provider)
+	ms.k.Logger().Info("SKU deactivated", "id", req.Id, "provider", req.Provider)
 
-	return &types.MsgDeleteSKUResponse{}, nil
+	return &types.MsgDeactivateSKUResponse{}, nil
 }
 
 // UpdateParams updates the module parameters.

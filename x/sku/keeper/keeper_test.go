@@ -160,36 +160,6 @@ func TestGetSKU(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrSKUNotFound)
 }
 
-func TestDeleteSKU(t *testing.T) {
-	f := initFixture(t)
-
-	k := f.App.SKUKeeper
-
-	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
-
-	sku := types.SKU{
-		Id:        1,
-		Provider:  "provider1",
-		Name:      "Test SKU",
-		Unit:      types.Unit_UNIT_PER_HOUR,
-		BasePrice: basePrice,
-		Active:    true,
-	}
-
-	err := k.SetSKU(f.Ctx, sku)
-	require.NoError(t, err)
-
-	_, err = k.GetSKU(f.Ctx, 1)
-	require.NoError(t, err)
-
-	err = k.DeleteSKU(f.Ctx, 1)
-	require.NoError(t, err)
-
-	_, err = k.GetSKU(f.Ctx, 1)
-	require.Error(t, err)
-	require.ErrorIs(t, err, types.ErrSKUNotFound)
-}
-
 func TestGetAllSKUs(t *testing.T) {
 	f := initFixture(t)
 
@@ -218,7 +188,7 @@ func TestGetAllSKUs(t *testing.T) {
 			Id:        3,
 			Provider:  "provider1",
 			Name:      "SKU 3",
-			Unit:      types.Unit_UNIT_PER_MONTH,
+			Unit:      types.Unit_UNIT_PER_DAY,
 			BasePrice: basePrice,
 			Active:    false,
 		},
@@ -262,7 +232,7 @@ func TestGetSKUsByProvider(t *testing.T) {
 			Id:        3,
 			Provider:  "provider1",
 			Name:      "SKU 3",
-			Unit:      types.Unit_UNIT_PER_MONTH,
+			Unit:      types.Unit_UNIT_PER_DAY,
 			BasePrice: basePrice,
 			Active:    false,
 		},
