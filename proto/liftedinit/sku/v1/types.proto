@@ -29,6 +29,26 @@ message Params {
       [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 }
 
+// Provider defines a SKU provider entity.
+message Provider {
+  option (amino.name) = "lifted/sku/Provider";
+
+  // id is the unique identifier for the provider.
+  uint64 id = 1 [ (gogoproto.jsontag) = "id,omitempty,string" ];
+
+  // address is the management address of the provider.
+  string address = 2 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // payout_address is the address where payments are sent.
+  string payout_address = 3 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // meta_hash is a hash of the off-chain metadata (name, description, etc.).
+  bytes meta_hash = 4;
+
+  // active indicates whether the provider is active.
+  bool active = 5;
+}
+
 // SKU defines a stock keeping unit for on-chain billing.
 message SKU {
   option (amino.name) = "lifted/sku/SKU";
@@ -36,20 +56,17 @@ message SKU {
   // id is the unique identifier for the SKU.
   uint64 id = 1 [ (gogoproto.jsontag) = "id,omitempty,string" ];
 
-  // provider is the identifier of the SKU provider.
-  string provider = 2;
-
-  // payout_address is the address where payments for this SKU are sent.
-  string payout_address = 3 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // provider_id is the unique identifier of the SKU provider.
+  uint64 provider_id = 2 [ (gogoproto.jsontag) = "provider_id,omitempty,string" ];
 
   // name is the human-readable name of the SKU.
-  string name = 4;
+  string name = 3;
 
   // unit is the billing unit for the SKU.
-  Unit unit = 5;
+  Unit unit = 4;
 
   // base_price is the base price for the SKU.
-  cosmos.base.v1beta1.Coin base_price = 6 [
+  cosmos.base.v1beta1.Coin base_price = 5 [
     (gogoproto.nullable) = false,
     (amino.dont_omitempty) = true,
     (amino.encoding) = "legacy_coin",
@@ -57,8 +74,8 @@ message SKU {
   ];
 
   // meta_hash is a hash of the off-chain metadata.
-  bytes meta_hash = 7;
+  bytes meta_hash = 6;
 
   // active indicates whether the SKU is active.
-  bool active = 8;
+  bool active = 7;
 }

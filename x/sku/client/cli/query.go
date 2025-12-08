@@ -24,12 +24,120 @@ func GetQueryCmd() *cobra.Command {
 
 	queryCmd.AddCommand(
 		GetCmdQueryParams(),
+		GetCmdQueryProvider(),
+		GetCmdQueryProviders(),
 		GetCmdQuerySKU(),
 		GetCmdQuerySKUs(),
 		GetCmdQuerySKUsByProvider(),
 	)
 
 	return queryCmd
+}
+
+// GetCmdQueryParams returns the command to query the module parameters.
+func GetCmdQueryParams() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "params",
+		Short:   "Query the module parameters",
+		Example: "params",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			queryClient := types.NewQueryClient(clientCtx)
+			res, err := queryClient.Params(cmd.Context(), &types.QueryParamsRequest{})
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
+	return cmd
+}
+
+// GetCmdQueryProvider returns the command to query a Provider by ID.
+func GetCmdQueryProvider() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "provider [id]",
+		Short:   "Query a provider by ID",
+		Example: "provider 1",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			id, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid provider ID: %w", err)
+			}
+
+			queryClient := types.NewQueryClient(clientCtx)
+			res, err := queryClient.Provider(cmd.Context(), &types.QueryProviderRequest{Id: id})
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
+	return cmd
+}
+
+// GetCmdQueryProviders returns the command to query all Providers.
+func GetCmdQueryProviders() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "providers",
+		Short:   "Query all providers",
+		Example: "providers --active-only",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
+			if err != nil {
+				return err
+			}
+
+			activeOnly, err := cmd.Flags().GetBool("active-only")
+			if err != nil {
+				return err
+			}
+
+			queryClient := types.NewQueryClient(clientCtx)
+			res, err := queryClient.Providers(cmd.Context(), &types.QueryProvidersRequest{
+				Pagination: pageReq,
+				ActiveOnly: activeOnly,
+			})
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	cmd.Flags().Bool("active-only", false, "Filter to return only active providers")
+	flags.AddQueryFlagsToCmd(cmd)
+	flags.AddPaginationFlagsToCmd(cmd, "providers")
+	return cmd
 }
 
 // GetCmdQuerySKU returns the command to query a SKU by ID.
@@ -111,17 +219,22 @@ func GetCmdQuerySKUs() *cobra.Command {
 	return cmd
 }
 
-// GetCmdQuerySKUsByProvider returns the command to query SKUs by provider.
+// GetCmdQuerySKUsByProvider returns the command to query SKUs by provider ID.
 func GetCmdQuerySKUsByProvider() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "skus-by-provider [provider]",
-		Short:   "Query SKUs by provider",
-		Example: "skus-by-provider manifest1... --active-only",
+		Use:     "skus-by-provider [provider-id]",
+		Short:   "Query SKUs by provider ID",
+		Example: "skus-by-provider 1 --active-only",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
 			if err != nil {
 				return err
+			}
+
+			providerID, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid provider ID: %w", err)
 			}
 
 			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
@@ -141,7 +254,7 @@ func GetCmdQuerySKUsByProvider() *cobra.Command {
 
 			queryClient := types.NewQueryClient(clientCtx)
 			res, err := queryClient.SKUsByProvider(cmd.Context(), &types.QuerySKUsByProviderRequest{
-				Provider:   args[0],
+				ProviderId: providerID,
 				Pagination: pageReq,
 				ActiveOnly: activeOnly,
 			})
@@ -156,32 +269,5 @@ func GetCmdQuerySKUsByProvider() *cobra.Command {
 	cmd.Flags().Bool("active-only", false, "Filter to return only active SKUs")
 	flags.AddQueryFlagsToCmd(cmd)
 	flags.AddPaginationFlagsToCmd(cmd, "skus-by-provider")
-	return cmd
-}
-
-// GetCmdQueryParams returns the command to query the module parameters.
-func GetCmdQueryParams() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:     "params",
-		Short:   "Query the module parameters",
-		Example: "params",
-		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			clientCtx, err := client.GetClientQueryContext(cmd)
-			if err != nil {
-				return err
-			}
-
-			queryClient := types.NewQueryClient(clientCtx)
-			res, err := queryClient.Params(cmd.Context(), &types.QueryParamsRequest{})
-			if err != nil {
-				return err
-			}
-
-			return clientCtx.PrintProto(res)
-		},
-	}
-
-	flags.AddQueryFlagsToCmd(cmd)
 	return cmd
 }

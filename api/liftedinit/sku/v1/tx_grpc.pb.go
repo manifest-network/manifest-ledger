@@ -19,16 +19,26 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Msg_CreateSKU_FullMethodName     = "/liftedinit.sku.v1.Msg/CreateSKU"
-	Msg_UpdateSKU_FullMethodName     = "/liftedinit.sku.v1.Msg/UpdateSKU"
-	Msg_DeactivateSKU_FullMethodName = "/liftedinit.sku.v1.Msg/DeactivateSKU"
-	Msg_UpdateParams_FullMethodName  = "/liftedinit.sku.v1.Msg/UpdateParams"
+	Msg_CreateProvider_FullMethodName     = "/liftedinit.sku.v1.Msg/CreateProvider"
+	Msg_UpdateProvider_FullMethodName     = "/liftedinit.sku.v1.Msg/UpdateProvider"
+	Msg_DeactivateProvider_FullMethodName = "/liftedinit.sku.v1.Msg/DeactivateProvider"
+	Msg_CreateSKU_FullMethodName          = "/liftedinit.sku.v1.Msg/CreateSKU"
+	Msg_UpdateSKU_FullMethodName          = "/liftedinit.sku.v1.Msg/UpdateSKU"
+	Msg_DeactivateSKU_FullMethodName      = "/liftedinit.sku.v1.Msg/DeactivateSKU"
+	Msg_UpdateParams_FullMethodName       = "/liftedinit.sku.v1.Msg/UpdateParams"
 )
 
 // MsgClient is the client API for Msg service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type MsgClient interface {
+	// CreateProvider creates a new provider.
+	CreateProvider(ctx context.Context, in *MsgCreateProvider, opts ...grpc.CallOption) (*MsgCreateProviderResponse, error)
+	// UpdateProvider updates an existing provider.
+	UpdateProvider(ctx context.Context, in *MsgUpdateProvider, opts ...grpc.CallOption) (*MsgUpdateProviderResponse, error)
+	// DeactivateProvider deactivates a provider (soft delete).
+	// Deactivated providers cannot create new SKUs but existing SKUs continue.
+	DeactivateProvider(ctx context.Context, in *MsgDeactivateProvider, opts ...grpc.CallOption) (*MsgDeactivateProviderResponse, error)
 	// CreateSKU creates a new SKU.
 	CreateSKU(ctx context.Context, in *MsgCreateSKU, opts ...grpc.CallOption) (*MsgCreateSKUResponse, error)
 	// UpdateSKU updates an existing SKU.
@@ -46,6 +56,33 @@ type msgClient struct {
 
 func NewMsgClient(cc grpc.ClientConnInterface) MsgClient {
 	return &msgClient{cc}
+}
+
+func (c *msgClient) CreateProvider(ctx context.Context, in *MsgCreateProvider, opts ...grpc.CallOption) (*MsgCreateProviderResponse, error) {
+	out := new(MsgCreateProviderResponse)
+	err := c.cc.Invoke(ctx, Msg_CreateProvider_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) UpdateProvider(ctx context.Context, in *MsgUpdateProvider, opts ...grpc.CallOption) (*MsgUpdateProviderResponse, error) {
+	out := new(MsgUpdateProviderResponse)
+	err := c.cc.Invoke(ctx, Msg_UpdateProvider_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) DeactivateProvider(ctx context.Context, in *MsgDeactivateProvider, opts ...grpc.CallOption) (*MsgDeactivateProviderResponse, error) {
+	out := new(MsgDeactivateProviderResponse)
+	err := c.cc.Invoke(ctx, Msg_DeactivateProvider_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *msgClient) CreateSKU(ctx context.Context, in *MsgCreateSKU, opts ...grpc.CallOption) (*MsgCreateSKUResponse, error) {
@@ -88,6 +125,13 @@ func (c *msgClient) UpdateParams(ctx context.Context, in *MsgUpdateParams, opts 
 // All implementations must embed UnimplementedMsgServer
 // for forward compatibility
 type MsgServer interface {
+	// CreateProvider creates a new provider.
+	CreateProvider(context.Context, *MsgCreateProvider) (*MsgCreateProviderResponse, error)
+	// UpdateProvider updates an existing provider.
+	UpdateProvider(context.Context, *MsgUpdateProvider) (*MsgUpdateProviderResponse, error)
+	// DeactivateProvider deactivates a provider (soft delete).
+	// Deactivated providers cannot create new SKUs but existing SKUs continue.
+	DeactivateProvider(context.Context, *MsgDeactivateProvider) (*MsgDeactivateProviderResponse, error)
 	// CreateSKU creates a new SKU.
 	CreateSKU(context.Context, *MsgCreateSKU) (*MsgCreateSKUResponse, error)
 	// UpdateSKU updates an existing SKU.
@@ -104,6 +148,15 @@ type MsgServer interface {
 type UnimplementedMsgServer struct {
 }
 
+func (UnimplementedMsgServer) CreateProvider(context.Context, *MsgCreateProvider) (*MsgCreateProviderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateProvider not implemented")
+}
+func (UnimplementedMsgServer) UpdateProvider(context.Context, *MsgUpdateProvider) (*MsgUpdateProviderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateProvider not implemented")
+}
+func (UnimplementedMsgServer) DeactivateProvider(context.Context, *MsgDeactivateProvider) (*MsgDeactivateProviderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeactivateProvider not implemented")
+}
 func (UnimplementedMsgServer) CreateSKU(context.Context, *MsgCreateSKU) (*MsgCreateSKUResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateSKU not implemented")
 }
@@ -127,6 +180,60 @@ type UnsafeMsgServer interface {
 
 func RegisterMsgServer(s grpc.ServiceRegistrar, srv MsgServer) {
 	s.RegisterService(&Msg_ServiceDesc, srv)
+}
+
+func _Msg_CreateProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgCreateProvider)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).CreateProvider(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_CreateProvider_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).CreateProvider(ctx, req.(*MsgCreateProvider))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_UpdateProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgUpdateProvider)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).UpdateProvider(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_UpdateProvider_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).UpdateProvider(ctx, req.(*MsgUpdateProvider))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_DeactivateProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgDeactivateProvider)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).DeactivateProvider(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_DeactivateProvider_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).DeactivateProvider(ctx, req.(*MsgDeactivateProvider))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Msg_CreateSKU_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -208,6 +315,18 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "liftedinit.sku.v1.Msg",
 	HandlerType: (*MsgServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CreateProvider",
+			Handler:    _Msg_CreateProvider_Handler,
+		},
+		{
+			MethodName: "UpdateProvider",
+			Handler:    _Msg_UpdateProvider_Handler,
+		},
+		{
+			MethodName: "DeactivateProvider",
+			Handler:    _Msg_DeactivateProvider_Handler,
+		},
 		{
 			MethodName: "CreateSKU",
 			Handler:    _Msg_CreateSKU_Handler,

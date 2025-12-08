@@ -16,19 +16,12 @@ import (
 )
 
 // SKUIndexes defines the indexes for the SKU collection.
-// It enables efficient lookups and queries on SKUs by specific fields.
-// Currently, it provides a multi-index on the Provider field, allowing fast retrieval
-// of all SKUs associated with a given provider without scanning the entire collection.
 type SKUIndexes struct {
-	// Provider is a multi-index that indexes SKUs by provider.
-	// This index maps a provider string to one or more SKU IDs.
-	// It is implemented using indexes.NewMulti, which extracts the Provider field
-	// from each SKU for indexing.
-	Provider *indexes.Multi[string, uint64, types.SKU]
+	// Provider is a multi-index that indexes SKUs by provider_id.
+	Provider *indexes.Multi[uint64, uint64, types.SKU]
 }
 
 // IndexesList returns all indexes defined for the SKU collection.
-// This is used by the collections framework to register and manage indexes.
 func (i SKUIndexes) IndexesList() []collections.Index[uint64, types.SKU] {
 	return []collections.Index[uint64, types.SKU]{i.Provider}
 }
@@ -40,10 +33,10 @@ func NewSKUIndexes(sb *collections.SchemaBuilder) SKUIndexes {
 			sb,
 			types.SKUByProviderIndexKey,
 			"skus_by_provider",
-			collections.StringKey,
 			collections.Uint64Key,
-			func(_ uint64, sku types.SKU) (string, error) {
-				return sku.Provider, nil
+			collections.Uint64Key,
+			func(_ uint64, sku types.SKU) (uint64, error) {
+				return sku.ProviderId, nil
 			},
 		),
 	}
@@ -59,12 +52,21 @@ type Keeper struct {
 	bankKeeper    bankkeeper.Keeper
 
 	// state management
-	Schema collections.Schema
-	Params collections.Item[types.Params]
-	SKUs   *collections.IndexedMap[uint64, types.SKU, SKUIndexes]
-	NextID collections.Sequence
+	Schema         collections.Schema
+	Params         collections.Item[types.Params]
+	Providers      *collections.IndexedMap[uint64, types.Provider, noIndexes[uint64, types.Provider]]
+	NextProviderID collections.Sequence
+	SKUs           *collections.IndexedMap[uint64, types.SKU, SKUIndexes]
+	NextSKUID      collections.Sequence
 
 	authority string
+}
+
+// noIndexes is a placeholder for collections with no indexes.
+type noIndexes[K, V any] struct{}
+
+func (n noIndexes[K, V]) IndexesList() []collections.Index[K, V] {
+	return nil
 }
 
 // NewKeeper creates a new sku Keeper instance.
@@ -89,6 +91,19 @@ func NewKeeper(
 			"params",
 			codec.CollValue[types.Params](cdc),
 		),
+		Providers: collections.NewIndexedMap(
+			sb,
+			types.ProviderKey,
+			"providers",
+			collections.Uint64Key,
+			codec.CollValue[types.Provider](cdc),
+			noIndexes[uint64, types.Provider]{},
+		),
+		NextProviderID: collections.NewSequence(
+			sb,
+			types.ProviderSequenceKey,
+			"next_provider_id",
+		),
 		SKUs: collections.NewIndexedMap(
 			sb,
 			types.SKUKey,
@@ -97,10 +112,10 @@ func NewKeeper(
 			codec.CollValue[types.SKU](cdc),
 			NewSKUIndexes(sb),
 		),
-		NextID: collections.NewSequence(
+		NextSKUID: collections.NewSequence(
 			sb,
-			types.SequenceKey,
-			"next_id",
+			types.SKUSequenceKey,
+			"next_sku_id",
 		),
 	}
 
@@ -165,13 +180,23 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 		return err
 	}
 
+	for _, provider := range gs.Providers {
+		if err := k.Providers.Set(ctx, provider.Id, provider); err != nil {
+			return err
+		}
+	}
+
+	if err := k.NextProviderID.Set(ctx, gs.NextProviderId); err != nil {
+		return err
+	}
+
 	for _, sku := range gs.Skus {
 		if err := k.SKUs.Set(ctx, sku.Id, sku); err != nil {
 			return err
 		}
 	}
 
-	if err := k.NextID.Set(ctx, gs.NextId); err != nil {
+	if err := k.NextSKUID.Set(ctx, gs.NextSkuId); err != nil {
 		return err
 	}
 
@@ -185,6 +210,20 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		panic(err)
 	}
 
+	var providers []types.Provider
+	err = k.Providers.Walk(ctx, nil, func(_ uint64, provider types.Provider) (bool, error) {
+		providers = append(providers, provider)
+		return false, nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	nextProviderID, err := k.NextProviderID.Peek(ctx)
+	if err != nil {
+		panic(err)
+	}
+
 	var skus []types.SKU
 	err = k.SKUs.Walk(ctx, nil, func(_ uint64, sku types.SKU) (bool, error) {
 		skus = append(skus, sku)
@@ -194,17 +233,57 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		panic(err)
 	}
 
-	nextID, err := k.NextID.Peek(ctx)
+	nextSKUID, err := k.NextSKUID.Peek(ctx)
 	if err != nil {
 		panic(err)
 	}
 
 	return &types.GenesisState{
-		Params: params,
-		Skus:   skus,
-		NextId: nextID,
+		Params:         params,
+		Providers:      providers,
+		NextProviderId: nextProviderID,
+		Skus:           skus,
+		NextSkuId:      nextSKUID,
 	}
 }
+
+// Provider operations
+
+// GetProvider returns a Provider by its ID.
+func (k *Keeper) GetProvider(ctx context.Context, id uint64) (types.Provider, error) {
+	provider, err := k.Providers.Get(ctx, id)
+	if err != nil {
+		return types.Provider{}, types.ErrProviderNotFound
+	}
+	return provider, nil
+}
+
+// SetProvider sets a Provider in the store.
+func (k *Keeper) SetProvider(ctx context.Context, provider types.Provider) error {
+	return k.Providers.Set(ctx, provider.Id, provider)
+}
+
+// GetNextProviderID returns the next Provider ID and increments the sequence.
+func (k *Keeper) GetNextProviderID(ctx context.Context) (uint64, error) {
+	return k.NextProviderID.Next(ctx)
+}
+
+// GetAllProviders returns all Providers in the store.
+func (k *Keeper) GetAllProviders(ctx context.Context) ([]types.Provider, error) {
+	var providers []types.Provider
+
+	err := k.Providers.Walk(ctx, nil, func(_ uint64, provider types.Provider) (bool, error) {
+		providers = append(providers, provider)
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return providers, nil
+}
+
+// SKU operations
 
 // GetSKU returns a SKU by its ID.
 func (k *Keeper) GetSKU(ctx context.Context, id uint64) (types.SKU, error) {
@@ -220,9 +299,9 @@ func (k *Keeper) SetSKU(ctx context.Context, sku types.SKU) error {
 	return k.SKUs.Set(ctx, sku.Id, sku)
 }
 
-// GetNextID returns the next SKU ID and increments the sequence.
-func (k *Keeper) GetNextID(ctx context.Context) (uint64, error) {
-	return k.NextID.Next(ctx)
+// GetNextSKUID returns the next SKU ID and increments the sequence.
+func (k *Keeper) GetNextSKUID(ctx context.Context) (uint64, error) {
+	return k.NextSKUID.Next(ctx)
 }
 
 // GetAllSKUs returns all SKUs in the store.
@@ -240,11 +319,11 @@ func (k *Keeper) GetAllSKUs(ctx context.Context) ([]types.SKU, error) {
 	return skus, nil
 }
 
-// GetSKUsByProvider returns all SKUs for a given provider using the provider index.
-func (k *Keeper) GetSKUsByProvider(ctx context.Context, provider string) ([]types.SKU, error) {
+// GetSKUsByProviderID returns all SKUs for a given provider ID using the provider index.
+func (k *Keeper) GetSKUsByProviderID(ctx context.Context, providerID uint64) ([]types.SKU, error) {
 	var skus []types.SKU
 
-	iter, err := k.SKUs.Indexes.Provider.MatchExact(ctx, provider)
+	iter, err := k.SKUs.Indexes.Provider.MatchExact(ctx, providerID)
 	if err != nil {
 		return nil, err
 	}

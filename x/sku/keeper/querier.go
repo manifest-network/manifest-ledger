@@ -37,6 +37,67 @@ func (q Querier) Params(ctx context.Context, req *types.QueryParamsRequest) (*ty
 	return &types.QueryParamsResponse{Params: params}, nil
 }
 
+// Provider queries a Provider by its ID.
+func (q Querier) Provider(ctx context.Context, req *types.QueryProviderRequest) (*types.QueryProviderResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid request")
+	}
+
+	provider, err := q.Keeper.GetProvider(ctx, req.Id)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	return &types.QueryProviderResponse{Provider: provider}, nil
+}
+
+// Providers queries all Providers with pagination.
+func (q Querier) Providers(ctx context.Context, req *types.QueryProvidersRequest) (*types.QueryProvidersResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid request")
+	}
+
+	// Use filtered pagination if active_only is set
+	if req.ActiveOnly {
+		providers, pageRes, err := query.CollectionFilteredPaginate(
+			ctx,
+			q.Keeper.Providers,
+			req.Pagination,
+			func(_ uint64, provider types.Provider) (bool, error) {
+				return provider.Active, nil
+			},
+			func(_ uint64, provider types.Provider) (types.Provider, error) {
+				return provider, nil
+			},
+		)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		return &types.QueryProvidersResponse{
+			Providers:  providers,
+			Pagination: pageRes,
+		}, nil
+	}
+
+	providers, pageRes, err := query.CollectionPaginate(
+		ctx,
+		q.Keeper.Providers,
+		req.Pagination,
+		func(_ uint64, provider types.Provider) (types.Provider, error) {
+			return provider, nil
+		},
+	)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &types.QueryProvidersResponse{
+		Providers:  providers,
+		Pagination: pageRes,
+	}, nil
+}
+
 // SKU queries a SKU by its ID.
 func (q Querier) SKU(ctx context.Context, req *types.QuerySKURequest) (*types.QuerySKUResponse, error) {
 	if req == nil {
@@ -98,14 +159,14 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 	}, nil
 }
 
-// SKUsByProvider queries SKUs by provider with pagination.
+// SKUsByProvider queries SKUs by provider ID with pagination.
 func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProviderRequest) (*types.QuerySKUsByProviderResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid request")
 	}
 
-	if req.Provider == "" {
-		return nil, status.Error(codes.InvalidArgument, "provider cannot be empty")
+	if req.ProviderId == 0 {
+		return nil, status.Error(codes.InvalidArgument, "provider_id cannot be zero")
 	}
 
 	skus, pageRes, err := query.CollectionFilteredPaginate(
@@ -113,7 +174,7 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 		q.Keeper.SKUs,
 		req.Pagination,
 		func(_ uint64, sku types.SKU) (bool, error) {
-			if sku.Provider != req.Provider {
+			if sku.ProviderId != req.ProviderId {
 				return false, nil
 			}
 			if req.ActiveOnly && !sku.Active {

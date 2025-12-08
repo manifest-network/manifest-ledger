@@ -7,30 +7,163 @@ import (
 )
 
 var (
+	_ sdk.Msg = &MsgCreateProvider{}
+	_ sdk.Msg = &MsgUpdateProvider{}
+	_ sdk.Msg = &MsgDeactivateProvider{}
 	_ sdk.Msg = &MsgCreateSKU{}
 	_ sdk.Msg = &MsgUpdateSKU{}
 	_ sdk.Msg = &MsgDeactivateSKU{}
 	_ sdk.Msg = &MsgUpdateParams{}
 )
 
+// NewMsgCreateProvider creates a new MsgCreateProvider instance.
+func NewMsgCreateProvider(
+	authority string,
+	address string,
+	payoutAddress string,
+	metaHash []byte,
+) *MsgCreateProvider {
+	return &MsgCreateProvider{
+		Authority:     authority,
+		Address:       address,
+		PayoutAddress: payoutAddress,
+		MetaHash:      metaHash,
+	}
+}
+
+// Route returns the message route.
+func (msg *MsgCreateProvider) Route() string { return ModuleName }
+
+// Type returns the message type.
+func (msg *MsgCreateProvider) Type() string { return "create_provider" }
+
+// GetSigners returns the expected signers for the message.
+func (msg *MsgCreateProvider) GetSigners() []sdk.AccAddress {
+	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
+	return []sdk.AccAddress{addr}
+}
+
+// Validate performs basic validation.
+func (msg *MsgCreateProvider) Validate() error {
+	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
+		return errors.Wrap(err, "invalid authority address")
+	}
+
+	if _, err := sdk.AccAddressFromBech32(msg.Address); err != nil {
+		return errors.Wrap(err, "invalid provider address")
+	}
+
+	if _, err := sdk.AccAddressFromBech32(msg.PayoutAddress); err != nil {
+		return errors.Wrap(err, "invalid payout address")
+	}
+
+	return nil
+}
+
+// NewMsgUpdateProvider creates a new MsgUpdateProvider instance.
+func NewMsgUpdateProvider(
+	authority string,
+	id uint64,
+	address string,
+	payoutAddress string,
+	metaHash []byte,
+	active bool,
+) *MsgUpdateProvider {
+	return &MsgUpdateProvider{
+		Authority:     authority,
+		Id:            id,
+		Address:       address,
+		PayoutAddress: payoutAddress,
+		MetaHash:      metaHash,
+		Active:        active,
+	}
+}
+
+// Route returns the message route.
+func (msg *MsgUpdateProvider) Route() string { return ModuleName }
+
+// Type returns the message type.
+func (msg *MsgUpdateProvider) Type() string { return "update_provider" }
+
+// GetSigners returns the expected signers for the message.
+func (msg *MsgUpdateProvider) GetSigners() []sdk.AccAddress {
+	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
+	return []sdk.AccAddress{addr}
+}
+
+// Validate performs basic validation.
+func (msg *MsgUpdateProvider) Validate() error {
+	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
+		return errors.Wrap(err, "invalid authority address")
+	}
+
+	if msg.Id == 0 {
+		return errors.Wrap(ErrInvalidProvider, "id cannot be zero")
+	}
+
+	if _, err := sdk.AccAddressFromBech32(msg.Address); err != nil {
+		return errors.Wrap(err, "invalid provider address")
+	}
+
+	if _, err := sdk.AccAddressFromBech32(msg.PayoutAddress); err != nil {
+		return errors.Wrap(err, "invalid payout address")
+	}
+
+	return nil
+}
+
+// NewMsgDeactivateProvider creates a new MsgDeactivateProvider instance.
+func NewMsgDeactivateProvider(
+	authority string,
+	id uint64,
+) *MsgDeactivateProvider {
+	return &MsgDeactivateProvider{
+		Authority: authority,
+		Id:        id,
+	}
+}
+
+// Route returns the message route.
+func (msg *MsgDeactivateProvider) Route() string { return ModuleName }
+
+// Type returns the message type.
+func (msg *MsgDeactivateProvider) Type() string { return "deactivate_provider" }
+
+// GetSigners returns the expected signers for the message.
+func (msg *MsgDeactivateProvider) GetSigners() []sdk.AccAddress {
+	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
+	return []sdk.AccAddress{addr}
+}
+
+// Validate performs basic validation.
+func (msg *MsgDeactivateProvider) Validate() error {
+	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
+		return errors.Wrap(err, "invalid authority address")
+	}
+
+	if msg.Id == 0 {
+		return errors.Wrap(ErrInvalidProvider, "id cannot be zero")
+	}
+
+	return nil
+}
+
 // NewMsgCreateSKU creates a new MsgCreateSKU instance.
 func NewMsgCreateSKU(
 	authority string,
-	provider string,
-	payoutAddress string,
+	providerID uint64,
 	name string,
 	unit Unit,
 	basePrice sdk.Coin,
 	metaHash []byte,
 ) *MsgCreateSKU {
 	return &MsgCreateSKU{
-		Authority:     authority,
-		Provider:      provider,
-		PayoutAddress: payoutAddress,
-		Name:          name,
-		Unit:          unit,
-		BasePrice:     basePrice,
-		MetaHash:      metaHash,
+		Authority:  authority,
+		ProviderId: providerID,
+		Name:       name,
+		Unit:       unit,
+		BasePrice:  basePrice,
+		MetaHash:   metaHash,
 	}
 }
 
@@ -52,12 +185,8 @@ func (msg *MsgCreateSKU) Validate() error {
 		return errors.Wrap(err, "invalid authority address")
 	}
 
-	if msg.Provider == "" {
-		return errors.Wrap(ErrInvalidSKU, "provider cannot be empty")
-	}
-
-	if _, err := sdk.AccAddressFromBech32(msg.PayoutAddress); err != nil {
-		return errors.Wrap(err, "invalid payout address")
+	if msg.ProviderId == 0 {
+		return errors.Wrap(ErrInvalidSKU, "provider_id cannot be zero")
 	}
 
 	if msg.Name == "" {
@@ -78,9 +207,8 @@ func (msg *MsgCreateSKU) Validate() error {
 // NewMsgUpdateSKU creates a new MsgUpdateSKU instance.
 func NewMsgUpdateSKU(
 	authority string,
-	provider string,
 	id uint64,
-	payoutAddress string,
+	providerID uint64,
 	name string,
 	unit Unit,
 	basePrice sdk.Coin,
@@ -88,15 +216,14 @@ func NewMsgUpdateSKU(
 	active bool,
 ) *MsgUpdateSKU {
 	return &MsgUpdateSKU{
-		Authority:     authority,
-		Provider:      provider,
-		Id:            id,
-		PayoutAddress: payoutAddress,
-		Name:          name,
-		Unit:          unit,
-		BasePrice:     basePrice,
-		MetaHash:      metaHash,
-		Active:        active,
+		Authority:  authority,
+		Id:         id,
+		ProviderId: providerID,
+		Name:       name,
+		Unit:       unit,
+		BasePrice:  basePrice,
+		MetaHash:   metaHash,
+		Active:     active,
 	}
 }
 
@@ -118,16 +245,12 @@ func (msg *MsgUpdateSKU) Validate() error {
 		return errors.Wrap(err, "invalid authority address")
 	}
 
-	if msg.Provider == "" {
-		return errors.Wrap(ErrInvalidSKU, "provider cannot be empty")
-	}
-
 	if msg.Id == 0 {
 		return errors.Wrap(ErrInvalidSKU, "id cannot be zero")
 	}
 
-	if _, err := sdk.AccAddressFromBech32(msg.PayoutAddress); err != nil {
-		return errors.Wrap(err, "invalid payout address")
+	if msg.ProviderId == 0 {
+		return errors.Wrap(ErrInvalidSKU, "provider_id cannot be zero")
 	}
 
 	if msg.Name == "" {
@@ -148,12 +271,10 @@ func (msg *MsgUpdateSKU) Validate() error {
 // NewMsgDeactivateSKU creates a new MsgDeactivateSKU instance.
 func NewMsgDeactivateSKU(
 	authority string,
-	provider string,
 	id uint64,
 ) *MsgDeactivateSKU {
 	return &MsgDeactivateSKU{
 		Authority: authority,
-		Provider:  provider,
 		Id:        id,
 	}
 }
@@ -174,10 +295,6 @@ func (msg *MsgDeactivateSKU) GetSigners() []sdk.AccAddress {
 func (msg *MsgDeactivateSKU) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
 		return errors.Wrap(err, "invalid authority address")
-	}
-
-	if msg.Provider == "" {
-		return errors.Wrap(ErrInvalidSKU, "provider cannot be empty")
 	}
 
 	if msg.Id == 0 {

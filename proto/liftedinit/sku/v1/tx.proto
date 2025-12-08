@@ -14,6 +14,16 @@ option go_package = "github.com/manifest-network/manifest-ledger/x/sku/types";
 service Msg {
   option (cosmos.msg.v1.service) = true;
 
+  // CreateProvider creates a new provider.
+  rpc CreateProvider(MsgCreateProvider) returns (MsgCreateProviderResponse);
+
+  // UpdateProvider updates an existing provider.
+  rpc UpdateProvider(MsgUpdateProvider) returns (MsgUpdateProviderResponse);
+
+  // DeactivateProvider deactivates a provider (soft delete).
+  // Deactivated providers cannot create new SKUs but existing SKUs continue.
+  rpc DeactivateProvider(MsgDeactivateProvider) returns (MsgDeactivateProviderResponse);
+
   // CreateSKU creates a new SKU.
   rpc CreateSKU(MsgCreateSKU) returns (MsgCreateSKUResponse);
 
@@ -28,6 +38,76 @@ service Msg {
   rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
 }
 
+// MsgCreateProvider is the Msg/CreateProvider request type.
+message MsgCreateProvider {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (gogoproto.equal) = false;
+  option (amino.name) = "lifted/sku/MsgCreateProvider";
+
+  // authority is the address of the controlling account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // address is the management address of the provider.
+  string address = 2 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // payout_address is the address where payments are sent.
+  string payout_address = 3 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // meta_hash is a hash of the off-chain metadata.
+  bytes meta_hash = 4;
+}
+
+// MsgCreateProviderResponse is the Msg/CreateProvider response type.
+message MsgCreateProviderResponse {
+  // id is the unique identifier of the created provider.
+  uint64 id = 1;
+}
+
+// MsgUpdateProvider is the Msg/UpdateProvider request type.
+message MsgUpdateProvider {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (gogoproto.equal) = false;
+  option (amino.name) = "lifted/sku/MsgUpdateProvider";
+
+  // authority is the address of the controlling account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // id is the unique identifier of the provider to update.
+  uint64 id = 2;
+
+  // address is the management address of the provider.
+  string address = 3 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // payout_address is the address where payments are sent.
+  string payout_address = 4 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // meta_hash is a hash of the off-chain metadata.
+  bytes meta_hash = 5;
+
+  // active indicates whether the provider is active.
+  bool active = 6;
+}
+
+// MsgUpdateProviderResponse is the Msg/UpdateProvider response type.
+message MsgUpdateProviderResponse {}
+
+// MsgDeactivateProvider is the Msg/DeactivateProvider request type.
+// This performs a soft delete - the provider remains in state but is marked inactive.
+message MsgDeactivateProvider {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (gogoproto.equal) = false;
+  option (amino.name) = "lifted/sku/MsgDeactivateProvider";
+
+  // authority is the address of the controlling account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // id is the unique identifier of the provider to deactivate.
+  uint64 id = 2;
+}
+
+// MsgDeactivateProviderResponse is the Msg/DeactivateProvider response type.
+message MsgDeactivateProviderResponse {}
+
 // MsgCreateSKU is the Msg/CreateSKU request type.
 message MsgCreateSKU {
   option (cosmos.msg.v1.signer) = "authority";
@@ -37,20 +117,17 @@ message MsgCreateSKU {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // provider is the identifier of the SKU provider.
-  string provider = 2;
-
-  // payout_address is the address where payments for this SKU are sent.
-  string payout_address = 3 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // provider_id is the unique identifier of the SKU provider.
+  uint64 provider_id = 2;
 
   // name is the human-readable name of the SKU.
-  string name = 4;
+  string name = 3;
 
   // unit is the billing unit for the SKU.
-  Unit unit = 5;
+  Unit unit = 4;
 
   // base_price is the base price for the SKU.
-  cosmos.base.v1beta1.Coin base_price = 6 [
+  cosmos.base.v1beta1.Coin base_price = 5 [
     (gogoproto.nullable) = false,
     (amino.dont_omitempty) = true,
     (amino.encoding) = "legacy_coin",
@@ -58,7 +135,7 @@ message MsgCreateSKU {
   ];
 
   // meta_hash is a hash of the off-chain metadata.
-  bytes meta_hash = 7;
+  bytes meta_hash = 6;
 }
 
 // MsgCreateSKUResponse is the Msg/CreateSKU response type.
@@ -76,23 +153,20 @@ message MsgUpdateSKU {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // provider is the identifier of the SKU provider.
-  string provider = 2;
-
   // id is the unique identifier of the SKU to update.
-  uint64 id = 3;
+  uint64 id = 2;
 
-  // payout_address is the address where payments for this SKU are sent.
-  string payout_address = 4 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // provider_id is the unique identifier of the SKU provider.
+  uint64 provider_id = 3;
 
   // name is the human-readable name of the SKU.
-  string name = 5;
+  string name = 4;
 
   // unit is the billing unit for the SKU.
-  Unit unit = 6;
+  Unit unit = 5;
 
   // base_price is the base price for the SKU.
-  cosmos.base.v1beta1.Coin base_price = 7 [
+  cosmos.base.v1beta1.Coin base_price = 6 [
     (gogoproto.nullable) = false,
     (amino.dont_omitempty) = true,
     (amino.encoding) = "legacy_coin",
@@ -100,10 +174,10 @@ message MsgUpdateSKU {
   ];
 
   // meta_hash is a hash of the off-chain metadata.
-  bytes meta_hash = 8;
+  bytes meta_hash = 7;
 
   // active indicates whether the SKU is active.
-  bool active = 9;
+  bool active = 8;
 }
 
 // MsgUpdateSKUResponse is the Msg/UpdateSKU response type.
@@ -119,11 +193,8 @@ message MsgDeactivateSKU {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // provider is the identifier of the SKU provider.
-  string provider = 2;
-
   // id is the unique identifier of the SKU to deactivate.
-  uint64 id = 3;
+  uint64 id = 2;
 }
 
 // MsgDeactivateSKUResponse is the Msg/DeactivateSKU response type.

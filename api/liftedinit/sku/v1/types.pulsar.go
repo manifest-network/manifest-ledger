@@ -497,23 +497,673 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 }
 
 var (
-	md_SKU                protoreflect.MessageDescriptor
-	fd_SKU_id             protoreflect.FieldDescriptor
-	fd_SKU_provider       protoreflect.FieldDescriptor
-	fd_SKU_payout_address protoreflect.FieldDescriptor
-	fd_SKU_name           protoreflect.FieldDescriptor
-	fd_SKU_unit           protoreflect.FieldDescriptor
-	fd_SKU_base_price     protoreflect.FieldDescriptor
-	fd_SKU_meta_hash      protoreflect.FieldDescriptor
-	fd_SKU_active         protoreflect.FieldDescriptor
+	md_Provider                protoreflect.MessageDescriptor
+	fd_Provider_id             protoreflect.FieldDescriptor
+	fd_Provider_address        protoreflect.FieldDescriptor
+	fd_Provider_payout_address protoreflect.FieldDescriptor
+	fd_Provider_meta_hash      protoreflect.FieldDescriptor
+	fd_Provider_active         protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_liftedinit_sku_v1_types_proto_init()
+	md_Provider = File_liftedinit_sku_v1_types_proto.Messages().ByName("Provider")
+	fd_Provider_id = md_Provider.Fields().ByName("id")
+	fd_Provider_address = md_Provider.Fields().ByName("address")
+	fd_Provider_payout_address = md_Provider.Fields().ByName("payout_address")
+	fd_Provider_meta_hash = md_Provider.Fields().ByName("meta_hash")
+	fd_Provider_active = md_Provider.Fields().ByName("active")
+}
+
+var _ protoreflect.Message = (*fastReflection_Provider)(nil)
+
+type fastReflection_Provider Provider
+
+func (x *Provider) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_Provider)(x)
+}
+
+func (x *Provider) slowProtoReflect() protoreflect.Message {
+	mi := &file_liftedinit_sku_v1_types_proto_msgTypes[1]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_Provider_messageType fastReflection_Provider_messageType
+var _ protoreflect.MessageType = fastReflection_Provider_messageType{}
+
+type fastReflection_Provider_messageType struct{}
+
+func (x fastReflection_Provider_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_Provider)(nil)
+}
+func (x fastReflection_Provider_messageType) New() protoreflect.Message {
+	return new(fastReflection_Provider)
+}
+func (x fastReflection_Provider_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_Provider
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_Provider) Descriptor() protoreflect.MessageDescriptor {
+	return md_Provider
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_Provider) Type() protoreflect.MessageType {
+	return _fastReflection_Provider_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_Provider) New() protoreflect.Message {
+	return new(fastReflection_Provider)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_Provider) Interface() protoreflect.ProtoMessage {
+	return (*Provider)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_Provider) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.Id != uint64(0) {
+		value := protoreflect.ValueOfUint64(x.Id)
+		if !f(fd_Provider_id, value) {
+			return
+		}
+	}
+	if x.Address != "" {
+		value := protoreflect.ValueOfString(x.Address)
+		if !f(fd_Provider_address, value) {
+			return
+		}
+	}
+	if x.PayoutAddress != "" {
+		value := protoreflect.ValueOfString(x.PayoutAddress)
+		if !f(fd_Provider_payout_address, value) {
+			return
+		}
+	}
+	if len(x.MetaHash) != 0 {
+		value := protoreflect.ValueOfBytes(x.MetaHash)
+		if !f(fd_Provider_meta_hash, value) {
+			return
+		}
+	}
+	if x.Active != false {
+		value := protoreflect.ValueOfBool(x.Active)
+		if !f(fd_Provider_active, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_Provider) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "liftedinit.sku.v1.Provider.id":
+		return x.Id != uint64(0)
+	case "liftedinit.sku.v1.Provider.address":
+		return x.Address != ""
+	case "liftedinit.sku.v1.Provider.payout_address":
+		return x.PayoutAddress != ""
+	case "liftedinit.sku.v1.Provider.meta_hash":
+		return len(x.MetaHash) != 0
+	case "liftedinit.sku.v1.Provider.active":
+		return x.Active != false
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.Provider"))
+		}
+		panic(fmt.Errorf("message liftedinit.sku.v1.Provider does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_Provider) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "liftedinit.sku.v1.Provider.id":
+		x.Id = uint64(0)
+	case "liftedinit.sku.v1.Provider.address":
+		x.Address = ""
+	case "liftedinit.sku.v1.Provider.payout_address":
+		x.PayoutAddress = ""
+	case "liftedinit.sku.v1.Provider.meta_hash":
+		x.MetaHash = nil
+	case "liftedinit.sku.v1.Provider.active":
+		x.Active = false
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.Provider"))
+		}
+		panic(fmt.Errorf("message liftedinit.sku.v1.Provider does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_Provider) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "liftedinit.sku.v1.Provider.id":
+		value := x.Id
+		return protoreflect.ValueOfUint64(value)
+	case "liftedinit.sku.v1.Provider.address":
+		value := x.Address
+		return protoreflect.ValueOfString(value)
+	case "liftedinit.sku.v1.Provider.payout_address":
+		value := x.PayoutAddress
+		return protoreflect.ValueOfString(value)
+	case "liftedinit.sku.v1.Provider.meta_hash":
+		value := x.MetaHash
+		return protoreflect.ValueOfBytes(value)
+	case "liftedinit.sku.v1.Provider.active":
+		value := x.Active
+		return protoreflect.ValueOfBool(value)
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.Provider"))
+		}
+		panic(fmt.Errorf("message liftedinit.sku.v1.Provider does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_Provider) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "liftedinit.sku.v1.Provider.id":
+		x.Id = value.Uint()
+	case "liftedinit.sku.v1.Provider.address":
+		x.Address = value.Interface().(string)
+	case "liftedinit.sku.v1.Provider.payout_address":
+		x.PayoutAddress = value.Interface().(string)
+	case "liftedinit.sku.v1.Provider.meta_hash":
+		x.MetaHash = value.Bytes()
+	case "liftedinit.sku.v1.Provider.active":
+		x.Active = value.Bool()
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.Provider"))
+		}
+		panic(fmt.Errorf("message liftedinit.sku.v1.Provider does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_Provider) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.sku.v1.Provider.id":
+		panic(fmt.Errorf("field id of message liftedinit.sku.v1.Provider is not mutable"))
+	case "liftedinit.sku.v1.Provider.address":
+		panic(fmt.Errorf("field address of message liftedinit.sku.v1.Provider is not mutable"))
+	case "liftedinit.sku.v1.Provider.payout_address":
+		panic(fmt.Errorf("field payout_address of message liftedinit.sku.v1.Provider is not mutable"))
+	case "liftedinit.sku.v1.Provider.meta_hash":
+		panic(fmt.Errorf("field meta_hash of message liftedinit.sku.v1.Provider is not mutable"))
+	case "liftedinit.sku.v1.Provider.active":
+		panic(fmt.Errorf("field active of message liftedinit.sku.v1.Provider is not mutable"))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.Provider"))
+		}
+		panic(fmt.Errorf("message liftedinit.sku.v1.Provider does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_Provider) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.sku.v1.Provider.id":
+		return protoreflect.ValueOfUint64(uint64(0))
+	case "liftedinit.sku.v1.Provider.address":
+		return protoreflect.ValueOfString("")
+	case "liftedinit.sku.v1.Provider.payout_address":
+		return protoreflect.ValueOfString("")
+	case "liftedinit.sku.v1.Provider.meta_hash":
+		return protoreflect.ValueOfBytes(nil)
+	case "liftedinit.sku.v1.Provider.active":
+		return protoreflect.ValueOfBool(false)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.sku.v1.Provider"))
+		}
+		panic(fmt.Errorf("message liftedinit.sku.v1.Provider does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_Provider) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.sku.v1.Provider", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_Provider) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_Provider) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_Provider) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_Provider) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*Provider)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		if x.Id != 0 {
+			n += 1 + runtime.Sov(uint64(x.Id))
+		}
+		l = len(x.Address)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		l = len(x.PayoutAddress)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		l = len(x.MetaHash)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.Active {
+			n += 2
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*Provider)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.Active {
+			i--
+			if x.Active {
+				dAtA[i] = 1
+			} else {
+				dAtA[i] = 0
+			}
+			i--
+			dAtA[i] = 0x28
+		}
+		if len(x.MetaHash) > 0 {
+			i -= len(x.MetaHash)
+			copy(dAtA[i:], x.MetaHash)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.MetaHash)))
+			i--
+			dAtA[i] = 0x22
+		}
+		if len(x.PayoutAddress) > 0 {
+			i -= len(x.PayoutAddress)
+			copy(dAtA[i:], x.PayoutAddress)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.PayoutAddress)))
+			i--
+			dAtA[i] = 0x1a
+		}
+		if len(x.Address) > 0 {
+			i -= len(x.Address)
+			copy(dAtA[i:], x.Address)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Address)))
+			i--
+			dAtA[i] = 0x12
+		}
+		if x.Id != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.Id))
+			i--
+			dAtA[i] = 0x8
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*Provider)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: Provider: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: Provider: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+				}
+				x.Id = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.Id |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 2:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Address", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Address = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			case 3:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field PayoutAddress", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.PayoutAddress = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			case 4:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field MetaHash", wireType)
+				}
+				var byteLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					byteLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if byteLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + byteLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.MetaHash = append(x.MetaHash[:0], dAtA[iNdEx:postIndex]...)
+				if x.MetaHash == nil {
+					x.MetaHash = []byte{}
+				}
+				iNdEx = postIndex
+			case 5:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Active", wireType)
+				}
+				var v int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				x.Active = bool(v != 0)
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var (
+	md_SKU             protoreflect.MessageDescriptor
+	fd_SKU_id          protoreflect.FieldDescriptor
+	fd_SKU_provider_id protoreflect.FieldDescriptor
+	fd_SKU_name        protoreflect.FieldDescriptor
+	fd_SKU_unit        protoreflect.FieldDescriptor
+	fd_SKU_base_price  protoreflect.FieldDescriptor
+	fd_SKU_meta_hash   protoreflect.FieldDescriptor
+	fd_SKU_active      protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_liftedinit_sku_v1_types_proto_init()
 	md_SKU = File_liftedinit_sku_v1_types_proto.Messages().ByName("SKU")
 	fd_SKU_id = md_SKU.Fields().ByName("id")
-	fd_SKU_provider = md_SKU.Fields().ByName("provider")
-	fd_SKU_payout_address = md_SKU.Fields().ByName("payout_address")
+	fd_SKU_provider_id = md_SKU.Fields().ByName("provider_id")
 	fd_SKU_name = md_SKU.Fields().ByName("name")
 	fd_SKU_unit = md_SKU.Fields().ByName("unit")
 	fd_SKU_base_price = md_SKU.Fields().ByName("base_price")
@@ -530,7 +1180,7 @@ func (x *SKU) ProtoReflect() protoreflect.Message {
 }
 
 func (x *SKU) slowProtoReflect() protoreflect.Message {
-	mi := &file_liftedinit_sku_v1_types_proto_msgTypes[1]
+	mi := &file_liftedinit_sku_v1_types_proto_msgTypes[2]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -592,15 +1242,9 @@ func (x *fastReflection_SKU) Range(f func(protoreflect.FieldDescriptor, protoref
 			return
 		}
 	}
-	if x.Provider != "" {
-		value := protoreflect.ValueOfString(x.Provider)
-		if !f(fd_SKU_provider, value) {
-			return
-		}
-	}
-	if x.PayoutAddress != "" {
-		value := protoreflect.ValueOfString(x.PayoutAddress)
-		if !f(fd_SKU_payout_address, value) {
+	if x.ProviderId != uint64(0) {
+		value := protoreflect.ValueOfUint64(x.ProviderId)
+		if !f(fd_SKU_provider_id, value) {
 			return
 		}
 	}
@@ -651,10 +1295,8 @@ func (x *fastReflection_SKU) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
 	case "liftedinit.sku.v1.SKU.id":
 		return x.Id != uint64(0)
-	case "liftedinit.sku.v1.SKU.provider":
-		return x.Provider != ""
-	case "liftedinit.sku.v1.SKU.payout_address":
-		return x.PayoutAddress != ""
+	case "liftedinit.sku.v1.SKU.provider_id":
+		return x.ProviderId != uint64(0)
 	case "liftedinit.sku.v1.SKU.name":
 		return x.Name != ""
 	case "liftedinit.sku.v1.SKU.unit":
@@ -683,10 +1325,8 @@ func (x *fastReflection_SKU) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
 	case "liftedinit.sku.v1.SKU.id":
 		x.Id = uint64(0)
-	case "liftedinit.sku.v1.SKU.provider":
-		x.Provider = ""
-	case "liftedinit.sku.v1.SKU.payout_address":
-		x.PayoutAddress = ""
+	case "liftedinit.sku.v1.SKU.provider_id":
+		x.ProviderId = uint64(0)
 	case "liftedinit.sku.v1.SKU.name":
 		x.Name = ""
 	case "liftedinit.sku.v1.SKU.unit":
@@ -716,12 +1356,9 @@ func (x *fastReflection_SKU) Get(descriptor protoreflect.FieldDescriptor) protor
 	case "liftedinit.sku.v1.SKU.id":
 		value := x.Id
 		return protoreflect.ValueOfUint64(value)
-	case "liftedinit.sku.v1.SKU.provider":
-		value := x.Provider
-		return protoreflect.ValueOfString(value)
-	case "liftedinit.sku.v1.SKU.payout_address":
-		value := x.PayoutAddress
-		return protoreflect.ValueOfString(value)
+	case "liftedinit.sku.v1.SKU.provider_id":
+		value := x.ProviderId
+		return protoreflect.ValueOfUint64(value)
 	case "liftedinit.sku.v1.SKU.name":
 		value := x.Name
 		return protoreflect.ValueOfString(value)
@@ -759,10 +1396,8 @@ func (x *fastReflection_SKU) Set(fd protoreflect.FieldDescriptor, value protoref
 	switch fd.FullName() {
 	case "liftedinit.sku.v1.SKU.id":
 		x.Id = value.Uint()
-	case "liftedinit.sku.v1.SKU.provider":
-		x.Provider = value.Interface().(string)
-	case "liftedinit.sku.v1.SKU.payout_address":
-		x.PayoutAddress = value.Interface().(string)
+	case "liftedinit.sku.v1.SKU.provider_id":
+		x.ProviderId = value.Uint()
 	case "liftedinit.sku.v1.SKU.name":
 		x.Name = value.Interface().(string)
 	case "liftedinit.sku.v1.SKU.unit":
@@ -800,10 +1435,8 @@ func (x *fastReflection_SKU) Mutable(fd protoreflect.FieldDescriptor) protorefle
 		return protoreflect.ValueOfMessage(x.BasePrice.ProtoReflect())
 	case "liftedinit.sku.v1.SKU.id":
 		panic(fmt.Errorf("field id of message liftedinit.sku.v1.SKU is not mutable"))
-	case "liftedinit.sku.v1.SKU.provider":
-		panic(fmt.Errorf("field provider of message liftedinit.sku.v1.SKU is not mutable"))
-	case "liftedinit.sku.v1.SKU.payout_address":
-		panic(fmt.Errorf("field payout_address of message liftedinit.sku.v1.SKU is not mutable"))
+	case "liftedinit.sku.v1.SKU.provider_id":
+		panic(fmt.Errorf("field provider_id of message liftedinit.sku.v1.SKU is not mutable"))
 	case "liftedinit.sku.v1.SKU.name":
 		panic(fmt.Errorf("field name of message liftedinit.sku.v1.SKU is not mutable"))
 	case "liftedinit.sku.v1.SKU.unit":
@@ -827,10 +1460,8 @@ func (x *fastReflection_SKU) NewField(fd protoreflect.FieldDescriptor) protorefl
 	switch fd.FullName() {
 	case "liftedinit.sku.v1.SKU.id":
 		return protoreflect.ValueOfUint64(uint64(0))
-	case "liftedinit.sku.v1.SKU.provider":
-		return protoreflect.ValueOfString("")
-	case "liftedinit.sku.v1.SKU.payout_address":
-		return protoreflect.ValueOfString("")
+	case "liftedinit.sku.v1.SKU.provider_id":
+		return protoreflect.ValueOfUint64(uint64(0))
 	case "liftedinit.sku.v1.SKU.name":
 		return protoreflect.ValueOfString("")
 	case "liftedinit.sku.v1.SKU.unit":
@@ -914,13 +1545,8 @@ func (x *fastReflection_SKU) ProtoMethods() *protoiface.Methods {
 		if x.Id != 0 {
 			n += 1 + runtime.Sov(uint64(x.Id))
 		}
-		l = len(x.Provider)
-		if l > 0 {
-			n += 1 + l + runtime.Sov(uint64(l))
-		}
-		l = len(x.PayoutAddress)
-		if l > 0 {
-			n += 1 + l + runtime.Sov(uint64(l))
+		if x.ProviderId != 0 {
+			n += 1 + runtime.Sov(uint64(x.ProviderId))
 		}
 		l = len(x.Name)
 		if l > 0 {
@@ -977,14 +1603,14 @@ func (x *fastReflection_SKU) ProtoMethods() *protoiface.Methods {
 				dAtA[i] = 0
 			}
 			i--
-			dAtA[i] = 0x40
+			dAtA[i] = 0x38
 		}
 		if len(x.MetaHash) > 0 {
 			i -= len(x.MetaHash)
 			copy(dAtA[i:], x.MetaHash)
 			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.MetaHash)))
 			i--
-			dAtA[i] = 0x3a
+			dAtA[i] = 0x32
 		}
 		if x.BasePrice != nil {
 			encoded, err := options.Marshal(x.BasePrice)
@@ -998,33 +1624,24 @@ func (x *fastReflection_SKU) ProtoMethods() *protoiface.Methods {
 			copy(dAtA[i:], encoded)
 			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
 			i--
-			dAtA[i] = 0x32
+			dAtA[i] = 0x2a
 		}
 		if x.Unit != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.Unit))
 			i--
-			dAtA[i] = 0x28
+			dAtA[i] = 0x20
 		}
 		if len(x.Name) > 0 {
 			i -= len(x.Name)
 			copy(dAtA[i:], x.Name)
 			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Name)))
 			i--
-			dAtA[i] = 0x22
-		}
-		if len(x.PayoutAddress) > 0 {
-			i -= len(x.PayoutAddress)
-			copy(dAtA[i:], x.PayoutAddress)
-			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.PayoutAddress)))
-			i--
 			dAtA[i] = 0x1a
 		}
-		if len(x.Provider) > 0 {
-			i -= len(x.Provider)
-			copy(dAtA[i:], x.Provider)
-			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Provider)))
+		if x.ProviderId != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.ProviderId))
 			i--
-			dAtA[i] = 0x12
+			dAtA[i] = 0x10
 		}
 		if x.Id != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.Id))
@@ -1100,10 +1717,10 @@ func (x *fastReflection_SKU) ProtoMethods() *protoiface.Methods {
 					}
 				}
 			case 2:
-				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Provider", wireType)
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ProviderId", wireType)
 				}
-				var stringLen uint64
+				x.ProviderId = 0
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
@@ -1113,57 +1730,12 @@ func (x *fastReflection_SKU) ProtoMethods() *protoiface.Methods {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					stringLen |= uint64(b&0x7F) << shift
+					x.ProviderId |= uint64(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
 				}
-				intStringLen := int(stringLen)
-				if intStringLen < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				postIndex := iNdEx + intStringLen
-				if postIndex < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				if postIndex > l {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-				}
-				x.Provider = string(dAtA[iNdEx:postIndex])
-				iNdEx = postIndex
 			case 3:
-				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field PayoutAddress", wireType)
-				}
-				var stringLen uint64
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-					}
-					if iNdEx >= l {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					stringLen |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				intStringLen := int(stringLen)
-				if intStringLen < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				postIndex := iNdEx + intStringLen
-				if postIndex < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				if postIndex > l {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-				}
-				x.PayoutAddress = string(dAtA[iNdEx:postIndex])
-				iNdEx = postIndex
-			case 4:
 				if wireType != 2 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
 				}
@@ -1195,7 +1767,7 @@ func (x *fastReflection_SKU) ProtoMethods() *protoiface.Methods {
 				}
 				x.Name = string(dAtA[iNdEx:postIndex])
 				iNdEx = postIndex
-			case 5:
+			case 4:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Unit", wireType)
 				}
@@ -1214,7 +1786,7 @@ func (x *fastReflection_SKU) ProtoMethods() *protoiface.Methods {
 						break
 					}
 				}
-			case 6:
+			case 5:
 				if wireType != 2 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field BasePrice", wireType)
 				}
@@ -1250,7 +1822,7 @@ func (x *fastReflection_SKU) ProtoMethods() *protoiface.Methods {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
 				iNdEx = postIndex
-			case 7:
+			case 6:
 				if wireType != 2 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field MetaHash", wireType)
 				}
@@ -1284,7 +1856,7 @@ func (x *fastReflection_SKU) ProtoMethods() *protoiface.Methods {
 					x.MetaHash = []byte{}
 				}
 				iNdEx = postIndex
-			case 8:
+			case 7:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Active", wireType)
 				}
@@ -1443,6 +2015,79 @@ func (x *Params) GetAllowedList() []string {
 	return nil
 }
 
+// Provider defines a SKU provider entity.
+type Provider struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// id is the unique identifier for the provider.
+	Id uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	// address is the management address of the provider.
+	Address string `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
+	// payout_address is the address where payments are sent.
+	PayoutAddress string `protobuf:"bytes,3,opt,name=payout_address,json=payoutAddress,proto3" json:"payout_address,omitempty"`
+	// meta_hash is a hash of the off-chain metadata (name, description, etc.).
+	MetaHash []byte `protobuf:"bytes,4,opt,name=meta_hash,json=metaHash,proto3" json:"meta_hash,omitempty"`
+	// active indicates whether the provider is active.
+	Active bool `protobuf:"varint,5,opt,name=active,proto3" json:"active,omitempty"`
+}
+
+func (x *Provider) Reset() {
+	*x = Provider{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_liftedinit_sku_v1_types_proto_msgTypes[1]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *Provider) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Provider) ProtoMessage() {}
+
+// Deprecated: Use Provider.ProtoReflect.Descriptor instead.
+func (*Provider) Descriptor() ([]byte, []int) {
+	return file_liftedinit_sku_v1_types_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Provider) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *Provider) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *Provider) GetPayoutAddress() string {
+	if x != nil {
+		return x.PayoutAddress
+	}
+	return ""
+}
+
+func (x *Provider) GetMetaHash() []byte {
+	if x != nil {
+		return x.MetaHash
+	}
+	return nil
+}
+
+func (x *Provider) GetActive() bool {
+	if x != nil {
+		return x.Active
+	}
+	return false
+}
+
 // SKU defines a stock keeping unit for on-chain billing.
 type SKU struct {
 	state         protoimpl.MessageState
@@ -1451,26 +2096,24 @@ type SKU struct {
 
 	// id is the unique identifier for the SKU.
 	Id uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	// provider is the identifier of the SKU provider.
-	Provider string `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"`
-	// payout_address is the address where payments for this SKU are sent.
-	PayoutAddress string `protobuf:"bytes,3,opt,name=payout_address,json=payoutAddress,proto3" json:"payout_address,omitempty"`
+	// provider_id is the unique identifier of the SKU provider.
+	ProviderId uint64 `protobuf:"varint,2,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
 	// name is the human-readable name of the SKU.
-	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// unit is the billing unit for the SKU.
-	Unit Unit `protobuf:"varint,5,opt,name=unit,proto3,enum=liftedinit.sku.v1.Unit" json:"unit,omitempty"`
+	Unit Unit `protobuf:"varint,4,opt,name=unit,proto3,enum=liftedinit.sku.v1.Unit" json:"unit,omitempty"`
 	// base_price is the base price for the SKU.
-	BasePrice *types.Coin `protobuf:"bytes,6,opt,name=base_price,json=basePrice,proto3" json:"base_price,omitempty"`
+	BasePrice *types.Coin `protobuf:"bytes,5,opt,name=base_price,json=basePrice,proto3" json:"base_price,omitempty"`
 	// meta_hash is a hash of the off-chain metadata.
-	MetaHash []byte `protobuf:"bytes,7,opt,name=meta_hash,json=metaHash,proto3" json:"meta_hash,omitempty"`
+	MetaHash []byte `protobuf:"bytes,6,opt,name=meta_hash,json=metaHash,proto3" json:"meta_hash,omitempty"`
 	// active indicates whether the SKU is active.
-	Active bool `protobuf:"varint,8,opt,name=active,proto3" json:"active,omitempty"`
+	Active bool `protobuf:"varint,7,opt,name=active,proto3" json:"active,omitempty"`
 }
 
 func (x *SKU) Reset() {
 	*x = SKU{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_liftedinit_sku_v1_types_proto_msgTypes[1]
+		mi := &file_liftedinit_sku_v1_types_proto_msgTypes[2]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1484,7 +2127,7 @@ func (*SKU) ProtoMessage() {}
 
 // Deprecated: Use SKU.ProtoReflect.Descriptor instead.
 func (*SKU) Descriptor() ([]byte, []int) {
-	return file_liftedinit_sku_v1_types_proto_rawDescGZIP(), []int{1}
+	return file_liftedinit_sku_v1_types_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *SKU) GetId() uint64 {
@@ -1494,18 +2137,11 @@ func (x *SKU) GetId() uint64 {
 	return 0
 }
 
-func (x *SKU) GetProvider() string {
+func (x *SKU) GetProviderId() uint64 {
 	if x != nil {
-		return x.Provider
+		return x.ProviderId
 	}
-	return ""
-}
-
-func (x *SKU) GetPayoutAddress() string {
-	if x != nil {
-		return x.PayoutAddress
-	}
-	return ""
+	return 0
 }
 
 func (x *SKU) GetName() string {
@@ -1561,21 +2197,35 @@ var file_liftedinit_sku_v1_types_proto_rawDesc = []byte{
 	0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67,
 	0x52, 0x0b, 0x61, 0x6c, 0x6c, 0x6f, 0x77, 0x65, 0x64, 0x4c, 0x69, 0x73, 0x74, 0x3a, 0x1a, 0xe8,
 	0xa0, 0x1f, 0x01, 0x8a, 0xe7, 0xb0, 0x2a, 0x11, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x73,
-	0x6b, 0x75, 0x2f, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x22, 0x96, 0x03, 0x0a, 0x03, 0x53, 0x4b,
-	0x55, 0x12, 0x27, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x42, 0x17, 0xea,
-	0xde, 0x1f, 0x13, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c,
-	0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x02, 0x69, 0x64, 0x12, 0x1a, 0x0a, 0x08, 0x70, 0x72,
-	0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x70, 0x72,
-	0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x12, 0x3f, 0x0a, 0x0e, 0x70, 0x61, 0x79, 0x6f, 0x75, 0x74,
-	0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18,
-	0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65,
-	0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0d, 0x70, 0x61, 0x79, 0x6f, 0x75, 0x74,
-	0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18,
-	0x04, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x2b, 0x0a, 0x04, 0x75,
-	0x6e, 0x69, 0x74, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x17, 0x2e, 0x6c, 0x69, 0x66, 0x74,
+	0x6b, 0x75, 0x2f, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x22, 0xf7, 0x01, 0x0a, 0x08, 0x50, 0x72,
+	0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x12, 0x27, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x04, 0x42, 0x17, 0xea, 0xde, 0x1f, 0x13, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65,
+	0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x02, 0x69, 0x64, 0x12,
+	0x32, 0x0a, 0x07, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09,
+	0x42, 0x18, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64,
+	0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x07, 0x61, 0x64, 0x64, 0x72,
+	0x65, 0x73, 0x73, 0x12, 0x3f, 0x0a, 0x0e, 0x70, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x5f, 0x61, 0x64,
+	0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xd2, 0xb4, 0x2d,
+	0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53,
+	0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0d, 0x70, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x41, 0x64, 0x64,
+	0x72, 0x65, 0x73, 0x73, 0x12, 0x1b, 0x0a, 0x09, 0x6d, 0x65, 0x74, 0x61, 0x5f, 0x68, 0x61, 0x73,
+	0x68, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x08, 0x6d, 0x65, 0x74, 0x61, 0x48, 0x61, 0x73,
+	0x68, 0x12, 0x16, 0x0a, 0x06, 0x61, 0x63, 0x74, 0x69, 0x76, 0x65, 0x18, 0x05, 0x20, 0x01, 0x28,
+	0x08, 0x52, 0x06, 0x61, 0x63, 0x74, 0x69, 0x76, 0x65, 0x3a, 0x18, 0x8a, 0xe7, 0xb0, 0x2a, 0x13,
+	0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x73, 0x6b, 0x75, 0x2f, 0x50, 0x72, 0x6f, 0x76, 0x69,
+	0x64, 0x65, 0x72, 0x22, 0xfc, 0x02, 0x0a, 0x03, 0x53, 0x4b, 0x55, 0x12, 0x27, 0x0a, 0x02, 0x69,
+	0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x42, 0x17, 0xea, 0xde, 0x1f, 0x13, 0x69, 0x64, 0x2c,
+	0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67,
+	0x52, 0x02, 0x69, 0x64, 0x12, 0x41, 0x0a, 0x0b, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x72,
+	0x5f, 0x69, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x42, 0x20, 0xea, 0xde, 0x1f, 0x1c, 0x70,
+	0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x5f, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65,
+	0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0a, 0x70, 0x72, 0x6f,
+	0x76, 0x69, 0x64, 0x65, 0x72, 0x49, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18,
+	0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x2b, 0x0a, 0x04, 0x75,
+	0x6e, 0x69, 0x74, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x17, 0x2e, 0x6c, 0x69, 0x66, 0x74,
 	0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x73, 0x6b, 0x75, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x6e,
 	0x69, 0x74, 0x52, 0x04, 0x75, 0x6e, 0x69, 0x74, 0x12, 0x7e, 0x0a, 0x0a, 0x62, 0x61, 0x73, 0x65,
-	0x5f, 0x70, 0x72, 0x69, 0x63, 0x65, 0x18, 0x06, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63,
+	0x5f, 0x70, 0x72, 0x69, 0x63, 0x65, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63,
 	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74,
 	0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x44, 0xc8, 0xde, 0x1f, 0x00, 0xfa, 0xde, 0x1f,
 	0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73, 0x6d,
@@ -1583,9 +2233,9 @@ var file_liftedinit_sku_v1_types_proto_rawDesc = []byte{
 	0x70, 0x65, 0x73, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x9a, 0xe7, 0xb0, 0x2a, 0x0b, 0x6c, 0x65, 0x67,
 	0x61, 0x63, 0x79, 0x5f, 0x63, 0x6f, 0x69, 0x6e, 0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x09, 0x62,
 	0x61, 0x73, 0x65, 0x50, 0x72, 0x69, 0x63, 0x65, 0x12, 0x1b, 0x0a, 0x09, 0x6d, 0x65, 0x74, 0x61,
-	0x5f, 0x68, 0x61, 0x73, 0x68, 0x18, 0x07, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x08, 0x6d, 0x65, 0x74,
+	0x5f, 0x68, 0x61, 0x73, 0x68, 0x18, 0x06, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x08, 0x6d, 0x65, 0x74,
 	0x61, 0x48, 0x61, 0x73, 0x68, 0x12, 0x16, 0x0a, 0x06, 0x61, 0x63, 0x74, 0x69, 0x76, 0x65, 0x18,
-	0x08, 0x20, 0x01, 0x28, 0x08, 0x52, 0x06, 0x61, 0x63, 0x74, 0x69, 0x76, 0x65, 0x3a, 0x13, 0x8a,
+	0x07, 0x20, 0x01, 0x28, 0x08, 0x52, 0x06, 0x61, 0x63, 0x74, 0x69, 0x76, 0x65, 0x3a, 0x13, 0x8a,
 	0xe7, 0xb0, 0x2a, 0x0e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x73, 0x6b, 0x75, 0x2f, 0x53,
 	0x4b, 0x55, 0x2a, 0x41, 0x0a, 0x04, 0x55, 0x6e, 0x69, 0x74, 0x12, 0x14, 0x0a, 0x10, 0x55, 0x4e,
 	0x49, 0x54, 0x5f, 0x55, 0x4e, 0x53, 0x50, 0x45, 0x43, 0x49, 0x46, 0x49, 0x45, 0x44, 0x10, 0x00,
@@ -1621,16 +2271,17 @@ func file_liftedinit_sku_v1_types_proto_rawDescGZIP() []byte {
 }
 
 var file_liftedinit_sku_v1_types_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_liftedinit_sku_v1_types_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_liftedinit_sku_v1_types_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_liftedinit_sku_v1_types_proto_goTypes = []interface{}{
 	(Unit)(0),          // 0: liftedinit.sku.v1.Unit
 	(*Params)(nil),     // 1: liftedinit.sku.v1.Params
-	(*SKU)(nil),        // 2: liftedinit.sku.v1.SKU
-	(*types.Coin)(nil), // 3: cosmos.base.v1beta1.Coin
+	(*Provider)(nil),   // 2: liftedinit.sku.v1.Provider
+	(*SKU)(nil),        // 3: liftedinit.sku.v1.SKU
+	(*types.Coin)(nil), // 4: cosmos.base.v1beta1.Coin
 }
 var file_liftedinit_sku_v1_types_proto_depIdxs = []int32{
 	0, // 0: liftedinit.sku.v1.SKU.unit:type_name -> liftedinit.sku.v1.Unit
-	3, // 1: liftedinit.sku.v1.SKU.base_price:type_name -> cosmos.base.v1beta1.Coin
+	4, // 1: liftedinit.sku.v1.SKU.base_price:type_name -> cosmos.base.v1beta1.Coin
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -1657,6 +2308,18 @@ func file_liftedinit_sku_v1_types_proto_init() {
 			}
 		}
 		file_liftedinit_sku_v1_types_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Provider); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_liftedinit_sku_v1_types_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*SKU); i {
 			case 0:
 				return &v.state
@@ -1675,7 +2338,7 @@ func file_liftedinit_sku_v1_types_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_liftedinit_sku_v1_types_proto_rawDesc,
 			NumEnums:      1,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

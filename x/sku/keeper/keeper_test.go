@@ -40,7 +40,7 @@ func initFixture(t *testing.T) *testFixture {
 		GRPCQueryRouter: s.App.GRPCQueryRouter(),
 		Ctx:             s.Ctx,
 	}
-	s.TestAccs = apptesting.CreateRandomAccounts(3)
+	s.TestAccs = apptesting.CreateRandomAccounts(5)
 
 	s.EncodingCfg = encCfg
 
@@ -52,6 +52,8 @@ func initFixture(t *testing.T) *testFixture {
 }
 
 func TestInitGenesis(t *testing.T) {
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
 	f := initFixture(t)
 
 	k := f.App.SKUKeeper
@@ -60,99 +62,209 @@ func TestInitGenesis(t *testing.T) {
 
 	genesisState := &types.GenesisState{
 		Params: types.DefaultParams(),
-		Skus: []types.SKU{
+		Providers: []types.Provider{
 			{
-				Id:        1,
-				Provider:  "provider1",
-				Name:      "SKU 1",
-				Unit:      types.Unit_UNIT_PER_HOUR,
-				BasePrice: basePrice,
-				MetaHash:  []byte("hash1"),
-				Active:    true,
-			},
-			{
-				Id:        2,
-				Provider:  "provider2",
-				Name:      "SKU 2",
-				Unit:      types.Unit_UNIT_PER_DAY,
-				BasePrice: basePrice,
-				MetaHash:  []byte("hash2"),
-				Active:    false,
+				Id:            1,
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				MetaHash:      []byte("provider1hash"),
+				Active:        true,
 			},
 		},
-		NextId: 3,
+		NextProviderId: 2,
+		Skus: []types.SKU{
+			{
+				Id:         1,
+				ProviderId: 1,
+				Name:       "SKU 1",
+				Unit:       types.Unit_UNIT_PER_HOUR,
+				BasePrice:  basePrice,
+				MetaHash:   []byte("hash1"),
+				Active:     true,
+			},
+			{
+				Id:         2,
+				ProviderId: 1,
+				Name:       "SKU 2",
+				Unit:       types.Unit_UNIT_PER_DAY,
+				BasePrice:  basePrice,
+				MetaHash:   []byte("hash2"),
+				Active:     false,
+			},
+		},
+		NextSkuId: 3,
 	}
 
 	err := k.InitGenesis(f.Ctx, genesisState)
 	require.NoError(t, err)
 
+	provider1, err := k.GetProvider(f.Ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, providerAddr.String(), provider1.Address)
+	require.True(t, provider1.Active)
+
 	sku1, err := k.GetSKU(f.Ctx, 1)
 	require.NoError(t, err)
-	require.Equal(t, "provider1", sku1.Provider)
+	require.Equal(t, uint64(1), sku1.ProviderId)
 	require.Equal(t, "SKU 1", sku1.Name)
 	require.True(t, sku1.Active)
 
 	sku2, err := k.GetSKU(f.Ctx, 2)
 	require.NoError(t, err)
-	require.Equal(t, "provider2", sku2.Provider)
+	require.Equal(t, uint64(1), sku2.ProviderId)
 	require.Equal(t, "SKU 2", sku2.Name)
 	require.False(t, sku2.Active)
 }
 
 func TestExportGenesis(t *testing.T) {
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
 	f := initFixture(t)
 
 	k := f.App.SKUKeeper
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
-	sku := types.SKU{
-		Id:        1,
-		Provider:  "provider1",
-		Name:      "Test SKU",
-		Unit:      types.Unit_UNIT_PER_HOUR,
-		BasePrice: basePrice,
-		MetaHash:  []byte("testhash"),
-		Active:    true,
+	provider := types.Provider{
+		Id:            1,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		MetaHash:      []byte("providerhash"),
+		Active:        true,
 	}
 
-	err := k.SetSKU(f.Ctx, sku)
+	err := k.SetProvider(f.Ctx, provider)
 	require.NoError(t, err)
 
-	err = k.NextID.Set(f.Ctx, 2)
+	err = k.NextProviderID.Set(f.Ctx, 2)
+	require.NoError(t, err)
+
+	sku := types.SKU{
+		Id:         1,
+		ProviderId: 1,
+		Name:       "Test SKU",
+		Unit:       types.Unit_UNIT_PER_HOUR,
+		BasePrice:  basePrice,
+		MetaHash:   []byte("testhash"),
+		Active:     true,
+	}
+
+	err = k.SetSKU(f.Ctx, sku)
+	require.NoError(t, err)
+
+	err = k.NextSKUID.Set(f.Ctx, 2)
 	require.NoError(t, err)
 
 	genState := k.ExportGenesis(f.Ctx)
 
 	require.NotNil(t, genState)
+	require.Len(t, genState.Providers, 1)
+	require.Equal(t, uint64(2), genState.NextProviderId)
+	require.Equal(t, providerAddr.String(), genState.Providers[0].Address)
 	require.Len(t, genState.Skus, 1)
-	require.Equal(t, uint64(2), genState.NextId)
-	require.Equal(t, "provider1", genState.Skus[0].Provider)
+	require.Equal(t, uint64(2), genState.NextSkuId)
+	require.Equal(t, uint64(1), genState.Skus[0].ProviderId)
+}
+
+func TestGetProvider(t *testing.T) {
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+
+	provider := types.Provider{
+		Id:            1,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        true,
+	}
+
+	err := k.SetProvider(f.Ctx, provider)
+	require.NoError(t, err)
+
+	retrieved, err := k.GetProvider(f.Ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, provider.Id, retrieved.Id)
+	require.Equal(t, provider.Address, retrieved.Address)
+	require.Equal(t, provider.PayoutAddress, retrieved.PayoutAddress)
+
+	_, err = k.GetProvider(f.Ctx, 999)
+	require.Error(t, err)
+	require.ErrorIs(t, err, types.ErrProviderNotFound)
+}
+
+func TestGetAllProviders(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+
+	providers := []types.Provider{
+		{
+			Id:            1,
+			Address:       f.TestAccs[0].String(),
+			PayoutAddress: f.TestAccs[1].String(),
+			Active:        true,
+		},
+		{
+			Id:            2,
+			Address:       f.TestAccs[2].String(),
+			PayoutAddress: f.TestAccs[3].String(),
+			Active:        true,
+		},
+		{
+			Id:            3,
+			Address:       f.TestAccs[4].String(),
+			PayoutAddress: f.TestAccs[0].String(),
+			Active:        false,
+		},
+	}
+
+	for _, provider := range providers {
+		err := k.SetProvider(f.Ctx, provider)
+		require.NoError(t, err)
+	}
+
+	allProviders, err := k.GetAllProviders(f.Ctx)
+	require.NoError(t, err)
+	require.Len(t, allProviders, 3)
 }
 
 func TestGetSKU(t *testing.T) {
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
 	f := initFixture(t)
 
 	k := f.App.SKUKeeper
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
+	// Create provider first
+	provider := types.Provider{
+		Id:            1,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        true,
+	}
+	err := k.SetProvider(f.Ctx, provider)
+	require.NoError(t, err)
+
 	sku := types.SKU{
-		Id:        1,
-		Provider:  "provider1",
-		Name:      "Test SKU",
-		Unit:      types.Unit_UNIT_PER_HOUR,
-		BasePrice: basePrice,
-		Active:    true,
+		Id:         1,
+		ProviderId: 1,
+		Name:       "Test SKU",
+		Unit:       types.Unit_UNIT_PER_HOUR,
+		BasePrice:  basePrice,
+		Active:     true,
 	}
 
-	err := k.SetSKU(f.Ctx, sku)
+	err = k.SetSKU(f.Ctx, sku)
 	require.NoError(t, err)
 
 	retrieved, err := k.GetSKU(f.Ctx, 1)
 	require.NoError(t, err)
 	require.Equal(t, sku.Id, retrieved.Id)
-	require.Equal(t, sku.Provider, retrieved.Provider)
+	require.Equal(t, sku.ProviderId, retrieved.ProviderId)
 	require.Equal(t, sku.Name, retrieved.Name)
 
 	_, err = k.GetSKU(f.Ctx, 999)
@@ -167,30 +279,49 @@ func TestGetAllSKUs(t *testing.T) {
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
+	// Create providers first
+	provider1 := types.Provider{
+		Id:            1,
+		Address:       f.TestAccs[0].String(),
+		PayoutAddress: f.TestAccs[1].String(),
+		Active:        true,
+	}
+	provider2 := types.Provider{
+		Id:            2,
+		Address:       f.TestAccs[2].String(),
+		PayoutAddress: f.TestAccs[3].String(),
+		Active:        true,
+	}
+
+	err := k.SetProvider(f.Ctx, provider1)
+	require.NoError(t, err)
+	err = k.SetProvider(f.Ctx, provider2)
+	require.NoError(t, err)
+
 	skus := []types.SKU{
 		{
-			Id:        1,
-			Provider:  "provider1",
-			Name:      "SKU 1",
-			Unit:      types.Unit_UNIT_PER_HOUR,
-			BasePrice: basePrice,
-			Active:    true,
+			Id:         1,
+			ProviderId: 1,
+			Name:       "SKU 1",
+			Unit:       types.Unit_UNIT_PER_HOUR,
+			BasePrice:  basePrice,
+			Active:     true,
 		},
 		{
-			Id:        2,
-			Provider:  "provider2",
-			Name:      "SKU 2",
-			Unit:      types.Unit_UNIT_PER_DAY,
-			BasePrice: basePrice,
-			Active:    true,
+			Id:         2,
+			ProviderId: 2,
+			Name:       "SKU 2",
+			Unit:       types.Unit_UNIT_PER_DAY,
+			BasePrice:  basePrice,
+			Active:     true,
 		},
 		{
-			Id:        3,
-			Provider:  "provider1",
-			Name:      "SKU 3",
-			Unit:      types.Unit_UNIT_PER_DAY,
-			BasePrice: basePrice,
-			Active:    false,
+			Id:         3,
+			ProviderId: 1,
+			Name:       "SKU 3",
+			Unit:       types.Unit_UNIT_PER_DAY,
+			BasePrice:  basePrice,
+			Active:     false,
 		},
 	}
 
@@ -204,37 +335,56 @@ func TestGetAllSKUs(t *testing.T) {
 	require.Len(t, allSKUs, 3)
 }
 
-func TestGetSKUsByProvider(t *testing.T) {
+func TestGetSKUsByProviderID(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.SKUKeeper
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
+	// Create providers first
+	provider1 := types.Provider{
+		Id:            1,
+		Address:       f.TestAccs[0].String(),
+		PayoutAddress: f.TestAccs[1].String(),
+		Active:        true,
+	}
+	provider2 := types.Provider{
+		Id:            2,
+		Address:       f.TestAccs[2].String(),
+		PayoutAddress: f.TestAccs[3].String(),
+		Active:        true,
+	}
+
+	err := k.SetProvider(f.Ctx, provider1)
+	require.NoError(t, err)
+	err = k.SetProvider(f.Ctx, provider2)
+	require.NoError(t, err)
+
 	skus := []types.SKU{
 		{
-			Id:        1,
-			Provider:  "provider1",
-			Name:      "SKU 1",
-			Unit:      types.Unit_UNIT_PER_HOUR,
-			BasePrice: basePrice,
-			Active:    true,
+			Id:         1,
+			ProviderId: 1,
+			Name:       "SKU 1",
+			Unit:       types.Unit_UNIT_PER_HOUR,
+			BasePrice:  basePrice,
+			Active:     true,
 		},
 		{
-			Id:        2,
-			Provider:  "provider2",
-			Name:      "SKU 2",
-			Unit:      types.Unit_UNIT_PER_DAY,
-			BasePrice: basePrice,
-			Active:    true,
+			Id:         2,
+			ProviderId: 2,
+			Name:       "SKU 2",
+			Unit:       types.Unit_UNIT_PER_DAY,
+			BasePrice:  basePrice,
+			Active:     true,
 		},
 		{
-			Id:        3,
-			Provider:  "provider1",
-			Name:      "SKU 3",
-			Unit:      types.Unit_UNIT_PER_DAY,
-			BasePrice: basePrice,
-			Active:    false,
+			Id:         3,
+			ProviderId: 1,
+			Name:       "SKU 3",
+			Unit:       types.Unit_UNIT_PER_DAY,
+			BasePrice:  basePrice,
+			Active:     false,
 		},
 	}
 
@@ -243,38 +393,61 @@ func TestGetSKUsByProvider(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	provider1SKUs, err := k.GetSKUsByProvider(f.Ctx, "provider1")
+	provider1SKUs, err := k.GetSKUsByProviderID(f.Ctx, 1)
 	require.NoError(t, err)
 	require.Len(t, provider1SKUs, 2)
 
-	provider2SKUs, err := k.GetSKUsByProvider(f.Ctx, "provider2")
+	provider2SKUs, err := k.GetSKUsByProviderID(f.Ctx, 2)
 	require.NoError(t, err)
 	require.Len(t, provider2SKUs, 1)
 
-	provider3SKUs, err := k.GetSKUsByProvider(f.Ctx, "provider3")
+	provider3SKUs, err := k.GetSKUsByProviderID(f.Ctx, 3)
 	require.NoError(t, err)
 	require.Len(t, provider3SKUs, 0)
 }
 
-func TestGetNextID(t *testing.T) {
+func TestGetNextProviderID(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	f := initFixture(t)
 
 	k := f.App.SKUKeeper
 	k.SetAuthority(authority.String())
 
-	err := k.NextID.Set(f.Ctx, 1)
+	err := k.NextProviderID.Set(f.Ctx, 1)
 	require.NoError(t, err)
 
-	id1, err := k.GetNextID(f.Ctx)
+	id1, err := k.GetNextProviderID(f.Ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), id1)
 
-	id2, err := k.GetNextID(f.Ctx)
+	id2, err := k.GetNextProviderID(f.Ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), id2)
 
-	id3, err := k.GetNextID(f.Ctx)
+	id3, err := k.GetNextProviderID(f.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), id3)
+}
+
+func TestGetNextSKUID(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+
+	err := k.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	id1, err := k.GetNextSKUID(f.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), id1)
+
+	id2, err := k.GetNextSKUID(f.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), id2)
+
+	id3, err := k.GetNextSKUID(f.Ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), id3)
 }
@@ -290,17 +463,26 @@ func TestInitGenesisWithParams(t *testing.T) {
 		Params: types.Params{
 			AllowedList: []string{f.TestAccs[0].String(), f.TestAccs[1].String()},
 		},
-		Skus: []types.SKU{
+		Providers: []types.Provider{
 			{
-				Id:        1,
-				Provider:  "provider1",
-				Name:      "SKU 1",
-				Unit:      types.Unit_UNIT_PER_HOUR,
-				BasePrice: basePrice,
-				Active:    true,
+				Id:            1,
+				Address:       f.TestAccs[2].String(),
+				PayoutAddress: f.TestAccs[3].String(),
+				Active:        true,
 			},
 		},
-		NextId: 2,
+		NextProviderId: 2,
+		Skus: []types.SKU{
+			{
+				Id:         1,
+				ProviderId: 1,
+				Name:       "SKU 1",
+				Unit:       types.Unit_UNIT_PER_HOUR,
+				BasePrice:  basePrice,
+				Active:     true,
+			},
+		},
+		NextSkuId: 2,
 	}
 
 	err := k.InitGenesis(f.Ctx, genesisState)
@@ -327,7 +509,10 @@ func TestExportGenesisWithParams(t *testing.T) {
 	err := k.SetParams(f.Ctx, params)
 	require.NoError(t, err)
 
-	err = k.NextID.Set(f.Ctx, 1)
+	err = k.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	err = k.NextSKUID.Set(f.Ctx, 1)
 	require.NoError(t, err)
 
 	genState := k.ExportGenesis(f.Ctx)
@@ -356,22 +541,41 @@ func TestGetParams(t *testing.T) {
 	require.Len(t, gotParams.AllowedList, 2)
 }
 
-func TestSKUsByProviderPagination(t *testing.T) {
+func TestSKUsByProviderIDPagination(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.SKUKeeper
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
+	// Create providers
+	provider1 := types.Provider{
+		Id:            1,
+		Address:       f.TestAccs[0].String(),
+		PayoutAddress: f.TestAccs[1].String(),
+		Active:        true,
+	}
+	provider2 := types.Provider{
+		Id:            2,
+		Address:       f.TestAccs[2].String(),
+		PayoutAddress: f.TestAccs[3].String(),
+		Active:        true,
+	}
+
+	err := k.SetProvider(f.Ctx, provider1)
+	require.NoError(t, err)
+	err = k.SetProvider(f.Ctx, provider2)
+	require.NoError(t, err)
+
 	// Create multiple SKUs for different providers
 	for i := uint64(1); i <= 5; i++ {
 		sku := types.SKU{
-			Id:        i,
-			Provider:  "provider1",
-			Name:      "SKU " + string(rune('0'+i)),
-			Unit:      types.Unit_UNIT_PER_HOUR,
-			BasePrice: basePrice,
-			Active:    true,
+			Id:         i,
+			ProviderId: 1,
+			Name:       "SKU " + string(rune('0'+i)),
+			Unit:       types.Unit_UNIT_PER_HOUR,
+			BasePrice:  basePrice,
+			Active:     true,
 		}
 		err := k.SKUs.Set(f.Ctx, i, sku)
 		require.NoError(t, err)
@@ -379,27 +583,27 @@ func TestSKUsByProviderPagination(t *testing.T) {
 
 	for i := uint64(6); i <= 8; i++ {
 		sku := types.SKU{
-			Id:        i,
-			Provider:  "provider2",
-			Name:      "SKU " + string(rune('0'+i)),
-			Unit:      types.Unit_UNIT_PER_DAY,
-			BasePrice: basePrice,
-			Active:    true,
+			Id:         i,
+			ProviderId: 2,
+			Name:       "SKU " + string(rune('0'+i)),
+			Unit:       types.Unit_UNIT_PER_DAY,
+			BasePrice:  basePrice,
+			Active:     true,
 		}
 		err := k.SKUs.Set(f.Ctx, i, sku)
 		require.NoError(t, err)
 	}
 
-	// Test GetSKUsByProvider
-	skus, err := k.GetSKUsByProvider(f.Ctx, "provider1")
+	// Test GetSKUsByProviderID
+	skus, err := k.GetSKUsByProviderID(f.Ctx, 1)
 	require.NoError(t, err)
 	require.Len(t, skus, 5)
 
-	skus, err = k.GetSKUsByProvider(f.Ctx, "provider2")
+	skus, err = k.GetSKUsByProviderID(f.Ctx, 2)
 	require.NoError(t, err)
 	require.Len(t, skus, 3)
 
-	skus, err = k.GetSKUsByProvider(f.Ctx, "nonexistent")
+	skus, err = k.GetSKUsByProviderID(f.Ctx, 999)
 	require.NoError(t, err)
 	require.Len(t, skus, 0)
 }

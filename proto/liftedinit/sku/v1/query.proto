@@ -15,6 +15,16 @@ service Query {
     option (google.api.http).get = "/liftedinit/sku/v1/params";
   }
 
+  // Provider queries a provider by id.
+  rpc Provider(QueryProviderRequest) returns (QueryProviderResponse) {
+    option (google.api.http).get = "/liftedinit/sku/v1/provider/{id}";
+  }
+
+  // Providers queries all providers.
+  rpc Providers(QueryProvidersRequest) returns (QueryProvidersResponse) {
+    option (google.api.http).get = "/liftedinit/sku/v1/providers";
+  }
+
   // SKU queries a SKU by id.
   rpc SKU(QuerySKURequest) returns (QuerySKUResponse) {
     option (google.api.http).get = "/liftedinit/sku/v1/sku/{id}";
@@ -25,10 +35,10 @@ service Query {
     option (google.api.http).get = "/liftedinit/sku/v1/skus";
   }
 
-  // SKUsByProvider queries SKUs by provider.
+  // SKUsByProvider queries SKUs by provider id.
   rpc SKUsByProvider(QuerySKUsByProviderRequest)
       returns (QuerySKUsByProviderResponse) {
-    option (google.api.http).get = "/liftedinit/sku/v1/skus/{provider}";
+    option (google.api.http).get = "/liftedinit/sku/v1/skus/provider/{provider_id}";
   }
 }
 
@@ -39,6 +49,36 @@ message QueryParamsRequest {}
 message QueryParamsResponse {
   // params defines the module parameters.
   Params params = 1 [ (gogoproto.nullable) = false ];
+}
+
+// QueryProviderRequest is the request type for the Query/Provider RPC method.
+message QueryProviderRequest {
+  // id is the unique identifier of the provider.
+  uint64 id = 1;
+}
+
+// QueryProviderResponse is the response type for the Query/Provider RPC method.
+message QueryProviderResponse {
+  // provider is the provider.
+  Provider provider = 1 [ (gogoproto.nullable) = false ];
+}
+
+// QueryProvidersRequest is the request type for the Query/Providers RPC method.
+message QueryProvidersRequest {
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+
+  // active_only filters to return only active providers when true.
+  bool active_only = 2;
+}
+
+// QueryProvidersResponse is the response type for the Query/Providers RPC method.
+message QueryProvidersResponse {
+  // providers is the list of providers.
+  repeated Provider providers = 1 [ (gogoproto.nullable) = false ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
 }
 
 // QuerySKURequest is the request type for the Query/SKU RPC method.
@@ -74,8 +114,8 @@ message QuerySKUsResponse {
 // QuerySKUsByProviderRequest is the request type for the Query/SKUsByProvider
 // RPC method.
 message QuerySKUsByProviderRequest {
-  // provider is the address of the SKU provider.
-  string provider = 1;
+  // provider_id is the unique identifier of the SKU provider.
+  uint64 provider_id = 1;
 
   // pagination defines an optional pagination for the request.
   cosmos.base.query.v1beta1.PageRequest pagination = 2;

@@ -20,6 +20,8 @@ const _ = grpc.SupportPackageIsVersion7
 
 const (
 	Query_Params_FullMethodName         = "/liftedinit.sku.v1.Query/Params"
+	Query_Provider_FullMethodName       = "/liftedinit.sku.v1.Query/Provider"
+	Query_Providers_FullMethodName      = "/liftedinit.sku.v1.Query/Providers"
 	Query_SKU_FullMethodName            = "/liftedinit.sku.v1.Query/SKU"
 	Query_SKUs_FullMethodName           = "/liftedinit.sku.v1.Query/SKUs"
 	Query_SKUsByProvider_FullMethodName = "/liftedinit.sku.v1.Query/SKUsByProvider"
@@ -31,11 +33,15 @@ const (
 type QueryClient interface {
 	// Params queries the module parameters.
 	Params(ctx context.Context, in *QueryParamsRequest, opts ...grpc.CallOption) (*QueryParamsResponse, error)
+	// Provider queries a provider by id.
+	Provider(ctx context.Context, in *QueryProviderRequest, opts ...grpc.CallOption) (*QueryProviderResponse, error)
+	// Providers queries all providers.
+	Providers(ctx context.Context, in *QueryProvidersRequest, opts ...grpc.CallOption) (*QueryProvidersResponse, error)
 	// SKU queries a SKU by id.
 	SKU(ctx context.Context, in *QuerySKURequest, opts ...grpc.CallOption) (*QuerySKUResponse, error)
 	// SKUs queries all SKUs.
 	SKUs(ctx context.Context, in *QuerySKUsRequest, opts ...grpc.CallOption) (*QuerySKUsResponse, error)
-	// SKUsByProvider queries SKUs by provider.
+	// SKUsByProvider queries SKUs by provider id.
 	SKUsByProvider(ctx context.Context, in *QuerySKUsByProviderRequest, opts ...grpc.CallOption) (*QuerySKUsByProviderResponse, error)
 }
 
@@ -50,6 +56,24 @@ func NewQueryClient(cc grpc.ClientConnInterface) QueryClient {
 func (c *queryClient) Params(ctx context.Context, in *QueryParamsRequest, opts ...grpc.CallOption) (*QueryParamsResponse, error) {
 	out := new(QueryParamsResponse)
 	err := c.cc.Invoke(ctx, Query_Params_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) Provider(ctx context.Context, in *QueryProviderRequest, opts ...grpc.CallOption) (*QueryProviderResponse, error) {
+	out := new(QueryProviderResponse)
+	err := c.cc.Invoke(ctx, Query_Provider_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) Providers(ctx context.Context, in *QueryProvidersRequest, opts ...grpc.CallOption) (*QueryProvidersResponse, error) {
+	out := new(QueryProvidersResponse)
+	err := c.cc.Invoke(ctx, Query_Providers_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -89,11 +113,15 @@ func (c *queryClient) SKUsByProvider(ctx context.Context, in *QuerySKUsByProvide
 type QueryServer interface {
 	// Params queries the module parameters.
 	Params(context.Context, *QueryParamsRequest) (*QueryParamsResponse, error)
+	// Provider queries a provider by id.
+	Provider(context.Context, *QueryProviderRequest) (*QueryProviderResponse, error)
+	// Providers queries all providers.
+	Providers(context.Context, *QueryProvidersRequest) (*QueryProvidersResponse, error)
 	// SKU queries a SKU by id.
 	SKU(context.Context, *QuerySKURequest) (*QuerySKUResponse, error)
 	// SKUs queries all SKUs.
 	SKUs(context.Context, *QuerySKUsRequest) (*QuerySKUsResponse, error)
-	// SKUsByProvider queries SKUs by provider.
+	// SKUsByProvider queries SKUs by provider id.
 	SKUsByProvider(context.Context, *QuerySKUsByProviderRequest) (*QuerySKUsByProviderResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }
@@ -104,6 +132,12 @@ type UnimplementedQueryServer struct {
 
 func (UnimplementedQueryServer) Params(context.Context, *QueryParamsRequest) (*QueryParamsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Params not implemented")
+}
+func (UnimplementedQueryServer) Provider(context.Context, *QueryProviderRequest) (*QueryProviderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Provider not implemented")
+}
+func (UnimplementedQueryServer) Providers(context.Context, *QueryProvidersRequest) (*QueryProvidersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Providers not implemented")
 }
 func (UnimplementedQueryServer) SKU(context.Context, *QuerySKURequest) (*QuerySKUResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SKU not implemented")
@@ -141,6 +175,42 @@ func _Query_Params_Handler(srv interface{}, ctx context.Context, dec func(interf
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(QueryServer).Params(ctx, req.(*QueryParamsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_Provider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryProviderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).Provider(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_Provider_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).Provider(ctx, req.(*QueryProviderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_Providers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryProvidersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).Providers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_Providers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).Providers(ctx, req.(*QueryProvidersRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -209,6 +279,14 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Params",
 			Handler:    _Query_Params_Handler,
+		},
+		{
+			MethodName: "Provider",
+			Handler:    _Query_Provider_Handler,
+		},
+		{
+			MethodName: "Providers",
+			Handler:    _Query_Providers_Handler,
 		},
 		{
 			MethodName: "SKU",

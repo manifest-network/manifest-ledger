@@ -17,19 +17,24 @@ import (
 )
 
 const (
-	OpWeightMsgCreateSKU     = "op_weight_msg_sku_create"     //nolint:gosec
-	OpWeightMsgUpdateSKU     = "op_weight_msg_sku_update"     //nolint:gosec
-	OpWeightMsgDeactivateSKU = "op_weight_msg_sku_deactivate" //nolint:gosec
+	OpWeightMsgCreateProvider     = "op_weight_msg_sku_create_provider"     //nolint:gosec
+	OpWeightMsgUpdateProvider     = "op_weight_msg_sku_update_provider"     //nolint:gosec
+	OpWeightMsgDeactivateProvider = "op_weight_msg_sku_deactivate_provider" //nolint:gosec
+	OpWeightMsgCreateSKU          = "op_weight_msg_sku_create"              //nolint:gosec
+	OpWeightMsgUpdateSKU          = "op_weight_msg_sku_update"              //nolint:gosec
+	OpWeightMsgDeactivateSKU      = "op_weight_msg_sku_deactivate"          //nolint:gosec
 
-	DefaultWeightMsgCreateSKU     = 50
-	DefaultWeightMsgUpdateSKU     = 30
-	DefaultWeightMsgDeactivateSKU = 20
+	DefaultWeightMsgCreateProvider     = 30
+	DefaultWeightMsgUpdateProvider     = 20
+	DefaultWeightMsgDeactivateProvider = 10
+	DefaultWeightMsgCreateSKU          = 50
+	DefaultWeightMsgUpdateSKU          = 30
+	DefaultWeightMsgDeactivateSKU      = 20
 )
 
 var (
-	providers = []string{"provider1", "provider2", "provider3", "provider4", "provider5"}
-	skuNames  = []string{"Compute Small", "Compute Medium", "Compute Large", "Storage 100GB", "Storage 1TB", "Bandwidth 1Gbps"}
-	units     = []types.Unit{types.Unit_UNIT_PER_HOUR, types.Unit_UNIT_PER_DAY}
+	skuNames = []string{"Compute Small", "Compute Medium", "Compute Large", "Storage 100GB", "Storage 1TB", "Bandwidth 1Gbps"}
+	units    = []types.Unit{types.Unit_UNIT_PER_HOUR, types.Unit_UNIT_PER_DAY}
 )
 
 // WeightedOperations returns the all the sku module operations with their respective weights.
@@ -40,6 +45,21 @@ func WeightedOperations(
 	k keeper.Keeper,
 ) []simtypes.WeightedOperation {
 	operations := make([]simtypes.WeightedOperation, 0)
+
+	var weightMsgCreateProvider int
+	appParams.GetOrGenerate(OpWeightMsgCreateProvider, &weightMsgCreateProvider, nil, func(_ *rand.Rand) {
+		weightMsgCreateProvider = DefaultWeightMsgCreateProvider
+	})
+
+	var weightMsgUpdateProvider int
+	appParams.GetOrGenerate(OpWeightMsgUpdateProvider, &weightMsgUpdateProvider, nil, func(_ *rand.Rand) {
+		weightMsgUpdateProvider = DefaultWeightMsgUpdateProvider
+	})
+
+	var weightMsgDeactivateProvider int
+	appParams.GetOrGenerate(OpWeightMsgDeactivateProvider, &weightMsgDeactivateProvider, nil, func(_ *rand.Rand) {
+		weightMsgDeactivateProvider = DefaultWeightMsgDeactivateProvider
+	})
 
 	var weightMsgCreateSKU int
 	appParams.GetOrGenerate(OpWeightMsgCreateSKU, &weightMsgCreateSKU, nil, func(_ *rand.Rand) {
@@ -55,6 +75,21 @@ func WeightedOperations(
 	appParams.GetOrGenerate(OpWeightMsgDeactivateSKU, &weightMsgDeactivateSKU, nil, func(_ *rand.Rand) {
 		weightMsgDeactivateSKU = DefaultWeightMsgDeactivateSKU
 	})
+
+	operations = append(operations, simulation.NewWeightedOperation(
+		weightMsgCreateProvider,
+		SimulateMsgCreateProvider(txGen, k),
+	))
+
+	operations = append(operations, simulation.NewWeightedOperation(
+		weightMsgUpdateProvider,
+		SimulateMsgUpdateProvider(txGen, k),
+	))
+
+	operations = append(operations, simulation.NewWeightedOperation(
+		weightMsgDeactivateProvider,
+		SimulateMsgDeactivateProvider(txGen, k),
+	))
 
 	operations = append(operations, simulation.NewWeightedOperation(
 		weightMsgCreateSKU,
@@ -74,6 +109,107 @@ func WeightedOperations(
 	return operations
 }
 
+// SimulateMsgCreateProvider generates a MsgCreateProvider with random values.
+func SimulateMsgCreateProvider(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
+	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
+	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
+		msgType := sdk.MsgTypeURL(&types.MsgCreateProvider{})
+
+		simAccount, found := findAuthority(accs, k.GetAuthority())
+		if !found {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "authority not found in accounts"), nil, nil
+		}
+
+		// Select random accounts for address and payout address
+		addressAccount, _ := simtypes.RandomAcc(r, accs)
+		payoutAccount, _ := simtypes.RandomAcc(r, accs)
+
+		msg := &types.MsgCreateProvider{
+			Authority:     simAccount.Address.String(),
+			Address:       addressAccount.Address.String(),
+			PayoutAddress: payoutAccount.Address.String(),
+			MetaHash:      generateRandomBytes(r),
+		}
+
+		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
+	}
+}
+
+// SimulateMsgUpdateProvider generates a MsgUpdateProvider with random values.
+func SimulateMsgUpdateProvider(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
+	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
+	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
+		msgType := sdk.MsgTypeURL(&types.MsgUpdateProvider{})
+
+		simAccount, found := findAuthority(accs, k.GetAuthority())
+		if !found {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "authority not found in accounts"), nil, nil
+		}
+
+		allProviders, err := k.GetAllProviders(ctx)
+		if err != nil || len(allProviders) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no providers found to update"), nil, nil
+		}
+
+		provider := allProviders[r.Intn(len(allProviders))]
+
+		// Select random accounts for address and payout address
+		addressAccount, _ := simtypes.RandomAcc(r, accs)
+		payoutAccount, _ := simtypes.RandomAcc(r, accs)
+		active := r.Float32() > 0.3
+
+		msg := &types.MsgUpdateProvider{
+			Authority:     simAccount.Address.String(),
+			Id:            provider.Id,
+			Address:       addressAccount.Address.String(),
+			PayoutAddress: payoutAccount.Address.String(),
+			MetaHash:      generateRandomBytes(r),
+			Active:        active,
+		}
+
+		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
+	}
+}
+
+// SimulateMsgDeactivateProvider generates a MsgDeactivateProvider with random values.
+func SimulateMsgDeactivateProvider(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
+	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
+	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
+		msgType := sdk.MsgTypeURL(&types.MsgDeactivateProvider{})
+
+		simAccount, found := findAuthority(accs, k.GetAuthority())
+		if !found {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "authority not found in accounts"), nil, nil
+		}
+
+		allProviders, err := k.GetAllProviders(ctx)
+		if err != nil || len(allProviders) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no providers found to deactivate"), nil, nil
+		}
+
+		// Find an active provider to deactivate
+		var activeProviders []types.Provider
+		for _, provider := range allProviders {
+			if provider.Active {
+				activeProviders = append(activeProviders, provider)
+			}
+		}
+
+		if len(activeProviders) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no active providers found to deactivate"), nil, nil
+		}
+
+		provider := activeProviders[r.Intn(len(activeProviders))]
+
+		msg := &types.MsgDeactivateProvider{
+			Authority: simAccount.Address.String(),
+			Id:        provider.Id,
+		}
+
+		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
+	}
+}
+
 // SimulateMsgCreateSKU generates a MsgCreateSKU with random values.
 func SimulateMsgCreateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
@@ -85,22 +221,36 @@ func SimulateMsgCreateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "authority not found in accounts"), nil, nil
 		}
 
-		// Select a random account for payout address
-		payoutAccount, _ := simtypes.RandomAcc(r, accs)
+		allProviders, err := k.GetAllProviders(ctx)
+		if err != nil || len(allProviders) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no providers found"), nil, nil
+		}
 
-		provider := providers[r.Intn(len(providers))]
+		// Find an active provider
+		var activeProviders []types.Provider
+		for _, provider := range allProviders {
+			if provider.Active {
+				activeProviders = append(activeProviders, provider)
+			}
+		}
+
+		if len(activeProviders) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no active providers found"), nil, nil
+		}
+
+		provider := activeProviders[r.Intn(len(activeProviders))]
+
 		name := skuNames[r.Intn(len(skuNames))]
 		unit := units[r.Intn(len(units))]
 		basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(10000)+1)))
 
 		msg := &types.MsgCreateSKU{
-			Authority:     simAccount.Address.String(),
-			Provider:      provider,
-			PayoutAddress: payoutAccount.Address.String(),
-			Name:          name,
-			Unit:          unit,
-			BasePrice:     basePrice,
-			MetaHash:      generateRandomBytes(r, 32),
+			Authority:  simAccount.Address.String(),
+			ProviderId: provider.Id,
+			Name:       name,
+			Unit:       unit,
+			BasePrice:  basePrice,
+			MetaHash:   generateRandomBytes(r),
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
@@ -125,24 +275,20 @@ func SimulateMsgUpdateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 
 		sku := allSKUs[r.Intn(len(allSKUs))]
 
-		// Select a random account for payout address
-		payoutAccount, _ := simtypes.RandomAcc(r, accs)
-
 		name := skuNames[r.Intn(len(skuNames))]
 		unit := units[r.Intn(len(units))]
 		basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(10000)+1)))
 		active := r.Float32() > 0.3
 
 		msg := &types.MsgUpdateSKU{
-			Authority:     simAccount.Address.String(),
-			Provider:      sku.Provider,
-			Id:            sku.Id,
-			PayoutAddress: payoutAccount.Address.String(),
-			Name:          name,
-			Unit:          unit,
-			BasePrice:     basePrice,
-			MetaHash:      generateRandomBytes(r, 32),
-			Active:        active,
+			Authority:  simAccount.Address.String(),
+			Id:         sku.Id,
+			ProviderId: sku.ProviderId,
+			Name:       name,
+			Unit:       unit,
+			BasePrice:  basePrice,
+			MetaHash:   generateRandomBytes(r),
+			Active:     active,
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
@@ -181,7 +327,6 @@ func SimulateMsgDeactivateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.O
 
 		msg := &types.MsgDeactivateSKU{
 			Authority: simAccount.Address.String(),
-			Provider:  sku.Provider,
 			Id:        sku.Id,
 		}
 
@@ -198,7 +343,8 @@ func findAuthority(accs []simtypes.Account, authority string) (simtypes.Account,
 	return simtypes.Account{}, false
 }
 
-func generateRandomBytes(r *rand.Rand, n int) []byte {
+func generateRandomBytes(r *rand.Rand) []byte {
+	const n = 32 // fixed size for meta hash
 	b := make([]byte, n)
 	for i := range b {
 		b[i] = byte(r.Intn(256)) //nolint:gosec

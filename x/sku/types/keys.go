@@ -10,11 +10,17 @@ var (
 	// SKUKey saves the SKUs.
 	SKUKey = collections.NewPrefix(1)
 
-	// SequenceKey saves the next SKU id.
-	SequenceKey = collections.NewPrefix(2)
+	// SKUSequenceKey saves the next SKU id.
+	SKUSequenceKey = collections.NewPrefix(2)
 
 	// SKUByProviderIndexKey saves the provider index for SKUs.
 	SKUByProviderIndexKey = collections.NewPrefix(3)
+
+	// ProviderKey saves the Providers.
+	ProviderKey = collections.NewPrefix(4)
+
+	// ProviderSequenceKey saves the next Provider id.
+	ProviderSequenceKey = collections.NewPrefix(5)
 )
 
 const (
@@ -27,12 +33,17 @@ const (
 
 // Event types for the sku module.
 const (
-	EventTypeSKUCreated     = "sku_created"
-	EventTypeSKUUpdated     = "sku_updated"
-	EventTypeSKUDeactivated = "sku_deactivated"
-	EventTypeParamsUpdated  = "params_updated"
+	EventTypeProviderCreated     = "provider_created"
+	EventTypeProviderUpdated     = "provider_updated"
+	EventTypeProviderActivated   = "provider_activated"
+	EventTypeProviderDeactivated = "provider_deactivated"
+	EventTypeSKUCreated          = "sku_created"
+	EventTypeSKUUpdated          = "sku_updated"
+	EventTypeSKUActivated        = "sku_activated"
+	EventTypeSKUDeactivated      = "sku_deactivated"
+	EventTypeParamsUpdated       = "params_updated"
 
-	AttributeKeySKUID    = "sku_id"
-	AttributeKeyProvider = "provider"
-	AttributeKeyName     = "name"
+	AttributeKeyProviderID = "provider_id"
+	AttributeKeySKUID      = "sku_id"
+	AttributeKeyName       = "name"
 )
