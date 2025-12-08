@@ -33,10 +33,11 @@ Settlement calculates the accrued charges since the last settlement based on:
 - Quantity of each SKU item
 - Time elapsed since last settlement
 
-Settlement occurs:
+Settlement is performed **lazily** (on-touch):
 - When a provider withdraws from a lease
 - When a lease is closed
-- During EndBlock batch processing (for overdraw detection)
+
+This design keeps on-chain operations light and avoids per-block token transfers.
 
 ### Overdraw
 
@@ -52,8 +53,7 @@ Module parameters stored at key `0x00`:
 |-------|------|-------------|
 | denom | string | Billing denomination (PWR token) |
 | min_credit_balance | Int | Minimum credit required to create a lease |
-| max_leases_per_tenant | uint64 | Maximum active leases per tenant |
-| settlement_batch_size | uint64 | Number of leases to settle per EndBlock |
+| max_leases_per_tenant | uint64 | Maximum active leases per tenant (must be > 0) |
 
 ### Lease
 
@@ -86,7 +86,8 @@ Credit accounts stored at key prefix `0x05`:
 |-------|------|-------------|
 | tenant | string | Tenant address |
 | credit_address | string | Derived credit account address |
-| balance | Coin | Current credit balance |
+
+Note: The actual balance is tracked by the bank module at the `credit_address`. Query the bank module or use `QueryCreditAccount` which includes the balance.
 
 ## State Transitions
 
@@ -275,7 +276,6 @@ manifestd query billing provider-withdrawable [provider-id]
 | denom | factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr |
 | min_credit_balance | 5000000 (5 PWR) |
 | max_leases_per_tenant | 100 |
-| settlement_batch_size | 10 |
 
 ## Authorization
 

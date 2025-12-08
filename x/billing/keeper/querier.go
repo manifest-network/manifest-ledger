@@ -204,7 +204,23 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	return &types.QueryCreditAccountResponse{CreditAccount: ca}, nil
+	// Fetch the balance from the bank module
+	params, err := q.k.GetParams(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	creditAddr, err := sdk.AccAddressFromBech32(ca.CreditAddress)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "invalid credit address")
+	}
+
+	balance := q.k.bankKeeper.GetBalance(ctx, creditAddr, params.Denom)
+
+	return &types.QueryCreditAccountResponse{
+		CreditAccount: ca,
+		Balance:       balance,
+	}, nil
 }
 
 // CreditAddress derives the credit address for a tenant.

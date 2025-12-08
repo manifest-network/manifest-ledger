@@ -29,10 +29,6 @@ message Params {
   // Must be greater than zero.
   uint64 max_leases_per_tenant = 3
       [(gogoproto.jsontag) = "max_leases_per_tenant,omitempty,string"];
-
-  // settlement_batch_size is the number of leases to settle per EndBlock.
-  uint64 settlement_batch_size = 4
-      [(gogoproto.jsontag) = "settlement_batch_size,omitempty,string"];
 }
 
 // LeaseState defines the state of a lease.
@@ -115,7 +111,8 @@ message Lease {
   ];
 }
 
-// CreditAccount represents a tenant's credit account balance.
+// CreditAccount represents a tenant's credit account.
+// The actual balance is tracked by the bank module at the credit_address.
 message CreditAccount {
   option (amino.name) = "lifted/billing/CreditAccount";
 
@@ -129,11 +126,5 @@ message CreditAccount {
   string credit_address = 2 [
     (cosmos_proto.scalar) = "cosmos.AddressString",
     (gogoproto.jsontag) = "credit_address,omitempty"
-  ];
-
-  // balance is the current credit balance.
-  cosmos.base.v1beta1.Coin balance = 3 [
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "balance"
   ];
 }

@@ -113,14 +113,7 @@ func (gs *GenesisState) Validate() error {
 			return fmt.Errorf("credit account for %s has invalid credit_address: %w", ca.Tenant, err)
 		}
 
-		if !ca.Balance.IsValid() {
-			return fmt.Errorf("credit account for %s has invalid balance", ca.Tenant)
-		}
-
-		// Validate balance denom matches params denom
-		if ca.Balance.Denom != gs.Params.Denom {
-			return fmt.Errorf("credit account for %s has balance denom %s, expected %s", ca.Tenant, ca.Balance.Denom, gs.Params.Denom)
-		}
+		// Balance is tracked in bank module, no validation needed here
 	}
 
 	return nil

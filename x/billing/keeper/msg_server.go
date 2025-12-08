@@ -38,28 +38,58 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 		return nil, types.ErrInvalidDenom.Wrapf("expected %s, got %s", params.Denom, msg.Amount.Denom)
 	}
 
-	// TODO: Implement credit funding logic
-	// 1. Transfer tokens from sender to credit address
-	// 2. Create/update credit account
-	// 3. Emit event
+	// Derive credit address for the tenant
+	creditAddr, err := types.DeriveCreditAddressFromBech32(msg.Tenant)
+	if err != nil {
+		return nil, err
+	}
+
+	// Transfer tokens from sender to credit address
+	senderAddr, err := sdk.AccAddressFromBech32(msg.Sender)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ms.k.bankKeeper.SendCoins(ctx, senderAddr, creditAddr, sdk.NewCoins(msg.Amount)); err != nil {
+		return nil, types.ErrInvalidCreditOperation.Wrapf("failed to transfer tokens: %s", err)
+	}
+
+	// Get or create credit account
+	creditAccount, err := ms.k.GetCreditAccount(ctx, msg.Tenant)
+	if err != nil {
+		// Credit account doesn't exist, create it
+		creditAccount = types.CreditAccount{
+			Tenant:        msg.Tenant,
+			CreditAddress: creditAddr.String(),
+		}
+
+		// Ensure the credit account address is registered in the account keeper
+		if ms.k.accountKeeper.GetAccount(ctx, creditAddr) == nil {
+			acc := ms.k.accountKeeper.NewAccountWithAddress(ctx, creditAddr)
+			ms.k.accountKeeper.SetAccount(ctx, acc)
+		}
+	}
+
+	if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
+		return nil, err
+	}
+
+	// Get the new balance from the bank module
+	newBalance := ms.k.bankKeeper.GetBalance(ctx, creditAddr, params.Denom)
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeCreditFunded,
 			sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
+			sdk.NewAttribute(types.AttributeKeyCreditAddress, creditAddr.String()),
 			sdk.NewAttribute(types.AttributeKeyAmount, msg.Amount.String()),
 		),
 	)
 
-	creditAddr, err := types.DeriveCreditAddressFromBech32(msg.Tenant)
-	if err != nil {
-		return nil, err
-	}
-
 	return &types.MsgFundCreditResponse{
 		CreditAddress: creditAddr.String(),
-		NewBalance:    msg.Amount, // placeholder
+		NewBalance:    newBalance,
 	}, nil
 }
 

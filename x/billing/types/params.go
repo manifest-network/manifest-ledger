@@ -13,26 +13,21 @@ var DefaultMinCreditBalance = math.NewInt(5_000_000)
 // DefaultMaxLeasesPerTenant is the default maximum number of leases per tenant.
 const DefaultMaxLeasesPerTenant = uint64(100)
 
-// DefaultSettlementBatchSize is the default number of leases to settle per EndBlock.
-const DefaultSettlementBatchSize = uint64(10)
-
 // DefaultParams returns the default billing module parameters.
 func DefaultParams() Params {
 	return Params{
-		Denom:               DefaultDenom,
-		MinCreditBalance:    DefaultMinCreditBalance,
-		MaxLeasesPerTenant:  DefaultMaxLeasesPerTenant,
-		SettlementBatchSize: DefaultSettlementBatchSize,
+		Denom:              DefaultDenom,
+		MinCreditBalance:   DefaultMinCreditBalance,
+		MaxLeasesPerTenant: DefaultMaxLeasesPerTenant,
 	}
 }
 
 // NewParams creates a new Params instance.
-func NewParams(denom string, minCreditBalance math.Int, maxLeasesPerTenant, settlementBatchSize uint64) Params {
+func NewParams(denom string, minCreditBalance math.Int, maxLeasesPerTenant uint64) Params {
 	return Params{
-		Denom:               denom,
-		MinCreditBalance:    minCreditBalance,
-		MaxLeasesPerTenant:  maxLeasesPerTenant,
-		SettlementBatchSize: settlementBatchSize,
+		Denom:              denom,
+		MinCreditBalance:   minCreditBalance,
+		MaxLeasesPerTenant: maxLeasesPerTenant,
 	}
 }
 
@@ -48,10 +43,6 @@ func (p *Params) Validate() error {
 
 	if p.MaxLeasesPerTenant == 0 {
 		return ErrInvalidParams.Wrap("max_leases_per_tenant must be greater than zero")
-	}
-
-	if p.SettlementBatchSize == 0 {
-		return ErrInvalidParams.Wrap("settlement_batch_size must be greater than zero")
 	}
 
 	return nil

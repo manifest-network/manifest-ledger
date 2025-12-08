@@ -393,3 +393,12 @@ func (k *Keeper) CountActiveLeasesByTenant(ctx context.Context, tenant string) (
 
 	return count, nil
 }
+
+// GetCreditBalance returns the actual credit balance from the bank module for a tenant.
+func (k *Keeper) GetCreditBalance(ctx context.Context, tenant string, denom string) (sdk.Coin, error) {
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant)
+	if err != nil {
+		return sdk.Coin{}, err
+	}
+	return k.bankKeeper.GetBalance(ctx, creditAddr, denom), nil
+}

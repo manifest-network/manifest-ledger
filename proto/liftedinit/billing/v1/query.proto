@@ -190,6 +190,12 @@ message QueryCreditAccountResponse {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "credit_account"
   ];
+
+  // balance is the current balance at the credit address (fetched from bank module).
+  cosmos.base.v1beta1.Coin balance = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "balance"
+  ];
 }
 
 // QueryCreditAddressRequest is the request type for the Query/CreditAddress RPC

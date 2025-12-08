@@ -168,17 +168,8 @@ func (AppModule) ConsensusVersion() uint64 {
 }
 
 // EndBlock contains the logic that is executed at the end of each block.
-// This is where batch settlement of leases can be performed.
+// Settlement is performed lazily on-touch (during withdrawals and lease closures).
 func (am AppModule) EndBlock(_ context.Context) error {
-	// TODO: Implement batch settlement logic
-	// 1. Get settlement_batch_size from params
-	// 2. Select next batch of active leases to settle
-	// 3. For each lease:
-	//    a. Calculate accrued amount since last settlement
-	//    b. Check tenant credit balance
-	//    c. If insufficient funds, close lease (overdraw)
-	//    d. Update last_settled_at
-	// 4. Track settlement cursor for next EndBlock
 	return nil
 }
 
