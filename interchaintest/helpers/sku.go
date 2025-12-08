@@ -84,8 +84,8 @@ func (r *SKUsByProviderResponseJSON) GetNextKeyString() string {
 }
 
 // SKUCreateSKU creates a new SKU.
-func SKUCreateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, provider, name string, unit int, basePrice string, metaHash string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "create-sku", provider, name, strconv.Itoa(unit), basePrice}
+func SKUCreateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, provider, payoutAddress, name string, unit int, basePrice string, metaHash string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "sku", "create-sku", provider, payoutAddress, name, strconv.Itoa(unit), basePrice}
 	if metaHash != "" {
 		flags = append(flags, "--meta-hash", metaHash)
 	}
@@ -93,8 +93,8 @@ func SKUCreateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Walle
 }
 
 // SKUUpdateSKU updates an existing SKU.
-func SKUUpdateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, provider string, id uint64, name string, unit int, basePrice string, active bool, metaHash string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "update-sku", provider, strconv.FormatUint(id, 10), name, strconv.Itoa(unit), basePrice, strconv.FormatBool(active)}
+func SKUUpdateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, provider string, id uint64, payoutAddress, name string, unit int, basePrice string, active bool, metaHash string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "sku", "update-sku", provider, strconv.FormatUint(id, 10), payoutAddress, name, strconv.Itoa(unit), basePrice, strconv.FormatBool(active)}
 	if metaHash != "" {
 		flags = append(flags, "--meta-hash", metaHash)
 	}

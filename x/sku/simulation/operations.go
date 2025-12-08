@@ -85,18 +85,22 @@ func SimulateMsgCreateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "authority not found in accounts"), nil, nil
 		}
 
+		// Select a random account for payout address
+		payoutAccount, _ := simtypes.RandomAcc(r, accs)
+
 		provider := providers[r.Intn(len(providers))]
 		name := skuNames[r.Intn(len(skuNames))]
 		unit := units[r.Intn(len(units))]
 		basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(10000)+1)))
 
 		msg := &types.MsgCreateSKU{
-			Authority: simAccount.Address.String(),
-			Provider:  provider,
-			Name:      name,
-			Unit:      unit,
-			BasePrice: basePrice,
-			MetaHash:  generateRandomBytes(r, 32),
+			Authority:     simAccount.Address.String(),
+			Provider:      provider,
+			PayoutAddress: payoutAccount.Address.String(),
+			Name:          name,
+			Unit:          unit,
+			BasePrice:     basePrice,
+			MetaHash:      generateRandomBytes(r, 32),
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
@@ -121,20 +125,24 @@ func SimulateMsgUpdateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 
 		sku := allSKUs[r.Intn(len(allSKUs))]
 
+		// Select a random account for payout address
+		payoutAccount, _ := simtypes.RandomAcc(r, accs)
+
 		name := skuNames[r.Intn(len(skuNames))]
 		unit := units[r.Intn(len(units))]
 		basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(10000)+1)))
 		active := r.Float32() > 0.3
 
 		msg := &types.MsgUpdateSKU{
-			Authority: simAccount.Address.String(),
-			Provider:  sku.Provider,
-			Id:        sku.Id,
-			Name:      name,
-			Unit:      unit,
-			BasePrice: basePrice,
-			MetaHash:  generateRandomBytes(r, 32),
-			Active:    active,
+			Authority:     simAccount.Address.String(),
+			Provider:      sku.Provider,
+			Id:            sku.Id,
+			PayoutAddress: payoutAccount.Address.String(),
+			Name:          name,
+			Unit:          unit,
+			BasePrice:     basePrice,
+			MetaHash:      generateRandomBytes(r, 32),
+			Active:        active,
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)

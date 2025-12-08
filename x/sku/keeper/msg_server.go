@@ -52,13 +52,14 @@ func (ms msgServer) CreateSKU(ctx context.Context, req *types.MsgCreateSKU) (*ty
 	}
 
 	sku := types.SKU{
-		Id:        id,
-		Provider:  req.Provider,
-		Name:      req.Name,
-		Unit:      req.Unit,
-		BasePrice: req.BasePrice,
-		MetaHash:  req.MetaHash,
-		Active:    true,
+		Id:           id,
+		Provider:     req.Provider,
+		PayoutAddress: req.PayoutAddress,
+		Name:         req.Name,
+		Unit:         req.Unit,
+		BasePrice:    req.BasePrice,
+		MetaHash:     req.MetaHash,
+		Active:       true,
 	}
 
 	if err := ms.k.SetSKU(ctx, sku); err != nil {
@@ -104,13 +105,14 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 	}
 
 	sku := types.SKU{
-		Id:        req.Id,
-		Provider:  req.Provider,
-		Name:      req.Name,
-		Unit:      req.Unit,
-		BasePrice: req.BasePrice,
-		MetaHash:  req.MetaHash,
-		Active:    req.Active,
+		Id:           req.Id,
+		Provider:     req.Provider,
+		PayoutAddress: req.PayoutAddress,
+		Name:         req.Name,
+		Unit:         req.Unit,
+		BasePrice:    req.BasePrice,
+		MetaHash:     req.MetaHash,
+		Active:       req.Active,
 	}
 
 	if err := ms.k.SetSKU(ctx, sku); err != nil {

@@ -17,18 +17,20 @@ var (
 func NewMsgCreateSKU(
 	authority string,
 	provider string,
+	payoutAddress string,
 	name string,
 	unit Unit,
 	basePrice sdk.Coin,
 	metaHash []byte,
 ) *MsgCreateSKU {
 	return &MsgCreateSKU{
-		Authority: authority,
-		Provider:  provider,
-		Name:      name,
-		Unit:      unit,
-		BasePrice: basePrice,
-		MetaHash:  metaHash,
+		Authority:     authority,
+		Provider:      provider,
+		PayoutAddress: payoutAddress,
+		Name:          name,
+		Unit:          unit,
+		BasePrice:     basePrice,
+		MetaHash:      metaHash,
 	}
 }
 
@@ -54,6 +56,10 @@ func (msg *MsgCreateSKU) Validate() error {
 		return errors.Wrap(ErrInvalidSKU, "provider cannot be empty")
 	}
 
+	if _, err := sdk.AccAddressFromBech32(msg.PayoutAddress); err != nil {
+		return errors.Wrap(err, "invalid payout address")
+	}
+
 	if msg.Name == "" {
 		return errors.Wrap(ErrInvalidSKU, "name cannot be empty")
 	}
@@ -74,6 +80,7 @@ func NewMsgUpdateSKU(
 	authority string,
 	provider string,
 	id uint64,
+	payoutAddress string,
 	name string,
 	unit Unit,
 	basePrice sdk.Coin,
@@ -81,14 +88,15 @@ func NewMsgUpdateSKU(
 	active bool,
 ) *MsgUpdateSKU {
 	return &MsgUpdateSKU{
-		Authority: authority,
-		Provider:  provider,
-		Id:        id,
-		Name:      name,
-		Unit:      unit,
-		BasePrice: basePrice,
-		MetaHash:  metaHash,
-		Active:    active,
+		Authority:     authority,
+		Provider:      provider,
+		Id:            id,
+		PayoutAddress: payoutAddress,
+		Name:          name,
+		Unit:          unit,
+		BasePrice:     basePrice,
+		MetaHash:      metaHash,
+		Active:        active,
 	}
 }
 
@@ -116,6 +124,10 @@ func (msg *MsgUpdateSKU) Validate() error {
 
 	if msg.Id == 0 {
 		return errors.Wrap(ErrInvalidSKU, "id cannot be zero")
+	}
+
+	if _, err := sdk.AccAddressFromBech32(msg.PayoutAddress); err != nil {
+		return errors.Wrap(err, "invalid payout address")
 	}
 
 	if msg.Name == "" {

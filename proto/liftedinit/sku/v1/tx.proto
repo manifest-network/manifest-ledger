@@ -40,14 +40,17 @@ message MsgCreateSKU {
   // provider is the identifier of the SKU provider.
   string provider = 2;
 
+  // payout_address is the address where payments for this SKU are sent.
+  string payout_address = 3 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
   // name is the human-readable name of the SKU.
-  string name = 3;
+  string name = 4;
 
   // unit is the billing unit for the SKU.
-  Unit unit = 4;
+  Unit unit = 5;
 
   // base_price is the base price for the SKU.
-  cosmos.base.v1beta1.Coin base_price = 5 [
+  cosmos.base.v1beta1.Coin base_price = 6 [
     (gogoproto.nullable) = false,
     (amino.dont_omitempty) = true,
     (amino.encoding) = "legacy_coin",
@@ -55,7 +58,7 @@ message MsgCreateSKU {
   ];
 
   // meta_hash is a hash of the off-chain metadata.
-  bytes meta_hash = 6;
+  bytes meta_hash = 7;
 }
 
 // MsgCreateSKUResponse is the Msg/CreateSKU response type.
@@ -79,14 +82,17 @@ message MsgUpdateSKU {
   // id is the unique identifier of the SKU to update.
   uint64 id = 3;
 
+  // payout_address is the address where payments for this SKU are sent.
+  string payout_address = 4 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
   // name is the human-readable name of the SKU.
-  string name = 4;
+  string name = 5;
 
   // unit is the billing unit for the SKU.
-  Unit unit = 5;
+  Unit unit = 6;
 
   // base_price is the base price for the SKU.
-  cosmos.base.v1beta1.Coin base_price = 6 [
+  cosmos.base.v1beta1.Coin base_price = 7 [
     (gogoproto.nullable) = false,
     (amino.dont_omitempty) = true,
     (amino.encoding) = "legacy_coin",
@@ -94,10 +100,10 @@ message MsgUpdateSKU {
   ];
 
   // meta_hash is a hash of the off-chain metadata.
-  bytes meta_hash = 7;
+  bytes meta_hash = 8;
 
   // active indicates whether the SKU is active.
-  bool active = 8;
+  bool active = 9;
 }
 
 // MsgUpdateSKUResponse is the Msg/UpdateSKU response type.

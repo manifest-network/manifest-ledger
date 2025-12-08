@@ -306,22 +306,24 @@ func TestMsgCreateSKUValidate(t *testing.T) {
 		{
 			name: "valid message",
 			msg: &types.MsgCreateSKU{
-				Authority: validAddr,
-				Provider:  "provider1",
-				Name:      "Test SKU",
-				Unit:      types.Unit_UNIT_PER_HOUR,
-				BasePrice: basePrice,
+				Authority:     validAddr,
+				Provider:      "provider1",
+				PayoutAddress: testAddr2,
+				Name:          "Test SKU",
+				Unit:          types.Unit_UNIT_PER_HOUR,
+				BasePrice:     basePrice,
 			},
 			wantErr: false,
 		},
 		{
 			name: "invalid authority address",
 			msg: &types.MsgCreateSKU{
-				Authority: "invalid",
-				Provider:  "provider1",
-				Name:      "Test SKU",
-				Unit:      types.Unit_UNIT_PER_HOUR,
-				BasePrice: basePrice,
+				Authority:     "invalid",
+				Provider:      "provider1",
+				PayoutAddress: testAddr2,
+				Name:          "Test SKU",
+				Unit:          types.Unit_UNIT_PER_HOUR,
+				BasePrice:     basePrice,
 			},
 			wantErr: true,
 			errMsg:  "invalid authority address",
@@ -329,23 +331,38 @@ func TestMsgCreateSKUValidate(t *testing.T) {
 		{
 			name: "empty provider",
 			msg: &types.MsgCreateSKU{
-				Authority: validAddr,
-				Provider:  "",
-				Name:      "Test SKU",
-				Unit:      types.Unit_UNIT_PER_HOUR,
-				BasePrice: basePrice,
+				Authority:     validAddr,
+				Provider:      "",
+				PayoutAddress: testAddr2,
+				Name:          "Test SKU",
+				Unit:          types.Unit_UNIT_PER_HOUR,
+				BasePrice:     basePrice,
 			},
 			wantErr: true,
 			errMsg:  "provider cannot be empty",
 		},
 		{
+			name: "invalid payout address",
+			msg: &types.MsgCreateSKU{
+				Authority:     validAddr,
+				Provider:      "provider1",
+				PayoutAddress: "",
+				Name:          "Test SKU",
+				Unit:          types.Unit_UNIT_PER_HOUR,
+				BasePrice:     basePrice,
+			},
+			wantErr: true,
+			errMsg:  "invalid payout address",
+		},
+		{
 			name: "empty name",
 			msg: &types.MsgCreateSKU{
-				Authority: validAddr,
-				Provider:  "provider1",
-				Name:      "",
-				Unit:      types.Unit_UNIT_PER_HOUR,
-				BasePrice: basePrice,
+				Authority:     validAddr,
+				Provider:      "provider1",
+				PayoutAddress: testAddr2,
+				Name:          "",
+				Unit:          types.Unit_UNIT_PER_HOUR,
+				BasePrice:     basePrice,
 			},
 			wantErr: true,
 			errMsg:  "name cannot be empty",
@@ -353,11 +370,12 @@ func TestMsgCreateSKUValidate(t *testing.T) {
 		{
 			name: "unspecified unit",
 			msg: &types.MsgCreateSKU{
-				Authority: validAddr,
-				Provider:  "provider1",
-				Name:      "Test SKU",
-				Unit:      types.Unit_UNIT_UNSPECIFIED,
-				BasePrice: basePrice,
+				Authority:     validAddr,
+				Provider:      "provider1",
+				PayoutAddress: testAddr2,
+				Name:          "Test SKU",
+				Unit:          types.Unit_UNIT_UNSPECIFIED,
+				BasePrice:     basePrice,
 			},
 			wantErr: true,
 			errMsg:  "unit cannot be unspecified",
@@ -365,11 +383,12 @@ func TestMsgCreateSKUValidate(t *testing.T) {
 		{
 			name: "zero base price",
 			msg: &types.MsgCreateSKU{
-				Authority: validAddr,
-				Provider:  "provider1",
-				Name:      "Test SKU",
-				Unit:      types.Unit_UNIT_PER_HOUR,
-				BasePrice: sdk.NewCoin("umfx", sdkmath.NewInt(0)),
+				Authority:     validAddr,
+				Provider:      "provider1",
+				PayoutAddress: testAddr2,
+				Name:          "Test SKU",
+				Unit:          types.Unit_UNIT_PER_HOUR,
+				BasePrice:     sdk.NewCoin("umfx", sdkmath.NewInt(0)),
 			},
 			wantErr: true,
 			errMsg:  "base price must be valid and non-zero",
@@ -402,26 +421,28 @@ func TestMsgUpdateSKUValidate(t *testing.T) {
 		{
 			name: "valid message",
 			msg: &types.MsgUpdateSKU{
-				Authority: validAddr,
-				Provider:  "provider1",
-				Id:        1,
-				Name:      "Updated SKU",
-				Unit:      types.Unit_UNIT_PER_DAY,
-				BasePrice: basePrice,
-				Active:    true,
+				Authority:     validAddr,
+				Provider:      "provider1",
+				Id:            1,
+				PayoutAddress: testAddr2,
+				Name:          "Updated SKU",
+				Unit:          types.Unit_UNIT_PER_DAY,
+				BasePrice:     basePrice,
+				Active:        true,
 			},
 			wantErr: false,
 		},
 		{
 			name: "invalid authority address",
 			msg: &types.MsgUpdateSKU{
-				Authority: "invalid",
-				Provider:  "provider1",
-				Id:        1,
-				Name:      "Updated SKU",
-				Unit:      types.Unit_UNIT_PER_DAY,
-				BasePrice: basePrice,
-				Active:    true,
+				Authority:     "invalid",
+				Provider:      "provider1",
+				Id:            1,
+				PayoutAddress: testAddr2,
+				Name:          "Updated SKU",
+				Unit:          types.Unit_UNIT_PER_DAY,
+				BasePrice:     basePrice,
+				Active:        true,
 			},
 			wantErr: true,
 			errMsg:  "invalid authority address",
@@ -429,13 +450,14 @@ func TestMsgUpdateSKUValidate(t *testing.T) {
 		{
 			name: "zero ID",
 			msg: &types.MsgUpdateSKU{
-				Authority: validAddr,
-				Provider:  "provider1",
-				Id:        0,
-				Name:      "Updated SKU",
-				Unit:      types.Unit_UNIT_PER_DAY,
-				BasePrice: basePrice,
-				Active:    true,
+				Authority:     validAddr,
+				Provider:      "provider1",
+				Id:            0,
+				PayoutAddress: testAddr2,
+				Name:          "Updated SKU",
+				Unit:          types.Unit_UNIT_PER_DAY,
+				BasePrice:     basePrice,
+				Active:        true,
 			},
 			wantErr: true,
 			errMsg:  "id cannot be zero",
@@ -443,16 +465,32 @@ func TestMsgUpdateSKUValidate(t *testing.T) {
 		{
 			name: "empty provider",
 			msg: &types.MsgUpdateSKU{
-				Authority: validAddr,
-				Provider:  "",
-				Id:        1,
-				Name:      "Updated SKU",
-				Unit:      types.Unit_UNIT_PER_DAY,
-				BasePrice: basePrice,
-				Active:    true,
+				Authority:     validAddr,
+				Provider:      "",
+				Id:            1,
+				PayoutAddress: testAddr2,
+				Name:          "Updated SKU",
+				Unit:          types.Unit_UNIT_PER_DAY,
+				BasePrice:     basePrice,
+				Active:        true,
 			},
 			wantErr: true,
 			errMsg:  "provider cannot be empty",
+		},
+		{
+			name: "invalid payout address",
+			msg: &types.MsgUpdateSKU{
+				Authority:     validAddr,
+				Provider:      "provider1",
+				Id:            1,
+				PayoutAddress: "",
+				Name:          "Updated SKU",
+				Unit:          types.Unit_UNIT_PER_DAY,
+				BasePrice:     basePrice,
+				Active:        true,
+			},
+			wantErr: true,
+			errMsg:  "invalid payout address",
 		},
 	}
 
@@ -749,9 +787,10 @@ func TestNewMsgConstructors(t *testing.T) {
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
 	t.Run("NewMsgCreateSKU", func(t *testing.T) {
-		msg := types.NewMsgCreateSKU(validAddr, "provider", "name", types.Unit_UNIT_PER_HOUR, basePrice, []byte("hash"))
+		msg := types.NewMsgCreateSKU(validAddr, "provider", testAddr2, "name", types.Unit_UNIT_PER_HOUR, basePrice, []byte("hash"))
 		require.Equal(t, validAddr, msg.Authority)
 		require.Equal(t, "provider", msg.Provider)
+		require.Equal(t, testAddr2, msg.PayoutAddress)
 		require.Equal(t, "name", msg.Name)
 		require.Equal(t, types.Unit_UNIT_PER_HOUR, msg.Unit)
 		require.Equal(t, basePrice, msg.BasePrice)
@@ -759,10 +798,11 @@ func TestNewMsgConstructors(t *testing.T) {
 	})
 
 	t.Run("NewMsgUpdateSKU", func(t *testing.T) {
-		msg := types.NewMsgUpdateSKU(validAddr, "provider", 1, "name", types.Unit_UNIT_PER_DAY, basePrice, []byte("hash"), true)
+		msg := types.NewMsgUpdateSKU(validAddr, "provider", 1, testAddr2, "name", types.Unit_UNIT_PER_DAY, basePrice, []byte("hash"), true)
 		require.Equal(t, validAddr, msg.Authority)
 		require.Equal(t, "provider", msg.Provider)
 		require.Equal(t, uint64(1), msg.Id)
+		require.Equal(t, testAddr2, msg.PayoutAddress)
 		require.Equal(t, "name", msg.Name)
 		require.Equal(t, types.Unit_UNIT_PER_DAY, msg.Unit)
 		require.Equal(t, basePrice, msg.BasePrice)

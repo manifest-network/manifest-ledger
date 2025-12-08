@@ -39,14 +39,17 @@ message SKU {
   // provider is the identifier of the SKU provider.
   string provider = 2;
 
+  // payout_address is the address where payments for this SKU are sent.
+  string payout_address = 3 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
   // name is the human-readable name of the SKU.
-  string name = 3;
+  string name = 4;
 
   // unit is the billing unit for the SKU.
-  Unit unit = 4;
+  Unit unit = 5;
 
   // base_price is the base price for the SKU.
-  cosmos.base.v1beta1.Coin base_price = 5 [
+  cosmos.base.v1beta1.Coin base_price = 6 [
     (gogoproto.nullable) = false,
     (amino.dont_omitempty) = true,
     (amino.encoding) = "legacy_coin",
@@ -54,8 +57,8 @@ message SKU {
   ];
 
   // meta_hash is a hash of the off-chain metadata.
-  bytes meta_hash = 6;
+  bytes meta_hash = 7;
 
   // active indicates whether the SKU is active.
-  bool active = 7;
+  bool active = 8;
 }

@@ -40,17 +40,15 @@ func NewTxCmd() *cobra.Command {
 // MsgCreateSKU returns a CLI command handler for creating a SKU.
 func MsgCreateSKU() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "create-sku [provider] [name] [unit] [base-price]",
+		Use:   "create-sku [provider] [payout-address] [name] [unit] [base-price]",
 		Short: "Create a new SKU",
 		Long: `Create a new SKU with the given parameters.
 
 Unit values:
   1 = per hour
-  2 = per day
-  3 = per month
-  4 = per unit`,
-		Example: "create-sku provider1 \"Compute Instance\" 1 100umfx --meta-hash deadbeef",
-		Args:    cobra.ExactArgs(4),
+  2 = per day`,
+		Example: "create-sku provider1 manifest1abc... \"Compute Instance\" 1 100umfx --meta-hash deadbeef",
+		Args:    cobra.ExactArgs(5),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
@@ -59,15 +57,16 @@ Unit values:
 
 			authority := clientCtx.GetFromAddress()
 			provider := args[0]
-			name := args[1]
+			payoutAddress := args[1]
+			name := args[2]
 
-			unitInt, err := strconv.ParseInt(args[2], 10, 32)
+			unitInt, err := strconv.ParseInt(args[3], 10, 32)
 			if err != nil {
 				return fmt.Errorf("invalid unit: %w", err)
 			}
 			unit := types.Unit(unitInt)
 
-			basePrice, err := sdk.ParseCoinNormalized(args[3])
+			basePrice, err := sdk.ParseCoinNormalized(args[4])
 			if err != nil {
 				return fmt.Errorf("invalid base price: %w", err)
 			}
@@ -84,6 +83,7 @@ Unit values:
 			msg := types.NewMsgCreateSKU(
 				authority.String(),
 				provider,
+				payoutAddress,
 				name,
 				unit,
 				basePrice,
@@ -106,20 +106,18 @@ Unit values:
 // MsgUpdateSKU returns a CLI command handler for updating a SKU.
 func MsgUpdateSKU() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "update-sku [provider] [id] [name] [unit] [base-price] [active]",
+		Use:   "update-sku [provider] [id] [payout-address] [name] [unit] [base-price] [active]",
 		Short: "Update an existing SKU",
 		Long: `Update an existing SKU with the given parameters.
 
 Unit values:
   1 = per hour
   2 = per day
-  3 = per month
-  4 = per unit
 
 Active values:
   true or false`,
-		Example: "update-sku provider1 1 \"Updated Name\" 2 200umfx true --meta-hash deadbeef",
-		Args:    cobra.ExactArgs(6),
+		Example: "update-sku provider1 1 manifest1abc... \"Updated Name\" 2 200umfx true --meta-hash deadbeef",
+		Args:    cobra.ExactArgs(7),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
@@ -134,20 +132,21 @@ Active values:
 				return fmt.Errorf("invalid SKU ID: %w", err)
 			}
 
-			name := args[2]
+			payoutAddress := args[2]
+			name := args[3]
 
-			unitInt, err := strconv.ParseInt(args[3], 10, 32)
+			unitInt, err := strconv.ParseInt(args[4], 10, 32)
 			if err != nil {
 				return fmt.Errorf("invalid unit: %w", err)
 			}
 			unit := types.Unit(unitInt)
 
-			basePrice, err := sdk.ParseCoinNormalized(args[4])
+			basePrice, err := sdk.ParseCoinNormalized(args[5])
 			if err != nil {
 				return fmt.Errorf("invalid base price: %w", err)
 			}
 
-			active, err := strconv.ParseBool(args[5])
+			active, err := strconv.ParseBool(args[6])
 			if err != nil {
 				return fmt.Errorf("invalid active value (must be true or false): %w", err)
 			}
@@ -165,6 +164,7 @@ Active values:
 				authority.String(),
 				provider,
 				id,
+				payoutAddress,
 				name,
 				unit,
 				basePrice,

@@ -100,12 +100,13 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	t.Log("=== Testing SKU Create ===")
 
 	provider := testProvider
+	payoutAddress := authority.FormattedAddress()
 	name := "Compute Small"
 	unit := 1 // UNIT_PER_HOUR
 	basePrice := "100umfx"
 
 	t.Run("success: authority creates SKU", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, provider, name, unit, basePrice, "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, provider, payoutAddress, name, unit, basePrice, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -125,7 +126,7 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	})
 
 	t.Run("success: authority creates SKU with meta-hash", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, provider, "Compute Medium", 2, "200umfx", "deadbeef")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, provider, payoutAddress, "Compute Medium", 2, "200umfx", "deadbeef")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -134,7 +135,7 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	})
 
 	t.Run("fail: unauthorized user creates SKU", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, user1, provider, "Unauthorized SKU", unit, basePrice, "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, user1, provider, payoutAddress, "Unauthorized SKU", unit, basePrice, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -165,10 +166,11 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	t.Log("=== Testing SKU Update ===")
 
 	provider := testProvider
+	payoutAddress := authority.FormattedAddress()
 
 	t.Run("success: authority updates SKU", func(t *testing.T) {
 		newName := "Compute Small Updated"
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, provider, 1, newName, 1, "150umfx", true, "cafebabe")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, provider, 1, payoutAddress, newName, 1, "150umfx", true, "cafebabe")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -183,7 +185,7 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	})
 
 	t.Run("success: authority deactivates SKU", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, provider, 1, "Compute Small Updated", 1, "150umfx", false, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, provider, 1, payoutAddress, "Compute Small Updated", 1, "150umfx", false, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -196,12 +198,12 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.False(t, skuRes.Sku.Active)
 
 		// Reactivate for other tests
-		_, err = helpers.SKUUpdateSKU(ctx, chain, authority, provider, 1, "Compute Small Updated", 1, "150umfx", true, "")
+		_, err = helpers.SKUUpdateSKU(ctx, chain, authority, provider, 1, payoutAddress, "Compute Small Updated", 1, "150umfx", true, "")
 		require.NoError(t, err)
 	})
 
 	t.Run("fail: unauthorized user updates SKU", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, user1, provider, 1, "Hacked Name", 1, "100umfx", true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, user1, provider, 1, payoutAddress, "Hacked Name", 1, "100umfx", true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -211,7 +213,7 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	})
 
 	t.Run("fail: update with wrong provider", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, "wrong-provider", 1, "Name", 1, "100umfx", true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, "wrong-provider", 1, payoutAddress, "Name", 1, "100umfx", true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -221,7 +223,7 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	})
 
 	t.Run("fail: update non-existent SKU", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, provider, 999, "Name", 1, "100umfx", true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, provider, 999, payoutAddress, "Name", 1, "100umfx", true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -235,10 +237,11 @@ func testSKUDeactivate(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	t.Log("=== Testing SKU Deactivate ===")
 
 	provider := testProvider
+	payoutAddress := authority.FormattedAddress()
 
 	// Create a SKU specifically for deactivation
 	t.Run("setup: create SKU for deactivation", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, provider, "To Be Deactivated", 1, "50umfx", "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, provider, payoutAddress, "To Be Deactivated", 1, "50umfx", "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -348,6 +351,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	t.Log("=== Testing SKU Allowed List Operations ===")
 
 	provider := "allowed-list-provider"
+	payoutAddress := user1.FormattedAddress()
 
 	// Add user1 to allowed list
 	t.Run("setup: add user1 to allowed list", func(t *testing.T) {
@@ -360,7 +364,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	})
 
 	t.Run("success: allowed user creates SKU", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, user1, provider, "Allowed User SKU", 1, "100umfx", "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, user1, provider, payoutAddress, "Allowed User SKU", 1, "100umfx", "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -369,7 +373,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	})
 
 	t.Run("fail: non-allowed user creates SKU", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, user2, provider, "Non-Allowed SKU", 1, "100umfx", "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, user2, provider, payoutAddress, "Non-Allowed SKU", 1, "100umfx", "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -388,7 +392,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	})
 
 	t.Run("success: allowed user updates SKU", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, user1, provider, allowedSKUID, "Updated by Allowed", 2, "200umfx", true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, user1, provider, allowedSKUID, payoutAddress, "Updated by Allowed", 2, "200umfx", true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -397,7 +401,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	})
 
 	t.Run("fail: non-allowed user updates SKU", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, user2, provider, allowedSKUID, "Hacked", 1, "100umfx", true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, user2, provider, allowedSKUID, payoutAddress, "Hacked", 1, "100umfx", true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -441,11 +445,12 @@ func testSKUQueryByProvider(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	t.Log("=== Testing SKU Query By Provider ===")
 
 	provider := "query-test-provider"
+	payoutAddress := authority.FormattedAddress()
 
 	// Create multiple SKUs for the same provider
 	t.Run("setup: create SKUs for provider", func(t *testing.T) {
 		for i := 1; i <= 3; i++ {
-			res, err := helpers.SKUCreateSKU(ctx, chain, authority, provider, "Query Test SKU "+string(rune('0'+i)), i, "100umfx", "")
+			res, err := helpers.SKUCreateSKU(ctx, chain, authority, provider, payoutAddress, "Query Test SKU "+string(rune('0'+i)), i, "100umfx", "")
 			require.NoError(t, err)
 
 			txRes, err := chain.GetTransaction(res.TxHash)
@@ -475,11 +480,12 @@ func testSKUPagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	t.Log("=== Testing SKU Pagination ===")
 
 	paginationProvider := "pagination-provider"
+	payoutAddress := authority.FormattedAddress()
 
 	// Create multiple SKUs for pagination testing
 	t.Run("setup: create SKUs for pagination", func(t *testing.T) {
 		for i := 1; i <= 5; i++ {
-			res, err := helpers.SKUCreateSKU(ctx, chain, authority, paginationProvider, "Pagination SKU "+string(rune('0'+i)), 1, "100umfx", "")
+			res, err := helpers.SKUCreateSKU(ctx, chain, authority, paginationProvider, payoutAddress, "Pagination SKU "+string(rune('0'+i)), 1, "100umfx", "")
 			require.NoError(t, err)
 
 			txRes, err := chain.GetTransaction(res.TxHash)

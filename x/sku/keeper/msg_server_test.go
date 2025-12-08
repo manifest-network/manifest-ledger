@@ -17,6 +17,7 @@ import (
 func TestCreateSKU(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, acc := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
 
 	f := initFixture(t)
 
@@ -30,70 +31,87 @@ func TestCreateSKU(t *testing.T) {
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
 	type testcase struct {
-		name      string
-		sender    string
-		provider  string
-		skuName   string
-		unit      types.Unit
-		basePrice sdk.Coin
-		metaHash  []byte
-		errMsg    string
+		name          string
+		sender        string
+		provider      string
+		payoutAddress string
+		skuName       string
+		unit          types.Unit
+		basePrice     sdk.Coin
+		metaHash      []byte
+		errMsg        string
 	}
 
 	cases := []testcase{
 		{
-			name:      "success; create SKU",
-			sender:    authority.String(),
-			provider:  "provider1",
-			skuName:   "Test SKU",
-			unit:      types.Unit_UNIT_PER_HOUR,
-			basePrice: basePrice,
-			metaHash:  []byte("testhash"),
+			name:          "success; create SKU",
+			sender:        authority.String(),
+			provider:      "provider1",
+			payoutAddress: payoutAddr.String(),
+			skuName:       "Test SKU",
+			unit:          types.Unit_UNIT_PER_HOUR,
+			basePrice:     basePrice,
+			metaHash:      []byte("testhash"),
 		},
 		{
-			name:      "fail; unauthorized sender",
-			sender:    acc.String(),
-			provider:  "provider1",
-			skuName:   "Test SKU",
-			unit:      types.Unit_UNIT_PER_HOUR,
-			basePrice: basePrice,
-			errMsg:    "unauthorized",
+			name:          "fail; unauthorized sender",
+			sender:        acc.String(),
+			provider:      "provider1",
+			payoutAddress: payoutAddr.String(),
+			skuName:       "Test SKU",
+			unit:          types.Unit_UNIT_PER_HOUR,
+			basePrice:     basePrice,
+			errMsg:        "unauthorized",
 		},
 		{
-			name:      "fail; empty provider",
-			sender:    authority.String(),
-			provider:  "",
-			skuName:   "Test SKU",
-			unit:      types.Unit_UNIT_PER_HOUR,
-			basePrice: basePrice,
-			errMsg:    "provider cannot be empty",
+			name:          "fail; empty provider",
+			sender:        authority.String(),
+			provider:      "",
+			payoutAddress: payoutAddr.String(),
+			skuName:       "Test SKU",
+			unit:          types.Unit_UNIT_PER_HOUR,
+			basePrice:     basePrice,
+			errMsg:        "provider cannot be empty",
 		},
 		{
-			name:      "fail; empty name",
-			sender:    authority.String(),
-			provider:  "provider1",
-			skuName:   "",
-			unit:      types.Unit_UNIT_PER_HOUR,
-			basePrice: basePrice,
-			errMsg:    "name cannot be empty",
+			name:          "fail; invalid payout address",
+			sender:        authority.String(),
+			provider:      "provider1",
+			payoutAddress: "",
+			skuName:       "Test SKU",
+			unit:          types.Unit_UNIT_PER_HOUR,
+			basePrice:     basePrice,
+			errMsg:        "invalid payout address",
 		},
 		{
-			name:      "fail; unspecified unit",
-			sender:    authority.String(),
-			provider:  "provider1",
-			skuName:   "Test SKU",
-			unit:      types.Unit_UNIT_UNSPECIFIED,
-			basePrice: basePrice,
-			errMsg:    "unit cannot be unspecified",
+			name:          "fail; empty name",
+			sender:        authority.String(),
+			provider:      "provider1",
+			payoutAddress: payoutAddr.String(),
+			skuName:       "",
+			unit:          types.Unit_UNIT_PER_HOUR,
+			basePrice:     basePrice,
+			errMsg:        "name cannot be empty",
 		},
 		{
-			name:      "fail; zero base price",
-			sender:    authority.String(),
-			provider:  "provider1",
-			skuName:   "Test SKU",
-			unit:      types.Unit_UNIT_PER_HOUR,
-			basePrice: sdk.NewCoin("umfx", sdkmath.NewInt(0)),
-			errMsg:    "base price must be valid and non-zero",
+			name:          "fail; unspecified unit",
+			sender:        authority.String(),
+			provider:      "provider1",
+			payoutAddress: payoutAddr.String(),
+			skuName:       "Test SKU",
+			unit:          types.Unit_UNIT_UNSPECIFIED,
+			basePrice:     basePrice,
+			errMsg:        "unit cannot be unspecified",
+		},
+		{
+			name:          "fail; zero base price",
+			sender:        authority.String(),
+			provider:      "provider1",
+			payoutAddress: payoutAddr.String(),
+			skuName:       "Test SKU",
+			unit:          types.Unit_UNIT_PER_HOUR,
+			basePrice:     sdk.NewCoin("umfx", sdkmath.NewInt(0)),
+			errMsg:        "base price must be valid and non-zero",
 		},
 	}
 
@@ -102,12 +120,13 @@ func TestCreateSKU(t *testing.T) {
 
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgCreateSKU{
-				Authority: c.sender,
-				Provider:  c.provider,
-				Name:      c.skuName,
-				Unit:      c.unit,
-				BasePrice: c.basePrice,
-				MetaHash:  c.metaHash,
+				Authority:     c.sender,
+				Provider:      c.provider,
+				PayoutAddress: c.payoutAddress,
+				Name:          c.skuName,
+				Unit:          c.unit,
+				BasePrice:     c.basePrice,
+				MetaHash:      c.metaHash,
 			}
 
 			resp, err := ms.CreateSKU(f.Ctx, msg)
@@ -123,6 +142,7 @@ func TestCreateSKU(t *testing.T) {
 			sku, err := k.GetSKU(f.Ctx, resp.Id)
 			require.NoError(t, err)
 			require.Equal(t, c.provider, sku.Provider)
+			require.Equal(t, c.payoutAddress, sku.PayoutAddress)
 			require.Equal(t, c.skuName, sku.Name)
 			require.Equal(t, c.unit, sku.Unit)
 			require.Equal(t, c.basePrice, sku.BasePrice)
@@ -134,6 +154,7 @@ func TestCreateSKU(t *testing.T) {
 func TestUpdateSKU(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, acc := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
 
 	f := initFixture(t)
 
@@ -145,82 +166,101 @@ func TestUpdateSKU(t *testing.T) {
 	newPrice := sdk.NewCoin("umfx", sdkmath.NewInt(200))
 
 	existingSKU := types.SKU{
-		Id:        1,
-		Provider:  "provider1",
-		Name:      "Original SKU",
-		Unit:      types.Unit_UNIT_PER_HOUR,
-		BasePrice: basePrice,
-		Active:    true,
+		Id:            1,
+		Provider:      "provider1",
+		PayoutAddress: payoutAddr.String(),
+		Name:          "Original SKU",
+		Unit:          types.Unit_UNIT_PER_HOUR,
+		BasePrice:     basePrice,
+		Active:        true,
 	}
 	err := k.SetSKU(f.Ctx, existingSKU)
 	require.NoError(t, err)
 
 	type testcase struct {
-		name      string
-		sender    string
-		provider  string
-		id        uint64
-		skuName   string
-		unit      types.Unit
-		basePrice sdk.Coin
-		active    bool
-		errMsg    string
+		name          string
+		sender        string
+		provider      string
+		id            uint64
+		payoutAddress string
+		skuName       string
+		unit          types.Unit
+		basePrice     sdk.Coin
+		active        bool
+		errMsg        string
 	}
 
 	cases := []testcase{
 		{
-			name:      "success; update SKU",
-			sender:    authority.String(),
-			provider:  "provider1",
-			id:        1,
-			skuName:   "Updated SKU",
-			unit:      types.Unit_UNIT_PER_DAY,
-			basePrice: newPrice,
-			active:    false,
+			name:          "success; update SKU",
+			sender:        authority.String(),
+			provider:      "provider1",
+			id:            1,
+			payoutAddress: payoutAddr.String(),
+			skuName:       "Updated SKU",
+			unit:          types.Unit_UNIT_PER_DAY,
+			basePrice:     newPrice,
+			active:        false,
 		},
 		{
-			name:      "fail; unauthorized sender",
-			sender:    acc.String(),
-			provider:  "provider1",
-			id:        1,
-			skuName:   "Updated SKU",
-			unit:      types.Unit_UNIT_PER_DAY,
-			basePrice: newPrice,
-			active:    true,
-			errMsg:    "unauthorized",
+			name:          "fail; unauthorized sender",
+			sender:        acc.String(),
+			provider:      "provider1",
+			id:            1,
+			payoutAddress: payoutAddr.String(),
+			skuName:       "Updated SKU",
+			unit:          types.Unit_UNIT_PER_DAY,
+			basePrice:     newPrice,
+			active:        true,
+			errMsg:        "unauthorized",
 		},
 		{
-			name:      "fail; SKU not found",
-			sender:    authority.String(),
-			provider:  "provider1",
-			id:        999,
-			skuName:   "Updated SKU",
-			unit:      types.Unit_UNIT_PER_DAY,
-			basePrice: newPrice,
-			active:    true,
-			errMsg:    "sku not found",
+			name:          "fail; SKU not found",
+			sender:        authority.String(),
+			provider:      "provider1",
+			id:            999,
+			payoutAddress: payoutAddr.String(),
+			skuName:       "Updated SKU",
+			unit:          types.Unit_UNIT_PER_DAY,
+			basePrice:     newPrice,
+			active:        true,
+			errMsg:        "sku not found",
 		},
 		{
-			name:      "fail; provider mismatch",
-			sender:    authority.String(),
-			provider:  "provider2",
-			id:        1,
-			skuName:   "Updated SKU",
-			unit:      types.Unit_UNIT_PER_DAY,
-			basePrice: newPrice,
-			active:    true,
-			errMsg:    "provider mismatch",
+			name:          "fail; provider mismatch",
+			sender:        authority.String(),
+			provider:      "provider2",
+			id:            1,
+			payoutAddress: payoutAddr.String(),
+			skuName:       "Updated SKU",
+			unit:          types.Unit_UNIT_PER_DAY,
+			basePrice:     newPrice,
+			active:        true,
+			errMsg:        "provider mismatch",
 		},
 		{
-			name:      "fail; empty name",
-			sender:    authority.String(),
-			provider:  "provider1",
-			id:        1,
-			skuName:   "",
-			unit:      types.Unit_UNIT_PER_DAY,
-			basePrice: newPrice,
-			active:    true,
-			errMsg:    "name cannot be empty",
+			name:          "fail; invalid payout address",
+			sender:        authority.String(),
+			provider:      "provider1",
+			id:            1,
+			payoutAddress: "",
+			skuName:       "Updated SKU",
+			unit:          types.Unit_UNIT_PER_DAY,
+			basePrice:     newPrice,
+			active:        true,
+			errMsg:        "invalid payout address",
+		},
+		{
+			name:          "fail; empty name",
+			sender:        authority.String(),
+			provider:      "provider1",
+			id:            1,
+			payoutAddress: payoutAddr.String(),
+			skuName:       "",
+			unit:          types.Unit_UNIT_PER_DAY,
+			basePrice:     newPrice,
+			active:        true,
+			errMsg:        "name cannot be empty",
 		},
 	}
 
@@ -229,13 +269,14 @@ func TestUpdateSKU(t *testing.T) {
 
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgUpdateSKU{
-				Authority: c.sender,
-				Provider:  c.provider,
-				Id:        c.id,
-				Name:      c.skuName,
-				Unit:      c.unit,
-				BasePrice: c.basePrice,
-				Active:    c.active,
+				Authority:     c.sender,
+				Provider:      c.provider,
+				Id:            c.id,
+				PayoutAddress: c.payoutAddress,
+				Name:          c.skuName,
+				Unit:          c.unit,
+				BasePrice:     c.basePrice,
+				Active:        c.active,
 			}
 
 			_, err := ms.UpdateSKU(f.Ctx, msg)
@@ -249,6 +290,7 @@ func TestUpdateSKU(t *testing.T) {
 			sku, err := k.GetSKU(f.Ctx, c.id)
 			require.NoError(t, err)
 			require.Equal(t, c.skuName, sku.Name)
+			require.Equal(t, c.payoutAddress, sku.PayoutAddress)
 			require.Equal(t, c.unit, sku.Unit)
 			require.Equal(t, c.basePrice, sku.BasePrice)
 			require.Equal(t, c.active, sku.Active)
@@ -259,6 +301,7 @@ func TestUpdateSKU(t *testing.T) {
 func TestDeactivateSKUMsg(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, acc := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
 
 	f := initFixture(t)
 
@@ -271,12 +314,13 @@ func TestDeactivateSKUMsg(t *testing.T) {
 	// Create SKUs for testing
 	for i := 1; i <= 4; i++ {
 		sku := types.SKU{
-			Id:        uint64(i), //nolint:gosec // test code
-			Provider:  "provider1",
-			Name:      "Test SKU",
-			Unit:      types.Unit_UNIT_PER_HOUR,
-			BasePrice: basePrice,
-			Active:    true,
+			Id:            uint64(i), //nolint:gosec // test code
+			Provider:      "provider1",
+			PayoutAddress: payoutAddr.String(),
+			Name:          "Test SKU",
+			Unit:          types.Unit_UNIT_PER_HOUR,
+			BasePrice:     basePrice,
+			Active:        true,
 		}
 		err := k.SetSKU(f.Ctx, sku)
 		require.NoError(t, err)
@@ -284,12 +328,13 @@ func TestDeactivateSKUMsg(t *testing.T) {
 
 	// Create an already inactive SKU
 	inactiveSKU := types.SKU{
-		Id:        5,
-		Provider:  "provider1",
-		Name:      "Inactive SKU",
-		Unit:      types.Unit_UNIT_PER_HOUR,
-		BasePrice: basePrice,
-		Active:    false,
+		Id:            5,
+		Provider:      "provider1",
+		PayoutAddress: payoutAddr.String(),
+		Name:          "Inactive SKU",
+		Unit:          types.Unit_UNIT_PER_HOUR,
+		BasePrice:     basePrice,
+		Active:        false,
 	}
 	err := k.SetSKU(f.Ctx, inactiveSKU)
 	require.NoError(t, err)
@@ -367,6 +412,7 @@ func TestDeactivateSKUMsg(t *testing.T) {
 
 func TestCreateMultipleSKUs(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
 
 	f := initFixture(t)
 
@@ -381,11 +427,12 @@ func TestCreateMultipleSKUs(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		msg := &types.MsgCreateSKU{
-			Authority: authority.String(),
-			Provider:  "provider1",
-			Name:      "SKU",
-			Unit:      types.Unit_UNIT_PER_HOUR,
-			BasePrice: basePrice,
+			Authority:     authority.String(),
+			Provider:      "provider1",
+			PayoutAddress: payoutAddr.String(),
+			Name:          "SKU",
+			Unit:          types.Unit_UNIT_PER_HOUR,
+			BasePrice:     basePrice,
 		}
 
 		resp, err := ms.CreateSKU(f.Ctx, msg)
@@ -465,6 +512,7 @@ func TestAllowedListCreateSKU(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, allowedAddr := testdata.KeyTestPubAddr()
 	_, _, unauthorizedAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
 
 	f := initFixture(t)
 
@@ -486,11 +534,12 @@ func TestAllowedListCreateSKU(t *testing.T) {
 
 	// Test that allowed address can create SKU
 	msg := &types.MsgCreateSKU{
-		Authority: allowedAddr.String(),
-		Provider:  "provider1",
-		Name:      "Test SKU",
-		Unit:      types.Unit_UNIT_PER_HOUR,
-		BasePrice: basePrice,
+		Authority:     allowedAddr.String(),
+		Provider:      "provider1",
+		PayoutAddress: payoutAddr.String(),
+		Name:          "Test SKU",
+		Unit:          types.Unit_UNIT_PER_HOUR,
+		BasePrice:     basePrice,
 	}
 
 	resp, err := ms.CreateSKU(f.Ctx, msg)
@@ -500,11 +549,12 @@ func TestAllowedListCreateSKU(t *testing.T) {
 
 	// Test that unauthorized address cannot create SKU
 	msg = &types.MsgCreateSKU{
-		Authority: unauthorizedAddr.String(),
-		Provider:  "provider2",
-		Name:      "Test SKU 2",
-		Unit:      types.Unit_UNIT_PER_HOUR,
-		BasePrice: basePrice,
+		Authority:     unauthorizedAddr.String(),
+		Provider:      "provider2",
+		PayoutAddress: payoutAddr.String(),
+		Name:          "Test SKU 2",
+		Unit:          types.Unit_UNIT_PER_HOUR,
+		BasePrice:     basePrice,
 	}
 
 	_, err = ms.CreateSKU(f.Ctx, msg)
@@ -513,11 +563,12 @@ func TestAllowedListCreateSKU(t *testing.T) {
 
 	// Test that authority can still create SKU
 	msg = &types.MsgCreateSKU{
-		Authority: authority.String(),
-		Provider:  "provider3",
-		Name:      "Test SKU 3",
-		Unit:      types.Unit_UNIT_PER_HOUR,
-		BasePrice: basePrice,
+		Authority:     authority.String(),
+		Provider:      "provider3",
+		PayoutAddress: payoutAddr.String(),
+		Name:          "Test SKU 3",
+		Unit:          types.Unit_UNIT_PER_HOUR,
+		BasePrice:     basePrice,
 	}
 
 	resp, err = ms.CreateSKU(f.Ctx, msg)
@@ -528,6 +579,7 @@ func TestAllowedListCreateSKU(t *testing.T) {
 func TestParamsAllowedListRemoval(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, allowedAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
 
 	f := initFixture(t)
 
@@ -569,11 +621,12 @@ func TestParamsAllowedListRemoval(t *testing.T) {
 	// Verify removed address cannot create SKU
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 	createMsg := &types.MsgCreateSKU{
-		Authority: allowedAddr.String(),
-		Provider:  "provider1",
-		Name:      "Test SKU",
-		Unit:      types.Unit_UNIT_PER_HOUR,
-		BasePrice: basePrice,
+		Authority:     allowedAddr.String(),
+		Provider:      "provider1",
+		PayoutAddress: payoutAddr.String(),
+		Name:          "Test SKU",
+		Unit:          types.Unit_UNIT_PER_HOUR,
+		BasePrice:     basePrice,
 	}
 
 	_, err = ms.CreateSKU(f.Ctx, createMsg)
