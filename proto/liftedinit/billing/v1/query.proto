@@ -38,7 +38,7 @@ service Query {
   rpc LeasesByProvider(QueryLeasesByProviderRequest)
       returns (QueryLeasesByProviderResponse) {
     option (google.api.http).get =
-        "/liftedinit/billing/v1/leases/provider/{provider}";
+        "/liftedinit/billing/v1/leases/provider/{provider_id}";
   }
 
   // CreditAccount queries a tenant's credit account.
@@ -68,19 +68,25 @@ message QueryParamsRequest {}
 // QueryParamsResponse is the response type for the Query/Params RPC method.
 message QueryParamsResponse {
   // params defines the module parameters.
-  Params params = 1 [(gogoproto.nullable) = false];
+  Params params = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "params"
+  ];
 }
 
 // QueryLeaseRequest is the request type for the Query/Lease RPC method.
 message QueryLeaseRequest {
   // lease_id is the ID of the lease to query.
-  uint64 lease_id = 1;
+  uint64 lease_id = 1 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
 }
 
 // QueryLeaseResponse is the response type for the Query/Lease RPC method.
 message QueryLeaseResponse {
   // lease is the queried lease.
-  Lease lease = 1 [(gogoproto.nullable) = false];
+  Lease lease = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "lease"
+  ];
 }
 
 // QueryLeasesRequest is the request type for the Query/Leases RPC method.
@@ -89,13 +95,16 @@ message QueryLeasesRequest {
   cosmos.base.query.v1beta1.PageRequest pagination = 1;
 
   // active_only filters to return only active leases when true.
-  bool active_only = 2;
+  bool active_only = 2 [(gogoproto.jsontag) = "active_only,omitempty"];
 }
 
 // QueryLeasesResponse is the response type for the Query/Leases RPC method.
 message QueryLeasesResponse {
   // leases is the list of leases.
-  repeated Lease leases = 1 [(gogoproto.nullable) = false];
+  repeated Lease leases = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "leases"
+  ];
 
   // pagination defines the pagination in the response.
   cosmos.base.query.v1beta1.PageResponse pagination = 2;
@@ -105,20 +114,26 @@ message QueryLeasesResponse {
 // RPC method.
 message QueryLeasesByTenantRequest {
   // tenant is the address of the tenant.
-  string tenant = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string tenant = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
 
   // pagination defines an optional pagination for the request.
   cosmos.base.query.v1beta1.PageRequest pagination = 2;
 
   // active_only filters to return only active leases when true.
-  bool active_only = 3;
+  bool active_only = 3 [(gogoproto.jsontag) = "active_only,omitempty"];
 }
 
 // QueryLeasesByTenantResponse is the response type for the Query/LeasesByTenant
 // RPC method.
 message QueryLeasesByTenantResponse {
   // leases is the list of leases for the tenant.
-  repeated Lease leases = 1 [(gogoproto.nullable) = false];
+  repeated Lease leases = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "leases"
+  ];
 
   // pagination defines the pagination in the response.
   cosmos.base.query.v1beta1.PageResponse pagination = 2;
@@ -127,21 +142,24 @@ message QueryLeasesByTenantResponse {
 // QueryLeasesByProviderRequest is the request type for the
 // Query/LeasesByProvider RPC method.
 message QueryLeasesByProviderRequest {
-  // provider is the provider identifier.
-  string provider = 1;
+  // provider_id is the provider ID.
+  uint64 provider_id = 1 [(gogoproto.jsontag) = "provider_id,omitempty,string"];
 
   // pagination defines an optional pagination for the request.
   cosmos.base.query.v1beta1.PageRequest pagination = 2;
 
   // active_only filters to return only active leases when true.
-  bool active_only = 3;
+  bool active_only = 3 [(gogoproto.jsontag) = "active_only,omitempty"];
 }
 
 // QueryLeasesByProviderResponse is the response type for the
 // Query/LeasesByProvider RPC method.
 message QueryLeasesByProviderResponse {
   // leases is the list of leases for the provider.
-  repeated Lease leases = 1 [(gogoproto.nullable) = false];
+  repeated Lease leases = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "leases"
+  ];
 
   // pagination defines the pagination in the response.
   cosmos.base.query.v1beta1.PageResponse pagination = 2;
@@ -151,40 +169,55 @@ message QueryLeasesByProviderResponse {
 // method.
 message QueryCreditAccountRequest {
   // tenant is the address of the tenant.
-  string tenant = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string tenant = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
 }
 
 // QueryCreditAccountResponse is the response type for the Query/CreditAccount
 // RPC method.
 message QueryCreditAccountResponse {
   // credit_account is the tenant's credit account.
-  CreditAccount credit_account = 1 [(gogoproto.nullable) = false];
+  CreditAccount credit_account = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "credit_account"
+  ];
 }
 
 // QueryCreditAddressRequest is the request type for the Query/CreditAddress RPC
 // method.
 message QueryCreditAddressRequest {
   // tenant is the address of the tenant.
-  string tenant = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string tenant = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
 }
 
 // QueryCreditAddressResponse is the response type for the Query/CreditAddress
 // RPC method.
 message QueryCreditAddressResponse {
   // credit_address is the derived credit account address.
-  string credit_address = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string credit_address = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "credit_address,omitempty"
+  ];
 }
 
 // QueryWithdrawableAmountRequest is the request type for the
 // Query/WithdrawableAmount RPC method.
 message QueryWithdrawableAmountRequest {
   // lease_id is the ID of the lease.
-  uint64 lease_id = 1;
+  uint64 lease_id = 1 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
 }
 
 // QueryWithdrawableAmountResponse is the response type for the
 // Query/WithdrawableAmount RPC method.
 message QueryWithdrawableAmountResponse {
   // amount is the amount available for withdrawal.
-  cosmos.base.v1beta1.Coin amount = 1 [(gogoproto.nullable) = false];
+  cosmos.base.v1beta1.Coin amount = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "amount"
+  ];
 }

@@ -1,6 +1,7 @@
 syntax = "proto3";
 package liftedinit.billing.v1;
 
+import "amino/amino.proto";
 import "cosmos/base/v1beta1/coin.proto";
 import "cosmos/msg/v1/msg.proto";
 import "cosmos_proto/cosmos.proto";
@@ -34,125 +35,184 @@ service Msg {
 
 // LeaseItemInput is the input for creating a lease item.
 message LeaseItemInput {
+  option (amino.name) = "lifted/billing/LeaseItemInput";
+
   // sku_id is the ID of the SKU to lease.
-  uint64 sku_id = 1;
+  uint64 sku_id = 1 [(gogoproto.jsontag) = "sku_id,omitempty,string"];
 
   // quantity is the number of instances.
-  uint64 quantity = 2;
+  uint64 quantity = 2 [(gogoproto.jsontag) = "quantity,omitempty,string"];
 }
 
 // MsgFundCredit funds a tenant's credit account.
 message MsgFundCredit {
   option (cosmos.msg.v1.signer) = "sender";
+  option (amino.name) = "lifted/billing/MsgFundCredit";
 
   // sender is the address funding the credit account.
-  string sender = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string sender = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "sender,omitempty"
+  ];
 
   // tenant is the address of the tenant whose credit account to fund.
-  string tenant = 2 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string tenant = 2 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
 
   // amount is the amount to fund (must be in billing denom).
-  cosmos.base.v1beta1.Coin amount = 3 [(gogoproto.nullable) = false];
+  cosmos.base.v1beta1.Coin amount = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "amount"
+  ];
 }
 
 // MsgFundCreditResponse is the response type for MsgFundCredit.
 message MsgFundCreditResponse {
   // credit_address is the derived credit account address.
-  string credit_address = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string credit_address = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "credit_address,omitempty"
+  ];
 
   // new_balance is the credit account balance after funding.
-  cosmos.base.v1beta1.Coin new_balance = 2 [(gogoproto.nullable) = false];
+  cosmos.base.v1beta1.Coin new_balance = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "new_balance"
+  ];
 }
 
 // MsgCreateLease creates a new lease.
 message MsgCreateLease {
   option (cosmos.msg.v1.signer) = "tenant";
+  option (amino.name) = "lifted/billing/MsgCreateLease";
 
   // tenant is the address of the tenant creating the lease.
-  string tenant = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string tenant = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
 
   // items is the list of SKU items to include in the lease.
   // All SKUs must belong to the same provider.
-  repeated LeaseItemInput items = 2 [(gogoproto.nullable) = false];
+  repeated LeaseItemInput items = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "items"
+  ];
 }
 
 // MsgCreateLeaseResponse is the response type for MsgCreateLease.
 message MsgCreateLeaseResponse {
   // lease_id is the ID of the created lease.
-  uint64 lease_id = 1;
+  uint64 lease_id = 1 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
 }
 
 // MsgCloseLease closes an active lease.
 message MsgCloseLease {
   option (cosmos.msg.v1.signer) = "sender";
+  option (amino.name) = "lifted/billing/MsgCloseLease";
 
   // sender is the address requesting the closure (tenant, provider, or authority).
-  string sender = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string sender = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "sender,omitempty"
+  ];
 
   // lease_id is the ID of the lease to close.
-  uint64 lease_id = 2;
+  uint64 lease_id = 2 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
 }
 
 // MsgCloseLeaseResponse is the response type for MsgCloseLease.
 message MsgCloseLeaseResponse {
   // settled_amount is the amount settled at closure.
-  cosmos.base.v1beta1.Coin settled_amount = 1 [(gogoproto.nullable) = false];
+  cosmos.base.v1beta1.Coin settled_amount = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "settled_amount"
+  ];
 }
 
 // MsgWithdraw allows a provider to withdraw from a specific lease.
 message MsgWithdraw {
   option (cosmos.msg.v1.signer) = "sender";
+  option (amino.name) = "lifted/billing/MsgWithdraw";
 
   // sender is the provider's address or authority.
-  string sender = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string sender = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "sender,omitempty"
+  ];
 
   // lease_id is the ID of the lease to withdraw from.
-  uint64 lease_id = 2;
+  uint64 lease_id = 2 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
 }
 
 // MsgWithdrawResponse is the response type for MsgWithdraw.
 message MsgWithdrawResponse {
   // amount is the amount withdrawn.
-  cosmos.base.v1beta1.Coin amount = 1 [(gogoproto.nullable) = false];
+  cosmos.base.v1beta1.Coin amount = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "amount"
+  ];
 
   // payout_address is the address that received the funds.
-  string payout_address = 2 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string payout_address = 2 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "payout_address,omitempty"
+  ];
 }
 
 // MsgWithdrawAll allows a provider to withdraw from all their leases.
 message MsgWithdrawAll {
   option (cosmos.msg.v1.signer) = "sender";
+  option (amino.name) = "lifted/billing/MsgWithdrawAll";
 
   // sender is the provider's address or authority.
-  string sender = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string sender = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "sender,omitempty"
+  ];
 
-  // provider is the provider identifier to withdraw for.
+  // provider_id is the provider ID to withdraw for.
   // If sender is authority, this field specifies which provider.
-  // If sender is provider, this field must match sender or be empty.
-  string provider = 2;
+  // If sender is the provider's address, this field must match or be zero.
+  uint64 provider_id = 2 [(gogoproto.jsontag) = "provider_id,omitempty,string"];
 }
 
 // MsgWithdrawAllResponse is the response type for MsgWithdrawAll.
 message MsgWithdrawAllResponse {
   // total_amount is the total amount withdrawn across all leases.
-  cosmos.base.v1beta1.Coin total_amount = 1 [(gogoproto.nullable) = false];
+  cosmos.base.v1beta1.Coin total_amount = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "total_amount"
+  ];
 
   // lease_count is the number of leases withdrawn from.
-  uint64 lease_count = 2;
+  uint64 lease_count = 2 [(gogoproto.jsontag) = "lease_count,omitempty,string"];
 
   // payout_address is the address that received the funds.
-  string payout_address = 3 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string payout_address = 3 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "payout_address,omitempty"
+  ];
 }
 
 // MsgUpdateParams updates the module parameters.
 message MsgUpdateParams {
   option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "lifted/billing/MsgUpdateParams";
 
   // authority is the address of the module authority.
-  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string authority = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "authority,omitempty"
+  ];
 
   // params are the new parameters.
-  Params params = 2 [(gogoproto.nullable) = false];
+  Params params = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "params"
+  ];
 }
 
 // MsgUpdateParamsResponse is the response type for MsgUpdateParams.
