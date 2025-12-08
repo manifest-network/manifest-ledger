@@ -1,0 +1,22 @@
+syntax = "proto3";
+package liftedinit.billing.v1;
+
+import "gogoproto/gogo.proto";
+import "liftedinit/billing/v1/types.proto";
+
+option go_package = "github.com/manifest-network/manifest-ledger/x/billing/types";
+
+// GenesisState defines the billing module's genesis state.
+message GenesisState {
+  // params defines the module parameters.
+  Params params = 1 [(gogoproto.nullable) = false];
+
+  // leases is the list of all leases.
+  repeated Lease leases = 2 [(gogoproto.nullable) = false];
+
+  // credit_accounts is the list of all credit accounts.
+  repeated CreditAccount credit_accounts = 3 [(gogoproto.nullable) = false];
+
+  // next_lease_id is the next available lease ID.
+  uint64 next_lease_id = 4;
+}
