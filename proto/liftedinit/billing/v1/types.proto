@@ -26,6 +26,7 @@ message Params {
   ];
 
   // max_leases_per_tenant is the maximum number of active leases a tenant can have.
+  // Must be greater than zero.
   uint64 max_leases_per_tenant = 3
       [(gogoproto.jsontag) = "max_leases_per_tenant,omitempty,string"];
 

@@ -60,6 +60,13 @@ service Query {
     option (google.api.http).get =
         "/liftedinit/billing/v1/lease/{lease_id}/withdrawable";
   }
+
+  // ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
+  rpc ProviderWithdrawable(QueryProviderWithdrawableRequest)
+      returns (QueryProviderWithdrawableResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/provider/{provider_id}/withdrawable";
+  }
 }
 
 // QueryParamsRequest is the request type for the Query/Params RPC method.
@@ -220,4 +227,24 @@ message QueryWithdrawableAmountResponse {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "amount"
   ];
+}
+
+// QueryProviderWithdrawableRequest is the request type for the
+// Query/ProviderWithdrawable RPC method.
+message QueryProviderWithdrawableRequest {
+  // provider_id is the ID of the provider.
+  uint64 provider_id = 1 [(gogoproto.jsontag) = "provider_id,omitempty,string"];
+}
+
+// QueryProviderWithdrawableResponse is the response type for the
+// Query/ProviderWithdrawable RPC method.
+message QueryProviderWithdrawableResponse {
+  // amount is the total amount available for withdrawal across all leases.
+  cosmos.base.v1beta1.Coin amount = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "amount"
+  ];
+
+  // lease_count is the number of leases included in the withdrawable amount.
+  uint64 lease_count = 2 [(gogoproto.jsontag) = "lease_count,string"];
 }
