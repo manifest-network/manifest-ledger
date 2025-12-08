@@ -2692,6 +2692,7 @@ type Params struct {
 	// min_credit_balance is the minimum credit balance required to create a lease.
 	MinCreditBalance string `protobuf:"bytes,2,opt,name=min_credit_balance,json=minCreditBalance,proto3" json:"min_credit_balance,omitempty"`
 	// max_leases_per_tenant is the maximum number of active leases a tenant can have.
+	// Must be greater than zero.
 	MaxLeasesPerTenant uint64 `protobuf:"varint,3,opt,name=max_leases_per_tenant,json=maxLeasesPerTenant,proto3" json:"max_leases_per_tenant,omitempty"`
 	// settlement_batch_size is the number of leases to settle per EndBlock.
 	SettlementBatchSize uint64 `protobuf:"varint,4,opt,name=settlement_batch_size,json=settlementBatchSize,proto3" json:"settlement_batch_size,omitempty"`

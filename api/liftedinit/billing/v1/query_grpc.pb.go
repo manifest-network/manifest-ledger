@@ -19,14 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Query_Params_FullMethodName             = "/liftedinit.billing.v1.Query/Params"
-	Query_Lease_FullMethodName              = "/liftedinit.billing.v1.Query/Lease"
-	Query_Leases_FullMethodName             = "/liftedinit.billing.v1.Query/Leases"
-	Query_LeasesByTenant_FullMethodName     = "/liftedinit.billing.v1.Query/LeasesByTenant"
-	Query_LeasesByProvider_FullMethodName   = "/liftedinit.billing.v1.Query/LeasesByProvider"
-	Query_CreditAccount_FullMethodName      = "/liftedinit.billing.v1.Query/CreditAccount"
-	Query_CreditAddress_FullMethodName      = "/liftedinit.billing.v1.Query/CreditAddress"
-	Query_WithdrawableAmount_FullMethodName = "/liftedinit.billing.v1.Query/WithdrawableAmount"
+	Query_Params_FullMethodName               = "/liftedinit.billing.v1.Query/Params"
+	Query_Lease_FullMethodName                = "/liftedinit.billing.v1.Query/Lease"
+	Query_Leases_FullMethodName               = "/liftedinit.billing.v1.Query/Leases"
+	Query_LeasesByTenant_FullMethodName       = "/liftedinit.billing.v1.Query/LeasesByTenant"
+	Query_LeasesByProvider_FullMethodName     = "/liftedinit.billing.v1.Query/LeasesByProvider"
+	Query_CreditAccount_FullMethodName        = "/liftedinit.billing.v1.Query/CreditAccount"
+	Query_CreditAddress_FullMethodName        = "/liftedinit.billing.v1.Query/CreditAddress"
+	Query_WithdrawableAmount_FullMethodName   = "/liftedinit.billing.v1.Query/WithdrawableAmount"
+	Query_ProviderWithdrawable_FullMethodName = "/liftedinit.billing.v1.Query/ProviderWithdrawable"
 )
 
 // QueryClient is the client API for Query service.
@@ -49,6 +50,8 @@ type QueryClient interface {
 	CreditAddress(ctx context.Context, in *QueryCreditAddressRequest, opts ...grpc.CallOption) (*QueryCreditAddressResponse, error)
 	// WithdrawableAmount queries the amount available for provider withdrawal from a lease.
 	WithdrawableAmount(ctx context.Context, in *QueryWithdrawableAmountRequest, opts ...grpc.CallOption) (*QueryWithdrawableAmountResponse, error)
+	// ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
+	ProviderWithdrawable(ctx context.Context, in *QueryProviderWithdrawableRequest, opts ...grpc.CallOption) (*QueryProviderWithdrawableResponse, error)
 }
 
 type queryClient struct {
@@ -131,6 +134,15 @@ func (c *queryClient) WithdrawableAmount(ctx context.Context, in *QueryWithdrawa
 	return out, nil
 }
 
+func (c *queryClient) ProviderWithdrawable(ctx context.Context, in *QueryProviderWithdrawableRequest, opts ...grpc.CallOption) (*QueryProviderWithdrawableResponse, error) {
+	out := new(QueryProviderWithdrawableResponse)
+	err := c.cc.Invoke(ctx, Query_ProviderWithdrawable_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServer is the server API for Query service.
 // All implementations must embed UnimplementedQueryServer
 // for forward compatibility
@@ -151,6 +163,8 @@ type QueryServer interface {
 	CreditAddress(context.Context, *QueryCreditAddressRequest) (*QueryCreditAddressResponse, error)
 	// WithdrawableAmount queries the amount available for provider withdrawal from a lease.
 	WithdrawableAmount(context.Context, *QueryWithdrawableAmountRequest) (*QueryWithdrawableAmountResponse, error)
+	// ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
+	ProviderWithdrawable(context.Context, *QueryProviderWithdrawableRequest) (*QueryProviderWithdrawableResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }
 
@@ -181,6 +195,9 @@ func (UnimplementedQueryServer) CreditAddress(context.Context, *QueryCreditAddre
 }
 func (UnimplementedQueryServer) WithdrawableAmount(context.Context, *QueryWithdrawableAmountRequest) (*QueryWithdrawableAmountResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method WithdrawableAmount not implemented")
+}
+func (UnimplementedQueryServer) ProviderWithdrawable(context.Context, *QueryProviderWithdrawableRequest) (*QueryProviderWithdrawableResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProviderWithdrawable not implemented")
 }
 func (UnimplementedQueryServer) mustEmbedUnimplementedQueryServer() {}
 
@@ -339,6 +356,24 @@ func _Query_WithdrawableAmount_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_ProviderWithdrawable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryProviderWithdrawableRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).ProviderWithdrawable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_ProviderWithdrawable_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).ProviderWithdrawable(ctx, req.(*QueryProviderWithdrawableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Query_ServiceDesc is the grpc.ServiceDesc for Query service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -377,6 +412,10 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "WithdrawableAmount",
 			Handler:    _Query_WithdrawableAmount_Handler,
+		},
+		{
+			MethodName: "ProviderWithdrawable",
+			Handler:    _Query_ProviderWithdrawable_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

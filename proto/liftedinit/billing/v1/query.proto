@@ -246,5 +246,5 @@ message QueryProviderWithdrawableResponse {
   ];
 
   // lease_count is the number of leases included in the withdrawable amount.
-  uint64 lease_count = 2 [(gogoproto.jsontag) = "lease_count,string"];
+  uint64 lease_count = 2 [(gogoproto.jsontag) = "lease_count,omitempty,string"];
 }
