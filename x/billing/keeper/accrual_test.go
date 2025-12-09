@@ -16,55 +16,59 @@ import (
 
 	"cosmossdk.io/math"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 func TestConvertBasePriceToPerSecond(t *testing.T) {
+	const testDenom = "upwr"
+
 	tests := []struct {
 		name      string
-		basePrice math.Int
+		basePrice sdk.Coin
 		unit      skutypes.Unit
 		expected  math.Int
 	}{
 		{
 			name:      "per hour: 3600 -> 1 per second",
-			basePrice: math.NewInt(3600),
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(3600)),
 			unit:      skutypes.Unit_UNIT_PER_HOUR,
 			expected:  math.NewInt(1),
 		},
 		{
 			name:      "per hour: 7200 -> 2 per second",
-			basePrice: math.NewInt(7200),
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(7200)),
 			unit:      skutypes.Unit_UNIT_PER_HOUR,
 			expected:  math.NewInt(2),
 		},
 		{
 			name:      "per day: 86400 -> 1 per second",
-			basePrice: math.NewInt(86400),
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(86400)),
 			unit:      skutypes.Unit_UNIT_PER_DAY,
 			expected:  math.NewInt(1),
 		},
 		{
 			name:      "per day: 172800 -> 2 per second",
-			basePrice: math.NewInt(172800),
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(172800)),
 			unit:      skutypes.Unit_UNIT_PER_DAY,
 			expected:  math.NewInt(2),
 		},
 		{
-			name:      "unspecified: treated as per second",
-			basePrice: math.NewInt(100),
+			name:      "unspecified: returns zero (invalid unit)",
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(100)),
 			unit:      skutypes.Unit_UNIT_UNSPECIFIED,
-			expected:  math.NewInt(100),
+			expected:  math.ZeroInt(),
 		},
 		{
 			name:      "per hour: small amount (precision loss)",
-			basePrice: math.NewInt(100),
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(100)),
 			unit:      skutypes.Unit_UNIT_PER_HOUR,
 			expected:  math.ZeroInt(), // 100/3600 = 0 due to integer division
 		},
 		{
 			name:      "per hour: large amount",
-			basePrice: math.NewInt(36000000),
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(36000000)),
 			unit:      skutypes.Unit_UNIT_PER_HOUR,
 			expected:  math.NewInt(10000),
 		},

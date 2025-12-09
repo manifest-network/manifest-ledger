@@ -5,14 +5,10 @@ import (
 
 	"cosmossdk.io/math"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
-
-// SecondsPerHour is the number of seconds in an hour.
-const SecondsPerHour = 3600
-
-// SecondsPerDay is the number of seconds in a day.
-const SecondsPerDay = 86400
 
 // ConvertBasePriceToPerSecond converts a SKU's base price to a per-second rate.
 // The SKU's Unit determines how to interpret the base price:
@@ -20,16 +16,10 @@ const SecondsPerDay = 86400
 // - UNIT_PER_DAY: divide by 86400
 // Returns the per-second rate in the smallest denomination.
 // Note: Integer division may result in precision loss for small amounts.
-func ConvertBasePriceToPerSecond(basePrice math.Int, unit skutypes.Unit) math.Int {
-	switch unit {
-	case skutypes.Unit_UNIT_PER_HOUR:
-		return basePrice.Quo(math.NewInt(SecondsPerHour))
-	case skutypes.Unit_UNIT_PER_DAY:
-		return basePrice.Quo(math.NewInt(SecondsPerDay))
-	default:
-		// UNIT_UNSPECIFIED - treat as per second
-		return basePrice
-	}
+// SKUs should be validated at creation time to ensure non-zero per-second rates.
+func ConvertBasePriceToPerSecond(basePrice sdk.Coin, unit skutypes.Unit) math.Int {
+	perSecond, _ := skutypes.CalculatePricePerSecond(basePrice, unit)
+	return perSecond
 }
 
 // CalculateAccruedAmount calculates the amount accrued for a lease item

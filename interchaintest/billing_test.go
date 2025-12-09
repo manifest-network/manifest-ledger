@@ -12,6 +12,12 @@
 //   - An SKU provider with active SKUs for lease creation
 //   - Credit accounts funded with PWR tokens
 //
+// IMPORTANT: SKU prices must be large enough to produce non-zero per-second rates
+// due to integer division. For UNIT_PER_HOUR prices, use at least 3600 (1/second).
+// For UNIT_PER_DAY prices, use at least 86400 (1/second). The tests use prices
+// of 3600000 (1000/second) and 86400000 (1000/second) respectively to ensure
+// meaningful accrual even with short block times.
+//
 // ## Query Tests
 //
 // testBillingQueryParams:
@@ -88,9 +94,8 @@
 // ## Edge Cases Tests
 //
 // testEdgeCases:
-//   - Success: lease with zero balance auto-closes (overdraw)
 //   - Success: remaining credit stays in account after lease close
-//   - Success: provider can withdraw after lease closure
+//   - Success: provider cannot double-withdraw after lease closure (already settled)
 package interchaintest
 
 import (
@@ -229,6 +234,17 @@ func setupBillingTestInfrastructure(t *testing.T, ctx context.Context, chain *co
 		t.Logf("Authority PWR balance: %s", balance)
 	})
 
+	// Update billing params to use test PWR denom
+	t.Run("update_billing_params", func(t *testing.T) {
+		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom, 5_000_000, 100)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "update params should succeed: %s", txRes.RawLog)
+		t.Logf("Updated billing params with denom: %s", testPWRDenom)
+	})
+
 	// Create provider
 	t.Run("create_provider", func(t *testing.T) {
 		res, err := helpers.SKUCreateProvider(ctx, chain, authority, providerWallet.FormattedAddress(), providerWallet.FormattedAddress(), "")
@@ -244,9 +260,10 @@ func setupBillingTestInfrastructure(t *testing.T, ctx context.Context, chain *co
 	})
 
 	// Create SKU with per-hour pricing (Unit = 1)
-	// Price: 100 umfx per hour = 100/3600 ≈ 0.0278 per second
+	// Price: 3600000 umfx per hour = 3600000/3600 = 1000 per second
+	// This ensures meaningful accrual even with short test durations
 	t.Run("create_sku_per_hour", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, testProviderID, "Compute Small", 1, "100umfx", "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, testProviderID, "Compute Small", 1, "3600000umfx", "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -259,9 +276,10 @@ func setupBillingTestInfrastructure(t *testing.T, ctx context.Context, chain *co
 	})
 
 	// Create SKU with per-day pricing (Unit = 2)
-	// Price: 1000 umfx per day = 1000/86400 ≈ 0.0116 per second
+	// Price: 86400000 umfx per day = 86400000/86400 = 1000 per second
+	// This ensures meaningful accrual even with short test durations
 	t.Run("create_sku_per_day", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, testProviderID, "Storage Large", 2, "1000umfx", "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, testProviderID, "Storage Large", 2, "86400000umfx", "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -803,7 +821,7 @@ func testEdgeCases(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		t.Logf("Credit balance: before=%s, after=%s", beforeBalance, afterBalance)
 	})
 
-	t.Run("success: provider can withdraw after lease closure", func(t *testing.T) {
+	t.Run("success: provider cannot double-withdraw after lease closure", func(t *testing.T) {
 		// Get a closed lease from tenant2's tests
 		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenant2.FormattedAddress(), false)
 		require.NoError(t, err)
@@ -820,13 +838,15 @@ func testEdgeCases(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 			t.Skip("No closed lease found")
 		}
 
-		// Provider should still be able to withdraw remaining accrued funds
+		// After closure, settlement already happened, so withdrawal should fail
+		// because there's nothing left to withdraw (LastSettledAt == ClosedAt)
 		res, err := helpers.BillingWithdraw(ctx, chain, providerWallet, closedLeaseID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		// This might succeed with 0 amount or small amount
-		require.Equal(t, uint32(0), txRes.Code, "provider withdraw from closed lease should succeed: %s", txRes.RawLog)
+		// Should fail because settlement already happened during closure
+		require.NotEqual(t, uint32(0), txRes.Code, "withdraw after closure should fail (already settled)")
+		require.Contains(t, txRes.RawLog, "no withdrawable amount")
 	})
 }

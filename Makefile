@@ -135,7 +135,10 @@ ictest-group:
 ictest-sku:
 	cd interchaintest && go test -race -v -run TestSKU . -count=1
 
-.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku
+ictest-billing:
+	cd interchaintest && go test -race -v -run TestBilling . -count=1
+
+.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku ictest-billing
 
 ###############################################################################
 ###                                Build Image                              ###

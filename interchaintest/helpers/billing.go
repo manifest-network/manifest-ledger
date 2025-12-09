@@ -49,6 +49,17 @@ func BillingWithdrawAll(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
+// BillingUpdateParams updates the billing module parameters.
+func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, denom string, minCreditBalance uint64, maxLeasesPerTenant uint64, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{
+		"tx", "billing", "update-params",
+		denom,
+		strconv.FormatUint(minCreditBalance, 10),
+		strconv.FormatUint(maxLeasesPerTenant, 10),
+	}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
 // Billing query helpers
 
 // BillingQueryParams queries the billing module parameters.

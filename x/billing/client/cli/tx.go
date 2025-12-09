@@ -6,6 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"cosmossdk.io/math"
+
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/tx"
@@ -30,6 +32,7 @@ func NewTxCmd() *cobra.Command {
 		NewCloseLeaseCmd(),
 		NewWithdrawCmd(),
 		NewWithdrawAllCmd(),
+		NewUpdateParamsCmd(),
 	)
 
 	return cmd
@@ -212,6 +215,51 @@ withdraw-all 0 --from provider-key`,
 			msg := &types.MsgWithdrawAll{
 				Sender:     clientCtx.GetFromAddress().String(),
 				ProviderId: providerID,
+			}
+
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+
+	return cmd
+}
+
+// NewUpdateParamsCmd returns the command to update billing module parameters.
+func NewUpdateParamsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "update-params [denom] [min-credit-balance] [max-leases-per-tenant]",
+		Short: "Update billing module parameters (authority only)",
+		Long: `Update the billing module parameters. Only the module authority can execute this command.
+All parameters must be provided.`,
+		Example: `update-params factory/manifest1.../upwr 5000000 100 --from authority`,
+		Args:    cobra.ExactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			denom := args[0]
+
+			minCreditBalance, ok := math.NewIntFromString(args[1])
+			if !ok {
+				return fmt.Errorf("invalid min_credit_balance: %s", args[1])
+			}
+
+			maxLeasesPerTenant, err := strconv.ParseUint(args[2], 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid max_leases_per_tenant: %w", err)
+			}
+
+			msg := &types.MsgUpdateParams{
+				Authority: clientCtx.GetFromAddress().String(),
+				Params: types.Params{
+					Denom:              denom,
+					MinCreditBalance:   minCreditBalance,
+					MaxLeasesPerTenant: maxLeasesPerTenant,
+				},
 			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)

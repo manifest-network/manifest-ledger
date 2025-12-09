@@ -172,7 +172,7 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 		}
 
 		// 4. Lock price from SKU (convert to per-second rate)
-		lockedPricePerSecond := ConvertBasePriceToPerSecond(sku.BasePrice.Amount, sku.Unit)
+		lockedPricePerSecond := ConvertBasePriceToPerSecond(sku.BasePrice, sku.Unit)
 
 		leaseItems = append(leaseItems, types.LeaseItem{
 			SkuId:       inputItem.SkuId,
