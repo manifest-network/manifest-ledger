@@ -344,7 +344,7 @@ func TestGetAllLeases(t *testing.T) {
 	for i := uint64(1); i <= 3; i++ {
 		lease := types.Lease{
 			Id:         i,
-			Tenant:     f.TestAccs[int(i-1)].String(),
+			Tenant:     f.TestAccs[i-1].String(),
 			ProviderId: 1,
 			Items: []types.LeaseItem{
 				{
