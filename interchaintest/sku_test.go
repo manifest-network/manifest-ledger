@@ -380,7 +380,8 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 
 	name := "Compute Small"
 	unit := 1 // UNIT_PER_HOUR
-	basePrice := "100umfx"
+	// Price must be >= 3600 for UNIT_PER_HOUR to have non-zero per-second rate
+	basePrice := "3600umfx"
 
 	var skuID uint64
 
@@ -405,7 +406,8 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	})
 
 	t.Run("success: authority creates SKU with meta-hash", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, providerID, "Compute Medium", 2, "200umfx", "deadbeef")
+		// Price must be >= 86400 for UNIT_PER_DAY to have non-zero per-second rate
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, providerID, "Compute Medium", 2, "86400umfx", "deadbeef")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -491,9 +493,13 @@ func testSKUQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, skuID, providerID uint64) {
 	t.Log("=== Testing SKU Update ===")
 
+	// Price must be >= 3600 for UNIT_PER_HOUR to have non-zero per-second rate
+	validPrice := "3600umfx"
+	updatedPrice := "7200umfx"
+
 	t.Run("success: authority updates SKU", func(t *testing.T) {
 		newName := "Compute Small Updated"
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, newName, 1, "150umfx", true, "cafebabe")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, newName, 1, updatedPrice, true, "cafebabe")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -504,11 +510,11 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		skuRes, err := helpers.SKUQuerySKU(ctx, chain, skuID)
 		require.NoError(t, err)
 		require.Equal(t, newName, skuRes.Sku.Name)
-		require.Equal(t, "150", skuRes.Sku.BasePrice.Amount.String())
+		require.Equal(t, "7200", skuRes.Sku.BasePrice.Amount.String())
 	})
 
 	t.Run("success: authority deactivates SKU via update", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, "Compute Small Updated", 1, "150umfx", false, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, "Compute Small Updated", 1, updatedPrice, false, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -521,12 +527,12 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.False(t, skuRes.Sku.Active)
 
 		// Reactivate for other tests
-		_, err = helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, "Compute Small Updated", 1, "150umfx", true, "")
+		_, err = helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, "Compute Small Updated", 1, updatedPrice, true, "")
 		require.NoError(t, err)
 	})
 
 	t.Run("fail: unauthorized user updates SKU", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, user1, skuID, providerID, "Hacked Name", 1, "100umfx", true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, user1, skuID, providerID, "Hacked Name", 1, validPrice, true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -536,7 +542,7 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	})
 
 	t.Run("fail: update with wrong provider_id", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, 999, "Name", 1, "100umfx", true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, 999, "Name", 1, validPrice, true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -546,7 +552,7 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	})
 
 	t.Run("fail: update non-existent SKU", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, 999, providerID, "Name", 1, "100umfx", true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, 999, providerID, "Name", 1, validPrice, true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -557,7 +563,7 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 
 	t.Run("fail: update SKU with zero provider_id", func(t *testing.T) {
 		// CLI validation fails before tx is broadcast, so we expect an error from the CLI
-		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, 0, "Name", 1, "100umfx", true, "")
+		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, 0, "Name", 1, validPrice, true, "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "provider_id cannot be zero")
 	})
@@ -567,9 +573,10 @@ func testSKUDeactivate(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	t.Log("=== Testing SKU Deactivate ===")
 
 	// Create a SKU specifically for deactivation
+	// Price must be >= 3600 for UNIT_PER_HOUR to have non-zero per-second rate
 	var skuIDToDeactivate uint64
 	t.Run("setup: create SKU for deactivation", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, providerID, "To Be Deactivated", 1, "50umfx", "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, providerID, "To Be Deactivated", 1, "3600umfx", "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -695,9 +702,12 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 		require.Equal(t, uint32(0), txRes.Code)
 	})
 
+	// Price must be >= 3600 for UNIT_PER_HOUR to have non-zero per-second rate
+	validPrice := "3600umfx"
+
 	var allowedSKUID uint64
 	t.Run("success: allowed user creates SKU", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, user1, allowedProviderID, "Allowed User SKU", 1, "100umfx", "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, user1, allowedProviderID, "Allowed User SKU", 1, validPrice, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -709,7 +719,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	})
 
 	t.Run("fail: non-allowed user creates SKU", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, user2, allowedProviderID, "Non-Allowed SKU", 1, "100umfx", "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, user2, allowedProviderID, "Non-Allowed SKU", 1, validPrice, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -719,7 +729,8 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	})
 
 	t.Run("success: allowed user updates SKU", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, user1, allowedSKUID, allowedProviderID, "Updated by Allowed", 2, "200umfx", true, "")
+		// Price must be >= 86400 for UNIT_PER_DAY to have non-zero per-second rate
+		res, err := helpers.SKUUpdateSKU(ctx, chain, user1, allowedSKUID, allowedProviderID, "Updated by Allowed", 2, "86400umfx", true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -728,7 +739,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	})
 
 	t.Run("fail: non-allowed user updates SKU", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, user2, allowedSKUID, allowedProviderID, "Hacked", 1, "100umfx", true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, user2, allowedSKUID, allowedProviderID, "Hacked", 1, validPrice, true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -786,9 +797,12 @@ func testSKUQueryByProvider(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	})
 
 	// Create multiple SKUs for the provider
+	// Create 3 SKUs for the provider using valid units (1=UNIT_PER_HOUR, 2=UNIT_PER_DAY)
+	// Price must be >= 86400 for UNIT_PER_DAY to have non-zero per-second rate
 	t.Run("setup: create SKUs for provider", func(t *testing.T) {
-		for i := 1; i <= 3; i++ {
-			res, err := helpers.SKUCreateSKU(ctx, chain, authority, queryProviderID, "Query Test SKU "+string(rune('0'+i)), i, "100umfx", "")
+		units := []int{1, 2, 1} // UNIT_PER_HOUR, UNIT_PER_DAY, UNIT_PER_HOUR
+		for i := 0; i < 3; i++ {
+			res, err := helpers.SKUCreateSKU(ctx, chain, authority, queryProviderID, "Query Test SKU "+string(rune('1'+i)), units[i], "86400umfx", "")
 			require.NoError(t, err)
 
 			txRes, err := chain.GetTransaction(res.TxHash)
@@ -832,9 +846,10 @@ func testSKUPagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	})
 
 	// Create multiple SKUs for pagination testing
+	// Price must be >= 3600 for UNIT_PER_HOUR to have non-zero per-second rate
 	t.Run("setup: create SKUs for pagination", func(t *testing.T) {
 		for i := 1; i <= 5; i++ {
-			res, err := helpers.SKUCreateSKU(ctx, chain, authority, paginationProviderID, "Pagination SKU "+string(rune('0'+i)), 1, "100umfx", "")
+			res, err := helpers.SKUCreateSKU(ctx, chain, authority, paginationProviderID, "Pagination SKU "+string(rune('0'+i)), 1, "3600umfx", "")
 			require.NoError(t, err)
 
 			txRes, err := chain.GetTransaction(res.TxHash)
