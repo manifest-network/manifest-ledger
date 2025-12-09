@@ -201,6 +201,11 @@ func (msg *MsgCreateSKU) Validate() error {
 		return errors.Wrap(ErrInvalidSKU, "base price must be valid and non-zero")
 	}
 
+	// Validate that price and unit combination produces a non-zero per-second rate
+	if err := ValidatePriceAndUnit(msg.BasePrice, msg.Unit); err != nil {
+		return errors.Wrap(ErrInvalidSKU, err.Error())
+	}
+
 	return nil
 }
 
@@ -263,6 +268,11 @@ func (msg *MsgUpdateSKU) Validate() error {
 
 	if !msg.BasePrice.IsValid() || msg.BasePrice.IsZero() {
 		return errors.Wrap(ErrInvalidSKU, "base price must be valid and non-zero")
+	}
+
+	// Validate that price and unit combination produces a non-zero per-second rate
+	if err := ValidatePriceAndUnit(msg.BasePrice, msg.Unit); err != nil {
+		return errors.Wrap(ErrInvalidSKU, err.Error())
 	}
 
 	return nil

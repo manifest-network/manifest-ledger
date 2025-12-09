@@ -396,7 +396,8 @@ func TestCreateSKU(t *testing.T) {
 	err = k.SetProvider(f.Ctx, inactiveProvider)
 	require.NoError(t, err)
 
-	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+	// Use a price that produces a non-zero per-second rate (3600 / 3600 = 1 per second)
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
 
 	type testcase struct {
 		name       string
@@ -530,8 +531,11 @@ func TestUpdateSKU(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
-	newPrice := sdk.NewCoin("umfx", sdkmath.NewInt(200))
+	// Use prices that produce non-zero per-second rates
+	// For UNIT_PER_HOUR: 3600 / 3600 = 1 per second
+	// For UNIT_PER_DAY: 86400 / 86400 = 1 per second
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
+	newPrice := sdk.NewCoin("umfx", sdkmath.NewInt(86400))
 
 	// Create provider
 	provider := types.Provider{
@@ -804,7 +808,8 @@ func TestCreateMultipleSKUs(t *testing.T) {
 	err = k.SetProvider(f.Ctx, provider)
 	require.NoError(t, err)
 
-	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+	// Use a price that produces a non-zero per-second rate
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
 
 	for i := 0; i < 5; i++ {
 		msg := &types.MsgCreateSKU{
@@ -921,7 +926,8 @@ func TestAllowedListCreateSKU(t *testing.T) {
 	err = k.SetParams(f.Ctx, params)
 	require.NoError(t, err)
 
-	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+	// Use a price that produces a non-zero per-second rate
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
 
 	// Test that allowed address can create SKU
 	msg := &types.MsgCreateSKU{
@@ -1018,7 +1024,8 @@ func TestParamsAllowedListRemoval(t *testing.T) {
 	require.False(t, gotParams.IsAllowed(allowedAddr.String()))
 
 	// Verify removed address cannot create SKU
-	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+	// Use a price that produces a non-zero per-second rate
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
 	createMsg := &types.MsgCreateSKU{
 		Authority:  allowedAddr.String(),
 		ProviderId: 1,

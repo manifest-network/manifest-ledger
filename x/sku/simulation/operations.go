@@ -242,7 +242,18 @@ func SimulateMsgCreateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 
 		name := skuNames[r.Intn(len(skuNames))]
 		unit := units[r.Intn(len(units))]
-		basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(10000)+1)))
+
+		// Generate a price that will produce a non-zero per-second rate
+		// For UNIT_PER_HOUR: minimum 3600 (3600/3600 = 1 per second)
+		// For UNIT_PER_DAY: minimum 86400 (86400/86400 = 1 per second)
+		var basePrice sdk.Coin
+		if unit == types.Unit_UNIT_PER_HOUR {
+			// Range: 3600 to 36000 (1-10 per second)
+			basePrice = sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(32401)+3600)))
+		} else {
+			// UNIT_PER_DAY: Range: 86400 to 864000 (1-10 per second)
+			basePrice = sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(777601)+86400)))
+		}
 
 		msg := &types.MsgCreateSKU{
 			Authority:  simAccount.Address.String(),
@@ -277,7 +288,18 @@ func SimulateMsgUpdateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 
 		name := skuNames[r.Intn(len(skuNames))]
 		unit := units[r.Intn(len(units))]
-		basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(10000)+1)))
+
+		// Generate a price that will produce a non-zero per-second rate
+		// For UNIT_PER_HOUR: minimum 3600 (3600/3600 = 1 per second)
+		// For UNIT_PER_DAY: minimum 86400 (86400/86400 = 1 per second)
+		var basePrice sdk.Coin
+		if unit == types.Unit_UNIT_PER_HOUR {
+			// Range: 3600 to 36000 (1-10 per second)
+			basePrice = sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(32401)+3600)))
+		} else {
+			// UNIT_PER_DAY: Range: 86400 to 864000 (1-10 per second)
+			basePrice = sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(777601)+86400)))
+		}
 		active := r.Float32() > 0.3
 
 		msg := &types.MsgUpdateSKU{
