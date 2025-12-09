@@ -369,7 +369,22 @@ func (k *Keeper) GetAllCreditAccounts(ctx context.Context) ([]types.CreditAccoun
 }
 
 // CountActiveLeasesByTenant counts the number of active leases for a tenant.
+// This method uses the CreditAccount's cached ActiveLeaseCount for O(1) performance.
+// Falls back to iterating leases if credit account doesn't exist.
 func (k *Keeper) CountActiveLeasesByTenant(ctx context.Context, tenant string) (uint64, error) {
+	// Try to get from credit account's cached count (O(1))
+	creditAccount, err := k.GetCreditAccount(ctx, tenant)
+	if err == nil {
+		return creditAccount.ActiveLeaseCount, nil
+	}
+
+	// Fall back to iteration if credit account doesn't exist
+	return k.countActiveLeasesByTenantScan(ctx, tenant)
+}
+
+// countActiveLeasesByTenantScan counts active leases by iterating (O(n)).
+// This is used as a fallback when credit account doesn't exist.
+func (k *Keeper) countActiveLeasesByTenantScan(ctx context.Context, tenant string) (uint64, error) {
 	var count uint64
 
 	iter, err := k.Leases.Indexes.Tenant.MatchExact(ctx, tenant)
@@ -427,7 +442,7 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 		return math.ZeroInt()
 	}
 
-	// Calculate total accrued
+	// Calculate total accrued with overflow handling
 	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
 	for _, item := range lease.Items {
 		items = append(items, LeaseItemWithPrice{
@@ -436,7 +451,15 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 			LockedPricePerSecond: item.LockedPrice,
 		})
 	}
-	accruedAmount := CalculateTotalAccruedForLease(items, duration)
+	accruedAmount, err := CalculateTotalAccruedForLease(items, duration)
+	if err != nil {
+		// Log overflow error and return zero
+		k.logger.Error("accrual calculation overflow in withdrawable calculation",
+			"lease_id", lease.Id,
+			"error", err,
+		)
+		return math.ZeroInt()
+	}
 
 	if accruedAmount.IsZero() {
 		return math.ZeroInt()

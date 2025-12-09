@@ -60,8 +60,9 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 	if err != nil {
 		// Credit account doesn't exist, create it
 		creditAccount = types.CreditAccount{
-			Tenant:        msg.Tenant,
-			CreditAddress: creditAddr.String(),
+			Tenant:           msg.Tenant,
+			CreditAddress:    creditAddr.String(),
+			ActiveLeaseCount: 0,
 		}
 
 		// Ensure the credit account address is registered in the account keeper
@@ -84,7 +85,9 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 			types.EventTypeCreditFunded,
 			sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
 			sdk.NewAttribute(types.AttributeKeyCreditAddress, creditAddr.String()),
+			sdk.NewAttribute(types.AttributeKeySender, msg.Sender),
 			sdk.NewAttribute(types.AttributeKeyAmount, msg.Amount.String()),
+			sdk.NewAttribute(types.AttributeKeyNewBalance, newBalance.String()),
 		),
 	)
 
@@ -122,16 +125,16 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 		)
 	}
 
-	// 2. Verify tenant hasn't exceeded max leases
-	activeLeaseCount, err := ms.k.CountActiveLeasesByTenant(ctx, msg.Tenant)
+	// 2. Get credit account and verify tenant hasn't exceeded max leases (O(1) check)
+	creditAccount, err := ms.k.GetCreditAccount(ctx, msg.Tenant)
 	if err != nil {
-		return nil, err
+		return nil, types.ErrCreditAccountNotFound.Wrapf("tenant %s has no credit account", msg.Tenant)
 	}
 
-	if activeLeaseCount >= params.MaxLeasesPerTenant {
+	if creditAccount.ActiveLeaseCount >= params.MaxLeasesPerTenant {
 		return nil, types.ErrMaxLeasesReached.Wrapf(
 			"tenant has %d active leases, max is %d",
-			activeLeaseCount,
+			creditAccount.ActiveLeaseCount,
 			params.MaxLeasesPerTenant,
 		)
 	}
@@ -139,6 +142,7 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 	// 3. Verify all SKUs exist, are active, and belong to the same provider
 	var providerID uint64
 	leaseItems := make([]types.LeaseItem, 0, len(msg.Items))
+	totalRatePerSecond := math.ZeroInt()
 
 	for i, inputItem := range msg.Items {
 		sku, err := ms.k.skuKeeper.GetSKU(ctx, inputItem.SkuId)
@@ -174,6 +178,10 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 		// 4. Lock price from SKU (convert to per-second rate)
 		lockedPricePerSecond := ConvertBasePriceToPerSecond(sku.BasePrice, sku.Unit)
 
+		// Accumulate total rate for event (use math.Int for type safety)
+		quantityInt := math.NewIntFromUint64(inputItem.Quantity)
+		totalRatePerSecond = totalRatePerSecond.Add(lockedPricePerSecond.Mul(quantityInt))
+
 		leaseItems = append(leaseItems, types.LeaseItem{
 			SkuId:       inputItem.SkuId,
 			Quantity:    inputItem.Quantity,
@@ -201,13 +209,22 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 		return nil, err
 	}
 
-	// 6. Emit event
+	// 6. Increment active lease count in credit account
+	creditAccount.ActiveLeaseCount++
+	if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
+		return nil, err
+	}
+
+	// 7. Emit detailed event
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeLeaseCreated,
 			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(leaseID, 10)),
 			sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
 			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(providerID, 10)),
+			sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(len(leaseItems))),
+			sdk.NewAttribute(types.AttributeKeyTotalRate, totalRatePerSecond.String()),
+			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(creditAccount.ActiveLeaseCount, 10)),
 		),
 	)
 
@@ -238,15 +255,18 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 
 	// 3. Verify sender is authorized (tenant, provider address, or authority)
 	authorized := false
+	closedBy := "unknown"
 
 	// Check if sender is tenant
 	if msg.Sender == lease.Tenant {
 		authorized = true
+		closedBy = "tenant"
 	}
 
 	// Check if sender is authority
 	if msg.Sender == ms.k.GetAuthority() {
 		authorized = true
+		closedBy = "authority"
 	}
 
 	// Check if sender is provider address
@@ -254,6 +274,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderId)
 		if err == nil && msg.Sender == provider.Address {
 			authorized = true
+			closedBy = "provider"
 		}
 	}
 
@@ -265,13 +286,16 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		)
 	}
 
-	// 4. Settle accrued charges
+	// 4. Calculate duration for event
+	duration := blockTime.Sub(lease.LastSettledAt)
+
+	// 5. Settle accrued charges
 	settledAmount, err := ms.settleLease(ctx, &lease, blockTime)
 	if err != nil {
 		return nil, err
 	}
 
-	// 5. Update lease state to inactive
+	// 6. Update lease state to inactive
 	lease.State = types.LEASE_STATE_INACTIVE
 	lease.ClosedAt = &blockTime
 
@@ -279,18 +303,31 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		return nil, err
 	}
 
+	// 7. Decrement active lease count in credit account
+	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
+	if err == nil && creditAccount.ActiveLeaseCount > 0 {
+		creditAccount.ActiveLeaseCount--
+		if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
+			return nil, err
+		}
+	}
+
 	params, err := ms.k.GetParams(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// 6. Emit event
+	// 8. Emit detailed event
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeLeaseClosed,
 			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(msg.LeaseId, 10)),
 			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
+			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(lease.ProviderId, 10)),
 			sdk.NewAttribute(types.AttributeKeySettledAmount, settledAmount.String()),
+			sdk.NewAttribute(types.AttributeKeyClosedBy, closedBy),
+			sdk.NewAttribute(types.AttributeKeyDuration, strconv.FormatInt(int64(duration.Seconds()), 10)),
+			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(creditAccount.ActiveLeaseCount, 10)),
 		),
 	)
 
@@ -341,7 +378,7 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 		}
 	}
 
-	// Calculate total accrued
+	// Calculate total accrued with overflow checking
 	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
 	for _, item := range lease.Items {
 		items = append(items, LeaseItemWithPrice{
@@ -350,7 +387,10 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 			LockedPricePerSecond: item.LockedPrice,
 		})
 	}
-	accruedAmount := CalculateTotalAccruedForLease(items, duration)
+	accruedAmount, err := CalculateTotalAccruedForLease(items, duration)
+	if err != nil {
+		return nil, types.ErrInvalidCreditOperation.Wrapf("accrual calculation error: %s", err)
+	}
 
 	if accruedAmount.IsZero() {
 		return nil, types.ErrNoWithdrawableAmount
@@ -400,7 +440,7 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 		}
 	}
 
-	// 6. Emit event
+	// 6. Emit detailed event
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeProviderWithdraw,
@@ -483,7 +523,15 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 				LockedPricePerSecond: item.LockedPrice,
 			})
 		}
-		accruedAmount := CalculateTotalAccruedForLease(items, duration)
+		accruedAmount, err := CalculateTotalAccruedForLease(items, duration)
+		if err != nil {
+			// Log overflow error but continue with other leases
+			ms.k.Logger().Error("accrual calculation overflow",
+				"lease_id", lease.Id,
+				"error", err,
+			)
+			continue
+		}
 
 		if accruedAmount.IsZero() {
 			continue
@@ -583,7 +631,7 @@ func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleT
 		return math.ZeroInt(), nil
 	}
 
-	// Calculate total accrued
+	// Calculate total accrued with overflow checking
 	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
 	for _, item := range lease.Items {
 		items = append(items, LeaseItemWithPrice{
@@ -592,7 +640,10 @@ func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleT
 			LockedPricePerSecond: item.LockedPrice,
 		})
 	}
-	accruedAmount := CalculateTotalAccruedForLease(items, duration)
+	accruedAmount, err := CalculateTotalAccruedForLease(items, duration)
+	if err != nil {
+		return math.ZeroInt(), types.ErrInvalidCreditOperation.Wrapf("accrual calculation error: %s", err)
+	}
 
 	if accruedAmount.IsZero() {
 		return math.ZeroInt(), nil

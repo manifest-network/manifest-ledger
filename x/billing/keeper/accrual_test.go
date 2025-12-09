@@ -150,7 +150,8 @@ func TestCalculateAccruedAmount(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := CalculateAccruedAmount(tc.lockedPricePerSecond, tc.quantity, tc.duration)
+			result, err := CalculateAccruedAmount(tc.lockedPricePerSecond, tc.quantity, tc.duration)
+			require.NoError(t, err)
 			require.True(t, tc.expected.Equal(result), "expected %s, got %s", tc.expected, result)
 		})
 	}
@@ -199,8 +200,47 @@ func TestCalculateTotalAccruedForLease(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := CalculateTotalAccruedForLease(tc.items, tc.duration)
+			result, err := CalculateTotalAccruedForLease(tc.items, tc.duration)
+			require.NoError(t, err)
 			require.True(t, tc.expected.Equal(result), "expected %s, got %s", tc.expected, result)
+		})
+	}
+}
+
+func TestCalculateAccruedAmountOverflow(t *testing.T) {
+	tests := []struct {
+		name      string
+		duration  time.Duration
+		expectErr bool
+	}{
+		{
+			name:      "normal duration: 1 year",
+			duration:  365 * 24 * time.Hour,
+			expectErr: false,
+		},
+		{
+			name:      "normal duration: 10 years",
+			duration:  10 * 365 * 24 * time.Hour,
+			expectErr: false,
+		},
+		{
+			name:      "excessive duration: 101 years (exceeds max)",
+			duration:  101 * 365 * 24 * time.Hour,
+			expectErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Use a reasonable price per second
+			pricePerSecond := math.NewInt(1)
+			_, err := CalculateAccruedAmount(pricePerSecond, 1, tc.duration)
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "exceeds maximum allowed")
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }

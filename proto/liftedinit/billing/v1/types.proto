@@ -126,4 +126,8 @@ message CreditAccount {
     (cosmos_proto.scalar) = "cosmos.AddressString",
     (gogoproto.jsontag) = "credit_address,omitempty"
   ];
+
+  // active_lease_count tracks the number of active leases for O(1) count queries.
+  uint64 active_lease_count = 3
+      [(gogoproto.jsontag) = "active_lease_count,omitempty,string"];
 }

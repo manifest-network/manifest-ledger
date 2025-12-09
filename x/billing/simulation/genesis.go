@@ -30,11 +30,12 @@ func RandomizedGenState(simState *module.SimulationState) {
 
 // randomParams returns randomized billing module parameters.
 func randomParams(r *rand.Rand) types.Params {
-	// NOTE: For simulation, we use the staking bond denom (sdk.DefaultBondDenom)
-	// instead of the production PWR factory denom. This is because factory denoms
-	// require the TokenFactory module to be set up with specific creator addresses,
-	// which is not available during simulation. The simulation genesis funds accounts
-	// with the bond denom via the bank module's RandomGenesisBalances.
+	// NOTE: For simulation, we use the staking bond denom ("stake" via sdk.DefaultBondDenom)
+	// instead of the production PWR factory denom
+	// (factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr).
+	// This is because factory denoms require the TokenFactory module to be set up with
+	// specific creator addresses, which is not available during simulation. The simulation
+	// genesis funds accounts with the bond denom via the bank module's RandomGenesisBalances.
 	denom := sdk.DefaultBondDenom
 
 	// Random min credit balance between 1_000_000 and 10_000_000 (1-10 tokens)

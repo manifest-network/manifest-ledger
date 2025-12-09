@@ -296,3 +296,59 @@ The billing module depends on the SKU module for:
 - Getting provider information for authorization and payouts
 
 The SKU module remains independent and does not know about the billing module.
+
+## Known Limitations & Future Improvements (v2)
+
+### Scalability Considerations
+
+The following limitations exist in the current implementation and are tracked for future improvement:
+
+#### 1. WithdrawAll Performance
+
+**Issue**: `MsgWithdrawAll` iterates over all leases for a provider, which can become expensive with many leases.
+
+**Current Mitigation**: The operation is bounded by the number of leases a provider has, and settlement is O(1) per lease.
+
+**Future Improvement**: Consider adding:
+- A secondary index mapping `provider_id -> active lease IDs` for O(1) lookup
+- Batch processing with pagination for providers with thousands of leases
+- Rate limiting to prevent DoS via expensive WithdrawAll calls
+
+#### 2. LeasesByProvider Query
+
+**Issue**: `QueryLeasesByProvider` uses `CollectionFilteredPaginate` which may scan non-matching leases.
+
+**Current Mitigation**: A secondary index (`LeasesByProvider` with key prefix `0x03`) exists for efficient lookup.
+
+**Future Improvement**: Ensure the index is used optimally and consider caching for read-heavy workloads.
+
+#### 3. Active Lease Counting
+
+**Issue**: `CountActiveLeasesByTenant` iterates over all tenant leases to count active ones.
+
+**Current Mitigation**: Added `active_lease_count` field to `CreditAccount` for O(1) lookup, updated on lease create/close.
+
+**Future Improvement**: If count accuracy issues arise, consider periodic reconciliation or event-sourcing.
+
+#### 4. Provider Rate Limiting
+
+**Issue**: Providers with many active leases could create expensive on-chain operations during bulk withdrawals.
+
+**Recommendation for Integrators**:
+- Implement off-chain rate limiting for withdrawal operations
+- Consider gas limits appropriate for expected lease volumes
+- Monitor transaction costs during high-throughput periods
+
+### Arithmetic Precision
+
+**Issue**: Very long-running leases (years) could theoretically overflow during accrual calculation.
+
+**Current Mitigation**: Overflow checking is implemented in `CalculateAccrual` using `math.Int` safe operations with explicit checks before multiplication.
+
+### Future Feature Candidates
+
+1. **Lease Pruning**: Implement automatic pruning of old inactive leases to reduce state size
+2. **Credit Account Expiry**: Allow credit accounts to be cleaned up if empty and unused
+3. **Multi-Provider Leases**: Allow a single lease to span multiple providers
+4. **Delegation**: Allow tenants to delegate lease management to other addresses
+5. **Provider Reputation**: Track provider uptime and reliability for tenant decision-making
