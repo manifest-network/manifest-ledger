@@ -480,12 +480,13 @@ func TestMsgWithdrawAll_ValidateBasic(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name: "valid message with zero provider_id (sender is provider)",
+			name: "invalid zero provider_id",
 			msg: types.MsgWithdrawAll{
 				Sender:     sender,
 				ProviderId: 0,
 			},
-			expectErr: false,
+			expectErr: true,
+			errMsg:    "provider_id cannot be zero",
 		},
 		{
 			name: "invalid sender address",

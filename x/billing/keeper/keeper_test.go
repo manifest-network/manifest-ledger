@@ -102,7 +102,7 @@ func (f *testFixture) createTestProvider(t *testing.T, address, payoutAddress st
 }
 
 // createTestSKU creates a SKU in the SKU module for testing.
-func (f *testFixture) createTestSKU(t *testing.T, providerID uint64, name string, priceAmount int64) skutypes.SKU {
+func (f *testFixture) createTestSKU(t *testing.T, providerID uint64, priceAmount int64) skutypes.SKU {
 	t.Helper()
 	skuID, err := f.App.SKUKeeper.GetNextSKUID(f.Ctx)
 	require.NoError(t, err)
@@ -110,7 +110,7 @@ func (f *testFixture) createTestSKU(t *testing.T, providerID uint64, name string
 	sku := skutypes.SKU{
 		Id:         skuID,
 		ProviderId: providerID,
-		Name:       name,
+		Name:       "Test SKU",
 		Unit:       skutypes.Unit_UNIT_PER_HOUR,
 		BasePrice:  sdk.NewCoin("umfx", sdkmath.NewInt(priceAmount)),
 		Active:     true,
@@ -1082,12 +1082,12 @@ func TestMsgValidation(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name: "valid MsgWithdrawAll zero provider_id",
+			name: "MsgWithdrawAll zero provider_id",
 			msg: &types.MsgWithdrawAll{
 				Sender:     validAddr.String(),
 				ProviderId: 0,
 			},
-			expectErr: false, // provider_id can be zero if sender is provider address
+			expectErr: true, // provider_id must be > 0
 		},
 		{
 			name: "valid MsgUpdateParams",
@@ -1164,7 +1164,7 @@ func TestBillingKeeperIntegration(t *testing.T) {
 	provider := f.createTestProvider(t, f.TestAccs[0].String(), f.TestAccs[1].String())
 	require.Equal(t, uint64(1), provider.Id)
 
-	sku := f.createTestSKU(t, provider.Id, "Test SKU", 100)
+	sku := f.createTestSKU(t, provider.Id, 100)
 	require.Equal(t, uint64(1), sku.Id)
 
 	// Verify we can look them up via SKU keeper

@@ -49,6 +49,7 @@ const (
 	AttributeKeyLeaseID       = "lease_id"
 	AttributeKeyProviderID    = "provider_id"
 	AttributeKeyAmount        = "amount"
+	AttributeKeySettledAmount = "settled_amount"
 	AttributeKeyPayoutAddress = "payout_address"
 	AttributeKeyLeaseCount    = "lease_count"
 )

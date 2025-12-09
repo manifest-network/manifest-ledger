@@ -92,8 +92,9 @@ func (m *MsgWithdrawAll) ValidateBasic() error {
 		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
 	}
 
-	// provider_id can be zero if sender is the provider address itself
-	// validation of provider ownership happens in the keeper
+	if m.ProviderId == 0 {
+		return ErrProviderNotFound.Wrap("provider_id cannot be zero")
+	}
 
 	return nil
 }

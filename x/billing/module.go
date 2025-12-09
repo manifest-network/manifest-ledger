@@ -24,7 +24,9 @@ import (
 	billingv1 "github.com/manifest-network/manifest-ledger/api/liftedinit/billing/v1"
 	"github.com/manifest-network/manifest-ledger/x/billing/client/cli"
 	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
+	"github.com/manifest-network/manifest-ledger/x/billing/simulation"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
+	skukeeper "github.com/manifest-network/manifest-ledger/x/sku/keeper"
 )
 
 const (
@@ -33,9 +35,10 @@ const (
 )
 
 var (
-	_ module.AppModuleBasic   = AppModuleBasic{}
-	_ module.AppModuleGenesis = AppModule{}
-	_ module.AppModule        = AppModule{}
+	_ module.AppModuleBasic      = AppModuleBasic{}
+	_ module.AppModuleGenesis    = AppModule{}
+	_ module.AppModule           = AppModule{}
+	_ module.AppModuleSimulation = AppModule{}
 
 	_ autocli.HasAutoCLIConfig      = AppModule{}
 	_ autocli.HasCustomQueryCommand = AppModule{}
@@ -51,17 +54,20 @@ type AppModuleBasic struct {
 type AppModule struct {
 	AppModuleBasic
 
-	keeper keeper.Keeper
+	keeper    keeper.Keeper
+	skuKeeper *skukeeper.Keeper
 }
 
 // NewAppModule creates a new AppModule object.
 func NewAppModule(
 	cdc codec.Codec,
 	keeper keeper.Keeper,
+	skuKeeper skukeeper.Keeper,
 ) *AppModule {
 	return &AppModule{
 		AppModuleBasic: AppModuleBasic{cdc: cdc},
 		keeper:         keeper,
+		skuKeeper:      &skuKeeper,
 	}
 }
 
@@ -175,14 +181,12 @@ func (am AppModule) EndBlock(_ context.Context) error {
 
 // GenerateGenesisState creates a randomized GenState of the billing module.
 func (AppModule) GenerateGenesisState(simState *module.SimulationState) {
-	// TODO: Implement simulation genesis state generation
-	_ = simState
+	simulation.RandomizedGenState(simState)
 }
 
 // ProposalMsgs returns msgs used for governance proposals for simulations.
 func (AppModule) ProposalMsgs(_ module.SimulationState) []simtypes.WeightedProposalMsg {
-	// TODO: Implement simulation proposal messages
-	return nil
+	return simulation.ProposalMsgs()
 }
 
 // RegisterStoreDecoder registers a decoder for billing module's types.
@@ -191,7 +195,6 @@ func (am AppModule) RegisterStoreDecoder(sdr simtypes.StoreDecoderRegistry) {
 }
 
 // WeightedOperations returns the all the billing module operations with their respective weights.
-func (am AppModule) WeightedOperations(_ module.SimulationState) []simtypes.WeightedOperation {
-	// TODO: Implement simulation weighted operations
-	return nil
+func (am AppModule) WeightedOperations(simState module.SimulationState) []simtypes.WeightedOperation {
+	return simulation.WeightedOperations(simState.AppParams, simState.Cdc, simState.TxConfig, am.keeper, am.skuKeeper)
 }

@@ -14,6 +14,7 @@ import (
 
 	modulev1 "github.com/manifest-network/manifest-ledger/api/liftedinit/billing/module/v1"
 	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
+	skukeeper "github.com/manifest-network/manifest-ledger/x/sku/keeper"
 )
 
 var _ appmodule.AppModule = AppModule{}
@@ -39,6 +40,7 @@ type ModuleInputs struct {
 
 	Cdc          codec.Codec
 	StoreService store.KVStoreService
+	SKUKeeper    skukeeper.Keeper
 }
 
 // ModuleOutputs defines the outputs provided by the module.
@@ -59,7 +61,7 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		log.NewLogger(os.Stderr),
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 	)
-	m := NewAppModule(in.Cdc, k)
+	m := NewAppModule(in.Cdc, k, in.SKUKeeper)
 
 	return ModuleOutputs{Module: m, Keeper: k, Out: depinject.Out{}}
 }

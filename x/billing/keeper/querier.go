@@ -251,7 +251,7 @@ func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdra
 		return nil, status.Error(codes.InvalidArgument, "lease_id cannot be zero")
 	}
 
-	_, err := q.k.GetLease(ctx, req.LeaseId)
+	lease, err := q.k.GetLease(ctx, req.LeaseId)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
@@ -261,10 +261,11 @@ func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdra
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	// TODO: Implement actual accrual calculation
-	// This is a stub that returns zero
+	// Calculate withdrawable amount based on accrual since last settlement
+	withdrawableAmount := q.k.CalculateWithdrawableForLease(ctx, lease)
+
 	return &types.QueryWithdrawableAmountResponse{
-		Amount: sdk.NewCoin(params.Denom, math.ZeroInt()),
+		Amount: sdk.NewCoin(params.Denom, withdrawableAmount),
 	}, nil
 }
 
@@ -288,18 +289,20 @@ func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProvi
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	// Count active leases
-	var activeCount uint64
+	// Calculate total withdrawable and count leases with withdrawable amounts
+	totalWithdrawable := math.ZeroInt()
+	var leaseCount uint64
+
 	for _, lease := range leases {
-		if lease.State == types.LEASE_STATE_ACTIVE {
-			activeCount++
+		withdrawable := q.k.CalculateWithdrawableForLease(ctx, lease)
+		if withdrawable.IsPositive() {
+			totalWithdrawable = totalWithdrawable.Add(withdrawable)
+			leaseCount++
 		}
 	}
 
-	// TODO: Implement actual accrual calculation across all leases
-	// This is a stub that returns zero
 	return &types.QueryProviderWithdrawableResponse{
-		Amount:     sdk.NewCoin(params.Denom, math.ZeroInt()),
-		LeaseCount: activeCount,
+		Amount:     sdk.NewCoin(params.Denom, totalWithdrawable),
+		LeaseCount: leaseCount,
 	}, nil
 }

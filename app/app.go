@@ -762,7 +762,7 @@ func NewApp(
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)),
 		manifest.NewAppModule(appCodec, app.ManifestKeeper, app.MintKeeper),
 		sku.NewAppModule(appCodec, app.SKUKeeper),
-		billing.NewAppModule(appCodec, app.BillingKeeper),
+		billing.NewAppModule(appCodec, app.BillingKeeper, app.SKUKeeper),
 		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
 	)
 

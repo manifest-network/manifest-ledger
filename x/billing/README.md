@@ -169,7 +169,7 @@ message MsgWithdraw {
 
 ### MsgWithdrawAll
 
-Withdraw accrued funds from all leases for a provider.
+Withdraw accrued funds from all leases for a provider. The provider_id is required.
 
 ```protobuf
 message MsgWithdrawAll {

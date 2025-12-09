@@ -8,6 +8,7 @@ import (
 	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 
@@ -93,6 +94,7 @@ func init() {
 func AppEncoding() *sdktestutil.TestEncodingConfig {
 	enc := cosmos.DefaultEncoding()
 
+	billingtypes.RegisterInterfaces(enc.InterfaceRegistry)
 	manifesttypes.RegisterInterfaces(enc.InterfaceRegistry)
 	skutypes.RegisterInterfaces(enc.InterfaceRegistry)
 	grouptypes.RegisterInterfaces(enc.InterfaceRegistry)

@@ -9,8 +9,8 @@ Test Coverage:
 - QueryLeasesByProvider: provider-indexed lease queries
 - QueryCreditAccount: credit account queries
 - QueryCreditAddress: credit address derivation queries
-- QueryWithdrawableAmount: withdrawable amount queries (stub)
-- QueryProviderWithdrawable: provider total withdrawable queries (stub)
+- QueryWithdrawableAmount: per-lease withdrawable amount with accrual calculation
+- QueryProviderWithdrawable: provider total withdrawable across all leases
 */
 package keeper_test
 
@@ -456,32 +456,72 @@ func TestQueryWithdrawableAmount(t *testing.T) {
 	querier := keeper.NewQuerier(k)
 
 	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := types.DefaultDenom
 
-	// Create a lease
+	// Initialize sequences
+	err := k.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU with 3600 per hour = 1 per second
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(10000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create a lease with quantity 2
 	lease := types.Lease{
 		Id:         1,
 		Tenant:     tenant.String(),
-		ProviderId: 1,
+		ProviderId: provider.Id,
 		Items: []types.LeaseItem{
 			{
-				SkuId:       1,
-				Quantity:    1,
-				LockedPrice: sdkmath.NewInt(100),
+				SkuId:       sku.Id,
+				Quantity:    2,
+				LockedPrice: sdkmath.NewInt(1), // 1 per second
 			},
 		},
-		State:     types.LEASE_STATE_ACTIVE,
-		CreatedAt: f.Ctx.BlockTime(),
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     f.Ctx.BlockTime(),
+		LastSettledAt: f.Ctx.BlockTime(),
 	}
-	err := k.SetLease(f.Ctx, lease)
+	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
-	// Query withdrawable amount (currently returns zero as stub)
+	// Query at initial time - should be 0
 	resp, err := querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
 		LeaseId: 1,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.Equal(t, types.DefaultDenom, resp.Amount.Denom)
+	require.True(t, resp.Amount.Amount.IsZero())
+
+	// Advance block time by 100 seconds
+	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+	// Query withdrawable amount - should be 200 (1 per second * 2 quantity * 100 seconds)
+	resp, err = querier.WithdrawableAmount(newCtx, &types.QueryWithdrawableAmountRequest{
+		LeaseId: 1,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, denom, resp.Amount.Denom)
+	require.Equal(t, sdkmath.NewInt(200), resp.Amount.Amount)
 
 	// Query with zero lease_id
 	_, err = querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
@@ -506,21 +546,51 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	k := f.App.BillingKeeper
 	querier := keeper.NewQuerier(k)
 
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := types.DefaultDenom
+
+	// Initialize sequences
+	err := k.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU with 3600 per hour = 1 per second
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(10000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
 	// Create leases for provider 1
 	for i := uint64(1); i <= 3; i++ {
 		lease := types.Lease{
 			Id:         i,
-			Tenant:     f.TestAccs[0].String(),
-			ProviderId: 1,
+			Tenant:     tenant.String(),
+			ProviderId: provider.Id,
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuId:       sku.Id,
 					Quantity:    1,
-					LockedPrice: sdkmath.NewInt(100),
+					LockedPrice: sdkmath.NewInt(1), // 1 per second
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:         types.LEASE_STATE_ACTIVE,
+			CreatedAt:     f.Ctx.BlockTime(),
+			LastSettledAt: f.Ctx.BlockTime(),
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -530,30 +600,44 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	closedAt := f.Ctx.BlockTime()
 	inactiveLease := types.Lease{
 		Id:         4,
-		Tenant:     f.TestAccs[0].String(),
-		ProviderId: 1,
+		Tenant:     tenant.String(),
+		ProviderId: provider.Id,
 		Items: []types.LeaseItem{
 			{
-				SkuId:       4,
+				SkuId:       sku.Id,
 				Quantity:    1,
-				LockedPrice: sdkmath.NewInt(100),
+				LockedPrice: sdkmath.NewInt(1),
 			},
 		},
-		State:     types.LEASE_STATE_INACTIVE,
-		CreatedAt: f.Ctx.BlockTime(),
-		ClosedAt:  &closedAt,
+		State:         types.LEASE_STATE_INACTIVE,
+		CreatedAt:     f.Ctx.BlockTime(),
+		LastSettledAt: f.Ctx.BlockTime(),
+		ClosedAt:      &closedAt,
 	}
-	err := k.SetLease(f.Ctx, inactiveLease)
+	err = k.SetLease(f.Ctx, inactiveLease)
 	require.NoError(t, err)
 
-	// Query provider withdrawable
+	// Query at initial time - should be 0
 	resp, err := querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
-		ProviderId: 1,
+		ProviderId: provider.Id,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.Equal(t, types.DefaultDenom, resp.Amount.Denom)
-	require.Equal(t, uint64(3), resp.LeaseCount) // Only active leases
+	require.True(t, resp.Amount.Amount.IsZero())
+	require.Equal(t, uint64(0), resp.LeaseCount) // No leases with withdrawable amounts yet
+
+	// Advance block time by 100 seconds
+	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+	// Query provider withdrawable - should be 300 (1 per second * 1 quantity * 100 seconds * 3 active leases)
+	resp, err = querier.ProviderWithdrawable(newCtx, &types.QueryProviderWithdrawableRequest{
+		ProviderId: provider.Id,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, denom, resp.Amount.Denom)
+	require.Equal(t, sdkmath.NewInt(300), resp.Amount.Amount)
+	require.Equal(t, uint64(3), resp.LeaseCount) // Only active leases with withdrawable amounts
 
 	// Query with zero provider_id
 	_, err = querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{

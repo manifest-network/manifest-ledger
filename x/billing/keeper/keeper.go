@@ -2,14 +2,18 @@ package keeper
 
 import (
 	"context"
+	"time"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/collections/indexes"
 	storetypes "cosmossdk.io/core/store"
 	"cosmossdk.io/log"
+	"cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	accountkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
@@ -60,19 +64,6 @@ type SKUKeeper interface {
 	GetProvider(ctx context.Context, id uint64) (skutypes.Provider, error)
 }
 
-// BankKeeper defines the expected bank keeper interface.
-type BankKeeper interface {
-	SendCoins(ctx context.Context, fromAddr, toAddr sdk.AccAddress, amt sdk.Coins) error
-	GetBalance(ctx context.Context, addr sdk.AccAddress, denom string) sdk.Coin
-}
-
-// AccountKeeper defines the expected account keeper interface.
-type AccountKeeper interface {
-	GetAccount(ctx context.Context, addr sdk.AccAddress) sdk.AccountI
-	NewAccountWithAddress(ctx context.Context, addr sdk.AccAddress) sdk.AccountI
-	SetAccount(ctx context.Context, acc sdk.AccountI)
-}
-
 // Keeper of the billing store.
 type Keeper struct {
 	cdc    codec.BinaryCodec
@@ -89,8 +80,8 @@ type Keeper struct {
 
 	// keepers (to be set via setters for now, full DI later)
 	skuKeeper     SKUKeeper
-	bankKeeper    BankKeeper
-	accountKeeper AccountKeeper
+	bankKeeper    bankkeeper.Keeper
+	accountKeeper accountkeeper.AccountKeeper
 }
 
 // NewKeeper creates a new billing Keeper instance.
@@ -168,13 +159,23 @@ func (k *Keeper) SetSKUKeeper(sk SKUKeeper) {
 }
 
 // SetBankKeeper sets the bank keeper.
-func (k *Keeper) SetBankKeeper(bk BankKeeper) {
+func (k *Keeper) SetBankKeeper(bk bankkeeper.Keeper) {
 	k.bankKeeper = bk
 }
 
 // SetAccountKeeper sets the account keeper.
-func (k *Keeper) SetAccountKeeper(ak AccountKeeper) {
+func (k *Keeper) SetAccountKeeper(ak accountkeeper.AccountKeeper) {
 	k.accountKeeper = ak
+}
+
+// GetAccountKeeper returns the account keeper (for simulation).
+func (k *Keeper) GetAccountKeeper() accountkeeper.AccountKeeper {
+	return k.accountKeeper
+}
+
+// GetBankKeeper returns the bank keeper (for simulation).
+func (k *Keeper) GetBankKeeper() bankkeeper.Keeper {
+	return k.bankKeeper
 }
 
 // GetParams returns the module parameters.
@@ -401,4 +402,61 @@ func (k *Keeper) GetCreditBalance(ctx context.Context, tenant string, denom stri
 		return sdk.Coin{}, err
 	}
 	return k.bankKeeper.GetBalance(ctx, creditAddr, denom), nil
+}
+
+// CalculateWithdrawableForLease calculates the amount that can be withdrawn from a lease.
+// It considers the time since last settlement and the credit balance available.
+func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.Lease) math.Int {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	blockTime := sdkCtx.BlockTime()
+
+	// Calculate duration since last settlement
+	var duration time.Duration
+	if lease.State == types.LEASE_STATE_ACTIVE {
+		duration = blockTime.Sub(lease.LastSettledAt)
+	} else {
+		// For inactive leases, calculate from last settled to closed
+		if lease.ClosedAt != nil {
+			duration = lease.ClosedAt.Sub(lease.LastSettledAt)
+		} else {
+			return math.ZeroInt()
+		}
+	}
+
+	if duration <= 0 {
+		return math.ZeroInt()
+	}
+
+	// Calculate total accrued
+	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
+	for _, item := range lease.Items {
+		items = append(items, LeaseItemWithPrice{
+			SkuID:                item.SkuId,
+			Quantity:             item.Quantity,
+			LockedPricePerSecond: item.LockedPrice,
+		})
+	}
+	accruedAmount := CalculateTotalAccruedForLease(items, duration)
+
+	if accruedAmount.IsZero() {
+		return math.ZeroInt()
+	}
+
+	// Get credit balance to cap the withdrawable amount
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return math.ZeroInt()
+	}
+
+	creditBalance, err := k.GetCreditBalance(ctx, lease.Tenant, params.Denom)
+	if err != nil {
+		return math.ZeroInt()
+	}
+
+	// Return the minimum of accrued amount and available balance
+	if creditBalance.Amount.LT(accruedAmount) {
+		return creditBalance.Amount
+	}
+
+	return accruedAmount
 }
