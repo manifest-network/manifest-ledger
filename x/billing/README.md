@@ -39,9 +39,32 @@ Settlement is performed **lazily** (on-touch):
 
 This design keeps on-chain operations light and avoids per-block token transfers.
 
-### Overdraw
+### Overdraw and Auto-Close
 
-If a tenant's credit balance is insufficient during settlement, the lease is automatically closed. The remaining balance stays in the credit account.
+If a tenant's credit balance reaches zero, the billing module automatically closes their active leases. This happens through **lazy evaluation** ("check on touch"):
+
+**When auto-close is triggered:**
+- When a lease is queried individually (`QueryLease`)
+- When withdrawing from a lease (`MsgWithdraw`)
+- When checking withdrawable amounts (`QueryWithdrawableAmount`)
+- When attempting to close a lease (`MsgCloseLease`)
+
+**How it works:**
+1. When a lease is "touched" (accessed directly), the system checks the tenant's credit balance
+2. If balance is zero or negative:
+   - Performs final settlement (transfers any remaining balance to provider)
+   - Closes the lease automatically
+   - Emits a `lease_auto_closed` event with `reason: credit_exhausted`
+
+**Design rationale:**
+- **O(1) per lease check**: Instead of O(n) scanning all leases in EndBlock
+- **Scalability**: Supports millions of leases without performance degradation
+- **On-demand**: Only processes leases when they're actually used
+- **No consensus overhead**: EndBlock remains lightweight
+
+**Note**: Bulk queries (`QueryLeases`, `QueryLeasesByTenant`, `QueryLeasesByProvider`) do NOT trigger auto-close checks to maintain query performance. The auto-close will happen when individual leases are accessed.
+
+**Note**: During lazy settlement (withdrawal or manual close), if the credit balance is less than the accrued amount, only the available balance is transferred to the provider.
 
 ## State
 
@@ -224,7 +247,8 @@ message MsgUpdateParams {
 |-------|------------|-------------|
 | credit_funded | tenant, credit_address, sender, amount, new_balance | Credit account funded |
 | lease_created | lease_id, tenant, provider_id, item_count, total_rate_per_second, active_lease_count, created_by | Lease created (created_by is "tenant" or "authority") |
-| lease_closed | lease_id, tenant, provider_id, settled_amount, closed_by, duration_seconds, active_lease_count | Lease closed |
+| lease_closed | lease_id, tenant, provider_id, settled_amount, closed_by, duration_seconds, active_lease_count | Lease closed manually |
+| lease_auto_closed | lease_id, tenant, provider_id, settled_amount, reason | Lease auto-closed due to credit exhaustion |
 | provider_withdraw | lease_id, provider_id, amount, payout_address | Provider withdrawal |
 | provider_withdraw_all | provider_id, amount, lease_count, payout_address | Provider withdrew from all leases |
 | params_updated | | Module parameters updated |

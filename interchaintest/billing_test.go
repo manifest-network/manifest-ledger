@@ -110,6 +110,15 @@
 //   - Fail: create lease for tenant with invalid address
 //   - Fail: create lease for tenant with non-existent SKU
 //   - Success: verify event shows authority created lease
+//
+// ## Auto-Close Mechanism Tests
+//
+// testAutoCloseMechanism:
+//   - Success: lease auto-closes when credit is exhausted during settlement
+//   - Success: auto-closed lease emits proper events
+//   - Success: provider can still withdraw from auto-closed lease
+//   - Success: tenant cannot create new lease after exhausting credit (below minimum)
+//   - Success: closing lease settles and transfers accrued amount
 package interchaintest
 
 import (
@@ -218,6 +227,10 @@ func TestBilling(t *testing.T) {
 
 	t.Run("CreateLeaseForTenant", func(t *testing.T) {
 		testCreateLeaseForTenant(t, ctx, chain, authority, providerWallet, unauthorizedUser)
+	})
+
+	t.Run("AutoCloseMechanism", func(t *testing.T) {
+		testAutoCloseMechanism(t, ctx, chain, authority, providerWallet)
 	})
 
 	t.Cleanup(func() {
@@ -1031,5 +1044,224 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 			}
 		}
 		require.True(t, foundAuthorityEvent, "event should indicate lease was created by authority")
+	})
+}
+
+// testAutoCloseMechanism tests the lazy auto-close mechanism that closes leases
+// when credit balance is exhausted during settlement operations.
+func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, providerWallet ibc.Wallet) {
+	t.Log("=== Testing Auto-Close Mechanism ===")
+
+	// Create a dedicated tenant for auto-close tests with minimal credit
+	// to force exhaustion quickly
+	users := interchaintest.GetAndFundTestUsers(t, ctx, "auto-close-tenant", DefaultGenesisAmt, chain)
+	autoCloseTenant := users[0]
+
+	// For auto-close tests, we need credit to exhaust quickly.
+	// testSKUID has rate of 1000/second per unit.
+	// We'll use quantity=500 to get 500,000/second rate.
+	// Fund with 5,020,000 (just above 5M minimum).
+	// Time to exhaust: 5,020,000 / 500,000 = ~10 seconds
+	t.Run("setup: fund tenant with minimal credit", func(t *testing.T) {
+		fundAmount := fmt.Sprintf("5020000%s", testPWRDenom) // Just above minimum
+		res, err := helpers.BillingFundCredit(ctx, chain, authority, autoCloseTenant.FormattedAddress(), fundAmount)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "funding should succeed: %s", txRes.RawLog)
+
+		creditRes, err := helpers.BillingQueryCreditAccount(ctx, chain, autoCloseTenant.FormattedAddress())
+		require.NoError(t, err)
+		t.Logf("Initial credit balance: %s", creditRes.Balance)
+	})
+
+	var autoCloseLeaseID uint64
+	t.Run("setup: create lease that will exhaust credit", func(t *testing.T) {
+		// Create a lease with high quantity to exhaust credit quickly
+		// testSKUID has 1000/second rate, so quantity=500 gives 500,000/second
+		// With 5,020,000 credit, this will exhaust in ~10 seconds
+		items := []string{fmt.Sprintf("%d:500", testSKUID)}
+		res, err := helpers.BillingCreateLease(ctx, chain, autoCloseTenant, items)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "lease creation should succeed: %s", txRes.RawLog)
+
+		autoCloseLeaseID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Created lease ID: %d", autoCloseLeaseID)
+
+		// Verify lease is active
+		lease, err := helpers.BillingQueryLease(ctx, chain, autoCloseLeaseID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_ACTIVE", lease.Lease.State, "lease should be active")
+	})
+
+	t.Run("success: lease auto-closes when credit exhausted during withdrawal", func(t *testing.T) {
+		// Wait for enough blocks to exhaust credit
+		// With 500,000/second rate and ~5M credit, we need ~10 seconds
+		// Block time is ~1 second, so wait for ~15 blocks to be safe
+		t.Log("Waiting for credit to accrue/exhaust...")
+		require.NoError(t, testutil.WaitForBlocks(ctx, 15, chain))
+
+		// Check credit balance - should be very low or zero
+		creditRes, err := helpers.BillingQueryCreditAccount(ctx, chain, autoCloseTenant.FormattedAddress())
+		require.NoError(t, err)
+		t.Logf("Credit balance after accrual: %s", creditRes.Balance)
+
+		// Trigger settlement by attempting a withdrawal
+		// This should auto-close the lease due to exhausted credit
+		res, err := helpers.BillingWithdraw(ctx, chain, providerWallet, autoCloseLeaseID)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Withdrawal tx result: code=%d, log=%s", txRes.Code, txRes.RawLog)
+
+		// Query lease - should now be inactive due to auto-close
+		lease, err := helpers.BillingQueryLease(ctx, chain, autoCloseLeaseID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State,
+			"lease should be auto-closed after credit exhaustion")
+		t.Log("Lease was auto-closed as expected")
+	})
+
+	t.Run("success: auto-closed lease emits proper events", func(t *testing.T) {
+		// The withdrawal that triggered auto-close should have emitted events
+		// Query the lease to verify it's closed
+		lease, err := helpers.BillingQueryLease(ctx, chain, autoCloseLeaseID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State)
+
+		// Verify closed_at is set (indicates it was closed)
+		require.NotEmpty(t, lease.Lease.ClosedAt, "closed_at should be set for auto-closed lease")
+		t.Logf("Lease closed_at: %s", lease.Lease.ClosedAt)
+	})
+
+	t.Run("success: provider already withdrew during auto-close", func(t *testing.T) {
+		// After auto-close, the provider should have already received their tokens
+		// during the settlement that triggered the close
+		// Attempting another withdrawal should fail (nothing left)
+		res, err := helpers.BillingWithdraw(ctx, chain, providerWallet, autoCloseLeaseID)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "second withdrawal should fail")
+		require.Contains(t, txRes.RawLog, "no withdrawable amount",
+			"should indicate no withdrawable amount")
+	})
+
+	t.Run("success: tenant cannot create new lease with exhausted credit", func(t *testing.T) {
+		// Credit should be zero now, so creating a new lease should fail
+		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		res, err := helpers.BillingCreateLease(ctx, chain, autoCloseTenant, items)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "lease creation should fail with insufficient credit")
+		require.Contains(t, txRes.RawLog, "insufficient credit",
+			"should indicate insufficient credit balance")
+	})
+
+	// Test auto-close via CloseLease when credit is exhausted
+	t.Run("success: explicit close on exhausted lease works", func(t *testing.T) {
+		// Create another tenant with minimal credit
+		users2 := interchaintest.GetAndFundTestUsers(t, ctx, "auto-close-tenant2", DefaultGenesisAmt, chain)
+		tenant2 := users2[0]
+
+		// Fund minimally - same approach: 5,020,000 with quantity=500
+		fundAmount := fmt.Sprintf("5020000%s", testPWRDenom)
+		res, err := helpers.BillingFundCredit(ctx, chain, authority, tenant2.FormattedAddress(), fundAmount)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		// Create lease with high quantity
+		items := []string{fmt.Sprintf("%d:500", testSKUID)}
+		res, err = helpers.BillingCreateLease(ctx, chain, tenant2, items)
+		require.NoError(t, err)
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		leaseID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Wait for credit exhaustion
+		require.NoError(t, testutil.WaitForBlocks(ctx, 15, chain))
+
+		// Explicitly close the lease (tenant closes their own)
+		res, err = helpers.BillingCloseLease(ctx, chain, tenant2, leaseID)
+		require.NoError(t, err)
+
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		// Should succeed - close settles and handles exhausted credit gracefully
+		require.Equal(t, uint32(0), txRes.Code, "explicit close should succeed: %s", txRes.RawLog)
+
+		// Verify lease is closed
+		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State)
+	})
+
+	// Test that closing a lease triggers settlement and transfers accrued amount
+	t.Run("success: closing lease settles and transfers accrued amount", func(t *testing.T) {
+		// Create a tenant with enough credit
+		users3 := interchaintest.GetAndFundTestUsers(t, ctx, "settlement-tenant", DefaultGenesisAmt, chain)
+		tenant3 := users3[0]
+
+		// Fund with credit
+		fundAmount := fmt.Sprintf("100000000%s", testPWRDenom) // 100 PWR
+		res, err := helpers.BillingFundCredit(ctx, chain, authority, tenant3.FormattedAddress(), fundAmount)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		// Create lease with low quantity (slow accrual)
+		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		res, err = helpers.BillingCreateLease(ctx, chain, tenant3, items)
+		require.NoError(t, err)
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		leaseID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Get initial credit balance
+		initialCredit, err := helpers.BillingQueryCreditAccount(ctx, chain, tenant3.FormattedAddress())
+		require.NoError(t, err)
+		t.Logf("Credit after lease creation: %s", initialCredit.Balance)
+
+		// Wait for some accrual (1000/sec rate, 5 blocks = ~5000 accrued)
+		require.NoError(t, testutil.WaitForBlocks(ctx, 5, chain))
+
+		// Close the lease - this triggers settlement
+		res, err = helpers.BillingCloseLease(ctx, chain, tenant3, leaseID)
+		require.NoError(t, err)
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "lease close should succeed")
+
+		// Get credit balance after lease close - should be less due to settlement
+		afterCredit, err := helpers.BillingQueryCreditAccount(ctx, chain, tenant3.FormattedAddress())
+		require.NoError(t, err)
+		t.Logf("Credit after lease close: %s", afterCredit.Balance)
+
+		// Credit should have decreased (settlement happened)
+		require.True(t, afterCredit.Balance.Amount.LT(initialCredit.Balance.Amount),
+			"credit should decrease due to settlement during lease close")
+
+		// Verify lease is now inactive
+		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State, "lease should be inactive")
 	})
 }

@@ -323,13 +323,13 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// 1. Verify lease exists
-	lease, err := ms.k.GetLease(ctx, msg.LeaseId)
+	// 1. Verify lease exists (with auto-close check for lazy evaluation)
+	lease, err := ms.k.GetLeaseWithAutoClose(ctx, msg.LeaseId)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Verify lease is active
+	// 2. Verify lease is active (may have been auto-closed by lazy evaluation)
 	if lease.State != types.LEASE_STATE_ACTIVE {
 		return nil, types.ErrLeaseNotActive.Wrapf("lease %d is not active", msg.LeaseId)
 	}
@@ -426,8 +426,8 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// 1. Verify lease exists
-	lease, err := ms.k.GetLease(ctx, msg.LeaseId)
+	// 1. Verify lease exists (with auto-close check for lazy evaluation)
+	lease, err := ms.k.GetLeaseWithAutoClose(ctx, msg.LeaseId)
 	if err != nil {
 		return nil, err
 	}

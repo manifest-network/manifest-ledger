@@ -1192,3 +1192,249 @@ func TestBillingKeeperIntegration(t *testing.T) {
 		Description: "Test PWR token",
 	})
 }
+
+func TestCheckAndCloseExhaustedLease(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+
+	// Initialize SKU sequences
+	err := f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create a provider
+	provider := f.createTestProvider(t, f.TestAccs[0].String(), f.TestAccs[1].String())
+
+	tenant := f.TestAccs[2]
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+
+	// Create credit account with zero balance
+	ca := types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddr.String(),
+		ActiveLeaseCount: 1,
+	}
+	err = k.SetCreditAccount(f.Ctx, ca)
+	require.NoError(t, err)
+
+	// Create an active lease with zero credit balance
+	lease := types.Lease{
+		Id:            1,
+		Tenant:        tenant.String(),
+		ProviderId:    provider.Id,
+		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdkmath.NewInt(100)}},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     f.Ctx.BlockTime(),
+		LastSettledAt: f.Ctx.BlockTime(),
+	}
+	err = k.SetLease(f.Ctx, lease)
+	require.NoError(t, err)
+
+	// Run CheckAndCloseExhaustedLease - should close the lease
+	closed, err := k.CheckAndCloseExhaustedLease(f.Ctx, &lease)
+	require.NoError(t, err)
+	require.True(t, closed)
+
+	// Verify lease is now inactive
+	require.Equal(t, types.LEASE_STATE_INACTIVE, lease.State)
+	require.NotNil(t, lease.ClosedAt)
+
+	// Verify active lease count was decremented
+	updatedCA, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), updatedCA.ActiveLeaseCount)
+}
+
+func TestCheckAndCloseExhaustedLease_WithBalance(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+
+	// Initialize SKU sequences
+	err := f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create a provider
+	provider := f.createTestProvider(t, f.TestAccs[0].String(), f.TestAccs[1].String())
+
+	tenant := f.TestAccs[2]
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+
+	// Fund the credit account
+	denom := types.DefaultDenom
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(10000000))))
+
+	// Create credit account with balance
+	ca := types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddr.String(),
+		ActiveLeaseCount: 1,
+	}
+	err = k.SetCreditAccount(f.Ctx, ca)
+	require.NoError(t, err)
+
+	// Create an active lease
+	lease := types.Lease{
+		Id:            1,
+		Tenant:        tenant.String(),
+		ProviderId:    provider.Id,
+		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdkmath.NewInt(100)}},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     f.Ctx.BlockTime(),
+		LastSettledAt: f.Ctx.BlockTime(),
+	}
+	err = k.SetLease(f.Ctx, lease)
+	require.NoError(t, err)
+
+	// Run CheckAndCloseExhaustedLease - should NOT close the lease (has balance)
+	closed, err := k.CheckAndCloseExhaustedLease(f.Ctx, &lease)
+	require.NoError(t, err)
+	require.False(t, closed)
+
+	// Verify lease is still active
+	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+}
+
+func TestCheckAndCloseExhaustedLease_InactiveLease(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+
+	tenant := f.TestAccs[0]
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+
+	// Create credit account
+	ca := types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddr.String(),
+		ActiveLeaseCount: 0,
+	}
+	err = k.SetCreditAccount(f.Ctx, ca)
+	require.NoError(t, err)
+
+	// Create an inactive lease (already closed)
+	closedAt := f.Ctx.BlockTime()
+	lease := types.Lease{
+		Id:            1,
+		Tenant:        tenant.String(),
+		ProviderId:    1,
+		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdkmath.NewInt(100)}},
+		State:         types.LEASE_STATE_INACTIVE,
+		CreatedAt:     f.Ctx.BlockTime(),
+		LastSettledAt: f.Ctx.BlockTime(),
+		ClosedAt:      &closedAt,
+	}
+	err = k.SetLease(f.Ctx, lease)
+	require.NoError(t, err)
+
+	// Run CheckAndCloseExhaustedLease - should NOT try to close inactive leases
+	closed, err := k.CheckAndCloseExhaustedLease(f.Ctx, &lease)
+	require.NoError(t, err)
+	require.False(t, closed)
+}
+
+func TestGetLeaseWithAutoClose(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+
+	// Initialize SKU sequences
+	err := f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create a provider
+	provider := f.createTestProvider(t, f.TestAccs[0].String(), f.TestAccs[1].String())
+
+	tenant := f.TestAccs[2]
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+
+	// Create credit account with zero balance (will trigger auto-close)
+	ca := types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddr.String(),
+		ActiveLeaseCount: 1,
+	}
+	err = k.SetCreditAccount(f.Ctx, ca)
+	require.NoError(t, err)
+
+	// Create an active lease
+	lease := types.Lease{
+		Id:            1,
+		Tenant:        tenant.String(),
+		ProviderId:    provider.Id,
+		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdkmath.NewInt(100)}},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     f.Ctx.BlockTime(),
+		LastSettledAt: f.Ctx.BlockTime(),
+	}
+	err = k.SetLease(f.Ctx, lease)
+	require.NoError(t, err)
+
+	// GetLeaseWithAutoClose should return the lease and auto-close it (zero balance)
+	gotLease, err := k.GetLeaseWithAutoClose(f.Ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_INACTIVE, gotLease.State)
+	require.NotNil(t, gotLease.ClosedAt)
+
+	// Verify the stored lease was also updated
+	storedLease, err := k.GetLease(f.Ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_INACTIVE, storedLease.State)
+}
+
+func TestGetLeaseWithAutoClose_WithBalance(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+
+	// Initialize SKU sequences
+	err := f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create a provider
+	provider := f.createTestProvider(t, f.TestAccs[0].String(), f.TestAccs[1].String())
+
+	tenant := f.TestAccs[2]
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+
+	// Fund the credit account
+	denom := types.DefaultDenom
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(10000000))))
+
+	// Create credit account with balance
+	ca := types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddr.String(),
+		ActiveLeaseCount: 1,
+	}
+	err = k.SetCreditAccount(f.Ctx, ca)
+	require.NoError(t, err)
+
+	// Create an active lease
+	lease := types.Lease{
+		Id:            1,
+		Tenant:        tenant.String(),
+		ProviderId:    provider.Id,
+		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdkmath.NewInt(100)}},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     f.Ctx.BlockTime(),
+		LastSettledAt: f.Ctx.BlockTime(),
+	}
+	err = k.SetLease(f.Ctx, lease)
+	require.NoError(t, err)
+
+	// GetLeaseWithAutoClose should return the lease still active (has balance)
+	gotLease, err := k.GetLeaseWithAutoClose(f.Ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, gotLease.State)
+	require.Nil(t, gotLease.ClosedAt)
+}

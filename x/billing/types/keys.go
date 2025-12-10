@@ -39,6 +39,7 @@ const (
 	EventTypeCreditFunded        = "credit_funded"
 	EventTypeLeaseCreated        = "lease_created"
 	EventTypeLeaseClosed         = "lease_closed"
+	EventTypeLeaseAutoClose      = "lease_auto_closed"
 	EventTypeLeaseSettled        = "lease_settled"
 	EventTypeProviderWithdraw    = "provider_withdraw"
 	EventTypeProviderWithdrawAll = "provider_withdraw_all"
@@ -61,4 +62,5 @@ const (
 	AttributeKeyDuration         = "duration_seconds"
 	AttributeKeyActiveLeaseCount = "active_lease_count"
 	AttributeKeyCreatedBy        = "created_by" // "tenant" or "authority"
+	AttributeKeyReason           = "reason"     // reason for auto-close (e.g., "credit_exhausted")
 )

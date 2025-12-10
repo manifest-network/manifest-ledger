@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"cosmossdk.io/collections"
@@ -253,12 +254,41 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 
 // Lease operations
 
-// GetLease returns a Lease by its ID.
+// GetLease returns a Lease by its ID without auto-close check.
+// Use GetLeaseWithAutoClose for operations that should trigger lazy evaluation.
 func (k *Keeper) GetLease(ctx context.Context, id uint64) (types.Lease, error) {
 	lease, err := k.Leases.Get(ctx, id)
 	if err != nil {
 		return types.Lease{}, types.ErrLeaseNotFound
 	}
+	return lease, nil
+}
+
+// GetLeaseWithAutoClose returns a Lease by its ID and performs lazy evaluation
+// to auto-close the lease if credit is exhausted. This should be used for
+// user-facing operations like queries and withdrawals.
+func (k *Keeper) GetLeaseWithAutoClose(ctx context.Context, id uint64) (types.Lease, error) {
+	lease, err := k.Leases.Get(ctx, id)
+	if err != nil {
+		return types.Lease{}, types.ErrLeaseNotFound
+	}
+
+	// Perform lazy evaluation - check if lease should be auto-closed
+	closed, err := k.CheckAndCloseExhaustedLease(ctx, &lease)
+	if err != nil {
+		// Log error but return the lease anyway
+		k.logger.Error("failed to check exhausted lease",
+			"lease_id", id,
+			"error", err,
+		)
+		return lease, nil
+	}
+
+	if closed {
+		// Return the updated lease state
+		return lease, nil
+	}
+
 	return lease, nil
 }
 
@@ -482,4 +512,148 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 	}
 
 	return accruedAmount
+}
+
+// CheckAndCloseExhaustedLease checks if a lease should be auto-closed due to exhausted credit
+// and closes it if necessary. This implements "lazy evaluation" / "check on touch" pattern.
+// Returns true if the lease was closed, the updated lease, and any error.
+// This is O(1) per lease check, avoiding O(n) scanning of all leases in EndBlock.
+func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.Lease) (closed bool, err error) {
+	// Only check active leases
+	if lease.State != types.LEASE_STATE_ACTIVE {
+		return false, nil
+	}
+
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	// Check tenant's credit balance
+	creditBalance, err := k.GetCreditBalance(ctx, lease.Tenant, params.Denom)
+	if err != nil {
+		return false, err
+	}
+
+	// If balance is zero or negative, close the lease
+	if !creditBalance.Amount.IsZero() && !creditBalance.Amount.IsNegative() {
+		return false, nil
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	blockTime := sdkCtx.BlockTime()
+
+	// Perform final settlement (transfer remaining balance to provider)
+	settledAmount, err := k.settleAndCloseLease(ctx, lease, blockTime, params)
+	if err != nil {
+		return false, err
+	}
+
+	// Emit event for auto-closed lease
+	sdkCtx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeLeaseAutoClose,
+			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(lease.Id, 10)),
+			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
+			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(lease.ProviderId, 10)),
+			sdk.NewAttribute(types.AttributeKeySettledAmount, settledAmount.String()),
+			sdk.NewAttribute(types.AttributeKeyReason, "credit_exhausted"),
+		),
+	)
+
+	k.logger.Info("auto-closed exhausted lease",
+		"lease_id", lease.Id,
+		"tenant", lease.Tenant,
+		"settled_amount", settledAmount.String(),
+	)
+
+	return true, nil
+}
+
+// settleAndCloseLease performs final settlement and closes a lease.
+// This is used by both manual close and auto-close operations.
+func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, closeTime time.Time, params types.Params) (math.Int, error) {
+	// Calculate duration since last settlement
+	duration := closeTime.Sub(lease.LastSettledAt)
+	if duration < 0 {
+		duration = 0
+	}
+
+	var settledAmount math.Int
+
+	if duration > 0 {
+		// Calculate accrued amount
+		items := make([]LeaseItemWithPrice, 0, len(lease.Items))
+		for _, item := range lease.Items {
+			items = append(items, LeaseItemWithPrice{
+				SkuID:                item.SkuId,
+				Quantity:             item.Quantity,
+				LockedPricePerSecond: item.LockedPrice,
+			})
+		}
+		accruedAmount, err := CalculateTotalAccruedForLease(items, duration)
+		if err != nil {
+			// On overflow, use zero (better than failing the close)
+			accruedAmount = math.ZeroInt()
+		}
+
+		// Get credit balance
+		creditAddr, err := types.DeriveCreditAddressFromBech32(lease.Tenant)
+		if err != nil {
+			return math.ZeroInt(), err
+		}
+		creditBalance := k.bankKeeper.GetBalance(ctx, creditAddr, params.Denom)
+
+		// Transfer minimum of accrued and available
+		transferAmount := accruedAmount
+		if creditBalance.Amount.LT(accruedAmount) {
+			transferAmount = creditBalance.Amount
+		}
+
+		if transferAmount.IsPositive() {
+			// Get provider payout address
+			provider, err := k.skuKeeper.GetProvider(ctx, lease.ProviderId)
+			if err != nil {
+				return math.ZeroInt(), types.ErrProviderNotFound.Wrapf("provider_id %d not found", lease.ProviderId)
+			}
+
+			payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
+			if err != nil {
+				return math.ZeroInt(), types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
+			}
+
+			if err := k.bankKeeper.SendCoins(
+				ctx,
+				creditAddr,
+				payoutAddr,
+				sdk.NewCoins(sdk.NewCoin(params.Denom, transferAmount)),
+			); err != nil {
+				return math.ZeroInt(), types.ErrInvalidCreditOperation.Wrapf("failed to transfer: %s", err)
+			}
+		}
+
+		settledAmount = transferAmount
+	} else {
+		settledAmount = math.ZeroInt()
+	}
+
+	// Update lease state
+	lease.State = types.LEASE_STATE_INACTIVE
+	lease.ClosedAt = &closeTime
+	lease.LastSettledAt = closeTime
+
+	if err := k.SetLease(ctx, *lease); err != nil {
+		return math.ZeroInt(), err
+	}
+
+	// Decrement active lease count in credit account
+	creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
+	if err == nil && creditAccount.ActiveLeaseCount > 0 {
+		creditAccount.ActiveLeaseCount--
+		if err := k.SetCreditAccount(ctx, creditAccount); err != nil {
+			return settledAmount, err
+		}
+	}
+
+	return settledAmount, nil
 }
