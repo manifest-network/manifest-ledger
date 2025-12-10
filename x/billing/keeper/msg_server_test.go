@@ -5,6 +5,7 @@ Test Coverage:
 - MsgFundCredit: funding credit accounts, denom validation, balance tracking
 - MsgUpdateParams: parameter updates, authority validation
 - MsgCreateLease: lease creation with SKU validation, credit checks, max lease limits
+- MsgCreateLeaseForTenant: authority-only lease creation on behalf of tenants
 - MsgCloseLease: lease closure by tenant, provider, or authority
 - MsgWithdraw: provider withdrawal from individual leases
 - MsgWithdrawAll: provider batch withdrawal from all leases
@@ -251,6 +252,7 @@ func TestMsgUpdateParams(t *testing.T) {
 					"factory/newdenom/upwr",
 					sdkmath.NewInt(10000000),
 					50,
+					[]string{},
 				),
 			},
 			expectErr: false,
@@ -272,6 +274,7 @@ func TestMsgUpdateParams(t *testing.T) {
 					"", // invalid: empty denom
 					sdkmath.NewInt(5000000),
 					100,
+					[]string{},
 				),
 			},
 			expectErr: true,
@@ -524,6 +527,196 @@ func TestMsgCreateLeaseMaxLeasesReached(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maximum leases per tenant reached")
 	require.Nil(t, resp)
+}
+
+func TestMsgCreateLeaseForTenant(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	nonAuthority := f.TestAccs[3]
+	authority := f.App.BillingKeeper.GetAuthority()
+	denom := types.DefaultDenom
+
+	// Initialize sequences
+	err := f.App.BillingKeeper.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600) // 3600 per hour = 1 per second
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(10000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	// Create credit account
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		msg       *types.MsgCreateLeaseForTenant
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name: "success: authority creates lease for tenant",
+			msg: &types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant.String(),
+				Items: []types.LeaseItemInput{
+					{
+						SkuId:    sku.Id,
+						Quantity: 2,
+					},
+				},
+			},
+			expectErr: false,
+		},
+		{
+			name: "fail: non-authority creates lease",
+			msg: &types.MsgCreateLeaseForTenant{
+				Authority: nonAuthority.String(),
+				Tenant:    tenant.String(),
+				Items: []types.LeaseItemInput{
+					{
+						SkuId:    sku.Id,
+						Quantity: 1,
+					},
+				},
+			},
+			expectErr: true,
+			errMsg:    "unauthorized",
+		},
+		{
+			name: "fail: SKU not found",
+			msg: &types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant.String(),
+				Items: []types.LeaseItemInput{
+					{
+						SkuId:    999,
+						Quantity: 1,
+					},
+				},
+			},
+			expectErr: true,
+			errMsg:    "sku not found",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := msgServer.CreateLeaseForTenant(f.Ctx, tc.msg)
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errMsg)
+				require.Nil(t, resp)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				require.Greater(t, resp.LeaseId, uint64(0))
+
+				// Verify lease was created
+				lease, err := f.App.BillingKeeper.GetLease(f.Ctx, resp.LeaseId)
+				require.NoError(t, err)
+				require.Equal(t, tc.msg.Tenant, lease.Tenant)
+				require.Equal(t, provider.Id, lease.ProviderId)
+				require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+				require.Len(t, lease.Items, len(tc.msg.Items))
+			}
+		})
+	}
+}
+
+func TestMsgCreateLeaseForTenantWithAllowedList(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	allowedUser := f.TestAccs[3]
+	notAllowed := f.TestAccs[4]
+	denom := types.DefaultDenom
+
+	// Initialize sequences
+	err := f.App.BillingKeeper.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600) // 3600 per hour = 1 per second
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(10000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	// Create credit account
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Update params to add allowedUser to allowed list
+	params := types.NewParams(
+		denom,
+		types.DefaultMinCreditBalance,
+		types.DefaultMaxLeasesPerTenant,
+		[]string{allowedUser.String()},
+	)
+	err = f.App.BillingKeeper.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Test: allowed user can create lease for tenant
+	resp, err := msgServer.CreateLeaseForTenant(f.Ctx, &types.MsgCreateLeaseForTenant{
+		Authority: allowedUser.String(),
+		Tenant:    tenant.String(),
+		Items: []types.LeaseItemInput{
+			{
+				SkuId:    sku.Id,
+				Quantity: 1,
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Greater(t, resp.LeaseId, uint64(0))
+
+	// Test: non-allowed user cannot create lease for tenant
+	_, err = msgServer.CreateLeaseForTenant(f.Ctx, &types.MsgCreateLeaseForTenant{
+		Authority: notAllowed.String(),
+		Tenant:    tenant.String(),
+		Items: []types.LeaseItemInput{
+			{
+				SkuId:    sku.Id,
+				Quantity: 1,
+			},
+		},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not the authority or in the allowed list")
 }
 
 func TestMsgCloseLease(t *testing.T) {

@@ -60,4 +60,5 @@ const (
 	AttributeKeyClosedBy         = "closed_by"
 	AttributeKeyDuration         = "duration_seconds"
 	AttributeKeyActiveLeaseCount = "active_lease_count"
+	AttributeKeyCreatedBy        = "created_by" // "tenant" or "authority"
 )

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
@@ -31,6 +32,14 @@ func BillingCreateLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
+// BillingCreateLeaseForTenant creates a new lease on behalf of a tenant (authority only).
+// items should be in the format "sku_id:quantity" (e.g., "1:2", "2:1")
+func BillingCreateLeaseForTenant(ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet, tenant string, items []string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "create-lease-for-tenant", tenant}
+	cmd = append(cmd, items...)
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, authority.KeyName(), flags...))
+}
+
 // BillingCloseLease closes an active lease.
 func BillingCloseLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseID uint64, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{"tx", "billing", "close-lease", strconv.FormatUint(leaseID, 10)}
@@ -50,12 +59,15 @@ func BillingWithdrawAll(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 }
 
 // BillingUpdateParams updates the billing module parameters.
-func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, denom string, minCreditBalance uint64, maxLeasesPerTenant uint64, flags ...string) (sdk.TxResponse, error) {
+func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, denom string, minCreditBalance uint64, maxLeasesPerTenant uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{
 		"tx", "billing", "update-params",
 		denom,
 		strconv.FormatUint(minCreditBalance, 10),
 		strconv.FormatUint(maxLeasesPerTenant, 10),
+	}
+	if len(allowedList) > 0 {
+		cmd = append(cmd, "--allowed-list", strings.Join(allowedList, ","))
 	}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }

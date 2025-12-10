@@ -227,7 +227,11 @@ func TestExportGenesis(t *testing.T) {
 	genState := k.ExportGenesis(f.Ctx)
 
 	require.NotNil(t, genState)
-	require.Equal(t, types.DefaultParams(), genState.Params)
+	// Compare params fields individually (nil slice vs empty slice comparison issue)
+	require.Equal(t, types.DefaultDenom, genState.Params.Denom)
+	require.Equal(t, types.DefaultMinCreditBalance, genState.Params.MinCreditBalance)
+	require.Equal(t, types.DefaultMaxLeasesPerTenant, genState.Params.MaxLeasesPerTenant)
+	require.Empty(t, genState.Params.AllowedList)
 	require.Len(t, genState.Leases, 1)
 	require.Equal(t, uint64(1), genState.Leases[0].Id)
 	require.Len(t, genState.CreditAccounts, 1)
@@ -252,6 +256,7 @@ func TestGetSetParams(t *testing.T) {
 		"factory/testdenom/upwr",
 		sdkmath.NewInt(10000000),
 		50,
+		[]string{},
 	)
 	err = k.SetParams(f.Ctx, newParams)
 	require.NoError(t, err)
@@ -675,6 +680,7 @@ func TestParamsValidation(t *testing.T) {
 				"",
 				sdkmath.NewInt(5000000),
 				100,
+				[]string{},
 			),
 			expectErr: true,
 		},
@@ -684,6 +690,7 @@ func TestParamsValidation(t *testing.T) {
 				"upwr",
 				sdkmath.NewInt(-1),
 				100,
+				[]string{},
 			),
 			expectErr: true,
 		},
@@ -693,6 +700,7 @@ func TestParamsValidation(t *testing.T) {
 				"upwr",
 				sdkmath.NewInt(5000000),
 				0,
+				[]string{},
 			),
 			expectErr: true,
 		},
@@ -702,6 +710,7 @@ func TestParamsValidation(t *testing.T) {
 				"factory/addr/upwr",
 				sdkmath.NewInt(10000000),
 				50,
+				[]string{},
 			),
 			expectErr: false,
 		},

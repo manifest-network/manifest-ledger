@@ -7,6 +7,7 @@ import (
 var (
 	_ sdk.Msg = &MsgFundCredit{}
 	_ sdk.Msg = &MsgCreateLease{}
+	_ sdk.Msg = &MsgCreateLeaseForTenant{}
 	_ sdk.Msg = &MsgCloseLease{}
 	_ sdk.Msg = &MsgWithdraw{}
 	_ sdk.Msg = &MsgWithdrawAll{}
@@ -35,6 +36,37 @@ func (m *MsgFundCredit) ValidateBasic() error {
 
 // ValidateBasic performs basic validation for MsgCreateLease.
 func (m *MsgCreateLease) ValidateBasic() error {
+	if _, err := sdk.AccAddressFromBech32(m.Tenant); err != nil {
+		return ErrInvalidLease.Wrapf("invalid tenant address: %s", err)
+	}
+
+	if len(m.Items) == 0 {
+		return ErrEmptyLeaseItems
+	}
+
+	seenSKUs := make(map[uint64]bool)
+	for i, item := range m.Items {
+		if item.SkuId == 0 {
+			return ErrInvalidLease.Wrapf("item %d has zero sku_id", i)
+		}
+		if item.Quantity == 0 {
+			return ErrInvalidQuantity.Wrapf("item %d has zero quantity", i)
+		}
+		if seenSKUs[item.SkuId] {
+			return ErrDuplicateSKU.Wrapf("sku_id %d appears multiple times", item.SkuId)
+		}
+		seenSKUs[item.SkuId] = true
+	}
+
+	return nil
+}
+
+// ValidateBasic performs basic validation for MsgCreateLeaseForTenant.
+func (m *MsgCreateLeaseForTenant) ValidateBasic() error {
+	if _, err := sdk.AccAddressFromBech32(m.Authority); err != nil {
+		return ErrUnauthorized.Wrapf("invalid authority address: %s", err)
+	}
+
 	if _, err := sdk.AccAddressFromBech32(m.Tenant); err != nil {
 		return ErrInvalidLease.Wrapf("invalid tenant address: %s", err)
 	}

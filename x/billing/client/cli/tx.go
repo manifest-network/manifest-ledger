@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -29,6 +30,7 @@ func NewTxCmd() *cobra.Command {
 	cmd.AddCommand(
 		NewFundCreditCmd(),
 		NewCreateLeaseCmd(),
+		NewCreateLeaseForTenantCmd(),
 		NewCloseLeaseCmd(),
 		NewWithdrawCmd(),
 		NewWithdrawAllCmd(),
@@ -110,6 +112,56 @@ create-lease 5:10 --from mykey`,
 			msg := &types.MsgCreateLease{
 				Tenant: clientCtx.GetFromAddress().String(),
 				Items:  items,
+			}
+
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+
+	return cmd
+}
+
+// NewCreateLeaseForTenantCmd returns the command to create a lease on behalf of a tenant.
+func NewCreateLeaseForTenantCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "create-lease-for-tenant [tenant] [sku-id:quantity] [sku-id:quantity] ...",
+		Short: "Create a new lease on behalf of a tenant (authority only)",
+		Long: `Create a new lease on behalf of a tenant. This command is used by the authority
+to migrate off-chain leases to on-chain. Each item is specified as sku_id:quantity.
+All SKUs must belong to the same provider. The tenant's credit account must be pre-funded.`,
+		Example: `create-lease-for-tenant manifest1abc... 1:2 2:1 --from authority
+create-lease-for-tenant manifest1xyz... 5:10 --from authority`,
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			tenant := args[0]
+			if _, err := sdk.AccAddressFromBech32(tenant); err != nil {
+				return fmt.Errorf("invalid tenant address: %w", err)
+			}
+
+			items := make([]types.LeaseItemInput, 0, len(args)-1)
+			for _, arg := range args[1:] {
+				var skuID, quantity uint64
+				_, err := fmt.Sscanf(arg, "%d:%d", &skuID, &quantity)
+				if err != nil {
+					return fmt.Errorf("invalid item format '%s': expected sku_id:quantity (e.g., 1:2)", arg)
+				}
+				items = append(items, types.LeaseItemInput{
+					SkuId:    skuID,
+					Quantity: quantity,
+				})
+			}
+
+			msg := &types.MsgCreateLeaseForTenant{
+				Authority: clientCtx.GetFromAddress().String(),
+				Tenant:    tenant,
+				Items:     items,
 			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
@@ -232,9 +284,10 @@ func NewUpdateParamsCmd() *cobra.Command {
 		Use:   "update-params [denom] [min-credit-balance] [max-leases-per-tenant]",
 		Short: "Update billing module parameters (authority only)",
 		Long: `Update the billing module parameters. Only the module authority can execute this command.
-All parameters must be provided.`,
-		Example: `update-params factory/manifest1.../upwr 5000000 100 --from authority`,
-		Args:    cobra.ExactArgs(3),
+All parameters must be provided. Use --allowed-list to set addresses allowed to create leases for tenants.`,
+		Example: `update-params factory/manifest1.../upwr 5000000 100 --from authority
+update-params factory/manifest1.../upwr 5000000 100 --allowed-list manifest1abc...,manifest1xyz... --from authority`,
+		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
@@ -253,12 +306,19 @@ All parameters must be provided.`,
 				return fmt.Errorf("invalid max_leases_per_tenant: %w", err)
 			}
 
+			allowedListStr, _ := cmd.Flags().GetString("allowed-list")
+			var allowedList []string
+			if allowedListStr != "" {
+				allowedList = splitAndTrim(allowedListStr)
+			}
+
 			msg := &types.MsgUpdateParams{
 				Authority: clientCtx.GetFromAddress().String(),
 				Params: types.Params{
 					Denom:              denom,
 					MinCreditBalance:   minCreditBalance,
 					MaxLeasesPerTenant: maxLeasesPerTenant,
+					AllowedList:        allowedList,
 				},
 			}
 
@@ -266,7 +326,24 @@ All parameters must be provided.`,
 		},
 	}
 
+	cmd.Flags().String("allowed-list", "", "Comma-separated list of addresses allowed to create leases for tenants")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd
+}
+
+// splitAndTrim splits a comma-separated string and trims whitespace from each element.
+func splitAndTrim(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }

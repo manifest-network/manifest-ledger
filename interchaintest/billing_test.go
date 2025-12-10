@@ -96,6 +96,20 @@
 // testEdgeCases:
 //   - Success: remaining credit stays in account after lease close
 //   - Success: provider cannot double-withdraw after lease closure (already settled)
+//
+// ## Authority Lease Creation Tests
+//
+// testCreateLeaseForTenant:
+//   - Success: authority creates lease for tenant
+//   - Success: verify lease belongs to tenant
+//   - Success: tenant can close lease created by authority
+//   - Success: authority creates multi-SKU lease for tenant
+//   - Fail: non-authority cannot create lease for tenant
+//   - Fail: provider cannot create lease for tenant
+//   - Fail: create lease for tenant without funded credit
+//   - Fail: create lease for tenant with invalid address
+//   - Fail: create lease for tenant with non-existent SKU
+//   - Success: verify event shows authority created lease
 package interchaintest
 
 import (
@@ -202,6 +216,10 @@ func TestBilling(t *testing.T) {
 		testEdgeCases(t, ctx, chain, authority, tenant2, providerWallet)
 	})
 
+	t.Run("CreateLeaseForTenant", func(t *testing.T) {
+		testCreateLeaseForTenant(t, ctx, chain, authority, providerWallet, unauthorizedUser)
+	})
+
 	t.Cleanup(func() {
 		dockerutil.CopyCoverageFromContainer(ctx, t, client, chain.GetNode().ContainerID(), chain.HomeDir(), ExternalGoCoverDir)
 		_ = ic.Close()
@@ -236,7 +254,7 @@ func setupBillingTestInfrastructure(t *testing.T, ctx context.Context, chain *co
 
 	// Update billing params to use test PWR denom
 	t.Run("update_billing_params", func(t *testing.T) {
-		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom, 5_000_000, 100)
+		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom, 5_000_000, 100, nil)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -848,5 +866,170 @@ func testEdgeCases(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		// Should fail because settlement already happened during closure
 		require.NotEqual(t, uint32(0), txRes.Code, "withdraw after closure should fail (already settled)")
 		require.Contains(t, txRes.RawLog, "no withdrawable amount")
+	})
+}
+
+func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, providerWallet, unauthorizedUser ibc.Wallet) {
+	t.Log("=== Testing Create Lease For Tenant (Authority Only) ===")
+
+	// Create a new tenant for these tests
+	users := interchaintest.GetAndFundTestUsers(t, ctx, "lease-for-tenant", DefaultGenesisAmt, chain)
+	newTenant := users[0]
+
+	t.Run("setup: fund new tenant credit account", func(t *testing.T) {
+		// Authority funds the new tenant's credit account using FundCredit
+		// This creates the credit account record in the billing module
+		fundAmount := fmt.Sprintf("100000000%s", testPWRDenom) // 100 PWR
+		res, err := helpers.BillingFundCredit(ctx, chain, authority, newTenant.FormattedAddress(), fundAmount)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "funding new tenant credit should succeed: %s", txRes.RawLog)
+
+		// Verify credit account exists and has balance
+		creditRes, err := helpers.BillingQueryCreditAccount(ctx, chain, newTenant.FormattedAddress())
+		require.NoError(t, err)
+		require.True(t, creditRes.Balance.Amount.IsPositive(), "credit balance should be positive")
+		t.Logf("New tenant credit balance: %s", creditRes.Balance)
+	})
+
+	var leaseID uint64
+	t.Run("success: authority creates lease for tenant", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, newTenant.FormattedAddress(), items)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "authority create lease for tenant should succeed: %s", txRes.RawLog)
+
+		leaseID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Created lease ID: %d for tenant: %s", leaseID, newTenant.FormattedAddress())
+	})
+
+	t.Run("success: verify lease belongs to tenant", func(t *testing.T) {
+		leaseRes, err := helpers.BillingQueryLease(ctx, chain, leaseID)
+		require.NoError(t, err)
+		require.Equal(t, newTenant.FormattedAddress(), leaseRes.Lease.Tenant)
+		require.Equal(t, "LEASE_STATE_ACTIVE", leaseRes.Lease.State)
+	})
+
+	t.Run("success: tenant can close lease created by authority", func(t *testing.T) {
+		res, err := helpers.BillingCloseLease(ctx, chain, newTenant, leaseID)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tenant should be able to close lease created by authority: %s", txRes.RawLog)
+
+		// Verify lease is now inactive
+		leaseRes, err := helpers.BillingQueryLease(ctx, chain, leaseID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_INACTIVE", leaseRes.Lease.State)
+	})
+
+	t.Run("success: authority creates multi-SKU lease for tenant", func(t *testing.T) {
+		items := []string{
+			fmt.Sprintf("%d:2", testSKUID),  // 2x per-hour SKU
+			fmt.Sprintf("%d:1", testSKUID2), // 1x per-day SKU
+		}
+		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, newTenant.FormattedAddress(), items)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "multi-SKU lease creation should succeed: %s", txRes.RawLog)
+
+		newLeaseID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Verify lease has correct number of items
+		leaseRes, err := helpers.BillingQueryLease(ctx, chain, newLeaseID)
+		require.NoError(t, err)
+		require.Len(t, leaseRes.Lease.Items, 2, "lease should have 2 items")
+	})
+
+	t.Run("fail: non-authority cannot create lease for tenant", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, unauthorizedUser, newTenant.FormattedAddress(), items)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "non-authority should not create lease for tenant")
+		require.Contains(t, txRes.RawLog, "unauthorized")
+	})
+
+	t.Run("fail: provider cannot create lease for tenant", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, providerWallet, newTenant.FormattedAddress(), items)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "provider should not create lease for tenant")
+		require.Contains(t, txRes.RawLog, "unauthorized")
+	})
+
+	t.Run("fail: create lease for tenant without funded credit", func(t *testing.T) {
+		// Create a new tenant without funding their credit
+		unfundedUsers := interchaintest.GetAndFundTestUsers(t, ctx, "unfunded-tenant", DefaultGenesisAmt, chain)
+		unfundedTenant := unfundedUsers[0]
+
+		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, unfundedTenant.FormattedAddress(), items)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "should fail without sufficient credit")
+		require.Contains(t, txRes.RawLog, "insufficient credit")
+	})
+
+	t.Run("fail: create lease for tenant with invalid address", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		// Using an invalid address format - this should fail at CLI validation
+		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, "invalid-address", items)
+		// CLI should return an error for invalid address
+		require.Error(t, err, "should fail with invalid tenant address")
+		_ = res // unused
+	})
+
+	t.Run("fail: create lease for tenant with non-existent SKU", func(t *testing.T) {
+		items := []string{"99999:1"}
+		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, newTenant.FormattedAddress(), items)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "should fail with non-existent SKU")
+		require.Contains(t, txRes.RawLog, "not found")
+	})
+
+	t.Run("success: verify event shows authority created lease", func(t *testing.T) {
+		// Create another lease and check the event
+		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, newTenant.FormattedAddress(), items)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		// Check for the created_by event attribute with value "authority"
+		foundAuthorityEvent := false
+		for _, event := range txRes.Events {
+			if event.Type == "lease_created" {
+				for _, attr := range event.Attributes {
+					if attr.Key == "created_by" && attr.Value == "authority" {
+						foundAuthorityEvent = true
+						break
+					}
+				}
+			}
+		}
+		require.True(t, foundAuthorityEvent, "event should indicate lease was created by authority")
 	})
 }

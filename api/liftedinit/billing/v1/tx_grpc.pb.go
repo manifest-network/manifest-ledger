@@ -19,12 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Msg_FundCredit_FullMethodName   = "/liftedinit.billing.v1.Msg/FundCredit"
-	Msg_CreateLease_FullMethodName  = "/liftedinit.billing.v1.Msg/CreateLease"
-	Msg_CloseLease_FullMethodName   = "/liftedinit.billing.v1.Msg/CloseLease"
-	Msg_Withdraw_FullMethodName     = "/liftedinit.billing.v1.Msg/Withdraw"
-	Msg_WithdrawAll_FullMethodName  = "/liftedinit.billing.v1.Msg/WithdrawAll"
-	Msg_UpdateParams_FullMethodName = "/liftedinit.billing.v1.Msg/UpdateParams"
+	Msg_FundCredit_FullMethodName           = "/liftedinit.billing.v1.Msg/FundCredit"
+	Msg_CreateLease_FullMethodName          = "/liftedinit.billing.v1.Msg/CreateLease"
+	Msg_CreateLeaseForTenant_FullMethodName = "/liftedinit.billing.v1.Msg/CreateLeaseForTenant"
+	Msg_CloseLease_FullMethodName           = "/liftedinit.billing.v1.Msg/CloseLease"
+	Msg_Withdraw_FullMethodName             = "/liftedinit.billing.v1.Msg/Withdraw"
+	Msg_WithdrawAll_FullMethodName          = "/liftedinit.billing.v1.Msg/WithdrawAll"
+	Msg_UpdateParams_FullMethodName         = "/liftedinit.billing.v1.Msg/UpdateParams"
 )
 
 // MsgClient is the client API for Msg service.
@@ -35,6 +36,9 @@ type MsgClient interface {
 	FundCredit(ctx context.Context, in *MsgFundCredit, opts ...grpc.CallOption) (*MsgFundCreditResponse, error)
 	// CreateLease creates a new lease for the tenant.
 	CreateLease(ctx context.Context, in *MsgCreateLease, opts ...grpc.CallOption) (*MsgCreateLeaseResponse, error)
+	// CreateLeaseForTenant allows authority to create a lease on behalf of a tenant.
+	// This is used for migrating off-chain leases to on-chain.
+	CreateLeaseForTenant(ctx context.Context, in *MsgCreateLeaseForTenant, opts ...grpc.CallOption) (*MsgCreateLeaseForTenantResponse, error)
 	// CloseLease closes an active lease.
 	CloseLease(ctx context.Context, in *MsgCloseLease, opts ...grpc.CallOption) (*MsgCloseLeaseResponse, error)
 	// Withdraw allows a provider to withdraw accrued funds from a specific lease.
@@ -65,6 +69,15 @@ func (c *msgClient) FundCredit(ctx context.Context, in *MsgFundCredit, opts ...g
 func (c *msgClient) CreateLease(ctx context.Context, in *MsgCreateLease, opts ...grpc.CallOption) (*MsgCreateLeaseResponse, error) {
 	out := new(MsgCreateLeaseResponse)
 	err := c.cc.Invoke(ctx, Msg_CreateLease_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) CreateLeaseForTenant(ctx context.Context, in *MsgCreateLeaseForTenant, opts ...grpc.CallOption) (*MsgCreateLeaseForTenantResponse, error) {
+	out := new(MsgCreateLeaseForTenantResponse)
+	err := c.cc.Invoke(ctx, Msg_CreateLeaseForTenant_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -115,6 +128,9 @@ type MsgServer interface {
 	FundCredit(context.Context, *MsgFundCredit) (*MsgFundCreditResponse, error)
 	// CreateLease creates a new lease for the tenant.
 	CreateLease(context.Context, *MsgCreateLease) (*MsgCreateLeaseResponse, error)
+	// CreateLeaseForTenant allows authority to create a lease on behalf of a tenant.
+	// This is used for migrating off-chain leases to on-chain.
+	CreateLeaseForTenant(context.Context, *MsgCreateLeaseForTenant) (*MsgCreateLeaseForTenantResponse, error)
 	// CloseLease closes an active lease.
 	CloseLease(context.Context, *MsgCloseLease) (*MsgCloseLeaseResponse, error)
 	// Withdraw allows a provider to withdraw accrued funds from a specific lease.
@@ -135,6 +151,9 @@ func (UnimplementedMsgServer) FundCredit(context.Context, *MsgFundCredit) (*MsgF
 }
 func (UnimplementedMsgServer) CreateLease(context.Context, *MsgCreateLease) (*MsgCreateLeaseResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateLease not implemented")
+}
+func (UnimplementedMsgServer) CreateLeaseForTenant(context.Context, *MsgCreateLeaseForTenant) (*MsgCreateLeaseForTenantResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateLeaseForTenant not implemented")
 }
 func (UnimplementedMsgServer) CloseLease(context.Context, *MsgCloseLease) (*MsgCloseLeaseResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CloseLease not implemented")
@@ -193,6 +212,24 @@ func _Msg_CreateLease_Handler(srv interface{}, ctx context.Context, dec func(int
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MsgServer).CreateLease(ctx, req.(*MsgCreateLease))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_CreateLeaseForTenant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgCreateLeaseForTenant)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).CreateLeaseForTenant(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_CreateLeaseForTenant_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).CreateLeaseForTenant(ctx, req.(*MsgCreateLeaseForTenant))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -283,6 +320,10 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateLease",
 			Handler:    _Msg_CreateLease_Handler,
+		},
+		{
+			MethodName: "CreateLeaseForTenant",
+			Handler:    _Msg_CreateLeaseForTenant_Handler,
 		},
 		{
 			MethodName: "CloseLease",

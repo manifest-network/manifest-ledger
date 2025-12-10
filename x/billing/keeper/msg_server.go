@@ -23,6 +23,18 @@ func NewMsgServerImpl(keeper Keeper) types.MsgServer {
 	return &msgServer{k: keeper}
 }
 
+// isAuthorizedForTenantLeaseCreation checks if the sender is the authority or in the allowed list.
+func (ms msgServer) isAuthorizedForTenantLeaseCreation(ctx context.Context, sender string) (bool, error) {
+	if ms.k.GetAuthority() == sender {
+		return true, nil
+	}
+	params, err := ms.k.GetParams(ctx)
+	if err != nil {
+		return false, err
+	}
+	return params.IsAllowed(sender), nil
+}
+
 // FundCredit funds a tenant's credit account.
 func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*types.MsgFundCreditResponse, error) {
 	if err := msg.ValidateBasic(); err != nil {
@@ -97,12 +109,18 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 	}, nil
 }
 
-// CreateLease creates a new lease for the tenant.
-func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) (*types.MsgCreateLeaseResponse, error) {
-	if err := msg.ValidateBasic(); err != nil {
-		return nil, err
-	}
+// leaseCreationResult holds the result of lease creation for use by the public methods.
+type leaseCreationResult struct {
+	leaseID      uint64
+	providerID   uint64
+	itemCount    int
+	totalRate    math.Int
+	activeLeases uint64
+}
 
+// createLeaseInternal contains the shared lease creation logic.
+// It validates inputs, creates the lease, and returns the result for event emission.
+func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, items []types.LeaseItemInput) (*leaseCreationResult, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
@@ -112,7 +130,7 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 	}
 
 	// 1. Verify tenant has sufficient credit balance
-	creditBalance, err := ms.k.GetCreditBalance(ctx, msg.Tenant, params.Denom)
+	creditBalance, err := ms.k.GetCreditBalance(ctx, tenant, params.Denom)
 	if err != nil {
 		return nil, err
 	}
@@ -126,9 +144,9 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 	}
 
 	// 2. Get credit account and verify tenant hasn't exceeded max leases (O(1) check)
-	creditAccount, err := ms.k.GetCreditAccount(ctx, msg.Tenant)
+	creditAccount, err := ms.k.GetCreditAccount(ctx, tenant)
 	if err != nil {
-		return nil, types.ErrCreditAccountNotFound.Wrapf("tenant %s has no credit account", msg.Tenant)
+		return nil, types.ErrCreditAccountNotFound.Wrapf("tenant %s has no credit account", tenant)
 	}
 
 	if creditAccount.ActiveLeaseCount >= params.MaxLeasesPerTenant {
@@ -141,10 +159,10 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 
 	// 3. Verify all SKUs exist, are active, and belong to the same provider
 	var providerID uint64
-	leaseItems := make([]types.LeaseItem, 0, len(msg.Items))
+	leaseItems := make([]types.LeaseItem, 0, len(items))
 	totalRatePerSecond := math.ZeroInt()
 
-	for i, inputItem := range msg.Items {
+	for i, inputItem := range items {
 		sku, err := ms.k.skuKeeper.GetSKU(ctx, inputItem.SkuId)
 		if err != nil {
 			return nil, types.ErrSKUNotFound.Wrapf("sku_id %d not found", inputItem.SkuId)
@@ -197,7 +215,7 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 
 	lease := types.Lease{
 		Id:            leaseID,
-		Tenant:        msg.Tenant,
+		Tenant:        tenant,
 		ProviderId:    providerID,
 		Items:         leaseItems,
 		State:         types.LEASE_STATE_ACTIVE,
@@ -215,21 +233,84 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 		return nil, err
 	}
 
-	// 7. Emit detailed event
+	return &leaseCreationResult{
+		leaseID:      leaseID,
+		providerID:   providerID,
+		itemCount:    len(leaseItems),
+		totalRate:    totalRatePerSecond,
+		activeLeases: creditAccount.ActiveLeaseCount,
+	}, nil
+}
+
+// CreateLease creates a new lease for the tenant.
+func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) (*types.MsgCreateLeaseResponse, error) {
+	if err := msg.ValidateBasic(); err != nil {
+		return nil, err
+	}
+
+	result, err := ms.createLeaseInternal(ctx, msg.Tenant, msg.Items)
+	if err != nil {
+		return nil, err
+	}
+
+	// Emit detailed event
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeLeaseCreated,
-			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(leaseID, 10)),
+			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(result.leaseID, 10)),
 			sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(providerID, 10)),
-			sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(len(leaseItems))),
-			sdk.NewAttribute(types.AttributeKeyTotalRate, totalRatePerSecond.String()),
-			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(creditAccount.ActiveLeaseCount, 10)),
+			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(result.providerID, 10)),
+			sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(result.itemCount)),
+			sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRate.String()),
+			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(result.activeLeases, 10)),
+			sdk.NewAttribute(types.AttributeKeyCreatedBy, "tenant"),
 		),
 	)
 
 	return &types.MsgCreateLeaseResponse{
-		LeaseId: leaseID,
+		LeaseId: result.leaseID,
+	}, nil
+}
+
+// CreateLeaseForTenant allows authority or allowed addresses to create a lease on behalf of a tenant.
+// This is used for migrating off-chain leases to on-chain.
+func (ms msgServer) CreateLeaseForTenant(ctx context.Context, msg *types.MsgCreateLeaseForTenant) (*types.MsgCreateLeaseForTenantResponse, error) {
+	if err := msg.ValidateBasic(); err != nil {
+		return nil, err
+	}
+
+	// Verify sender is authorized (authority or in allowed list)
+	authorized, err := ms.isAuthorizedForTenantLeaseCreation(ctx, msg.Authority)
+	if err != nil {
+		return nil, types.ErrUnauthorized.Wrapf("failed to check authorization: %s", err)
+	}
+	if !authorized {
+		return nil, types.ErrUnauthorized.Wrapf("%s is not the authority or in the allowed list", msg.Authority)
+	}
+
+	result, err := ms.createLeaseInternal(ctx, msg.Tenant, msg.Items)
+	if err != nil {
+		return nil, err
+	}
+
+	// Emit detailed event (with created_by = "authority" to distinguish from tenant-created leases)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeLeaseCreated,
+			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(result.leaseID, 10)),
+			sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
+			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(result.providerID, 10)),
+			sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(result.itemCount)),
+			sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRate.String()),
+			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(result.activeLeases, 10)),
+			sdk.NewAttribute(types.AttributeKeyCreatedBy, "authority"),
+		),
+	)
+
+	return &types.MsgCreateLeaseForTenantResponse{
+		LeaseId: result.leaseID,
 	}, nil
 }
 

@@ -44,7 +44,10 @@ func randomParams(r *rand.Rand) types.Params {
 	// Random max leases per tenant between 10 and 200
 	maxLeasesPerTenant := uint64(r.Intn(190) + 10) //nolint:gosec
 
-	return types.NewParams(denom, minCreditBalance, maxLeasesPerTenant)
+	// Empty allowed list for simulation (only authority can create leases for tenants)
+	allowedList := []string{}
+
+	return types.NewParams(denom, minCreditBalance, maxLeasesPerTenant, allowedList)
 }
 
 // GetGenesisStateFromAppState returns the billing module GenesisState from app state.

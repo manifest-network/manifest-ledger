@@ -20,6 +20,11 @@ service Msg {
   // CreateLease creates a new lease for the tenant.
   rpc CreateLease(MsgCreateLease) returns (MsgCreateLeaseResponse);
 
+  // CreateLeaseForTenant allows authority to create a lease on behalf of a tenant.
+  // This is used for migrating off-chain leases to on-chain.
+  rpc CreateLeaseForTenant(MsgCreateLeaseForTenant)
+      returns (MsgCreateLeaseForTenantResponse);
+
   // CloseLease closes an active lease.
   rpc CloseLease(MsgCloseLease) returns (MsgCloseLeaseResponse);
 
@@ -104,6 +109,38 @@ message MsgCreateLease {
 
 // MsgCreateLeaseResponse is the response type for MsgCreateLease.
 message MsgCreateLeaseResponse {
+  // lease_id is the ID of the created lease.
+  uint64 lease_id = 1 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
+}
+
+// MsgCreateLeaseForTenant allows authority to create a lease on behalf of a tenant.
+// This is used for migrating off-chain leases to on-chain.
+message MsgCreateLeaseForTenant {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "lifted/billing/MsgCreateLeaseForTenant";
+
+  // authority is the module authority address.
+  string authority = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "authority,omitempty"
+  ];
+
+  // tenant is the address of the tenant for whom the lease is created.
+  string tenant = 2 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
+
+  // items is the list of SKU items to include in the lease.
+  // All SKUs must belong to the same provider.
+  repeated LeaseItemInput items = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "items"
+  ];
+}
+
+// MsgCreateLeaseForTenantResponse is the response type for MsgCreateLeaseForTenant.
+message MsgCreateLeaseForTenantResponse {
   // lease_id is the ID of the created lease.
   uint64 lease_id = 1 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
 }

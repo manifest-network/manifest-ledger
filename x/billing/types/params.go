@@ -1,7 +1,11 @@
 package types
 
 import (
+	"fmt"
+
 	"cosmossdk.io/math"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 // DefaultDenom is the default billing denomination.
@@ -19,15 +23,17 @@ func DefaultParams() Params {
 		Denom:              DefaultDenom,
 		MinCreditBalance:   DefaultMinCreditBalance,
 		MaxLeasesPerTenant: DefaultMaxLeasesPerTenant,
+		AllowedList:        []string{},
 	}
 }
 
 // NewParams creates a new Params instance.
-func NewParams(denom string, minCreditBalance math.Int, maxLeasesPerTenant uint64) Params {
+func NewParams(denom string, minCreditBalance math.Int, maxLeasesPerTenant uint64, allowedList []string) Params {
 	return Params{
 		Denom:              denom,
 		MinCreditBalance:   minCreditBalance,
 		MaxLeasesPerTenant: maxLeasesPerTenant,
+		AllowedList:        allowedList,
 	}
 }
 
@@ -45,5 +51,27 @@ func (p *Params) Validate() error {
 		return ErrInvalidParams.Wrap("max_leases_per_tenant must be greater than zero")
 	}
 
+	// Validate allowed list addresses
+	seen := make(map[string]bool)
+	for _, addr := range p.AllowedList {
+		if _, err := sdk.AccAddressFromBech32(addr); err != nil {
+			return fmt.Errorf("invalid address in allowed list: %s", addr)
+		}
+		if seen[addr] {
+			return fmt.Errorf("duplicate address in allowed list: %s", addr)
+		}
+		seen[addr] = true
+	}
+
 	return nil
+}
+
+// IsAllowed checks if an address is in the allowed list.
+func (p Params) IsAllowed(addr string) bool {
+	for _, allowed := range p.AllowedList {
+		if allowed == addr {
+			return true
+		}
+	}
+	return false
 }

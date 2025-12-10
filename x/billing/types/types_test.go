@@ -3,7 +3,7 @@ Package types tests for the billing module.
 
 Test Coverage:
 1. Params - Parameter validation (denom, min_credit_balance, max_leases_per_tenant)
-2. Msgs - ValidateBasic for all message types
+2. Msgs - ValidateBasic for all message types including MsgCreateLeaseForTenant
 3. Credit - Credit address derivation determinism and correctness
 4. Genesis - Genesis state validation including leases and credit accounts
 */
@@ -44,12 +44,14 @@ func TestParams_NewParams(t *testing.T) {
 	denom := "utest"
 	minBalance := math.NewInt(1000)
 	maxLeases := uint64(50)
+	allowedList := []string{}
 
-	params := types.NewParams(denom, minBalance, maxLeases)
+	params := types.NewParams(denom, minBalance, maxLeases, allowedList)
 
 	require.Equal(t, denom, params.Denom)
 	require.Equal(t, minBalance, params.MinCreditBalance)
 	require.Equal(t, maxLeases, params.MaxLeasesPerTenant)
+	require.Equal(t, allowedList, params.AllowedList)
 }
 
 func TestParams_Validate(t *testing.T) {
@@ -66,17 +68,17 @@ func TestParams_Validate(t *testing.T) {
 		},
 		{
 			name:      "valid custom params",
-			params:    types.NewParams("utest", math.NewInt(100), 10),
+			params:    types.NewParams("utest", math.NewInt(100), 10, []string{}),
 			expectErr: false,
 		},
 		{
 			name:      "valid zero min credit balance",
-			params:    types.NewParams(testDenom, math.ZeroInt(), 10),
+			params:    types.NewParams(testDenom, math.ZeroInt(), 10, []string{}),
 			expectErr: false,
 		},
 		{
 			name:      "empty denom",
-			params:    types.NewParams("", math.NewInt(100), 10),
+			params:    types.NewParams("", math.NewInt(100), 10, []string{}),
 			expectErr: true,
 			errMsg:    "denom cannot be empty",
 		},
@@ -88,15 +90,21 @@ func TestParams_Validate(t *testing.T) {
 		},
 		{
 			name:      "negative min credit balance",
-			params:    types.NewParams(testDenom, math.NewInt(-1), 10),
+			params:    types.NewParams(testDenom, math.NewInt(-1), 10, []string{}),
 			expectErr: true,
 			errMsg:    "min_credit_balance cannot be nil or negative",
 		},
 		{
 			name:      "zero max leases per tenant",
-			params:    types.NewParams(testDenom, math.NewInt(100), 0),
+			params:    types.NewParams(testDenom, math.NewInt(100), 0, []string{}),
 			expectErr: true,
 			errMsg:    "max_leases_per_tenant must be greater than zero",
+		},
+		{
+			name:      "valid params with allowed list",
+			params:    types.NewParams(testDenom, math.NewInt(100), 10, []string{"manifest1xyz"}),
+			expectErr: true, // Invalid address
+			errMsg:    "invalid address in allowed list",
 		},
 	}
 
@@ -111,6 +119,40 @@ func TestParams_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParams_Validate_DuplicateAllowedList(t *testing.T) {
+	// Generate a valid address for testing duplicates
+	_, _, addr := testdata.KeyTestPubAddr()
+	validAddr := addr.String()
+
+	params := types.NewParams(testDenom, math.NewInt(100), 10, []string{validAddr, validAddr})
+	err := params.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate address in allowed list")
+}
+
+func TestParams_Validate_ValidAllowedList(t *testing.T) {
+	// Generate valid addresses for testing
+	_, _, addr1 := testdata.KeyTestPubAddr()
+	_, _, addr2 := testdata.KeyTestPubAddr()
+
+	params := types.NewParams(testDenom, math.NewInt(100), 10, []string{addr1.String(), addr2.String()})
+	err := params.Validate()
+	require.NoError(t, err)
+}
+
+func TestParams_IsAllowed(t *testing.T) {
+	_, _, addr1 := testdata.KeyTestPubAddr()
+	_, _, addr2 := testdata.KeyTestPubAddr()
+	_, _, notAllowed := testdata.KeyTestPubAddr()
+
+	params := types.NewParams(testDenom, math.NewInt(100), 10, []string{addr1.String(), addr2.String()})
+
+	require.True(t, params.IsAllowed(addr1.String()))
+	require.True(t, params.IsAllowed(addr2.String()))
+	require.False(t, params.IsAllowed(notAllowed.String()))
+	require.False(t, params.IsAllowed(""))
 }
 
 // ============================================================================
@@ -306,6 +348,153 @@ func TestMsgCreateLease_ValidateBasic(t *testing.T) {
 			name: "duplicate sku_id",
 			msg: types.MsgCreateLease{
 				Tenant: tenant,
+				Items: []types.LeaseItemInput{
+					{SkuId: 1, Quantity: 1},
+					{SkuId: 1, Quantity: 2},
+				},
+			},
+			expectErr: true,
+			errMsg:    "appears multiple times",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.msg.ValidateBasic()
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// ============================================================================
+// MsgCreateLeaseForTenant Tests
+// ============================================================================
+
+func TestMsgCreateLeaseForTenant_ValidateBasic(t *testing.T) {
+	_, _, authorityAddr := testdata.KeyTestPubAddr()
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+	authority := authorityAddr.String()
+	tenant := tenantAddr.String()
+
+	validItems := []types.LeaseItemInput{
+		{SkuId: 1, Quantity: 2},
+		{SkuId: 2, Quantity: 1},
+	}
+
+	tests := []struct {
+		name      string
+		msg       types.MsgCreateLeaseForTenant
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name: "valid message",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant,
+				Items:     validItems,
+			},
+			expectErr: false,
+		},
+		{
+			name: "valid single item",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant,
+				Items:     []types.LeaseItemInput{{SkuId: 1, Quantity: 1}},
+			},
+			expectErr: false,
+		},
+		{
+			name: "invalid authority address",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: invalidAddr,
+				Tenant:    tenant,
+				Items:     validItems,
+			},
+			expectErr: true,
+			errMsg:    "invalid authority address",
+		},
+		{
+			name: "empty authority address",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: "",
+				Tenant:    tenant,
+				Items:     validItems,
+			},
+			expectErr: true,
+			errMsg:    "invalid authority address",
+		},
+		{
+			name: "invalid tenant address",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    invalidAddr,
+				Items:     validItems,
+			},
+			expectErr: true,
+			errMsg:    "invalid tenant address",
+		},
+		{
+			name: "empty tenant address",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    "",
+				Items:     validItems,
+			},
+			expectErr: true,
+			errMsg:    "invalid tenant address",
+		},
+		{
+			name: "empty items",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant,
+				Items:     []types.LeaseItemInput{},
+			},
+			expectErr: true,
+			errMsg:    "lease must contain at least one item",
+		},
+		{
+			name: "nil items",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant,
+				Items:     nil,
+			},
+			expectErr: true,
+			errMsg:    "lease must contain at least one item",
+		},
+		{
+			name: "item with zero sku_id",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant,
+				Items:     []types.LeaseItemInput{{SkuId: 0, Quantity: 1}},
+			},
+			expectErr: true,
+			errMsg:    "has zero sku_id",
+		},
+		{
+			name: "item with zero quantity",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant,
+				Items:     []types.LeaseItemInput{{SkuId: 1, Quantity: 0}},
+			},
+			expectErr: true,
+			errMsg:    "has zero quantity",
+		},
+		{
+			name: "duplicate sku_id",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant,
 				Items: []types.LeaseItemInput{
 					{SkuId: 1, Quantity: 1},
 					{SkuId: 1, Quantity: 2},
@@ -566,7 +755,7 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			name: "invalid params - empty denom",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams("", math.NewInt(100), 10),
+				Params:    types.NewParams("", math.NewInt(100), 10, []string{}),
 			},
 			expectErr: true,
 			errMsg:    "denom cannot be empty",
@@ -575,7 +764,7 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			name: "invalid params - zero max leases",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams(testDenom, math.NewInt(100), 0),
+				Params:    types.NewParams(testDenom, math.NewInt(100), 0, []string{}),
 			},
 			expectErr: true,
 			errMsg:    "max_leases_per_tenant must be greater than zero",
@@ -691,7 +880,7 @@ func TestGenesisState_NewGenesisState(t *testing.T) {
 	_, _, tenantAddr := testdata.KeyTestPubAddr()
 	tenant := tenantAddr.String()
 
-	params := types.NewParams("utest", math.NewInt(100), 50)
+	params := types.NewParams("utest", math.NewInt(100), 50, []string{})
 	now := time.Now().UTC()
 
 	creditAddr := types.DeriveCreditAddress(tenantAddr)
@@ -778,7 +967,7 @@ func TestGenesisState_Validate(t *testing.T) {
 		{
 			name: "invalid params",
 			genesis: &types.GenesisState{
-				Params:      types.NewParams("", math.NewInt(100), 10),
+				Params:      types.NewParams("", math.NewInt(100), 10, []string{}),
 				NextLeaseId: 1,
 			},
 			expectErr: true,

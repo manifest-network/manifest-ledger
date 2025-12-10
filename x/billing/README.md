@@ -54,6 +54,7 @@ Module parameters stored at key `0x00`:
 | denom | string | Billing denomination (PWR token) |
 | min_credit_balance | Int | Minimum credit required to create a lease |
 | max_leases_per_tenant | uint64 | Maximum active leases per tenant (must be > 0) |
+| allowed_list | []string | List of addresses allowed to create leases on behalf of tenants |
 
 ### Lease
 
@@ -145,6 +146,20 @@ message MsgCreateLease {
 }
 ```
 
+### MsgCreateLeaseForTenant
+
+Create a lease on behalf of a tenant (authority or allowed addresses only). This is used for migrating off-chain leases to on-chain. The tenant's credit account must be pre-funded.
+
+Addresses in the `allowed_list` params can use this message in addition to the module authority.
+
+```protobuf
+message MsgCreateLeaseForTenant {
+  string authority = 1;
+  string tenant = 2;
+  repeated LeaseItemInput items = 3;
+}
+```
+
 ### MsgCloseLease
 
 Close an active lease. Can be called by tenant, provider, or authority.
@@ -207,11 +222,10 @@ message MsgUpdateParams {
 
 | Event | Attributes | Description |
 |-------|------------|-------------|
-| credit_funded | tenant, credit_address, amount | Credit account funded |
-| lease_created | lease_id, tenant, provider_id | Lease created |
-| lease_closed | lease_id | Lease closed |
-| lease_settled | lease_id, amount | Lease settlement occurred |
-| provider_withdraw | lease_id, amount, payout_address | Provider withdrawal |
+| credit_funded | tenant, credit_address, sender, amount, new_balance | Credit account funded |
+| lease_created | lease_id, tenant, provider_id, item_count, total_rate_per_second, active_lease_count, created_by | Lease created (created_by is "tenant" or "authority") |
+| lease_closed | lease_id, tenant, provider_id, settled_amount, closed_by, duration_seconds, active_lease_count | Lease closed |
+| provider_withdraw | lease_id, provider_id, amount, payout_address | Provider withdrawal |
 | provider_withdraw_all | provider_id, amount, lease_count, payout_address | Provider withdrew from all leases |
 | params_updated | | Module parameters updated |
 
@@ -227,6 +241,9 @@ manifestd tx billing fund-credit [tenant] [amount] --from [key]
 
 # Create a lease (format: sku_id:quantity)
 manifestd tx billing create-lease 1:2 2:1 --from [key]
+
+# Create a lease on behalf of a tenant (authority only)
+manifestd tx billing create-lease-for-tenant [tenant] 1:2 2:1 --from [authority]
 
 # Close a lease
 manifestd tx billing close-lease [lease-id] --from [key]
@@ -283,6 +300,7 @@ manifestd query billing provider-withdrawable [provider-id]
 |--------|-----------------|
 | Fund Credit | Anyone |
 | Create Lease | Tenant (for themselves) |
+| Create Lease for Tenant | Authority only (for migrating off-chain leases) |
 | Close Lease | Tenant, Provider, or Authority |
 | Withdraw | Provider or Authority |
 | Withdraw All | Provider or Authority |
