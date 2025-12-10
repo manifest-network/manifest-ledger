@@ -2,14 +2,16 @@
 Package types contains unit tests for SKU types validation.
 
 Test Coverage:
-- CalculatePricePerSecond: converts base price to per-second rate
-- ValidatePriceAndUnit: validates price/unit combinations
+- CalculatePricePerSecond: converts base price to per-second rate with exact divisibility
+- ValidatePriceAndUnit: validates price/unit combinations for exact division
+- PriceValidationError: structured error type for validation failures
 - Unit JSON marshaling/unmarshaling
 */
 package types
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -29,87 +31,115 @@ func TestCalculatePricePerSecond(t *testing.T) {
 		expected  math.Int
 		valid     bool
 	}{
+		// Valid cases: exact division
 		{
-			name:      "per hour: 3600 -> 1 per second (valid)",
+			name:      "per hour: 3600 -> 1 per second (exact)",
 			basePrice: sdk.NewCoin(testDenom, math.NewInt(3600)),
 			unit:      Unit_UNIT_PER_HOUR,
 			expected:  math.NewInt(1),
 			valid:     true,
 		},
 		{
-			name:      "per hour: 7200 -> 2 per second (valid)",
+			name:      "per hour: 7200 -> 2 per second (exact)",
 			basePrice: sdk.NewCoin(testDenom, math.NewInt(7200)),
 			unit:      Unit_UNIT_PER_HOUR,
 			expected:  math.NewInt(2),
 			valid:     true,
 		},
 		{
-			name:      "per day: 86400 -> 1 per second (valid)",
+			name:      "per day: 86400 -> 1 per second (exact)",
 			basePrice: sdk.NewCoin(testDenom, math.NewInt(86400)),
 			unit:      Unit_UNIT_PER_DAY,
 			expected:  math.NewInt(1),
 			valid:     true,
 		},
 		{
-			name:      "per day: 172800 -> 2 per second (valid)",
+			name:      "per day: 172800 -> 2 per second (exact)",
 			basePrice: sdk.NewCoin(testDenom, math.NewInt(172800)),
 			unit:      Unit_UNIT_PER_DAY,
 			expected:  math.NewInt(2),
 			valid:     true,
 		},
 		{
-			name:      "per hour: small amount results in zero (invalid)",
+			name:      "per hour: large amount 36000000 -> 10000 per second (exact)",
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(36000000)),
+			unit:      Unit_UNIT_PER_HOUR,
+			expected:  math.NewInt(10000),
+			valid:     true,
+		},
+
+		// Invalid cases: zero result (price too low)
+		{
+			name:      "per hour: 100 results in zero (invalid)",
 			basePrice: sdk.NewCoin(testDenom, math.NewInt(100)),
 			unit:      Unit_UNIT_PER_HOUR,
 			expected:  math.ZeroInt(),
 			valid:     false,
 		},
 		{
-			name:      "per day: small amount results in zero (invalid)",
+			name:      "per day: 1000 results in zero (invalid)",
 			basePrice: sdk.NewCoin(testDenom, math.NewInt(1000)),
 			unit:      Unit_UNIT_PER_DAY,
 			expected:  math.ZeroInt(),
 			valid:     false,
 		},
 		{
-			name:      "unspecified unit (invalid)",
-			basePrice: sdk.NewCoin(testDenom, math.NewInt(100)),
-			unit:      Unit_UNIT_UNSPECIFIED,
-			expected:  math.ZeroInt(),
-			valid:     false,
-		},
-		{
-			name:      "per hour: large amount (valid)",
-			basePrice: sdk.NewCoin(testDenom, math.NewInt(36000000)),
-			unit:      Unit_UNIT_PER_HOUR,
-			expected:  math.NewInt(10000),
-			valid:     true,
-		},
-		{
-			name:      "per hour: minimum valid (3600)",
-			basePrice: sdk.NewCoin(testDenom, math.NewInt(3600)),
-			unit:      Unit_UNIT_PER_HOUR,
-			expected:  math.NewInt(1),
-			valid:     true,
-		},
-		{
-			name:      "per hour: just below minimum (3599, invalid)",
+			name:      "per hour: 3599 results in zero (just below minimum)",
 			basePrice: sdk.NewCoin(testDenom, math.NewInt(3599)),
 			unit:      Unit_UNIT_PER_HOUR,
 			expected:  math.ZeroInt(),
 			valid:     false,
 		},
 		{
-			name:      "per day: minimum valid (86400)",
-			basePrice: sdk.NewCoin(testDenom, math.NewInt(86400)),
-			unit:      Unit_UNIT_PER_DAY,
-			expected:  math.NewInt(1),
-			valid:     true,
-		},
-		{
-			name:      "per day: just below minimum (86399, invalid)",
+			name:      "per day: 86399 results in zero (just below minimum)",
 			basePrice: sdk.NewCoin(testDenom, math.NewInt(86399)),
 			unit:      Unit_UNIT_PER_DAY,
+			expected:  math.ZeroInt(),
+			valid:     false,
+		},
+
+		// Invalid cases: not evenly divisible (remainder exists)
+		{
+			name:      "per hour: 3601 not evenly divisible (remainder 1)",
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(3601)),
+			unit:      Unit_UNIT_PER_HOUR,
+			expected:  math.ZeroInt(),
+			valid:     false,
+		},
+		{
+			name:      "per hour: 7201 not evenly divisible (remainder 1)",
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(7201)),
+			unit:      Unit_UNIT_PER_HOUR,
+			expected:  math.ZeroInt(),
+			valid:     false,
+		},
+		{
+			name:      "per day: 86401 not evenly divisible (remainder 1)",
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(86401)),
+			unit:      Unit_UNIT_PER_DAY,
+			expected:  math.ZeroInt(),
+			valid:     false,
+		},
+		{
+			name:      "per day: 100000 not evenly divisible (remainder 13600)",
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(100000)),
+			unit:      Unit_UNIT_PER_DAY,
+			expected:  math.ZeroInt(),
+			valid:     false,
+		},
+		{
+			name:      "per hour: 5000 not evenly divisible (remainder 1400)",
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(5000)),
+			unit:      Unit_UNIT_PER_HOUR,
+			expected:  math.ZeroInt(),
+			valid:     false,
+		},
+
+		// Invalid cases: unspecified unit
+		{
+			name:      "unspecified unit (invalid)",
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(3600)),
+			unit:      Unit_UNIT_UNSPECIFIED,
 			expected:  math.ZeroInt(),
 			valid:     false,
 		},
@@ -128,38 +158,107 @@ func TestValidatePriceAndUnit(t *testing.T) {
 	const testDenom = "upwr"
 
 	tests := []struct {
-		name      string
-		basePrice sdk.Coin
-		unit      Unit
-		expectErr bool
+		name         string
+		basePrice    sdk.Coin
+		unit         Unit
+		expectErr    bool
+		errIsZero    bool   // if error, is it a zero rate error?
+		errRemainder string // if error due to remainder, what's the expected remainder?
 	}{
+		// Valid cases: exact division
 		{
-			name:      "valid: per hour with sufficient price",
+			name:      "valid: per hour with exact division (3600)",
 			basePrice: sdk.NewCoin(testDenom, math.NewInt(3600)),
 			unit:      Unit_UNIT_PER_HOUR,
 			expectErr: false,
 		},
 		{
-			name:      "valid: per day with sufficient price",
+			name:      "valid: per hour with exact division (7200)",
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(7200)),
+			unit:      Unit_UNIT_PER_HOUR,
+			expectErr: false,
+		},
+		{
+			name:      "valid: per day with exact division (86400)",
 			basePrice: sdk.NewCoin(testDenom, math.NewInt(86400)),
 			unit:      Unit_UNIT_PER_DAY,
 			expectErr: false,
 		},
 		{
-			name:      "invalid: per hour with too low price",
+			name:      "valid: per day with exact division (172800)",
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(172800)),
+			unit:      Unit_UNIT_PER_DAY,
+			expectErr: false,
+		},
+		{
+			name:      "valid: large per hour amount (36000000)",
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(36000000)),
+			unit:      Unit_UNIT_PER_HOUR,
+			expectErr: false,
+		},
+
+		// Invalid cases: zero result
+		{
+			name:      "invalid: per hour with too low price (zero result)",
 			basePrice: sdk.NewCoin(testDenom, math.NewInt(100)),
 			unit:      Unit_UNIT_PER_HOUR,
 			expectErr: true,
+			errIsZero: true,
 		},
 		{
-			name:      "invalid: per day with too low price",
+			name:      "invalid: per day with too low price (zero result)",
 			basePrice: sdk.NewCoin(testDenom, math.NewInt(1000)),
 			unit:      Unit_UNIT_PER_DAY,
 			expectErr: true,
+			errIsZero: true,
+		},
+
+		// Invalid cases: not evenly divisible
+		{
+			name:         "invalid: per hour 3601 not evenly divisible",
+			basePrice:    sdk.NewCoin(testDenom, math.NewInt(3601)),
+			unit:         Unit_UNIT_PER_HOUR,
+			expectErr:    true,
+			errIsZero:    false,
+			errRemainder: "1",
 		},
 		{
+			name:         "invalid: per hour 7201 not evenly divisible",
+			basePrice:    sdk.NewCoin(testDenom, math.NewInt(7201)),
+			unit:         Unit_UNIT_PER_HOUR,
+			expectErr:    true,
+			errIsZero:    false,
+			errRemainder: "1",
+		},
+		{
+			name:         "invalid: per day 86401 not evenly divisible",
+			basePrice:    sdk.NewCoin(testDenom, math.NewInt(86401)),
+			unit:         Unit_UNIT_PER_DAY,
+			expectErr:    true,
+			errIsZero:    false,
+			errRemainder: "1",
+		},
+		{
+			name:         "invalid: per hour 5000 not evenly divisible",
+			basePrice:    sdk.NewCoin(testDenom, math.NewInt(5000)),
+			unit:         Unit_UNIT_PER_HOUR,
+			expectErr:    true,
+			errIsZero:    false,
+			errRemainder: "1400",
+		},
+		{
+			name:         "invalid: per day 100000 not evenly divisible",
+			basePrice:    sdk.NewCoin(testDenom, math.NewInt(100000)),
+			unit:         Unit_UNIT_PER_DAY,
+			expectErr:    true,
+			errIsZero:    false,
+			errRemainder: "13600",
+		},
+
+		// Invalid cases: unspecified unit
+		{
 			name:      "invalid: unspecified unit",
-			basePrice: sdk.NewCoin(testDenom, math.NewInt(1000000)),
+			basePrice: sdk.NewCoin(testDenom, math.NewInt(3600)),
 			unit:      Unit_UNIT_UNSPECIFIED,
 			expectErr: true,
 		},
@@ -170,11 +269,47 @@ func TestValidatePriceAndUnit(t *testing.T) {
 			err := ValidatePriceAndUnit(tc.basePrice, tc.unit)
 			if tc.expectErr {
 				require.Error(t, err)
+
+				// Check error type and details
+				var priceErr *PriceValidationError
+				if errors.As(err, &priceErr) {
+					require.Equal(t, tc.errIsZero, priceErr.IsZero, "error IsZero mismatch")
+					if !tc.errIsZero && tc.errRemainder != "" {
+						require.Equal(t, tc.errRemainder, priceErr.Remainder.String(), "remainder mismatch")
+					}
+				}
 			} else {
 				require.NoError(t, err)
 			}
 		})
 	}
+}
+
+func TestPriceValidationError(t *testing.T) {
+	const testDenom = "upwr"
+
+	t.Run("zero rate error message", func(t *testing.T) {
+		err := &PriceValidationError{
+			BasePrice: sdk.NewCoin(testDenom, math.NewInt(100)),
+			Unit:      Unit_UNIT_PER_HOUR,
+			IsZero:    true,
+		}
+		require.Contains(t, err.Error(), "zero per-second rate")
+		require.Contains(t, err.Error(), "100upwr")
+		require.Contains(t, err.Error(), "UNIT_PER_HOUR")
+	})
+
+	t.Run("not evenly divisible error message", func(t *testing.T) {
+		err := &PriceValidationError{
+			BasePrice: sdk.NewCoin(testDenom, math.NewInt(3601)),
+			Unit:      Unit_UNIT_PER_HOUR,
+			IsZero:    false,
+			Remainder: math.NewInt(1),
+		}
+		require.Contains(t, err.Error(), "not evenly divisible")
+		require.Contains(t, err.Error(), "3601upwr")
+		require.Contains(t, err.Error(), "remainder: 1")
+	})
 }
 
 func TestUnitJSONMarshal(t *testing.T) {

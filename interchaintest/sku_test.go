@@ -41,6 +41,7 @@
 //   - Fail: create SKU with non-existent provider
 //   - Fail: create SKU with zero provider_id
 //   - Fail: create SKU with inactive provider
+//   - Fail: create SKU with non-evenly divisible price (exact division required)
 //
 // testSKUQuery:
 //   - Success: query existing SKU by ID
@@ -53,6 +54,7 @@
 //   - Fail: update with wrong provider_id (mismatch)
 //   - Fail: update non-existent SKU
 //   - Fail: update SKU with zero provider_id
+//   - Fail: update SKU with non-evenly divisible price (exact division required)
 //
 // testSKUDeactivate:
 //   - Fail: unauthorized user deactivates SKU
@@ -470,6 +472,22 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.Contains(t, txRes.RawLog, "not active")
 	})
 
+	t.Run("fail: create SKU with non-evenly divisible price", func(t *testing.T) {
+		// 3601 is not evenly divisible by 3600 (seconds in an hour)
+		// This should fail CLI validation with "not evenly divisible" error
+		_, err := helpers.SKUCreateSKU(ctx, chain, authority, providerID, "Non-Divisible SKU", unit, "3601umfx", "")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not evenly divisible")
+	})
+
+	t.Run("fail: create SKU with non-evenly divisible per-day price", func(t *testing.T) {
+		// 86401 is not evenly divisible by 86400 (seconds in a day)
+		// This should fail CLI validation with "not evenly divisible" error
+		_, err := helpers.SKUCreateSKU(ctx, chain, authority, providerID, "Non-Divisible SKU", 2, "86401umfx", "")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not evenly divisible")
+	})
+
 	return skuID
 }
 
@@ -566,6 +584,22 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, 0, "Name", 1, validPrice, true, "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "provider_id cannot be zero")
+	})
+
+	t.Run("fail: update SKU with non-evenly divisible price", func(t *testing.T) {
+		// 3601 is not evenly divisible by 3600 (seconds in an hour)
+		// This should fail CLI validation with "not evenly divisible" error
+		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, "Updated Name", 1, "3601umfx", true, "")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not evenly divisible")
+	})
+
+	t.Run("fail: update SKU with non-evenly divisible per-day price", func(t *testing.T) {
+		// 86401 is not evenly divisible by 86400 (seconds in a day)
+		// This should fail CLI validation with "not evenly divisible" error
+		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, "Updated Name", 2, "86401umfx", true, "")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not evenly divisible")
 	})
 }
 

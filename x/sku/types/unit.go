@@ -20,23 +20,49 @@ func (u Unit) MarshalJSON() ([]byte, error) {
 	return json.Marshal(u.String())
 }
 
+// PriceValidationError represents an error during price/unit validation.
+type PriceValidationError struct {
+	BasePrice sdk.Coin
+	Unit      Unit
+	IsZero    bool // true if rate is zero, false if not evenly divisible
+	Remainder math.Int
+}
+
+func (e *PriceValidationError) Error() string {
+	if e.IsZero {
+		return fmt.Sprintf("base price %s with unit %s results in zero per-second rate; increase price or change unit", e.BasePrice, e.Unit)
+	}
+	return fmt.Sprintf("base price %s is not evenly divisible by %s (remainder: %s); price must be exactly divisible to avoid rounding errors", e.BasePrice, e.Unit, e.Remainder)
+}
+
 // CalculatePricePerSecond converts a base price to a per-second rate based on the unit.
-// Returns the per-second rate and whether the conversion is valid (non-zero).
+// Returns the per-second rate and whether the conversion is valid (non-zero and exact).
+// The conversion is considered valid only if:
+// 1. The per-second rate is non-zero
+// 2. The division is exact (no remainder/truncation)
 func CalculatePricePerSecond(basePrice sdk.Coin, unit Unit) (math.Int, bool) {
-	var perSecond math.Int
+	var divisor math.Int
 
 	switch unit {
 	case Unit_UNIT_PER_HOUR:
-		perSecond = basePrice.Amount.Quo(math.NewInt(SecondsPerHour))
+		divisor = math.NewInt(SecondsPerHour)
 	case Unit_UNIT_PER_DAY:
-		perSecond = basePrice.Amount.Quo(math.NewInt(SecondsPerDay))
+		divisor = math.NewInt(SecondsPerDay)
 	default:
 		// UNIT_UNSPECIFIED - invalid
 		return math.ZeroInt(), false
 	}
 
+	perSecond := basePrice.Amount.Quo(divisor)
+
 	// Check if per-second rate is zero (would result in free usage)
 	if perSecond.IsZero() {
+		return math.ZeroInt(), false
+	}
+
+	// Check if division is exact (no remainder)
+	remainder := basePrice.Amount.Mod(divisor)
+	if !remainder.IsZero() {
 		return math.ZeroInt(), false
 	}
 
@@ -44,12 +70,48 @@ func CalculatePricePerSecond(basePrice sdk.Coin, unit Unit) (math.Int, bool) {
 }
 
 // ValidatePriceAndUnit checks that the combination of base price and unit
-// produces a valid (non-zero) per-second rate. This prevents SKUs that would
-// be effectively free due to integer division truncation.
+// produces a valid per-second rate. This prevents SKUs that would:
+// 1. Be effectively free due to integer division truncation (zero rate)
+// 2. Have rounding errors due to non-exact division
+//
+// For exact billing, the base price must be evenly divisible by the number
+// of seconds in the unit period:
+// - UNIT_PER_HOUR: price must be divisible by 3600
+// - UNIT_PER_DAY: price must be divisible by 86400
 func ValidatePriceAndUnit(basePrice sdk.Coin, unit Unit) error {
-	if _, valid := CalculatePricePerSecond(basePrice, unit); !valid {
-		return fmt.Errorf("base price %s with unit %s results in zero per-second rate; increase price or change unit", basePrice, unit)
+	var divisor math.Int
+
+	switch unit {
+	case Unit_UNIT_PER_HOUR:
+		divisor = math.NewInt(SecondsPerHour)
+	case Unit_UNIT_PER_DAY:
+		divisor = math.NewInt(SecondsPerDay)
+	default:
+		return fmt.Errorf("invalid unit: %s", unit)
 	}
+
+	perSecond := basePrice.Amount.Quo(divisor)
+
+	// Check if per-second rate is zero (would result in free usage)
+	if perSecond.IsZero() {
+		return &PriceValidationError{
+			BasePrice: basePrice,
+			Unit:      unit,
+			IsZero:    true,
+		}
+	}
+
+	// Check if division is exact (no remainder)
+	remainder := basePrice.Amount.Mod(divisor)
+	if !remainder.IsZero() {
+		return &PriceValidationError{
+			BasePrice: basePrice,
+			Unit:      unit,
+			IsZero:    false,
+			Remainder: remainder,
+		}
+	}
+
 	return nil
 }
 

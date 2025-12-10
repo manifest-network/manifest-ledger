@@ -38,14 +38,33 @@ SKUs can be deactivated (soft delete), which prevents them from being used for n
 
 The module supports the following billing unit types:
 
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | `UNIT_UNSPECIFIED` | Default unspecified unit (invalid for SKUs) |
-| 1 | `UNIT_PER_HOUR` | Per-hour billing |
-| 2 | `UNIT_PER_DAY` | Per-day billing |
+| Value | Name | Description | Seconds |
+|-------|------|-------------|---------|
+| 0 | `UNIT_UNSPECIFIED` | Default unspecified unit (invalid for SKUs) | N/A |
+| 1 | `UNIT_PER_HOUR` | Per-hour billing | 3600 |
+| 2 | `UNIT_PER_DAY` | Per-day billing | 86400 |
 
 > **Note:** In JSON/REST responses, the unit is returned as a string (e.g., `"UNIT_PER_HOUR"`).
 > Both string names and integer values are accepted when unmarshaling JSON.
+
+### Pricing and Exact Divisibility
+
+To ensure accurate billing calculations without rounding errors, the base price of an SKU must be **exactly divisible** by the number of seconds in the billing unit:
+
+- **UNIT_PER_HOUR**: Price must be divisible by 3600 (e.g., 3600, 7200, 10800, ...)
+- **UNIT_PER_DAY**: Price must be divisible by 86400 (e.g., 86400, 172800, 259200, ...)
+
+This requirement ensures that per-second rate calculations (used by the billing module) are exact with no truncation or rounding.
+
+**Examples:**
+| Unit | Price | Per-Second Rate | Valid? |
+|------|-------|-----------------|--------|
+| UNIT_PER_HOUR | 3600umfx | 1 | ✅ Yes |
+| UNIT_PER_HOUR | 7200umfx | 2 | ✅ Yes |
+| UNIT_PER_HOUR | 3601umfx | 1.000277... | ❌ No (not evenly divisible) |
+| UNIT_PER_DAY | 86400umfx | 1 | ✅ Yes |
+| UNIT_PER_DAY | 172800umfx | 2 | ✅ Yes |
+| UNIT_PER_DAY | 100000umfx | 1.157... | ❌ No (not evenly divisible) |
 
 ### Authorization
 
@@ -59,6 +78,7 @@ Only the module authority can update the parameters (including the allowed list)
 ### Business Rules
 
 - SKUs can only be created for active Providers
+- SKU base price must be exactly divisible by the billing unit's seconds (no rounding)
 - Deactivating a Provider does not affect existing SKUs (they remain active/inactive as they were)
 - Deactivating a SKU is a soft delete - the SKU remains queryable but cannot be used for new leases
 - Provider and SKU IDs are auto-incremented and never reused
