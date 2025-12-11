@@ -257,6 +257,7 @@ func TestGetSetParams(t *testing.T) {
 		sdkmath.NewInt(10000000),
 		50,
 		[]string{},
+		20,
 	)
 	err = k.SetParams(f.Ctx, newParams)
 	require.NoError(t, err)
@@ -267,6 +268,7 @@ func TestGetSetParams(t *testing.T) {
 	require.Equal(t, "factory/testdenom/upwr", gotParams.Denom)
 	require.Equal(t, sdkmath.NewInt(10000000), gotParams.MinCreditBalance)
 	require.Equal(t, uint64(50), gotParams.MaxLeasesPerTenant)
+	require.Equal(t, uint64(20), gotParams.MaxItemsPerLease)
 }
 
 func TestCreditAddressDerivation(t *testing.T) {
@@ -681,6 +683,7 @@ func TestParamsValidation(t *testing.T) {
 				sdkmath.NewInt(5000000),
 				100,
 				[]string{},
+				20,
 			),
 			expectErr: true,
 		},
@@ -691,6 +694,7 @@ func TestParamsValidation(t *testing.T) {
 				sdkmath.NewInt(-1),
 				100,
 				[]string{},
+				20,
 			),
 			expectErr: true,
 		},
@@ -701,6 +705,18 @@ func TestParamsValidation(t *testing.T) {
 				sdkmath.NewInt(5000000),
 				0,
 				[]string{},
+				20,
+			),
+			expectErr: true,
+		},
+		{
+			name: "zero max items per lease",
+			params: types.NewParams(
+				"upwr",
+				sdkmath.NewInt(5000000),
+				100,
+				[]string{},
+				0,
 			),
 			expectErr: true,
 		},
@@ -711,6 +727,7 @@ func TestParamsValidation(t *testing.T) {
 				sdkmath.NewInt(10000000),
 				50,
 				[]string{},
+				20,
 			),
 			expectErr: false,
 		},

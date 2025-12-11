@@ -58,13 +58,20 @@ func BillingWithdrawAll(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
+// BillingWithdrawAllWithLimit withdraws from all leases with a specific limit.
+func BillingWithdrawAllWithLimit(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, providerID, limit uint64, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "withdraw-all", strconv.FormatUint(providerID, 10), "--limit", strconv.FormatUint(limit, 10)}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
 // BillingUpdateParams updates the billing module parameters.
-func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, denom string, minCreditBalance uint64, maxLeasesPerTenant uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
+func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, denom string, minCreditBalance uint64, maxLeasesPerTenant uint64, maxItemsPerLease uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{
 		"tx", "billing", "update-params",
 		denom,
 		strconv.FormatUint(minCreditBalance, 10),
 		strconv.FormatUint(maxLeasesPerTenant, 10),
+		strconv.FormatUint(maxItemsPerLease, 10),
 	}
 	if len(allowedList) > 0 {
 		cmd = append(cmd, "--allowed-list", strings.Join(allowedList, ","))
@@ -290,9 +297,11 @@ type ParamsResponseJSON struct {
 
 // ParamsJSON is a JSON-friendly version of billing Params.
 type ParamsJSON struct {
-	Denom              string `json:"denom"`
-	MinCreditBalance   string `json:"min_credit_balance"`
-	MaxLeasesPerTenant string `json:"max_leases_per_tenant"`
+	Denom              string   `json:"denom"`
+	MinCreditBalance   string   `json:"min_credit_balance"`
+	MaxLeasesPerTenant string   `json:"max_leases_per_tenant"`
+	MaxItemsPerLease   string   `json:"max_items_per_lease"`
+	AllowedLeaseCreators []string `json:"allowed_lease_creators"`
 }
 
 // BillingQueryParamsJSON queries the billing module parameters with JSON parsing.

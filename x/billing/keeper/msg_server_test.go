@@ -253,6 +253,7 @@ func TestMsgUpdateParams(t *testing.T) {
 					sdkmath.NewInt(10000000),
 					50,
 					[]string{},
+					20,
 				),
 			},
 			expectErr: false,
@@ -275,6 +276,7 @@ func TestMsgUpdateParams(t *testing.T) {
 					sdkmath.NewInt(5000000),
 					100,
 					[]string{},
+					20,
 				),
 			},
 			expectErr: true,
@@ -685,6 +687,7 @@ func TestMsgCreateLeaseForTenantWithAllowedList(t *testing.T) {
 		types.DefaultMinCreditBalance,
 		types.DefaultMaxLeasesPerTenant,
 		[]string{allowedUser.String()},
+		types.DefaultMaxItemsPerLease,
 	)
 	err = f.App.BillingKeeper.SetParams(f.Ctx, params)
 	require.NoError(t, err)

@@ -214,6 +214,11 @@ message MsgWithdrawAll {
   // If sender is authority, this field specifies which provider.
   // If sender is the provider's address, this field must match or be zero.
   uint64 provider_id = 2 [(gogoproto.jsontag) = "provider_id,omitempty,string"];
+
+  // limit is the maximum number of leases to process in this call.
+  // When 0, defaults to 50. Maximum allowed is 100.
+  // Use pagination (multiple calls) for providers with many leases.
+  uint64 limit = 3 [(gogoproto.jsontag) = "limit,omitempty,string"];
 }
 
 // MsgWithdrawAllResponse is the response type for MsgWithdrawAll.
@@ -232,6 +237,10 @@ message MsgWithdrawAllResponse {
     (cosmos_proto.scalar) = "cosmos.AddressString",
     (gogoproto.jsontag) = "payout_address,omitempty"
   ];
+
+  // has_more indicates if there are more leases to process.
+  // When true, the caller should make another WithdrawAll call.
+  bool has_more = 4 [(gogoproto.jsontag) = "has_more,omitempty"];
 }
 
 // MsgUpdateParams updates the module parameters.

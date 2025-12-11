@@ -17,6 +17,10 @@ var DefaultMinCreditBalance = math.NewInt(5_000_000)
 // DefaultMaxLeasesPerTenant is the default maximum number of leases per tenant.
 const DefaultMaxLeasesPerTenant = uint64(100)
 
+// DefaultMaxItemsPerLease is the default maximum number of items per lease.
+// Set to 20 to balance flexibility with gas consumption.
+const DefaultMaxItemsPerLease = uint64(20)
+
 // DefaultParams returns the default billing module parameters.
 func DefaultParams() Params {
 	return Params{
@@ -24,16 +28,18 @@ func DefaultParams() Params {
 		MinCreditBalance:   DefaultMinCreditBalance,
 		MaxLeasesPerTenant: DefaultMaxLeasesPerTenant,
 		AllowedList:        []string{},
+		MaxItemsPerLease:   DefaultMaxItemsPerLease,
 	}
 }
 
 // NewParams creates a new Params instance.
-func NewParams(denom string, minCreditBalance math.Int, maxLeasesPerTenant uint64, allowedList []string) Params {
+func NewParams(denom string, minCreditBalance math.Int, maxLeasesPerTenant uint64, allowedList []string, maxItemsPerLease uint64) Params {
 	return Params{
 		Denom:              denom,
 		MinCreditBalance:   minCreditBalance,
 		MaxLeasesPerTenant: maxLeasesPerTenant,
 		AllowedList:        allowedList,
+		MaxItemsPerLease:   maxItemsPerLease,
 	}
 }
 
@@ -49,6 +55,10 @@ func (p *Params) Validate() error {
 
 	if p.MaxLeasesPerTenant == 0 {
 		return ErrInvalidParams.Wrap("max_leases_per_tenant must be greater than zero")
+	}
+
+	if p.MaxItemsPerLease == 0 {
+		return ErrInvalidParams.Wrap("max_items_per_lease must be greater than zero")
 	}
 
 	// Validate allowed list addresses

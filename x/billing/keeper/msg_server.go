@@ -129,6 +129,15 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		return nil, err
 	}
 
+	// 0. Verify item count doesn't exceed max_items_per_lease param
+	if uint64(len(items)) > params.MaxItemsPerLease {
+		return nil, types.ErrTooManyLeaseItems.Wrapf(
+			"lease has %d items, maximum allowed is %d",
+			len(items),
+			params.MaxItemsPerLease,
+		)
+	}
+
 	// 1. Verify tenant has sufficient credit balance
 	creditBalance, err := ms.k.GetCreditBalance(ctx, tenant, params.Denom)
 	if err != nil {
@@ -539,6 +548,7 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 }
 
 // WithdrawAll allows a provider to withdraw all accrued funds from all their leases.
+// Supports pagination via the `limit` field to avoid gas exhaustion for providers with many leases.
 func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) (*types.MsgWithdrawAllResponse, error) {
 	if err := msg.ValidateBasic(); err != nil {
 		return nil, err
@@ -579,11 +589,25 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 		return nil, types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
 	}
 
-	// 3. For each lease, calculate and withdraw accrued amount
+	// 3. For each lease (up to limit), calculate and withdraw accrued amount
 	totalAmount := math.ZeroInt()
 	var leaseCount uint64
+	var processedCount uint64
+
+	// Apply default limit if not specified (limit=0 means use default, not unlimited)
+	limit := msg.Limit
+	if limit == 0 {
+		limit = types.DefaultWithdrawAllLimit
+	}
+	hasMore := false
 
 	for _, lease := range leases {
+		// Check if we've reached the limit (always enforced now)
+		if processedCount >= limit {
+			hasMore = true
+			break
+		}
+
 		// Calculate accrued amount
 		var duration time.Duration
 		if lease.State == types.LEASE_STATE_ACTIVE {
@@ -661,6 +685,8 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 				}
 			}
 		}
+
+		processedCount++
 	}
 
 	// 4. Emit event
@@ -678,6 +704,7 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 		TotalAmount:   sdk.NewCoin(params.Denom, totalAmount),
 		LeaseCount:    leaseCount,
 		PayoutAddress: provider.GetPayoutAddress(),
+		HasMore:       hasMore,
 	}, nil
 }
 

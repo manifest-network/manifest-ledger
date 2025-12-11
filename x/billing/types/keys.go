@@ -21,6 +21,10 @@ var (
 
 	// CreditAccountKey saves the CreditAccounts.
 	CreditAccountKey = collections.NewPrefix(5)
+
+	// CreditAddressIndexKey saves the reverse lookup from derived credit address to tenant.
+	// This enables O(1) lookup to check if an address is a credit account.
+	CreditAddressIndexKey = collections.NewPrefix(6)
 )
 
 const (
@@ -33,6 +37,18 @@ const (
 
 // CreditAccountAddressPrefix is the prefix used to derive credit account addresses.
 const CreditAccountAddressPrefix = "billing/credit/"
+
+// WithdrawAll limits to prevent DoS attacks.
+const (
+	// DefaultWithdrawAllLimit is the default limit when limit=0 is specified.
+	// This prevents unbounded iterations over all leases.
+	DefaultWithdrawAllLimit uint64 = 50
+
+	// MaxWithdrawAllLimit is the maximum allowed limit for WithdrawAll operations.
+	// This prevents a single transaction from processing too many leases and
+	// causing gas exhaustion or block timeouts.
+	MaxWithdrawAllLimit uint64 = 100
+)
 
 // Event types for the billing module.
 const (

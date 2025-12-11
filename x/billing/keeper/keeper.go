@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cosmossdk.io/collections"
+	collcodec "cosmossdk.io/collections/codec"
 	"cosmossdk.io/collections/indexes"
 	storetypes "cosmossdk.io/core/store"
 	"cosmossdk.io/log"
@@ -23,7 +24,7 @@ import (
 // LeaseIndexes defines the indexes for the Lease collection.
 type LeaseIndexes struct {
 	// Tenant is a multi-index that indexes Leases by tenant address.
-	Tenant *indexes.Multi[string, uint64, types.Lease]
+	Tenant *indexes.Multi[sdk.AccAddress, uint64, types.Lease]
 	// Provider is a multi-index that indexes Leases by provider_id.
 	Provider *indexes.Multi[uint64, uint64, types.Lease]
 }
@@ -40,10 +41,11 @@ func NewLeaseIndexes(sb *collections.SchemaBuilder) LeaseIndexes {
 			sb,
 			types.LeaseByTenantIndexKey,
 			"leases_by_tenant",
-			collections.StringKey,
+			sdk.AccAddressKey, // Use SDK's AccAddressKey for type safety and efficiency
 			collections.Uint64Key,
-			func(_ uint64, lease types.Lease) (string, error) {
-				return lease.Tenant, nil
+			func(_ uint64, lease types.Lease) (sdk.AccAddress, error) {
+				// Convert bech32 tenant address to AccAddress for indexing
+				return sdk.AccAddressFromBech32(lease.Tenant)
 			},
 		),
 		Provider: indexes.NewMulti(
@@ -75,7 +77,10 @@ type Keeper struct {
 	Params         collections.Item[types.Params]
 	Leases         *collections.IndexedMap[uint64, types.Lease, LeaseIndexes]
 	NextLeaseID    collections.Sequence
-	CreditAccounts collections.Map[string, types.CreditAccount] // keyed by tenant address
+	CreditAccounts collections.Map[sdk.AccAddress, types.CreditAccount] // keyed by tenant AccAddress
+	// CreditAddressIndex is a reverse lookup from derived credit address to tenant address.
+	// This enables O(1) lookup to check if an address is a credit account.
+	CreditAddressIndex collections.Map[sdk.AccAddress, sdk.AccAddress] // keyed by derived credit address, value is tenant address
 
 	authority string
 
@@ -124,8 +129,15 @@ func NewKeeper(
 			sb,
 			types.CreditAccountKey,
 			"credit_accounts",
-			collections.StringKey,
+			sdk.AccAddressKey, // Use SDK's AccAddressKey for type safety and efficiency
 			codec.CollValue[types.CreditAccount](cdc),
+		),
+		CreditAddressIndex: collections.NewMap(
+			sb,
+			types.CreditAddressIndexKey,
+			"credit_address_index",
+			sdk.AccAddressKey, // derived credit address
+			collcodec.KeyToValueCodec(sdk.AccAddressKey), // tenant address
 		),
 	}
 
@@ -191,6 +203,15 @@ func (k *Keeper) SetParams(ctx context.Context, params types.Params) error {
 
 // InitGenesis initializes the module's state from a provided genesis state.
 func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	blockTime := sdkCtx.BlockTime()
+
+	// Validate timestamps against block time
+	// This ensures LastSettledAt is not in the future (important for chain restarts)
+	if err := gs.ValidateWithBlockTime(blockTime); err != nil {
+		return err
+	}
+
 	if err := k.Params.Set(ctx, gs.Params); err != nil {
 		return err
 	}
@@ -206,7 +227,8 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 	}
 
 	for _, ca := range gs.CreditAccounts {
-		if err := k.CreditAccounts.Set(ctx, ca.Tenant, ca); err != nil {
+		// Use SetCreditAccount to also populate the reverse index
+		if err := k.SetCreditAccount(ctx, ca); err != nil {
 			return err
 		}
 	}
@@ -236,7 +258,7 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 	}
 
 	var creditAccounts []types.CreditAccount
-	err = k.CreditAccounts.Walk(ctx, nil, func(_ string, ca types.CreditAccount) (bool, error) {
+	err = k.CreditAccounts.Walk(ctx, nil, func(_ sdk.AccAddress, ca types.CreditAccount) (bool, error) {
 		creditAccounts = append(creditAccounts, ca)
 		return false, nil
 	})
@@ -321,7 +343,13 @@ func (k *Keeper) GetAllLeases(ctx context.Context) ([]types.Lease, error) {
 func (k *Keeper) GetLeasesByTenant(ctx context.Context, tenant string) ([]types.Lease, error) {
 	var leases []types.Lease
 
-	iter, err := k.Leases.Indexes.Tenant.MatchExact(ctx, tenant)
+	// Convert bech32 address to AccAddress for index lookup
+	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
+	if err != nil {
+		return nil, err
+	}
+
+	iter, err := k.Leases.Indexes.Tenant.MatchExact(ctx, tenantAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -371,23 +399,42 @@ func (k *Keeper) GetLeasesByProviderID(ctx context.Context, providerID uint64) (
 
 // GetCreditAccount returns a CreditAccount by tenant address.
 func (k *Keeper) GetCreditAccount(ctx context.Context, tenant string) (types.CreditAccount, error) {
-	ca, err := k.CreditAccounts.Get(ctx, tenant)
+	// Convert bech32 address to AccAddress for storage lookup
+	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
+	if err != nil {
+		return types.CreditAccount{}, types.ErrCreditAccountNotFound.Wrapf("invalid tenant address: %s", err)
+	}
+
+	ca, err := k.CreditAccounts.Get(ctx, tenantAddr)
 	if err != nil {
 		return types.CreditAccount{}, types.ErrCreditAccountNotFound
 	}
 	return ca, nil
 }
 
-// SetCreditAccount sets a CreditAccount in the store.
+// SetCreditAccount sets a CreditAccount in the store and updates the reverse lookup index.
 func (k *Keeper) SetCreditAccount(ctx context.Context, ca types.CreditAccount) error {
-	return k.CreditAccounts.Set(ctx, ca.Tenant, ca)
+	// Convert bech32 address to AccAddress for storage
+	tenantAddr, err := sdk.AccAddressFromBech32(ca.Tenant)
+	if err != nil {
+		return err
+	}
+
+	// Store the credit account keyed by tenant AccAddress
+	if err := k.CreditAccounts.Set(ctx, tenantAddr, ca); err != nil {
+		return err
+	}
+
+	// Update the reverse lookup index (derived address -> tenant)
+	derivedAddr := types.DeriveCreditAddress(tenantAddr)
+	return k.CreditAddressIndex.Set(ctx, derivedAddr, tenantAddr)
 }
 
 // GetAllCreditAccounts returns all CreditAccounts in the store.
 func (k *Keeper) GetAllCreditAccounts(ctx context.Context) ([]types.CreditAccount, error) {
 	var accounts []types.CreditAccount
 
-	err := k.CreditAccounts.Walk(ctx, nil, func(_ string, ca types.CreditAccount) (bool, error) {
+	err := k.CreditAccounts.Walk(ctx, nil, func(_ sdk.AccAddress, ca types.CreditAccount) (bool, error) {
 		accounts = append(accounts, ca)
 		return false, nil
 	})
@@ -417,7 +464,13 @@ func (k *Keeper) CountActiveLeasesByTenant(ctx context.Context, tenant string) (
 func (k *Keeper) countActiveLeasesByTenantScan(ctx context.Context, tenant string) (uint64, error) {
 	var count uint64
 
-	iter, err := k.Leases.Indexes.Tenant.MatchExact(ctx, tenant)
+	// Convert bech32 address to bytes for index lookup
+	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
+	if err != nil {
+		return 0, err
+	}
+
+	iter, err := k.Leases.Indexes.Tenant.MatchExact(ctx, tenantAddr)
 	if err != nil {
 		return 0, err
 	}

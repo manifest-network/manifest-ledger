@@ -2,7 +2,7 @@
 Package types tests for the billing module.
 
 Test Coverage:
-1. Params - Parameter validation (denom, min_credit_balance, max_leases_per_tenant)
+1. Params - Parameter validation (denom, min_credit_balance, max_leases_per_tenant, max_items_per_lease)
 2. Msgs - ValidateBasic for all message types including MsgCreateLeaseForTenant
 3. Credit - Credit address derivation determinism and correctness
 4. Genesis - Genesis state validation including leases and credit accounts
@@ -28,6 +28,18 @@ const (
 	invalidAddr = "invalid-address"
 )
 
+// generateManyLeaseItems generates n lease items for testing max items limit.
+func generateManyLeaseItems(n uint64) []types.LeaseItemInput {
+	items := make([]types.LeaseItemInput, n)
+	for i := uint64(0); i < n; i++ {
+		items[i] = types.LeaseItemInput{
+			SkuId:    i + 1,
+			Quantity: 1,
+		}
+	}
+	return items
+}
+
 // ============================================================================
 // Params Tests
 // ============================================================================
@@ -38,6 +50,7 @@ func TestParams_DefaultParams(t *testing.T) {
 	require.Equal(t, types.DefaultDenom, params.Denom)
 	require.Equal(t, types.DefaultMinCreditBalance, params.MinCreditBalance)
 	require.Equal(t, types.DefaultMaxLeasesPerTenant, params.MaxLeasesPerTenant)
+	require.Equal(t, types.DefaultMaxItemsPerLease, params.MaxItemsPerLease)
 }
 
 func TestParams_NewParams(t *testing.T) {
@@ -45,13 +58,15 @@ func TestParams_NewParams(t *testing.T) {
 	minBalance := math.NewInt(1000)
 	maxLeases := uint64(50)
 	allowedList := []string{}
+	maxItems := uint64(10)
 
-	params := types.NewParams(denom, minBalance, maxLeases, allowedList)
+	params := types.NewParams(denom, minBalance, maxLeases, allowedList, maxItems)
 
 	require.Equal(t, denom, params.Denom)
 	require.Equal(t, minBalance, params.MinCreditBalance)
 	require.Equal(t, maxLeases, params.MaxLeasesPerTenant)
 	require.Equal(t, allowedList, params.AllowedList)
+	require.Equal(t, maxItems, params.MaxItemsPerLease)
 }
 
 func TestParams_Validate(t *testing.T) {
@@ -68,41 +83,47 @@ func TestParams_Validate(t *testing.T) {
 		},
 		{
 			name:      "valid custom params",
-			params:    types.NewParams("utest", math.NewInt(100), 10, []string{}),
+			params:    types.NewParams("utest", math.NewInt(100), 10, []string{}, 20),
 			expectErr: false,
 		},
 		{
 			name:      "valid zero min credit balance",
-			params:    types.NewParams(testDenom, math.ZeroInt(), 10, []string{}),
+			params:    types.NewParams(testDenom, math.ZeroInt(), 10, []string{}, 20),
 			expectErr: false,
 		},
 		{
 			name:      "empty denom",
-			params:    types.NewParams("", math.NewInt(100), 10, []string{}),
+			params:    types.NewParams("", math.NewInt(100), 10, []string{}, 20),
 			expectErr: true,
 			errMsg:    "denom cannot be empty",
 		},
 		{
 			name:      "nil min credit balance",
-			params:    types.Params{Denom: testDenom, MaxLeasesPerTenant: 10},
+			params:    types.Params{Denom: testDenom, MaxLeasesPerTenant: 10, MaxItemsPerLease: 20},
 			expectErr: true,
 			errMsg:    "min_credit_balance cannot be nil or negative",
 		},
 		{
 			name:      "negative min credit balance",
-			params:    types.NewParams(testDenom, math.NewInt(-1), 10, []string{}),
+			params:    types.NewParams(testDenom, math.NewInt(-1), 10, []string{}, 20),
 			expectErr: true,
 			errMsg:    "min_credit_balance cannot be nil or negative",
 		},
 		{
 			name:      "zero max leases per tenant",
-			params:    types.NewParams(testDenom, math.NewInt(100), 0, []string{}),
+			params:    types.NewParams(testDenom, math.NewInt(100), 0, []string{}, 20),
 			expectErr: true,
 			errMsg:    "max_leases_per_tenant must be greater than zero",
 		},
 		{
+			name:      "zero max items per lease",
+			params:    types.NewParams(testDenom, math.NewInt(100), 10, []string{}, 0),
+			expectErr: true,
+			errMsg:    "max_items_per_lease must be greater than zero",
+		},
+		{
 			name:      "valid params with allowed list",
-			params:    types.NewParams(testDenom, math.NewInt(100), 10, []string{"manifest1xyz"}),
+			params:    types.NewParams(testDenom, math.NewInt(100), 10, []string{"manifest1xyz"}, 20),
 			expectErr: true, // Invalid address
 			errMsg:    "invalid address in allowed list",
 		},
@@ -126,7 +147,7 @@ func TestParams_Validate_DuplicateAllowedList(t *testing.T) {
 	_, _, addr := testdata.KeyTestPubAddr()
 	validAddr := addr.String()
 
-	params := types.NewParams(testDenom, math.NewInt(100), 10, []string{validAddr, validAddr})
+	params := types.NewParams(testDenom, math.NewInt(100), 10, []string{validAddr, validAddr}, 20)
 	err := params.Validate()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "duplicate address in allowed list")
@@ -137,7 +158,7 @@ func TestParams_Validate_ValidAllowedList(t *testing.T) {
 	_, _, addr1 := testdata.KeyTestPubAddr()
 	_, _, addr2 := testdata.KeyTestPubAddr()
 
-	params := types.NewParams(testDenom, math.NewInt(100), 10, []string{addr1.String(), addr2.String()})
+	params := types.NewParams(testDenom, math.NewInt(100), 10, []string{addr1.String(), addr2.String()}, 20)
 	err := params.Validate()
 	require.NoError(t, err)
 }
@@ -147,7 +168,7 @@ func TestParams_IsAllowed(t *testing.T) {
 	_, _, addr2 := testdata.KeyTestPubAddr()
 	_, _, notAllowed := testdata.KeyTestPubAddr()
 
-	params := types.NewParams(testDenom, math.NewInt(100), 10, []string{addr1.String(), addr2.String()})
+	params := types.NewParams(testDenom, math.NewInt(100), 10, []string{addr1.String(), addr2.String()}, 20)
 
 	require.True(t, params.IsAllowed(addr1.String()))
 	require.True(t, params.IsAllowed(addr2.String()))
@@ -356,6 +377,15 @@ func TestMsgCreateLease_ValidateBasic(t *testing.T) {
 			expectErr: true,
 			errMsg:    "appears multiple times",
 		},
+		{
+			name: "too many items exceeds hard limit",
+			msg: types.MsgCreateLease{
+				Tenant: tenant,
+				Items:  generateManyLeaseItems(types.MaxItemsPerLeaseHardLimit + 1),
+			},
+			expectErr: true,
+			errMsg:    "too many items",
+		},
 	}
 
 	for _, tc := range tests {
@@ -502,6 +532,16 @@ func TestMsgCreateLeaseForTenant_ValidateBasic(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "appears multiple times",
+		},
+		{
+			name: "too many items exceeds hard limit",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant,
+				Items:     generateManyLeaseItems(types.MaxItemsPerLeaseHardLimit + 1),
+			},
+			expectErr: true,
+			errMsg:    "too many items",
 		},
 	}
 
@@ -669,6 +709,34 @@ func TestMsgWithdrawAll_ValidateBasic(t *testing.T) {
 			expectErr: false,
 		},
 		{
+			name: "valid message with limit",
+			msg: types.MsgWithdrawAll{
+				Sender:     sender,
+				ProviderId: 1,
+				Limit:      50,
+			},
+			expectErr: false,
+		},
+		{
+			name: "valid message with max limit",
+			msg: types.MsgWithdrawAll{
+				Sender:     sender,
+				ProviderId: 1,
+				Limit:      types.MaxWithdrawAllLimit,
+			},
+			expectErr: false,
+		},
+		{
+			name: "invalid limit exceeds max",
+			msg: types.MsgWithdrawAll{
+				Sender:     sender,
+				ProviderId: 1,
+				Limit:      types.MaxWithdrawAllLimit + 1,
+			},
+			expectErr: true,
+			errMsg:    "exceeds maximum allowed",
+		},
+		{
 			name: "invalid zero provider_id",
 			msg: types.MsgWithdrawAll{
 				Sender:     sender,
@@ -755,7 +823,7 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			name: "invalid params - empty denom",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams("", math.NewInt(100), 10, []string{}),
+				Params:    types.NewParams("", math.NewInt(100), 10, []string{}, 20),
 			},
 			expectErr: true,
 			errMsg:    "denom cannot be empty",
@@ -764,10 +832,19 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			name: "invalid params - zero max leases",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams(testDenom, math.NewInt(100), 0, []string{}),
+				Params:    types.NewParams(testDenom, math.NewInt(100), 0, []string{}, 20),
 			},
 			expectErr: true,
 			errMsg:    "max_leases_per_tenant must be greater than zero",
+		},
+		{
+			name: "invalid params - zero max items per lease",
+			msg: types.MsgUpdateParams{
+				Authority: authority,
+				Params:    types.NewParams(testDenom, math.NewInt(100), 10, []string{}, 0),
+			},
+			expectErr: true,
+			errMsg:    "max_items_per_lease must be greater than zero",
 		},
 	}
 
@@ -880,7 +957,7 @@ func TestGenesisState_NewGenesisState(t *testing.T) {
 	_, _, tenantAddr := testdata.KeyTestPubAddr()
 	tenant := tenantAddr.String()
 
-	params := types.NewParams("utest", math.NewInt(100), 50, []string{})
+	params := types.NewParams("utest", math.NewInt(100), 50, []string{}, 20)
 	now := time.Now().UTC()
 
 	creditAddr := types.DeriveCreditAddress(tenantAddr)
@@ -967,7 +1044,7 @@ func TestGenesisState_Validate(t *testing.T) {
 		{
 			name: "invalid params",
 			genesis: &types.GenesisState{
-				Params:      types.NewParams("", math.NewInt(100), 10, []string{}),
+				Params:      types.NewParams("", math.NewInt(100), 10, []string{}, 20),
 				NextLeaseId: 1,
 			},
 			expectErr: true,
@@ -1359,6 +1436,189 @@ func TestGenesisState_Validate(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.genesis.Validate()
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// ============================================================================
+// Genesis ValidateWithBlockTime Tests
+// ============================================================================
+
+func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+	tenant := tenantAddr.String()
+
+	now := time.Now().UTC()
+	past := now.Add(-time.Hour)
+	future := now.Add(time.Hour)
+	closedAt := past.Add(30 * time.Minute)
+
+	creditAddr := types.DeriveCreditAddress(tenantAddr)
+
+	tests := []struct {
+		name      string
+		genesis   *types.GenesisState
+		blockTime time.Time
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name: "valid - all timestamps in the past",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Id:         1,
+						Tenant:     tenant,
+						ProviderId: 1,
+						Items: []types.LeaseItem{
+							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+						},
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     past,
+						LastSettledAt: past,
+					},
+				},
+				CreditAccounts: []types.CreditAccount{
+					{Tenant: tenant, CreditAddress: creditAddr.String()},
+				},
+				NextLeaseId: 2,
+			},
+			blockTime: now,
+			expectErr: false,
+		},
+		{
+			name: "invalid - last_settled_at in the future",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Id:         1,
+						Tenant:     tenant,
+						ProviderId: 1,
+						Items: []types.LeaseItem{
+							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+						},
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     past,
+						LastSettledAt: future,
+					},
+				},
+				NextLeaseId: 2,
+			},
+			blockTime: now,
+			expectErr: true,
+			errMsg:    "last_settled_at",
+		},
+		{
+			name: "invalid - created_at in the future",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Id:         1,
+						Tenant:     tenant,
+						ProviderId: 1,
+						Items: []types.LeaseItem{
+							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+						},
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     future,
+						LastSettledAt: past,
+					},
+				},
+				NextLeaseId: 2,
+			},
+			blockTime: now,
+			expectErr: true,
+			errMsg:    "created_at",
+		},
+		{
+			name: "invalid - closed_at in the future for inactive lease",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Id:         1,
+						Tenant:     tenant,
+						ProviderId: 1,
+						Items: []types.LeaseItem{
+							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+						},
+						State:         types.LEASE_STATE_INACTIVE,
+						CreatedAt:     past,
+						LastSettledAt: past,
+						ClosedAt:      &future,
+					},
+				},
+				NextLeaseId: 2,
+			},
+			blockTime: now,
+			expectErr: true,
+			errMsg:    "closed_at",
+		},
+		{
+			name: "valid - inactive lease with all timestamps in past",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Id:         1,
+						Tenant:     tenant,
+						ProviderId: 1,
+						Items: []types.LeaseItem{
+							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+						},
+						State:         types.LEASE_STATE_INACTIVE,
+						CreatedAt:     past,
+						LastSettledAt: closedAt,
+						ClosedAt:      &closedAt,
+					},
+				},
+				NextLeaseId: 2,
+			},
+			blockTime: now,
+			expectErr: false,
+		},
+		{
+			name: "valid - timestamps exactly at block time",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Id:         1,
+						Tenant:     tenant,
+						ProviderId: 1,
+						Items: []types.LeaseItem{
+							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+						},
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     now,
+						LastSettledAt: now,
+					},
+				},
+				NextLeaseId: 2,
+			},
+			blockTime: now,
+			expectErr: false,
+		},
+		{
+			name:      "valid - empty genesis",
+			genesis:   types.DefaultGenesis(),
+			blockTime: now,
+			expectErr: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.genesis.ValidateWithBlockTime(tc.blockTime)
 			if tc.expectErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.errMsg)

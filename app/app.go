@@ -603,6 +603,10 @@ func NewApp(
 	app.BillingKeeper.SetBankKeeper(app.BankKeeper)
 	app.BillingKeeper.SetAccountKeeper(app.AccountKeeper)
 
+	// Register the billing module's send restriction to prevent wrong tokens
+	// from being sent to credit accounts
+	app.BillingKeeper.RegisterSendRestriction()
+
 	// Create the TokenFactory Keeper
 	app.TokenFactoryKeeper = tokenfactorykeeper.NewKeeper(
 		appCodec,

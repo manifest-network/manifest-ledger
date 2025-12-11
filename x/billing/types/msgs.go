@@ -44,6 +44,12 @@ func (m *MsgCreateLease) ValidateBasic() error {
 		return ErrEmptyLeaseItems
 	}
 
+	// Note: Full max_items_per_lease validation happens in keeper where params are accessible.
+	// Basic sanity check here to prevent obviously malicious transactions.
+	if len(m.Items) > MaxItemsPerLeaseHardLimit {
+		return ErrTooManyLeaseItems.Wrapf("lease has %d items, maximum allowed is %d", len(m.Items), MaxItemsPerLeaseHardLimit)
+	}
+
 	seenSKUs := make(map[uint64]bool)
 	for i, item := range m.Items {
 		if item.SkuId == 0 {
@@ -73,6 +79,12 @@ func (m *MsgCreateLeaseForTenant) ValidateBasic() error {
 
 	if len(m.Items) == 0 {
 		return ErrEmptyLeaseItems
+	}
+
+	// Note: Full max_items_per_lease validation happens in keeper where params are accessible.
+	// Basic sanity check here to prevent obviously malicious transactions.
+	if len(m.Items) > MaxItemsPerLeaseHardLimit {
+		return ErrTooManyLeaseItems.Wrapf("lease has %d items, maximum allowed is %d", len(m.Items), MaxItemsPerLeaseHardLimit)
 	}
 
 	seenSKUs := make(map[uint64]bool)
@@ -126,6 +138,11 @@ func (m *MsgWithdrawAll) ValidateBasic() error {
 
 	if m.ProviderId == 0 {
 		return ErrProviderNotFound.Wrap("provider_id cannot be zero")
+	}
+
+	// Enforce maximum limit to prevent DoS attacks
+	if m.Limit > MaxWithdrawAllLimit {
+		return ErrInvalidLease.Wrapf("limit %d exceeds maximum allowed %d", m.Limit, MaxWithdrawAllLimit)
 	}
 
 	return nil

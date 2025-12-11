@@ -244,11 +244,16 @@ func NewWithdrawAllCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "withdraw-all [provider-id]",
 		Short: "Withdraw all accrued funds from all leases for a provider",
-		Long: `Withdraw all accrued funds from all leases belonging to a provider.
+		Long: fmt.Sprintf(`Withdraw all accrued funds from all leases belonging to a provider.
 If the sender is the provider's address, provider-id can be 0 or omitted.
-If the sender is the authority, provider-id must be specified.`,
+If the sender is the authority, provider-id must be specified.
+
+Use --limit to process leases in batches. Default limit is %d leases per call.
+Maximum allowed limit is %d to prevent gas exhaustion.
+When has_more is true in the response, call withdraw-all again to process remaining leases.`,
+			types.DefaultWithdrawAllLimit, types.MaxWithdrawAllLimit),
 		Example: `withdraw-all 1 --from provider-key
-withdraw-all 0 --from provider-key`,
+withdraw-all 1 --limit 50 --from provider-key`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -264,15 +269,22 @@ withdraw-all 0 --from provider-key`,
 				}
 			}
 
+			limit, err := cmd.Flags().GetUint64("limit")
+			if err != nil {
+				return err
+			}
+
 			msg := &types.MsgWithdrawAll{
 				Sender:     clientCtx.GetFromAddress().String(),
 				ProviderId: providerID,
+				Limit:      limit,
 			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
 
+	cmd.Flags().Uint64("limit", 0, fmt.Sprintf("Maximum number of leases to process (0 = default %d, max %d)", types.DefaultWithdrawAllLimit, types.MaxWithdrawAllLimit))
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd
@@ -281,13 +293,13 @@ withdraw-all 0 --from provider-key`,
 // NewUpdateParamsCmd returns the command to update billing module parameters.
 func NewUpdateParamsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "update-params [denom] [min-credit-balance] [max-leases-per-tenant]",
+		Use:   "update-params [denom] [min-credit-balance] [max-leases-per-tenant] [max-items-per-lease]",
 		Short: "Update billing module parameters (authority only)",
 		Long: `Update the billing module parameters. Only the module authority can execute this command.
 All parameters must be provided. Use --allowed-list to set addresses allowed to create leases for tenants.`,
-		Example: `update-params factory/manifest1.../upwr 5000000 100 --from authority
-update-params factory/manifest1.../upwr 5000000 100 --allowed-list manifest1abc...,manifest1xyz... --from authority`,
-		Args: cobra.ExactArgs(3),
+		Example: `update-params factory/manifest1.../upwr 5000000 100 20 --from authority
+update-params factory/manifest1.../upwr 5000000 100 20 --allowed-list manifest1abc...,manifest1xyz... --from authority`,
+		Args: cobra.ExactArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
@@ -306,6 +318,11 @@ update-params factory/manifest1.../upwr 5000000 100 --allowed-list manifest1abc.
 				return fmt.Errorf("invalid max_leases_per_tenant: %w", err)
 			}
 
+			maxItemsPerLease, err := strconv.ParseUint(args[3], 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid max_items_per_lease: %w", err)
+			}
+
 			allowedListStr, _ := cmd.Flags().GetString("allowed-list")
 			var allowedList []string
 			if allowedListStr != "" {
@@ -319,6 +336,7 @@ update-params factory/manifest1.../upwr 5000000 100 --allowed-list manifest1abc.
 					MinCreditBalance:   minCreditBalance,
 					MaxLeasesPerTenant: maxLeasesPerTenant,
 					AllowedList:        allowedList,
+					MaxItemsPerLease:   maxItemsPerLease,
 				},
 			}
 

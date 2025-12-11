@@ -12,6 +12,12 @@ Each tenant has a credit account with a derived address. The credit account hold
 - **Balance**: Current credit balance in the billing denomination
 - **Top-up**: Anyone can fund a tenant's credit account
 
+#### Send Restriction
+
+A send restriction is enforced to prevent users from accidentally sending wrong tokens to credit accounts. Only the configured billing denomination (PWR tokens) can be sent to credit account addresses. Attempting to send any other denomination will result in an error.
+
+This prevents loss of funds that would otherwise be unrecoverable since credit accounts are module-controlled addresses.
+
 ### Leases
 
 A lease represents an agreement between a tenant and a provider for one or more SKU items.
@@ -77,6 +83,7 @@ Module parameters stored at key `0x00`:
 | denom | string | Billing denomination (PWR token) |
 | min_credit_balance | Int | Minimum credit required to create a lease |
 | max_leases_per_tenant | uint64 | Maximum active leases per tenant (must be > 0) |
+| max_items_per_lease | uint64 | Maximum items per lease (default: 20, hard limit: 100) |
 | allowed_list | []string | List of addresses allowed to create leases on behalf of tenants |
 
 ### Lease
@@ -209,10 +216,27 @@ message MsgWithdraw {
 
 Withdraw accrued funds from all leases for a provider. The provider_id is required.
 
+**Limits (DoS Protection):**
+- **Default limit**: 50 leases per call (when limit=0 or not specified)
+- **Maximum limit**: 100 leases per call
+- Use the `has_more` response field to determine if additional calls are needed
+
 ```protobuf
 message MsgWithdrawAll {
   string sender = 1;
   uint64 provider_id = 2;
+  uint64 limit = 3;       // Max leases to process (0 = default 50, max 100)
+}
+```
+
+Response includes `has_more` to indicate if additional calls are needed:
+
+```protobuf
+message MsgWithdrawAllResponse {
+  cosmos.base.v1beta1.Coin total_amount = 1;
+  uint64 lease_count = 2;
+  string payout_address = 3;
+  bool has_more = 4;      // True if more leases remain
 }
 ```
 
@@ -317,6 +341,7 @@ manifestd query billing provider-withdrawable [provider-id]
 | denom | factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr |
 | min_credit_balance | 5000000 (5 PWR) |
 | max_leases_per_tenant | 100 |
+| max_items_per_lease | 20 (hard limit: 100) |
 
 ## Authorization
 
@@ -349,12 +374,23 @@ The following limitations exist in the current implementation and are tracked fo
 
 **Issue**: `MsgWithdrawAll` iterates over all leases for a provider, which can become expensive with many leases.
 
-**Current Mitigation**: The operation is bounded by the number of leases a provider has, and settlement is O(1) per lease.
+**Current Mitigation**:
+- **Hard limits enforced**: Default limit of 50 leases per call, maximum of 100 leases per call to prevent DoS attacks
+- **Pagination support**: Use the `limit` parameter to process leases in batches. When `has_more` is true in the response, make additional calls to process remaining leases
+- Settlement is O(1) per lease
+
+**Example**:
+```bash
+# Process default 50 leases at a time
+manifestd tx billing withdraw-all 1 --from provider-key
+# Or specify a custom limit (max 100)
+manifestd tx billing withdraw-all 1 --limit 75 --from provider-key
+# If has_more is true, repeat until all leases are processed
+```
 
 **Future Improvement**: Consider adding:
 - A secondary index mapping `provider_id -> active lease IDs` for O(1) lookup
-- Batch processing with pagination for providers with thousands of leases
-- Rate limiting to prevent DoS via expensive WithdrawAll calls
+- Background batch processing for providers with very large lease counts
 
 #### 2. LeasesByProvider Query
 
@@ -377,6 +413,7 @@ The following limitations exist in the current implementation and are tracked fo
 **Issue**: Providers with many active leases could create expensive on-chain operations during bulk withdrawals.
 
 **Recommendation for Integrators**:
+- Use the `limit` parameter for `MsgWithdrawAll` to batch operations
 - Implement off-chain rate limiting for withdrawal operations
 - Consider gas limits appropriate for expected lease volumes
 - Monitor transaction costs during high-throughput periods
@@ -386,6 +423,40 @@ The following limitations exist in the current implementation and are tracked fo
 **Issue**: Very long-running leases (years) could theoretically overflow during accrual calculation.
 
 **Current Mitigation**: Overflow checking is implemented in `CalculateAccrual` using `math.Int` safe operations with explicit checks before multiplication.
+
+### Time Manipulation Considerations
+
+**Context**: The billing module uses block time (from consensus) for all time-based calculations including:
+- Lease creation timestamps
+- Settlement calculations
+- Duration-based accrual
+
+**Security Model**:
+- Block time is determined by validator consensus and cannot be arbitrarily manipulated by a single malicious validator
+- Time manipulation attacks would require >2/3 of voting power to collude
+- Even with collusion, CometBFT enforces that block times must be monotonically increasing
+
+**Genesis Import Validation**:
+- When importing genesis state, `ValidateWithBlockTime` ensures that `LastSettledAt` timestamps are not in the future relative to the new chain's block time
+- This prevents issues when restarting a chain with a different genesis time
+
+**Recommendation**:
+- Monitor for abnormal block time patterns in production
+- The billing module is safe from single-validator time manipulation attacks
+
+### Provider/SKU Deactivation Impact
+
+**Provider Deactivation**:
+- Providers can be deactivated via the SKU module at any time
+- Active leases continue to work with locked-in prices
+- Providers can still withdraw accrued funds from existing leases
+- No new leases can be created with SKUs from the deactivated provider
+
+**SKU Deactivation**:
+- SKUs can be deactivated via the SKU module at any time
+- Active leases continue to work with locked-in prices
+- SKU details remain queryable for reporting purposes
+- No new leases can be created using the deactivated SKU
 
 ### Future Feature Candidates
 

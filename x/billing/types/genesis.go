@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"time"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -114,6 +115,47 @@ func (gs *GenesisState) Validate() error {
 		}
 
 		// Balance is tracked in bank module, no validation needed here
+	}
+
+	return nil
+}
+
+// ValidateWithBlockTime performs additional genesis state validation that requires block time.
+// This is called during InitGenesis when block time is available.
+// It validates that LastSettledAt timestamps are not in the future relative to block time.
+func (gs *GenesisState) ValidateWithBlockTime(blockTime time.Time) error {
+	for _, lease := range gs.Leases {
+		// Validate LastSettledAt is not in the future
+		if lease.LastSettledAt.After(blockTime) {
+			return fmt.Errorf(
+				"lease %d has last_settled_at (%s) in the future relative to block time (%s)",
+				lease.Id,
+				lease.LastSettledAt.String(),
+				blockTime.String(),
+			)
+		}
+
+		// Validate CreatedAt is not in the future
+		if lease.CreatedAt.After(blockTime) {
+			return fmt.Errorf(
+				"lease %d has created_at (%s) in the future relative to block time (%s)",
+				lease.Id,
+				lease.CreatedAt.String(),
+				blockTime.String(),
+			)
+		}
+
+		// For inactive leases, validate ClosedAt is not in the future
+		if lease.State == LEASE_STATE_INACTIVE && lease.ClosedAt != nil {
+			if lease.ClosedAt.After(blockTime) {
+				return fmt.Errorf(
+					"lease %d has closed_at (%s) in the future relative to block time (%s)",
+					lease.Id,
+					lease.ClosedAt.String(),
+					blockTime.String(),
+				)
+			}
+		}
 	}
 
 	return nil

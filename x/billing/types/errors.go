@@ -22,4 +22,12 @@ var (
 	ErrInvalidQuantity        = errors.Register(ModuleName, 17, "quantity must be greater than zero")
 	ErrDuplicateSKU           = errors.Register(ModuleName, 18, "duplicate sku in lease items")
 	ErrInvalidCreditOperation = errors.Register(ModuleName, 19, "invalid credit operation")
+	ErrInvalidDenomination    = errors.Register(ModuleName, 20, "invalid denomination for credit account")
+	ErrTooManyLeaseItems      = errors.Register(ModuleName, 21, "too many items in lease")
 )
+
+// MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.
+// This is a hard limit enforced at the message validation level to prevent
+// denial-of-service attacks. The configurable max_items_per_lease param
+// must be <= this value.
+const MaxItemsPerLeaseHardLimit = 100

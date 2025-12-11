@@ -36,6 +36,11 @@ message Params {
     (cosmos_proto.scalar) = "cosmos.AddressString",
     (gogoproto.jsontag) = "allowed_list,omitempty"
   ];
+
+  // max_items_per_lease is the maximum number of items (SKUs) allowed in a single lease.
+  // Must be greater than zero. Prevents excessive gas consumption from large leases.
+  uint64 max_items_per_lease = 5
+      [(gogoproto.jsontag) = "max_items_per_lease,omitempty,string"];
 }
 
 // LeaseState defines the state of a lease.
@@ -78,7 +83,7 @@ message Lease {
   // id is the unique identifier of the lease.
   uint64 id = 1 [(gogoproto.jsontag) = "id,omitempty,string"];
 
-  // tenant is the address of the tenant who created the lease.
+  // tenant is the address of the tenant who owns this lease.
   string tenant = 2 [
     (cosmos_proto.scalar) = "cosmos.AddressString",
     (gogoproto.jsontag) = "tenant,omitempty"
@@ -122,7 +127,7 @@ message Lease {
 message CreditAccount {
   option (amino.name) = "lifted/billing/CreditAccount";
 
-  // tenant is the address of the tenant.
+  // tenant is the address of the tenant who owns this credit account.
   string tenant = 1 [
     (cosmos_proto.scalar) = "cosmos.AddressString",
     (gogoproto.jsontag) = "tenant,omitempty"
