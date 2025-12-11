@@ -243,17 +243,11 @@ func SimulateMsgCreateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 		name := skuNames[r.Intn(len(skuNames))]
 		unit := units[r.Intn(len(units))]
 
-		// Generate a price that will produce a non-zero per-second rate
-		// For UNIT_PER_HOUR: minimum 3600 (3600/3600 = 1 per second)
-		// For UNIT_PER_DAY: minimum 86400 (86400/86400 = 1 per second)
-		var basePrice sdk.Coin
-		if unit == types.Unit_UNIT_PER_HOUR {
-			// Range: 3600 to 36000 (1-10 per second)
-			basePrice = sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(32401)+3600)))
-		} else {
-			// UNIT_PER_DAY: Range: 86400 to 864000 (1-10 per second)
-			basePrice = sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(777601)+86400)))
-		}
+		// Generate a price that is EXACTLY divisible by the unit's seconds
+		// to pass the exact division validation.
+		// For UNIT_PER_HOUR: price must be a multiple of 3600
+		// For UNIT_PER_DAY: price must be a multiple of 86400
+		basePrice := generateValidPrice(r, unit)
 
 		msg := &types.MsgCreateSKU{
 			Authority:  simAccount.Address.String(),
@@ -289,17 +283,9 @@ func SimulateMsgUpdateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 		name := skuNames[r.Intn(len(skuNames))]
 		unit := units[r.Intn(len(units))]
 
-		// Generate a price that will produce a non-zero per-second rate
-		// For UNIT_PER_HOUR: minimum 3600 (3600/3600 = 1 per second)
-		// For UNIT_PER_DAY: minimum 86400 (86400/86400 = 1 per second)
-		var basePrice sdk.Coin
-		if unit == types.Unit_UNIT_PER_HOUR {
-			// Range: 3600 to 36000 (1-10 per second)
-			basePrice = sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(32401)+3600)))
-		} else {
-			// UNIT_PER_DAY: Range: 86400 to 864000 (1-10 per second)
-			basePrice = sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(777601)+86400)))
-		}
+		// Generate a price that is EXACTLY divisible by the unit's seconds
+		// to pass the exact division validation.
+		basePrice := generateValidPrice(r, unit)
 		active := r.Float32() > 0.3
 
 		msg := &types.MsgUpdateSKU{
@@ -372,6 +358,28 @@ func generateRandomBytes(r *rand.Rand) []byte {
 		b[i] = byte(r.Intn(256)) //nolint:gosec
 	}
 	return b
+}
+
+// generateValidPrice generates a price that is exactly divisible by the unit's seconds.
+// This ensures the per-second rate calculation has no remainder.
+func generateValidPrice(r *rand.Rand, unit types.Unit) sdk.Coin {
+	var secondsInUnit int64
+	switch unit {
+	case types.Unit_UNIT_PER_HOUR:
+		secondsInUnit = 3600
+	case types.Unit_UNIT_PER_DAY:
+		secondsInUnit = 86400
+	default:
+		secondsInUnit = 3600 // fallback to hourly
+	}
+
+	// Generate a multiplier between 1 and 100 to create varied but valid prices
+	multiplier := int64(r.Intn(100) + 1)
+
+	// Price = multiplier * secondsInUnit, ensuring exact divisibility
+	price := multiplier * secondsInUnit
+
+	return sdk.NewCoin("umfx", sdkmath.NewInt(price))
 }
 
 func newOperationInput(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, txGen client.TxConfig, simAccount simtypes.Account, msg sdk.Msg, k keeper.Keeper) simulation.OperationInput {
