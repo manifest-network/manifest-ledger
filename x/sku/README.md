@@ -458,7 +458,14 @@ REST endpoints are available through the gRPC gateway:
 
 ## Additional Documentation
 
-- [Provider Setup Guide](PROVIDER_GUIDE.md) - Step-by-step guide to creating providers
-- [SKU Setup Guide](SKU_GUIDE.md) - Step-by-step guide to creating SKUs
+### User Guides
+- [Provider Setup Guide](docs/PROVIDER_GUIDE.md) - Step-by-step guide to creating providers
+- [SKU Setup Guide](docs/SKU_GUIDE.md) - Step-by-step guide to creating SKUs
+
+### Developer Documentation
+- [Architecture](docs/ARCHITECTURE.md) - Internal architecture, data models, and flow diagrams
+- [Design Decisions](docs/DESIGN_DECISIONS.md) - Key design decisions and rationale
+
+### Related Modules
 - [Billing Module README](../billing/README.md) - Understanding the billing system
-- [Migration Guide](../billing/MIGRATION.md) - Migrating existing off-chain leases
+- [Migration Guide](../billing/docs/MIGRATION.md) - Migrating existing off-chain leases

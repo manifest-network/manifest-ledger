@@ -480,8 +480,13 @@ Credit that remains after a lease is closed stays in the credit account and can 
 
 ## Additional Documentation
 
-- [Provider Setup Guide](../sku/PROVIDER_GUIDE.md) - Creating and managing providers
-- [SKU Setup Guide](../sku/SKU_GUIDE.md) - Creating and managing SKUs (billable items)
-- [Migration Guide](MIGRATION.md) - Guide for authority members migrating off-chain leases
-- [Troubleshooting](TROUBLESHOOTING.md) - Common errors and solutions
-- [API Reference](API.md) - Complete CLI and gRPC/REST API reference
+### User Guides
+- [Provider Setup Guide](../sku/docs/PROVIDER_GUIDE.md) - Creating and managing providers
+- [SKU Setup Guide](../sku/docs/SKU_GUIDE.md) - Creating and managing SKUs (billable items)
+- [Migration Guide](docs/MIGRATION.md) - Guide for authority members migrating off-chain leases
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common errors and solutions
+- [API Reference](docs/API.md) - Complete CLI and gRPC/REST API reference
+
+### Developer Documentation
+- [Architecture](docs/ARCHITECTURE.md) - Internal architecture, data models, and flow diagrams
+- [Design Decisions](docs/DESIGN_DECISIONS.md) - Key design decisions and rationale

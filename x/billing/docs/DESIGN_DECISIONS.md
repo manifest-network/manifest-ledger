@@ -1,0 +1,275 @@
+# Billing Module Design Decisions
+
+This document records key design decisions made during the development of the x/billing module, including the rationale and trade-offs considered.
+
+## Decision 1: Pre-Funded Credit Account Model
+
+**Decision:** Require tenants to pre-fund a credit account before creating leases, rather than billing post-usage.
+
+**Alternatives Considered:**
+1. Post-usage billing with invoices
+2. Real-time deduction per block
+3. Pre-funded credit account (chosen)
+
+**Rationale:**
+- **No Credit Risk:** Provider always paid from existing funds
+- **Simple UX:** Mimics AWS credits model familiar to users
+- **Off-Chain Top-Up:** Easy integration with fiat payment systems
+- **No Collections:** No need for dispute resolution
+
+**Trade-offs:**
+- Users must pre-pay
+- Unused credits locked in account
+- Requires monitoring for low balance
+
+## Decision 2: Lazy Settlement vs Per-Block Processing
+
+**Decision:** Settle leases lazily when touched (queries, operations) rather than every block.
+
+**Alternatives Considered:**
+1. EndBlocker settlement of all leases
+2. Per-block micro-transfers
+3. Lazy settlement on touch (chosen)
+
+**Rationale:**
+- **Chain Performance:** No EndBlocker overhead regardless of lease count
+- **Scalability:** Supports millions of leases without block time impact
+- **Gas Efficiency:** Settlement cost paid by user who triggers it
+- **Simplicity:** No background job management
+
+**Trade-offs:**
+- Balance queries require settlement first
+- Auto-close only happens on interaction
+- Provider withdrawal requires explicit action
+
+## Decision 3: Derived Credit Account Addresses
+
+**Decision:** Derive credit account address deterministically from tenant address using module-specific derivation.
+
+**Alternatives Considered:**
+1. Separate account with stored mapping
+2. Use tenant address directly
+3. Derived address with reverse lookup (chosen)
+
+**Rationale:**
+- **Isolation:** Credit funds separate from spendable balance
+- **O(1) Detection:** Can identify credit accounts without full scan
+- **Deterministic:** Same tenant always gets same credit address
+- **No Key Management:** No private key needed for credit account
+
+**Trade-offs:**
+- Funds at derived address are controlled by module
+- Requires reverse lookup for O(1) detection
+- Migration complexity if derivation changes
+
+## Decision 4: Price Locking at Lease Creation
+
+**Decision:** Lock SKU prices when lease is created; price changes only affect new leases.
+
+**Alternatives Considered:**
+1. Dynamic pricing (current SKU price always used)
+2. Price lock with term limits
+3. Permanent price lock at creation (chosen)
+
+**Rationale:**
+- **Predictability:** Tenants know exact cost
+- **Trust:** No surprise price increases
+- **Simplicity:** No price update propagation
+- **Business Model:** Matches reserved instances pattern
+
+**Trade-offs:**
+- Provider cannot increase prices for existing leases
+- Long-running leases may have stale prices
+- No volume discount adjustments
+
+## Decision 5: Multi-Item Leases
+
+**Decision:** Allow a single lease to contain multiple SKU items rather than one SKU per lease.
+
+**Alternatives Considered:**
+1. One SKU per lease
+2. Multiple SKUs per lease (chosen)
+3. SKU bundles as composite SKUs
+
+**Rationale:**
+- **User Experience:** Single lease for complete infrastructure
+- **Atomic Operations:** All items start/stop together
+- **Fewer Objects:** Less storage overhead
+- **Cleaner Billing:** Single settlement per lease
+
+**Trade-offs:**
+- More complex lease structure
+- Cannot close individual items
+- Settlement must iterate all items
+
+## Decision 6: Soft Delete for Leases
+
+**Decision:** Keep closed leases with INACTIVE state rather than deleting them.
+
+**Alternatives Considered:**
+1. Hard delete closed leases
+2. Soft delete with state flag (chosen)
+3. Move to archive storage
+
+**Rationale:**
+- **Audit Trail:** Complete history preserved
+- **Queries:** Can show past leases to tenant
+- **Referential Integrity:** Provider queries still work
+- **Dispute Resolution:** Evidence available if needed
+
+**Trade-offs:**
+- Storage grows indefinitely
+- Must filter by state in queries
+- No built-in pruning
+
+## Decision 7: Provider Payout at SKU Level
+
+**Decision:** Payout address defined on Provider (in SKU module), not per-lease.
+
+**Alternatives Considered:**
+1. Per-lease payout address
+2. Per-SKU payout address
+3. Per-provider payout address (chosen)
+
+**Rationale:**
+- **Simplicity:** Single payout destination
+- **Security:** Fewer addresses to secure
+- **Operations:** Easy to change payout address
+- **Billing Module Independence:** Billing doesn't store addresses
+
+**Trade-offs:**
+- All provider revenue goes to one address
+- Cannot split by SKU type
+- Provider must distribute internally
+
+## Decision 8: Bank Send Restriction for Credit Protection
+
+**Decision:** Register bank send restriction to prevent wrong denominations entering credit accounts.
+
+**Alternatives Considered:**
+1. No protection (accept any tokens)
+2. Refund mechanism for wrong tokens
+3. Send restriction (chosen)
+
+**Rationale:**
+- **Prevention:** Better than recovery
+- **User Protection:** Prevents accidental loss
+- **Clean State:** Credit accounts only have billing denom
+- **SDK Integration:** Uses existing bank hooks
+
+**Trade-offs:**
+- Module must be registered with bank
+- Slightly more complex bank operations
+- Cannot receive airdrops (feature, not bug)
+
+## Decision 9: Authority-Based Lease Creation for Migration
+
+**Decision:** Allow authority and allow-listed addresses to create leases on behalf of tenants.
+
+**Alternatives Considered:**
+1. Tenant-only lease creation
+2. Delegation/authz pattern
+3. Authority with allow-list (chosen)
+
+**Rationale:**
+- **Migration Support:** Essential for moving off-chain leases on-chain
+- **No User Action:** Tenant doesn't need to sign
+- **Controlled:** Authority or explicit allow-list
+- **Transparent:** Events indicate who created lease
+
+**Trade-offs:**
+- Trust in authority/allow-list
+- Potential for abuse
+- Requires proper off-chain coordination
+
+## Decision 10: Per-Second Rate Calculation
+
+**Decision:** Convert all pricing to per-second rates for uniform calculation.
+
+**Alternatives Considered:**
+1. Keep original units, convert at settlement
+2. Store per-block rates
+3. Pre-compute per-second rates (chosen)
+
+**Rationale:**
+- **Precision:** Consistent calculation regardless of unit
+- **Performance:** No division at settlement time
+- **Verification:** Easy to audit
+- **Block Time Independence:** Not tied to block duration
+
+**Trade-offs:**
+- Requires price divisibility validation
+- Integer math only (no fractions)
+- Less intuitive stored values
+
+## Decision 11: Exact Divisibility Requirement
+
+**Decision:** Require SKU prices to be exactly divisible by unit seconds (no rounding).
+
+**Alternatives Considered:**
+1. Allow rounding with defined behavior
+2. Use fixed-point decimals
+3. Require exact divisibility (chosen)
+
+**Rationale:**
+- **Determinism:** Same calculation everywhere
+- **Auditability:** Can verify exact amounts
+- **No Rounding Disputes:** Eliminates edge cases
+- **Security:** No rounding exploitation
+
+**Trade-offs:**
+- Less pricing flexibility
+- Must use specific values (multiples of 3600, 86400)
+- May seem artificial to users
+
+## Decision 12: Maximum Limits as DoS Protection
+
+**Decision:** Impose configurable limits on leases per tenant, items per lease, and withdrawal batch size.
+
+**Alternatives Considered:**
+1. No limits (rely on gas)
+2. Hard-coded limits
+3. Configurable parameter limits (chosen)
+
+**Rationale:**
+- **DoS Prevention:** Bounds computation
+- **Flexibility:** Can adjust via governance
+- **Predictability:** Known bounds for clients
+- **Fair Resource Use:** Prevents single tenant monopolizing
+
+**Trade-offs:**
+- Must choose appropriate defaults
+- Power users may hit limits
+- Parameter updates affect existing users
+
+## Future Considerations
+
+### Potential Enhancements for v2
+
+1. **Lease Pruning:** Archive old leases to reduce state size
+2. **Tiered Pricing:** Volume discounts based on usage
+3. **Grace Period:** Short overdraw allowance
+4. **Credit Withdrawal:** Allow extracting unused credits
+5. **Batch Operations:** Bulk lease creation
+6. **Scheduled Closure:** Lease with end date
+7. **Usage Reports:** Periodic settlement with receipts
+8. **Multi-Provider Leases:** Items from different providers
+9. **Credit Transfers:** Move credits between accounts
+10. **Provider Disputes:** On-chain dispute resolution
+
+### Known Limitations
+
+1. **No Partial Credit Withdrawal:** Credits locked until spent
+2. **No Dispute Mechanism:** Trust-based provider relationship  
+3. **No Grace Period:** Immediate closure on exhaustion
+4. **No Lease Modification:** Cannot add/remove items
+5. **Linear WithdrawAll:** O(n) for many leases
+
+### Migration Considerations
+
+When implementing breaking changes:
+- Settle all active leases before migration
+- Preserve credit account balances
+- Maintain lease history
+- Update indexes atomically
+- Version proto messages appropriately
