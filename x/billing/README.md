@@ -458,6 +458,16 @@ manifestd tx billing withdraw-all 1 --limit 75 --from provider-key
 - SKU details remain queryable for reporting purposes
 - No new leases can be created using the deactivated SKU
 
+### Credit Withdrawal Policy
+
+**Important**: There is no mechanism to withdraw unused credit from a credit account. Once tokens are funded to a credit account, they can only be spent on leases. This design choice:
+
+- Mimics typical web2 cloud providers (AWS credits, Google Cloud credits, etc.)
+- Simplifies the economic model
+- Prevents gaming of the system
+
+Credit that remains after a lease is closed stays in the credit account and can be used for future leases.
+
 ### Future Feature Candidates
 
 1. **Lease Pruning**: Implement automatic pruning of old inactive leases to reduce state size
@@ -465,3 +475,13 @@ manifestd tx billing withdraw-all 1 --limit 75 --from provider-key
 3. **Multi-Provider Leases**: Allow a single lease to span multiple providers
 4. **Delegation**: Allow tenants to delegate lease management to other addresses
 5. **Provider Reputation**: Track provider uptime and reliability for tenant decision-making
+6. **Provider Shutdown Handling**: Automated lease closure and refund mechanism when providers go offline
+7. **Dispute Resolution**: Mechanism for tenants to dispute charges or service quality
+
+## Additional Documentation
+
+- [Provider Setup Guide](../sku/PROVIDER_GUIDE.md) - Creating and managing providers
+- [SKU Setup Guide](../sku/SKU_GUIDE.md) - Creating and managing SKUs (billable items)
+- [Migration Guide](MIGRATION.md) - Guide for authority members migrating off-chain leases
+- [Troubleshooting](TROUBLESHOOTING.md) - Common errors and solutions
+- [API Reference](API.md) - Complete CLI and gRPC/REST API reference

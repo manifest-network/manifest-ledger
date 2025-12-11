@@ -455,3 +455,10 @@ REST endpoints are available through the gRPC gateway:
 - `GET /liftedinit/sku/v1/sku/{id}`
 - `GET /liftedinit/sku/v1/skus`
 - `GET /liftedinit/sku/v1/skus/provider/{provider_id}`
+
+## Additional Documentation
+
+- [Provider Setup Guide](PROVIDER_GUIDE.md) - Step-by-step guide to creating providers
+- [SKU Setup Guide](SKU_GUIDE.md) - Step-by-step guide to creating SKUs
+- [Billing Module README](../billing/README.md) - Understanding the billing system
+- [Migration Guide](../billing/MIGRATION.md) - Migrating existing off-chain leases
