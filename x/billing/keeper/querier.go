@@ -103,6 +103,7 @@ func (q Querier) Leases(ctx context.Context, req *types.QueryLeasesRequest) (*ty
 }
 
 // LeasesByTenant queries leases by tenant address.
+// Uses the Tenant index for efficient lookup - only iterates over leases belonging to this tenant.
 func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTenantRequest) (*types.QueryLeasesByTenantResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -112,29 +113,29 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 		return nil, status.Error(codes.InvalidArgument, "tenant cannot be empty")
 	}
 
-	if _, err := sdk.AccAddressFromBech32(req.Tenant); err != nil {
+	tenantAddr, err := sdk.AccAddressFromBech32(req.Tenant)
+	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid tenant address")
 	}
 
-	// Use indexed pagination through the tenant index
-	leases, pageRes, err := query.CollectionFilteredPaginate(
+	// Use the tenant index to iterate only over this tenant's leases
+	iter, err := q.k.Leases.Indexes.Tenant.MatchExact(ctx, tenantAddr)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	// Build filter based on active_only
+	var filter func(types.Lease) bool
+	if req.ActiveOnly {
+		filter = func(l types.Lease) bool { return l.State == types.LEASE_STATE_ACTIVE }
+	}
+
+	leases, pageRes, err := PaginateUint64Index(
 		ctx,
-		q.k.Leases,
+		iter,
+		q.k.Leases.Get,
 		req.Pagination,
-		func(_ uint64, lease types.Lease) (bool, error) {
-			// Filter by tenant
-			if lease.Tenant != req.Tenant {
-				return false, nil
-			}
-			// Filter by active_only if requested
-			if req.ActiveOnly && lease.State != types.LEASE_STATE_ACTIVE {
-				return false, nil
-			}
-			return true, nil
-		},
-		func(_ uint64, lease types.Lease) (types.Lease, error) {
-			return lease, nil
-		},
+		filter,
 	)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -147,6 +148,7 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 }
 
 // LeasesByProvider queries leases by provider ID.
+// Uses the Provider index for efficient lookup - only iterates over leases belonging to this provider.
 func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByProviderRequest) (*types.QueryLeasesByProviderResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -156,25 +158,24 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 		return nil, status.Error(codes.InvalidArgument, "provider_id cannot be zero")
 	}
 
-	// Use indexed pagination through the provider index
-	leases, pageRes, err := query.CollectionFilteredPaginate(
+	// Use the provider index to iterate only over this provider's leases
+	iter, err := q.k.Leases.Indexes.Provider.MatchExact(ctx, req.ProviderId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	// Build filter based on active_only
+	var filter func(types.Lease) bool
+	if req.ActiveOnly {
+		filter = func(l types.Lease) bool { return l.State == types.LEASE_STATE_ACTIVE }
+	}
+
+	leases, pageRes, err := PaginateUint64Index(
 		ctx,
-		q.k.Leases,
+		iter,
+		q.k.Leases.Get,
 		req.Pagination,
-		func(_ uint64, lease types.Lease) (bool, error) {
-			// Filter by provider
-			if lease.ProviderId != req.ProviderId {
-				return false, nil
-			}
-			// Filter by active_only if requested
-			if req.ActiveOnly && lease.State != types.LEASE_STATE_ACTIVE {
-				return false, nil
-			}
-			return true, nil
-		},
-		func(_ uint64, lease types.Lease) (types.Lease, error) {
-			return lease, nil
-		},
+		filter,
 	)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())

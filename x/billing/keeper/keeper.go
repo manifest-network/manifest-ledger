@@ -571,6 +571,10 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 // and closes it if necessary. This implements "lazy evaluation" / "check on touch" pattern.
 // Returns true if the lease was closed, the updated lease, and any error.
 // This is O(1) per lease check, avoiding O(n) scanning of all leases in EndBlock.
+//
+// The function performs settlement calculation to determine if the balance would be exhausted
+// after accrual, rather than just checking the current balance. This ensures leases are
+// closed promptly when credit runs out, even if the balance isn't exactly zero yet.
 func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.Lease) (closed bool, err error) {
 	// Only check active leases
 	if lease.State != types.LEASE_STATE_ACTIVE {
@@ -582,19 +586,45 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 		return false, err
 	}
 
-	// Check tenant's credit balance
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	blockTime := sdkCtx.BlockTime()
+
+	// Calculate duration since last settlement
+	duration := blockTime.Sub(lease.LastSettledAt)
+	if duration < 0 {
+		duration = 0
+	}
+
+	// Check tenant's current credit balance
 	creditBalance, err := k.GetCreditBalance(ctx, lease.Tenant, params.Denom)
 	if err != nil {
 		return false, err
 	}
 
-	// If balance is zero or negative, close the lease
-	if !creditBalance.Amount.IsZero() && !creditBalance.Amount.IsNegative() {
-		return false, nil
+	// If balance is already zero or negative, definitely close
+	shouldClose := creditBalance.Amount.IsZero() || creditBalance.Amount.IsNegative()
+
+	// Also check if the accrued amount would exhaust the balance
+	if !shouldClose && duration > 0 {
+		// Calculate what would be accrued
+		items := make([]LeaseItemWithPrice, 0, len(lease.Items))
+		for _, item := range lease.Items {
+			items = append(items, LeaseItemWithPrice{
+				SkuID:                item.SkuId,
+				Quantity:             item.Quantity,
+				LockedPricePerSecond: item.LockedPrice,
+			})
+		}
+		accruedAmount, calcErr := CalculateTotalAccruedForLease(items, duration)
+		if calcErr == nil && accruedAmount.GTE(creditBalance.Amount) {
+			// Accrued amount >= balance means balance will be exhausted
+			shouldClose = true
+		}
 	}
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	blockTime := sdkCtx.BlockTime()
+	if !shouldClose {
+		return false, nil
+	}
 
 	// Perform final settlement (transfer remaining balance to provider)
 	settledAmount, err := k.settleAndCloseLease(ctx, lease, blockTime, params)

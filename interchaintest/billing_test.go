@@ -273,6 +273,10 @@ func TestBilling(t *testing.T) {
 		testSendRestriction(t, ctx, chain, authority, tenant1)
 	})
 
+	t.Run("AllowedListAuthorization", func(t *testing.T) {
+		testAllowedListAuthorization(t, ctx, chain, authority)
+	})
+
 	t.Cleanup(func() {
 		dockerutil.CopyCoverageFromContainer(ctx, t, client, chain.GetNode().ContainerID(), chain.HomeDir(), ExternalGoCoverDir)
 		_ = ic.Close()
@@ -1637,5 +1641,142 @@ func testSendRestriction(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 			"--gas", "auto",
 		)
 		require.NoError(t, err, "sending to non-credit address should succeed with any denom")
+	})
+}
+
+// testAllowedListAuthorization tests the allowed_list authorization for CreateLeaseForTenant.
+// This verifies that:
+// - Authority can always create leases for tenants
+// - Users in allowed_list can create leases for tenants
+// - Users not in allowed_list cannot create leases for tenants
+// - Updating allowed_list changes who can create leases
+func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+	t.Log("=== Testing AllowedList Authorization ===")
+
+	// Create test users
+	users := interchaintest.GetAndFundTestUsers(t, ctx, "allowlist-test", DefaultGenesisAmt, chain)
+	allowedUser := users[0]
+
+	users2 := interchaintest.GetAndFundTestUsers(t, ctx, "nonallowlist-test", DefaultGenesisAmt, chain)
+	nonAllowedUser := users2[0]
+
+	users3 := interchaintest.GetAndFundTestUsers(t, ctx, "tenant-test", DefaultGenesisAmt, chain)
+	tenant := users3[0]
+
+	// First update params to add allowedUser to allowed_list
+	t.Run("setup: add user to allowed_list", func(t *testing.T) {
+		// Get current params
+		params, err := helpers.BillingQueryParams(ctx, chain)
+		require.NoError(t, err)
+
+		// Update with allowed_list
+		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom,
+			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
+			[]string{allowedUser.FormattedAddress()})
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "params update should succeed")
+	})
+
+	// Fund tenant's credit account
+	t.Run("setup: fund tenant credit", func(t *testing.T) {
+		fundAmount := fmt.Sprintf("100000000%s", testPWRDenom)
+		res, err := helpers.BillingFundCredit(ctx, chain, authority, tenant.FormattedAddress(), fundAmount)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "fund credit should succeed")
+	})
+
+	// Get an SKU for lease creation
+	skus, err := helpers.SKUQuerySKUs(ctx, chain)
+	require.NoError(t, err)
+	require.NotEmpty(t, skus.Skus, "should have at least one SKU")
+	skuID := skus.Skus[0].Id
+
+	// Test: Authority can create lease for tenant
+	var authorityLeaseID uint64
+	t.Run("success: authority creates lease for tenant", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%d:1", skuID)}
+		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, tenant.FormattedAddress(), items)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "authority should be able to create lease for tenant")
+
+		authorityLeaseID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		require.NotZero(t, authorityLeaseID)
+	})
+
+	// Test: Allowed user can create lease for tenant
+	var allowedUserLeaseID uint64
+	t.Run("success: allowed user creates lease for tenant", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%d:1", skuID)}
+		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, allowedUser, tenant.FormattedAddress(), items)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "allowed user should be able to create lease for tenant")
+
+		allowedUserLeaseID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		require.NotZero(t, allowedUserLeaseID)
+	})
+
+	// Test: Non-allowed user cannot create lease for tenant
+	t.Run("fail: non-allowed user cannot create lease for tenant", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%d:1", skuID)}
+		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, nonAllowedUser, tenant.FormattedAddress(), items)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "non-allowed user should not be able to create lease for tenant")
+	})
+
+	// Test: Verify leases belong to tenant
+	t.Run("success: verify leases belong to tenant", func(t *testing.T) {
+		lease1, err := helpers.BillingQueryLease(ctx, chain, authorityLeaseID)
+		require.NoError(t, err)
+		require.Equal(t, tenant.FormattedAddress(), lease1.Lease.Tenant)
+
+		lease2, err := helpers.BillingQueryLease(ctx, chain, allowedUserLeaseID)
+		require.NoError(t, err)
+		require.Equal(t, tenant.FormattedAddress(), lease2.Lease.Tenant)
+	})
+
+	// Test: Remove user from allowed_list, then they can't create leases anymore
+	t.Run("success: removed user cannot create lease after allowed_list update", func(t *testing.T) {
+		// Get current params
+		params, err := helpers.BillingQueryParams(ctx, chain)
+		require.NoError(t, err)
+
+		// Update with empty allowed_list
+		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom,
+			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
+			[]string{})
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "params update should succeed")
+
+		// Now the previously allowed user should not be able to create leases
+		items := []string{fmt.Sprintf("%d:1", skuID)}
+		res, err = helpers.BillingCreateLeaseForTenant(ctx, chain, allowedUser, tenant.FormattedAddress(), items)
+		require.NoError(t, err)
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "removed user should not be able to create lease for tenant")
+	})
+
+	// Test: Authority can still create leases even with empty allowed_list
+	t.Run("success: authority can still create lease with empty allowed_list", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%d:1", skuID)}
+		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, tenant.FormattedAddress(), items)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "authority should always be able to create lease for tenant")
 	})
 }

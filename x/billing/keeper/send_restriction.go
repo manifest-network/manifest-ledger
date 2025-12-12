@@ -16,17 +16,21 @@ import (
 // This prevents users from accidentally sending wrong tokens to credit accounts,
 // which would result in loss of funds.
 //
-// The restriction:
+// The restriction follows a "fail-closed" security model:
 // - Allows any transfer if the destination is NOT a credit account
 // - For credit account destinations, only allows the configured billing denom
+// - Returns an error if params lookup fails (fail-closed for security)
 // - Returns an error if attempting to send non-billing tokens to a credit account
 func (k *Keeper) CreditAccountSendRestriction(ctx context.Context, _, toAddr sdk.AccAddress, amt sdk.Coins) (sdk.AccAddress, error) {
 	// Check if destination is a credit account by checking if any tenant's
 	// derived credit address matches the toAddr
 	isCreditAccount, err := k.isCreditAccountAddress(ctx, toAddr)
 	if err != nil {
-		// If we can't determine, allow the transfer (fail open for non-critical check)
-		return toAddr, nil
+		// Fail closed: if we can't determine credit account status, block the transfer
+		// This prevents potential bypass if the index is corrupted
+		return toAddr, types.ErrInvalidCreditOperation.Wrapf(
+			"unable to verify credit account status: %v", err,
+		)
 	}
 
 	if !isCreditAccount {
@@ -37,8 +41,11 @@ func (k *Keeper) CreditAccountSendRestriction(ctx context.Context, _, toAddr sdk
 	// This is a credit account destination - validate the denomination
 	params, err := k.GetParams(ctx)
 	if err != nil {
-		// If we can't get params, allow the transfer to avoid blocking legitimate operations
-		return toAddr, nil
+		// Fail closed: if we can't get params, block the transfer to credit accounts
+		// This prevents sending wrong denomination if params are corrupted/missing
+		return toAddr, types.ErrInvalidCreditOperation.Wrapf(
+			"unable to retrieve billing params for denomination validation: %v", err,
+		)
 	}
 
 	// Check that all coins being sent are the allowed denomination

@@ -228,3 +228,119 @@ func TestIsCreditAccountAddress(t *testing.T) {
 		require.Equal(t, randomAddr, resultAddr)
 	})
 }
+
+func TestCreditAddressIndexSurvivesParamsUpdate(t *testing.T) {
+	f := initFixture(t)
+
+	denom := testPWRDenom
+	newDenom := "factory/manifest1xyz/newpwr"
+
+	// Set up initial params
+	params := types.Params{
+		Denom:              denom,
+		MinCreditBalance:   math.NewInt(1000000),
+		MaxLeasesPerTenant: 100,
+		AllowedList:        []string{},
+		MaxItemsPerLease:   10,
+	}
+	err := f.App.BillingKeeper.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Create a tenant with a credit account
+	tenant := sdk.AccAddress([]byte("tenant_addr_________"))
+	creditAddr := types.DeriveCreditAddress(tenant)
+
+	// Create the credit account in state
+	creditAccount := types.CreditAccount{
+		Tenant:           tenant.String(),
+		ActiveLeaseCount: 0,
+	}
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, creditAccount)
+	require.NoError(t, err)
+
+	// Verify credit address is indexed and restriction works
+	sender := sdk.AccAddress([]byte("sender_addr_________"))
+	coins := sdk.NewCoins(sdk.NewCoin("umfx", math.NewInt(1000)))
+	_, err = f.App.BillingKeeper.CreditAccountSendRestriction(f.Ctx, sender, creditAddr, coins)
+	require.Error(t, err, "wrong denom should be rejected before params update")
+	require.ErrorIs(t, err, types.ErrInvalidDenomination)
+
+	// Update params with a new denom
+	newParams := types.Params{
+		Denom:              newDenom,
+		MinCreditBalance:   math.NewInt(2000000),
+		MaxLeasesPerTenant: 200,
+		AllowedList:        []string{},
+		MaxItemsPerLease:   20,
+	}
+	err = f.App.BillingKeeper.SetParams(f.Ctx, newParams)
+	require.NoError(t, err)
+
+	// Verify credit address is still indexed after params update
+	// The old denom should now be rejected
+	_, err = f.App.BillingKeeper.CreditAccountSendRestriction(f.Ctx, sender, creditAddr, coins)
+	require.Error(t, err, "wrong denom should be rejected after params update")
+
+	// The new denom should be accepted
+	newDenomCoins := sdk.NewCoins(sdk.NewCoin(newDenom, math.NewInt(1000)))
+	resultAddr, err := f.App.BillingKeeper.CreditAccountSendRestriction(f.Ctx, sender, creditAddr, newDenomCoins)
+	require.NoError(t, err, "new denom should be accepted after params update")
+	require.Equal(t, creditAddr, resultAddr)
+
+	// Verify credit account still exists and is accessible
+	retrievedAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, tenant.String(), retrievedAccount.Tenant)
+}
+
+func TestCreditAddressIndexCreatedOnFunding(t *testing.T) {
+	f := initFixture(t)
+
+	denom := testPWRDenom
+
+	// Set up params
+	params := types.Params{
+		Denom:              denom,
+		MinCreditBalance:   math.NewInt(1000000),
+		MaxLeasesPerTenant: 100,
+		AllowedList:        []string{},
+		MaxItemsPerLease:   10,
+	}
+	err := f.App.BillingKeeper.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Create a new tenant
+	tenant := f.TestAccs[0]
+	creditAddr := types.DeriveCreditAddress(tenant)
+
+	// Fund the tenant with PWR tokens
+	fundAmount := math.NewInt(100000000)
+	f.fundAccount(t, tenant, sdk.NewCoins(sdk.NewCoin(denom, fundAmount)))
+
+	// Before funding credit account, verify send restriction allows any denom
+	// (because no credit account exists yet for this tenant)
+	sender := sdk.AccAddress([]byte("sender_addr_________"))
+	wrongDenomCoins := sdk.NewCoins(sdk.NewCoin("umfx", math.NewInt(1000)))
+	resultAddr, err := f.App.BillingKeeper.CreditAccountSendRestriction(f.Ctx, sender, creditAddr, wrongDenomCoins)
+	require.NoError(t, err, "before credit account creation, any denom should be allowed to derived address")
+	require.Equal(t, creditAddr, resultAddr)
+
+	// Now create and fund the credit account directly
+	creditAccount := types.CreditAccount{
+		Tenant:           tenant.String(),
+		ActiveLeaseCount: 0,
+	}
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, creditAccount)
+	require.NoError(t, err)
+
+	// After creating credit account, the credit address should be indexed and restriction should apply
+	_, err = f.App.BillingKeeper.CreditAccountSendRestriction(f.Ctx, sender, creditAddr, wrongDenomCoins)
+	require.Error(t, err, "after credit account creation, wrong denom should be rejected")
+	require.ErrorIs(t, err, types.ErrInvalidDenomination)
+
+	// Correct denom should still be allowed
+	correctDenomCoins := sdk.NewCoins(sdk.NewCoin(denom, math.NewInt(1000)))
+	resultAddr, err = f.App.BillingKeeper.CreditAccountSendRestriction(f.Ctx, sender, creditAddr, correctDenomCoins)
+	require.NoError(t, err, "correct denom should be allowed to credit account")
+	require.Equal(t, creditAddr, resultAddr)
+}
