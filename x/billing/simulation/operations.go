@@ -132,34 +132,54 @@ func SimulateMsgFundCredit(txGen client.TxConfig, k keeper.Keeper) simtypes.Oper
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
 		}
 
-		// Check if sender has any balance in the billing denom
-		senderBalance := k.GetBankKeeper().SpendableCoins(ctx, sender.Address).AmountOf(params.Denom)
+		// Get total spendable balance in billing denom
+		spendableCoins := k.GetBankKeeper().SpendableCoins(ctx, sender.Address)
+		senderBalance := spendableCoins.AmountOf(params.Denom)
 		if senderBalance.IsZero() {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "sender has no billing denom balance"), nil, nil
 		}
 
-		// Random amount between 1_000_000 and min(100_000_000, sender balance)
-		maxAmount := sdkmath.NewInt(100_000_000)
-		if senderBalance.LT(maxAmount) {
-			maxAmount = senderBalance
-		}
+		// Reserve a fixed fee amount (conservative estimate)
+		fixedFee := sdkmath.NewInt(100_000)
 
-		// Ensure we have at least 1_000_000 to fund
-		minAmount := sdkmath.NewInt(1_000_000)
-		if maxAmount.LT(minAmount) {
+		// Minimum amount required: fee + minimum meaningful funding
+		minFundingAmount := sdkmath.NewInt(1_000_000)
+		minRequired := fixedFee.Add(minFundingAmount)
+
+		if senderBalance.LT(minRequired) {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "sender balance too low"), nil, nil
 		}
 
-		// Random amount between minAmount and maxAmount
-		randRange := maxAmount.Sub(minAmount).Int64()
+		// Available for funding = total balance - reserved for fees
+		availableForFunding := senderBalance.Sub(fixedFee)
+
+		// Use at most 50% of available amount for this funding operation
+		// to leave room for future operations
+		maxFundingAmount := availableForFunding.QuoRaw(2)
+		if maxFundingAmount.LT(minFundingAmount) {
+			maxFundingAmount = minFundingAmount
+		}
+
+		// Ensure we don't exceed available
+		if maxFundingAmount.GT(availableForFunding) {
+			maxFundingAmount = availableForFunding
+		}
+
+		// Random amount between min and max
 		var randAmount sdkmath.Int
-		if randRange > 0 {
-			randAmount = minAmount.Add(sdkmath.NewInt(int64(r.Intn(int(randRange)))))
+		if maxFundingAmount.GT(minFundingAmount) {
+			randRange := maxFundingAmount.Sub(minFundingAmount).Int64()
+			if randRange > 0 {
+				randAmount = minFundingAmount.Add(sdkmath.NewInt(int64(r.Intn(int(randRange)))))
+			} else {
+				randAmount = minFundingAmount
+			}
 		} else {
-			randAmount = minAmount
+			randAmount = minFundingAmount
 		}
 
 		amount := sdk.NewCoin(params.Denom, randAmount)
+		fees := sdk.NewCoins(sdk.NewCoin(params.Denom, fixedFee))
 
 		msg := &types.MsgFundCredit{
 			Sender: sender.Address.String(),
@@ -167,7 +187,9 @@ func SimulateMsgFundCredit(txGen client.TxConfig, k keeper.Keeper) simtypes.Oper
 			Amount: amount,
 		}
 
-		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)
+		// Use GenAndDeliverTx with pre-calculated fees (not random fees)
+		// This ensures we never overdraw by using a fixed fee we already accounted for
+		return simulation.GenAndDeliverTx(newOperationInput(r, app, ctx, txGen, sender, msg, k), fees)
 	}
 }
 
@@ -440,8 +462,22 @@ func SimulateMsgWithdraw(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper) s
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no leases found"), nil, nil
 		}
 
-		// Pick a random lease
-		lease := allLeases[r.Intn(len(allLeases))]
+		// Filter to leases that have withdrawable amounts
+		var withdrawableLeases []types.Lease
+		for _, lease := range allLeases {
+			// Calculate withdrawable amount for this lease
+			withdrawable := k.CalculateWithdrawableForLease(ctx, lease)
+			if withdrawable.IsPositive() {
+				withdrawableLeases = append(withdrawableLeases, lease)
+			}
+		}
+
+		if len(withdrawableLeases) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no leases with withdrawable amount"), nil, nil
+		}
+
+		// Pick a random lease with withdrawable amount
+		lease := withdrawableLeases[r.Intn(len(withdrawableLeases))]
 
 		// Get provider to find the provider address
 		provider, err := sk.GetProvider(ctx, lease.ProviderId)
@@ -485,8 +521,35 @@ func SimulateMsgWithdrawAll(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no providers found"), nil, nil
 		}
 
-		// Pick a random provider
-		provider := allProviders[r.Intn(len(allProviders))]
+		// Filter to providers that have withdrawable amounts
+		var withdrawableProviders []skutypes.Provider
+		for _, provider := range allProviders {
+			// Check if this provider has any withdrawable amount by checking their leases
+			leases, err := k.GetLeasesByProviderID(ctx, provider.Id)
+			if err != nil {
+				continue
+			}
+
+			hasWithdrawable := false
+			for _, lease := range leases {
+				withdrawable := k.CalculateWithdrawableForLease(ctx, lease)
+				if withdrawable.IsPositive() {
+					hasWithdrawable = true
+					break
+				}
+			}
+
+			if hasWithdrawable {
+				withdrawableProviders = append(withdrawableProviders, provider)
+			}
+		}
+
+		if len(withdrawableProviders) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no providers with withdrawable amount"), nil, nil
+		}
+
+		// Pick a random provider with withdrawable amount
+		provider := withdrawableProviders[r.Intn(len(withdrawableProviders))]
 
 		// Find the provider address account
 		var sender simtypes.Account
