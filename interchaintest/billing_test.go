@@ -311,7 +311,7 @@ func setupBillingTestInfrastructure(t *testing.T, ctx context.Context, chain *co
 
 	// Update billing params to use test PWR denom
 	t.Run("update_billing_params", func(t *testing.T) {
-		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom, 5_000_000, 100, 20, nil)
+		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom, sdkmath.NewInt(5_000_000), 100, 20, nil)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -1671,7 +1671,7 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 
 		// Update with allowed_list
 		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom,
-			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
+			params.Params.MinCreditBalance, params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
 			[]string{allowedUser.FormattedAddress()})
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -1754,7 +1754,7 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 
 		// Update with empty allowed_list
 		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom,
-			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
+			params.Params.MinCreditBalance, params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
 			[]string{})
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)

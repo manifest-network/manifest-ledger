@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
@@ -65,11 +66,11 @@ func BillingWithdrawAllWithLimit(ctx context.Context, chain *cosmos.CosmosChain,
 }
 
 // BillingUpdateParams updates the billing module parameters.
-func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, denom string, minCreditBalance uint64, maxLeasesPerTenant uint64, maxItemsPerLease uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
+func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, denom string, minCreditBalance math.Int, maxLeasesPerTenant uint64, maxItemsPerLease uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{
 		"tx", "billing", "update-params",
 		denom,
-		strconv.FormatUint(minCreditBalance, 10),
+		minCreditBalance.String(),
 		strconv.FormatUint(maxLeasesPerTenant, 10),
 		strconv.FormatUint(maxItemsPerLease, 10),
 	}
