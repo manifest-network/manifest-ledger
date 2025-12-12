@@ -160,6 +160,7 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 }
 
 // SKUsByProvider queries SKUs by provider ID with pagination.
+// Uses the Provider index for efficient lookup - only iterates over SKUs belonging to this provider.
 func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProviderRequest) (*types.QuerySKUsByProviderResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid request")
@@ -169,22 +170,24 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 		return nil, status.Error(codes.InvalidArgument, "provider_id cannot be zero")
 	}
 
-	skus, pageRes, err := query.CollectionFilteredPaginate(
+	// Use the provider index to iterate only over this provider's SKUs
+	iter, err := q.Keeper.SKUs.Indexes.Provider.MatchExact(ctx, req.ProviderId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	// Build filter based on active_only
+	var filter func(types.SKU) bool
+	if req.ActiveOnly {
+		filter = func(s types.SKU) bool { return s.Active }
+	}
+
+	skus, pageRes, err := PaginateUint64Index(
 		ctx,
-		q.Keeper.SKUs,
+		iter,
+		q.Keeper.SKUs.Get,
 		req.Pagination,
-		func(_ uint64, sku types.SKU) (bool, error) {
-			if sku.ProviderId != req.ProviderId {
-				return false, nil
-			}
-			if req.ActiveOnly && !sku.Active {
-				return false, nil
-			}
-			return true, nil
-		},
-		func(_ uint64, sku types.SKU) (types.SKU, error) {
-			return sku, nil
-		},
+		filter,
 	)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
