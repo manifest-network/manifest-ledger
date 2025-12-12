@@ -68,6 +68,8 @@ jobs:
           - "ictest-group-poa"
           - "ictest-cosmwasm"
           - "ictest-chain-upgrade"
+          - "ictest-sku"
+          - "ictest-billing"
       fail-fast: false
 
     steps:
