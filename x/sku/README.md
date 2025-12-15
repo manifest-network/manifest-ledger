@@ -461,6 +461,7 @@ REST endpoints are available through the gRPC gateway:
 ### User Guides
 - [Provider Setup Guide](docs/PROVIDER_GUIDE.md) - Step-by-step guide to creating providers
 - [SKU Setup Guide](docs/SKU_GUIDE.md) - Step-by-step guide to creating SKUs
+- [API Reference](docs/API.md) - Complete CLI and gRPC/REST API reference
 
 ### Developer Documentation
 - [Architecture](docs/ARCHITECTURE.md) - Internal architecture, data models, and flow diagrams

@@ -32,8 +32,9 @@ erDiagram
     PROVIDER ||--o{ SKU : "has many"
     PROVIDER {
         uint64 id PK
-        string name
-        bytes payout_address
+        string address
+        string payout_address
+        bytes meta_hash
         bool active
     }
     SKU {
@@ -54,8 +55,9 @@ Providers represent service vendors who offer SKUs:
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | `uint64` | Auto-incremented unique identifier |
-| `name` | `string` | Human-readable provider name |
-| `payout_address` | `bytes` | Address where billing payments are sent |
+| `address` | `string` | The provider's management address |
+| `payout_address` | `string` | Address where billing payments are sent |
+| `meta_hash` | `bytes` | Optional hash of off-chain metadata (name, description, etc.) |
 | `active` | `bool` | Whether provider can have new SKUs created |
 
 ### SKU
@@ -263,10 +265,15 @@ func ValidatePriceDivisibility(unit Unit, price sdk.Coin) error {
 
 | Event | Attributes | When Emitted |
 |-------|------------|--------------|
-| `provider_created` | `provider_id`, `name`, `payout_address` | Provider created |
-| `provider_updated` | `provider_id`, `name`, `payout_address`, `active` | Provider updated |
-| `sku_created` | `sku_id`, `provider_id`, `name`, `unit`, `base_price` | SKU created |
-| `sku_updated` | `sku_id`, `provider_id`, `name`, `unit`, `base_price`, `active` | SKU updated |
+| `provider_created` | `provider_id`, `address`, `payout_address` | Provider created |
+| `provider_updated` | `provider_id` | Provider updated |
+| `provider_activated` | `provider_id` | Provider reactivated via update |
+| `provider_deactivated` | `provider_id` | Provider deactivated |
+| `sku_created` | `sku_id`, `provider_id`, `name` | SKU created |
+| `sku_updated` | `sku_id`, `provider_id` | SKU updated |
+| `sku_activated` | `sku_id`, `provider_id` | SKU reactivated via update |
+| `sku_deactivated` | `sku_id`, `provider_id` | SKU deactivated |
+| `params_updated` | - | Module parameters updated |
 
 ## Error Codes
 
