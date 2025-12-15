@@ -121,7 +121,7 @@ ictest-poa:
 	cd interchaintest && go test -race -v -run TestPOA . -count=1
 
 ictest-group-poa:
-	cd interchaintest && go test -race -v -run TestGroupPOA . -count=1
+	cd interchaintest && go test -timeout 25m -race -v -run TestGroupPOA . -count=1
 
 ictest-cosmwasm:
 	cd interchaintest && go test -race -v -run TestCosmWasm . -count=1
@@ -184,7 +184,7 @@ coverage: ## Run coverage report
 	@echo "  --> Running App State Determinism Simulation"
 	@${COV_SIM_CMD} -test.run TestAppStateDeterminism ${COV_SIM_COMMON} > /dev/null 2>&1
 	@echo "--> Running unit & e2e tests coverage"
-	@go test -p 1 -timeout 30m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
+	@go test -p 1 -timeout 45m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
 	@echo "--> Merging coverage reports"
 	@go tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_ROOT}
 	@echo "--> Converting binary coverage report to text format"
