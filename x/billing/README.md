@@ -47,18 +47,16 @@ This design keeps on-chain operations light and avoids per-block token transfers
 
 ### Overdraw and Auto-Close
 
-If a tenant's credit balance reaches zero, the billing module automatically closes their active leases. This happens through **lazy evaluation** ("check on touch"):
+If a tenant's credit balance is insufficient to cover accrued charges, the billing module automatically closes their active leases. This happens through **lazy evaluation** ("check on touch") during write operations:
 
 **When auto-close is triggered:**
-- When a lease is queried individually (`QueryLease`)
 - When withdrawing from a lease (`MsgWithdraw`)
-- When checking withdrawable amounts (`QueryWithdrawableAmount`)
 - When attempting to close a lease (`MsgCloseLease`)
 
 **How it works:**
-1. When a lease is "touched" (accessed directly), the system checks the tenant's credit balance
-2. If balance is zero or negative:
-   - Performs final settlement (transfers any remaining balance to provider)
+1. When a lease is "touched" during a transaction, the system calculates accrued charges
+2. If accrued amount >= credit balance:
+   - Performs final settlement (transfers available balance to provider)
    - Closes the lease automatically
    - Emits a `lease_auto_closed` event with `reason: credit_exhausted`
 
@@ -67,8 +65,9 @@ If a tenant's credit balance reaches zero, the billing module automatically clos
 - **Scalability**: Supports millions of leases without performance degradation
 - **On-demand**: Only processes leases when they're actually used
 - **No consensus overhead**: EndBlock remains lightweight
+- **Transaction safety**: Auto-close only happens in transactions where state changes are committed
 
-**Note**: Bulk queries (`QueryLeases`, `QueryLeasesByTenant`, `QueryLeasesByProvider`) do NOT trigger auto-close checks to maintain query performance. The auto-close will happen when individual leases are accessed.
+**Note**: Queries (`QueryLease`, `QueryLeases`, etc.) do NOT trigger auto-close. They return the stored state. Auto-close only happens during write operations (Withdraw, CloseLease) to ensure state changes are properly committed.
 
 **Note**: During lazy settlement (withdrawal or manual close), if the credit balance is less than the accrued amount, only the available balance is transferred to the provider.
 
@@ -81,9 +80,9 @@ Module parameters stored at key `0x00`:
 | Field | Type | Description |
 |-------|------|-------------|
 | denom | string | Billing denomination (PWR token) |
-| min_credit_balance | Int | Minimum credit required to create a lease |
 | max_leases_per_tenant | uint64 | Maximum active leases per tenant (must be > 0) |
 | max_items_per_lease | uint64 | Maximum items per lease (default: 20, hard limit: 100) |
+| min_lease_duration | uint64 | Minimum lease duration in seconds (default: 3600 = 1 hour) |
 | allowed_list | []string | List of addresses allowed to create leases on behalf of tenants |
 
 ### Lease
@@ -132,11 +131,12 @@ sender → credit_address
 
 ### Create Lease
 
-1. Verify tenant has sufficient credit balance
-2. Verify all SKUs exist, are active, and belong to same provider
-3. Verify tenant hasn't exceeded max leases
-4. Lock current SKU prices
-5. Create lease in ACTIVE state
+1. Verify tenant has a credit account
+2. Verify tenant has sufficient credit to cover minimum lease duration (credit >= rate * min_lease_duration)
+3. Verify all SKUs exist, are active, and belong to same provider
+4. Verify tenant hasn't exceeded max leases
+5. Lock current SKU prices
+6. Create lease in ACTIVE state
 
 ### Close Lease
 
@@ -339,9 +339,9 @@ manifestd query billing provider-withdrawable [provider-id]
 | Parameter | Default Value |
 |-----------|---------------|
 | denom | factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr |
-| min_credit_balance | 5000000 (5 PWR) |
 | max_leases_per_tenant | 100 |
 | max_items_per_lease | 20 (hard limit: 100) |
+| min_lease_duration | 3600 (1 hour) |
 
 ## Authorization
 

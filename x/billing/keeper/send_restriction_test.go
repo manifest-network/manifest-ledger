@@ -22,7 +22,6 @@ func TestCreditAccountSendRestriction(t *testing.T) {
 	// Set up params with specific denom
 	params := types.Params{
 		Denom:              denom,
-		MinCreditBalance:   math.NewInt(1000000),
 		MaxLeasesPerTenant: 100,
 		AllowedList:        []string{},
 	}
@@ -102,7 +101,6 @@ func TestCreditAccountSendRestriction_NoCreditAccountsExist(t *testing.T) {
 	// Set up params with specific denom
 	params := types.Params{
 		Denom:              denom,
-		MinCreditBalance:   math.NewInt(1000000),
 		MaxLeasesPerTenant: 100,
 		AllowedList:        []string{},
 	}
@@ -129,7 +127,6 @@ func TestCreditAccountSendRestriction_Integration(t *testing.T) {
 	// Set up params with specific denom
 	params := types.Params{
 		Denom:              denom,
-		MinCreditBalance:   math.NewInt(1000000),
 		MaxLeasesPerTenant: 100,
 		AllowedList:        []string{},
 	}
@@ -202,7 +199,6 @@ func TestIsCreditAccountAddress(t *testing.T) {
 		denom := testPWRDenom
 		params := types.Params{
 			Denom:              denom,
-			MinCreditBalance:   math.NewInt(1000000),
 			MaxLeasesPerTenant: 100,
 			AllowedList:        []string{},
 		}
@@ -238,7 +234,6 @@ func TestCreditAddressIndexSurvivesParamsUpdate(t *testing.T) {
 	// Set up initial params
 	params := types.Params{
 		Denom:              denom,
-		MinCreditBalance:   math.NewInt(1000000),
 		MaxLeasesPerTenant: 100,
 		AllowedList:        []string{},
 		MaxItemsPerLease:   10,
@@ -268,7 +263,6 @@ func TestCreditAddressIndexSurvivesParamsUpdate(t *testing.T) {
 	// Update params with a new denom
 	newParams := types.Params{
 		Denom:              newDenom,
-		MinCreditBalance:   math.NewInt(2000000),
 		MaxLeasesPerTenant: 200,
 		AllowedList:        []string{},
 		MaxItemsPerLease:   20,
@@ -301,7 +295,6 @@ func TestCreditAddressIndexCreatedOnFunding(t *testing.T) {
 	// Set up params
 	params := types.Params{
 		Denom:              denom,
-		MinCreditBalance:   math.NewInt(1000000),
 		MaxLeasesPerTenant: 100,
 		AllowedList:        []string{},
 		MaxItemsPerLease:   10,

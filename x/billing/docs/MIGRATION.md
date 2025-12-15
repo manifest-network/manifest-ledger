@@ -166,10 +166,10 @@ To add an address to the allowed list:
 
 ```bash
 manifestd tx billing update-params \
-  --denom "factory/manifest1.../upwr" \
-  --min-credit-balance 5000000 \
-  --max-leases-per-tenant 100 \
-  --max-items-per-lease 20 \
+  "factory/manifest1.../upwr" \
+  100 \
+  20 \
+  3600 \
   --allowed-list "manifest1allowed1...,manifest1allowed2..." \
   --from authority
 ```

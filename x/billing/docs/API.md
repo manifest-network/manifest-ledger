@@ -150,25 +150,29 @@ manifestd tx billing withdraw-all 1 --limit 100 --from provider-key
 Update module parameters (authority only).
 
 ```bash
-manifestd tx billing update-params [flags]
+manifestd tx billing update-params [denom] [max-leases-per-tenant] [max-items-per-lease] [min-lease-duration] [flags]
 ```
+
+**Arguments:**
+| Argument | Type | Description |
+|----------|------|-------------|
+| denom | string | Billing denomination |
+| max-leases-per-tenant | uint64 | Max active leases per tenant |
+| max-items-per-lease | uint64 | Max items per lease |
+| min-lease-duration | uint64 | Minimum lease duration in seconds |
 
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --denom | string | Billing denomination |
-| --min-credit-balance | string | Minimum credit balance |
-| --max-leases-per-tenant | uint64 | Max active leases per tenant |
-| --max-items-per-lease | uint64 | Max items per lease |
-| --allowed-list | string | Comma-separated allowed addresses |
+| --allowed-list | string | Comma-separated allowed addresses (optional) |
 
 **Example:**
 ```bash
 manifestd tx billing update-params \
-  --denom "factory/manifest1.../upwr" \
-  --min-credit-balance 5000000 \
-  --max-leases-per-tenant 100 \
-  --max-items-per-lease 20 \
+  "factory/manifest1.../upwr" \
+  100 \
+  20 \
+  3600 \
   --allowed-list "manifest1abc...,manifest1def..." \
   --from authority
 ```
@@ -190,9 +194,9 @@ manifestd query billing params
 {
   "params": {
     "denom": "factory/manifest1.../upwr",
-    "min_credit_balance": "5000000",
     "max_leases_per_tenant": "100",
     "max_items_per_lease": "20",
+    "min_lease_duration": "3600",
     "allowed_list": []
   }
 }
@@ -600,7 +604,7 @@ message QueryParamsResponse {
 
 #### QueryLease
 
-Get a lease by ID. **Note:** This may trigger auto-close if credit is exhausted.
+Get a lease by ID.
 
 **Endpoint:** `liftedinit.billing.v1.Query/Lease`
 
@@ -617,6 +621,8 @@ message QueryLeaseResponse {
   Lease lease = 1;
 }
 ```
+
+**Note:** Queries return the stored state and do NOT trigger auto-close. Auto-close only happens during write operations (Withdraw, CloseLease).
 
 ---
 

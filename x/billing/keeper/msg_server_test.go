@@ -250,10 +250,10 @@ func TestMsgUpdateParams(t *testing.T) {
 				Authority: authority.String(),
 				Params: types.NewParams(
 					"factory/newdenom/upwr",
-					sdkmath.NewInt(10000000),
 					50,
 					[]string{},
 					20,
+					3600,
 				),
 			},
 			expectErr: false,
@@ -273,10 +273,10 @@ func TestMsgUpdateParams(t *testing.T) {
 				Authority: authority.String(),
 				Params: types.NewParams(
 					"", // invalid: empty denom
-					sdkmath.NewInt(5000000),
 					100,
 					[]string{},
 					20,
+					3600,
 				),
 			},
 			expectErr: true,
@@ -443,7 +443,7 @@ func TestMsgCreateLeaseInsufficientCredit(t *testing.T) {
 	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
 	sku := f.createTestSKU(t, provider.Id, 100)
 
-	// Do NOT fund the tenant - they should have 0 credit
+	// Do NOT fund the tenant - they should have no credit account
 	msg := &types.MsgCreateLease{
 		Tenant: tenant.String(),
 		Items: []types.LeaseItemInput{
@@ -456,7 +456,7 @@ func TestMsgCreateLeaseInsufficientCredit(t *testing.T) {
 
 	resp, err := msgServer.CreateLease(f.Ctx, msg)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "insufficient credit balance")
+	require.Contains(t, err.Error(), "credit account not found")
 	require.Nil(t, resp)
 }
 
@@ -684,10 +684,10 @@ func TestMsgCreateLeaseForTenantWithAllowedList(t *testing.T) {
 	// Update params to add allowedUser to allowed list
 	params := types.NewParams(
 		denom,
-		types.DefaultMinCreditBalance,
 		types.DefaultMaxLeasesPerTenant,
 		[]string{allowedUser.String()},
 		types.DefaultMaxItemsPerLease,
+		types.DefaultMinLeaseDuration,
 	)
 	err = f.App.BillingKeeper.SetParams(f.Ctx, params)
 	require.NoError(t, err)

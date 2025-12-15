@@ -138,18 +138,10 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		)
 	}
 
-	// 1. Verify tenant has sufficient credit balance
+	// 1. Get tenant's credit balance
 	creditBalance, err := ms.k.GetCreditBalance(ctx, tenant, params.Denom)
 	if err != nil {
 		return nil, err
-	}
-
-	if creditBalance.Amount.LT(params.MinCreditBalance) {
-		return nil, types.ErrInsufficientCredit.Wrapf(
-			"credit balance %s is less than minimum required %s",
-			creditBalance.Amount.String(),
-			params.MinCreditBalance.String(),
-		)
 	}
 
 	// 2. Get credit account and verify tenant hasn't exceeded max leases (O(1) check)
@@ -214,6 +206,20 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 			Quantity:    inputItem.Quantity,
 			LockedPrice: lockedPricePerSecond,
 		})
+	}
+
+	// 4. Verify tenant has enough credit to cover minimum lease duration
+	// Required credit = totalRatePerSecond * minLeaseDuration
+	minLeaseDurationInt := math.NewIntFromUint64(params.MinLeaseDuration)
+	requiredCredit := totalRatePerSecond.Mul(minLeaseDurationInt)
+	if creditBalance.Amount.LT(requiredCredit) {
+		return nil, types.ErrInsufficientCredit.Wrapf(
+			"credit balance %s cannot cover minimum lease duration of %d seconds (requires %s at rate %s/second)",
+			creditBalance.Amount.String(),
+			params.MinLeaseDuration,
+			requiredCredit.String(),
+			totalRatePerSecond.String(),
+		)
 	}
 
 	// 5. Create lease
@@ -332,13 +338,13 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// 1. Verify lease exists (with auto-close check for lazy evaluation)
-	lease, err := ms.k.GetLeaseWithAutoClose(ctx, msg.LeaseId)
+	// 1. Get lease (without auto-close - we'll handle it explicitly)
+	lease, err := ms.k.GetLease(ctx, msg.LeaseId)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Verify lease is active (may have been auto-closed by lazy evaluation)
+	// 2. If lease is already inactive, nothing to do
 	if lease.State != types.LEASE_STATE_ACTIVE {
 		return nil, types.ErrLeaseNotActive.Wrapf("lease %d is not active", msg.LeaseId)
 	}
@@ -376,29 +382,46 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		)
 	}
 
-	// 4. Calculate duration for event
-	duration := blockTime.Sub(lease.LastSettledAt)
-
-	// 5. Settle accrued charges
-	settledAmount, err := ms.settleLease(ctx, &lease, blockTime)
+	// 4. Check if lease should be auto-closed due to exhausted credit
+	// If so, the settlement happens during auto-close
+	closed, err := ms.k.CheckAndCloseExhaustedLease(ctx, &lease)
 	if err != nil {
 		return nil, err
 	}
 
-	// 6. Update lease state to inactive
-	lease.State = types.LEASE_STATE_INACTIVE
-	lease.ClosedAt = &blockTime
+	var settledAmount math.Int
+	var duration time.Duration
+	if closed {
+		// Lease was auto-closed due to credit exhaustion
+		// Settlement already happened, so we just return success
+		settledAmount = math.ZeroInt() // Already settled during auto-close
+		closedBy = "credit_exhaustion"
+		duration = 0
+	} else {
+		// 5. Calculate duration for event
+		duration = blockTime.Sub(lease.LastSettledAt)
 
-	if err := ms.k.SetLease(ctx, lease); err != nil {
-		return nil, err
-	}
-
-	// 7. Decrement active lease count in credit account
-	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
-	if err == nil && creditAccount.ActiveLeaseCount > 0 {
-		creditAccount.ActiveLeaseCount--
-		if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
+		// 6. Settle accrued charges
+		settledAmount, err = ms.settleLease(ctx, &lease, blockTime)
+		if err != nil {
 			return nil, err
+		}
+
+		// 7. Update lease state to inactive
+		lease.State = types.LEASE_STATE_INACTIVE
+		lease.ClosedAt = &blockTime
+
+		if err := ms.k.SetLease(ctx, lease); err != nil {
+			return nil, err
+		}
+
+		// Decrement active lease count in credit account
+		creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
+		if err == nil && creditAccount.ActiveLeaseCount > 0 {
+			creditAccount.ActiveLeaseCount--
+			if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -406,6 +429,9 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	if err != nil {
 		return nil, err
 	}
+
+	// Get active lease count for event (may have been decremented above or by auto-close)
+	creditAccount, _ := ms.k.GetCreditAccount(ctx, lease.Tenant)
 
 	// 8. Emit detailed event
 	sdkCtx.EventManager().EmitEvent(
@@ -435,8 +461,8 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// 1. Verify lease exists (with auto-close check for lazy evaluation)
-	lease, err := ms.k.GetLeaseWithAutoClose(ctx, msg.LeaseId)
+	// 1. Get lease (without auto-close - we'll handle it explicitly)
+	lease, err := ms.k.GetLease(ctx, msg.LeaseId)
 	if err != nil {
 		return nil, err
 	}
@@ -455,7 +481,36 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 		)
 	}
 
-	// 3. Calculate accrued amount since last settlement
+	// 3. For active leases, check if we need to auto-close due to exhausted credit
+	if lease.State == types.LEASE_STATE_ACTIVE {
+		closed, err := ms.k.CheckAndCloseExhaustedLease(ctx, &lease)
+		if err != nil {
+			return nil, err
+		}
+		if closed {
+			// Auto-close already performed settlement and transferred funds
+			// Get params to return proper denom in response
+			params, err := ms.k.GetParams(ctx)
+			if err != nil {
+				return nil, err
+			}
+			// Emit withdrawal event with zero amount (settlement was done during auto-close)
+			sdkCtx.EventManager().EmitEvent(
+				sdk.NewEvent(
+					types.EventTypeProviderWithdraw,
+					sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(msg.LeaseId, 10)),
+					sdk.NewAttribute(sdk.AttributeKeyAmount, "0"),
+					sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(lease.ProviderId, 10)),
+					sdk.NewAttribute("auto_closed", "true"),
+				),
+			)
+			return &types.MsgWithdrawResponse{
+				Amount: sdk.NewCoin(params.Denom, math.ZeroInt()),
+			}, nil
+		}
+	}
+
+	// 4. Calculate accrued amount since last settlement
 	var duration time.Duration
 	if lease.State == types.LEASE_STATE_ACTIVE {
 		duration = blockTime.Sub(lease.LastSettledAt)
@@ -486,7 +541,7 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 		return nil, types.ErrNoWithdrawableAmount
 	}
 
-	// 4. Transfer accrued amount from credit account to provider payout address
+	// 5. Transfer accrued amount from credit account to provider payout address
 	params, err := ms.k.GetParams(ctx)
 	if err != nil {
 		return nil, err

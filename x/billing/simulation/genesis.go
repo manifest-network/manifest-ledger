@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"math/rand"
 
-	"cosmossdk.io/math"
-
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
@@ -38,19 +36,19 @@ func randomParams(r *rand.Rand) types.Params {
 	// genesis funds accounts with the bond denom via the bank module's RandomGenesisBalances.
 	denom := sdk.DefaultBondDenom
 
-	// Random min credit balance between 1_000_000 and 10_000_000 (1-10 tokens)
-	minCreditBalance := math.NewInt(int64(r.Intn(9_000_000) + 1_000_000))
-
 	// Random max leases per tenant between 10 and 200
 	maxLeasesPerTenant := uint64(r.Intn(190) + 10) //nolint:gosec
 
 	// Random max items per lease: 5-50
 	maxItemsPerLease := uint64(r.Intn(45) + 5) //nolint:gosec
 
+	// Random min lease duration: 1-24 hours (in seconds)
+	minLeaseDuration := uint64((r.Intn(23) + 1) * 3600) //nolint:gosec
+
 	// Empty allowed list for simulation (only authority can create leases for tenants)
 	allowedList := []string{}
 
-	return types.NewParams(denom, minCreditBalance, maxLeasesPerTenant, allowedList, maxItemsPerLease)
+	return types.NewParams(denom, maxLeasesPerTenant, allowedList, maxItemsPerLease, minLeaseDuration)
 }
 
 // GetGenesisStateFromAppState returns the billing module GenesisState from app state.

@@ -3,16 +3,11 @@ package types
 import (
 	"fmt"
 
-	"cosmossdk.io/math"
-
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 // DefaultDenom is the default billing denomination.
 const DefaultDenom = "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr"
-
-// DefaultMinCreditBalance is the default minimum credit balance (5 PWR = 5000000 upwr).
-var DefaultMinCreditBalance = math.NewInt(5_000_000)
 
 // DefaultMaxLeasesPerTenant is the default maximum number of leases per tenant.
 const DefaultMaxLeasesPerTenant = uint64(100)
@@ -21,25 +16,29 @@ const DefaultMaxLeasesPerTenant = uint64(100)
 // Set to 20 to balance flexibility with gas consumption.
 const DefaultMaxItemsPerLease = uint64(20)
 
+// DefaultMinLeaseDuration is the default minimum lease duration in seconds.
+// Set to 3600 (1 hour) - tenants must have enough credit to cover at least 1 hour of lease charges.
+const DefaultMinLeaseDuration = uint64(3600)
+
 // DefaultParams returns the default billing module parameters.
 func DefaultParams() Params {
 	return Params{
 		Denom:              DefaultDenom,
-		MinCreditBalance:   DefaultMinCreditBalance,
 		MaxLeasesPerTenant: DefaultMaxLeasesPerTenant,
 		AllowedList:        []string{},
 		MaxItemsPerLease:   DefaultMaxItemsPerLease,
+		MinLeaseDuration:   DefaultMinLeaseDuration,
 	}
 }
 
 // NewParams creates a new Params instance.
-func NewParams(denom string, minCreditBalance math.Int, maxLeasesPerTenant uint64, allowedList []string, maxItemsPerLease uint64) Params {
+func NewParams(denom string, maxLeasesPerTenant uint64, allowedList []string, maxItemsPerLease uint64, minLeaseDuration uint64) Params {
 	return Params{
 		Denom:              denom,
-		MinCreditBalance:   minCreditBalance,
 		MaxLeasesPerTenant: maxLeasesPerTenant,
 		AllowedList:        allowedList,
 		MaxItemsPerLease:   maxItemsPerLease,
+		MinLeaseDuration:   minLeaseDuration,
 	}
 }
 
@@ -49,16 +48,16 @@ func (p *Params) Validate() error {
 		return ErrInvalidParams.Wrap("denom cannot be empty")
 	}
 
-	if p.MinCreditBalance.IsNil() || p.MinCreditBalance.IsNegative() {
-		return ErrInvalidParams.Wrap("min_credit_balance cannot be nil or negative")
-	}
-
 	if p.MaxLeasesPerTenant == 0 {
 		return ErrInvalidParams.Wrap("max_leases_per_tenant must be greater than zero")
 	}
 
 	if p.MaxItemsPerLease == 0 {
 		return ErrInvalidParams.Wrap("max_items_per_lease must be greater than zero")
+	}
+
+	if p.MinLeaseDuration == 0 {
+		return ErrInvalidParams.Wrap("min_lease_duration must be greater than zero")
 	}
 
 	// Validate allowed list addresses

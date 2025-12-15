@@ -21,7 +21,7 @@
 // ## Query Tests
 //
 // testBillingQueryParams:
-//   - Verifies default params are returned (denom, min_credit_balance, max_leases_per_tenant, max_items_per_lease)
+//   - Verifies default params are returned (denom, max_leases_per_tenant, max_items_per_lease, min_lease_duration)
 //
 // ## Credit Account Tests
 //
@@ -37,7 +37,8 @@
 // testLeaseCreate:
 //   - Success: tenant creates lease with single SKU
 //   - Success: tenant creates lease with multiple SKUs
-//   - Fail: create lease without sufficient credit
+//   - Fail: create lease without credit account
+//   - Fail: create lease with insufficient credit
 //   - Fail: create lease with inactive SKU
 //   - Fail: create lease with non-existent SKU
 //   - Fail: create lease exceeding max_leases_per_tenant
@@ -311,7 +312,8 @@ func setupBillingTestInfrastructure(t *testing.T, ctx context.Context, chain *co
 
 	// Update billing params to use test PWR denom
 	t.Run("update_billing_params", func(t *testing.T) {
-		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom, sdkmath.NewInt(5_000_000), 100, 20, nil)
+		// minLeaseDuration = 3600 seconds (1 hour)
+		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom, 100, 20, 3600, nil)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -335,10 +337,10 @@ func setupBillingTestInfrastructure(t *testing.T, ctx context.Context, chain *co
 	})
 
 	// Create SKU with per-hour pricing (Unit = 1)
-	// Price: 3600000 umfx per hour = 3600000/3600 = 1000 per second
+	// Price: 3600000 upwr per hour = 3600000/3600 = 1000 per second
 	// This ensures meaningful accrual even with short test durations
 	t.Run("create_sku_per_hour", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, testProviderID, "Compute Small", 1, "3600000umfx", "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, testProviderID, "Compute Small", 1, fmt.Sprintf("3600000%s", testPWRDenom), "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -351,10 +353,10 @@ func setupBillingTestInfrastructure(t *testing.T, ctx context.Context, chain *co
 	})
 
 	// Create SKU with per-day pricing (Unit = 2)
-	// Price: 86400000 umfx per day = 86400000/86400 = 1000 per second
+	// Price: 86400000 upwr per day = 86400000/86400 = 1000 per second
 	// This ensures meaningful accrual even with short test durations
 	t.Run("create_sku_per_day", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, testProviderID, "Storage Large", 2, "86400000umfx", "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, testProviderID, "Storage Large", 2, fmt.Sprintf("86400000%s", testPWRDenom), "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -374,11 +376,11 @@ func testBillingQueryParams(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	require.NotEmpty(t, res.Params.Denom, "denom should be set")
-	require.NotEmpty(t, res.Params.MinCreditBalance, "min_credit_balance should be set")
 	require.NotEmpty(t, res.Params.MaxLeasesPerTenant, "max_leases_per_tenant should be set")
 	require.NotEmpty(t, res.Params.MaxItemsPerLease, "max_items_per_lease should be set")
-	t.Logf("Billing params: denom=%s, min_credit_balance=%s, max_leases_per_tenant=%s, max_items_per_lease=%s",
-		res.Params.Denom, res.Params.MinCreditBalance, res.Params.MaxLeasesPerTenant, res.Params.MaxItemsPerLease)
+	require.NotEmpty(t, res.Params.MinLeaseDuration, "min_lease_duration should be set")
+	t.Logf("Billing params: denom=%s, max_leases_per_tenant=%s, max_items_per_lease=%s, min_lease_duration=%s",
+		res.Params.Denom, res.Params.MaxLeasesPerTenant, res.Params.MaxItemsPerLease, res.Params.MinLeaseDuration)
 }
 
 func testCreditAccountOperations(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, tenant1, tenant2 ibc.Wallet) {
@@ -496,19 +498,45 @@ func testLeaseCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 		require.Contains(t, txRes.RawLog, "not found")
 	})
 
-	t.Run("fail: create lease without sufficient credit", func(t *testing.T) {
-		// Create a user without any credit
-		users := interchaintest.GetAndFundTestUsers(t, ctx, "no-credit", DefaultGenesisAmt, chain)
-		noCredit := users[0]
+	t.Run("fail: create lease without credit account", func(t *testing.T) {
+		// Create a user without any credit account (never funded)
+		users := interchaintest.GetAndFundTestUsers(t, ctx, "no-credit-account", DefaultGenesisAmt, chain)
+		noCreditAccount := users[0]
 
 		items := []string{fmt.Sprintf("%d:1", testSKUID)}
-		res, err := helpers.BillingCreateLease(ctx, chain, noCredit, items)
+		res, err := helpers.BillingCreateLease(ctx, chain, noCreditAccount, items)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.NotEqual(t, uint32(0), txRes.Code, "lease creation should fail")
-		require.Contains(t, txRes.RawLog, "insufficient credit")
+		require.Contains(t, txRes.RawLog, "credit account not found",
+			"should fail with credit account not found error")
+	})
+
+	t.Run("fail: create lease with insufficient credit", func(t *testing.T) {
+		// Create a user with minimal credit (1 upwr) - not enough for min_lease_duration
+		users := interchaintest.GetAndFundTestUsers(t, ctx, "low-credit", DefaultGenesisAmt, chain)
+		lowCredit := users[0]
+
+		// Fund with only 1 upwr - way below the required amount for min_lease_duration
+		fundAmount := fmt.Sprintf("1%s", testPWRDenom)
+		res, err := helpers.BillingFundCredit(ctx, chain, authority, lowCredit.FormattedAddress(), fundAmount)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "funding should succeed")
+
+		// Now try to create a lease - should fail due to insufficient credit
+		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		res, err = helpers.BillingCreateLease(ctx, chain, lowCredit, items)
+		require.NoError(t, err)
+
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "lease creation should fail")
+		require.Contains(t, txRes.RawLog, "insufficient credit",
+			"should fail with insufficient credit error")
 	})
 
 	t.Run("fail: create lease exceeding max_items_per_lease hard limit", func(t *testing.T) {
@@ -1046,8 +1074,8 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 		require.Contains(t, txRes.RawLog, "unauthorized")
 	})
 
-	t.Run("fail: create lease for tenant without funded credit", func(t *testing.T) {
-		// Create a new tenant without funding their credit
+	t.Run("fail: create lease for tenant without credit account", func(t *testing.T) {
+		// Create a new tenant without funding their credit (no credit account)
 		unfundedUsers := interchaintest.GetAndFundTestUsers(t, ctx, "unfunded-tenant", DefaultGenesisAmt, chain)
 		unfundedTenant := unfundedUsers[0]
 
@@ -1057,8 +1085,34 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		require.NotEqual(t, uint32(0), txRes.Code, "should fail without sufficient credit")
-		require.Contains(t, txRes.RawLog, "insufficient credit")
+		require.NotEqual(t, uint32(0), txRes.Code, "should fail without credit account")
+		require.Contains(t, txRes.RawLog, "credit account not found",
+			"should fail with credit account not found error")
+	})
+
+	t.Run("fail: create lease for tenant with insufficient credit", func(t *testing.T) {
+		// Create a new tenant with minimal credit (1 upwr) - not enough for min_lease_duration
+		lowCreditUsers := interchaintest.GetAndFundTestUsers(t, ctx, "low-credit-tenant", DefaultGenesisAmt, chain)
+		lowCreditTenant := lowCreditUsers[0]
+
+		// Fund with only 1 upwr - way below the required amount for min_lease_duration
+		fundAmount := fmt.Sprintf("1%s", testPWRDenom)
+		res, err := helpers.BillingFundCredit(ctx, chain, authority, lowCreditTenant.FormattedAddress(), fundAmount)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "funding should succeed")
+
+		// Now try to create a lease for this tenant - should fail due to insufficient credit
+		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		res, err = helpers.BillingCreateLeaseForTenant(ctx, chain, authority, lowCreditTenant.FormattedAddress(), items)
+		require.NoError(t, err)
+
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "should fail with insufficient credit")
+		require.Contains(t, txRes.RawLog, "insufficient credit",
+			"should fail with insufficient credit error")
 	})
 
 	t.Run("fail: create lease for tenant with invalid address", func(t *testing.T) {
@@ -1112,18 +1166,38 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, providerWallet ibc.Wallet) {
 	t.Log("=== Testing Auto-Close Mechanism ===")
 
+	// For auto-close tests, we temporarily set a very low minLeaseDuration (10 seconds)
+	// so we can test credit exhaustion quickly.
+	// testSKUID has rate of 1000/second per unit.
+	// With minLeaseDuration=10 and quantity=1: need 10,000 credit minimum
+	// Fund with 15,000 credit: exhaustion takes 15 seconds
+
+	// Save original params and set low minLeaseDuration for this test
+	t.Run("setup: set low min_lease_duration for auto-close tests", func(t *testing.T) {
+		params, err := helpers.BillingQueryParams(ctx, chain)
+		require.NoError(t, err)
+
+		// Set minLeaseDuration to 10 seconds for quick exhaustion tests
+		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom,
+			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
+			10, nil) // 10 seconds min lease duration
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "params update should succeed: %s", txRes.RawLog)
+		t.Log("Set min_lease_duration to 10 seconds for auto-close tests")
+	})
+
 	// Create a dedicated tenant for auto-close tests with minimal credit
 	// to force exhaustion quickly
 	users := interchaintest.GetAndFundTestUsers(t, ctx, "auto-close-tenant", DefaultGenesisAmt, chain)
 	autoCloseTenant := users[0]
 
-	// For auto-close tests, we need credit to exhaust quickly.
-	// testSKUID has rate of 1000/second per unit.
-	// We'll use quantity=500 to get 500,000/second rate.
-	// Fund with 5,020,000 (just above 5M minimum).
-	// Time to exhaust: 5,020,000 / 500,000 = ~10 seconds
+	// Fund tenant with just enough credit to create a lease but exhaust quickly
+	// testSKUID has rate of 1000/second per unit
+	// With quantity=1 and 15,000 credit, exhaustion takes ~15 seconds
 	t.Run("setup: fund tenant with minimal credit", func(t *testing.T) {
-		fundAmount := fmt.Sprintf("5020000%s", testPWRDenom) // Just above minimum
+		fundAmount := fmt.Sprintf("15000%s", testPWRDenom) // Just above 10,000 minimum (10 * 1000)
 		res, err := helpers.BillingFundCredit(ctx, chain, authority, autoCloseTenant.FormattedAddress(), fundAmount)
 		require.NoError(t, err)
 
@@ -1138,10 +1212,9 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 
 	var autoCloseLeaseID uint64
 	t.Run("setup: create lease that will exhaust credit", func(t *testing.T) {
-		// Create a lease with high quantity to exhaust credit quickly
-		// testSKUID has 1000/second rate, so quantity=500 gives 500,000/second
-		// With 5,020,000 credit, this will exhaust in ~10 seconds
-		items := []string{fmt.Sprintf("%d:500", testSKUID)}
+		// Create a lease with testSKUID (1000/second rate with quantity=1)
+		// With 15,000 credit, this will exhaust in ~15 seconds
+		items := []string{fmt.Sprintf("%d:1", testSKUID)}
 		res, err := helpers.BillingCreateLease(ctx, chain, autoCloseTenant, items)
 		require.NoError(t, err)
 
@@ -1153,16 +1226,22 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.NoError(t, err)
 		t.Logf("Created lease ID: %d", autoCloseLeaseID)
 
-		// Verify lease is active
+		// Verify lease is active and check locked price
 		lease, err := helpers.BillingQueryLease(ctx, chain, autoCloseLeaseID)
 		require.NoError(t, err)
 		require.Equal(t, "LEASE_STATE_ACTIVE", lease.Lease.State, "lease should be active")
+		t.Logf("Lease items: %+v", lease.Lease.Items)
 	})
 
 	t.Run("success: lease auto-closes when credit exhausted during withdrawal", func(t *testing.T) {
+		// Check provider balance before auto-close
+		providerBalance, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), testPWRDenom)
+		require.NoError(t, err)
+		t.Logf("Provider balance BEFORE auto-close: %s", providerBalance.String())
+
 		// Wait for enough blocks to exhaust credit
-		// With 500,000/second rate and ~5M credit, we need ~10 seconds
-		// Block time is ~1 second, so wait for ~15 blocks to be safe
+		// With 1000/second rate and 15,000 credit, we need ~15 seconds
+		// Block time is ~1 second, so wait for ~20 blocks to be safe
 		t.Log("Waiting for credit to accrue/exhaust...")
 		require.NoError(t, testutil.WaitForBlocks(ctx, 15, chain))
 
@@ -1179,6 +1258,27 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		t.Logf("Withdrawal tx result: code=%d, log=%s", txRes.Code, txRes.RawLog)
+
+		// The withdrawal TX should succeed (settlement happens during auto-close)
+		require.Equal(t, uint32(0), txRes.Code, "withdrawal should succeed, auto-close settles the funds")
+
+		// Check provider balance AFTER auto-close - should have received 15000
+		providerBalanceAfter, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), testPWRDenom)
+		require.NoError(t, err)
+		t.Logf("Provider balance AFTER auto-close: %s", providerBalanceAfter.String())
+
+		// Provider should have received the tenant's credit (15000)
+		require.True(t, providerBalanceAfter.GT(sdkmath.NewInt(0)),
+			"provider should have received funds from auto-close settlement")
+
+		// Check credit balance AFTER auto-close - should be 0 or near 0
+		creditResAfter, err := helpers.BillingQueryCreditAccount(ctx, chain, autoCloseTenant.FormattedAddress())
+		require.NoError(t, err)
+		t.Logf("Credit balance AFTER auto-close: %s", creditResAfter.Balance)
+
+		// Credit should be depleted
+		require.True(t, creditResAfter.Balance.Amount.LTE(sdkmath.NewInt(0)),
+			"credit balance should be depleted after auto-close")
 
 		// Query lease - should now be inactive due to auto-close
 		lease, err := helpers.BillingQueryLease(ctx, chain, autoCloseLeaseID)
@@ -1203,19 +1303,30 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	t.Run("success: provider already withdrew during auto-close", func(t *testing.T) {
 		// After auto-close, the provider should have already received their tokens
 		// during the settlement that triggered the close
-		// Attempting another withdrawal should fail (nothing left)
+		// Attempting another withdrawal should return 0 (nothing left to withdraw)
 		res, err := helpers.BillingWithdraw(ctx, chain, providerWallet, autoCloseLeaseID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
+		// Should fail since lease is inactive and no accrual since last settlement
 		require.NotEqual(t, uint32(0), txRes.Code, "second withdrawal should fail")
 		require.Contains(t, txRes.RawLog, "no withdrawable amount",
 			"should indicate no withdrawable amount")
 	})
 
 	t.Run("success: tenant cannot create new lease with exhausted credit", func(t *testing.T) {
-		// Credit should be zero now, so creating a new lease should fail
+		// Verify credit balance is depleted (should be 0 after auto-close settlement)
+		creditRes, err := helpers.BillingQueryCreditAccount(ctx, chain, autoCloseTenant.FormattedAddress())
+		require.NoError(t, err)
+		t.Logf("Credit balance after exhaustion: %s", creditRes.Balance)
+
+		// After auto-close, credit should be 0 or very low
+		require.True(t, creditRes.Balance.Amount.LTE(sdkmath.NewInt(0)),
+			"credit balance (%s) should be depleted after auto-close",
+			creditRes.Balance.Amount)
+
+		// Credit is insufficient to cover minLeaseDuration, so creating a new lease should fail
 		items := []string{fmt.Sprintf("%d:1", testSKUID)}
 		res, err := helpers.BillingCreateLease(ctx, chain, autoCloseTenant, items)
 		require.NoError(t, err)
@@ -1233,16 +1344,17 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		users2 := interchaintest.GetAndFundTestUsers(t, ctx, "auto-close-tenant2", DefaultGenesisAmt, chain)
 		tenant2 := users2[0]
 
-		// Fund minimally - same approach: 5,020,000 with quantity=500
-		fundAmount := fmt.Sprintf("5020000%s", testPWRDenom)
+		// Fund minimally - same approach as main auto-close test
+		// testSKUID has rate of 1000/second, with minLeaseDuration=10, need 10,000 minimum
+		fundAmount := fmt.Sprintf("15000%s", testPWRDenom)
 		res, err := helpers.BillingFundCredit(ctx, chain, authority, tenant2.FormattedAddress(), fundAmount)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
 
-		// Create lease with high quantity
-		items := []string{fmt.Sprintf("%d:500", testSKUID)}
+		// Create lease with testSKUID (1000/second rate with quantity=1)
+		items := []string{fmt.Sprintf("%d:1", testSKUID)}
 		res, err = helpers.BillingCreateLease(ctx, chain, tenant2, items)
 		require.NoError(t, err)
 		txRes, err = chain.GetTransaction(res.TxHash)
@@ -1252,22 +1364,19 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		leaseID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 
-		// Wait for credit exhaustion
-		require.NoError(t, testutil.WaitForBlocks(ctx, 15, chain))
+		// Wait for credit exhaustion (~15 seconds)
+		require.NoError(t, testutil.WaitForBlocks(ctx, 20, chain))
 
-		// Explicitly close the lease (tenant closes their own)
 		res, err = helpers.BillingCloseLease(ctx, chain, tenant2, leaseID)
 		require.NoError(t, err)
-
 		txRes, err = chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		// Should succeed - close settles and handles exhausted credit gracefully
-		require.Equal(t, uint32(0), txRes.Code, "explicit close should succeed: %s", txRes.RawLog)
+		require.Equal(t, uint32(0), txRes.Code, "explicit close should succeed even with exhausted credit")
 
-		// Verify lease is closed
+		// Verify final state is inactive (explicit close)
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State)
+		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State, "lease should be inactive after exhaustion")
 	})
 
 	// Test that closing a lease triggers settlement and transfers accrued amount
@@ -1323,6 +1432,21 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
 		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State, "lease should be inactive")
+	})
+
+	// Restore original minLeaseDuration (1 hour) after auto-close tests
+	t.Run("cleanup: restore min_lease_duration to 1 hour", func(t *testing.T) {
+		params, err := helpers.BillingQueryParams(ctx, chain)
+		require.NoError(t, err)
+
+		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom,
+			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
+			3600, nil) // Restore to 1 hour
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "params restore should succeed")
+		t.Log("Restored min_lease_duration to 3600 seconds (1 hour)")
 	})
 }
 
@@ -1671,8 +1795,8 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 
 		// Update with allowed_list
 		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom,
-			params.Params.MinCreditBalance, params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
-			[]string{allowedUser.FormattedAddress()})
+			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
+			params.Params.MinLeaseDuration, []string{allowedUser.FormattedAddress()})
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -1754,8 +1878,8 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 
 		// Update with empty allowed_list
 		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom,
-			params.Params.MinCreditBalance, params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
-			[]string{})
+			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
+			params.Params.MinLeaseDuration, []string{})
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)

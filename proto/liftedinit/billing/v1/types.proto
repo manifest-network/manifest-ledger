@@ -17,14 +17,6 @@ message Params {
   // denom is the denomination of the token used for billing.
   string denom = 1 [(gogoproto.jsontag) = "denom,omitempty"];
 
-  // min_credit_balance is the minimum credit balance required to create a lease.
-  string min_credit_balance = 2 [
-    (cosmos_proto.scalar) = "cosmos.Int",
-    (gogoproto.customtype) = "cosmossdk.io/math.Int",
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "min_credit_balance"
-  ];
-
   // max_leases_per_tenant is the maximum number of active leases a tenant can have.
   // Must be greater than zero.
   uint64 max_leases_per_tenant = 3
@@ -41,6 +33,12 @@ message Params {
   // Must be greater than zero. Prevents excessive gas consumption from large leases.
   uint64 max_items_per_lease = 5
       [(gogoproto.jsontag) = "max_items_per_lease,omitempty,string"];
+
+  // min_lease_duration is the minimum duration (in seconds) that a tenant's credit balance
+  // must be able to cover when creating a lease. This prevents tenants from creating leases
+  // that would immediately exhaust their credit. Default is 3600 (1 hour).
+  uint64 min_lease_duration = 6
+      [(gogoproto.jsontag) = "min_lease_duration,omitempty,string"];
 }
 
 // LeaseState defines the state of a lease.

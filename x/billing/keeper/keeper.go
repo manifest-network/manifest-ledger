@@ -276,41 +276,12 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 
 // Lease operations
 
-// GetLease returns a Lease by its ID without auto-close check.
-// Use GetLeaseWithAutoClose for operations that should trigger lazy evaluation.
+// GetLease returns a Lease by its ID.
 func (k *Keeper) GetLease(ctx context.Context, id uint64) (types.Lease, error) {
 	lease, err := k.Leases.Get(ctx, id)
 	if err != nil {
 		return types.Lease{}, types.ErrLeaseNotFound
 	}
-	return lease, nil
-}
-
-// GetLeaseWithAutoClose returns a Lease by its ID and performs lazy evaluation
-// to auto-close the lease if credit is exhausted. This should be used for
-// user-facing operations like queries and withdrawals.
-func (k *Keeper) GetLeaseWithAutoClose(ctx context.Context, id uint64) (types.Lease, error) {
-	lease, err := k.Leases.Get(ctx, id)
-	if err != nil {
-		return types.Lease{}, types.ErrLeaseNotFound
-	}
-
-	// Perform lazy evaluation - check if lease should be auto-closed
-	closed, err := k.CheckAndCloseExhaustedLease(ctx, &lease)
-	if err != nil {
-		// Log error but return the lease anyway
-		k.logger.Error("failed to check exhausted lease",
-			"lease_id", id,
-			"error", err,
-		)
-		return lease, nil
-	}
-
-	if closed {
-		// Return the updated lease state
-		return lease, nil
-	}
-
 	return lease, nil
 }
 

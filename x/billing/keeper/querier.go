@@ -47,7 +47,8 @@ func (q Querier) Lease(ctx context.Context, req *types.QueryLeaseRequest) (*type
 		return nil, status.Error(codes.InvalidArgument, "lease_id cannot be zero")
 	}
 
-	lease, err := q.k.GetLeaseWithAutoClose(ctx, req.LeaseId)
+	// Use simple GetLease for queries - auto-close only happens during transactions
+	lease, err := q.k.GetLease(ctx, req.LeaseId)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
@@ -254,7 +255,8 @@ func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdra
 		return nil, status.Error(codes.InvalidArgument, "lease_id cannot be zero")
 	}
 
-	lease, err := q.k.GetLeaseWithAutoClose(ctx, req.LeaseId)
+	// Use simple GetLease for queries - auto-close only happens during transactions
+	lease, err := q.k.GetLease(ctx, req.LeaseId)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}

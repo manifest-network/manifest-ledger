@@ -48,25 +48,25 @@ func TestParams_DefaultParams(t *testing.T) {
 	params := types.DefaultParams()
 
 	require.Equal(t, types.DefaultDenom, params.Denom)
-	require.Equal(t, types.DefaultMinCreditBalance, params.MinCreditBalance)
 	require.Equal(t, types.DefaultMaxLeasesPerTenant, params.MaxLeasesPerTenant)
 	require.Equal(t, types.DefaultMaxItemsPerLease, params.MaxItemsPerLease)
+	require.Equal(t, types.DefaultMinLeaseDuration, params.MinLeaseDuration)
 }
 
 func TestParams_NewParams(t *testing.T) {
 	denom := "utest"
-	minBalance := math.NewInt(1000)
 	maxLeases := uint64(50)
 	allowedList := []string{}
 	maxItems := uint64(10)
+	minLeaseDuration := uint64(3600)
 
-	params := types.NewParams(denom, minBalance, maxLeases, allowedList, maxItems)
+	params := types.NewParams(denom, maxLeases, allowedList, maxItems, minLeaseDuration)
 
 	require.Equal(t, denom, params.Denom)
-	require.Equal(t, minBalance, params.MinCreditBalance)
 	require.Equal(t, maxLeases, params.MaxLeasesPerTenant)
 	require.Equal(t, allowedList, params.AllowedList)
 	require.Equal(t, maxItems, params.MaxItemsPerLease)
+	require.Equal(t, minLeaseDuration, params.MinLeaseDuration)
 }
 
 func TestParams_Validate(t *testing.T) {
@@ -83,47 +83,36 @@ func TestParams_Validate(t *testing.T) {
 		},
 		{
 			name:      "valid custom params",
-			params:    types.NewParams("utest", math.NewInt(100), 10, []string{}, 20),
-			expectErr: false,
-		},
-		{
-			name:      "valid zero min credit balance",
-			params:    types.NewParams(testDenom, math.ZeroInt(), 10, []string{}, 20),
+			params:    types.NewParams("utest", 10, []string{}, 20, 3600),
 			expectErr: false,
 		},
 		{
 			name:      "empty denom",
-			params:    types.NewParams("", math.NewInt(100), 10, []string{}, 20),
+			params:    types.NewParams("", 10, []string{}, 20, 3600),
 			expectErr: true,
 			errMsg:    "denom cannot be empty",
 		},
 		{
-			name:      "nil min credit balance",
-			params:    types.Params{Denom: testDenom, MaxLeasesPerTenant: 10, MaxItemsPerLease: 20},
-			expectErr: true,
-			errMsg:    "min_credit_balance cannot be nil or negative",
-		},
-		{
-			name:      "negative min credit balance",
-			params:    types.NewParams(testDenom, math.NewInt(-1), 10, []string{}, 20),
-			expectErr: true,
-			errMsg:    "min_credit_balance cannot be nil or negative",
-		},
-		{
 			name:      "zero max leases per tenant",
-			params:    types.NewParams(testDenom, math.NewInt(100), 0, []string{}, 20),
+			params:    types.NewParams(testDenom, 0, []string{}, 20, 3600),
 			expectErr: true,
 			errMsg:    "max_leases_per_tenant must be greater than zero",
 		},
 		{
 			name:      "zero max items per lease",
-			params:    types.NewParams(testDenom, math.NewInt(100), 10, []string{}, 0),
+			params:    types.NewParams(testDenom, 10, []string{}, 0, 3600),
 			expectErr: true,
 			errMsg:    "max_items_per_lease must be greater than zero",
 		},
 		{
+			name:      "zero min lease duration",
+			params:    types.NewParams(testDenom, 10, []string{}, 20, 0),
+			expectErr: true,
+			errMsg:    "min_lease_duration must be greater than zero",
+		},
+		{
 			name:      "valid params with allowed list",
-			params:    types.NewParams(testDenom, math.NewInt(100), 10, []string{"manifest1xyz"}, 20),
+			params:    types.NewParams(testDenom, 10, []string{"manifest1xyz"}, 20, 3600),
 			expectErr: true, // Invalid address
 			errMsg:    "invalid address in allowed list",
 		},
@@ -147,7 +136,7 @@ func TestParams_Validate_DuplicateAllowedList(t *testing.T) {
 	_, _, addr := testdata.KeyTestPubAddr()
 	validAddr := addr.String()
 
-	params := types.NewParams(testDenom, math.NewInt(100), 10, []string{validAddr, validAddr}, 20)
+	params := types.NewParams(testDenom, 10, []string{validAddr, validAddr}, 20, 3600)
 	err := params.Validate()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "duplicate address in allowed list")
@@ -158,7 +147,7 @@ func TestParams_Validate_ValidAllowedList(t *testing.T) {
 	_, _, addr1 := testdata.KeyTestPubAddr()
 	_, _, addr2 := testdata.KeyTestPubAddr()
 
-	params := types.NewParams(testDenom, math.NewInt(100), 10, []string{addr1.String(), addr2.String()}, 20)
+	params := types.NewParams(testDenom, 10, []string{addr1.String(), addr2.String()}, 20, 3600)
 	err := params.Validate()
 	require.NoError(t, err)
 }
@@ -168,7 +157,7 @@ func TestParams_IsAllowed(t *testing.T) {
 	_, _, addr2 := testdata.KeyTestPubAddr()
 	_, _, notAllowed := testdata.KeyTestPubAddr()
 
-	params := types.NewParams(testDenom, math.NewInt(100), 10, []string{addr1.String(), addr2.String()}, 20)
+	params := types.NewParams(testDenom, 10, []string{addr1.String(), addr2.String()}, 20, 3600)
 
 	require.True(t, params.IsAllowed(addr1.String()))
 	require.True(t, params.IsAllowed(addr2.String()))
@@ -823,7 +812,7 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			name: "invalid params - empty denom",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams("", math.NewInt(100), 10, []string{}, 20),
+				Params:    types.NewParams("", 10, []string{}, 20, 3600),
 			},
 			expectErr: true,
 			errMsg:    "denom cannot be empty",
@@ -832,7 +821,7 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			name: "invalid params - zero max leases",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams(testDenom, math.NewInt(100), 0, []string{}, 20),
+				Params:    types.NewParams(testDenom, 0, []string{}, 20, 3600),
 			},
 			expectErr: true,
 			errMsg:    "max_leases_per_tenant must be greater than zero",
@@ -841,10 +830,19 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			name: "invalid params - zero max items per lease",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams(testDenom, math.NewInt(100), 10, []string{}, 0),
+				Params:    types.NewParams(testDenom, 10, []string{}, 0, 3600),
 			},
 			expectErr: true,
 			errMsg:    "max_items_per_lease must be greater than zero",
+		},
+		{
+			name: "invalid params - zero min lease duration",
+			msg: types.MsgUpdateParams{
+				Authority: authority,
+				Params:    types.NewParams(testDenom, 10, []string{}, 20, 0),
+			},
+			expectErr: true,
+			errMsg:    "min_lease_duration must be greater than zero",
 		},
 	}
 
@@ -957,7 +955,7 @@ func TestGenesisState_NewGenesisState(t *testing.T) {
 	_, _, tenantAddr := testdata.KeyTestPubAddr()
 	tenant := tenantAddr.String()
 
-	params := types.NewParams("utest", math.NewInt(100), 50, []string{}, 20)
+	params := types.NewParams("utest", 50, []string{}, 20, 3600)
 	now := time.Now().UTC()
 
 	creditAddr := types.DeriveCreditAddress(tenantAddr)
@@ -1044,7 +1042,7 @@ func TestGenesisState_Validate(t *testing.T) {
 		{
 			name: "invalid params",
 			genesis: &types.GenesisState{
-				Params:      types.NewParams("", math.NewInt(100), 10, []string{}, 20),
+				Params:      types.NewParams("", 10, []string{}, 20, 3600),
 				NextLeaseId: 1,
 			},
 			expectErr: true,

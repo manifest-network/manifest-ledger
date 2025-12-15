@@ -229,15 +229,15 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 		// Select random tenant
 		tenant, _ := simtypes.RandomAcc(r, accs)
 
-		// Check if tenant has enough credit
+		// Check if tenant has credit
 		params, err := k.GetParams(ctx)
 		if err != nil {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
 		}
 
 		creditBalance, err := k.GetCreditBalance(ctx, tenant.Address.String(), params.Denom)
-		if err != nil || creditBalance.Amount.LT(params.MinCreditBalance) {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant has insufficient credit"), nil, nil
+		if err != nil || creditBalance.Amount.IsZero() {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant has no credit"), nil, nil
 		}
 
 		// Check tenant hasn't exceeded max leases
@@ -320,15 +320,15 @@ func SimulateMsgCreateLeaseForTenant(txGen client.TxConfig, k keeper.Keeper, sk 
 		// Select random tenant
 		tenant, _ := simtypes.RandomAcc(r, accs)
 
-		// Check if tenant has enough credit
+		// Check if tenant has credit
 		params, err := k.GetParams(ctx)
 		if err != nil {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
 		}
 
 		creditBalance, err := k.GetCreditBalance(ctx, tenant.Address.String(), params.Denom)
-		if err != nil || creditBalance.Amount.LT(params.MinCreditBalance) {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant has insufficient credit"), nil, nil
+		if err != nil || creditBalance.Amount.IsZero() {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant has no credit"), nil, nil
 		}
 
 		// Check tenant hasn't exceeded max leases

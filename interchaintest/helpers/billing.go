@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
@@ -66,13 +65,13 @@ func BillingWithdrawAllWithLimit(ctx context.Context, chain *cosmos.CosmosChain,
 }
 
 // BillingUpdateParams updates the billing module parameters.
-func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, denom string, minCreditBalance math.Int, maxLeasesPerTenant uint64, maxItemsPerLease uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
+func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, denom string, maxLeasesPerTenant uint64, maxItemsPerLease uint64, minLeaseDuration uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{
 		"tx", "billing", "update-params",
 		denom,
-		minCreditBalance.String(),
 		strconv.FormatUint(maxLeasesPerTenant, 10),
 		strconv.FormatUint(maxItemsPerLease, 10),
+		strconv.FormatUint(minLeaseDuration, 10),
 	}
 	if len(allowedList) > 0 {
 		cmd = append(cmd, "--allowed-list", strings.Join(allowedList, ","))
@@ -298,10 +297,10 @@ type ParamsResponseJSON struct {
 
 // ParamsJSON is a JSON-friendly version of billing Params.
 type ParamsJSON struct {
-	Denom              string   `json:"denom"`
-	MinCreditBalance   string   `json:"min_credit_balance"`
-	MaxLeasesPerTenant string   `json:"max_leases_per_tenant"`
-	MaxItemsPerLease   string   `json:"max_items_per_lease"`
+	Denom                string   `json:"denom"`
+	MaxLeasesPerTenant   string   `json:"max_leases_per_tenant"`
+	MaxItemsPerLease     string   `json:"max_items_per_lease"`
+	MinLeaseDuration     string   `json:"min_lease_duration"`
 	AllowedLeaseCreators []string `json:"allowed_lease_creators"`
 }
 

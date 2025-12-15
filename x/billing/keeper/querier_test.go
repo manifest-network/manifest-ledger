@@ -39,7 +39,6 @@ func TestQueryParams(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, types.DefaultDenom, resp.Params.Denom)
-	require.Equal(t, types.DefaultMinCreditBalance, resp.Params.MinCreditBalance)
 	require.Equal(t, types.DefaultMaxLeasesPerTenant, resp.Params.MaxLeasesPerTenant)
 }
 

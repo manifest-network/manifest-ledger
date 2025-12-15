@@ -229,7 +229,6 @@ func TestExportGenesis(t *testing.T) {
 	require.NotNil(t, genState)
 	// Compare params fields individually (nil slice vs empty slice comparison issue)
 	require.Equal(t, types.DefaultDenom, genState.Params.Denom)
-	require.Equal(t, types.DefaultMinCreditBalance, genState.Params.MinCreditBalance)
 	require.Equal(t, types.DefaultMaxLeasesPerTenant, genState.Params.MaxLeasesPerTenant)
 	require.Empty(t, genState.Params.AllowedList)
 	require.Len(t, genState.Leases, 1)
@@ -248,16 +247,15 @@ func TestGetSetParams(t *testing.T) {
 	params, err := k.GetParams(f.Ctx)
 	require.NoError(t, err)
 	require.Equal(t, types.DefaultDenom, params.Denom)
-	require.Equal(t, types.DefaultMinCreditBalance, params.MinCreditBalance)
 	require.Equal(t, types.DefaultMaxLeasesPerTenant, params.MaxLeasesPerTenant)
 
 	// Set new params
 	newParams := types.NewParams(
 		"factory/testdenom/upwr",
-		sdkmath.NewInt(10000000),
 		50,
 		[]string{},
 		20,
+		3600,
 	)
 	err = k.SetParams(f.Ctx, newParams)
 	require.NoError(t, err)
@@ -266,9 +264,9 @@ func TestGetSetParams(t *testing.T) {
 	gotParams, err := k.GetParams(f.Ctx)
 	require.NoError(t, err)
 	require.Equal(t, "factory/testdenom/upwr", gotParams.Denom)
-	require.Equal(t, sdkmath.NewInt(10000000), gotParams.MinCreditBalance)
 	require.Equal(t, uint64(50), gotParams.MaxLeasesPerTenant)
 	require.Equal(t, uint64(20), gotParams.MaxItemsPerLease)
+	require.Equal(t, uint64(3600), gotParams.MinLeaseDuration)
 }
 
 func TestCreditAddressDerivation(t *testing.T) {
@@ -680,21 +678,10 @@ func TestParamsValidation(t *testing.T) {
 			name: "empty denom",
 			params: types.NewParams(
 				"",
-				sdkmath.NewInt(5000000),
 				100,
 				[]string{},
 				20,
-			),
-			expectErr: true,
-		},
-		{
-			name: "negative min credit balance",
-			params: types.NewParams(
-				"upwr",
-				sdkmath.NewInt(-1),
-				100,
-				[]string{},
-				20,
+				3600,
 			),
 			expectErr: true,
 		},
@@ -702,10 +689,10 @@ func TestParamsValidation(t *testing.T) {
 			name: "zero max leases per tenant",
 			params: types.NewParams(
 				"upwr",
-				sdkmath.NewInt(5000000),
 				0,
 				[]string{},
 				20,
+				3600,
 			),
 			expectErr: true,
 		},
@@ -713,9 +700,20 @@ func TestParamsValidation(t *testing.T) {
 			name: "zero max items per lease",
 			params: types.NewParams(
 				"upwr",
-				sdkmath.NewInt(5000000),
 				100,
 				[]string{},
+				0,
+				3600,
+			),
+			expectErr: true,
+		},
+		{
+			name: "zero min lease duration",
+			params: types.NewParams(
+				"upwr",
+				100,
+				[]string{},
+				20,
 				0,
 			),
 			expectErr: true,
@@ -724,10 +722,10 @@ func TestParamsValidation(t *testing.T) {
 			name: "valid custom params",
 			params: types.NewParams(
 				"factory/addr/upwr",
-				sdkmath.NewInt(10000000),
 				50,
 				[]string{},
 				20,
+				3600,
 			),
 			expectErr: false,
 		},
@@ -1353,105 +1351,4 @@ func TestCheckAndCloseExhaustedLease_InactiveLease(t *testing.T) {
 	closed, err := k.CheckAndCloseExhaustedLease(f.Ctx, &lease)
 	require.NoError(t, err)
 	require.False(t, closed)
-}
-
-func TestGetLeaseWithAutoClose(t *testing.T) {
-	f := initFixture(t)
-
-	k := f.App.BillingKeeper
-
-	// Initialize SKU sequences
-	err := f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-
-	// Create a provider
-	provider := f.createTestProvider(t, f.TestAccs[0].String(), f.TestAccs[1].String())
-
-	tenant := f.TestAccs[2]
-	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
-	require.NoError(t, err)
-
-	// Create credit account with zero balance (will trigger auto-close)
-	ca := types.CreditAccount{
-		Tenant:           tenant.String(),
-		CreditAddress:    creditAddr.String(),
-		ActiveLeaseCount: 1,
-	}
-	err = k.SetCreditAccount(f.Ctx, ca)
-	require.NoError(t, err)
-
-	// Create an active lease
-	lease := types.Lease{
-		Id:            1,
-		Tenant:        tenant.String(),
-		ProviderId:    provider.Id,
-		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdkmath.NewInt(100)}},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
-	}
-	err = k.SetLease(f.Ctx, lease)
-	require.NoError(t, err)
-
-	// GetLeaseWithAutoClose should return the lease and auto-close it (zero balance)
-	gotLease, err := k.GetLeaseWithAutoClose(f.Ctx, 1)
-	require.NoError(t, err)
-	require.Equal(t, types.LEASE_STATE_INACTIVE, gotLease.State)
-	require.NotNil(t, gotLease.ClosedAt)
-
-	// Verify the stored lease was also updated
-	storedLease, err := k.GetLease(f.Ctx, 1)
-	require.NoError(t, err)
-	require.Equal(t, types.LEASE_STATE_INACTIVE, storedLease.State)
-}
-
-func TestGetLeaseWithAutoClose_WithBalance(t *testing.T) {
-	f := initFixture(t)
-
-	k := f.App.BillingKeeper
-
-	// Initialize SKU sequences
-	err := f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-
-	// Create a provider
-	provider := f.createTestProvider(t, f.TestAccs[0].String(), f.TestAccs[1].String())
-
-	tenant := f.TestAccs[2]
-	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
-	require.NoError(t, err)
-
-	// Fund the credit account
-	denom := types.DefaultDenom
-	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(10000000))))
-
-	// Create credit account with balance
-	ca := types.CreditAccount{
-		Tenant:           tenant.String(),
-		CreditAddress:    creditAddr.String(),
-		ActiveLeaseCount: 1,
-	}
-	err = k.SetCreditAccount(f.Ctx, ca)
-	require.NoError(t, err)
-
-	// Create an active lease
-	lease := types.Lease{
-		Id:            1,
-		Tenant:        tenant.String(),
-		ProviderId:    provider.Id,
-		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdkmath.NewInt(100)}},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
-	}
-	err = k.SetLease(f.Ctx, lease)
-	require.NoError(t, err)
-
-	// GetLeaseWithAutoClose should return the lease still active (has balance)
-	gotLease, err := k.GetLeaseWithAutoClose(f.Ctx, 1)
-	require.NoError(t, err)
-	require.Equal(t, types.LEASE_STATE_ACTIVE, gotLease.State)
-	require.Nil(t, gotLease.ClosedAt)
 }

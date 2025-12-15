@@ -7,8 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"cosmossdk.io/math"
-
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/tx"
@@ -293,12 +291,13 @@ withdraw-all 1 --limit 50 --from provider-key`,
 // NewUpdateParamsCmd returns the command to update billing module parameters.
 func NewUpdateParamsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "update-params [denom] [min-credit-balance] [max-leases-per-tenant] [max-items-per-lease]",
+		Use:   "update-params [denom] [max-leases-per-tenant] [max-items-per-lease] [min-lease-duration]",
 		Short: "Update billing module parameters (authority only)",
 		Long: `Update the billing module parameters. Only the module authority can execute this command.
-All parameters must be provided. Use --allowed-list to set addresses allowed to create leases for tenants.`,
-		Example: `update-params factory/manifest1.../upwr 5000000 100 20 --from authority
-update-params factory/manifest1.../upwr 5000000 100 20 --allowed-list manifest1abc...,manifest1xyz... --from authority`,
+All parameters must be provided. Use --allowed-list to set addresses allowed to create leases for tenants.
+min-lease-duration is in seconds (e.g., 3600 for 1 hour).`,
+		Example: `update-params factory/manifest1.../upwr 100 20 3600 --from authority
+update-params factory/manifest1.../upwr 100 20 3600 --allowed-list manifest1abc...,manifest1xyz... --from authority`,
 		Args: cobra.ExactArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -308,19 +307,19 @@ update-params factory/manifest1.../upwr 5000000 100 20 --allowed-list manifest1a
 
 			denom := args[0]
 
-			minCreditBalance, ok := math.NewIntFromString(args[1])
-			if !ok {
-				return fmt.Errorf("invalid min_credit_balance: %s", args[1])
-			}
-
-			maxLeasesPerTenant, err := strconv.ParseUint(args[2], 10, 64)
+			maxLeasesPerTenant, err := strconv.ParseUint(args[1], 10, 64)
 			if err != nil {
 				return fmt.Errorf("invalid max_leases_per_tenant: %w", err)
 			}
 
-			maxItemsPerLease, err := strconv.ParseUint(args[3], 10, 64)
+			maxItemsPerLease, err := strconv.ParseUint(args[2], 10, 64)
 			if err != nil {
 				return fmt.Errorf("invalid max_items_per_lease: %w", err)
+			}
+
+			minLeaseDuration, err := strconv.ParseUint(args[3], 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid min_lease_duration: %w", err)
 			}
 
 			allowedListStr, _ := cmd.Flags().GetString("allowed-list")
@@ -333,10 +332,10 @@ update-params factory/manifest1.../upwr 5000000 100 20 --allowed-list manifest1a
 				Authority: clientCtx.GetFromAddress().String(),
 				Params: types.Params{
 					Denom:              denom,
-					MinCreditBalance:   minCreditBalance,
 					MaxLeasesPerTenant: maxLeasesPerTenant,
 					AllowedList:        allowedList,
 					MaxItemsPerLease:   maxItemsPerLease,
+					MinLeaseDuration:   minLeaseDuration,
 				},
 			}
 

@@ -321,11 +321,11 @@ Settlement happens lazily at these points:
 
 | Trigger | Scope | Reason |
 |---------|-------|--------|
-| `CreateLease` | All tenant's active leases | Ensure accurate credit check |
-| `CloseLease` | Target lease only | Final settlement |
-| `Withdraw` | Target lease only | Calculate withdrawable |
+| `CloseLease` | Target lease only | Final settlement + auto-close check |
+| `Withdraw` | Target lease only | Calculate withdrawable + auto-close check |
 | `WithdrawAll` | All provider's leases | Batch settlement |
-| Query operations | Target lease(s) | Accurate reporting |
+
+**Note**: Query operations do NOT trigger settlement or auto-close. They return the stored state. Auto-close only happens during write operations to ensure state changes are properly committed to the blockchain.
 
 ## Send Restriction
 
@@ -395,11 +395,14 @@ accrual = 100 × 5 = 500umfx
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `denom` | `string` | PWR factory denom | Accepted credit denomination |
-| `min_credit_balance` | `uint64` | 5,000,000 | Minimum balance to create lease |
 | `max_leases_per_tenant` | `uint64` | 100 | Max active leases per tenant |
-| `allow_list` | `[]string` | `[]` | Addresses that can create leases for tenants |
-| `max_items_per_lease` | `uint64` | 50 | Max items in single lease |
-| `max_withdrawal_batch_size` | `uint64` | 100 | Max leases in WithdrawAll |
+| `max_items_per_lease` | `uint64` | 20 | Max items in single lease |
+| `min_lease_duration` | `uint64` | 3600 | Minimum seconds of credit required to create a lease |
+| `allowed_list` | `[]string` | `[]` | Addresses that can create leases for tenants |
+
+**Note**: `WithdrawAll` limits are enforced via constants, not parameters:
+- Default limit: 50 leases per call
+- Maximum limit: 100 leases per call
 
 ## Events
 
