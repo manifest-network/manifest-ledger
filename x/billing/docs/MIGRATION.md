@@ -55,7 +55,7 @@ manifestd tx billing fund-credit manifest1abc... 1000000000factory/manifest1afk9
 manifestd query billing credit-account [tenant-address]
 ```
 
-**Note**: The minimum credit balance required to create a lease is 5 PWR (5000000upwr) by default.
+**Note**: You must ensure the tenant's credit account has enough credit to cover at least 1 hour of lease operation, based on the SKUs and their prices.
 
 ## Step 3: Create Leases for Tenants
 
