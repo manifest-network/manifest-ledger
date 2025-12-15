@@ -2,7 +2,7 @@
 Package types tests for the billing module.
 
 Test Coverage:
-1. Params - Parameter validation (denom, min_credit_balance, max_leases_per_tenant, max_items_per_lease)
+1. Params - Parameter validation (denom, max_leases_per_tenant, max_items_per_lease, min_lease_duration)
 2. Msgs - ValidateBasic for all message types including MsgCreateLeaseForTenant
 3. Credit - Credit address derivation determinism and correctness
 4. Genesis - Genesis state validation including leases and credit accounts

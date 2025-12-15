@@ -106,10 +106,15 @@ from_scratch () {
   # ...
   # ...
 
+  # SKU module - add user1 to allowed_list so they can create providers/SKUs on behalf of authority
+  update_test_genesis '.app_state["sku"]["params"]["allowed_list"]=["manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"]'
+
+  # Billing module - add user1 to allowed_list so they can create leases on behalf of tenants
+  update_test_genesis '.app_state["billing"]["params"]["allowed_list"]=["manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"]'
+
   # Allocate genesis accounts
-#  BINARY genesis add-genesis-account $KEY 1000000upoa,10000000umfx,1000utest,1000000000000000000000factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uspdt,100000000000000000000000factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/uabus --keyring-backend $KEYRING
-  BINARY genesis add-genesis-account $KEY 1000000upoa,1000000000umfx,1000utest --keyring-backend $KEYRING
-  BINARY genesis add-genesis-account $KEY2 10000000umfx,1000utest --keyring-backend $KEYRING
+  BINARY genesis add-genesis-account $KEY 1000000upoa,1000000000umfx,1000000000factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr --keyring-backend $KEYRING
+  BINARY genesis add-genesis-account $KEY2 10000000umfx,1000000000factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr --keyring-backend $KEYRING
 
   # Set 1 POAToken -> user
   GenTxFlags="--commission-rate=0.0 --commission-max-rate=1.0 --commission-max-change-rate=0.1"

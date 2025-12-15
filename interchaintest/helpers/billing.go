@@ -297,11 +297,11 @@ type ParamsResponseJSON struct {
 
 // ParamsJSON is a JSON-friendly version of billing Params.
 type ParamsJSON struct {
-	Denom                string   `json:"denom"`
-	MaxLeasesPerTenant   string   `json:"max_leases_per_tenant"`
-	MaxItemsPerLease     string   `json:"max_items_per_lease"`
-	MinLeaseDuration     string   `json:"min_lease_duration"`
-	AllowedLeaseCreators []string `json:"allowed_lease_creators"`
+	Denom              string   `json:"denom"`
+	MaxLeasesPerTenant string   `json:"max_leases_per_tenant"`
+	MaxItemsPerLease   string   `json:"max_items_per_lease"`
+	MinLeaseDuration   string   `json:"min_lease_duration"`
+	AllowedList        []string `json:"allowed_list"`
 }
 
 // BillingQueryParamsJSON queries the billing module parameters with JSON parsing.
