@@ -990,3 +990,683 @@ func TestMsgWithdrawAll(t *testing.T) {
 	require.Equal(t, uint64(3), resp.LeaseCount)
 	require.True(t, resp.TotalAmount.Amount.IsPositive())
 }
+
+// TestMsgWithdraw_ErrorCases tests error scenarios for Withdraw.
+func TestMsgWithdraw_ErrorCases(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	unauthorizedUser := f.TestAccs[3]
+	denom := types.DefaultDenom
+
+	// Initialize sequences
+	err := f.App.BillingKeeper.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create a lease
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{
+				SkuId:    sku.Id,
+				Quantity: 1,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	t.Run("fail: withdraw from non-existent lease", func(t *testing.T) {
+		_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:  providerAddr.String(),
+			LeaseId: 99999,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("fail: unauthorized user cannot withdraw", func(t *testing.T) {
+		_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:  unauthorizedUser.String(),
+			LeaseId: createResp.LeaseId,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unauthorized")
+	})
+
+	t.Run("fail: tenant cannot withdraw (not provider or authority)", func(t *testing.T) {
+		_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:  tenant.String(),
+			LeaseId: createResp.LeaseId,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unauthorized")
+	})
+}
+
+// TestMsgWithdraw_PartialCreditExhaustion tests withdrawal when credit is partially exhausted.
+func TestMsgWithdraw_PartialCreditExhaustion(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := types.DefaultDenom
+
+	// Set params with short min lease duration for testing
+	err := f.App.BillingKeeper.SetParams(f.Ctx, types.Params{
+		Denom:              denom,
+		MaxLeasesPerTenant: 100,
+		MaxItemsPerLease:   20,
+		MinLeaseDuration:   10, // 10 seconds for testing
+		AllowedList:        nil,
+	})
+	require.NoError(t, err)
+
+	// Initialize sequences
+	err = f.App.BillingKeeper.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU with 1 unit per second rate
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600) // 3600 per hour = 1 per second
+
+	// Fund tenant's credit account with enough for minimum duration + some extra
+	// Min duration is 10 seconds at 1/second = 10 units minimum
+	// We fund with 50 units (enough to create lease, but less than 100 accrued)
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	limitedFund := sdk.NewCoin(denom, sdkmath.NewInt(50))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(limitedFund))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create a lease
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{
+				SkuId:    sku.Id,
+				Quantity: 1,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Advance block time by 100 seconds (should accrue 100 units, but only 50 available)
+	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+	f.Ctx = newCtx
+
+	// Provider withdraws - should only get up to 50 (the available credit)
+	resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:  providerAddr.String(),
+		LeaseId: createResp.LeaseId,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Verify provider's payout address received funds
+	payoutBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
+	require.True(t, payoutBalance.Amount.IsPositive(), "provider should have received some funds")
+	require.True(t, payoutBalance.Amount.LTE(sdkmath.NewInt(50)), "provider should not receive more than credit balance")
+
+	// Verify credit balance decreased
+	creditBalance := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom)
+	require.True(t, creditBalance.Amount.LT(sdkmath.NewInt(50)), "credit balance should have decreased")
+}
+
+// TestMsgWithdraw_ZeroDuration tests withdrawal with zero elapsed time.
+func TestMsgWithdraw_ZeroDuration(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := types.DefaultDenom
+
+	// Initialize sequences
+	err := f.App.BillingKeeper.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create a lease
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{
+				SkuId:    sku.Id,
+				Quantity: 1,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// DO NOT advance block time - withdraw immediately
+	// With zero duration, there's nothing to withdraw, so it should error
+	_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:  providerAddr.String(),
+		LeaseId: createResp.LeaseId,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no withdrawable amount")
+}
+
+// TestMsgCloseLease_WithSettlement tests lease closure with settlement.
+func TestMsgCloseLease_WithSettlement(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := types.DefaultDenom
+
+	// Initialize sequences
+	err := f.App.BillingKeeper.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU with 1 unit per second rate
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600) // 3600 per hour = 1 per second
+
+	// Fund tenant's credit account generously
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Get initial payout balance
+	initialPayoutBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
+
+	// Create a lease
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{
+				SkuId:    sku.Id,
+				Quantity: 1,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Advance block time by 100 seconds
+	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+	f.Ctx = newCtx
+
+	// Close lease (should settle outstanding amount)
+	closeResp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:  tenant.String(),
+		LeaseId: createResp.LeaseId,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, closeResp)
+
+	// Verify lease is closed
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, createResp.LeaseId)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_INACTIVE, lease.State)
+	require.NotNil(t, lease.ClosedAt)
+
+	// Verify provider received settled funds during closure
+	finalPayoutBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
+	require.True(t, finalPayoutBalance.Amount.GT(initialPayoutBalance.Amount),
+		"provider should have received settlement during close")
+}
+
+// TestMsgCloseLease_PartialSettlement tests lease closure with partial credit.
+func TestMsgCloseLease_PartialSettlement(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := types.DefaultDenom
+
+	// Set params with short min lease duration for testing
+	err := f.App.BillingKeeper.SetParams(f.Ctx, types.Params{
+		Denom:              denom,
+		MaxLeasesPerTenant: 100,
+		MaxItemsPerLease:   20,
+		MinLeaseDuration:   10, // 10 seconds for testing
+		AllowedList:        nil,
+	})
+	require.NoError(t, err)
+
+	// Initialize sequences
+	err = f.App.BillingKeeper.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU with 1 unit per second rate
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600) // 3600 per hour = 1 per second
+
+	// Fund tenant's credit account with LIMITED funds (only 30 units)
+	// Min duration is 10 seconds at 1/second = 10 units minimum
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	limitedFund := sdk.NewCoin(denom, sdkmath.NewInt(30))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(limitedFund))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create a lease
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{
+				SkuId:    sku.Id,
+				Quantity: 1,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Advance block time by 100 seconds (should accrue 100 units, but only 30 available)
+	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+	f.Ctx = newCtx
+
+	// Close lease (should settle only what's available)
+	closeResp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:  tenant.String(),
+		LeaseId: createResp.LeaseId,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, closeResp)
+
+	// Verify provider received 30 (all available credit)
+	payoutBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
+	require.Equal(t, sdkmath.NewInt(30), payoutBalance.Amount)
+
+	// Verify credit balance is now zero
+	creditBalance := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom)
+	require.True(t, creditBalance.Amount.IsZero())
+}
+
+// TestMsgCloseLease_ProviderClose tests that provider can close a lease.
+func TestMsgCloseLease_ProviderClose(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := types.DefaultDenom
+
+	// Initialize sequences
+	err := f.App.BillingKeeper.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create a lease
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{
+				SkuId:    sku.Id,
+				Quantity: 1,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Advance block time
+	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(50 * time.Second))
+	f.Ctx = newCtx
+
+	// Provider closes the lease
+	closeResp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:  providerAddr.String(),
+		LeaseId: createResp.LeaseId,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, closeResp)
+
+	// Verify lease is closed
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, createResp.LeaseId)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_INACTIVE, lease.State)
+}
+
+// TestMsgCloseLease_AuthorityClose tests that authority can close any lease.
+func TestMsgCloseLease_AuthorityClose(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := types.DefaultDenom
+
+	// Initialize sequences
+	err := f.App.BillingKeeper.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create a lease
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{
+				SkuId:    sku.Id,
+				Quantity: 1,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Authority closes the lease
+	closeResp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:  f.Authority.String(),
+		LeaseId: createResp.LeaseId,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, closeResp)
+
+	// Verify lease is closed
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, createResp.LeaseId)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_INACTIVE, lease.State)
+}
+
+// TestMsgCloseLease_ErrorCases tests error scenarios for CloseLease.
+func TestMsgCloseLease_ErrorCases(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	unauthorizedUser := f.TestAccs[3]
+	denom := types.DefaultDenom
+
+	// Initialize sequences
+	err := f.App.BillingKeeper.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create a lease
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{
+				SkuId:    sku.Id,
+				Quantity: 1,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	t.Run("fail: close non-existent lease", func(t *testing.T) {
+		_, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+			Sender:  tenant.String(),
+			LeaseId: 99999,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("fail: unauthorized user cannot close", func(t *testing.T) {
+		_, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+			Sender:  unauthorizedUser.String(),
+			LeaseId: createResp.LeaseId,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unauthorized")
+	})
+
+	t.Run("fail: close already closed lease", func(t *testing.T) {
+		// First close the lease
+		_, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+			Sender:  tenant.String(),
+			LeaseId: createResp.LeaseId,
+		})
+		require.NoError(t, err)
+
+		// Try to close again
+		_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+			Sender:  tenant.String(),
+			LeaseId: createResp.LeaseId,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not active")
+	})
+}
+
+// TestMsgWithdrawAll_ErrorCases tests error scenarios for WithdrawAll.
+func TestMsgWithdrawAll_ErrorCases(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	unauthorizedUser := f.TestAccs[3]
+
+	// Initialize sequences
+	err := f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+
+	t.Run("fail: withdraw from non-existent provider", func(t *testing.T) {
+		_, err := msgServer.WithdrawAll(f.Ctx, &types.MsgWithdrawAll{
+			Sender:     providerAddr.String(),
+			ProviderId: 99999,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("fail: unauthorized user cannot withdraw all", func(t *testing.T) {
+		_, err := msgServer.WithdrawAll(f.Ctx, &types.MsgWithdrawAll{
+			Sender:     unauthorizedUser.String(),
+			ProviderId: provider.Id,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unauthorized")
+	})
+}
+
+// TestMsgWithdraw_FromClosedLease tests withdrawal from a closed lease.
+func TestMsgWithdraw_FromClosedLease(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := types.DefaultDenom
+
+	// Initialize sequences
+	err := f.App.BillingKeeper.NextLeaseID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Id, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create and then close a lease
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{
+				SkuId:    sku.Id,
+				Quantity: 1,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Close the lease
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:  tenant.String(),
+		LeaseId: createResp.LeaseId,
+	})
+	require.NoError(t, err)
+
+	// Verify the lease is closed
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, createResp.LeaseId)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_INACTIVE, lease.State)
+
+	// Try to withdraw from closed lease - should fail
+	_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:  providerAddr.String(),
+		LeaseId: createResp.LeaseId,
+	})
+	require.Error(t, err, "should fail to withdraw from closed lease")
+}
