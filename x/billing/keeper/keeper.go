@@ -10,7 +10,6 @@ import (
 	"cosmossdk.io/collections/indexes"
 	storetypes "cosmossdk.io/core/store"
 	"cosmossdk.io/log"
-	"cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -464,7 +463,16 @@ func (k *Keeper) countActiveLeasesByTenantScan(ctx context.Context, tenant strin
 	return count, nil
 }
 
-// GetCreditBalance returns the actual credit balance from the bank module for a tenant.
+// GetCreditBalances returns all credit balances from the bank module for a tenant.
+func (k *Keeper) GetCreditBalances(ctx context.Context, tenant string) (sdk.Coins, error) {
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant)
+	if err != nil {
+		return nil, err
+	}
+	return k.bankKeeper.GetAllBalances(ctx, creditAddr), nil
+}
+
+// GetCreditBalance returns the credit balance for a specific denom from the bank module for a tenant.
 func (k *Keeper) GetCreditBalance(ctx context.Context, tenant string, denom string) (sdk.Coin, error) {
 	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant)
 	if err != nil {
@@ -473,9 +481,10 @@ func (k *Keeper) GetCreditBalance(ctx context.Context, tenant string, denom stri
 	return k.bankKeeper.GetBalance(ctx, creditAddr, denom), nil
 }
 
-// CalculateWithdrawableForLease calculates the amount that can be withdrawn from a lease.
+// CalculateWithdrawableForLease calculates the amounts that can be withdrawn from a lease.
 // It considers the time since last settlement and the credit balance available.
-func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.Lease) math.Int {
+// Returns a Coins collection (one entry per denom).
+func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.Lease) sdk.Coins {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
@@ -488,12 +497,12 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 		if lease.ClosedAt != nil {
 			duration = lease.ClosedAt.Sub(lease.LastSettledAt)
 		} else {
-			return math.ZeroInt()
+			return sdk.NewCoins()
 		}
 	}
 
 	if duration <= 0 {
-		return math.ZeroInt()
+		return sdk.NewCoins()
 	}
 
 	// Calculate total accrued with overflow handling
@@ -505,37 +514,40 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 			LockedPricePerSecond: item.LockedPrice,
 		})
 	}
-	accruedAmount, err := CalculateTotalAccruedForLease(items, duration)
+	accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
 	if err != nil {
-		// Log overflow error and return zero
+		// Log overflow error and return empty
 		k.logger.Error("accrual calculation overflow in withdrawable calculation",
 			"lease_id", lease.Id,
 			"error", err,
 		)
-		return math.ZeroInt()
+		return sdk.NewCoins()
 	}
 
-	if accruedAmount.IsZero() {
-		return math.ZeroInt()
+	if accruedAmounts.IsZero() {
+		return sdk.NewCoins()
 	}
 
-	// Get credit balance to cap the withdrawable amount
-	params, err := k.GetParams(ctx)
+	// Get credit balances to cap the withdrawable amounts
+	creditBalances, err := k.GetCreditBalances(ctx, lease.Tenant)
 	if err != nil {
-		return math.ZeroInt()
+		return sdk.NewCoins()
 	}
 
-	creditBalance, err := k.GetCreditBalance(ctx, lease.Tenant, params.Denom)
-	if err != nil {
-		return math.ZeroInt()
+	// For each denom, return the minimum of accrued amount and available balance
+	result := sdk.NewCoins()
+	for _, accrued := range accruedAmounts {
+		balance := creditBalances.AmountOf(accrued.Denom)
+		if balance.LT(accrued.Amount) {
+			if balance.IsPositive() {
+				result = result.Add(sdk.NewCoin(accrued.Denom, balance))
+			}
+		} else {
+			result = result.Add(accrued)
+		}
 	}
 
-	// Return the minimum of accrued amount and available balance
-	if creditBalance.Amount.LT(accruedAmount) {
-		return creditBalance.Amount
-	}
-
-	return accruedAmount
+	return result
 }
 
 // CheckAndCloseExhaustedLease checks if a lease should be auto-closed due to exhausted credit
@@ -552,11 +564,6 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 		return false, nil
 	}
 
-	params, err := k.GetParams(ctx)
-	if err != nil {
-		return false, err
-	}
-
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
@@ -566,30 +573,44 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 		duration = 0
 	}
 
-	// Check tenant's current credit balance
-	creditBalance, err := k.GetCreditBalance(ctx, lease.Tenant, params.Denom)
+	// Check tenant's current credit balances
+	creditBalances, err := k.GetCreditBalances(ctx, lease.Tenant)
 	if err != nil {
 		return false, err
 	}
 
-	// If balance is already zero or negative, definitely close
-	shouldClose := creditBalance.Amount.IsZero() || creditBalance.Amount.IsNegative()
+	// Calculate what would be accrued for each denom
+	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
+	for _, item := range lease.Items {
+		items = append(items, LeaseItemWithPrice{
+			SkuID:                item.SkuId,
+			Quantity:             item.Quantity,
+			LockedPricePerSecond: item.LockedPrice,
+		})
+	}
 
-	// Also check if the accrued amount would exhaust the balance
-	if !shouldClose && duration > 0 {
-		// Calculate what would be accrued
-		items := make([]LeaseItemWithPrice, 0, len(lease.Items))
-		for _, item := range lease.Items {
-			items = append(items, LeaseItemWithPrice{
-				SkuID:                item.SkuId,
-				Quantity:             item.Quantity,
-				LockedPricePerSecond: item.LockedPrice,
-			})
+	// If duration is zero, no accrual - check if any balance is exhausted
+	shouldClose := false
+	if duration > 0 {
+		accruedAmounts, calcErr := CalculateTotalAccruedForLease(items, duration)
+		if calcErr == nil {
+			// Check if any denom's accrued amount exceeds the balance
+			for _, accrued := range accruedAmounts {
+				balance := creditBalances.AmountOf(accrued.Denom)
+				if accrued.Amount.GTE(balance) {
+					shouldClose = true
+					break
+				}
+			}
 		}
-		accruedAmount, calcErr := CalculateTotalAccruedForLease(items, duration)
-		if calcErr == nil && accruedAmount.GTE(creditBalance.Amount) {
-			// Accrued amount >= balance means balance will be exhausted
-			shouldClose = true
+	} else {
+		// Check if any required denom balance is zero
+		for _, item := range lease.Items {
+			balance := creditBalances.AmountOf(item.LockedPrice.Denom)
+			if balance.IsZero() {
+				shouldClose = true
+				break
+			}
 		}
 	}
 
@@ -598,7 +619,7 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 	}
 
 	// Perform final settlement (transfer remaining balance to provider)
-	settledAmount, err := k.settleAndCloseLease(ctx, lease, blockTime, params)
+	settledAmounts, err := k.settleAndCloseLease(ctx, lease, blockTime)
 	if err != nil {
 		return false, err
 	}
@@ -610,7 +631,7 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(lease.Id, 10)),
 			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
 			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(lease.ProviderId, 10)),
-			sdk.NewAttribute(types.AttributeKeySettledAmount, settledAmount.String()),
+			sdk.NewAttribute(types.AttributeKeySettledAmounts, settledAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyReason, "credit_exhausted"),
 		),
 	)
@@ -618,7 +639,7 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 	k.logger.Info("auto-closed exhausted lease",
 		"lease_id", lease.Id,
 		"tenant", lease.Tenant,
-		"settled_amount", settledAmount.String(),
+		"settled_amounts", settledAmounts.String(),
 	)
 
 	return true, nil
@@ -626,17 +647,18 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 
 // settleAndCloseLease performs final settlement and closes a lease.
 // This is used by both manual close and auto-close operations.
-func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, closeTime time.Time, params types.Params) (math.Int, error) {
+// Returns the settled amounts (one per denom).
+func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, closeTime time.Time) (sdk.Coins, error) {
 	// Calculate duration since last settlement
 	duration := closeTime.Sub(lease.LastSettledAt)
 	if duration < 0 {
 		duration = 0
 	}
 
-	var settledAmount math.Int
+	settledAmounts := sdk.NewCoins()
 
 	if duration > 0 {
-		// Calculate accrued amount
+		// Calculate accrued amounts
 		items := make([]LeaseItemWithPrice, 0, len(lease.Items))
 		for _, item := range lease.Items {
 			items = append(items, LeaseItemWithPrice{
@@ -645,50 +667,55 @@ func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, cl
 				LockedPricePerSecond: item.LockedPrice,
 			})
 		}
-		accruedAmount, err := CalculateTotalAccruedForLease(items, duration)
+		accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
 		if err != nil {
-			// On overflow, use zero (better than failing the close)
-			accruedAmount = math.ZeroInt()
+			// On overflow, use empty coins (better than failing the close)
+			accruedAmounts = sdk.NewCoins()
 		}
 
-		// Get credit balance
+		// Get credit balances
 		creditAddr, err := types.DeriveCreditAddressFromBech32(lease.Tenant)
 		if err != nil {
-			return math.ZeroInt(), err
+			return sdk.NewCoins(), err
 		}
-		creditBalance := k.bankKeeper.GetBalance(ctx, creditAddr, params.Denom)
+		creditBalances := k.bankKeeper.GetAllBalances(ctx, creditAddr)
 
-		// Transfer minimum of accrued and available
-		transferAmount := accruedAmount
-		if creditBalance.Amount.LT(accruedAmount) {
-			transferAmount = creditBalance.Amount
+		// Calculate transfer amounts (minimum of accrued and available for each denom)
+		transferAmounts := sdk.NewCoins()
+		for _, accrued := range accruedAmounts {
+			balance := creditBalances.AmountOf(accrued.Denom)
+			transferAmount := accrued.Amount
+			if balance.LT(accrued.Amount) {
+				transferAmount = balance
+			}
+			if transferAmount.IsPositive() {
+				transferAmounts = transferAmounts.Add(sdk.NewCoin(accrued.Denom, transferAmount))
+			}
 		}
 
-		if transferAmount.IsPositive() {
+		if !transferAmounts.IsZero() {
 			// Get provider payout address
 			provider, err := k.skuKeeper.GetProvider(ctx, lease.ProviderId)
 			if err != nil {
-				return math.ZeroInt(), types.ErrProviderNotFound.Wrapf("provider_id %d not found", lease.ProviderId)
+				return sdk.NewCoins(), types.ErrProviderNotFound.Wrapf("provider_id %d not found", lease.ProviderId)
 			}
 
 			payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
 			if err != nil {
-				return math.ZeroInt(), types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
+				return sdk.NewCoins(), types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
 			}
 
 			if err := k.bankKeeper.SendCoins(
 				ctx,
 				creditAddr,
 				payoutAddr,
-				sdk.NewCoins(sdk.NewCoin(params.Denom, transferAmount)),
+				transferAmounts,
 			); err != nil {
-				return math.ZeroInt(), types.ErrInvalidCreditOperation.Wrapf("failed to transfer: %s", err)
+				return sdk.NewCoins(), types.ErrInvalidCreditOperation.Wrapf("failed to transfer: %s", err)
 			}
 		}
 
-		settledAmount = transferAmount
-	} else {
-		settledAmount = math.ZeroInt()
+		settledAmounts = transferAmounts
 	}
 
 	// Update lease state
@@ -697,7 +724,7 @@ func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, cl
 	lease.LastSettledAt = closeTime
 
 	if err := k.SetLease(ctx, *lease); err != nil {
-		return math.ZeroInt(), err
+		return sdk.NewCoins(), err
 	}
 
 	// Decrement active lease count in credit account
@@ -705,9 +732,9 @@ func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, cl
 	if err == nil && creditAccount.ActiveLeaseCount > 0 {
 		creditAccount.ActiveLeaseCount--
 		if err := k.SetCreditAccount(ctx, creditAccount); err != nil {
-			return settledAmount, err
+			return settledAmounts, err
 		}
 	}
 
-	return settledAmount, nil
+	return settledAmounts, nil
 }

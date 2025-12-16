@@ -106,9 +106,9 @@ Individual line items within a lease:
 |-------|------|-------------|
 | `sku_id` | `uint64` | Reference to SKU |
 | `quantity` | `uint64` | Number of units (e.g., 5 instances) |
-| `locked_price` | `math.Int` | Per-second price locked at lease creation |
+| `locked_price` | `Coin` | Per-second price locked at lease creation (includes denom) |
 
-**Note**: The `locked_price` is pre-computed at lease creation as the per-second rate for billing calculations. This is derived from the SKU's base price and unit at the time of lease creation.
+**Note**: The `locked_price` is pre-computed at lease creation as the per-second rate for billing calculations. This is derived from the SKU's base price and unit at the time of lease creation. The denomination is preserved from the SKU's `base_price`, enabling multi-denom billing.
 
 ### LeaseState Enum
 
@@ -390,42 +390,15 @@ flowchart TD
     J --> K[Return: closed]
 ```
 
-## Send Restriction
+## Credit Account Multi-Denom Support
 
-The billing module registers a bank send restriction to protect credit accounts:
+Credit accounts support multiple token denominations. Since credit accounts are regular bank module accounts, they can hold any token type. This enables:
 
-```mermaid
-flowchart TD
-    A[Bank SendCoins] --> B{Is destination<br/>credit account?}
-    B -->|No| C[Allow]
-    B -->|Yes| D{Check denomination}
-    D -->|Correct denom| E[Allow]
-    D -->|Wrong denom| F[Reject]
-    D -->|Mixed denoms| G{All correct?}
-    G -->|Yes| E
-    G -->|No| F
-```
+- Different SKUs can use different payment tokens
+- Tenants fund their credit with the tokens required by their target SKUs
+- Settlement transfers happen per-denom to the provider's payout address
 
-**Implementation:**
-```go
-func (k *Keeper) CreditAccountSendRestriction(
-    ctx context.Context, 
-    _, toAddr sdk.AccAddress, 
-    amt sdk.Coins,
-) (sdk.AccAddress, error) {
-    if !k.isCreditAccountAddress(ctx, toAddr) {
-        return toAddr, nil // Not a credit account, allow
-    }
-    
-    params := k.GetParams(ctx)
-    for _, coin := range amt {
-        if coin.Denom != params.Denom {
-            return toAddr, ErrInvalidDenomination
-        }
-    }
-    return toAddr, nil
-}
-```
+**No send restrictions** are applied to credit accounts - any token can be sent to them.
 
 ## Accrual Calculation
 
@@ -442,29 +415,40 @@ lockedPricePerSecond = skutypes.CalculatePricePerSecond(sku.BasePrice, sku.Unit)
 
 ```
 elapsed_seconds = current_time - last_settled_at
-item_accrual = elapsed_seconds × locked_price × quantity
-total_accrual = sum(item_accrual for all items)
+item_accrual = elapsed_seconds × locked_price.Amount × quantity
+total_accrual = sum(item_accrual for all items, grouped by denom)
 ```
+
+### Multi-Denom Settlement
+
+When a lease contains SKUs with different denominations:
+1. Accruals are calculated per-item
+2. Amounts are grouped by denomination
+3. Each denom is transferred separately to the provider's payout address
 
 ### Example
 
-SKU: 3600upwr per hour → 1upwr per second (locked_price = 1)
-Quantity: 5 instances
+SKU 1: 3600upwr per hour → 1upwr per second (locked_price = {denom: "upwr", amount: 1})
+SKU 2: 7200umfx per hour → 2umfx per second (locked_price = {denom: "umfx", amount: 2})
+Quantities: SKU 1 = 5 instances, SKU 2 = 3 instances
 Elapsed: 100 seconds
 
 ```
-item_accrual = 100 × 1 × 5 = 500upwr
+item1_accrual = 100 × 1 × 5 = 500upwr
+item2_accrual = 100 × 2 × 3 = 600umfx
+total_accrual = [500upwr, 600umfx]
 ```
 
 ## Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `denom` | `string` | `"upwr"` | Accepted credit denomination |
 | `max_leases_per_tenant` | `uint64` | 100 | Max active leases per tenant |
 | `max_items_per_lease` | `uint64` | 20 | Max items in single lease |
 | `min_lease_duration` | `uint64` | 3600 | Minimum seconds of credit required to create a lease |
 | `allowed_list` | `[]string` | `[]` | Addresses that can create leases for tenants (in addition to authority) |
+
+**Note**: There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`. This enables multi-denom billing where different SKUs can be priced in different tokens.
 
 **Note**: `WithdrawAll` limits are enforced via constants, not parameters:
 - Default limit: 50 leases per call

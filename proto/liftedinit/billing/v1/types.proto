@@ -14,9 +14,6 @@ message Params {
   option (amino.name) = "lifted/billing/Params";
   option (gogoproto.equal) = true;
 
-  // denom is the denomination of the token used for billing.
-  string denom = 1 [(gogoproto.jsontag) = "denom,omitempty"];
-
   // max_leases_per_tenant is the maximum number of active leases a tenant can have.
   // Must be greater than zero.
   uint64 max_leases_per_tenant = 3
@@ -65,10 +62,9 @@ message LeaseItem {
   // quantity is the number of instances of this SKU.
   uint64 quantity = 2 [(gogoproto.jsontag) = "quantity,omitempty,string"];
 
-  // locked_price is the price per unit locked at lease creation (per second, in billing denom).
-  string locked_price = 3 [
-    (cosmos_proto.scalar) = "cosmos.Int",
-    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+  // locked_price is the price per unit locked at lease creation (per second).
+  // The denom comes from the SKU's base_price at lease creation time.
+  cosmos.base.v1beta1.Coin locked_price = 3 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "locked_price"
   ];

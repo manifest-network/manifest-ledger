@@ -6,8 +6,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"cosmossdk.io/math"
-
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
 
@@ -206,22 +204,17 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	// Fetch the balance from the bank module
-	params, err := q.k.GetParams(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
+	// Fetch all balances from the bank module
 	creditAddr, err := sdk.AccAddressFromBech32(ca.CreditAddress)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "invalid credit address")
 	}
 
-	balance := q.k.bankKeeper.GetBalance(ctx, creditAddr, params.Denom)
+	balances := q.k.bankKeeper.GetAllBalances(ctx, creditAddr)
 
 	return &types.QueryCreditAccountResponse{
 		CreditAccount: ca,
-		Balance:       balance,
+		Balances:      balances,
 	}, nil
 }
 
@@ -243,7 +236,7 @@ func (q Querier) CreditAddress(_ context.Context, req *types.QueryCreditAddressR
 	return &types.QueryCreditAddressResponse{CreditAddress: creditAddr.String()}, nil
 }
 
-// WithdrawableAmount queries the amount available for provider withdrawal from a lease.
+// WithdrawableAmount queries the amounts available for provider withdrawal from a lease.
 func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdrawableAmountRequest) (*types.QueryWithdrawableAmountResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -259,20 +252,15 @@ func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdra
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	params, err := q.k.GetParams(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	// Calculate withdrawable amount based on accrual since last settlement
-	withdrawableAmount := q.k.CalculateWithdrawableForLease(ctx, lease)
+	// Calculate withdrawable amounts based on accrual since last settlement
+	withdrawableAmounts := q.k.CalculateWithdrawableForLease(ctx, lease)
 
 	return &types.QueryWithdrawableAmountResponse{
-		Amount: sdk.NewCoin(params.Denom, withdrawableAmount),
+		Amounts: withdrawableAmounts,
 	}, nil
 }
 
-// ProviderWithdrawable queries the total amount available for a provider to withdraw.
+// ProviderWithdrawable queries the total amounts available for a provider to withdraw.
 func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProviderWithdrawableRequest) (*types.QueryProviderWithdrawableResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -282,30 +270,25 @@ func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProvi
 		return nil, status.Error(codes.InvalidArgument, "provider_id cannot be zero")
 	}
 
-	params, err := q.k.GetParams(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
 	leases, err := q.k.GetLeasesByProviderID(ctx, req.ProviderId)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// Calculate total withdrawable and count leases with withdrawable amounts
-	totalWithdrawable := math.ZeroInt()
+	totalWithdrawable := sdk.NewCoins()
 	var leaseCount uint64
 
 	for _, lease := range leases {
 		withdrawable := q.k.CalculateWithdrawableForLease(ctx, lease)
-		if withdrawable.IsPositive() {
-			totalWithdrawable = totalWithdrawable.Add(withdrawable)
+		if !withdrawable.IsZero() {
+			totalWithdrawable = totalWithdrawable.Add(withdrawable...)
 			leaseCount++
 		}
 	}
 
 	return &types.QueryProviderWithdrawableResponse{
-		Amount:     sdk.NewCoin(params.Denom, totalWithdrawable),
+		Amounts:    totalWithdrawable,
 		LeaseCount: leaseCount,
 	}, nil
 }

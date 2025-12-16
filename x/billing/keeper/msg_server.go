@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"cosmossdk.io/math"
+	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
@@ -39,16 +39,6 @@ func (ms msgServer) isAuthorizedForTenantLeaseCreation(ctx context.Context, send
 func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*types.MsgFundCreditResponse, error) {
 	if err := msg.ValidateBasic(); err != nil {
 		return nil, err
-	}
-
-	// Validate denom matches billing params
-	params, err := ms.k.GetParams(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if msg.Amount.Denom != params.Denom {
-		return nil, types.ErrInvalidDenom.Wrapf("expected %s, got %s", params.Denom, msg.Amount.Denom)
 	}
 
 	// Derive credit address for the tenant
@@ -88,8 +78,8 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 		return nil, err
 	}
 
-	// Get the new balance from the bank module
-	newBalance := ms.k.bankKeeper.GetBalance(ctx, creditAddr, params.Denom)
+	// Get the new balance from the bank module for the funded denom
+	newBalance := ms.k.bankKeeper.GetBalance(ctx, creditAddr, msg.Amount.Denom)
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	sdkCtx.EventManager().EmitEvent(
@@ -114,7 +104,7 @@ type leaseCreationResult struct {
 	leaseID      uint64
 	providerID   uint64
 	itemCount    int
-	totalRate    math.Int
+	totalRates   sdk.Coins // total rate per second by denom
 	activeLeases uint64
 }
 
@@ -138,8 +128,8 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		)
 	}
 
-	// 1. Get tenant's credit balance
-	creditBalance, err := ms.k.GetCreditBalance(ctx, tenant, params.Denom)
+	// 1. Get tenant's credit balances (all denoms)
+	creditBalances, err := ms.k.GetCreditBalances(ctx, tenant)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +151,7 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 	// 3. Verify all SKUs exist, are active, and belong to the same provider
 	var providerID uint64
 	leaseItems := make([]types.LeaseItem, 0, len(items))
-	totalRatePerSecond := math.ZeroInt()
+	totalRatesPerSecond := sdk.NewCoins() // Accumulate rates by denom
 
 	for i, inputItem := range items {
 		sku, err := ms.k.skuKeeper.GetSKU(ctx, inputItem.SkuId)
@@ -194,12 +184,12 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 			return nil, types.ErrProviderNotActive.Wrapf("provider_id %d is not active", sku.ProviderId)
 		}
 
-		// 4. Lock price from SKU (convert to per-second rate)
+		// 4. Lock price from SKU (convert to per-second rate, preserving denom)
 		lockedPricePerSecond := ConvertBasePriceToPerSecond(sku.BasePrice, sku.Unit)
 
-		// Accumulate total rate for event (use math.Int for type safety)
-		quantityInt := math.NewIntFromUint64(inputItem.Quantity)
-		totalRatePerSecond = totalRatePerSecond.Add(lockedPricePerSecond.Mul(quantityInt))
+		// Accumulate total rate for each denom
+		itemRate := sdk.NewCoin(lockedPricePerSecond.Denom, lockedPricePerSecond.Amount.Mul(sdkmath.NewIntFromUint64(inputItem.Quantity)))
+		totalRatesPerSecond = totalRatesPerSecond.Add(itemRate)
 
 		leaseItems = append(leaseItems, types.LeaseItem{
 			SkuId:       inputItem.SkuId,
@@ -208,18 +198,22 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		})
 	}
 
-	// 4. Verify tenant has enough credit to cover minimum lease duration
-	// Required credit = totalRatePerSecond * minLeaseDuration
-	minLeaseDurationInt := math.NewIntFromUint64(params.MinLeaseDuration)
-	requiredCredit := totalRatePerSecond.Mul(minLeaseDurationInt)
-	if creditBalance.Amount.LT(requiredCredit) {
-		return nil, types.ErrInsufficientCredit.Wrapf(
-			"credit balance %s cannot cover minimum lease duration of %d seconds (requires %s at rate %s/second)",
-			creditBalance.Amount.String(),
-			params.MinLeaseDuration,
-			requiredCredit.String(),
-			totalRatePerSecond.String(),
-		)
+	// 4. Verify tenant has enough credit to cover minimum lease duration for EACH denom
+	// Required credit per denom = totalRatePerSecond[denom] * minLeaseDuration
+	for _, rate := range totalRatesPerSecond {
+		requiredCredit := rate.Amount.Mul(sdkmath.NewIntFromUint64(params.MinLeaseDuration))
+		balance := creditBalances.AmountOf(rate.Denom)
+		if balance.LT(requiredCredit) {
+			return nil, types.ErrInsufficientCredit.Wrapf(
+				"credit balance %s %s cannot cover minimum lease duration of %d seconds (requires %s %s at rate %s/second)",
+				balance.String(),
+				rate.Denom,
+				params.MinLeaseDuration,
+				requiredCredit.String(),
+				rate.Denom,
+				rate.Amount.String(),
+			)
+		}
 	}
 
 	// 5. Create lease
@@ -252,7 +246,7 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		leaseID:      leaseID,
 		providerID:   providerID,
 		itemCount:    len(leaseItems),
-		totalRate:    totalRatePerSecond,
+		totalRates:   totalRatesPerSecond,
 		activeLeases: creditAccount.ActiveLeaseCount,
 	}, nil
 }
@@ -277,7 +271,7 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 			sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
 			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(result.providerID, 10)),
 			sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(result.itemCount)),
-			sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRate.String()),
+			sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRates.String()),
 			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(result.activeLeases, 10)),
 			sdk.NewAttribute(types.AttributeKeyCreatedBy, "tenant"),
 		),
@@ -318,7 +312,7 @@ func (ms msgServer) CreateLeaseForTenant(ctx context.Context, msg *types.MsgCrea
 			sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
 			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(result.providerID, 10)),
 			sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(result.itemCount)),
-			sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRate.String()),
+			sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRates.String()),
 			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(result.activeLeases, 10)),
 			sdk.NewAttribute(types.AttributeKeyCreatedBy, "authority"),
 		),
@@ -389,12 +383,12 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		return nil, err
 	}
 
-	var settledAmount math.Int
+	var settledAmounts sdk.Coins
 	var duration time.Duration
 	if closed {
 		// Lease was auto-closed due to credit exhaustion
 		// Settlement already happened, so we just return success
-		settledAmount = math.ZeroInt() // Already settled during auto-close
+		settledAmounts = sdk.NewCoins()
 		closedBy = "credit_exhaustion"
 		duration = 0
 	} else {
@@ -402,7 +396,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		duration = blockTime.Sub(lease.LastSettledAt)
 
 		// 6. Settle accrued charges
-		settledAmount, err = ms.settleLease(ctx, &lease, blockTime)
+		settledAmounts, err = ms.settleLease(ctx, &lease, blockTime)
 		if err != nil {
 			return nil, err
 		}
@@ -425,11 +419,6 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		}
 	}
 
-	params, err := ms.k.GetParams(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	// Get active lease count for event (may have been decremented above or by auto-close)
 	creditAccount, _ := ms.k.GetCreditAccount(ctx, lease.Tenant)
 
@@ -440,7 +429,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(msg.LeaseId, 10)),
 			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
 			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(lease.ProviderId, 10)),
-			sdk.NewAttribute(types.AttributeKeySettledAmount, settledAmount.String()),
+			sdk.NewAttribute(types.AttributeKeySettledAmounts, settledAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyClosedBy, closedBy),
 			sdk.NewAttribute(types.AttributeKeyDuration, strconv.FormatInt(int64(duration.Seconds()), 10)),
 			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(creditAccount.ActiveLeaseCount, 10)),
@@ -448,7 +437,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	)
 
 	return &types.MsgCloseLeaseResponse{
-		SettledAmount: sdk.NewCoin(params.Denom, settledAmount),
+		SettledAmounts: settledAmounts,
 	}, nil
 }
 
@@ -489,11 +478,6 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 		}
 		if closed {
 			// Auto-close already performed settlement and transferred funds
-			// Get params to return proper denom in response
-			params, err := ms.k.GetParams(ctx)
-			if err != nil {
-				return nil, err
-			}
 			// Emit withdrawal event with zero amount (settlement was done during auto-close)
 			sdkCtx.EventManager().EmitEvent(
 				sdk.NewEvent(
@@ -505,12 +489,13 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 				),
 			)
 			return &types.MsgWithdrawResponse{
-				Amount: sdk.NewCoin(params.Denom, math.ZeroInt()),
+				Amounts:       sdk.NewCoins(),
+				PayoutAddress: provider.PayoutAddress,
 			}, nil
 		}
 	}
 
-	// 4. Calculate accrued amount since last settlement
+	// 4. Calculate accrued amounts since last settlement
 	var duration time.Duration
 	if lease.State == types.LEASE_STATE_ACTIVE {
 		duration = blockTime.Sub(lease.LastSettledAt)
@@ -532,21 +517,16 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 			LockedPricePerSecond: item.LockedPrice,
 		})
 	}
-	accruedAmount, err := CalculateTotalAccruedForLease(items, duration)
+	accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
 	if err != nil {
 		return nil, types.ErrInvalidCreditOperation.Wrapf("accrual calculation error: %s", err)
 	}
 
-	if accruedAmount.IsZero() {
+	if accruedAmounts.IsZero() {
 		return nil, types.ErrNoWithdrawableAmount
 	}
 
-	// 5. Transfer accrued amount from credit account to provider payout address
-	params, err := ms.k.GetParams(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+	// 5. Transfer accrued amounts from credit account to provider payout address
 	creditAddr, err := types.DeriveCreditAddressFromBech32(lease.Tenant)
 	if err != nil {
 		return nil, err
@@ -557,27 +537,34 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 		return nil, types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
 	}
 
-	// Check if credit account has sufficient balance
-	creditBalance := ms.k.bankKeeper.GetBalance(ctx, creditAddr, params.Denom)
+	// Get credit balances
+	creditBalances := ms.k.bankKeeper.GetAllBalances(ctx, creditAddr)
 
-	// Transfer the minimum of accrued amount and available balance
-	transferAmount := accruedAmount
-	if creditBalance.Amount.LT(accruedAmount) {
-		transferAmount = creditBalance.Amount
+	// Calculate transfer amounts (minimum of accrued and available for each denom)
+	transferAmounts := sdk.NewCoins()
+	for _, accrued := range accruedAmounts {
+		balance := creditBalances.AmountOf(accrued.Denom)
+		transferAmount := accrued.Amount
+		if balance.LT(accrued.Amount) {
+			transferAmount = balance
+		}
+		if transferAmount.IsPositive() {
+			transferAmounts = transferAmounts.Add(sdk.NewCoin(accrued.Denom, transferAmount))
+		}
 	}
 
-	if transferAmount.IsPositive() {
+	if !transferAmounts.IsZero() {
 		if err := ms.k.bankKeeper.SendCoins(
 			ctx,
 			creditAddr,
 			payoutAddr,
-			sdk.NewCoins(sdk.NewCoin(params.Denom, transferAmount)),
+			transferAmounts,
 		); err != nil {
 			return nil, types.ErrInvalidCreditOperation.Wrapf("failed to transfer: %s", err)
 		}
 	}
 
-	// 5. Update last_settled_at
+	// 6. Update last_settled_at
 	if lease.State == types.LEASE_STATE_ACTIVE {
 		lease.LastSettledAt = blockTime
 		if err := ms.k.SetLease(ctx, lease); err != nil {
@@ -585,19 +572,19 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 		}
 	}
 
-	// 6. Emit detailed event
+	// 7. Emit detailed event
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeProviderWithdraw,
 			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(msg.LeaseId, 10)),
 			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(lease.ProviderId, 10)),
-			sdk.NewAttribute(types.AttributeKeyAmount, transferAmount.String()),
+			sdk.NewAttribute(types.AttributeKeyAmount, transferAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.PayoutAddress),
 		),
 	)
 
 	return &types.MsgWithdrawResponse{
-		Amount:        sdk.NewCoin(params.Denom, transferAmount),
+		Amounts:       transferAmounts,
 		PayoutAddress: provider.PayoutAddress,
 	}, nil
 }
@@ -634,18 +621,13 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 		return nil, err
 	}
 
-	params, err := ms.k.GetParams(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
 	if err != nil {
 		return nil, types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
 	}
 
-	// 3. For each lease (up to limit), calculate and withdraw accrued amount
-	totalAmount := math.ZeroInt()
+	// 3. For each lease (up to limit), calculate and withdraw accrued amounts
+	totalAmounts := sdk.NewCoins()
 	var leaseCount uint64
 	var processedCount uint64
 
@@ -663,7 +645,7 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 			break
 		}
 
-		// Calculate accrued amount
+		// Calculate accrued amounts
 		var duration time.Duration
 		if lease.State == types.LEASE_STATE_ACTIVE {
 			duration = blockTime.Sub(lease.LastSettledAt)
@@ -683,7 +665,7 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 				LockedPricePerSecond: item.LockedPrice,
 			})
 		}
-		accruedAmount, err := CalculateTotalAccruedForLease(items, duration)
+		accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
 		if err != nil {
 			// Log overflow error but continue with other leases
 			ms.k.Logger().Error("accrual calculation overflow",
@@ -693,30 +675,37 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 			continue
 		}
 
-		if accruedAmount.IsZero() {
+		if accruedAmounts.IsZero() {
 			continue
 		}
 
-		// Get credit balance
+		// Get credit balances
 		creditAddr, err := types.DeriveCreditAddressFromBech32(lease.Tenant)
 		if err != nil {
 			continue
 		}
 
-		creditBalance := ms.k.bankKeeper.GetBalance(ctx, creditAddr, params.Denom)
+		creditBalances := ms.k.bankKeeper.GetAllBalances(ctx, creditAddr)
 
-		// Transfer the minimum of accrued and available
-		transferAmount := accruedAmount
-		if creditBalance.Amount.LT(accruedAmount) {
-			transferAmount = creditBalance.Amount
+		// Calculate transfer amounts (minimum of accrued and available for each denom)
+		transferAmounts := sdk.NewCoins()
+		for _, accrued := range accruedAmounts {
+			balance := creditBalances.AmountOf(accrued.Denom)
+			transferAmount := accrued.Amount
+			if balance.LT(accrued.Amount) {
+				transferAmount = balance
+			}
+			if transferAmount.IsPositive() {
+				transferAmounts = transferAmounts.Add(sdk.NewCoin(accrued.Denom, transferAmount))
+			}
 		}
 
-		if transferAmount.IsPositive() {
+		if !transferAmounts.IsZero() {
 			if err := ms.k.bankKeeper.SendCoins(
 				ctx,
 				creditAddr,
 				payoutAddr,
-				sdk.NewCoins(sdk.NewCoin(params.Denom, transferAmount)),
+				transferAmounts,
 			); err != nil {
 				// Log error but continue with other leases
 				ms.k.Logger().Error("failed to withdraw from lease",
@@ -726,7 +715,7 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 				continue
 			}
 
-			totalAmount = totalAmount.Add(transferAmount)
+			totalAmounts = totalAmounts.Add(transferAmounts...)
 			leaseCount++
 
 			// Update last_settled_at for active leases
@@ -749,14 +738,14 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 		sdk.NewEvent(
 			types.EventTypeProviderWithdrawAll,
 			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(providerID, 10)),
-			sdk.NewAttribute(types.AttributeKeyAmount, totalAmount.String()),
+			sdk.NewAttribute(types.AttributeKeyAmount, totalAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(leaseCount, 10)),
 			sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.GetPayoutAddress()),
 		),
 	)
 
 	return &types.MsgWithdrawAllResponse{
-		TotalAmount:   sdk.NewCoin(params.Denom, totalAmount),
+		TotalAmounts:  totalAmounts,
 		LeaseCount:    leaseCount,
 		PayoutAddress: provider.GetPayoutAddress(),
 		HasMore:       hasMore,
@@ -786,12 +775,12 @@ func (ms msgServer) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams
 }
 
 // settleLease calculates and transfers accrued charges from tenant's credit account
-// to the provider's payout address. Returns the amount settled.
-func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleTime time.Time) (math.Int, error) {
+// to the provider's payout address. Returns the amounts settled (one per denom).
+func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleTime time.Time) (sdk.Coins, error) {
 	// Calculate duration since last settlement
 	duration := settleTime.Sub(lease.LastSettledAt)
 	if duration <= 0 {
-		return math.ZeroInt(), nil
+		return sdk.NewCoins(), nil
 	}
 
 	// Calculate total accrued with overflow checking
@@ -803,60 +792,61 @@ func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleT
 			LockedPricePerSecond: item.LockedPrice,
 		})
 	}
-	accruedAmount, err := CalculateTotalAccruedForLease(items, duration)
+	accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
 	if err != nil {
-		return math.ZeroInt(), types.ErrInvalidCreditOperation.Wrapf("accrual calculation error: %s", err)
+		return sdk.NewCoins(), types.ErrInvalidCreditOperation.Wrapf("accrual calculation error: %s", err)
 	}
 
-	if accruedAmount.IsZero() {
-		return math.ZeroInt(), nil
-	}
-
-	// Get params for denom
-	params, err := ms.k.GetParams(ctx)
-	if err != nil {
-		return math.ZeroInt(), err
+	if accruedAmounts.IsZero() {
+		return sdk.NewCoins(), nil
 	}
 
 	// Get credit address
 	creditAddr, err := types.DeriveCreditAddressFromBech32(lease.Tenant)
 	if err != nil {
-		return math.ZeroInt(), err
+		return sdk.NewCoins(), err
 	}
 
 	// Get provider payout address
 	provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderId)
 	if err != nil {
-		return math.ZeroInt(), types.ErrProviderNotFound.Wrapf("provider_id %d not found", lease.ProviderId)
+		return sdk.NewCoins(), types.ErrProviderNotFound.Wrapf("provider_id %d not found", lease.ProviderId)
 	}
 
 	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
 	if err != nil {
-		return math.ZeroInt(), types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
+		return sdk.NewCoins(), types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
 	}
 
-	// Check credit balance
-	creditBalance := ms.k.bankKeeper.GetBalance(ctx, creditAddr, params.Denom)
+	// Get credit balances
+	creditBalances := ms.k.bankKeeper.GetAllBalances(ctx, creditAddr)
 
-	// Transfer minimum of accrued and available
-	transferAmount := accruedAmount
-	if creditBalance.Amount.LT(accruedAmount) {
-		transferAmount = creditBalance.Amount
+	// Calculate transfer amounts (minimum of accrued and available for each denom)
+	transferAmounts := sdk.NewCoins()
+	for _, accrued := range accruedAmounts {
+		balance := creditBalances.AmountOf(accrued.Denom)
+		transferAmount := accrued.Amount
+		if balance.LT(accrued.Amount) {
+			transferAmount = balance
+		}
+		if transferAmount.IsPositive() {
+			transferAmounts = transferAmounts.Add(sdk.NewCoin(accrued.Denom, transferAmount))
+		}
 	}
 
-	if transferAmount.IsPositive() {
+	if !transferAmounts.IsZero() {
 		if err := ms.k.bankKeeper.SendCoins(
 			ctx,
 			creditAddr,
 			payoutAddr,
-			sdk.NewCoins(sdk.NewCoin(params.Denom, transferAmount)),
+			transferAmounts,
 		); err != nil {
-			return math.ZeroInt(), types.ErrInvalidCreditOperation.Wrapf("failed to transfer: %s", err)
+			return sdk.NewCoins(), types.ErrInvalidCreditOperation.Wrapf("failed to transfer: %s", err)
 		}
 	}
 
 	// Update last_settled_at
 	lease.LastSettledAt = settleTime
 
-	return transferAmount, nil
+	return transferAmounts, nil
 }

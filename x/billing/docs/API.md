@@ -39,7 +39,8 @@ manifestd tx billing fund-credit manifest1abc... 1000000upwr --from mykey
 
 **Notes:**
 - Anyone can fund any tenant's credit account
-- The denomination must match the billing params `denom`
+- Credit accounts support multiple denominations
+- The denomination funded must match what the tenant needs for their target SKUs
 - Creates the credit account if it doesn't exist
 
 ---
@@ -64,7 +65,7 @@ manifestd tx billing create-lease 1:2 2:1 3:5 --from mykey
 
 **Constraints:**
 - Sender must have funded credit account
-- Credit must cover `min_lease_duration` seconds
+- Credit must cover `min_lease_duration` seconds for each denom used by the SKUs
 - All SKUs must be from the same provider
 - All SKUs must be active
 - Cannot exceed `max_items_per_lease`
@@ -186,13 +187,12 @@ manifestd tx billing withdraw-all 1 --limit 100 --from provider-key
 Update module parameters (authority only).
 
 ```bash
-manifestd tx billing update-params [denom] [max-leases-per-tenant] [max-items-per-lease] [min-lease-duration] [flags]
+manifestd tx billing update-params [max-leases-per-tenant] [max-items-per-lease] [min-lease-duration] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| denom | string | Billing denomination |
 | max-leases-per-tenant | uint64 | Max active leases per tenant |
 | max-items-per-lease | uint64 | Max items per lease |
 | min-lease-duration | uint64 | Minimum lease duration in seconds |
@@ -205,7 +205,6 @@ manifestd tx billing update-params [denom] [max-leases-per-tenant] [max-items-pe
 **Example:**
 ```bash
 manifestd tx billing update-params \
-  "upwr" \
   100 \
   20 \
   3600 \
@@ -229,7 +228,6 @@ manifestd query billing params
 ```json
 {
   "params": {
-    "denom": "upwr",
     "max_leases_per_tenant": "100",
     "max_items_per_lease": "20",
     "min_lease_duration": "3600",
@@ -237,6 +235,8 @@ manifestd query billing params
   }
 }
 ```
+
+**Note:** There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`.
 
 ---
 
@@ -264,7 +264,10 @@ manifestd query billing lease [lease-id]
       {
         "sku_id": "1",
         "quantity": "2",
-        "locked_price": "100"
+        "locked_price": {
+          "denom": "upwr",
+          "amount": "100"
+        }
       }
     ],
     "state": "LEASE_STATE_ACTIVE",
@@ -275,7 +278,7 @@ manifestd query billing lease [lease-id]
 }
 ```
 
-**Note:** `locked_price` is the per-second rate, not the original SKU price.
+**Note:** `locked_price` is a Coin with denom and amount, representing the per-second rate.
 
 ---
 
@@ -362,12 +365,20 @@ manifestd query billing credit-account [tenant]
     "credit_address": "manifest1xyz...",
     "active_lease_count": "2"
   },
-  "balance": {
-    "denom": "upwr",
-    "amount": "1000000000"
-  }
+  "balances": [
+    {
+      "denom": "upwr",
+      "amount": "1000000000"
+    },
+    {
+      "denom": "umfx",
+      "amount": "500000000"
+    }
+  ]
 }
 ```
+
+**Note:** Credit accounts can hold multiple denominations. The balances shown include all tokens in the account.
 
 ---
 
@@ -409,11 +420,12 @@ manifestd query billing withdrawable [lease-id]
 **Response:**
 ```json
 {
-  "amount": {
-    "denom": "upwr",
-    "amount": "500000"
-  },
-  "payout_address": "manifest1provider..."
+  "amounts": [
+    {
+      "denom": "upwr",
+      "amount": "500000"
+    }
+  ]
 }
 ```
 
@@ -437,12 +449,13 @@ manifestd query billing provider-withdrawable [provider-id]
 **Response:**
 ```json
 {
-  "amount": {
-    "denom": "upwr",
-    "amount": "5000000"
-  },
-  "lease_count": "10",
-  "payout_address": "manifest1provider..."
+  "amounts": [
+    {
+      "denom": "upwr",
+      "amount": "5000000"
+    }
+  ],
+  "lease_count": "10"
 }
 ```
 
@@ -819,7 +832,7 @@ curl http://localhost:1317/liftedinit/billing/v1/withdrawable/1
 | `ErrInsufficientCredit` | 4 | Not enough credit balance |
 | `ErrMaxLeasesReached` | 5 | Tenant at max active leases |
 | `ErrUnauthorized` | 6 | Sender not authorized |
-| `ErrInvalidDenom` | 7 | Wrong denomination in message |
+| `ErrInvalidDenom` | 7 | Wrong denomination for operation |
 | `ErrCreditAccountNotFound` | 8 | Credit account doesn't exist |
 | `ErrInvalidLease` | 9 | Invalid lease parameters |
 | `ErrSKUNotFound` | 10 | SKU doesn't exist |
@@ -832,7 +845,7 @@ curl http://localhost:1317/liftedinit/billing/v1/withdrawable/1
 | `ErrInvalidQuantity` | 17 | Item quantity is zero |
 | `ErrDuplicateSKU` | 18 | Same SKU appears multiple times |
 | `ErrInvalidCreditOperation` | 19 | Credit operation failed |
-| `ErrInvalidDenomination` | 20 | Wrong denom for credit account |
+| `ErrInvalidDenomination` | 20 | Invalid denomination in lease item |
 | `ErrTooManyLeaseItems` | 21 | Lease exceeds max items |
 
 ---

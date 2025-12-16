@@ -68,6 +68,7 @@ const (
 	AttributeKeyProviderID       = "provider_id"
 	AttributeKeyAmount           = "amount"
 	AttributeKeySettledAmount    = "settled_amount"
+	AttributeKeySettledAmounts   = "settled_amounts"
 	AttributeKeyPayoutAddress    = "payout_address"
 	AttributeKeyLeaseCount       = "lease_count"
 	AttributeKeySender           = "sender"

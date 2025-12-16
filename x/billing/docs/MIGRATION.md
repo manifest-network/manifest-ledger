@@ -16,8 +16,7 @@ The migration process involves:
 - You must be the **module authority** (POA admin group address) OR
 - Your address must be in the `allowed_list` billing parameter
 - The **SKU module** must have the required providers and SKUs already created
-- The **billing denom** must be set in params (typically a token factory denom)
-- You must have sufficient billing tokens to fund tenant credit accounts
+- You must have sufficient tokens (matching SKU denominations) to fund tenant credit accounts
 
 ## Step 1: Configure Billing Parameters
 
@@ -33,7 +32,6 @@ If parameters need updating:
 ```bash
 # Update params via authority
 manifestd tx billing update-params \
-  "factory/manifest1.../upwr" \
   100 \
   20 \
   3600 \
@@ -43,10 +41,11 @@ manifestd tx billing update-params \
 **Parameters:**
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `denom` | Billing token denomination | `upwr` |
 | `max_leases_per_tenant` | Max active leases per tenant | 100 |
 | `max_items_per_lease` | Max items in single lease | 20 |
 | `min_lease_duration` | Min seconds credit must cover | 3600 |
+
+**Note:** There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`, enabling multi-denom billing.
 
 ### Adding Addresses to the Allow List
 
@@ -85,16 +84,24 @@ Each tenant needs credit before a lease can be created for them. The credit must
 
 ### Calculate Minimum Credit Required
 
+For each denomination used by the SKUs in the lease:
+
 ```
-min_credit = sum(sku_rate_per_second × quantity) × min_lease_duration
+min_credit[denom] = sum(sku_rate_per_second × quantity for SKUs with that denom) × min_lease_duration
 ```
 
-**Example:**
+**Example (single denom):**
 - SKU 1: 1 upwr/second, quantity 2 → 2 upwr/second
 - SKU 2: 5 upwr/second, quantity 1 → 5 upwr/second
 - Total rate: 7 upwr/second
 - Min duration: 3600 seconds
 - Min credit: 7 × 3600 = 25,200 upwr
+
+**Example (multi-denom):**
+- SKU 1: 1 upwr/second, quantity 2 → 2 upwr/second
+- SKU 2: 3 umfx/second, quantity 1 → 3 umfx/second
+- Min duration: 3600 seconds
+- Min credit needed: 7,200 upwr AND 10,800 umfx
 
 ### Fund the Credit Account
 
@@ -105,14 +112,15 @@ manifestd tx billing fund-credit [tenant-address] [amount] --from [authority-key
 # Example: Fund with 100,000,000 upwr (100 PWR)
 manifestd tx billing fund-credit manifest1abc... 100000000upwr --from authority
 
-# Or with a factory denom
-manifestd tx billing fund-credit manifest1abc... 100000000factory/manifest1.../upwr --from authority
+# For multi-denom, fund each denom separately
+manifestd tx billing fund-credit manifest1abc... 100000000upwr --from authority
+manifestd tx billing fund-credit manifest1abc... 50000000umfx --from authority
 
 # Verify credit was received
 manifestd query billing credit-account [tenant-address]
 ```
 
-**Note:** Anyone can fund any tenant's credit account - this is not restricted to authority.
+**Note:** Anyone can fund any tenant's credit account - this is not restricted to authority. Credit accounts support multiple denominations.
 
 ## Step 4: Create Leases for Tenants
 
@@ -253,15 +261,16 @@ If a migration needs to be reversed:
 
 ### "insufficient credit balance"
 
-The tenant doesn't have enough credit to cover `min_lease_duration`. Calculate the minimum required:
+The tenant doesn't have enough credit to cover `min_lease_duration` for one or more denominations. Calculate the minimum required for each denom:
 
 ```bash
-# Check SKU rates
+# Check SKU rates and denoms
 manifestd query sku sku [sku-id]
 
-# Calculate: sum(rate × quantity) × min_lease_duration
+# For each denom: sum(rate × quantity) × min_lease_duration
 # Fund accordingly
-manifestd tx billing fund-credit [tenant] [amount] --from authority
+manifestd tx billing fund-credit [tenant] [amount_denom1] --from authority
+manifestd tx billing fund-credit [tenant] [amount_denom2] --from authority
 ```
 
 ### "credit account not found"

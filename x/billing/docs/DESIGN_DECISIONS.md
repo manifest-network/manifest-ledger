@@ -171,25 +171,49 @@ creditAddr = sha256("billing" + tenantAddr)[:20]
 - Cannot split by SKU type
 - Provider must distribute internally
 
-## Decision 9: Bank Send Restriction for Credit Protection
+## Decision 9: Multi-Denom Support
 
-**Decision:** Register bank send restriction to prevent wrong denominations entering credit accounts.
+**Decision:** Allow SKUs to use different token denominations for their base_price, with credit accounts supporting multiple denoms.
 
 **Alternatives Considered:**
-1. No protection (accept any tokens)
-2. Refund mechanism for wrong tokens
-3. Send restriction (chosen)
+1. Single global denom for all billing (rejected)
+2. Per-provider denom restriction (rejected)
+3. Full multi-denom support (chosen)
 
 **Rationale:**
-- **Prevention:** Better than recovery
-- **User Protection:** Prevents accidental loss
-- **Clean State:** Credit accounts only have billing denom
-- **SDK Integration:** Uses existing bank hooks
+- **Flexibility:** Different SKUs can be priced in different tokens
+- **Provider Choice:** Providers select appropriate payment token per SKU
+- **Market Integration:** Can price in stablecoins, native tokens, or custom tokens
+- **Simple Architecture:** Credit accounts leverage bank module's multi-denom support
+
+**Implementation:**
+- Each SKU's `base_price` is a `Coin` with its own denom
+- Lease items store `locked_price` as `Coin` (preserving denom)
+- Credit validation checks each denom separately
+- Settlement transfers happen per-denom
+- Credit accounts are regular bank accounts that can hold any denom
+- No send restrictions on credit accounts (any token can be sent)
 
 **Trade-offs:**
-- Module must be registered with bank
-- Slightly more complex bank operations
-- Cannot receive airdrops (feature, not bug)
+- Lease creation validation more complex (check each denom)
+- Settlement must aggregate and transfer per-denom
+- Users must fund credit with correct denoms for their desired SKUs
+- No automatic denom conversion
+
+**Example:**
+```
+# Lease with two SKUs using different denoms:
+Item 1: SKU 1 (priced in 'upwr') - locked_price: 1000upwr/second
+Item 2: SKU 2 (priced in 'umfx') - locked_price: 500umfx/second
+
+# Credit account needs:
+- Enough 'upwr' for Item 1 at min_lease_duration
+- Enough 'umfx' for Item 2 at min_lease_duration
+
+# Settlement transfers:
+- Accrued upwr → provider payout address
+- Accrued umfx → provider payout address
+```
 
 ## Decision 10: Authority-Based Lease Creation for Migration
 
@@ -333,6 +357,7 @@ if creditBalance < minRequired {
 5. **Linear WithdrawAll:** O(n) for many leases (capped at 100)
 6. **Single Provider Per Lease:** Cannot mix providers in one lease
 7. **Lease Queries Return Stored State:** `Lease`, `Leases`, etc. return stored `last_settled_at` (use `WithdrawableAmount` for real-time)
+8. **No Denom Conversion:** Must fund credit with exact denoms required by target SKUs
 
 ### Migration Considerations
 

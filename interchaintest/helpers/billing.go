@@ -65,10 +65,9 @@ func BillingWithdrawAllWithLimit(ctx context.Context, chain *cosmos.CosmosChain,
 }
 
 // BillingUpdateParams updates the billing module parameters.
-func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, denom string, maxLeasesPerTenant uint64, maxItemsPerLease uint64, minLeaseDuration uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
+func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, maxLeasesPerTenant uint64, maxItemsPerLease uint64, minLeaseDuration uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{
 		"tx", "billing", "update-params",
-		denom,
 		strconv.FormatUint(maxLeasesPerTenant, 10),
 		strconv.FormatUint(maxItemsPerLease, 10),
 		strconv.FormatUint(minLeaseDuration, 10),
@@ -110,9 +109,9 @@ type LeaseJSON struct {
 
 // LeaseItemJSON is a JSON-friendly version of LeaseItem.
 type LeaseItemJSON struct {
-	SkuID       string `json:"sku_id"`
-	Quantity    string `json:"quantity"`
-	LockedPrice string `json:"locked_price"`
+	SkuID       string   `json:"sku_id"`
+	Quantity    string   `json:"quantity"`
+	LockedPrice sdk.Coin `json:"locked_price"`
 }
 
 // LeasesResponseJSON is a JSON-friendly version of QueryLeasesResponse.
@@ -193,7 +192,7 @@ func BillingQueryLeasesByProvider(ctx context.Context, chain *cosmos.CosmosChain
 // CreditAccountResponseJSON is a JSON-friendly version of QueryCreditAccountResponse.
 type CreditAccountResponseJSON struct {
 	CreditAccount CreditAccountJSON `json:"credit_account"`
-	Balance       sdk.Coin          `json:"balance"`
+	Balances      sdk.Coins         `json:"balances"`
 }
 
 // CreditAccountJSON is a JSON-friendly version of CreditAccount.
@@ -229,7 +228,7 @@ func BillingQueryCreditAddress(ctx context.Context, chain *cosmos.CosmosChain, t
 
 // WithdrawableAmountResponseJSON is a JSON-friendly version of QueryWithdrawableAmountResponse.
 type WithdrawableAmountResponseJSON struct {
-	Amount sdk.Coin `json:"amount"`
+	Amounts sdk.Coins `json:"amounts"`
 }
 
 // BillingQueryWithdrawable queries the withdrawable amount for a lease.
@@ -244,8 +243,8 @@ func BillingQueryWithdrawable(ctx context.Context, chain *cosmos.CosmosChain, le
 
 // ProviderWithdrawableResponseJSON is a JSON-friendly version of QueryProviderWithdrawableResponse.
 type ProviderWithdrawableResponseJSON struct {
-	Amount     sdk.Coin `json:"amount"`
-	LeaseCount string   `json:"lease_count"`
+	Amounts    sdk.Coins `json:"amounts"`
+	LeaseCount string    `json:"lease_count"`
 }
 
 // BillingQueryProviderWithdrawable queries the total withdrawable amount for a provider.
@@ -297,7 +296,6 @@ type ParamsResponseJSON struct {
 
 // ParamsJSON is a JSON-friendly version of billing Params.
 type ParamsJSON struct {
-	Denom              string   `json:"denom"`
 	MaxLeasesPerTenant string   `json:"max_leases_per_tenant"`
 	MaxItemsPerLease   string   `json:"max_items_per_lease"`
 	MinLeaseDuration   string   `json:"min_lease_duration"`

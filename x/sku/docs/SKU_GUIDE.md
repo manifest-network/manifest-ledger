@@ -60,6 +60,15 @@ price_daily = 1 × 86400 = 86400 tokens
 | **Base Price** | Price per billing unit (must be exactly divisible) | `3600upwr` |
 | **Meta Hash** (optional) | Hex-encoded hash of off-chain metadata | `deadbeef` |
 
+### Multi-Denomination Support
+
+Each SKU defines its own payment denomination in the `base_price` field. This enables:
+- Different SKUs can use different tokens (e.g., `upwr`, `umfx`, stablecoins)
+- Providers choose the appropriate payment token per SKU
+- Tenants must fund their credit account with the correct denominations for the SKUs they want to lease
+
+When a lease is created, the billing module validates that the tenant has sufficient credit in each denomination used by the SKUs in the lease.
+
 ### About Meta Hash
 
 The `meta_hash` field stores a hash of off-chain metadata describing the SKU in detail:

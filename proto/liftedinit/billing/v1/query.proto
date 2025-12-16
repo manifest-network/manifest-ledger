@@ -191,10 +191,11 @@ message QueryCreditAccountResponse {
     (gogoproto.jsontag) = "credit_account"
   ];
 
-  // balance is the current balance at the credit address (fetched from bank module).
-  cosmos.base.v1beta1.Coin balance = 2 [
+  // balances is the current balances at the credit address (fetched from bank module).
+  repeated cosmos.base.v1beta1.Coin balances = 2 [
     (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "balance"
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "balances"
   ];
 }
 
@@ -228,10 +229,11 @@ message QueryWithdrawableAmountRequest {
 // QueryWithdrawableAmountResponse is the response type for the
 // Query/WithdrawableAmount RPC method.
 message QueryWithdrawableAmountResponse {
-  // amount is the amount available for withdrawal.
-  cosmos.base.v1beta1.Coin amount = 1 [
+  // amounts is the amounts available for withdrawal (one per denom).
+  repeated cosmos.base.v1beta1.Coin amounts = 1 [
     (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "amount"
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "amounts"
   ];
 }
 
@@ -245,10 +247,11 @@ message QueryProviderWithdrawableRequest {
 // QueryProviderWithdrawableResponse is the response type for the
 // Query/ProviderWithdrawable RPC method.
 message QueryProviderWithdrawableResponse {
-  // amount is the total amount available for withdrawal across all leases.
-  cosmos.base.v1beta1.Coin amount = 1 [
+  // amounts is the total amounts available for withdrawal across all leases (one per denom).
+  repeated cosmos.base.v1beta1.Coin amounts = 1 [
     (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "amount"
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "amounts"
   ];
 
   // lease_count is the number of leases included in the withdrawable amount.

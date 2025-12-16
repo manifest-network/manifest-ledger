@@ -6,17 +6,19 @@ The `billing` module provides a credit-based billing system for leasing SKU reso
 
 ### Credit Accounts
 
-Each tenant has a credit account with a derived address. The credit account holds the billing denomination (PWR tokens) that will be used to pay for leased resources.
+Each tenant has a credit account with a derived address. Credit accounts can hold any token denomination that matches the SKU's base_price denomination.
 
 - **Credit Address**: Deterministically derived from the tenant's address
-- **Balance**: Current credit balance in the billing denomination
-- **Top-up**: Anyone can fund a tenant's credit account
+- **Balances**: Current credit balances (supports multiple denominations)
+- **Top-up**: Anyone can fund a tenant's credit account with any token
 
-#### Send Restriction
+### Multi-Denomination Support
 
-A send restriction is enforced to prevent users from accidentally sending wrong tokens to credit accounts. Only the configured billing denomination (PWR tokens) can be sent to credit account addresses. Attempting to send any other denomination will result in an error.
-
-This prevents loss of funds that would otherwise be unrecoverable since credit accounts are module-controlled addresses.
+The billing module supports multiple token denominations:
+- Each SKU defines its own `base_price` with a specific denomination
+- Credit accounts can hold multiple denominations
+- When creating a lease, the credit account must have sufficient balance in the denominations used by the leased SKUs
+- Settlement transfers use the denomination specified in the SKU's locked price
 
 ### Leases
 
@@ -79,11 +81,12 @@ Module parameters stored at key `0x00`:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| denom | string | Billing denomination (PWR token) |
 | max_leases_per_tenant | uint64 | Maximum active leases per tenant (must be > 0) |
 | max_items_per_lease | uint64 | Maximum items per lease (default: 20, hard limit: 100) |
 | min_lease_duration | uint64 | Minimum lease duration in seconds (default: 3600 = 1 hour) |
 | allowed_list | []string | List of addresses allowed to create leases on behalf of tenants |
+
+**Note:** There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`, enabling multi-denom billing.
 
 ### Lease
 
@@ -106,7 +109,7 @@ Leases stored at key prefix `0x01`:
 |-------|------|-------------|
 | sku_id | uint64 | SKU ID being leased |
 | quantity | uint64 | Number of instances |
-| locked_price | Int | Price locked at creation (per second) |
+| locked_price | Coin | Price locked at creation (per second rate, includes denom) |
 
 ### CreditAccount
 
@@ -233,7 +236,7 @@ Response includes `has_more` to indicate if additional calls are needed:
 
 ```protobuf
 message MsgWithdrawAllResponse {
-  cosmos.base.v1beta1.Coin total_amount = 1;
+  repeated cosmos.base.v1beta1.Coin total_amounts = 1; // One per denom
   uint64 lease_count = 2;
   string payout_address = 3;
   bool has_more = 4;      // True if more leases remain
@@ -338,7 +341,6 @@ manifestd query billing provider-withdrawable [provider-id]
 
 | Parameter | Default Value |
 |-----------|---------------|
-| denom | factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr |
 | max_leases_per_tenant | 100 |
 | max_items_per_lease | 20 (hard limit: 100) |
 | min_lease_duration | 3600 (1 hour) |

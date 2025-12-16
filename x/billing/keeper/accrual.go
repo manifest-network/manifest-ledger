@@ -20,27 +20,27 @@ const MaxDurationSeconds = 100 * 365 * 24 * 60 * 60 // ~100 years in seconds
 // The SKU's Unit determines how to interpret the base price:
 // - UNIT_PER_HOUR: divide by 3600
 // - UNIT_PER_DAY: divide by 86400
-// Returns the per-second rate in the smallest denomination.
+// Returns the per-second rate as a Coin with the same denom as the base price.
 // Note: Integer division may result in precision loss for small amounts.
 // SKUs should be validated at creation time to ensure non-zero per-second rates.
-func ConvertBasePriceToPerSecond(basePrice sdk.Coin, unit skutypes.Unit) math.Int {
+func ConvertBasePriceToPerSecond(basePrice sdk.Coin, unit skutypes.Unit) sdk.Coin {
 	perSecond, _ := skutypes.CalculatePricePerSecond(basePrice, unit)
-	return perSecond
+	return sdk.NewCoin(basePrice.Denom, perSecond)
 }
 
 // CalculateAccruedAmount calculates the amount accrued for a lease item
 // over a given duration.
 // accrued = lockedPricePerSecond * quantity * durationSeconds
 // Returns an error if the calculation would overflow.
-func CalculateAccruedAmount(lockedPricePerSecond math.Int, quantity uint64, duration time.Duration) (math.Int, error) {
+func CalculateAccruedAmount(lockedPricePerSecond sdk.Coin, quantity uint64, duration time.Duration) (sdk.Coin, error) {
 	durationSeconds := int64(duration.Seconds())
 	if durationSeconds < 0 {
-		return math.ZeroInt(), nil
+		return sdk.NewCoin(lockedPricePerSecond.Denom, math.ZeroInt()), nil
 	}
 
 	// Check for excessive duration that could cause overflow
 	if durationSeconds > MaxDurationSeconds {
-		return math.ZeroInt(), fmt.Errorf("duration %d seconds exceeds maximum allowed %d seconds (approx 100 years)", durationSeconds, MaxDurationSeconds)
+		return sdk.Coin{}, fmt.Errorf("duration %d seconds exceeds maximum allowed %d seconds (approx 100 years)", durationSeconds, MaxDurationSeconds)
 	}
 
 	// accrued = price_per_second * quantity * seconds
@@ -49,36 +49,38 @@ func CalculateAccruedAmount(lockedPricePerSecond math.Int, quantity uint64, dura
 
 	// Perform multiplication with overflow checking
 	// math.Int uses big.Int internally, so it won't overflow, but we check for unreasonable values
-	result := lockedPricePerSecond.Mul(quantityInt).Mul(secondsInt)
+	result := lockedPricePerSecond.Amount.Mul(quantityInt).Mul(secondsInt)
 
 	// Sanity check: ensure result is non-negative
 	if result.IsNegative() {
-		return math.ZeroInt(), fmt.Errorf("accrual calculation resulted in negative value")
+		return sdk.Coin{}, fmt.Errorf("accrual calculation resulted in negative value")
 	}
 
-	return result, nil
+	return sdk.NewCoin(lockedPricePerSecond.Denom, result), nil
 }
 
-// CalculateTotalAccruedForLease calculates the total accrued amount for all items
-// in a lease over the given duration.
+// CalculateTotalAccruedForLease calculates the total accrued amounts for all items
+// in a lease over the given duration. Returns a Coins collection (one entry per denom).
 // Returns an error if any item calculation would overflow.
-func CalculateTotalAccruedForLease(items []LeaseItemWithPrice, duration time.Duration) (math.Int, error) {
-	total := math.ZeroInt()
+func CalculateTotalAccruedForLease(items []LeaseItemWithPrice, duration time.Duration) (sdk.Coins, error) {
+	totals := sdk.NewCoins()
 
 	for _, item := range items {
 		accrued, err := CalculateAccruedAmount(item.LockedPricePerSecond, item.Quantity, duration)
 		if err != nil {
-			return math.ZeroInt(), fmt.Errorf("overflow calculating accrual for SKU %d: %w", item.SkuID, err)
+			return nil, fmt.Errorf("overflow calculating accrual for SKU %d: %w", item.SkuID, err)
 		}
-		total = total.Add(accrued)
+		if accrued.IsPositive() {
+			totals = totals.Add(accrued)
+		}
 	}
 
-	return total, nil
+	return totals, nil
 }
 
 // LeaseItemWithPrice holds a lease item with its locked price per second.
 type LeaseItemWithPrice struct {
 	SkuID                uint64
 	Quantity             uint64
-	LockedPricePerSecond math.Int
+	LockedPricePerSecond sdk.Coin
 }

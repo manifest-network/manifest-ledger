@@ -34,6 +34,11 @@ import (
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
+const (
+	testDenom  = "umfx"
+	testDenom2 = "upwr"
+)
+
 type testFixture struct {
 	App         *app.ManifestApp
 	EncodingCfg moduletestutil.TestEncodingConfig
@@ -130,7 +135,7 @@ func TestInitGenesis(t *testing.T) {
 	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
 	require.NoError(t, err)
 
-	denom := types.DefaultDenom
+	denom := testDenom
 	balance := sdk.NewCoin(denom, sdkmath.NewInt(1000000))
 
 	// Mint and send to credit address
@@ -147,7 +152,7 @@ func TestInitGenesis(t *testing.T) {
 					{
 						SkuId:       1,
 						Quantity:    2,
-						LockedPrice: sdkmath.NewInt(100),
+						LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 					},
 				},
 				State:     types.LEASE_STATE_ACTIVE,
@@ -188,7 +193,7 @@ func TestExportGenesis(t *testing.T) {
 	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
 	require.NoError(t, err)
 
-	denom := types.DefaultDenom
+	denom := testDenom
 	balance := sdk.NewCoin(denom, sdkmath.NewInt(500000))
 
 	// Fund the credit address
@@ -211,7 +216,7 @@ func TestExportGenesis(t *testing.T) {
 			{
 				SkuId:       1,
 				Quantity:    1,
-				LockedPrice: sdkmath.NewInt(50),
+				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(50)),
 			},
 		},
 		State:     types.LEASE_STATE_ACTIVE,
@@ -228,7 +233,6 @@ func TestExportGenesis(t *testing.T) {
 
 	require.NotNil(t, genState)
 	// Compare params fields individually (nil slice vs empty slice comparison issue)
-	require.Equal(t, types.DefaultDenom, genState.Params.Denom)
 	require.Equal(t, types.DefaultMaxLeasesPerTenant, genState.Params.MaxLeasesPerTenant)
 	require.Empty(t, genState.Params.AllowedList)
 	require.Len(t, genState.Leases, 1)
@@ -246,12 +250,10 @@ func TestGetSetParams(t *testing.T) {
 	// Get default params
 	params, err := k.GetParams(f.Ctx)
 	require.NoError(t, err)
-	require.Equal(t, types.DefaultDenom, params.Denom)
 	require.Equal(t, types.DefaultMaxLeasesPerTenant, params.MaxLeasesPerTenant)
 
 	// Set new params
 	newParams := types.NewParams(
-		"factory/testdenom/upwr",
 		50,
 		[]string{},
 		20,
@@ -263,7 +265,6 @@ func TestGetSetParams(t *testing.T) {
 	// Verify new params
 	gotParams, err := k.GetParams(f.Ctx)
 	require.NoError(t, err)
-	require.Equal(t, "factory/testdenom/upwr", gotParams.Denom)
 	require.Equal(t, uint64(50), gotParams.MaxLeasesPerTenant)
 	require.Equal(t, uint64(20), gotParams.MaxItemsPerLease)
 	require.Equal(t, uint64(3600), gotParams.MinLeaseDuration)
@@ -317,7 +318,7 @@ func TestGetLease(t *testing.T) {
 			{
 				SkuId:       1,
 				Quantity:    1,
-				LockedPrice: sdkmath.NewInt(100),
+				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 			},
 		},
 		State:     types.LEASE_STATE_ACTIVE,
@@ -355,7 +356,7 @@ func TestGetAllLeases(t *testing.T) {
 				{
 					SkuId:       i,
 					Quantity:    1,
-					LockedPrice: sdkmath.NewInt(100),
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
 			State:     types.LEASE_STATE_ACTIVE,
@@ -389,7 +390,7 @@ func TestGetLeasesByTenant(t *testing.T) {
 				{
 					SkuId:       i,
 					Quantity:    1,
-					LockedPrice: sdkmath.NewInt(100),
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
 			State:     types.LEASE_STATE_ACTIVE,
@@ -409,7 +410,7 @@ func TestGetLeasesByTenant(t *testing.T) {
 				{
 					SkuId:       i,
 					Quantity:    1,
-					LockedPrice: sdkmath.NewInt(100),
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
 			State:     types.LEASE_STATE_ACTIVE,
@@ -450,7 +451,7 @@ func TestGetLeasesByProviderID(t *testing.T) {
 				{
 					SkuId:       i,
 					Quantity:    1,
-					LockedPrice: sdkmath.NewInt(100),
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
 			State:     types.LEASE_STATE_ACTIVE,
@@ -470,7 +471,7 @@ func TestGetLeasesByProviderID(t *testing.T) {
 				{
 					SkuId:       i,
 					Quantity:    1,
-					LockedPrice: sdkmath.NewInt(100),
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
 			State:     types.LEASE_STATE_ACTIVE,
@@ -518,7 +519,7 @@ func TestCountActiveLeasesByTenant(t *testing.T) {
 				{
 					SkuId:       i,
 					Quantity:    1,
-					LockedPrice: sdkmath.NewInt(100),
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
 			State:     types.LEASE_STATE_ACTIVE,
@@ -538,7 +539,7 @@ func TestCountActiveLeasesByTenant(t *testing.T) {
 				{
 					SkuId:       i,
 					Quantity:    1,
-					LockedPrice: sdkmath.NewInt(100),
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
 			State:     types.LEASE_STATE_INACTIVE,
@@ -643,7 +644,7 @@ func TestGetCreditBalance(t *testing.T) {
 	k := f.App.BillingKeeper
 
 	tenant := f.TestAccs[0]
-	denom := types.DefaultDenom
+	denom := testDenom
 
 	// Get credit balance when no funds
 	balance, err := k.GetCreditBalance(f.Ctx, tenant.String(), denom)
@@ -675,20 +676,8 @@ func TestParamsValidation(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name: "empty denom",
-			params: types.NewParams(
-				"",
-				100,
-				[]string{},
-				20,
-				3600,
-			),
-			expectErr: true,
-		},
-		{
 			name: "zero max leases per tenant",
 			params: types.NewParams(
-				"upwr",
 				0,
 				[]string{},
 				20,
@@ -699,7 +688,6 @@ func TestParamsValidation(t *testing.T) {
 		{
 			name: "zero max items per lease",
 			params: types.NewParams(
-				"upwr",
 				100,
 				[]string{},
 				0,
@@ -710,7 +698,6 @@ func TestParamsValidation(t *testing.T) {
 		{
 			name: "zero min lease duration",
 			params: types.NewParams(
-				"upwr",
 				100,
 				[]string{},
 				20,
@@ -721,7 +708,6 @@ func TestParamsValidation(t *testing.T) {
 		{
 			name: "valid custom params",
 			params: types.NewParams(
-				"factory/addr/upwr",
 				50,
 				[]string{},
 				20,
@@ -775,7 +761,7 @@ func TestGenesisValidation(t *testing.T) {
 							{
 								SkuId:       1,
 								Quantity:    1,
-								LockedPrice: sdkmath.NewInt(100),
+								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
 						State:     types.LEASE_STATE_ACTIVE,
@@ -813,7 +799,7 @@ func TestGenesisValidation(t *testing.T) {
 							{
 								SkuId:       1,
 								Quantity:    1,
-								LockedPrice: sdkmath.NewInt(100),
+								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
 						State:     types.LEASE_STATE_ACTIVE,
@@ -827,7 +813,7 @@ func TestGenesisValidation(t *testing.T) {
 							{
 								SkuId:       2,
 								Quantity:    1,
-								LockedPrice: sdkmath.NewInt(100),
+								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
 						State:     types.LEASE_STATE_ACTIVE,
@@ -851,7 +837,7 @@ func TestGenesisValidation(t *testing.T) {
 							{
 								SkuId:       1,
 								Quantity:    1,
-								LockedPrice: sdkmath.NewInt(100),
+								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
 						State:     types.LEASE_STATE_ACTIVE,
@@ -875,7 +861,7 @@ func TestGenesisValidation(t *testing.T) {
 							{
 								SkuId:       1,
 								Quantity:    1,
-								LockedPrice: sdkmath.NewInt(100),
+								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
 						State:     types.LEASE_STATE_INACTIVE,
@@ -900,7 +886,7 @@ func TestGenesisValidation(t *testing.T) {
 							{
 								SkuId:       1,
 								Quantity:    1,
-								LockedPrice: sdkmath.NewInt(100),
+								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
 						State:     types.LEASE_STATE_INACTIVE,
@@ -957,7 +943,7 @@ func TestMsgValidation(t *testing.T) {
 			msg: &types.MsgFundCredit{
 				Sender: validAddr.String(),
 				Tenant: validAddr.String(),
-				Amount: sdk.NewCoin(types.DefaultDenom, sdkmath.NewInt(1000000)),
+				Amount: sdk.NewCoin(testDenom, sdkmath.NewInt(1000000)),
 			},
 			expectErr: false,
 		},
@@ -966,7 +952,7 @@ func TestMsgValidation(t *testing.T) {
 			msg: &types.MsgFundCredit{
 				Sender: "invalid",
 				Tenant: validAddr.String(),
-				Amount: sdk.NewCoin(types.DefaultDenom, sdkmath.NewInt(1000000)),
+				Amount: sdk.NewCoin(testDenom, sdkmath.NewInt(1000000)),
 			},
 			expectErr: true,
 		},
@@ -975,7 +961,7 @@ func TestMsgValidation(t *testing.T) {
 			msg: &types.MsgFundCredit{
 				Sender: validAddr.String(),
 				Tenant: "invalid",
-				Amount: sdk.NewCoin(types.DefaultDenom, sdkmath.NewInt(1000000)),
+				Amount: sdk.NewCoin(testDenom, sdkmath.NewInt(1000000)),
 			},
 			expectErr: true,
 		},
@@ -984,7 +970,7 @@ func TestMsgValidation(t *testing.T) {
 			msg: &types.MsgFundCredit{
 				Sender: validAddr.String(),
 				Tenant: validAddr.String(),
-				Amount: sdk.NewCoin(types.DefaultDenom, sdkmath.ZeroInt()),
+				Amount: sdk.NewCoin(testDenom, sdkmath.ZeroInt()),
 			},
 			expectErr: true,
 		},
@@ -1202,7 +1188,7 @@ func TestBillingKeeperIntegration(t *testing.T) {
 
 	// Register denomination for transfers
 	f.App.BankKeeper.SetDenomMetaData(f.Ctx, banktypes.Metadata{
-		Base:        types.DefaultDenom,
+		Base:        testDenom,
 		Display:     "pwr",
 		Description: "Test PWR token",
 	})
@@ -1240,7 +1226,7 @@ func TestCheckAndCloseExhaustedLease(t *testing.T) {
 		Id:            1,
 		Tenant:        tenant.String(),
 		ProviderId:    provider.Id,
-		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdkmath.NewInt(100)}},
+		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
 		State:         types.LEASE_STATE_ACTIVE,
 		CreatedAt:     f.Ctx.BlockTime(),
 		LastSettledAt: f.Ctx.BlockTime(),
@@ -1280,7 +1266,7 @@ func TestCheckAndCloseExhaustedLease_WithBalance(t *testing.T) {
 	require.NoError(t, err)
 
 	// Fund the credit account
-	denom := types.DefaultDenom
+	denom := testDenom
 	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(10000000))))
 
 	// Create credit account with balance
@@ -1297,7 +1283,7 @@ func TestCheckAndCloseExhaustedLease_WithBalance(t *testing.T) {
 		Id:            1,
 		Tenant:        tenant.String(),
 		ProviderId:    provider.Id,
-		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdkmath.NewInt(100)}},
+		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
 		State:         types.LEASE_STATE_ACTIVE,
 		CreatedAt:     f.Ctx.BlockTime(),
 		LastSettledAt: f.Ctx.BlockTime(),
@@ -1338,7 +1324,7 @@ func TestCheckAndCloseExhaustedLease_InactiveLease(t *testing.T) {
 		Id:            1,
 		Tenant:        tenant.String(),
 		ProviderId:    1,
-		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdkmath.NewInt(100)}},
+		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
 		State:         types.LEASE_STATE_INACTIVE,
 		CreatedAt:     f.Ctx.BlockTime(),
 		LastSettledAt: f.Ctx.BlockTime(),

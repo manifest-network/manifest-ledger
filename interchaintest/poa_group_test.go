@@ -844,7 +844,6 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		updateParamsMsg := billingtypes.MsgUpdateParams{
 			Authority: groupAddr,
 			Params: billingtypes.Params{
-				Denom:              pwrDenom,
 				MaxLeasesPerTenant: 100,
 				MaxItemsPerLease:   20,
 				MinLeaseDuration:   10,
@@ -856,7 +855,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify params
 		params, err := helpers.BillingQueryParams(ctx, chain)
 		require.NoError(t, err)
-		require.Equal(t, pwrDenom, params.Params.Denom)
+		require.Equal(t, uint64(10), params.Params.MinLeaseDuration)
 	})
 
 	// Get the first provider and SKU created in the previous test
@@ -901,8 +900,8 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify credit account
 		creditRes, err := helpers.BillingQueryCreditAccount(ctx, chain, tenantAddr)
 		require.NoError(t, err)
-		require.True(t, creditRes.Balance.Amount.IsPositive(), "tenant should have credit balance")
-		t.Logf("Tenant credit balance: %s", creditRes.Balance)
+		require.True(t, len(creditRes.Balances) > 0 && creditRes.Balances[0].Amount.IsPositive(), "tenant should have credit balance")
+		t.Logf("Tenant credit balance: %s", creditRes.Balances)
 	})
 
 	// Create lease for tenant via group proposal (authority creates lease for tenant)

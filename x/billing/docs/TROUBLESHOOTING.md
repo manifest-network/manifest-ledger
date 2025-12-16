@@ -17,42 +17,32 @@ The credit account is created automatically when first funded.
 
 ### "insufficient credit balance"
 
-**Cause**: The credit account doesn't have enough balance to cover the `min_lease_duration` requirement for the lease.
+**Cause**: The credit account doesn't have enough balance in one or more denominations to cover the `min_lease_duration` requirement for the lease.
 
 **Solution**: 
-1. Check current balance:
+1. Check current balances:
    ```bash
    manifestd query billing credit-account [tenant-address]
    ```
-2. Calculate minimum required:
+2. Calculate minimum required for each denom used by SKUs in the lease:
    ```
-   min_required = sum(sku_rate_per_second × quantity) × min_lease_duration
+   min_required[denom] = sum(sku_rate_per_second × quantity for that denom) × min_lease_duration
    ```
-3. Fund additional credit:
+3. Fund additional credit for each denom:
    ```bash
-   manifestd tx billing fund-credit [tenant-address] [amount] --from [key]
+   manifestd tx billing fund-credit [tenant-address] [amount_denom1] --from [key]
+   manifestd tx billing fund-credit [tenant-address] [amount_denom2] --from [key]
    ```
 
-**Example**: For a lease with total rate of 10 upwr/second and `min_lease_duration` of 3600 seconds, you need at least 36,000 upwr.
+**Example**: For a lease with SKU1 (10 upwr/second) and SKU2 (5 umfx/second) with `min_lease_duration` of 3600 seconds:
+- Need at least 36,000 upwr
+- Need at least 18,000 umfx
 
 ### "invalid denomination for credit account"
 
-**Cause**: Attempting to fund a credit account with the wrong token denomination.
+**Cause**: This error has been removed. Credit accounts now support any denomination.
 
-**Solution**: Use the correct billing denomination:
-```bash
-# Check the correct denom
-manifestd query billing params
-
-# Use the correct denom
-manifestd tx billing fund-credit [tenant] 1000000upwr --from [key]
-```
-
-### "only billing denomination can be sent to credit accounts"
-
-**Cause**: Attempting to send non-billing tokens to a credit account address via bank send.
-
-**Solution**: Only the configured billing denomination can be sent to credit accounts. This is a protective measure to prevent fund loss. Use the correct denom or the `fund-credit` command.
+**Note**: Credit accounts can hold multiple denominations. Simply fund the account with the tokens matching your target SKUs' `base_price` denoms.
 
 ## Lease Creation Issues
 
@@ -333,7 +323,6 @@ Events to look for:
 - `min_lease_duration` must be > 0
 - `max_leases_per_tenant` must be > 0
 - `max_items_per_lease` must be > 0 and ≤ 100
-- `denom` cannot be empty
 
 **Solution**: Check current params and ensure new values are valid:
 ```bash

@@ -2,7 +2,7 @@
 Package types tests for the billing module.
 
 Test Coverage:
-1. Params - Parameter validation (denom, max_leases_per_tenant, max_items_per_lease, min_lease_duration)
+1. Params - Parameter validation (max_leases_per_tenant, max_items_per_lease, min_lease_duration)
 2. Msgs - ValidateBasic for all message types including MsgCreateLeaseForTenant
 3. Credit - Credit address derivation determinism and correctness
 4. Genesis - Genesis state validation including leases and credit accounts
@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	testDenom   = "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr"
+	testDenom   = "upwr"
 	invalidAddr = "invalid-address"
 )
 
@@ -47,22 +47,19 @@ func generateManyLeaseItems(n uint64) []types.LeaseItemInput {
 func TestParams_DefaultParams(t *testing.T) {
 	params := types.DefaultParams()
 
-	require.Equal(t, types.DefaultDenom, params.Denom)
 	require.Equal(t, types.DefaultMaxLeasesPerTenant, params.MaxLeasesPerTenant)
 	require.Equal(t, types.DefaultMaxItemsPerLease, params.MaxItemsPerLease)
 	require.Equal(t, types.DefaultMinLeaseDuration, params.MinLeaseDuration)
 }
 
 func TestParams_NewParams(t *testing.T) {
-	denom := "utest"
 	maxLeases := uint64(50)
 	allowedList := []string{}
 	maxItems := uint64(10)
 	minLeaseDuration := uint64(3600)
 
-	params := types.NewParams(denom, maxLeases, allowedList, maxItems, minLeaseDuration)
+	params := types.NewParams(maxLeases, allowedList, maxItems, minLeaseDuration)
 
-	require.Equal(t, denom, params.Denom)
 	require.Equal(t, maxLeases, params.MaxLeasesPerTenant)
 	require.Equal(t, allowedList, params.AllowedList)
 	require.Equal(t, maxItems, params.MaxItemsPerLease)
@@ -83,36 +80,30 @@ func TestParams_Validate(t *testing.T) {
 		},
 		{
 			name:      "valid custom params",
-			params:    types.NewParams("utest", 10, []string{}, 20, 3600),
+			params:    types.NewParams(10, []string{}, 20, 3600),
 			expectErr: false,
 		},
 		{
-			name:      "empty denom",
-			params:    types.NewParams("", 10, []string{}, 20, 3600),
-			expectErr: true,
-			errMsg:    "denom cannot be empty",
-		},
-		{
 			name:      "zero max leases per tenant",
-			params:    types.NewParams(testDenom, 0, []string{}, 20, 3600),
+			params:    types.NewParams(0, []string{}, 20, 3600),
 			expectErr: true,
 			errMsg:    "max_leases_per_tenant must be greater than zero",
 		},
 		{
 			name:      "zero max items per lease",
-			params:    types.NewParams(testDenom, 10, []string{}, 0, 3600),
+			params:    types.NewParams(10, []string{}, 0, 3600),
 			expectErr: true,
 			errMsg:    "max_items_per_lease must be greater than zero",
 		},
 		{
 			name:      "zero min lease duration",
-			params:    types.NewParams(testDenom, 10, []string{}, 20, 0),
+			params:    types.NewParams(10, []string{}, 20, 0),
 			expectErr: true,
 			errMsg:    "min_lease_duration must be greater than zero",
 		},
 		{
 			name:      "valid params with allowed list",
-			params:    types.NewParams(testDenom, 10, []string{"manifest1xyz"}, 20, 3600),
+			params:    types.NewParams(10, []string{"manifest1xyz"}, 20, 3600),
 			expectErr: true, // Invalid address
 			errMsg:    "invalid address in allowed list",
 		},
@@ -136,7 +127,7 @@ func TestParams_Validate_DuplicateAllowedList(t *testing.T) {
 	_, _, addr := testdata.KeyTestPubAddr()
 	validAddr := addr.String()
 
-	params := types.NewParams(testDenom, 10, []string{validAddr, validAddr}, 20, 3600)
+	params := types.NewParams(10, []string{validAddr, validAddr}, 20, 3600)
 	err := params.Validate()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "duplicate address in allowed list")
@@ -147,7 +138,7 @@ func TestParams_Validate_ValidAllowedList(t *testing.T) {
 	_, _, addr1 := testdata.KeyTestPubAddr()
 	_, _, addr2 := testdata.KeyTestPubAddr()
 
-	params := types.NewParams(testDenom, 10, []string{addr1.String(), addr2.String()}, 20, 3600)
+	params := types.NewParams(10, []string{addr1.String(), addr2.String()}, 20, 3600)
 	err := params.Validate()
 	require.NoError(t, err)
 }
@@ -157,7 +148,7 @@ func TestParams_IsAllowed(t *testing.T) {
 	_, _, addr2 := testdata.KeyTestPubAddr()
 	_, _, notAllowed := testdata.KeyTestPubAddr()
 
-	params := types.NewParams(testDenom, 10, []string{addr1.String(), addr2.String()}, 20, 3600)
+	params := types.NewParams(10, []string{addr1.String(), addr2.String()}, 20, 3600)
 
 	require.True(t, params.IsAllowed(addr1.String()))
 	require.True(t, params.IsAllowed(addr2.String()))
@@ -809,19 +800,10 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			errMsg:    "invalid authority address",
 		},
 		{
-			name: "invalid params - empty denom",
-			msg: types.MsgUpdateParams{
-				Authority: authority,
-				Params:    types.NewParams("", 10, []string{}, 20, 3600),
-			},
-			expectErr: true,
-			errMsg:    "denom cannot be empty",
-		},
-		{
 			name: "invalid params - zero max leases",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams(testDenom, 0, []string{}, 20, 3600),
+				Params:    types.NewParams(0, []string{}, 20, 3600),
 			},
 			expectErr: true,
 			errMsg:    "max_leases_per_tenant must be greater than zero",
@@ -830,7 +812,7 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			name: "invalid params - zero max items per lease",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams(testDenom, 10, []string{}, 0, 3600),
+				Params:    types.NewParams(10, []string{}, 0, 3600),
 			},
 			expectErr: true,
 			errMsg:    "max_items_per_lease must be greater than zero",
@@ -839,7 +821,7 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			name: "invalid params - zero min lease duration",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams(testDenom, 10, []string{}, 20, 0),
+				Params:    types.NewParams(10, []string{}, 20, 0),
 			},
 			expectErr: true,
 			errMsg:    "min_lease_duration must be greater than zero",
@@ -955,7 +937,7 @@ func TestGenesisState_NewGenesisState(t *testing.T) {
 	_, _, tenantAddr := testdata.KeyTestPubAddr()
 	tenant := tenantAddr.String()
 
-	params := types.NewParams("utest", 50, []string{}, 20, 3600)
+	params := types.NewParams(50, []string{}, 20, 3600)
 	now := time.Now().UTC()
 
 	creditAddr := types.DeriveCreditAddress(tenantAddr)
@@ -966,7 +948,7 @@ func TestGenesisState_NewGenesisState(t *testing.T) {
 			Tenant:     tenant,
 			ProviderId: 1,
 			Items: []types.LeaseItem{
-				{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+				{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 			},
 			State:         types.LEASE_STATE_ACTIVE,
 			CreatedAt:     now,
@@ -1006,7 +988,7 @@ func TestGenesisState_Validate(t *testing.T) {
 		Tenant:     tenant,
 		ProviderId: 1,
 		Items: []types.LeaseItem{
-			{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+			{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 		},
 		State:         types.LEASE_STATE_ACTIVE,
 		CreatedAt:     now,
@@ -1040,9 +1022,9 @@ func TestGenesisState_Validate(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name: "invalid params",
+			name: "invalid params - zero max leases",
 			genesis: &types.GenesisState{
-				Params:      types.NewParams("", 10, []string{}, 20, 3600),
+				Params:      types.NewParams(0, []string{}, 20, 3600),
 				NextLeaseId: 1,
 			},
 			expectErr: true,
@@ -1068,7 +1050,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						Tenant:     tenant2,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 2, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 2, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
@@ -1100,7 +1082,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						Tenant:     "",
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
@@ -1122,7 +1104,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						Tenant:     invalidAddr,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
@@ -1144,7 +1126,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 0,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
@@ -1186,7 +1168,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 0, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 0, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
@@ -1208,7 +1190,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 0, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 0, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
@@ -1252,7 +1234,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.ZeroInt()},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.ZeroInt())},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
@@ -1274,7 +1256,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(-100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.Coin{Denom: testDenom, Amount: math.NewInt(-100)}},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
@@ -1296,7 +1278,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_UNSPECIFIED,
 						CreatedAt:     now,
@@ -1318,7 +1300,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_INACTIVE,
 						CreatedAt:     now,
@@ -1341,7 +1323,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_INACTIVE,
 						CreatedAt:     now,
@@ -1476,7 +1458,7 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     past,
@@ -1501,7 +1483,7 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     past,
@@ -1524,7 +1506,7 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     future,
@@ -1547,7 +1529,7 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_INACTIVE,
 						CreatedAt:     past,
@@ -1571,7 +1553,7 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_INACTIVE,
 						CreatedAt:     past,
@@ -1594,7 +1576,7 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 						Tenant:     tenant,
 						ProviderId: 1,
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: math.NewInt(100)},
+							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,

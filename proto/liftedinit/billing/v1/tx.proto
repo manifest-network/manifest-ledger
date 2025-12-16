@@ -66,7 +66,7 @@ message MsgFundCredit {
     (gogoproto.jsontag) = "tenant,omitempty"
   ];
 
-  // amount is the amount to fund (must be in billing denom).
+  // amount is the amount to fund.
   cosmos.base.v1beta1.Coin amount = 3 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "amount"
@@ -162,10 +162,11 @@ message MsgCloseLease {
 
 // MsgCloseLeaseResponse is the response type for MsgCloseLease.
 message MsgCloseLeaseResponse {
-  // settled_amount is the amount settled at closure.
-  cosmos.base.v1beta1.Coin settled_amount = 1 [
+  // settled_amounts is the amounts settled at closure (one per denom).
+  repeated cosmos.base.v1beta1.Coin settled_amounts = 1 [
     (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "settled_amount"
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "settled_amounts"
   ];
 }
 
@@ -186,10 +187,11 @@ message MsgWithdraw {
 
 // MsgWithdrawResponse is the response type for MsgWithdraw.
 message MsgWithdrawResponse {
-  // amount is the amount withdrawn.
-  cosmos.base.v1beta1.Coin amount = 1 [
+  // amounts is the amounts withdrawn (one per denom).
+  repeated cosmos.base.v1beta1.Coin amounts = 1 [
     (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "amount"
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "amounts"
   ];
 
   // payout_address is the address that received the funds.
@@ -223,10 +225,11 @@ message MsgWithdrawAll {
 
 // MsgWithdrawAllResponse is the response type for MsgWithdrawAll.
 message MsgWithdrawAllResponse {
-  // total_amount is the total amount withdrawn across all leases.
-  cosmos.base.v1beta1.Coin total_amount = 1 [
+  // total_amounts is the total amounts withdrawn across all leases (one per denom).
+  repeated cosmos.base.v1beta1.Coin total_amounts = 1 [
     (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "total_amount"
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "total_amounts"
   ];
 
   // lease_count is the number of leases withdrawn from.

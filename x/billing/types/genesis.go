@@ -73,7 +73,7 @@ func (gs *GenesisState) Validate() error {
 			if item.Quantity == 0 {
 				return fmt.Errorf("lease %d item %d has zero quantity", lease.Id, i)
 			}
-			if item.LockedPrice.IsNil() || item.LockedPrice.IsNegative() || item.LockedPrice.IsZero() {
+			if !item.LockedPrice.IsValid() || item.LockedPrice.IsZero() {
 				return fmt.Errorf("lease %d item %d has invalid locked_price", lease.Id, i)
 			}
 		}

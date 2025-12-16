@@ -5,7 +5,6 @@ import (
 	"math/rand"
 
 	"github.com/cosmos/cosmos-sdk/codec"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 
@@ -28,14 +27,6 @@ func RandomizedGenState(simState *module.SimulationState) {
 
 // randomParams returns randomized billing module parameters.
 func randomParams(r *rand.Rand) types.Params {
-	// NOTE: For simulation, we use the staking bond denom ("stake" via sdk.DefaultBondDenom)
-	// instead of the production PWR factory denom
-	// (factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr).
-	// This is because factory denoms require the TokenFactory module to be set up with
-	// specific creator addresses, which is not available during simulation. The simulation
-	// genesis funds accounts with the bond denom via the bank module's RandomGenesisBalances.
-	denom := sdk.DefaultBondDenom
-
 	// Random max leases per tenant between 10 and 200
 	maxLeasesPerTenant := uint64(r.Intn(190) + 10) //nolint:gosec
 
@@ -48,7 +39,7 @@ func randomParams(r *rand.Rand) types.Params {
 	// Empty allowed list for simulation (only authority can create leases for tenants)
 	allowedList := []string{}
 
-	return types.NewParams(denom, maxLeasesPerTenant, allowedList, maxItemsPerLease, minLeaseDuration)
+	return types.NewParams(maxLeasesPerTenant, allowedList, maxItemsPerLease, minLeaseDuration)
 }
 
 // GetGenesisStateFromAppState returns the billing module GenesisState from app state.

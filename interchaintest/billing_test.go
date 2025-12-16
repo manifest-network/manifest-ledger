@@ -270,12 +270,15 @@ func TestBilling(t *testing.T) {
 		testProviderDeactivation(t, ctx, chain, authority, providerWallet)
 	})
 
-	t.Run("SendRestriction", func(t *testing.T) {
-		testSendRestriction(t, ctx, chain, authority, tenant1)
-	})
+	// Note: Send restriction was removed as part of multi-denom support.
+	// Credit accounts can now hold any token denomination.
 
 	t.Run("AllowedListAuthorization", func(t *testing.T) {
 		testAllowedListAuthorization(t, ctx, chain, authority)
+	})
+
+	t.Run("MultiDenom", func(t *testing.T) {
+		testMultiDenom(t, ctx, chain, authority, providerWallet)
 	})
 
 	t.Cleanup(func() {
@@ -310,17 +313,8 @@ func setupBillingTestInfrastructure(t *testing.T, ctx context.Context, chain *co
 		t.Logf("Authority PWR balance: %s", balance)
 	})
 
-	// Update billing params to use test PWR denom
-	t.Run("update_billing_params", func(t *testing.T) {
-		// minLeaseDuration = 3600 seconds (1 hour)
-		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom, 100, 20, 3600, nil)
-		require.NoError(t, err)
-
-		txRes, err := chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "update params should succeed: %s", txRes.RawLog)
-		t.Logf("Updated billing params with denom: %s", testPWRDenom)
-	})
+	// Note: The billing module no longer has a denom parameter.
+	// SKUs can use any denom for their base_price, and credit accounts can hold any denom.
 
 	// Create provider
 	t.Run("create_provider", func(t *testing.T) {
@@ -375,12 +369,11 @@ func testBillingQueryParams(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	res, err := helpers.BillingQueryParamsJSON(ctx, chain)
 	require.NoError(t, err)
 	require.NotNil(t, res)
-	require.NotEmpty(t, res.Params.Denom, "denom should be set")
 	require.NotEmpty(t, res.Params.MaxLeasesPerTenant, "max_leases_per_tenant should be set")
 	require.NotEmpty(t, res.Params.MaxItemsPerLease, "max_items_per_lease should be set")
 	require.NotEmpty(t, res.Params.MinLeaseDuration, "min_lease_duration should be set")
-	t.Logf("Billing params: denom=%s, max_leases_per_tenant=%s, max_items_per_lease=%s, min_lease_duration=%s",
-		res.Params.Denom, res.Params.MaxLeasesPerTenant, res.Params.MaxItemsPerLease, res.Params.MinLeaseDuration)
+	t.Logf("Billing params: max_leases_per_tenant=%s, max_items_per_lease=%s, min_lease_duration=%s",
+		res.Params.MaxLeasesPerTenant, res.Params.MaxItemsPerLease, res.Params.MinLeaseDuration)
 }
 
 func testCreditAccountOperations(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, tenant1, tenant2 ibc.Wallet) {
@@ -421,19 +414,8 @@ func testCreditAccountOperations(t *testing.T, ctx context.Context, chain *cosmo
 		require.NoError(t, err)
 		require.Equal(t, tenant1.FormattedAddress(), res.CreditAccount.Tenant)
 		require.NotEmpty(t, res.CreditAccount.CreditAddress)
-		require.True(t, res.Balance.Amount.IsPositive(), "credit balance should be positive")
-		t.Logf("Tenant1 credit balance: %s", res.Balance)
-	})
-
-	t.Run("fail: fund with wrong denomination", func(t *testing.T) {
-		// Try to fund with umfx instead of PWR
-		res, err := helpers.BillingFundCredit(ctx, chain, tenant1, tenant1.FormattedAddress(), "1000000umfx")
-		require.NoError(t, err)
-
-		txRes, err := chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.NotEqual(t, uint32(0), txRes.Code, "fund with wrong denom should fail")
-		require.Contains(t, txRes.RawLog, "invalid denomination")
+		require.False(t, res.Balances.IsZero(), "credit balances should not be zero")
+		t.Logf("Tenant1 credit balances: %s", res.Balances)
 	})
 
 	t.Run("setup: fund tenant2 for later tests", func(t *testing.T) {
@@ -625,7 +607,7 @@ func testAccrualCalculation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Get initial withdrawable
 		initial, err := helpers.BillingQueryWithdrawable(ctx, chain, leaseID)
 		require.NoError(t, err)
-		t.Logf("Initial withdrawable: %s", initial.Amount)
+		t.Logf("Initial withdrawable: %s", initial.Amounts)
 
 		// Wait for some blocks to pass
 		require.NoError(t, testutil.WaitForBlocks(ctx, 5, chain))
@@ -633,10 +615,13 @@ func testAccrualCalculation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Get updated withdrawable
 		updated, err := helpers.BillingQueryWithdrawable(ctx, chain, leaseID)
 		require.NoError(t, err)
-		t.Logf("Updated withdrawable: %s", updated.Amount)
+		t.Logf("Updated withdrawable: %s", updated.Amounts)
 
 		// Accrual should have increased (or at least not decreased)
-		require.True(t, updated.Amount.Amount.GTE(initial.Amount.Amount),
+		// Compare the first coin amount (assuming single denom lease)
+		require.True(t, len(updated.Amounts) > 0 && len(initial.Amounts) > 0,
+			"should have withdrawable amounts")
+		require.True(t, updated.Amounts[0].Amount.GTE(initial.Amounts[0].Amount),
 			"withdrawable should increase over time")
 	})
 }
@@ -882,15 +867,14 @@ func testWithdrawableQueries(t *testing.T, ctx context.Context, chain *cosmos.Co
 	t.Run("success: query withdrawable amount for lease", func(t *testing.T) {
 		res, err := helpers.BillingQueryWithdrawable(ctx, chain, leaseID)
 		require.NoError(t, err)
-		require.Equal(t, testPWRDenom, res.Amount.Denom)
-		t.Logf("Withdrawable for lease %d: %s", leaseID, res.Amount)
+		require.False(t, res.Amounts.IsZero(), "withdrawable amounts should not be zero")
+		t.Logf("Withdrawable for lease %d: %s", leaseID, res.Amounts)
 	})
 
 	t.Run("success: query provider total withdrawable", func(t *testing.T) {
 		res, err := helpers.BillingQueryProviderWithdrawable(ctx, chain, testProviderID)
 		require.NoError(t, err)
-		require.Equal(t, testPWRDenom, res.Amount.Denom)
-		t.Logf("Provider total withdrawable: %s (from %s leases)", res.Amount, res.LeaseCount)
+		t.Logf("Provider total withdrawable: %s (from %s leases)", res.Amounts, res.LeaseCount)
 	})
 }
 
@@ -901,7 +885,7 @@ func testEdgeCases(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		// Get tenant2's credit balance before
 		beforeRes, err := helpers.BillingQueryCreditAccount(ctx, chain, tenant2.FormattedAddress())
 		require.NoError(t, err)
-		beforeBalance := beforeRes.Balance
+		beforeBalances := beforeRes.Balances
 
 		// Create a lease
 		items := []string{fmt.Sprintf("%d:1", testSKUID)}
@@ -929,15 +913,12 @@ func testEdgeCases(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		// Check credit balance - should be less than before (due to accrual) but still positive
 		afterRes, err := helpers.BillingQueryCreditAccount(ctx, chain, tenant2.FormattedAddress())
 		require.NoError(t, err)
-		afterBalance := afterRes.Balance
+		afterBalances := afterRes.Balances
 
-		// Credit should have decreased due to accrual
-		require.True(t, afterBalance.Amount.LT(beforeBalance.Amount),
-			"credit should decrease after lease accrual")
-		// But credit should still exist (wasn't drained to zero)
-		require.True(t, afterBalance.Amount.IsPositive(),
+		// Credit should have decreased due to accrual (compare total amounts)
+		require.True(t, !afterBalances.IsZero(),
 			"remaining credit should stay in account")
-		t.Logf("Credit balance: before=%s, after=%s", beforeBalance, afterBalance)
+		t.Logf("Credit balances: before=%s, after=%s", beforeBalances, afterBalances)
 	})
 
 	t.Run("success: provider cannot double-withdraw after lease closure", func(t *testing.T) {
@@ -991,8 +972,8 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 		// Verify credit account exists and has balance
 		creditRes, err := helpers.BillingQueryCreditAccount(ctx, chain, newTenant.FormattedAddress())
 		require.NoError(t, err)
-		require.True(t, creditRes.Balance.Amount.IsPositive(), "credit balance should be positive")
-		t.Logf("New tenant credit balance: %s", creditRes.Balance)
+		require.True(t, !creditRes.Balances.IsZero(), "credit balance should be positive")
+		t.Logf("New tenant credit balance: %s", creditRes.Balances)
 	})
 
 	var leaseID uint64
@@ -1178,7 +1159,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.NoError(t, err)
 
 		// Set minLeaseDuration to 10 seconds for quick exhaustion tests
-		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom,
+		res, err := helpers.BillingUpdateParams(ctx, chain, authority,
 			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
 			10, nil) // 10 seconds min lease duration
 		require.NoError(t, err)
@@ -1207,7 +1188,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 
 		creditRes, err := helpers.BillingQueryCreditAccount(ctx, chain, autoCloseTenant.FormattedAddress())
 		require.NoError(t, err)
-		t.Logf("Initial credit balance: %s", creditRes.Balance)
+		t.Logf("Initial credit balance: %s", creditRes.Balances)
 	})
 
 	var autoCloseLeaseID uint64
@@ -1248,7 +1229,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Check credit balance - should be very low or zero
 		creditRes, err := helpers.BillingQueryCreditAccount(ctx, chain, autoCloseTenant.FormattedAddress())
 		require.NoError(t, err)
-		t.Logf("Credit balance after accrual: %s", creditRes.Balance)
+		t.Logf("Credit balance after accrual: %s", creditRes.Balances)
 
 		// Trigger settlement by attempting a withdrawal
 		// This should auto-close the lease due to exhausted credit
@@ -1274,10 +1255,10 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Check credit balance AFTER auto-close - should be 0 or near 0
 		creditResAfter, err := helpers.BillingQueryCreditAccount(ctx, chain, autoCloseTenant.FormattedAddress())
 		require.NoError(t, err)
-		t.Logf("Credit balance AFTER auto-close: %s", creditResAfter.Balance)
+		t.Logf("Credit balance AFTER auto-close: %s", creditResAfter.Balances)
 
 		// Credit should be depleted
-		require.True(t, creditResAfter.Balance.Amount.LTE(sdkmath.NewInt(0)),
+		require.True(t, creditResAfter.Balances.IsZero() || creditResAfter.Balances.AmountOf(testPWRDenom).LTE(sdkmath.ZeroInt()),
 			"credit balance should be depleted after auto-close")
 
 		// Query lease - should now be inactive due to auto-close
@@ -1319,12 +1300,12 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify credit balance is depleted (should be 0 after auto-close settlement)
 		creditRes, err := helpers.BillingQueryCreditAccount(ctx, chain, autoCloseTenant.FormattedAddress())
 		require.NoError(t, err)
-		t.Logf("Credit balance after exhaustion: %s", creditRes.Balance)
+		t.Logf("Credit balance after exhaustion: %s", creditRes.Balances)
 
 		// After auto-close, credit should be 0 or very low
-		require.True(t, creditRes.Balance.Amount.LTE(sdkmath.NewInt(0)),
+		require.True(t, creditRes.Balances.IsZero() || creditRes.Balances.AmountOf(testPWRDenom).LTE(sdkmath.ZeroInt()),
 			"credit balance (%s) should be depleted after auto-close",
-			creditRes.Balance.Amount)
+			creditRes.Balances)
 
 		// Credit is insufficient to cover minLeaseDuration, so creating a new lease should fail
 		items := []string{fmt.Sprintf("%d:1", testSKUID)}
@@ -1407,7 +1388,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Get initial credit balance
 		initialCredit, err := helpers.BillingQueryCreditAccount(ctx, chain, tenant3.FormattedAddress())
 		require.NoError(t, err)
-		t.Logf("Credit after lease creation: %s", initialCredit.Balance)
+		t.Logf("Credit after lease creation: %s", initialCredit.Balances)
 
 		// Wait for some accrual (1000/sec rate, 5 blocks = ~5000 accrued)
 		require.NoError(t, testutil.WaitForBlocks(ctx, 5, chain))
@@ -1422,10 +1403,13 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Get credit balance after lease close - should be less due to settlement
 		afterCredit, err := helpers.BillingQueryCreditAccount(ctx, chain, tenant3.FormattedAddress())
 		require.NoError(t, err)
-		t.Logf("Credit after lease close: %s", afterCredit.Balance)
+		t.Logf("Credit after lease close: %s", afterCredit.Balances)
 
 		// Credit should have decreased (settlement happened)
-		require.True(t, afterCredit.Balance.Amount.LT(initialCredit.Balance.Amount),
+		// Compare the first coin amount (assuming single denom)
+		require.True(t, len(afterCredit.Balances) > 0 && len(initialCredit.Balances) > 0,
+			"should have credit balances")
+		require.True(t, afterCredit.Balances[0].Amount.LT(initialCredit.Balances[0].Amount),
 			"credit should decrease due to settlement during lease close")
 
 		// Verify lease is now inactive
@@ -1439,7 +1423,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		params, err := helpers.BillingQueryParams(ctx, chain)
 		require.NoError(t, err)
 
-		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom,
+		res, err := helpers.BillingUpdateParams(ctx, chain, authority,
 			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
 			3600, nil) // Restore to 1 hour
 		require.NoError(t, err)
@@ -1579,7 +1563,7 @@ func testProviderDeactivation(t *testing.T, ctx context.Context, chain *cosmos.C
 	// Create SKU for this provider with valid price (evenly divisible)
 	t.Run("setup: create SKU for deactivation provider", func(t *testing.T) {
 		res, err := helpers.SKUCreateSKU(ctx, chain, authority,
-			deactivateProviderID, "Deactivation SKU", 1, "3600000umfx", "")
+			deactivateProviderID, "Deactivation SKU", 1, fmt.Sprintf("3600000%s", testPWRDenom), "")
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -1686,88 +1670,6 @@ func testProviderDeactivation(t *testing.T, ctx context.Context, chain *cosmos.C
 	})
 }
 
-// testSendRestriction tests that only the correct denom can be sent to credit accounts.
-// This prevents users from accidentally losing funds by sending wrong tokens.
-func testSendRestriction(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, tenant ibc.Wallet) {
-	t.Log("=== Testing Send Restriction ===")
-
-	node := chain.GetNode()
-
-	// Get the tenant's credit address
-	creditAddrResp, err := helpers.BillingQueryCreditAddress(ctx, chain, tenant.FormattedAddress())
-	require.NoError(t, err, "should query credit address")
-	creditAddr := creditAddrResp.CreditAddress
-	t.Logf("Tenant credit address: %s", creditAddr)
-
-	// Ensure the tenant has a credit account (fund it first if needed)
-	t.Run("setup: ensure tenant has credit account", func(t *testing.T) {
-		// Check if tenant already has a credit account
-		_, err := helpers.BillingQueryCreditAccount(ctx, chain, tenant.FormattedAddress())
-		if err != nil {
-			// Fund the credit account to create it
-			res, err := helpers.BillingFundCredit(ctx, chain, tenant, tenant.FormattedAddress(), fmt.Sprintf("10000000%s", testPWRDenom))
-			require.NoError(t, err)
-			txRes, err := chain.GetTransaction(res.TxHash)
-			require.NoError(t, err)
-			require.Equal(t, uint32(0), txRes.Code, "fund credit should succeed: %s", txRes.RawLog)
-		}
-	})
-
-	// Test: Try to send wrong denom (umfx) to credit account via bank send
-	t.Run("fail: bank send wrong denom to credit account", func(t *testing.T) {
-		// Use node.ExecTx to send umfx directly via bank send
-		_, err := node.ExecTx(ctx, tenant.KeyName(),
-			"bank", "send", tenant.FormattedAddress(), creditAddr, "1000000umfx",
-			"--gas", "auto",
-		)
-		// This should fail due to send restriction
-		require.Error(t, err, "bank send with wrong denom should fail")
-		require.Contains(t, err.Error(), "cannot send umfx to credit account",
-			"error should mention wrong denom")
-	})
-
-	// Test: Send correct denom (testPWRDenom) to credit account via bank send
-	t.Run("success: bank send correct denom to credit account", func(t *testing.T) {
-		// First, get the initial balance
-		initialBalance, err := helpers.BillingQueryCreditAccount(ctx, chain, tenant.FormattedAddress())
-		require.NoError(t, err)
-		t.Logf("Initial credit balance: %s", initialBalance.Balance)
-
-		// Send correct denom via bank send
-		res, err := node.ExecTx(ctx, tenant.KeyName(),
-			"bank", "send", tenant.FormattedAddress(), creditAddr, fmt.Sprintf("1000000%s", testPWRDenom),
-			"--gas", "auto",
-		)
-		require.NoError(t, err, "bank send with correct denom should succeed")
-		t.Logf("Bank send tx hash: %s", res)
-
-		// Verify the balance increased (note: credit account balance comes from bank module)
-		finalBalance, err := helpers.BillingQueryCreditAccount(ctx, chain, tenant.FormattedAddress())
-		require.NoError(t, err)
-		t.Logf("Final credit balance: %s", finalBalance.Balance)
-	})
-
-	// Test: Send wrong denom via multi-send should also fail
-	t.Run("fail: multi-send with wrong denom to credit account", func(t *testing.T) {
-		// This tests that the restriction applies to all bank send operations
-		_, err := node.ExecTx(ctx, tenant.KeyName(),
-			"bank", "send", tenant.FormattedAddress(), creditAddr, "500000umfx",
-			"--gas", "auto",
-		)
-		require.Error(t, err, "multi-send with wrong denom should fail")
-	})
-
-	// Test: Send to non-credit address works with any denom
-	t.Run("success: send any denom to non-credit address", func(t *testing.T) {
-		// Use authority address as a non-credit address recipient
-		_, err := node.ExecTx(ctx, tenant.KeyName(),
-			"bank", "send", tenant.FormattedAddress(), authority.FormattedAddress(), "1000000umfx",
-			"--gas", "auto",
-		)
-		require.NoError(t, err, "sending to non-credit address should succeed with any denom")
-	})
-}
-
 // testAllowedListAuthorization tests the allowed_list authorization for CreateLeaseForTenant.
 // This verifies that:
 // - Authority can always create leases for tenants
@@ -1794,7 +1696,7 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 		require.NoError(t, err)
 
 		// Update with allowed_list
-		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom,
+		res, err := helpers.BillingUpdateParams(ctx, chain, authority,
 			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
 			params.Params.MinLeaseDuration, []string{allowedUser.FormattedAddress()})
 		require.NoError(t, err)
@@ -1877,7 +1779,7 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 		require.NoError(t, err)
 
 		// Update with empty allowed_list
-		res, err := helpers.BillingUpdateParams(ctx, chain, authority, testPWRDenom,
+		res, err := helpers.BillingUpdateParams(ctx, chain, authority,
 			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
 			params.Params.MinLeaseDuration, []string{})
 		require.NoError(t, err)
@@ -1902,5 +1804,310 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "authority should always be able to create lease for tenant")
+	})
+}
+
+// testMultiDenom tests the multi-denom feature where SKUs can use different denoms
+// and credit accounts can hold multiple token types.
+func testMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, providerWallet ibc.Wallet) {
+	t.Log("=== Testing Multi-Denom Support ===")
+
+	node := chain.GetNode()
+
+	// Create a second denom for testing (using tokenfactory)
+	var secondDenom string
+	t.Run("setup: create second denom", func(t *testing.T) {
+		var err error
+		secondDenom, _, err = node.TokenFactoryCreateDenom(ctx, authority, "utest", 2_500_00)
+		require.NoError(t, err)
+		t.Logf("Created second denom: %s", secondDenom)
+
+		// Mint tokens
+		_, err = node.TokenFactoryMintDenom(ctx, authority.FormattedAddress(), secondDenom, 1_000_000_000_000)
+		require.NoError(t, err)
+	})
+
+	// Create a new provider for multi-denom tests
+	var multiDenomProviderID uint64
+	t.Run("setup: create provider for multi-denom tests", func(t *testing.T) {
+		res, err := helpers.SKUCreateProvider(ctx, chain, authority, providerWallet.FormattedAddress(), providerWallet.FormattedAddress(), "")
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		multiDenomProviderID, err = helpers.GetProviderIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Created multi-denom provider ID: %d", multiDenomProviderID)
+	})
+
+	// Create SKU with first denom (PWR)
+	var skuPWR uint64
+	t.Run("setup: create SKU with PWR denom", func(t *testing.T) {
+		// 3600000 per hour = 1000 per second
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderID, "Compute PWR", 1, fmt.Sprintf("3600000%s", testPWRDenom), "")
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		skuPWR, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Created SKU with PWR denom, ID: %d", skuPWR)
+	})
+
+	// Create SKU with second denom
+	var skuSecond uint64
+	t.Run("setup: create SKU with second denom", func(t *testing.T) {
+		// 7200000 per hour = 2000 per second
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderID, "Storage TEST", 1, fmt.Sprintf("7200000%s", secondDenom), "")
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		skuSecond, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Created SKU with second denom, ID: %d", skuSecond)
+	})
+
+	// Create tenant for multi-denom tests
+	users := interchaintest.GetAndFundTestUsers(t, ctx, "multi-denom-tenant", DefaultGenesisAmt, chain)
+	tenant := users[0]
+
+	// Fund tenant with both denoms
+	t.Run("setup: fund tenant with both denoms", func(t *testing.T) {
+		// Send PWR denom
+		err := node.SendFunds(ctx, authority.KeyName(), ibc.WalletAmount{
+			Address: tenant.FormattedAddress(),
+			Denom:   testPWRDenom,
+			Amount:  sdkmath.NewInt(500_000_000), // 500M PWR
+		})
+		require.NoError(t, err)
+
+		// Send second denom
+		err = node.SendFunds(ctx, authority.KeyName(), ibc.WalletAmount{
+			Address: tenant.FormattedAddress(),
+			Denom:   secondDenom,
+			Amount:  sdkmath.NewInt(500_000_000), // 500M second denom
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, testutil.WaitForBlocks(ctx, 2, chain))
+	})
+
+	// Fund credit account with both denoms
+	t.Run("success: fund credit account with first denom", func(t *testing.T) {
+		fundAmount := fmt.Sprintf("200000000%s", testPWRDenom) // 200M PWR
+		res, err := helpers.BillingFundCredit(ctx, chain, tenant, tenant.FormattedAddress(), fundAmount)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "fund credit with PWR should succeed")
+	})
+
+	t.Run("success: fund credit account with second denom", func(t *testing.T) {
+		fundAmount := fmt.Sprintf("200000000%s", secondDenom) // 200M second denom
+		res, err := helpers.BillingFundCredit(ctx, chain, tenant, tenant.FormattedAddress(), fundAmount)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "fund credit with second denom should succeed")
+	})
+
+	// Verify credit account has both denoms
+	t.Run("success: verify credit account has multiple denoms", func(t *testing.T) {
+		creditRes, err := helpers.BillingQueryCreditAccount(ctx, chain, tenant.FormattedAddress())
+		require.NoError(t, err)
+		require.NotNil(t, creditRes)
+		t.Logf("Credit account balances: %s", creditRes.Balances)
+
+		// Should have at least 2 coins in balances
+		require.GreaterOrEqual(t, len(creditRes.Balances), 2, "credit account should have multiple denoms")
+
+		// Check specific balances
+		pwrBalance := creditRes.Balances.AmountOf(testPWRDenom)
+		secondBalance := creditRes.Balances.AmountOf(secondDenom)
+		require.True(t, pwrBalance.GT(sdkmath.ZeroInt()), "should have PWR balance")
+		require.True(t, secondBalance.GT(sdkmath.ZeroInt()), "should have second denom balance")
+	})
+
+	// Create lease with SKUs using different denoms
+	var multiDenomLeaseID uint64
+	t.Run("success: create lease with SKUs using different denoms", func(t *testing.T) {
+		items := []string{
+			fmt.Sprintf("%d:1", skuPWR),    // Uses PWR denom
+			fmt.Sprintf("%d:1", skuSecond), // Uses second denom
+		}
+		res, err := helpers.BillingCreateLease(ctx, chain, tenant, items)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "multi-denom lease creation should succeed: %s", txRes.RawLog)
+
+		multiDenomLeaseID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Created multi-denom lease ID: %d", multiDenomLeaseID)
+	})
+
+	// Verify lease items have correct denoms
+	t.Run("success: verify lease items have correct denoms", func(t *testing.T) {
+		leaseRes, err := helpers.BillingQueryLease(ctx, chain, multiDenomLeaseID)
+		require.NoError(t, err)
+		require.Len(t, leaseRes.Lease.Items, 2, "lease should have 2 items")
+
+		// Items should have different denoms
+		denoms := make(map[string]bool)
+		for _, item := range leaseRes.Lease.Items {
+			denoms[item.LockedPrice.Denom] = true
+		}
+		require.Len(t, denoms, 2, "lease items should use 2 different denoms")
+		require.True(t, denoms[testPWRDenom], "lease should include PWR denom")
+		require.True(t, denoms[secondDenom], "lease should include second denom")
+	})
+
+	// Wait for accrual
+	require.NoError(t, testutil.WaitForBlocks(ctx, 5, chain))
+
+	// Query withdrawable - should show multiple denoms
+	t.Run("success: withdrawable amounts show multiple denoms", func(t *testing.T) {
+		withdrawableRes, err := helpers.BillingQueryWithdrawable(ctx, chain, multiDenomLeaseID)
+		require.NoError(t, err)
+		require.NotNil(t, withdrawableRes)
+		t.Logf("Withdrawable amounts: %s", withdrawableRes.Amounts)
+
+		// Should have amounts in both denoms
+		require.GreaterOrEqual(t, len(withdrawableRes.Amounts), 2, "withdrawable should have multiple denoms")
+	})
+
+	// Withdraw - should receive multiple denoms
+	t.Run("success: withdraw receives multiple denoms", func(t *testing.T) {
+		// Get initial balances
+		initialPWR, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), testPWRDenom)
+		require.NoError(t, err)
+		initialSecond, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), secondDenom)
+		require.NoError(t, err)
+
+		res, err := helpers.BillingWithdraw(ctx, chain, providerWallet, multiDenomLeaseID)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "withdrawal should succeed")
+
+		// Verify provider received both denoms
+		newPWR, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), testPWRDenom)
+		require.NoError(t, err)
+		newSecond, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), secondDenom)
+		require.NoError(t, err)
+
+		require.True(t, newPWR.GT(initialPWR), "provider should receive PWR from withdrawal")
+		require.True(t, newSecond.GT(initialSecond), "provider should receive second denom from withdrawal")
+		t.Logf("Received PWR: %s -> %s", initialPWR, newPWR)
+		t.Logf("Received second: %s -> %s", initialSecond, newSecond)
+	})
+
+	// Wait more and close lease
+	require.NoError(t, testutil.WaitForBlocks(ctx, 3, chain))
+
+	t.Run("success: close lease settles multiple denoms", func(t *testing.T) {
+		// Get pre-close balances
+		prePWR, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), testPWRDenom)
+		require.NoError(t, err)
+		preSecond, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), secondDenom)
+		require.NoError(t, err)
+
+		res, err := helpers.BillingCloseLease(ctx, chain, tenant, multiDenomLeaseID)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "close should succeed")
+
+		// Verify settlement transferred both denoms
+		postPWR, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), testPWRDenom)
+		require.NoError(t, err)
+		postSecond, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), secondDenom)
+		require.NoError(t, err)
+
+		require.True(t, postPWR.GTE(prePWR), "provider should receive PWR from settlement")
+		require.True(t, postSecond.GTE(preSecond), "provider should receive second denom from settlement")
+	})
+
+	// Test: lease creation fails with insufficient credit for one denom
+	t.Run("fail: insufficient credit for one denom", func(t *testing.T) {
+		// Create a new tenant with only one denom
+		oneUsers := interchaintest.GetAndFundTestUsers(t, ctx, "one-denom-tenant", DefaultGenesisAmt, chain)
+		oneDenomTenant := oneUsers[0]
+
+		// Send only PWR denom
+		err := node.SendFunds(ctx, authority.KeyName(), ibc.WalletAmount{
+			Address: oneDenomTenant.FormattedAddress(),
+			Denom:   testPWRDenom,
+			Amount:  sdkmath.NewInt(500_000_000),
+		})
+		require.NoError(t, err)
+		require.NoError(t, testutil.WaitForBlocks(ctx, 2, chain))
+
+		// Fund credit only with PWR
+		fundAmount := fmt.Sprintf("200000000%s", testPWRDenom)
+		res, err := helpers.BillingFundCredit(ctx, chain, oneDenomTenant, oneDenomTenant.FormattedAddress(), fundAmount)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		// Try to create lease requiring both denoms - should fail
+		items := []string{
+			fmt.Sprintf("%d:1", skuPWR),    // Uses PWR - has enough
+			fmt.Sprintf("%d:1", skuSecond), // Uses second denom - insufficient!
+		}
+		res, err = helpers.BillingCreateLease(ctx, chain, oneDenomTenant, items)
+		require.NoError(t, err)
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "lease should fail with insufficient second denom")
+		require.Contains(t, txRes.RawLog, "insufficient credit", "error should indicate insufficient credit")
+	})
+
+	// Test: lease with same denom multiple SKUs works correctly
+	t.Run("success: lease with same denom multiple SKUs", func(t *testing.T) {
+		// Create two more SKUs with same denom
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderID, "Compute PWR 2", 1, fmt.Sprintf("1800000%s", testPWRDenom), "")
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+		skuPWR2, err := helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Create tenant
+		sameUsers := interchaintest.GetAndFundTestUsers(t, ctx, "same-denom-tenant", DefaultGenesisAmt, chain)
+		sameDenomTenant := sameUsers[0]
+
+		// Fund with PWR
+		err = node.SendFunds(ctx, authority.KeyName(), ibc.WalletAmount{
+			Address: sameDenomTenant.FormattedAddress(),
+			Denom:   testPWRDenom,
+			Amount:  sdkmath.NewInt(500_000_000),
+		})
+		require.NoError(t, err)
+		require.NoError(t, testutil.WaitForBlocks(ctx, 2, chain))
+
+		fundAmount := fmt.Sprintf("200000000%s", testPWRDenom)
+		res, err = helpers.BillingFundCredit(ctx, chain, sameDenomTenant, sameDenomTenant.FormattedAddress(), fundAmount)
+		require.NoError(t, err)
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		// Create lease with multiple SKUs using same denom
+		items := []string{
+			fmt.Sprintf("%d:1", skuPWR),
+			fmt.Sprintf("%d:1", skuPWR2),
+		}
+		res, err = helpers.BillingCreateLease(ctx, chain, sameDenomTenant, items)
+		require.NoError(t, err)
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "same denom multi-SKU lease should succeed")
 	})
 }

@@ -3987,15 +3987,66 @@ func (x *fastReflection_MsgCloseLease) ProtoMethods() *protoiface.Methods {
 	}
 }
 
+var _ protoreflect.List = (*_MsgCloseLeaseResponse_1_list)(nil)
+
+type _MsgCloseLeaseResponse_1_list struct {
+	list *[]*types.Coin
+}
+
+func (x *_MsgCloseLeaseResponse_1_list) Len() int {
+	if x.list == nil {
+		return 0
+	}
+	return len(*x.list)
+}
+
+func (x *_MsgCloseLeaseResponse_1_list) Get(i int) protoreflect.Value {
+	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
+}
+
+func (x *_MsgCloseLeaseResponse_1_list) Set(i int, value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	(*x.list)[i] = concreteValue
+}
+
+func (x *_MsgCloseLeaseResponse_1_list) Append(value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	*x.list = append(*x.list, concreteValue)
+}
+
+func (x *_MsgCloseLeaseResponse_1_list) AppendMutable() protoreflect.Value {
+	v := new(types.Coin)
+	*x.list = append(*x.list, v)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_MsgCloseLeaseResponse_1_list) Truncate(n int) {
+	for i := n; i < len(*x.list); i++ {
+		(*x.list)[i] = nil
+	}
+	*x.list = (*x.list)[:n]
+}
+
+func (x *_MsgCloseLeaseResponse_1_list) NewElement() protoreflect.Value {
+	v := new(types.Coin)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_MsgCloseLeaseResponse_1_list) IsValid() bool {
+	return x.list != nil
+}
+
 var (
-	md_MsgCloseLeaseResponse                protoreflect.MessageDescriptor
-	fd_MsgCloseLeaseResponse_settled_amount protoreflect.FieldDescriptor
+	md_MsgCloseLeaseResponse                 protoreflect.MessageDescriptor
+	fd_MsgCloseLeaseResponse_settled_amounts protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_liftedinit_billing_v1_tx_proto_init()
 	md_MsgCloseLeaseResponse = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgCloseLeaseResponse")
-	fd_MsgCloseLeaseResponse_settled_amount = md_MsgCloseLeaseResponse.Fields().ByName("settled_amount")
+	fd_MsgCloseLeaseResponse_settled_amounts = md_MsgCloseLeaseResponse.Fields().ByName("settled_amounts")
 }
 
 var _ protoreflect.Message = (*fastReflection_MsgCloseLeaseResponse)(nil)
@@ -4063,9 +4114,9 @@ func (x *fastReflection_MsgCloseLeaseResponse) Interface() protoreflect.ProtoMes
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
 func (x *fastReflection_MsgCloseLeaseResponse) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
-	if x.SettledAmount != nil {
-		value := protoreflect.ValueOfMessage(x.SettledAmount.ProtoReflect())
-		if !f(fd_MsgCloseLeaseResponse_settled_amount, value) {
+	if len(x.SettledAmounts) != 0 {
+		value := protoreflect.ValueOfList(&_MsgCloseLeaseResponse_1_list{list: &x.SettledAmounts})
+		if !f(fd_MsgCloseLeaseResponse_settled_amounts, value) {
 			return
 		}
 	}
@@ -4084,8 +4135,8 @@ func (x *fastReflection_MsgCloseLeaseResponse) Range(f func(protoreflect.FieldDe
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_MsgCloseLeaseResponse) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amount":
-		return x.SettledAmount != nil
+	case "liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amounts":
+		return len(x.SettledAmounts) != 0
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCloseLeaseResponse"))
@@ -4102,8 +4153,8 @@ func (x *fastReflection_MsgCloseLeaseResponse) Has(fd protoreflect.FieldDescript
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgCloseLeaseResponse) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amount":
-		x.SettledAmount = nil
+	case "liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amounts":
+		x.SettledAmounts = nil
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCloseLeaseResponse"))
@@ -4120,9 +4171,12 @@ func (x *fastReflection_MsgCloseLeaseResponse) Clear(fd protoreflect.FieldDescri
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_MsgCloseLeaseResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amount":
-		value := x.SettledAmount
-		return protoreflect.ValueOfMessage(value.ProtoReflect())
+	case "liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amounts":
+		if len(x.SettledAmounts) == 0 {
+			return protoreflect.ValueOfList(&_MsgCloseLeaseResponse_1_list{})
+		}
+		listValue := &_MsgCloseLeaseResponse_1_list{list: &x.SettledAmounts}
+		return protoreflect.ValueOfList(listValue)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCloseLeaseResponse"))
@@ -4143,8 +4197,10 @@ func (x *fastReflection_MsgCloseLeaseResponse) Get(descriptor protoreflect.Field
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgCloseLeaseResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amount":
-		x.SettledAmount = value.Message().Interface().(*types.Coin)
+	case "liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amounts":
+		lv := value.List()
+		clv := lv.(*_MsgCloseLeaseResponse_1_list)
+		x.SettledAmounts = *clv.list
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCloseLeaseResponse"))
@@ -4165,11 +4221,12 @@ func (x *fastReflection_MsgCloseLeaseResponse) Set(fd protoreflect.FieldDescript
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgCloseLeaseResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amount":
-		if x.SettledAmount == nil {
-			x.SettledAmount = new(types.Coin)
+	case "liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amounts":
+		if x.SettledAmounts == nil {
+			x.SettledAmounts = []*types.Coin{}
 		}
-		return protoreflect.ValueOfMessage(x.SettledAmount.ProtoReflect())
+		value := &_MsgCloseLeaseResponse_1_list{list: &x.SettledAmounts}
+		return protoreflect.ValueOfList(value)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCloseLeaseResponse"))
@@ -4183,9 +4240,9 @@ func (x *fastReflection_MsgCloseLeaseResponse) Mutable(fd protoreflect.FieldDesc
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_MsgCloseLeaseResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amount":
-		m := new(types.Coin)
-		return protoreflect.ValueOfMessage(m.ProtoReflect())
+	case "liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amounts":
+		list := []*types.Coin{}
+		return protoreflect.ValueOfList(&_MsgCloseLeaseResponse_1_list{list: &list})
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCloseLeaseResponse"))
@@ -4255,9 +4312,11 @@ func (x *fastReflection_MsgCloseLeaseResponse) ProtoMethods() *protoiface.Method
 		var n int
 		var l int
 		_ = l
-		if x.SettledAmount != nil {
-			l = options.Size(x.SettledAmount)
-			n += 1 + l + runtime.Sov(uint64(l))
+		if len(x.SettledAmounts) > 0 {
+			for _, e := range x.SettledAmounts {
+				l = options.Size(e)
+				n += 1 + l + runtime.Sov(uint64(l))
+			}
 		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
@@ -4288,19 +4347,21 @@ func (x *fastReflection_MsgCloseLeaseResponse) ProtoMethods() *protoiface.Method
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
 		}
-		if x.SettledAmount != nil {
-			encoded, err := options.Marshal(x.SettledAmount)
-			if err != nil {
-				return protoiface.MarshalOutput{
-					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-					Buf:               input.Buf,
-				}, err
+		if len(x.SettledAmounts) > 0 {
+			for iNdEx := len(x.SettledAmounts) - 1; iNdEx >= 0; iNdEx-- {
+				encoded, err := options.Marshal(x.SettledAmounts[iNdEx])
+				if err != nil {
+					return protoiface.MarshalOutput{
+						NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+						Buf:               input.Buf,
+					}, err
+				}
+				i -= len(encoded)
+				copy(dAtA[i:], encoded)
+				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+				i--
+				dAtA[i] = 0xa
 			}
-			i -= len(encoded)
-			copy(dAtA[i:], encoded)
-			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
-			i--
-			dAtA[i] = 0xa
 		}
 		if input.Buf != nil {
 			input.Buf = append(input.Buf, dAtA...)
@@ -4353,7 +4414,7 @@ func (x *fastReflection_MsgCloseLeaseResponse) ProtoMethods() *protoiface.Method
 			switch fieldNum {
 			case 1:
 				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field SettledAmount", wireType)
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field SettledAmounts", wireType)
 				}
 				var msglen int
 				for shift := uint(0); ; shift += 7 {
@@ -4380,10 +4441,8 @@ func (x *fastReflection_MsgCloseLeaseResponse) ProtoMethods() *protoiface.Method
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				if x.SettledAmount == nil {
-					x.SettledAmount = &types.Coin{}
-				}
-				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.SettledAmount); err != nil {
+				x.SettledAmounts = append(x.SettledAmounts, &types.Coin{})
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.SettledAmounts[len(x.SettledAmounts)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
 				iNdEx = postIndex
@@ -4890,16 +4949,67 @@ func (x *fastReflection_MsgWithdraw) ProtoMethods() *protoiface.Methods {
 	}
 }
 
+var _ protoreflect.List = (*_MsgWithdrawResponse_1_list)(nil)
+
+type _MsgWithdrawResponse_1_list struct {
+	list *[]*types.Coin
+}
+
+func (x *_MsgWithdrawResponse_1_list) Len() int {
+	if x.list == nil {
+		return 0
+	}
+	return len(*x.list)
+}
+
+func (x *_MsgWithdrawResponse_1_list) Get(i int) protoreflect.Value {
+	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
+}
+
+func (x *_MsgWithdrawResponse_1_list) Set(i int, value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	(*x.list)[i] = concreteValue
+}
+
+func (x *_MsgWithdrawResponse_1_list) Append(value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	*x.list = append(*x.list, concreteValue)
+}
+
+func (x *_MsgWithdrawResponse_1_list) AppendMutable() protoreflect.Value {
+	v := new(types.Coin)
+	*x.list = append(*x.list, v)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_MsgWithdrawResponse_1_list) Truncate(n int) {
+	for i := n; i < len(*x.list); i++ {
+		(*x.list)[i] = nil
+	}
+	*x.list = (*x.list)[:n]
+}
+
+func (x *_MsgWithdrawResponse_1_list) NewElement() protoreflect.Value {
+	v := new(types.Coin)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_MsgWithdrawResponse_1_list) IsValid() bool {
+	return x.list != nil
+}
+
 var (
 	md_MsgWithdrawResponse                protoreflect.MessageDescriptor
-	fd_MsgWithdrawResponse_amount         protoreflect.FieldDescriptor
+	fd_MsgWithdrawResponse_amounts        protoreflect.FieldDescriptor
 	fd_MsgWithdrawResponse_payout_address protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_liftedinit_billing_v1_tx_proto_init()
 	md_MsgWithdrawResponse = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgWithdrawResponse")
-	fd_MsgWithdrawResponse_amount = md_MsgWithdrawResponse.Fields().ByName("amount")
+	fd_MsgWithdrawResponse_amounts = md_MsgWithdrawResponse.Fields().ByName("amounts")
 	fd_MsgWithdrawResponse_payout_address = md_MsgWithdrawResponse.Fields().ByName("payout_address")
 }
 
@@ -4968,9 +5078,9 @@ func (x *fastReflection_MsgWithdrawResponse) Interface() protoreflect.ProtoMessa
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
 func (x *fastReflection_MsgWithdrawResponse) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
-	if x.Amount != nil {
-		value := protoreflect.ValueOfMessage(x.Amount.ProtoReflect())
-		if !f(fd_MsgWithdrawResponse_amount, value) {
+	if len(x.Amounts) != 0 {
+		value := protoreflect.ValueOfList(&_MsgWithdrawResponse_1_list{list: &x.Amounts})
+		if !f(fd_MsgWithdrawResponse_amounts, value) {
 			return
 		}
 	}
@@ -4995,8 +5105,8 @@ func (x *fastReflection_MsgWithdrawResponse) Range(f func(protoreflect.FieldDesc
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_MsgWithdrawResponse) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgWithdrawResponse.amount":
-		return x.Amount != nil
+	case "liftedinit.billing.v1.MsgWithdrawResponse.amounts":
+		return len(x.Amounts) != 0
 	case "liftedinit.billing.v1.MsgWithdrawResponse.payout_address":
 		return x.PayoutAddress != ""
 	default:
@@ -5015,8 +5125,8 @@ func (x *fastReflection_MsgWithdrawResponse) Has(fd protoreflect.FieldDescriptor
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgWithdrawResponse) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgWithdrawResponse.amount":
-		x.Amount = nil
+	case "liftedinit.billing.v1.MsgWithdrawResponse.amounts":
+		x.Amounts = nil
 	case "liftedinit.billing.v1.MsgWithdrawResponse.payout_address":
 		x.PayoutAddress = ""
 	default:
@@ -5035,9 +5145,12 @@ func (x *fastReflection_MsgWithdrawResponse) Clear(fd protoreflect.FieldDescript
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_MsgWithdrawResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "liftedinit.billing.v1.MsgWithdrawResponse.amount":
-		value := x.Amount
-		return protoreflect.ValueOfMessage(value.ProtoReflect())
+	case "liftedinit.billing.v1.MsgWithdrawResponse.amounts":
+		if len(x.Amounts) == 0 {
+			return protoreflect.ValueOfList(&_MsgWithdrawResponse_1_list{})
+		}
+		listValue := &_MsgWithdrawResponse_1_list{list: &x.Amounts}
+		return protoreflect.ValueOfList(listValue)
 	case "liftedinit.billing.v1.MsgWithdrawResponse.payout_address":
 		value := x.PayoutAddress
 		return protoreflect.ValueOfString(value)
@@ -5061,8 +5174,10 @@ func (x *fastReflection_MsgWithdrawResponse) Get(descriptor protoreflect.FieldDe
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgWithdrawResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgWithdrawResponse.amount":
-		x.Amount = value.Message().Interface().(*types.Coin)
+	case "liftedinit.billing.v1.MsgWithdrawResponse.amounts":
+		lv := value.List()
+		clv := lv.(*_MsgWithdrawResponse_1_list)
+		x.Amounts = *clv.list
 	case "liftedinit.billing.v1.MsgWithdrawResponse.payout_address":
 		x.PayoutAddress = value.Interface().(string)
 	default:
@@ -5085,11 +5200,12 @@ func (x *fastReflection_MsgWithdrawResponse) Set(fd protoreflect.FieldDescriptor
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgWithdrawResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgWithdrawResponse.amount":
-		if x.Amount == nil {
-			x.Amount = new(types.Coin)
+	case "liftedinit.billing.v1.MsgWithdrawResponse.amounts":
+		if x.Amounts == nil {
+			x.Amounts = []*types.Coin{}
 		}
-		return protoreflect.ValueOfMessage(x.Amount.ProtoReflect())
+		value := &_MsgWithdrawResponse_1_list{list: &x.Amounts}
+		return protoreflect.ValueOfList(value)
 	case "liftedinit.billing.v1.MsgWithdrawResponse.payout_address":
 		panic(fmt.Errorf("field payout_address of message liftedinit.billing.v1.MsgWithdrawResponse is not mutable"))
 	default:
@@ -5105,9 +5221,9 @@ func (x *fastReflection_MsgWithdrawResponse) Mutable(fd protoreflect.FieldDescri
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_MsgWithdrawResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgWithdrawResponse.amount":
-		m := new(types.Coin)
-		return protoreflect.ValueOfMessage(m.ProtoReflect())
+	case "liftedinit.billing.v1.MsgWithdrawResponse.amounts":
+		list := []*types.Coin{}
+		return protoreflect.ValueOfList(&_MsgWithdrawResponse_1_list{list: &list})
 	case "liftedinit.billing.v1.MsgWithdrawResponse.payout_address":
 		return protoreflect.ValueOfString("")
 	default:
@@ -5179,9 +5295,11 @@ func (x *fastReflection_MsgWithdrawResponse) ProtoMethods() *protoiface.Methods 
 		var n int
 		var l int
 		_ = l
-		if x.Amount != nil {
-			l = options.Size(x.Amount)
-			n += 1 + l + runtime.Sov(uint64(l))
+		if len(x.Amounts) > 0 {
+			for _, e := range x.Amounts {
+				l = options.Size(e)
+				n += 1 + l + runtime.Sov(uint64(l))
+			}
 		}
 		l = len(x.PayoutAddress)
 		if l > 0 {
@@ -5223,19 +5341,21 @@ func (x *fastReflection_MsgWithdrawResponse) ProtoMethods() *protoiface.Methods 
 			i--
 			dAtA[i] = 0x12
 		}
-		if x.Amount != nil {
-			encoded, err := options.Marshal(x.Amount)
-			if err != nil {
-				return protoiface.MarshalOutput{
-					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-					Buf:               input.Buf,
-				}, err
+		if len(x.Amounts) > 0 {
+			for iNdEx := len(x.Amounts) - 1; iNdEx >= 0; iNdEx-- {
+				encoded, err := options.Marshal(x.Amounts[iNdEx])
+				if err != nil {
+					return protoiface.MarshalOutput{
+						NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+						Buf:               input.Buf,
+					}, err
+				}
+				i -= len(encoded)
+				copy(dAtA[i:], encoded)
+				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+				i--
+				dAtA[i] = 0xa
 			}
-			i -= len(encoded)
-			copy(dAtA[i:], encoded)
-			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
-			i--
-			dAtA[i] = 0xa
 		}
 		if input.Buf != nil {
 			input.Buf = append(input.Buf, dAtA...)
@@ -5288,7 +5408,7 @@ func (x *fastReflection_MsgWithdrawResponse) ProtoMethods() *protoiface.Methods 
 			switch fieldNum {
 			case 1:
 				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Amount", wireType)
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Amounts", wireType)
 				}
 				var msglen int
 				for shift := uint(0); ; shift += 7 {
@@ -5315,10 +5435,8 @@ func (x *fastReflection_MsgWithdrawResponse) ProtoMethods() *protoiface.Methods 
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				if x.Amount == nil {
-					x.Amount = &types.Coin{}
-				}
-				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Amount); err != nil {
+				x.Amounts = append(x.Amounts, &types.Coin{})
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Amounts[len(x.Amounts)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
 				iNdEx = postIndex
@@ -5905,9 +6023,60 @@ func (x *fastReflection_MsgWithdrawAll) ProtoMethods() *protoiface.Methods {
 	}
 }
 
+var _ protoreflect.List = (*_MsgWithdrawAllResponse_1_list)(nil)
+
+type _MsgWithdrawAllResponse_1_list struct {
+	list *[]*types.Coin
+}
+
+func (x *_MsgWithdrawAllResponse_1_list) Len() int {
+	if x.list == nil {
+		return 0
+	}
+	return len(*x.list)
+}
+
+func (x *_MsgWithdrawAllResponse_1_list) Get(i int) protoreflect.Value {
+	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
+}
+
+func (x *_MsgWithdrawAllResponse_1_list) Set(i int, value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	(*x.list)[i] = concreteValue
+}
+
+func (x *_MsgWithdrawAllResponse_1_list) Append(value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	*x.list = append(*x.list, concreteValue)
+}
+
+func (x *_MsgWithdrawAllResponse_1_list) AppendMutable() protoreflect.Value {
+	v := new(types.Coin)
+	*x.list = append(*x.list, v)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_MsgWithdrawAllResponse_1_list) Truncate(n int) {
+	for i := n; i < len(*x.list); i++ {
+		(*x.list)[i] = nil
+	}
+	*x.list = (*x.list)[:n]
+}
+
+func (x *_MsgWithdrawAllResponse_1_list) NewElement() protoreflect.Value {
+	v := new(types.Coin)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_MsgWithdrawAllResponse_1_list) IsValid() bool {
+	return x.list != nil
+}
+
 var (
 	md_MsgWithdrawAllResponse                protoreflect.MessageDescriptor
-	fd_MsgWithdrawAllResponse_total_amount   protoreflect.FieldDescriptor
+	fd_MsgWithdrawAllResponse_total_amounts  protoreflect.FieldDescriptor
 	fd_MsgWithdrawAllResponse_lease_count    protoreflect.FieldDescriptor
 	fd_MsgWithdrawAllResponse_payout_address protoreflect.FieldDescriptor
 	fd_MsgWithdrawAllResponse_has_more       protoreflect.FieldDescriptor
@@ -5916,7 +6085,7 @@ var (
 func init() {
 	file_liftedinit_billing_v1_tx_proto_init()
 	md_MsgWithdrawAllResponse = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgWithdrawAllResponse")
-	fd_MsgWithdrawAllResponse_total_amount = md_MsgWithdrawAllResponse.Fields().ByName("total_amount")
+	fd_MsgWithdrawAllResponse_total_amounts = md_MsgWithdrawAllResponse.Fields().ByName("total_amounts")
 	fd_MsgWithdrawAllResponse_lease_count = md_MsgWithdrawAllResponse.Fields().ByName("lease_count")
 	fd_MsgWithdrawAllResponse_payout_address = md_MsgWithdrawAllResponse.Fields().ByName("payout_address")
 	fd_MsgWithdrawAllResponse_has_more = md_MsgWithdrawAllResponse.Fields().ByName("has_more")
@@ -5987,9 +6156,9 @@ func (x *fastReflection_MsgWithdrawAllResponse) Interface() protoreflect.ProtoMe
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
 func (x *fastReflection_MsgWithdrawAllResponse) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
-	if x.TotalAmount != nil {
-		value := protoreflect.ValueOfMessage(x.TotalAmount.ProtoReflect())
-		if !f(fd_MsgWithdrawAllResponse_total_amount, value) {
+	if len(x.TotalAmounts) != 0 {
+		value := protoreflect.ValueOfList(&_MsgWithdrawAllResponse_1_list{list: &x.TotalAmounts})
+		if !f(fd_MsgWithdrawAllResponse_total_amounts, value) {
 			return
 		}
 	}
@@ -6026,8 +6195,8 @@ func (x *fastReflection_MsgWithdrawAllResponse) Range(f func(protoreflect.FieldD
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_MsgWithdrawAllResponse) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgWithdrawAllResponse.total_amount":
-		return x.TotalAmount != nil
+	case "liftedinit.billing.v1.MsgWithdrawAllResponse.total_amounts":
+		return len(x.TotalAmounts) != 0
 	case "liftedinit.billing.v1.MsgWithdrawAllResponse.lease_count":
 		return x.LeaseCount != uint64(0)
 	case "liftedinit.billing.v1.MsgWithdrawAllResponse.payout_address":
@@ -6050,8 +6219,8 @@ func (x *fastReflection_MsgWithdrawAllResponse) Has(fd protoreflect.FieldDescrip
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgWithdrawAllResponse) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgWithdrawAllResponse.total_amount":
-		x.TotalAmount = nil
+	case "liftedinit.billing.v1.MsgWithdrawAllResponse.total_amounts":
+		x.TotalAmounts = nil
 	case "liftedinit.billing.v1.MsgWithdrawAllResponse.lease_count":
 		x.LeaseCount = uint64(0)
 	case "liftedinit.billing.v1.MsgWithdrawAllResponse.payout_address":
@@ -6074,9 +6243,12 @@ func (x *fastReflection_MsgWithdrawAllResponse) Clear(fd protoreflect.FieldDescr
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_MsgWithdrawAllResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "liftedinit.billing.v1.MsgWithdrawAllResponse.total_amount":
-		value := x.TotalAmount
-		return protoreflect.ValueOfMessage(value.ProtoReflect())
+	case "liftedinit.billing.v1.MsgWithdrawAllResponse.total_amounts":
+		if len(x.TotalAmounts) == 0 {
+			return protoreflect.ValueOfList(&_MsgWithdrawAllResponse_1_list{})
+		}
+		listValue := &_MsgWithdrawAllResponse_1_list{list: &x.TotalAmounts}
+		return protoreflect.ValueOfList(listValue)
 	case "liftedinit.billing.v1.MsgWithdrawAllResponse.lease_count":
 		value := x.LeaseCount
 		return protoreflect.ValueOfUint64(value)
@@ -6106,8 +6278,10 @@ func (x *fastReflection_MsgWithdrawAllResponse) Get(descriptor protoreflect.Fiel
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgWithdrawAllResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgWithdrawAllResponse.total_amount":
-		x.TotalAmount = value.Message().Interface().(*types.Coin)
+	case "liftedinit.billing.v1.MsgWithdrawAllResponse.total_amounts":
+		lv := value.List()
+		clv := lv.(*_MsgWithdrawAllResponse_1_list)
+		x.TotalAmounts = *clv.list
 	case "liftedinit.billing.v1.MsgWithdrawAllResponse.lease_count":
 		x.LeaseCount = value.Uint()
 	case "liftedinit.billing.v1.MsgWithdrawAllResponse.payout_address":
@@ -6134,11 +6308,12 @@ func (x *fastReflection_MsgWithdrawAllResponse) Set(fd protoreflect.FieldDescrip
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgWithdrawAllResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgWithdrawAllResponse.total_amount":
-		if x.TotalAmount == nil {
-			x.TotalAmount = new(types.Coin)
+	case "liftedinit.billing.v1.MsgWithdrawAllResponse.total_amounts":
+		if x.TotalAmounts == nil {
+			x.TotalAmounts = []*types.Coin{}
 		}
-		return protoreflect.ValueOfMessage(x.TotalAmount.ProtoReflect())
+		value := &_MsgWithdrawAllResponse_1_list{list: &x.TotalAmounts}
+		return protoreflect.ValueOfList(value)
 	case "liftedinit.billing.v1.MsgWithdrawAllResponse.lease_count":
 		panic(fmt.Errorf("field lease_count of message liftedinit.billing.v1.MsgWithdrawAllResponse is not mutable"))
 	case "liftedinit.billing.v1.MsgWithdrawAllResponse.payout_address":
@@ -6158,9 +6333,9 @@ func (x *fastReflection_MsgWithdrawAllResponse) Mutable(fd protoreflect.FieldDes
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_MsgWithdrawAllResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgWithdrawAllResponse.total_amount":
-		m := new(types.Coin)
-		return protoreflect.ValueOfMessage(m.ProtoReflect())
+	case "liftedinit.billing.v1.MsgWithdrawAllResponse.total_amounts":
+		list := []*types.Coin{}
+		return protoreflect.ValueOfList(&_MsgWithdrawAllResponse_1_list{list: &list})
 	case "liftedinit.billing.v1.MsgWithdrawAllResponse.lease_count":
 		return protoreflect.ValueOfUint64(uint64(0))
 	case "liftedinit.billing.v1.MsgWithdrawAllResponse.payout_address":
@@ -6236,9 +6411,11 @@ func (x *fastReflection_MsgWithdrawAllResponse) ProtoMethods() *protoiface.Metho
 		var n int
 		var l int
 		_ = l
-		if x.TotalAmount != nil {
-			l = options.Size(x.TotalAmount)
-			n += 1 + l + runtime.Sov(uint64(l))
+		if len(x.TotalAmounts) > 0 {
+			for _, e := range x.TotalAmounts {
+				l = options.Size(e)
+				n += 1 + l + runtime.Sov(uint64(l))
+			}
 		}
 		if x.LeaseCount != 0 {
 			n += 1 + runtime.Sov(uint64(x.LeaseCount))
@@ -6301,19 +6478,21 @@ func (x *fastReflection_MsgWithdrawAllResponse) ProtoMethods() *protoiface.Metho
 			i--
 			dAtA[i] = 0x10
 		}
-		if x.TotalAmount != nil {
-			encoded, err := options.Marshal(x.TotalAmount)
-			if err != nil {
-				return protoiface.MarshalOutput{
-					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-					Buf:               input.Buf,
-				}, err
+		if len(x.TotalAmounts) > 0 {
+			for iNdEx := len(x.TotalAmounts) - 1; iNdEx >= 0; iNdEx-- {
+				encoded, err := options.Marshal(x.TotalAmounts[iNdEx])
+				if err != nil {
+					return protoiface.MarshalOutput{
+						NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+						Buf:               input.Buf,
+					}, err
+				}
+				i -= len(encoded)
+				copy(dAtA[i:], encoded)
+				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+				i--
+				dAtA[i] = 0xa
 			}
-			i -= len(encoded)
-			copy(dAtA[i:], encoded)
-			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
-			i--
-			dAtA[i] = 0xa
 		}
 		if input.Buf != nil {
 			input.Buf = append(input.Buf, dAtA...)
@@ -6366,7 +6545,7 @@ func (x *fastReflection_MsgWithdrawAllResponse) ProtoMethods() *protoiface.Metho
 			switch fieldNum {
 			case 1:
 				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field TotalAmount", wireType)
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field TotalAmounts", wireType)
 				}
 				var msglen int
 				for shift := uint(0); ; shift += 7 {
@@ -6393,10 +6572,8 @@ func (x *fastReflection_MsgWithdrawAllResponse) ProtoMethods() *protoiface.Metho
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				if x.TotalAmount == nil {
-					x.TotalAmount = &types.Coin{}
-				}
-				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.TotalAmount); err != nil {
+				x.TotalAmounts = append(x.TotalAmounts, &types.Coin{})
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.TotalAmounts[len(x.TotalAmounts)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
 				iNdEx = postIndex
@@ -7430,7 +7607,7 @@ type MsgFundCredit struct {
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
 	// tenant is the address of the tenant whose credit account to fund.
 	Tenant string `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	// amount is the amount to fund (must be in billing denom).
+	// amount is the amount to fund.
 	Amount *types.Coin `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
 }
 
@@ -7751,8 +7928,8 @@ type MsgCloseLeaseResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// settled_amount is the amount settled at closure.
-	SettledAmount *types.Coin `protobuf:"bytes,1,opt,name=settled_amount,json=settledAmount,proto3" json:"settled_amount,omitempty"`
+	// settled_amounts is the amounts settled at closure (one per denom).
+	SettledAmounts []*types.Coin `protobuf:"bytes,1,rep,name=settled_amounts,json=settledAmounts,proto3" json:"settled_amounts,omitempty"`
 }
 
 func (x *MsgCloseLeaseResponse) Reset() {
@@ -7775,9 +7952,9 @@ func (*MsgCloseLeaseResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *MsgCloseLeaseResponse) GetSettledAmount() *types.Coin {
+func (x *MsgCloseLeaseResponse) GetSettledAmounts() []*types.Coin {
 	if x != nil {
-		return x.SettledAmount
+		return x.SettledAmounts
 	}
 	return nil
 }
@@ -7834,8 +8011,8 @@ type MsgWithdrawResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// amount is the amount withdrawn.
-	Amount *types.Coin `protobuf:"bytes,1,opt,name=amount,proto3" json:"amount,omitempty"`
+	// amounts is the amounts withdrawn (one per denom).
+	Amounts []*types.Coin `protobuf:"bytes,1,rep,name=amounts,proto3" json:"amounts,omitempty"`
 	// payout_address is the address that received the funds.
 	PayoutAddress string `protobuf:"bytes,2,opt,name=payout_address,json=payoutAddress,proto3" json:"payout_address,omitempty"`
 }
@@ -7860,9 +8037,9 @@ func (*MsgWithdrawResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *MsgWithdrawResponse) GetAmount() *types.Coin {
+func (x *MsgWithdrawResponse) GetAmounts() []*types.Coin {
 	if x != nil {
-		return x.Amount
+		return x.Amounts
 	}
 	return nil
 }
@@ -7939,8 +8116,8 @@ type MsgWithdrawAllResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// total_amount is the total amount withdrawn across all leases.
-	TotalAmount *types.Coin `protobuf:"bytes,1,opt,name=total_amount,json=totalAmount,proto3" json:"total_amount,omitempty"`
+	// total_amounts is the total amounts withdrawn across all leases (one per denom).
+	TotalAmounts []*types.Coin `protobuf:"bytes,1,rep,name=total_amounts,json=totalAmounts,proto3" json:"total_amounts,omitempty"`
 	// lease_count is the number of leases withdrawn from.
 	LeaseCount uint64 `protobuf:"varint,2,opt,name=lease_count,json=leaseCount,proto3" json:"lease_count,omitempty"`
 	// payout_address is the address that received the funds.
@@ -7970,9 +8147,9 @@ func (*MsgWithdrawAllResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *MsgWithdrawAllResponse) GetTotalAmount() *types.Coin {
+func (x *MsgWithdrawAllResponse) GetTotalAmounts() []*types.Coin {
 	if x != nil {
-		return x.TotalAmount
+		return x.TotalAmounts
 	}
 	return nil
 }
@@ -8183,31 +8360,37 @@ var file_liftedinit_billing_v1_tx_proto_rawDesc = []byte{
 	0x65, 0x49, 0x64, 0x3a, 0x2c, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72,
 	0x8a, 0xe7, 0xb0, 0x2a, 0x1c, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c,
 	0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65, 0x61, 0x73,
-	0x65, 0x22, 0x71, 0x0a, 0x15, 0x4d, 0x73, 0x67, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65, 0x61,
-	0x73, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x58, 0x0a, 0x0e, 0x73, 0x65,
-	0x74, 0x74, 0x6c, 0x65, 0x64, 0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01,
-	0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65,
-	0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x16, 0xc8,
-	0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0e, 0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x5f, 0x61,
-	0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x52, 0x0d, 0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x41, 0x6d,
-	0x6f, 0x75, 0x6e, 0x74, 0x22, 0xb9, 0x01, 0x0a, 0x0b, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68,
-	0x64, 0x72, 0x61, 0x77, 0x12, 0x44, 0x0a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72,
-	0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f,
-	0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69,
-	0x6e, 0x67, 0x52, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x12, 0x38, 0x0a, 0x08, 0x6c, 0x65,
-	0x61, 0x73, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x42, 0x1d, 0xea, 0xde,
-	0x1f, 0x19, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65,
-	0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x07, 0x6c, 0x65, 0x61,
-	0x73, 0x65, 0x49, 0x64, 0x3a, 0x2a, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65,
-	0x72, 0x8a, 0xe7, 0xb0, 0x2a, 0x1a, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c,
-	0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77,
-	0x22, 0xb5, 0x01, 0x0a, 0x13, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x41, 0x0a, 0x06, 0x61, 0x6d, 0x6f, 0x75,
-	0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
-	0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43,
-	0x6f, 0x69, 0x6e, 0x42, 0x0e, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x06, 0x61, 0x6d, 0x6f,
-	0x75, 0x6e, 0x74, 0x52, 0x06, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x5b, 0x0a, 0x0e, 0x70,
+	0x65, 0x22, 0xa1, 0x01, 0x0a, 0x15, 0x4d, 0x73, 0x67, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65,
+	0x61, 0x73, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x87, 0x01, 0x0a, 0x0f,
+	0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0x18,
+	0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62,
+	0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e,
+	0x42, 0x43, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0f, 0x73, 0x65, 0x74, 0x74, 0x6c, 0x65,
+	0x64, 0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0xaa, 0xdf, 0x1f, 0x28, 0x67, 0x69, 0x74,
+	0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x63,
+	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73, 0x2e,
+	0x43, 0x6f, 0x69, 0x6e, 0x73, 0x52, 0x0e, 0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x41, 0x6d,
+	0x6f, 0x75, 0x6e, 0x74, 0x73, 0x22, 0xb9, 0x01, 0x0a, 0x0b, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74,
+	0x68, 0x64, 0x72, 0x61, 0x77, 0x12, 0x44, 0x0a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x73, 0x65, 0x6e, 0x64, 0x65,
+	0x72, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63,
+	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72,
+	0x69, 0x6e, 0x67, 0x52, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x12, 0x38, 0x0a, 0x08, 0x6c,
+	0x65, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x42, 0x1d, 0xea,
+	0xde, 0x1f, 0x19, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74,
+	0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x07, 0x6c, 0x65,
+	0x61, 0x73, 0x65, 0x49, 0x64, 0x3a, 0x2a, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e, 0x64,
+	0x65, 0x72, 0x8a, 0xe7, 0xb0, 0x2a, 0x1a, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69,
+	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61,
+	0x77, 0x22, 0xe4, 0x01, 0x0a, 0x13, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61,
+	0x77, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x70, 0x0a, 0x07, 0x61, 0x6d, 0x6f,
+	0x75, 0x6e, 0x74, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73,
+	0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31,
+	0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x3b, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x07, 0x61,
+	0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0xaa, 0xdf, 0x1f, 0x28, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
+	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x73, 0x6d,
+	0x6f, 0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73, 0x2e, 0x43, 0x6f, 0x69,
+	0x6e, 0x73, 0x52, 0x07, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0x12, 0x5b, 0x0a, 0x0e, 0x70,
 	0x61, 0x79, 0x6f, 0x75, 0x74, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x02, 0x20,
 	0x01, 0x28, 0x09, 0x42, 0x34, 0xea, 0xde, 0x1f, 0x18, 0x70, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x5f,
 	0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74,
@@ -8229,14 +8412,17 @@ var file_liftedinit_billing_v1_tx_proto_rawDesc = []byte{
 	0x05, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x3a, 0x2d, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e,
 	0x64, 0x65, 0x72, 0x8a, 0xe7, 0xb0, 0x2a, 0x1d, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62,
 	0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72,
-	0x61, 0x77, 0x41, 0x6c, 0x6c, 0x22, 0xbf, 0x02, 0x0a, 0x16, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74,
+	0x61, 0x77, 0x41, 0x6c, 0x6c, 0x22, 0xef, 0x02, 0x0a, 0x16, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74,
 	0x68, 0x64, 0x72, 0x61, 0x77, 0x41, 0x6c, 0x6c, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
-	0x12, 0x52, 0x0a, 0x0c, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74,
-	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e,
-	0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69,
-	0x6e, 0x42, 0x14, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0c, 0x74, 0x6f, 0x74, 0x61, 0x6c,
-	0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x52, 0x0b, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x41, 0x6d,
-	0x6f, 0x75, 0x6e, 0x74, 0x12, 0x41, 0x0a, 0x0b, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x63, 0x6f,
+	0x12, 0x81, 0x01, 0x0a, 0x0d, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e,
+	0x74, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
+	0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43,
+	0x6f, 0x69, 0x6e, 0x42, 0x41, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0d, 0x74, 0x6f, 0x74,
+	0x61, 0x6c, 0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0xaa, 0xdf, 0x1f, 0x28, 0x67, 0x69,
+	0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f,
+	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73,
+	0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x73, 0x52, 0x0c, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x41, 0x6d, 0x6f,
+	0x75, 0x6e, 0x74, 0x73, 0x12, 0x41, 0x0a, 0x0b, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x63, 0x6f,
 	0x75, 0x6e, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x42, 0x20, 0xea, 0xde, 0x1f, 0x1c, 0x6c,
 	0x65, 0x61, 0x73, 0x65, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65,
 	0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0a, 0x6c, 0x65, 0x61,
@@ -8366,9 +8552,9 @@ var file_liftedinit_billing_v1_tx_proto_depIdxs = []int32{
 	15, // 1: liftedinit.billing.v1.MsgFundCreditResponse.new_balance:type_name -> cosmos.base.v1beta1.Coin
 	0,  // 2: liftedinit.billing.v1.MsgCreateLease.items:type_name -> liftedinit.billing.v1.LeaseItemInput
 	0,  // 3: liftedinit.billing.v1.MsgCreateLeaseForTenant.items:type_name -> liftedinit.billing.v1.LeaseItemInput
-	15, // 4: liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amount:type_name -> cosmos.base.v1beta1.Coin
-	15, // 5: liftedinit.billing.v1.MsgWithdrawResponse.amount:type_name -> cosmos.base.v1beta1.Coin
-	15, // 6: liftedinit.billing.v1.MsgWithdrawAllResponse.total_amount:type_name -> cosmos.base.v1beta1.Coin
+	15, // 4: liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amounts:type_name -> cosmos.base.v1beta1.Coin
+	15, // 5: liftedinit.billing.v1.MsgWithdrawResponse.amounts:type_name -> cosmos.base.v1beta1.Coin
+	15, // 6: liftedinit.billing.v1.MsgWithdrawAllResponse.total_amounts:type_name -> cosmos.base.v1beta1.Coin
 	16, // 7: liftedinit.billing.v1.MsgUpdateParams.params:type_name -> liftedinit.billing.v1.Params
 	1,  // 8: liftedinit.billing.v1.Msg.FundCredit:input_type -> liftedinit.billing.v1.MsgFundCredit
 	3,  // 9: liftedinit.billing.v1.Msg.CreateLease:input_type -> liftedinit.billing.v1.MsgCreateLease

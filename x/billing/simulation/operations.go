@@ -126,15 +126,13 @@ func SimulateMsgFundCredit(txGen client.TxConfig, k keeper.Keeper) simtypes.Oper
 		// Select random tenant (can be same as sender or different)
 		tenant, _ := simtypes.RandomAcc(r, accs)
 
-		// Get billing params to use correct denom
-		params, err := k.GetParams(ctx)
-		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
-		}
+		// Use the default bond denom for simulation
+		// In production, the denom comes from the SKU's base_price
+		denom := sdk.DefaultBondDenom
 
 		// Get total spendable balance in billing denom
 		spendableCoins := k.GetBankKeeper().SpendableCoins(ctx, sender.Address)
-		senderBalance := spendableCoins.AmountOf(params.Denom)
+		senderBalance := spendableCoins.AmountOf(denom)
 		if senderBalance.IsZero() {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "sender has no billing denom balance"), nil, nil
 		}
@@ -178,8 +176,8 @@ func SimulateMsgFundCredit(txGen client.TxConfig, k keeper.Keeper) simtypes.Oper
 			randAmount = minFundingAmount
 		}
 
-		amount := sdk.NewCoin(params.Denom, randAmount)
-		fees := sdk.NewCoins(sdk.NewCoin(params.Denom, fixedFee))
+		amount := sdk.NewCoin(denom, randAmount)
+		fees := sdk.NewCoins(sdk.NewCoin(denom, fixedFee))
 
 		msg := &types.MsgFundCredit{
 			Sender: sender.Address.String(),
@@ -229,18 +227,21 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 		// Select random tenant
 		tenant, _ := simtypes.RandomAcc(r, accs)
 
-		// Check if tenant has credit
-		params, err := k.GetParams(ctx)
-		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
-		}
+		// Check if tenant has credit in the SKU's denom
+		// Use the SKU's base_price denom for credit checking
+		skuDenom := sku.BasePrice.Denom
 
-		creditBalance, err := k.GetCreditBalance(ctx, tenant.Address.String(), params.Denom)
+		creditBalance, err := k.GetCreditBalance(ctx, tenant.Address.String(), skuDenom)
 		if err != nil || creditBalance.Amount.IsZero() {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant has no credit"), nil, nil
 		}
 
 		// Check tenant hasn't exceeded max leases
+		params, err := k.GetParams(ctx)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
+		}
+
 		activeLeaseCount, err := k.CountActiveLeasesByTenant(ctx, tenant.Address.String())
 		if err != nil || activeLeaseCount >= params.MaxLeasesPerTenant {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant at max lease limit"), nil, nil
@@ -320,18 +321,20 @@ func SimulateMsgCreateLeaseForTenant(txGen client.TxConfig, k keeper.Keeper, sk 
 		// Select random tenant
 		tenant, _ := simtypes.RandomAcc(r, accs)
 
-		// Check if tenant has credit
-		params, err := k.GetParams(ctx)
-		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
-		}
+		// Check if tenant has credit in the SKU's denom
+		skuDenom := sku.BasePrice.Denom
 
-		creditBalance, err := k.GetCreditBalance(ctx, tenant.Address.String(), params.Denom)
+		creditBalance, err := k.GetCreditBalance(ctx, tenant.Address.String(), skuDenom)
 		if err != nil || creditBalance.Amount.IsZero() {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant has no credit"), nil, nil
 		}
 
 		// Check tenant hasn't exceeded max leases
+		params, err := k.GetParams(ctx)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
+		}
+
 		activeLeaseCount, err := k.CountActiveLeasesByTenant(ctx, tenant.Address.String())
 		if err != nil || activeLeaseCount >= params.MaxLeasesPerTenant {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant at max lease limit"), nil, nil
@@ -467,7 +470,7 @@ func SimulateMsgWithdraw(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper) s
 		for _, lease := range allLeases {
 			// Calculate withdrawable amount for this lease
 			withdrawable := k.CalculateWithdrawableForLease(ctx, lease)
-			if withdrawable.IsPositive() {
+			if !withdrawable.IsZero() {
 				withdrawableLeases = append(withdrawableLeases, lease)
 			}
 		}
@@ -533,7 +536,7 @@ func SimulateMsgWithdrawAll(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 			hasWithdrawable := false
 			for _, lease := range leases {
 				withdrawable := k.CalculateWithdrawableForLease(ctx, lease)
-				if withdrawable.IsPositive() {
+				if !withdrawable.IsZero() {
 					hasWithdrawable = true
 					break
 				}

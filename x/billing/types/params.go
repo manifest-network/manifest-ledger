@@ -6,9 +6,6 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-// DefaultDenom is the default billing denomination.
-const DefaultDenom = "factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr"
-
 // DefaultMaxLeasesPerTenant is the default maximum number of leases per tenant.
 const DefaultMaxLeasesPerTenant = uint64(100)
 
@@ -23,7 +20,6 @@ const DefaultMinLeaseDuration = uint64(3600)
 // DefaultParams returns the default billing module parameters.
 func DefaultParams() Params {
 	return Params{
-		Denom:              DefaultDenom,
 		MaxLeasesPerTenant: DefaultMaxLeasesPerTenant,
 		AllowedList:        []string{},
 		MaxItemsPerLease:   DefaultMaxItemsPerLease,
@@ -32,9 +28,8 @@ func DefaultParams() Params {
 }
 
 // NewParams creates a new Params instance.
-func NewParams(denom string, maxLeasesPerTenant uint64, allowedList []string, maxItemsPerLease uint64, minLeaseDuration uint64) Params {
+func NewParams(maxLeasesPerTenant uint64, allowedList []string, maxItemsPerLease uint64, minLeaseDuration uint64) Params {
 	return Params{
-		Denom:              denom,
 		MaxLeasesPerTenant: maxLeasesPerTenant,
 		AllowedList:        allowedList,
 		MaxItemsPerLease:   maxItemsPerLease,
@@ -44,10 +39,6 @@ func NewParams(denom string, maxLeasesPerTenant uint64, allowedList []string, ma
 
 // Validate performs validation on billing parameters.
 func (p *Params) Validate() error {
-	if p.Denom == "" {
-		return ErrInvalidParams.Wrap("denom cannot be empty")
-	}
-
 	if p.MaxLeasesPerTenant == 0 {
 		return ErrInvalidParams.Wrap("max_leases_per_tenant must be greater than zero")
 	}

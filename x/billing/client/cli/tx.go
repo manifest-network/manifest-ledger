@@ -43,9 +43,9 @@ func NewFundCreditCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fund-credit [tenant] [amount]",
 		Short: "Fund a tenant's credit account",
-		Long:  `Fund a tenant's credit account with the specified amount. The amount must be in the billing denomination (PWR).`,
+		Long:  `Fund a tenant's credit account with the specified amount. The credit account can hold any token denomination.`,
 		Example: `fund-credit manifest1abc... 1000000factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr
-fund-credit manifest1abc... 5000000factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr --from mykey`,
+fund-credit manifest1abc... 5000000umfx --from mykey`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -291,33 +291,31 @@ withdraw-all 1 --limit 50 --from provider-key`,
 // NewUpdateParamsCmd returns the command to update billing module parameters.
 func NewUpdateParamsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "update-params [denom] [max-leases-per-tenant] [max-items-per-lease] [min-lease-duration]",
+		Use:   "update-params [max-leases-per-tenant] [max-items-per-lease] [min-lease-duration]",
 		Short: "Update billing module parameters (authority only)",
 		Long: `Update the billing module parameters. Only the module authority can execute this command.
 All parameters must be provided. Use --allowed-list to set addresses allowed to create leases for tenants.
 min-lease-duration is in seconds (e.g., 3600 for 1 hour).`,
-		Example: `update-params factory/manifest1.../upwr 100 20 3600 --from authority
-update-params factory/manifest1.../upwr 100 20 3600 --allowed-list manifest1abc...,manifest1xyz... --from authority`,
-		Args: cobra.ExactArgs(4),
+		Example: `update-params 100 20 3600 --from authority
+update-params 100 20 3600 --allowed-list manifest1abc...,manifest1xyz... --from authority`,
+		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
 				return err
 			}
 
-			denom := args[0]
-
-			maxLeasesPerTenant, err := strconv.ParseUint(args[1], 10, 64)
+			maxLeasesPerTenant, err := strconv.ParseUint(args[0], 10, 64)
 			if err != nil {
 				return fmt.Errorf("invalid max_leases_per_tenant: %w", err)
 			}
 
-			maxItemsPerLease, err := strconv.ParseUint(args[2], 10, 64)
+			maxItemsPerLease, err := strconv.ParseUint(args[1], 10, 64)
 			if err != nil {
 				return fmt.Errorf("invalid max_items_per_lease: %w", err)
 			}
 
-			minLeaseDuration, err := strconv.ParseUint(args[3], 10, 64)
+			minLeaseDuration, err := strconv.ParseUint(args[2], 10, 64)
 			if err != nil {
 				return fmt.Errorf("invalid min_lease_duration: %w", err)
 			}
@@ -331,7 +329,6 @@ update-params factory/manifest1.../upwr 100 20 3600 --allowed-list manifest1abc.
 			msg := &types.MsgUpdateParams{
 				Authority: clientCtx.GetFromAddress().String(),
 				Params: types.Params{
-					Denom:              denom,
 					MaxLeasesPerTenant: maxLeasesPerTenant,
 					AllowedList:        allowedList,
 					MaxItemsPerLease:   maxItemsPerLease,

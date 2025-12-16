@@ -92,6 +92,16 @@
 //   - Success: paginate SKUs by provider with limit and page-key
 //   - Success: verify no duplicates across pages
 //   - Success: large limit returns all results
+//
+// ## Multi-Denom Tests
+//
+// testSKUMultiDenom:
+//   - Success: create SKU with umfx denom
+//   - Success: create SKU with upwr denom
+//   - Success: create SKU with custom utest denom
+//   - Success: update SKU to different denom
+//   - Success: query all SKUs returns multiple denoms
+//   - Success: verify SKU IDs are correct
 package interchaintest
 
 import (
@@ -189,6 +199,10 @@ func TestSKU(t *testing.T) {
 
 	t.Run("Pagination", func(t *testing.T) {
 		testSKUPagination(t, ctx, chain, authority)
+	})
+
+	t.Run("MultiDenom", func(t *testing.T) {
+		testSKUMultiDenom(t, ctx, chain, authority)
 	})
 
 	t.Cleanup(func() {
@@ -962,5 +976,131 @@ func testSKUPagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 		res, _, err := helpers.SKUQuerySKUsByProviderPaginated(ctx, chain, paginationProviderID, 100, "")
 		require.NoError(t, err)
 		require.Len(t, res.Skus, 5, "should return all 5 SKUs")
+	})
+}
+
+// testSKUMultiDenom tests that SKUs can be created with different denoms
+func testSKUMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+	t.Log("=== Testing SKU Multi-Denom Support ===")
+
+	// Create a new provider for multi-denom testing
+	var multiDenomProviderID uint64
+	t.Run("setup: create provider for multi-denom tests", func(t *testing.T) {
+		res, err := helpers.SKUCreateProvider(ctx, chain, authority, authority.FormattedAddress(), authority.FormattedAddress(), "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		multiDenomProviderID, err = helpers.GetProviderIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+	})
+
+	// Define test denoms
+	denom1 := "umfx"
+	denom2 := "upwr"
+	denom3 := "utest"
+
+	var sku1ID, sku2ID, sku3ID uint64
+
+	t.Run("success: create SKU with umfx denom", func(t *testing.T) {
+		// Price must be >= 3600 for UNIT_PER_HOUR
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderID, "Compute MFX", 1, "3600"+denom1, "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		sku1ID, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Verify SKU has correct denom
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, sku1ID)
+		require.NoError(t, err)
+		require.Equal(t, denom1, skuRes.Sku.BasePrice.Denom, "SKU should have umfx denom")
+		require.Equal(t, "3600", skuRes.Sku.BasePrice.Amount.String())
+	})
+
+	t.Run("success: create SKU with upwr denom", func(t *testing.T) {
+		// Price must be >= 86400 for UNIT_PER_DAY
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderID, "Storage PWR", 2, "86400"+denom2, "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		sku2ID, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Verify SKU has correct denom
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, sku2ID)
+		require.NoError(t, err)
+		require.Equal(t, denom2, skuRes.Sku.BasePrice.Denom, "SKU should have upwr denom")
+		require.Equal(t, "86400", skuRes.Sku.BasePrice.Amount.String())
+	})
+
+	t.Run("success: create SKU with custom utest denom", func(t *testing.T) {
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderID, "Network TEST", 1, "7200"+denom3, "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		sku3ID, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Verify SKU has correct denom
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, sku3ID)
+		require.NoError(t, err)
+		require.Equal(t, denom3, skuRes.Sku.BasePrice.Denom, "SKU should have utest denom")
+		require.Equal(t, "7200", skuRes.Sku.BasePrice.Amount.String())
+	})
+
+	t.Run("success: update SKU to different denom", func(t *testing.T) {
+		// Update SKU 1 from umfx to upwr
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, sku1ID, multiDenomProviderID, "Compute PWR Updated", 1, "3600"+denom2, true, "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		// Verify SKU now has the new denom
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, sku1ID)
+		require.NoError(t, err)
+		require.Equal(t, denom2, skuRes.Sku.BasePrice.Denom, "SKU should now have upwr denom")
+		require.Equal(t, "Compute PWR Updated", skuRes.Sku.Name)
+	})
+
+	t.Run("success: query all SKUs returns multiple denoms", func(t *testing.T) {
+		res, err := helpers.SKUQuerySKUsByProvider(ctx, chain, multiDenomProviderID)
+		require.NoError(t, err)
+		require.Len(t, res.Skus, 3, "should have 3 SKUs for this provider")
+
+		// Collect denoms
+		denoms := make(map[string]bool)
+		for _, sku := range res.Skus {
+			denoms[sku.BasePrice.Denom] = true
+		}
+
+		// After update, we should have 2 upwr and 1 utest
+		require.True(t, denoms[denom2], "should have upwr denom")
+		require.True(t, denoms[denom3], "should have utest denom")
+	})
+
+	t.Run("success: verify SKU IDs are correct", func(t *testing.T) {
+		// Verify all three SKUs exist
+		_, err := helpers.SKUQuerySKU(ctx, chain, sku1ID)
+		require.NoError(t, err)
+
+		_, err = helpers.SKUQuerySKU(ctx, chain, sku2ID)
+		require.NoError(t, err)
+
+		_, err = helpers.SKUQuerySKU(ctx, chain, sku3ID)
+		require.NoError(t, err)
 	})
 }
