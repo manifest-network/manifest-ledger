@@ -9,7 +9,7 @@ This document records key design decisions made during the development of the x/
 **Alternatives Considered:**
 1. Embed provider name/address directly in SKU
 2. Use a simple string provider identifier
-3. Create a separate Provider entity with its own lifecycle
+3. Create a separate Provider entity with its own lifecycle (chosen)
 
 **Rationale:**
 - **Data Normalization:** Avoids duplicating provider information across SKUs
@@ -29,7 +29,7 @@ This document records key design decisions made during the development of the x/
 **Alternatives Considered:**
 1. User-provided string identifiers
 2. Hash-based identifiers
-3. Auto-incrementing integers
+3. Auto-incrementing integers (chosen)
 
 **Rationale:**
 - **Simplicity:** No collision handling required
@@ -47,39 +47,40 @@ This document records key design decisions made during the development of the x/
 
 **Alternatives Considered:**
 1. Hard delete with orphan handling
-2. Soft delete with active flag
+2. Soft delete with active flag (chosen)
 3. State machine with multiple states
 
 **Rationale:**
-- **Referential Integrity:** Billing module leases reference SKUs
+- **Referential Integrity:** Billing module leases reference SKUs by ID
 - **Audit Trail:** Historical records preserved
 - **Simplicity:** Boolean is simpler than full state machine
 - **Idempotency:** Deactivating twice is safe
+- **Billing Continuity:** Existing leases continue with inactive SKUs/providers
 
 **Trade-offs:**
 - Storage grows indefinitely (no pruning)
 - Queries must filter by active status
 - No way to reclaim IDs
 
-## Decision 4: Authority-Only Access
+## Decision 4: Authority-Only Access with AllowedList
 
-**Decision:** All write operations require POA authority, no user-level SKU management.
+**Decision:** All write operations require either POA authority or user inclusion in the `allowed_list` parameter.
 
 **Alternatives Considered:**
 1. Provider self-registration
 2. Permissioned provider accounts
-3. Authority-only management
+3. Authority-only management with configurable `allowed_list` (chosen)
 
 **Rationale:**
 - **Security:** Prevents spam/malicious SKU creation
-- **Quality Control:** Authority vets all providers
-- **Simplicity:** Single authorization check
-- **Trust Model:** Matches existing POA governance
+- **Quality Control:** Authority or explicitly permitted users vet all providers
+- **Simplicity:** Single authorization check using POA or allowed_list
+- **Trust Model:** Matches existing POA governance, with flexibility for additional users
 
 **Trade-offs:**
 - Higher operational overhead for adding providers
-- Authority becomes bottleneck
-- Less decentralized
+- Authority or allowed_list becomes bottleneck
+- Less decentralized, but more flexible than POA-only
 
 ## Decision 5: Price Divisibility Validation
 
@@ -88,7 +89,7 @@ This document records key design decisions made during the development of the x/
 **Alternatives Considered:**
 1. Allow any price with rounding
 2. Store per-second rate directly
-3. Require exact divisibility
+3. Require exact divisibility (chosen)
 
 **Rationale:**
 - **Precision:** No rounding errors in billing calculations
@@ -98,8 +99,13 @@ This document records key design decisions made during the development of the x/
 
 **Trade-offs:**
 - Less pricing flexibility
-- Must use specific price values (e.g., 3600, 7200, 86400)
+- Must use specific price values (multiples of 3600 for hourly, 86400 for daily)
 - Harder to express "nice" prices
+
+**Implementation:** The billing module calculates per-second rate as:
+```go
+ratePerSecond = basePrice.Amount / unit.Seconds()
+```
 
 ## Decision 6: Unit Enum vs Seconds Storage
 
@@ -107,7 +113,7 @@ This document records key design decisions made during the development of the x/
 
 **Alternatives Considered:**
 1. Store seconds directly
-2. Store enum with runtime conversion
+2. Store enum with runtime conversion (chosen)
 3. Store both enum and seconds
 
 **Rationale:**
@@ -120,6 +126,13 @@ This document records key design decisions made during the development of the x/
 - Conversion overhead (minimal)
 - Enum evolution requires careful handling
 
+**Current Units:**
+| Enum Value | Name | Seconds |
+|------------|------|---------|
+| 0 | UNIT_UNSPECIFIED | Invalid |
+| 1 | UNIT_PER_HOUR | 3600 |
+| 2 | UNIT_PER_DAY | 86400 |
+
 ## Decision 7: Meta Hash for Off-Chain Data
 
 **Decision:** Store optional hash of off-chain metadata rather than full metadata.
@@ -127,7 +140,7 @@ This document records key design decisions made during the development of the x/
 **Alternatives Considered:**
 1. Store full metadata on-chain
 2. Store IPFS CID
-3. Store generic hash
+3. Store generic hash (chosen)
 4. No off-chain reference
 
 **Rationale:**
@@ -147,7 +160,7 @@ This document records key design decisions made during the development of the x/
 
 **Alternatives Considered:**
 1. Full table scan for provider queries
-2. Secondary index
+2. Secondary index (chosen)
 3. Denormalize provider ID into SKU key
 
 **Rationale:**
@@ -166,7 +179,7 @@ This document records key design decisions made during the development of the x/
 
 **Alternatives Considered:**
 1. Per-SKU payout addresses
-2. Per-provider payout address
+2. Per-provider payout address (chosen)
 3. Both with override capability
 
 **Rationale:**
@@ -186,12 +199,12 @@ This document records key design decisions made during the development of the x/
 
 **Alternatives Considered:**
 1. Immutable SKUs with new versions
-2. Mutable SKUs (current approach)
+2. Mutable SKUs (chosen)
 3. Append-only with version chain
 
 **Rationale:**
 - **Simplicity:** Simpler data model
-- **Lease Locking:** Billing locks price at lease creation
+- **Lease Locking:** Billing locks price at lease creation (in billing module)
 - **Storage:** No version chain overhead
 - **Queries:** Simpler without version handling
 
@@ -199,6 +212,23 @@ This document records key design decisions made during the development of the x/
 - No built-in version history
 - Changes affect display immediately
 - Must use events for audit trail
+
+## Decision 11: Provider Address vs Payout Address
+
+**Decision:** Separate management address (address) from payout address (payout_address) on Provider.
+
+**Alternatives Considered:**
+1. Single address for both
+2. Separate addresses (chosen)
+
+**Rationale:**
+- **Security:** Operational keys separate from treasury
+- **Flexibility:** Hot wallet for management, cold wallet for payouts
+- **Delegation:** Allow different teams to manage vs receive funds
+
+**Trade-offs:**
+- Two addresses to manage per provider
+- Potential confusion about which address does what
 
 ## Future Considerations
 
@@ -211,6 +241,14 @@ This document records key design decisions made during the development of the x/
 5. **Provider Reputation:** On-chain reputation tracking
 6. **Multi-Currency Pricing:** Support multiple denominations
 7. **SKU Bundles:** Package multiple SKUs together
+8. **Price History:** Track price changes over time
+
+### Known Limitations
+
+1. **No Price History:** Updates overwrite previous values
+2. **No SKU Transfer:** Cannot transfer SKU ownership between providers
+3. **No Bulk Operations:** Must create/update SKUs individually
+4. **Limited Metadata:** Only hash stored on-chain
 
 ### Migration Considerations
 
@@ -219,3 +257,4 @@ When implementing breaking changes:
 - Maintain backward compatibility for queries
 - Version proto messages appropriately
 - Document upgrade procedures
+- Consider impact on existing leases in billing module

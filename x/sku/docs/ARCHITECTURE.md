@@ -82,6 +82,21 @@ UNIT_PER_HOUR    = 1  // 3600 seconds
 UNIT_PER_DAY     = 2  // 86400 seconds
 ```
 
+## Module Parameters
+
+The SKU module supports configurable parameters to control access and behavior:
+
+| Parameter     | Type      | Description                                              |
+|---------------|-----------|----------------------------------------------------------|
+| `AllowedList` | `[]string`| List of user addresses permitted to perform write operations in addition to POA authority. |
+
+### Parameter Validation
+
+- All addresses in `AllowedList` must be valid bech32 addresses.
+- No duplicate addresses are allowed.
+
+Parameters can be updated via governance or authorized messages, and changes are emitted as `params_updated` events.
+
 ## Storage Layout
 
 ### Collections
@@ -247,12 +262,12 @@ func ValidatePriceDivisibility(unit Unit, price sdk.Coin) error {
 ```
 
 **Valid Examples:**
-- 3600umfx per hour (3600 / 3600 = 1 per second)
-- 86400umfx per day (86400 / 86400 = 1 per second)
+- 3600upwr per hour (3600 / 3600 = 1 per second)
+- 86400upwr per day (86400 / 86400 = 1 per second)
 
 **Invalid Examples:**
-- 100umfx per hour (100 / 3600 ≠ integer)
-- 3601umfx per hour (3601 / 3600 ≠ integer)
+- 100upwr per hour (100 / 3600 ≠ integer)
+- 3601upwr per hour (3601 / 3600 ≠ integer)
 
 ### Provider State Validation
 
@@ -290,10 +305,12 @@ func ValidatePriceDivisibility(unit Unit, price sdk.Coin) error {
 
 ### Authorization Model
 
-All write operations require POA authority:
-- Only the POA admin group can create/update providers
-- Only the POA admin group can create/update SKUs
-- No user-level SKU management
+All write operations require either POA authority or user inclusion in the `AllowedList`:
+- Only the POA admin group or users in the `AllowedList` can create/update providers
+- Only the POA admin group or users in the `AllowedList` can create/update SKUs
+- No other user-level SKU management is permitted
+
+The `AllowedList` is a configurable list of user addresses permitted to perform write operations alongside the POA authority.
 
 ### Soft Delete Pattern
 

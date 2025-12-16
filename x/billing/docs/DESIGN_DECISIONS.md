@@ -19,17 +19,17 @@ This document records key design decisions made during the development of the x/
 
 **Trade-offs:**
 - Users must pre-pay
-- Unused credits locked in account
+- Unused credits locked in account (no withdrawal mechanism)
 - Requires monitoring for low balance
 
 ## Decision 2: Lazy Settlement vs Per-Block Processing
 
-**Decision:** Settle leases lazily when touched (queries, operations) rather than every block.
+**Decision:** Settle leases lazily during write operations (withdrawal, close) rather than every block.
 
 **Alternatives Considered:**
 1. EndBlocker settlement of all leases
 2. Per-block micro-transfers
-3. Lazy settlement on touch (chosen)
+3. Lazy settlement on write operations (chosen)
 
 **Rationale:**
 - **Chain Performance:** No EndBlocker overhead regardless of lease count
@@ -38,9 +38,12 @@ This document records key design decisions made during the development of the x/
 - **Simplicity:** No background job management
 
 **Trade-offs:**
-- Balance queries require settlement first
-- Auto-close only happens on interaction
+- Lease state queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state
+- Use `WithdrawableAmount` or `ProviderWithdrawable` queries for real-time accrued amounts
+- Auto-close only happens during write operations (CloseLease, Withdraw)
 - Provider withdrawal requires explicit action
+
+**Implementation Note:** Queries do NOT trigger settlement or auto-close. This is intentional to ensure state changes are properly committed during transactions.
 
 ## Decision 3: Derived Credit Account Addresses
 
@@ -53,7 +56,7 @@ This document records key design decisions made during the development of the x/
 
 **Rationale:**
 - **Isolation:** Credit funds separate from spendable balance
-- **O(1) Detection:** Can identify credit accounts without full scan
+- **O(1) Detection:** Can identify credit accounts without full scan via reverse lookup
 - **Deterministic:** Same tenant always gets same credit address
 - **No Key Management:** No private key needed for credit account
 
@@ -61,6 +64,11 @@ This document records key design decisions made during the development of the x/
 - Funds at derived address are controlled by module
 - Requires reverse lookup for O(1) detection
 - Migration complexity if derivation changes
+
+**Derivation Formula:**
+```go
+creditAddr = sha256("billing" + tenantAddr)[:20]
+```
 
 ## Decision 4: Price Locking at Lease Creation
 
@@ -82,6 +90,8 @@ This document records key design decisions made during the development of the x/
 - Long-running leases may have stale prices
 - No volume discount adjustments
 
+**Implementation Note:** The `locked_price` stored in `LeaseItem` is the pre-computed per-second rate (not the original SKU price), calculated at lease creation using `skutypes.CalculatePricePerSecond()`.
+
 ## Decision 5: Multi-Item Leases
 
 **Decision:** Allow a single lease to contain multiple SKU items rather than one SKU per lease.
@@ -101,8 +111,27 @@ This document records key design decisions made during the development of the x/
 - More complex lease structure
 - Cannot close individual items
 - Settlement must iterate all items
+- All items must be from the same provider
 
-## Decision 6: Soft Delete for Leases
+## Decision 6: Single Provider Per Lease
+
+**Decision:** All SKUs in a lease must belong to the same provider.
+
+**Alternatives Considered:**
+1. Allow mixed providers in one lease
+2. Single provider per lease (chosen)
+
+**Rationale:**
+- **Simplified Settlement:** Only one payout destination per lease
+- **Clear Ownership:** Provider can close their own leases
+- **Authorization:** Provider permission applies to entire lease
+- **Accounting:** No splitting of settlements
+
+**Trade-offs:**
+- Users need multiple leases for multi-provider setups
+- More leases to manage for complex deployments
+
+## Decision 7: Soft Delete for Leases
 
 **Decision:** Keep closed leases with INACTIVE state rather than deleting them.
 
@@ -122,9 +151,9 @@ This document records key design decisions made during the development of the x/
 - Must filter by state in queries
 - No built-in pruning
 
-## Decision 7: Provider Payout at SKU Level
+## Decision 8: Provider Payout Address at Provider Level
 
-**Decision:** Payout address defined on Provider (in SKU module), not per-lease.
+**Decision:** Payout address defined on Provider (in SKU module), not per-lease or per-SKU.
 
 **Alternatives Considered:**
 1. Per-lease payout address
@@ -132,17 +161,17 @@ This document records key design decisions made during the development of the x/
 3. Per-provider payout address (chosen)
 
 **Rationale:**
-- **Simplicity:** Single payout destination
+- **Simplicity:** Single payout destination per provider
 - **Security:** Fewer addresses to secure
 - **Operations:** Easy to change payout address
-- **Billing Module Independence:** Billing doesn't store addresses
+- **Module Independence:** Billing module doesn't duplicate provider data
 
 **Trade-offs:**
 - All provider revenue goes to one address
 - Cannot split by SKU type
 - Provider must distribute internally
 
-## Decision 8: Bank Send Restriction for Credit Protection
+## Decision 9: Bank Send Restriction for Credit Protection
 
 **Decision:** Register bank send restriction to prevent wrong denominations entering credit accounts.
 
@@ -162,9 +191,9 @@ This document records key design decisions made during the development of the x/
 - Slightly more complex bank operations
 - Cannot receive airdrops (feature, not bug)
 
-## Decision 9: Authority-Based Lease Creation for Migration
+## Decision 10: Authority-Based Lease Creation for Migration
 
-**Decision:** Allow authority and allow-listed addresses to create leases on behalf of tenants.
+**Decision:** Allow authority and allow-listed addresses to create leases on behalf of tenants via `MsgCreateLeaseForTenant`.
 
 **Alternatives Considered:**
 1. Tenant-only lease creation
@@ -182,27 +211,27 @@ This document records key design decisions made during the development of the x/
 - Potential for abuse
 - Requires proper off-chain coordination
 
-## Decision 10: Per-Second Rate Calculation
+## Decision 11: Per-Second Rate Storage
 
-**Decision:** Convert all pricing to per-second rates for uniform calculation.
+**Decision:** Store pre-computed per-second rates (`locked_price`) rather than original unit-based prices.
 
 **Alternatives Considered:**
 1. Keep original units, convert at settlement
 2. Store per-block rates
-3. Pre-compute per-second rates (chosen)
+3. Pre-compute per-second rates at lease creation (chosen)
 
 **Rationale:**
-- **Precision:** Consistent calculation regardless of unit
+- **Precision:** Consistent calculation regardless of original unit
 - **Performance:** No division at settlement time
 - **Verification:** Easy to audit
 - **Block Time Independence:** Not tied to block duration
 
 **Trade-offs:**
-- Requires price divisibility validation
+- Requires price divisibility validation at SKU creation
 - Integer math only (no fractions)
 - Less intuitive stored values
 
-## Decision 11: Exact Divisibility Requirement
+## Decision 12: Exact Divisibility Requirement
 
 **Decision:** Require SKU prices to be exactly divisible by unit seconds (no rounding).
 
@@ -219,10 +248,12 @@ This document records key design decisions made during the development of the x/
 
 **Trade-offs:**
 - Less pricing flexibility
-- Must use specific values (multiples of 3600, 86400)
+- Must use specific values (multiples of 3600 for hourly, 86400 for daily)
 - May seem artificial to users
 
-## Decision 12: Maximum Limits as DoS Protection
+**Example:** For UNIT_PER_HOUR (3600 seconds), valid prices include 3600, 7200, 36000, etc.
+
+## Decision 13: Maximum Limits as DoS Protection
 
 **Decision:** Impose configurable limits on leases per tenant, items per lease, and withdrawal batch size.
 
@@ -241,6 +272,42 @@ This document records key design decisions made during the development of the x/
 - Must choose appropriate defaults
 - Power users may hit limits
 - Parameter updates affect existing users
+
+**Default Limits:**
+| Parameter | Default | Hard Limit |
+|-----------|---------|------------|
+| `max_leases_per_tenant` | 100 | None |
+| `max_items_per_lease` | 20 | 100 |
+| `min_lease_duration` | 3600s | None |
+| WithdrawAll batch | 50 | 100 |
+
+## Decision 14: Minimum Lease Duration
+
+**Decision:** Require tenants to have enough credit to cover a minimum duration before creating a lease.
+
+**Alternatives Considered:**
+1. No minimum (allow immediate exhaustion)
+2. Fixed minimum credit amount
+3. Duration-based minimum (chosen)
+
+**Rationale:**
+- **Prevents Spam:** Can't create leases that immediately close
+- **Rate-Based:** Adapts to lease cost automatically
+- **User Protection:** Ensures meaningful lease duration
+- **Provider Protection:** Guarantees minimum revenue per lease
+
+**Trade-offs:**
+- More complex lease creation validation
+- May prevent low-balance users from creating expensive leases
+- Requires calculation at creation time
+
+**Implementation:**
+```go
+minRequired = totalRatePerSecond * minLeaseDuration
+if creditBalance < minRequired {
+    return ErrInsufficientCredit
+}
+```
 
 ## Future Considerations
 
@@ -262,8 +329,10 @@ This document records key design decisions made during the development of the x/
 1. **No Partial Credit Withdrawal:** Credits locked until spent
 2. **No Dispute Mechanism:** Trust-based provider relationship  
 3. **No Grace Period:** Immediate closure on exhaustion
-4. **No Lease Modification:** Cannot add/remove items
-5. **Linear WithdrawAll:** O(n) for many leases
+4. **No Lease Modification:** Cannot add/remove items after creation
+5. **Linear WithdrawAll:** O(n) for many leases (capped at 100)
+6. **Single Provider Per Lease:** Cannot mix providers in one lease
+7. **Lease Queries Return Stored State:** `Lease`, `Leases`, etc. return stored `last_settled_at` (use `WithdrawableAmount` for real-time)
 
 ### Migration Considerations
 

@@ -12,6 +12,13 @@ This guide walks you through setting up a Provider in the x/sku module.
 
 A Provider represents an entity (organization, business, or individual) that offers services through the Manifest Network billing system. Before you can create SKUs (billable items), you must first create a Provider.
 
+Each Provider has:
+- **ID**: Auto-generated unique identifier
+- **Address**: Management address for the provider
+- **Payout Address**: Where earned tokens are sent during withdrawals
+- **Meta Hash**: Optional hash of off-chain metadata
+- **Active**: Whether the provider can have new SKUs created
+
 ## Step 1: Check Your Authorization
 
 First, verify you have permission to create providers:
@@ -32,7 +39,7 @@ The response will show:
 
 You can create providers if:
 1. Your address is in the `allowed_list`, OR
-2. You are the module authority (governance)
+2. You are the module authority (POA admin group)
 
 ### Adding Addresses to the Allowed List
 
@@ -85,7 +92,7 @@ manifestd tx sku create-provider \
   --meta-hash <hex_encoded_hash> \
   --from <your_key> \
   --chain-id manifest-1 \
-  --fees 5000umfx
+  --fees 5000upwr
 ```
 
 ### Example
@@ -97,7 +104,7 @@ manifestd tx sku create-provider \
   --meta-hash a1b2c3d4e5f6 \
   --from mykey \
   --chain-id manifest-1 \
-  --fees 5000umfx
+  --fees 5000upwr
 ```
 
 ### Successful Response
@@ -148,6 +155,11 @@ List all providers:
 manifestd query sku providers --output json
 ```
 
+List active providers only:
+```bash
+manifestd query sku providers --active-only --output json
+```
+
 ## Step 5: Update Provider (Optional)
 
 If you need to update provider details:
@@ -190,6 +202,7 @@ manifestd tx sku deactivate-provider 1 \
 > - Does NOT affect existing SKUs (they remain as-is)
 > - Does NOT affect existing leases (billing continues)
 > - The provider can still receive withdrawals from active leases
+> - Can be reactivated via `update-provider` with `active=true`
 
 ## Next Steps
 
@@ -201,7 +214,7 @@ Once your provider is created, you can:
 
 ## Common Issues
 
-### "unauthorized: expected authority or allowed address"
+### "unauthorized"
 
 **Cause:** Your address is not authorized to manage providers.
 
@@ -217,7 +230,7 @@ Once your provider is created, you can:
 - List all providers: `manifestd query sku providers`
 - Verify you're using the correct provider ID
 
-### "invalid address"
+### "invalid provider" (invalid address)
 
 **Cause:** The address format is invalid.
 
@@ -244,6 +257,10 @@ Once your provider is created, you can:
 │                       v                  v                      │
 │                  Existing SKUs     Existing SKUs                │
 │                  work normally     work normally                │
+│                       │                  │                      │
+│                       v                  v                      │
+│                  Can receive       Can receive                  │
+│                  withdrawals       withdrawals                  │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -251,5 +268,6 @@ Once your provider is created, you can:
 ## Related Documentation
 
 - [SKU Setup Guide](SKU_GUIDE.md) - Creating and managing SKUs
-- [Billing Module README](../billing/README.md) - Understanding the billing system
-- [Migration Guide](../billing/MIGRATION.md) - Migrating existing off-chain leases
+- [API Reference](API.md) - Complete API documentation
+- [Billing Module](../../billing/README.md) - Understanding the billing system
+- [Billing Migration Guide](../../billing/docs/MIGRATION.md) - Migrating existing off-chain leases

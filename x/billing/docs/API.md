@@ -30,18 +30,23 @@ manifestd tx billing fund-credit [tenant] [amount] [flags]
 | Argument | Type | Description |
 |----------|------|-------------|
 | tenant | string | Bech32 address of the tenant |
-| amount | coin | Amount to fund (e.g., `1000000000upwr`) |
+| amount | coin | Amount to fund (e.g., `1000000upwr`) |
 
 **Example:**
 ```bash
-manifestd tx billing fund-credit manifest1abc... 1000000000factory/manifest1.../upwr --from mykey
+manifestd tx billing fund-credit manifest1abc... 1000000upwr --from mykey
 ```
+
+**Notes:**
+- Anyone can fund any tenant's credit account
+- The denomination must match the billing params `denom`
+- Creates the credit account if it doesn't exist
 
 ---
 
 #### create-lease
 
-Create a new lease for the sender.
+Create a new lease for the sender (tenant).
 
 ```bash
 manifestd tx billing create-lease [sku_id:quantity...] [flags]
@@ -56,6 +61,14 @@ manifestd tx billing create-lease [sku_id:quantity...] [flags]
 ```bash
 manifestd tx billing create-lease 1:2 2:1 3:5 --from mykey
 ```
+
+**Constraints:**
+- Sender must have funded credit account
+- Credit must cover `min_lease_duration` seconds
+- All SKUs must be from the same provider
+- All SKUs must be active
+- Cannot exceed `max_items_per_lease`
+- Cannot exceed `max_leases_per_tenant`
 
 ---
 
@@ -78,6 +91,8 @@ manifestd tx billing create-lease-for-tenant [tenant] [sku_id:quantity...] [flag
 manifestd tx billing create-lease-for-tenant manifest1abc... 1:2 2:1 --from authority
 ```
 
+**Authorization:** Only module authority or addresses in `allowed_list` param.
+
 ---
 
 #### close-lease
@@ -98,6 +113,13 @@ manifestd tx billing close-lease [lease-id] [flags]
 manifestd tx billing close-lease 1 --from mykey
 ```
 
+**Authorization:** Tenant (owner), provider (of SKUs), or authority.
+
+**Notes:**
+- Performs final settlement during closure
+- Transfers accrued amount to provider payout address
+- Sets lease state to INACTIVE
+
 ---
 
 #### withdraw
@@ -117,6 +139,13 @@ manifestd tx billing withdraw [lease-id] [flags]
 ```bash
 manifestd tx billing withdraw 1 --from provider-key
 ```
+
+**Authorization:** Provider (of SKUs) or authority.
+
+**Notes:**
+- Settles accrued amount since last settlement
+- Transfers to provider's payout address
+- May trigger auto-close if credit exhausted
 
 ---
 
@@ -142,6 +171,13 @@ manifestd tx billing withdraw-all [provider-id] [flags]
 ```bash
 manifestd tx billing withdraw-all 1 --limit 100 --from provider-key
 ```
+
+**Authorization:** Provider (address) or authority.
+
+**Notes:**
+- Processes up to `limit` active leases
+- Response includes `has_more` if more leases remain
+- Call repeatedly until `has_more` is false
 
 ---
 
@@ -169,7 +205,7 @@ manifestd tx billing update-params [denom] [max-leases-per-tenant] [max-items-pe
 **Example:**
 ```bash
 manifestd tx billing update-params \
-  "factory/manifest1.../upwr" \
+  "upwr" \
   100 \
   20 \
   3600 \
@@ -193,7 +229,7 @@ manifestd query billing params
 ```json
 {
   "params": {
-    "denom": "factory/manifest1.../upwr",
+    "denom": "upwr",
     "max_leases_per_tenant": "100",
     "max_items_per_lease": "20",
     "min_lease_duration": "3600",
@@ -238,6 +274,8 @@ manifestd query billing lease [lease-id]
   }
 }
 ```
+
+**Note:** `locked_price` is the per-second rate, not the original SKU price.
 
 ---
 
@@ -325,7 +363,7 @@ manifestd query billing credit-account [tenant]
     "active_lease_count": "2"
   },
   "balance": {
-    "denom": "factory/manifest1.../upwr",
+    "denom": "upwr",
     "amount": "1000000000"
   }
 }
@@ -357,7 +395,7 @@ manifestd query billing credit-address [tenant]
 
 #### withdrawable
 
-Query withdrawable amount for a lease.
+Query withdrawable amount for a lease. **This query calculates real-time accrued amounts.**
 
 ```bash
 manifestd query billing withdrawable [lease-id]
@@ -372,18 +410,20 @@ manifestd query billing withdrawable [lease-id]
 ```json
 {
   "amount": {
-    "denom": "factory/manifest1.../upwr",
+    "denom": "upwr",
     "amount": "500000"
   },
   "payout_address": "manifest1provider..."
 }
 ```
 
+**Note:** This calculates the real-time withdrawable amount based on time elapsed since `last_settled_at`. It is a read-only query and does NOT trigger actual settlement (no token transfer occurs).
+
 ---
 
 #### provider-withdrawable
 
-Query total withdrawable for a provider across all leases.
+Query total withdrawable for a provider across all leases. **This query calculates real-time accrued amounts.**
 
 ```bash
 manifestd query billing provider-withdrawable [provider-id]
@@ -398,13 +438,15 @@ manifestd query billing provider-withdrawable [provider-id]
 ```json
 {
   "amount": {
-    "denom": "factory/manifest1.../upwr",
+    "denom": "upwr",
     "amount": "5000000"
   },
   "lease_count": "10",
   "payout_address": "manifest1provider..."
 }
 ```
+
+**Note:** This calculates the real-time total withdrawable amount across all active leases for the provider. It is a read-only query and does NOT trigger actual settlement.
 
 ---
 
@@ -434,7 +476,7 @@ Fund a tenant's credit account.
 **Request:**
 ```protobuf
 message MsgFundCredit {
-  string sender = 1;   // Sender's address
+  string sender = 1;   // Sender's address (anyone)
   string tenant = 2;   // Tenant's address
   cosmos.base.v1beta1.Coin amount = 3;  // Amount to fund
 }
@@ -444,7 +486,7 @@ message MsgFundCredit {
 ```protobuf
 message MsgFundCreditResponse {
   string credit_address = 1;  // Credit account address
-  string new_balance = 2;     // New credit balance
+  cosmos.base.v1beta1.Coin new_balance = 2;  // New credit balance
 }
 ```
 
@@ -452,7 +494,7 @@ message MsgFundCreditResponse {
 
 #### MsgCreateLease
 
-Create a lease for the sender.
+Create a lease for the sender (tenant).
 
 **Request:**
 ```protobuf
@@ -513,7 +555,7 @@ message MsgCloseLease {
 **Response:**
 ```protobuf
 message MsgCloseLeaseResponse {
-  cosmos.base.v1beta1.Coin settled_amount = 1;  // Final settled amount
+  cosmos.base.v1beta1.Coin settled_amount = 1;  // Amount settled during close
 }
 ```
 
@@ -566,6 +608,25 @@ message MsgWithdrawAllResponse {
 
 ---
 
+#### MsgUpdateParams
+
+Update module parameters (authority only).
+
+**Request:**
+```protobuf
+message MsgUpdateParams {
+  string authority = 1;  // Must be module authority
+  Params params = 2;     // New parameters
+}
+```
+
+**Response:**
+```protobuf
+message MsgUpdateParamsResponse {}
+```
+
+---
+
 ### Query Service
 
 The Query service provides read-only access to state.
@@ -584,6 +645,8 @@ service Query {
   rpc ProviderWithdrawable(QueryProviderWithdrawableRequest) returns (QueryProviderWithdrawableResponse);
 }
 ```
+
+**Important Note:** Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement or auto-close. However, `WithdrawableAmount` and `ProviderWithdrawable` queries calculate real-time accrued amounts based on elapsed time. Settlement (actual token transfer) only happens during write operations (Withdraw, CloseLease, WithdrawAll).
 
 #### QueryParams
 
@@ -621,8 +684,6 @@ message QueryLeaseResponse {
   Lease lease = 1;
 }
 ```
-
-**Note:** Queries return the stored state and do NOT trigger auto-close. Auto-close only happens during write operations (Withdraw, CloseLease).
 
 ---
 
@@ -750,27 +811,35 @@ curl http://localhost:1317/liftedinit/billing/v1/withdrawable/1
 
 ## Error Codes
 
-| Code | Description |
-|------|-------------|
-| `ErrInvalidLease` | Invalid lease parameters |
-| `ErrLeaseNotFound` | Lease doesn't exist |
-| `ErrLeaseNotActive` | Lease is already closed |
-| `ErrUnauthorized` | Sender not authorized |
-| `ErrInsufficientCredit` | Not enough credit balance |
-| `ErrCreditAccountNotFound` | Credit account doesn't exist |
-| `ErrInvalidCreditOperation` | Invalid credit operation |
-| `ErrSKUNotFound` | SKU doesn't exist |
-| `ErrSKUNotActive` | SKU is deactivated |
-| `ErrProviderNotActive` | Provider is deactivated |
-| `ErrNoWithdrawableAmount` | Nothing to withdraw |
-| `ErrOverflow` | Arithmetic overflow |
+| Error | Code | Description |
+|-------|------|-------------|
+| `ErrInvalidParams` | 1 | Invalid module parameters |
+| `ErrLeaseNotFound` | 2 | Lease doesn't exist |
+| `ErrLeaseNotActive` | 3 | Lease is already closed |
+| `ErrInsufficientCredit` | 4 | Not enough credit balance |
+| `ErrMaxLeasesReached` | 5 | Tenant at max active leases |
+| `ErrUnauthorized` | 6 | Sender not authorized |
+| `ErrInvalidDenom` | 7 | Wrong denomination in message |
+| `ErrCreditAccountNotFound` | 8 | Credit account doesn't exist |
+| `ErrInvalidLease` | 9 | Invalid lease parameters |
+| `ErrSKUNotFound` | 10 | SKU doesn't exist |
+| `ErrSKUNotActive` | 11 | SKU is deactivated |
+| `ErrProviderNotFound` | 12 | Provider doesn't exist |
+| `ErrProviderNotActive` | 13 | Provider is deactivated |
+| `ErrMixedProviders` | 14 | SKUs from different providers in one lease |
+| `ErrNoWithdrawableAmount` | 15 | Nothing to withdraw |
+| `ErrEmptyLeaseItems` | 16 | Lease has no items |
+| `ErrInvalidQuantity` | 17 | Item quantity is zero |
+| `ErrDuplicateSKU` | 18 | Same SKU appears multiple times |
+| `ErrInvalidCreditOperation` | 19 | Credit operation failed |
+| `ErrInvalidDenomination` | 20 | Wrong denom for credit account |
+| `ErrTooManyLeaseItems` | 21 | Lease exceeds max items |
 
 ---
 
 ## Related Documentation
 
-- [Provider Setup Guide](../sku/PROVIDER_GUIDE.md) - Creating and managing providers
-- [SKU Setup Guide](../sku/SKU_GUIDE.md) - Creating and managing SKUs
-- [Billing README](README.md) - Complete billing module overview
+- [Billing README](../README.md) - Complete billing module overview
 - [Migration Guide](MIGRATION.md) - Migrating existing off-chain leases
 - [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions
+- [Architecture](ARCHITECTURE.md) - Technical architecture details

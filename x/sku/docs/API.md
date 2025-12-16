@@ -110,7 +110,7 @@ manifestd tx sku create-sku [provider-id] [name] [unit] [base-price] [flags]
 | provider-id | uint64 | ID of the provider this SKU belongs to |
 | name | string | Human-readable name for the SKU |
 | unit | int | Billing unit: 1 = per hour, 2 = per day |
-| base-price | coin | Base price (e.g., `3600umfx` for 1/second rate per hour) |
+| base-price | coin | Base price (e.g., `3600upwr` for 1/second rate per hour) |
 
 **Flags:**
 | Flag | Type | Description |
@@ -119,7 +119,7 @@ manifestd tx sku create-sku [provider-id] [name] [unit] [base-price] [flags]
 
 **Example:**
 ```bash
-manifestd tx sku create-sku 1 "Compute Instance Small" 1 3600000umfx \
+manifestd tx sku create-sku 1 "Compute Instance Small" 1 3600000upwr \
   --meta-hash deadbeef \
   --from authority
 ```
@@ -155,7 +155,7 @@ manifestd tx sku update-sku [id] [provider-id] [name] [unit] [base-price] [activ
 
 **Example:**
 ```bash
-manifestd tx sku update-sku 1 1 "Compute Instance Medium" 1 7200000umfx true \
+manifestd tx sku update-sku 1 1 "Compute Instance Medium" 1 7200000upwr true \
   --meta-hash cafebabe \
   --from authority
 ```
@@ -322,7 +322,7 @@ manifestd query sku sku [id]
     "name": "Compute Instance Small",
     "unit": "UNIT_PER_HOUR",
     "base_price": {
-      "denom": "umfx",
+      "denom": "upwr",
       "amount": "3600000"
     },
     "meta_hash": "",
@@ -811,15 +811,14 @@ message Params {
 
 | Error | Code | Description |
 |-------|------|-------------|
-| `ErrProviderNotFound` | 2 | Provider doesn't exist |
-| `ErrProviderNotActive` | 3 | Provider is deactivated |
-| `ErrSKUNotFound` | 4 | SKU doesn't exist |
-| `ErrSKUNotActive` | 5 | SKU is deactivated |
-| `ErrUnauthorized` | 6 | Sender not authorized |
-| `ErrInvalidProvider` | 7 | Invalid provider parameters |
-| `ErrInvalidSKU` | 8 | Invalid SKU parameters |
-| `ErrInvalidUnit` | 9 | Invalid billing unit |
-| `ErrInvalidPrice` | 10 | Price not divisible by unit seconds |
+| `ErrInvalidSKU` | 1 | Invalid SKU parameters (includes inactive check) |
+| `ErrSKUNotFound` | 2 | SKU doesn't exist |
+| `ErrUnauthorized` | 3 | Sender not authorized |
+| `ErrInvalidConfig` | 4 | Invalid module configuration |
+| `ErrInvalidProvider` | 5 | Invalid provider parameters (includes inactive check) |
+| `ErrProviderNotFound` | 6 | Provider doesn't exist |
+
+**Note:** Active status checks (e.g., "provider is not active", "SKU is not active") are reported via `ErrInvalidProvider` or `ErrInvalidSKU` respectively.
 
 ---
 

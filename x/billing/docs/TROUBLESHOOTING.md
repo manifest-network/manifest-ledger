@@ -13,44 +13,50 @@ This guide covers common errors and issues users may encounter when using the bi
 manifestd tx billing fund-credit [tenant-address] [amount] --from [key]
 ```
 
+The credit account is created automatically when first funded.
+
 ### "insufficient credit balance"
 
-**Cause**: The credit account doesn't have enough balance to meet the minimum requirement or cover the lease.
+**Cause**: The credit account doesn't have enough balance to cover the `min_lease_duration` requirement for the lease.
 
 **Solution**: 
 1. Check current balance:
    ```bash
    manifestd query billing credit-account [tenant-address]
    ```
-2. Fund additional credit:
+2. Calculate minimum required:
+   ```
+   min_required = sum(sku_rate_per_second × quantity) × min_lease_duration
+   ```
+3. Fund additional credit:
    ```bash
    manifestd tx billing fund-credit [tenant-address] [amount] --from [key]
    ```
 
-The default minimum credit balance is 5 PWR (5000000 upwr).
+**Example**: For a lease with total rate of 10 upwr/second and `min_lease_duration` of 3600 seconds, you need at least 36,000 upwr.
 
-### "expected [denom], got [wrong-denom]"
+### "invalid denomination for credit account"
 
 **Cause**: Attempting to fund a credit account with the wrong token denomination.
 
-**Solution**: Use the correct billing denomination (PWR token):
+**Solution**: Use the correct billing denomination:
 ```bash
 # Check the correct denom
 manifestd query billing params
 
 # Use the correct denom
-manifestd tx billing fund-credit [tenant] 1000000000factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr --from [key]
+manifestd tx billing fund-credit [tenant] 1000000upwr --from [key]
 ```
 
 ### "only billing denomination can be sent to credit accounts"
 
-**Cause**: Attempting to send non-PWR tokens to a credit account address via bank send.
+**Cause**: Attempting to send non-billing tokens to a credit account address via bank send.
 
-**Solution**: Only the configured billing denomination (PWR) can be sent to credit accounts. This is a protective measure to prevent fund loss.
+**Solution**: Only the configured billing denomination can be sent to credit accounts. This is a protective measure to prevent fund loss. Use the correct denom or the `fund-credit` command.
 
 ## Lease Creation Issues
 
-### "SKU not found"
+### "sku not found"
 
 **Cause**: The specified SKU ID doesn't exist.
 
@@ -61,7 +67,7 @@ manifestd tx billing fund-credit [tenant] 1000000000factory/manifest1afk9zr2hn2j
    ```
 2. Use a valid SKU ID in your lease creation.
 
-### "SKU is not active"
+### "sku not active"
 
 **Cause**: The SKU exists but has been deactivated.
 
@@ -72,27 +78,27 @@ manifestd tx billing fund-credit [tenant] 1000000000factory/manifest1afk9zr2hn2j
    ```
 2. Contact the authority to reactivate the SKU, or use a different active SKU.
 
-### "provider is not active"
+### "provider not found" or "provider not active"
 
-**Cause**: The provider associated with the SKU has been deactivated.
+**Cause**: The provider associated with the SKU doesn't exist or has been deactivated.
 
-**Solution**: Contact the authority to reactivate the provider, or use SKUs from an active provider.
+**Solution**: Contact the authority to create/reactivate the provider, or use SKUs from an active provider.
 
-### "all SKUs must belong to the same provider"
+### "all SKUs in a lease must belong to the same provider"
 
 **Cause**: Attempting to create a lease with SKUs from different providers.
 
 **Solution**: Create separate leases for SKUs from different providers:
 ```bash
 # Instead of this (fails):
-manifestd tx billing create-lease 1:1 5:1  # SKUs from different providers
+manifestd tx billing create-lease 1:1 5:1 --from tenant  # SKUs from different providers
 
 # Do this:
 manifestd tx billing create-lease 1:1 --from tenant  # Provider 1 SKUs
 manifestd tx billing create-lease 5:1 --from tenant  # Provider 2 SKUs
 ```
 
-### "tenant has reached maximum lease limit"
+### "maximum leases per tenant reached"
 
 **Cause**: The tenant has too many active leases.
 
@@ -107,11 +113,11 @@ manifestd tx billing create-lease 5:1 --from tenant  # Provider 2 SKUs
    ```
 3. The default limit is 100 active leases per tenant.
 
-### "lease exceeds maximum items"
+### "too many items in lease"
 
 **Cause**: Attempting to create a lease with too many SKU items.
 
-**Solution**: Split the lease into multiple smaller leases. The default limit is 20 items per lease.
+**Solution**: Split the lease into multiple smaller leases. The default limit is 20 items per lease (hard limit is 100).
 
 ### "quantity must be greater than zero"
 
@@ -120,6 +126,28 @@ manifestd tx billing create-lease 5:1 --from tenant  # Provider 2 SKUs
 **Solution**: Ensure all items have quantity ≥ 1:
 ```bash
 manifestd tx billing create-lease 1:1 2:2 --from tenant
+```
+
+### "duplicate sku in lease items"
+
+**Cause**: The same SKU ID appears multiple times in the lease items.
+
+**Solution**: Combine quantities into a single item:
+```bash
+# Instead of this (fails):
+manifestd tx billing create-lease 1:2 1:3 --from tenant
+
+# Do this:
+manifestd tx billing create-lease 1:5 --from tenant
+```
+
+### "lease must contain at least one item"
+
+**Cause**: Trying to create a lease with no items.
+
+**Solution**: Specify at least one SKU item:
+```bash
+manifestd tx billing create-lease 1:1 --from tenant
 ```
 
 ## Lease Closure Issues
@@ -135,7 +163,7 @@ manifestd tx billing create-lease 1:1 2:2 --from tenant
    ```
 2. Use a valid lease ID.
 
-### "lease is already inactive"
+### "lease not active"
 
 **Cause**: Attempting to close a lease that's already closed.
 
@@ -144,12 +172,12 @@ manifestd tx billing create-lease 1:1 2:2 --from tenant
 manifestd query billing lease [lease-id]
 ```
 
-### "unauthorized: sender is not tenant, provider, or authority"
+### "unauthorized"
 
 **Cause**: Attempting to close a lease you don't have permission to close.
 
 **Solution**: Only the following can close a lease:
-- The tenant who created the lease
+- The tenant who owns the lease
 - The provider of the SKUs in the lease
 - The module authority
 
@@ -158,26 +186,28 @@ manifestd query billing lease [lease-id]
 ### "no withdrawable amount"
 
 **Cause**: 
-1. The lease has no accrued charges yet (just created), OR
-2. The provider already withdrew recently
+1. The lease has no accrued charges yet (just created or just settled), OR
+2. The lease is not active (closed), OR
+3. The provider already withdrew recently
 
 **Solution**: 
 1. Check the withdrawable amount:
    ```bash
    manifestd query billing withdrawable [lease-id]
    ```
-2. Wait for more time to pass for charges to accrue.
+2. For active leases, wait for more time to pass for charges to accrue.
+3. For closed leases, you cannot withdraw (settlement happened during close).
 
-### "lease is not active"
+### "lease not active"
 
-**Cause**: Attempting to withdraw from an inactive (closed) lease.
+**Cause**: Attempting to withdraw from a closed lease.
 
-**Solution**: You can only withdraw from active leases. Check the lease state:
+**Solution**: You can only withdraw from active leases. Settlement happens during closure, so there's nothing left to withdraw:
 ```bash
 manifestd query billing lease [lease-id]
 ```
 
-### "unauthorized to withdraw"
+### "unauthorized"
 
 **Cause**: Only the provider (or authority) can withdraw from a lease.
 
@@ -243,43 +273,80 @@ manifestd query billing credit-account manifest1abc...
 
 ## Auto-Close Behavior
 
+### Understanding Auto-Close
+
+Auto-close is triggered when a lease's credit is exhausted (balance = 0). It happens during write operations only:
+- `Withdraw` - If credit exhausted after settlement
+- `CloseLease` - If credit was already exhausted
+
+**Important:** Auto-close does NOT happen:
+- During query operations (queries are read-only)
+- At block boundaries (no EndBlocker processing)
+- Automatically in the background
+
 ### Lease closed automatically
 
-**Cause**: The tenant's credit balance reached zero, triggering automatic lease closure.
-
 **What happened**:
-1. The system detected zero credit during a lease operation
-2. Final settlement was performed (remaining balance transferred to provider)
-3. The lease was closed automatically
+1. During a Withdraw or CloseLease operation, the system detected zero credit
+2. Final settlement was performed (any remaining balance transferred to provider)
+3. The lease was closed with reason "credit_exhausted"
 
 **How to verify**:
 ```bash
 # Check lease state
 manifestd query billing lease [lease-id]
 
-# Look for "lease_auto_closed" event with reason "credit_exhausted"
+# Look for events in the transaction
+manifestd query tx [txhash] --output json | jq '.events'
 ```
+
+Events to look for:
+- `lease_auto_close` with `reason: credit_exhausted`
 
 **Resolution**: 
 1. Fund the credit account again
 2. Create a new lease
 
-### Why wasn't my lease auto-closed?
+### Why doesn't my query show accurate accrued amounts?
 
-**Cause**: Auto-close uses lazy evaluation - it only triggers when the lease is "touched".
+**Cause**: Lease queries (`Lease`, `Leases`, etc.) return stored state without performing settlement calculations. The `last_settled_at` field shows when settlement last occurred.
 
-**Auto-close triggers on**:
-- `QueryLease` (individual lease query)
-- `MsgWithdraw`
-- `QueryWithdrawableAmount`
-- `MsgCloseLease`
+**Explanation**: 
+- Lease queries return the stored `last_settled_at` timestamp
+- They don't calculate time elapsed since then
+- Use `WithdrawableAmount` or `ProviderWithdrawable` queries to get **real-time calculated amounts**:
+  ```bash
+  # Get real-time withdrawable for a specific lease
+  manifestd query billing withdrawable [lease-id]
+  
+  # Get real-time total withdrawable for a provider
+  manifestd query billing provider-withdrawable [provider-id]
+  ```
 
-**Auto-close does NOT trigger on**:
-- Bulk queries (`QueryLeases`, `QueryLeasesByTenant`, `QueryLeasesByProvider`)
+## Parameter Issues
 
-**Solution**: Query the individual lease to trigger the check:
+### "invalid params"
+
+**Cause**: Invalid parameter values in UpdateParams.
+
+**Common issues**:
+- `min_lease_duration` must be > 0
+- `max_leases_per_tenant` must be > 0
+- `max_items_per_lease` must be > 0 and ≤ 100
+- `denom` cannot be empty
+
+**Solution**: Check current params and ensure new values are valid:
 ```bash
-manifestd query billing lease [lease-id]
+manifestd query billing params
+```
+
+### "unauthorized" on UpdateParams
+
+**Cause**: Only the module authority can update parameters.
+
+**Solution**: Use the authority account (POA admin group):
+```bash
+manifestd tx billing update-params ... --from authority
 ```
 
 ## Gas and Transaction Issues
@@ -307,19 +374,23 @@ manifestd tx billing create-lease 1:10 --from tenant --gas auto --gas-adjustment
 
 If you encounter an issue not covered here:
 
-1. **Check the logs**: Look at the full error message for details
-2. **Query state**: Use query commands to understand current state
-3. **Check events**: Query the transaction to see emitted events
-4. **Review parameters**: 
+1. **Check the full error message**: The error often contains specific details
+2. **Query relevant state**:
    ```bash
    manifestd query billing params
-   manifestd query sku params
+   manifestd query billing lease [lease-id]
+   manifestd query billing credit-account [tenant]
+   manifestd query sku sku [sku-id]
+   manifestd query sku provider [provider-id]
+   ```
+3. **Check events**: Query the transaction to see emitted events
+   ```bash
+   manifestd query tx [txhash] --output json | jq '.events'
    ```
 
 ## Related Documentation
 
-- [Provider Setup Guide](../sku/PROVIDER_GUIDE.md) - Creating and managing providers
-- [SKU Setup Guide](../sku/SKU_GUIDE.md) - Creating and managing SKUs
-- [Billing README](README.md) - Complete billing module overview
+- [Billing README](../README.md) - Complete billing module overview
 - [Migration Guide](MIGRATION.md) - Migrating existing off-chain leases
 - [API Reference](API.md) - Detailed API documentation
+- [Architecture](ARCHITECTURE.md) - Technical architecture details

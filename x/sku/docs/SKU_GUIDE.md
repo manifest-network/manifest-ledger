@@ -57,7 +57,7 @@ price_daily = 1 × 86400 = 86400 tokens
 | **Provider ID** | The ID of the provider offering this SKU | `1` |
 | **Name** | Human-readable name for the SKU | `"Compute Small"` |
 | **Unit** | Billing unit (1 = per hour, 2 = per day) | `1` |
-| **Base Price** | Price per billing unit (must be exactly divisible) | `3600umfx` |
+| **Base Price** | Price per billing unit (must be exactly divisible) | `3600upwr` |
 | **Meta Hash** (optional) | Hex-encoded hash of off-chain metadata | `deadbeef` |
 
 ### About Meta Hash
@@ -98,7 +98,7 @@ manifestd tx sku create-sku \
   --meta-hash <hex_encoded_hash> \
   --from <your_key> \
   --chain-id manifest-1 \
-  --fees 5000umfx
+  --fees 5000upwr
 ```
 
 ### Example: Hourly Billing SKU
@@ -108,11 +108,11 @@ manifestd tx sku create-sku \
   1 \
   "Compute Small" \
   1 \
-  3600umfx \
+  3600upwr \
   --meta-hash a1b2c3d4 \
   --from mykey \
   --chain-id manifest-1 \
-  --fees 5000umfx
+  --fees 5000upwr
 ```
 
 ### Example: Daily Billing SKU
@@ -122,11 +122,11 @@ manifestd tx sku create-sku \
   1 \
   "Storage Basic" \
   2 \
-  86400umfx \
+  86400upwr \
   --meta-hash e5f6g7h8 \
   --from mykey \
   --chain-id manifest-1 \
-  --fees 5000umfx
+  --fees 5000upwr
 ```
 
 ### Successful Response
@@ -167,7 +167,7 @@ Response:
     "name": "Compute Small",
     "unit": "UNIT_PER_HOUR",
     "base_price": {
-      "denom": "umfx",
+      "denom": "upwr",
       "amount": "3600"
     },
     "meta_hash": "oLLD1A==",
@@ -211,7 +211,7 @@ manifestd tx sku update-sku \
   1 \
   "Compute Small" \
   1 \
-  7200umfx \
+  7200upwr \
   true \
   --from mykey \
   --chain-id manifest-1
@@ -241,21 +241,21 @@ For a typical service offering, you might create several SKUs:
 
 ```bash
 # Small instance - $1/hour (3600 tokens/hour)
-manifestd tx sku create-sku 1 "Compute Small" 1 3600umfx --from mykey --chain-id manifest-1
+manifestd tx sku create-sku 1 "Compute Small" 1 3600upwr --from mykey --chain-id manifest-1
 
 # Medium instance - $2/hour (7200 tokens/hour)
-manifestd tx sku create-sku 1 "Compute Medium" 1 7200umfx --from mykey --chain-id manifest-1
+manifestd tx sku create-sku 1 "Compute Medium" 1 7200upwr --from mykey --chain-id manifest-1
 
 # Large instance - $5/hour (18000 tokens/hour)
-manifestd tx sku create-sku 1 "Compute Large" 1 18000umfx --from mykey --chain-id manifest-1
+manifestd tx sku create-sku 1 "Compute Large" 1 18000upwr --from mykey --chain-id manifest-1
 
 # Storage - $1/day (86400 tokens/day)
-manifestd tx sku create-sku 1 "Storage 100GB" 2 86400umfx --from mykey --chain-id manifest-1
+manifestd tx sku create-sku 1 "Storage 100GB" 2 86400upwr --from mykey --chain-id manifest-1
 ```
 
 ## Common Issues
 
-### "base price X is not evenly divisible by UNIT"
+### "invalid sku" (price not divisible)
 
 **Cause:** The price doesn't divide evenly by the billing unit's seconds.
 
@@ -271,7 +271,7 @@ manifestd tx sku create-sku 1 "Storage 100GB" 2 86400umfx --from mykey --chain-i
 - Verify provider exists: `manifestd query sku provider <id>`
 - Create the provider first if needed (see Provider Setup Guide)
 
-### "cannot create SKU for inactive provider"
+### "invalid provider" (provider not active)
 
 **Cause:** The provider has been deactivated.
 
@@ -279,7 +279,7 @@ manifestd tx sku create-sku 1 "Storage 100GB" 2 86400umfx --from mykey --chain-i
 - Reactivate the provider using `update-provider` with `active=true`
 - Or use a different active provider
 
-### "unauthorized: expected authority or allowed address"
+### "unauthorized"
 
 **Cause:** Your address is not authorized to manage SKUs.
 
@@ -331,6 +331,6 @@ Once SKUs are created:
 ## Related Documentation
 
 - [Provider Setup Guide](PROVIDER_GUIDE.md) - Creating providers
-- [Billing Module README](../billing/README.md) - Understanding the billing system
-- [Migration Guide](../billing/MIGRATION.md) - Migrating existing off-chain leases
-- [Billing API Reference](../billing/API.md) - Complete API documentation
+- [API Reference](API.md) - Complete API documentation
+- [Billing Module](../../billing/README.md) - Understanding the billing system
+- [Billing Migration Guide](../../billing/docs/MIGRATION.md) - Migrating existing off-chain leases

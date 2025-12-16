@@ -5,27 +5,64 @@ This guide is for authority members responsible for migrating existing off-chain
 ## Overview
 
 The migration process involves:
-1. Setting up providers (see [Provider Setup Guide](../sku/PROVIDER_GUIDE.md))
-2. Creating SKUs for billable items (see [SKU Setup Guide](../sku/SKU_GUIDE.md))
-3. Ensuring PWR token is available
+1. Setting up providers in the SKU module
+2. Creating SKUs for billable items in the SKU module
+3. Configuring billing parameters (denom, limits)
 4. Funding tenant credit accounts
 5. Creating leases on behalf of tenants using `MsgCreateLeaseForTenant`
 
 ## Prerequisites
 
-- You must be an **authority member** (part of the POA admin group) OR
-- Your address must be in the `allowed_list` parameter
+- You must be the **module authority** (POA admin group address) OR
+- Your address must be in the `allowed_list` billing parameter
 - The **SKU module** must have the required providers and SKUs already created
-- The **PWR token** must be available (factory denom)
+- The **billing denom** must be set in params (typically a token factory denom)
+- You must have sufficient billing tokens to fund tenant credit accounts
 
-## Step 0: Set Up Providers and SKUs
+## Step 1: Configure Billing Parameters
 
-Before migrating any leases, you must have providers and SKUs configured. Follow these guides in order:
+Before migrating, ensure billing parameters are properly set:
 
-1. **[Provider Setup Guide](../sku/PROVIDER_GUIDE.md)** - Create providers for each service entity
-2. **[SKU Setup Guide](../sku/SKU_GUIDE.md)** - Create SKUs (billable items) for each provider
+```bash
+# Check current parameters
+manifestd query billing params
+```
 
-## Step 1: Verify SKU Setup
+If parameters need updating:
+
+```bash
+# Update params via authority
+manifestd tx billing update-params \
+  "factory/manifest1.../upwr" \
+  100 \
+  20 \
+  3600 \
+  --from authority
+```
+
+**Parameters:**
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `denom` | Billing token denomination | `upwr` |
+| `max_leases_per_tenant` | Max active leases per tenant | 100 |
+| `max_items_per_lease` | Max items in single lease | 20 |
+| `min_lease_duration` | Min seconds credit must cover | 3600 |
+
+### Adding Addresses to the Allow List
+
+If you want non-authority addresses to create leases for tenants:
+
+```bash
+manifestd tx billing update-params \
+  "factory/manifest1.../upwr" \
+  100 \
+  20 \
+  3600 \
+  --allowed-list "manifest1allowed1...,manifest1allowed2..." \
+  --from authority
+```
+
+## Step 2: Verify SKU Setup
 
 Before migrating leases, ensure all necessary providers and SKUs exist:
 
@@ -40,24 +77,44 @@ manifestd query sku skus
 manifestd query sku sku [sku-id]
 ```
 
-## Step 2: Fund Tenant Credit Accounts
+**Important:** Note the SKU IDs and their per-second rates. You'll need these to calculate minimum credit requirements.
 
-Each tenant needs credit before a lease can be created for them.
+## Step 3: Fund Tenant Credit Accounts
+
+Each tenant needs credit before a lease can be created for them. The credit must cover at least `min_lease_duration` seconds of the lease.
+
+### Calculate Minimum Credit Required
+
+```
+min_credit = sum(sku_rate_per_second × quantity) × min_lease_duration
+```
+
+**Example:**
+- SKU 1: 1 upwr/second, quantity 2 → 2 upwr/second
+- SKU 2: 5 upwr/second, quantity 1 → 5 upwr/second
+- Total rate: 7 upwr/second
+- Min duration: 3600 seconds
+- Min credit: 7 × 3600 = 25,200 upwr
+
+### Fund the Credit Account
 
 ```bash
 # Fund a tenant's credit account
 manifestd tx billing fund-credit [tenant-address] [amount] --from [authority-key]
 
-# Example: Fund 1000 PWR
-manifestd tx billing fund-credit manifest1abc... 1000000000factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr --from authority
+# Example: Fund with 100,000,000 upwr (100 PWR)
+manifestd tx billing fund-credit manifest1abc... 100000000upwr --from authority
+
+# Or with a factory denom
+manifestd tx billing fund-credit manifest1abc... 100000000factory/manifest1.../upwr --from authority
 
 # Verify credit was received
 manifestd query billing credit-account [tenant-address]
 ```
 
-**Note**: You must ensure the tenant's credit account has enough credit to cover at least 1 hour of lease operation, based on the SKUs and their prices.
+**Note:** Anyone can fund any tenant's credit account - this is not restricted to authority.
 
-## Step 3: Create Leases for Tenants
+## Step 4: Create Leases for Tenants
 
 Use `MsgCreateLeaseForTenant` to create leases on behalf of users:
 
@@ -69,6 +126,13 @@ manifestd tx billing create-lease-for-tenant [tenant-address] [sku_id:quantity..
 # Example: Create lease with 2 units of SKU 1 and 1 unit of SKU 2
 manifestd tx billing create-lease-for-tenant manifest1abc... 1:2 2:1 --from authority
 ```
+
+### Important Constraints
+
+1. **All SKUs must be from the same provider** - Create separate leases for different providers
+2. **All SKUs must be active** - Deactivated SKUs cannot be leased
+3. **Provider must be active** - Deactivated providers cannot have new leases
+4. **Credit must cover min_lease_duration** - Otherwise creation fails
 
 ### Multiple SKUs in One Lease
 
@@ -88,13 +152,13 @@ For migrating many leases, consider a script:
 # migration_script.sh
 
 AUTHORITY_KEY="authority"
-PWR_DENOM="factory/manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj/upwr"
+DENOM="upwr"  # or your factory denom
 
 # Array of tenant migrations: "address|sku_items|credit_amount"
 MIGRATIONS=(
-  "manifest1abc...|1:2|100000000000"
-  "manifest1def...|1:1 2:1|50000000000"
-  "manifest1ghi...|3:5|200000000000"
+  "manifest1abc...|1:2|100000000"
+  "manifest1def...|1:1 2:1|50000000"
+  "manifest1ghi...|3:5|200000000"
 )
 
 for migration in "${MIGRATIONS[@]}"; do
@@ -103,8 +167,8 @@ for migration in "${MIGRATIONS[@]}"; do
   echo "Processing tenant: $tenant"
   
   # Fund credit account
-  echo "  Funding ${credit}${PWR_DENOM}..."
-  manifestd tx billing fund-credit "$tenant" "${credit}${PWR_DENOM}" \
+  echo "  Funding ${credit}${DENOM}..."
+  manifestd tx billing fund-credit "$tenant" "${credit}${DENOM}" \
     --from "$AUTHORITY_KEY" -y --gas auto --gas-adjustment 1.5
   
   sleep 6  # Wait for block
@@ -122,7 +186,7 @@ done
 echo "Migration complete!"
 ```
 
-## Step 4: Verify Migration
+## Step 5: Verify Migration
 
 After migration, verify the leases were created correctly:
 
@@ -141,7 +205,7 @@ manifestd query billing lease [lease-id]
 
 ### Price Locking
 
-When you create a lease, the current SKU prices are **locked in** for the duration of that lease. If SKU prices change later, existing leases continue at their locked prices.
+When you create a lease, the current SKU prices are **locked in** as per-second rates for the duration of that lease. If SKU prices change later, existing leases continue at their locked prices.
 
 ### Credit Persistence
 
@@ -149,30 +213,23 @@ Credit that remains in a tenant's credit account stays there. There is no mechan
 
 ### Events
 
-Each lease creation emits a `lease_created` event with `created_by: authority` to distinguish from tenant-created leases. Use these events for auditing.
+Each lease creation emits events for auditing:
 
 ```bash
 # Query events for a transaction
 manifestd query tx [txhash] --output json | jq '.events'
 ```
 
-### Authorization
+Key events:
+- `lease_created` - Contains `lease_id`, `tenant`, `provider_id`, `created_by`
+- `credit_funded` - Contains `tenant`, `amount`, `credit_address`
 
-The `MsgCreateLeaseForTenant` message can only be executed by:
-- The module authority (POA admin group)
-- Addresses explicitly listed in the `allowed_list` parameter
+### Settlement
 
-To add an address to the allowed list:
-
-```bash
-manifestd tx billing update-params \
-  "factory/manifest1.../upwr" \
-  100 \
-  20 \
-  3600 \
-  --allowed-list "manifest1allowed1...,manifest1allowed2..." \
-  --from authority
-```
+Leases created via `MsgCreateLeaseForTenant` work exactly like tenant-created leases:
+- Settlement happens during `Withdraw` or `CloseLease` operations
+- Auto-close triggers when credit is exhausted during write operations
+- Tenants can close their own leases (even if created by authority)
 
 ## Rollback Considerations
 
@@ -183,9 +240,11 @@ If a migration needs to be reversed:
    manifestd tx billing close-lease [lease-id] --from authority
    ```
 
-2. **Credit remains**: Any unspent credit stays in the tenant's credit account for future use
+2. **Settlement happens automatically**: Any accrued amount is transferred to the provider during closure
 
-3. **Provider withdrawal**: Ensure the provider withdraws any accrued funds before closing
+3. **Credit remains**: Any unspent credit stays in the tenant's credit account for future use
+
+4. **Provider withdrawal**: Provider should withdraw any accrued funds before/after closing if needed
    ```bash
    manifestd tx billing withdraw [lease-id] --from provider
    ```
@@ -194,14 +253,21 @@ If a migration needs to be reversed:
 
 ### "insufficient credit balance"
 
-The tenant doesn't have enough credit. Fund their account first:
+The tenant doesn't have enough credit to cover `min_lease_duration`. Calculate the minimum required:
+
 ```bash
+# Check SKU rates
+manifestd query sku sku [sku-id]
+
+# Calculate: sum(rate × quantity) × min_lease_duration
+# Fund accordingly
 manifestd tx billing fund-credit [tenant] [amount] --from authority
 ```
 
-### "tenant has no credit account"
+### "credit account not found"
 
-Create the credit account by funding it:
+This happens if you try to create a lease before funding. The credit account is created automatically when first funded:
+
 ```bash
 manifestd tx billing fund-credit [tenant] [amount] --from authority
 ```
@@ -209,27 +275,42 @@ manifestd tx billing fund-credit [tenant] [amount] --from authority
 ### "SKU not found" or "SKU is not active"
 
 Ensure the SKU exists and is active:
+
 ```bash
 manifestd query sku sku [sku-id]
 ```
 
-If the SKU doesn't exist, create it first. See [SKU Setup Guide](../sku/SKU_GUIDE.md).
+If the SKU doesn't exist, create it first via the SKU module.
 
 ### "all SKUs must belong to the same provider"
 
-Multi-provider leases are not supported. Create separate leases for different providers.
+Multi-provider leases are not supported. Create separate leases for different providers:
+
+```bash
+# Provider 1 SKUs
+manifestd tx billing create-lease-for-tenant manifest1abc... 1:1 2:1 --from authority
+
+# Provider 2 SKUs (separate lease)
+manifestd tx billing create-lease-for-tenant manifest1abc... 5:1 6:1 --from authority
+```
 
 ### "unauthorized"
 
 Your address is not the authority and not in the `allowed_list`. Check params:
+
 ```bash
 manifestd query billing params
 ```
 
+To add your address to the allow list, the authority must update params.
+
+### "provider is not active"
+
+The provider associated with the SKU has been deactivated. Contact the authority to reactivate, or use SKUs from an active provider.
+
 ## Related Documentation
 
-- [Provider Setup Guide](../sku/PROVIDER_GUIDE.md) - Creating and managing providers
-- [SKU Setup Guide](../sku/SKU_GUIDE.md) - Creating and managing SKUs
-- [Billing README](README.md) - Complete billing module overview
-- [Billing API Reference](API.md) - Detailed API documentation
+- [Billing README](../README.md) - Complete billing module overview
+- [API Reference](API.md) - Detailed API documentation
 - [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions
+- [Architecture](ARCHITECTURE.md) - Technical architecture details
