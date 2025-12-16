@@ -37,7 +37,6 @@ func (q Querier) Params(ctx context.Context, _ *types.QueryParamsRequest) (*type
 }
 
 // Lease queries a lease by ID.
-// This uses lazy evaluation to auto-close the lease if credit is exhausted.
 func (q Querier) Lease(ctx context.Context, req *types.QueryLeaseRequest) (*types.QueryLeaseResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -245,7 +244,6 @@ func (q Querier) CreditAddress(_ context.Context, req *types.QueryCreditAddressR
 }
 
 // WithdrawableAmount queries the amount available for provider withdrawal from a lease.
-// This uses lazy evaluation to auto-close the lease if credit is exhausted.
 func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdrawableAmountRequest) (*types.QueryWithdrawableAmountResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
