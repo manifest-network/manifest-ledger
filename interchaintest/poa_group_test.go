@@ -858,23 +858,35 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.Equal(t, uint64(10), params.Params.MinLeaseDuration)
 	})
 
-	// Get the first provider and SKU created in the previous test
+	// Get the first provider created in the previous test
 	providers, err := helpers.SKUQueryProviders(ctx, chain)
 	require.NoError(t, err)
 	require.NotEmpty(t, providers.Providers)
 	providerID := providers.Providers[0].Id
 
-	skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerID)
-	require.NoError(t, err)
-	require.NotEmpty(t, skus.Skus)
+	// Create a new SKU priced in PWR for lease testing
+	// (existing SKUs are priced in umfx, but we fund tenant credit with PWR)
 	var activeSKUID uint64
-	for _, sku := range skus.Skus {
-		if sku.Active {
-			activeSKUID = sku.Id
-			break
+	t.Run("create_pwr_sku_via_proposal", func(t *testing.T) {
+		// Price: 7200 upwr per hour (2 upwr per second)
+		basePrice := sdk.NewInt64Coin(pwrDenom, 7200)
+		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerID, "Compute PWR", skutypes.Unit_UNIT_PER_HOUR, basePrice, nil)
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
+
+		// Query SKUs to get the created SKU ID
+		skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerID)
+		require.NoError(t, err)
+		require.NotEmpty(t, skus.Skus, "should have at least one SKU")
+		// Find the PWR-priced SKU we just created
+		for _, sku := range skus.Skus {
+			if sku.Active && sku.BasePrice.Denom == pwrDenom {
+				activeSKUID = sku.Id
+				break
+			}
 		}
-	}
-	require.NotZero(t, activeSKUID, "should have at least one active SKU")
+		require.NotZero(t, activeSKUID, "should have created a PWR-priced SKU")
+		t.Logf("Created PWR SKU ID: %d with denom: %s", activeSKUID, pwrDenom)
+	})
 
 	// Create a tenant user for lease testing
 	tenantUsers := interchaintest.GetAndFundTestUsers(t, ctx, "lease-tenant", DefaultGenesisAmt, chain)
@@ -1033,22 +1045,22 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 
 	// Test multi-SKU lease creation
 	t.Run("create_multi_sku_lease", func(t *testing.T) {
-		// Create another SKU for multi-item lease
-		basePrice := sdk.NewInt64Coin(Denom, 86400) // 86400 umfx per day
+		// Create another SKU for multi-item lease (priced in PWR to match tenant credit)
+		basePrice := sdk.NewInt64Coin(pwrDenom, 86400) // 86400 upwr per day (1 upwr per second)
 		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerID, "Storage Small", skutypes.Unit_UNIT_PER_DAY, basePrice, nil)
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
 
-		// Get the new SKU ID
+		// Get the new SKU ID (find a PWR-priced SKU that's not activeSKUID)
 		skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerID)
 		require.NoError(t, err)
 		var secondSKUID uint64
 		for _, sku := range skus.Skus {
-			if sku.Active && sku.Id != activeSKUID {
+			if sku.Active && sku.Id != activeSKUID && sku.BasePrice.Denom == pwrDenom {
 				secondSKUID = sku.Id
 				break
 			}
 		}
-		require.NotZero(t, secondSKUID, "should have a second active SKU")
+		require.NotZero(t, secondSKUID, "should have a second active PWR-priced SKU")
 
 		// Create multi-SKU lease
 		createMultiLeaseMsg := billingtypes.MsgCreateLeaseForTenant{
