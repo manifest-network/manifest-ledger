@@ -97,7 +97,7 @@ func TestQueryLeases(t *testing.T) {
 	k := f.App.BillingKeeper
 	querier := keeper.NewQuerier(k)
 
-	providerUUID := "01912345-6789-7abc-8def-0123456789ac"
+	providerUUID := testProviderUUID
 
 	// Create multiple leases
 	for i := 1; i <= 5; i++ {

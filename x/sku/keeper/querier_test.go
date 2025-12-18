@@ -82,8 +82,8 @@ func TestQuerierProviders(t *testing.T) {
 
 	// Create providers
 	providers := []types.Provider{
-		{Uuid: "01912345-6789-7abc-8def-0123456789a1", Address: f.TestAccs[0].String(), PayoutAddress: f.TestAccs[1].String(), Active: true},
-		{Uuid: "01912345-6789-7abc-8def-0123456789a2", Address: f.TestAccs[2].String(), PayoutAddress: f.TestAccs[3].String(), Active: false},
+		{Uuid: testProvider1UUID, Address: f.TestAccs[0].String(), PayoutAddress: f.TestAccs[1].String(), Active: true},
+		{Uuid: testProvider2UUID, Address: f.TestAccs[2].String(), PayoutAddress: f.TestAccs[3].String(), Active: false},
 		{Uuid: "01912345-6789-7abc-8def-0123456789a3", Address: f.TestAccs[4].String(), PayoutAddress: f.TestAccs[0].String(), Active: true},
 	}
 
@@ -160,7 +160,6 @@ func TestQuerierSKU(t *testing.T) {
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
-	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
 	skuUUID := "01912345-6789-7abc-8def-0123456789b1"
 
 	// Test not found
@@ -169,7 +168,7 @@ func TestQuerierSKU(t *testing.T) {
 
 	// Create a provider first
 	provider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProvider1UUID,
 		Address:       f.TestAccs[0].String(),
 		PayoutAddress: f.TestAccs[1].String(),
 		Active:        true,
@@ -180,7 +179,7 @@ func TestQuerierSKU(t *testing.T) {
 	// Create a SKU
 	sku := types.SKU{
 		Uuid:         skuUUID,
-		ProviderUuid: providerUUID,
+		ProviderUuid: testProvider1UUID,
 		Name:         "Test SKU",
 		Unit:         types.Unit_UNIT_PER_HOUR,
 		BasePrice:    basePrice,
@@ -210,11 +209,9 @@ func TestQuerierSKUsPagination(t *testing.T) {
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
-	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
-
 	// Create provider first
 	provider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProvider1UUID,
 		Address:       f.TestAccs[0].String(),
 		PayoutAddress: f.TestAccs[1].String(),
 		Active:        true,
@@ -227,7 +224,7 @@ func TestQuerierSKUsPagination(t *testing.T) {
 		skuUUID := "01912345-6789-7abc-8def-0123456789b" + string(rune('0'+i))
 		sku := types.SKU{
 			Uuid:         skuUUID,
-			ProviderUuid: providerUUID,
+			ProviderUuid: testProvider1UUID,
 			Name:         "SKU",
 			Unit:         types.Unit_UNIT_PER_HOUR,
 			BasePrice:    basePrice,
@@ -279,11 +276,9 @@ func TestQuerierSKUsActiveOnly(t *testing.T) {
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
-	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
-
 	// Create provider first
 	provider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProvider1UUID,
 		Address:       f.TestAccs[0].String(),
 		PayoutAddress: f.TestAccs[1].String(),
 		Active:        true,
@@ -293,11 +288,11 @@ func TestQuerierSKUsActiveOnly(t *testing.T) {
 
 	// Create mix of active and inactive SKUs
 	skus := []types.SKU{
-		{Uuid: "01912345-6789-7abc-8def-0123456789b1", ProviderUuid: providerUUID, Name: "SKU 1", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
-		{Uuid: "01912345-6789-7abc-8def-0123456789b2", ProviderUuid: providerUUID, Name: "SKU 2", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: false},
-		{Uuid: "01912345-6789-7abc-8def-0123456789b3", ProviderUuid: providerUUID, Name: "SKU 3", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
-		{Uuid: "01912345-6789-7abc-8def-0123456789b4", ProviderUuid: providerUUID, Name: "SKU 4", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: false},
-		{Uuid: "01912345-6789-7abc-8def-0123456789b5", ProviderUuid: providerUUID, Name: "SKU 5", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
+		{Uuid: "01912345-6789-7abc-8def-0123456789b1", ProviderUuid: testProvider1UUID, Name: "SKU 1", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
+		{Uuid: "01912345-6789-7abc-8def-0123456789b2", ProviderUuid: testProvider1UUID, Name: "SKU 2", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: false},
+		{Uuid: "01912345-6789-7abc-8def-0123456789b3", ProviderUuid: testProvider1UUID, Name: "SKU 3", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
+		{Uuid: "01912345-6789-7abc-8def-0123456789b4", ProviderUuid: testProvider1UUID, Name: "SKU 4", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: false},
+		{Uuid: "01912345-6789-7abc-8def-0123456789b5", ProviderUuid: testProvider1UUID, Name: "SKU 5", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
 	}
 
 	for _, sku := range skus {
@@ -328,13 +323,10 @@ func TestQuerierSKUsByProvider(t *testing.T) {
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
-	provider1UUID := "01912345-6789-7abc-8def-0123456789a1"
-	provider2UUID := "01912345-6789-7abc-8def-0123456789a2"
-
 	// Create providers
 	providers := []types.Provider{
-		{Uuid: provider1UUID, Address: f.TestAccs[0].String(), PayoutAddress: f.TestAccs[1].String(), Active: true},
-		{Uuid: provider2UUID, Address: f.TestAccs[2].String(), PayoutAddress: f.TestAccs[3].String(), Active: true},
+		{Uuid: testProvider1UUID, Address: f.TestAccs[0].String(), PayoutAddress: f.TestAccs[1].String(), Active: true},
+		{Uuid: testProvider2UUID, Address: f.TestAccs[2].String(), PayoutAddress: f.TestAccs[3].String(), Active: true},
 	}
 	for _, provider := range providers {
 		err := k.SetProvider(f.Ctx, provider)
@@ -343,10 +335,10 @@ func TestQuerierSKUsByProvider(t *testing.T) {
 
 	// Create SKUs for different providers
 	skus := []types.SKU{
-		{Uuid: "01912345-6789-7abc-8def-0123456789b1", ProviderUuid: provider1UUID, Name: "P1 SKU 1", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
-		{Uuid: "01912345-6789-7abc-8def-0123456789b2", ProviderUuid: provider1UUID, Name: "P1 SKU 2", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: false},
-		{Uuid: "01912345-6789-7abc-8def-0123456789b3", ProviderUuid: provider2UUID, Name: "P2 SKU 1", Unit: types.Unit_UNIT_PER_DAY, BasePrice: basePrice, Active: true},
-		{Uuid: "01912345-6789-7abc-8def-0123456789b4", ProviderUuid: provider1UUID, Name: "P1 SKU 3", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
+		{Uuid: "01912345-6789-7abc-8def-0123456789b1", ProviderUuid: testProvider1UUID, Name: "P1 SKU 1", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
+		{Uuid: "01912345-6789-7abc-8def-0123456789b2", ProviderUuid: testProvider1UUID, Name: "P1 SKU 2", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: false},
+		{Uuid: "01912345-6789-7abc-8def-0123456789b3", ProviderUuid: testProvider2UUID, Name: "P2 SKU 1", Unit: types.Unit_UNIT_PER_DAY, BasePrice: basePrice, Active: true},
+		{Uuid: "01912345-6789-7abc-8def-0123456789b4", ProviderUuid: testProvider1UUID, Name: "P1 SKU 3", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
 	}
 
 	for _, sku := range skus {
@@ -355,21 +347,21 @@ func TestQuerierSKUsByProvider(t *testing.T) {
 	}
 
 	// Query provider 1 (all)
-	res, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{ProviderUuid: provider1UUID})
+	res, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{ProviderUuid: testProvider1UUID})
 	require.NoError(t, err)
 	require.Len(t, res.Skus, 3)
 
 	// Query provider 1 (active only)
-	res, err = q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{ProviderUuid: provider1UUID, ActiveOnly: true})
+	res, err = q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{ProviderUuid: testProvider1UUID, ActiveOnly: true})
 	require.NoError(t, err)
 	require.Len(t, res.Skus, 2)
 	for _, sku := range res.Skus {
 		require.True(t, sku.Active)
-		require.Equal(t, provider1UUID, sku.ProviderUuid)
+		require.Equal(t, testProvider1UUID, sku.ProviderUuid)
 	}
 
 	// Query provider 2
-	res, err = q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{ProviderUuid: provider2UUID})
+	res, err = q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{ProviderUuid: testProvider2UUID})
 	require.NoError(t, err)
 	require.Len(t, res.Skus, 1)
 
@@ -394,11 +386,9 @@ func TestQuerierSKUsByProviderPagination(t *testing.T) {
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
-	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
-
 	// Create provider
 	provider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProvider1UUID,
 		Address:       f.TestAccs[0].String(),
 		PayoutAddress: f.TestAccs[1].String(),
 		Active:        true,
@@ -411,7 +401,7 @@ func TestQuerierSKUsByProviderPagination(t *testing.T) {
 		skuUUID := "01912345-6789-7abc-8def-0123456789b" + string(rune('0'+i))
 		sku := types.SKU{
 			Uuid:         skuUUID,
-			ProviderUuid: providerUUID,
+			ProviderUuid: testProvider1UUID,
 			Name:         "SKU",
 			Unit:         types.Unit_UNIT_PER_HOUR,
 			BasePrice:    basePrice,
@@ -423,7 +413,7 @@ func TestQuerierSKUsByProviderPagination(t *testing.T) {
 
 	// Query first page
 	res1, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
-		ProviderUuid: providerUUID,
+		ProviderUuid: testProvider1UUID,
 		Pagination:   &query.PageRequest{Limit: 2},
 	})
 	require.NoError(t, err)
@@ -432,7 +422,7 @@ func TestQuerierSKUsByProviderPagination(t *testing.T) {
 
 	// Query second page
 	res2, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
-		ProviderUuid: providerUUID,
+		ProviderUuid: testProvider1UUID,
 		Pagination:   &query.PageRequest{Key: res1.Pagination.NextKey, Limit: 2},
 	})
 	require.NoError(t, err)
@@ -440,7 +430,7 @@ func TestQuerierSKUsByProviderPagination(t *testing.T) {
 
 	// Query third page
 	res3, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
-		ProviderUuid: providerUUID,
+		ProviderUuid: testProvider1UUID,
 		Pagination:   &query.PageRequest{Key: res2.Pagination.NextKey, Limit: 2},
 	})
 	require.NoError(t, err)

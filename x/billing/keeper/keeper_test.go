@@ -36,8 +36,12 @@ import (
 )
 
 const (
-	testDenom  = "umfx"
-	testDenom2 = "upwr"
+	testDenom        = "umfx"
+	testDenom2       = "upwr"
+	testLeaseUUID1   = "01912345-6789-7abc-8def-0123456789ab"
+	testLeaseUUID2   = "01912345-6789-7abc-8def-0123456789ac"
+	testProviderUUID = "01912345-6789-7abc-8def-0123456789ad"
+	testSKUUUID      = "01912345-6789-7abc-8def-0123456789ae"
 )
 
 type testFixture struct {
@@ -724,11 +728,11 @@ func TestGenesisValidation(t *testing.T) {
 
 	closedAt := f.Ctx.BlockTime()
 
-	// Valid UUIDs for testing
-	leaseUUID1 := "01912345-6789-7abc-8def-0123456789ab"
-	leaseUUID2 := "01912345-6789-7abc-8def-0123456789ac"
-	providerUUID := "01912345-6789-7abc-8def-0123456789ad"
-	skuUUID1 := "01912345-6789-7abc-8def-0123456789ae"
+	// Valid UUIDs for testing (use local variables that can be different from constants)
+	leaseUUID1 := testLeaseUUID1
+	leaseUUID2 := testLeaseUUID2
+	providerUUID := testProviderUUID
+	skuUUID1 := testSKUUUID
 	skuUUID2 := "01912345-6789-7abc-8def-0123456789af"
 
 	tests := []struct {
@@ -913,9 +917,9 @@ func TestMsgValidation(t *testing.T) {
 	_, _, validAddr := testdata.KeyTestPubAddr()
 
 	// Valid UUIDs for testing
-	validSkuUUID := "01912345-6789-7abc-8def-0123456789ab"
-	validLeaseUUID := "01912345-6789-7abc-8def-0123456789ac"
-	validProviderUUID := "01912345-6789-7abc-8def-0123456789ad"
+	validSkuUUID := testLeaseUUID1
+	validLeaseUUID := testLeaseUUID2
+	validProviderUUID := testProviderUUID
 
 	tests := []struct {
 		name      string

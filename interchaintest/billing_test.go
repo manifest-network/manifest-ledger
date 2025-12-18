@@ -2219,3 +2219,204 @@ func testMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 		require.Equal(t, uint32(0), txRes.Code, "same denom multi-SKU lease should succeed")
 	})
 }
+
+// testLeaseRejectAndCancel tests provider rejection and tenant cancellation of pending leases.
+func testLeaseRejectAndCancel(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, providerWallet ibc.Wallet) {
+	node := chain.GetNode()
+
+	// Create a dedicated tenant for these tests
+	rejectUsers := interchaintest.GetAndFundTestUsers(t, ctx, "reject-cancel-tenant", DefaultGenesisAmt, chain)
+	rejectTenant := rejectUsers[0]
+
+	// Fund tenant with PWR tokens
+	err := node.SendFunds(ctx, authority.KeyName(), ibc.WalletAmount{
+		Address: rejectTenant.FormattedAddress(),
+		Denom:   testPWRDenom,
+		Amount:  sdkmath.NewInt(500_000_000),
+	})
+	require.NoError(t, err)
+	require.NoError(t, testutil.WaitForBlocks(ctx, 2, chain))
+
+	// Fund the credit account
+	fundAmount := fmt.Sprintf("200000000%s", testPWRDenom)
+	res, err := helpers.BillingFundCredit(ctx, chain, rejectTenant, rejectTenant.FormattedAddress(), fundAmount)
+	require.NoError(t, err)
+	txRes, err := chain.GetTransaction(res.TxHash)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), txRes.Code)
+
+	var pendingLeaseUUID string
+	var cancelLeaseUUID string
+
+	t.Run("setup: create pending lease for rejection test", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
+		res, err := helpers.BillingCreateLease(ctx, chain, rejectTenant, items)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		pendingLeaseUUID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Created pending lease for rejection: %s", pendingLeaseUUID)
+
+		// Verify it's in PENDING state
+		lease, err := helpers.BillingQueryLease(ctx, chain, pendingLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_PENDING", lease.Lease.State)
+	})
+
+	t.Run("fail: tenant cannot reject lease", func(t *testing.T) {
+		res, err := helpers.BillingRejectLease(ctx, chain, rejectTenant, pendingLeaseUUID, "tenant trying to reject")
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "tenant should not be able to reject")
+		require.Contains(t, txRes.RawLog, "unauthorized")
+	})
+
+	t.Run("success: provider rejects pending lease with reason", func(t *testing.T) {
+		reason := "insufficient resources available"
+		res, err := helpers.BillingRejectLease(ctx, chain, providerWallet, pendingLeaseUUID, reason)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "provider should be able to reject: %s", txRes.RawLog)
+
+		// Verify lease is now REJECTED
+		lease, err := helpers.BillingQueryLease(ctx, chain, pendingLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_REJECTED", lease.Lease.State)
+	})
+
+	t.Run("fail: reject already rejected lease", func(t *testing.T) {
+		res, err := helpers.BillingRejectLease(ctx, chain, providerWallet, pendingLeaseUUID, "trying again")
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "cannot reject already rejected lease")
+		require.Contains(t, txRes.RawLog, "not in PENDING state")
+	})
+
+	t.Run("setup: create pending lease for cancel test", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
+		res, err := helpers.BillingCreateLease(ctx, chain, rejectTenant, items)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		cancelLeaseUUID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Created pending lease for cancellation: %s", cancelLeaseUUID)
+
+		// Verify it's in PENDING state
+		lease, err := helpers.BillingQueryLease(ctx, chain, cancelLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_PENDING", lease.Lease.State)
+	})
+
+	t.Run("fail: provider cannot cancel tenant's lease", func(t *testing.T) {
+		res, err := helpers.BillingCancelLease(ctx, chain, providerWallet, cancelLeaseUUID)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "provider should not be able to cancel tenant's lease")
+		require.Contains(t, txRes.RawLog, "not the tenant")
+	})
+
+	t.Run("success: tenant cancels their own pending lease", func(t *testing.T) {
+		res, err := helpers.BillingCancelLease(ctx, chain, rejectTenant, cancelLeaseUUID)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tenant should be able to cancel their own lease: %s", txRes.RawLog)
+
+		// Verify lease is now REJECTED (cancelled leases become rejected)
+		lease, err := helpers.BillingQueryLease(ctx, chain, cancelLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_REJECTED", lease.Lease.State)
+	})
+
+	t.Run("fail: cancel already cancelled lease", func(t *testing.T) {
+		res, err := helpers.BillingCancelLease(ctx, chain, rejectTenant, cancelLeaseUUID)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "cannot cancel already cancelled lease")
+		require.Contains(t, txRes.RawLog, "not in PENDING state")
+	})
+
+	t.Run("fail: cannot cancel active lease", func(t *testing.T) {
+		// Create and acknowledge a lease first
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
+		activeLeaseUUID, err := helpers.BillingCreateAndAcknowledgeLease(ctx, chain, rejectTenant, providerWallet, items)
+		require.NoError(t, err)
+		t.Logf("Created active lease: %s", activeLeaseUUID)
+
+		// Try to cancel it
+		res, err := helpers.BillingCancelLease(ctx, chain, rejectTenant, activeLeaseUUID)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "cannot cancel active lease")
+		require.Contains(t, txRes.RawLog, "not in PENDING state")
+
+		// Clean up: close the active lease
+		res, err = helpers.BillingCloseLease(ctx, chain, rejectTenant, activeLeaseUUID)
+		require.NoError(t, err)
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+	})
+
+	t.Run("success: authority can reject pending lease", func(t *testing.T) {
+		// Create a new pending lease
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
+		res, err := helpers.BillingCreateLease(ctx, chain, rejectTenant, items)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		authorityRejectLeaseUUID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Authority rejects the lease
+		res, err = helpers.BillingRejectLease(ctx, chain, authority, authorityRejectLeaseUUID, "rejected by authority")
+		require.NoError(t, err)
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "authority should be able to reject: %s", txRes.RawLog)
+
+		// Verify lease is now REJECTED
+		lease, err := helpers.BillingQueryLease(ctx, chain, authorityRejectLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_REJECTED", lease.Lease.State)
+	})
+
+	t.Run("success: reject without reason", func(t *testing.T) {
+		// Create a new pending lease
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
+		res, err := helpers.BillingCreateLease(ctx, chain, rejectTenant, items)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		noReasonLeaseUUID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Provider rejects without reason
+		res, err = helpers.BillingRejectLease(ctx, chain, providerWallet, noReasonLeaseUUID, "")
+		require.NoError(t, err)
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "rejection without reason should succeed: %s", txRes.RawLog)
+
+		// Verify lease is now REJECTED
+		lease, err := helpers.BillingQueryLease(ctx, chain, noReasonLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_REJECTED", lease.Lease.State)
+	})
+}

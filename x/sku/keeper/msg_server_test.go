@@ -378,9 +378,8 @@ func TestCreateSKU(t *testing.T) {
 	ms := keeper.NewMsgServerImpl(k)
 
 	// Create active provider
-	activeProviderUUID := "01912345-6789-7abc-8def-0123456789a1"
 	activeProvider := types.Provider{
-		Uuid:          activeProviderUUID,
+		Uuid:          testProvider1UUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
@@ -389,9 +388,8 @@ func TestCreateSKU(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create inactive provider
-	inactiveProviderUUID := "01912345-6789-7abc-8def-0123456789a2"
 	inactiveProvider := types.Provider{
-		Uuid:          inactiveProviderUUID,
+		Uuid:          testProvider2UUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        false,
@@ -417,7 +415,7 @@ func TestCreateSKU(t *testing.T) {
 		{
 			name:         "success; create SKU",
 			sender:       authority.String(),
-			providerUUID: activeProviderUUID,
+			providerUUID: testProvider1UUID,
 			skuName:      "Test SKU",
 			unit:         types.Unit_UNIT_PER_HOUR,
 			basePrice:    basePrice,
@@ -426,7 +424,7 @@ func TestCreateSKU(t *testing.T) {
 		{
 			name:         "fail; unauthorized sender",
 			sender:       acc.String(),
-			providerUUID: activeProviderUUID,
+			providerUUID: testProvider1UUID,
 			skuName:      "Test SKU",
 			unit:         types.Unit_UNIT_PER_HOUR,
 			basePrice:    basePrice,
@@ -444,7 +442,7 @@ func TestCreateSKU(t *testing.T) {
 		{
 			name:         "fail; inactive provider",
 			sender:       authority.String(),
-			providerUUID: inactiveProviderUUID,
+			providerUUID: testProvider2UUID,
 			skuName:      "Test SKU",
 			unit:         types.Unit_UNIT_PER_HOUR,
 			basePrice:    basePrice,
@@ -453,7 +451,7 @@ func TestCreateSKU(t *testing.T) {
 		{
 			name:         "fail; empty name",
 			sender:       authority.String(),
-			providerUUID: activeProviderUUID,
+			providerUUID: testProvider1UUID,
 			skuName:      "",
 			unit:         types.Unit_UNIT_PER_HOUR,
 			basePrice:    basePrice,
@@ -462,7 +460,7 @@ func TestCreateSKU(t *testing.T) {
 		{
 			name:         "fail; unspecified unit",
 			sender:       authority.String(),
-			providerUUID: activeProviderUUID,
+			providerUUID: testProvider1UUID,
 			skuName:      "Test SKU",
 			unit:         types.Unit_UNIT_UNSPECIFIED,
 			basePrice:    basePrice,
@@ -471,7 +469,7 @@ func TestCreateSKU(t *testing.T) {
 		{
 			name:         "fail; zero base price",
 			sender:       authority.String(),
-			providerUUID: activeProviderUUID,
+			providerUUID: testProvider1UUID,
 			skuName:      "Test SKU",
 			unit:         types.Unit_UNIT_PER_HOUR,
 			basePrice:    sdk.NewCoin("umfx", sdkmath.NewInt(0)),
@@ -541,9 +539,8 @@ func TestUpdateSKU(t *testing.T) {
 	newPrice := sdk.NewCoin("umfx", sdkmath.NewInt(86400))
 
 	// Create provider
-	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
 	provider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProvider1UUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
@@ -554,7 +551,7 @@ func TestUpdateSKU(t *testing.T) {
 	skuUUID := "01912345-6789-7abc-8def-0123456789b1"
 	existingSKU := types.SKU{
 		Uuid:         skuUUID,
-		ProviderUuid: providerUUID,
+		ProviderUuid: testProvider1UUID,
 		Name:         "Original SKU",
 		Unit:         types.Unit_UNIT_PER_HOUR,
 		BasePrice:    basePrice,
@@ -580,7 +577,7 @@ func TestUpdateSKU(t *testing.T) {
 			name:         "success; update SKU",
 			sender:       authority.String(),
 			uuid:         skuUUID,
-			providerUUID: providerUUID,
+			providerUUID: testProvider1UUID,
 			skuName:      "Updated SKU",
 			unit:         types.Unit_UNIT_PER_DAY,
 			basePrice:    newPrice,
@@ -590,7 +587,7 @@ func TestUpdateSKU(t *testing.T) {
 			name:         "fail; unauthorized sender",
 			sender:       acc.String(),
 			uuid:         skuUUID,
-			providerUUID: providerUUID,
+			providerUUID: testProvider1UUID,
 			skuName:      "Updated SKU",
 			unit:         types.Unit_UNIT_PER_DAY,
 			basePrice:    newPrice,
@@ -601,7 +598,7 @@ func TestUpdateSKU(t *testing.T) {
 			name:         "fail; SKU not found",
 			sender:       authority.String(),
 			uuid:         "01912345-6789-7abc-8def-999999999999",
-			providerUUID: providerUUID,
+			providerUUID: testProvider1UUID,
 			skuName:      "Updated SKU",
 			unit:         types.Unit_UNIT_PER_DAY,
 			basePrice:    newPrice,
@@ -612,7 +609,7 @@ func TestUpdateSKU(t *testing.T) {
 			name:         "fail; provider mismatch",
 			sender:       authority.String(),
 			uuid:         skuUUID,
-			providerUUID: "01912345-6789-7abc-8def-0123456789a2",
+			providerUUID: testProvider2UUID,
 			skuName:      "Updated SKU",
 			unit:         types.Unit_UNIT_PER_DAY,
 			basePrice:    newPrice,
@@ -623,7 +620,7 @@ func TestUpdateSKU(t *testing.T) {
 			name:         "fail; empty name",
 			sender:       authority.String(),
 			uuid:         skuUUID,
-			providerUUID: providerUUID,
+			providerUUID: testProvider1UUID,
 			skuName:      "",
 			unit:         types.Unit_UNIT_PER_DAY,
 			basePrice:    newPrice,
@@ -690,9 +687,8 @@ func TestDeactivateSKUMsg(t *testing.T) {
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
 	// Create provider
-	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
 	provider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProvider1UUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
@@ -710,7 +706,7 @@ func TestDeactivateSKUMsg(t *testing.T) {
 	for _, uuid := range skuUUIDs {
 		sku := types.SKU{
 			Uuid:         uuid,
-			ProviderUuid: providerUUID,
+			ProviderUuid: testProvider1UUID,
 			Name:         "Test SKU",
 			Unit:         types.Unit_UNIT_PER_HOUR,
 			BasePrice:    basePrice,
@@ -724,7 +720,7 @@ func TestDeactivateSKUMsg(t *testing.T) {
 	inactiveSKUUUID := "01912345-6789-7abc-8def-0123456789b5"
 	inactiveSKU := types.SKU{
 		Uuid:         inactiveSKUUUID,
-		ProviderUuid: providerUUID,
+		ProviderUuid: testProvider1UUID,
 		Name:         "Inactive SKU",
 		Unit:         types.Unit_UNIT_PER_HOUR,
 		BasePrice:    basePrice,
@@ -809,9 +805,8 @@ func TestCreateMultipleSKUs(t *testing.T) {
 	ms := keeper.NewMsgServerImpl(k)
 
 	// Create provider
-	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
 	provider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProvider1UUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
@@ -826,7 +821,7 @@ func TestCreateMultipleSKUs(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		msg := &types.MsgCreateSKU{
 			Authority:    authority.String(),
-			ProviderUuid: providerUUID,
+			ProviderUuid: testProvider1UUID,
 			Name:         "SKU",
 			Unit:         types.Unit_UNIT_PER_HOUR,
 			BasePrice:    basePrice,
@@ -920,9 +915,8 @@ func TestAllowedListCreateSKU(t *testing.T) {
 	ms := keeper.NewMsgServerImpl(k)
 
 	// Create provider
-	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
 	provider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProvider1UUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
@@ -943,7 +937,7 @@ func TestAllowedListCreateSKU(t *testing.T) {
 	// Test that allowed address can create SKU
 	msg := &types.MsgCreateSKU{
 		Authority:    allowedAddr.String(),
-		ProviderUuid: providerUUID,
+		ProviderUuid: testProvider1UUID,
 		Name:         "Test SKU",
 		Unit:         types.Unit_UNIT_PER_HOUR,
 		BasePrice:    basePrice,
@@ -957,7 +951,7 @@ func TestAllowedListCreateSKU(t *testing.T) {
 	// Test that unauthorized address cannot create SKU
 	msg = &types.MsgCreateSKU{
 		Authority:    unauthorizedAddr.String(),
-		ProviderUuid: providerUUID,
+		ProviderUuid: testProvider1UUID,
 		Name:         "Test SKU 2",
 		Unit:         types.Unit_UNIT_PER_HOUR,
 		BasePrice:    basePrice,
@@ -970,7 +964,7 @@ func TestAllowedListCreateSKU(t *testing.T) {
 	// Test that authority can still create SKU
 	msg = &types.MsgCreateSKU{
 		Authority:    authority.String(),
-		ProviderUuid: providerUUID,
+		ProviderUuid: testProvider1UUID,
 		Name:         "Test SKU 3",
 		Unit:         types.Unit_UNIT_PER_HOUR,
 		BasePrice:    basePrice,
@@ -994,9 +988,8 @@ func TestParamsAllowedListRemoval(t *testing.T) {
 	ms := keeper.NewMsgServerImpl(k)
 
 	// Create provider
-	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
 	provider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProvider1UUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
@@ -1037,7 +1030,7 @@ func TestParamsAllowedListRemoval(t *testing.T) {
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
 	createMsg := &types.MsgCreateSKU{
 		Authority:    allowedAddr.String(),
-		ProviderUuid: providerUUID,
+		ProviderUuid: testProvider1UUID,
 		Name:         "Test SKU",
 		Unit:         types.Unit_UNIT_PER_HOUR,
 		BasePrice:    basePrice,

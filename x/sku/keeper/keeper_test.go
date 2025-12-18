@@ -18,6 +18,14 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
+const (
+	testProviderUUID  = "01912345-6789-7abc-8def-0123456789ab"
+	testProvider1UUID = "01912345-6789-7abc-8def-0123456789a1"
+	testProvider2UUID = "01912345-6789-7abc-8def-0123456789a2"
+	testSKU1UUID      = "01912345-6789-7abc-8def-0123456789ac"
+	testSKU2UUID      = "01912345-6789-7abc-8def-0123456789ad"
+)
+
 type testFixture struct {
 	App         *app.ManifestApp
 	EncodingCfg moduletestutil.TestEncodingConfig
@@ -59,15 +67,12 @@ func TestInitGenesis(t *testing.T) {
 	k := f.App.SKUKeeper
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
-	providerUUID := "01912345-6789-7abc-8def-0123456789ab"
-	sku1UUID := "01912345-6789-7abc-8def-0123456789ac"
-	sku2UUID := "01912345-6789-7abc-8def-0123456789ad"
 
 	genesisState := &types.GenesisState{
 		Params: types.DefaultParams(),
 		Providers: []types.Provider{
 			{
-				Uuid:          providerUUID,
+				Uuid:          testProviderUUID,
 				Address:       providerAddr.String(),
 				PayoutAddress: payoutAddr.String(),
 				MetaHash:      []byte("provider1hash"),
@@ -76,8 +81,8 @@ func TestInitGenesis(t *testing.T) {
 		},
 		Skus: []types.SKU{
 			{
-				Uuid:         sku1UUID,
-				ProviderUuid: providerUUID,
+				Uuid:         testSKU1UUID,
+				ProviderUuid: testProviderUUID,
 				Name:         "SKU 1",
 				Unit:         types.Unit_UNIT_PER_HOUR,
 				BasePrice:    basePrice,
@@ -85,8 +90,8 @@ func TestInitGenesis(t *testing.T) {
 				Active:       true,
 			},
 			{
-				Uuid:         sku2UUID,
-				ProviderUuid: providerUUID,
+				Uuid:         testSKU2UUID,
+				ProviderUuid: testProviderUUID,
 				Name:         "SKU 2",
 				Unit:         types.Unit_UNIT_PER_DAY,
 				BasePrice:    basePrice,
@@ -99,20 +104,20 @@ func TestInitGenesis(t *testing.T) {
 	err := k.InitGenesis(f.Ctx, genesisState)
 	require.NoError(t, err)
 
-	provider1, err := k.GetProvider(f.Ctx, providerUUID)
+	provider1, err := k.GetProvider(f.Ctx, testProviderUUID)
 	require.NoError(t, err)
 	require.Equal(t, providerAddr.String(), provider1.Address)
 	require.True(t, provider1.Active)
 
-	sku1, err := k.GetSKU(f.Ctx, sku1UUID)
+	sku1, err := k.GetSKU(f.Ctx, testSKU1UUID)
 	require.NoError(t, err)
-	require.Equal(t, providerUUID, sku1.ProviderUuid)
+	require.Equal(t, testProviderUUID, sku1.ProviderUuid)
 	require.Equal(t, "SKU 1", sku1.Name)
 	require.True(t, sku1.Active)
 
-	sku2, err := k.GetSKU(f.Ctx, sku2UUID)
+	sku2, err := k.GetSKU(f.Ctx, testSKU2UUID)
 	require.NoError(t, err)
-	require.Equal(t, providerUUID, sku2.ProviderUuid)
+	require.Equal(t, testProviderUUID, sku2.ProviderUuid)
 	require.Equal(t, "SKU 2", sku2.Name)
 	require.False(t, sku2.Active)
 }
@@ -125,11 +130,9 @@ func TestExportGenesis(t *testing.T) {
 	k := f.App.SKUKeeper
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
-	providerUUID := "01912345-6789-7abc-8def-0123456789ab"
-	skuUUID := "01912345-6789-7abc-8def-0123456789ac"
 
 	provider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProviderUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		MetaHash:      []byte("providerhash"),
@@ -140,8 +143,8 @@ func TestExportGenesis(t *testing.T) {
 	require.NoError(t, err)
 
 	sku := types.SKU{
-		Uuid:         skuUUID,
-		ProviderUuid: providerUUID,
+		Uuid:         testSKU1UUID,
+		ProviderUuid: testProviderUUID,
 		Name:         "Test SKU",
 		Unit:         types.Unit_UNIT_PER_HOUR,
 		BasePrice:    basePrice,
@@ -158,7 +161,7 @@ func TestExportGenesis(t *testing.T) {
 	require.Len(t, genState.Providers, 1)
 	require.Equal(t, providerAddr.String(), genState.Providers[0].Address)
 	require.Len(t, genState.Skus, 1)
-	require.Equal(t, providerUUID, genState.Skus[0].ProviderUuid)
+	require.Equal(t, testProviderUUID, genState.Skus[0].ProviderUuid)
 }
 
 func TestGetProvider(t *testing.T) {
@@ -167,10 +170,9 @@ func TestGetProvider(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.SKUKeeper
-	providerUUID := "01912345-6789-7abc-8def-0123456789ab"
 
 	provider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProviderUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
@@ -179,7 +181,7 @@ func TestGetProvider(t *testing.T) {
 	err := k.SetProvider(f.Ctx, provider)
 	require.NoError(t, err)
 
-	retrieved, err := k.GetProvider(f.Ctx, providerUUID)
+	retrieved, err := k.GetProvider(f.Ctx, testProviderUUID)
 	require.NoError(t, err)
 	require.Equal(t, provider.Uuid, retrieved.Uuid)
 	require.Equal(t, provider.Address, retrieved.Address)
@@ -197,13 +199,13 @@ func TestGetAllProviders(t *testing.T) {
 
 	providers := []types.Provider{
 		{
-			Uuid:          "01912345-6789-7abc-8def-0123456789a1",
+			Uuid:          testProvider1UUID,
 			Address:       f.TestAccs[0].String(),
 			PayoutAddress: f.TestAccs[1].String(),
 			Active:        true,
 		},
 		{
-			Uuid:          "01912345-6789-7abc-8def-0123456789a2",
+			Uuid:          testProvider2UUID,
 			Address:       f.TestAccs[2].String(),
 			PayoutAddress: f.TestAccs[3].String(),
 			Active:        true,
@@ -234,12 +236,10 @@ func TestGetSKU(t *testing.T) {
 	k := f.App.SKUKeeper
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
-	providerUUID := "01912345-6789-7abc-8def-0123456789ab"
-	skuUUID := "01912345-6789-7abc-8def-0123456789ac"
 
 	// Create provider first
 	provider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProviderUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
@@ -248,8 +248,8 @@ func TestGetSKU(t *testing.T) {
 	require.NoError(t, err)
 
 	sku := types.SKU{
-		Uuid:         skuUUID,
-		ProviderUuid: providerUUID,
+		Uuid:         testSKU1UUID,
+		ProviderUuid: testProviderUUID,
 		Name:         "Test SKU",
 		Unit:         types.Unit_UNIT_PER_HOUR,
 		BasePrice:    basePrice,
@@ -259,7 +259,7 @@ func TestGetSKU(t *testing.T) {
 	err = k.SetSKU(f.Ctx, sku)
 	require.NoError(t, err)
 
-	retrieved, err := k.GetSKU(f.Ctx, skuUUID)
+	retrieved, err := k.GetSKU(f.Ctx, testSKU1UUID)
 	require.NoError(t, err)
 	require.Equal(t, sku.Uuid, retrieved.Uuid)
 	require.Equal(t, sku.ProviderUuid, retrieved.ProviderUuid)
@@ -276,18 +276,16 @@ func TestGetAllSKUs(t *testing.T) {
 	k := f.App.SKUKeeper
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
-	provider1UUID := "01912345-6789-7abc-8def-0123456789a1"
-	provider2UUID := "01912345-6789-7abc-8def-0123456789a2"
 
 	// Create providers first
 	provider1 := types.Provider{
-		Uuid:          provider1UUID,
+		Uuid:          testProvider1UUID,
 		Address:       f.TestAccs[0].String(),
 		PayoutAddress: f.TestAccs[1].String(),
 		Active:        true,
 	}
 	provider2 := types.Provider{
-		Uuid:          provider2UUID,
+		Uuid:          testProvider2UUID,
 		Address:       f.TestAccs[2].String(),
 		PayoutAddress: f.TestAccs[3].String(),
 		Active:        true,
@@ -301,7 +299,7 @@ func TestGetAllSKUs(t *testing.T) {
 	skus := []types.SKU{
 		{
 			Uuid:         "01912345-6789-7abc-8def-0123456789b1",
-			ProviderUuid: provider1UUID,
+			ProviderUuid: testProvider1UUID,
 			Name:         "SKU 1",
 			Unit:         types.Unit_UNIT_PER_HOUR,
 			BasePrice:    basePrice,
@@ -309,7 +307,7 @@ func TestGetAllSKUs(t *testing.T) {
 		},
 		{
 			Uuid:         "01912345-6789-7abc-8def-0123456789b2",
-			ProviderUuid: provider2UUID,
+			ProviderUuid: testProvider2UUID,
 			Name:         "SKU 2",
 			Unit:         types.Unit_UNIT_PER_DAY,
 			BasePrice:    basePrice,
@@ -317,7 +315,7 @@ func TestGetAllSKUs(t *testing.T) {
 		},
 		{
 			Uuid:         "01912345-6789-7abc-8def-0123456789b3",
-			ProviderUuid: provider1UUID,
+			ProviderUuid: testProvider1UUID,
 			Name:         "SKU 3",
 			Unit:         types.Unit_UNIT_PER_DAY,
 			BasePrice:    basePrice,
@@ -341,18 +339,16 @@ func TestGetSKUsByProviderUUID(t *testing.T) {
 	k := f.App.SKUKeeper
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
-	provider1UUID := "01912345-6789-7abc-8def-0123456789a1"
-	provider2UUID := "01912345-6789-7abc-8def-0123456789a2"
 
 	// Create providers first
 	provider1 := types.Provider{
-		Uuid:          provider1UUID,
+		Uuid:          testProvider1UUID,
 		Address:       f.TestAccs[0].String(),
 		PayoutAddress: f.TestAccs[1].String(),
 		Active:        true,
 	}
 	provider2 := types.Provider{
-		Uuid:          provider2UUID,
+		Uuid:          testProvider2UUID,
 		Address:       f.TestAccs[2].String(),
 		PayoutAddress: f.TestAccs[3].String(),
 		Active:        true,
@@ -366,7 +362,7 @@ func TestGetSKUsByProviderUUID(t *testing.T) {
 	skus := []types.SKU{
 		{
 			Uuid:         "01912345-6789-7abc-8def-0123456789b1",
-			ProviderUuid: provider1UUID,
+			ProviderUuid: testProvider1UUID,
 			Name:         "SKU 1",
 			Unit:         types.Unit_UNIT_PER_HOUR,
 			BasePrice:    basePrice,
@@ -374,7 +370,7 @@ func TestGetSKUsByProviderUUID(t *testing.T) {
 		},
 		{
 			Uuid:         "01912345-6789-7abc-8def-0123456789b2",
-			ProviderUuid: provider2UUID,
+			ProviderUuid: testProvider2UUID,
 			Name:         "SKU 2",
 			Unit:         types.Unit_UNIT_PER_DAY,
 			BasePrice:    basePrice,
@@ -382,7 +378,7 @@ func TestGetSKUsByProviderUUID(t *testing.T) {
 		},
 		{
 			Uuid:         "01912345-6789-7abc-8def-0123456789b3",
-			ProviderUuid: provider1UUID,
+			ProviderUuid: testProvider1UUID,
 			Name:         "SKU 3",
 			Unit:         types.Unit_UNIT_PER_DAY,
 			BasePrice:    basePrice,
@@ -395,11 +391,11 @@ func TestGetSKUsByProviderUUID(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	provider1SKUs, err := k.GetSKUsByProviderUUID(f.Ctx, provider1UUID)
+	provider1SKUs, err := k.GetSKUsByProviderUUID(f.Ctx, testProvider1UUID)
 	require.NoError(t, err)
 	require.Len(t, provider1SKUs, 2)
 
-	provider2SKUs, err := k.GetSKUsByProviderUUID(f.Ctx, provider2UUID)
+	provider2SKUs, err := k.GetSKUsByProviderUUID(f.Ctx, testProvider2UUID)
 	require.NoError(t, err)
 	require.Len(t, provider2SKUs, 1)
 
@@ -414,8 +410,6 @@ func TestInitGenesisWithParams(t *testing.T) {
 	k := f.App.SKUKeeper
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
-	providerUUID := "01912345-6789-7abc-8def-0123456789ab"
-	skuUUID := "01912345-6789-7abc-8def-0123456789ac"
 
 	genesisState := &types.GenesisState{
 		Params: types.Params{
@@ -423,7 +417,7 @@ func TestInitGenesisWithParams(t *testing.T) {
 		},
 		Providers: []types.Provider{
 			{
-				Uuid:          providerUUID,
+				Uuid:          testProviderUUID,
 				Address:       f.TestAccs[2].String(),
 				PayoutAddress: f.TestAccs[3].String(),
 				Active:        true,
@@ -431,8 +425,8 @@ func TestInitGenesisWithParams(t *testing.T) {
 		},
 		Skus: []types.SKU{
 			{
-				Uuid:         skuUUID,
-				ProviderUuid: providerUUID,
+				Uuid:         testSKU1UUID,
+				ProviderUuid: testProviderUUID,
 				Name:         "SKU 1",
 				Unit:         types.Unit_UNIT_PER_HOUR,
 				BasePrice:    basePrice,
@@ -497,18 +491,16 @@ func TestSKUsByProviderUUIDPagination(t *testing.T) {
 	k := f.App.SKUKeeper
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
-	provider1UUID := "01912345-6789-7abc-8def-0123456789a1"
-	provider2UUID := "01912345-6789-7abc-8def-0123456789a2"
 
 	// Create providers
 	provider1 := types.Provider{
-		Uuid:          provider1UUID,
+		Uuid:          testProvider1UUID,
 		Address:       f.TestAccs[0].String(),
 		PayoutAddress: f.TestAccs[1].String(),
 		Active:        true,
 	}
 	provider2 := types.Provider{
-		Uuid:          provider2UUID,
+		Uuid:          testProvider2UUID,
 		Address:       f.TestAccs[2].String(),
 		PayoutAddress: f.TestAccs[3].String(),
 		Active:        true,
@@ -524,7 +516,7 @@ func TestSKUsByProviderUUIDPagination(t *testing.T) {
 		skuUUID := "01912345-6789-7abc-8def-0123456789b" + string(rune('0'+i))
 		sku := types.SKU{
 			Uuid:         skuUUID,
-			ProviderUuid: provider1UUID,
+			ProviderUuid: testProvider1UUID,
 			Name:         "SKU " + string(rune('0'+i)),
 			Unit:         types.Unit_UNIT_PER_HOUR,
 			BasePrice:    basePrice,
@@ -538,7 +530,7 @@ func TestSKUsByProviderUUIDPagination(t *testing.T) {
 		skuUUID := "01912345-6789-7abc-8def-0123456789b" + string(rune('0'+i))
 		sku := types.SKU{
 			Uuid:         skuUUID,
-			ProviderUuid: provider2UUID,
+			ProviderUuid: testProvider2UUID,
 			Name:         "SKU " + string(rune('0'+i)),
 			Unit:         types.Unit_UNIT_PER_DAY,
 			BasePrice:    basePrice,
@@ -549,11 +541,11 @@ func TestSKUsByProviderUUIDPagination(t *testing.T) {
 	}
 
 	// Test GetSKUsByProviderUUID
-	skus, err := k.GetSKUsByProviderUUID(f.Ctx, provider1UUID)
+	skus, err := k.GetSKUsByProviderUUID(f.Ctx, testProvider1UUID)
 	require.NoError(t, err)
 	require.Len(t, skus, 5)
 
-	skus, err = k.GetSKUsByProviderUUID(f.Ctx, provider2UUID)
+	skus, err = k.GetSKUsByProviderUUID(f.Ctx, testProvider2UUID)
 	require.NoError(t, err)
 	require.Len(t, skus, 3)
 
