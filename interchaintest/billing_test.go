@@ -280,6 +280,10 @@ func TestBilling(t *testing.T) {
 		testMultiDenom(t, ctx, chain, authority, providerWallet)
 	})
 
+	t.Run("LeaseRejectAndCancel", func(t *testing.T) {
+		testLeaseRejectAndCancel(t, ctx, chain, authority, providerWallet)
+	})
+
 	t.Cleanup(func() {
 		dockerutil.CopyCoverageFromContainer(ctx, t, client, chain.GetNode().ContainerID(), chain.HomeDir(), ExternalGoCoverDir)
 		_ = ic.Close()

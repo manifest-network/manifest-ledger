@@ -54,13 +54,16 @@ func BillingAcknowledgeLease(ctx context.Context, chain *cosmos.CosmosChain, use
 
 // BillingRejectLease rejects a pending lease (provider only).
 func BillingRejectLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID string, reason string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "reject-lease", leaseUUID, reason}
+	cmd := []string{"tx", "billing", "reject-lease", leaseUUID}
+	if reason != "" {
+		cmd = append(cmd, "--reason", reason)
+	}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
-// BillingCancelPendingLease cancels a pending lease (tenant only).
-func BillingCancelPendingLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "cancel-pending-lease", leaseUUID}
+// BillingCancelLease cancels a pending lease (tenant only).
+func BillingCancelLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "cancel-lease", leaseUUID}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
