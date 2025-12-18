@@ -43,10 +43,13 @@ func NewTxCmd() *cobra.Command {
 // MsgCreateProvider returns a CLI command handler for creating a Provider.
 func MsgCreateProvider() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "create-provider [address] [payout-address]",
-		Short:   "Create a new provider",
-		Long:    `Create a new provider with the given management and payout addresses.`,
-		Example: "create-provider manifest1abc... manifest1def... --meta-hash deadbeef",
+		Use:   "create-provider [address] [payout-address]",
+		Short: "Create a new provider",
+		Long: `Create a new provider with the given management and payout addresses.
+
+The api-url is optional and must be a valid HTTPS URL where the provider's
+off-chain API is hosted for tenant authentication and connection details.`,
+		Example: "create-provider manifest1abc... manifest1def... --api-url https://api.provider.com",
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -67,11 +70,14 @@ func MsgCreateProvider() *cobra.Command {
 				}
 			}
 
+			apiURL, _ := cmd.Flags().GetString("api-url")
+
 			msg := types.NewMsgCreateProvider(
 				authority.String(),
 				address,
 				payoutAddress,
 				metaHash,
+				apiURL,
 			)
 
 			if err := msg.Validate(); err != nil {
@@ -83,6 +89,7 @@ func MsgCreateProvider() *cobra.Command {
 	}
 
 	cmd.Flags().String("meta-hash", "", "Hex-encoded hash of off-chain metadata")
+	cmd.Flags().String("api-url", "", "HTTPS endpoint where the provider's off-chain API is hosted")
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }
@@ -90,13 +97,15 @@ func MsgCreateProvider() *cobra.Command {
 // MsgUpdateProvider returns a CLI command handler for updating a Provider.
 func MsgUpdateProvider() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "update-provider [id] [address] [payout-address] [active]",
+		Use:   "update-provider [uuid] [address] [payout-address] [active]",
 		Short: "Update an existing provider",
 		Long: `Update an existing provider with the given parameters.
 
 Active values:
-  true or false`,
-		Example: "update-provider 1 manifest1abc... manifest1def... true --meta-hash deadbeef",
+  true or false
+
+The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.`,
+		Example: "update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com",
 		Args:    cobra.ExactArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -106,11 +115,7 @@ Active values:
 
 			authority := clientCtx.GetFromAddress()
 
-			id, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid provider ID: %w", err)
-			}
-
+			uuid := args[0]
 			address := args[1]
 			payoutAddress := args[2]
 
@@ -128,13 +133,16 @@ Active values:
 				}
 			}
 
+			apiURL, _ := cmd.Flags().GetString("api-url")
+
 			msg := types.NewMsgUpdateProvider(
 				authority.String(),
-				id,
+				uuid,
 				address,
 				payoutAddress,
 				metaHash,
 				active,
+				apiURL,
 			)
 
 			if err := msg.Validate(); err != nil {
@@ -146,6 +154,7 @@ Active values:
 	}
 
 	cmd.Flags().String("meta-hash", "", "Hex-encoded hash of off-chain metadata")
+	cmd.Flags().String("api-url", "", "HTTPS endpoint where the provider's off-chain API is hosted")
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }
@@ -153,11 +162,11 @@ Active values:
 // MsgDeactivateProvider returns a CLI command handler for deactivating a Provider.
 func MsgDeactivateProvider() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "deactivate-provider [id]",
+		Use:   "deactivate-provider [uuid]",
 		Short: "Deactivate a provider (soft delete)",
 		Long: `Deactivate a provider. This is a soft delete - the provider remains in state but is marked inactive.
 Inactive providers cannot create new SKUs but existing SKUs continue to work.`,
-		Example: "deactivate-provider 1",
+		Example: "deactivate-provider 01912345-6789-7abc-8def-0123456789ab",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -167,14 +176,11 @@ Inactive providers cannot create new SKUs but existing SKUs continue to work.`,
 
 			authority := clientCtx.GetFromAddress()
 
-			id, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid provider ID: %w", err)
-			}
+			uuid := args[0]
 
 			msg := types.NewMsgDeactivateProvider(
 				authority.String(),
-				id,
+				uuid,
 			)
 
 			if err := msg.Validate(); err != nil {
@@ -192,14 +198,14 @@ Inactive providers cannot create new SKUs but existing SKUs continue to work.`,
 // MsgCreateSKU returns a CLI command handler for creating a SKU.
 func MsgCreateSKU() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "create-sku [provider-id] [name] [unit] [base-price]",
+		Use:   "create-sku [provider-uuid] [name] [unit] [base-price]",
 		Short: "Create a new SKU",
 		Long: `Create a new SKU with the given parameters.
 
 Unit values:
   1 = per hour
   2 = per day`,
-		Example: "create-sku 1 \"Compute Instance\" 1 100umfx --meta-hash deadbeef",
+		Example: "create-sku 01912345-6789-7abc-8def-0123456789ab \"Compute Instance\" 1 100umfx --meta-hash deadbeef",
 		Args:    cobra.ExactArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -209,11 +215,7 @@ Unit values:
 
 			authority := clientCtx.GetFromAddress()
 
-			providerID, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid provider ID: %w", err)
-			}
-
+			providerUUID := args[0]
 			name := args[1]
 
 			unitInt, err := strconv.ParseInt(args[2], 10, 32)
@@ -238,7 +240,7 @@ Unit values:
 
 			msg := types.NewMsgCreateSKU(
 				authority.String(),
-				providerID,
+				providerUUID,
 				name,
 				unit,
 				basePrice,
@@ -261,7 +263,7 @@ Unit values:
 // MsgUpdateSKU returns a CLI command handler for updating a SKU.
 func MsgUpdateSKU() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "update-sku [id] [provider-id] [name] [unit] [base-price] [active]",
+		Use:   "update-sku [uuid] [provider-uuid] [name] [unit] [base-price] [active]",
 		Short: "Update an existing SKU",
 		Long: `Update an existing SKU with the given parameters.
 
@@ -271,7 +273,7 @@ Unit values:
 
 Active values:
   true or false`,
-		Example: "update-sku 1 1 \"Updated Name\" 2 200umfx true --meta-hash deadbeef",
+		Example: "update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab \"Updated Name\" 2 200umfx true --meta-hash deadbeef",
 		Args:    cobra.ExactArgs(6),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -281,16 +283,8 @@ Active values:
 
 			authority := clientCtx.GetFromAddress()
 
-			id, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid SKU ID: %w", err)
-			}
-
-			providerID, err := strconv.ParseUint(args[1], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid provider ID: %w", err)
-			}
-
+			uuid := args[0]
+			providerUUID := args[1]
 			name := args[2]
 
 			unitInt, err := strconv.ParseInt(args[3], 10, 32)
@@ -320,8 +314,8 @@ Active values:
 
 			msg := types.NewMsgUpdateSKU(
 				authority.String(),
-				id,
-				providerID,
+				uuid,
+				providerUUID,
 				name,
 				unit,
 				basePrice,
@@ -345,11 +339,11 @@ Active values:
 // MsgDeactivateSKU returns a CLI command handler for deactivating a SKU.
 func MsgDeactivateSKU() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "deactivate-sku [id]",
+		Use:   "deactivate-sku [uuid]",
 		Short: "Deactivate a SKU (soft delete)",
 		Long: `Deactivate a SKU. This is a soft delete - the SKU remains in state but is marked inactive.
 Inactive SKUs cannot be used for new leases but existing leases continue with their locked prices.`,
-		Example: "deactivate-sku 1",
+		Example: "deactivate-sku 01912345-6789-7abc-8def-0123456789ab",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -359,14 +353,11 @@ Inactive SKUs cannot be used for new leases but existing leases continue with th
 
 			authority := clientCtx.GetFromAddress()
 
-			id, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid SKU ID: %w", err)
-			}
+			uuid := args[0]
 
 			msg := types.NewMsgDeactivateSKU(
 				authority.String(),
-				id,
+				uuid,
 			)
 
 			if err := msg.Validate(); err != nil {

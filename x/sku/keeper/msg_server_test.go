@@ -92,9 +92,6 @@ func TestCreateProvider(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	err := k.NextProviderID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-
 	type testcase struct {
 		name          string
 		sender        string
@@ -154,9 +151,9 @@ func TestCreateProvider(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.NotNil(t, resp)
-			require.Greater(t, resp.Id, uint64(0))
+			require.NotEmpty(t, resp.Uuid)
 
-			provider, err := k.GetProvider(f.Ctx, resp.Id)
+			provider, err := k.GetProvider(f.Ctx, resp.Uuid)
 			require.NoError(t, err)
 			require.Equal(t, c.address, provider.Address)
 			require.Equal(t, c.payoutAddress, provider.PayoutAddress)
@@ -178,8 +175,9 @@ func TestUpdateProvider(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
+	providerUUID := "01912345-6789-7abc-8def-0123456789ab"
 	existingProvider := types.Provider{
-		Id:            1,
+		Uuid:          providerUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
@@ -190,7 +188,7 @@ func TestUpdateProvider(t *testing.T) {
 	type testcase struct {
 		name          string
 		sender        string
-		id            uint64
+		uuid          string
 		address       string
 		payoutAddress string
 		active        bool
@@ -201,7 +199,7 @@ func TestUpdateProvider(t *testing.T) {
 		{
 			name:          "success; update provider",
 			sender:        authority.String(),
-			id:            1,
+			uuid:          providerUUID,
 			address:       providerAddr.String(),
 			payoutAddress: newPayoutAddr.String(),
 			active:        false,
@@ -209,7 +207,7 @@ func TestUpdateProvider(t *testing.T) {
 		{
 			name:          "fail; unauthorized sender",
 			sender:        acc.String(),
-			id:            1,
+			uuid:          providerUUID,
 			address:       providerAddr.String(),
 			payoutAddress: newPayoutAddr.String(),
 			active:        true,
@@ -218,20 +216,20 @@ func TestUpdateProvider(t *testing.T) {
 		{
 			name:          "fail; provider not found",
 			sender:        authority.String(),
-			id:            999,
+			uuid:          "01912345-6789-7abc-8def-999999999999",
 			address:       providerAddr.String(),
 			payoutAddress: newPayoutAddr.String(),
 			active:        true,
 			errMsg:        "not found",
 		},
 		{
-			name:          "fail; zero id",
+			name:          "fail; empty uuid",
 			sender:        authority.String(),
-			id:            0,
+			uuid:          "",
 			address:       providerAddr.String(),
 			payoutAddress: newPayoutAddr.String(),
 			active:        true,
-			errMsg:        "id cannot be zero",
+			errMsg:        "uuid cannot be empty",
 		},
 	}
 
@@ -241,7 +239,7 @@ func TestUpdateProvider(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgUpdateProvider{
 				Authority:     c.sender,
-				Id:            c.id,
+				Uuid:          c.uuid,
 				Address:       c.address,
 				PayoutAddress: c.payoutAddress,
 				Active:        c.active,
@@ -255,7 +253,7 @@ func TestUpdateProvider(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			provider, err := k.GetProvider(f.Ctx, c.id)
+			provider, err := k.GetProvider(f.Ctx, c.uuid)
 			require.NoError(t, err)
 			require.Equal(t, c.payoutAddress, provider.PayoutAddress)
 			require.Equal(t, c.active, provider.Active)
@@ -275,10 +273,15 @@ func TestDeactivateProvider(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	// Create providers for testing
-	for i := 1; i <= 3; i++ {
+	// Create providers for testing with UUIDs
+	providerUUIDs := []string{
+		"01912345-6789-7abc-8def-0123456789a1",
+		"01912345-6789-7abc-8def-0123456789a2",
+		"01912345-6789-7abc-8def-0123456789a3",
+	}
+	for _, uuid := range providerUUIDs {
 		provider := types.Provider{
-			Id:            uint64(i), //nolint:gosec
+			Uuid:          uuid,
 			Address:       providerAddr.String(),
 			PayoutAddress: payoutAddr.String(),
 			Active:        true,
@@ -288,8 +291,9 @@ func TestDeactivateProvider(t *testing.T) {
 	}
 
 	// Create an already inactive provider
+	inactiveUUID := "01912345-6789-7abc-8def-0123456789a4"
 	inactiveProvider := types.Provider{
-		Id:            4,
+		Uuid:          inactiveUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        false,
@@ -300,7 +304,7 @@ func TestDeactivateProvider(t *testing.T) {
 	type testcase struct {
 		name   string
 		sender string
-		id     uint64
+		uuid   string
 		errMsg string
 	}
 
@@ -308,31 +312,31 @@ func TestDeactivateProvider(t *testing.T) {
 		{
 			name:   "success; deactivate provider",
 			sender: authority.String(),
-			id:     1,
+			uuid:   providerUUIDs[0],
 		},
 		{
 			name:   "fail; unauthorized sender",
 			sender: acc.String(),
-			id:     2,
+			uuid:   providerUUIDs[1],
 			errMsg: "unauthorized",
 		},
 		{
 			name:   "fail; provider not found",
 			sender: authority.String(),
-			id:     999,
+			uuid:   "01912345-6789-7abc-8def-999999999999",
 			errMsg: "not found",
 		},
 		{
 			name:   "fail; already inactive",
 			sender: authority.String(),
-			id:     4,
+			uuid:   inactiveUUID,
 			errMsg: "already inactive",
 		},
 		{
-			name:   "fail; zero id",
+			name:   "fail; empty uuid",
 			sender: authority.String(),
-			id:     0,
-			errMsg: "id cannot be zero",
+			uuid:   "",
+			errMsg: "uuid cannot be empty",
 		},
 	}
 
@@ -342,7 +346,7 @@ func TestDeactivateProvider(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgDeactivateProvider{
 				Authority: c.sender,
-				Id:        c.id,
+				Uuid:      c.uuid,
 			}
 
 			_, err := ms.DeactivateProvider(f.Ctx, msg)
@@ -354,7 +358,7 @@ func TestDeactivateProvider(t *testing.T) {
 			require.NoError(t, err)
 
 			// Verify provider still exists but is inactive
-			provider, err := k.GetProvider(f.Ctx, c.id)
+			provider, err := k.GetProvider(f.Ctx, c.uuid)
 			require.NoError(t, err)
 			require.False(t, provider.Active, "provider should be inactive after deactivation")
 		})
@@ -373,22 +377,21 @@ func TestCreateSKU(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	err := k.NextSKUID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-
 	// Create active provider
+	activeProviderUUID := "01912345-6789-7abc-8def-0123456789a1"
 	activeProvider := types.Provider{
-		Id:            1,
+		Uuid:          activeProviderUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
 	}
-	err = k.SetProvider(f.Ctx, activeProvider)
+	err := k.SetProvider(f.Ctx, activeProvider)
 	require.NoError(t, err)
 
 	// Create inactive provider
+	inactiveProviderUUID := "01912345-6789-7abc-8def-0123456789a2"
 	inactiveProvider := types.Provider{
-		Id:            2,
+		Uuid:          inactiveProviderUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        false,
@@ -400,88 +403,88 @@ func TestCreateSKU(t *testing.T) {
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
 
 	type testcase struct {
-		name       string
-		sender     string
-		providerID uint64
-		skuName    string
-		unit       types.Unit
-		basePrice  sdk.Coin
-		metaHash   []byte
-		errMsg     string
+		name         string
+		sender       string
+		providerUUID string
+		skuName      string
+		unit         types.Unit
+		basePrice    sdk.Coin
+		metaHash     []byte
+		errMsg       string
 	}
 
 	cases := []testcase{
 		{
-			name:       "success; create SKU",
-			sender:     authority.String(),
-			providerID: 1,
-			skuName:    "Test SKU",
-			unit:       types.Unit_UNIT_PER_HOUR,
-			basePrice:  basePrice,
-			metaHash:   []byte("testhash"),
+			name:         "success; create SKU",
+			sender:       authority.String(),
+			providerUUID: activeProviderUUID,
+			skuName:      "Test SKU",
+			unit:         types.Unit_UNIT_PER_HOUR,
+			basePrice:    basePrice,
+			metaHash:     []byte("testhash"),
 		},
 		{
-			name:       "fail; unauthorized sender",
-			sender:     acc.String(),
-			providerID: 1,
-			skuName:    "Test SKU",
-			unit:       types.Unit_UNIT_PER_HOUR,
-			basePrice:  basePrice,
-			errMsg:     "unauthorized",
+			name:         "fail; unauthorized sender",
+			sender:       acc.String(),
+			providerUUID: activeProviderUUID,
+			skuName:      "Test SKU",
+			unit:         types.Unit_UNIT_PER_HOUR,
+			basePrice:    basePrice,
+			errMsg:       "unauthorized",
 		},
 		{
-			name:       "fail; provider not found",
-			sender:     authority.String(),
-			providerID: 999,
-			skuName:    "Test SKU",
-			unit:       types.Unit_UNIT_PER_HOUR,
-			basePrice:  basePrice,
-			errMsg:     "provider 999 not found",
+			name:         "fail; provider not found",
+			sender:       authority.String(),
+			providerUUID: "01912345-6789-7abc-8def-999999999999",
+			skuName:      "Test SKU",
+			unit:         types.Unit_UNIT_PER_HOUR,
+			basePrice:    basePrice,
+			errMsg:       "not found",
 		},
 		{
-			name:       "fail; inactive provider",
-			sender:     authority.String(),
-			providerID: 2,
-			skuName:    "Test SKU",
-			unit:       types.Unit_UNIT_PER_HOUR,
-			basePrice:  basePrice,
-			errMsg:     "not active",
+			name:         "fail; inactive provider",
+			sender:       authority.String(),
+			providerUUID: inactiveProviderUUID,
+			skuName:      "Test SKU",
+			unit:         types.Unit_UNIT_PER_HOUR,
+			basePrice:    basePrice,
+			errMsg:       "not active",
 		},
 		{
-			name:       "fail; empty name",
-			sender:     authority.String(),
-			providerID: 1,
-			skuName:    "",
-			unit:       types.Unit_UNIT_PER_HOUR,
-			basePrice:  basePrice,
-			errMsg:     "name cannot be empty",
+			name:         "fail; empty name",
+			sender:       authority.String(),
+			providerUUID: activeProviderUUID,
+			skuName:      "",
+			unit:         types.Unit_UNIT_PER_HOUR,
+			basePrice:    basePrice,
+			errMsg:       "name cannot be empty",
 		},
 		{
-			name:       "fail; unspecified unit",
-			sender:     authority.String(),
-			providerID: 1,
-			skuName:    "Test SKU",
-			unit:       types.Unit_UNIT_UNSPECIFIED,
-			basePrice:  basePrice,
-			errMsg:     "unit cannot be unspecified",
+			name:         "fail; unspecified unit",
+			sender:       authority.String(),
+			providerUUID: activeProviderUUID,
+			skuName:      "Test SKU",
+			unit:         types.Unit_UNIT_UNSPECIFIED,
+			basePrice:    basePrice,
+			errMsg:       "unit cannot be unspecified",
 		},
 		{
-			name:       "fail; zero base price",
-			sender:     authority.String(),
-			providerID: 1,
-			skuName:    "Test SKU",
-			unit:       types.Unit_UNIT_PER_HOUR,
-			basePrice:  sdk.NewCoin("umfx", sdkmath.NewInt(0)),
-			errMsg:     "base price must be valid and non-zero",
+			name:         "fail; zero base price",
+			sender:       authority.String(),
+			providerUUID: activeProviderUUID,
+			skuName:      "Test SKU",
+			unit:         types.Unit_UNIT_PER_HOUR,
+			basePrice:    sdk.NewCoin("umfx", sdkmath.NewInt(0)),
+			errMsg:       "base price must be valid and non-zero",
 		},
 		{
-			name:       "fail; zero provider_id",
-			sender:     authority.String(),
-			providerID: 0,
-			skuName:    "Test SKU",
-			unit:       types.Unit_UNIT_PER_HOUR,
-			basePrice:  basePrice,
-			errMsg:     "provider_id cannot be zero",
+			name:         "fail; empty provider_uuid",
+			sender:       authority.String(),
+			providerUUID: "",
+			skuName:      "Test SKU",
+			unit:         types.Unit_UNIT_PER_HOUR,
+			basePrice:    basePrice,
+			errMsg:       "invalid provider_uuid",
 		},
 	}
 
@@ -490,12 +493,12 @@ func TestCreateSKU(t *testing.T) {
 
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgCreateSKU{
-				Authority:  c.sender,
-				ProviderId: c.providerID,
-				Name:       c.skuName,
-				Unit:       c.unit,
-				BasePrice:  c.basePrice,
-				MetaHash:   c.metaHash,
+				Authority:    c.sender,
+				ProviderUuid: c.providerUUID,
+				Name:         c.skuName,
+				Unit:         c.unit,
+				BasePrice:    c.basePrice,
+				MetaHash:     c.metaHash,
 			}
 
 			resp, err := ms.CreateSKU(f.Ctx, msg)
@@ -506,11 +509,11 @@ func TestCreateSKU(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.NotNil(t, resp)
-			require.Greater(t, resp.Id, uint64(0))
+			require.NotEmpty(t, resp.Uuid)
 
-			sku, err := k.GetSKU(f.Ctx, resp.Id)
+			sku, err := k.GetSKU(f.Ctx, resp.Uuid)
 			require.NoError(t, err)
-			require.Equal(t, c.providerID, sku.ProviderId)
+			require.Equal(t, c.providerUUID, sku.ProviderUuid)
 			require.Equal(t, c.skuName, sku.Name)
 			require.Equal(t, c.unit, sku.Unit)
 			require.Equal(t, c.basePrice, sku.BasePrice)
@@ -538,8 +541,9 @@ func TestUpdateSKU(t *testing.T) {
 	newPrice := sdk.NewCoin("umfx", sdkmath.NewInt(86400))
 
 	// Create provider
+	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
 	provider := types.Provider{
-		Id:            1,
+		Uuid:          providerUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
@@ -547,94 +551,95 @@ func TestUpdateSKU(t *testing.T) {
 	err := k.SetProvider(f.Ctx, provider)
 	require.NoError(t, err)
 
+	skuUUID := "01912345-6789-7abc-8def-0123456789b1"
 	existingSKU := types.SKU{
-		Id:         1,
-		ProviderId: 1,
-		Name:       "Original SKU",
-		Unit:       types.Unit_UNIT_PER_HOUR,
-		BasePrice:  basePrice,
-		Active:     true,
+		Uuid:         skuUUID,
+		ProviderUuid: providerUUID,
+		Name:         "Original SKU",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
+		Active:       true,
 	}
 	err = k.SetSKU(f.Ctx, existingSKU)
 	require.NoError(t, err)
 
 	type testcase struct {
-		name       string
-		sender     string
-		id         uint64
-		providerID uint64
-		skuName    string
-		unit       types.Unit
-		basePrice  sdk.Coin
-		active     bool
-		errMsg     string
+		name         string
+		sender       string
+		uuid         string
+		providerUUID string
+		skuName      string
+		unit         types.Unit
+		basePrice    sdk.Coin
+		active       bool
+		errMsg       string
 	}
 
 	cases := []testcase{
 		{
-			name:       "success; update SKU",
-			sender:     authority.String(),
-			id:         1,
-			providerID: 1,
-			skuName:    "Updated SKU",
-			unit:       types.Unit_UNIT_PER_DAY,
-			basePrice:  newPrice,
-			active:     false,
+			name:         "success; update SKU",
+			sender:       authority.String(),
+			uuid:         skuUUID,
+			providerUUID: providerUUID,
+			skuName:      "Updated SKU",
+			unit:         types.Unit_UNIT_PER_DAY,
+			basePrice:    newPrice,
+			active:       false,
 		},
 		{
-			name:       "fail; unauthorized sender",
-			sender:     acc.String(),
-			id:         1,
-			providerID: 1,
-			skuName:    "Updated SKU",
-			unit:       types.Unit_UNIT_PER_DAY,
-			basePrice:  newPrice,
-			active:     true,
-			errMsg:     "unauthorized",
+			name:         "fail; unauthorized sender",
+			sender:       acc.String(),
+			uuid:         skuUUID,
+			providerUUID: providerUUID,
+			skuName:      "Updated SKU",
+			unit:         types.Unit_UNIT_PER_DAY,
+			basePrice:    newPrice,
+			active:       true,
+			errMsg:       "unauthorized",
 		},
 		{
-			name:       "fail; SKU not found",
-			sender:     authority.String(),
-			id:         999,
-			providerID: 1,
-			skuName:    "Updated SKU",
-			unit:       types.Unit_UNIT_PER_DAY,
-			basePrice:  newPrice,
-			active:     true,
-			errMsg:     "sku not found",
+			name:         "fail; SKU not found",
+			sender:       authority.String(),
+			uuid:         "01912345-6789-7abc-8def-999999999999",
+			providerUUID: providerUUID,
+			skuName:      "Updated SKU",
+			unit:         types.Unit_UNIT_PER_DAY,
+			basePrice:    newPrice,
+			active:       true,
+			errMsg:       "sku not found",
 		},
 		{
-			name:       "fail; provider mismatch",
-			sender:     authority.String(),
-			id:         1,
-			providerID: 2,
-			skuName:    "Updated SKU",
-			unit:       types.Unit_UNIT_PER_DAY,
-			basePrice:  newPrice,
-			active:     true,
-			errMsg:     "provider_id mismatch",
+			name:         "fail; provider mismatch",
+			sender:       authority.String(),
+			uuid:         skuUUID,
+			providerUUID: "01912345-6789-7abc-8def-0123456789a2",
+			skuName:      "Updated SKU",
+			unit:         types.Unit_UNIT_PER_DAY,
+			basePrice:    newPrice,
+			active:       true,
+			errMsg:       "provider_uuid mismatch",
 		},
 		{
-			name:       "fail; empty name",
-			sender:     authority.String(),
-			id:         1,
-			providerID: 1,
-			skuName:    "",
-			unit:       types.Unit_UNIT_PER_DAY,
-			basePrice:  newPrice,
-			active:     true,
-			errMsg:     "name cannot be empty",
+			name:         "fail; empty name",
+			sender:       authority.String(),
+			uuid:         skuUUID,
+			providerUUID: providerUUID,
+			skuName:      "",
+			unit:         types.Unit_UNIT_PER_DAY,
+			basePrice:    newPrice,
+			active:       true,
+			errMsg:       "name cannot be empty",
 		},
 		{
-			name:       "fail; zero provider_id",
-			sender:     authority.String(),
-			id:         1,
-			providerID: 0,
-			skuName:    "Updated SKU",
-			unit:       types.Unit_UNIT_PER_DAY,
-			basePrice:  newPrice,
-			active:     true,
-			errMsg:     "provider_id cannot be zero",
+			name:         "fail; empty provider_uuid",
+			sender:       authority.String(),
+			uuid:         skuUUID,
+			providerUUID: "",
+			skuName:      "Updated SKU",
+			unit:         types.Unit_UNIT_PER_DAY,
+			basePrice:    newPrice,
+			active:       true,
+			errMsg:       "invalid provider_uuid",
 		},
 	}
 
@@ -643,13 +648,13 @@ func TestUpdateSKU(t *testing.T) {
 
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgUpdateSKU{
-				Authority:  c.sender,
-				Id:         c.id,
-				ProviderId: c.providerID,
-				Name:       c.skuName,
-				Unit:       c.unit,
-				BasePrice:  c.basePrice,
-				Active:     c.active,
+				Authority:    c.sender,
+				Uuid:         c.uuid,
+				ProviderUuid: c.providerUUID,
+				Name:         c.skuName,
+				Unit:         c.unit,
+				BasePrice:    c.basePrice,
+				Active:       c.active,
 			}
 
 			_, err := ms.UpdateSKU(f.Ctx, msg)
@@ -660,7 +665,7 @@ func TestUpdateSKU(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			sku, err := k.GetSKU(f.Ctx, c.id)
+			sku, err := k.GetSKU(f.Ctx, c.uuid)
 			require.NoError(t, err)
 			require.Equal(t, c.skuName, sku.Name)
 			require.Equal(t, c.unit, sku.Unit)
@@ -685,8 +690,9 @@ func TestDeactivateSKUMsg(t *testing.T) {
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
 
 	// Create provider
+	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
 	provider := types.Provider{
-		Id:            1,
+		Uuid:          providerUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
@@ -694,28 +700,35 @@ func TestDeactivateSKUMsg(t *testing.T) {
 	err := k.SetProvider(f.Ctx, provider)
 	require.NoError(t, err)
 
-	// Create SKUs for testing
-	for i := 1; i <= 4; i++ {
+	// Create SKUs for testing with UUIDs
+	skuUUIDs := []string{
+		"01912345-6789-7abc-8def-0123456789b1",
+		"01912345-6789-7abc-8def-0123456789b2",
+		"01912345-6789-7abc-8def-0123456789b3",
+		"01912345-6789-7abc-8def-0123456789b4",
+	}
+	for _, uuid := range skuUUIDs {
 		sku := types.SKU{
-			Id:         uint64(i), //nolint:gosec
-			ProviderId: 1,
-			Name:       "Test SKU",
-			Unit:       types.Unit_UNIT_PER_HOUR,
-			BasePrice:  basePrice,
-			Active:     true,
+			Uuid:         uuid,
+			ProviderUuid: providerUUID,
+			Name:         "Test SKU",
+			Unit:         types.Unit_UNIT_PER_HOUR,
+			BasePrice:    basePrice,
+			Active:       true,
 		}
 		err := k.SetSKU(f.Ctx, sku)
 		require.NoError(t, err)
 	}
 
 	// Create an already inactive SKU
+	inactiveSKUUUID := "01912345-6789-7abc-8def-0123456789b5"
 	inactiveSKU := types.SKU{
-		Id:         5,
-		ProviderId: 1,
-		Name:       "Inactive SKU",
-		Unit:       types.Unit_UNIT_PER_HOUR,
-		BasePrice:  basePrice,
-		Active:     false,
+		Uuid:         inactiveSKUUUID,
+		ProviderUuid: providerUUID,
+		Name:         "Inactive SKU",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
+		Active:       false,
 	}
 	err = k.SetSKU(f.Ctx, inactiveSKU)
 	require.NoError(t, err)
@@ -723,7 +736,7 @@ func TestDeactivateSKUMsg(t *testing.T) {
 	type testcase struct {
 		name   string
 		sender string
-		id     uint64
+		uuid   string
 		errMsg string
 	}
 
@@ -731,31 +744,31 @@ func TestDeactivateSKUMsg(t *testing.T) {
 		{
 			name:   "success; deactivate SKU",
 			sender: authority.String(),
-			id:     1,
+			uuid:   skuUUIDs[0],
 		},
 		{
 			name:   "fail; unauthorized sender",
 			sender: acc.String(),
-			id:     2,
+			uuid:   skuUUIDs[1],
 			errMsg: "unauthorized",
 		},
 		{
 			name:   "fail; SKU not found",
 			sender: authority.String(),
-			id:     999,
+			uuid:   "01912345-6789-7abc-8def-999999999999",
 			errMsg: "sku not found",
 		},
 		{
 			name:   "fail; already inactive",
 			sender: authority.String(),
-			id:     5,
+			uuid:   inactiveSKUUUID,
 			errMsg: "already inactive",
 		},
 		{
-			name:   "fail; zero id",
+			name:   "fail; empty uuid",
 			sender: authority.String(),
-			id:     0,
-			errMsg: "id cannot be zero",
+			uuid:   "",
+			errMsg: "uuid cannot be empty",
 		},
 	}
 
@@ -765,7 +778,7 @@ func TestDeactivateSKUMsg(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgDeactivateSKU{
 				Authority: c.sender,
-				Id:        c.id,
+				Uuid:      c.uuid,
 			}
 
 			_, err := ms.DeactivateSKU(f.Ctx, msg)
@@ -777,7 +790,7 @@ func TestDeactivateSKUMsg(t *testing.T) {
 			require.NoError(t, err)
 
 			// Verify SKU still exists but is inactive
-			sku, err := k.GetSKU(f.Ctx, c.id)
+			sku, err := k.GetSKU(f.Ctx, c.uuid)
 			require.NoError(t, err)
 			require.False(t, sku.Active, "SKU should be inactive after deactivation")
 		})
@@ -795,34 +808,34 @@ func TestCreateMultipleSKUs(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	err := k.NextSKUID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-
 	// Create provider
+	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
 	provider := types.Provider{
-		Id:            1,
+		Uuid:          providerUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
 	}
-	err = k.SetProvider(f.Ctx, provider)
+	err := k.SetProvider(f.Ctx, provider)
 	require.NoError(t, err)
 
 	// Use a price that produces a non-zero per-second rate
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
 
+	createdUUIDs := make([]string, 5)
 	for i := 0; i < 5; i++ {
 		msg := &types.MsgCreateSKU{
-			Authority:  authority.String(),
-			ProviderId: 1,
-			Name:       "SKU",
-			Unit:       types.Unit_UNIT_PER_HOUR,
-			BasePrice:  basePrice,
+			Authority:    authority.String(),
+			ProviderUuid: providerUUID,
+			Name:         "SKU",
+			Unit:         types.Unit_UNIT_PER_HOUR,
+			BasePrice:    basePrice,
 		}
 
 		resp, err := ms.CreateSKU(f.Ctx, msg)
 		require.NoError(t, err)
-		require.Equal(t, uint64(i+1), resp.Id) //nolint:gosec // test code, i is always small
+		require.NotEmpty(t, resp.Uuid)
+		createdUUIDs[i] = resp.Uuid
 	}
 
 	allSKUs, err := k.GetAllSKUs(f.Ctx)
@@ -906,17 +919,15 @@ func TestAllowedListCreateSKU(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	err := k.NextSKUID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-
 	// Create provider
+	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
 	provider := types.Provider{
-		Id:            1,
+		Uuid:          providerUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
 	}
-	err = k.SetProvider(f.Ctx, provider)
+	err := k.SetProvider(f.Ctx, provider)
 	require.NoError(t, err)
 
 	// Set params with allowedAddr in allowed list
@@ -931,25 +942,25 @@ func TestAllowedListCreateSKU(t *testing.T) {
 
 	// Test that allowed address can create SKU
 	msg := &types.MsgCreateSKU{
-		Authority:  allowedAddr.String(),
-		ProviderId: 1,
-		Name:       "Test SKU",
-		Unit:       types.Unit_UNIT_PER_HOUR,
-		BasePrice:  basePrice,
+		Authority:    allowedAddr.String(),
+		ProviderUuid: providerUUID,
+		Name:         "Test SKU",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
 	}
 
 	resp, err := ms.CreateSKU(f.Ctx, msg)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.Equal(t, uint64(1), resp.Id)
+	require.NotEmpty(t, resp.Uuid)
 
 	// Test that unauthorized address cannot create SKU
 	msg = &types.MsgCreateSKU{
-		Authority:  unauthorizedAddr.String(),
-		ProviderId: 1,
-		Name:       "Test SKU 2",
-		Unit:       types.Unit_UNIT_PER_HOUR,
-		BasePrice:  basePrice,
+		Authority:    unauthorizedAddr.String(),
+		ProviderUuid: providerUUID,
+		Name:         "Test SKU 2",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
 	}
 
 	_, err = ms.CreateSKU(f.Ctx, msg)
@@ -958,11 +969,11 @@ func TestAllowedListCreateSKU(t *testing.T) {
 
 	// Test that authority can still create SKU
 	msg = &types.MsgCreateSKU{
-		Authority:  authority.String(),
-		ProviderId: 1,
-		Name:       "Test SKU 3",
-		Unit:       types.Unit_UNIT_PER_HOUR,
-		BasePrice:  basePrice,
+		Authority:    authority.String(),
+		ProviderUuid: providerUUID,
+		Name:         "Test SKU 3",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
 	}
 
 	resp, err = ms.CreateSKU(f.Ctx, msg)
@@ -982,17 +993,15 @@ func TestParamsAllowedListRemoval(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	err := k.NextSKUID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-
 	// Create provider
+	providerUUID := "01912345-6789-7abc-8def-0123456789a1"
 	provider := types.Provider{
-		Id:            1,
+		Uuid:          providerUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
 	}
-	err = k.SetProvider(f.Ctx, provider)
+	err := k.SetProvider(f.Ctx, provider)
 	require.NoError(t, err)
 
 	// Set params with allowedAddr
@@ -1027,11 +1036,11 @@ func TestParamsAllowedListRemoval(t *testing.T) {
 	// Use a price that produces a non-zero per-second rate
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
 	createMsg := &types.MsgCreateSKU{
-		Authority:  allowedAddr.String(),
-		ProviderId: 1,
-		Name:       "Test SKU",
-		Unit:       types.Unit_UNIT_PER_HOUR,
-		BasePrice:  basePrice,
+		Authority:    allowedAddr.String(),
+		ProviderUuid: providerUUID,
+		Name:         "Test SKU",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
 	}
 
 	_, err = ms.CreateSKU(f.Ctx, createMsg)

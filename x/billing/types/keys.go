@@ -57,6 +57,10 @@ const (
 	EventTypeLeaseClosed         = "lease_closed"
 	EventTypeLeaseAutoClose      = "lease_auto_closed"
 	EventTypeLeaseSettled        = "lease_settled"
+	EventTypeLeaseAcknowledged   = "lease_acknowledged"
+	EventTypeLeaseRejected       = "lease_rejected"
+	EventTypeLeaseCancelled      = "lease_cancelled"
+	EventTypeLeaseExpired        = "lease_expired"
 	EventTypeProviderWithdraw    = "provider_withdraw"
 	EventTypeProviderWithdrawAll = "provider_withdraw_all"
 	EventTypeParamsUpdated       = "params_updated"
@@ -64,8 +68,8 @@ const (
 	// Attribute keys for events.
 	AttributeKeyTenant           = "tenant"
 	AttributeKeyCreditAddress    = "credit_address"
-	AttributeKeyLeaseID          = "lease_id"
-	AttributeKeyProviderID       = "provider_id"
+	AttributeKeyLeaseUUID        = "lease_uuid"
+	AttributeKeyProviderUUID     = "provider_uuid"
 	AttributeKeyAmount           = "amount"
 	AttributeKeySettledAmount    = "settled_amount"
 	AttributeKeySettledAmounts   = "settled_amounts"
@@ -78,6 +82,9 @@ const (
 	AttributeKeyClosedBy         = "closed_by"
 	AttributeKeyDuration         = "duration_seconds"
 	AttributeKeyActiveLeaseCount = "active_lease_count"
-	AttributeKeyCreatedBy        = "created_by" // "tenant" or "authority"
-	AttributeKeyReason           = "reason"     // reason for auto-close (e.g., "credit_exhausted")
+	AttributeKeyCreatedBy        = "created_by"       // "tenant" or "authority"
+	AttributeKeyReason           = "reason"           // reason for auto-close (e.g., "credit_exhausted")
+	AttributeKeyAcknowledgedBy   = "acknowledged_by"  // address that acknowledged the lease
+	AttributeKeyRejectedBy       = "rejected_by"      // address that rejected the lease
+	AttributeKeyRejectionReason  = "rejection_reason" // reason for rejection
 )

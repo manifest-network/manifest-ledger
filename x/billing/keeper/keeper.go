@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	"cosmossdk.io/collections"
@@ -23,14 +22,14 @@ import (
 // LeaseIndexes defines the indexes for the Lease collection.
 type LeaseIndexes struct {
 	// Tenant is a multi-index that indexes Leases by tenant address.
-	Tenant *indexes.Multi[sdk.AccAddress, uint64, types.Lease]
-	// Provider is a multi-index that indexes Leases by provider_id.
-	Provider *indexes.Multi[uint64, uint64, types.Lease]
+	Tenant *indexes.Multi[sdk.AccAddress, string, types.Lease]
+	// Provider is a multi-index that indexes Leases by provider_uuid.
+	Provider *indexes.Multi[string, string, types.Lease]
 }
 
 // IndexesList returns all indexes defined for the Lease collection.
-func (i LeaseIndexes) IndexesList() []collections.Index[uint64, types.Lease] {
-	return []collections.Index[uint64, types.Lease]{i.Tenant, i.Provider}
+func (i LeaseIndexes) IndexesList() []collections.Index[string, types.Lease] {
+	return []collections.Index[string, types.Lease]{i.Tenant, i.Provider}
 }
 
 // NewLeaseIndexes creates a new LeaseIndexes instance.
@@ -41,8 +40,8 @@ func NewLeaseIndexes(sb *collections.SchemaBuilder) LeaseIndexes {
 			types.LeaseByTenantIndexKey,
 			"leases_by_tenant",
 			sdk.AccAddressKey, // Use SDK's AccAddressKey for type safety and efficiency
-			collections.Uint64Key,
-			func(_ uint64, lease types.Lease) (sdk.AccAddress, error) {
+			collections.StringKey,
+			func(_ string, lease types.Lease) (sdk.AccAddress, error) {
 				// Convert bech32 tenant address to AccAddress for indexing
 				return sdk.AccAddressFromBech32(lease.Tenant)
 			},
@@ -51,10 +50,10 @@ func NewLeaseIndexes(sb *collections.SchemaBuilder) LeaseIndexes {
 			sb,
 			types.LeaseByProviderIndexKey,
 			"leases_by_provider",
-			collections.Uint64Key,
-			collections.Uint64Key,
-			func(_ uint64, lease types.Lease) (uint64, error) {
-				return lease.ProviderId, nil
+			collections.StringKey,
+			collections.StringKey,
+			func(_ string, lease types.Lease) (string, error) {
+				return lease.ProviderUuid, nil
 			},
 		),
 	}
@@ -62,8 +61,8 @@ func NewLeaseIndexes(sb *collections.SchemaBuilder) LeaseIndexes {
 
 // SKUKeeper defines the expected SKU keeper interface.
 type SKUKeeper interface {
-	GetSKU(ctx context.Context, id uint64) (skutypes.SKU, error)
-	GetProvider(ctx context.Context, id uint64) (skutypes.Provider, error)
+	GetSKU(ctx context.Context, uuid string) (skutypes.SKU, error)
+	GetProvider(ctx context.Context, uuid string) (skutypes.Provider, error)
 }
 
 // Keeper of the billing store.
@@ -74,8 +73,8 @@ type Keeper struct {
 	// state management
 	Schema         collections.Schema
 	Params         collections.Item[types.Params]
-	Leases         *collections.IndexedMap[uint64, types.Lease, LeaseIndexes]
-	NextLeaseID    collections.Sequence
+	Leases         *collections.IndexedMap[string, types.Lease, LeaseIndexes]
+	LeaseSequence  collections.Sequence                                 // For deterministic UUIDv7 generation
 	CreditAccounts collections.Map[sdk.AccAddress, types.CreditAccount] // keyed by tenant AccAddress
 	// CreditAddressIndex is a reverse lookup from derived credit address to tenant address.
 	// This enables O(1) lookup to check if an address is a credit account.
@@ -115,14 +114,14 @@ func NewKeeper(
 			sb,
 			types.LeaseKey,
 			"leases",
-			collections.Uint64Key,
+			collections.StringKey,
 			codec.CollValue[types.Lease](cdc),
 			NewLeaseIndexes(sb),
 		),
-		NextLeaseID: collections.NewSequence(
+		LeaseSequence: collections.NewSequence(
 			sb,
 			types.LeaseSequenceKey,
-			"next_lease_id",
+			"lease_sequence",
 		),
 		CreditAccounts: collections.NewMap(
 			sb,
@@ -216,13 +215,9 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 	}
 
 	for _, lease := range gs.Leases {
-		if err := k.Leases.Set(ctx, lease.Id, lease); err != nil {
+		if err := k.Leases.Set(ctx, lease.Uuid, lease); err != nil {
 			return err
 		}
-	}
-
-	if err := k.NextLeaseID.Set(ctx, gs.NextLeaseId); err != nil {
-		return err
 	}
 
 	for _, ca := range gs.CreditAccounts {
@@ -243,15 +238,10 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 	}
 
 	var leases []types.Lease
-	err = k.Leases.Walk(ctx, nil, func(_ uint64, lease types.Lease) (bool, error) {
+	err = k.Leases.Walk(ctx, nil, func(_ string, lease types.Lease) (bool, error) {
 		leases = append(leases, lease)
 		return false, nil
 	})
-	if err != nil {
-		panic(err)
-	}
-
-	nextLeaseID, err := k.NextLeaseID.Peek(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -269,15 +259,14 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		Params:         params,
 		Leases:         leases,
 		CreditAccounts: creditAccounts,
-		NextLeaseId:    nextLeaseID,
 	}
 }
 
 // Lease operations
 
-// GetLease returns a Lease by its ID.
-func (k *Keeper) GetLease(ctx context.Context, id uint64) (types.Lease, error) {
-	lease, err := k.Leases.Get(ctx, id)
+// GetLease returns a Lease by its UUID.
+func (k *Keeper) GetLease(ctx context.Context, uuid string) (types.Lease, error) {
+	lease, err := k.Leases.Get(ctx, uuid)
 	if err != nil {
 		return types.Lease{}, types.ErrLeaseNotFound
 	}
@@ -286,19 +275,19 @@ func (k *Keeper) GetLease(ctx context.Context, id uint64) (types.Lease, error) {
 
 // SetLease sets a Lease in the store.
 func (k *Keeper) SetLease(ctx context.Context, lease types.Lease) error {
-	return k.Leases.Set(ctx, lease.Id, lease)
+	return k.Leases.Set(ctx, lease.Uuid, lease)
 }
 
-// GetNextLeaseID returns the next Lease ID and increments the sequence.
-func (k *Keeper) GetNextLeaseID(ctx context.Context) (uint64, error) {
-	return k.NextLeaseID.Next(ctx)
+// GetNextLeaseSequence returns the next sequence number for deterministic UUID generation.
+func (k *Keeper) GetNextLeaseSequence(ctx context.Context) (uint64, error) {
+	return k.LeaseSequence.Next(ctx)
 }
 
 // GetAllLeases returns all Leases in the store.
 func (k *Keeper) GetAllLeases(ctx context.Context) ([]types.Lease, error) {
 	var leases []types.Lease
 
-	err := k.Leases.Walk(ctx, nil, func(_ uint64, lease types.Lease) (bool, error) {
+	err := k.Leases.Walk(ctx, nil, func(_ string, lease types.Lease) (bool, error) {
 		leases = append(leases, lease)
 		return false, nil
 	})
@@ -326,11 +315,11 @@ func (k *Keeper) GetLeasesByTenant(ctx context.Context, tenant string) ([]types.
 	defer iter.Close()
 
 	for ; iter.Valid(); iter.Next() {
-		leaseID, err := iter.PrimaryKey()
+		leaseUUID, err := iter.PrimaryKey()
 		if err != nil {
 			return nil, err
 		}
-		lease, err := k.Leases.Get(ctx, leaseID)
+		lease, err := k.Leases.Get(ctx, leaseUUID)
 		if err != nil {
 			return nil, err
 		}
@@ -340,22 +329,22 @@ func (k *Keeper) GetLeasesByTenant(ctx context.Context, tenant string) ([]types.
 	return leases, nil
 }
 
-// GetLeasesByProviderID returns all Leases for a given provider ID.
-func (k *Keeper) GetLeasesByProviderID(ctx context.Context, providerID uint64) ([]types.Lease, error) {
+// GetLeasesByProviderUUID returns all Leases for a given provider UUID.
+func (k *Keeper) GetLeasesByProviderUUID(ctx context.Context, providerUUID string) ([]types.Lease, error) {
 	var leases []types.Lease
 
-	iter, err := k.Leases.Indexes.Provider.MatchExact(ctx, providerID)
+	iter, err := k.Leases.Indexes.Provider.MatchExact(ctx, providerUUID)
 	if err != nil {
 		return nil, err
 	}
 	defer iter.Close()
 
 	for ; iter.Valid(); iter.Next() {
-		leaseID, err := iter.PrimaryKey()
+		leaseUUID, err := iter.PrimaryKey()
 		if err != nil {
 			return nil, err
 		}
-		lease, err := k.Leases.Get(ctx, leaseID)
+		lease, err := k.Leases.Get(ctx, leaseUUID)
 		if err != nil {
 			return nil, err
 		}
@@ -447,11 +436,11 @@ func (k *Keeper) countActiveLeasesByTenantScan(ctx context.Context, tenant strin
 	defer iter.Close()
 
 	for ; iter.Valid(); iter.Next() {
-		leaseID, err := iter.PrimaryKey()
+		leaseUUID, err := iter.PrimaryKey()
 		if err != nil {
 			return 0, err
 		}
-		lease, err := k.Leases.Get(ctx, leaseID)
+		lease, err := k.Leases.Get(ctx, leaseUUID)
 		if err != nil {
 			return 0, err
 		}
@@ -509,7 +498,7 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
 	for _, item := range lease.Items {
 		items = append(items, LeaseItemWithPrice{
-			SkuID:                item.SkuId,
+			SkuUUID:              item.SkuUuid,
 			Quantity:             item.Quantity,
 			LockedPricePerSecond: item.LockedPrice,
 		})
@@ -518,7 +507,7 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 	if err != nil {
 		// Log overflow error and return empty
 		k.logger.Error("accrual calculation overflow in withdrawable calculation",
-			"lease_id", lease.Id,
+			"lease_uuid", lease.Uuid,
 			"error", err,
 		)
 		return sdk.NewCoins()
@@ -583,7 +572,7 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
 	for _, item := range lease.Items {
 		items = append(items, LeaseItemWithPrice{
-			SkuID:                item.SkuId,
+			SkuUUID:              item.SkuUuid,
 			Quantity:             item.Quantity,
 			LockedPricePerSecond: item.LockedPrice,
 		})
@@ -628,16 +617,16 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeLeaseAutoClose,
-			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(lease.Id, 10)),
+			sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
 			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(lease.ProviderId, 10)),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
 			sdk.NewAttribute(types.AttributeKeySettledAmounts, settledAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyReason, "credit_exhausted"),
 		),
 	)
 
 	k.logger.Info("auto-closed exhausted lease",
-		"lease_id", lease.Id,
+		"lease_uuid", lease.Uuid,
 		"tenant", lease.Tenant,
 		"settled_amounts", settledAmounts.String(),
 	)
@@ -662,7 +651,7 @@ func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, cl
 		items := make([]LeaseItemWithPrice, 0, len(lease.Items))
 		for _, item := range lease.Items {
 			items = append(items, LeaseItemWithPrice{
-				SkuID:                item.SkuId,
+				SkuUUID:              item.SkuUuid,
 				Quantity:             item.Quantity,
 				LockedPricePerSecond: item.LockedPrice,
 			})
@@ -695,9 +684,9 @@ func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, cl
 
 		if !transferAmounts.IsZero() {
 			// Get provider payout address
-			provider, err := k.skuKeeper.GetProvider(ctx, lease.ProviderId)
+			provider, err := k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
 			if err != nil {
-				return sdk.NewCoins(), types.ErrProviderNotFound.Wrapf("provider_id %d not found", lease.ProviderId)
+				return sdk.NewCoins(), types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
 			}
 
 			payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
@@ -719,7 +708,7 @@ func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, cl
 	}
 
 	// Update lease state
-	lease.State = types.LEASE_STATE_INACTIVE
+	lease.State = types.LEASE_STATE_CLOSED
 	lease.ClosedAt = &closeTime
 	lease.LastSettledAt = closeTime
 

@@ -6,6 +6,7 @@ import "cosmos/base/v1beta1/coin.proto";
 import "cosmos/msg/v1/msg.proto";
 import "cosmos_proto/cosmos.proto";
 import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
 import "liftedinit/billing/v1/types.proto";
 
 option go_package = "github.com/manifest-network/manifest-ledger/x/billing/types";
@@ -18,12 +19,26 @@ service Msg {
   rpc FundCredit(MsgFundCredit) returns (MsgFundCreditResponse);
 
   // CreateLease creates a new lease for the tenant.
+  // The lease starts in PENDING state awaiting provider acknowledgement.
   rpc CreateLease(MsgCreateLease) returns (MsgCreateLeaseResponse);
 
   // CreateLeaseForTenant allows authority to create a lease on behalf of a tenant.
   // This is used for migrating off-chain leases to on-chain.
+  // The lease starts in PENDING state awaiting provider acknowledgement.
   rpc CreateLeaseForTenant(MsgCreateLeaseForTenant)
       returns (MsgCreateLeaseForTenantResponse);
+
+  // AcknowledgeLease allows a provider to acknowledge a PENDING lease.
+  // This transitions the lease to ACTIVE state and starts billing.
+  rpc AcknowledgeLease(MsgAcknowledgeLease) returns (MsgAcknowledgeLeaseResponse);
+
+  // RejectLease allows a provider to reject a PENDING lease.
+  // This transitions the lease to REJECTED state and unlocks tenant credit.
+  rpc RejectLease(MsgRejectLease) returns (MsgRejectLeaseResponse);
+
+  // CancelLease allows a tenant to cancel their own PENDING lease.
+  // This transitions the lease to REJECTED state and unlocks tenant credit.
+  rpc CancelLease(MsgCancelLease) returns (MsgCancelLeaseResponse);
 
   // CloseLease closes an active lease.
   rpc CloseLease(MsgCloseLease) returns (MsgCloseLeaseResponse);
@@ -42,8 +57,8 @@ service Msg {
 message LeaseItemInput {
   option (amino.name) = "lifted/billing/LeaseItemInput";
 
-  // sku_id is the ID of the SKU to lease.
-  uint64 sku_id = 1 [(gogoproto.jsontag) = "sku_id,omitempty,string"];
+  // sku_uuid is the UUID of the SKU to lease.
+  string sku_uuid = 1 [(gogoproto.jsontag) = "sku_uuid,omitempty"];
 
   // quantity is the number of instances.
   uint64 quantity = 2 [(gogoproto.jsontag) = "quantity,omitempty,string"];
@@ -109,8 +124,8 @@ message MsgCreateLease {
 
 // MsgCreateLeaseResponse is the response type for MsgCreateLease.
 message MsgCreateLeaseResponse {
-  // lease_id is the ID of the created lease.
-  uint64 lease_id = 1 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
+  // lease_uuid is the UUID of the created lease (UUIDv7 format).
+  string lease_uuid = 1 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
 }
 
 // MsgCreateLeaseForTenant allows authority to create a lease on behalf of a tenant.
@@ -141,8 +156,8 @@ message MsgCreateLeaseForTenant {
 
 // MsgCreateLeaseForTenantResponse is the response type for MsgCreateLeaseForTenant.
 message MsgCreateLeaseForTenantResponse {
-  // lease_id is the ID of the created lease.
-  uint64 lease_id = 1 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
+  // lease_uuid is the UUID of the created lease (UUIDv7 format).
+  string lease_uuid = 1 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
 }
 
 // MsgCloseLease closes an active lease.
@@ -156,8 +171,8 @@ message MsgCloseLease {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_id is the ID of the lease to close.
-  uint64 lease_id = 2 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
+  // lease_uuid is the UUID of the lease to close.
+  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
 }
 
 // MsgCloseLeaseResponse is the response type for MsgCloseLease.
@@ -181,8 +196,8 @@ message MsgWithdraw {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_id is the ID of the lease to withdraw from.
-  uint64 lease_id = 2 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
+  // lease_uuid is the UUID of the lease to withdraw from.
+  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
 }
 
 // MsgWithdrawResponse is the response type for MsgWithdraw.
@@ -212,10 +227,10 @@ message MsgWithdrawAll {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // provider_id is the provider ID to withdraw for.
+  // provider_uuid is the provider UUID to withdraw for.
   // If sender is authority, this field specifies which provider.
-  // If sender is the provider's address, this field must match or be zero.
-  uint64 provider_id = 2 [(gogoproto.jsontag) = "provider_id,omitempty,string"];
+  // If sender is the provider's address, this field must match or be empty.
+  string provider_uuid = 2 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
 
   // limit is the maximum number of leases to process in this call.
   // When 0, defaults to 50. Maximum allowed is 100.
@@ -266,3 +281,83 @@ message MsgUpdateParams {
 
 // MsgUpdateParamsResponse is the response type for MsgUpdateParams.
 message MsgUpdateParamsResponse {}
+
+// MsgAcknowledgeLease allows a provider to acknowledge a PENDING lease.
+message MsgAcknowledgeLease {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (amino.name) = "lifted/billing/MsgAcknowledgeLease";
+
+  // sender is the provider's address or authority.
+  string sender = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "sender,omitempty"
+  ];
+
+  // lease_uuid is the UUID of the lease to acknowledge.
+  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+}
+
+// MsgAcknowledgeLeaseResponse is the response type for MsgAcknowledgeLease.
+message MsgAcknowledgeLeaseResponse {
+  // acknowledged_at is the timestamp when the lease was acknowledged.
+  // Billing starts from this timestamp.
+  google.protobuf.Timestamp acknowledged_at = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "acknowledged_at"
+  ];
+}
+
+// MsgRejectLease allows a provider to reject a PENDING lease.
+message MsgRejectLease {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (amino.name) = "lifted/billing/MsgRejectLease";
+
+  // sender is the provider's address or authority.
+  string sender = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "sender,omitempty"
+  ];
+
+  // lease_uuid is the UUID of the lease to reject.
+  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+
+  // reason is an optional explanation for the rejection.
+  // Maximum 256 characters.
+  string reason = 3 [(gogoproto.jsontag) = "reason,omitempty"];
+}
+
+// MsgRejectLeaseResponse is the response type for MsgRejectLease.
+message MsgRejectLeaseResponse {
+  // rejected_at is the timestamp when the lease was rejected.
+  google.protobuf.Timestamp rejected_at = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "rejected_at"
+  ];
+}
+
+// MsgCancelLease allows a tenant to cancel their own PENDING lease.
+message MsgCancelLease {
+  option (cosmos.msg.v1.signer) = "tenant";
+  option (amino.name) = "lifted/billing/MsgCancelLease";
+
+  // tenant is the address of the tenant who owns the lease.
+  string tenant = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
+
+  // lease_uuid is the UUID of the lease to cancel.
+  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+}
+
+// MsgCancelLeaseResponse is the response type for MsgCancelLease.
+message MsgCancelLeaseResponse {
+  // cancelled_at is the timestamp when the lease was cancelled.
+  google.protobuf.Timestamp cancelled_at = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "cancelled_at"
+  ];
+}

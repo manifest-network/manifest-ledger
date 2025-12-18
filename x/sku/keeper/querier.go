@@ -37,13 +37,17 @@ func (q Querier) Params(ctx context.Context, req *types.QueryParamsRequest) (*ty
 	return &types.QueryParamsResponse{Params: params}, nil
 }
 
-// Provider queries a Provider by its ID.
+// Provider queries a Provider by its UUID.
 func (q Querier) Provider(ctx context.Context, req *types.QueryProviderRequest) (*types.QueryProviderResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid request")
 	}
 
-	provider, err := q.Keeper.GetProvider(ctx, req.Id)
+	if req.Uuid == "" {
+		return nil, status.Error(codes.InvalidArgument, "uuid cannot be empty")
+	}
+
+	provider, err := q.Keeper.GetProvider(ctx, req.Uuid)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
@@ -63,10 +67,10 @@ func (q Querier) Providers(ctx context.Context, req *types.QueryProvidersRequest
 			ctx,
 			q.Keeper.Providers,
 			req.Pagination,
-			func(_ uint64, provider types.Provider) (bool, error) {
+			func(_ string, provider types.Provider) (bool, error) {
 				return provider.Active, nil
 			},
-			func(_ uint64, provider types.Provider) (types.Provider, error) {
+			func(_ string, provider types.Provider) (types.Provider, error) {
 				return provider, nil
 			},
 		)
@@ -84,7 +88,7 @@ func (q Querier) Providers(ctx context.Context, req *types.QueryProvidersRequest
 		ctx,
 		q.Keeper.Providers,
 		req.Pagination,
-		func(_ uint64, provider types.Provider) (types.Provider, error) {
+		func(_ string, provider types.Provider) (types.Provider, error) {
 			return provider, nil
 		},
 	)
@@ -98,13 +102,17 @@ func (q Querier) Providers(ctx context.Context, req *types.QueryProvidersRequest
 	}, nil
 }
 
-// SKU queries a SKU by its ID.
+// SKU queries a SKU by its UUID.
 func (q Querier) SKU(ctx context.Context, req *types.QuerySKURequest) (*types.QuerySKUResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid request")
 	}
 
-	sku, err := q.Keeper.GetSKU(ctx, req.Id)
+	if req.Uuid == "" {
+		return nil, status.Error(codes.InvalidArgument, "uuid cannot be empty")
+	}
+
+	sku, err := q.Keeper.GetSKU(ctx, req.Uuid)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
@@ -124,10 +132,10 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 			ctx,
 			q.Keeper.SKUs,
 			req.Pagination,
-			func(_ uint64, sku types.SKU) (bool, error) {
+			func(_ string, sku types.SKU) (bool, error) {
 				return sku.Active, nil
 			},
-			func(_ uint64, sku types.SKU) (types.SKU, error) {
+			func(_ string, sku types.SKU) (types.SKU, error) {
 				return sku, nil
 			},
 		)
@@ -145,7 +153,7 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 		ctx,
 		q.Keeper.SKUs,
 		req.Pagination,
-		func(_ uint64, sku types.SKU) (types.SKU, error) {
+		func(_ string, sku types.SKU) (types.SKU, error) {
 			return sku, nil
 		},
 	)
@@ -159,19 +167,19 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 	}, nil
 }
 
-// SKUsByProvider queries SKUs by provider ID with pagination.
+// SKUsByProvider queries SKUs by provider UUID with pagination.
 // Uses the Provider index for efficient lookup - only iterates over SKUs belonging to this provider.
 func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProviderRequest) (*types.QuerySKUsByProviderResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid request")
 	}
 
-	if req.ProviderId == 0 {
-		return nil, status.Error(codes.InvalidArgument, "provider_id cannot be zero")
+	if req.ProviderUuid == "" {
+		return nil, status.Error(codes.InvalidArgument, "provider_uuid cannot be empty")
 	}
 
 	// Use the provider index to iterate only over this provider's SKUs
-	iter, err := q.Keeper.SKUs.Indexes.Provider.MatchExact(ctx, req.ProviderId)
+	iter, err := q.Keeper.SKUs.Indexes.Provider.MatchExact(ctx, req.ProviderUuid)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -182,7 +190,7 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 		filter = func(s types.SKU) bool { return s.Active }
 	}
 
-	skus, pageRes, err := PaginateUint64Index(
+	skus, pageRes, err := PaginateStringIndex(
 		ctx,
 		iter,
 		q.Keeper.SKUs.Get,

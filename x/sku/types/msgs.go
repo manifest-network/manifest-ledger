@@ -1,9 +1,13 @@
 package types
 
 import (
+	"net/url"
+
 	"cosmossdk.io/errors"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 )
 
 var (
@@ -22,12 +26,14 @@ func NewMsgCreateProvider(
 	address string,
 	payoutAddress string,
 	metaHash []byte,
+	apiURL string,
 ) *MsgCreateProvider {
 	return &MsgCreateProvider{
 		Authority:     authority,
 		Address:       address,
 		PayoutAddress: payoutAddress,
 		MetaHash:      metaHash,
+		ApiUrl:        apiURL,
 	}
 }
 
@@ -57,25 +63,34 @@ func (msg *MsgCreateProvider) Validate() error {
 		return errors.Wrap(err, "invalid payout address")
 	}
 
+	// Validate api_url if provided
+	if msg.ApiUrl != "" {
+		if err := ValidateAPIURL(msg.ApiUrl); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 // NewMsgUpdateProvider creates a new MsgUpdateProvider instance.
 func NewMsgUpdateProvider(
 	authority string,
-	id uint64,
+	uuid string,
 	address string,
 	payoutAddress string,
 	metaHash []byte,
 	active bool,
+	apiURL string,
 ) *MsgUpdateProvider {
 	return &MsgUpdateProvider{
 		Authority:     authority,
-		Id:            id,
+		Uuid:          uuid,
 		Address:       address,
 		PayoutAddress: payoutAddress,
 		MetaHash:      metaHash,
 		Active:        active,
+		ApiUrl:        apiURL,
 	}
 }
 
@@ -97,8 +112,8 @@ func (msg *MsgUpdateProvider) Validate() error {
 		return errors.Wrap(err, "invalid authority address")
 	}
 
-	if msg.Id == 0 {
-		return errors.Wrap(ErrInvalidProvider, "id cannot be zero")
+	if err := pkguuid.ValidateUUIDv7(msg.Uuid); err != nil {
+		return errors.Wrap(ErrInvalidProvider, err.Error())
 	}
 
 	if _, err := sdk.AccAddressFromBech32(msg.Address); err != nil {
@@ -109,17 +124,24 @@ func (msg *MsgUpdateProvider) Validate() error {
 		return errors.Wrap(err, "invalid payout address")
 	}
 
+	// Validate api_url if provided (empty means keep existing)
+	if msg.ApiUrl != "" {
+		if err := ValidateAPIURL(msg.ApiUrl); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 // NewMsgDeactivateProvider creates a new MsgDeactivateProvider instance.
 func NewMsgDeactivateProvider(
 	authority string,
-	id uint64,
+	uuid string,
 ) *MsgDeactivateProvider {
 	return &MsgDeactivateProvider{
 		Authority: authority,
-		Id:        id,
+		Uuid:      uuid,
 	}
 }
 
@@ -141,8 +163,8 @@ func (msg *MsgDeactivateProvider) Validate() error {
 		return errors.Wrap(err, "invalid authority address")
 	}
 
-	if msg.Id == 0 {
-		return errors.Wrap(ErrInvalidProvider, "id cannot be zero")
+	if err := pkguuid.ValidateUUIDv7(msg.Uuid); err != nil {
+		return errors.Wrap(ErrInvalidProvider, err.Error())
 	}
 
 	return nil
@@ -151,19 +173,19 @@ func (msg *MsgDeactivateProvider) Validate() error {
 // NewMsgCreateSKU creates a new MsgCreateSKU instance.
 func NewMsgCreateSKU(
 	authority string,
-	providerID uint64,
+	providerUUID string,
 	name string,
 	unit Unit,
 	basePrice sdk.Coin,
 	metaHash []byte,
 ) *MsgCreateSKU {
 	return &MsgCreateSKU{
-		Authority:  authority,
-		ProviderId: providerID,
-		Name:       name,
-		Unit:       unit,
-		BasePrice:  basePrice,
-		MetaHash:   metaHash,
+		Authority:    authority,
+		ProviderUuid: providerUUID,
+		Name:         name,
+		Unit:         unit,
+		BasePrice:    basePrice,
+		MetaHash:     metaHash,
 	}
 }
 
@@ -185,8 +207,8 @@ func (msg *MsgCreateSKU) Validate() error {
 		return errors.Wrap(err, "invalid authority address")
 	}
 
-	if msg.ProviderId == 0 {
-		return errors.Wrap(ErrInvalidSKU, "provider_id cannot be zero")
+	if err := pkguuid.ValidateUUIDv7(msg.ProviderUuid); err != nil {
+		return errors.Wrap(ErrInvalidSKU, "invalid provider_uuid: "+err.Error())
 	}
 
 	if msg.Name == "" {
@@ -212,8 +234,8 @@ func (msg *MsgCreateSKU) Validate() error {
 // NewMsgUpdateSKU creates a new MsgUpdateSKU instance.
 func NewMsgUpdateSKU(
 	authority string,
-	id uint64,
-	providerID uint64,
+	uuid string,
+	providerUUID string,
 	name string,
 	unit Unit,
 	basePrice sdk.Coin,
@@ -221,14 +243,14 @@ func NewMsgUpdateSKU(
 	active bool,
 ) *MsgUpdateSKU {
 	return &MsgUpdateSKU{
-		Authority:  authority,
-		Id:         id,
-		ProviderId: providerID,
-		Name:       name,
-		Unit:       unit,
-		BasePrice:  basePrice,
-		MetaHash:   metaHash,
-		Active:     active,
+		Authority:    authority,
+		Uuid:         uuid,
+		ProviderUuid: providerUUID,
+		Name:         name,
+		Unit:         unit,
+		BasePrice:    basePrice,
+		MetaHash:     metaHash,
+		Active:       active,
 	}
 }
 
@@ -250,12 +272,12 @@ func (msg *MsgUpdateSKU) Validate() error {
 		return errors.Wrap(err, "invalid authority address")
 	}
 
-	if msg.Id == 0 {
-		return errors.Wrap(ErrInvalidSKU, "id cannot be zero")
+	if err := pkguuid.ValidateUUIDv7(msg.Uuid); err != nil {
+		return errors.Wrap(ErrInvalidSKU, "invalid uuid: "+err.Error())
 	}
 
-	if msg.ProviderId == 0 {
-		return errors.Wrap(ErrInvalidSKU, "provider_id cannot be zero")
+	if err := pkguuid.ValidateUUIDv7(msg.ProviderUuid); err != nil {
+		return errors.Wrap(ErrInvalidSKU, "invalid provider_uuid: "+err.Error())
 	}
 
 	if msg.Name == "" {
@@ -281,11 +303,11 @@ func (msg *MsgUpdateSKU) Validate() error {
 // NewMsgDeactivateSKU creates a new MsgDeactivateSKU instance.
 func NewMsgDeactivateSKU(
 	authority string,
-	id uint64,
+	uuid string,
 ) *MsgDeactivateSKU {
 	return &MsgDeactivateSKU{
 		Authority: authority,
-		Id:        id,
+		Uuid:      uuid,
 	}
 }
 
@@ -307,8 +329,8 @@ func (msg *MsgDeactivateSKU) Validate() error {
 		return errors.Wrap(err, "invalid authority address")
 	}
 
-	if msg.Id == 0 {
-		return errors.Wrap(ErrInvalidSKU, "id cannot be zero")
+	if err := pkguuid.ValidateUUIDv7(msg.Uuid); err != nil {
+		return errors.Wrap(ErrInvalidSKU, "invalid uuid: "+err.Error())
 	}
 
 	return nil
@@ -341,4 +363,31 @@ func (msg *MsgUpdateParams) Validate() error {
 	}
 
 	return msg.Params.Validate()
+}
+
+// ValidateAPIURL validates that the API URL is a valid HTTPS URL.
+func ValidateAPIURL(apiURL string) error {
+	if len(apiURL) > MaxAPIURLLength {
+		return ErrInvalidAPIURL.Wrapf("api_url exceeds maximum length of %d characters", MaxAPIURLLength)
+	}
+
+	parsedURL, err := url.Parse(apiURL)
+	if err != nil {
+		return ErrInvalidAPIURL.Wrapf("failed to parse api_url: %s", err)
+	}
+
+	if parsedURL.Scheme != "https" {
+		return ErrInvalidAPIURL.Wrap("api_url must use HTTPS scheme")
+	}
+
+	if parsedURL.Host == "" {
+		return ErrInvalidAPIURL.Wrap("api_url must have a valid host")
+	}
+
+	// Reject URLs with user info (credentials in URL)
+	if parsedURL.User != nil {
+		return ErrInvalidAPIURL.Wrap("api_url must not contain user credentials")
+	}
+
+	return nil
 }

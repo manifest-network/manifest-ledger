@@ -55,12 +55,16 @@ message MsgCreateProvider {
 
   // meta_hash is a hash of the off-chain metadata.
   bytes meta_hash = 4;
+
+  // api_url is the HTTPS endpoint where the provider's off-chain API is hosted.
+  // Must be a valid HTTPS URL.
+  string api_url = 5;
 }
 
 // MsgCreateProviderResponse is the Msg/CreateProvider response type.
 message MsgCreateProviderResponse {
-  // id is the unique identifier of the created provider.
-  uint64 id = 1;
+  // uuid is the unique identifier of the created provider (UUIDv7 format).
+  string uuid = 1;
 }
 
 // MsgUpdateProvider is the Msg/UpdateProvider request type.
@@ -72,8 +76,8 @@ message MsgUpdateProvider {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // id is the unique identifier of the provider to update.
-  uint64 id = 2;
+  // uuid is the unique identifier of the provider to update.
+  string uuid = 2;
 
   // address is the management address of the provider.
   string address = 3 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
@@ -86,6 +90,9 @@ message MsgUpdateProvider {
 
   // active indicates whether the provider is active.
   bool active = 6;
+
+  // api_url is the HTTPS endpoint where the provider's off-chain API is hosted.
+  string api_url = 7;
 }
 
 // MsgUpdateProviderResponse is the Msg/UpdateProvider response type.
@@ -101,8 +108,8 @@ message MsgDeactivateProvider {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // id is the unique identifier of the provider to deactivate.
-  uint64 id = 2;
+  // uuid is the unique identifier of the provider to deactivate.
+  string uuid = 2;
 }
 
 // MsgDeactivateProviderResponse is the Msg/DeactivateProvider response type.
@@ -117,8 +124,8 @@ message MsgCreateSKU {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // provider_id is the unique identifier of the SKU provider.
-  uint64 provider_id = 2;
+  // provider_uuid is the unique identifier of the SKU provider.
+  string provider_uuid = 2;
 
   // name is the human-readable name of the SKU.
   string name = 3;
@@ -140,8 +147,8 @@ message MsgCreateSKU {
 
 // MsgCreateSKUResponse is the Msg/CreateSKU response type.
 message MsgCreateSKUResponse {
-  // id is the unique identifier of the created SKU.
-  uint64 id = 1;
+  // uuid is the unique identifier of the created SKU (UUIDv7 format).
+  string uuid = 1;
 }
 
 // MsgUpdateSKU is the Msg/UpdateSKU request type.
@@ -153,11 +160,11 @@ message MsgUpdateSKU {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // id is the unique identifier of the SKU to update.
-  uint64 id = 2;
+  // uuid is the unique identifier of the SKU to update.
+  string uuid = 2;
 
-  // provider_id is the unique identifier of the SKU provider.
-  uint64 provider_id = 3;
+  // provider_uuid is the unique identifier of the SKU provider.
+  string provider_uuid = 3;
 
   // name is the human-readable name of the SKU.
   string name = 4;
@@ -193,8 +200,8 @@ message MsgDeactivateSKU {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // id is the unique identifier of the SKU to deactivate.
-  uint64 id = 2;
+  // uuid is the unique identifier of the SKU to deactivate.
+  string uuid = 2;
 }
 
 // MsgDeactivateSKUResponse is the Msg/DeactivateSKU response type.

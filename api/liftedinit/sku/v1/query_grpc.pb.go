@@ -33,15 +33,15 @@ const (
 type QueryClient interface {
 	// Params queries the module parameters.
 	Params(ctx context.Context, in *QueryParamsRequest, opts ...grpc.CallOption) (*QueryParamsResponse, error)
-	// Provider queries a provider by id.
+	// Provider queries a provider by uuid.
 	Provider(ctx context.Context, in *QueryProviderRequest, opts ...grpc.CallOption) (*QueryProviderResponse, error)
 	// Providers queries all providers.
 	Providers(ctx context.Context, in *QueryProvidersRequest, opts ...grpc.CallOption) (*QueryProvidersResponse, error)
-	// SKU queries a SKU by id.
+	// SKU queries a SKU by uuid.
 	SKU(ctx context.Context, in *QuerySKURequest, opts ...grpc.CallOption) (*QuerySKUResponse, error)
 	// SKUs queries all SKUs.
 	SKUs(ctx context.Context, in *QuerySKUsRequest, opts ...grpc.CallOption) (*QuerySKUsResponse, error)
-	// SKUsByProvider queries SKUs by provider id.
+	// SKUsByProvider queries SKUs by provider uuid.
 	SKUsByProvider(ctx context.Context, in *QuerySKUsByProviderRequest, opts ...grpc.CallOption) (*QuerySKUsByProviderResponse, error)
 }
 
@@ -113,15 +113,15 @@ func (c *queryClient) SKUsByProvider(ctx context.Context, in *QuerySKUsByProvide
 type QueryServer interface {
 	// Params queries the module parameters.
 	Params(context.Context, *QueryParamsRequest) (*QueryParamsResponse, error)
-	// Provider queries a provider by id.
+	// Provider queries a provider by uuid.
 	Provider(context.Context, *QueryProviderRequest) (*QueryProviderResponse, error)
 	// Providers queries all providers.
 	Providers(context.Context, *QueryProvidersRequest) (*QueryProvidersResponse, error)
-	// SKU queries a SKU by id.
+	// SKU queries a SKU by uuid.
 	SKU(context.Context, *QuerySKURequest) (*QuerySKUResponse, error)
 	// SKUs queries all SKUs.
 	SKUs(context.Context, *QuerySKUsRequest) (*QuerySKUsResponse, error)
-	// SKUsByProvider queries SKUs by provider id.
+	// SKUsByProvider queries SKUs by provider uuid.
 	SKUsByProvider(context.Context, *QuerySKUsByProviderRequest) (*QuerySKUsByProviderResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }

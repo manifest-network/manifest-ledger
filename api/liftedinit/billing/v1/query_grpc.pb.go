@@ -36,7 +36,7 @@ const (
 type QueryClient interface {
 	// Params queries the module parameters.
 	Params(ctx context.Context, in *QueryParamsRequest, opts ...grpc.CallOption) (*QueryParamsResponse, error)
-	// Lease queries a lease by ID.
+	// Lease queries a lease by UUID.
 	Lease(ctx context.Context, in *QueryLeaseRequest, opts ...grpc.CallOption) (*QueryLeaseResponse, error)
 	// Leases queries all leases with pagination.
 	Leases(ctx context.Context, in *QueryLeasesRequest, opts ...grpc.CallOption) (*QueryLeasesResponse, error)
@@ -149,7 +149,7 @@ func (c *queryClient) ProviderWithdrawable(ctx context.Context, in *QueryProvide
 type QueryServer interface {
 	// Params queries the module parameters.
 	Params(context.Context, *QueryParamsRequest) (*QueryParamsResponse, error)
-	// Lease queries a lease by ID.
+	// Lease queries a lease by UUID.
 	Lease(context.Context, *QueryLeaseRequest) (*QueryLeaseResponse, error)
 	// Leases queries all leases with pagination.
 	Leases(context.Context, *QueryLeasesRequest) (*QueryLeasesResponse, error)

@@ -170,7 +170,7 @@ func TestCalculateTotalAccruedForLease(t *testing.T) {
 		{
 			name: "single item",
 			items: []LeaseItemWithPrice{
-				{SkuID: 1, Quantity: 2, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(10))},
+				{SkuUUID: "sku-1", Quantity: 2, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(10))},
 			},
 			duration: 100 * time.Second,
 			expected: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(2000))), // 10 * 2 * 100
@@ -178,9 +178,9 @@ func TestCalculateTotalAccruedForLease(t *testing.T) {
 		{
 			name: "multiple items same denom",
 			items: []LeaseItemWithPrice{
-				{SkuID: 1, Quantity: 1, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(10))},
-				{SkuID: 2, Quantity: 2, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(5))},
-				{SkuID: 3, Quantity: 3, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(1))},
+				{SkuUUID: "sku-1", Quantity: 1, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(10))},
+				{SkuUUID: "sku-2", Quantity: 2, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(5))},
+				{SkuUUID: "sku-3", Quantity: 3, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(1))},
 			},
 			duration: 100 * time.Second,
 			expected: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(2300))), // (10*1 + 5*2 + 1*3) * 100 = 23 * 100
@@ -188,8 +188,8 @@ func TestCalculateTotalAccruedForLease(t *testing.T) {
 		{
 			name: "multiple items different denoms",
 			items: []LeaseItemWithPrice{
-				{SkuID: 1, Quantity: 1, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(10))},
-				{SkuID: 2, Quantity: 2, LockedPricePerSecond: sdk.NewCoin("uother", math.NewInt(5))},
+				{SkuUUID: "sku-1", Quantity: 1, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(10))},
+				{SkuUUID: "sku-2", Quantity: 2, LockedPricePerSecond: sdk.NewCoin("uother", math.NewInt(5))},
 			},
 			duration: 100 * time.Second,
 			expected: sdk.NewCoins(
@@ -206,7 +206,7 @@ func TestCalculateTotalAccruedForLease(t *testing.T) {
 		{
 			name: "zero duration",
 			items: []LeaseItemWithPrice{
-				{SkuID: 1, Quantity: 5, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(100))},
+				{SkuUUID: "sku-1", Quantity: 5, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(100))},
 			},
 			duration: 0,
 			expected: sdk.NewCoins(),

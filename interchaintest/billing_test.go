@@ -149,7 +149,6 @@ package interchaintest
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"testing"
 
 	sdkmath "cosmossdk.io/math"
@@ -166,14 +165,14 @@ import (
 // testPWRDenom is the test PWR denom created via tokenfactory
 var testPWRDenom string
 
-// testProviderID is the provider ID created for billing tests
-var testProviderID uint64
+// testProviderUUID is the provider ID created for billing tests
+var testProviderUUID string
 
-// testSKUID is the SKU ID created for billing tests (per-hour pricing)
-var testSKUID uint64
+// testSKUUUID is the SKU ID created for billing tests (per-hour pricing)
+var testSKUUUID string
 
-// testSKUID2 is a second SKU ID for multi-SKU lease tests (per-day pricing)
-var testSKUID2 uint64
+// testSKUUUID2 is a second SKU ID for multi-SKU lease tests (per-day pricing)
+var testSKUUUID2 string
 
 func TestBilling(t *testing.T) {
 	if testing.Short() {
@@ -219,15 +218,15 @@ func TestBilling(t *testing.T) {
 	})
 
 	t.Run("LeaseCreate", func(t *testing.T) {
-		testLeaseCreate(t, ctx, chain, authority, tenant1, tenant2)
+		testLeaseCreate(t, ctx, chain, authority, tenant1, tenant2, providerWallet)
 	})
 
 	t.Run("LeaseQuery", func(t *testing.T) {
-		testLeaseQuery(t, ctx, chain, tenant1)
+		testLeaseQuery(t, ctx, chain, tenant1, providerWallet)
 	})
 
 	t.Run("AccrualCalculation", func(t *testing.T) {
-		testAccrualCalculation(t, ctx, chain, authority, tenant1)
+		testAccrualCalculation(t, ctx, chain, authority, tenant1, providerWallet)
 	})
 
 	t.Run("Withdraw", func(t *testing.T) {
@@ -243,7 +242,7 @@ func TestBilling(t *testing.T) {
 	})
 
 	t.Run("WithdrawableQueries", func(t *testing.T) {
-		testWithdrawableQueries(t, ctx, chain, tenant1)
+		testWithdrawableQueries(t, ctx, chain, tenant1, providerWallet)
 	})
 
 	t.Run("EdgeCases", func(t *testing.T) {
@@ -325,41 +324,41 @@ func setupBillingTestInfrastructure(t *testing.T, ctx context.Context, chain *co
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "provider creation should succeed: %s", txRes.RawLog)
 
-		testProviderID, err = helpers.GetProviderIDFromTxHash(ctx, chain, res.TxHash)
+		testProviderUUID, err = helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
-		t.Logf("Created provider ID: %d", testProviderID)
+		t.Logf("Created provider UUID: %s", testProviderUUID)
 	})
 
 	// Create SKU with per-hour pricing (Unit = 1)
 	// Price: 3600000 upwr per hour = 3600000/3600 = 1000 per second
 	// This ensures meaningful accrual even with short test durations
 	t.Run("create_sku_per_hour", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, testProviderID, "Compute Small", 1, fmt.Sprintf("3600000%s", testPWRDenom), "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, testProviderUUID, "Compute Small", 1, fmt.Sprintf("3600000%s", testPWRDenom), "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "SKU creation should succeed: %s", txRes.RawLog)
 
-		testSKUID, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		testSKUUUID, err = helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
-		t.Logf("Created SKU ID (per-hour): %d", testSKUID)
+		t.Logf("Created SKU UUID (per-hour): %s", testSKUUUID)
 	})
 
 	// Create SKU with per-day pricing (Unit = 2)
 	// Price: 86400000 upwr per day = 86400000/86400 = 1000 per second
 	// This ensures meaningful accrual even with short test durations
 	t.Run("create_sku_per_day", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, testProviderID, "Storage Large", 2, fmt.Sprintf("86400000%s", testPWRDenom), "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, testProviderUUID, "Storage Large", 2, fmt.Sprintf("86400000%s", testPWRDenom), "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "SKU creation should succeed: %s", txRes.RawLog)
 
-		testSKUID2, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		testSKUUUID2, err = helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
-		t.Logf("Created SKU ID (per-day): %d", testSKUID2)
+		t.Logf("Created SKU UUID (per-day): %s", testSKUUUID2)
 	})
 }
 
@@ -439,11 +438,11 @@ func testCreditAccountOperations(t *testing.T, ctx context.Context, chain *cosmo
 	})
 }
 
-func testLeaseCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, tenant1, tenant2 ibc.Wallet) {
+func testLeaseCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, tenant1, tenant2, providerWallet ibc.Wallet) {
 	t.Log("=== Testing Lease Create ===")
 
 	t.Run("success: tenant creates lease with single SKU", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLease(ctx, chain, tenant1, items)
 		require.NoError(t, err)
 
@@ -453,13 +452,20 @@ func testLeaseCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 
 		leaseID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
-		t.Logf("Created lease ID: %d", leaseID)
+		t.Logf("Created lease ID: %s", leaseID)
+
+		// Acknowledge the lease to make it ACTIVE for subsequent tests
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, leaseID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 	})
 
 	t.Run("success: tenant creates lease with multiple SKUs", func(t *testing.T) {
 		items := []string{
-			fmt.Sprintf("%d:2", testSKUID),  // 2x per-hour SKU
-			fmt.Sprintf("%d:1", testSKUID2), // 1x per-day SKU
+			fmt.Sprintf("%s:2", testSKUUUID),  // 2x per-hour SKU
+			fmt.Sprintf("%s:1", testSKUUUID2), // 1x per-day SKU
 		}
 		res, err := helpers.BillingCreateLease(ctx, chain, tenant1, items)
 		require.NoError(t, err)
@@ -467,10 +473,22 @@ func testLeaseCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "lease creation should succeed: %s", txRes.RawLog)
+
+		leaseID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Acknowledge the lease to make it ACTIVE for subsequent tests
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, leaseID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 	})
 
 	t.Run("fail: create lease with non-existent SKU", func(t *testing.T) {
-		items := []string{"99999:1"}
+		// Use a valid UUIDv7 format that doesn't exist
+		nonExistentSKU := "01912345-6789-7abc-8def-0123456789ab"
+		items := []string{fmt.Sprintf("%s:1", nonExistentSKU)}
 		res, err := helpers.BillingCreateLease(ctx, chain, tenant1, items)
 		require.NoError(t, err)
 
@@ -485,7 +503,7 @@ func testLeaseCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 		users := interchaintest.GetAndFundTestUsers(t, ctx, "no-credit-account", DefaultGenesisAmt, chain)
 		noCreditAccount := users[0]
 
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLease(ctx, chain, noCreditAccount, items)
 		require.NoError(t, err)
 
@@ -510,7 +528,7 @@ func testLeaseCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 		require.Equal(t, uint32(0), txRes.Code, "funding should succeed")
 
 		// Now try to create a lease - should fail due to insufficient credit
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err = helpers.BillingCreateLease(ctx, chain, lowCredit, items)
 		require.NoError(t, err)
 
@@ -526,8 +544,8 @@ func testLeaseCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 		// This test validates the client-side validation in ValidateBasic
 		items := make([]string, 101)
 		for i := 0; i < 101; i++ {
-			// Use different SKU IDs to avoid duplicate validation error
-			items[i] = fmt.Sprintf("%d:1", i+1000)
+			// Use valid UUIDv7 format SKU UUIDs to avoid UUID validation error
+			items[i] = fmt.Sprintf("01912345-6789-7abc-8def-%012d:1", i)
 		}
 		_, err := helpers.BillingCreateLease(ctx, chain, tenant1, items)
 		// The error should be caught at client-side validation before tx is broadcast
@@ -537,7 +555,7 @@ func testLeaseCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 	})
 }
 
-func testLeaseQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, tenant1 ibc.Wallet) {
+func testLeaseQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, tenant1, providerWallet ibc.Wallet) {
 	t.Log("=== Testing Lease Query ===")
 
 	t.Run("success: query all leases", func(t *testing.T) {
@@ -558,13 +576,12 @@ func testLeaseQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	})
 
 	t.Run("success: query leases by provider", func(t *testing.T) {
-		res, err := helpers.BillingQueryLeasesByProvider(ctx, chain, testProviderID, false)
+		res, err := helpers.BillingQueryLeasesByProvider(ctx, chain, testProviderUUID, false)
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, len(res.Leases), 2, "provider should have at least 2 leases")
 
 		for _, lease := range res.Leases {
-			providerID, _ := strconv.ParseUint(lease.ProviderID, 10, 64)
-			require.Equal(t, testProviderID, providerID)
+			require.Equal(t, testProviderUUID, lease.ProviderUuid)
 		}
 	})
 
@@ -583,16 +600,15 @@ func testLeaseQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 		require.NoError(t, err)
 		require.NotEmpty(t, allLeases.Leases)
 
-		leaseID, err := helpers.ParseLeaseID(allLeases.Leases[0].ID)
-		require.NoError(t, err)
+		leaseUUID := allLeases.Leases[0].Uuid
 
-		res, err := helpers.BillingQueryLease(ctx, chain, leaseID)
+		res, err := helpers.BillingQueryLease(ctx, chain, leaseUUID)
 		require.NoError(t, err)
-		require.Equal(t, allLeases.Leases[0].ID, res.Lease.ID)
+		require.Equal(t, allLeases.Leases[0].Uuid, res.Lease.Uuid)
 	})
 }
 
-func testAccrualCalculation(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, tenant1 ibc.Wallet) {
+func testAccrualCalculation(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, tenant1, providerWallet ibc.Wallet) {
 	t.Log("=== Testing Accrual Calculation ===")
 
 	// Get an active lease
@@ -600,12 +616,11 @@ func testAccrualCalculation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	require.NoError(t, err)
 	require.NotEmpty(t, leases.Leases, "tenant should have active leases")
 
-	leaseID, err := helpers.ParseLeaseID(leases.Leases[0].ID)
-	require.NoError(t, err)
+	leaseUUID := leases.Leases[0].Uuid
 
 	t.Run("success: verify accrual increases over time", func(t *testing.T) {
 		// Get initial withdrawable
-		initial, err := helpers.BillingQueryWithdrawable(ctx, chain, leaseID)
+		initial, err := helpers.BillingQueryWithdrawable(ctx, chain, leaseUUID)
 		require.NoError(t, err)
 		t.Logf("Initial withdrawable: %s", initial.Amounts)
 
@@ -613,7 +628,7 @@ func testAccrualCalculation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.NoError(t, testutil.WaitForBlocks(ctx, 5, chain))
 
 		// Get updated withdrawable
-		updated, err := helpers.BillingQueryWithdrawable(ctx, chain, leaseID)
+		updated, err := helpers.BillingQueryWithdrawable(ctx, chain, leaseUUID)
 		require.NoError(t, err)
 		t.Logf("Updated withdrawable: %s", updated.Amounts)
 
@@ -634,8 +649,7 @@ func testWithdraw(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 	require.NoError(t, err)
 	require.NotEmpty(t, leases.Leases)
 
-	leaseID, err := helpers.ParseLeaseID(leases.Leases[0].ID)
-	require.NoError(t, err)
+	leaseUUID := leases.Leases[0].Uuid
 
 	// Wait for some accrual
 	require.NoError(t, testutil.WaitForBlocks(ctx, 3, chain))
@@ -645,7 +659,7 @@ func testWithdraw(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 		initialBalance, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), testPWRDenom)
 		require.NoError(t, err)
 
-		res, err := helpers.BillingWithdraw(ctx, chain, providerWallet, leaseID)
+		res, err := helpers.BillingWithdraw(ctx, chain, providerWallet, leaseUUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -660,7 +674,7 @@ func testWithdraw(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 	})
 
 	t.Run("fail: tenant cannot withdraw", func(t *testing.T) {
-		res, err := helpers.BillingWithdraw(ctx, chain, tenant1, leaseID)
+		res, err := helpers.BillingWithdraw(ctx, chain, tenant1, leaseUUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -670,7 +684,7 @@ func testWithdraw(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 	})
 
 	t.Run("fail: unauthorized user cannot withdraw", func(t *testing.T) {
-		res, err := helpers.BillingWithdraw(ctx, chain, unauthorizedUser, leaseID)
+		res, err := helpers.BillingWithdraw(ctx, chain, unauthorizedUser, leaseUUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -680,7 +694,9 @@ func testWithdraw(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 	})
 
 	t.Run("fail: withdraw from non-existent lease", func(t *testing.T) {
-		res, err := helpers.BillingWithdraw(ctx, chain, providerWallet, 99999)
+		// Use a valid UUIDv7 format that doesn't exist
+		nonExistentUUID := "01912345-6789-7abc-8def-999999999999"
+		res, err := helpers.BillingWithdraw(ctx, chain, providerWallet, nonExistentUUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -693,7 +709,7 @@ func testWithdraw(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 		// Wait for more accrual
 		require.NoError(t, testutil.WaitForBlocks(ctx, 3, chain))
 
-		res, err := helpers.BillingWithdraw(ctx, chain, authority, leaseID)
+		res, err := helpers.BillingWithdraw(ctx, chain, authority, leaseUUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -713,7 +729,7 @@ func testWithdrawAll(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 		initialBalance, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), testPWRDenom)
 		require.NoError(t, err)
 
-		res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderID)
+		res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderUUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -730,7 +746,7 @@ func testWithdrawAll(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 		// Wait for more accrual
 		require.NoError(t, testutil.WaitForBlocks(ctx, 3, chain))
 
-		res, err := helpers.BillingWithdrawAll(ctx, chain, authority, testProviderID)
+		res, err := helpers.BillingWithdrawAll(ctx, chain, authority, testProviderUUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -743,9 +759,9 @@ func testLeaseClose(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	t.Log("=== Testing Lease Close ===")
 
 	// Create a new lease for close testing
-	var closeLeaseID uint64
-	t.Run("setup: create lease for close testing", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+	var closeLeaseID string
+	t.Run("setup: create and acknowledge lease for close testing", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLease(ctx, chain, tenant1, items)
 		require.NoError(t, err)
 
@@ -755,6 +771,13 @@ func testLeaseClose(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 
 		closeLeaseID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, closeLeaseID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 	})
 
 	t.Run("fail: unauthorized user closes lease", func(t *testing.T) {
@@ -778,7 +801,7 @@ func testLeaseClose(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 		// Verify lease is now inactive
 		leaseRes, err := helpers.BillingQueryLease(ctx, chain, closeLeaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_INACTIVE", leaseRes.Lease.State)
+		require.Equal(t, "LEASE_STATE_CLOSED", leaseRes.Lease.State)
 	})
 
 	t.Run("fail: close already inactive lease", func(t *testing.T) {
@@ -792,7 +815,9 @@ func testLeaseClose(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	})
 
 	t.Run("fail: close non-existent lease", func(t *testing.T) {
-		res, err := helpers.BillingCloseLease(ctx, chain, tenant1, 99999)
+		// Use valid UUIDv7 format that doesn't exist
+		nonExistentUUID := "01912345-6789-7abc-8def-0123456789ab"
+		res, err := helpers.BillingCloseLease(ctx, chain, tenant1, nonExistentUUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -802,9 +827,9 @@ func testLeaseClose(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	})
 
 	// Test provider closing
-	var providerCloseLeaseID uint64
-	t.Run("setup: create lease for provider close", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+	var providerCloseLeaseID string
+	t.Run("setup: create and acknowledge lease for provider close", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLease(ctx, chain, tenant1, items)
 		require.NoError(t, err)
 
@@ -814,6 +839,13 @@ func testLeaseClose(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 
 		providerCloseLeaseID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, providerCloseLeaseID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 	})
 
 	t.Run("success: provider closes lease", func(t *testing.T) {
@@ -826,9 +858,9 @@ func testLeaseClose(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	})
 
 	// Test authority closing
-	var authorityCloseLeaseID uint64
-	t.Run("setup: create lease for authority close", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+	var authorityCloseLeaseID string
+	t.Run("setup: create and acknowledge lease for authority close", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLease(ctx, chain, tenant1, items)
 		require.NoError(t, err)
 
@@ -838,6 +870,13 @@ func testLeaseClose(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 
 		authorityCloseLeaseID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, authorityCloseLeaseID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 	})
 
 	t.Run("success: authority closes lease", func(t *testing.T) {
@@ -850,7 +889,7 @@ func testLeaseClose(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	})
 }
 
-func testWithdrawableQueries(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, tenant1 ibc.Wallet) {
+func testWithdrawableQueries(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, tenant1, providerWallet ibc.Wallet) {
 	t.Log("=== Testing Withdrawable Queries ===")
 
 	// Get an active lease
@@ -861,18 +900,17 @@ func testWithdrawableQueries(t *testing.T, ctx context.Context, chain *cosmos.Co
 		t.Skip("No active leases to test withdrawable queries")
 	}
 
-	leaseID, err := helpers.ParseLeaseID(leases.Leases[0].ID)
-	require.NoError(t, err)
+	leaseUUID := leases.Leases[0].Uuid
 
 	t.Run("success: query withdrawable amount for lease", func(t *testing.T) {
-		res, err := helpers.BillingQueryWithdrawable(ctx, chain, leaseID)
+		res, err := helpers.BillingQueryWithdrawable(ctx, chain, leaseUUID)
 		require.NoError(t, err)
 		require.False(t, res.Amounts.IsZero(), "withdrawable amounts should not be zero")
-		t.Logf("Withdrawable for lease %d: %s", leaseID, res.Amounts)
+		t.Logf("Withdrawable for lease %s: %s", leaseUUID, res.Amounts)
 	})
 
 	t.Run("success: query provider total withdrawable", func(t *testing.T) {
-		res, err := helpers.BillingQueryProviderWithdrawable(ctx, chain, testProviderID)
+		res, err := helpers.BillingQueryProviderWithdrawable(ctx, chain, testProviderUUID)
 		require.NoError(t, err)
 		t.Logf("Provider total withdrawable: %s (from %s leases)", res.Amounts, res.LeaseCount)
 	})
@@ -888,7 +926,7 @@ func testEdgeCases(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		beforeBalances := beforeRes.Balances
 
 		// Create a lease
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		createRes, err := helpers.BillingCreateLease(ctx, chain, tenant2, items)
 		require.NoError(t, err)
 
@@ -896,14 +934,21 @@ func testEdgeCases(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
 
-		leaseID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, createRes.TxHash)
+		leaseUUID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, createRes.TxHash)
 		require.NoError(t, err)
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, leaseUUID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 
 		// Wait for some accrual
 		require.NoError(t, testutil.WaitForBlocks(ctx, 3, chain))
 
 		// Close the lease
-		closeRes, err := helpers.BillingCloseLease(ctx, chain, tenant2, leaseID)
+		closeRes, err := helpers.BillingCloseLease(ctx, chain, tenant2, leaseUUID)
 		require.NoError(t, err)
 
 		txRes, err = chain.GetTransaction(closeRes.TxHash)
@@ -926,21 +971,21 @@ func testEdgeCases(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenant2.FormattedAddress(), false)
 		require.NoError(t, err)
 
-		var closedLeaseID uint64
+		var closedLeaseUUID string
 		for _, lease := range leases.Leases {
-			if lease.State == "LEASE_STATE_INACTIVE" {
-				closedLeaseID, _ = helpers.ParseLeaseID(lease.ID)
+			if lease.State == "LEASE_STATE_CLOSED" {
+				closedLeaseUUID = lease.Uuid
 				break
 			}
 		}
 
-		if closedLeaseID == 0 {
+		if closedLeaseUUID == "" {
 			t.Skip("No closed lease found")
 		}
 
 		// After closure, settlement already happened, so withdrawal should fail
 		// because there's nothing left to withdraw (LastSettledAt == ClosedAt)
-		res, err := helpers.BillingWithdraw(ctx, chain, providerWallet, closedLeaseID)
+		res, err := helpers.BillingWithdraw(ctx, chain, providerWallet, closedLeaseUUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -976,9 +1021,9 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 		t.Logf("New tenant credit balance: %s", creditRes.Balances)
 	})
 
-	var leaseID uint64
+	var leaseID string
 	t.Run("success: authority creates lease for tenant", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, newTenant.FormattedAddress(), items)
 		require.NoError(t, err)
 
@@ -988,7 +1033,14 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 
 		leaseID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
-		t.Logf("Created lease ID: %d for tenant: %s", leaseID, newTenant.FormattedAddress())
+		t.Logf("Created lease ID: %s for tenant: %s", leaseID, newTenant.FormattedAddress())
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, leaseID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 	})
 
 	t.Run("success: verify lease belongs to tenant", func(t *testing.T) {
@@ -1009,13 +1061,13 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 		// Verify lease is now inactive
 		leaseRes, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_INACTIVE", leaseRes.Lease.State)
+		require.Equal(t, "LEASE_STATE_CLOSED", leaseRes.Lease.State)
 	})
 
 	t.Run("success: authority creates multi-SKU lease for tenant", func(t *testing.T) {
 		items := []string{
-			fmt.Sprintf("%d:2", testSKUID),  // 2x per-hour SKU
-			fmt.Sprintf("%d:1", testSKUID2), // 1x per-day SKU
+			fmt.Sprintf("%s:2", testSKUUUID),  // 2x per-hour SKU
+			fmt.Sprintf("%s:1", testSKUUUID2), // 1x per-day SKU
 		}
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, newTenant.FormattedAddress(), items)
 		require.NoError(t, err)
@@ -1034,7 +1086,7 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 	})
 
 	t.Run("fail: non-authority cannot create lease for tenant", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, unauthorizedUser, newTenant.FormattedAddress(), items)
 		require.NoError(t, err)
 
@@ -1045,7 +1097,7 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 	})
 
 	t.Run("fail: provider cannot create lease for tenant", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, providerWallet, newTenant.FormattedAddress(), items)
 		require.NoError(t, err)
 
@@ -1060,7 +1112,7 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 		unfundedUsers := interchaintest.GetAndFundTestUsers(t, ctx, "unfunded-tenant", DefaultGenesisAmt, chain)
 		unfundedTenant := unfundedUsers[0]
 
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, unfundedTenant.FormattedAddress(), items)
 		require.NoError(t, err)
 
@@ -1085,7 +1137,7 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 		require.Equal(t, uint32(0), txRes.Code, "funding should succeed")
 
 		// Now try to create a lease for this tenant - should fail due to insufficient credit
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err = helpers.BillingCreateLeaseForTenant(ctx, chain, authority, lowCreditTenant.FormattedAddress(), items)
 		require.NoError(t, err)
 
@@ -1097,7 +1149,7 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 	})
 
 	t.Run("fail: create lease for tenant with invalid address", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		// Using an invalid address format - this should fail at CLI validation
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, "invalid-address", items)
 		// CLI should return an error for invalid address
@@ -1106,7 +1158,9 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 	})
 
 	t.Run("fail: create lease for tenant with non-existent SKU", func(t *testing.T) {
-		items := []string{"99999:1"}
+		// Use valid UUIDv7 format that doesn't exist
+		nonExistentSKU := "01912345-6789-7abc-8def-0123456789ab"
+		items := []string{fmt.Sprintf("%s:1", nonExistentSKU)}
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, newTenant.FormattedAddress(), items)
 		require.NoError(t, err)
 
@@ -1118,7 +1172,7 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 
 	t.Run("success: verify event shows authority created lease", func(t *testing.T) {
 		// Create another lease and check the event
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, newTenant.FormattedAddress(), items)
 		require.NoError(t, err)
 
@@ -1149,7 +1203,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 
 	// For auto-close tests, we temporarily set a very low minLeaseDuration (10 seconds)
 	// so we can test credit exhaustion quickly.
-	// testSKUID has rate of 1000/second per unit.
+	// testSKUUUID has rate of 1000/second per unit.
 	// With minLeaseDuration=10 and quantity=1: need 10,000 credit minimum
 	// Fund with 15,000 credit: exhaustion takes 15 seconds
 
@@ -1161,7 +1215,9 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Set minLeaseDuration to 10 seconds for quick exhaustion tests
 		res, err := helpers.BillingUpdateParams(ctx, chain, authority,
 			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
-			10, nil) // 10 seconds min lease duration
+			10, // 10 seconds min lease duration
+			params.Params.MaxPendingLeasesPerTenant, params.Params.PendingTimeout,
+			nil)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -1175,7 +1231,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	autoCloseTenant := users[0]
 
 	// Fund tenant with just enough credit to create a lease but exhaust quickly
-	// testSKUID has rate of 1000/second per unit
+	// testSKUUUID has rate of 1000/second per unit
 	// With quantity=1 and 15,000 credit, exhaustion takes ~15 seconds
 	t.Run("setup: fund tenant with minimal credit", func(t *testing.T) {
 		fundAmount := fmt.Sprintf("15000%s", testPWRDenom) // Just above 10,000 minimum (10 * 1000)
@@ -1191,11 +1247,11 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		t.Logf("Initial credit balance: %s", creditRes.Balances)
 	})
 
-	var autoCloseLeaseID uint64
+	var autoCloseLeaseID string
 	t.Run("setup: create lease that will exhaust credit", func(t *testing.T) {
-		// Create a lease with testSKUID (1000/second rate with quantity=1)
+		// Create a lease with testSKUUUID (1000/second rate with quantity=1)
 		// With 15,000 credit, this will exhaust in ~15 seconds
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLease(ctx, chain, autoCloseTenant, items)
 		require.NoError(t, err)
 
@@ -1205,7 +1261,14 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 
 		autoCloseLeaseID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
-		t.Logf("Created lease ID: %d", autoCloseLeaseID)
+		t.Logf("Created lease ID: %s", autoCloseLeaseID)
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, autoCloseLeaseID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 
 		// Verify lease is active and check locked price
 		lease, err := helpers.BillingQueryLease(ctx, chain, autoCloseLeaseID)
@@ -1264,7 +1327,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Query lease - should now be inactive due to auto-close
 		lease, err := helpers.BillingQueryLease(ctx, chain, autoCloseLeaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State,
+		require.Equal(t, "LEASE_STATE_CLOSED", lease.Lease.State,
 			"lease should be auto-closed after credit exhaustion")
 		t.Log("Lease was auto-closed as expected")
 	})
@@ -1274,7 +1337,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Query the lease to verify it's closed
 		lease, err := helpers.BillingQueryLease(ctx, chain, autoCloseLeaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State)
+		require.Equal(t, "LEASE_STATE_CLOSED", lease.Lease.State)
 
 		// Verify closed_at is set (indicates it was closed)
 		require.NotEmpty(t, lease.Lease.ClosedAt, "closed_at should be set for auto-closed lease")
@@ -1308,7 +1371,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 			creditRes.Balances)
 
 		// Credit is insufficient to cover minLeaseDuration, so creating a new lease should fail
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLease(ctx, chain, autoCloseTenant, items)
 		require.NoError(t, err)
 
@@ -1326,7 +1389,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		tenant2 := users2[0]
 
 		// Fund minimally - same approach as main auto-close test
-		// testSKUID has rate of 1000/second, with minLeaseDuration=10, need 10,000 minimum
+		// testSKUUUID has rate of 1000/second, with minLeaseDuration=10, need 10,000 minimum
 		fundAmount := fmt.Sprintf("15000%s", testPWRDenom)
 		res, err := helpers.BillingFundCredit(ctx, chain, authority, tenant2.FormattedAddress(), fundAmount)
 		require.NoError(t, err)
@@ -1334,8 +1397,8 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
 
-		// Create lease with testSKUID (1000/second rate with quantity=1)
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		// Create lease with testSKUUUID (1000/second rate with quantity=1)
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err = helpers.BillingCreateLease(ctx, chain, tenant2, items)
 		require.NoError(t, err)
 		txRes, err = chain.GetTransaction(res.TxHash)
@@ -1344,6 +1407,13 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 
 		leaseID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, leaseID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 
 		// Wait for credit exhaustion (~15 seconds)
 		require.NoError(t, testutil.WaitForBlocks(ctx, 20, chain))
@@ -1357,7 +1427,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify final state is inactive (explicit close)
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State, "lease should be inactive after exhaustion")
+		require.Equal(t, "LEASE_STATE_CLOSED", lease.Lease.State, "lease should be inactive after exhaustion")
 	})
 
 	// Test that closing a lease triggers settlement and transfers accrued amount
@@ -1375,7 +1445,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.Equal(t, uint32(0), txRes.Code)
 
 		// Create lease with low quantity (slow accrual)
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err = helpers.BillingCreateLease(ctx, chain, tenant3, items)
 		require.NoError(t, err)
 		txRes, err = chain.GetTransaction(res.TxHash)
@@ -1384,6 +1454,13 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 
 		leaseID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, leaseID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 
 		// Get initial credit balance
 		initialCredit, err := helpers.BillingQueryCreditAccount(ctx, chain, tenant3.FormattedAddress())
@@ -1415,7 +1492,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify lease is now inactive
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State, "lease should be inactive")
+		require.Equal(t, "LEASE_STATE_CLOSED", lease.Lease.State, "lease should be inactive")
 	})
 
 	// Restore original minLeaseDuration (1 hour) after auto-close tests
@@ -1425,7 +1502,9 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 
 		res, err := helpers.BillingUpdateParams(ctx, chain, authority,
 			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
-			3600, nil) // Restore to 1 hour
+			3600, // Restore to 1 hour
+			params.Params.MaxPendingLeasesPerTenant, params.Params.PendingTimeout,
+			nil)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -1483,9 +1562,9 @@ func testWithdrawAllLimits(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	require.Equal(t, uint32(0), txRes.Code)
 
 	// Create multiple leases for testing
-	leaseIDs := make([]uint64, 5)
+	leaseIDs := make([]string, 5)
 	for i := 0; i < 5; i++ {
-		items := []string{fmt.Sprintf("%d:1", testSKUID)}
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
 		res, err := helpers.BillingCreateLease(ctx, chain, tenant, items)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -1495,6 +1574,13 @@ func testWithdrawAllLimits(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 		leaseID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 		leaseIDs[i] = leaseID
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, leaseID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 	}
 
 	// Wait for some accrual
@@ -1503,7 +1589,7 @@ func testWithdrawAllLimits(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	// Test: withdraw all with custom limit
 	t.Run("success: withdraw all with custom limit", func(t *testing.T) {
 		// Use a limit of 2 to test pagination
-		res, err := helpers.BillingWithdrawAllWithLimit(ctx, chain, providerWallet, testProviderID, 2)
+		res, err := helpers.BillingWithdrawAllWithLimit(ctx, chain, providerWallet, testProviderUUID, 2)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -1515,7 +1601,7 @@ func testWithdrawAllLimits(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 
 	// Test: withdraw all with default limit (0 means default)
 	t.Run("success: withdraw all with default limit", func(t *testing.T) {
-		res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderID)
+		res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderUUID)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -1525,7 +1611,7 @@ func testWithdrawAllLimits(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	// Test: withdraw all with limit exceeding maximum should fail at CLI validation
 	t.Run("fail: withdraw all with limit exceeding maximum", func(t *testing.T) {
 		// MaxWithdrawAllLimit is 100, try 150
-		_, err := helpers.BillingWithdrawAllWithLimit(ctx, chain, providerWallet, testProviderID, 150)
+		_, err := helpers.BillingWithdrawAllWithLimit(ctx, chain, providerWallet, testProviderUUID, 150)
 		require.Error(t, err, "withdraw all with excessive limit should fail")
 	})
 }
@@ -1537,7 +1623,7 @@ func testProviderDeactivation(t *testing.T, ctx context.Context, chain *cosmos.C
 	deactivationProviderWallet := users[0]
 
 	// Create a new provider specifically for deactivation tests
-	var deactivateProviderID uint64
+	var deactivateProviderUUID string
 	t.Run("setup: create provider for deactivation test", func(t *testing.T) {
 		res, err := helpers.SKUCreateProvider(ctx, chain, authority,
 			deactivationProviderWallet.FormattedAddress(), deactivationProviderWallet.FormattedAddress(), "")
@@ -1550,20 +1636,20 @@ func testProviderDeactivation(t *testing.T, ctx context.Context, chain *cosmos.C
 		for _, event := range txRes.Events {
 			if event.Type == "provider_created" {
 				for _, attr := range event.Attributes {
-					if attr.Key == "provider_id" {
-						deactivateProviderID, _ = strconv.ParseUint(attr.Value, 10, 64)
+					if attr.Key == "provider_uuid" {
+						deactivateProviderUUID = attr.Value
 						break
 					}
 				}
 			}
 		}
-		require.NotZero(t, deactivateProviderID, "provider ID should be extracted from events")
+		require.NotEmpty(t, deactivateProviderUUID, "provider UUID should be extracted from events")
 	})
 
 	// Create SKU for this provider with valid price (evenly divisible)
 	t.Run("setup: create SKU for deactivation provider", func(t *testing.T) {
 		res, err := helpers.SKUCreateSKU(ctx, chain, authority,
-			deactivateProviderID, "Deactivation SKU", 1, fmt.Sprintf("3600000%s", testPWRDenom), "")
+			deactivateProviderUUID, "Deactivation SKU", 1, fmt.Sprintf("3600000%s", testPWRDenom), "")
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -1571,10 +1657,10 @@ func testProviderDeactivation(t *testing.T, ctx context.Context, chain *cosmos.C
 	})
 
 	// Get the SKU ID
-	skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, deactivateProviderID)
+	skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, deactivateProviderUUID)
 	require.NoError(t, err)
 	require.Len(t, skus.Skus, 1)
-	deactivateSKUID := skus.Skus[0].Id
+	deactivateSKUUUID := skus.Skus[0].Uuid
 
 	// Create tenant and fund credit
 	tenantUsers := interchaintest.GetAndFundTestUsers(t, ctx, "deactivate-tenant", DefaultGenesisAmt, chain)
@@ -1588,9 +1674,9 @@ func testProviderDeactivation(t *testing.T, ctx context.Context, chain *cosmos.C
 	require.Equal(t, uint32(0), txRes.Code)
 
 	// Create a lease with this provider's SKU
-	var leaseID uint64
+	var leaseID string
 	t.Run("setup: create lease with provider's SKU", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", deactivateSKUID)}
+		items := []string{fmt.Sprintf("%s:1", deactivateSKUUUID)}
 		res, err := helpers.BillingCreateLease(ctx, chain, tenant, items)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -1599,11 +1685,18 @@ func testProviderDeactivation(t *testing.T, ctx context.Context, chain *cosmos.C
 
 		leaseID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, deactivationProviderWallet, leaseID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 	})
 
 	// Deactivate the provider
 	t.Run("success: provider can be deactivated while having active leases", func(t *testing.T) {
-		res, err := helpers.SKUDeactivateProvider(ctx, chain, authority, deactivateProviderID)
+		res, err := helpers.SKUDeactivateProvider(ctx, chain, authority, deactivateProviderUUID)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -1612,7 +1705,7 @@ func testProviderDeactivation(t *testing.T, ctx context.Context, chain *cosmos.C
 
 	// Verify provider is deactivated
 	t.Run("success: verify provider is deactivated", func(t *testing.T) {
-		provider, err := helpers.SKUQueryProvider(ctx, chain, deactivateProviderID)
+		provider, err := helpers.SKUQueryProvider(ctx, chain, deactivateProviderUUID)
 		require.NoError(t, err)
 		require.False(t, provider.Provider.Active, "provider should be inactive")
 	})
@@ -1652,7 +1745,7 @@ func testProviderDeactivation(t *testing.T, ctx context.Context, chain *cosmos.C
 		require.Equal(t, uint32(0), txRes.Code)
 
 		// Try to create a lease - should fail because provider is inactive
-		items := []string{fmt.Sprintf("%d:1", deactivateSKUID)}
+		items := []string{fmt.Sprintf("%s:1", deactivateSKUUUID)}
 		res, err = helpers.BillingCreateLease(ctx, chain, tenant2, items)
 		require.NoError(t, err)
 		txRes, err = chain.GetTransaction(res.TxHash)
@@ -1662,10 +1755,10 @@ func testProviderDeactivation(t *testing.T, ctx context.Context, chain *cosmos.C
 
 	// Deactivated provider is still queryable
 	t.Run("success: deactivated provider is still queryable", func(t *testing.T) {
-		provider, err := helpers.SKUQueryProvider(ctx, chain, deactivateProviderID)
+		provider, err := helpers.SKUQueryProvider(ctx, chain, deactivateProviderUUID)
 		require.NoError(t, err)
 		require.NotNil(t, provider.Provider)
-		require.Equal(t, deactivateProviderID, provider.Provider.Id)
+		require.Equal(t, deactivateProviderUUID, provider.Provider.Uuid)
 		require.False(t, provider.Provider.Active, "provider should be inactive")
 	})
 }
@@ -1698,7 +1791,9 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 		// Update with allowed_list
 		res, err := helpers.BillingUpdateParams(ctx, chain, authority,
 			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
-			params.Params.MinLeaseDuration, []string{allowedUser.FormattedAddress()})
+			params.Params.MinLeaseDuration,
+			params.Params.MaxPendingLeasesPerTenant, params.Params.PendingTimeout,
+			[]string{allowedUser.FormattedAddress()})
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -1719,12 +1814,12 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 	skus, err := helpers.SKUQuerySKUs(ctx, chain)
 	require.NoError(t, err)
 	require.NotEmpty(t, skus.Skus, "should have at least one SKU")
-	skuID := skus.Skus[0].Id
+	skuUUID := skus.Skus[0].Uuid
 
 	// Test: Authority can create lease for tenant
-	var authorityLeaseID uint64
+	var authorityLeaseID string
 	t.Run("success: authority creates lease for tenant", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", skuID)}
+		items := []string{fmt.Sprintf("%s:1", skuUUID)}
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, tenant.FormattedAddress(), items)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -1737,9 +1832,9 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 	})
 
 	// Test: Allowed user can create lease for tenant
-	var allowedUserLeaseID uint64
+	var allowedUserLeaseID string
 	t.Run("success: allowed user creates lease for tenant", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", skuID)}
+		items := []string{fmt.Sprintf("%s:1", skuUUID)}
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, allowedUser, tenant.FormattedAddress(), items)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -1753,7 +1848,7 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 
 	// Test: Non-allowed user cannot create lease for tenant
 	t.Run("fail: non-allowed user cannot create lease for tenant", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", skuID)}
+		items := []string{fmt.Sprintf("%s:1", skuUUID)}
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, nonAllowedUser, tenant.FormattedAddress(), items)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -1781,14 +1876,16 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 		// Update with empty allowed_list
 		res, err := helpers.BillingUpdateParams(ctx, chain, authority,
 			params.Params.MaxLeasesPerTenant, params.Params.MaxItemsPerLease,
-			params.Params.MinLeaseDuration, []string{})
+			params.Params.MinLeaseDuration,
+			params.Params.MaxPendingLeasesPerTenant, params.Params.PendingTimeout,
+			[]string{})
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "params update should succeed")
 
 		// Now the previously allowed user should not be able to create leases
-		items := []string{fmt.Sprintf("%d:1", skuID)}
+		items := []string{fmt.Sprintf("%s:1", skuUUID)}
 		res, err = helpers.BillingCreateLeaseForTenant(ctx, chain, allowedUser, tenant.FormattedAddress(), items)
 		require.NoError(t, err)
 		txRes, err = chain.GetTransaction(res.TxHash)
@@ -1798,7 +1895,7 @@ func testAllowedListAuthorization(t *testing.T, ctx context.Context, chain *cosm
 
 	// Test: Authority can still create leases even with empty allowed_list
 	t.Run("success: authority can still create lease with empty allowed_list", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%d:1", skuID)}
+		items := []string{fmt.Sprintf("%s:1", skuUUID)}
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, tenant.FormattedAddress(), items)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -1828,7 +1925,7 @@ func testMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	})
 
 	// Create a new provider for multi-denom tests
-	var multiDenomProviderID uint64
+	var multiDenomProviderUUID string
 	t.Run("setup: create provider for multi-denom tests", func(t *testing.T) {
 		res, err := helpers.SKUCreateProvider(ctx, chain, authority, providerWallet.FormattedAddress(), providerWallet.FormattedAddress(), "")
 		require.NoError(t, err)
@@ -1836,39 +1933,39 @@ func testMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
 
-		multiDenomProviderID, err = helpers.GetProviderIDFromTxHash(ctx, chain, res.TxHash)
+		multiDenomProviderUUID, err = helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
-		t.Logf("Created multi-denom provider ID: %d", multiDenomProviderID)
+		t.Logf("Created multi-denom provider ID: %s", multiDenomProviderUUID)
 	})
 
 	// Create SKU with first denom (PWR)
-	var skuPWR uint64
+	var skuPWRUUID string
 	t.Run("setup: create SKU with PWR denom", func(t *testing.T) {
 		// 3600000 per hour = 1000 per second
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderID, "Compute PWR", 1, fmt.Sprintf("3600000%s", testPWRDenom), "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderUUID, "Compute PWR", 1, fmt.Sprintf("3600000%s", testPWRDenom), "")
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
 
-		skuPWR, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		skuPWRUUID, err = helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
-		t.Logf("Created SKU with PWR denom, ID: %d", skuPWR)
+		t.Logf("Created SKU with PWR denom, ID: %s", skuPWRUUID)
 	})
 
 	// Create SKU with second denom
-	var skuSecond uint64
+	var skuSecondUUID string
 	t.Run("setup: create SKU with second denom", func(t *testing.T) {
 		// 7200000 per hour = 2000 per second
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderID, "Storage TEST", 1, fmt.Sprintf("7200000%s", secondDenom), "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderUUID, "Storage TEST", 1, fmt.Sprintf("7200000%s", secondDenom), "")
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
 
-		skuSecond, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		skuSecondUUID, err = helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
-		t.Logf("Created SKU with second denom, ID: %d", skuSecond)
+		t.Logf("Created SKU with second denom, ID: %s", skuSecondUUID)
 	})
 
 	// Create tenant for multi-denom tests
@@ -1933,11 +2030,11 @@ func testMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	})
 
 	// Create lease with SKUs using different denoms
-	var multiDenomLeaseID uint64
+	var multiDenomLeaseID string
 	t.Run("success: create lease with SKUs using different denoms", func(t *testing.T) {
 		items := []string{
-			fmt.Sprintf("%d:1", skuPWR),    // Uses PWR denom
-			fmt.Sprintf("%d:1", skuSecond), // Uses second denom
+			fmt.Sprintf("%s:1", skuPWRUUID),    // Uses PWR denom
+			fmt.Sprintf("%s:1", skuSecondUUID), // Uses second denom
 		}
 		res, err := helpers.BillingCreateLease(ctx, chain, tenant, items)
 		require.NoError(t, err)
@@ -1947,7 +2044,14 @@ func testMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 
 		multiDenomLeaseID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
-		t.Logf("Created multi-denom lease ID: %d", multiDenomLeaseID)
+		t.Logf("Created multi-denom lease ID: %s", multiDenomLeaseID)
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, multiDenomLeaseID)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 	})
 
 	// Verify lease items have correct denoms
@@ -2057,8 +2161,8 @@ func testMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 
 		// Try to create lease requiring both denoms - should fail
 		items := []string{
-			fmt.Sprintf("%d:1", skuPWR),    // Uses PWR - has enough
-			fmt.Sprintf("%d:1", skuSecond), // Uses second denom - insufficient!
+			fmt.Sprintf("%s:1", skuPWRUUID),    // Uses PWR - has enough
+			fmt.Sprintf("%s:1", skuSecondUUID), // Uses second denom - insufficient!
 		}
 		res, err = helpers.BillingCreateLease(ctx, chain, oneDenomTenant, items)
 		require.NoError(t, err)
@@ -2071,12 +2175,12 @@ func testMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	// Test: lease with same denom multiple SKUs works correctly
 	t.Run("success: lease with same denom multiple SKUs", func(t *testing.T) {
 		// Create two more SKUs with same denom
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderID, "Compute PWR 2", 1, fmt.Sprintf("1800000%s", testPWRDenom), "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderUUID, "Compute PWR 2", 1, fmt.Sprintf("1800000%s", testPWRDenom), "")
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
-		skuPWR2, err := helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		skuPWRUUID2, err := helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 
 		// Create tenant
@@ -2101,8 +2205,8 @@ func testMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 
 		// Create lease with multiple SKUs using same denom
 		items := []string{
-			fmt.Sprintf("%d:1", skuPWR),
-			fmt.Sprintf("%d:1", skuPWR2),
+			fmt.Sprintf("%s:1", skuPWRUUID),
+			fmt.Sprintf("%s:1", skuPWRUUID2),
 		}
 		res, err = helpers.BillingCreateLease(ctx, chain, sameDenomTenant, items)
 		require.NoError(t, err)

@@ -15,9 +15,9 @@ service Query {
     option (google.api.http).get = "/liftedinit/sku/v1/params";
   }
 
-  // Provider queries a provider by id.
+  // Provider queries a provider by uuid.
   rpc Provider(QueryProviderRequest) returns (QueryProviderResponse) {
-    option (google.api.http).get = "/liftedinit/sku/v1/provider/{id}";
+    option (google.api.http).get = "/liftedinit/sku/v1/provider/{uuid}";
   }
 
   // Providers queries all providers.
@@ -25,9 +25,9 @@ service Query {
     option (google.api.http).get = "/liftedinit/sku/v1/providers";
   }
 
-  // SKU queries a SKU by id.
+  // SKU queries a SKU by uuid.
   rpc SKU(QuerySKURequest) returns (QuerySKUResponse) {
-    option (google.api.http).get = "/liftedinit/sku/v1/sku/{id}";
+    option (google.api.http).get = "/liftedinit/sku/v1/sku/{uuid}";
   }
 
   // SKUs queries all SKUs.
@@ -35,10 +35,10 @@ service Query {
     option (google.api.http).get = "/liftedinit/sku/v1/skus";
   }
 
-  // SKUsByProvider queries SKUs by provider id.
+  // SKUsByProvider queries SKUs by provider uuid.
   rpc SKUsByProvider(QuerySKUsByProviderRequest)
       returns (QuerySKUsByProviderResponse) {
-    option (google.api.http).get = "/liftedinit/sku/v1/skus/provider/{provider_id}";
+    option (google.api.http).get = "/liftedinit/sku/v1/skus/provider/{provider_uuid}";
   }
 }
 
@@ -53,8 +53,8 @@ message QueryParamsResponse {
 
 // QueryProviderRequest is the request type for the Query/Provider RPC method.
 message QueryProviderRequest {
-  // id is the unique identifier of the provider.
-  uint64 id = 1;
+  // uuid is the unique identifier of the provider.
+  string uuid = 1;
 }
 
 // QueryProviderResponse is the response type for the Query/Provider RPC method.
@@ -83,8 +83,8 @@ message QueryProvidersResponse {
 
 // QuerySKURequest is the request type for the Query/SKU RPC method.
 message QuerySKURequest {
-  // id is the unique identifier of the SKU.
-  uint64 id = 1;
+  // uuid is the unique identifier of the SKU.
+  string uuid = 1;
 }
 
 // QuerySKUResponse is the response type for the Query/SKU RPC method.
@@ -114,8 +114,8 @@ message QuerySKUsResponse {
 // QuerySKUsByProviderRequest is the request type for the Query/SKUsByProvider
 // RPC method.
 message QuerySKUsByProviderRequest {
-  // provider_id is the unique identifier of the SKU provider.
-  uint64 provider_id = 1;
+  // provider_uuid is the unique identifier of the SKU provider.
+  string provider_uuid = 1;
 
   // pagination defines an optional pagination for the request.
   cosmos.base.query.v1beta1.PageRequest pagination = 2;

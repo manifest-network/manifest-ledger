@@ -68,7 +68,7 @@ func CalculateTotalAccruedForLease(items []LeaseItemWithPrice, duration time.Dur
 	for _, item := range items {
 		accrued, err := CalculateAccruedAmount(item.LockedPricePerSecond, item.Quantity, duration)
 		if err != nil {
-			return nil, fmt.Errorf("overflow calculating accrual for SKU %d: %w", item.SkuID, err)
+			return nil, fmt.Errorf("overflow calculating accrual for SKU %s: %w", item.SkuUUID, err)
 		}
 		if accrued.IsPositive() {
 			totals = totals.Add(accrued)
@@ -80,7 +80,7 @@ func CalculateTotalAccruedForLease(items []LeaseItemWithPrice, duration time.Dur
 
 // LeaseItemWithPrice holds a lease item with its locked price per second.
 type LeaseItemWithPrice struct {
-	SkuID                uint64
+	SkuUUID              string
 	Quantity             uint64
 	LockedPricePerSecond sdk.Coin
 }

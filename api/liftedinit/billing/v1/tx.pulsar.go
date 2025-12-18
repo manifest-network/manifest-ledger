@@ -12,6 +12,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoiface "google.golang.org/protobuf/runtime/protoiface"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	io "io"
 	reflect "reflect"
 	sync "sync"
@@ -19,14 +20,14 @@ import (
 
 var (
 	md_LeaseItemInput          protoreflect.MessageDescriptor
-	fd_LeaseItemInput_sku_id   protoreflect.FieldDescriptor
+	fd_LeaseItemInput_sku_uuid protoreflect.FieldDescriptor
 	fd_LeaseItemInput_quantity protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_liftedinit_billing_v1_tx_proto_init()
 	md_LeaseItemInput = File_liftedinit_billing_v1_tx_proto.Messages().ByName("LeaseItemInput")
-	fd_LeaseItemInput_sku_id = md_LeaseItemInput.Fields().ByName("sku_id")
+	fd_LeaseItemInput_sku_uuid = md_LeaseItemInput.Fields().ByName("sku_uuid")
 	fd_LeaseItemInput_quantity = md_LeaseItemInput.Fields().ByName("quantity")
 }
 
@@ -95,9 +96,9 @@ func (x *fastReflection_LeaseItemInput) Interface() protoreflect.ProtoMessage {
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
 func (x *fastReflection_LeaseItemInput) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
-	if x.SkuId != uint64(0) {
-		value := protoreflect.ValueOfUint64(x.SkuId)
-		if !f(fd_LeaseItemInput_sku_id, value) {
+	if x.SkuUuid != "" {
+		value := protoreflect.ValueOfString(x.SkuUuid)
+		if !f(fd_LeaseItemInput_sku_uuid, value) {
 			return
 		}
 	}
@@ -122,8 +123,8 @@ func (x *fastReflection_LeaseItemInput) Range(f func(protoreflect.FieldDescripto
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_LeaseItemInput) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.LeaseItemInput.sku_id":
-		return x.SkuId != uint64(0)
+	case "liftedinit.billing.v1.LeaseItemInput.sku_uuid":
+		return x.SkuUuid != ""
 	case "liftedinit.billing.v1.LeaseItemInput.quantity":
 		return x.Quantity != uint64(0)
 	default:
@@ -142,8 +143,8 @@ func (x *fastReflection_LeaseItemInput) Has(fd protoreflect.FieldDescriptor) boo
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_LeaseItemInput) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.LeaseItemInput.sku_id":
-		x.SkuId = uint64(0)
+	case "liftedinit.billing.v1.LeaseItemInput.sku_uuid":
+		x.SkuUuid = ""
 	case "liftedinit.billing.v1.LeaseItemInput.quantity":
 		x.Quantity = uint64(0)
 	default:
@@ -162,9 +163,9 @@ func (x *fastReflection_LeaseItemInput) Clear(fd protoreflect.FieldDescriptor) {
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_LeaseItemInput) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "liftedinit.billing.v1.LeaseItemInput.sku_id":
-		value := x.SkuId
-		return protoreflect.ValueOfUint64(value)
+	case "liftedinit.billing.v1.LeaseItemInput.sku_uuid":
+		value := x.SkuUuid
+		return protoreflect.ValueOfString(value)
 	case "liftedinit.billing.v1.LeaseItemInput.quantity":
 		value := x.Quantity
 		return protoreflect.ValueOfUint64(value)
@@ -188,8 +189,8 @@ func (x *fastReflection_LeaseItemInput) Get(descriptor protoreflect.FieldDescrip
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_LeaseItemInput) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.LeaseItemInput.sku_id":
-		x.SkuId = value.Uint()
+	case "liftedinit.billing.v1.LeaseItemInput.sku_uuid":
+		x.SkuUuid = value.Interface().(string)
 	case "liftedinit.billing.v1.LeaseItemInput.quantity":
 		x.Quantity = value.Uint()
 	default:
@@ -212,8 +213,8 @@ func (x *fastReflection_LeaseItemInput) Set(fd protoreflect.FieldDescriptor, val
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_LeaseItemInput) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.LeaseItemInput.sku_id":
-		panic(fmt.Errorf("field sku_id of message liftedinit.billing.v1.LeaseItemInput is not mutable"))
+	case "liftedinit.billing.v1.LeaseItemInput.sku_uuid":
+		panic(fmt.Errorf("field sku_uuid of message liftedinit.billing.v1.LeaseItemInput is not mutable"))
 	case "liftedinit.billing.v1.LeaseItemInput.quantity":
 		panic(fmt.Errorf("field quantity of message liftedinit.billing.v1.LeaseItemInput is not mutable"))
 	default:
@@ -229,8 +230,8 @@ func (x *fastReflection_LeaseItemInput) Mutable(fd protoreflect.FieldDescriptor)
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_LeaseItemInput) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.LeaseItemInput.sku_id":
-		return protoreflect.ValueOfUint64(uint64(0))
+	case "liftedinit.billing.v1.LeaseItemInput.sku_uuid":
+		return protoreflect.ValueOfString("")
 	case "liftedinit.billing.v1.LeaseItemInput.quantity":
 		return protoreflect.ValueOfUint64(uint64(0))
 	default:
@@ -302,8 +303,9 @@ func (x *fastReflection_LeaseItemInput) ProtoMethods() *protoiface.Methods {
 		var n int
 		var l int
 		_ = l
-		if x.SkuId != 0 {
-			n += 1 + runtime.Sov(uint64(x.SkuId))
+		l = len(x.SkuUuid)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
 		}
 		if x.Quantity != 0 {
 			n += 1 + runtime.Sov(uint64(x.Quantity))
@@ -342,10 +344,12 @@ func (x *fastReflection_LeaseItemInput) ProtoMethods() *protoiface.Methods {
 			i--
 			dAtA[i] = 0x10
 		}
-		if x.SkuId != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.SkuId))
+		if len(x.SkuUuid) > 0 {
+			i -= len(x.SkuUuid)
+			copy(dAtA[i:], x.SkuUuid)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.SkuUuid)))
 			i--
-			dAtA[i] = 0x8
+			dAtA[i] = 0xa
 		}
 		if input.Buf != nil {
 			input.Buf = append(input.Buf, dAtA...)
@@ -397,10 +401,10 @@ func (x *fastReflection_LeaseItemInput) ProtoMethods() *protoiface.Methods {
 			}
 			switch fieldNum {
 			case 1:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field SkuId", wireType)
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field SkuUuid", wireType)
 				}
-				x.SkuId = 0
+				var stringLen uint64
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
@@ -410,11 +414,24 @@ func (x *fastReflection_LeaseItemInput) ProtoMethods() *protoiface.Methods {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					x.SkuId |= uint64(b&0x7F) << shift
+					stringLen |= uint64(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
 				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.SkuUuid = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
 			case 2:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Quantity", wireType)
@@ -2090,14 +2107,14 @@ func (x *fastReflection_MsgCreateLease) ProtoMethods() *protoiface.Methods {
 }
 
 var (
-	md_MsgCreateLeaseResponse          protoreflect.MessageDescriptor
-	fd_MsgCreateLeaseResponse_lease_id protoreflect.FieldDescriptor
+	md_MsgCreateLeaseResponse            protoreflect.MessageDescriptor
+	fd_MsgCreateLeaseResponse_lease_uuid protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_liftedinit_billing_v1_tx_proto_init()
 	md_MsgCreateLeaseResponse = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgCreateLeaseResponse")
-	fd_MsgCreateLeaseResponse_lease_id = md_MsgCreateLeaseResponse.Fields().ByName("lease_id")
+	fd_MsgCreateLeaseResponse_lease_uuid = md_MsgCreateLeaseResponse.Fields().ByName("lease_uuid")
 }
 
 var _ protoreflect.Message = (*fastReflection_MsgCreateLeaseResponse)(nil)
@@ -2165,9 +2182,9 @@ func (x *fastReflection_MsgCreateLeaseResponse) Interface() protoreflect.ProtoMe
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
 func (x *fastReflection_MsgCreateLeaseResponse) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
-	if x.LeaseId != uint64(0) {
-		value := protoreflect.ValueOfUint64(x.LeaseId)
-		if !f(fd_MsgCreateLeaseResponse_lease_id, value) {
+	if x.LeaseUuid != "" {
+		value := protoreflect.ValueOfString(x.LeaseUuid)
+		if !f(fd_MsgCreateLeaseResponse_lease_uuid, value) {
 			return
 		}
 	}
@@ -2186,8 +2203,8 @@ func (x *fastReflection_MsgCreateLeaseResponse) Range(f func(protoreflect.FieldD
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_MsgCreateLeaseResponse) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCreateLeaseResponse.lease_id":
-		return x.LeaseId != uint64(0)
+	case "liftedinit.billing.v1.MsgCreateLeaseResponse.lease_uuid":
+		return x.LeaseUuid != ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCreateLeaseResponse"))
@@ -2204,8 +2221,8 @@ func (x *fastReflection_MsgCreateLeaseResponse) Has(fd protoreflect.FieldDescrip
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgCreateLeaseResponse) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCreateLeaseResponse.lease_id":
-		x.LeaseId = uint64(0)
+	case "liftedinit.billing.v1.MsgCreateLeaseResponse.lease_uuid":
+		x.LeaseUuid = ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCreateLeaseResponse"))
@@ -2222,9 +2239,9 @@ func (x *fastReflection_MsgCreateLeaseResponse) Clear(fd protoreflect.FieldDescr
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_MsgCreateLeaseResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "liftedinit.billing.v1.MsgCreateLeaseResponse.lease_id":
-		value := x.LeaseId
-		return protoreflect.ValueOfUint64(value)
+	case "liftedinit.billing.v1.MsgCreateLeaseResponse.lease_uuid":
+		value := x.LeaseUuid
+		return protoreflect.ValueOfString(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCreateLeaseResponse"))
@@ -2245,8 +2262,8 @@ func (x *fastReflection_MsgCreateLeaseResponse) Get(descriptor protoreflect.Fiel
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgCreateLeaseResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCreateLeaseResponse.lease_id":
-		x.LeaseId = value.Uint()
+	case "liftedinit.billing.v1.MsgCreateLeaseResponse.lease_uuid":
+		x.LeaseUuid = value.Interface().(string)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCreateLeaseResponse"))
@@ -2267,8 +2284,8 @@ func (x *fastReflection_MsgCreateLeaseResponse) Set(fd protoreflect.FieldDescrip
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgCreateLeaseResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCreateLeaseResponse.lease_id":
-		panic(fmt.Errorf("field lease_id of message liftedinit.billing.v1.MsgCreateLeaseResponse is not mutable"))
+	case "liftedinit.billing.v1.MsgCreateLeaseResponse.lease_uuid":
+		panic(fmt.Errorf("field lease_uuid of message liftedinit.billing.v1.MsgCreateLeaseResponse is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCreateLeaseResponse"))
@@ -2282,8 +2299,8 @@ func (x *fastReflection_MsgCreateLeaseResponse) Mutable(fd protoreflect.FieldDes
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_MsgCreateLeaseResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCreateLeaseResponse.lease_id":
-		return protoreflect.ValueOfUint64(uint64(0))
+	case "liftedinit.billing.v1.MsgCreateLeaseResponse.lease_uuid":
+		return protoreflect.ValueOfString("")
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCreateLeaseResponse"))
@@ -2353,8 +2370,9 @@ func (x *fastReflection_MsgCreateLeaseResponse) ProtoMethods() *protoiface.Metho
 		var n int
 		var l int
 		_ = l
-		if x.LeaseId != 0 {
-			n += 1 + runtime.Sov(uint64(x.LeaseId))
+		l = len(x.LeaseUuid)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
 		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
@@ -2385,10 +2403,12 @@ func (x *fastReflection_MsgCreateLeaseResponse) ProtoMethods() *protoiface.Metho
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
 		}
-		if x.LeaseId != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.LeaseId))
+		if len(x.LeaseUuid) > 0 {
+			i -= len(x.LeaseUuid)
+			copy(dAtA[i:], x.LeaseUuid)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.LeaseUuid)))
 			i--
-			dAtA[i] = 0x8
+			dAtA[i] = 0xa
 		}
 		if input.Buf != nil {
 			input.Buf = append(input.Buf, dAtA...)
@@ -2440,10 +2460,10 @@ func (x *fastReflection_MsgCreateLeaseResponse) ProtoMethods() *protoiface.Metho
 			}
 			switch fieldNum {
 			case 1:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field LeaseId", wireType)
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field LeaseUuid", wireType)
 				}
-				x.LeaseId = 0
+				var stringLen uint64
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
@@ -2453,11 +2473,24 @@ func (x *fastReflection_MsgCreateLeaseResponse) ProtoMethods() *protoiface.Metho
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					x.LeaseId |= uint64(b&0x7F) << shift
+					stringLen |= uint64(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
 				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.LeaseUuid = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -3116,14 +3149,14 @@ func (x *fastReflection_MsgCreateLeaseForTenant) ProtoMethods() *protoiface.Meth
 }
 
 var (
-	md_MsgCreateLeaseForTenantResponse          protoreflect.MessageDescriptor
-	fd_MsgCreateLeaseForTenantResponse_lease_id protoreflect.FieldDescriptor
+	md_MsgCreateLeaseForTenantResponse            protoreflect.MessageDescriptor
+	fd_MsgCreateLeaseForTenantResponse_lease_uuid protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_liftedinit_billing_v1_tx_proto_init()
 	md_MsgCreateLeaseForTenantResponse = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgCreateLeaseForTenantResponse")
-	fd_MsgCreateLeaseForTenantResponse_lease_id = md_MsgCreateLeaseForTenantResponse.Fields().ByName("lease_id")
+	fd_MsgCreateLeaseForTenantResponse_lease_uuid = md_MsgCreateLeaseForTenantResponse.Fields().ByName("lease_uuid")
 }
 
 var _ protoreflect.Message = (*fastReflection_MsgCreateLeaseForTenantResponse)(nil)
@@ -3191,9 +3224,9 @@ func (x *fastReflection_MsgCreateLeaseForTenantResponse) Interface() protoreflec
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
 func (x *fastReflection_MsgCreateLeaseForTenantResponse) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
-	if x.LeaseId != uint64(0) {
-		value := protoreflect.ValueOfUint64(x.LeaseId)
-		if !f(fd_MsgCreateLeaseForTenantResponse_lease_id, value) {
+	if x.LeaseUuid != "" {
+		value := protoreflect.ValueOfString(x.LeaseUuid)
+		if !f(fd_MsgCreateLeaseForTenantResponse_lease_uuid, value) {
 			return
 		}
 	}
@@ -3212,8 +3245,8 @@ func (x *fastReflection_MsgCreateLeaseForTenantResponse) Range(f func(protorefle
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_MsgCreateLeaseForTenantResponse) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCreateLeaseForTenantResponse.lease_id":
-		return x.LeaseId != uint64(0)
+	case "liftedinit.billing.v1.MsgCreateLeaseForTenantResponse.lease_uuid":
+		return x.LeaseUuid != ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCreateLeaseForTenantResponse"))
@@ -3230,8 +3263,8 @@ func (x *fastReflection_MsgCreateLeaseForTenantResponse) Has(fd protoreflect.Fie
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgCreateLeaseForTenantResponse) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCreateLeaseForTenantResponse.lease_id":
-		x.LeaseId = uint64(0)
+	case "liftedinit.billing.v1.MsgCreateLeaseForTenantResponse.lease_uuid":
+		x.LeaseUuid = ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCreateLeaseForTenantResponse"))
@@ -3248,9 +3281,9 @@ func (x *fastReflection_MsgCreateLeaseForTenantResponse) Clear(fd protoreflect.F
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_MsgCreateLeaseForTenantResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "liftedinit.billing.v1.MsgCreateLeaseForTenantResponse.lease_id":
-		value := x.LeaseId
-		return protoreflect.ValueOfUint64(value)
+	case "liftedinit.billing.v1.MsgCreateLeaseForTenantResponse.lease_uuid":
+		value := x.LeaseUuid
+		return protoreflect.ValueOfString(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCreateLeaseForTenantResponse"))
@@ -3271,8 +3304,8 @@ func (x *fastReflection_MsgCreateLeaseForTenantResponse) Get(descriptor protoref
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgCreateLeaseForTenantResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCreateLeaseForTenantResponse.lease_id":
-		x.LeaseId = value.Uint()
+	case "liftedinit.billing.v1.MsgCreateLeaseForTenantResponse.lease_uuid":
+		x.LeaseUuid = value.Interface().(string)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCreateLeaseForTenantResponse"))
@@ -3293,8 +3326,8 @@ func (x *fastReflection_MsgCreateLeaseForTenantResponse) Set(fd protoreflect.Fie
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_MsgCreateLeaseForTenantResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCreateLeaseForTenantResponse.lease_id":
-		panic(fmt.Errorf("field lease_id of message liftedinit.billing.v1.MsgCreateLeaseForTenantResponse is not mutable"))
+	case "liftedinit.billing.v1.MsgCreateLeaseForTenantResponse.lease_uuid":
+		panic(fmt.Errorf("field lease_uuid of message liftedinit.billing.v1.MsgCreateLeaseForTenantResponse is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCreateLeaseForTenantResponse"))
@@ -3308,8 +3341,8 @@ func (x *fastReflection_MsgCreateLeaseForTenantResponse) Mutable(fd protoreflect
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_MsgCreateLeaseForTenantResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.MsgCreateLeaseForTenantResponse.lease_id":
-		return protoreflect.ValueOfUint64(uint64(0))
+	case "liftedinit.billing.v1.MsgCreateLeaseForTenantResponse.lease_uuid":
+		return protoreflect.ValueOfString("")
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCreateLeaseForTenantResponse"))
@@ -3379,8 +3412,9 @@ func (x *fastReflection_MsgCreateLeaseForTenantResponse) ProtoMethods() *protoif
 		var n int
 		var l int
 		_ = l
-		if x.LeaseId != 0 {
-			n += 1 + runtime.Sov(uint64(x.LeaseId))
+		l = len(x.LeaseUuid)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
 		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
@@ -3411,10 +3445,12 @@ func (x *fastReflection_MsgCreateLeaseForTenantResponse) ProtoMethods() *protoif
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
 		}
-		if x.LeaseId != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.LeaseId))
+		if len(x.LeaseUuid) > 0 {
+			i -= len(x.LeaseUuid)
+			copy(dAtA[i:], x.LeaseUuid)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.LeaseUuid)))
 			i--
-			dAtA[i] = 0x8
+			dAtA[i] = 0xa
 		}
 		if input.Buf != nil {
 			input.Buf = append(input.Buf, dAtA...)
@@ -3466,10 +3502,10 @@ func (x *fastReflection_MsgCreateLeaseForTenantResponse) ProtoMethods() *protoif
 			}
 			switch fieldNum {
 			case 1:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field LeaseId", wireType)
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field LeaseUuid", wireType)
 				}
-				x.LeaseId = 0
+				var stringLen uint64
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
@@ -3479,11 +3515,24 @@ func (x *fastReflection_MsgCreateLeaseForTenantResponse) ProtoMethods() *protoif
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					x.LeaseId |= uint64(b&0x7F) << shift
+					stringLen |= uint64(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
 				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.LeaseUuid = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -3520,16 +3569,16 @@ func (x *fastReflection_MsgCreateLeaseForTenantResponse) ProtoMethods() *protoif
 }
 
 var (
-	md_MsgCloseLease          protoreflect.MessageDescriptor
-	fd_MsgCloseLease_sender   protoreflect.FieldDescriptor
-	fd_MsgCloseLease_lease_id protoreflect.FieldDescriptor
+	md_MsgCloseLease            protoreflect.MessageDescriptor
+	fd_MsgCloseLease_sender     protoreflect.FieldDescriptor
+	fd_MsgCloseLease_lease_uuid protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_liftedinit_billing_v1_tx_proto_init()
 	md_MsgCloseLease = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgCloseLease")
 	fd_MsgCloseLease_sender = md_MsgCloseLease.Fields().ByName("sender")
-	fd_MsgCloseLease_lease_id = md_MsgCloseLease.Fields().ByName("lease_id")
+	fd_MsgCloseLease_lease_uuid = md_MsgCloseLease.Fields().ByName("lease_uuid")
 }
 
 var _ protoreflect.Message = (*fastReflection_MsgCloseLease)(nil)
@@ -3603,9 +3652,9 @@ func (x *fastReflection_MsgCloseLease) Range(f func(protoreflect.FieldDescriptor
 			return
 		}
 	}
-	if x.LeaseId != uint64(0) {
-		value := protoreflect.ValueOfUint64(x.LeaseId)
-		if !f(fd_MsgCloseLease_lease_id, value) {
+	if x.LeaseUuid != "" {
+		value := protoreflect.ValueOfString(x.LeaseUuid)
+		if !f(fd_MsgCloseLease_lease_uuid, value) {
 			return
 		}
 	}
@@ -3626,8 +3675,8 @@ func (x *fastReflection_MsgCloseLease) Has(fd protoreflect.FieldDescriptor) bool
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgCloseLease.sender":
 		return x.Sender != ""
-	case "liftedinit.billing.v1.MsgCloseLease.lease_id":
-		return x.LeaseId != uint64(0)
+	case "liftedinit.billing.v1.MsgCloseLease.lease_uuid":
+		return x.LeaseUuid != ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCloseLease"))
@@ -3646,8 +3695,8 @@ func (x *fastReflection_MsgCloseLease) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgCloseLease.sender":
 		x.Sender = ""
-	case "liftedinit.billing.v1.MsgCloseLease.lease_id":
-		x.LeaseId = uint64(0)
+	case "liftedinit.billing.v1.MsgCloseLease.lease_uuid":
+		x.LeaseUuid = ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCloseLease"))
@@ -3667,9 +3716,9 @@ func (x *fastReflection_MsgCloseLease) Get(descriptor protoreflect.FieldDescript
 	case "liftedinit.billing.v1.MsgCloseLease.sender":
 		value := x.Sender
 		return protoreflect.ValueOfString(value)
-	case "liftedinit.billing.v1.MsgCloseLease.lease_id":
-		value := x.LeaseId
-		return protoreflect.ValueOfUint64(value)
+	case "liftedinit.billing.v1.MsgCloseLease.lease_uuid":
+		value := x.LeaseUuid
+		return protoreflect.ValueOfString(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCloseLease"))
@@ -3692,8 +3741,8 @@ func (x *fastReflection_MsgCloseLease) Set(fd protoreflect.FieldDescriptor, valu
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgCloseLease.sender":
 		x.Sender = value.Interface().(string)
-	case "liftedinit.billing.v1.MsgCloseLease.lease_id":
-		x.LeaseId = value.Uint()
+	case "liftedinit.billing.v1.MsgCloseLease.lease_uuid":
+		x.LeaseUuid = value.Interface().(string)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCloseLease"))
@@ -3716,8 +3765,8 @@ func (x *fastReflection_MsgCloseLease) Mutable(fd protoreflect.FieldDescriptor) 
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgCloseLease.sender":
 		panic(fmt.Errorf("field sender of message liftedinit.billing.v1.MsgCloseLease is not mutable"))
-	case "liftedinit.billing.v1.MsgCloseLease.lease_id":
-		panic(fmt.Errorf("field lease_id of message liftedinit.billing.v1.MsgCloseLease is not mutable"))
+	case "liftedinit.billing.v1.MsgCloseLease.lease_uuid":
+		panic(fmt.Errorf("field lease_uuid of message liftedinit.billing.v1.MsgCloseLease is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCloseLease"))
@@ -3733,8 +3782,8 @@ func (x *fastReflection_MsgCloseLease) NewField(fd protoreflect.FieldDescriptor)
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgCloseLease.sender":
 		return protoreflect.ValueOfString("")
-	case "liftedinit.billing.v1.MsgCloseLease.lease_id":
-		return protoreflect.ValueOfUint64(uint64(0))
+	case "liftedinit.billing.v1.MsgCloseLease.lease_uuid":
+		return protoreflect.ValueOfString("")
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCloseLease"))
@@ -3808,8 +3857,9 @@ func (x *fastReflection_MsgCloseLease) ProtoMethods() *protoiface.Methods {
 		if l > 0 {
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
-		if x.LeaseId != 0 {
-			n += 1 + runtime.Sov(uint64(x.LeaseId))
+		l = len(x.LeaseUuid)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
 		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
@@ -3840,10 +3890,12 @@ func (x *fastReflection_MsgCloseLease) ProtoMethods() *protoiface.Methods {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
 		}
-		if x.LeaseId != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.LeaseId))
+		if len(x.LeaseUuid) > 0 {
+			i -= len(x.LeaseUuid)
+			copy(dAtA[i:], x.LeaseUuid)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.LeaseUuid)))
 			i--
-			dAtA[i] = 0x10
+			dAtA[i] = 0x12
 		}
 		if len(x.Sender) > 0 {
 			i -= len(x.Sender)
@@ -3934,10 +3986,10 @@ func (x *fastReflection_MsgCloseLease) ProtoMethods() *protoiface.Methods {
 				x.Sender = string(dAtA[iNdEx:postIndex])
 				iNdEx = postIndex
 			case 2:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field LeaseId", wireType)
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field LeaseUuid", wireType)
 				}
-				x.LeaseId = 0
+				var stringLen uint64
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
@@ -3947,11 +3999,24 @@ func (x *fastReflection_MsgCloseLease) ProtoMethods() *protoiface.Methods {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					x.LeaseId |= uint64(b&0x7F) << shift
+					stringLen |= uint64(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
 				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.LeaseUuid = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -4482,16 +4547,16 @@ func (x *fastReflection_MsgCloseLeaseResponse) ProtoMethods() *protoiface.Method
 }
 
 var (
-	md_MsgWithdraw          protoreflect.MessageDescriptor
-	fd_MsgWithdraw_sender   protoreflect.FieldDescriptor
-	fd_MsgWithdraw_lease_id protoreflect.FieldDescriptor
+	md_MsgWithdraw            protoreflect.MessageDescriptor
+	fd_MsgWithdraw_sender     protoreflect.FieldDescriptor
+	fd_MsgWithdraw_lease_uuid protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_liftedinit_billing_v1_tx_proto_init()
 	md_MsgWithdraw = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgWithdraw")
 	fd_MsgWithdraw_sender = md_MsgWithdraw.Fields().ByName("sender")
-	fd_MsgWithdraw_lease_id = md_MsgWithdraw.Fields().ByName("lease_id")
+	fd_MsgWithdraw_lease_uuid = md_MsgWithdraw.Fields().ByName("lease_uuid")
 }
 
 var _ protoreflect.Message = (*fastReflection_MsgWithdraw)(nil)
@@ -4565,9 +4630,9 @@ func (x *fastReflection_MsgWithdraw) Range(f func(protoreflect.FieldDescriptor, 
 			return
 		}
 	}
-	if x.LeaseId != uint64(0) {
-		value := protoreflect.ValueOfUint64(x.LeaseId)
-		if !f(fd_MsgWithdraw_lease_id, value) {
+	if x.LeaseUuid != "" {
+		value := protoreflect.ValueOfString(x.LeaseUuid)
+		if !f(fd_MsgWithdraw_lease_uuid, value) {
 			return
 		}
 	}
@@ -4588,8 +4653,8 @@ func (x *fastReflection_MsgWithdraw) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgWithdraw.sender":
 		return x.Sender != ""
-	case "liftedinit.billing.v1.MsgWithdraw.lease_id":
-		return x.LeaseId != uint64(0)
+	case "liftedinit.billing.v1.MsgWithdraw.lease_uuid":
+		return x.LeaseUuid != ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgWithdraw"))
@@ -4608,8 +4673,8 @@ func (x *fastReflection_MsgWithdraw) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgWithdraw.sender":
 		x.Sender = ""
-	case "liftedinit.billing.v1.MsgWithdraw.lease_id":
-		x.LeaseId = uint64(0)
+	case "liftedinit.billing.v1.MsgWithdraw.lease_uuid":
+		x.LeaseUuid = ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgWithdraw"))
@@ -4629,9 +4694,9 @@ func (x *fastReflection_MsgWithdraw) Get(descriptor protoreflect.FieldDescriptor
 	case "liftedinit.billing.v1.MsgWithdraw.sender":
 		value := x.Sender
 		return protoreflect.ValueOfString(value)
-	case "liftedinit.billing.v1.MsgWithdraw.lease_id":
-		value := x.LeaseId
-		return protoreflect.ValueOfUint64(value)
+	case "liftedinit.billing.v1.MsgWithdraw.lease_uuid":
+		value := x.LeaseUuid
+		return protoreflect.ValueOfString(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgWithdraw"))
@@ -4654,8 +4719,8 @@ func (x *fastReflection_MsgWithdraw) Set(fd protoreflect.FieldDescriptor, value 
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgWithdraw.sender":
 		x.Sender = value.Interface().(string)
-	case "liftedinit.billing.v1.MsgWithdraw.lease_id":
-		x.LeaseId = value.Uint()
+	case "liftedinit.billing.v1.MsgWithdraw.lease_uuid":
+		x.LeaseUuid = value.Interface().(string)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgWithdraw"))
@@ -4678,8 +4743,8 @@ func (x *fastReflection_MsgWithdraw) Mutable(fd protoreflect.FieldDescriptor) pr
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgWithdraw.sender":
 		panic(fmt.Errorf("field sender of message liftedinit.billing.v1.MsgWithdraw is not mutable"))
-	case "liftedinit.billing.v1.MsgWithdraw.lease_id":
-		panic(fmt.Errorf("field lease_id of message liftedinit.billing.v1.MsgWithdraw is not mutable"))
+	case "liftedinit.billing.v1.MsgWithdraw.lease_uuid":
+		panic(fmt.Errorf("field lease_uuid of message liftedinit.billing.v1.MsgWithdraw is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgWithdraw"))
@@ -4695,8 +4760,8 @@ func (x *fastReflection_MsgWithdraw) NewField(fd protoreflect.FieldDescriptor) p
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgWithdraw.sender":
 		return protoreflect.ValueOfString("")
-	case "liftedinit.billing.v1.MsgWithdraw.lease_id":
-		return protoreflect.ValueOfUint64(uint64(0))
+	case "liftedinit.billing.v1.MsgWithdraw.lease_uuid":
+		return protoreflect.ValueOfString("")
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgWithdraw"))
@@ -4770,8 +4835,9 @@ func (x *fastReflection_MsgWithdraw) ProtoMethods() *protoiface.Methods {
 		if l > 0 {
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
-		if x.LeaseId != 0 {
-			n += 1 + runtime.Sov(uint64(x.LeaseId))
+		l = len(x.LeaseUuid)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
 		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
@@ -4802,10 +4868,12 @@ func (x *fastReflection_MsgWithdraw) ProtoMethods() *protoiface.Methods {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
 		}
-		if x.LeaseId != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.LeaseId))
+		if len(x.LeaseUuid) > 0 {
+			i -= len(x.LeaseUuid)
+			copy(dAtA[i:], x.LeaseUuid)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.LeaseUuid)))
 			i--
-			dAtA[i] = 0x10
+			dAtA[i] = 0x12
 		}
 		if len(x.Sender) > 0 {
 			i -= len(x.Sender)
@@ -4896,10 +4964,10 @@ func (x *fastReflection_MsgWithdraw) ProtoMethods() *protoiface.Methods {
 				x.Sender = string(dAtA[iNdEx:postIndex])
 				iNdEx = postIndex
 			case 2:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field LeaseId", wireType)
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field LeaseUuid", wireType)
 				}
-				x.LeaseId = 0
+				var stringLen uint64
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
@@ -4909,11 +4977,24 @@ func (x *fastReflection_MsgWithdraw) ProtoMethods() *protoiface.Methods {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					x.LeaseId |= uint64(b&0x7F) << shift
+					stringLen |= uint64(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
 				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.LeaseUuid = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -5508,17 +5589,17 @@ func (x *fastReflection_MsgWithdrawResponse) ProtoMethods() *protoiface.Methods 
 }
 
 var (
-	md_MsgWithdrawAll             protoreflect.MessageDescriptor
-	fd_MsgWithdrawAll_sender      protoreflect.FieldDescriptor
-	fd_MsgWithdrawAll_provider_id protoreflect.FieldDescriptor
-	fd_MsgWithdrawAll_limit       protoreflect.FieldDescriptor
+	md_MsgWithdrawAll               protoreflect.MessageDescriptor
+	fd_MsgWithdrawAll_sender        protoreflect.FieldDescriptor
+	fd_MsgWithdrawAll_provider_uuid protoreflect.FieldDescriptor
+	fd_MsgWithdrawAll_limit         protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_liftedinit_billing_v1_tx_proto_init()
 	md_MsgWithdrawAll = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgWithdrawAll")
 	fd_MsgWithdrawAll_sender = md_MsgWithdrawAll.Fields().ByName("sender")
-	fd_MsgWithdrawAll_provider_id = md_MsgWithdrawAll.Fields().ByName("provider_id")
+	fd_MsgWithdrawAll_provider_uuid = md_MsgWithdrawAll.Fields().ByName("provider_uuid")
 	fd_MsgWithdrawAll_limit = md_MsgWithdrawAll.Fields().ByName("limit")
 }
 
@@ -5593,9 +5674,9 @@ func (x *fastReflection_MsgWithdrawAll) Range(f func(protoreflect.FieldDescripto
 			return
 		}
 	}
-	if x.ProviderId != uint64(0) {
-		value := protoreflect.ValueOfUint64(x.ProviderId)
-		if !f(fd_MsgWithdrawAll_provider_id, value) {
+	if x.ProviderUuid != "" {
+		value := protoreflect.ValueOfString(x.ProviderUuid)
+		if !f(fd_MsgWithdrawAll_provider_uuid, value) {
 			return
 		}
 	}
@@ -5622,8 +5703,8 @@ func (x *fastReflection_MsgWithdrawAll) Has(fd protoreflect.FieldDescriptor) boo
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgWithdrawAll.sender":
 		return x.Sender != ""
-	case "liftedinit.billing.v1.MsgWithdrawAll.provider_id":
-		return x.ProviderId != uint64(0)
+	case "liftedinit.billing.v1.MsgWithdrawAll.provider_uuid":
+		return x.ProviderUuid != ""
 	case "liftedinit.billing.v1.MsgWithdrawAll.limit":
 		return x.Limit != uint64(0)
 	default:
@@ -5644,8 +5725,8 @@ func (x *fastReflection_MsgWithdrawAll) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgWithdrawAll.sender":
 		x.Sender = ""
-	case "liftedinit.billing.v1.MsgWithdrawAll.provider_id":
-		x.ProviderId = uint64(0)
+	case "liftedinit.billing.v1.MsgWithdrawAll.provider_uuid":
+		x.ProviderUuid = ""
 	case "liftedinit.billing.v1.MsgWithdrawAll.limit":
 		x.Limit = uint64(0)
 	default:
@@ -5667,9 +5748,9 @@ func (x *fastReflection_MsgWithdrawAll) Get(descriptor protoreflect.FieldDescrip
 	case "liftedinit.billing.v1.MsgWithdrawAll.sender":
 		value := x.Sender
 		return protoreflect.ValueOfString(value)
-	case "liftedinit.billing.v1.MsgWithdrawAll.provider_id":
-		value := x.ProviderId
-		return protoreflect.ValueOfUint64(value)
+	case "liftedinit.billing.v1.MsgWithdrawAll.provider_uuid":
+		value := x.ProviderUuid
+		return protoreflect.ValueOfString(value)
 	case "liftedinit.billing.v1.MsgWithdrawAll.limit":
 		value := x.Limit
 		return protoreflect.ValueOfUint64(value)
@@ -5695,8 +5776,8 @@ func (x *fastReflection_MsgWithdrawAll) Set(fd protoreflect.FieldDescriptor, val
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgWithdrawAll.sender":
 		x.Sender = value.Interface().(string)
-	case "liftedinit.billing.v1.MsgWithdrawAll.provider_id":
-		x.ProviderId = value.Uint()
+	case "liftedinit.billing.v1.MsgWithdrawAll.provider_uuid":
+		x.ProviderUuid = value.Interface().(string)
 	case "liftedinit.billing.v1.MsgWithdrawAll.limit":
 		x.Limit = value.Uint()
 	default:
@@ -5721,8 +5802,8 @@ func (x *fastReflection_MsgWithdrawAll) Mutable(fd protoreflect.FieldDescriptor)
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgWithdrawAll.sender":
 		panic(fmt.Errorf("field sender of message liftedinit.billing.v1.MsgWithdrawAll is not mutable"))
-	case "liftedinit.billing.v1.MsgWithdrawAll.provider_id":
-		panic(fmt.Errorf("field provider_id of message liftedinit.billing.v1.MsgWithdrawAll is not mutable"))
+	case "liftedinit.billing.v1.MsgWithdrawAll.provider_uuid":
+		panic(fmt.Errorf("field provider_uuid of message liftedinit.billing.v1.MsgWithdrawAll is not mutable"))
 	case "liftedinit.billing.v1.MsgWithdrawAll.limit":
 		panic(fmt.Errorf("field limit of message liftedinit.billing.v1.MsgWithdrawAll is not mutable"))
 	default:
@@ -5740,8 +5821,8 @@ func (x *fastReflection_MsgWithdrawAll) NewField(fd protoreflect.FieldDescriptor
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgWithdrawAll.sender":
 		return protoreflect.ValueOfString("")
-	case "liftedinit.billing.v1.MsgWithdrawAll.provider_id":
-		return protoreflect.ValueOfUint64(uint64(0))
+	case "liftedinit.billing.v1.MsgWithdrawAll.provider_uuid":
+		return protoreflect.ValueOfString("")
 	case "liftedinit.billing.v1.MsgWithdrawAll.limit":
 		return protoreflect.ValueOfUint64(uint64(0))
 	default:
@@ -5817,8 +5898,9 @@ func (x *fastReflection_MsgWithdrawAll) ProtoMethods() *protoiface.Methods {
 		if l > 0 {
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
-		if x.ProviderId != 0 {
-			n += 1 + runtime.Sov(uint64(x.ProviderId))
+		l = len(x.ProviderUuid)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
 		}
 		if x.Limit != 0 {
 			n += 1 + runtime.Sov(uint64(x.Limit))
@@ -5857,10 +5939,12 @@ func (x *fastReflection_MsgWithdrawAll) ProtoMethods() *protoiface.Methods {
 			i--
 			dAtA[i] = 0x18
 		}
-		if x.ProviderId != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.ProviderId))
+		if len(x.ProviderUuid) > 0 {
+			i -= len(x.ProviderUuid)
+			copy(dAtA[i:], x.ProviderUuid)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.ProviderUuid)))
 			i--
-			dAtA[i] = 0x10
+			dAtA[i] = 0x12
 		}
 		if len(x.Sender) > 0 {
 			i -= len(x.Sender)
@@ -5951,10 +6035,10 @@ func (x *fastReflection_MsgWithdrawAll) ProtoMethods() *protoiface.Methods {
 				x.Sender = string(dAtA[iNdEx:postIndex])
 				iNdEx = postIndex
 			case 2:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ProviderId", wireType)
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ProviderUuid", wireType)
 				}
-				x.ProviderId = 0
+				var stringLen uint64
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
@@ -5964,11 +6048,24 @@ func (x *fastReflection_MsgWithdrawAll) ProtoMethods() *protoiface.Methods {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					x.ProviderId |= uint64(b&0x7F) << shift
+					stringLen |= uint64(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
 				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.ProviderUuid = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
 			case 3:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Limit", wireType)
@@ -7538,6 +7635,2827 @@ func (x *fastReflection_MsgUpdateParamsResponse) ProtoMethods() *protoiface.Meth
 	}
 }
 
+var (
+	md_MsgAcknowledgeLease            protoreflect.MessageDescriptor
+	fd_MsgAcknowledgeLease_sender     protoreflect.FieldDescriptor
+	fd_MsgAcknowledgeLease_lease_uuid protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_liftedinit_billing_v1_tx_proto_init()
+	md_MsgAcknowledgeLease = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgAcknowledgeLease")
+	fd_MsgAcknowledgeLease_sender = md_MsgAcknowledgeLease.Fields().ByName("sender")
+	fd_MsgAcknowledgeLease_lease_uuid = md_MsgAcknowledgeLease.Fields().ByName("lease_uuid")
+}
+
+var _ protoreflect.Message = (*fastReflection_MsgAcknowledgeLease)(nil)
+
+type fastReflection_MsgAcknowledgeLease MsgAcknowledgeLease
+
+func (x *MsgAcknowledgeLease) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_MsgAcknowledgeLease)(x)
+}
+
+func (x *MsgAcknowledgeLease) slowProtoReflect() protoreflect.Message {
+	mi := &file_liftedinit_billing_v1_tx_proto_msgTypes[15]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_MsgAcknowledgeLease_messageType fastReflection_MsgAcknowledgeLease_messageType
+var _ protoreflect.MessageType = fastReflection_MsgAcknowledgeLease_messageType{}
+
+type fastReflection_MsgAcknowledgeLease_messageType struct{}
+
+func (x fastReflection_MsgAcknowledgeLease_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_MsgAcknowledgeLease)(nil)
+}
+func (x fastReflection_MsgAcknowledgeLease_messageType) New() protoreflect.Message {
+	return new(fastReflection_MsgAcknowledgeLease)
+}
+func (x fastReflection_MsgAcknowledgeLease_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgAcknowledgeLease
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_MsgAcknowledgeLease) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgAcknowledgeLease
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_MsgAcknowledgeLease) Type() protoreflect.MessageType {
+	return _fastReflection_MsgAcknowledgeLease_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_MsgAcknowledgeLease) New() protoreflect.Message {
+	return new(fastReflection_MsgAcknowledgeLease)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_MsgAcknowledgeLease) Interface() protoreflect.ProtoMessage {
+	return (*MsgAcknowledgeLease)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_MsgAcknowledgeLease) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.Sender != "" {
+		value := protoreflect.ValueOfString(x.Sender)
+		if !f(fd_MsgAcknowledgeLease_sender, value) {
+			return
+		}
+	}
+	if x.LeaseUuid != "" {
+		value := protoreflect.ValueOfString(x.LeaseUuid)
+		if !f(fd_MsgAcknowledgeLease_lease_uuid, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_MsgAcknowledgeLease) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgAcknowledgeLease.sender":
+		return x.Sender != ""
+	case "liftedinit.billing.v1.MsgAcknowledgeLease.lease_uuid":
+		return x.LeaseUuid != ""
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgAcknowledgeLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgAcknowledgeLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgAcknowledgeLease) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgAcknowledgeLease.sender":
+		x.Sender = ""
+	case "liftedinit.billing.v1.MsgAcknowledgeLease.lease_uuid":
+		x.LeaseUuid = ""
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgAcknowledgeLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgAcknowledgeLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_MsgAcknowledgeLease) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "liftedinit.billing.v1.MsgAcknowledgeLease.sender":
+		value := x.Sender
+		return protoreflect.ValueOfString(value)
+	case "liftedinit.billing.v1.MsgAcknowledgeLease.lease_uuid":
+		value := x.LeaseUuid
+		return protoreflect.ValueOfString(value)
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgAcknowledgeLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgAcknowledgeLease does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgAcknowledgeLease) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgAcknowledgeLease.sender":
+		x.Sender = value.Interface().(string)
+	case "liftedinit.billing.v1.MsgAcknowledgeLease.lease_uuid":
+		x.LeaseUuid = value.Interface().(string)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgAcknowledgeLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgAcknowledgeLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgAcknowledgeLease) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgAcknowledgeLease.sender":
+		panic(fmt.Errorf("field sender of message liftedinit.billing.v1.MsgAcknowledgeLease is not mutable"))
+	case "liftedinit.billing.v1.MsgAcknowledgeLease.lease_uuid":
+		panic(fmt.Errorf("field lease_uuid of message liftedinit.billing.v1.MsgAcknowledgeLease is not mutable"))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgAcknowledgeLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgAcknowledgeLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_MsgAcknowledgeLease) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgAcknowledgeLease.sender":
+		return protoreflect.ValueOfString("")
+	case "liftedinit.billing.v1.MsgAcknowledgeLease.lease_uuid":
+		return protoreflect.ValueOfString("")
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgAcknowledgeLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgAcknowledgeLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_MsgAcknowledgeLease) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.billing.v1.MsgAcknowledgeLease", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_MsgAcknowledgeLease) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgAcknowledgeLease) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_MsgAcknowledgeLease) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_MsgAcknowledgeLease) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*MsgAcknowledgeLease)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		l = len(x.Sender)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		l = len(x.LeaseUuid)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*MsgAcknowledgeLease)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if len(x.LeaseUuid) > 0 {
+			i -= len(x.LeaseUuid)
+			copy(dAtA[i:], x.LeaseUuid)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.LeaseUuid)))
+			i--
+			dAtA[i] = 0x12
+		}
+		if len(x.Sender) > 0 {
+			i -= len(x.Sender)
+			copy(dAtA[i:], x.Sender)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Sender)))
+			i--
+			dAtA[i] = 0xa
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*MsgAcknowledgeLease)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgAcknowledgeLease: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgAcknowledgeLease: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Sender", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Sender = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			case 2:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field LeaseUuid", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.LeaseUuid = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var (
+	md_MsgAcknowledgeLeaseResponse                 protoreflect.MessageDescriptor
+	fd_MsgAcknowledgeLeaseResponse_acknowledged_at protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_liftedinit_billing_v1_tx_proto_init()
+	md_MsgAcknowledgeLeaseResponse = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgAcknowledgeLeaseResponse")
+	fd_MsgAcknowledgeLeaseResponse_acknowledged_at = md_MsgAcknowledgeLeaseResponse.Fields().ByName("acknowledged_at")
+}
+
+var _ protoreflect.Message = (*fastReflection_MsgAcknowledgeLeaseResponse)(nil)
+
+type fastReflection_MsgAcknowledgeLeaseResponse MsgAcknowledgeLeaseResponse
+
+func (x *MsgAcknowledgeLeaseResponse) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_MsgAcknowledgeLeaseResponse)(x)
+}
+
+func (x *MsgAcknowledgeLeaseResponse) slowProtoReflect() protoreflect.Message {
+	mi := &file_liftedinit_billing_v1_tx_proto_msgTypes[16]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_MsgAcknowledgeLeaseResponse_messageType fastReflection_MsgAcknowledgeLeaseResponse_messageType
+var _ protoreflect.MessageType = fastReflection_MsgAcknowledgeLeaseResponse_messageType{}
+
+type fastReflection_MsgAcknowledgeLeaseResponse_messageType struct{}
+
+func (x fastReflection_MsgAcknowledgeLeaseResponse_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_MsgAcknowledgeLeaseResponse)(nil)
+}
+func (x fastReflection_MsgAcknowledgeLeaseResponse_messageType) New() protoreflect.Message {
+	return new(fastReflection_MsgAcknowledgeLeaseResponse)
+}
+func (x fastReflection_MsgAcknowledgeLeaseResponse_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgAcknowledgeLeaseResponse
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgAcknowledgeLeaseResponse
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) Type() protoreflect.MessageType {
+	return _fastReflection_MsgAcknowledgeLeaseResponse_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) New() protoreflect.Message {
+	return new(fastReflection_MsgAcknowledgeLeaseResponse)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) Interface() protoreflect.ProtoMessage {
+	return (*MsgAcknowledgeLeaseResponse)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.AcknowledgedAt != nil {
+		value := protoreflect.ValueOfMessage(x.AcknowledgedAt.ProtoReflect())
+		if !f(fd_MsgAcknowledgeLeaseResponse_acknowledged_at, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgAcknowledgeLeaseResponse.acknowledged_at":
+		return x.AcknowledgedAt != nil
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgAcknowledgeLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgAcknowledgeLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgAcknowledgeLeaseResponse.acknowledged_at":
+		x.AcknowledgedAt = nil
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgAcknowledgeLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgAcknowledgeLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "liftedinit.billing.v1.MsgAcknowledgeLeaseResponse.acknowledged_at":
+		value := x.AcknowledgedAt
+		return protoreflect.ValueOfMessage(value.ProtoReflect())
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgAcknowledgeLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgAcknowledgeLeaseResponse does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgAcknowledgeLeaseResponse.acknowledged_at":
+		x.AcknowledgedAt = value.Message().Interface().(*timestamppb.Timestamp)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgAcknowledgeLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgAcknowledgeLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgAcknowledgeLeaseResponse.acknowledged_at":
+		if x.AcknowledgedAt == nil {
+			x.AcknowledgedAt = new(timestamppb.Timestamp)
+		}
+		return protoreflect.ValueOfMessage(x.AcknowledgedAt.ProtoReflect())
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgAcknowledgeLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgAcknowledgeLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgAcknowledgeLeaseResponse.acknowledged_at":
+		m := new(timestamppb.Timestamp)
+		return protoreflect.ValueOfMessage(m.ProtoReflect())
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgAcknowledgeLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgAcknowledgeLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.billing.v1.MsgAcknowledgeLeaseResponse", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_MsgAcknowledgeLeaseResponse) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*MsgAcknowledgeLeaseResponse)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		if x.AcknowledgedAt != nil {
+			l = options.Size(x.AcknowledgedAt)
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*MsgAcknowledgeLeaseResponse)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.AcknowledgedAt != nil {
+			encoded, err := options.Marshal(x.AcknowledgedAt)
+			if err != nil {
+				return protoiface.MarshalOutput{
+					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+					Buf:               input.Buf,
+				}, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			i--
+			dAtA[i] = 0xa
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*MsgAcknowledgeLeaseResponse)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgAcknowledgeLeaseResponse: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgAcknowledgeLeaseResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field AcknowledgedAt", wireType)
+				}
+				var msglen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					msglen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if msglen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + msglen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if x.AcknowledgedAt == nil {
+					x.AcknowledgedAt = &timestamppb.Timestamp{}
+				}
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.AcknowledgedAt); err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				iNdEx = postIndex
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var (
+	md_MsgRejectLease            protoreflect.MessageDescriptor
+	fd_MsgRejectLease_sender     protoreflect.FieldDescriptor
+	fd_MsgRejectLease_lease_uuid protoreflect.FieldDescriptor
+	fd_MsgRejectLease_reason     protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_liftedinit_billing_v1_tx_proto_init()
+	md_MsgRejectLease = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgRejectLease")
+	fd_MsgRejectLease_sender = md_MsgRejectLease.Fields().ByName("sender")
+	fd_MsgRejectLease_lease_uuid = md_MsgRejectLease.Fields().ByName("lease_uuid")
+	fd_MsgRejectLease_reason = md_MsgRejectLease.Fields().ByName("reason")
+}
+
+var _ protoreflect.Message = (*fastReflection_MsgRejectLease)(nil)
+
+type fastReflection_MsgRejectLease MsgRejectLease
+
+func (x *MsgRejectLease) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_MsgRejectLease)(x)
+}
+
+func (x *MsgRejectLease) slowProtoReflect() protoreflect.Message {
+	mi := &file_liftedinit_billing_v1_tx_proto_msgTypes[17]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_MsgRejectLease_messageType fastReflection_MsgRejectLease_messageType
+var _ protoreflect.MessageType = fastReflection_MsgRejectLease_messageType{}
+
+type fastReflection_MsgRejectLease_messageType struct{}
+
+func (x fastReflection_MsgRejectLease_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_MsgRejectLease)(nil)
+}
+func (x fastReflection_MsgRejectLease_messageType) New() protoreflect.Message {
+	return new(fastReflection_MsgRejectLease)
+}
+func (x fastReflection_MsgRejectLease_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgRejectLease
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_MsgRejectLease) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgRejectLease
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_MsgRejectLease) Type() protoreflect.MessageType {
+	return _fastReflection_MsgRejectLease_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_MsgRejectLease) New() protoreflect.Message {
+	return new(fastReflection_MsgRejectLease)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_MsgRejectLease) Interface() protoreflect.ProtoMessage {
+	return (*MsgRejectLease)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_MsgRejectLease) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.Sender != "" {
+		value := protoreflect.ValueOfString(x.Sender)
+		if !f(fd_MsgRejectLease_sender, value) {
+			return
+		}
+	}
+	if x.LeaseUuid != "" {
+		value := protoreflect.ValueOfString(x.LeaseUuid)
+		if !f(fd_MsgRejectLease_lease_uuid, value) {
+			return
+		}
+	}
+	if x.Reason != "" {
+		value := protoreflect.ValueOfString(x.Reason)
+		if !f(fd_MsgRejectLease_reason, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_MsgRejectLease) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgRejectLease.sender":
+		return x.Sender != ""
+	case "liftedinit.billing.v1.MsgRejectLease.lease_uuid":
+		return x.LeaseUuid != ""
+	case "liftedinit.billing.v1.MsgRejectLease.reason":
+		return x.Reason != ""
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgRejectLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgRejectLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgRejectLease) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgRejectLease.sender":
+		x.Sender = ""
+	case "liftedinit.billing.v1.MsgRejectLease.lease_uuid":
+		x.LeaseUuid = ""
+	case "liftedinit.billing.v1.MsgRejectLease.reason":
+		x.Reason = ""
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgRejectLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgRejectLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_MsgRejectLease) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "liftedinit.billing.v1.MsgRejectLease.sender":
+		value := x.Sender
+		return protoreflect.ValueOfString(value)
+	case "liftedinit.billing.v1.MsgRejectLease.lease_uuid":
+		value := x.LeaseUuid
+		return protoreflect.ValueOfString(value)
+	case "liftedinit.billing.v1.MsgRejectLease.reason":
+		value := x.Reason
+		return protoreflect.ValueOfString(value)
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgRejectLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgRejectLease does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgRejectLease) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgRejectLease.sender":
+		x.Sender = value.Interface().(string)
+	case "liftedinit.billing.v1.MsgRejectLease.lease_uuid":
+		x.LeaseUuid = value.Interface().(string)
+	case "liftedinit.billing.v1.MsgRejectLease.reason":
+		x.Reason = value.Interface().(string)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgRejectLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgRejectLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgRejectLease) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgRejectLease.sender":
+		panic(fmt.Errorf("field sender of message liftedinit.billing.v1.MsgRejectLease is not mutable"))
+	case "liftedinit.billing.v1.MsgRejectLease.lease_uuid":
+		panic(fmt.Errorf("field lease_uuid of message liftedinit.billing.v1.MsgRejectLease is not mutable"))
+	case "liftedinit.billing.v1.MsgRejectLease.reason":
+		panic(fmt.Errorf("field reason of message liftedinit.billing.v1.MsgRejectLease is not mutable"))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgRejectLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgRejectLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_MsgRejectLease) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgRejectLease.sender":
+		return protoreflect.ValueOfString("")
+	case "liftedinit.billing.v1.MsgRejectLease.lease_uuid":
+		return protoreflect.ValueOfString("")
+	case "liftedinit.billing.v1.MsgRejectLease.reason":
+		return protoreflect.ValueOfString("")
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgRejectLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgRejectLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_MsgRejectLease) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.billing.v1.MsgRejectLease", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_MsgRejectLease) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgRejectLease) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_MsgRejectLease) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_MsgRejectLease) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*MsgRejectLease)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		l = len(x.Sender)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		l = len(x.LeaseUuid)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		l = len(x.Reason)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*MsgRejectLease)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if len(x.Reason) > 0 {
+			i -= len(x.Reason)
+			copy(dAtA[i:], x.Reason)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Reason)))
+			i--
+			dAtA[i] = 0x1a
+		}
+		if len(x.LeaseUuid) > 0 {
+			i -= len(x.LeaseUuid)
+			copy(dAtA[i:], x.LeaseUuid)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.LeaseUuid)))
+			i--
+			dAtA[i] = 0x12
+		}
+		if len(x.Sender) > 0 {
+			i -= len(x.Sender)
+			copy(dAtA[i:], x.Sender)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Sender)))
+			i--
+			dAtA[i] = 0xa
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*MsgRejectLease)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgRejectLease: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgRejectLease: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Sender", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Sender = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			case 2:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field LeaseUuid", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.LeaseUuid = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			case 3:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Reason", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Reason = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var (
+	md_MsgRejectLeaseResponse             protoreflect.MessageDescriptor
+	fd_MsgRejectLeaseResponse_rejected_at protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_liftedinit_billing_v1_tx_proto_init()
+	md_MsgRejectLeaseResponse = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgRejectLeaseResponse")
+	fd_MsgRejectLeaseResponse_rejected_at = md_MsgRejectLeaseResponse.Fields().ByName("rejected_at")
+}
+
+var _ protoreflect.Message = (*fastReflection_MsgRejectLeaseResponse)(nil)
+
+type fastReflection_MsgRejectLeaseResponse MsgRejectLeaseResponse
+
+func (x *MsgRejectLeaseResponse) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_MsgRejectLeaseResponse)(x)
+}
+
+func (x *MsgRejectLeaseResponse) slowProtoReflect() protoreflect.Message {
+	mi := &file_liftedinit_billing_v1_tx_proto_msgTypes[18]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_MsgRejectLeaseResponse_messageType fastReflection_MsgRejectLeaseResponse_messageType
+var _ protoreflect.MessageType = fastReflection_MsgRejectLeaseResponse_messageType{}
+
+type fastReflection_MsgRejectLeaseResponse_messageType struct{}
+
+func (x fastReflection_MsgRejectLeaseResponse_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_MsgRejectLeaseResponse)(nil)
+}
+func (x fastReflection_MsgRejectLeaseResponse_messageType) New() protoreflect.Message {
+	return new(fastReflection_MsgRejectLeaseResponse)
+}
+func (x fastReflection_MsgRejectLeaseResponse_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgRejectLeaseResponse
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_MsgRejectLeaseResponse) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgRejectLeaseResponse
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_MsgRejectLeaseResponse) Type() protoreflect.MessageType {
+	return _fastReflection_MsgRejectLeaseResponse_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_MsgRejectLeaseResponse) New() protoreflect.Message {
+	return new(fastReflection_MsgRejectLeaseResponse)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_MsgRejectLeaseResponse) Interface() protoreflect.ProtoMessage {
+	return (*MsgRejectLeaseResponse)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_MsgRejectLeaseResponse) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.RejectedAt != nil {
+		value := protoreflect.ValueOfMessage(x.RejectedAt.ProtoReflect())
+		if !f(fd_MsgRejectLeaseResponse_rejected_at, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_MsgRejectLeaseResponse) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgRejectLeaseResponse.rejected_at":
+		return x.RejectedAt != nil
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgRejectLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgRejectLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgRejectLeaseResponse) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgRejectLeaseResponse.rejected_at":
+		x.RejectedAt = nil
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgRejectLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgRejectLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_MsgRejectLeaseResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "liftedinit.billing.v1.MsgRejectLeaseResponse.rejected_at":
+		value := x.RejectedAt
+		return protoreflect.ValueOfMessage(value.ProtoReflect())
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgRejectLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgRejectLeaseResponse does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgRejectLeaseResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgRejectLeaseResponse.rejected_at":
+		x.RejectedAt = value.Message().Interface().(*timestamppb.Timestamp)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgRejectLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgRejectLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgRejectLeaseResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgRejectLeaseResponse.rejected_at":
+		if x.RejectedAt == nil {
+			x.RejectedAt = new(timestamppb.Timestamp)
+		}
+		return protoreflect.ValueOfMessage(x.RejectedAt.ProtoReflect())
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgRejectLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgRejectLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_MsgRejectLeaseResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgRejectLeaseResponse.rejected_at":
+		m := new(timestamppb.Timestamp)
+		return protoreflect.ValueOfMessage(m.ProtoReflect())
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgRejectLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgRejectLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_MsgRejectLeaseResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.billing.v1.MsgRejectLeaseResponse", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_MsgRejectLeaseResponse) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgRejectLeaseResponse) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_MsgRejectLeaseResponse) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_MsgRejectLeaseResponse) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*MsgRejectLeaseResponse)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		if x.RejectedAt != nil {
+			l = options.Size(x.RejectedAt)
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*MsgRejectLeaseResponse)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.RejectedAt != nil {
+			encoded, err := options.Marshal(x.RejectedAt)
+			if err != nil {
+				return protoiface.MarshalOutput{
+					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+					Buf:               input.Buf,
+				}, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			i--
+			dAtA[i] = 0xa
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*MsgRejectLeaseResponse)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgRejectLeaseResponse: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgRejectLeaseResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field RejectedAt", wireType)
+				}
+				var msglen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					msglen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if msglen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + msglen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if x.RejectedAt == nil {
+					x.RejectedAt = &timestamppb.Timestamp{}
+				}
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.RejectedAt); err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				iNdEx = postIndex
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var (
+	md_MsgCancelLease            protoreflect.MessageDescriptor
+	fd_MsgCancelLease_tenant     protoreflect.FieldDescriptor
+	fd_MsgCancelLease_lease_uuid protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_liftedinit_billing_v1_tx_proto_init()
+	md_MsgCancelLease = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgCancelLease")
+	fd_MsgCancelLease_tenant = md_MsgCancelLease.Fields().ByName("tenant")
+	fd_MsgCancelLease_lease_uuid = md_MsgCancelLease.Fields().ByName("lease_uuid")
+}
+
+var _ protoreflect.Message = (*fastReflection_MsgCancelLease)(nil)
+
+type fastReflection_MsgCancelLease MsgCancelLease
+
+func (x *MsgCancelLease) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_MsgCancelLease)(x)
+}
+
+func (x *MsgCancelLease) slowProtoReflect() protoreflect.Message {
+	mi := &file_liftedinit_billing_v1_tx_proto_msgTypes[19]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_MsgCancelLease_messageType fastReflection_MsgCancelLease_messageType
+var _ protoreflect.MessageType = fastReflection_MsgCancelLease_messageType{}
+
+type fastReflection_MsgCancelLease_messageType struct{}
+
+func (x fastReflection_MsgCancelLease_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_MsgCancelLease)(nil)
+}
+func (x fastReflection_MsgCancelLease_messageType) New() protoreflect.Message {
+	return new(fastReflection_MsgCancelLease)
+}
+func (x fastReflection_MsgCancelLease_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgCancelLease
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_MsgCancelLease) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgCancelLease
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_MsgCancelLease) Type() protoreflect.MessageType {
+	return _fastReflection_MsgCancelLease_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_MsgCancelLease) New() protoreflect.Message {
+	return new(fastReflection_MsgCancelLease)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_MsgCancelLease) Interface() protoreflect.ProtoMessage {
+	return (*MsgCancelLease)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_MsgCancelLease) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.Tenant != "" {
+		value := protoreflect.ValueOfString(x.Tenant)
+		if !f(fd_MsgCancelLease_tenant, value) {
+			return
+		}
+	}
+	if x.LeaseUuid != "" {
+		value := protoreflect.ValueOfString(x.LeaseUuid)
+		if !f(fd_MsgCancelLease_lease_uuid, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_MsgCancelLease) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgCancelLease.tenant":
+		return x.Tenant != ""
+	case "liftedinit.billing.v1.MsgCancelLease.lease_uuid":
+		return x.LeaseUuid != ""
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCancelLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgCancelLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgCancelLease) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgCancelLease.tenant":
+		x.Tenant = ""
+	case "liftedinit.billing.v1.MsgCancelLease.lease_uuid":
+		x.LeaseUuid = ""
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCancelLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgCancelLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_MsgCancelLease) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "liftedinit.billing.v1.MsgCancelLease.tenant":
+		value := x.Tenant
+		return protoreflect.ValueOfString(value)
+	case "liftedinit.billing.v1.MsgCancelLease.lease_uuid":
+		value := x.LeaseUuid
+		return protoreflect.ValueOfString(value)
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCancelLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgCancelLease does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgCancelLease) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgCancelLease.tenant":
+		x.Tenant = value.Interface().(string)
+	case "liftedinit.billing.v1.MsgCancelLease.lease_uuid":
+		x.LeaseUuid = value.Interface().(string)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCancelLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgCancelLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgCancelLease) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgCancelLease.tenant":
+		panic(fmt.Errorf("field tenant of message liftedinit.billing.v1.MsgCancelLease is not mutable"))
+	case "liftedinit.billing.v1.MsgCancelLease.lease_uuid":
+		panic(fmt.Errorf("field lease_uuid of message liftedinit.billing.v1.MsgCancelLease is not mutable"))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCancelLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgCancelLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_MsgCancelLease) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgCancelLease.tenant":
+		return protoreflect.ValueOfString("")
+	case "liftedinit.billing.v1.MsgCancelLease.lease_uuid":
+		return protoreflect.ValueOfString("")
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCancelLease"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgCancelLease does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_MsgCancelLease) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.billing.v1.MsgCancelLease", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_MsgCancelLease) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgCancelLease) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_MsgCancelLease) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_MsgCancelLease) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*MsgCancelLease)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		l = len(x.Tenant)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		l = len(x.LeaseUuid)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*MsgCancelLease)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if len(x.LeaseUuid) > 0 {
+			i -= len(x.LeaseUuid)
+			copy(dAtA[i:], x.LeaseUuid)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.LeaseUuid)))
+			i--
+			dAtA[i] = 0x12
+		}
+		if len(x.Tenant) > 0 {
+			i -= len(x.Tenant)
+			copy(dAtA[i:], x.Tenant)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Tenant)))
+			i--
+			dAtA[i] = 0xa
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*MsgCancelLease)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgCancelLease: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgCancelLease: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Tenant", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Tenant = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			case 2:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field LeaseUuid", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.LeaseUuid = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var (
+	md_MsgCancelLeaseResponse              protoreflect.MessageDescriptor
+	fd_MsgCancelLeaseResponse_cancelled_at protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_liftedinit_billing_v1_tx_proto_init()
+	md_MsgCancelLeaseResponse = File_liftedinit_billing_v1_tx_proto.Messages().ByName("MsgCancelLeaseResponse")
+	fd_MsgCancelLeaseResponse_cancelled_at = md_MsgCancelLeaseResponse.Fields().ByName("cancelled_at")
+}
+
+var _ protoreflect.Message = (*fastReflection_MsgCancelLeaseResponse)(nil)
+
+type fastReflection_MsgCancelLeaseResponse MsgCancelLeaseResponse
+
+func (x *MsgCancelLeaseResponse) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_MsgCancelLeaseResponse)(x)
+}
+
+func (x *MsgCancelLeaseResponse) slowProtoReflect() protoreflect.Message {
+	mi := &file_liftedinit_billing_v1_tx_proto_msgTypes[20]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_MsgCancelLeaseResponse_messageType fastReflection_MsgCancelLeaseResponse_messageType
+var _ protoreflect.MessageType = fastReflection_MsgCancelLeaseResponse_messageType{}
+
+type fastReflection_MsgCancelLeaseResponse_messageType struct{}
+
+func (x fastReflection_MsgCancelLeaseResponse_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_MsgCancelLeaseResponse)(nil)
+}
+func (x fastReflection_MsgCancelLeaseResponse_messageType) New() protoreflect.Message {
+	return new(fastReflection_MsgCancelLeaseResponse)
+}
+func (x fastReflection_MsgCancelLeaseResponse_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgCancelLeaseResponse
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_MsgCancelLeaseResponse) Descriptor() protoreflect.MessageDescriptor {
+	return md_MsgCancelLeaseResponse
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_MsgCancelLeaseResponse) Type() protoreflect.MessageType {
+	return _fastReflection_MsgCancelLeaseResponse_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_MsgCancelLeaseResponse) New() protoreflect.Message {
+	return new(fastReflection_MsgCancelLeaseResponse)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_MsgCancelLeaseResponse) Interface() protoreflect.ProtoMessage {
+	return (*MsgCancelLeaseResponse)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_MsgCancelLeaseResponse) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.CancelledAt != nil {
+		value := protoreflect.ValueOfMessage(x.CancelledAt.ProtoReflect())
+		if !f(fd_MsgCancelLeaseResponse_cancelled_at, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_MsgCancelLeaseResponse) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgCancelLeaseResponse.cancelled_at":
+		return x.CancelledAt != nil
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCancelLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgCancelLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgCancelLeaseResponse) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgCancelLeaseResponse.cancelled_at":
+		x.CancelledAt = nil
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCancelLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgCancelLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_MsgCancelLeaseResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "liftedinit.billing.v1.MsgCancelLeaseResponse.cancelled_at":
+		value := x.CancelledAt
+		return protoreflect.ValueOfMessage(value.ProtoReflect())
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCancelLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgCancelLeaseResponse does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgCancelLeaseResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgCancelLeaseResponse.cancelled_at":
+		x.CancelledAt = value.Message().Interface().(*timestamppb.Timestamp)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCancelLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgCancelLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgCancelLeaseResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgCancelLeaseResponse.cancelled_at":
+		if x.CancelledAt == nil {
+			x.CancelledAt = new(timestamppb.Timestamp)
+		}
+		return protoreflect.ValueOfMessage(x.CancelledAt.ProtoReflect())
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCancelLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgCancelLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_MsgCancelLeaseResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "liftedinit.billing.v1.MsgCancelLeaseResponse.cancelled_at":
+		m := new(timestamppb.Timestamp)
+		return protoreflect.ValueOfMessage(m.ProtoReflect())
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgCancelLeaseResponse"))
+		}
+		panic(fmt.Errorf("message liftedinit.billing.v1.MsgCancelLeaseResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_MsgCancelLeaseResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in liftedinit.billing.v1.MsgCancelLeaseResponse", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_MsgCancelLeaseResponse) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_MsgCancelLeaseResponse) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_MsgCancelLeaseResponse) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_MsgCancelLeaseResponse) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*MsgCancelLeaseResponse)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		if x.CancelledAt != nil {
+			l = options.Size(x.CancelledAt)
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*MsgCancelLeaseResponse)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.CancelledAt != nil {
+			encoded, err := options.Marshal(x.CancelledAt)
+			if err != nil {
+				return protoiface.MarshalOutput{
+					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+					Buf:               input.Buf,
+				}, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			i--
+			dAtA[i] = 0xa
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*MsgCancelLeaseResponse)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgCancelLeaseResponse: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: MsgCancelLeaseResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field CancelledAt", wireType)
+				}
+				var msglen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					msglen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if msglen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + msglen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if x.CancelledAt == nil {
+					x.CancelledAt = &timestamppb.Timestamp{}
+				}
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.CancelledAt); err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				iNdEx = postIndex
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
 // Code generated by protoc-gen-go. DO NOT EDIT.
 // versions:
 // 	protoc-gen-go v1.27.0
@@ -7557,8 +10475,8 @@ type LeaseItemInput struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// sku_id is the ID of the SKU to lease.
-	SkuId uint64 `protobuf:"varint,1,opt,name=sku_id,json=skuId,proto3" json:"sku_id,omitempty"`
+	// sku_uuid is the UUID of the SKU to lease.
+	SkuUuid string `protobuf:"bytes,1,opt,name=sku_uuid,json=skuUuid,proto3" json:"sku_uuid,omitempty"`
 	// quantity is the number of instances.
 	Quantity uint64 `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
 }
@@ -7583,11 +10501,11 @@ func (*LeaseItemInput) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *LeaseItemInput) GetSkuId() uint64 {
+func (x *LeaseItemInput) GetSkuUuid() string {
 	if x != nil {
-		return x.SkuId
+		return x.SkuUuid
 	}
-	return 0
+	return ""
 }
 
 func (x *LeaseItemInput) GetQuantity() uint64 {
@@ -7751,8 +10669,8 @@ type MsgCreateLeaseResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// lease_id is the ID of the created lease.
-	LeaseId uint64 `protobuf:"varint,1,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
+	// lease_uuid is the UUID of the created lease (UUIDv7 format).
+	LeaseUuid string `protobuf:"bytes,1,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
 }
 
 func (x *MsgCreateLeaseResponse) Reset() {
@@ -7775,11 +10693,11 @@ func (*MsgCreateLeaseResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *MsgCreateLeaseResponse) GetLeaseId() uint64 {
+func (x *MsgCreateLeaseResponse) GetLeaseUuid() string {
 	if x != nil {
-		return x.LeaseId
+		return x.LeaseUuid
 	}
-	return 0
+	return ""
 }
 
 // MsgCreateLeaseForTenant allows authority to create a lease on behalf of a tenant.
@@ -7845,8 +10763,8 @@ type MsgCreateLeaseForTenantResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// lease_id is the ID of the created lease.
-	LeaseId uint64 `protobuf:"varint,1,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
+	// lease_uuid is the UUID of the created lease (UUIDv7 format).
+	LeaseUuid string `protobuf:"bytes,1,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
 }
 
 func (x *MsgCreateLeaseForTenantResponse) Reset() {
@@ -7869,11 +10787,11 @@ func (*MsgCreateLeaseForTenantResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *MsgCreateLeaseForTenantResponse) GetLeaseId() uint64 {
+func (x *MsgCreateLeaseForTenantResponse) GetLeaseUuid() string {
 	if x != nil {
-		return x.LeaseId
+		return x.LeaseUuid
 	}
-	return 0
+	return ""
 }
 
 // MsgCloseLease closes an active lease.
@@ -7884,8 +10802,8 @@ type MsgCloseLease struct {
 
 	// sender is the address requesting the closure (tenant, provider, or authority).
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_id is the ID of the lease to close.
-	LeaseId uint64 `protobuf:"varint,2,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
+	// lease_uuid is the UUID of the lease to close.
+	LeaseUuid string `protobuf:"bytes,2,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
 }
 
 func (x *MsgCloseLease) Reset() {
@@ -7915,11 +10833,11 @@ func (x *MsgCloseLease) GetSender() string {
 	return ""
 }
 
-func (x *MsgCloseLease) GetLeaseId() uint64 {
+func (x *MsgCloseLease) GetLeaseUuid() string {
 	if x != nil {
-		return x.LeaseId
+		return x.LeaseUuid
 	}
-	return 0
+	return ""
 }
 
 // MsgCloseLeaseResponse is the response type for MsgCloseLease.
@@ -7967,8 +10885,8 @@ type MsgWithdraw struct {
 
 	// sender is the provider's address or authority.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_id is the ID of the lease to withdraw from.
-	LeaseId uint64 `protobuf:"varint,2,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
+	// lease_uuid is the UUID of the lease to withdraw from.
+	LeaseUuid string `protobuf:"bytes,2,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
 }
 
 func (x *MsgWithdraw) Reset() {
@@ -7998,11 +10916,11 @@ func (x *MsgWithdraw) GetSender() string {
 	return ""
 }
 
-func (x *MsgWithdraw) GetLeaseId() uint64 {
+func (x *MsgWithdraw) GetLeaseUuid() string {
 	if x != nil {
-		return x.LeaseId
+		return x.LeaseUuid
 	}
-	return 0
+	return ""
 }
 
 // MsgWithdrawResponse is the response type for MsgWithdraw.
@@ -8059,10 +10977,10 @@ type MsgWithdrawAll struct {
 
 	// sender is the provider's address or authority.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// provider_id is the provider ID to withdraw for.
+	// provider_uuid is the provider UUID to withdraw for.
 	// If sender is authority, this field specifies which provider.
-	// If sender is the provider's address, this field must match or be zero.
-	ProviderId uint64 `protobuf:"varint,2,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	// If sender is the provider's address, this field must match or be empty.
+	ProviderUuid string `protobuf:"bytes,2,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
 	// limit is the maximum number of leases to process in this call.
 	// When 0, defaults to 50. Maximum allowed is 100.
 	// Use pagination (multiple calls) for providers with many leases.
@@ -8096,11 +11014,11 @@ func (x *MsgWithdrawAll) GetSender() string {
 	return ""
 }
 
-func (x *MsgWithdrawAll) GetProviderId() uint64 {
+func (x *MsgWithdrawAll) GetProviderUuid() string {
 	if x != nil {
-		return x.ProviderId
+		return x.ProviderUuid
 	}
-	return 0
+	return ""
 }
 
 func (x *MsgWithdrawAll) GetLimit() uint64 {
@@ -8248,6 +11166,266 @@ func (*MsgUpdateParamsResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{14}
 }
 
+// MsgAcknowledgeLease allows a provider to acknowledge a PENDING lease.
+type MsgAcknowledgeLease struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// sender is the provider's address or authority.
+	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
+	// lease_uuid is the UUID of the lease to acknowledge.
+	LeaseUuid string `protobuf:"bytes,2,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
+}
+
+func (x *MsgAcknowledgeLease) Reset() {
+	*x = MsgAcknowledgeLease{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_liftedinit_billing_v1_tx_proto_msgTypes[15]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *MsgAcknowledgeLease) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MsgAcknowledgeLease) ProtoMessage() {}
+
+// Deprecated: Use MsgAcknowledgeLease.ProtoReflect.Descriptor instead.
+func (*MsgAcknowledgeLease) Descriptor() ([]byte, []int) {
+	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *MsgAcknowledgeLease) GetSender() string {
+	if x != nil {
+		return x.Sender
+	}
+	return ""
+}
+
+func (x *MsgAcknowledgeLease) GetLeaseUuid() string {
+	if x != nil {
+		return x.LeaseUuid
+	}
+	return ""
+}
+
+// MsgAcknowledgeLeaseResponse is the response type for MsgAcknowledgeLease.
+type MsgAcknowledgeLeaseResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// acknowledged_at is the timestamp when the lease was acknowledged.
+	// Billing starts from this timestamp.
+	AcknowledgedAt *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=acknowledged_at,json=acknowledgedAt,proto3" json:"acknowledged_at,omitempty"`
+}
+
+func (x *MsgAcknowledgeLeaseResponse) Reset() {
+	*x = MsgAcknowledgeLeaseResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_liftedinit_billing_v1_tx_proto_msgTypes[16]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *MsgAcknowledgeLeaseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MsgAcknowledgeLeaseResponse) ProtoMessage() {}
+
+// Deprecated: Use MsgAcknowledgeLeaseResponse.ProtoReflect.Descriptor instead.
+func (*MsgAcknowledgeLeaseResponse) Descriptor() ([]byte, []int) {
+	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *MsgAcknowledgeLeaseResponse) GetAcknowledgedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AcknowledgedAt
+	}
+	return nil
+}
+
+// MsgRejectLease allows a provider to reject a PENDING lease.
+type MsgRejectLease struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// sender is the provider's address or authority.
+	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
+	// lease_uuid is the UUID of the lease to reject.
+	LeaseUuid string `protobuf:"bytes,2,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
+	// reason is an optional explanation for the rejection.
+	// Maximum 256 characters.
+	Reason string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+}
+
+func (x *MsgRejectLease) Reset() {
+	*x = MsgRejectLease{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_liftedinit_billing_v1_tx_proto_msgTypes[17]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *MsgRejectLease) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MsgRejectLease) ProtoMessage() {}
+
+// Deprecated: Use MsgRejectLease.ProtoReflect.Descriptor instead.
+func (*MsgRejectLease) Descriptor() ([]byte, []int) {
+	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *MsgRejectLease) GetSender() string {
+	if x != nil {
+		return x.Sender
+	}
+	return ""
+}
+
+func (x *MsgRejectLease) GetLeaseUuid() string {
+	if x != nil {
+		return x.LeaseUuid
+	}
+	return ""
+}
+
+func (x *MsgRejectLease) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+// MsgRejectLeaseResponse is the response type for MsgRejectLease.
+type MsgRejectLeaseResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// rejected_at is the timestamp when the lease was rejected.
+	RejectedAt *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=rejected_at,json=rejectedAt,proto3" json:"rejected_at,omitempty"`
+}
+
+func (x *MsgRejectLeaseResponse) Reset() {
+	*x = MsgRejectLeaseResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_liftedinit_billing_v1_tx_proto_msgTypes[18]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *MsgRejectLeaseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MsgRejectLeaseResponse) ProtoMessage() {}
+
+// Deprecated: Use MsgRejectLeaseResponse.ProtoReflect.Descriptor instead.
+func (*MsgRejectLeaseResponse) Descriptor() ([]byte, []int) {
+	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *MsgRejectLeaseResponse) GetRejectedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RejectedAt
+	}
+	return nil
+}
+
+// MsgCancelLease allows a tenant to cancel their own PENDING lease.
+type MsgCancelLease struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// tenant is the address of the tenant who owns the lease.
+	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	// lease_uuid is the UUID of the lease to cancel.
+	LeaseUuid string `protobuf:"bytes,2,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
+}
+
+func (x *MsgCancelLease) Reset() {
+	*x = MsgCancelLease{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_liftedinit_billing_v1_tx_proto_msgTypes[19]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *MsgCancelLease) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MsgCancelLease) ProtoMessage() {}
+
+// Deprecated: Use MsgCancelLease.ProtoReflect.Descriptor instead.
+func (*MsgCancelLease) Descriptor() ([]byte, []int) {
+	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *MsgCancelLease) GetTenant() string {
+	if x != nil {
+		return x.Tenant
+	}
+	return ""
+}
+
+func (x *MsgCancelLease) GetLeaseUuid() string {
+	if x != nil {
+		return x.LeaseUuid
+	}
+	return ""
+}
+
+// MsgCancelLeaseResponse is the response type for MsgCancelLease.
+type MsgCancelLeaseResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// cancelled_at is the timestamp when the lease was cancelled.
+	CancelledAt *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=cancelled_at,json=cancelledAt,proto3" json:"cancelled_at,omitempty"`
+}
+
+func (x *MsgCancelLeaseResponse) Reset() {
+	*x = MsgCancelLeaseResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_liftedinit_billing_v1_tx_proto_msgTypes[20]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *MsgCancelLeaseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MsgCancelLeaseResponse) ProtoMessage() {}
+
+// Deprecated: Use MsgCancelLeaseResponse.ProtoReflect.Descriptor instead.
+func (*MsgCancelLeaseResponse) Descriptor() ([]byte, []int) {
+	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *MsgCancelLeaseResponse) GetCancelledAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CancelledAt
+	}
+	return nil
+}
+
 var File_liftedinit_billing_v1_tx_proto protoreflect.FileDescriptor
 
 var file_liftedinit_billing_v1_tx_proto_rawDesc = []byte{
@@ -8262,13 +11440,15 @@ var file_liftedinit_billing_v1_tx_proto_rawDesc = []byte{
 	0x6f, 0x74, 0x6f, 0x1a, 0x19, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5f, 0x70, 0x72, 0x6f, 0x74,
 	0x6f, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x14,
 	0x67, 0x6f, 0x67, 0x6f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x67, 0x6f, 0x67, 0x6f, 0x2e, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x21, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74,
-	0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x76, 0x31, 0x2f, 0x74, 0x79, 0x70, 0x65,
-	0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0xa3, 0x01, 0x0a, 0x0e, 0x4c, 0x65, 0x61, 0x73,
-	0x65, 0x49, 0x74, 0x65, 0x6d, 0x49, 0x6e, 0x70, 0x75, 0x74, 0x12, 0x32, 0x0a, 0x06, 0x73, 0x6b,
-	0x75, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x42, 0x1b, 0xea, 0xde, 0x1f, 0x17,
-	0x73, 0x6b, 0x75, 0x5f, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79,
-	0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x05, 0x73, 0x6b, 0x75, 0x49, 0x64, 0x12, 0x39,
+	0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x1f, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2f, 0x70, 0x72, 0x6f,
+	0x74, 0x6f, 0x62, 0x75, 0x66, 0x2f, 0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x2e,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x21, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69,
+	0x74, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x76, 0x31, 0x2f, 0x74, 0x79, 0x70,
+	0x65, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0xa2, 0x01, 0x0a, 0x0e, 0x4c, 0x65, 0x61,
+	0x73, 0x65, 0x49, 0x74, 0x65, 0x6d, 0x49, 0x6e, 0x70, 0x75, 0x74, 0x12, 0x31, 0x0a, 0x08, 0x73,
+	0x6b, 0x75, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x16, 0xea,
+	0xde, 0x1f, 0x12, 0x73, 0x6b, 0x75, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74,
+	0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x07, 0x73, 0x6b, 0x75, 0x55, 0x75, 0x69, 0x64, 0x12, 0x39,
 	0x0a, 0x08, 0x71, 0x75, 0x61, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04,
 	0x42, 0x1d, 0xea, 0xde, 0x1f, 0x19, 0x71, 0x75, 0x61, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x2c, 0x6f,
 	0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52,
@@ -8317,202 +11497,283 @@ var file_liftedinit_billing_v1_tx_proto_rawDesc = []byte{
 	0x6d, 0x73, 0x52, 0x05, 0x69, 0x74, 0x65, 0x6d, 0x73, 0x3a, 0x2d, 0x82, 0xe7, 0xb0, 0x2a, 0x06,
 	0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x8a, 0xe7, 0xb0, 0x2a, 0x1d, 0x6c, 0x69, 0x66, 0x74, 0x65,
 	0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67, 0x43, 0x72, 0x65,
-	0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x22, 0x52, 0x0a, 0x16, 0x4d, 0x73, 0x67, 0x43,
+	0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x22, 0x51, 0x0a, 0x16, 0x4d, 0x73, 0x67, 0x43,
 	0x72, 0x65, 0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
-	0x73, 0x65, 0x12, 0x38, 0x0a, 0x08, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x04, 0x42, 0x1d, 0xea, 0xde, 0x1f, 0x19, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f,
-	0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72,
-	0x69, 0x6e, 0x67, 0x52, 0x07, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x49, 0x64, 0x22, 0xb5, 0x02, 0x0a,
-	0x17, 0x4d, 0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x46,
-	0x6f, 0x72, 0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x4d, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x68,
-	0x6f, 0x72, 0x69, 0x74, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2f, 0xea, 0xde, 0x1f,
-	0x13, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65,
-	0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41,
-	0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x09, 0x61, 0x75,
-	0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x44, 0x0a, 0x06, 0x74, 0x65, 0x6e, 0x61, 0x6e,
-	0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x74, 0x65, 0x6e,
-	0x61, 0x6e, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d,
-	0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53,
-	0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x06, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x4a, 0x0a,
-	0x05, 0x69, 0x74, 0x65, 0x6d, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x25, 0x2e, 0x6c,
-	0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e,
-	0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x49, 0x74, 0x65, 0x6d, 0x49, 0x6e,
-	0x70, 0x75, 0x74, 0x42, 0x0d, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x05, 0x69, 0x74, 0x65,
-	0x6d, 0x73, 0x52, 0x05, 0x69, 0x74, 0x65, 0x6d, 0x73, 0x3a, 0x39, 0x82, 0xe7, 0xb0, 0x2a, 0x09,
-	0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x8a, 0xe7, 0xb0, 0x2a, 0x26, 0x6c, 0x69,
-	0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67,
-	0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x46, 0x6f, 0x72, 0x54, 0x65,
-	0x6e, 0x61, 0x6e, 0x74, 0x22, 0x5b, 0x0a, 0x1f, 0x4d, 0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74,
-	0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x46, 0x6f, 0x72, 0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x52,
-	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x38, 0x0a, 0x08, 0x6c, 0x65, 0x61, 0x73, 0x65,
-	0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x42, 0x1d, 0xea, 0xde, 0x1f, 0x19, 0x6c,
-	0x65, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74,
-	0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x07, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x49,
-	0x64, 0x22, 0xbd, 0x01, 0x0a, 0x0d, 0x4d, 0x73, 0x67, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65,
-	0x61, 0x73, 0x65, 0x12, 0x44, 0x0a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x18, 0x01, 0x20,
-	0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x2c,
-	0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73,
-	0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e,
-	0x67, 0x52, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x12, 0x38, 0x0a, 0x08, 0x6c, 0x65, 0x61,
-	0x73, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x42, 0x1d, 0xea, 0xde, 0x1f,
-	0x19, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d,
-	0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x07, 0x6c, 0x65, 0x61, 0x73,
-	0x65, 0x49, 0x64, 0x3a, 0x2c, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72,
-	0x8a, 0xe7, 0xb0, 0x2a, 0x1c, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c,
-	0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65, 0x61, 0x73,
-	0x65, 0x22, 0xa1, 0x01, 0x0a, 0x15, 0x4d, 0x73, 0x67, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65,
-	0x61, 0x73, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x87, 0x01, 0x0a, 0x0f,
-	0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0x18,
-	0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62,
-	0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e,
-	0x42, 0x43, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0f, 0x73, 0x65, 0x74, 0x74, 0x6c, 0x65,
-	0x64, 0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0xaa, 0xdf, 0x1f, 0x28, 0x67, 0x69, 0x74,
-	0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x63,
-	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73, 0x2e,
-	0x43, 0x6f, 0x69, 0x6e, 0x73, 0x52, 0x0e, 0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x41, 0x6d,
-	0x6f, 0x75, 0x6e, 0x74, 0x73, 0x22, 0xb9, 0x01, 0x0a, 0x0b, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74,
-	0x68, 0x64, 0x72, 0x61, 0x77, 0x12, 0x44, 0x0a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x18,
-	0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x73, 0x65, 0x6e, 0x64, 0x65,
-	0x72, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63,
-	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72,
-	0x69, 0x6e, 0x67, 0x52, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x12, 0x38, 0x0a, 0x08, 0x6c,
-	0x65, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x42, 0x1d, 0xea,
-	0xde, 0x1f, 0x19, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74,
-	0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x07, 0x6c, 0x65,
-	0x61, 0x73, 0x65, 0x49, 0x64, 0x3a, 0x2a, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e, 0x64,
-	0x65, 0x72, 0x8a, 0xe7, 0xb0, 0x2a, 0x1a, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69,
-	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61,
-	0x77, 0x22, 0xe4, 0x01, 0x0a, 0x13, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61,
-	0x77, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x70, 0x0a, 0x07, 0x61, 0x6d, 0x6f,
-	0x75, 0x6e, 0x74, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73,
-	0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31,
-	0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x3b, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x07, 0x61,
+	0x73, 0x65, 0x12, 0x37, 0x0a, 0x0a, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75, 0x75, 0x69, 0x64,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xea, 0xde, 0x1f, 0x14, 0x6c, 0x65, 0x61, 0x73,
+	0x65, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79,
+	0x52, 0x09, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x55, 0x75, 0x69, 0x64, 0x22, 0xb5, 0x02, 0x0a, 0x17,
+	0x4d, 0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x46, 0x6f,
+	0x72, 0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x4d, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f,
+	0x72, 0x69, 0x74, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2f, 0xea, 0xde, 0x1f, 0x13,
+	0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d,
+	0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64,
+	0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x09, 0x61, 0x75, 0x74,
+	0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x44, 0x0a, 0x06, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74,
+	0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x74, 0x65, 0x6e, 0x61,
+	0x6e, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14,
+	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74,
+	0x72, 0x69, 0x6e, 0x67, 0x52, 0x06, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x4a, 0x0a, 0x05,
+	0x69, 0x74, 0x65, 0x6d, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x25, 0x2e, 0x6c, 0x69,
+	0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67,
+	0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x49, 0x74, 0x65, 0x6d, 0x49, 0x6e, 0x70,
+	0x75, 0x74, 0x42, 0x0d, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x05, 0x69, 0x74, 0x65, 0x6d,
+	0x73, 0x52, 0x05, 0x69, 0x74, 0x65, 0x6d, 0x73, 0x3a, 0x39, 0x82, 0xe7, 0xb0, 0x2a, 0x09, 0x61,
+	0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x8a, 0xe7, 0xb0, 0x2a, 0x26, 0x6c, 0x69, 0x66,
+	0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67, 0x43,
+	0x72, 0x65, 0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x46, 0x6f, 0x72, 0x54, 0x65, 0x6e,
+	0x61, 0x6e, 0x74, 0x22, 0x5a, 0x0a, 0x1f, 0x4d, 0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65,
+	0x4c, 0x65, 0x61, 0x73, 0x65, 0x46, 0x6f, 0x72, 0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x37, 0x0a, 0x0a, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f,
+	0x75, 0x75, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xea, 0xde, 0x1f, 0x14,
+	0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65,
+	0x6d, 0x70, 0x74, 0x79, 0x52, 0x09, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x55, 0x75, 0x69, 0x64, 0x22,
+	0xbc, 0x01, 0x0a, 0x0d, 0x4d, 0x73, 0x67, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65, 0x61, 0x73,
+	0x65, 0x12, 0x44, 0x0a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x2c, 0x6f, 0x6d,
+	0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
+	0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52,
+	0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x12, 0x37, 0x0a, 0x0a, 0x6c, 0x65, 0x61, 0x73, 0x65,
+	0x5f, 0x75, 0x75, 0x69, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xea, 0xde, 0x1f,
+	0x14, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74,
+	0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x09, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x55, 0x75, 0x69, 0x64,
+	0x3a, 0x2c, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x8a, 0xe7, 0xb0,
+	0x2a, 0x1c, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67,
+	0x2f, 0x4d, 0x73, 0x67, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x22, 0xa1,
+	0x01, 0x0a, 0x15, 0x4d, 0x73, 0x67, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x87, 0x01, 0x0a, 0x0f, 0x73, 0x65, 0x74,
+	0x74, 0x6c, 0x65, 0x64, 0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0x18, 0x01, 0x20, 0x03,
+	0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65,
+	0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x43, 0xc8,
+	0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0f, 0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x5f, 0x61,
 	0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0xaa, 0xdf, 0x1f, 0x28, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
 	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x73, 0x6d,
 	0x6f, 0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73, 0x2e, 0x43, 0x6f, 0x69,
-	0x6e, 0x73, 0x52, 0x07, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0x12, 0x5b, 0x0a, 0x0e, 0x70,
-	0x61, 0x79, 0x6f, 0x75, 0x74, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x09, 0x42, 0x34, 0xea, 0xde, 0x1f, 0x18, 0x70, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x5f,
-	0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74,
-	0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72,
-	0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0d, 0x70, 0x61, 0x79, 0x6f, 0x75,
-	0x74, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x22, 0xfa, 0x01, 0x0a, 0x0e, 0x4d, 0x73, 0x67,
-	0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x41, 0x6c, 0x6c, 0x12, 0x44, 0x0a, 0x06, 0x73,
-	0x65, 0x6e, 0x64, 0x65, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f,
-	0x10, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74,
-	0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72,
-	0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65,
-	0x72, 0x12, 0x41, 0x0a, 0x0b, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x5f, 0x69, 0x64,
-	0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x42, 0x20, 0xea, 0xde, 0x1f, 0x1c, 0x70, 0x72, 0x6f, 0x76,
-	0x69, 0x64, 0x65, 0x72, 0x5f, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74,
-	0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0a, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64,
-	0x65, 0x72, 0x49, 0x64, 0x12, 0x30, 0x0a, 0x05, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x18, 0x03, 0x20,
-	0x01, 0x28, 0x04, 0x42, 0x1a, 0xea, 0xde, 0x1f, 0x16, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x2c, 0x6f,
-	0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52,
-	0x05, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x3a, 0x2d, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e,
-	0x64, 0x65, 0x72, 0x8a, 0xe7, 0xb0, 0x2a, 0x1d, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62,
-	0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72,
-	0x61, 0x77, 0x41, 0x6c, 0x6c, 0x22, 0xef, 0x02, 0x0a, 0x16, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74,
-	0x68, 0x64, 0x72, 0x61, 0x77, 0x41, 0x6c, 0x6c, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
-	0x12, 0x81, 0x01, 0x0a, 0x0d, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e,
-	0x74, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
-	0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43,
-	0x6f, 0x69, 0x6e, 0x42, 0x41, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0d, 0x74, 0x6f, 0x74,
-	0x61, 0x6c, 0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0xaa, 0xdf, 0x1f, 0x28, 0x67, 0x69,
-	0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f,
-	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73,
-	0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x73, 0x52, 0x0c, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x41, 0x6d, 0x6f,
-	0x75, 0x6e, 0x74, 0x73, 0x12, 0x41, 0x0a, 0x0b, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x63, 0x6f,
-	0x75, 0x6e, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x42, 0x20, 0xea, 0xde, 0x1f, 0x1c, 0x6c,
-	0x65, 0x61, 0x73, 0x65, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65,
-	0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0a, 0x6c, 0x65, 0x61,
-	0x73, 0x65, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x5b, 0x0a, 0x0e, 0x70, 0x61, 0x79, 0x6f, 0x75,
-	0x74, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x42,
+	0x6e, 0x73, 0x52, 0x0e, 0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x41, 0x6d, 0x6f, 0x75, 0x6e,
+	0x74, 0x73, 0x22, 0xb8, 0x01, 0x0a, 0x0b, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72,
+	0x61, 0x77, 0x12, 0x44, 0x0a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x2c, 0x6f,
+	0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d,
+	0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67,
+	0x52, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x12, 0x37, 0x0a, 0x0a, 0x6c, 0x65, 0x61, 0x73,
+	0x65, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xea, 0xde,
+	0x1f, 0x14, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69,
+	0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x09, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x55, 0x75, 0x69,
+	0x64, 0x3a, 0x2a, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x8a, 0xe7,
+	0xb0, 0x2a, 0x1a, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e,
+	0x67, 0x2f, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x22, 0xe4, 0x01,
+	0x0a, 0x13, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x52, 0x65, 0x73,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x70, 0x0a, 0x07, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73,
+	0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e,
+	0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69,
+	0x6e, 0x42, 0x3b, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x07, 0x61, 0x6d, 0x6f, 0x75, 0x6e,
+	0x74, 0x73, 0xaa, 0xdf, 0x1f, 0x28, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d,
+	0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2d, 0x73,
+	0x64, 0x6b, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x73, 0x52, 0x07,
+	0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0x12, 0x5b, 0x0a, 0x0e, 0x70, 0x61, 0x79, 0x6f, 0x75,
+	0x74, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x42,
 	0x34, 0xea, 0xde, 0x1f, 0x18, 0x70, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x5f, 0x61, 0x64, 0x64, 0x72,
 	0x65, 0x73, 0x73, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d,
 	0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53,
 	0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0d, 0x70, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x41, 0x64, 0x64,
-	0x72, 0x65, 0x73, 0x73, 0x12, 0x31, 0x0a, 0x08, 0x68, 0x61, 0x73, 0x5f, 0x6d, 0x6f, 0x72, 0x65,
-	0x18, 0x04, 0x20, 0x01, 0x28, 0x08, 0x42, 0x16, 0xea, 0xde, 0x1f, 0x12, 0x68, 0x61, 0x73, 0x5f,
-	0x6d, 0x6f, 0x72, 0x65, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x07,
-	0x68, 0x61, 0x73, 0x4d, 0x6f, 0x72, 0x65, 0x22, 0xda, 0x01, 0x0a, 0x0f, 0x4d, 0x73, 0x67, 0x55,
-	0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x4d, 0x0a, 0x09, 0x61,
-	0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2f,
-	0xea, 0xde, 0x1f, 0x13, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x2c, 0x6f, 0x6d,
-	0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
-	0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52,
-	0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x45, 0x0a, 0x06, 0x70, 0x61,
-	0x72, 0x61, 0x6d, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x6c, 0x69, 0x66,
-	0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e,
-	0x76, 0x31, 0x2e, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x42, 0x0e, 0xc8, 0xde, 0x1f, 0x00, 0xea,
-	0xde, 0x1f, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d,
-	0x73, 0x3a, 0x31, 0x82, 0xe7, 0xb0, 0x2a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74,
-	0x79, 0x8a, 0xe7, 0xb0, 0x2a, 0x1e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c,
-	0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61,
-	0x72, 0x61, 0x6d, 0x73, 0x22, 0x19, 0x0a, 0x17, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74,
-	0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32,
-	0xde, 0x05, 0x0a, 0x03, 0x4d, 0x73, 0x67, 0x12, 0x60, 0x0a, 0x0a, 0x46, 0x75, 0x6e, 0x64, 0x43,
-	0x72, 0x65, 0x64, 0x69, 0x74, 0x12, 0x24, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e,
+	0x72, 0x65, 0x73, 0x73, 0x22, 0xf9, 0x01, 0x0a, 0x0e, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68,
+	0x64, 0x72, 0x61, 0x77, 0x41, 0x6c, 0x6c, 0x12, 0x44, 0x0a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65,
+	0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x73, 0x65, 0x6e,
+	0x64, 0x65, 0x72, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d,
+	0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53,
+	0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x12, 0x40, 0x0a,
+	0x0d, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x09, 0x42, 0x1b, 0xea, 0xde, 0x1f, 0x17, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64,
+	0x65, 0x72, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74,
+	0x79, 0x52, 0x0c, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x55, 0x75, 0x69, 0x64, 0x12,
+	0x30, 0x0a, 0x05, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x18, 0x03, 0x20, 0x01, 0x28, 0x04, 0x42, 0x1a,
+	0xea, 0xde, 0x1f, 0x16, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d,
+	0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x05, 0x6c, 0x69, 0x6d, 0x69,
+	0x74, 0x3a, 0x2d, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x8a, 0xe7,
+	0xb0, 0x2a, 0x1d, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e,
+	0x67, 0x2f, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x41, 0x6c, 0x6c,
+	0x22, 0xef, 0x02, 0x0a, 0x16, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77,
+	0x41, 0x6c, 0x6c, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x81, 0x01, 0x0a, 0x0d,
+	0x74, 0x6f, 0x74, 0x61, 0x6c, 0x5f, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0x18, 0x01, 0x20,
+	0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73,
+	0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x41,
+	0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0d, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x5f, 0x61, 0x6d,
+	0x6f, 0x75, 0x6e, 0x74, 0x73, 0xaa, 0xdf, 0x1f, 0x28, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e,
+	0x63, 0x6f, 0x6d, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
+	0x73, 0x2d, 0x73, 0x64, 0x6b, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73, 0x2e, 0x43, 0x6f, 0x69, 0x6e,
+	0x73, 0x52, 0x0c, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x41, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0x12,
+	0x41, 0x0a, 0x0b, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x04, 0x42, 0x20, 0xea, 0xde, 0x1f, 0x1c, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f,
+	0x63, 0x6f, 0x75, 0x6e, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c,
+	0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0a, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x43, 0x6f, 0x75,
+	0x6e, 0x74, 0x12, 0x5b, 0x0a, 0x0e, 0x70, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x5f, 0x61, 0x64, 0x64,
+	0x72, 0x65, 0x73, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x42, 0x34, 0xea, 0xde, 0x1f, 0x18,
+	0x70, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x2c, 0x6f,
+	0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d,
+	0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67,
+	0x52, 0x0d, 0x70, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x12,
+	0x31, 0x0a, 0x08, 0x68, 0x61, 0x73, 0x5f, 0x6d, 0x6f, 0x72, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28,
+	0x08, 0x42, 0x16, 0xea, 0xde, 0x1f, 0x12, 0x68, 0x61, 0x73, 0x5f, 0x6d, 0x6f, 0x72, 0x65, 0x2c,
+	0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x07, 0x68, 0x61, 0x73, 0x4d, 0x6f,
+	0x72, 0x65, 0x22, 0xda, 0x01, 0x0a, 0x0f, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65,
+	0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x4d, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72,
+	0x69, 0x74, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2f, 0xea, 0xde, 0x1f, 0x13, 0x61,
+	0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70,
+	0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64,
+	0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x09, 0x61, 0x75, 0x74, 0x68,
+	0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x45, 0x0a, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e,
+	0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61,
+	0x72, 0x61, 0x6d, 0x73, 0x42, 0x0e, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x06, 0x70, 0x61,
+	0x72, 0x61, 0x6d, 0x73, 0x52, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x3a, 0x31, 0x82, 0xe7,
+	0xb0, 0x2a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x8a, 0xe7, 0xb0, 0x2a,
+	0x1e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f,
+	0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x22,
+	0x19, 0x0a, 0x17, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61,
+	0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0xc8, 0x01, 0x0a, 0x13, 0x4d,
+	0x73, 0x67, 0x41, 0x63, 0x6b, 0x6e, 0x6f, 0x77, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x4c, 0x65, 0x61,
+	0x73, 0x65, 0x12, 0x44, 0x0a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x2c, 0x6f,
+	0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d,
+	0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67,
+	0x52, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x12, 0x37, 0x0a, 0x0a, 0x6c, 0x65, 0x61, 0x73,
+	0x65, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x42, 0x18, 0xea, 0xde,
+	0x1f, 0x14, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69,
+	0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x09, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x55, 0x75, 0x69,
+	0x64, 0x3a, 0x32, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x8a, 0xe7,
+	0xb0, 0x2a, 0x22, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e,
+	0x67, 0x2f, 0x4d, 0x73, 0x67, 0x41, 0x63, 0x6b, 0x6e, 0x6f, 0x77, 0x6c, 0x65, 0x64, 0x67, 0x65,
+	0x4c, 0x65, 0x61, 0x73, 0x65, 0x22, 0x7f, 0x0a, 0x1b, 0x4d, 0x73, 0x67, 0x41, 0x63, 0x6b, 0x6e,
+	0x6f, 0x77, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x12, 0x60, 0x0a, 0x0f, 0x61, 0x63, 0x6b, 0x6e, 0x6f, 0x77, 0x6c, 0x65,
+	0x64, 0x67, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e,
+	0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e,
+	0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x42, 0x1b, 0xc8, 0xde, 0x1f, 0x00, 0xea,
+	0xde, 0x1f, 0x0f, 0x61, 0x63, 0x6b, 0x6e, 0x6f, 0x77, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x64, 0x5f,
+	0x61, 0x74, 0x90, 0xdf, 0x1f, 0x01, 0x52, 0x0e, 0x61, 0x63, 0x6b, 0x6e, 0x6f, 0x77, 0x6c, 0x65,
+	0x64, 0x67, 0x65, 0x64, 0x41, 0x74, 0x22, 0xec, 0x01, 0x0a, 0x0e, 0x4d, 0x73, 0x67, 0x52, 0x65,
+	0x6a, 0x65, 0x63, 0x74, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x12, 0x44, 0x0a, 0x06, 0x73, 0x65, 0x6e,
+	0x64, 0x65, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x73,
+	0x65, 0x6e, 0x64, 0x65, 0x72, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2,
+	0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73,
+	0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x12,
+	0x37, 0x0a, 0x0a, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x18, 0x02, 0x20,
+	0x01, 0x28, 0x09, 0x42, 0x18, 0xea, 0xde, 0x1f, 0x14, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75,
+	0x75, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x09, 0x6c,
+	0x65, 0x61, 0x73, 0x65, 0x55, 0x75, 0x69, 0x64, 0x12, 0x2c, 0x0a, 0x06, 0x72, 0x65, 0x61, 0x73,
+	0x6f, 0x6e, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x42, 0x14, 0xea, 0xde, 0x1f, 0x10, 0x72, 0x65,
+	0x61, 0x73, 0x6f, 0x6e, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x06,
+	0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x3a, 0x2d, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e,
+	0x64, 0x65, 0x72, 0x8a, 0xe7, 0xb0, 0x2a, 0x1d, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62,
+	0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67, 0x52, 0x65, 0x6a, 0x65, 0x63, 0x74,
+	0x4c, 0x65, 0x61, 0x73, 0x65, 0x22, 0x6e, 0x0a, 0x16, 0x4d, 0x73, 0x67, 0x52, 0x65, 0x6a, 0x65,
+	0x63, 0x74, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12,
+	0x54, 0x0a, 0x0b, 0x72, 0x65, 0x6a, 0x65, 0x63, 0x74, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72,
+	0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70,
+	0x42, 0x17, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0b, 0x72, 0x65, 0x6a, 0x65, 0x63, 0x74,
+	0x65, 0x64, 0x5f, 0x61, 0x74, 0x90, 0xdf, 0x1f, 0x01, 0x52, 0x0a, 0x72, 0x65, 0x6a, 0x65, 0x63,
+	0x74, 0x65, 0x64, 0x41, 0x74, 0x22, 0xbe, 0x01, 0x0a, 0x0e, 0x4d, 0x73, 0x67, 0x43, 0x61, 0x6e,
+	0x63, 0x65, 0x6c, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x12, 0x44, 0x0a, 0x06, 0x74, 0x65, 0x6e, 0x61,
+	0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x74, 0x65,
+	0x6e, 0x61, 0x6e, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4,
+	0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73,
+	0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x06, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x37,
+	0x0a, 0x0a, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x18, 0x02, 0x20, 0x01,
+	0x28, 0x09, 0x42, 0x18, 0xea, 0xde, 0x1f, 0x14, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75, 0x75,
+	0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x09, 0x6c, 0x65,
+	0x61, 0x73, 0x65, 0x55, 0x75, 0x69, 0x64, 0x3a, 0x2d, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x74, 0x65,
+	0x6e, 0x61, 0x6e, 0x74, 0x8a, 0xe7, 0xb0, 0x2a, 0x1d, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f,
+	0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4d, 0x73, 0x67, 0x43, 0x61, 0x6e, 0x63, 0x65,
+	0x6c, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x22, 0x71, 0x0a, 0x16, 0x4d, 0x73, 0x67, 0x43, 0x61, 0x6e,
+	0x63, 0x65, 0x6c, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x12, 0x57, 0x0a, 0x0c, 0x63, 0x61, 0x6e, 0x63, 0x65, 0x6c, 0x6c, 0x65, 0x64, 0x5f, 0x61, 0x74,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61,
+	0x6d, 0x70, 0x42, 0x18, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0c, 0x63, 0x61, 0x6e, 0x63,
+	0x65, 0x6c, 0x6c, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x90, 0xdf, 0x1f, 0x01, 0x52, 0x0b, 0x63, 0x61,
+	0x6e, 0x63, 0x65, 0x6c, 0x6c, 0x65, 0x64, 0x41, 0x74, 0x32, 0x9c, 0x08, 0x0a, 0x03, 0x4d, 0x73,
+	0x67, 0x12, 0x60, 0x0a, 0x0a, 0x46, 0x75, 0x6e, 0x64, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x12,
+	0x24, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c,
+	0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x46, 0x75, 0x6e, 0x64, 0x43,
+	0x72, 0x65, 0x64, 0x69, 0x74, 0x1a, 0x2c, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e,
 	0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73,
-	0x67, 0x46, 0x75, 0x6e, 0x64, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x1a, 0x2c, 0x2e, 0x6c, 0x69,
-	0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67,
-	0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x46, 0x75, 0x6e, 0x64, 0x43, 0x72, 0x65, 0x64, 0x69,
-	0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x63, 0x0a, 0x0b, 0x43, 0x72, 0x65,
-	0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x12, 0x25, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65,
+	0x67, 0x46, 0x75, 0x6e, 0x64, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x12, 0x63, 0x0a, 0x0b, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4c, 0x65, 0x61,
+	0x73, 0x65, 0x12, 0x25, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e,
+	0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x43, 0x72,
+	0x65, 0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x1a, 0x2d, 0x2e, 0x6c, 0x69, 0x66, 0x74,
+	0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76,
+	0x31, 0x2e, 0x4d, 0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x7e, 0x0a, 0x14, 0x43, 0x72, 0x65, 0x61,
+	0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x46, 0x6f, 0x72, 0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74,
+	0x12, 0x2e, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69,
+	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x43, 0x72, 0x65, 0x61,
+	0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x46, 0x6f, 0x72, 0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74,
+	0x1a, 0x36, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69,
+	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x43, 0x72, 0x65, 0x61,
+	0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x46, 0x6f, 0x72, 0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x72, 0x0a, 0x10, 0x41, 0x63, 0x6b, 0x6e,
+	0x6f, 0x77, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x12, 0x2a, 0x2e, 0x6c,
+	0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e,
+	0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x41, 0x63, 0x6b, 0x6e, 0x6f, 0x77, 0x6c, 0x65,
+	0x64, 0x67, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x1a, 0x32, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65,
 	0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31,
-	0x2e, 0x4d, 0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x1a,
-	0x2d, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c,
-	0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74,
-	0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x7e,
-	0x0a, 0x14, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x46, 0x6f, 0x72,
-	0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x2e, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69,
-	0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d,
-	0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x46, 0x6f, 0x72,
-	0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x1a, 0x36, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69,
-	0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d,
-	0x73, 0x67, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x46, 0x6f, 0x72,
-	0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x60,
-	0x0a, 0x0a, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x12, 0x24, 0x2e, 0x6c,
-	0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e,
-	0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65, 0x61,
-	0x73, 0x65, 0x1a, 0x2c, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e,
-	0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x43, 0x6c,
-	0x6f, 0x73, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
-	0x12, 0x5a, 0x0a, 0x08, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x12, 0x22, 0x2e, 0x6c,
-	0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e,
-	0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77,
-	0x1a, 0x2a, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69,
-	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68,
-	0x64, 0x72, 0x61, 0x77, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x63, 0x0a, 0x0b,
-	0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x41, 0x6c, 0x6c, 0x12, 0x25, 0x2e, 0x6c, 0x69,
+	0x2e, 0x4d, 0x73, 0x67, 0x41, 0x63, 0x6b, 0x6e, 0x6f, 0x77, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x4c,
+	0x65, 0x61, 0x73, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x63, 0x0a, 0x0b,
+	0x52, 0x65, 0x6a, 0x65, 0x63, 0x74, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x12, 0x25, 0x2e, 0x6c, 0x69,
 	0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67,
-	0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x41,
-	0x6c, 0x6c, 0x1a, 0x2d, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e,
-	0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x57, 0x69,
-	0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x41, 0x6c, 0x6c, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
-	0x65, 0x12, 0x66, 0x0a, 0x0c, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d,
-	0x73, 0x12, 0x26, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62,
-	0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64,
-	0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x1a, 0x2e, 0x2e, 0x6c, 0x69, 0x66, 0x74,
+	0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x52, 0x65, 0x6a, 0x65, 0x63, 0x74, 0x4c, 0x65, 0x61,
+	0x73, 0x65, 0x1a, 0x2d, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e,
+	0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x52, 0x65,
+	0x6a, 0x65, 0x63, 0x74, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x12, 0x63, 0x0a, 0x0b, 0x43, 0x61, 0x6e, 0x63, 0x65, 0x6c, 0x4c, 0x65, 0x61, 0x73, 0x65,
+	0x12, 0x25, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69,
+	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x43, 0x61, 0x6e, 0x63,
+	0x65, 0x6c, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x1a, 0x2d, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64,
+	0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e,
+	0x4d, 0x73, 0x67, 0x43, 0x61, 0x6e, 0x63, 0x65, 0x6c, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x60, 0x0a, 0x0a, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c,
+	0x65, 0x61, 0x73, 0x65, 0x12, 0x24, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69,
+	0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67,
+	0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x1a, 0x2c, 0x2e, 0x6c, 0x69, 0x66,
+	0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e,
+	0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x5a, 0x0a, 0x08, 0x57, 0x69, 0x74, 0x68,
+	0x64, 0x72, 0x61, 0x77, 0x12, 0x22, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69,
+	0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67,
+	0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x1a, 0x2a, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65,
+	0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31,
+	0x2e, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x12, 0x63, 0x0a, 0x0b, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77,
+	0x41, 0x6c, 0x6c, 0x12, 0x25, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74,
+	0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x57,
+	0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x41, 0x6c, 0x6c, 0x1a, 0x2d, 0x2e, 0x6c, 0x69, 0x66,
+	0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e,
+	0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x41, 0x6c,
+	0x6c, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x66, 0x0a, 0x0c, 0x55, 0x70, 0x64,
+	0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x26, 0x2e, 0x6c, 0x69, 0x66, 0x74,
 	0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76,
 	0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d,
-	0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x1a, 0x05, 0x80, 0xe7, 0xb0, 0x2a, 0x01,
-	0x42, 0xeb, 0x01, 0x0a, 0x19, 0x63, 0x6f, 0x6d, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69,
-	0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x42, 0x07,
-	0x54, 0x78, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x4f, 0x67, 0x69, 0x74, 0x68, 0x75,
-	0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6e,
-	0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d,
-	0x6c, 0x65, 0x64, 0x67, 0x65, 0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x6c, 0x69, 0x66, 0x74, 0x65,
-	0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x76, 0x31,
-	0x3b, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x4c, 0x42, 0x58,
-	0xaa, 0x02, 0x15, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x42, 0x69,
-	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x15, 0x4c, 0x69, 0x66, 0x74, 0x65,
+	0x73, 0x1a, 0x2e, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62,
+	0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64,
+	0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x1a, 0x05, 0x80, 0xe7, 0xb0, 0x2a, 0x01, 0x42, 0xeb, 0x01, 0x0a, 0x19, 0x63, 0x6f, 0x6d,
+	0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c,
+	0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x42, 0x07, 0x54, 0x78, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50,
+	0x01, 0x5a, 0x4f, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6d, 0x61,
+	0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x2f, 0x6d,
+	0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x72, 0x2f, 0x61,
+	0x70, 0x69, 0x2f, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x62, 0x69,
+	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x76, 0x31, 0x3b, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67,
+	0x76, 0x31, 0xa2, 0x02, 0x03, 0x4c, 0x42, 0x58, 0xaa, 0x02, 0x15, 0x4c, 0x69, 0x66, 0x74, 0x65,
+	0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x56, 0x31,
+	0xca, 0x02, 0x15, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x42, 0x69,
+	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x5c, 0x56, 0x31, 0xe2, 0x02, 0x21, 0x4c, 0x69, 0x66, 0x74, 0x65,
 	0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x5c, 0x56, 0x31,
-	0xe2, 0x02, 0x21, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x42, 0x69,
-	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x5c, 0x56, 0x31, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61,
-	0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x17, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69,
-	0x74, 0x3a, 0x3a, 0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x3a, 0x3a, 0x56, 0x31, 0x62, 0x06,
-	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x17, 0x4c,
+	0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x3a, 0x3a, 0x42, 0x69, 0x6c, 0x6c, 0x69,
+	0x6e, 0x67, 0x3a, 0x3a, 0x56, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -8527,7 +11788,7 @@ func file_liftedinit_billing_v1_tx_proto_rawDescGZIP() []byte {
 	return file_liftedinit_billing_v1_tx_proto_rawDescData
 }
 
-var file_liftedinit_billing_v1_tx_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_liftedinit_billing_v1_tx_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_liftedinit_billing_v1_tx_proto_goTypes = []interface{}{
 	(*LeaseItemInput)(nil),                  // 0: liftedinit.billing.v1.LeaseItemInput
 	(*MsgFundCredit)(nil),                   // 1: liftedinit.billing.v1.MsgFundCredit
@@ -8544,37 +11805,53 @@ var file_liftedinit_billing_v1_tx_proto_goTypes = []interface{}{
 	(*MsgWithdrawAllResponse)(nil),          // 12: liftedinit.billing.v1.MsgWithdrawAllResponse
 	(*MsgUpdateParams)(nil),                 // 13: liftedinit.billing.v1.MsgUpdateParams
 	(*MsgUpdateParamsResponse)(nil),         // 14: liftedinit.billing.v1.MsgUpdateParamsResponse
-	(*types.Coin)(nil),                      // 15: cosmos.base.v1beta1.Coin
-	(*Params)(nil),                          // 16: liftedinit.billing.v1.Params
+	(*MsgAcknowledgeLease)(nil),             // 15: liftedinit.billing.v1.MsgAcknowledgeLease
+	(*MsgAcknowledgeLeaseResponse)(nil),     // 16: liftedinit.billing.v1.MsgAcknowledgeLeaseResponse
+	(*MsgRejectLease)(nil),                  // 17: liftedinit.billing.v1.MsgRejectLease
+	(*MsgRejectLeaseResponse)(nil),          // 18: liftedinit.billing.v1.MsgRejectLeaseResponse
+	(*MsgCancelLease)(nil),                  // 19: liftedinit.billing.v1.MsgCancelLease
+	(*MsgCancelLeaseResponse)(nil),          // 20: liftedinit.billing.v1.MsgCancelLeaseResponse
+	(*types.Coin)(nil),                      // 21: cosmos.base.v1beta1.Coin
+	(*Params)(nil),                          // 22: liftedinit.billing.v1.Params
+	(*timestamppb.Timestamp)(nil),           // 23: google.protobuf.Timestamp
 }
 var file_liftedinit_billing_v1_tx_proto_depIdxs = []int32{
-	15, // 0: liftedinit.billing.v1.MsgFundCredit.amount:type_name -> cosmos.base.v1beta1.Coin
-	15, // 1: liftedinit.billing.v1.MsgFundCreditResponse.new_balance:type_name -> cosmos.base.v1beta1.Coin
+	21, // 0: liftedinit.billing.v1.MsgFundCredit.amount:type_name -> cosmos.base.v1beta1.Coin
+	21, // 1: liftedinit.billing.v1.MsgFundCreditResponse.new_balance:type_name -> cosmos.base.v1beta1.Coin
 	0,  // 2: liftedinit.billing.v1.MsgCreateLease.items:type_name -> liftedinit.billing.v1.LeaseItemInput
 	0,  // 3: liftedinit.billing.v1.MsgCreateLeaseForTenant.items:type_name -> liftedinit.billing.v1.LeaseItemInput
-	15, // 4: liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amounts:type_name -> cosmos.base.v1beta1.Coin
-	15, // 5: liftedinit.billing.v1.MsgWithdrawResponse.amounts:type_name -> cosmos.base.v1beta1.Coin
-	15, // 6: liftedinit.billing.v1.MsgWithdrawAllResponse.total_amounts:type_name -> cosmos.base.v1beta1.Coin
-	16, // 7: liftedinit.billing.v1.MsgUpdateParams.params:type_name -> liftedinit.billing.v1.Params
-	1,  // 8: liftedinit.billing.v1.Msg.FundCredit:input_type -> liftedinit.billing.v1.MsgFundCredit
-	3,  // 9: liftedinit.billing.v1.Msg.CreateLease:input_type -> liftedinit.billing.v1.MsgCreateLease
-	5,  // 10: liftedinit.billing.v1.Msg.CreateLeaseForTenant:input_type -> liftedinit.billing.v1.MsgCreateLeaseForTenant
-	7,  // 11: liftedinit.billing.v1.Msg.CloseLease:input_type -> liftedinit.billing.v1.MsgCloseLease
-	9,  // 12: liftedinit.billing.v1.Msg.Withdraw:input_type -> liftedinit.billing.v1.MsgWithdraw
-	11, // 13: liftedinit.billing.v1.Msg.WithdrawAll:input_type -> liftedinit.billing.v1.MsgWithdrawAll
-	13, // 14: liftedinit.billing.v1.Msg.UpdateParams:input_type -> liftedinit.billing.v1.MsgUpdateParams
-	2,  // 15: liftedinit.billing.v1.Msg.FundCredit:output_type -> liftedinit.billing.v1.MsgFundCreditResponse
-	4,  // 16: liftedinit.billing.v1.Msg.CreateLease:output_type -> liftedinit.billing.v1.MsgCreateLeaseResponse
-	6,  // 17: liftedinit.billing.v1.Msg.CreateLeaseForTenant:output_type -> liftedinit.billing.v1.MsgCreateLeaseForTenantResponse
-	8,  // 18: liftedinit.billing.v1.Msg.CloseLease:output_type -> liftedinit.billing.v1.MsgCloseLeaseResponse
-	10, // 19: liftedinit.billing.v1.Msg.Withdraw:output_type -> liftedinit.billing.v1.MsgWithdrawResponse
-	12, // 20: liftedinit.billing.v1.Msg.WithdrawAll:output_type -> liftedinit.billing.v1.MsgWithdrawAllResponse
-	14, // 21: liftedinit.billing.v1.Msg.UpdateParams:output_type -> liftedinit.billing.v1.MsgUpdateParamsResponse
-	15, // [15:22] is the sub-list for method output_type
-	8,  // [8:15] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	21, // 4: liftedinit.billing.v1.MsgCloseLeaseResponse.settled_amounts:type_name -> cosmos.base.v1beta1.Coin
+	21, // 5: liftedinit.billing.v1.MsgWithdrawResponse.amounts:type_name -> cosmos.base.v1beta1.Coin
+	21, // 6: liftedinit.billing.v1.MsgWithdrawAllResponse.total_amounts:type_name -> cosmos.base.v1beta1.Coin
+	22, // 7: liftedinit.billing.v1.MsgUpdateParams.params:type_name -> liftedinit.billing.v1.Params
+	23, // 8: liftedinit.billing.v1.MsgAcknowledgeLeaseResponse.acknowledged_at:type_name -> google.protobuf.Timestamp
+	23, // 9: liftedinit.billing.v1.MsgRejectLeaseResponse.rejected_at:type_name -> google.protobuf.Timestamp
+	23, // 10: liftedinit.billing.v1.MsgCancelLeaseResponse.cancelled_at:type_name -> google.protobuf.Timestamp
+	1,  // 11: liftedinit.billing.v1.Msg.FundCredit:input_type -> liftedinit.billing.v1.MsgFundCredit
+	3,  // 12: liftedinit.billing.v1.Msg.CreateLease:input_type -> liftedinit.billing.v1.MsgCreateLease
+	5,  // 13: liftedinit.billing.v1.Msg.CreateLeaseForTenant:input_type -> liftedinit.billing.v1.MsgCreateLeaseForTenant
+	15, // 14: liftedinit.billing.v1.Msg.AcknowledgeLease:input_type -> liftedinit.billing.v1.MsgAcknowledgeLease
+	17, // 15: liftedinit.billing.v1.Msg.RejectLease:input_type -> liftedinit.billing.v1.MsgRejectLease
+	19, // 16: liftedinit.billing.v1.Msg.CancelLease:input_type -> liftedinit.billing.v1.MsgCancelLease
+	7,  // 17: liftedinit.billing.v1.Msg.CloseLease:input_type -> liftedinit.billing.v1.MsgCloseLease
+	9,  // 18: liftedinit.billing.v1.Msg.Withdraw:input_type -> liftedinit.billing.v1.MsgWithdraw
+	11, // 19: liftedinit.billing.v1.Msg.WithdrawAll:input_type -> liftedinit.billing.v1.MsgWithdrawAll
+	13, // 20: liftedinit.billing.v1.Msg.UpdateParams:input_type -> liftedinit.billing.v1.MsgUpdateParams
+	2,  // 21: liftedinit.billing.v1.Msg.FundCredit:output_type -> liftedinit.billing.v1.MsgFundCreditResponse
+	4,  // 22: liftedinit.billing.v1.Msg.CreateLease:output_type -> liftedinit.billing.v1.MsgCreateLeaseResponse
+	6,  // 23: liftedinit.billing.v1.Msg.CreateLeaseForTenant:output_type -> liftedinit.billing.v1.MsgCreateLeaseForTenantResponse
+	16, // 24: liftedinit.billing.v1.Msg.AcknowledgeLease:output_type -> liftedinit.billing.v1.MsgAcknowledgeLeaseResponse
+	18, // 25: liftedinit.billing.v1.Msg.RejectLease:output_type -> liftedinit.billing.v1.MsgRejectLeaseResponse
+	20, // 26: liftedinit.billing.v1.Msg.CancelLease:output_type -> liftedinit.billing.v1.MsgCancelLeaseResponse
+	8,  // 27: liftedinit.billing.v1.Msg.CloseLease:output_type -> liftedinit.billing.v1.MsgCloseLeaseResponse
+	10, // 28: liftedinit.billing.v1.Msg.Withdraw:output_type -> liftedinit.billing.v1.MsgWithdrawResponse
+	12, // 29: liftedinit.billing.v1.Msg.WithdrawAll:output_type -> liftedinit.billing.v1.MsgWithdrawAllResponse
+	14, // 30: liftedinit.billing.v1.Msg.UpdateParams:output_type -> liftedinit.billing.v1.MsgUpdateParamsResponse
+	21, // [21:31] is the sub-list for method output_type
+	11, // [11:21] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_liftedinit_billing_v1_tx_proto_init() }
@@ -8764,6 +12041,78 @@ func file_liftedinit_billing_v1_tx_proto_init() {
 				return nil
 			}
 		}
+		file_liftedinit_billing_v1_tx_proto_msgTypes[15].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MsgAcknowledgeLease); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_liftedinit_billing_v1_tx_proto_msgTypes[16].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MsgAcknowledgeLeaseResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_liftedinit_billing_v1_tx_proto_msgTypes[17].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MsgRejectLease); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_liftedinit_billing_v1_tx_proto_msgTypes[18].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MsgRejectLeaseResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_liftedinit_billing_v1_tx_proto_msgTypes[19].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MsgCancelLease); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_liftedinit_billing_v1_tx_proto_msgTypes[20].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MsgCancelLeaseResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -8771,7 +12120,7 @@ func file_liftedinit_billing_v1_tx_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_liftedinit_billing_v1_tx_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

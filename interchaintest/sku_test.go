@@ -102,6 +102,17 @@
 //   - Success: update SKU to different denom
 //   - Success: query all SKUs returns multiple denoms
 //   - Success: verify SKU IDs are correct
+//
+// ## Provider Full Fields Tests
+//
+// testProviderFullFields:
+//   - Success: create provider with api_url and pending_timeout
+//   - Success: update provider api_url
+//   - Success: update provider pending_timeout
+//   - Success: create provider with default pending_timeout
+//   - Success: create provider without api_url
+//   - Success: update preserves existing values when not provided
+//   - Success: create provider with minimum and maximum pending_timeout
 package interchaintest
 
 import (
@@ -116,6 +127,19 @@ import (
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 )
+
+// Test constants for SKU prices
+const (
+	testPriceHourly = "3600umfx"  // Minimum valid price for UNIT_PER_HOUR
+	testPriceDaily  = "86400umfx" // Minimum valid price for UNIT_PER_DAY
+)
+
+// nonExistentUUID is a valid UUIDv7 format that doesn't exist in the store.
+// Used for testing "not found" error cases where we need to pass CLI validation.
+const nonExistentUUID = "01912345-6789-7abc-8def-0123456789ab"
+
+// validMetaHashHex is a valid hex-encoded meta-hash for testing updates.
+const validMetaHashHex = "deadbeefcafe1234"
 
 func TestSKU(t *testing.T) {
 	if testing.Short() {
@@ -150,35 +174,35 @@ func TestSKU(t *testing.T) {
 	})
 
 	// Provider tests
-	var providerID uint64
+	var providerUUID string
 	t.Run("CreateProvider", func(t *testing.T) {
-		providerID = testProviderCreate(t, ctx, chain, authority, user1)
+		providerUUID = testProviderCreate(t, ctx, chain, authority, user1)
 	})
 
 	t.Run("QueryProvider", func(t *testing.T) {
-		testProviderQuery(t, ctx, chain, providerID)
+		testProviderQuery(t, ctx, chain, providerUUID)
 	})
 
 	t.Run("UpdateProvider", func(t *testing.T) {
-		testProviderUpdate(t, ctx, chain, authority, user1, providerID)
+		testProviderUpdate(t, ctx, chain, authority, user1, providerUUID)
 	})
 
 	// SKU tests
-	var skuID uint64
+	var skuUUID string
 	t.Run("CreateSKU", func(t *testing.T) {
-		skuID = testSKUCreate(t, ctx, chain, authority, user1, providerID)
+		skuUUID = testSKUCreate(t, ctx, chain, authority, user1, providerUUID)
 	})
 
 	t.Run("QuerySKU", func(t *testing.T) {
-		testSKUQuery(t, ctx, chain, skuID, providerID)
+		testSKUQuery(t, ctx, chain, skuUUID, providerUUID)
 	})
 
 	t.Run("UpdateSKU", func(t *testing.T) {
-		testSKUUpdate(t, ctx, chain, authority, user1, skuID, providerID)
+		testSKUUpdate(t, ctx, chain, authority, user1, skuUUID, providerUUID)
 	})
 
 	t.Run("DeactivateSKU", func(t *testing.T) {
-		testSKUDeactivate(t, ctx, chain, authority, user1, providerID)
+		testSKUDeactivate(t, ctx, chain, authority, user1, providerUUID)
 	})
 
 	t.Run("DeactivateProvider", func(t *testing.T) {
@@ -205,6 +229,10 @@ func TestSKU(t *testing.T) {
 		testSKUMultiDenom(t, ctx, chain, authority)
 	})
 
+	t.Run("ProviderFullFields", func(t *testing.T) {
+		testProviderFullFields(t, ctx, chain, authority)
+	})
+
 	t.Cleanup(func() {
 		dockerutil.CopyCoverageFromContainer(ctx, t, client, chain.GetNode().ContainerID(), chain.HomeDir(), ExternalGoCoverDir)
 		_ = ic.Close()
@@ -220,13 +248,13 @@ func testSKUQueryParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosC
 	require.Empty(t, res.Params.AllowedList, "default allowed list should be empty")
 }
 
-func testProviderCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet) uint64 {
+func testProviderCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet) string {
 	t.Log("=== Testing Provider Create ===")
 
 	address := authority.FormattedAddress()
 	payoutAddress := authority.FormattedAddress()
 
-	var providerID uint64
+	var providerUUID string
 
 	t.Run("success: authority creates provider", func(t *testing.T) {
 		res, err := helpers.SKUCreateProvider(ctx, chain, authority, address, payoutAddress, "")
@@ -237,11 +265,11 @@ func testProviderCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosC
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
 
 		// Verify provider was created by querying it
-		providerID, err = helpers.GetProviderIDFromTxHash(ctx, chain, res.TxHash)
+		providerUUID, err = helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
-		require.Equal(t, uint64(1), providerID, "first provider should have ID 1")
+		require.NotEmpty(t, providerUUID, "provider UUID should not be empty")
 
-		providerRes, err := helpers.SKUQueryProvider(ctx, chain, providerID)
+		providerRes, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
 		require.NoError(t, err)
 		require.Equal(t, address, providerRes.Provider.Address)
 		require.True(t, providerRes.Provider.Active)
@@ -266,16 +294,16 @@ func testProviderCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosC
 		require.Contains(t, txRes.RawLog, "unauthorized")
 	})
 
-	return providerID
+	return providerUUID
 }
 
-func testProviderQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, providerID uint64) {
+func testProviderQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, providerUUID string) {
 	t.Log("=== Testing Provider Query ===")
 
 	t.Run("success: query existing provider", func(t *testing.T) {
-		res, err := helpers.SKUQueryProvider(ctx, chain, providerID)
+		res, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
 		require.NoError(t, err)
-		require.Equal(t, providerID, res.Provider.Id)
+		require.Equal(t, providerUUID, res.Provider.Uuid)
 	})
 
 	t.Run("success: query all providers", func(t *testing.T) {
@@ -285,14 +313,14 @@ func testProviderQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	})
 }
 
-func testProviderUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, providerID uint64) {
+func testProviderUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, providerUUID string) {
 	t.Log("=== Testing Provider Update ===")
 
 	address := authority.FormattedAddress()
 	newPayoutAddress := user1.FormattedAddress()
 
 	t.Run("success: authority updates provider", func(t *testing.T) {
-		res, err := helpers.SKUUpdateProvider(ctx, chain, authority, providerID, address, newPayoutAddress, true, "cafebabe")
+		res, err := helpers.SKUUpdateProvider(ctx, chain, authority, providerUUID, address, newPayoutAddress, true, "cafebabe")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -300,13 +328,13 @@ func testProviderUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosC
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
 
 		// Verify update
-		providerRes, err := helpers.SKUQueryProvider(ctx, chain, providerID)
+		providerRes, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
 		require.NoError(t, err)
 		require.Equal(t, newPayoutAddress, providerRes.Provider.PayoutAddress)
 	})
 
 	t.Run("fail: unauthorized user updates provider", func(t *testing.T) {
-		res, err := helpers.SKUUpdateProvider(ctx, chain, user1, providerID, address, newPayoutAddress, true, "")
+		res, err := helpers.SKUUpdateProvider(ctx, chain, user1, providerUUID, address, newPayoutAddress, true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -316,7 +344,7 @@ func testProviderUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosC
 	})
 
 	t.Run("fail: update non-existent provider", func(t *testing.T) {
-		res, err := helpers.SKUUpdateProvider(ctx, chain, authority, 999, address, newPayoutAddress, true, "")
+		res, err := helpers.SKUUpdateProvider(ctx, chain, authority, nonExistentUUID, address, newPayoutAddress, true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -333,7 +361,7 @@ func testProviderDeactivate(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	payoutAddress := authority.FormattedAddress()
 
 	// Create a provider specifically for deactivation
-	var providerIDToDeactivate uint64
+	var providerUUIDToDeactivate string
 	t.Run("setup: create provider for deactivation", func(t *testing.T) {
 		res, err := helpers.SKUCreateProvider(ctx, chain, authority, address, payoutAddress, "")
 		require.NoError(t, err)
@@ -342,12 +370,12 @@ func testProviderDeactivate(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
 
-		providerIDToDeactivate, err = helpers.GetProviderIDFromTxHash(ctx, chain, res.TxHash)
+		providerUUIDToDeactivate, err = helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 	})
 
 	t.Run("fail: unauthorized user deactivates provider", func(t *testing.T) {
-		res, err := helpers.SKUDeactivateProvider(ctx, chain, user1, providerIDToDeactivate)
+		res, err := helpers.SKUDeactivateProvider(ctx, chain, user1, providerUUIDToDeactivate)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -357,7 +385,7 @@ func testProviderDeactivate(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	})
 
 	t.Run("success: authority deactivates provider", func(t *testing.T) {
-		res, err := helpers.SKUDeactivateProvider(ctx, chain, authority, providerIDToDeactivate)
+		res, err := helpers.SKUDeactivateProvider(ctx, chain, authority, providerUUIDToDeactivate)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -365,13 +393,13 @@ func testProviderDeactivate(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
 
 		// Verify provider is still queryable but inactive
-		providerRes, err := helpers.SKUQueryProvider(ctx, chain, providerIDToDeactivate)
+		providerRes, err := helpers.SKUQueryProvider(ctx, chain, providerUUIDToDeactivate)
 		require.NoError(t, err)
 		require.False(t, providerRes.Provider.Active, "provider should be inactive after deactivation")
 	})
 
 	t.Run("fail: deactivate already inactive provider", func(t *testing.T) {
-		res, err := helpers.SKUDeactivateProvider(ctx, chain, authority, providerIDToDeactivate)
+		res, err := helpers.SKUDeactivateProvider(ctx, chain, authority, providerUUIDToDeactivate)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -381,7 +409,7 @@ func testProviderDeactivate(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	})
 
 	t.Run("fail: deactivate non-existent provider", func(t *testing.T) {
-		res, err := helpers.SKUDeactivateProvider(ctx, chain, authority, 999)
+		res, err := helpers.SKUDeactivateProvider(ctx, chain, authority, nonExistentUUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -391,18 +419,18 @@ func testProviderDeactivate(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	})
 }
 
-func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, providerID uint64) uint64 {
+func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, providerUUID string) string {
 	t.Log("=== Testing SKU Create ===")
 
 	name := "Compute Small"
 	unit := 1 // UNIT_PER_HOUR
 	// Price must be >= 3600 for UNIT_PER_HOUR to have non-zero per-second rate
-	basePrice := "3600umfx"
+	basePrice := testPriceHourly
 
-	var skuID uint64
+	var skuUUID string
 
 	t.Run("success: authority creates SKU", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, providerID, name, unit, basePrice, "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, providerUUID, name, unit, basePrice, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -410,20 +438,20 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
 
 		// Verify SKU was created by querying it
-		skuID, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		skuUUID, err = helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
-		require.Equal(t, uint64(1), skuID, "first SKU should have ID 1")
+		require.NotEmpty(t, skuUUID, "SKU UUID should not be empty")
 
-		skuRes, err := helpers.SKUQuerySKU(ctx, chain, skuID)
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, skuUUID)
 		require.NoError(t, err)
-		require.Equal(t, providerID, skuRes.Sku.ProviderId)
+		require.Equal(t, providerUUID, skuRes.Sku.ProviderUuid)
 		require.Equal(t, name, skuRes.Sku.Name)
 		require.True(t, skuRes.Sku.Active)
 	})
 
 	t.Run("success: authority creates SKU with meta-hash", func(t *testing.T) {
 		// Price must be >= 86400 for UNIT_PER_DAY to have non-zero per-second rate
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, providerID, "Compute Medium", 2, "86400umfx", "deadbeef")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, providerUUID, "Compute Medium", 2, "86400umfx", "deadbeef")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -432,7 +460,7 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	})
 
 	t.Run("fail: unauthorized user creates SKU", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, user1, providerID, "Unauthorized SKU", unit, basePrice, "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, user1, providerUUID, "Unauthorized SKU", unit, basePrice, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -442,7 +470,7 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	})
 
 	t.Run("fail: create SKU with non-existent provider", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, 999, "Bad Provider SKU", unit, basePrice, "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, nonExistentUUID, "Bad Provider SKU", unit, basePrice, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -451,11 +479,11 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.Contains(t, txRes.RawLog, "not found")
 	})
 
-	t.Run("fail: create SKU with zero provider_id", func(t *testing.T) {
+	t.Run("fail: create SKU with empty provider_uuid", func(t *testing.T) {
 		// CLI validation fails before tx is broadcast, so we expect an error from the CLI
-		_, err := helpers.SKUCreateSKU(ctx, chain, authority, 0, "Zero Provider SKU", unit, basePrice, "")
+		_, err := helpers.SKUCreateSKU(ctx, chain, authority, "", "Empty Provider SKU", unit, basePrice, "")
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "provider_id cannot be zero")
+		require.Contains(t, err.Error(), "provider_uuid")
 	})
 
 	t.Run("fail: create SKU with inactive provider", func(t *testing.T) {
@@ -466,18 +494,18 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), createTxRes.Code, "provider creation should succeed")
 
-		inactiveProviderID, err := helpers.GetProviderIDFromTxHash(ctx, chain, createRes.TxHash)
+		inactiveProviderUUID, err := helpers.GetProviderUUIDFromTxHash(ctx, chain, createRes.TxHash)
 		require.NoError(t, err)
 
 		// Deactivate the provider
-		deactivateRes, err := helpers.SKUDeactivateProvider(ctx, chain, authority, inactiveProviderID)
+		deactivateRes, err := helpers.SKUDeactivateProvider(ctx, chain, authority, inactiveProviderUUID)
 		require.NoError(t, err)
 		deactivateTxRes, err := chain.GetTransaction(deactivateRes.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), deactivateTxRes.Code, "provider deactivation should succeed")
 
 		// Now try to create a SKU for the inactive provider
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, inactiveProviderID, "Inactive Provider SKU", unit, basePrice, "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, inactiveProviderUUID, "Inactive Provider SKU", unit, basePrice, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -489,7 +517,7 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	t.Run("fail: create SKU with non-evenly divisible price", func(t *testing.T) {
 		// 3601 is not evenly divisible by 3600 (seconds in an hour)
 		// This should fail CLI validation with "not evenly divisible" error
-		_, err := helpers.SKUCreateSKU(ctx, chain, authority, providerID, "Non-Divisible SKU", unit, "3601umfx", "")
+		_, err := helpers.SKUCreateSKU(ctx, chain, authority, providerUUID, "Non-Divisible SKU", unit, "3601umfx", "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not evenly divisible")
 	})
@@ -497,22 +525,22 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	t.Run("fail: create SKU with non-evenly divisible per-day price", func(t *testing.T) {
 		// 86401 is not evenly divisible by 86400 (seconds in a day)
 		// This should fail CLI validation with "not evenly divisible" error
-		_, err := helpers.SKUCreateSKU(ctx, chain, authority, providerID, "Non-Divisible SKU", 2, "86401umfx", "")
+		_, err := helpers.SKUCreateSKU(ctx, chain, authority, providerUUID, "Non-Divisible SKU", 2, "86401umfx", "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not evenly divisible")
 	})
 
-	return skuID
+	return skuUUID
 }
 
-func testSKUQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, skuID, providerID uint64) {
+func testSKUQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, skuUUID, providerUUID string) {
 	t.Log("=== Testing SKU Query ===")
 
 	t.Run("success: query existing SKU", func(t *testing.T) {
-		res, err := helpers.SKUQuerySKU(ctx, chain, skuID)
+		res, err := helpers.SKUQuerySKU(ctx, chain, skuUUID)
 		require.NoError(t, err)
-		require.Equal(t, skuID, res.Sku.Id)
-		require.Equal(t, providerID, res.Sku.ProviderId)
+		require.Equal(t, skuUUID, res.Sku.Uuid)
+		require.Equal(t, providerUUID, res.Sku.ProviderUuid)
 	})
 
 	t.Run("success: query all SKUs", func(t *testing.T) {
@@ -522,16 +550,16 @@ func testSKUQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 	})
 }
 
-func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, skuID, providerID uint64) {
+func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, skuUUID, providerUUID string) {
 	t.Log("=== Testing SKU Update ===")
 
 	// Price must be >= 3600 for UNIT_PER_HOUR to have non-zero per-second rate
-	validPrice := "3600umfx"
+	validPrice := testPriceHourly
 	updatedPrice := "7200umfx"
 
 	t.Run("success: authority updates SKU", func(t *testing.T) {
 		newName := "Compute Small Updated"
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, newName, 1, updatedPrice, true, "cafebabe")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuUUID, providerUUID, newName, 1, updatedPrice, true, "cafebabe")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -539,14 +567,14 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
 
 		// Verify update
-		skuRes, err := helpers.SKUQuerySKU(ctx, chain, skuID)
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, skuUUID)
 		require.NoError(t, err)
 		require.Equal(t, newName, skuRes.Sku.Name)
 		require.Equal(t, "7200", skuRes.Sku.BasePrice.Amount.String())
 	})
 
 	t.Run("success: authority deactivates SKU via update", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, "Compute Small Updated", 1, updatedPrice, false, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuUUID, providerUUID, "Compute Small Updated", 1, updatedPrice, false, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -554,17 +582,17 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
 
 		// Verify deactivation
-		skuRes, err := helpers.SKUQuerySKU(ctx, chain, skuID)
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, skuUUID)
 		require.NoError(t, err)
 		require.False(t, skuRes.Sku.Active)
 
 		// Reactivate for other tests
-		_, err = helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, "Compute Small Updated", 1, updatedPrice, true, "")
+		_, err = helpers.SKUUpdateSKU(ctx, chain, authority, skuUUID, providerUUID, "Compute Small Updated", 1, updatedPrice, true, "")
 		require.NoError(t, err)
 	})
 
 	t.Run("fail: unauthorized user updates SKU", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, user1, skuID, providerID, "Hacked Name", 1, validPrice, true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, user1, skuUUID, providerUUID, "Hacked Name", 1, validPrice, true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -573,18 +601,18 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.Contains(t, txRes.RawLog, "unauthorized")
 	})
 
-	t.Run("fail: update with wrong provider_id", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, 999, "Name", 1, validPrice, true, "")
+	t.Run("fail: update with wrong provider_uuid", func(t *testing.T) {
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuUUID, nonExistentUUID, "Name", 1, validPrice, true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.NotEqual(t, uint32(0), txRes.Code, "tx should fail")
-		require.Contains(t, txRes.RawLog, "provider_id mismatch")
+		require.Contains(t, txRes.RawLog, "provider_uuid mismatch")
 	})
 
 	t.Run("fail: update non-existent SKU", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, 999, providerID, "Name", 1, validPrice, true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, nonExistentUUID, providerUUID, "Name", 1, validPrice, true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -593,17 +621,17 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.Contains(t, txRes.RawLog, "not found")
 	})
 
-	t.Run("fail: update SKU with zero provider_id", func(t *testing.T) {
+	t.Run("fail: update SKU with empty provider_uuid", func(t *testing.T) {
 		// CLI validation fails before tx is broadcast, so we expect an error from the CLI
-		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, 0, "Name", 1, validPrice, true, "")
+		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuUUID, "", "Name", 1, validPrice, true, "")
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "provider_id cannot be zero")
+		require.Contains(t, err.Error(), "provider_uuid")
 	})
 
 	t.Run("fail: update SKU with non-evenly divisible price", func(t *testing.T) {
 		// 3601 is not evenly divisible by 3600 (seconds in an hour)
 		// This should fail CLI validation with "not evenly divisible" error
-		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, "Updated Name", 1, "3601umfx", true, "")
+		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuUUID, providerUUID, "Updated Name", 1, "3601umfx", true, "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not evenly divisible")
 	})
@@ -611,32 +639,32 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	t.Run("fail: update SKU with non-evenly divisible per-day price", func(t *testing.T) {
 		// 86401 is not evenly divisible by 86400 (seconds in a day)
 		// This should fail CLI validation with "not evenly divisible" error
-		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuID, providerID, "Updated Name", 2, "86401umfx", true, "")
+		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuUUID, providerUUID, "Updated Name", 2, "86401umfx", true, "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not evenly divisible")
 	})
 }
 
-func testSKUDeactivate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, providerID uint64) {
+func testSKUDeactivate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, providerUUID string) {
 	t.Log("=== Testing SKU Deactivate ===")
 
 	// Create a SKU specifically for deactivation
 	// Price must be >= 3600 for UNIT_PER_HOUR to have non-zero per-second rate
-	var skuIDToDeactivate uint64
+	var skuUUIDToDeactivate string
 	t.Run("setup: create SKU for deactivation", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, providerID, "To Be Deactivated", 1, "3600umfx", "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, providerUUID, "To Be Deactivated", 1, testPriceHourly, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
 
-		skuIDToDeactivate, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		skuUUIDToDeactivate, err = helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 	})
 
 	t.Run("fail: unauthorized user deactivates SKU", func(t *testing.T) {
-		res, err := helpers.SKUDeactivateSKU(ctx, chain, user1, skuIDToDeactivate)
+		res, err := helpers.SKUDeactivateSKU(ctx, chain, user1, skuUUIDToDeactivate)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -646,7 +674,7 @@ func testSKUDeactivate(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	})
 
 	t.Run("success: authority deactivates SKU", func(t *testing.T) {
-		res, err := helpers.SKUDeactivateSKU(ctx, chain, authority, skuIDToDeactivate)
+		res, err := helpers.SKUDeactivateSKU(ctx, chain, authority, skuUUIDToDeactivate)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -654,13 +682,13 @@ func testSKUDeactivate(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
 
 		// Verify SKU is still queryable but inactive
-		skuRes, err := helpers.SKUQuerySKU(ctx, chain, skuIDToDeactivate)
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, skuUUIDToDeactivate)
 		require.NoError(t, err)
 		require.False(t, skuRes.Sku.Active, "SKU should be inactive after deactivation")
 	})
 
 	t.Run("fail: deactivate already inactive SKU", func(t *testing.T) {
-		res, err := helpers.SKUDeactivateSKU(ctx, chain, authority, skuIDToDeactivate)
+		res, err := helpers.SKUDeactivateSKU(ctx, chain, authority, skuUUIDToDeactivate)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -670,7 +698,7 @@ func testSKUDeactivate(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	})
 
 	t.Run("fail: deactivate non-existent SKU", func(t *testing.T) {
-		res, err := helpers.SKUDeactivateSKU(ctx, chain, authority, 999)
+		res, err := helpers.SKUDeactivateSKU(ctx, chain, authority, nonExistentUUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -727,7 +755,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	t.Log("=== Testing SKU Allowed List Operations ===")
 
 	// Create a provider for testing
-	var allowedProviderID uint64
+	var allowedProviderUUID string
 	t.Run("setup: create provider for allowed list tests", func(t *testing.T) {
 		res, err := helpers.SKUCreateProvider(ctx, chain, authority, authority.FormattedAddress(), authority.FormattedAddress(), "")
 		require.NoError(t, err)
@@ -736,7 +764,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
 
-		allowedProviderID, err = helpers.GetProviderIDFromTxHash(ctx, chain, res.TxHash)
+		allowedProviderUUID, err = helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 	})
 
@@ -751,23 +779,23 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	})
 
 	// Price must be >= 3600 for UNIT_PER_HOUR to have non-zero per-second rate
-	validPrice := "3600umfx"
+	validPrice := testPriceHourly
 
-	var allowedSKUID uint64
+	var allowedSKUUUID string
 	t.Run("success: allowed user creates SKU", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, user1, allowedProviderID, "Allowed User SKU", 1, validPrice, "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, user1, allowedProviderUUID, "Allowed User SKU", 1, validPrice, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
 
-		allowedSKUID, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		allowedSKUUUID, err = helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 	})
 
 	t.Run("fail: non-allowed user creates SKU", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, user2, allowedProviderID, "Non-Allowed SKU", 1, validPrice, "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, user2, allowedProviderUUID, "Non-Allowed SKU", 1, validPrice, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -778,7 +806,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 
 	t.Run("success: allowed user updates SKU", func(t *testing.T) {
 		// Price must be >= 86400 for UNIT_PER_DAY to have non-zero per-second rate
-		res, err := helpers.SKUUpdateSKU(ctx, chain, user1, allowedSKUID, allowedProviderID, "Updated by Allowed", 2, "86400umfx", true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, user1, allowedSKUUUID, allowedProviderUUID, "Updated by Allowed", 2, "86400umfx", true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -787,7 +815,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	})
 
 	t.Run("fail: non-allowed user updates SKU", func(t *testing.T) {
-		res, err := helpers.SKUUpdateSKU(ctx, chain, user2, allowedSKUID, allowedProviderID, "Hacked", 1, validPrice, true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, user2, allowedSKUUUID, allowedProviderUUID, "Hacked", 1, validPrice, true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -797,7 +825,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	})
 
 	t.Run("success: allowed user deactivates SKU", func(t *testing.T) {
-		res, err := helpers.SKUDeactivateSKU(ctx, chain, user1, allowedSKUID)
+		res, err := helpers.SKUDeactivateSKU(ctx, chain, user1, allowedSKUUUID)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -831,7 +859,7 @@ func testSKUQueryByProvider(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	t.Log("=== Testing SKU Query By Provider ===")
 
 	// Create a new provider specifically for this test
-	var queryProviderID uint64
+	var queryProviderUUID string
 	t.Run("setup: create provider for query test", func(t *testing.T) {
 		res, err := helpers.SKUCreateProvider(ctx, chain, authority, authority.FormattedAddress(), authority.FormattedAddress(), "")
 		require.NoError(t, err)
@@ -840,7 +868,7 @@ func testSKUQueryByProvider(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
 
-		queryProviderID, err = helpers.GetProviderIDFromTxHash(ctx, chain, res.TxHash)
+		queryProviderUUID, err = helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 	})
 
@@ -850,7 +878,7 @@ func testSKUQueryByProvider(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	t.Run("setup: create SKUs for provider", func(t *testing.T) {
 		units := []int{1, 2, 1} // UNIT_PER_HOUR, UNIT_PER_DAY, UNIT_PER_HOUR
 		for i := 0; i < 3; i++ {
-			res, err := helpers.SKUCreateSKU(ctx, chain, authority, queryProviderID, "Query Test SKU "+string(rune('1'+i)), units[i], "86400umfx", "")
+			res, err := helpers.SKUCreateSKU(ctx, chain, authority, queryProviderUUID, "Query Test SKU "+string(rune('1'+i)), units[i], "86400umfx", "")
 			require.NoError(t, err)
 
 			txRes, err := chain.GetTransaction(res.TxHash)
@@ -860,17 +888,17 @@ func testSKUQueryByProvider(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	})
 
 	t.Run("success: query SKUs by provider", func(t *testing.T) {
-		res, err := helpers.SKUQuerySKUsByProvider(ctx, chain, queryProviderID)
+		res, err := helpers.SKUQuerySKUsByProvider(ctx, chain, queryProviderUUID)
 		require.NoError(t, err)
 		require.Len(t, res.Skus, 3, "should have 3 SKUs for this provider")
 
 		for _, sku := range res.Skus {
-			require.Equal(t, queryProviderID, sku.ProviderId)
+			require.Equal(t, queryProviderUUID, sku.ProviderUuid)
 		}
 	})
 
 	t.Run("success: query SKUs by non-existent provider returns empty", func(t *testing.T) {
-		res, err := helpers.SKUQuerySKUsByProvider(ctx, chain, 99999)
+		res, err := helpers.SKUQuerySKUsByProvider(ctx, chain, nonExistentUUID)
 		require.NoError(t, err)
 		require.Empty(t, res.Skus)
 	})
@@ -880,7 +908,7 @@ func testSKUPagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	t.Log("=== Testing SKU Pagination ===")
 
 	// Create a new provider for pagination testing
-	var paginationProviderID uint64
+	var paginationProviderUUID string
 	t.Run("setup: create provider for pagination test", func(t *testing.T) {
 		res, err := helpers.SKUCreateProvider(ctx, chain, authority, authority.FormattedAddress(), authority.FormattedAddress(), "")
 		require.NoError(t, err)
@@ -889,7 +917,7 @@ func testSKUPagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
 
-		paginationProviderID, err = helpers.GetProviderIDFromTxHash(ctx, chain, res.TxHash)
+		paginationProviderUUID, err = helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 	})
 
@@ -897,7 +925,7 @@ func testSKUPagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	// Price must be >= 3600 for UNIT_PER_HOUR to have non-zero per-second rate
 	t.Run("setup: create SKUs for pagination", func(t *testing.T) {
 		for i := 1; i <= 5; i++ {
-			res, err := helpers.SKUCreateSKU(ctx, chain, authority, paginationProviderID, "Pagination SKU "+string(rune('0'+i)), 1, "3600umfx", "")
+			res, err := helpers.SKUCreateSKU(ctx, chain, authority, paginationProviderUUID, "Pagination SKU "+string(rune('0'+i)), 1, testPriceHourly, "")
 			require.NoError(t, err)
 
 			txRes, err := chain.GetTransaction(res.TxHash)
@@ -920,60 +948,60 @@ func testSKUPagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 		require.Len(t, res2.Skus, 2, "second page should have 2 SKUs")
 
 		// Verify no duplicates between pages
-		page1IDs := make(map[uint64]bool)
+		page1UUIDs := make(map[string]bool)
 		for _, sku := range res1.Skus {
-			page1IDs[sku.Id] = true
+			page1UUIDs[sku.Uuid] = true
 		}
 		for _, sku := range res2.Skus {
-			require.False(t, page1IDs[sku.Id], "SKU %d should not appear in both pages", sku.Id)
+			require.False(t, page1UUIDs[sku.Uuid], "SKU %s should not appear in both pages", sku.Uuid)
 		}
 	})
 
 	t.Run("success: paginate SKUs by provider", func(t *testing.T) {
 		// First page with limit 2
-		res1, nextKey, err := helpers.SKUQuerySKUsByProviderPaginated(ctx, chain, paginationProviderID, 2, "")
+		res1, nextKey, err := helpers.SKUQuerySKUsByProviderPaginated(ctx, chain, paginationProviderUUID, 2, "")
 		require.NoError(t, err)
 		require.Len(t, res1.Skus, 2, "first page should have 2 SKUs")
 		require.NotNil(t, res1.Pagination, "pagination info should be present")
 		require.NotEmpty(t, nextKey, "next key should be present for more pages")
 
 		for _, sku := range res1.Skus {
-			require.Equal(t, paginationProviderID, sku.ProviderId)
+			require.Equal(t, paginationProviderUUID, sku.ProviderUuid)
 		}
 
 		// Second page using next key
-		res2, nextKey, err := helpers.SKUQuerySKUsByProviderPaginated(ctx, chain, paginationProviderID, 2, nextKey)
+		res2, nextKey, err := helpers.SKUQuerySKUsByProviderPaginated(ctx, chain, paginationProviderUUID, 2, nextKey)
 		require.NoError(t, err)
 		require.Len(t, res2.Skus, 2, "second page should have 2 SKUs")
 
 		for _, sku := range res2.Skus {
-			require.Equal(t, paginationProviderID, sku.ProviderId)
+			require.Equal(t, paginationProviderUUID, sku.ProviderUuid)
 		}
 
 		// Third page - should have 1 remaining SKU
-		res3, _, err := helpers.SKUQuerySKUsByProviderPaginated(ctx, chain, paginationProviderID, 2, nextKey)
+		res3, _, err := helpers.SKUQuerySKUsByProviderPaginated(ctx, chain, paginationProviderUUID, 2, nextKey)
 		require.NoError(t, err)
 		require.Len(t, res3.Skus, 1, "third page should have 1 SKU")
 
 		// Verify no duplicates across all pages
-		allIDs := make(map[uint64]bool)
+		allUUIDs := make(map[string]bool)
 		for _, sku := range res1.Skus {
-			require.False(t, allIDs[sku.Id], "duplicate SKU ID found")
-			allIDs[sku.Id] = true
+			require.False(t, allUUIDs[sku.Uuid], "duplicate SKU UUID found")
+			allUUIDs[sku.Uuid] = true
 		}
 		for _, sku := range res2.Skus {
-			require.False(t, allIDs[sku.Id], "duplicate SKU ID found")
-			allIDs[sku.Id] = true
+			require.False(t, allUUIDs[sku.Uuid], "duplicate SKU UUID found")
+			allUUIDs[sku.Uuid] = true
 		}
 		for _, sku := range res3.Skus {
-			require.False(t, allIDs[sku.Id], "duplicate SKU ID found")
-			allIDs[sku.Id] = true
+			require.False(t, allUUIDs[sku.Uuid], "duplicate SKU UUID found")
+			allUUIDs[sku.Uuid] = true
 		}
-		require.Len(t, allIDs, 5, "should have collected all 5 SKUs across pages")
+		require.Len(t, allUUIDs, 5, "should have collected all 5 SKUs across pages")
 	})
 
 	t.Run("success: large limit returns all results", func(t *testing.T) {
-		res, _, err := helpers.SKUQuerySKUsByProviderPaginated(ctx, chain, paginationProviderID, 100, "")
+		res, _, err := helpers.SKUQuerySKUsByProviderPaginated(ctx, chain, paginationProviderUUID, 100, "")
 		require.NoError(t, err)
 		require.Len(t, res.Skus, 5, "should return all 5 SKUs")
 	})
@@ -984,7 +1012,7 @@ func testSKUMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	t.Log("=== Testing SKU Multi-Denom Support ===")
 
 	// Create a new provider for multi-denom testing
-	var multiDenomProviderID uint64
+	var multiDenomProviderUUID string
 	t.Run("setup: create provider for multi-denom tests", func(t *testing.T) {
 		res, err := helpers.SKUCreateProvider(ctx, chain, authority, authority.FormattedAddress(), authority.FormattedAddress(), "")
 		require.NoError(t, err)
@@ -993,7 +1021,7 @@ func testSKUMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
 
-		multiDenomProviderID, err = helpers.GetProviderIDFromTxHash(ctx, chain, res.TxHash)
+		multiDenomProviderUUID, err = helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 	})
 
@@ -1002,22 +1030,22 @@ func testSKUMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	denom2 := "upwr"
 	denom3 := "utest"
 
-	var sku1ID, sku2ID, sku3ID uint64
+	var sku1UUID, sku2UUID, sku3UUID string
 
 	t.Run("success: create SKU with umfx denom", func(t *testing.T) {
 		// Price must be >= 3600 for UNIT_PER_HOUR
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderID, "Compute MFX", 1, "3600"+denom1, "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderUUID, "Compute MFX", 1, "3600"+denom1, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
 
-		sku1ID, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		sku1UUID, err = helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 
 		// Verify SKU has correct denom
-		skuRes, err := helpers.SKUQuerySKU(ctx, chain, sku1ID)
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, sku1UUID)
 		require.NoError(t, err)
 		require.Equal(t, denom1, skuRes.Sku.BasePrice.Denom, "SKU should have umfx denom")
 		require.Equal(t, "3600", skuRes.Sku.BasePrice.Amount.String())
@@ -1025,36 +1053,36 @@ func testSKUMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 
 	t.Run("success: create SKU with upwr denom", func(t *testing.T) {
 		// Price must be >= 86400 for UNIT_PER_DAY
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderID, "Storage PWR", 2, "86400"+denom2, "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderUUID, "Storage PWR", 2, "86400"+denom2, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
 
-		sku2ID, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		sku2UUID, err = helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 
 		// Verify SKU has correct denom
-		skuRes, err := helpers.SKUQuerySKU(ctx, chain, sku2ID)
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, sku2UUID)
 		require.NoError(t, err)
 		require.Equal(t, denom2, skuRes.Sku.BasePrice.Denom, "SKU should have upwr denom")
 		require.Equal(t, "86400", skuRes.Sku.BasePrice.Amount.String())
 	})
 
 	t.Run("success: create SKU with custom utest denom", func(t *testing.T) {
-		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderID, "Network TEST", 1, "7200"+denom3, "")
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, multiDenomProviderUUID, "Network TEST", 1, "7200"+denom3, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
 
-		sku3ID, err = helpers.GetSKUIDFromTxHash(ctx, chain, res.TxHash)
+		sku3UUID, err = helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
 		require.NoError(t, err)
 
 		// Verify SKU has correct denom
-		skuRes, err := helpers.SKUQuerySKU(ctx, chain, sku3ID)
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, sku3UUID)
 		require.NoError(t, err)
 		require.Equal(t, denom3, skuRes.Sku.BasePrice.Denom, "SKU should have utest denom")
 		require.Equal(t, "7200", skuRes.Sku.BasePrice.Amount.String())
@@ -1062,7 +1090,7 @@ func testSKUMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 
 	t.Run("success: update SKU to different denom", func(t *testing.T) {
 		// Update SKU 1 from umfx to upwr
-		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, sku1ID, multiDenomProviderID, "Compute PWR Updated", 1, "3600"+denom2, true, "")
+		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, sku1UUID, multiDenomProviderUUID, "Compute PWR Updated", 1, "3600"+denom2, true, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -1070,14 +1098,14 @@ func testSKUMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
 
 		// Verify SKU now has the new denom
-		skuRes, err := helpers.SKUQuerySKU(ctx, chain, sku1ID)
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, sku1UUID)
 		require.NoError(t, err)
 		require.Equal(t, denom2, skuRes.Sku.BasePrice.Denom, "SKU should now have upwr denom")
 		require.Equal(t, "Compute PWR Updated", skuRes.Sku.Name)
 	})
 
 	t.Run("success: query all SKUs returns multiple denoms", func(t *testing.T) {
-		res, err := helpers.SKUQuerySKUsByProvider(ctx, chain, multiDenomProviderID)
+		res, err := helpers.SKUQuerySKUsByProvider(ctx, chain, multiDenomProviderUUID)
 		require.NoError(t, err)
 		require.Len(t, res.Skus, 3, "should have 3 SKUs for this provider")
 
@@ -1092,15 +1120,108 @@ func testSKUMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 		require.True(t, denoms[denom3], "should have utest denom")
 	})
 
-	t.Run("success: verify SKU IDs are correct", func(t *testing.T) {
+	t.Run("success: verify SKU UUIDs are correct", func(t *testing.T) {
 		// Verify all three SKUs exist
-		_, err := helpers.SKUQuerySKU(ctx, chain, sku1ID)
+		_, err := helpers.SKUQuerySKU(ctx, chain, sku1UUID)
 		require.NoError(t, err)
 
-		_, err = helpers.SKUQuerySKU(ctx, chain, sku2ID)
+		_, err = helpers.SKUQuerySKU(ctx, chain, sku2UUID)
 		require.NoError(t, err)
 
-		_, err = helpers.SKUQuerySKU(ctx, chain, sku3ID)
+		_, err = helpers.SKUQuerySKU(ctx, chain, sku3UUID)
 		require.NoError(t, err)
+	})
+}
+
+// testProviderFullFields tests provider creation and update with api_url field.
+func testProviderFullFields(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+	t.Log("=== Testing Provider Full Fields (api_url) ===")
+
+	address := authority.FormattedAddress()
+	payoutAddress := authority.FormattedAddress()
+
+	// Test values
+	apiURL := "https://api.provider.example.com"
+
+	var providerUUID string
+
+	t.Run("success: create provider with api_url", func(t *testing.T) {
+		res, err := helpers.SKUCreateProviderFull(ctx, chain, authority, address, payoutAddress, "", apiURL)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		providerUUID, err = helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Verify provider was created with all fields
+		providerRes, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
+		require.NoError(t, err)
+		require.Equal(t, address, providerRes.Provider.Address)
+		require.Equal(t, payoutAddress, providerRes.Provider.PayoutAddress)
+		require.Equal(t, apiURL, providerRes.Provider.ApiUrl)
+		require.True(t, providerRes.Provider.Active)
+	})
+
+	t.Run("success: update provider api_url", func(t *testing.T) {
+		newAPIURL := "https://api.updated-provider.example.com"
+		res, err := helpers.SKUUpdateProviderFull(ctx, chain, authority, providerUUID, address, payoutAddress, true, "", newAPIURL)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		// Verify api_url was updated
+		providerRes, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
+		require.NoError(t, err)
+		require.Equal(t, newAPIURL, providerRes.Provider.ApiUrl)
+	})
+
+	t.Run("success: create provider without api_url", func(t *testing.T) {
+		// Create provider without api_url (empty string)
+		res, err := helpers.SKUCreateProviderFull(ctx, chain, authority, address, payoutAddress, "", "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		newProviderUUID, err := helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Verify provider was created with empty api_url
+		providerRes, err := helpers.SKUQueryProvider(ctx, chain, newProviderUUID)
+		require.NoError(t, err)
+		require.Empty(t, providerRes.Provider.ApiUrl)
+	})
+
+	t.Run("success: update preserves existing values when not provided", func(t *testing.T) {
+		// First create a provider with all fields
+		res, err := helpers.SKUCreateProviderFull(ctx, chain, authority, address, payoutAddress, "", apiURL)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		preserveProviderUUID, err := helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Update using the basic update function (without new field values)
+		// This should preserve existing api_url
+		res, err = helpers.SKUUpdateProvider(ctx, chain, authority, preserveProviderUUID, address, payoutAddress, true, validMetaHashHex)
+		require.NoError(t, err)
+
+		txRes, err = chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		// Verify existing field values are preserved
+		providerRes, err := helpers.SKUQueryProvider(ctx, chain, preserveProviderUUID)
+		require.NoError(t, err)
+		require.Equal(t, apiURL, providerRes.Provider.ApiUrl, "api_url should be preserved")
 	})
 }

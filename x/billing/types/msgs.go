@@ -2,6 +2,8 @@ package types
 
 import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 )
 
 var (
@@ -12,6 +14,9 @@ var (
 	_ sdk.Msg = &MsgWithdraw{}
 	_ sdk.Msg = &MsgWithdrawAll{}
 	_ sdk.Msg = &MsgUpdateParams{}
+	_ sdk.Msg = &MsgAcknowledgeLease{}
+	_ sdk.Msg = &MsgRejectLease{}
+	_ sdk.Msg = &MsgCancelLease{}
 )
 
 // ValidateBasic performs basic validation for MsgFundCredit.
@@ -50,18 +55,21 @@ func (m *MsgCreateLease) ValidateBasic() error {
 		return ErrTooManyLeaseItems.Wrapf("lease has %d items, maximum allowed is %d", len(m.Items), MaxItemsPerLeaseHardLimit)
 	}
 
-	seenSKUs := make(map[uint64]bool)
+	seenSKUs := make(map[string]bool)
 	for i, item := range m.Items {
-		if item.SkuId == 0 {
-			return ErrInvalidLease.Wrapf("item %d has zero sku_id", i)
+		if item.SkuUuid == "" {
+			return ErrInvalidLease.Wrapf("item %d has empty sku_uuid", i)
+		}
+		if !pkguuid.IsValidUUID(item.SkuUuid) {
+			return ErrInvalidLease.Wrapf("item %d has invalid sku_uuid format: %s", i, item.SkuUuid)
 		}
 		if item.Quantity == 0 {
 			return ErrInvalidQuantity.Wrapf("item %d has zero quantity", i)
 		}
-		if seenSKUs[item.SkuId] {
-			return ErrDuplicateSKU.Wrapf("sku_id %d appears multiple times", item.SkuId)
+		if seenSKUs[item.SkuUuid] {
+			return ErrDuplicateSKU.Wrapf("sku_uuid %s appears multiple times", item.SkuUuid)
 		}
-		seenSKUs[item.SkuId] = true
+		seenSKUs[item.SkuUuid] = true
 	}
 
 	return nil
@@ -87,18 +95,21 @@ func (m *MsgCreateLeaseForTenant) ValidateBasic() error {
 		return ErrTooManyLeaseItems.Wrapf("lease has %d items, maximum allowed is %d", len(m.Items), MaxItemsPerLeaseHardLimit)
 	}
 
-	seenSKUs := make(map[uint64]bool)
+	seenSKUs := make(map[string]bool)
 	for i, item := range m.Items {
-		if item.SkuId == 0 {
-			return ErrInvalidLease.Wrapf("item %d has zero sku_id", i)
+		if item.SkuUuid == "" {
+			return ErrInvalidLease.Wrapf("item %d has empty sku_uuid", i)
+		}
+		if !pkguuid.IsValidUUID(item.SkuUuid) {
+			return ErrInvalidLease.Wrapf("item %d has invalid sku_uuid format: %s", i, item.SkuUuid)
 		}
 		if item.Quantity == 0 {
 			return ErrInvalidQuantity.Wrapf("item %d has zero quantity", i)
 		}
-		if seenSKUs[item.SkuId] {
-			return ErrDuplicateSKU.Wrapf("sku_id %d appears multiple times", item.SkuId)
+		if seenSKUs[item.SkuUuid] {
+			return ErrDuplicateSKU.Wrapf("sku_uuid %s appears multiple times", item.SkuUuid)
 		}
-		seenSKUs[item.SkuId] = true
+		seenSKUs[item.SkuUuid] = true
 	}
 
 	return nil
@@ -110,8 +121,12 @@ func (m *MsgCloseLease) ValidateBasic() error {
 		return ErrInvalidLease.Wrapf("invalid sender address: %s", err)
 	}
 
-	if m.LeaseId == 0 {
-		return ErrInvalidLease.Wrap("lease_id cannot be zero")
+	if m.LeaseUuid == "" {
+		return ErrInvalidLease.Wrap("lease_uuid cannot be empty")
+	}
+
+	if !pkguuid.IsValidUUID(m.LeaseUuid) {
+		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", m.LeaseUuid)
 	}
 
 	return nil
@@ -123,8 +138,12 @@ func (m *MsgWithdraw) ValidateBasic() error {
 		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
 	}
 
-	if m.LeaseId == 0 {
-		return ErrInvalidLease.Wrap("lease_id cannot be zero")
+	if m.LeaseUuid == "" {
+		return ErrInvalidLease.Wrap("lease_uuid cannot be empty")
+	}
+
+	if !pkguuid.IsValidUUID(m.LeaseUuid) {
+		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", m.LeaseUuid)
 	}
 
 	return nil
@@ -136,8 +155,12 @@ func (m *MsgWithdrawAll) ValidateBasic() error {
 		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
 	}
 
-	if m.ProviderId == 0 {
-		return ErrProviderNotFound.Wrap("provider_id cannot be zero")
+	if m.ProviderUuid == "" {
+		return ErrProviderNotFound.Wrap("provider_uuid cannot be empty")
+	}
+
+	if !pkguuid.IsValidUUID(m.ProviderUuid) {
+		return ErrProviderNotFound.Wrapf("invalid provider_uuid format: %s", m.ProviderUuid)
 	}
 
 	// Enforce maximum limit to prevent DoS attacks
@@ -155,4 +178,59 @@ func (m *MsgUpdateParams) ValidateBasic() error {
 	}
 
 	return m.Params.Validate()
+}
+
+// ValidateBasic performs basic validation for MsgAcknowledgeLease.
+func (m *MsgAcknowledgeLease) ValidateBasic() error {
+	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
+		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
+	}
+
+	if m.LeaseUuid == "" {
+		return ErrInvalidLease.Wrap("lease_uuid cannot be empty")
+	}
+
+	if !pkguuid.IsValidUUID(m.LeaseUuid) {
+		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", m.LeaseUuid)
+	}
+
+	return nil
+}
+
+// ValidateBasic performs basic validation for MsgRejectLease.
+func (m *MsgRejectLease) ValidateBasic() error {
+	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
+		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
+	}
+
+	if m.LeaseUuid == "" {
+		return ErrInvalidLease.Wrap("lease_uuid cannot be empty")
+	}
+
+	if !pkguuid.IsValidUUID(m.LeaseUuid) {
+		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", m.LeaseUuid)
+	}
+
+	if len(m.Reason) > MaxRejectionReasonLength {
+		return ErrInvalidRejectionReason.Wrapf("reason exceeds maximum length of %d characters", MaxRejectionReasonLength)
+	}
+
+	return nil
+}
+
+// ValidateBasic performs basic validation for MsgCancelLease.
+func (m *MsgCancelLease) ValidateBasic() error {
+	if _, err := sdk.AccAddressFromBech32(m.Tenant); err != nil {
+		return ErrInvalidLease.Wrapf("invalid tenant address: %s", err)
+	}
+
+	if m.LeaseUuid == "" {
+		return ErrInvalidLease.Wrap("lease_uuid cannot be empty")
+	}
+
+	if !pkguuid.IsValidUUID(m.LeaseUuid) {
+		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", m.LeaseUuid)
+	}
+
+	return nil
 }

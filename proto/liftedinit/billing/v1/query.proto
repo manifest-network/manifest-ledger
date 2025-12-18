@@ -17,9 +17,9 @@ service Query {
     option (google.api.http).get = "/liftedinit/billing/v1/params";
   }
 
-  // Lease queries a lease by ID.
+  // Lease queries a lease by UUID.
   rpc Lease(QueryLeaseRequest) returns (QueryLeaseResponse) {
-    option (google.api.http).get = "/liftedinit/billing/v1/lease/{lease_id}";
+    option (google.api.http).get = "/liftedinit/billing/v1/lease/{lease_uuid}";
   }
 
   // Leases queries all leases with pagination.
@@ -38,7 +38,7 @@ service Query {
   rpc LeasesByProvider(QueryLeasesByProviderRequest)
       returns (QueryLeasesByProviderResponse) {
     option (google.api.http).get =
-        "/liftedinit/billing/v1/leases/provider/{provider_id}";
+        "/liftedinit/billing/v1/leases/provider/{provider_uuid}";
   }
 
   // CreditAccount queries a tenant's credit account.
@@ -58,14 +58,14 @@ service Query {
   rpc WithdrawableAmount(QueryWithdrawableAmountRequest)
       returns (QueryWithdrawableAmountResponse) {
     option (google.api.http).get =
-        "/liftedinit/billing/v1/lease/{lease_id}/withdrawable";
+        "/liftedinit/billing/v1/lease/{lease_uuid}/withdrawable";
   }
 
   // ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
   rpc ProviderWithdrawable(QueryProviderWithdrawableRequest)
       returns (QueryProviderWithdrawableResponse) {
     option (google.api.http).get =
-        "/liftedinit/billing/v1/provider/{provider_id}/withdrawable";
+        "/liftedinit/billing/v1/provider/{provider_uuid}/withdrawable";
   }
 }
 
@@ -83,8 +83,8 @@ message QueryParamsResponse {
 
 // QueryLeaseRequest is the request type for the Query/Lease RPC method.
 message QueryLeaseRequest {
-  // lease_id is the ID of the lease to query.
-  uint64 lease_id = 1 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
+  // lease_uuid is the UUID of the lease to query.
+  string lease_uuid = 1 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
 }
 
 // QueryLeaseResponse is the response type for the Query/Lease RPC method.
@@ -101,8 +101,8 @@ message QueryLeasesRequest {
   // pagination defines an optional pagination for the request.
   cosmos.base.query.v1beta1.PageRequest pagination = 1;
 
-  // active_only filters to return only active leases when true.
-  bool active_only = 2 [(gogoproto.jsontag) = "active_only,omitempty"];
+  // state_filter filters leases by state. If UNSPECIFIED, returns all leases.
+  LeaseState state_filter = 2 [(gogoproto.jsontag) = "state_filter,omitempty"];
 }
 
 // QueryLeasesResponse is the response type for the Query/Leases RPC method.
@@ -129,8 +129,8 @@ message QueryLeasesByTenantRequest {
   // pagination defines an optional pagination for the request.
   cosmos.base.query.v1beta1.PageRequest pagination = 2;
 
-  // active_only filters to return only active leases when true.
-  bool active_only = 3 [(gogoproto.jsontag) = "active_only,omitempty"];
+  // state_filter filters leases by state. If UNSPECIFIED, returns all leases.
+  LeaseState state_filter = 3 [(gogoproto.jsontag) = "state_filter,omitempty"];
 }
 
 // QueryLeasesByTenantResponse is the response type for the Query/LeasesByTenant
@@ -149,14 +149,14 @@ message QueryLeasesByTenantResponse {
 // QueryLeasesByProviderRequest is the request type for the
 // Query/LeasesByProvider RPC method.
 message QueryLeasesByProviderRequest {
-  // provider_id is the provider ID.
-  uint64 provider_id = 1 [(gogoproto.jsontag) = "provider_id,omitempty,string"];
+  // provider_uuid is the provider UUID.
+  string provider_uuid = 1 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
 
   // pagination defines an optional pagination for the request.
   cosmos.base.query.v1beta1.PageRequest pagination = 2;
 
-  // active_only filters to return only active leases when true.
-  bool active_only = 3 [(gogoproto.jsontag) = "active_only,omitempty"];
+  // state_filter filters leases by state. If UNSPECIFIED, returns all leases.
+  LeaseState state_filter = 3 [(gogoproto.jsontag) = "state_filter,omitempty"];
 }
 
 // QueryLeasesByProviderResponse is the response type for the
@@ -222,8 +222,8 @@ message QueryCreditAddressResponse {
 // QueryWithdrawableAmountRequest is the request type for the
 // Query/WithdrawableAmount RPC method.
 message QueryWithdrawableAmountRequest {
-  // lease_id is the ID of the lease.
-  uint64 lease_id = 1 [(gogoproto.jsontag) = "lease_id,omitempty,string"];
+  // lease_uuid is the UUID of the lease.
+  string lease_uuid = 1 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
 }
 
 // QueryWithdrawableAmountResponse is the response type for the
@@ -240,8 +240,8 @@ message QueryWithdrawableAmountResponse {
 // QueryProviderWithdrawableRequest is the request type for the
 // Query/ProviderWithdrawable RPC method.
 message QueryProviderWithdrawableRequest {
-  // provider_id is the ID of the provider.
-  uint64 provider_id = 1 [(gogoproto.jsontag) = "provider_id,omitempty,string"];
+  // provider_uuid is the UUID of the provider.
+  string provider_uuid = 1 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
 }
 
 // QueryProviderWithdrawableResponse is the response type for the

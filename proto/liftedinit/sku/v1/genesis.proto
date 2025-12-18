@@ -16,10 +16,4 @@ message GenesisState {
 
   // skus is the list of SKUs.
   repeated SKU skus = 3 [ (gogoproto.nullable) = false ];
-
-  // next_provider_id is the next provider id to be assigned.
-  uint64 next_provider_id = 4;
-
-  // next_sku_id is the next SKU id to be assigned.
-  uint64 next_sku_id = 5;
 }

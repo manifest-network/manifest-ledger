@@ -1,23 +1,21 @@
 package keeper
 
 import (
-	"bytes"
 	"context"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
 )
 
-// Uint64IndexIterator is an interface for index iterators that return uint64 primary keys.
-type Uint64IndexIterator interface {
+// StringIndexIterator is an interface for index iterators that return string primary keys.
+type StringIndexIterator interface {
 	Valid() bool
 	Next()
 	Close() error
-	PrimaryKey() (uint64, error)
+	PrimaryKey() (string, error)
 }
 
-// PaginateUint64Index paginates over a uint64 index iterator, fetching values from the primary map.
-// This is a helper for paginating secondary indexes on IndexedMap collections with uint64 primary keys.
+// PaginateStringIndex paginates over a string index iterator, fetching values from the primary map.
+// This is a helper for paginating secondary indexes on IndexedMap collections with string primary keys.
 //
 // Parameters:
 //   - ctx: context
@@ -27,10 +25,10 @@ type Uint64IndexIterator interface {
 //   - filter: optional filter function, return true to include the value (nil means include all)
 //
 // Returns paginated values, page response, and any error.
-func PaginateUint64Index[V any](
+func PaginateStringIndex[V any](
 	ctx context.Context,
-	iter Uint64IndexIterator,
-	getter func(context.Context, uint64) (V, error),
+	iter StringIndexIterator,
+	getter func(context.Context, string) (V, error),
 	pageReq *query.PageRequest,
 	filter func(V) bool,
 ) ([]V, *query.PageResponse, error) {
@@ -65,8 +63,8 @@ func PaginateUint64Index[V any](
 
 		// For key-based pagination, skip until we reach the start key
 		if !foundStart {
-			pkBytes := sdk.Uint64ToBigEndian(pk)
-			if bytes.Equal(pkBytes, startKey) {
+			pkBytes := []byte(pk)
+			if string(pkBytes) == string(startKey) {
 				foundStart = true
 			} else {
 				continue
@@ -93,7 +91,7 @@ func PaginateUint64Index[V any](
 		// Check if we've reached the limit
 		if count >= limit {
 			// Encode the primary key for next_key
-			nextKey = sdk.Uint64ToBigEndian(pk)
+			nextKey = []byte(pk)
 			break
 		}
 

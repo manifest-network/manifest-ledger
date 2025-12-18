@@ -15,6 +15,7 @@ Test Coverage:
 package keeper_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -49,18 +50,20 @@ func TestQueryLease(t *testing.T) {
 
 	tenant := f.TestAccs[0]
 
+	leaseUUID := "01912345-6789-7abc-8def-0123456789ab"
+
 	// Query non-existent lease
-	_, err := querier.Lease(f.Ctx, &types.QueryLeaseRequest{LeaseId: 1})
+	_, err := querier.Lease(f.Ctx, &types.QueryLeaseRequest{LeaseUuid: leaseUUID})
 	require.Error(t, err)
 
 	// Create a lease
 	lease := types.Lease{
-		Id:         1,
-		Tenant:     tenant.String(),
-		ProviderId: 1,
+		Uuid:         leaseUUID,
+		Tenant:       tenant.String(),
+		ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 		Items: []types.LeaseItem{
 			{
-				SkuId:       1,
+				SkuUuid:     "01912345-6789-7abc-8def-0123456789ad",
 				Quantity:    2,
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 			},
@@ -72,15 +75,15 @@ func TestQueryLease(t *testing.T) {
 	require.NoError(t, err)
 
 	// Query the lease
-	resp, err := querier.Lease(f.Ctx, &types.QueryLeaseRequest{LeaseId: 1})
+	resp, err := querier.Lease(f.Ctx, &types.QueryLeaseRequest{LeaseUuid: leaseUUID})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.Equal(t, lease.Id, resp.Lease.Id)
+	require.Equal(t, lease.Uuid, resp.Lease.Uuid)
 	require.Equal(t, lease.Tenant, resp.Lease.Tenant)
-	require.Equal(t, lease.ProviderId, resp.Lease.ProviderId)
+	require.Equal(t, lease.ProviderUuid, resp.Lease.ProviderUuid)
 
-	// Query with zero lease_id
-	_, err = querier.Lease(f.Ctx, &types.QueryLeaseRequest{LeaseId: 0})
+	// Query with empty lease_uuid
+	_, err = querier.Lease(f.Ctx, &types.QueryLeaseRequest{LeaseUuid: ""})
 	require.Error(t, err)
 
 	// Query with nil request
@@ -94,23 +97,28 @@ func TestQueryLeases(t *testing.T) {
 	k := f.App.BillingKeeper
 	querier := keeper.NewQuerier(k)
 
+	providerUUID := "01912345-6789-7abc-8def-0123456789ac"
+
 	// Create multiple leases
-	for i := uint64(1); i <= 5; i++ {
+	for i := 1; i <= 5; i++ {
 		state := types.LEASE_STATE_ACTIVE
 		var closedAt *time.Time
 		if i%2 == 0 {
-			state = types.LEASE_STATE_INACTIVE
+			state = types.LEASE_STATE_CLOSED
 			ct := f.Ctx.BlockTime()
 			closedAt = &ct
 		}
 
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+		skuUUID := fmt.Sprintf("01912345-6789-7abc-8def-1%011d", i)
+
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     f.TestAccs[0].String(),
-			ProviderId: 1,
+			Uuid:         leaseUUID,
+			Tenant:       f.TestAccs[0].String(),
+			ProviderUuid: providerUUID,
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuUuid:     skuUUID,
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
@@ -129,7 +137,7 @@ func TestQueryLeases(t *testing.T) {
 	require.Len(t, resp.Leases, 5)
 
 	// Query active only
-	resp, err = querier.Leases(f.Ctx, &types.QueryLeasesRequest{ActiveOnly: true})
+	resp, err = querier.Leases(f.Ctx, &types.QueryLeasesRequest{StateFilter: types.LEASE_STATE_ACTIVE})
 	require.NoError(t, err)
 	require.Len(t, resp.Leases, 3) // 1, 3, 5 are active
 
@@ -155,15 +163,20 @@ func TestQueryLeasesByTenant(t *testing.T) {
 	tenant1 := f.TestAccs[0]
 	tenant2 := f.TestAccs[1]
 
+	providerUUID := "01912345-6789-7abc-8def-0123456789ac"
+
 	// Create leases for tenant1
-	for i := uint64(1); i <= 3; i++ {
+	for i := 1; i <= 3; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+		skuUUID := fmt.Sprintf("01912345-6789-7abc-8def-1%011d", i)
+
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     tenant1.String(),
-			ProviderId: 1,
+			Uuid:         leaseUUID,
+			Tenant:       tenant1.String(),
+			ProviderUuid: providerUUID,
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuUuid:     skuUUID,
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
@@ -178,17 +191,17 @@ func TestQueryLeasesByTenant(t *testing.T) {
 	// Create one inactive lease for tenant1
 	closedAt := f.Ctx.BlockTime()
 	inactiveLease := types.Lease{
-		Id:         4,
-		Tenant:     tenant1.String(),
-		ProviderId: 1,
+		Uuid:         "01912345-6789-7abc-8def-000000000004",
+		Tenant:       tenant1.String(),
+		ProviderUuid: providerUUID,
 		Items: []types.LeaseItem{
 			{
-				SkuId:       4,
+				SkuUuid:     "01912345-6789-7abc-8def-100000000004",
 				Quantity:    1,
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 			},
 		},
-		State:     types.LEASE_STATE_INACTIVE,
+		State:     types.LEASE_STATE_CLOSED,
 		CreatedAt: f.Ctx.BlockTime(),
 		ClosedAt:  &closedAt,
 	}
@@ -196,14 +209,18 @@ func TestQueryLeasesByTenant(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create leases for tenant2
-	for i := uint64(5); i <= 6; i++ {
+	providerUUID2 := "01912345-6789-7abc-8def-0123456789ad"
+	for i := 5; i <= 6; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+		skuUUID := fmt.Sprintf("01912345-6789-7abc-8def-1%011d", i)
+
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     tenant2.String(),
-			ProviderId: 2,
+			Uuid:         leaseUUID,
+			Tenant:       tenant2.String(),
+			ProviderUuid: providerUUID2,
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuUuid:     skuUUID,
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
@@ -224,8 +241,8 @@ func TestQueryLeasesByTenant(t *testing.T) {
 
 	// Query by tenant1 active only
 	resp, err = querier.LeasesByTenant(f.Ctx, &types.QueryLeasesByTenantRequest{
-		Tenant:     tenant1.String(),
-		ActiveOnly: true,
+		Tenant:      tenant1.String(),
+		StateFilter: types.LEASE_STATE_ACTIVE,
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.Leases, 3)
@@ -260,15 +277,21 @@ func TestQueryLeasesByProvider(t *testing.T) {
 	k := f.App.BillingKeeper
 	querier := keeper.NewQuerier(k)
 
+	providerUUID1 := "01912345-6789-7abc-8def-0123456789ac"
+	providerUUID2 := "01912345-6789-7abc-8def-0123456789ad"
+
 	// Create leases for provider 1
-	for i := uint64(1); i <= 4; i++ {
+	for i := 1; i <= 4; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+		skuUUID := fmt.Sprintf("01912345-6789-7abc-8def-1%011d", i)
+
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     f.TestAccs[0].String(),
-			ProviderId: 1,
+			Uuid:         leaseUUID,
+			Tenant:       f.TestAccs[0].String(),
+			ProviderUuid: providerUUID1,
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuUuid:     skuUUID,
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
@@ -283,17 +306,17 @@ func TestQueryLeasesByProvider(t *testing.T) {
 	// Create inactive leases for provider 1
 	closedAt := f.Ctx.BlockTime()
 	inactiveLease := types.Lease{
-		Id:         5,
-		Tenant:     f.TestAccs[0].String(),
-		ProviderId: 1,
+		Uuid:         "01912345-6789-7abc-8def-000000000005",
+		Tenant:       f.TestAccs[0].String(),
+		ProviderUuid: providerUUID1,
 		Items: []types.LeaseItem{
 			{
-				SkuId:       5,
+				SkuUuid:     "01912345-6789-7abc-8def-100000000005",
 				Quantity:    1,
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 			},
 		},
-		State:     types.LEASE_STATE_INACTIVE,
+		State:     types.LEASE_STATE_CLOSED,
 		CreatedAt: f.Ctx.BlockTime(),
 		ClosedAt:  &closedAt,
 	}
@@ -301,14 +324,17 @@ func TestQueryLeasesByProvider(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create leases for provider 2
-	for i := uint64(6); i <= 7; i++ {
+	for i := 6; i <= 7; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+		skuUUID := fmt.Sprintf("01912345-6789-7abc-8def-1%011d", i)
+
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     f.TestAccs[1].String(),
-			ProviderId: 2,
+			Uuid:         leaseUUID,
+			Tenant:       f.TestAccs[1].String(),
+			ProviderUuid: providerUUID2,
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuUuid:     skuUUID,
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
@@ -322,29 +348,29 @@ func TestQueryLeasesByProvider(t *testing.T) {
 
 	// Query by provider 1
 	resp, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
-		ProviderId: 1,
+		ProviderUuid: providerUUID1,
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.Leases, 5)
 
 	// Query by provider 1 active only
 	resp, err = querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
-		ProviderId: 1,
-		ActiveOnly: true,
+		ProviderUuid: providerUUID1,
+		StateFilter:  types.LEASE_STATE_ACTIVE,
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.Leases, 4)
 
 	// Query by provider 2
 	resp, err = querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
-		ProviderId: 2,
+		ProviderUuid: providerUUID2,
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.Leases, 2)
 
-	// Query with zero provider_id
+	// Query with empty provider_uuid
 	_, err = querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
-		ProviderId: 0,
+		ProviderUuid: "",
 	})
 	require.Error(t, err)
 
@@ -458,17 +484,9 @@ func TestQueryWithdrawableAmount(t *testing.T) {
 	payoutAddr := f.TestAccs[2]
 	denom := testDenom
 
-	// Initialize sequences
-	err := k.NextLeaseID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-
 	// Create provider and SKU with 3600 per hour = 1 per second
 	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
-	sku := f.createTestSKU(t, provider.Id, 3600)
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
 
 	// Fund tenant's credit account
 	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
@@ -482,14 +500,16 @@ func TestQueryWithdrawableAmount(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	leaseUUID := "01912345-6789-7abc-8def-0123456789ab"
+
 	// Create a lease with quantity 2
 	lease := types.Lease{
-		Id:         1,
-		Tenant:     tenant.String(),
-		ProviderId: provider.Id,
+		Uuid:         leaseUUID,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
 		Items: []types.LeaseItem{
 			{
-				SkuId:       sku.Id,
+				SkuUuid:     sku.Uuid,
 				Quantity:    2,
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1)), // 1 per second
 			},
@@ -503,7 +523,7 @@ func TestQueryWithdrawableAmount(t *testing.T) {
 
 	// Query at initial time - should be 0
 	resp, err := querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
-		LeaseId: 1,
+		LeaseUuid: leaseUUID,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -514,22 +534,22 @@ func TestQueryWithdrawableAmount(t *testing.T) {
 
 	// Query withdrawable amount - should be 200 (1 per second * 2 quantity * 100 seconds)
 	resp, err = querier.WithdrawableAmount(newCtx, &types.QueryWithdrawableAmountRequest{
-		LeaseId: 1,
+		LeaseUuid: leaseUUID,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, denom, resp.Amounts[0].Denom)
 	require.Equal(t, sdkmath.NewInt(200), resp.Amounts[0].Amount)
 
-	// Query with zero lease_id
+	// Query with empty lease_uuid
 	_, err = querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
-		LeaseId: 0,
+		LeaseUuid: "",
 	})
 	require.Error(t, err)
 
 	// Query non-existent lease
 	_, err = querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
-		LeaseId: 999,
+		LeaseUuid: "01912345-6789-7abc-8def-999999999999",
 	})
 	require.Error(t, err)
 
@@ -549,17 +569,9 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	payoutAddr := f.TestAccs[2]
 	denom := testDenom
 
-	// Initialize sequences
-	err := k.NextLeaseID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-	err = f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-
 	// Create provider and SKU with 3600 per hour = 1 per second
 	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
-	sku := f.createTestSKU(t, provider.Id, 3600)
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
 
 	// Fund tenant's credit account
 	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
@@ -574,14 +586,16 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create leases for provider 1
-	for i := uint64(1); i <= 3; i++ {
+	for i := 1; i <= 3; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     tenant.String(),
-			ProviderId: provider.Id,
+			Uuid:         leaseUUID,
+			Tenant:       tenant.String(),
+			ProviderUuid: provider.Uuid,
 			Items: []types.LeaseItem{
 				{
-					SkuId:       sku.Id,
+					SkuUuid:     sku.Uuid,
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1)), // 1 per second
 				},
@@ -597,17 +611,17 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	// Create an inactive lease for provider 1
 	closedAt := f.Ctx.BlockTime()
 	inactiveLease := types.Lease{
-		Id:         4,
-		Tenant:     tenant.String(),
-		ProviderId: provider.Id,
+		Uuid:         "01912345-6789-7abc-8def-000000000004",
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
 		Items: []types.LeaseItem{
 			{
-				SkuId:       sku.Id,
+				SkuUuid:     sku.Uuid,
 				Quantity:    1,
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1)),
 			},
 		},
-		State:         types.LEASE_STATE_INACTIVE,
+		State:         types.LEASE_STATE_CLOSED,
 		CreatedAt:     f.Ctx.BlockTime(),
 		LastSettledAt: f.Ctx.BlockTime(),
 		ClosedAt:      &closedAt,
@@ -617,7 +631,7 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 
 	// Query at initial time - should be 0
 	resp, err := querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
-		ProviderId: provider.Id,
+		ProviderUuid: provider.Uuid,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -629,7 +643,7 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 
 	// Query provider withdrawable - should be 300 (1 per second * 1 quantity * 100 seconds * 3 active leases)
 	resp, err = querier.ProviderWithdrawable(newCtx, &types.QueryProviderWithdrawableRequest{
-		ProviderId: provider.Id,
+		ProviderUuid: provider.Uuid,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -637,9 +651,9 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	require.Equal(t, sdkmath.NewInt(300), resp.Amounts[0].Amount)
 	require.Equal(t, uint64(3), resp.LeaseCount) // Only active leases with withdrawable amounts
 
-	// Query with zero provider_id
+	// Query with empty provider_uuid
 	_, err = querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
-		ProviderId: 0,
+		ProviderUuid: "",
 	})
 	require.Error(t, err)
 

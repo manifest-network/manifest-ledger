@@ -33,8 +33,8 @@ message Params {
 message Provider {
   option (amino.name) = "lifted/sku/Provider";
 
-  // id is the unique identifier for the provider.
-  uint64 id = 1 [(gogoproto.jsontag) = "id,omitempty,string"];
+  // uuid is the unique identifier for the provider (UUIDv7 format).
+  string uuid = 1 [(gogoproto.jsontag) = "uuid,omitempty"];
 
   // address is the management address of the provider.
   string address = 2 [
@@ -53,17 +53,22 @@ message Provider {
 
   // active indicates whether the provider is active.
   bool active = 5 [(gogoproto.jsontag) = "active,omitempty"];
+
+  // api_url is the HTTPS endpoint where the provider's off-chain API is hosted.
+  // Tenants use this URL to retrieve connection details for their leases.
+  // Must be a valid HTTPS URL.
+  string api_url = 6 [(gogoproto.jsontag) = "api_url,omitempty"];
 }
 
 // SKU defines a stock keeping unit for on-chain billing.
 message SKU {
   option (amino.name) = "lifted/sku/SKU";
 
-  // id is the unique identifier for the SKU.
-  uint64 id = 1 [(gogoproto.jsontag) = "id,omitempty,string"];
+  // uuid is the unique identifier for the SKU (UUIDv7 format).
+  string uuid = 1 [(gogoproto.jsontag) = "uuid,omitempty"];
 
-  // provider_id is the unique identifier of the SKU provider.
-  uint64 provider_id = 2 [(gogoproto.jsontag) = "provider_id,omitempty,string"];
+  // provider_uuid is the unique identifier of the SKU provider.
+  string provider_uuid = 2 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
 
   // name is the human-readable name of the SKU.
   string name = 3 [(gogoproto.jsontag) = "name,omitempty"];

@@ -22,6 +22,9 @@ const (
 	Msg_FundCredit_FullMethodName           = "/liftedinit.billing.v1.Msg/FundCredit"
 	Msg_CreateLease_FullMethodName          = "/liftedinit.billing.v1.Msg/CreateLease"
 	Msg_CreateLeaseForTenant_FullMethodName = "/liftedinit.billing.v1.Msg/CreateLeaseForTenant"
+	Msg_AcknowledgeLease_FullMethodName     = "/liftedinit.billing.v1.Msg/AcknowledgeLease"
+	Msg_RejectLease_FullMethodName          = "/liftedinit.billing.v1.Msg/RejectLease"
+	Msg_CancelLease_FullMethodName          = "/liftedinit.billing.v1.Msg/CancelLease"
 	Msg_CloseLease_FullMethodName           = "/liftedinit.billing.v1.Msg/CloseLease"
 	Msg_Withdraw_FullMethodName             = "/liftedinit.billing.v1.Msg/Withdraw"
 	Msg_WithdrawAll_FullMethodName          = "/liftedinit.billing.v1.Msg/WithdrawAll"
@@ -35,10 +38,21 @@ type MsgClient interface {
 	// FundCredit funds a tenant's credit account.
 	FundCredit(ctx context.Context, in *MsgFundCredit, opts ...grpc.CallOption) (*MsgFundCreditResponse, error)
 	// CreateLease creates a new lease for the tenant.
+	// The lease starts in PENDING state awaiting provider acknowledgement.
 	CreateLease(ctx context.Context, in *MsgCreateLease, opts ...grpc.CallOption) (*MsgCreateLeaseResponse, error)
 	// CreateLeaseForTenant allows authority to create a lease on behalf of a tenant.
 	// This is used for migrating off-chain leases to on-chain.
+	// The lease starts in PENDING state awaiting provider acknowledgement.
 	CreateLeaseForTenant(ctx context.Context, in *MsgCreateLeaseForTenant, opts ...grpc.CallOption) (*MsgCreateLeaseForTenantResponse, error)
+	// AcknowledgeLease allows a provider to acknowledge a PENDING lease.
+	// This transitions the lease to ACTIVE state and starts billing.
+	AcknowledgeLease(ctx context.Context, in *MsgAcknowledgeLease, opts ...grpc.CallOption) (*MsgAcknowledgeLeaseResponse, error)
+	// RejectLease allows a provider to reject a PENDING lease.
+	// This transitions the lease to REJECTED state and unlocks tenant credit.
+	RejectLease(ctx context.Context, in *MsgRejectLease, opts ...grpc.CallOption) (*MsgRejectLeaseResponse, error)
+	// CancelLease allows a tenant to cancel their own PENDING lease.
+	// This transitions the lease to REJECTED state and unlocks tenant credit.
+	CancelLease(ctx context.Context, in *MsgCancelLease, opts ...grpc.CallOption) (*MsgCancelLeaseResponse, error)
 	// CloseLease closes an active lease.
 	CloseLease(ctx context.Context, in *MsgCloseLease, opts ...grpc.CallOption) (*MsgCloseLeaseResponse, error)
 	// Withdraw allows a provider to withdraw accrued funds from a specific lease.
@@ -78,6 +92,33 @@ func (c *msgClient) CreateLease(ctx context.Context, in *MsgCreateLease, opts ..
 func (c *msgClient) CreateLeaseForTenant(ctx context.Context, in *MsgCreateLeaseForTenant, opts ...grpc.CallOption) (*MsgCreateLeaseForTenantResponse, error) {
 	out := new(MsgCreateLeaseForTenantResponse)
 	err := c.cc.Invoke(ctx, Msg_CreateLeaseForTenant_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) AcknowledgeLease(ctx context.Context, in *MsgAcknowledgeLease, opts ...grpc.CallOption) (*MsgAcknowledgeLeaseResponse, error) {
+	out := new(MsgAcknowledgeLeaseResponse)
+	err := c.cc.Invoke(ctx, Msg_AcknowledgeLease_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) RejectLease(ctx context.Context, in *MsgRejectLease, opts ...grpc.CallOption) (*MsgRejectLeaseResponse, error) {
+	out := new(MsgRejectLeaseResponse)
+	err := c.cc.Invoke(ctx, Msg_RejectLease_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) CancelLease(ctx context.Context, in *MsgCancelLease, opts ...grpc.CallOption) (*MsgCancelLeaseResponse, error) {
+	out := new(MsgCancelLeaseResponse)
+	err := c.cc.Invoke(ctx, Msg_CancelLease_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -127,10 +168,21 @@ type MsgServer interface {
 	// FundCredit funds a tenant's credit account.
 	FundCredit(context.Context, *MsgFundCredit) (*MsgFundCreditResponse, error)
 	// CreateLease creates a new lease for the tenant.
+	// The lease starts in PENDING state awaiting provider acknowledgement.
 	CreateLease(context.Context, *MsgCreateLease) (*MsgCreateLeaseResponse, error)
 	// CreateLeaseForTenant allows authority to create a lease on behalf of a tenant.
 	// This is used for migrating off-chain leases to on-chain.
+	// The lease starts in PENDING state awaiting provider acknowledgement.
 	CreateLeaseForTenant(context.Context, *MsgCreateLeaseForTenant) (*MsgCreateLeaseForTenantResponse, error)
+	// AcknowledgeLease allows a provider to acknowledge a PENDING lease.
+	// This transitions the lease to ACTIVE state and starts billing.
+	AcknowledgeLease(context.Context, *MsgAcknowledgeLease) (*MsgAcknowledgeLeaseResponse, error)
+	// RejectLease allows a provider to reject a PENDING lease.
+	// This transitions the lease to REJECTED state and unlocks tenant credit.
+	RejectLease(context.Context, *MsgRejectLease) (*MsgRejectLeaseResponse, error)
+	// CancelLease allows a tenant to cancel their own PENDING lease.
+	// This transitions the lease to REJECTED state and unlocks tenant credit.
+	CancelLease(context.Context, *MsgCancelLease) (*MsgCancelLeaseResponse, error)
 	// CloseLease closes an active lease.
 	CloseLease(context.Context, *MsgCloseLease) (*MsgCloseLeaseResponse, error)
 	// Withdraw allows a provider to withdraw accrued funds from a specific lease.
@@ -154,6 +206,15 @@ func (UnimplementedMsgServer) CreateLease(context.Context, *MsgCreateLease) (*Ms
 }
 func (UnimplementedMsgServer) CreateLeaseForTenant(context.Context, *MsgCreateLeaseForTenant) (*MsgCreateLeaseForTenantResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateLeaseForTenant not implemented")
+}
+func (UnimplementedMsgServer) AcknowledgeLease(context.Context, *MsgAcknowledgeLease) (*MsgAcknowledgeLeaseResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AcknowledgeLease not implemented")
+}
+func (UnimplementedMsgServer) RejectLease(context.Context, *MsgRejectLease) (*MsgRejectLeaseResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RejectLease not implemented")
+}
+func (UnimplementedMsgServer) CancelLease(context.Context, *MsgCancelLease) (*MsgCancelLeaseResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CancelLease not implemented")
 }
 func (UnimplementedMsgServer) CloseLease(context.Context, *MsgCloseLease) (*MsgCloseLeaseResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CloseLease not implemented")
@@ -230,6 +291,60 @@ func _Msg_CreateLeaseForTenant_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MsgServer).CreateLeaseForTenant(ctx, req.(*MsgCreateLeaseForTenant))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_AcknowledgeLease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgAcknowledgeLease)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).AcknowledgeLease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_AcknowledgeLease_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).AcknowledgeLease(ctx, req.(*MsgAcknowledgeLease))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_RejectLease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgRejectLease)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).RejectLease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_RejectLease_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).RejectLease(ctx, req.(*MsgRejectLease))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_CancelLease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgCancelLease)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).CancelLease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_CancelLease_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).CancelLease(ctx, req.(*MsgCancelLease))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -324,6 +439,18 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateLeaseForTenant",
 			Handler:    _Msg_CreateLeaseForTenant_Handler,
+		},
+		{
+			MethodName: "AcknowledgeLease",
+			Handler:    _Msg_AcknowledgeLease_Handler,
+		},
+		{
+			MethodName: "RejectLease",
+			Handler:    _Msg_RejectLease_Handler,
+		},
+		{
+			MethodName: "CancelLease",
+			Handler:    _Msg_CancelLease_Handler,
 		},
 		{
 			MethodName: "CloseLease",

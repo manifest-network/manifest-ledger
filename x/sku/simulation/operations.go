@@ -124,11 +124,15 @@ func SimulateMsgCreateProvider(txGen client.TxConfig, k keeper.Keeper) simtypes.
 		addressAccount, _ := simtypes.RandomAcc(r, accs)
 		payoutAccount, _ := simtypes.RandomAcc(r, accs)
 
+		// Generate a random API URL
+		apiURL := generateRandomAPIURL(r)
+
 		msg := &types.MsgCreateProvider{
 			Authority:     simAccount.Address.String(),
 			Address:       addressAccount.Address.String(),
 			PayoutAddress: payoutAccount.Address.String(),
 			MetaHash:      generateRandomBytes(r),
+			ApiUrl:        apiURL,
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
@@ -158,13 +162,17 @@ func SimulateMsgUpdateProvider(txGen client.TxConfig, k keeper.Keeper) simtypes.
 		payoutAccount, _ := simtypes.RandomAcc(r, accs)
 		active := r.Float32() > 0.3
 
+		// Generate a random API URL
+		apiURL := generateRandomAPIURL(r)
+
 		msg := &types.MsgUpdateProvider{
 			Authority:     simAccount.Address.String(),
-			Id:            provider.Id,
+			Uuid:          provider.Uuid,
 			Address:       addressAccount.Address.String(),
 			PayoutAddress: payoutAccount.Address.String(),
 			MetaHash:      generateRandomBytes(r),
 			Active:        active,
+			ApiUrl:        apiURL,
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
@@ -203,7 +211,7 @@ func SimulateMsgDeactivateProvider(txGen client.TxConfig, k keeper.Keeper) simty
 
 		msg := &types.MsgDeactivateProvider{
 			Authority: simAccount.Address.String(),
-			Id:        provider.Id,
+			Uuid:      provider.Uuid,
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
@@ -250,12 +258,12 @@ func SimulateMsgCreateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 		basePrice := generateValidPrice(r, unit)
 
 		msg := &types.MsgCreateSKU{
-			Authority:  simAccount.Address.String(),
-			ProviderId: provider.Id,
-			Name:       name,
-			Unit:       unit,
-			BasePrice:  basePrice,
-			MetaHash:   generateRandomBytes(r),
+			Authority:    simAccount.Address.String(),
+			ProviderUuid: provider.Uuid,
+			Name:         name,
+			Unit:         unit,
+			BasePrice:    basePrice,
+			MetaHash:     generateRandomBytes(r),
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
@@ -289,14 +297,14 @@ func SimulateMsgUpdateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 		active := r.Float32() > 0.3
 
 		msg := &types.MsgUpdateSKU{
-			Authority:  simAccount.Address.String(),
-			Id:         sku.Id,
-			ProviderId: sku.ProviderId,
-			Name:       name,
-			Unit:       unit,
-			BasePrice:  basePrice,
-			MetaHash:   generateRandomBytes(r),
-			Active:     active,
+			Authority:    simAccount.Address.String(),
+			Uuid:         sku.Uuid,
+			ProviderUuid: sku.ProviderUuid,
+			Name:         name,
+			Unit:         unit,
+			BasePrice:    basePrice,
+			MetaHash:     generateRandomBytes(r),
+			Active:       active,
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
@@ -335,7 +343,7 @@ func SimulateMsgDeactivateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.O
 
 		msg := &types.MsgDeactivateSKU{
 			Authority: simAccount.Address.String(),
-			Id:        sku.Id,
+			Uuid:      sku.Uuid,
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
@@ -358,6 +366,18 @@ func generateRandomBytes(r *rand.Rand) []byte {
 		b[i] = byte(r.Intn(256)) //nolint:gosec
 	}
 	return b
+}
+
+// generateRandomAPIURL generates a random HTTPS URL for provider API endpoint.
+func generateRandomAPIURL(r *rand.Rand) string {
+	domains := []string{
+		"api.provider1.example.com",
+		"api.provider2.example.com",
+		"compute.acme-cloud.io",
+		"services.cloudprovider.net",
+		"api.hosting-service.org",
+	}
+	return "https://" + domains[r.Intn(len(domains))]
 }
 
 // generateValidPrice generates a price that is exactly divisible by the unit's seconds.

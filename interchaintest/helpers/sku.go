@@ -124,26 +124,50 @@ func SKUCreateProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
+// SKUCreateProviderFull creates a new provider with all fields including api_url.
+func SKUCreateProviderFull(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, address, payoutAddress, metaHash, apiURL string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "sku", "create-provider", address, payoutAddress}
+	if metaHash != "" {
+		flags = append(flags, "--meta-hash", metaHash)
+	}
+	if apiURL != "" {
+		flags = append(flags, "--api-url", apiURL)
+	}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
 // SKUUpdateProvider updates an existing provider.
-func SKUUpdateProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, id uint64, address, payoutAddress string, active bool, metaHash string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "update-provider", strconv.FormatUint(id, 10), address, payoutAddress, strconv.FormatBool(active)}
+func SKUUpdateProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, uuid, address, payoutAddress string, active bool, metaHash string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "sku", "update-provider", uuid, address, payoutAddress, strconv.FormatBool(active)}
 	if metaHash != "" {
 		flags = append(flags, "--meta-hash", metaHash)
 	}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
+// SKUUpdateProviderFull updates an existing provider with all fields.
+func SKUUpdateProviderFull(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, uuid, address, payoutAddress string, active bool, metaHash, apiURL string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "sku", "update-provider", uuid, address, payoutAddress, strconv.FormatBool(active)}
+	if metaHash != "" {
+		flags = append(flags, "--meta-hash", metaHash)
+	}
+	if apiURL != "" {
+		flags = append(flags, "--api-url", apiURL)
+	}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
 // SKUDeactivateProvider deactivates a provider (soft delete).
-func SKUDeactivateProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, id uint64, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "deactivate-provider", strconv.FormatUint(id, 10)}
+func SKUDeactivateProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, uuid string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "sku", "deactivate-provider", uuid}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
 // SKU transaction helpers
 
 // SKUCreateSKU creates a new SKU.
-func SKUCreateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, providerID uint64, name string, unit int, basePrice string, metaHash string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "create-sku", strconv.FormatUint(providerID, 10), name, strconv.Itoa(unit), basePrice}
+func SKUCreateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, providerUUID, name string, unit int, basePrice string, metaHash string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "sku", "create-sku", providerUUID, name, strconv.Itoa(unit), basePrice}
 	if metaHash != "" {
 		flags = append(flags, "--meta-hash", metaHash)
 	}
@@ -151,8 +175,8 @@ func SKUCreateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Walle
 }
 
 // SKUUpdateSKU updates an existing SKU.
-func SKUUpdateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, id, providerID uint64, name string, unit int, basePrice string, active bool, metaHash string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "update-sku", strconv.FormatUint(id, 10), strconv.FormatUint(providerID, 10), name, strconv.Itoa(unit), basePrice, strconv.FormatBool(active)}
+func SKUUpdateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, uuid, providerUUID, name string, unit int, basePrice string, active bool, metaHash string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "sku", "update-sku", uuid, providerUUID, name, strconv.Itoa(unit), basePrice, strconv.FormatBool(active)}
 	if metaHash != "" {
 		flags = append(flags, "--meta-hash", metaHash)
 	}
@@ -160,8 +184,8 @@ func SKUUpdateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Walle
 }
 
 // SKUDeactivateSKU deactivates a SKU (soft delete).
-func SKUDeactivateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, id uint64, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "deactivate-sku", strconv.FormatUint(id, 10)}
+func SKUDeactivateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, uuid string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "sku", "deactivate-sku", uuid}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
@@ -183,10 +207,10 @@ func SKUQueryParams(ctx context.Context, chain *cosmos.CosmosChain) (*skutypes.Q
 	return &res, nil
 }
 
-// SKUQueryProvider queries a provider by ID.
-func SKUQueryProvider(ctx context.Context, chain *cosmos.CosmosChain, id uint64) (*skutypes.QueryProviderResponse, error) {
+// SKUQueryProvider queries a provider by UUID.
+func SKUQueryProvider(ctx context.Context, chain *cosmos.CosmosChain, uuid string) (*skutypes.QueryProviderResponse, error) {
 	var res skutypes.QueryProviderResponse
-	cmd := []string{"query", "sku", "provider", strconv.FormatUint(id, 10)}
+	cmd := []string{"query", "sku", "provider", uuid}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -216,10 +240,10 @@ func SKUQueryProvidersPaginated(ctx context.Context, chain *cosmos.CosmosChain, 
 	return res.ToProto(), res.GetNextKeyString(), nil
 }
 
-// SKUQuerySKU queries a SKU by ID.
-func SKUQuerySKU(ctx context.Context, chain *cosmos.CosmosChain, id uint64) (*skutypes.QuerySKUResponse, error) {
+// SKUQuerySKU queries a SKU by UUID.
+func SKUQuerySKU(ctx context.Context, chain *cosmos.CosmosChain, uuid string) (*skutypes.QuerySKUResponse, error) {
 	var res skutypes.QuerySKUResponse
-	cmd := []string{"query", "sku", "sku", strconv.FormatUint(id, 10)}
+	cmd := []string{"query", "sku", "sku", uuid}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -250,21 +274,21 @@ func SKUQuerySKUsPaginated(ctx context.Context, chain *cosmos.CosmosChain, limit
 	return res.ToProto(), res.GetNextKeyString(), nil
 }
 
-// SKUQuerySKUsByProvider queries SKUs by provider ID.
-func SKUQuerySKUsByProvider(ctx context.Context, chain *cosmos.CosmosChain, providerID uint64) (*skutypes.QuerySKUsByProviderResponse, error) {
+// SKUQuerySKUsByProvider queries SKUs by provider UUID.
+func SKUQuerySKUsByProvider(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string) (*skutypes.QuerySKUsByProviderResponse, error) {
 	var res SKUsByProviderResponseJSON
-	cmd := []string{"query", "sku", "skus-by-provider", strconv.FormatUint(providerID, 10)}
+	cmd := []string{"query", "sku", "skus-by-provider", providerUUID}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
 	return res.ToProto(), nil
 }
 
-// SKUQuerySKUsByProviderPaginated queries SKUs by provider ID with pagination.
+// SKUQuerySKUsByProviderPaginated queries SKUs by provider UUID with pagination.
 // Returns the response and the base64-encoded next key for subsequent pagination calls.
-func SKUQuerySKUsByProviderPaginated(ctx context.Context, chain *cosmos.CosmosChain, providerID uint64, limit uint64, key string) (*skutypes.QuerySKUsByProviderResponse, string, error) {
+func SKUQuerySKUsByProviderPaginated(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string, limit uint64, key string) (*skutypes.QuerySKUsByProviderResponse, string, error) {
 	var res SKUsByProviderResponseJSON
-	cmd := []string{"query", "sku", "skus-by-provider", strconv.FormatUint(providerID, 10), "--limit", strconv.FormatUint(limit, 10)}
+	cmd := []string{"query", "sku", "skus-by-provider", providerUUID, "--limit", strconv.FormatUint(limit, 10)}
 	if key != "" {
 		cmd = append(cmd, "--page-key", key)
 	}
@@ -297,77 +321,77 @@ func executeQueryWithError(ctx context.Context, chain *cosmos.CosmosChain, cmd [
 	return nil
 }
 
-// SKUQuerySKURaw queries a SKU by ID and returns raw JSON (for error checking).
-func SKUQuerySKURaw(ctx context.Context, chain *cosmos.CosmosChain, id uint64) ([]byte, error) {
-	cmd := []string{chain.Config().Bin, "query", "sku", "sku", strconv.FormatUint(id, 10), "--node", chain.GetRPCAddress(), "--output=json"}
+// SKUQuerySKURaw queries a SKU by UUID and returns raw JSON (for error checking).
+func SKUQuerySKURaw(ctx context.Context, chain *cosmos.CosmosChain, uuid string) ([]byte, error) {
+	cmd := []string{chain.Config().Bin, "query", "sku", "sku", uuid, "--node", chain.GetRPCAddress(), "--output=json"}
 	stdout, _, err := chain.Exec(ctx, cmd, chain.Config().Env)
 	return stdout, err
 }
 
-// GetProviderIDFromTxResponse extracts the provider ID from a CreateProvider transaction response.
-func GetProviderIDFromTxResponse(res sdk.TxResponse) (uint64, error) {
+// GetProviderUUIDFromTxResponse extracts the provider UUID from a CreateProvider transaction response.
+func GetProviderUUIDFromTxResponse(res sdk.TxResponse) (string, error) {
 	for _, event := range res.Events {
 		if event.Type == "provider_created" {
 			for _, attr := range event.Attributes {
-				if attr.Key == "provider_id" {
-					return strconv.ParseUint(attr.Value, 10, 64)
+				if attr.Key == "provider_uuid" {
+					return attr.Value, nil
 				}
 			}
 		}
 	}
-	return 0, fmt.Errorf("provider_id not found in events")
+	return "", fmt.Errorf("provider_uuid not found in events")
 }
 
-// GetProviderIDFromTxHash queries a transaction and extracts the provider ID from it.
-func GetProviderIDFromTxHash(_ context.Context, chain *cosmos.CosmosChain, txHash string) (uint64, error) {
+// GetProviderUUIDFromTxHash queries a transaction and extracts the provider UUID from it.
+func GetProviderUUIDFromTxHash(_ context.Context, chain *cosmos.CosmosChain, txHash string) (string, error) {
 	txRes, err := chain.GetTransaction(txHash)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
 	for _, event := range txRes.Events {
 		if event.Type == "provider_created" {
 			for _, attr := range event.Attributes {
-				if attr.Key == "provider_id" {
-					return strconv.ParseUint(attr.Value, 10, 64)
+				if attr.Key == "provider_uuid" {
+					return attr.Value, nil
 				}
 			}
 		}
 	}
-	return 0, fmt.Errorf("provider_id not found in tx %s events", txHash)
+	return "", fmt.Errorf("provider_uuid not found in tx %s events", txHash)
 }
 
-// GetSKUIDFromTxResponse extracts the SKU ID from a CreateSKU transaction response.
-func GetSKUIDFromTxResponse(res sdk.TxResponse) (uint64, error) {
+// GetSKUUUIDFromTxResponse extracts the SKU UUID from a CreateSKU transaction response.
+func GetSKUUUIDFromTxResponse(res sdk.TxResponse) (string, error) {
 	for _, event := range res.Events {
 		if event.Type == "sku_created" {
 			for _, attr := range event.Attributes {
-				if attr.Key == "sku_id" {
-					return strconv.ParseUint(attr.Value, 10, 64)
+				if attr.Key == "sku_uuid" {
+					return attr.Value, nil
 				}
 			}
 		}
 	}
-	return 0, fmt.Errorf("sku_id not found in events")
+	return "", fmt.Errorf("sku_uuid not found in events")
 }
 
-// GetSKUIDFromTxHash queries a transaction and extracts the SKU ID from it.
-func GetSKUIDFromTxHash(_ context.Context, chain *cosmos.CosmosChain, txHash string) (uint64, error) {
+// GetSKUUUIDFromTxHash queries a transaction and extracts the SKU UUID from it.
+func GetSKUUUIDFromTxHash(_ context.Context, chain *cosmos.CosmosChain, txHash string) (string, error) {
 	txRes, err := chain.GetTransaction(txHash)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
 	for _, event := range txRes.Events {
 		if event.Type == "sku_created" {
 			for _, attr := range event.Attributes {
-				if attr.Key == "sku_id" {
-					return strconv.ParseUint(attr.Value, 10, 64)
+				if attr.Key == "sku_uuid" {
+					return attr.Value, nil
 				}
 			}
 		}
 	}
-	return 0, fmt.Errorf("sku_id not found in tx %s events", txHash)
+	return "", fmt.Errorf("sku_uuid not found in tx %s events", txHash)
 }
 
 // SKURawResponse is used to parse raw query responses.

@@ -28,7 +28,4 @@ message GenesisState {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "credit_accounts"
   ];
-
-  // next_lease_id is the next available lease ID.
-  uint64 next_lease_id = 4 [(gogoproto.jsontag) = "next_lease_id,omitempty,string"];
 }

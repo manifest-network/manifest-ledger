@@ -689,7 +689,7 @@ func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.Co
 	t.Log("\n===== TEST GROUP PROVIDER AND SKU MANAGEMENT =====")
 
 	// Create provider via group proposal
-	var providerID uint64
+	var providerUUID string
 	t.Run("create_provider_via_proposal", func(t *testing.T) {
 		createProviderMsg := createSKUCreateProviderProposal(groupAddr, groupAddr, groupAddr, nil)
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createProviderMsg)})
@@ -698,11 +698,11 @@ func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.Co
 		providers, err := helpers.SKUQueryProviders(ctx, chain)
 		require.NoError(t, err)
 		require.NotEmpty(t, providers.Providers, "should have at least one provider")
-		providerID = providers.Providers[len(providers.Providers)-1].Id
-		t.Logf("Created provider ID: %d", providerID)
+		providerUUID = providers.Providers[len(providers.Providers)-1].Uuid
+		t.Logf("Created provider ID: %s", providerUUID)
 
 		// Verify provider was created correctly
-		provider, err := helpers.SKUQueryProvider(ctx, chain, providerID)
+		provider, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
 		require.NoError(t, err)
 		require.Equal(t, groupAddr, provider.Provider.Address)
 		require.Equal(t, groupAddr, provider.Provider.PayoutAddress)
@@ -710,35 +710,35 @@ func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.Co
 	})
 
 	// Create SKU via group proposal
-	var skuID uint64
+	var skuUUID string
 	t.Run("create_sku_via_proposal", func(t *testing.T) {
 		// Price: 3600 umfx per hour (evenly divisible by 3600 seconds)
 		basePrice := sdk.NewInt64Coin(Denom, 3600)
-		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerID, "Compute Small", skutypes.Unit_UNIT_PER_HOUR, basePrice, nil)
+		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerUUID, "Compute Small", skutypes.Unit_UNIT_PER_HOUR, basePrice, nil)
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
 
 		// Query SKUs to get the created SKU ID
 		skus, err := helpers.SKUQuerySKUs(ctx, chain)
 		require.NoError(t, err)
 		require.NotEmpty(t, skus.Skus, "should have at least one SKU")
-		skuID = skus.Skus[len(skus.Skus)-1].Id
-		t.Logf("Created SKU ID: %d", skuID)
+		skuUUID = skus.Skus[len(skus.Skus)-1].Uuid
+		t.Logf("Created SKU ID: %s", skuUUID)
 
 		// Verify SKU was created correctly
-		sku, err := helpers.SKUQuerySKU(ctx, chain, skuID)
+		sku, err := helpers.SKUQuerySKU(ctx, chain, skuUUID)
 		require.NoError(t, err)
-		require.Equal(t, providerID, sku.Sku.ProviderId)
+		require.Equal(t, providerUUID, sku.Sku.ProviderUuid)
 		require.Equal(t, "Compute Small", sku.Sku.Name)
 		require.True(t, sku.Sku.Active)
 	})
 
 	// Update provider via group proposal
 	t.Run("update_provider_via_proposal", func(t *testing.T) {
-		updateProviderMsg := createSKUUpdateProviderProposal(groupAddr, providerID, groupAddr, acc2Addr, true, []byte("cafebabe"))
+		updateProviderMsg := createSKUUpdateProviderProposal(groupAddr, providerUUID, groupAddr, acc2Addr, true, []byte("cafebabe"))
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &updateProviderMsg)})
 
 		// Verify update
-		provider, err := helpers.SKUQueryProvider(ctx, chain, providerID)
+		provider, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
 		require.NoError(t, err)
 		require.Equal(t, acc2Addr, provider.Provider.PayoutAddress)
 	})
@@ -747,58 +747,58 @@ func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.Co
 	t.Run("update_sku_via_proposal", func(t *testing.T) {
 		// Updated price: 7200 umfx per hour
 		updatedPrice := sdk.NewInt64Coin(Denom, 7200)
-		updateSKUMsg := createSKUUpdateSKUProposal(groupAddr, skuID, providerID, "Compute Medium", skutypes.Unit_UNIT_PER_HOUR, updatedPrice, true, nil)
+		updateSKUMsg := createSKUUpdateSKUProposal(groupAddr, skuUUID, providerUUID, "Compute Medium", skutypes.Unit_UNIT_PER_HOUR, updatedPrice, true, nil)
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &updateSKUMsg)})
 
 		// Verify update
-		sku, err := helpers.SKUQuerySKU(ctx, chain, skuID)
+		sku, err := helpers.SKUQuerySKU(ctx, chain, skuUUID)
 		require.NoError(t, err)
 		require.Equal(t, "Compute Medium", sku.Sku.Name)
 		require.Equal(t, sdkmath.NewInt(7200), sku.Sku.BasePrice.Amount)
 	})
 
 	// Create another SKU for deactivation testing
-	var skuToDeactivateID uint64
+	var skuToDeactivateUUID string
 	t.Run("create_sku_for_deactivation", func(t *testing.T) {
 		basePrice := sdk.NewInt64Coin(Denom, 86400) // 86400 umfx per day
-		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerID, "Storage Large", skutypes.Unit_UNIT_PER_DAY, basePrice, nil)
+		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerUUID, "Storage Large", skutypes.Unit_UNIT_PER_DAY, basePrice, nil)
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
 
 		// Get the SKU ID
 		skus, err := helpers.SKUQuerySKUs(ctx, chain)
 		require.NoError(t, err)
-		skuToDeactivateID = skus.Skus[len(skus.Skus)-1].Id
+		skuToDeactivateUUID = skus.Skus[len(skus.Skus)-1].Uuid
 	})
 
 	// Deactivate SKU via group proposal
 	t.Run("deactivate_sku_via_proposal", func(t *testing.T) {
-		deactivateSKUMsg := createSKUDeactivateSKUProposal(groupAddr, skuToDeactivateID)
+		deactivateSKUMsg := createSKUDeactivateSKUProposal(groupAddr, skuToDeactivateUUID)
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &deactivateSKUMsg)})
 
 		// Verify deactivation
-		sku, err := helpers.SKUQuerySKU(ctx, chain, skuToDeactivateID)
+		sku, err := helpers.SKUQuerySKU(ctx, chain, skuToDeactivateUUID)
 		require.NoError(t, err)
 		require.False(t, sku.Sku.Active, "SKU should be inactive after deactivation")
 	})
 
 	// Create another provider for deactivation testing
-	var providerToDeactivateID uint64
+	var providerToDeactivateUUID string
 	t.Run("create_provider_for_deactivation", func(t *testing.T) {
 		createProviderMsg := createSKUCreateProviderProposal(groupAddr, acc3Addr, acc3Addr, nil)
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createProviderMsg)})
 
 		providers, err := helpers.SKUQueryProviders(ctx, chain)
 		require.NoError(t, err)
-		providerToDeactivateID = providers.Providers[len(providers.Providers)-1].Id
+		providerToDeactivateUUID = providers.Providers[len(providers.Providers)-1].Uuid
 	})
 
 	// Deactivate provider via group proposal
 	t.Run("deactivate_provider_via_proposal", func(t *testing.T) {
-		deactivateProviderMsg := createSKUDeactivateProviderProposal(groupAddr, providerToDeactivateID)
+		deactivateProviderMsg := createSKUDeactivateProviderProposal(groupAddr, providerToDeactivateUUID)
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &deactivateProviderMsg)})
 
 		// Verify deactivation
-		provider, err := helpers.SKUQueryProvider(ctx, chain, providerToDeactivateID)
+		provider, err := helpers.SKUQueryProvider(ctx, chain, providerToDeactivateUUID)
 		require.NoError(t, err)
 		require.False(t, provider.Provider.Active, "Provider should be inactive after deactivation")
 	})
@@ -844,10 +844,12 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		updateParamsMsg := billingtypes.MsgUpdateParams{
 			Authority: groupAddr,
 			Params: billingtypes.Params{
-				MaxLeasesPerTenant: 100,
-				MaxItemsPerLease:   20,
-				MinLeaseDuration:   10,
-				AllowedList:        nil, // Empty allowed list - only authority can create leases for tenants
+				MaxLeasesPerTenant:        100,
+				MaxItemsPerLease:          20,
+				MinLeaseDuration:          10,
+				MaxPendingLeasesPerTenant: 10,
+				PendingTimeout:            1800,
+				AllowedList:               nil, // Empty allowed list - only authority can create leases for tenants
 			},
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &updateParamsMsg)})
@@ -862,30 +864,30 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	providers, err := helpers.SKUQueryProviders(ctx, chain)
 	require.NoError(t, err)
 	require.NotEmpty(t, providers.Providers)
-	providerID := providers.Providers[0].Id
+	providerUUID := providers.Providers[0].Uuid
 
 	// Create a new SKU priced in PWR for lease testing
 	// (existing SKUs are priced in umfx, but we fund tenant credit with PWR)
-	var activeSKUID uint64
+	var activeSKUUUID string
 	t.Run("create_pwr_sku_via_proposal", func(t *testing.T) {
 		// Price: 7200 upwr per hour (2 upwr per second)
 		basePrice := sdk.NewInt64Coin(pwrDenom, 7200)
-		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerID, "Compute PWR", skutypes.Unit_UNIT_PER_HOUR, basePrice, nil)
+		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerUUID, "Compute PWR", skutypes.Unit_UNIT_PER_HOUR, basePrice, nil)
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
 
 		// Query SKUs to get the created SKU ID
-		skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerID)
+		skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerUUID)
 		require.NoError(t, err)
 		require.NotEmpty(t, skus.Skus, "should have at least one SKU")
 		// Find the PWR-priced SKU we just created
 		for _, sku := range skus.Skus {
 			if sku.Active && sku.BasePrice.Denom == pwrDenom {
-				activeSKUID = sku.Id
+				activeSKUUUID = sku.Uuid
 				break
 			}
 		}
-		require.NotZero(t, activeSKUID, "should have created a PWR-priced SKU")
-		t.Logf("Created PWR SKU ID: %d with denom: %s", activeSKUID, pwrDenom)
+		require.NotZero(t, activeSKUUUID, "should have created a PWR-priced SKU")
+		t.Logf("Created PWR SKU ID: %s with denom: %s", activeSKUUUID, pwrDenom)
 	})
 
 	// Create a tenant user for lease testing
@@ -917,29 +919,42 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	})
 
 	// Create lease for tenant via group proposal (authority creates lease for tenant)
-	var leaseID uint64
+	var leaseID string
 	t.Run("create_lease_for_tenant_via_proposal", func(t *testing.T) {
 		createLeaseForTenantMsg := billingtypes.MsgCreateLeaseForTenant{
 			Authority: groupAddr,
 			Tenant:    tenantAddr,
 			Items: []billingtypes.LeaseItemInput{
-				{SkuId: activeSKUID, Quantity: 1},
+				{SkuUuid: activeSKUUUID, Quantity: 1},
 			},
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
 
-		// Query leases to get the created lease ID
-		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, true)
+		// Query leases to get the created lease ID (query all, not just active, since lease is PENDING)
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, false)
 		require.NoError(t, err)
 		require.NotEmpty(t, leases.Leases, "tenant should have at least one lease")
-		leaseID, err = helpers.ParseLeaseID(leases.Leases[len(leases.Leases)-1].ID)
-		require.NoError(t, err)
-		t.Logf("Created lease ID: %d for tenant: %s", leaseID, tenantAddr)
+		leaseID = leases.Leases[len(leases.Leases)-1].Uuid
+		t.Logf("Created lease UUID: %s for tenant: %s", leaseID, tenantAddr)
 
-		// Verify lease
+		// Verify lease is in PENDING state
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
 		require.Equal(t, tenantAddr, lease.Lease.Tenant)
+		require.Equal(t, "LEASE_STATE_PENDING", lease.Lease.State)
+	})
+
+	// Acknowledge the lease via group proposal (provider is the group)
+	t.Run("acknowledge_lease_via_proposal", func(t *testing.T) {
+		ackLeaseMsg := billingtypes.MsgAcknowledgeLease{
+			Sender:    groupAddr,
+			LeaseUuid: leaseID,
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
+
+		// Verify lease is now ACTIVE
+		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
+		require.NoError(t, err)
 		require.Equal(t, "LEASE_STATE_ACTIVE", lease.Lease.State)
 	})
 
@@ -955,26 +970,47 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify lease is closed
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State)
+		require.Equal(t, "LEASE_STATE_CLOSED", lease.Lease.State)
 	})
 
 	// Create another lease for withdrawal testing
-	var withdrawLeaseID uint64
+	var withdrawLeaseID string
 	t.Run("create_another_lease_for_tenant", func(t *testing.T) {
 		createLeaseForTenantMsg := billingtypes.MsgCreateLeaseForTenant{
 			Authority: groupAddr,
 			Tenant:    tenantAddr,
 			Items: []billingtypes.LeaseItemInput{
-				{SkuId: activeSKUID, Quantity: 2},
+				{SkuUuid: activeSKUUUID, Quantity: 2},
 			},
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
 
-		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, true)
+		// Query all leases (not just active since this one is PENDING)
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, false)
 		require.NoError(t, err)
 		require.NotEmpty(t, leases.Leases)
-		withdrawLeaseID, err = helpers.ParseLeaseID(leases.Leases[len(leases.Leases)-1].ID)
+		// Get the most recent PENDING lease
+		for i := len(leases.Leases) - 1; i >= 0; i-- {
+			if leases.Leases[i].State == "LEASE_STATE_PENDING" {
+				withdrawLeaseID = leases.Leases[i].Uuid
+				break
+			}
+		}
+		require.NotEmpty(t, withdrawLeaseID, "should find a pending lease")
+	})
+
+	// Acknowledge the withdrawal lease via group proposal
+	t.Run("acknowledge_withdrawal_lease_via_proposal", func(t *testing.T) {
+		ackLeaseMsg := billingtypes.MsgAcknowledgeLease{
+			Sender:    groupAddr,
+			LeaseUuid: withdrawLeaseID,
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
+
+		// Verify lease is now ACTIVE
+		lease, err := helpers.BillingQueryLease(ctx, chain, withdrawLeaseID)
 		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_ACTIVE", lease.Lease.State)
 	})
 
 	// Wait for some accrual
@@ -984,7 +1020,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	t.Run("withdraw_via_proposal", func(t *testing.T) {
 		// Update provider payout address to acc2Addr (done in previous test)
 		// so we verify withdrawal goes to the payout address
-		provider, err := helpers.SKUQueryProvider(ctx, chain, providerID)
+		provider, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
 		require.NoError(t, err)
 		payoutAddr := provider.Provider.PayoutAddress
 
@@ -993,8 +1029,8 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.NoError(t, err)
 
 		withdrawMsg := billingtypes.MsgWithdraw{
-			Sender:  groupAddr,
-			LeaseId: withdrawLeaseID,
+			Sender:    groupAddr,
+			LeaseUuid: withdrawLeaseID,
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &withdrawMsg)})
 
@@ -1008,15 +1044,15 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	// Close lease via group proposal (authority can close any lease)
 	t.Run("close_lease_via_proposal", func(t *testing.T) {
 		closeLeaseMsg := billingtypes.MsgCloseLease{
-			Sender:  groupAddr,
-			LeaseId: withdrawLeaseID,
+			Sender:    groupAddr,
+			LeaseUuid: withdrawLeaseID,
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &closeLeaseMsg)})
 
 		// Verify lease is closed
 		lease, err := helpers.BillingQueryLease(ctx, chain, withdrawLeaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_INACTIVE", lease.Lease.State)
+		require.Equal(t, "LEASE_STATE_CLOSED", lease.Lease.State)
 	})
 
 	// Test withdraw all via group proposal
@@ -1026,19 +1062,38 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 			Authority: groupAddr,
 			Tenant:    tenantAddr,
 			Items: []billingtypes.LeaseItemInput{
-				{SkuId: activeSKUID, Quantity: 1},
+				{SkuUuid: activeSKUUUID, Quantity: 1},
 			},
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
+
+		// Query to get the new lease ID (PENDING state)
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, false)
+		require.NoError(t, err)
+		var withdrawAllLeaseID string
+		for i := len(leases.Leases) - 1; i >= 0; i-- {
+			if leases.Leases[i].State == "LEASE_STATE_PENDING" {
+				withdrawAllLeaseID = leases.Leases[i].Uuid
+				break
+			}
+		}
+		require.NotEmpty(t, withdrawAllLeaseID, "should find a pending lease")
+
+		// Acknowledge the lease
+		ackLeaseMsg := billingtypes.MsgAcknowledgeLease{
+			Sender:    groupAddr,
+			LeaseUuid: withdrawAllLeaseID,
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
 
 		// Wait for some accrual
 		require.NoError(t, testutil.WaitForBlocks(ctx, 3, chain))
 
 		// Withdraw all for provider
 		withdrawAllMsg := billingtypes.MsgWithdrawAll{
-			Sender:     groupAddr,
-			ProviderId: providerID,
-			Limit:      0, // Use default limit
+			Sender:       groupAddr,
+			ProviderUuid: providerUUID,
+			Limit:        0, // Use default limit
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &withdrawAllMsg)})
 	})
@@ -1047,34 +1102,53 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	t.Run("create_multi_sku_lease", func(t *testing.T) {
 		// Create another SKU for multi-item lease (priced in PWR to match tenant credit)
 		basePrice := sdk.NewInt64Coin(pwrDenom, 86400) // 86400 upwr per day (1 upwr per second)
-		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerID, "Storage Small", skutypes.Unit_UNIT_PER_DAY, basePrice, nil)
+		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerUUID, "Storage Small", skutypes.Unit_UNIT_PER_DAY, basePrice, nil)
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
 
-		// Get the new SKU ID (find a PWR-priced SKU that's not activeSKUID)
-		skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerID)
+		// Get the new SKU ID (find a PWR-priced SKU that's not activeSKUUUID)
+		skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerUUID)
 		require.NoError(t, err)
-		var secondSKUID uint64
+		var secondSKUUUID string
 		for _, sku := range skus.Skus {
-			if sku.Active && sku.Id != activeSKUID && sku.BasePrice.Denom == pwrDenom {
-				secondSKUID = sku.Id
+			if sku.Active && sku.Uuid != activeSKUUUID && sku.BasePrice.Denom == pwrDenom {
+				secondSKUUUID = sku.Uuid
 				break
 			}
 		}
-		require.NotZero(t, secondSKUID, "should have a second active PWR-priced SKU")
+		require.NotZero(t, secondSKUUUID, "should have a second active PWR-priced SKU")
 
 		// Create multi-SKU lease
 		createMultiLeaseMsg := billingtypes.MsgCreateLeaseForTenant{
 			Authority: groupAddr,
 			Tenant:    tenantAddr,
 			Items: []billingtypes.LeaseItemInput{
-				{SkuId: activeSKUID, Quantity: 2},
-				{SkuId: secondSKUID, Quantity: 1},
+				{SkuUuid: activeSKUUUID, Quantity: 2},
+				{SkuUuid: secondSKUUUID, Quantity: 1},
 			},
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createMultiLeaseMsg)})
 
-		// Verify multi-SKU lease
-		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, true)
+		// Get the newly created PENDING lease
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, false)
+		require.NoError(t, err)
+		var multiLeaseID string
+		for i := len(leases.Leases) - 1; i >= 0; i-- {
+			if leases.Leases[i].State == "LEASE_STATE_PENDING" && len(leases.Leases[i].Items) == 2 {
+				multiLeaseID = leases.Leases[i].Uuid
+				break
+			}
+		}
+		require.NotEmpty(t, multiLeaseID, "should find a pending multi-item lease")
+
+		// Acknowledge the multi-SKU lease
+		ackLeaseMsg := billingtypes.MsgAcknowledgeLease{
+			Sender:    groupAddr,
+			LeaseUuid: multiLeaseID,
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
+
+		// Verify multi-SKU lease is now active
+		leases, err = helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, true)
 		require.NoError(t, err)
 		require.NotEmpty(t, leases.Leases)
 
@@ -1104,10 +1178,10 @@ func createSKUCreateProviderProposal(authority, address, payoutAddress string, m
 	}
 }
 
-func createSKUUpdateProviderProposal(authority string, id uint64, address, payoutAddress string, active bool, metaHash []byte) skutypes.MsgUpdateProvider {
+func createSKUUpdateProviderProposal(authority string, uuid string, address, payoutAddress string, active bool, metaHash []byte) skutypes.MsgUpdateProvider {
 	return skutypes.MsgUpdateProvider{
 		Authority:     authority,
-		Id:            id,
+		Uuid:          uuid,
 		Address:       address,
 		PayoutAddress: payoutAddress,
 		Active:        active,
@@ -1115,40 +1189,40 @@ func createSKUUpdateProviderProposal(authority string, id uint64, address, payou
 	}
 }
 
-func createSKUDeactivateProviderProposal(authority string, id uint64) skutypes.MsgDeactivateProvider {
+func createSKUDeactivateProviderProposal(authority string, uuid string) skutypes.MsgDeactivateProvider {
 	return skutypes.MsgDeactivateProvider{
 		Authority: authority,
-		Id:        id,
+		Uuid:      uuid,
 	}
 }
 
-func createSKUCreateSKUProposal(authority string, providerID uint64, name string, unit skutypes.Unit, basePrice sdk.Coin, metaHash []byte) skutypes.MsgCreateSKU {
+func createSKUCreateSKUProposal(authority string, providerUUID string, name string, unit skutypes.Unit, basePrice sdk.Coin, metaHash []byte) skutypes.MsgCreateSKU {
 	return skutypes.MsgCreateSKU{
-		Authority:  authority,
-		ProviderId: providerID,
-		Name:       name,
-		Unit:       unit,
-		BasePrice:  basePrice,
-		MetaHash:   metaHash,
+		Authority:    authority,
+		ProviderUuid: providerUUID,
+		Name:         name,
+		Unit:         unit,
+		BasePrice:    basePrice,
+		MetaHash:     metaHash,
 	}
 }
 
-func createSKUUpdateSKUProposal(authority string, id, providerID uint64, name string, unit skutypes.Unit, basePrice sdk.Coin, active bool, metaHash []byte) skutypes.MsgUpdateSKU {
+func createSKUUpdateSKUProposal(authority string, uuid, providerUUID string, name string, unit skutypes.Unit, basePrice sdk.Coin, active bool, metaHash []byte) skutypes.MsgUpdateSKU {
 	return skutypes.MsgUpdateSKU{
-		Authority:  authority,
-		Id:         id,
-		ProviderId: providerID,
-		Name:       name,
-		Unit:       unit,
-		BasePrice:  basePrice,
-		Active:     active,
-		MetaHash:   metaHash,
+		Authority:    authority,
+		Uuid:         uuid,
+		ProviderUuid: providerUUID,
+		Name:         name,
+		Unit:         unit,
+		BasePrice:    basePrice,
+		Active:       active,
+		MetaHash:     metaHash,
 	}
 }
 
-func createSKUDeactivateSKUProposal(authority string, id uint64) skutypes.MsgDeactivateSKU {
+func createSKUDeactivateSKUProposal(authority string, uuid string) skutypes.MsgDeactivateSKU {
 	return skutypes.MsgDeactivateSKU{
 		Authority: authority,
-		Id:        id,
+		Uuid:      uuid,
 	}
 }

@@ -36,6 +36,18 @@ message Params {
   // that would immediately exhaust their credit. Default is 3600 (1 hour).
   uint64 min_lease_duration = 6
       [(gogoproto.jsontag) = "min_lease_duration,omitempty,string"];
+
+  // max_pending_leases_per_tenant is the maximum number of PENDING leases a tenant can have.
+  // Prevents spam attacks where tenants create many leases that providers must process.
+  // Default is 10.
+  uint64 max_pending_leases_per_tenant = 7
+      [(gogoproto.jsontag) = "max_pending_leases_per_tenant,omitempty,string"];
+
+  // pending_timeout is the duration in seconds that a lease can remain in PENDING state
+  // before it expires. Applies globally to all providers. Default is 1800 (30 minutes).
+  // Must be between 60 (1 minute) and 86400 (24 hours).
+  uint64 pending_timeout = 8
+      [(gogoproto.jsontag) = "pending_timeout,omitempty,string"];
 }
 
 // LeaseState defines the state of a lease.
@@ -45,19 +57,34 @@ enum LeaseState {
   // LEASE_STATE_UNSPECIFIED is the default value.
   LEASE_STATE_UNSPECIFIED = 0;
 
-  // LEASE_STATE_ACTIVE indicates the lease is active and accruing charges.
-  LEASE_STATE_ACTIVE = 1;
+  // LEASE_STATE_PENDING indicates the lease is awaiting provider acknowledgement.
+  // Credit is locked but billing has not started.
+  LEASE_STATE_PENDING = 1;
 
-  // LEASE_STATE_INACTIVE indicates the lease has been closed.
-  LEASE_STATE_INACTIVE = 2;
+  // LEASE_STATE_ACTIVE indicates the lease is active and accruing charges.
+  // Provider has acknowledged and resources are provisioned.
+  LEASE_STATE_ACTIVE = 2;
+
+  // LEASE_STATE_CLOSED indicates the lease has been closed normally.
+  // Final settlement has occurred.
+  LEASE_STATE_CLOSED = 3;
+
+  // LEASE_STATE_REJECTED indicates the provider rejected the lease.
+  // Credit has been unlocked and returned to tenant.
+  LEASE_STATE_REJECTED = 4;
+
+  // LEASE_STATE_EXPIRED indicates the lease expired while in PENDING state.
+  // Provider did not acknowledge within the timeout period.
+  // Credit has been unlocked and returned to tenant.
+  LEASE_STATE_EXPIRED = 5;
 }
 
 // LeaseItem represents a single SKU item within a lease.
 message LeaseItem {
   option (amino.name) = "lifted/billing/LeaseItem";
 
-  // sku_id is the ID of the SKU being leased.
-  uint64 sku_id = 1 [(gogoproto.jsontag) = "sku_id,omitempty,string"];
+  // sku_uuid is the UUID of the SKU being leased.
+  string sku_uuid = 1 [(gogoproto.jsontag) = "sku_uuid,omitempty"];
 
   // quantity is the number of instances of this SKU.
   uint64 quantity = 2 [(gogoproto.jsontag) = "quantity,omitempty,string"];
@@ -74,8 +101,8 @@ message LeaseItem {
 message Lease {
   option (amino.name) = "lifted/billing/Lease";
 
-  // id is the unique identifier of the lease.
-  uint64 id = 1 [(gogoproto.jsontag) = "id,omitempty,string"];
+  // uuid is the unique identifier of the lease (UUIDv7 format).
+  string uuid = 1 [(gogoproto.jsontag) = "uuid,omitempty"];
 
   // tenant is the address of the tenant who owns this lease.
   string tenant = 2 [
@@ -83,8 +110,8 @@ message Lease {
     (gogoproto.jsontag) = "tenant,omitempty"
   ];
 
-  // provider_id is the provider ID (denormalized from SKUs for efficient querying).
-  uint64 provider_id = 3 [(gogoproto.jsontag) = "provider_id,omitempty,string"];
+  // provider_uuid is the provider UUID (denormalized from SKUs for efficient querying).
+  string provider_uuid = 3 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
 
   // items is the list of SKU items in this lease.
   repeated LeaseItem items = 4 [
@@ -96,23 +123,51 @@ message Lease {
   LeaseState state = 5 [(gogoproto.jsontag) = "state,omitempty"];
 
   // created_at is the timestamp when the lease was created.
+  // Credit is locked at this time.
   google.protobuf.Timestamp created_at = 6 [
     (gogoproto.nullable) = false,
     (gogoproto.stdtime) = true,
     (gogoproto.jsontag) = "created_at"
   ];
 
-  // closed_at is the timestamp when the lease was closed (if inactive).
+  // closed_at is the timestamp when the lease was closed (if CLOSED state).
   google.protobuf.Timestamp closed_at = 7 [
     (gogoproto.stdtime) = true,
     (gogoproto.jsontag) = "closed_at,omitempty"
   ];
 
   // last_settled_at is the timestamp of the last settlement/withdrawal.
+  // Only applicable for ACTIVE and CLOSED states.
   google.protobuf.Timestamp last_settled_at = 8 [
     (gogoproto.nullable) = false,
     (gogoproto.stdtime) = true,
     (gogoproto.jsontag) = "last_settled_at"
+  ];
+
+  // acknowledged_at is the timestamp when the provider acknowledged the lease.
+  // Only set when state transitions from PENDING to ACTIVE.
+  // Billing starts from this timestamp.
+  google.protobuf.Timestamp acknowledged_at = 9 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "acknowledged_at,omitempty"
+  ];
+
+  // rejected_at is the timestamp when the provider rejected the lease.
+  // Only set when state is REJECTED.
+  google.protobuf.Timestamp rejected_at = 10 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "rejected_at,omitempty"
+  ];
+
+  // rejection_reason is a free-form explanation for why the lease was rejected.
+  // Only set when state is REJECTED. Maximum 256 characters.
+  string rejection_reason = 11 [(gogoproto.jsontag) = "rejection_reason,omitempty"];
+
+  // expired_at is the timestamp when the lease expired while in PENDING state.
+  // Only set when state is EXPIRED.
+  google.protobuf.Timestamp expired_at = 12 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "expired_at,omitempty"
   ];
 }
 

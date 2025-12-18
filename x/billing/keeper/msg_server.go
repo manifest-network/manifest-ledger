@@ -9,6 +9,7 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
@@ -101,8 +102,8 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 
 // leaseCreationResult holds the result of lease creation for use by the public methods.
 type leaseCreationResult struct {
-	leaseID      uint64
-	providerID   uint64
+	leaseUUID    string
+	providerUUID string
 	itemCount    int
 	totalRates   sdk.Coins // total rate per second by denom
 	activeLeases uint64
@@ -149,39 +150,39 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 	}
 
 	// 3. Verify all SKUs exist, are active, and belong to the same provider
-	var providerID uint64
+	var providerUUID string
 	leaseItems := make([]types.LeaseItem, 0, len(items))
 	totalRatesPerSecond := sdk.NewCoins() // Accumulate rates by denom
 
 	for i, inputItem := range items {
-		sku, err := ms.k.skuKeeper.GetSKU(ctx, inputItem.SkuId)
+		sku, err := ms.k.skuKeeper.GetSKU(ctx, inputItem.SkuUuid)
 		if err != nil {
-			return nil, types.ErrSKUNotFound.Wrapf("sku_id %d not found", inputItem.SkuId)
+			return nil, types.ErrSKUNotFound.Wrapf("sku_uuid %s not found", inputItem.SkuUuid)
 		}
 
 		if !sku.Active {
-			return nil, types.ErrSKUNotActive.Wrapf("sku_id %d is not active", inputItem.SkuId)
+			return nil, types.ErrSKUNotActive.Wrapf("sku_uuid %s is not active", inputItem.SkuUuid)
 		}
 
 		// Check provider consistency
 		if i == 0 {
-			providerID = sku.ProviderId
-		} else if sku.ProviderId != providerID {
+			providerUUID = sku.ProviderUuid
+		} else if sku.ProviderUuid != providerUUID {
 			return nil, types.ErrMixedProviders.Wrapf(
-				"sku_id %d belongs to provider %d, expected provider %d",
-				inputItem.SkuId,
-				sku.ProviderId,
-				providerID,
+				"sku_uuid %s belongs to provider %s, expected provider %s",
+				inputItem.SkuUuid,
+				sku.ProviderUuid,
+				providerUUID,
 			)
 		}
 
 		// Verify provider is active
-		provider, err := ms.k.skuKeeper.GetProvider(ctx, sku.ProviderId)
+		provider, err := ms.k.skuKeeper.GetProvider(ctx, sku.ProviderUuid)
 		if err != nil {
-			return nil, types.ErrProviderNotFound.Wrapf("provider_id %d not found", sku.ProviderId)
+			return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", sku.ProviderUuid)
 		}
 		if !provider.Active {
-			return nil, types.ErrProviderNotActive.Wrapf("provider_id %d is not active", sku.ProviderId)
+			return nil, types.ErrProviderNotActive.Wrapf("provider_uuid %s is not active", sku.ProviderUuid)
 		}
 
 		// 4. Lock price from SKU (convert to per-second rate, preserving denom)
@@ -192,7 +193,7 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		totalRatesPerSecond = totalRatesPerSecond.Add(itemRate)
 
 		leaseItems = append(leaseItems, types.LeaseItem{
-			SkuId:       inputItem.SkuId,
+			SkuUuid:     inputItem.SkuUuid,
 			Quantity:    inputItem.Quantity,
 			LockedPrice: lockedPricePerSecond,
 		})
@@ -216,20 +217,21 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		}
 	}
 
-	// 5. Create lease
-	leaseID, err := ms.k.GetNextLeaseID(ctx)
+	// 5. Create lease with deterministic UUIDv7
+	leaseSeq, err := ms.k.GetNextLeaseSequence(ctx)
 	if err != nil {
 		return nil, err
 	}
+	leaseUUID := pkguuid.GenerateUUIDv7(sdkCtx, types.ModuleName, leaseSeq)
 
 	lease := types.Lease{
-		Id:            leaseID,
+		Uuid:          leaseUUID,
 		Tenant:        tenant,
-		ProviderId:    providerID,
+		ProviderUuid:  providerUUID,
 		Items:         leaseItems,
-		State:         types.LEASE_STATE_ACTIVE,
+		State:         types.LEASE_STATE_PENDING, // Start in PENDING, awaiting provider acknowledgement
 		CreatedAt:     blockTime,
-		LastSettledAt: blockTime,
+		LastSettledAt: blockTime, // Will be updated to AcknowledgedAt when provider acknowledges
 	}
 
 	if err := ms.k.SetLease(ctx, lease); err != nil {
@@ -243,8 +245,8 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 	}
 
 	return &leaseCreationResult{
-		leaseID:      leaseID,
-		providerID:   providerID,
+		leaseUUID:    leaseUUID,
+		providerUUID: providerUUID,
 		itemCount:    len(leaseItems),
 		totalRates:   totalRatesPerSecond,
 		activeLeases: creditAccount.ActiveLeaseCount,
@@ -267,9 +269,9 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeLeaseCreated,
-			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(result.leaseID, 10)),
+			sdk.NewAttribute(types.AttributeKeyLeaseUUID, result.leaseUUID),
 			sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(result.providerID, 10)),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, result.providerUUID),
 			sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(result.itemCount)),
 			sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRates.String()),
 			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(result.activeLeases, 10)),
@@ -278,7 +280,7 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 	)
 
 	return &types.MsgCreateLeaseResponse{
-		LeaseId: result.leaseID,
+		LeaseUuid: result.leaseUUID,
 	}, nil
 }
 
@@ -308,9 +310,9 @@ func (ms msgServer) CreateLeaseForTenant(ctx context.Context, msg *types.MsgCrea
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeLeaseCreated,
-			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(result.leaseID, 10)),
+			sdk.NewAttribute(types.AttributeKeyLeaseUUID, result.leaseUUID),
 			sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(result.providerID, 10)),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, result.providerUUID),
 			sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(result.itemCount)),
 			sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRates.String()),
 			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(result.activeLeases, 10)),
@@ -319,7 +321,7 @@ func (ms msgServer) CreateLeaseForTenant(ctx context.Context, msg *types.MsgCrea
 	)
 
 	return &types.MsgCreateLeaseForTenantResponse{
-		LeaseId: result.leaseID,
+		LeaseUuid: result.leaseUUID,
 	}, nil
 }
 
@@ -333,14 +335,14 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	blockTime := sdkCtx.BlockTime()
 
 	// 1. Get lease (without auto-close - we'll handle it explicitly)
-	lease, err := ms.k.GetLease(ctx, msg.LeaseId)
+	lease, err := ms.k.GetLease(ctx, msg.LeaseUuid)
 	if err != nil {
 		return nil, err
 	}
 
 	// 2. If lease is already inactive, nothing to do
 	if lease.State != types.LEASE_STATE_ACTIVE {
-		return nil, types.ErrLeaseNotActive.Wrapf("lease %d is not active", msg.LeaseId)
+		return nil, types.ErrLeaseNotActive.Wrapf("lease %s is not active", msg.LeaseUuid)
 	}
 
 	// 3. Verify sender is authorized (tenant, provider address, or authority)
@@ -361,7 +363,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 
 	// Check if sender is provider address
 	if !authorized {
-		provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderId)
+		provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
 		if err == nil && msg.Sender == provider.Address {
 			authorized = true
 			closedBy = "provider"
@@ -370,9 +372,9 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 
 	if !authorized {
 		return nil, types.ErrUnauthorized.Wrapf(
-			"sender %s is not authorized to close lease %d",
+			"sender %s is not authorized to close lease %s",
 			msg.Sender,
-			msg.LeaseId,
+			msg.LeaseUuid,
 		)
 	}
 
@@ -402,7 +404,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		}
 
 		// 7. Update lease state to inactive
-		lease.State = types.LEASE_STATE_INACTIVE
+		lease.State = types.LEASE_STATE_CLOSED
 		lease.ClosedAt = &blockTime
 
 		if err := ms.k.SetLease(ctx, lease); err != nil {
@@ -426,9 +428,9 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeLeaseClosed,
-			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(msg.LeaseId, 10)),
+			sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
 			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(lease.ProviderId, 10)),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
 			sdk.NewAttribute(types.AttributeKeySettledAmounts, settledAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyClosedBy, closedBy),
 			sdk.NewAttribute(types.AttributeKeyDuration, strconv.FormatInt(int64(duration.Seconds()), 10)),
@@ -451,22 +453,22 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 	blockTime := sdkCtx.BlockTime()
 
 	// 1. Get lease (without auto-close - we'll handle it explicitly)
-	lease, err := ms.k.GetLease(ctx, msg.LeaseId)
+	lease, err := ms.k.GetLease(ctx, msg.LeaseUuid)
 	if err != nil {
 		return nil, err
 	}
 
 	// 2. Get provider and verify sender is authorized (provider address or authority)
-	provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderId)
+	provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
 	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("provider_id %d not found", lease.ProviderId)
+		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
 	}
 
 	if msg.Sender != provider.Address && msg.Sender != ms.k.GetAuthority() {
 		return nil, types.ErrUnauthorized.Wrapf(
-			"sender %s is not authorized to withdraw from lease %d",
+			"sender %s is not authorized to withdraw from lease %s",
 			msg.Sender,
-			msg.LeaseId,
+			msg.LeaseUuid,
 		)
 	}
 
@@ -482,9 +484,9 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 			sdkCtx.EventManager().EmitEvent(
 				sdk.NewEvent(
 					types.EventTypeProviderWithdraw,
-					sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(msg.LeaseId, 10)),
+					sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
 					sdk.NewAttribute(sdk.AttributeKeyAmount, "0"),
-					sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(lease.ProviderId, 10)),
+					sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
 					sdk.NewAttribute("auto_closed", "true"),
 				),
 			)
@@ -512,7 +514,7 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
 	for _, item := range lease.Items {
 		items = append(items, LeaseItemWithPrice{
-			SkuID:                item.SkuId,
+			SkuUUID:              item.SkuUuid,
 			Quantity:             item.Quantity,
 			LockedPricePerSecond: item.LockedPrice,
 		})
@@ -576,8 +578,8 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeProviderWithdraw,
-			sdk.NewAttribute(types.AttributeKeyLeaseID, strconv.FormatUint(msg.LeaseId, 10)),
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(lease.ProviderId, 10)),
+			sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
 			sdk.NewAttribute(types.AttributeKeyAmount, transferAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.PayoutAddress),
 		),
@@ -599,24 +601,24 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// 1. Get provider by ID (validated in ValidateBasic to be > 0)
-	provider, err := ms.k.skuKeeper.GetProvider(ctx, msg.ProviderId)
+	// 1. Get provider by UUID (validated in ValidateBasic)
+	provider, err := ms.k.skuKeeper.GetProvider(ctx, msg.ProviderUuid)
 	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("provider_id %d not found", msg.ProviderId)
+		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", msg.ProviderUuid)
 	}
-	providerID := msg.ProviderId
+	providerUUID := msg.ProviderUuid
 
 	// Verify sender is authorized (provider address or authority)
 	if msg.Sender != provider.Address && msg.Sender != ms.k.GetAuthority() {
 		return nil, types.ErrUnauthorized.Wrapf(
-			"sender %s is not authorized for provider %d",
+			"sender %s is not authorized for provider %s",
 			msg.Sender,
-			providerID,
+			providerUUID,
 		)
 	}
 
 	// 2. Get all leases for provider
-	leases, err := ms.k.GetLeasesByProviderID(ctx, providerID)
+	leases, err := ms.k.GetLeasesByProviderUUID(ctx, providerUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -660,7 +662,7 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 		items := make([]LeaseItemWithPrice, 0, len(lease.Items))
 		for _, item := range lease.Items {
 			items = append(items, LeaseItemWithPrice{
-				SkuID:                item.SkuId,
+				SkuUUID:              item.SkuUuid,
 				Quantity:             item.Quantity,
 				LockedPricePerSecond: item.LockedPrice,
 			})
@@ -669,7 +671,7 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 		if err != nil {
 			// Log overflow error but continue with other leases
 			ms.k.Logger().Error("accrual calculation overflow",
-				"lease_id", lease.Id,
+				"lease_id", lease.Uuid,
 				"error", err,
 			)
 			continue
@@ -709,7 +711,7 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 			); err != nil {
 				// Log error but continue with other leases
 				ms.k.Logger().Error("failed to withdraw from lease",
-					"lease_id", lease.Id,
+					"lease_id", lease.Uuid,
 					"error", err,
 				)
 				continue
@@ -723,7 +725,7 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 				lease.LastSettledAt = blockTime
 				if err := ms.k.SetLease(ctx, lease); err != nil {
 					ms.k.Logger().Error("failed to update lease",
-						"lease_id", lease.Id,
+						"lease_id", lease.Uuid,
 						"error", err,
 					)
 				}
@@ -737,7 +739,7 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeProviderWithdrawAll,
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(providerID, 10)),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, providerUUID),
 			sdk.NewAttribute(types.AttributeKeyAmount, totalAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(leaseCount, 10)),
 			sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.GetPayoutAddress()),
@@ -787,7 +789,7 @@ func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleT
 	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
 	for _, item := range lease.Items {
 		items = append(items, LeaseItemWithPrice{
-			SkuID:                item.SkuId,
+			SkuUUID:              item.SkuUuid,
 			Quantity:             item.Quantity,
 			LockedPricePerSecond: item.LockedPrice,
 		})
@@ -808,9 +810,9 @@ func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleT
 	}
 
 	// Get provider payout address
-	provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderId)
+	provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
 	if err != nil {
-		return sdk.NewCoins(), types.ErrProviderNotFound.Wrapf("provider_id %d not found", lease.ProviderId)
+		return sdk.NewCoins(), types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
 	}
 
 	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
@@ -849,4 +851,197 @@ func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleT
 	lease.LastSettledAt = settleTime
 
 	return transferAmounts, nil
+}
+
+// AcknowledgeLease allows a provider to acknowledge a PENDING lease.
+// This transitions the lease to ACTIVE state and starts billing.
+func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowledgeLease) (*types.MsgAcknowledgeLeaseResponse, error) {
+	if err := msg.ValidateBasic(); err != nil {
+		return nil, err
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	blockTime := sdkCtx.BlockTime()
+
+	// 1. Get lease
+	lease, err := ms.k.GetLease(ctx, msg.LeaseUuid)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Verify lease is in PENDING state
+	if lease.State != types.LEASE_STATE_PENDING {
+		return nil, types.ErrLeaseNotPending.Wrapf("lease %s is not in PENDING state", msg.LeaseUuid)
+	}
+
+	// 3. Verify sender is authorized (provider address or authority)
+	provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
+	if err != nil {
+		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
+	}
+
+	if msg.Sender != provider.Address && msg.Sender != ms.k.GetAuthority() {
+		return nil, types.ErrUnauthorized.Wrapf(
+			"sender %s is not authorized to acknowledge lease %s",
+			msg.Sender,
+			msg.LeaseUuid,
+		)
+	}
+
+	// 4. Transition lease to ACTIVE state
+	lease.State = types.LEASE_STATE_ACTIVE
+	lease.AcknowledgedAt = &blockTime
+	lease.LastSettledAt = blockTime // Billing starts from acknowledgement
+
+	if err := ms.k.SetLease(ctx, lease); err != nil {
+		return nil, err
+	}
+
+	// 5. Emit event
+	sdkCtx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeLeaseAcknowledged,
+			sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
+			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
+			sdk.NewAttribute(types.AttributeKeyAcknowledgedBy, msg.Sender),
+		),
+	)
+
+	return &types.MsgAcknowledgeLeaseResponse{
+		AcknowledgedAt: blockTime,
+	}, nil
+}
+
+// RejectLease allows a provider to reject a PENDING lease.
+// This transitions the lease to REJECTED state and unlocks tenant credit.
+func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) (*types.MsgRejectLeaseResponse, error) {
+	if err := msg.ValidateBasic(); err != nil {
+		return nil, err
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	blockTime := sdkCtx.BlockTime()
+
+	// 1. Get lease
+	lease, err := ms.k.GetLease(ctx, msg.LeaseUuid)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Verify lease is in PENDING state
+	if lease.State != types.LEASE_STATE_PENDING {
+		return nil, types.ErrLeaseNotPending.Wrapf("lease %s is not in PENDING state", msg.LeaseUuid)
+	}
+
+	// 3. Verify sender is authorized (provider address or authority)
+	provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
+	if err != nil {
+		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
+	}
+
+	if msg.Sender != provider.Address && msg.Sender != ms.k.GetAuthority() {
+		return nil, types.ErrUnauthorized.Wrapf(
+			"sender %s is not authorized to reject lease %s",
+			msg.Sender,
+			msg.LeaseUuid,
+		)
+	}
+
+	// 4. Transition lease to REJECTED state
+	lease.State = types.LEASE_STATE_REJECTED
+	lease.RejectedAt = &blockTime
+	lease.RejectionReason = msg.Reason
+
+	if err := ms.k.SetLease(ctx, lease); err != nil {
+		return nil, err
+	}
+
+	// 5. Decrement pending lease count in credit account
+	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
+	if err == nil && creditAccount.ActiveLeaseCount > 0 {
+		creditAccount.ActiveLeaseCount--
+		if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
+			return nil, err
+		}
+	}
+
+	// 6. Emit event
+	sdkCtx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeLeaseRejected,
+			sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
+			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
+			sdk.NewAttribute(types.AttributeKeyRejectedBy, msg.Sender),
+			sdk.NewAttribute(types.AttributeKeyRejectionReason, msg.Reason),
+		),
+	)
+
+	return &types.MsgRejectLeaseResponse{
+		RejectedAt: blockTime,
+	}, nil
+}
+
+// CancelLease allows a tenant to cancel their own PENDING lease.
+// This transitions the lease to REJECTED state and unlocks tenant credit.
+func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) (*types.MsgCancelLeaseResponse, error) {
+	if err := msg.ValidateBasic(); err != nil {
+		return nil, err
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	blockTime := sdkCtx.BlockTime()
+
+	// 1. Get lease
+	lease, err := ms.k.GetLease(ctx, msg.LeaseUuid)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Verify lease is in PENDING state
+	if lease.State != types.LEASE_STATE_PENDING {
+		return nil, types.ErrLeaseNotPending.Wrapf("lease %s is not in PENDING state", msg.LeaseUuid)
+	}
+
+	// 3. Verify sender is the tenant
+	if msg.Tenant != lease.Tenant {
+		return nil, types.ErrUnauthorized.Wrapf(
+			"sender %s is not the tenant of lease %s",
+			msg.Tenant,
+			msg.LeaseUuid,
+		)
+	}
+
+	// 4. Transition lease to REJECTED state (cancelled by tenant)
+	lease.State = types.LEASE_STATE_REJECTED
+	lease.RejectedAt = &blockTime
+	lease.RejectionReason = "cancelled by tenant"
+
+	if err := ms.k.SetLease(ctx, lease); err != nil {
+		return nil, err
+	}
+
+	// 5. Decrement pending lease count in credit account
+	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
+	if err == nil && creditAccount.ActiveLeaseCount > 0 {
+		creditAccount.ActiveLeaseCount--
+		if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
+			return nil, err
+		}
+	}
+
+	// 6. Emit event
+	sdkCtx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeLeaseCancelled,
+			sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
+			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
+		),
+	)
+
+	return &types.MsgCancelLeaseResponse{
+		CancelledAt: blockTime,
+	}, nil
 }

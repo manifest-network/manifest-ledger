@@ -64,11 +64,13 @@ func (x *_Params_4_list) IsValid() bool {
 }
 
 var (
-	md_Params                       protoreflect.MessageDescriptor
-	fd_Params_max_leases_per_tenant protoreflect.FieldDescriptor
-	fd_Params_allowed_list          protoreflect.FieldDescriptor
-	fd_Params_max_items_per_lease   protoreflect.FieldDescriptor
-	fd_Params_min_lease_duration    protoreflect.FieldDescriptor
+	md_Params                               protoreflect.MessageDescriptor
+	fd_Params_max_leases_per_tenant         protoreflect.FieldDescriptor
+	fd_Params_allowed_list                  protoreflect.FieldDescriptor
+	fd_Params_max_items_per_lease           protoreflect.FieldDescriptor
+	fd_Params_min_lease_duration            protoreflect.FieldDescriptor
+	fd_Params_max_pending_leases_per_tenant protoreflect.FieldDescriptor
+	fd_Params_pending_timeout               protoreflect.FieldDescriptor
 )
 
 func init() {
@@ -78,6 +80,8 @@ func init() {
 	fd_Params_allowed_list = md_Params.Fields().ByName("allowed_list")
 	fd_Params_max_items_per_lease = md_Params.Fields().ByName("max_items_per_lease")
 	fd_Params_min_lease_duration = md_Params.Fields().ByName("min_lease_duration")
+	fd_Params_max_pending_leases_per_tenant = md_Params.Fields().ByName("max_pending_leases_per_tenant")
+	fd_Params_pending_timeout = md_Params.Fields().ByName("pending_timeout")
 }
 
 var _ protoreflect.Message = (*fastReflection_Params)(nil)
@@ -169,6 +173,18 @@ func (x *fastReflection_Params) Range(f func(protoreflect.FieldDescriptor, proto
 			return
 		}
 	}
+	if x.MaxPendingLeasesPerTenant != uint64(0) {
+		value := protoreflect.ValueOfUint64(x.MaxPendingLeasesPerTenant)
+		if !f(fd_Params_max_pending_leases_per_tenant, value) {
+			return
+		}
+	}
+	if x.PendingTimeout != uint64(0) {
+		value := protoreflect.ValueOfUint64(x.PendingTimeout)
+		if !f(fd_Params_pending_timeout, value) {
+			return
+		}
+	}
 }
 
 // Has reports whether a field is populated.
@@ -192,6 +208,10 @@ func (x *fastReflection_Params) Has(fd protoreflect.FieldDescriptor) bool {
 		return x.MaxItemsPerLease != uint64(0)
 	case "liftedinit.billing.v1.Params.min_lease_duration":
 		return x.MinLeaseDuration != uint64(0)
+	case "liftedinit.billing.v1.Params.max_pending_leases_per_tenant":
+		return x.MaxPendingLeasesPerTenant != uint64(0)
+	case "liftedinit.billing.v1.Params.pending_timeout":
+		return x.PendingTimeout != uint64(0)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.Params"))
@@ -216,6 +236,10 @@ func (x *fastReflection_Params) Clear(fd protoreflect.FieldDescriptor) {
 		x.MaxItemsPerLease = uint64(0)
 	case "liftedinit.billing.v1.Params.min_lease_duration":
 		x.MinLeaseDuration = uint64(0)
+	case "liftedinit.billing.v1.Params.max_pending_leases_per_tenant":
+		x.MaxPendingLeasesPerTenant = uint64(0)
+	case "liftedinit.billing.v1.Params.pending_timeout":
+		x.PendingTimeout = uint64(0)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.Params"))
@@ -247,6 +271,12 @@ func (x *fastReflection_Params) Get(descriptor protoreflect.FieldDescriptor) pro
 	case "liftedinit.billing.v1.Params.min_lease_duration":
 		value := x.MinLeaseDuration
 		return protoreflect.ValueOfUint64(value)
+	case "liftedinit.billing.v1.Params.max_pending_leases_per_tenant":
+		value := x.MaxPendingLeasesPerTenant
+		return protoreflect.ValueOfUint64(value)
+	case "liftedinit.billing.v1.Params.pending_timeout":
+		value := x.PendingTimeout
+		return protoreflect.ValueOfUint64(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.Params"))
@@ -277,6 +307,10 @@ func (x *fastReflection_Params) Set(fd protoreflect.FieldDescriptor, value proto
 		x.MaxItemsPerLease = value.Uint()
 	case "liftedinit.billing.v1.Params.min_lease_duration":
 		x.MinLeaseDuration = value.Uint()
+	case "liftedinit.billing.v1.Params.max_pending_leases_per_tenant":
+		x.MaxPendingLeasesPerTenant = value.Uint()
+	case "liftedinit.billing.v1.Params.pending_timeout":
+		x.PendingTimeout = value.Uint()
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.Params"))
@@ -309,6 +343,10 @@ func (x *fastReflection_Params) Mutable(fd protoreflect.FieldDescriptor) protore
 		panic(fmt.Errorf("field max_items_per_lease of message liftedinit.billing.v1.Params is not mutable"))
 	case "liftedinit.billing.v1.Params.min_lease_duration":
 		panic(fmt.Errorf("field min_lease_duration of message liftedinit.billing.v1.Params is not mutable"))
+	case "liftedinit.billing.v1.Params.max_pending_leases_per_tenant":
+		panic(fmt.Errorf("field max_pending_leases_per_tenant of message liftedinit.billing.v1.Params is not mutable"))
+	case "liftedinit.billing.v1.Params.pending_timeout":
+		panic(fmt.Errorf("field pending_timeout of message liftedinit.billing.v1.Params is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.Params"))
@@ -330,6 +368,10 @@ func (x *fastReflection_Params) NewField(fd protoreflect.FieldDescriptor) protor
 	case "liftedinit.billing.v1.Params.max_items_per_lease":
 		return protoreflect.ValueOfUint64(uint64(0))
 	case "liftedinit.billing.v1.Params.min_lease_duration":
+		return protoreflect.ValueOfUint64(uint64(0))
+	case "liftedinit.billing.v1.Params.max_pending_leases_per_tenant":
+		return protoreflect.ValueOfUint64(uint64(0))
+	case "liftedinit.billing.v1.Params.pending_timeout":
 		return protoreflect.ValueOfUint64(uint64(0))
 	default:
 		if fd.IsExtension() {
@@ -415,6 +457,12 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 		if x.MinLeaseDuration != 0 {
 			n += 1 + runtime.Sov(uint64(x.MinLeaseDuration))
 		}
+		if x.MaxPendingLeasesPerTenant != 0 {
+			n += 1 + runtime.Sov(uint64(x.MaxPendingLeasesPerTenant))
+		}
+		if x.PendingTimeout != 0 {
+			n += 1 + runtime.Sov(uint64(x.PendingTimeout))
+		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
 		}
@@ -443,6 +491,16 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 		if x.unknownFields != nil {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.PendingTimeout != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.PendingTimeout))
+			i--
+			dAtA[i] = 0x40
+		}
+		if x.MaxPendingLeasesPerTenant != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.MaxPendingLeasesPerTenant))
+			i--
+			dAtA[i] = 0x38
 		}
 		if x.MinLeaseDuration != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.MinLeaseDuration))
@@ -606,6 +664,44 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 						break
 					}
 				}
+			case 7:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field MaxPendingLeasesPerTenant", wireType)
+				}
+				x.MaxPendingLeasesPerTenant = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.MaxPendingLeasesPerTenant |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 8:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field PendingTimeout", wireType)
+				}
+				x.PendingTimeout = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.PendingTimeout |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -643,7 +739,7 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 
 var (
 	md_LeaseItem              protoreflect.MessageDescriptor
-	fd_LeaseItem_sku_id       protoreflect.FieldDescriptor
+	fd_LeaseItem_sku_uuid     protoreflect.FieldDescriptor
 	fd_LeaseItem_quantity     protoreflect.FieldDescriptor
 	fd_LeaseItem_locked_price protoreflect.FieldDescriptor
 )
@@ -651,7 +747,7 @@ var (
 func init() {
 	file_liftedinit_billing_v1_types_proto_init()
 	md_LeaseItem = File_liftedinit_billing_v1_types_proto.Messages().ByName("LeaseItem")
-	fd_LeaseItem_sku_id = md_LeaseItem.Fields().ByName("sku_id")
+	fd_LeaseItem_sku_uuid = md_LeaseItem.Fields().ByName("sku_uuid")
 	fd_LeaseItem_quantity = md_LeaseItem.Fields().ByName("quantity")
 	fd_LeaseItem_locked_price = md_LeaseItem.Fields().ByName("locked_price")
 }
@@ -721,9 +817,9 @@ func (x *fastReflection_LeaseItem) Interface() protoreflect.ProtoMessage {
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
 func (x *fastReflection_LeaseItem) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
-	if x.SkuId != uint64(0) {
-		value := protoreflect.ValueOfUint64(x.SkuId)
-		if !f(fd_LeaseItem_sku_id, value) {
+	if x.SkuUuid != "" {
+		value := protoreflect.ValueOfString(x.SkuUuid)
+		if !f(fd_LeaseItem_sku_uuid, value) {
 			return
 		}
 	}
@@ -754,8 +850,8 @@ func (x *fastReflection_LeaseItem) Range(f func(protoreflect.FieldDescriptor, pr
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_LeaseItem) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.LeaseItem.sku_id":
-		return x.SkuId != uint64(0)
+	case "liftedinit.billing.v1.LeaseItem.sku_uuid":
+		return x.SkuUuid != ""
 	case "liftedinit.billing.v1.LeaseItem.quantity":
 		return x.Quantity != uint64(0)
 	case "liftedinit.billing.v1.LeaseItem.locked_price":
@@ -776,8 +872,8 @@ func (x *fastReflection_LeaseItem) Has(fd protoreflect.FieldDescriptor) bool {
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_LeaseItem) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.LeaseItem.sku_id":
-		x.SkuId = uint64(0)
+	case "liftedinit.billing.v1.LeaseItem.sku_uuid":
+		x.SkuUuid = ""
 	case "liftedinit.billing.v1.LeaseItem.quantity":
 		x.Quantity = uint64(0)
 	case "liftedinit.billing.v1.LeaseItem.locked_price":
@@ -798,9 +894,9 @@ func (x *fastReflection_LeaseItem) Clear(fd protoreflect.FieldDescriptor) {
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_LeaseItem) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "liftedinit.billing.v1.LeaseItem.sku_id":
-		value := x.SkuId
-		return protoreflect.ValueOfUint64(value)
+	case "liftedinit.billing.v1.LeaseItem.sku_uuid":
+		value := x.SkuUuid
+		return protoreflect.ValueOfString(value)
 	case "liftedinit.billing.v1.LeaseItem.quantity":
 		value := x.Quantity
 		return protoreflect.ValueOfUint64(value)
@@ -827,8 +923,8 @@ func (x *fastReflection_LeaseItem) Get(descriptor protoreflect.FieldDescriptor) 
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_LeaseItem) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.LeaseItem.sku_id":
-		x.SkuId = value.Uint()
+	case "liftedinit.billing.v1.LeaseItem.sku_uuid":
+		x.SkuUuid = value.Interface().(string)
 	case "liftedinit.billing.v1.LeaseItem.quantity":
 		x.Quantity = value.Uint()
 	case "liftedinit.billing.v1.LeaseItem.locked_price":
@@ -858,8 +954,8 @@ func (x *fastReflection_LeaseItem) Mutable(fd protoreflect.FieldDescriptor) prot
 			x.LockedPrice = new(types.Coin)
 		}
 		return protoreflect.ValueOfMessage(x.LockedPrice.ProtoReflect())
-	case "liftedinit.billing.v1.LeaseItem.sku_id":
-		panic(fmt.Errorf("field sku_id of message liftedinit.billing.v1.LeaseItem is not mutable"))
+	case "liftedinit.billing.v1.LeaseItem.sku_uuid":
+		panic(fmt.Errorf("field sku_uuid of message liftedinit.billing.v1.LeaseItem is not mutable"))
 	case "liftedinit.billing.v1.LeaseItem.quantity":
 		panic(fmt.Errorf("field quantity of message liftedinit.billing.v1.LeaseItem is not mutable"))
 	default:
@@ -875,8 +971,8 @@ func (x *fastReflection_LeaseItem) Mutable(fd protoreflect.FieldDescriptor) prot
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_LeaseItem) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.LeaseItem.sku_id":
-		return protoreflect.ValueOfUint64(uint64(0))
+	case "liftedinit.billing.v1.LeaseItem.sku_uuid":
+		return protoreflect.ValueOfString("")
 	case "liftedinit.billing.v1.LeaseItem.quantity":
 		return protoreflect.ValueOfUint64(uint64(0))
 	case "liftedinit.billing.v1.LeaseItem.locked_price":
@@ -951,8 +1047,9 @@ func (x *fastReflection_LeaseItem) ProtoMethods() *protoiface.Methods {
 		var n int
 		var l int
 		_ = l
-		if x.SkuId != 0 {
-			n += 1 + runtime.Sov(uint64(x.SkuId))
+		l = len(x.SkuUuid)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
 		}
 		if x.Quantity != 0 {
 			n += 1 + runtime.Sov(uint64(x.Quantity))
@@ -1009,10 +1106,12 @@ func (x *fastReflection_LeaseItem) ProtoMethods() *protoiface.Methods {
 			i--
 			dAtA[i] = 0x10
 		}
-		if x.SkuId != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.SkuId))
+		if len(x.SkuUuid) > 0 {
+			i -= len(x.SkuUuid)
+			copy(dAtA[i:], x.SkuUuid)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.SkuUuid)))
 			i--
-			dAtA[i] = 0x8
+			dAtA[i] = 0xa
 		}
 		if input.Buf != nil {
 			input.Buf = append(input.Buf, dAtA...)
@@ -1064,10 +1163,10 @@ func (x *fastReflection_LeaseItem) ProtoMethods() *protoiface.Methods {
 			}
 			switch fieldNum {
 			case 1:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field SkuId", wireType)
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field SkuUuid", wireType)
 				}
-				x.SkuId = 0
+				var stringLen uint64
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
@@ -1077,11 +1176,24 @@ func (x *fastReflection_LeaseItem) ProtoMethods() *protoiface.Methods {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					x.SkuId |= uint64(b&0x7F) << shift
+					stringLen |= uint64(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
 				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.SkuUuid = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
 			case 2:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Quantity", wireType)
@@ -1224,28 +1336,36 @@ func (x *_Lease_4_list) IsValid() bool {
 }
 
 var (
-	md_Lease                 protoreflect.MessageDescriptor
-	fd_Lease_id              protoreflect.FieldDescriptor
-	fd_Lease_tenant          protoreflect.FieldDescriptor
-	fd_Lease_provider_id     protoreflect.FieldDescriptor
-	fd_Lease_items           protoreflect.FieldDescriptor
-	fd_Lease_state           protoreflect.FieldDescriptor
-	fd_Lease_created_at      protoreflect.FieldDescriptor
-	fd_Lease_closed_at       protoreflect.FieldDescriptor
-	fd_Lease_last_settled_at protoreflect.FieldDescriptor
+	md_Lease                  protoreflect.MessageDescriptor
+	fd_Lease_uuid             protoreflect.FieldDescriptor
+	fd_Lease_tenant           protoreflect.FieldDescriptor
+	fd_Lease_provider_uuid    protoreflect.FieldDescriptor
+	fd_Lease_items            protoreflect.FieldDescriptor
+	fd_Lease_state            protoreflect.FieldDescriptor
+	fd_Lease_created_at       protoreflect.FieldDescriptor
+	fd_Lease_closed_at        protoreflect.FieldDescriptor
+	fd_Lease_last_settled_at  protoreflect.FieldDescriptor
+	fd_Lease_acknowledged_at  protoreflect.FieldDescriptor
+	fd_Lease_rejected_at      protoreflect.FieldDescriptor
+	fd_Lease_rejection_reason protoreflect.FieldDescriptor
+	fd_Lease_expired_at       protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_liftedinit_billing_v1_types_proto_init()
 	md_Lease = File_liftedinit_billing_v1_types_proto.Messages().ByName("Lease")
-	fd_Lease_id = md_Lease.Fields().ByName("id")
+	fd_Lease_uuid = md_Lease.Fields().ByName("uuid")
 	fd_Lease_tenant = md_Lease.Fields().ByName("tenant")
-	fd_Lease_provider_id = md_Lease.Fields().ByName("provider_id")
+	fd_Lease_provider_uuid = md_Lease.Fields().ByName("provider_uuid")
 	fd_Lease_items = md_Lease.Fields().ByName("items")
 	fd_Lease_state = md_Lease.Fields().ByName("state")
 	fd_Lease_created_at = md_Lease.Fields().ByName("created_at")
 	fd_Lease_closed_at = md_Lease.Fields().ByName("closed_at")
 	fd_Lease_last_settled_at = md_Lease.Fields().ByName("last_settled_at")
+	fd_Lease_acknowledged_at = md_Lease.Fields().ByName("acknowledged_at")
+	fd_Lease_rejected_at = md_Lease.Fields().ByName("rejected_at")
+	fd_Lease_rejection_reason = md_Lease.Fields().ByName("rejection_reason")
+	fd_Lease_expired_at = md_Lease.Fields().ByName("expired_at")
 }
 
 var _ protoreflect.Message = (*fastReflection_Lease)(nil)
@@ -1313,9 +1433,9 @@ func (x *fastReflection_Lease) Interface() protoreflect.ProtoMessage {
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
 func (x *fastReflection_Lease) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
-	if x.Id != uint64(0) {
-		value := protoreflect.ValueOfUint64(x.Id)
-		if !f(fd_Lease_id, value) {
+	if x.Uuid != "" {
+		value := protoreflect.ValueOfString(x.Uuid)
+		if !f(fd_Lease_uuid, value) {
 			return
 		}
 	}
@@ -1325,9 +1445,9 @@ func (x *fastReflection_Lease) Range(f func(protoreflect.FieldDescriptor, protor
 			return
 		}
 	}
-	if x.ProviderId != uint64(0) {
-		value := protoreflect.ValueOfUint64(x.ProviderId)
-		if !f(fd_Lease_provider_id, value) {
+	if x.ProviderUuid != "" {
+		value := protoreflect.ValueOfString(x.ProviderUuid)
+		if !f(fd_Lease_provider_uuid, value) {
 			return
 		}
 	}
@@ -1361,6 +1481,30 @@ func (x *fastReflection_Lease) Range(f func(protoreflect.FieldDescriptor, protor
 			return
 		}
 	}
+	if x.AcknowledgedAt != nil {
+		value := protoreflect.ValueOfMessage(x.AcknowledgedAt.ProtoReflect())
+		if !f(fd_Lease_acknowledged_at, value) {
+			return
+		}
+	}
+	if x.RejectedAt != nil {
+		value := protoreflect.ValueOfMessage(x.RejectedAt.ProtoReflect())
+		if !f(fd_Lease_rejected_at, value) {
+			return
+		}
+	}
+	if x.RejectionReason != "" {
+		value := protoreflect.ValueOfString(x.RejectionReason)
+		if !f(fd_Lease_rejection_reason, value) {
+			return
+		}
+	}
+	if x.ExpiredAt != nil {
+		value := protoreflect.ValueOfMessage(x.ExpiredAt.ProtoReflect())
+		if !f(fd_Lease_expired_at, value) {
+			return
+		}
+	}
 }
 
 // Has reports whether a field is populated.
@@ -1376,12 +1520,12 @@ func (x *fastReflection_Lease) Range(f func(protoreflect.FieldDescriptor, protor
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_Lease) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.Lease.id":
-		return x.Id != uint64(0)
+	case "liftedinit.billing.v1.Lease.uuid":
+		return x.Uuid != ""
 	case "liftedinit.billing.v1.Lease.tenant":
 		return x.Tenant != ""
-	case "liftedinit.billing.v1.Lease.provider_id":
-		return x.ProviderId != uint64(0)
+	case "liftedinit.billing.v1.Lease.provider_uuid":
+		return x.ProviderUuid != ""
 	case "liftedinit.billing.v1.Lease.items":
 		return len(x.Items) != 0
 	case "liftedinit.billing.v1.Lease.state":
@@ -1392,6 +1536,14 @@ func (x *fastReflection_Lease) Has(fd protoreflect.FieldDescriptor) bool {
 		return x.ClosedAt != nil
 	case "liftedinit.billing.v1.Lease.last_settled_at":
 		return x.LastSettledAt != nil
+	case "liftedinit.billing.v1.Lease.acknowledged_at":
+		return x.AcknowledgedAt != nil
+	case "liftedinit.billing.v1.Lease.rejected_at":
+		return x.RejectedAt != nil
+	case "liftedinit.billing.v1.Lease.rejection_reason":
+		return x.RejectionReason != ""
+	case "liftedinit.billing.v1.Lease.expired_at":
+		return x.ExpiredAt != nil
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.Lease"))
@@ -1408,12 +1560,12 @@ func (x *fastReflection_Lease) Has(fd protoreflect.FieldDescriptor) bool {
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_Lease) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.Lease.id":
-		x.Id = uint64(0)
+	case "liftedinit.billing.v1.Lease.uuid":
+		x.Uuid = ""
 	case "liftedinit.billing.v1.Lease.tenant":
 		x.Tenant = ""
-	case "liftedinit.billing.v1.Lease.provider_id":
-		x.ProviderId = uint64(0)
+	case "liftedinit.billing.v1.Lease.provider_uuid":
+		x.ProviderUuid = ""
 	case "liftedinit.billing.v1.Lease.items":
 		x.Items = nil
 	case "liftedinit.billing.v1.Lease.state":
@@ -1424,6 +1576,14 @@ func (x *fastReflection_Lease) Clear(fd protoreflect.FieldDescriptor) {
 		x.ClosedAt = nil
 	case "liftedinit.billing.v1.Lease.last_settled_at":
 		x.LastSettledAt = nil
+	case "liftedinit.billing.v1.Lease.acknowledged_at":
+		x.AcknowledgedAt = nil
+	case "liftedinit.billing.v1.Lease.rejected_at":
+		x.RejectedAt = nil
+	case "liftedinit.billing.v1.Lease.rejection_reason":
+		x.RejectionReason = ""
+	case "liftedinit.billing.v1.Lease.expired_at":
+		x.ExpiredAt = nil
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.Lease"))
@@ -1440,15 +1600,15 @@ func (x *fastReflection_Lease) Clear(fd protoreflect.FieldDescriptor) {
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_Lease) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "liftedinit.billing.v1.Lease.id":
-		value := x.Id
-		return protoreflect.ValueOfUint64(value)
+	case "liftedinit.billing.v1.Lease.uuid":
+		value := x.Uuid
+		return protoreflect.ValueOfString(value)
 	case "liftedinit.billing.v1.Lease.tenant":
 		value := x.Tenant
 		return protoreflect.ValueOfString(value)
-	case "liftedinit.billing.v1.Lease.provider_id":
-		value := x.ProviderId
-		return protoreflect.ValueOfUint64(value)
+	case "liftedinit.billing.v1.Lease.provider_uuid":
+		value := x.ProviderUuid
+		return protoreflect.ValueOfString(value)
 	case "liftedinit.billing.v1.Lease.items":
 		if len(x.Items) == 0 {
 			return protoreflect.ValueOfList(&_Lease_4_list{})
@@ -1466,6 +1626,18 @@ func (x *fastReflection_Lease) Get(descriptor protoreflect.FieldDescriptor) prot
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
 	case "liftedinit.billing.v1.Lease.last_settled_at":
 		value := x.LastSettledAt
+		return protoreflect.ValueOfMessage(value.ProtoReflect())
+	case "liftedinit.billing.v1.Lease.acknowledged_at":
+		value := x.AcknowledgedAt
+		return protoreflect.ValueOfMessage(value.ProtoReflect())
+	case "liftedinit.billing.v1.Lease.rejected_at":
+		value := x.RejectedAt
+		return protoreflect.ValueOfMessage(value.ProtoReflect())
+	case "liftedinit.billing.v1.Lease.rejection_reason":
+		value := x.RejectionReason
+		return protoreflect.ValueOfString(value)
+	case "liftedinit.billing.v1.Lease.expired_at":
+		value := x.ExpiredAt
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
 	default:
 		if descriptor.IsExtension() {
@@ -1487,12 +1659,12 @@ func (x *fastReflection_Lease) Get(descriptor protoreflect.FieldDescriptor) prot
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_Lease) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.Lease.id":
-		x.Id = value.Uint()
+	case "liftedinit.billing.v1.Lease.uuid":
+		x.Uuid = value.Interface().(string)
 	case "liftedinit.billing.v1.Lease.tenant":
 		x.Tenant = value.Interface().(string)
-	case "liftedinit.billing.v1.Lease.provider_id":
-		x.ProviderId = value.Uint()
+	case "liftedinit.billing.v1.Lease.provider_uuid":
+		x.ProviderUuid = value.Interface().(string)
 	case "liftedinit.billing.v1.Lease.items":
 		lv := value.List()
 		clv := lv.(*_Lease_4_list)
@@ -1505,6 +1677,14 @@ func (x *fastReflection_Lease) Set(fd protoreflect.FieldDescriptor, value protor
 		x.ClosedAt = value.Message().Interface().(*timestamppb.Timestamp)
 	case "liftedinit.billing.v1.Lease.last_settled_at":
 		x.LastSettledAt = value.Message().Interface().(*timestamppb.Timestamp)
+	case "liftedinit.billing.v1.Lease.acknowledged_at":
+		x.AcknowledgedAt = value.Message().Interface().(*timestamppb.Timestamp)
+	case "liftedinit.billing.v1.Lease.rejected_at":
+		x.RejectedAt = value.Message().Interface().(*timestamppb.Timestamp)
+	case "liftedinit.billing.v1.Lease.rejection_reason":
+		x.RejectionReason = value.Interface().(string)
+	case "liftedinit.billing.v1.Lease.expired_at":
+		x.ExpiredAt = value.Message().Interface().(*timestamppb.Timestamp)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.Lease"))
@@ -1546,14 +1726,31 @@ func (x *fastReflection_Lease) Mutable(fd protoreflect.FieldDescriptor) protoref
 			x.LastSettledAt = new(timestamppb.Timestamp)
 		}
 		return protoreflect.ValueOfMessage(x.LastSettledAt.ProtoReflect())
-	case "liftedinit.billing.v1.Lease.id":
-		panic(fmt.Errorf("field id of message liftedinit.billing.v1.Lease is not mutable"))
+	case "liftedinit.billing.v1.Lease.acknowledged_at":
+		if x.AcknowledgedAt == nil {
+			x.AcknowledgedAt = new(timestamppb.Timestamp)
+		}
+		return protoreflect.ValueOfMessage(x.AcknowledgedAt.ProtoReflect())
+	case "liftedinit.billing.v1.Lease.rejected_at":
+		if x.RejectedAt == nil {
+			x.RejectedAt = new(timestamppb.Timestamp)
+		}
+		return protoreflect.ValueOfMessage(x.RejectedAt.ProtoReflect())
+	case "liftedinit.billing.v1.Lease.expired_at":
+		if x.ExpiredAt == nil {
+			x.ExpiredAt = new(timestamppb.Timestamp)
+		}
+		return protoreflect.ValueOfMessage(x.ExpiredAt.ProtoReflect())
+	case "liftedinit.billing.v1.Lease.uuid":
+		panic(fmt.Errorf("field uuid of message liftedinit.billing.v1.Lease is not mutable"))
 	case "liftedinit.billing.v1.Lease.tenant":
 		panic(fmt.Errorf("field tenant of message liftedinit.billing.v1.Lease is not mutable"))
-	case "liftedinit.billing.v1.Lease.provider_id":
-		panic(fmt.Errorf("field provider_id of message liftedinit.billing.v1.Lease is not mutable"))
+	case "liftedinit.billing.v1.Lease.provider_uuid":
+		panic(fmt.Errorf("field provider_uuid of message liftedinit.billing.v1.Lease is not mutable"))
 	case "liftedinit.billing.v1.Lease.state":
 		panic(fmt.Errorf("field state of message liftedinit.billing.v1.Lease is not mutable"))
+	case "liftedinit.billing.v1.Lease.rejection_reason":
+		panic(fmt.Errorf("field rejection_reason of message liftedinit.billing.v1.Lease is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.Lease"))
@@ -1567,12 +1764,12 @@ func (x *fastReflection_Lease) Mutable(fd protoreflect.FieldDescriptor) protoref
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_Lease) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "liftedinit.billing.v1.Lease.id":
-		return protoreflect.ValueOfUint64(uint64(0))
+	case "liftedinit.billing.v1.Lease.uuid":
+		return protoreflect.ValueOfString("")
 	case "liftedinit.billing.v1.Lease.tenant":
 		return protoreflect.ValueOfString("")
-	case "liftedinit.billing.v1.Lease.provider_id":
-		return protoreflect.ValueOfUint64(uint64(0))
+	case "liftedinit.billing.v1.Lease.provider_uuid":
+		return protoreflect.ValueOfString("")
 	case "liftedinit.billing.v1.Lease.items":
 		list := []*LeaseItem{}
 		return protoreflect.ValueOfList(&_Lease_4_list{list: &list})
@@ -1585,6 +1782,17 @@ func (x *fastReflection_Lease) NewField(fd protoreflect.FieldDescriptor) protore
 		m := new(timestamppb.Timestamp)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	case "liftedinit.billing.v1.Lease.last_settled_at":
+		m := new(timestamppb.Timestamp)
+		return protoreflect.ValueOfMessage(m.ProtoReflect())
+	case "liftedinit.billing.v1.Lease.acknowledged_at":
+		m := new(timestamppb.Timestamp)
+		return protoreflect.ValueOfMessage(m.ProtoReflect())
+	case "liftedinit.billing.v1.Lease.rejected_at":
+		m := new(timestamppb.Timestamp)
+		return protoreflect.ValueOfMessage(m.ProtoReflect())
+	case "liftedinit.billing.v1.Lease.rejection_reason":
+		return protoreflect.ValueOfString("")
+	case "liftedinit.billing.v1.Lease.expired_at":
 		m := new(timestamppb.Timestamp)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	default:
@@ -1656,15 +1864,17 @@ func (x *fastReflection_Lease) ProtoMethods() *protoiface.Methods {
 		var n int
 		var l int
 		_ = l
-		if x.Id != 0 {
-			n += 1 + runtime.Sov(uint64(x.Id))
+		l = len(x.Uuid)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
 		}
 		l = len(x.Tenant)
 		if l > 0 {
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
-		if x.ProviderId != 0 {
-			n += 1 + runtime.Sov(uint64(x.ProviderId))
+		l = len(x.ProviderUuid)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
 		}
 		if len(x.Items) > 0 {
 			for _, e := range x.Items {
@@ -1685,6 +1895,22 @@ func (x *fastReflection_Lease) ProtoMethods() *protoiface.Methods {
 		}
 		if x.LastSettledAt != nil {
 			l = options.Size(x.LastSettledAt)
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.AcknowledgedAt != nil {
+			l = options.Size(x.AcknowledgedAt)
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.RejectedAt != nil {
+			l = options.Size(x.RejectedAt)
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		l = len(x.RejectionReason)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.ExpiredAt != nil {
+			l = options.Size(x.ExpiredAt)
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
 		if x.unknownFields != nil {
@@ -1715,6 +1941,55 @@ func (x *fastReflection_Lease) ProtoMethods() *protoiface.Methods {
 		if x.unknownFields != nil {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.ExpiredAt != nil {
+			encoded, err := options.Marshal(x.ExpiredAt)
+			if err != nil {
+				return protoiface.MarshalOutput{
+					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+					Buf:               input.Buf,
+				}, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			i--
+			dAtA[i] = 0x62
+		}
+		if len(x.RejectionReason) > 0 {
+			i -= len(x.RejectionReason)
+			copy(dAtA[i:], x.RejectionReason)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.RejectionReason)))
+			i--
+			dAtA[i] = 0x5a
+		}
+		if x.RejectedAt != nil {
+			encoded, err := options.Marshal(x.RejectedAt)
+			if err != nil {
+				return protoiface.MarshalOutput{
+					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+					Buf:               input.Buf,
+				}, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			i--
+			dAtA[i] = 0x52
+		}
+		if x.AcknowledgedAt != nil {
+			encoded, err := options.Marshal(x.AcknowledgedAt)
+			if err != nil {
+				return protoiface.MarshalOutput{
+					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+					Buf:               input.Buf,
+				}, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+			i--
+			dAtA[i] = 0x4a
 		}
 		if x.LastSettledAt != nil {
 			encoded, err := options.Marshal(x.LastSettledAt)
@@ -1779,10 +2054,12 @@ func (x *fastReflection_Lease) ProtoMethods() *protoiface.Methods {
 				dAtA[i] = 0x22
 			}
 		}
-		if x.ProviderId != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.ProviderId))
+		if len(x.ProviderUuid) > 0 {
+			i -= len(x.ProviderUuid)
+			copy(dAtA[i:], x.ProviderUuid)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.ProviderUuid)))
 			i--
-			dAtA[i] = 0x18
+			dAtA[i] = 0x1a
 		}
 		if len(x.Tenant) > 0 {
 			i -= len(x.Tenant)
@@ -1791,10 +2068,12 @@ func (x *fastReflection_Lease) ProtoMethods() *protoiface.Methods {
 			i--
 			dAtA[i] = 0x12
 		}
-		if x.Id != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.Id))
+		if len(x.Uuid) > 0 {
+			i -= len(x.Uuid)
+			copy(dAtA[i:], x.Uuid)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Uuid)))
 			i--
-			dAtA[i] = 0x8
+			dAtA[i] = 0xa
 		}
 		if input.Buf != nil {
 			input.Buf = append(input.Buf, dAtA...)
@@ -1846,10 +2125,10 @@ func (x *fastReflection_Lease) ProtoMethods() *protoiface.Methods {
 			}
 			switch fieldNum {
 			case 1:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Uuid", wireType)
 				}
-				x.Id = 0
+				var stringLen uint64
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
@@ -1859,11 +2138,24 @@ func (x *fastReflection_Lease) ProtoMethods() *protoiface.Methods {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					x.Id |= uint64(b&0x7F) << shift
+					stringLen |= uint64(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
 				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Uuid = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
 			case 2:
 				if wireType != 2 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Tenant", wireType)
@@ -1897,10 +2189,10 @@ func (x *fastReflection_Lease) ProtoMethods() *protoiface.Methods {
 				x.Tenant = string(dAtA[iNdEx:postIndex])
 				iNdEx = postIndex
 			case 3:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ProviderId", wireType)
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ProviderUuid", wireType)
 				}
-				x.ProviderId = 0
+				var stringLen uint64
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
@@ -1910,11 +2202,24 @@ func (x *fastReflection_Lease) ProtoMethods() *protoiface.Methods {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					x.ProviderId |= uint64(b&0x7F) << shift
+					stringLen |= uint64(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
 				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.ProviderUuid = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
 			case 4:
 				if wireType != 2 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Items", wireType)
@@ -2073,6 +2378,146 @@ func (x *fastReflection_Lease) ProtoMethods() *protoiface.Methods {
 					x.LastSettledAt = &timestamppb.Timestamp{}
 				}
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.LastSettledAt); err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				iNdEx = postIndex
+			case 9:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field AcknowledgedAt", wireType)
+				}
+				var msglen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					msglen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if msglen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + msglen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if x.AcknowledgedAt == nil {
+					x.AcknowledgedAt = &timestamppb.Timestamp{}
+				}
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.AcknowledgedAt); err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				iNdEx = postIndex
+			case 10:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field RejectedAt", wireType)
+				}
+				var msglen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					msglen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if msglen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + msglen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if x.RejectedAt == nil {
+					x.RejectedAt = &timestamppb.Timestamp{}
+				}
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.RejectedAt); err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				iNdEx = postIndex
+			case 11:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field RejectionReason", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.RejectionReason = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			case 12:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ExpiredAt", wireType)
+				}
+				var msglen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					msglen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if msglen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + msglen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if x.ExpiredAt == nil {
+					x.ExpiredAt = &timestamppb.Timestamp{}
+				}
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.ExpiredAt); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
 				iNdEx = postIndex
@@ -2662,23 +3107,41 @@ type LeaseState int32
 const (
 	// LEASE_STATE_UNSPECIFIED is the default value.
 	LeaseState_LEASE_STATE_UNSPECIFIED LeaseState = 0
+	// LEASE_STATE_PENDING indicates the lease is awaiting provider acknowledgement.
+	// Credit is locked but billing has not started.
+	LeaseState_LEASE_STATE_PENDING LeaseState = 1
 	// LEASE_STATE_ACTIVE indicates the lease is active and accruing charges.
-	LeaseState_LEASE_STATE_ACTIVE LeaseState = 1
-	// LEASE_STATE_INACTIVE indicates the lease has been closed.
-	LeaseState_LEASE_STATE_INACTIVE LeaseState = 2
+	// Provider has acknowledged and resources are provisioned.
+	LeaseState_LEASE_STATE_ACTIVE LeaseState = 2
+	// LEASE_STATE_CLOSED indicates the lease has been closed normally.
+	// Final settlement has occurred.
+	LeaseState_LEASE_STATE_CLOSED LeaseState = 3
+	// LEASE_STATE_REJECTED indicates the provider rejected the lease.
+	// Credit has been unlocked and returned to tenant.
+	LeaseState_LEASE_STATE_REJECTED LeaseState = 4
+	// LEASE_STATE_EXPIRED indicates the lease expired while in PENDING state.
+	// Provider did not acknowledge within the timeout period.
+	// Credit has been unlocked and returned to tenant.
+	LeaseState_LEASE_STATE_EXPIRED LeaseState = 5
 )
 
 // Enum value maps for LeaseState.
 var (
 	LeaseState_name = map[int32]string{
 		0: "LEASE_STATE_UNSPECIFIED",
-		1: "LEASE_STATE_ACTIVE",
-		2: "LEASE_STATE_INACTIVE",
+		1: "LEASE_STATE_PENDING",
+		2: "LEASE_STATE_ACTIVE",
+		3: "LEASE_STATE_CLOSED",
+		4: "LEASE_STATE_REJECTED",
+		5: "LEASE_STATE_EXPIRED",
 	}
 	LeaseState_value = map[string]int32{
 		"LEASE_STATE_UNSPECIFIED": 0,
-		"LEASE_STATE_ACTIVE":      1,
-		"LEASE_STATE_INACTIVE":    2,
+		"LEASE_STATE_PENDING":     1,
+		"LEASE_STATE_ACTIVE":      2,
+		"LEASE_STATE_CLOSED":      3,
+		"LEASE_STATE_REJECTED":    4,
+		"LEASE_STATE_EXPIRED":     5,
 	}
 )
 
@@ -2728,6 +3191,14 @@ type Params struct {
 	// must be able to cover when creating a lease. This prevents tenants from creating leases
 	// that would immediately exhaust their credit. Default is 3600 (1 hour).
 	MinLeaseDuration uint64 `protobuf:"varint,6,opt,name=min_lease_duration,json=minLeaseDuration,proto3" json:"min_lease_duration,omitempty"`
+	// max_pending_leases_per_tenant is the maximum number of PENDING leases a tenant can have.
+	// Prevents spam attacks where tenants create many leases that providers must process.
+	// Default is 10.
+	MaxPendingLeasesPerTenant uint64 `protobuf:"varint,7,opt,name=max_pending_leases_per_tenant,json=maxPendingLeasesPerTenant,proto3" json:"max_pending_leases_per_tenant,omitempty"`
+	// pending_timeout is the duration in seconds that a lease can remain in PENDING state
+	// before it expires. Applies globally to all providers. Default is 1800 (30 minutes).
+	// Must be between 60 (1 minute) and 86400 (24 hours).
+	PendingTimeout uint64 `protobuf:"varint,8,opt,name=pending_timeout,json=pendingTimeout,proto3" json:"pending_timeout,omitempty"`
 }
 
 func (x *Params) Reset() {
@@ -2778,14 +3249,28 @@ func (x *Params) GetMinLeaseDuration() uint64 {
 	return 0
 }
 
+func (x *Params) GetMaxPendingLeasesPerTenant() uint64 {
+	if x != nil {
+		return x.MaxPendingLeasesPerTenant
+	}
+	return 0
+}
+
+func (x *Params) GetPendingTimeout() uint64 {
+	if x != nil {
+		return x.PendingTimeout
+	}
+	return 0
+}
+
 // LeaseItem represents a single SKU item within a lease.
 type LeaseItem struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// sku_id is the ID of the SKU being leased.
-	SkuId uint64 `protobuf:"varint,1,opt,name=sku_id,json=skuId,proto3" json:"sku_id,omitempty"`
+	// sku_uuid is the UUID of the SKU being leased.
+	SkuUuid string `protobuf:"bytes,1,opt,name=sku_uuid,json=skuUuid,proto3" json:"sku_uuid,omitempty"`
 	// quantity is the number of instances of this SKU.
 	Quantity uint64 `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	// locked_price is the price per unit locked at lease creation (per second).
@@ -2813,11 +3298,11 @@ func (*LeaseItem) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_types_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *LeaseItem) GetSkuId() uint64 {
+func (x *LeaseItem) GetSkuUuid() string {
 	if x != nil {
-		return x.SkuId
+		return x.SkuUuid
 	}
-	return 0
+	return ""
 }
 
 func (x *LeaseItem) GetQuantity() uint64 {
@@ -2840,22 +3325,37 @@ type Lease struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// id is the unique identifier of the lease.
-	Id uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	// uuid is the unique identifier of the lease (UUIDv7 format).
+	Uuid string `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	// tenant is the address of the tenant who owns this lease.
 	Tenant string `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	// provider_id is the provider ID (denormalized from SKUs for efficient querying).
-	ProviderId uint64 `protobuf:"varint,3,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	// provider_uuid is the provider UUID (denormalized from SKUs for efficient querying).
+	ProviderUuid string `protobuf:"bytes,3,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
 	// items is the list of SKU items in this lease.
 	Items []*LeaseItem `protobuf:"bytes,4,rep,name=items,proto3" json:"items,omitempty"`
 	// state is the current state of the lease.
 	State LeaseState `protobuf:"varint,5,opt,name=state,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state,omitempty"`
 	// created_at is the timestamp when the lease was created.
+	// Credit is locked at this time.
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	// closed_at is the timestamp when the lease was closed (if inactive).
+	// closed_at is the timestamp when the lease was closed (if CLOSED state).
 	ClosedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=closed_at,json=closedAt,proto3" json:"closed_at,omitempty"`
 	// last_settled_at is the timestamp of the last settlement/withdrawal.
+	// Only applicable for ACTIVE and CLOSED states.
 	LastSettledAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=last_settled_at,json=lastSettledAt,proto3" json:"last_settled_at,omitempty"`
+	// acknowledged_at is the timestamp when the provider acknowledged the lease.
+	// Only set when state transitions from PENDING to ACTIVE.
+	// Billing starts from this timestamp.
+	AcknowledgedAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=acknowledged_at,json=acknowledgedAt,proto3" json:"acknowledged_at,omitempty"`
+	// rejected_at is the timestamp when the provider rejected the lease.
+	// Only set when state is REJECTED.
+	RejectedAt *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=rejected_at,json=rejectedAt,proto3" json:"rejected_at,omitempty"`
+	// rejection_reason is a free-form explanation for why the lease was rejected.
+	// Only set when state is REJECTED. Maximum 256 characters.
+	RejectionReason string `protobuf:"bytes,11,opt,name=rejection_reason,json=rejectionReason,proto3" json:"rejection_reason,omitempty"`
+	// expired_at is the timestamp when the lease expired while in PENDING state.
+	// Only set when state is EXPIRED.
+	ExpiredAt *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=expired_at,json=expiredAt,proto3" json:"expired_at,omitempty"`
 }
 
 func (x *Lease) Reset() {
@@ -2878,11 +3378,11 @@ func (*Lease) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_types_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *Lease) GetId() uint64 {
+func (x *Lease) GetUuid() string {
 	if x != nil {
-		return x.Id
+		return x.Uuid
 	}
-	return 0
+	return ""
 }
 
 func (x *Lease) GetTenant() string {
@@ -2892,11 +3392,11 @@ func (x *Lease) GetTenant() string {
 	return ""
 }
 
-func (x *Lease) GetProviderId() uint64 {
+func (x *Lease) GetProviderUuid() string {
 	if x != nil {
-		return x.ProviderId
+		return x.ProviderUuid
 	}
-	return 0
+	return ""
 }
 
 func (x *Lease) GetItems() []*LeaseItem {
@@ -2930,6 +3430,34 @@ func (x *Lease) GetClosedAt() *timestamppb.Timestamp {
 func (x *Lease) GetLastSettledAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.LastSettledAt
+	}
+	return nil
+}
+
+func (x *Lease) GetAcknowledgedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AcknowledgedAt
+	}
+	return nil
+}
+
+func (x *Lease) GetRejectedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RejectedAt
+	}
+	return nil
+}
+
+func (x *Lease) GetRejectionReason() string {
+	if x != nil {
+		return x.RejectionReason
+	}
+	return ""
+}
+
+func (x *Lease) GetExpiredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiredAt
 	}
 	return nil
 }
@@ -3005,7 +3533,7 @@ var file_liftedinit_billing_v1_types_proto_rawDesc = []byte{
 	0x6f, 0x74, 0x6f, 0x2f, 0x67, 0x6f, 0x67, 0x6f, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x1f,
 	0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2f,
 	0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22,
-	0x8e, 0x03, 0x0a, 0x06, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x5d, 0x0a, 0x15, 0x6d, 0x61,
+	0xd3, 0x04, 0x0a, 0x06, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x5d, 0x0a, 0x15, 0x6d, 0x61,
 	0x78, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x73, 0x5f, 0x70, 0x65, 0x72, 0x5f, 0x74, 0x65, 0x6e,
 	0x61, 0x6e, 0x74, 0x18, 0x03, 0x20, 0x01, 0x28, 0x04, 0x42, 0x2a, 0xea, 0xde, 0x1f, 0x26, 0x6d,
 	0x61, 0x78, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x73, 0x5f, 0x70, 0x65, 0x72, 0x5f, 0x74, 0x65,
@@ -3028,104 +3556,143 @@ var file_liftedinit_billing_v1_types_proto_rawDesc = []byte{
 	0x65, 0x61, 0x73, 0x65, 0x5f, 0x64, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2c, 0x6f, 0x6d,
 	0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x10,
 	0x6d, 0x69, 0x6e, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x44, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e,
-	0x3a, 0x1e, 0xe8, 0xa0, 0x1f, 0x01, 0x8a, 0xe7, 0xb0, 0x2a, 0x15, 0x6c, 0x69, 0x66, 0x74, 0x65,
-	0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73,
-	0x22, 0xed, 0x01, 0x0a, 0x09, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x49, 0x74, 0x65, 0x6d, 0x12, 0x32,
-	0x0a, 0x06, 0x73, 0x6b, 0x75, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x42, 0x1b,
-	0xea, 0xde, 0x1f, 0x17, 0x73, 0x6b, 0x75, 0x5f, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65,
-	0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x05, 0x73, 0x6b, 0x75,
-	0x49, 0x64, 0x12, 0x39, 0x0a, 0x08, 0x71, 0x75, 0x61, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x18, 0x02,
-	0x20, 0x01, 0x28, 0x04, 0x42, 0x1d, 0xea, 0xde, 0x1f, 0x19, 0x71, 0x75, 0x61, 0x6e, 0x74, 0x69,
-	0x74, 0x79, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72,
-	0x69, 0x6e, 0x67, 0x52, 0x08, 0x71, 0x75, 0x61, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x12, 0x52, 0x0a,
-	0x0c, 0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64, 0x5f, 0x70, 0x72, 0x69, 0x63, 0x65, 0x18, 0x03, 0x20,
-	0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73,
-	0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x14,
-	0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0c, 0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64, 0x5f, 0x70,
-	0x72, 0x69, 0x63, 0x65, 0x52, 0x0b, 0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64, 0x50, 0x72, 0x69, 0x63,
-	0x65, 0x3a, 0x1d, 0x8a, 0xe7, 0xb0, 0x2a, 0x18, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62,
-	0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x49, 0x74, 0x65, 0x6d,
-	0x22, 0xf3, 0x04, 0x0a, 0x05, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x12, 0x27, 0x0a, 0x02, 0x69, 0x64,
-	0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x42, 0x17, 0xea, 0xde, 0x1f, 0x13, 0x69, 0x64, 0x2c, 0x6f,
-	0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52,
-	0x02, 0x69, 0x64, 0x12, 0x44, 0x0a, 0x06, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x2c,
-	0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73,
-	0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e,
-	0x67, 0x52, 0x06, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x41, 0x0a, 0x0b, 0x70, 0x72, 0x6f,
-	0x76, 0x69, 0x64, 0x65, 0x72, 0x5f, 0x69, 0x64, 0x18, 0x03, 0x20, 0x01, 0x28, 0x04, 0x42, 0x20,
-	0xea, 0xde, 0x1f, 0x1c, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x5f, 0x69, 0x64, 0x2c,
-	0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67,
-	0x52, 0x0a, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x49, 0x64, 0x12, 0x45, 0x0a, 0x05,
-	0x69, 0x74, 0x65, 0x6d, 0x73, 0x18, 0x04, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x6c, 0x69,
-	0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67,
-	0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x49, 0x74, 0x65, 0x6d, 0x42, 0x0d, 0xc8,
-	0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x05, 0x69, 0x74, 0x65, 0x6d, 0x73, 0x52, 0x05, 0x69, 0x74,
-	0x65, 0x6d, 0x73, 0x12, 0x4c, 0x0a, 0x05, 0x73, 0x74, 0x61, 0x74, 0x65, 0x18, 0x05, 0x20, 0x01,
-	0x28, 0x0e, 0x32, 0x21, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e,
-	0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x65, 0x61, 0x73, 0x65,
-	0x53, 0x74, 0x61, 0x74, 0x65, 0x42, 0x13, 0xea, 0xde, 0x1f, 0x0f, 0x73, 0x74, 0x61, 0x74, 0x65,
-	0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x05, 0x73, 0x74, 0x61, 0x74,
-	0x65, 0x12, 0x51, 0x0a, 0x0a, 0x63, 0x72, 0x65, 0x61, 0x74, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x18,
-	0x06, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d,
-	0x70, 0x42, 0x16, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0a, 0x63, 0x72, 0x65, 0x61, 0x74,
-	0x65, 0x64, 0x5f, 0x61, 0x74, 0x90, 0xdf, 0x1f, 0x01, 0x52, 0x09, 0x63, 0x72, 0x65, 0x61, 0x74,
-	0x65, 0x64, 0x41, 0x74, 0x12, 0x54, 0x0a, 0x09, 0x63, 0x6c, 0x6f, 0x73, 0x65, 0x64, 0x5f, 0x61,
-	0x74, 0x18, 0x07, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65,
+	0x12, 0x74, 0x0a, 0x1d, 0x6d, 0x61, 0x78, 0x5f, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x5f,
+	0x6c, 0x65, 0x61, 0x73, 0x65, 0x73, 0x5f, 0x70, 0x65, 0x72, 0x5f, 0x74, 0x65, 0x6e, 0x61, 0x6e,
+	0x74, 0x18, 0x07, 0x20, 0x01, 0x28, 0x04, 0x42, 0x32, 0xea, 0xde, 0x1f, 0x2e, 0x6d, 0x61, 0x78,
+	0x5f, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x73, 0x5f,
+	0x70, 0x65, 0x72, 0x5f, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65,
+	0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x19, 0x6d, 0x61, 0x78,
+	0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x73, 0x50, 0x65, 0x72,
+	0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x4d, 0x0a, 0x0f, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e,
+	0x67, 0x5f, 0x74, 0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74, 0x18, 0x08, 0x20, 0x01, 0x28, 0x04, 0x42,
+	0x24, 0xea, 0xde, 0x1f, 0x20, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x5f, 0x74, 0x69, 0x6d,
+	0x65, 0x6f, 0x75, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73,
+	0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0e, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x54, 0x69,
+	0x6d, 0x65, 0x6f, 0x75, 0x74, 0x3a, 0x1e, 0xe8, 0xa0, 0x1f, 0x01, 0x8a, 0xe7, 0xb0, 0x2a, 0x15,
+	0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x50,
+	0x61, 0x72, 0x61, 0x6d, 0x73, 0x22, 0xec, 0x01, 0x0a, 0x09, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x49,
+	0x74, 0x65, 0x6d, 0x12, 0x31, 0x0a, 0x08, 0x73, 0x6b, 0x75, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x16, 0xea, 0xde, 0x1f, 0x12, 0x73, 0x6b, 0x75, 0x5f, 0x75,
+	0x75, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x07, 0x73,
+	0x6b, 0x75, 0x55, 0x75, 0x69, 0x64, 0x12, 0x39, 0x0a, 0x08, 0x71, 0x75, 0x61, 0x6e, 0x74, 0x69,
+	0x74, 0x79, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x42, 0x1d, 0xea, 0xde, 0x1f, 0x19, 0x71, 0x75,
+	0x61, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79,
+	0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x08, 0x71, 0x75, 0x61, 0x6e, 0x74, 0x69, 0x74,
+	0x79, 0x12, 0x52, 0x0a, 0x0c, 0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64, 0x5f, 0x70, 0x72, 0x69, 0x63,
+	0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73,
+	0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f,
+	0x69, 0x6e, 0x42, 0x14, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0c, 0x6c, 0x6f, 0x63, 0x6b,
+	0x65, 0x64, 0x5f, 0x70, 0x72, 0x69, 0x63, 0x65, 0x52, 0x0b, 0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64,
+	0x50, 0x72, 0x69, 0x63, 0x65, 0x3a, 0x1d, 0x8a, 0xe7, 0xb0, 0x2a, 0x18, 0x6c, 0x69, 0x66, 0x74,
+	0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4c, 0x65, 0x61, 0x73, 0x65,
+	0x49, 0x74, 0x65, 0x6d, 0x22, 0xd9, 0x07, 0x0a, 0x05, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x12, 0x26,
+	0x0a, 0x04, 0x75, 0x75, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x12, 0xea, 0xde,
+	0x1f, 0x0e, 0x75, 0x75, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79,
+	0x52, 0x04, 0x75, 0x75, 0x69, 0x64, 0x12, 0x44, 0x0a, 0x06, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74,
+	0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x74, 0x65, 0x6e, 0x61,
+	0x6e, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14,
+	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74,
+	0x72, 0x69, 0x6e, 0x67, 0x52, 0x06, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x40, 0x0a, 0x0d,
+	0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x18, 0x03, 0x20,
+	0x01, 0x28, 0x09, 0x42, 0x1b, 0xea, 0xde, 0x1f, 0x17, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65,
+	0x72, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79,
+	0x52, 0x0c, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x72, 0x55, 0x75, 0x69, 0x64, 0x12, 0x45,
+	0x0a, 0x05, 0x69, 0x74, 0x65, 0x6d, 0x73, 0x18, 0x04, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x20, 0x2e,
+	0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69,
+	0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x49, 0x74, 0x65, 0x6d, 0x42,
+	0x0d, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x05, 0x69, 0x74, 0x65, 0x6d, 0x73, 0x52, 0x05,
+	0x69, 0x74, 0x65, 0x6d, 0x73, 0x12, 0x4c, 0x0a, 0x05, 0x73, 0x74, 0x61, 0x74, 0x65, 0x18, 0x05,
+	0x20, 0x01, 0x28, 0x0e, 0x32, 0x21, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69,
+	0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x65, 0x61,
+	0x73, 0x65, 0x53, 0x74, 0x61, 0x74, 0x65, 0x42, 0x13, 0xea, 0xde, 0x1f, 0x0f, 0x73, 0x74, 0x61,
+	0x74, 0x65, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x05, 0x73, 0x74,
+	0x61, 0x74, 0x65, 0x12, 0x51, 0x0a, 0x0a, 0x63, 0x72, 0x65, 0x61, 0x74, 0x65, 0x64, 0x5f, 0x61,
+	0x74, 0x18, 0x06, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65,
 	0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74,
-	0x61, 0x6d, 0x70, 0x42, 0x1b, 0xea, 0xde, 0x1f, 0x13, 0x63, 0x6c, 0x6f, 0x73, 0x65, 0x64, 0x5f,
-	0x61, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x90, 0xdf, 0x1f, 0x01,
-	0x52, 0x08, 0x63, 0x6c, 0x6f, 0x73, 0x65, 0x64, 0x41, 0x74, 0x12, 0x5f, 0x0a, 0x0f, 0x6c, 0x61,
-	0x73, 0x74, 0x5f, 0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x18, 0x08, 0x20,
-	0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x42,
-	0x1b, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0f, 0x6c, 0x61, 0x73, 0x74, 0x5f, 0x73, 0x65,
-	0x74, 0x74, 0x6c, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x90, 0xdf, 0x1f, 0x01, 0x52, 0x0d, 0x6c, 0x61,
-	0x73, 0x74, 0x53, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x41, 0x74, 0x3a, 0x19, 0x8a, 0xe7, 0xb0,
-	0x2a, 0x14, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67,
-	0x2f, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x22, 0xac, 0x02, 0x0a, 0x0d, 0x43, 0x72, 0x65, 0x64, 0x69,
-	0x74, 0x41, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x44, 0x0a, 0x06, 0x74, 0x65, 0x6e, 0x61,
-	0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x74, 0x65,
-	0x6e, 0x61, 0x6e, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4,
+	0x61, 0x6d, 0x70, 0x42, 0x16, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0a, 0x63, 0x72, 0x65,
+	0x61, 0x74, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x90, 0xdf, 0x1f, 0x01, 0x52, 0x09, 0x63, 0x72, 0x65,
+	0x61, 0x74, 0x65, 0x64, 0x41, 0x74, 0x12, 0x54, 0x0a, 0x09, 0x63, 0x6c, 0x6f, 0x73, 0x65, 0x64,
+	0x5f, 0x61, 0x74, 0x18, 0x07, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67,
+	0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65,
+	0x73, 0x74, 0x61, 0x6d, 0x70, 0x42, 0x1b, 0xea, 0xde, 0x1f, 0x13, 0x63, 0x6c, 0x6f, 0x73, 0x65,
+	0x64, 0x5f, 0x61, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x90, 0xdf,
+	0x1f, 0x01, 0x52, 0x08, 0x63, 0x6c, 0x6f, 0x73, 0x65, 0x64, 0x41, 0x74, 0x12, 0x5f, 0x0a, 0x0f,
+	0x6c, 0x61, 0x73, 0x74, 0x5f, 0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x18,
+	0x08, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70,
+	0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d,
+	0x70, 0x42, 0x1b, 0xc8, 0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x0f, 0x6c, 0x61, 0x73, 0x74, 0x5f,
+	0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x90, 0xdf, 0x1f, 0x01, 0x52, 0x0d,
+	0x6c, 0x61, 0x73, 0x74, 0x53, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x41, 0x74, 0x12, 0x66, 0x0a,
+	0x0f, 0x61, 0x63, 0x6b, 0x6e, 0x6f, 0x77, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x64, 0x5f, 0x61, 0x74,
+	0x18, 0x09, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61,
+	0x6d, 0x70, 0x42, 0x21, 0xea, 0xde, 0x1f, 0x19, 0x61, 0x63, 0x6b, 0x6e, 0x6f, 0x77, 0x6c, 0x65,
+	0x64, 0x67, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74,
+	0x79, 0x90, 0xdf, 0x1f, 0x01, 0x52, 0x0e, 0x61, 0x63, 0x6b, 0x6e, 0x6f, 0x77, 0x6c, 0x65, 0x64,
+	0x67, 0x65, 0x64, 0x41, 0x74, 0x12, 0x5a, 0x0a, 0x0b, 0x72, 0x65, 0x6a, 0x65, 0x63, 0x74, 0x65,
+	0x64, 0x5f, 0x61, 0x74, 0x18, 0x0a, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f,
+	0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d,
+	0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x42, 0x1d, 0xea, 0xde, 0x1f, 0x15, 0x72, 0x65, 0x6a, 0x65,
+	0x63, 0x74, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74,
+	0x79, 0x90, 0xdf, 0x1f, 0x01, 0x52, 0x0a, 0x72, 0x65, 0x6a, 0x65, 0x63, 0x74, 0x65, 0x64, 0x41,
+	0x74, 0x12, 0x49, 0x0a, 0x10, 0x72, 0x65, 0x6a, 0x65, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x72,
+	0x65, 0x61, 0x73, 0x6f, 0x6e, 0x18, 0x0b, 0x20, 0x01, 0x28, 0x09, 0x42, 0x1e, 0xea, 0xde, 0x1f,
+	0x1a, 0x72, 0x65, 0x6a, 0x65, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x72, 0x65, 0x61, 0x73, 0x6f,
+	0x6e, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x0f, 0x72, 0x65, 0x6a,
+	0x65, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x12, 0x57, 0x0a, 0x0a,
+	0x65, 0x78, 0x70, 0x69, 0x72, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x18, 0x0c, 0x20, 0x01, 0x28, 0x0b,
+	0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62,
+	0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x42, 0x1c, 0xea, 0xde,
+	0x1f, 0x14, 0x65, 0x78, 0x70, 0x69, 0x72, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x2c, 0x6f, 0x6d, 0x69,
+	0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x90, 0xdf, 0x1f, 0x01, 0x52, 0x09, 0x65, 0x78, 0x70, 0x69,
+	0x72, 0x65, 0x64, 0x41, 0x74, 0x3a, 0x19, 0x8a, 0xe7, 0xb0, 0x2a, 0x14, 0x6c, 0x69, 0x66, 0x74,
+	0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x4c, 0x65, 0x61, 0x73, 0x65,
+	0x22, 0xac, 0x02, 0x0a, 0x0d, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x41, 0x63, 0x63, 0x6f, 0x75,
+	0x6e, 0x74, 0x12, 0x44, 0x0a, 0x06, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x09, 0x42, 0x2c, 0xea, 0xde, 0x1f, 0x10, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x2c, 0x6f,
+	0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d,
+	0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67,
+	0x52, 0x06, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x5b, 0x0a, 0x0e, 0x63, 0x72, 0x65, 0x64,
+	0x69, 0x74, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09,
+	0x42, 0x34, 0xea, 0xde, 0x1f, 0x18, 0x63, 0x72, 0x65, 0x64, 0x69, 0x74, 0x5f, 0x61, 0x64, 0x64,
+	0x72, 0x65, 0x73, 0x73, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4,
 	0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73,
-	0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x06, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x5b,
-	0x0a, 0x0e, 0x63, 0x72, 0x65, 0x64, 0x69, 0x74, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73,
-	0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x42, 0x34, 0xea, 0xde, 0x1f, 0x18, 0x63, 0x72, 0x65, 0x64,
-	0x69, 0x74, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65,
-	0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41,
-	0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0d, 0x63, 0x72,
-	0x65, 0x64, 0x69, 0x74, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x12, 0x55, 0x0a, 0x12, 0x61,
-	0x63, 0x74, 0x69, 0x76, 0x65, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x63, 0x6f, 0x75, 0x6e,
-	0x74, 0x18, 0x03, 0x20, 0x01, 0x28, 0x04, 0x42, 0x27, 0xea, 0xde, 0x1f, 0x23, 0x61, 0x63, 0x74,
-	0x69, 0x76, 0x65, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x2c,
-	0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67,
-	0x52, 0x10, 0x61, 0x63, 0x74, 0x69, 0x76, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x43, 0x6f, 0x75,
-	0x6e, 0x74, 0x3a, 0x21, 0x8a, 0xe7, 0xb0, 0x2a, 0x1c, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f,
-	0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x41, 0x63,
-	0x63, 0x6f, 0x75, 0x6e, 0x74, 0x2a, 0x61, 0x0a, 0x0a, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x53, 0x74,
-	0x61, 0x74, 0x65, 0x12, 0x1b, 0x0a, 0x17, 0x4c, 0x45, 0x41, 0x53, 0x45, 0x5f, 0x53, 0x54, 0x41,
-	0x54, 0x45, 0x5f, 0x55, 0x4e, 0x53, 0x50, 0x45, 0x43, 0x49, 0x46, 0x49, 0x45, 0x44, 0x10, 0x00,
-	0x12, 0x16, 0x0a, 0x12, 0x4c, 0x45, 0x41, 0x53, 0x45, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f,
-	0x41, 0x43, 0x54, 0x49, 0x56, 0x45, 0x10, 0x01, 0x12, 0x18, 0x0a, 0x14, 0x4c, 0x45, 0x41, 0x53,
-	0x45, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x49, 0x4e, 0x41, 0x43, 0x54, 0x49, 0x56, 0x45,
-	0x10, 0x02, 0x1a, 0x04, 0x88, 0xa3, 0x1e, 0x00, 0x42, 0xee, 0x01, 0x0a, 0x19, 0x63, 0x6f, 0x6d,
-	0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c,
-	0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x42, 0x0a, 0x54, 0x79, 0x70, 0x65, 0x73, 0x50, 0x72, 0x6f,
-	0x74, 0x6f, 0x50, 0x01, 0x5a, 0x4f, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d,
-	0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6e, 0x65, 0x74, 0x77, 0x6f, 0x72,
-	0x6b, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6c, 0x65, 0x64, 0x67, 0x65,
-	0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74,
-	0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x76, 0x31, 0x3b, 0x62, 0x69, 0x6c, 0x6c,
-	0x69, 0x6e, 0x67, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x4c, 0x42, 0x58, 0xaa, 0x02, 0x15, 0x4c, 0x69,
-	0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67,
-	0x2e, 0x56, 0x31, 0xca, 0x02, 0x15, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74,
-	0x5c, 0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x5c, 0x56, 0x31, 0xe2, 0x02, 0x21, 0x4c, 0x69,
-	0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67,
-	0x5c, 0x56, 0x31, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea,
-	0x02, 0x17, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x3a, 0x3a, 0x42, 0x69,
-	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x3a, 0x3a, 0x56, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x33,
+	0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0d, 0x63, 0x72, 0x65, 0x64, 0x69, 0x74, 0x41, 0x64,
+	0x64, 0x72, 0x65, 0x73, 0x73, 0x12, 0x55, 0x0a, 0x12, 0x61, 0x63, 0x74, 0x69, 0x76, 0x65, 0x5f,
+	0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x03, 0x20, 0x01, 0x28,
+	0x04, 0x42, 0x27, 0xea, 0xde, 0x1f, 0x23, 0x61, 0x63, 0x74, 0x69, 0x76, 0x65, 0x5f, 0x6c, 0x65,
+	0x61, 0x73, 0x65, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d,
+	0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x10, 0x61, 0x63, 0x74, 0x69,
+	0x76, 0x65, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x3a, 0x21, 0x8a, 0xe7,
+	0xb0, 0x2a, 0x1c, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e,
+	0x67, 0x2f, 0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x41, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x2a,
+	0xab, 0x01, 0x0a, 0x0a, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x53, 0x74, 0x61, 0x74, 0x65, 0x12, 0x1b,
+	0x0a, 0x17, 0x4c, 0x45, 0x41, 0x53, 0x45, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x55, 0x4e,
+	0x53, 0x50, 0x45, 0x43, 0x49, 0x46, 0x49, 0x45, 0x44, 0x10, 0x00, 0x12, 0x17, 0x0a, 0x13, 0x4c,
+	0x45, 0x41, 0x53, 0x45, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x50, 0x45, 0x4e, 0x44, 0x49,
+	0x4e, 0x47, 0x10, 0x01, 0x12, 0x16, 0x0a, 0x12, 0x4c, 0x45, 0x41, 0x53, 0x45, 0x5f, 0x53, 0x54,
+	0x41, 0x54, 0x45, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x56, 0x45, 0x10, 0x02, 0x12, 0x16, 0x0a, 0x12,
+	0x4c, 0x45, 0x41, 0x53, 0x45, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x43, 0x4c, 0x4f, 0x53,
+	0x45, 0x44, 0x10, 0x03, 0x12, 0x18, 0x0a, 0x14, 0x4c, 0x45, 0x41, 0x53, 0x45, 0x5f, 0x53, 0x54,
+	0x41, 0x54, 0x45, 0x5f, 0x52, 0x45, 0x4a, 0x45, 0x43, 0x54, 0x45, 0x44, 0x10, 0x04, 0x12, 0x17,
+	0x0a, 0x13, 0x4c, 0x45, 0x41, 0x53, 0x45, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x45, 0x5f, 0x45, 0x58,
+	0x50, 0x49, 0x52, 0x45, 0x44, 0x10, 0x05, 0x1a, 0x04, 0x88, 0xa3, 0x1e, 0x00, 0x42, 0xee, 0x01,
+	0x0a, 0x19, 0x63, 0x6f, 0x6d, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74,
+	0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x42, 0x0a, 0x54, 0x79, 0x70,
+	0x65, 0x73, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x4f, 0x67, 0x69, 0x74, 0x68, 0x75,
+	0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d, 0x6e,
+	0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x2f, 0x6d, 0x61, 0x6e, 0x69, 0x66, 0x65, 0x73, 0x74, 0x2d,
+	0x6c, 0x65, 0x64, 0x67, 0x65, 0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x6c, 0x69, 0x66, 0x74, 0x65,
+	0x64, 0x69, 0x6e, 0x69, 0x74, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f, 0x76, 0x31,
+	0x3b, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x4c, 0x42, 0x58,
+	0xaa, 0x02, 0x15, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x42, 0x69,
+	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x15, 0x4c, 0x69, 0x66, 0x74, 0x65,
+	0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x5c, 0x56, 0x31,
+	0xe2, 0x02, 0x21, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x5c, 0x42, 0x69,
+	0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x5c, 0x56, 0x31, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61,
+	0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x17, 0x4c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69,
+	0x74, 0x3a, 0x3a, 0x42, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x3a, 0x3a, 0x56, 0x31, 0x62, 0x06,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -3158,11 +3725,14 @@ var file_liftedinit_billing_v1_types_proto_depIdxs = []int32{
 	6, // 3: liftedinit.billing.v1.Lease.created_at:type_name -> google.protobuf.Timestamp
 	6, // 4: liftedinit.billing.v1.Lease.closed_at:type_name -> google.protobuf.Timestamp
 	6, // 5: liftedinit.billing.v1.Lease.last_settled_at:type_name -> google.protobuf.Timestamp
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	6, // 6: liftedinit.billing.v1.Lease.acknowledged_at:type_name -> google.protobuf.Timestamp
+	6, // 7: liftedinit.billing.v1.Lease.rejected_at:type_name -> google.protobuf.Timestamp
+	6, // 8: liftedinit.billing.v1.Lease.expired_at:type_name -> google.protobuf.Timestamp
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_liftedinit_billing_v1_types_proto_init() }

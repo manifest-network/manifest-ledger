@@ -62,15 +62,15 @@ func request_Query_Lease_0(ctx context.Context, marshaler runtime.Marshaler, cli
 		_   = err
 	)
 
-	val, ok = pathParams["lease_id"]
+	val, ok = pathParams["lease_uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "lease_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "lease_uuid")
 	}
 
-	protoReq.LeaseId, err = runtime.Uint64(val)
+	protoReq.LeaseUuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "lease_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "lease_uuid", err)
 	}
 
 	msg, err := client.Lease(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
@@ -89,15 +89,15 @@ func local_request_Query_Lease_0(ctx context.Context, marshaler runtime.Marshale
 		_   = err
 	)
 
-	val, ok = pathParams["lease_id"]
+	val, ok = pathParams["lease_uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "lease_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "lease_uuid")
 	}
 
-	protoReq.LeaseId, err = runtime.Uint64(val)
+	protoReq.LeaseUuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "lease_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "lease_uuid", err)
 	}
 
 	msg, err := server.Lease(ctx, &protoReq)
@@ -214,7 +214,7 @@ func local_request_Query_LeasesByTenant_0(ctx context.Context, marshaler runtime
 }
 
 var (
-	filter_Query_LeasesByProvider_0 = &utilities.DoubleArray{Encoding: map[string]int{"provider_id": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+	filter_Query_LeasesByProvider_0 = &utilities.DoubleArray{Encoding: map[string]int{"provider_uuid": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
 )
 
 func request_Query_LeasesByProvider_0(ctx context.Context, marshaler runtime.Marshaler, client QueryClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -228,15 +228,15 @@ func request_Query_LeasesByProvider_0(ctx context.Context, marshaler runtime.Mar
 		_   = err
 	)
 
-	val, ok = pathParams["provider_id"]
+	val, ok = pathParams["provider_uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "provider_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "provider_uuid")
 	}
 
-	protoReq.ProviderId, err = runtime.Uint64(val)
+	protoReq.ProviderUuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "provider_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "provider_uuid", err)
 	}
 
 	if err := req.ParseForm(); err != nil {
@@ -262,15 +262,15 @@ func local_request_Query_LeasesByProvider_0(ctx context.Context, marshaler runti
 		_   = err
 	)
 
-	val, ok = pathParams["provider_id"]
+	val, ok = pathParams["provider_uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "provider_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "provider_uuid")
 	}
 
-	protoReq.ProviderId, err = runtime.Uint64(val)
+	protoReq.ProviderUuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "provider_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "provider_uuid", err)
 	}
 
 	if err := req.ParseForm(); err != nil {
@@ -404,15 +404,15 @@ func request_Query_WithdrawableAmount_0(ctx context.Context, marshaler runtime.M
 		_   = err
 	)
 
-	val, ok = pathParams["lease_id"]
+	val, ok = pathParams["lease_uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "lease_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "lease_uuid")
 	}
 
-	protoReq.LeaseId, err = runtime.Uint64(val)
+	protoReq.LeaseUuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "lease_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "lease_uuid", err)
 	}
 
 	msg, err := client.WithdrawableAmount(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
@@ -431,15 +431,15 @@ func local_request_Query_WithdrawableAmount_0(ctx context.Context, marshaler run
 		_   = err
 	)
 
-	val, ok = pathParams["lease_id"]
+	val, ok = pathParams["lease_uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "lease_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "lease_uuid")
 	}
 
-	protoReq.LeaseId, err = runtime.Uint64(val)
+	protoReq.LeaseUuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "lease_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "lease_uuid", err)
 	}
 
 	msg, err := server.WithdrawableAmount(ctx, &protoReq)
@@ -458,15 +458,15 @@ func request_Query_ProviderWithdrawable_0(ctx context.Context, marshaler runtime
 		_   = err
 	)
 
-	val, ok = pathParams["provider_id"]
+	val, ok = pathParams["provider_uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "provider_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "provider_uuid")
 	}
 
-	protoReq.ProviderId, err = runtime.Uint64(val)
+	protoReq.ProviderUuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "provider_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "provider_uuid", err)
 	}
 
 	msg, err := client.ProviderWithdrawable(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
@@ -485,15 +485,15 @@ func local_request_Query_ProviderWithdrawable_0(ctx context.Context, marshaler r
 		_   = err
 	)
 
-	val, ok = pathParams["provider_id"]
+	val, ok = pathParams["provider_uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "provider_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "provider_uuid")
 	}
 
-	protoReq.ProviderId, err = runtime.Uint64(val)
+	protoReq.ProviderUuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "provider_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "provider_uuid", err)
 	}
 
 	msg, err := server.ProviderWithdrawable(ctx, &protoReq)
@@ -941,21 +941,21 @@ func RegisterQueryHandlerClient(ctx context.Context, mux *runtime.ServeMux, clie
 var (
 	pattern_Query_Params_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"liftedinit", "billing", "v1", "params"}, "", runtime.AssumeColonVerbOpt(false)))
 
-	pattern_Query_Lease_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"liftedinit", "billing", "v1", "lease", "lease_id"}, "", runtime.AssumeColonVerbOpt(false)))
+	pattern_Query_Lease_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"liftedinit", "billing", "v1", "lease", "lease_uuid"}, "", runtime.AssumeColonVerbOpt(false)))
 
 	pattern_Query_Leases_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"liftedinit", "billing", "v1", "leases"}, "", runtime.AssumeColonVerbOpt(false)))
 
 	pattern_Query_LeasesByTenant_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 1, 0, 4, 1, 5, 4}, []string{"liftedinit", "billing", "v1", "leases", "tenant"}, "", runtime.AssumeColonVerbOpt(false)))
 
-	pattern_Query_LeasesByProvider_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 1, 0, 4, 1, 5, 5}, []string{"liftedinit", "billing", "v1", "leases", "provider", "provider_id"}, "", runtime.AssumeColonVerbOpt(false)))
+	pattern_Query_LeasesByProvider_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 1, 0, 4, 1, 5, 5}, []string{"liftedinit", "billing", "v1", "leases", "provider", "provider_uuid"}, "", runtime.AssumeColonVerbOpt(false)))
 
 	pattern_Query_CreditAccount_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"liftedinit", "billing", "v1", "credit", "tenant"}, "", runtime.AssumeColonVerbOpt(false)))
 
 	pattern_Query_CreditAddress_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"liftedinit", "billing", "v1", "credit-address", "tenant"}, "", runtime.AssumeColonVerbOpt(false)))
 
-	pattern_Query_WithdrawableAmount_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5}, []string{"liftedinit", "billing", "v1", "lease", "lease_id", "withdrawable"}, "", runtime.AssumeColonVerbOpt(false)))
+	pattern_Query_WithdrawableAmount_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5}, []string{"liftedinit", "billing", "v1", "lease", "lease_uuid", "withdrawable"}, "", runtime.AssumeColonVerbOpt(false)))
 
-	pattern_Query_ProviderWithdrawable_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5}, []string{"liftedinit", "billing", "v1", "provider", "provider_id", "withdrawable"}, "", runtime.AssumeColonVerbOpt(false)))
+	pattern_Query_ProviderWithdrawable_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5}, []string{"liftedinit", "billing", "v1", "provider", "provider_uuid", "withdrawable"}, "", runtime.AssumeColonVerbOpt(false)))
 )
 
 var (

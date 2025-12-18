@@ -15,6 +15,7 @@ proper interaction with the bank module for credit account balances.
 package keeper_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -92,11 +93,12 @@ func (f *testFixture) fundAccount(t *testing.T, addr sdk.AccAddress, coins sdk.C
 // createTestProvider creates a provider in the SKU module for testing.
 func (f *testFixture) createTestProvider(t *testing.T, address, payoutAddress string) skutypes.Provider {
 	t.Helper()
-	providerID, err := f.App.SKUKeeper.GetNextProviderID(f.Ctx)
+	// Generate a unique UUID for the provider
+	providerUUID, err := f.App.SKUKeeper.GenerateProviderUUID(f.Ctx)
 	require.NoError(t, err)
 
 	provider := skutypes.Provider{
-		Id:            providerID,
+		Uuid:          providerUUID,
 		Address:       address,
 		PayoutAddress: payoutAddress,
 		Active:        true,
@@ -107,18 +109,19 @@ func (f *testFixture) createTestProvider(t *testing.T, address, payoutAddress st
 }
 
 // createTestSKU creates a SKU in the SKU module for testing.
-func (f *testFixture) createTestSKU(t *testing.T, providerID uint64, priceAmount int64) skutypes.SKU {
+func (f *testFixture) createTestSKU(t *testing.T, providerUUID string, priceAmount int64) skutypes.SKU {
 	t.Helper()
-	skuID, err := f.App.SKUKeeper.GetNextSKUID(f.Ctx)
+	// Generate a unique UUID for the SKU
+	skuUUID, err := f.App.SKUKeeper.GenerateSKUUUID(f.Ctx)
 	require.NoError(t, err)
 
 	sku := skutypes.SKU{
-		Id:         skuID,
-		ProviderId: providerID,
-		Name:       "Test SKU",
-		Unit:       skutypes.Unit_UNIT_PER_HOUR,
-		BasePrice:  sdk.NewCoin("umfx", sdkmath.NewInt(priceAmount)),
-		Active:     true,
+		Uuid:         skuUUID,
+		ProviderUuid: providerUUID,
+		Name:         "Test SKU",
+		Unit:         skutypes.Unit_UNIT_PER_HOUR,
+		BasePrice:    sdk.NewCoin("umfx", sdkmath.NewInt(priceAmount)),
+		Active:       true,
 	}
 	err = f.App.SKUKeeper.SetSKU(f.Ctx, sku)
 	require.NoError(t, err)
@@ -145,12 +148,12 @@ func TestInitGenesis(t *testing.T) {
 		Params: types.DefaultParams(),
 		Leases: []types.Lease{
 			{
-				Id:         1,
-				Tenant:     tenant.String(),
-				ProviderId: 1,
+				Uuid:         "lease-1",
+				Tenant:       tenant.String(),
+				ProviderUuid: "provider-1",
 				Items: []types.LeaseItem{
 					{
-						SkuId:       1,
+						SkuUuid:     "sku-1",
 						Quantity:    2,
 						LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 					},
@@ -165,17 +168,16 @@ func TestInitGenesis(t *testing.T) {
 				CreditAddress: creditAddr.String(),
 			},
 		},
-		NextLeaseId: 2,
 	}
 
 	err = k.InitGenesis(f.Ctx, genesisState)
 	require.NoError(t, err)
 
 	// Verify lease was imported
-	lease, err := k.GetLease(f.Ctx, 1)
+	lease, err := k.GetLease(f.Ctx, "lease-1")
 	require.NoError(t, err)
 	require.Equal(t, tenant.String(), lease.Tenant)
-	require.Equal(t, uint64(1), lease.ProviderId)
+	require.Equal(t, "provider-1", lease.ProviderUuid)
 	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
 
 	// Verify credit account was imported
@@ -209,12 +211,12 @@ func TestExportGenesis(t *testing.T) {
 
 	// Create a lease
 	lease := types.Lease{
-		Id:         1,
-		Tenant:     tenant.String(),
-		ProviderId: 1,
+		Uuid:         "lease-1",
+		Tenant:       tenant.String(),
+		ProviderUuid: "provider-1",
 		Items: []types.LeaseItem{
 			{
-				SkuId:       1,
+				SkuUuid:     "sku-1",
 				Quantity:    1,
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(50)),
 			},
@@ -225,9 +227,6 @@ func TestExportGenesis(t *testing.T) {
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
-	err = k.NextLeaseID.Set(f.Ctx, 2)
-	require.NoError(t, err)
-
 	// Export genesis
 	genState := k.ExportGenesis(f.Ctx)
 
@@ -236,10 +235,9 @@ func TestExportGenesis(t *testing.T) {
 	require.Equal(t, types.DefaultMaxLeasesPerTenant, genState.Params.MaxLeasesPerTenant)
 	require.Empty(t, genState.Params.AllowedList)
 	require.Len(t, genState.Leases, 1)
-	require.Equal(t, uint64(1), genState.Leases[0].Id)
+	require.Equal(t, "lease-1", genState.Leases[0].Uuid)
 	require.Len(t, genState.CreditAccounts, 1)
 	require.Equal(t, tenant.String(), genState.CreditAccounts[0].Tenant)
-	require.Equal(t, uint64(2), genState.NextLeaseId)
 }
 
 func TestGetSetParams(t *testing.T) {
@@ -258,6 +256,8 @@ func TestGetSetParams(t *testing.T) {
 		[]string{},
 		20,
 		3600,
+		10,
+		1800,
 	)
 	err = k.SetParams(f.Ctx, newParams)
 	require.NoError(t, err)
@@ -268,6 +268,7 @@ func TestGetSetParams(t *testing.T) {
 	require.Equal(t, uint64(50), gotParams.MaxLeasesPerTenant)
 	require.Equal(t, uint64(20), gotParams.MaxItemsPerLease)
 	require.Equal(t, uint64(3600), gotParams.MinLeaseDuration)
+	require.Equal(t, uint64(10), gotParams.MaxPendingLeasesPerTenant)
 }
 
 func TestCreditAddressDerivation(t *testing.T) {
@@ -305,18 +306,18 @@ func TestGetLease(t *testing.T) {
 	tenant := f.TestAccs[0]
 
 	// Test lease not found
-	_, err := k.GetLease(f.Ctx, 1)
+	_, err := k.GetLease(f.Ctx, "lease-1")
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrLeaseNotFound)
 
 	// Create a lease
 	lease := types.Lease{
-		Id:         1,
-		Tenant:     tenant.String(),
-		ProviderId: 1,
+		Uuid:         "lease-1",
+		Tenant:       tenant.String(),
+		ProviderUuid: "provider-1",
 		Items: []types.LeaseItem{
 			{
-				SkuId:       1,
+				SkuUuid:     "sku-1",
 				Quantity:    1,
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 			},
@@ -328,11 +329,11 @@ func TestGetLease(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get lease
-	gotLease, err := k.GetLease(f.Ctx, 1)
+	gotLease, err := k.GetLease(f.Ctx, "lease-1")
 	require.NoError(t, err)
-	require.Equal(t, lease.Id, gotLease.Id)
+	require.Equal(t, lease.Uuid, gotLease.Uuid)
 	require.Equal(t, lease.Tenant, gotLease.Tenant)
-	require.Equal(t, lease.ProviderId, gotLease.ProviderId)
+	require.Equal(t, lease.ProviderUuid, gotLease.ProviderUuid)
 	require.Equal(t, lease.State, gotLease.State)
 }
 
@@ -349,12 +350,12 @@ func TestGetAllLeases(t *testing.T) {
 	// Add multiple leases
 	for i := uint64(1); i <= 3; i++ {
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     f.TestAccs[i-1].String(),
-			ProviderId: 1,
+			Uuid:         fmt.Sprintf("lease-%d", i),
+			Tenant:       f.TestAccs[i-1].String(),
+			ProviderUuid: "provider-1",
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuUuid:     fmt.Sprintf("sku-%d", i),
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
@@ -383,12 +384,12 @@ func TestGetLeasesByTenant(t *testing.T) {
 	// Create leases for tenant1
 	for i := uint64(1); i <= 3; i++ {
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     tenant1.String(),
-			ProviderId: 1,
+			Uuid:         fmt.Sprintf("lease-%d", i),
+			Tenant:       tenant1.String(),
+			ProviderUuid: "provider-1",
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuUuid:     fmt.Sprintf("sku-%d", i),
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
@@ -403,12 +404,12 @@ func TestGetLeasesByTenant(t *testing.T) {
 	// Create leases for tenant2
 	for i := uint64(4); i <= 5; i++ {
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     tenant2.String(),
-			ProviderId: 2,
+			Uuid:         fmt.Sprintf("lease-%d", i),
+			Tenant:       tenant2.String(),
+			ProviderUuid: "provider-2",
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuUuid:     fmt.Sprintf("sku-%d", i),
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
@@ -444,12 +445,12 @@ func TestGetLeasesByProviderID(t *testing.T) {
 	// Create leases for provider 1
 	for i := uint64(1); i <= 4; i++ {
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     f.TestAccs[0].String(),
-			ProviderId: 1,
+			Uuid:         fmt.Sprintf("lease-%d", i),
+			Tenant:       f.TestAccs[0].String(),
+			ProviderUuid: "provider-1",
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuUuid:     fmt.Sprintf("sku-%d", i),
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
@@ -464,12 +465,12 @@ func TestGetLeasesByProviderID(t *testing.T) {
 	// Create leases for provider 2
 	for i := uint64(5); i <= 6; i++ {
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     f.TestAccs[1].String(),
-			ProviderId: 2,
+			Uuid:         fmt.Sprintf("lease-%d", i),
+			Tenant:       f.TestAccs[1].String(),
+			ProviderUuid: "provider-2",
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuUuid:     fmt.Sprintf("sku-%d", i),
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
@@ -482,17 +483,17 @@ func TestGetLeasesByProviderID(t *testing.T) {
 	}
 
 	// Get leases by provider 1
-	provider1Leases, err := k.GetLeasesByProviderID(f.Ctx, 1)
+	provider1Leases, err := k.GetLeasesByProviderUUID(f.Ctx, "provider-1")
 	require.NoError(t, err)
 	require.Len(t, provider1Leases, 4)
 
 	// Get leases by provider 2
-	provider2Leases, err := k.GetLeasesByProviderID(f.Ctx, 2)
+	provider2Leases, err := k.GetLeasesByProviderUUID(f.Ctx, "provider-2")
 	require.NoError(t, err)
 	require.Len(t, provider2Leases, 2)
 
 	// Get leases by unknown provider
-	unknownLeases, err := k.GetLeasesByProviderID(f.Ctx, 999)
+	unknownLeases, err := k.GetLeasesByProviderUUID(f.Ctx, "provider-999")
 	require.NoError(t, err)
 	require.Len(t, unknownLeases, 0)
 }
@@ -512,12 +513,12 @@ func TestCountActiveLeasesByTenant(t *testing.T) {
 	// Create 3 active leases and 2 inactive leases
 	for i := uint64(1); i <= 3; i++ {
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     tenant.String(),
-			ProviderId: 1,
+			Uuid:         fmt.Sprintf("lease-%d", i),
+			Tenant:       tenant.String(),
+			ProviderUuid: "provider-1",
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuUuid:     fmt.Sprintf("sku-%d", i),
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
@@ -532,17 +533,17 @@ func TestCountActiveLeasesByTenant(t *testing.T) {
 	closedAt := f.Ctx.BlockTime()
 	for i := uint64(4); i <= 5; i++ {
 		lease := types.Lease{
-			Id:         i,
-			Tenant:     tenant.String(),
-			ProviderId: 1,
+			Uuid:         fmt.Sprintf("lease-%d", i),
+			Tenant:       tenant.String(),
+			ProviderUuid: "provider-1",
 			Items: []types.LeaseItem{
 				{
-					SkuId:       i,
+					SkuUuid:     fmt.Sprintf("sku-%d", i),
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_INACTIVE,
+			State:     types.LEASE_STATE_CLOSED,
 			CreatedAt: f.Ctx.BlockTime(),
 			ClosedAt:  &closedAt,
 		}
@@ -554,29 +555,6 @@ func TestCountActiveLeasesByTenant(t *testing.T) {
 	count, err = k.CountActiveLeasesByTenant(f.Ctx, tenant.String())
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), count)
-}
-
-func TestGetNextLeaseID(t *testing.T) {
-	f := initFixture(t)
-
-	k := f.App.BillingKeeper
-
-	// Set initial sequence
-	err := k.NextLeaseID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-
-	// Get next IDs - should increment
-	id1, err := k.GetNextLeaseID(f.Ctx)
-	require.NoError(t, err)
-	require.Equal(t, uint64(1), id1)
-
-	id2, err := k.GetNextLeaseID(f.Ctx)
-	require.NoError(t, err)
-	require.Equal(t, uint64(2), id2)
-
-	id3, err := k.GetNextLeaseID(f.Ctx)
-	require.NoError(t, err)
-	require.Equal(t, uint64(3), id3)
 }
 
 func TestCreditAccountOperations(t *testing.T) {
@@ -682,6 +660,8 @@ func TestParamsValidation(t *testing.T) {
 				[]string{},
 				20,
 				3600,
+				10,
+				1800,
 			),
 			expectErr: true,
 		},
@@ -692,6 +672,8 @@ func TestParamsValidation(t *testing.T) {
 				[]string{},
 				0,
 				3600,
+				10,
+				1800,
 			),
 			expectErr: true,
 		},
@@ -702,6 +684,8 @@ func TestParamsValidation(t *testing.T) {
 				[]string{},
 				20,
 				0,
+				10,
+				1800,
 			),
 			expectErr: true,
 		},
@@ -712,6 +696,8 @@ func TestParamsValidation(t *testing.T) {
 				[]string{},
 				20,
 				3600,
+				10,
+				1800,
 			),
 			expectErr: false,
 		},
@@ -738,6 +724,13 @@ func TestGenesisValidation(t *testing.T) {
 
 	closedAt := f.Ctx.BlockTime()
 
+	// Valid UUIDs for testing
+	leaseUUID1 := "01912345-6789-7abc-8def-0123456789ab"
+	leaseUUID2 := "01912345-6789-7abc-8def-0123456789ac"
+	providerUUID := "01912345-6789-7abc-8def-0123456789ad"
+	skuUUID1 := "01912345-6789-7abc-8def-0123456789ae"
+	skuUUID2 := "01912345-6789-7abc-8def-0123456789af"
+
 	tests := []struct {
 		name      string
 		genesis   types.GenesisState
@@ -754,12 +747,12 @@ func TestGenesisValidation(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant.String(),
-						ProviderId: 1,
+						Uuid:         leaseUUID1,
+						Tenant:       tenant.String(),
+						ProviderUuid: providerUUID,
 						Items: []types.LeaseItem{
 							{
-								SkuId:       1,
+								SkuUuid:     skuUUID1,
 								Quantity:    1,
 								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
@@ -774,30 +767,21 @@ func TestGenesisValidation(t *testing.T) {
 						CreditAddress: creditAddr.String(),
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: false,
 		},
 		{
-			name: "zero next lease id",
-			genesis: types.GenesisState{
-				Params:      types.DefaultParams(),
-				NextLeaseId: 0,
-			},
-			expectErr: true,
-		},
-		{
-			name: "duplicate lease id",
+			name: "duplicate lease uuid",
 			genesis: types.GenesisState{
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant.String(),
-						ProviderId: 1,
+						Uuid:         leaseUUID1,
+						Tenant:       tenant.String(),
+						ProviderUuid: providerUUID,
 						Items: []types.LeaseItem{
 							{
-								SkuId:       1,
+								SkuUuid:     skuUUID1,
 								Quantity:    1,
 								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
@@ -806,12 +790,12 @@ func TestGenesisValidation(t *testing.T) {
 						CreatedAt: f.Ctx.BlockTime(),
 					},
 					{
-						Id:         1,
-						Tenant:     tenant.String(),
-						ProviderId: 1,
+						Uuid:         leaseUUID1, // Duplicate UUID
+						Tenant:       tenant.String(),
+						ProviderUuid: providerUUID,
 						Items: []types.LeaseItem{
 							{
-								SkuId:       2,
+								SkuUuid:     skuUUID2,
 								Quantity:    1,
 								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
@@ -820,22 +804,21 @@ func TestGenesisValidation(t *testing.T) {
 						CreatedAt: f.Ctx.BlockTime(),
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
 		},
 		{
-			name: "lease id >= next lease id",
+			name: "invalid lease uuid format",
 			genesis: types.GenesisState{
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         5,
-						Tenant:     tenant.String(),
-						ProviderId: 1,
+						Uuid:         "invalid-uuid",
+						Tenant:       tenant.String(),
+						ProviderUuid: providerUUID,
 						Items: []types.LeaseItem{
 							{
-								SkuId:       1,
+								SkuUuid:     skuUUID1,
 								Quantity:    1,
 								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
@@ -844,7 +827,6 @@ func TestGenesisValidation(t *testing.T) {
 						CreatedAt: f.Ctx.BlockTime(),
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
 		},
@@ -854,22 +836,21 @@ func TestGenesisValidation(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant.String(),
-						ProviderId: 1,
+						Uuid:         leaseUUID1,
+						Tenant:       tenant.String(),
+						ProviderUuid: providerUUID,
 						Items: []types.LeaseItem{
 							{
-								SkuId:       1,
+								SkuUuid:     skuUUID1,
 								Quantity:    1,
 								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
-						State:     types.LEASE_STATE_INACTIVE,
+						State:     types.LEASE_STATE_CLOSED,
 						CreatedAt: f.Ctx.BlockTime(),
 						// Missing ClosedAt
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
 		},
@@ -879,22 +860,21 @@ func TestGenesisValidation(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant.String(),
-						ProviderId: 1,
+						Uuid:         leaseUUID2,
+						Tenant:       tenant.String(),
+						ProviderUuid: providerUUID,
 						Items: []types.LeaseItem{
 							{
-								SkuId:       1,
+								SkuUuid:     skuUUID1,
 								Quantity:    1,
 								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
-						State:     types.LEASE_STATE_INACTIVE,
+						State:     types.LEASE_STATE_CLOSED,
 						CreatedAt: f.Ctx.BlockTime(),
 						ClosedAt:  &closedAt,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: false,
 		},
@@ -912,7 +892,6 @@ func TestGenesisValidation(t *testing.T) {
 						CreditAddress: creditAddr.String(),
 					},
 				},
-				NextLeaseId: 1,
 			},
 			expectErr: true,
 		},
@@ -932,6 +911,11 @@ func TestGenesisValidation(t *testing.T) {
 
 func TestMsgValidation(t *testing.T) {
 	_, _, validAddr := testdata.KeyTestPubAddr()
+
+	// Valid UUIDs for testing
+	validSkuUUID := "01912345-6789-7abc-8def-0123456789ab"
+	validLeaseUUID := "01912345-6789-7abc-8def-0123456789ac"
+	validProviderUUID := "01912345-6789-7abc-8def-0123456789ad"
 
 	tests := []struct {
 		name      string
@@ -980,7 +964,7 @@ func TestMsgValidation(t *testing.T) {
 				Tenant: validAddr.String(),
 				Items: []types.LeaseItemInput{
 					{
-						SkuId:    1,
+						SkuUuid:  validSkuUUID,
 						Quantity: 1,
 					},
 				},
@@ -993,7 +977,7 @@ func TestMsgValidation(t *testing.T) {
 				Tenant: "invalid",
 				Items: []types.LeaseItemInput{
 					{
-						SkuId:    1,
+						SkuUuid:  validSkuUUID,
 						Quantity: 1,
 					},
 				},
@@ -1009,12 +993,12 @@ func TestMsgValidation(t *testing.T) {
 			expectErr: true,
 		},
 		{
-			name: "MsgCreateLease zero sku_id",
+			name: "MsgCreateLease empty sku_uuid",
 			msg: &types.MsgCreateLease{
 				Tenant: validAddr.String(),
 				Items: []types.LeaseItemInput{
 					{
-						SkuId:    0,
+						SkuUuid:  "",
 						Quantity: 1,
 					},
 				},
@@ -1027,7 +1011,7 @@ func TestMsgValidation(t *testing.T) {
 				Tenant: validAddr.String(),
 				Items: []types.LeaseItemInput{
 					{
-						SkuId:    1,
+						SkuUuid:  validSkuUUID,
 						Quantity: 0,
 					},
 				},
@@ -1040,11 +1024,11 @@ func TestMsgValidation(t *testing.T) {
 				Tenant: validAddr.String(),
 				Items: []types.LeaseItemInput{
 					{
-						SkuId:    1,
+						SkuUuid:  validSkuUUID,
 						Quantity: 1,
 					},
 					{
-						SkuId:    1,
+						SkuUuid:  validSkuUUID,
 						Quantity: 2,
 					},
 				},
@@ -1054,50 +1038,50 @@ func TestMsgValidation(t *testing.T) {
 		{
 			name: "valid MsgCloseLease",
 			msg: &types.MsgCloseLease{
-				Sender:  validAddr.String(),
-				LeaseId: 1,
+				Sender:    validAddr.String(),
+				LeaseUuid: validLeaseUUID,
 			},
 			expectErr: false,
 		},
 		{
-			name: "MsgCloseLease zero lease_id",
+			name: "MsgCloseLease empty lease_uuid",
 			msg: &types.MsgCloseLease{
-				Sender:  validAddr.String(),
-				LeaseId: 0,
+				Sender:    validAddr.String(),
+				LeaseUuid: "",
 			},
 			expectErr: true,
 		},
 		{
 			name: "valid MsgWithdraw",
 			msg: &types.MsgWithdraw{
-				Sender:  validAddr.String(),
-				LeaseId: 1,
+				Sender:    validAddr.String(),
+				LeaseUuid: validLeaseUUID,
 			},
 			expectErr: false,
 		},
 		{
-			name: "MsgWithdraw zero lease_id",
+			name: "MsgWithdraw empty lease_uuid",
 			msg: &types.MsgWithdraw{
-				Sender:  validAddr.String(),
-				LeaseId: 0,
+				Sender:    validAddr.String(),
+				LeaseUuid: "",
 			},
 			expectErr: true,
 		},
 		{
 			name: "valid MsgWithdrawAll",
 			msg: &types.MsgWithdrawAll{
-				Sender:     validAddr.String(),
-				ProviderId: 1,
+				Sender:       validAddr.String(),
+				ProviderUuid: validProviderUUID,
 			},
 			expectErr: false,
 		},
 		{
-			name: "MsgWithdrawAll zero provider_id",
+			name: "MsgWithdrawAll empty provider_uuid",
 			msg: &types.MsgWithdrawAll{
-				Sender:     validAddr.String(),
-				ProviderId: 0,
+				Sender:       validAddr.String(),
+				ProviderUuid: "",
 			},
-			expectErr: true, // provider_id must be > 0
+			expectErr: true,
 		},
 		{
 			name: "valid MsgUpdateParams",
@@ -1164,25 +1148,19 @@ func TestBillingKeeperIntegration(t *testing.T) {
 	// Verify billing keeper has access to SKU and bank keepers
 	require.NotNil(t, f.App.BillingKeeper)
 
-	// Initialize SKU sequences first
-	err := f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-
 	// Create a provider and SKU using SKU keeper
 	provider := f.createTestProvider(t, f.TestAccs[0].String(), f.TestAccs[1].String())
-	require.Equal(t, uint64(1), provider.Id)
+	require.NotEmpty(t, provider.Uuid)
 
-	sku := f.createTestSKU(t, provider.Id, 100)
-	require.Equal(t, uint64(1), sku.Id)
+	sku := f.createTestSKU(t, provider.Uuid, 100)
+	require.NotEmpty(t, sku.Uuid)
 
 	// Verify we can look them up via SKU keeper
-	gotProvider, err := f.App.SKUKeeper.GetProvider(f.Ctx, provider.Id)
+	gotProvider, err := f.App.SKUKeeper.GetProvider(f.Ctx, provider.Uuid)
 	require.NoError(t, err)
 	require.Equal(t, provider.Address, gotProvider.Address)
 
-	gotSKU, err := f.App.SKUKeeper.GetSKU(f.Ctx, sku.Id)
+	gotSKU, err := f.App.SKUKeeper.GetSKU(f.Ctx, sku.Uuid)
 	require.NoError(t, err)
 	require.Equal(t, sku.Name, gotSKU.Name)
 
@@ -1198,12 +1176,6 @@ func TestCheckAndCloseExhaustedLease(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.BillingKeeper
-
-	// Initialize SKU sequences
-	err := f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
-	require.NoError(t, err)
-	err = f.App.SKUKeeper.NextSKUID.Set(f.Ctx, 1)
-	require.NoError(t, err)
 
 	// Create a provider
 	provider := f.createTestProvider(t, f.TestAccs[0].String(), f.TestAccs[1].String())
@@ -1223,10 +1195,10 @@ func TestCheckAndCloseExhaustedLease(t *testing.T) {
 
 	// Create an active lease with zero credit balance
 	lease := types.Lease{
-		Id:            1,
+		Uuid:          "lease-1",
 		Tenant:        tenant.String(),
-		ProviderId:    provider.Id,
-		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
+		ProviderUuid:  provider.Uuid,
+		Items:         []types.LeaseItem{{SkuUuid: "sku-1", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
 		State:         types.LEASE_STATE_ACTIVE,
 		CreatedAt:     f.Ctx.BlockTime(),
 		LastSettledAt: f.Ctx.BlockTime(),
@@ -1240,7 +1212,7 @@ func TestCheckAndCloseExhaustedLease(t *testing.T) {
 	require.True(t, closed)
 
 	// Verify lease is now inactive
-	require.Equal(t, types.LEASE_STATE_INACTIVE, lease.State)
+	require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
 	require.NotNil(t, lease.ClosedAt)
 
 	// Verify active lease count was decremented
@@ -1253,10 +1225,6 @@ func TestCheckAndCloseExhaustedLease_WithBalance(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.BillingKeeper
-
-	// Initialize SKU sequences
-	err := f.App.SKUKeeper.NextProviderID.Set(f.Ctx, 1)
-	require.NoError(t, err)
 
 	// Create a provider
 	provider := f.createTestProvider(t, f.TestAccs[0].String(), f.TestAccs[1].String())
@@ -1280,10 +1248,10 @@ func TestCheckAndCloseExhaustedLease_WithBalance(t *testing.T) {
 
 	// Create an active lease
 	lease := types.Lease{
-		Id:            1,
+		Uuid:          "lease-1",
 		Tenant:        tenant.String(),
-		ProviderId:    provider.Id,
-		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
+		ProviderUuid:  provider.Uuid,
+		Items:         []types.LeaseItem{{SkuUuid: "sku-1", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
 		State:         types.LEASE_STATE_ACTIVE,
 		CreatedAt:     f.Ctx.BlockTime(),
 		LastSettledAt: f.Ctx.BlockTime(),
@@ -1321,11 +1289,11 @@ func TestCheckAndCloseExhaustedLease_InactiveLease(t *testing.T) {
 	// Create an inactive lease (already closed)
 	closedAt := f.Ctx.BlockTime()
 	lease := types.Lease{
-		Id:            1,
+		Uuid:          "lease-1",
 		Tenant:        tenant.String(),
-		ProviderId:    1,
-		Items:         []types.LeaseItem{{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
-		State:         types.LEASE_STATE_INACTIVE,
+		ProviderUuid:  "provider-1",
+		Items:         []types.LeaseItem{{SkuUuid: "sku-1", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
+		State:         types.LEASE_STATE_CLOSED,
 		CreatedAt:     f.Ctx.BlockTime(),
 		LastSettledAt: f.Ctx.BlockTime(),
 		ClosedAt:      &closedAt,

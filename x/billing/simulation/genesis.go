@@ -19,7 +19,6 @@ func RandomizedGenState(simState *module.SimulationState) {
 		Params:         randomParams(simState.Rand),
 		Leases:         []types.Lease{},
 		CreditAccounts: []types.CreditAccount{},
-		NextLeaseId:    1,
 	}
 
 	simState.GenState[types.ModuleName] = simState.Cdc.MustMarshalJSON(&genesisState)
@@ -36,10 +35,16 @@ func randomParams(r *rand.Rand) types.Params {
 	// Random min lease duration: 1-24 hours (in seconds)
 	minLeaseDuration := uint64((r.Intn(23) + 1) * 3600) //nolint:gosec
 
+	// Random max pending leases per tenant: 5-20
+	maxPendingLeasesPerTenant := uint64(r.Intn(16) + 5) //nolint:gosec
+
+	// Random pending timeout: 1-60 minutes (60-3600 seconds)
+	pendingTimeout := uint64(r.Intn(3540) + 60) //nolint:gosec
+
 	// Empty allowed list for simulation (only authority can create leases for tenants)
 	allowedList := []string{}
 
-	return types.NewParams(maxLeasesPerTenant, allowedList, maxItemsPerLease, minLeaseDuration)
+	return types.NewParams(maxLeasesPerTenant, allowedList, maxItemsPerLease, minLeaseDuration, maxPendingLeasesPerTenant, pendingTimeout)
 }
 
 // GetGenesisStateFromAppState returns the billing module GenesisState from app state.

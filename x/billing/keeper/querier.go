@@ -40,12 +40,12 @@ func (q Querier) Lease(ctx context.Context, req *types.QueryLeaseRequest) (*type
 		return nil, status.Error(codes.InvalidArgument, "empty request")
 	}
 
-	if req.LeaseId == 0 {
+	if req.LeaseUuid == "" {
 		return nil, status.Error(codes.InvalidArgument, "lease_id cannot be zero")
 	}
 
 	// Use simple GetLease for queries - auto-close only happens during transactions
-	lease, err := q.k.GetLease(ctx, req.LeaseId)
+	lease, err := q.k.GetLease(ctx, req.LeaseUuid)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
@@ -59,16 +59,16 @@ func (q Querier) Leases(ctx context.Context, req *types.QueryLeasesRequest) (*ty
 		return nil, status.Error(codes.InvalidArgument, "empty request")
 	}
 
-	// Use filtered pagination if active_only is set
-	if req.ActiveOnly {
+	// Use filtered pagination if state_filter is set
+	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
 		leases, pageRes, err := query.CollectionFilteredPaginate(
 			ctx,
 			q.k.Leases,
 			req.Pagination,
-			func(_ uint64, lease types.Lease) (bool, error) {
-				return lease.State == types.LEASE_STATE_ACTIVE, nil
+			func(_ string, lease types.Lease) (bool, error) {
+				return lease.State == req.StateFilter, nil
 			},
-			func(_ uint64, lease types.Lease) (types.Lease, error) {
+			func(_ string, lease types.Lease) (types.Lease, error) {
 				return lease, nil
 			},
 		)
@@ -86,7 +86,7 @@ func (q Querier) Leases(ctx context.Context, req *types.QueryLeasesRequest) (*ty
 		ctx,
 		q.k.Leases,
 		req.Pagination,
-		func(_ uint64, lease types.Lease) (types.Lease, error) {
+		func(_ string, lease types.Lease) (types.Lease, error) {
 			return lease, nil
 		},
 	)
@@ -122,13 +122,13 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	// Build filter based on active_only
+	// Build filter based on state_filter
 	var filter func(types.Lease) bool
-	if req.ActiveOnly {
-		filter = func(l types.Lease) bool { return l.State == types.LEASE_STATE_ACTIVE }
+	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
+		filter = func(l types.Lease) bool { return l.State == req.StateFilter }
 	}
 
-	leases, pageRes, err := PaginateUint64Index(
+	leases, pageRes, err := PaginateStringIndex(
 		ctx,
 		iter,
 		q.k.Leases.Get,
@@ -152,23 +152,23 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 		return nil, status.Error(codes.InvalidArgument, "empty request")
 	}
 
-	if req.ProviderId == 0 {
+	if req.ProviderUuid == "" {
 		return nil, status.Error(codes.InvalidArgument, "provider_id cannot be zero")
 	}
 
 	// Use the provider index to iterate only over this provider's leases
-	iter, err := q.k.Leases.Indexes.Provider.MatchExact(ctx, req.ProviderId)
+	iter, err := q.k.Leases.Indexes.Provider.MatchExact(ctx, req.ProviderUuid)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	// Build filter based on active_only
+	// Build filter based on state_filter
 	var filter func(types.Lease) bool
-	if req.ActiveOnly {
-		filter = func(l types.Lease) bool { return l.State == types.LEASE_STATE_ACTIVE }
+	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
+		filter = func(l types.Lease) bool { return l.State == req.StateFilter }
 	}
 
-	leases, pageRes, err := PaginateUint64Index(
+	leases, pageRes, err := PaginateStringIndex(
 		ctx,
 		iter,
 		q.k.Leases.Get,
@@ -242,12 +242,12 @@ func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdra
 		return nil, status.Error(codes.InvalidArgument, "empty request")
 	}
 
-	if req.LeaseId == 0 {
+	if req.LeaseUuid == "" {
 		return nil, status.Error(codes.InvalidArgument, "lease_id cannot be zero")
 	}
 
 	// Use simple GetLease for queries - auto-close only happens during transactions
-	lease, err := q.k.GetLease(ctx, req.LeaseId)
+	lease, err := q.k.GetLease(ctx, req.LeaseUuid)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
@@ -266,11 +266,11 @@ func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProvi
 		return nil, status.Error(codes.InvalidArgument, "empty request")
 	}
 
-	if req.ProviderId == 0 {
+	if req.ProviderUuid == "" {
 		return nil, status.Error(codes.InvalidArgument, "provider_id cannot be zero")
 	}
 
-	leases, err := q.k.GetLeasesByProviderID(ctx, req.ProviderId)
+	leases, err := q.k.GetLeasesByProviderUUID(ctx, req.ProviderUuid)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

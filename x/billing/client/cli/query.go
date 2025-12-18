@@ -3,14 +3,34 @@ package cli
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 
+	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
+
+// parseLeaseState parses a string into a LeaseState enum value.
+func parseLeaseState(s string) types.LeaseState {
+	switch strings.ToLower(s) {
+	case "pending":
+		return types.LEASE_STATE_PENDING
+	case "active":
+		return types.LEASE_STATE_ACTIVE
+	case "closed":
+		return types.LEASE_STATE_CLOSED
+	case "rejected":
+		return types.LEASE_STATE_REJECTED
+	case "expired":
+		return types.LEASE_STATE_EXPIRED
+	default:
+		return types.LEASE_STATE_UNSPECIFIED
+	}
+}
 
 // GetQueryCmd returns the query commands for the billing module.
 func GetQueryCmd() *cobra.Command {
@@ -66,12 +86,12 @@ func GetParamsCmd() *cobra.Command {
 	return cmd
 }
 
-// GetLeaseCmd returns the command to query a lease by ID.
+// GetLeaseCmd returns the command to query a lease by UUID.
 func GetLeaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "lease [lease-id]",
-		Short:   "Query a lease by ID",
-		Example: `lease 1`,
+		Use:     "lease [lease-uuid]",
+		Short:   "Query a lease by UUID",
+		Example: `lease 01902a9b-1234-7000-8000-000000000001`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -79,14 +99,14 @@ func GetLeaseCmd() *cobra.Command {
 				return err
 			}
 
-			leaseID, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid lease_id: %w", err)
+			leaseUUID := args[0]
+			if !pkguuid.IsValidUUID(leaseUUID) {
+				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
 			}
 
 			queryClient := types.NewQueryClient(clientCtx)
 
-			res, err := queryClient.Lease(cmd.Context(), &types.QueryLeaseRequest{LeaseId: leaseID})
+			res, err := queryClient.Lease(cmd.Context(), &types.QueryLeaseRequest{LeaseUuid: leaseUUID})
 			if err != nil {
 				return err
 			}
@@ -105,7 +125,7 @@ func GetLeasesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "leases",
 		Short:   "Query all leases with pagination",
-		Example: `leases --active-only --limit 10`,
+		Example: `leases --state pending --limit 10`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -113,7 +133,9 @@ func GetLeasesCmd() *cobra.Command {
 				return err
 			}
 
-			activeOnly, _ := cmd.Flags().GetBool("active-only")
+			stateStr, _ := cmd.Flags().GetString("state")
+			stateFilter := parseLeaseState(stateStr)
+
 			pageReq, err := client.ReadPageRequest(cmd.Flags())
 			if err != nil {
 				return err
@@ -122,8 +144,8 @@ func GetLeasesCmd() *cobra.Command {
 			queryClient := types.NewQueryClient(clientCtx)
 
 			res, err := queryClient.Leases(cmd.Context(), &types.QueryLeasesRequest{
-				Pagination: pageReq,
-				ActiveOnly: activeOnly,
+				Pagination:  pageReq,
+				StateFilter: stateFilter,
 			})
 			if err != nil {
 				return err
@@ -133,7 +155,7 @@ func GetLeasesCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Bool("active-only", false, "Filter to only active leases")
+	cmd.Flags().String("state", "", "Filter by lease state (pending, active, closed, rejected, expired)")
 	flags.AddQueryFlagsToCmd(cmd)
 	flags.AddPaginationFlagsToCmd(cmd, "leases")
 
@@ -145,7 +167,7 @@ func GetLeasesByTenantCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "leases-by-tenant [tenant]",
 		Short:   "Query leases by tenant address",
-		Example: `leases-by-tenant manifest1abc... --active-only`,
+		Example: `leases-by-tenant manifest1abc... --state active`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -153,7 +175,9 @@ func GetLeasesByTenantCmd() *cobra.Command {
 				return err
 			}
 
-			activeOnly, _ := cmd.Flags().GetBool("active-only")
+			stateStr, _ := cmd.Flags().GetString("state")
+			stateFilter := parseLeaseState(stateStr)
+
 			pageReq, err := client.ReadPageRequest(cmd.Flags())
 			if err != nil {
 				return err
@@ -162,9 +186,9 @@ func GetLeasesByTenantCmd() *cobra.Command {
 			queryClient := types.NewQueryClient(clientCtx)
 
 			res, err := queryClient.LeasesByTenant(cmd.Context(), &types.QueryLeasesByTenantRequest{
-				Tenant:     args[0],
-				Pagination: pageReq,
-				ActiveOnly: activeOnly,
+				Tenant:      args[0],
+				Pagination:  pageReq,
+				StateFilter: stateFilter,
 			})
 			if err != nil {
 				return err
@@ -174,7 +198,7 @@ func GetLeasesByTenantCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Bool("active-only", false, "Filter to only active leases")
+	cmd.Flags().String("state", "", "Filter by lease state (pending, active, closed, rejected, expired)")
 	flags.AddQueryFlagsToCmd(cmd)
 	flags.AddPaginationFlagsToCmd(cmd, "leases")
 
@@ -184,9 +208,9 @@ func GetLeasesByTenantCmd() *cobra.Command {
 // GetLeasesByProviderCmd returns the command to query leases by provider.
 func GetLeasesByProviderCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "leases-by-provider [provider-id]",
-		Short:   "Query leases by provider ID",
-		Example: `leases-by-provider 1 --active-only`,
+		Use:     "leases-by-provider [provider-uuid]",
+		Short:   "Query leases by provider UUID",
+		Example: `leases-by-provider 01902a9b-1234-7000-8000-000000000001 --state pending`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -194,12 +218,14 @@ func GetLeasesByProviderCmd() *cobra.Command {
 				return err
 			}
 
-			providerID, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid provider_id: %w", err)
+			providerUUID := args[0]
+			if !pkguuid.IsValidUUID(providerUUID) {
+				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
 			}
 
-			activeOnly, _ := cmd.Flags().GetBool("active-only")
+			stateStr, _ := cmd.Flags().GetString("state")
+			stateFilter := parseLeaseState(stateStr)
+
 			pageReq, err := client.ReadPageRequest(cmd.Flags())
 			if err != nil {
 				return err
@@ -208,9 +234,9 @@ func GetLeasesByProviderCmd() *cobra.Command {
 			queryClient := types.NewQueryClient(clientCtx)
 
 			res, err := queryClient.LeasesByProvider(cmd.Context(), &types.QueryLeasesByProviderRequest{
-				ProviderId: providerID,
-				Pagination: pageReq,
-				ActiveOnly: activeOnly,
+				ProviderUuid: providerUUID,
+				Pagination:   pageReq,
+				StateFilter:  stateFilter,
 			})
 			if err != nil {
 				return err
@@ -220,7 +246,7 @@ func GetLeasesByProviderCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Bool("active-only", false, "Filter to only active leases")
+	cmd.Flags().String("state", "", "Filter by lease state (pending, active, closed, rejected, expired)")
 	flags.AddQueryFlagsToCmd(cmd)
 	flags.AddPaginationFlagsToCmd(cmd, "leases")
 
@@ -292,9 +318,9 @@ func GetCreditAddressCmd() *cobra.Command {
 // GetWithdrawableAmountCmd returns the command to query withdrawable amount for a lease.
 func GetWithdrawableAmountCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "withdrawable [lease-id]",
+		Use:     "withdrawable [lease-uuid]",
 		Short:   "Query the withdrawable amount for a lease",
-		Example: `withdrawable 1`,
+		Example: `withdrawable 01902a9b-1234-7000-8000-000000000001`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -302,15 +328,15 @@ func GetWithdrawableAmountCmd() *cobra.Command {
 				return err
 			}
 
-			leaseID, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid lease_id: %w", err)
+			leaseUUID := args[0]
+			if !pkguuid.IsValidUUID(leaseUUID) {
+				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
 			}
 
 			queryClient := types.NewQueryClient(clientCtx)
 
 			res, err := queryClient.WithdrawableAmount(cmd.Context(), &types.QueryWithdrawableAmountRequest{
-				LeaseId: leaseID,
+				LeaseUuid: leaseUUID,
 			})
 			if err != nil {
 				return err
@@ -328,9 +354,9 @@ func GetWithdrawableAmountCmd() *cobra.Command {
 // GetProviderWithdrawableCmd returns the command to query total withdrawable for a provider.
 func GetProviderWithdrawableCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "provider-withdrawable [provider-id]",
+		Use:     "provider-withdrawable [provider-uuid]",
 		Short:   "Query the total withdrawable amount for a provider across all leases",
-		Example: `provider-withdrawable 1`,
+		Example: `provider-withdrawable 01902a9b-1234-7000-8000-000000000001`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -338,15 +364,15 @@ func GetProviderWithdrawableCmd() *cobra.Command {
 				return err
 			}
 
-			providerID, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid provider_id: %w", err)
+			providerUUID := args[0]
+			if !pkguuid.IsValidUUID(providerUUID) {
+				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
 			}
 
 			queryClient := types.NewQueryClient(clientCtx)
 
 			res, err := queryClient.ProviderWithdrawable(cmd.Context(), &types.QueryProviderWithdrawableRequest{
-				ProviderId: providerID,
+				ProviderUuid: providerUUID,
 			})
 			if err != nil {
 				return err
@@ -360,3 +386,6 @@ func GetProviderWithdrawableCmd() *cobra.Command {
 
 	return cmd
 }
+
+// Helper to suppress unused import warning
+var _ = strconv.Itoa

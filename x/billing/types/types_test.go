@@ -10,6 +10,7 @@ Test Coverage:
 package types_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func generateManyLeaseItems(n uint64) []types.LeaseItemInput {
 	items := make([]types.LeaseItemInput, n)
 	for i := uint64(0); i < n; i++ {
 		items[i] = types.LeaseItemInput{
-			SkuId:    i + 1,
+			SkuUuid:  fmt.Sprintf("01912345-6789-7abc-8def-%012d", i+1),
 			Quantity: 1,
 		}
 	}
@@ -58,7 +59,7 @@ func TestParams_NewParams(t *testing.T) {
 	maxItems := uint64(10)
 	minLeaseDuration := uint64(3600)
 
-	params := types.NewParams(maxLeases, allowedList, maxItems, minLeaseDuration)
+	params := types.NewParams(maxLeases, allowedList, maxItems, minLeaseDuration, 10, 1800)
 
 	require.Equal(t, maxLeases, params.MaxLeasesPerTenant)
 	require.Equal(t, allowedList, params.AllowedList)
@@ -80,30 +81,30 @@ func TestParams_Validate(t *testing.T) {
 		},
 		{
 			name:      "valid custom params",
-			params:    types.NewParams(10, []string{}, 20, 3600),
+			params:    types.NewParams(10, []string{}, 20, 3600, 10, 1800),
 			expectErr: false,
 		},
 		{
 			name:      "zero max leases per tenant",
-			params:    types.NewParams(0, []string{}, 20, 3600),
+			params:    types.NewParams(0, []string{}, 20, 3600, 10, 1800),
 			expectErr: true,
 			errMsg:    "max_leases_per_tenant must be greater than zero",
 		},
 		{
 			name:      "zero max items per lease",
-			params:    types.NewParams(10, []string{}, 0, 3600),
+			params:    types.NewParams(10, []string{}, 0, 3600, 10, 1800),
 			expectErr: true,
 			errMsg:    "max_items_per_lease must be greater than zero",
 		},
 		{
 			name:      "zero min lease duration",
-			params:    types.NewParams(10, []string{}, 20, 0),
+			params:    types.NewParams(10, []string{}, 20, 0, 10, 1800),
 			expectErr: true,
 			errMsg:    "min_lease_duration must be greater than zero",
 		},
 		{
 			name:      "valid params with allowed list",
-			params:    types.NewParams(10, []string{"manifest1xyz"}, 20, 3600),
+			params:    types.NewParams(10, []string{"manifest1xyz"}, 20, 3600, 10, 1800),
 			expectErr: true, // Invalid address
 			errMsg:    "invalid address in allowed list",
 		},
@@ -127,7 +128,7 @@ func TestParams_Validate_DuplicateAllowedList(t *testing.T) {
 	_, _, addr := testdata.KeyTestPubAddr()
 	validAddr := addr.String()
 
-	params := types.NewParams(10, []string{validAddr, validAddr}, 20, 3600)
+	params := types.NewParams(10, []string{validAddr, validAddr}, 20, 3600, 10, 1800)
 	err := params.Validate()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "duplicate address in allowed list")
@@ -138,7 +139,7 @@ func TestParams_Validate_ValidAllowedList(t *testing.T) {
 	_, _, addr1 := testdata.KeyTestPubAddr()
 	_, _, addr2 := testdata.KeyTestPubAddr()
 
-	params := types.NewParams(10, []string{addr1.String(), addr2.String()}, 20, 3600)
+	params := types.NewParams(10, []string{addr1.String(), addr2.String()}, 20, 3600, 10, 1800)
 	err := params.Validate()
 	require.NoError(t, err)
 }
@@ -148,7 +149,7 @@ func TestParams_IsAllowed(t *testing.T) {
 	_, _, addr2 := testdata.KeyTestPubAddr()
 	_, _, notAllowed := testdata.KeyTestPubAddr()
 
-	params := types.NewParams(10, []string{addr1.String(), addr2.String()}, 20, 3600)
+	params := types.NewParams(10, []string{addr1.String(), addr2.String()}, 20, 3600, 10, 1800)
 
 	require.True(t, params.IsAllowed(addr1.String()))
 	require.True(t, params.IsAllowed(addr2.String()))
@@ -265,8 +266,8 @@ func TestMsgCreateLease_ValidateBasic(t *testing.T) {
 	tenant := tenantAddr.String()
 
 	validItems := []types.LeaseItemInput{
-		{SkuId: 1, Quantity: 2},
-		{SkuId: 2, Quantity: 1},
+		{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 2},
+		{SkuUuid: "01912345-6789-7abc-8def-0123456789ac", Quantity: 1},
 	}
 
 	tests := []struct {
@@ -287,7 +288,7 @@ func TestMsgCreateLease_ValidateBasic(t *testing.T) {
 			name: "valid single item",
 			msg: types.MsgCreateLease{
 				Tenant: tenant,
-				Items:  []types.LeaseItemInput{{SkuId: 1, Quantity: 1}},
+				Items:  []types.LeaseItemInput{{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 1}},
 			},
 			expectErr: false,
 		},
@@ -331,16 +332,16 @@ func TestMsgCreateLease_ValidateBasic(t *testing.T) {
 			name: "item with zero sku_id",
 			msg: types.MsgCreateLease{
 				Tenant: tenant,
-				Items:  []types.LeaseItemInput{{SkuId: 0, Quantity: 1}},
+				Items:  []types.LeaseItemInput{{SkuUuid: "", Quantity: 1}},
 			},
 			expectErr: true,
-			errMsg:    "has zero sku_id",
+			errMsg:    "has empty sku_uuid",
 		},
 		{
 			name: "item with zero quantity",
 			msg: types.MsgCreateLease{
 				Tenant: tenant,
-				Items:  []types.LeaseItemInput{{SkuId: 1, Quantity: 0}},
+				Items:  []types.LeaseItemInput{{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 0}},
 			},
 			expectErr: true,
 			errMsg:    "has zero quantity",
@@ -350,8 +351,8 @@ func TestMsgCreateLease_ValidateBasic(t *testing.T) {
 			msg: types.MsgCreateLease{
 				Tenant: tenant,
 				Items: []types.LeaseItemInput{
-					{SkuId: 1, Quantity: 1},
-					{SkuId: 1, Quantity: 2},
+					{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 1},
+					{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 2},
 				},
 			},
 			expectErr: true,
@@ -392,8 +393,8 @@ func TestMsgCreateLeaseForTenant_ValidateBasic(t *testing.T) {
 	tenant := tenantAddr.String()
 
 	validItems := []types.LeaseItemInput{
-		{SkuId: 1, Quantity: 2},
-		{SkuId: 2, Quantity: 1},
+		{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 2},
+		{SkuUuid: "01912345-6789-7abc-8def-0123456789ac", Quantity: 1},
 	}
 
 	tests := []struct {
@@ -416,7 +417,7 @@ func TestMsgCreateLeaseForTenant_ValidateBasic(t *testing.T) {
 			msg: types.MsgCreateLeaseForTenant{
 				Authority: authority,
 				Tenant:    tenant,
-				Items:     []types.LeaseItemInput{{SkuId: 1, Quantity: 1}},
+				Items:     []types.LeaseItemInput{{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 1}},
 			},
 			expectErr: false,
 		},
@@ -485,17 +486,17 @@ func TestMsgCreateLeaseForTenant_ValidateBasic(t *testing.T) {
 			msg: types.MsgCreateLeaseForTenant{
 				Authority: authority,
 				Tenant:    tenant,
-				Items:     []types.LeaseItemInput{{SkuId: 0, Quantity: 1}},
+				Items:     []types.LeaseItemInput{{SkuUuid: "", Quantity: 1}},
 			},
 			expectErr: true,
-			errMsg:    "has zero sku_id",
+			errMsg:    "has empty sku_uuid",
 		},
 		{
 			name: "item with zero quantity",
 			msg: types.MsgCreateLeaseForTenant{
 				Authority: authority,
 				Tenant:    tenant,
-				Items:     []types.LeaseItemInput{{SkuId: 1, Quantity: 0}},
+				Items:     []types.LeaseItemInput{{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 0}},
 			},
 			expectErr: true,
 			errMsg:    "has zero quantity",
@@ -506,8 +507,8 @@ func TestMsgCreateLeaseForTenant_ValidateBasic(t *testing.T) {
 				Authority: authority,
 				Tenant:    tenant,
 				Items: []types.LeaseItemInput{
-					{SkuId: 1, Quantity: 1},
-					{SkuId: 1, Quantity: 2},
+					{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 1},
+					{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 2},
 				},
 			},
 			expectErr: true,
@@ -555,16 +556,16 @@ func TestMsgCloseLease_ValidateBasic(t *testing.T) {
 		{
 			name: "valid message",
 			msg: types.MsgCloseLease{
-				Sender:  sender,
-				LeaseId: 1,
+				Sender:    sender,
+				LeaseUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: false,
 		},
 		{
 			name: "invalid sender address",
 			msg: types.MsgCloseLease{
-				Sender:  invalidAddr,
-				LeaseId: 1,
+				Sender:    invalidAddr,
+				LeaseUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: true,
 			errMsg:    "invalid sender address",
@@ -572,8 +573,8 @@ func TestMsgCloseLease_ValidateBasic(t *testing.T) {
 		{
 			name: "empty sender address",
 			msg: types.MsgCloseLease{
-				Sender:  "",
-				LeaseId: 1,
+				Sender:    "",
+				LeaseUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: true,
 			errMsg:    "invalid sender address",
@@ -581,11 +582,11 @@ func TestMsgCloseLease_ValidateBasic(t *testing.T) {
 		{
 			name: "zero lease_id",
 			msg: types.MsgCloseLease{
-				Sender:  sender,
-				LeaseId: 0,
+				Sender:    sender,
+				LeaseUuid: "",
 			},
 			expectErr: true,
-			errMsg:    "lease_id cannot be zero",
+			errMsg:    "lease_uuid cannot be empty",
 		},
 	}
 
@@ -619,16 +620,16 @@ func TestMsgWithdraw_ValidateBasic(t *testing.T) {
 		{
 			name: "valid message",
 			msg: types.MsgWithdraw{
-				Sender:  sender,
-				LeaseId: 1,
+				Sender:    sender,
+				LeaseUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: false,
 		},
 		{
 			name: "invalid sender address",
 			msg: types.MsgWithdraw{
-				Sender:  invalidAddr,
-				LeaseId: 1,
+				Sender:    invalidAddr,
+				LeaseUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: true,
 			errMsg:    "invalid sender address",
@@ -636,8 +637,8 @@ func TestMsgWithdraw_ValidateBasic(t *testing.T) {
 		{
 			name: "empty sender address",
 			msg: types.MsgWithdraw{
-				Sender:  "",
-				LeaseId: 1,
+				Sender:    "",
+				LeaseUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: true,
 			errMsg:    "invalid sender address",
@@ -645,11 +646,11 @@ func TestMsgWithdraw_ValidateBasic(t *testing.T) {
 		{
 			name: "zero lease_id",
 			msg: types.MsgWithdraw{
-				Sender:  sender,
-				LeaseId: 0,
+				Sender:    sender,
+				LeaseUuid: "",
 			},
 			expectErr: true,
-			errMsg:    "lease_id cannot be zero",
+			errMsg:    "lease_uuid cannot be empty",
 		},
 	}
 
@@ -683,35 +684,35 @@ func TestMsgWithdrawAll_ValidateBasic(t *testing.T) {
 		{
 			name: "valid message with provider_id",
 			msg: types.MsgWithdrawAll{
-				Sender:     sender,
-				ProviderId: 1,
+				Sender:       sender,
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: false,
 		},
 		{
 			name: "valid message with limit",
 			msg: types.MsgWithdrawAll{
-				Sender:     sender,
-				ProviderId: 1,
-				Limit:      50,
+				Sender:       sender,
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Limit:        50,
 			},
 			expectErr: false,
 		},
 		{
 			name: "valid message with max limit",
 			msg: types.MsgWithdrawAll{
-				Sender:     sender,
-				ProviderId: 1,
-				Limit:      types.MaxWithdrawAllLimit,
+				Sender:       sender,
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Limit:        types.MaxWithdrawAllLimit,
 			},
 			expectErr: false,
 		},
 		{
 			name: "invalid limit exceeds max",
 			msg: types.MsgWithdrawAll{
-				Sender:     sender,
-				ProviderId: 1,
-				Limit:      types.MaxWithdrawAllLimit + 1,
+				Sender:       sender,
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Limit:        types.MaxWithdrawAllLimit + 1,
 			},
 			expectErr: true,
 			errMsg:    "exceeds maximum allowed",
@@ -719,17 +720,17 @@ func TestMsgWithdrawAll_ValidateBasic(t *testing.T) {
 		{
 			name: "invalid zero provider_id",
 			msg: types.MsgWithdrawAll{
-				Sender:     sender,
-				ProviderId: 0,
+				Sender:       sender,
+				ProviderUuid: "",
 			},
 			expectErr: true,
-			errMsg:    "provider_id cannot be zero",
+			errMsg:    "provider_uuid cannot be empty",
 		},
 		{
 			name: "invalid sender address",
 			msg: types.MsgWithdrawAll{
-				Sender:     invalidAddr,
-				ProviderId: 1,
+				Sender:       invalidAddr,
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: true,
 			errMsg:    "invalid sender address",
@@ -737,8 +738,8 @@ func TestMsgWithdrawAll_ValidateBasic(t *testing.T) {
 		{
 			name: "empty sender address",
 			msg: types.MsgWithdrawAll{
-				Sender:     "",
-				ProviderId: 1,
+				Sender:       "",
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: true,
 			errMsg:    "invalid sender address",
@@ -803,7 +804,7 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			name: "invalid params - zero max leases",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams(0, []string{}, 20, 3600),
+				Params:    types.NewParams(0, []string{}, 20, 3600, 10, 1800),
 			},
 			expectErr: true,
 			errMsg:    "max_leases_per_tenant must be greater than zero",
@@ -812,7 +813,7 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			name: "invalid params - zero max items per lease",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams(10, []string{}, 0, 3600),
+				Params:    types.NewParams(10, []string{}, 0, 3600, 10, 1800),
 			},
 			expectErr: true,
 			errMsg:    "max_items_per_lease must be greater than zero",
@@ -821,7 +822,7 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 			name: "invalid params - zero min lease duration",
 			msg: types.MsgUpdateParams{
 				Authority: authority,
-				Params:    types.NewParams(10, []string{}, 20, 0),
+				Params:    types.NewParams(10, []string{}, 20, 0, 10, 1800),
 			},
 			expectErr: true,
 			errMsg:    "min_lease_duration must be greater than zero",
@@ -927,7 +928,6 @@ func TestGenesisState_DefaultGenesis(t *testing.T) {
 	require.Equal(t, types.DefaultParams(), gs.Params)
 	require.Empty(t, gs.Leases)
 	require.Empty(t, gs.CreditAccounts)
-	require.Equal(t, uint64(1), gs.NextLeaseId)
 
 	// Default genesis should be valid
 	require.NoError(t, gs.Validate())
@@ -937,18 +937,18 @@ func TestGenesisState_NewGenesisState(t *testing.T) {
 	_, _, tenantAddr := testdata.KeyTestPubAddr()
 	tenant := tenantAddr.String()
 
-	params := types.NewParams(50, []string{}, 20, 3600)
+	params := types.NewParams(50, []string{}, 20, 3600, 10, 1800)
 	now := time.Now().UTC()
 
 	creditAddr := types.DeriveCreditAddress(tenantAddr)
 
 	leases := []types.Lease{
 		{
-			Id:         1,
-			Tenant:     tenant,
-			ProviderId: 1,
+			Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+			Tenant:       tenant,
+			ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 			Items: []types.LeaseItem{
-				{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+				{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 			},
 			State:         types.LEASE_STATE_ACTIVE,
 			CreatedAt:     now,
@@ -963,12 +963,11 @@ func TestGenesisState_NewGenesisState(t *testing.T) {
 		},
 	}
 
-	gs := types.NewGenesisState(params, leases, creditAccounts, 2)
+	gs := types.NewGenesisState(params, leases, creditAccounts)
 
 	require.Equal(t, params, gs.Params)
 	require.Equal(t, leases, gs.Leases)
 	require.Equal(t, creditAccounts, gs.CreditAccounts)
-	require.Equal(t, uint64(2), gs.NextLeaseId)
 }
 
 func TestGenesisState_Validate(t *testing.T) {
@@ -984,11 +983,11 @@ func TestGenesisState_Validate(t *testing.T) {
 	creditAddr2 := types.DeriveCreditAddress(tenant2Addr)
 
 	validLease := types.Lease{
-		Id:         1,
-		Tenant:     tenant,
-		ProviderId: 1,
+		Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+		Tenant:       tenant,
+		ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 		Items: []types.LeaseItem{
-			{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+			{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 		},
 		State:         types.LEASE_STATE_ACTIVE,
 		CreatedAt:     now,
@@ -1017,60 +1016,38 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params:         types.DefaultParams(),
 				Leases:         []types.Lease{validLease},
 				CreditAccounts: []types.CreditAccount{validCreditAccount},
-				NextLeaseId:    2,
 			},
 			expectErr: false,
 		},
 		{
 			name: "invalid params - zero max leases",
 			genesis: &types.GenesisState{
-				Params:      types.NewParams(0, []string{}, 20, 3600),
-				NextLeaseId: 1,
+				Params: types.NewParams(0, []string{}, 20, 3600, 10, 1800),
 			},
 			expectErr: true,
 			errMsg:    "invalid params",
 		},
 		{
-			name: "zero next_lease_id",
-			genesis: &types.GenesisState{
-				Params:      types.DefaultParams(),
-				NextLeaseId: 0,
-			},
-			expectErr: true,
-			errMsg:    "next_lease_id cannot be zero",
-		},
-		{
-			name: "duplicate lease id",
+			name: "duplicate lease uuid",
 			genesis: &types.GenesisState{
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					validLease,
 					{
-						Id:         1, // duplicate
-						Tenant:     tenant2,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab", // duplicate
+						Tenant:       tenant2,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 2, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ae", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
 						LastSettledAt: now,
 					},
 				},
-				NextLeaseId: 3,
 			},
 			expectErr: true,
-			errMsg:    "duplicate lease id",
-		},
-		{
-			name: "lease id >= next_lease_id",
-			genesis: &types.GenesisState{
-				Params:      types.DefaultParams(),
-				Leases:      []types.Lease{validLease},
-				NextLeaseId: 1, // should be > lease.Id
-			},
-			expectErr: true,
-			errMsg:    "greater than or equal to next_lease_id",
+			errMsg:    "duplicate lease uuid",
 		},
 		{
 			name: "lease with empty tenant",
@@ -1078,18 +1055,17 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     "",
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       "",
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
 						LastSettledAt: now,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
 			errMsg:    "has empty tenant",
@@ -1100,43 +1076,41 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     invalidAddr,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       invalidAddr,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
 						LastSettledAt: now,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
 			errMsg:    "invalid tenant address",
 		},
 		{
-			name: "lease with zero provider_id",
+			name: "lease with empty provider_uuid",
 			genesis: &types.GenesisState{
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 0,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
 						LastSettledAt: now,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
-			errMsg:    "has zero provider_id",
+			errMsg:    "has empty provider_uuid",
 		},
 		{
 			name: "lease with no items",
@@ -1144,41 +1118,39 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:            1,
+						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
 						Tenant:        tenant,
-						ProviderId:    1,
+						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
 						Items:         []types.LeaseItem{},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
 						LastSettledAt: now,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
 			errMsg:    "has no items",
 		},
 		{
-			name: "lease item with zero sku_id",
+			name: "lease item with empty sku_uuid",
 			genesis: &types.GenesisState{
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 0, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
 						LastSettledAt: now,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
-			errMsg:    "has zero sku_id",
+			errMsg:    "has empty sku_uuid",
 		},
 		{
 			name: "lease item with zero quantity",
@@ -1186,18 +1158,17 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 0, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 0, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
 						LastSettledAt: now,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
 			errMsg:    "has zero quantity",
@@ -1208,18 +1179,17 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
 						LastSettledAt: now,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
 			errMsg:    "invalid locked_price",
@@ -1230,18 +1200,17 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.ZeroInt())},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.ZeroInt())},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
 						LastSettledAt: now,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
 			errMsg:    "invalid locked_price",
@@ -1252,18 +1221,17 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.Coin{Denom: testDenom, Amount: math.NewInt(-100)}},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.Coin{Denom: testDenom, Amount: math.NewInt(-100)}},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
 						LastSettledAt: now,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
 			errMsg:    "invalid locked_price",
@@ -1274,18 +1242,17 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_UNSPECIFIED,
 						CreatedAt:     now,
 						LastSettledAt: now,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
 			errMsg:    "has unspecified state",
@@ -1296,19 +1263,18 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_INACTIVE,
+						State:         types.LEASE_STATE_CLOSED,
 						CreatedAt:     now,
 						LastSettledAt: now,
 						ClosedAt:      nil,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: true,
 			errMsg:    "inactive but has no closed_at timestamp",
@@ -1319,19 +1285,18 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_INACTIVE,
+						State:         types.LEASE_STATE_CLOSED,
 						CreatedAt:     now,
 						LastSettledAt: now,
 						ClosedAt:      &closedAt,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			expectErr: false,
 		},
@@ -1346,7 +1311,6 @@ func TestGenesisState_Validate(t *testing.T) {
 						CreditAddress: creditAddr2.String(),
 					},
 				},
-				NextLeaseId: 1,
 			},
 			expectErr: true,
 			errMsg:    "duplicate credit account for tenant",
@@ -1361,7 +1325,6 @@ func TestGenesisState_Validate(t *testing.T) {
 						CreditAddress: creditAddr.String(),
 					},
 				},
-				NextLeaseId: 1,
 			},
 			expectErr: true,
 			errMsg:    "credit account has empty tenant",
@@ -1376,7 +1339,6 @@ func TestGenesisState_Validate(t *testing.T) {
 						CreditAddress: creditAddr.String(),
 					},
 				},
-				NextLeaseId: 1,
 			},
 			expectErr: true,
 			errMsg:    "invalid tenant address",
@@ -1391,7 +1353,6 @@ func TestGenesisState_Validate(t *testing.T) {
 						CreditAddress: "",
 					},
 				},
-				NextLeaseId: 1,
 			},
 			expectErr: true,
 			errMsg:    "has empty credit_address",
@@ -1406,7 +1367,6 @@ func TestGenesisState_Validate(t *testing.T) {
 						CreditAddress: invalidAddr,
 					},
 				},
-				NextLeaseId: 1,
 			},
 			expectErr: true,
 			errMsg:    "invalid credit_address",
@@ -1454,11 +1414,11 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     past,
@@ -1468,7 +1428,6 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 				CreditAccounts: []types.CreditAccount{
 					{Tenant: tenant, CreditAddress: creditAddr.String()},
 				},
-				NextLeaseId: 2,
 			},
 			blockTime: now,
 			expectErr: false,
@@ -1479,18 +1438,17 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     past,
 						LastSettledAt: future,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			blockTime: now,
 			expectErr: true,
@@ -1502,18 +1460,17 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     future,
 						LastSettledAt: past,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			blockTime: now,
 			expectErr: true,
@@ -1525,19 +1482,18 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_INACTIVE,
+						State:         types.LEASE_STATE_CLOSED,
 						CreatedAt:     past,
 						LastSettledAt: past,
 						ClosedAt:      &future,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			blockTime: now,
 			expectErr: true,
@@ -1549,19 +1505,18 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_INACTIVE,
+						State:         types.LEASE_STATE_CLOSED,
 						CreatedAt:     past,
 						LastSettledAt: closedAt,
 						ClosedAt:      &closedAt,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			blockTime: now,
 			expectErr: false,
@@ -1572,18 +1527,17 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Id:         1,
-						Tenant:     tenant,
-						ProviderId: 1,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
 						Items: []types.LeaseItem{
-							{SkuId: 1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
 						State:         types.LEASE_STATE_ACTIVE,
 						CreatedAt:     now,
 						LastSettledAt: now,
 					},
 				},
-				NextLeaseId: 2,
 			},
 			blockTime: now,
 			expectErr: false,

@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"context"
-	"strconv"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
@@ -46,17 +45,18 @@ func (ms msgServer) CreateProvider(ctx context.Context, req *types.MsgCreateProv
 		return nil, types.ErrInvalidProvider.Wrapf("invalid create provider message: %s", err)
 	}
 
-	id, err := ms.k.GetNextProviderID(ctx)
+	uuid, err := ms.k.GenerateProviderUUID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	provider := types.Provider{
-		Id:            id,
+		Uuid:          uuid,
 		Address:       req.Address,
 		PayoutAddress: req.PayoutAddress,
 		MetaHash:      req.MetaHash,
 		Active:        true,
+		ApiUrl:        req.ApiUrl,
 	}
 
 	if err := ms.k.SetProvider(ctx, provider); err != nil {
@@ -67,13 +67,13 @@ func (ms msgServer) CreateProvider(ctx context.Context, req *types.MsgCreateProv
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeProviderCreated,
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(id, 10)),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, uuid),
 		),
 	})
 
-	ms.k.Logger().Info("Provider created", "id", id, "address", req.Address)
+	ms.k.Logger().Info("Provider created", "uuid", uuid, "address", req.Address)
 
-	return &types.MsgCreateProviderResponse{Id: id}, nil
+	return &types.MsgCreateProviderResponse{Uuid: uuid}, nil
 }
 
 // UpdateProvider updates an existing Provider.
@@ -90,19 +90,26 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 		return nil, types.ErrInvalidProvider.Wrapf("invalid update provider message: %s", err)
 	}
 
-	existingProvider, err := ms.k.GetProvider(ctx, req.Id)
+	existingProvider, err := ms.k.GetProvider(ctx, req.Uuid)
 	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("provider %d not found", req.Id)
+		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.Uuid)
 	}
 
 	wasInactive := !existingProvider.Active
 
+	// Preserve existing api_url if not provided in the update
+	apiURL := req.ApiUrl
+	if apiURL == "" {
+		apiURL = existingProvider.ApiUrl
+	}
+
 	provider := types.Provider{
-		Id:            req.Id,
+		Uuid:          req.Uuid,
 		Address:       req.Address,
 		PayoutAddress: req.PayoutAddress,
 		MetaHash:      req.MetaHash,
 		Active:        req.Active,
+		ApiUrl:        apiURL,
 	}
 
 	if err := ms.k.SetProvider(ctx, provider); err != nil {
@@ -116,7 +123,7 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 		sdkCtx.EventManager().EmitEvents(sdk.Events{
 			sdk.NewEvent(
 				types.EventTypeProviderActivated,
-				sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(req.Id, 10)),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
 			),
 		})
 	}
@@ -124,11 +131,11 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeProviderUpdated,
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(req.Id, 10)),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
 		),
 	})
 
-	ms.k.Logger().Info("Provider updated", "id", req.Id)
+	ms.k.Logger().Info("Provider updated", "uuid", req.Uuid)
 
 	return &types.MsgUpdateProviderResponse{}, nil
 }
@@ -147,13 +154,13 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 		return nil, types.ErrInvalidProvider.Wrapf("invalid deactivate provider message: %s", err)
 	}
 
-	existingProvider, err := ms.k.GetProvider(ctx, req.Id)
+	existingProvider, err := ms.k.GetProvider(ctx, req.Uuid)
 	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("provider %d not found", req.Id)
+		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.Uuid)
 	}
 
 	if !existingProvider.Active {
-		return nil, types.ErrInvalidProvider.Wrapf("provider %d is already inactive", req.Id)
+		return nil, types.ErrInvalidProvider.Wrapf("provider %s is already inactive", req.Uuid)
 	}
 
 	existingProvider.Active = false
@@ -165,11 +172,11 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeProviderDeactivated,
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(req.Id, 10)),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
 		),
 	})
 
-	ms.k.Logger().Info("Provider deactivated", "id", req.Id)
+	ms.k.Logger().Info("Provider deactivated", "uuid", req.Uuid)
 
 	return &types.MsgDeactivateProviderResponse{}, nil
 }
@@ -189,27 +196,27 @@ func (ms msgServer) CreateSKU(ctx context.Context, req *types.MsgCreateSKU) (*ty
 	}
 
 	// Verify provider exists and is active
-	provider, err := ms.k.GetProvider(ctx, req.ProviderId)
+	provider, err := ms.k.GetProvider(ctx, req.ProviderUuid)
 	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("provider %d not found", req.ProviderId)
+		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.ProviderUuid)
 	}
 	if !provider.Active {
-		return nil, types.ErrInvalidProvider.Wrapf("provider %d is not active", req.ProviderId)
+		return nil, types.ErrInvalidProvider.Wrapf("provider %s is not active", req.ProviderUuid)
 	}
 
-	id, err := ms.k.GetNextSKUID(ctx)
+	uuid, err := ms.k.GenerateSKUUUID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	sku := types.SKU{
-		Id:         id,
-		ProviderId: req.ProviderId,
-		Name:       req.Name,
-		Unit:       req.Unit,
-		BasePrice:  req.BasePrice,
-		MetaHash:   req.MetaHash,
-		Active:     true,
+		Uuid:         uuid,
+		ProviderUuid: req.ProviderUuid,
+		Name:         req.Name,
+		Unit:         req.Unit,
+		BasePrice:    req.BasePrice,
+		MetaHash:     req.MetaHash,
+		Active:       true,
 	}
 
 	if err := ms.k.SetSKU(ctx, sku); err != nil {
@@ -220,15 +227,15 @@ func (ms msgServer) CreateSKU(ctx context.Context, req *types.MsgCreateSKU) (*ty
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeSKUCreated,
-			sdk.NewAttribute(types.AttributeKeySKUID, strconv.FormatUint(id, 10)),
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(req.ProviderId, 10)),
+			sdk.NewAttribute(types.AttributeKeySKUUUID, uuid),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, req.ProviderUuid),
 			sdk.NewAttribute(types.AttributeKeyName, req.Name),
 		),
 	})
 
-	ms.k.Logger().Info("SKU created", "id", id, "provider_id", req.ProviderId, "name", req.Name)
+	ms.k.Logger().Info("SKU created", "uuid", uuid, "provider_uuid", req.ProviderUuid, "name", req.Name)
 
-	return &types.MsgCreateSKUResponse{Id: id}, nil
+	return &types.MsgCreateSKUResponse{Uuid: uuid}, nil
 }
 
 // UpdateSKU updates an existing SKU.
@@ -245,25 +252,25 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 		return nil, types.ErrInvalidSKU.Wrapf("invalid update sku message: %s", err)
 	}
 
-	existingSKU, err := ms.k.GetSKU(ctx, req.Id)
+	existingSKU, err := ms.k.GetSKU(ctx, req.Uuid)
 	if err != nil {
-		return nil, types.ErrSKUNotFound.Wrapf("sku %d not found", req.Id)
+		return nil, types.ErrSKUNotFound.Wrapf("sku %s not found", req.Uuid)
 	}
 
-	if existingSKU.ProviderId != req.ProviderId {
-		return nil, types.ErrInvalidSKU.Wrapf("provider_id mismatch; expected %d, got %d", existingSKU.ProviderId, req.ProviderId)
+	if existingSKU.ProviderUuid != req.ProviderUuid {
+		return nil, types.ErrInvalidSKU.Wrapf("provider_uuid mismatch; expected %s, got %s", existingSKU.ProviderUuid, req.ProviderUuid)
 	}
 
 	wasInactive := !existingSKU.Active
 
 	sku := types.SKU{
-		Id:         req.Id,
-		ProviderId: req.ProviderId,
-		Name:       req.Name,
-		Unit:       req.Unit,
-		BasePrice:  req.BasePrice,
-		MetaHash:   req.MetaHash,
-		Active:     req.Active,
+		Uuid:         req.Uuid,
+		ProviderUuid: req.ProviderUuid,
+		Name:         req.Name,
+		Unit:         req.Unit,
+		BasePrice:    req.BasePrice,
+		MetaHash:     req.MetaHash,
+		Active:       req.Active,
 	}
 
 	if err := ms.k.SetSKU(ctx, sku); err != nil {
@@ -277,8 +284,8 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 		sdkCtx.EventManager().EmitEvents(sdk.Events{
 			sdk.NewEvent(
 				types.EventTypeSKUActivated,
-				sdk.NewAttribute(types.AttributeKeySKUID, strconv.FormatUint(req.Id, 10)),
-				sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(req.ProviderId, 10)),
+				sdk.NewAttribute(types.AttributeKeySKUUUID, req.Uuid),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, req.ProviderUuid),
 			),
 		})
 	}
@@ -286,12 +293,12 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeSKUUpdated,
-			sdk.NewAttribute(types.AttributeKeySKUID, strconv.FormatUint(req.Id, 10)),
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(req.ProviderId, 10)),
+			sdk.NewAttribute(types.AttributeKeySKUUUID, req.Uuid),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, req.ProviderUuid),
 		),
 	})
 
-	ms.k.Logger().Info("SKU updated", "id", req.Id, "provider_id", req.ProviderId)
+	ms.k.Logger().Info("SKU updated", "uuid", req.Uuid, "provider_uuid", req.ProviderUuid)
 
 	return &types.MsgUpdateSKUResponse{}, nil
 }
@@ -310,13 +317,13 @@ func (ms msgServer) DeactivateSKU(ctx context.Context, req *types.MsgDeactivateS
 		return nil, types.ErrInvalidSKU.Wrapf("invalid deactivate sku message: %s", err)
 	}
 
-	existingSKU, err := ms.k.GetSKU(ctx, req.Id)
+	existingSKU, err := ms.k.GetSKU(ctx, req.Uuid)
 	if err != nil {
-		return nil, types.ErrSKUNotFound.Wrapf("sku %d not found", req.Id)
+		return nil, types.ErrSKUNotFound.Wrapf("sku %s not found", req.Uuid)
 	}
 
 	if !existingSKU.Active {
-		return nil, types.ErrInvalidSKU.Wrapf("sku %d is already inactive", req.Id)
+		return nil, types.ErrInvalidSKU.Wrapf("sku %s is already inactive", req.Uuid)
 	}
 
 	existingSKU.Active = false
@@ -328,12 +335,12 @@ func (ms msgServer) DeactivateSKU(ctx context.Context, req *types.MsgDeactivateS
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeSKUDeactivated,
-			sdk.NewAttribute(types.AttributeKeySKUID, strconv.FormatUint(req.Id, 10)),
-			sdk.NewAttribute(types.AttributeKeyProviderID, strconv.FormatUint(existingSKU.ProviderId, 10)),
+			sdk.NewAttribute(types.AttributeKeySKUUUID, req.Uuid),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, existingSKU.ProviderUuid),
 		),
 	})
 
-	ms.k.Logger().Info("SKU deactivated", "id", req.Id, "provider_id", existingSKU.ProviderId)
+	ms.k.Logger().Info("SKU deactivated", "uuid", req.Uuid, "provider_uuid", existingSKU.ProviderUuid)
 
 	return &types.MsgDeactivateSKUResponse{}, nil
 }

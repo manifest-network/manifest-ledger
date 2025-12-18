@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"fmt"
-	"strconv"
-
 	"github.com/spf13/cobra"
 
 	"github.com/cosmos/cosmos-sdk/client"
@@ -64,9 +61,9 @@ func GetCmdQueryParams() *cobra.Command {
 // GetCmdQueryProvider returns the command to query a Provider by ID.
 func GetCmdQueryProvider() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "provider [id]",
-		Short:   "Query a provider by ID",
-		Example: "provider 1",
+		Use:     "provider [uuid]",
+		Short:   "Query a provider by UUID",
+		Example: "provider 01912345-6789-7abc-8def-0123456789ab",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -74,13 +71,10 @@ func GetCmdQueryProvider() *cobra.Command {
 				return err
 			}
 
-			id, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid provider ID: %w", err)
-			}
+			uuid := args[0]
 
 			queryClient := types.NewQueryClient(clientCtx)
-			res, err := queryClient.Provider(cmd.Context(), &types.QueryProviderRequest{Id: id})
+			res, err := queryClient.Provider(cmd.Context(), &types.QueryProviderRequest{Uuid: uuid})
 			if err != nil {
 				return err
 			}
@@ -140,12 +134,12 @@ func GetCmdQueryProviders() *cobra.Command {
 	return cmd
 }
 
-// GetCmdQuerySKU returns the command to query a SKU by ID.
+// GetCmdQuerySKU returns the command to query a SKU by UUID.
 func GetCmdQuerySKU() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "sku [id]",
-		Short:   "Query a SKU by ID",
-		Example: "sku 1",
+		Use:     "sku [uuid]",
+		Short:   "Query a SKU by UUID",
+		Example: "sku 01912345-6789-7abc-8def-0123456789ab",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -153,13 +147,10 @@ func GetCmdQuerySKU() *cobra.Command {
 				return err
 			}
 
-			id, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid SKU ID: %w", err)
-			}
+			uuid := args[0]
 
 			queryClient := types.NewQueryClient(clientCtx)
-			res, err := queryClient.SKU(cmd.Context(), &types.QuerySKURequest{Id: id})
+			res, err := queryClient.SKU(cmd.Context(), &types.QuerySKURequest{Uuid: uuid})
 			if err != nil {
 				return err
 			}
@@ -222,9 +213,9 @@ func GetCmdQuerySKUs() *cobra.Command {
 // GetCmdQuerySKUsByProvider returns the command to query SKUs by provider ID.
 func GetCmdQuerySKUsByProvider() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "skus-by-provider [provider-id]",
-		Short:   "Query SKUs by provider ID",
-		Example: "skus-by-provider 1 --active-only",
+		Use:     "skus-by-provider [provider-uuid]",
+		Short:   "Query SKUs by provider UUID",
+		Example: "skus-by-provider 01912345-6789-7abc-8def-0123456789ab --active-only",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -232,10 +223,7 @@ func GetCmdQuerySKUsByProvider() *cobra.Command {
 				return err
 			}
 
-			providerID, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid provider ID: %w", err)
-			}
+			providerUUID := args[0]
 
 			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
 			if err != nil {
@@ -254,9 +242,9 @@ func GetCmdQuerySKUsByProvider() *cobra.Command {
 
 			queryClient := types.NewQueryClient(clientCtx)
 			res, err := queryClient.SKUsByProvider(cmd.Context(), &types.QuerySKUsByProviderRequest{
-				ProviderId: providerID,
-				Pagination: pageReq,
-				ActiveOnly: activeOnly,
+				ProviderUuid: providerUUID,
+				Pagination:   pageReq,
+				ActiveOnly:   activeOnly,
 			})
 			if err != nil {
 				return err

@@ -1,26 +1,26 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+
+	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
+)
 
 // DefaultGenesis returns the default genesis state.
 func DefaultGenesis() *GenesisState {
 	return &GenesisState{
-		Params:         DefaultParams(),
-		Providers:      []Provider{},
-		Skus:           []SKU{},
-		NextProviderId: 1,
-		NextSkuId:      1,
+		Params:    DefaultParams(),
+		Providers: []Provider{},
+		Skus:      []SKU{},
 	}
 }
 
 // NewGenesisState creates a new genesis state with the given parameters.
-func NewGenesisState(params Params, providers []Provider, skus []SKU, nextProviderID, nextSKUID uint64) *GenesisState {
+func NewGenesisState(params Params, providers []Provider, skus []SKU) *GenesisState {
 	return &GenesisState{
-		Params:         params,
-		Providers:      providers,
-		Skus:           skus,
-		NextProviderId: nextProviderID,
-		NextSkuId:      nextSKUID,
+		Params:    params,
+		Providers: providers,
+		Skus:      skus,
 	}
 }
 
@@ -30,68 +30,58 @@ func (gs *GenesisState) Validate() error {
 		return fmt.Errorf("invalid params: %w", err)
 	}
 
-	// NextProviderId must be at least 1
-	if gs.NextProviderId == 0 {
-		return fmt.Errorf("next_provider_id cannot be zero")
-	}
-
-	// NextSkuId must be at least 1
-	if gs.NextSkuId == 0 {
-		return fmt.Errorf("next_sku_id cannot be zero")
-	}
-
 	// Validate providers
-	seenProviderIDs := make(map[uint64]bool)
+	seenProviderUUIDs := make(map[string]bool)
 	for _, provider := range gs.Providers {
-		if seenProviderIDs[provider.Id] {
-			return fmt.Errorf("duplicate provider id: %d", provider.Id)
+		if err := pkguuid.ValidateUUIDv7(provider.Uuid); err != nil {
+			return fmt.Errorf("invalid provider uuid %s: %w", provider.Uuid, err)
 		}
-		seenProviderIDs[provider.Id] = true
 
-		if provider.Id >= gs.NextProviderId {
-			return fmt.Errorf("provider id %d is greater than or equal to next_provider_id %d", provider.Id, gs.NextProviderId)
+		if seenProviderUUIDs[provider.Uuid] {
+			return fmt.Errorf("duplicate provider uuid: %s", provider.Uuid)
 		}
+		seenProviderUUIDs[provider.Uuid] = true
 
 		if provider.Address == "" {
-			return fmt.Errorf("provider %d has empty address", provider.Id)
+			return fmt.Errorf("provider %s has empty address", provider.Uuid)
 		}
 
 		if provider.PayoutAddress == "" {
-			return fmt.Errorf("provider %d has empty payout address", provider.Id)
+			return fmt.Errorf("provider %s has empty payout address", provider.Uuid)
 		}
 	}
 
 	// Validate SKUs
-	seenSKUIDs := make(map[uint64]bool)
+	seenSKUUUIDs := make(map[string]bool)
 	for _, sku := range gs.Skus {
-		if seenSKUIDs[sku.Id] {
-			return fmt.Errorf("duplicate sku id: %d", sku.Id)
-		}
-		seenSKUIDs[sku.Id] = true
-
-		if sku.Id >= gs.NextSkuId {
-			return fmt.Errorf("sku id %d is greater than or equal to next_sku_id %d", sku.Id, gs.NextSkuId)
+		if err := pkguuid.ValidateUUIDv7(sku.Uuid); err != nil {
+			return fmt.Errorf("invalid sku uuid %s: %w", sku.Uuid, err)
 		}
 
-		if sku.ProviderId == 0 {
-			return fmt.Errorf("sku %d has zero provider_id", sku.Id)
+		if seenSKUUUIDs[sku.Uuid] {
+			return fmt.Errorf("duplicate sku uuid: %s", sku.Uuid)
+		}
+		seenSKUUUIDs[sku.Uuid] = true
+
+		if err := pkguuid.ValidateUUIDv7(sku.ProviderUuid); err != nil {
+			return fmt.Errorf("sku %s has invalid provider_uuid: %w", sku.Uuid, err)
 		}
 
 		// Check that provider exists
-		if !seenProviderIDs[sku.ProviderId] {
-			return fmt.Errorf("sku %d references non-existent provider %d", sku.Id, sku.ProviderId)
+		if !seenProviderUUIDs[sku.ProviderUuid] {
+			return fmt.Errorf("sku %s references non-existent provider %s", sku.Uuid, sku.ProviderUuid)
 		}
 
 		if sku.Name == "" {
-			return fmt.Errorf("sku %d has empty name", sku.Id)
+			return fmt.Errorf("sku %s has empty name", sku.Uuid)
 		}
 
 		if sku.Unit == Unit_UNIT_UNSPECIFIED {
-			return fmt.Errorf("sku %d has unspecified unit", sku.Id)
+			return fmt.Errorf("sku %s has unspecified unit", sku.Uuid)
 		}
 
 		if !sku.BasePrice.IsValid() || sku.BasePrice.IsZero() {
-			return fmt.Errorf("sku %d has invalid or zero base price", sku.Id)
+			return fmt.Errorf("sku %s has invalid or zero base price", sku.Uuid)
 		}
 	}
 

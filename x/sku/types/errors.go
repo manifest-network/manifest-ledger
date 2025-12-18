@@ -9,4 +9,11 @@ var (
 	ErrInvalidConfig    = errors.Register(ModuleName, 4, "invalid module configuration")
 	ErrInvalidProvider  = errors.Register(ModuleName, 5, "invalid provider")
 	ErrProviderNotFound = errors.Register(ModuleName, 6, "provider not found")
+	ErrInvalidAPIURL    = errors.Register(ModuleName, 7, "invalid API URL")
+)
+
+// Validation constants for provider fields
+const (
+	// MaxAPIURLLength is the maximum length of an API URL.
+	MaxAPIURLLength = 2048
 )

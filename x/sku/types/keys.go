@@ -43,7 +43,7 @@ const (
 	EventTypeSKUDeactivated      = "sku_deactivated"
 	EventTypeParamsUpdated       = "params_updated"
 
-	AttributeKeyProviderID = "provider_id"
-	AttributeKeySKUID      = "sku_id"
-	AttributeKeyName       = "name"
+	AttributeKeyProviderUUID = "provider_uuid"
+	AttributeKeySKUUUID      = "sku_uuid"
+	AttributeKeyName         = "name"
 )

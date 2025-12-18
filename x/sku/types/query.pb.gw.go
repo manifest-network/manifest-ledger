@@ -62,15 +62,15 @@ func request_Query_Provider_0(ctx context.Context, marshaler runtime.Marshaler, 
 		_   = err
 	)
 
-	val, ok = pathParams["id"]
+	val, ok = pathParams["uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "uuid")
 	}
 
-	protoReq.Id, err = runtime.Uint64(val)
+	protoReq.Uuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "uuid", err)
 	}
 
 	msg, err := client.Provider(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
@@ -89,15 +89,15 @@ func local_request_Query_Provider_0(ctx context.Context, marshaler runtime.Marsh
 		_   = err
 	)
 
-	val, ok = pathParams["id"]
+	val, ok = pathParams["uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "uuid")
 	}
 
-	protoReq.Id, err = runtime.Uint64(val)
+	protoReq.Uuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "uuid", err)
 	}
 
 	msg, err := server.Provider(ctx, &protoReq)
@@ -152,15 +152,15 @@ func request_Query_SKU_0(ctx context.Context, marshaler runtime.Marshaler, clien
 		_   = err
 	)
 
-	val, ok = pathParams["id"]
+	val, ok = pathParams["uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "uuid")
 	}
 
-	protoReq.Id, err = runtime.Uint64(val)
+	protoReq.Uuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "uuid", err)
 	}
 
 	msg, err := client.SKU(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
@@ -179,15 +179,15 @@ func local_request_Query_SKU_0(ctx context.Context, marshaler runtime.Marshaler,
 		_   = err
 	)
 
-	val, ok = pathParams["id"]
+	val, ok = pathParams["uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "uuid")
 	}
 
-	protoReq.Id, err = runtime.Uint64(val)
+	protoReq.Uuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "uuid", err)
 	}
 
 	msg, err := server.SKU(ctx, &protoReq)
@@ -232,7 +232,7 @@ func local_request_Query_SKUs_0(ctx context.Context, marshaler runtime.Marshaler
 }
 
 var (
-	filter_Query_SKUsByProvider_0 = &utilities.DoubleArray{Encoding: map[string]int{"provider_id": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+	filter_Query_SKUsByProvider_0 = &utilities.DoubleArray{Encoding: map[string]int{"provider_uuid": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
 )
 
 func request_Query_SKUsByProvider_0(ctx context.Context, marshaler runtime.Marshaler, client QueryClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -246,15 +246,15 @@ func request_Query_SKUsByProvider_0(ctx context.Context, marshaler runtime.Marsh
 		_   = err
 	)
 
-	val, ok = pathParams["provider_id"]
+	val, ok = pathParams["provider_uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "provider_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "provider_uuid")
 	}
 
-	protoReq.ProviderId, err = runtime.Uint64(val)
+	protoReq.ProviderUuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "provider_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "provider_uuid", err)
 	}
 
 	if err := req.ParseForm(); err != nil {
@@ -280,15 +280,15 @@ func local_request_Query_SKUsByProvider_0(ctx context.Context, marshaler runtime
 		_   = err
 	)
 
-	val, ok = pathParams["provider_id"]
+	val, ok = pathParams["provider_uuid"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "provider_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "provider_uuid")
 	}
 
-	protoReq.ProviderId, err = runtime.Uint64(val)
+	protoReq.ProviderUuid, err = runtime.String(val)
 
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "provider_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "provider_uuid", err)
 	}
 
 	if err := req.ParseForm(); err != nil {
@@ -614,15 +614,15 @@ func RegisterQueryHandlerClient(ctx context.Context, mux *runtime.ServeMux, clie
 var (
 	pattern_Query_Params_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"liftedinit", "sku", "v1", "params"}, "", runtime.AssumeColonVerbOpt(false)))
 
-	pattern_Query_Provider_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"liftedinit", "sku", "v1", "provider", "id"}, "", runtime.AssumeColonVerbOpt(false)))
+	pattern_Query_Provider_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"liftedinit", "sku", "v1", "provider", "uuid"}, "", runtime.AssumeColonVerbOpt(false)))
 
 	pattern_Query_Providers_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"liftedinit", "sku", "v1", "providers"}, "", runtime.AssumeColonVerbOpt(false)))
 
-	pattern_Query_SKU_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 1, 1, 0, 4, 1, 5, 3}, []string{"liftedinit", "sku", "v1", "id"}, "", runtime.AssumeColonVerbOpt(false)))
+	pattern_Query_SKU_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 1, 1, 0, 4, 1, 5, 3}, []string{"liftedinit", "sku", "v1", "uuid"}, "", runtime.AssumeColonVerbOpt(false)))
 
 	pattern_Query_SKUs_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"liftedinit", "sku", "v1", "skus"}, "", runtime.AssumeColonVerbOpt(false)))
 
-	pattern_Query_SKUsByProvider_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 1, 0, 4, 1, 5, 5}, []string{"liftedinit", "sku", "v1", "skus", "provider", "provider_id"}, "", runtime.AssumeColonVerbOpt(false)))
+	pattern_Query_SKUsByProvider_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 1, 0, 4, 1, 5, 5}, []string{"liftedinit", "sku", "v1", "skus", "provider", "provider_uuid"}, "", runtime.AssumeColonVerbOpt(false)))
 )
 
 var (
