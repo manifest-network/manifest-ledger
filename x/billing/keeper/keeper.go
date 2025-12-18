@@ -727,3 +727,179 @@ func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, cl
 
 	return settledAmounts, nil
 }
+
+// CountPendingLeasesByTenant counts the number of pending leases for a tenant.
+// This method uses the CreditAccount's cached PendingLeaseCount for O(1) performance.
+// Falls back to iterating leases if credit account doesn't exist.
+func (k *Keeper) CountPendingLeasesByTenant(ctx context.Context, tenant string) (uint64, error) {
+	// Try to get from credit account's cached count (O(1))
+	creditAccount, err := k.GetCreditAccount(ctx, tenant)
+	if err == nil {
+		return creditAccount.PendingLeaseCount, nil
+	}
+
+	// Fall back to iteration if credit account doesn't exist
+	return k.countPendingLeasesByTenantScan(ctx, tenant)
+}
+
+// countPendingLeasesByTenantScan counts pending leases by iterating (O(n)).
+// This is used as a fallback when credit account doesn't exist.
+func (k *Keeper) countPendingLeasesByTenantScan(ctx context.Context, tenant string) (uint64, error) {
+	var count uint64
+
+	// Convert bech32 address to bytes for index lookup
+	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
+	if err != nil {
+		return 0, err
+	}
+
+	iter, err := k.Leases.Indexes.Tenant.MatchExact(ctx, tenantAddr)
+	if err != nil {
+		return 0, err
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		leaseUUID, err := iter.PrimaryKey()
+		if err != nil {
+			return 0, err
+		}
+		lease, err := k.Leases.Get(ctx, leaseUUID)
+		if err != nil {
+			return 0, err
+		}
+		if lease.State == types.LEASE_STATE_PENDING {
+			count++
+		}
+	}
+
+	return count, nil
+}
+
+// GetPendingLeases returns all leases in PENDING state.
+// This iterates all leases and filters by state.
+// TODO: Consider adding a state index for more efficient queries.
+func (k *Keeper) GetPendingLeases(ctx context.Context) ([]types.Lease, error) {
+	var pendingLeases []types.Lease
+
+	err := k.Leases.Walk(ctx, nil, func(_ string, lease types.Lease) (bool, error) {
+		if lease.State == types.LEASE_STATE_PENDING {
+			pendingLeases = append(pendingLeases, lease)
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return pendingLeases, nil
+}
+
+// ExpirePendingLease expires a pending lease, unlocking the tenant's credit.
+// This is called by the EndBlocker when a lease exceeds the pending timeout.
+func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	blockTime := sdkCtx.BlockTime()
+
+	// Validate lease state
+	if lease.State != types.LEASE_STATE_PENDING {
+		return types.ErrLeaseNotPending.Wrapf("lease %s is not pending", lease.Uuid)
+	}
+
+	// Update lease state to EXPIRED
+	lease.State = types.LEASE_STATE_EXPIRED
+	lease.ExpiredAt = &blockTime
+
+	if err := k.SetLease(ctx, *lease); err != nil {
+		return err
+	}
+
+	// Decrement pending lease count in credit account
+	creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
+	if err == nil && creditAccount.PendingLeaseCount > 0 {
+		creditAccount.PendingLeaseCount--
+		if err := k.SetCreditAccount(ctx, creditAccount); err != nil {
+			return err
+		}
+	}
+
+	// Emit event
+	sdkCtx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeLeaseExpired,
+			sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
+			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
+			sdk.NewAttribute(types.AttributeKeyReason, "pending_timeout"),
+		),
+	)
+
+	k.logger.Info("expired pending lease",
+		"lease_uuid", lease.Uuid,
+		"tenant", lease.Tenant,
+		"provider_uuid", lease.ProviderUuid,
+	)
+
+	return nil
+}
+
+// EndBlocker processes pending lease expirations.
+// It checks all pending leases and expires those that have exceeded the pending timeout.
+// Rate limited to MaxPendingLeaseExpirationsPerBlock to prevent DoS attacks.
+func (k *Keeper) EndBlocker(ctx context.Context) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	blockTime := sdkCtx.BlockTime()
+
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Get pending timeout duration
+	// #nosec G115 -- PendingTimeout is validated in params to be within safe bounds (60-86400 seconds)
+	pendingTimeout := time.Duration(params.PendingTimeout) * time.Second
+
+	// Get all pending leases
+	pendingLeases, err := k.GetPendingLeases(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Rate limit: process max N expirations per block to prevent DoS
+	const maxExpirationsPerBlock = 100
+	expiredCount := 0
+
+	for i := range pendingLeases {
+		lease := &pendingLeases[i]
+
+		// Check if lease has exceeded pending timeout
+		expirationTime := lease.CreatedAt.Add(pendingTimeout)
+		if blockTime.After(expirationTime) {
+			if err := k.ExpirePendingLease(ctx, lease); err != nil {
+				k.logger.Error("failed to expire pending lease",
+					"lease_uuid", lease.Uuid,
+					"error", err,
+				)
+				continue
+			}
+			expiredCount++
+
+			// Rate limit check
+			if expiredCount >= maxExpirationsPerBlock {
+				k.logger.Warn("reached max pending lease expirations per block",
+					"expired_count", expiredCount,
+					"remaining", len(pendingLeases)-i-1,
+				)
+				break
+			}
+		}
+	}
+
+	if expiredCount > 0 {
+		k.logger.Info("expired pending leases in EndBlocker",
+			"count", expiredCount,
+		)
+	}
+
+	return nil
+}

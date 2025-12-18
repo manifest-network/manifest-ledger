@@ -128,12 +128,23 @@ Use `MsgCreateLeaseForTenant` to create leases on behalf of users:
 
 ```bash
 # Create a lease for a tenant
-# Format: sku_id:quantity
-manifestd tx billing create-lease-for-tenant [tenant-address] [sku_id:quantity...] --from [authority-key]
+# Format: sku-uuid:quantity
+manifestd tx billing create-lease-for-tenant [tenant-address] [sku-uuid:quantity...] --from [authority-key]
 
 # Example: Create lease with 2 units of SKU 1 and 1 unit of SKU 2
-manifestd tx billing create-lease-for-tenant manifest1abc... 1:2 2:1 --from authority
+manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-6789-7abc-8def-0123456789ab:2 01912345-6789-7abc-8def-0123456789ac:1 --from authority
 ```
+
+### Important: Leases Start in PENDING State
+
+When you create a lease (via `MsgCreateLeaseForTenant` or `MsgCreateLease`), it starts in **PENDING** state. The provider must acknowledge the lease before billing begins:
+
+```bash
+# Provider acknowledges the lease (transitions PENDING → ACTIVE)
+manifestd tx billing acknowledge-lease [lease-uuid] --from provider-key
+```
+
+For migrations, you may want to have the provider pre-acknowledge leases immediately after creation.
 
 ### Important Constraints
 
@@ -141,6 +152,7 @@ manifestd tx billing create-lease-for-tenant manifest1abc... 1:2 2:1 --from auth
 2. **All SKUs must be active** - Deactivated SKUs cannot be leased
 3. **Provider must be active** - Deactivated providers cannot have new leases
 4. **Credit must cover min_lease_duration** - Otherwise creation fails
+5. **Pending timeout** - If provider doesn't acknowledge within `pending_timeout` (default 30 min), lease expires
 
 ### Multiple SKUs in One Lease
 
@@ -148,25 +160,26 @@ A single lease can include multiple SKUs, but they must all belong to the same p
 
 ```bash
 # Multiple SKUs from the same provider
-manifestd tx billing create-lease-for-tenant manifest1abc... 1:1 2:2 3:1 --from authority
+manifestd tx billing create-lease-for-tenant manifest1abc... <sku-uuid-1>:1 <sku-uuid-2>:2 <sku-uuid-3>:1 --from authority
 ```
 
 ### Batch Migration Script Example
 
-For migrating many leases, consider a script:
+For migrating many leases, consider a script that creates and acknowledges:
 
 ```bash
 #!/bin/bash
 # migration_script.sh
 
 AUTHORITY_KEY="authority"
+PROVIDER_KEY="provider"
 DENOM="upwr"  # or your factory denom
 
 # Array of tenant migrations: "address|sku_items|credit_amount"
 MIGRATIONS=(
-  "manifest1abc...|1:2|100000000"
-  "manifest1def...|1:1 2:1|50000000"
-  "manifest1ghi...|3:5|200000000"
+  "manifest1abc...|<sku-uuid>:2|100000000"
+  "manifest1def...|<sku-uuid-1>:1 <sku-uuid-2>:1|50000000"
+  "manifest1ghi...|<sku-uuid-3>:5|200000000"
 )
 
 for migration in "${MIGRATIONS[@]}"; do
@@ -181,10 +194,19 @@ for migration in "${MIGRATIONS[@]}"; do
   
   sleep 6  # Wait for block
   
-  # Create lease
+  # Create lease (starts in PENDING state)
   echo "  Creating lease with items: $items..."
-  manifestd tx billing create-lease-for-tenant "$tenant" $items \
-    --from "$AUTHORITY_KEY" -y --gas auto --gas-adjustment 1.5
+  RESULT=$(manifestd tx billing create-lease-for-tenant "$tenant" $items \
+    --from "$AUTHORITY_KEY" -y --gas auto --gas-adjustment 1.5 --output json)
+  
+  LEASE_UUID=$(echo "$RESULT" | jq -r '.logs[0].events[] | select(.type=="lease_created") | .attributes[] | select(.key=="lease_uuid") | .value')
+  
+  sleep 6  # Wait for block
+  
+  # Acknowledge lease (transitions to ACTIVE, billing starts)
+  echo "  Acknowledging lease $LEASE_UUID..."
+  manifestd tx billing acknowledge-lease "$LEASE_UUID" \
+    --from "$PROVIDER_KEY" -y --gas auto --gas-adjustment 1.5
   
   sleep 6  # Wait for block
   
@@ -196,20 +218,28 @@ echo "Migration complete!"
 
 ## Step 5: Verify Migration
 
-After migration, verify the leases were created correctly:
+After migration, verify the leases were created and acknowledged correctly:
 
 ```bash
-# Query tenant's leases
-manifestd query billing leases-by-tenant [tenant-address]
+# Query tenant's leases (should show ACTIVE state)
+manifestd query billing leases-by-tenant [tenant-address] --state active
 
 # Query tenant's credit account
 manifestd query billing credit-account [tenant-address]
 
 # Query specific lease details
-manifestd query billing lease [lease-id]
+manifestd query billing lease [lease-uuid]
 ```
 
 ## Important Notes
+
+### Lease Lifecycle
+
+1. **PENDING**: Lease created, credit locked, awaiting provider acknowledgement
+2. **ACTIVE**: Provider acknowledged, billing has started
+3. **CLOSED**: Lease terminated normally
+
+For migrations, ensure the provider acknowledges leases promptly to avoid them expiring.
 
 ### Price Locking
 
@@ -221,7 +251,7 @@ Credit that remains in a tenant's credit account stays there. There is no mechan
 
 ### Events
 
-Each lease creation emits events for auditing:
+Each lease creation and state transition emits events for auditing:
 
 ```bash
 # Query events for a transaction
@@ -229,12 +259,16 @@ manifestd query tx [txhash] --output json | jq '.events'
 ```
 
 Key events:
-- `lease_created` - Contains `lease_id`, `tenant`, `provider_id`, `created_by`
+- `lease_created` - Contains `lease_uuid`, `tenant`, `provider_uuid`
+- `lease_acknowledged` - Contains `lease_uuid`, `provider_uuid`, `acknowledged_at`
+- `lease_rejected` - Contains `lease_uuid`, `provider_uuid`, `reason`
+- `lease_closed` - Contains `lease_uuid`, `tenant`, `settled_amounts`
 - `credit_funded` - Contains `tenant`, `amount`, `credit_address`
 
 ### Settlement
 
 Leases created via `MsgCreateLeaseForTenant` work exactly like tenant-created leases:
+- Billing only starts after provider acknowledgement (ACTIVE state)
 - Settlement happens during `Withdraw` or `CloseLease` operations
 - Auto-close triggers when credit is exhausted during write operations
 - Tenants can close their own leases (even if created by authority)
@@ -243,18 +277,26 @@ Leases created via `MsgCreateLeaseForTenant` work exactly like tenant-created le
 
 If a migration needs to be reversed:
 
-1. **Close the lease**: The tenant, provider, or authority can close the lease
+1. **For PENDING leases**: Cancel or reject them
    ```bash
-   manifestd tx billing close-lease [lease-id] --from authority
+   # Tenant cancels
+   manifestd tx billing cancel-lease [lease-uuid] --from tenant
+   # Or provider rejects
+   manifestd tx billing reject-lease [lease-uuid] --from provider
    ```
 
-2. **Settlement happens automatically**: Any accrued amount is transferred to the provider during closure
-
-3. **Credit remains**: Any unspent credit stays in the tenant's credit account for future use
-
-4. **Provider withdrawal**: Provider should withdraw any accrued funds before/after closing if needed
+2. **For ACTIVE leases**: Close the lease
    ```bash
-   manifestd tx billing withdraw [lease-id] --from provider
+   manifestd tx billing close-lease [lease-uuid] --from authority
+   ```
+
+3. **Settlement happens automatically**: Any accrued amount is transferred to the provider during closure
+
+4. **Credit remains**: Any unspent credit stays in the tenant's credit account for future use
+
+5. **Provider withdrawal**: Provider should withdraw any accrued funds before/after closing if needed
+   ```bash
+   manifestd tx billing withdraw [lease-uuid] --from provider
    ```
 
 ## Common Issues
@@ -265,7 +307,7 @@ The tenant doesn't have enough credit to cover `min_lease_duration` for one or m
 
 ```bash
 # Check SKU rates and denoms
-manifestd query sku sku [sku-id]
+manifestd query sku sku [sku-uuid]
 
 # For each denom: sum(rate × quantity) × min_lease_duration
 # Fund accordingly
@@ -286,7 +328,7 @@ manifestd tx billing fund-credit [tenant] [amount] --from authority
 Ensure the SKU exists and is active:
 
 ```bash
-manifestd query sku sku [sku-id]
+manifestd query sku sku [sku-uuid]
 ```
 
 If the SKU doesn't exist, create it first via the SKU module.
@@ -297,10 +339,10 @@ Multi-provider leases are not supported. Create separate leases for different pr
 
 ```bash
 # Provider 1 SKUs
-manifestd tx billing create-lease-for-tenant manifest1abc... 1:1 2:1 --from authority
+manifestd tx billing create-lease-for-tenant manifest1abc... <provider1-sku-uuid>:1 --from authority
 
 # Provider 2 SKUs (separate lease)
-manifestd tx billing create-lease-for-tenant manifest1abc... 5:1 6:1 --from authority
+manifestd tx billing create-lease-for-tenant manifest1abc... <provider2-sku-uuid>:1 --from authority
 ```
 
 ### "unauthorized"
@@ -317,9 +359,18 @@ To add your address to the allow list, the authority must update params.
 
 The provider associated with the SKU has been deactivated. Contact the authority to reactivate, or use SKUs from an active provider.
 
+### Lease expires before acknowledgement
+
+If the lease expires (remains in PENDING past `pending_timeout`), it transitions to EXPIRED state. The credit is not consumed and remains available. To avoid this during migration:
+
+1. Increase `pending_timeout` temporarily via `update-params`
+2. Have provider ready to acknowledge immediately after creation
+3. Script the create and acknowledge together (as shown above)
+
 ## Related Documentation
 
 - [Billing README](../README.md) - Complete billing module overview
+- [Lease Lifecycle Design](LEASE_LIFECYCLE_DESIGN.md) - Detailed lease lifecycle with PENDING state
 - [API Reference](API.md) - Detailed API documentation
 - [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions
 - [Architecture](ARCHITECTURE.md) - Technical architecture details

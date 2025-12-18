@@ -333,6 +333,97 @@ if creditBalance < minRequired {
 }
 ```
 
+## Decision 15: UUIDv7 for Identifiers
+
+**Decision:** Use deterministic UUIDv7 for providers, SKUs, and leases instead of auto-increment uint64.
+
+**Alternatives Considered:**
+1. Auto-increment uint64 IDs
+2. Random UUIDs (UUIDv4)
+3. Deterministic UUIDv7 (chosen)
+
+**Rationale:**
+- **Time-ordered:** Natural sorting by creation time
+- **Deterministic:** All validators generate identical UUIDs for same block
+- **External Integration:** Easier to correlate with off-chain systems
+- **Future-proof:** No practical limit vs uint64 theoretical max
+- **Debugging:** Easier to trace and timestamp from ID
+
+**Implementation:**
+```go
+// UUIDv7 = timestamp (48 bits) + version (4 bits) + sequence (12 bits) + variant (2 bits) + node (62 bits)
+// timestamp: block time in milliseconds
+// sequence: per-block counter
+// node: hash of chain-id + module name
+```
+
+**Trade-offs:**
+- Larger storage (16 bytes vs 8 bytes)
+- Longer string representation in queries/logs
+
+## Decision 16: PENDING State and Provider Acknowledgement
+
+**Decision:** Leases start in PENDING state and require provider acknowledgement before billing begins.
+
+**Alternatives Considered:**
+1. Immediate ACTIVE state (billing starts at creation)
+2. Optional acknowledgement
+3. Required acknowledgement with PENDING state (chosen)
+
+**Rationale:**
+- **Fair Billing:** Tenants not charged until resources actually provisioned
+- **Provider Control:** Provider can accept or reject leases
+- **Off-chain Sync:** Time for provider to provision resources
+- **Dispute Avoidance:** Clear demarcation of when service starts
+
+**Implementation:**
+- Create → PENDING (credit locked)
+- AcknowledgeLease → ACTIVE (billing starts)
+- RejectLease → REJECTED (credit unlocked)
+- EndBlocker expiration → EXPIRED (credit unlocked)
+
+**Trade-offs:**
+- Additional message (AcknowledgeLease) required
+- Provider must monitor for pending leases
+- Potential for lease expiration if provider slow
+
+## Decision 17: EndBlocker for Pending Expiration
+
+**Decision:** Use EndBlocker to automatically expire PENDING leases that exceed timeout.
+
+**Alternatives Considered:**
+1. No automatic expiration (manual only)
+2. Per-query lazy expiration
+3. EndBlocker with rate limiting (chosen)
+
+**Rationale:**
+- **Automatic Cleanup:** No manual intervention needed
+- **Predictable:** Consistent behavior based on timeout
+- **Fair to Tenants:** Credit unlocked without waiting indefinitely
+- **DoS Protected:** Rate limited to 100 per block
+
+**Trade-offs:**
+- EndBlocker overhead (mitigated by rate limiting)
+- Need efficient time-ordered index
+- Max pending leases per tenant limit needed
+
+## Decision 18: Tenant Cancellation of Pending Leases
+
+**Decision:** Allow tenants to cancel their own PENDING leases before provider acknowledgement.
+
+**Alternatives Considered:**
+1. No cancellation (wait for timeout)
+2. Cancellation allowed (chosen)
+
+**Rationale:**
+- **User Experience:** Tenants can change their mind immediately
+- **Flexibility:** No need to wait for timeout
+- **Immediate Credit Unlock:** Funds available for other leases
+
+**Trade-offs:**
+- Additional message type (CancelLease)
+- Provider may have started provisioning (off-chain race)
+
 ## Future Considerations
 
 ### Potential Enhancements for v2
@@ -347,6 +438,7 @@ if creditBalance < minRequired {
 8. **Multi-Provider Leases:** Items from different providers
 9. **Credit Transfers:** Move credits between accounts
 10. **Provider Disputes:** On-chain dispute resolution
+11. **Provider Response Metrics:** Track acknowledgement times
 
 ### Known Limitations
 
@@ -358,6 +450,7 @@ if creditBalance < minRequired {
 6. **Single Provider Per Lease:** Cannot mix providers in one lease
 7. **Lease Queries Return Stored State:** `Lease`, `Leases`, etc. return stored `last_settled_at` (use `WithdrawableAmount` for real-time)
 8. **No Denom Conversion:** Must fund credit with exact denoms required by target SKUs
+9. **PENDING Lease Timeout:** Fixed timeout for all providers (governance parameter)
 
 ### Migration Considerations
 
@@ -367,3 +460,4 @@ When implementing breaking changes:
 - Maintain lease history
 - Update indexes atomically
 - Version proto messages appropriately
+- Handle PENDING leases during upgrade (either expire or migrate to new state)

@@ -31,15 +31,16 @@ The SKU module:
 erDiagram
     PROVIDER ||--o{ SKU : "has many"
     PROVIDER {
-        uint64 id PK
+        string uuid PK
         string address
         string payout_address
+        string api_url
         bytes meta_hash
         bool active
     }
     SKU {
-        uint64 id PK
-        uint64 provider_id FK
+        string uuid PK
+        string provider_uuid FK
         string name
         Unit unit
         Coin base_price
@@ -54,9 +55,10 @@ Providers represent service vendors who offer SKUs:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `uint64` | Auto-incremented unique identifier |
+| `uuid` | `string` | Unique UUIDv7 identifier (deterministically generated) |
 | `address` | `string` | The provider's management address |
 | `payout_address` | `string` | Address where billing payments are sent |
+| `api_url` | `string` | HTTPS endpoint for provider's off-chain API (tenant authentication) |
 | `meta_hash` | `bytes` | Optional hash of off-chain metadata (name, description, etc.) |
 | `active` | `bool` | Whether provider can have new SKUs created |
 
@@ -66,11 +68,11 @@ SKUs represent individual service offerings:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `uint64` | Auto-incremented unique identifier |
-| `provider_id` | `uint64` | Reference to parent provider |
+| `uuid` | `string` | Unique UUIDv7 identifier (deterministically generated) |
+| `provider_uuid` | `string` | Reference to parent provider's UUID |
 | `name` | `string` | Human-readable SKU name |
 | `unit` | `Unit` | Billing unit (per hour, per day) |
-| `base_price` | `Coin` | Price per unit |
+| `base_price` | `Coin` | Price per unit (defines the payment denomination) |
 | `meta_hash` | `bytes` | Optional hash of off-chain metadata |
 | `active` | `bool` | Whether SKU can be used in new leases |
 
@@ -104,12 +106,12 @@ Parameters can be updated via governance or authorized messages, and changes are
 ```mermaid
 graph LR
     subgraph "Primary Storage"
-        Providers[Providers<br/>Map: uint64 → Provider]
-        SKUs[SKUs<br/>Map: uint64 → SKU]
+        Providers[Providers<br/>Map: string → Provider]
+        SKUs[SKUs<br/>Map: string → SKU]
     end
     
     subgraph "Indexes"
-        ProviderIdx[SKUsByProvider<br/>Map: provider_id, sku_id → empty]
+        ProviderIdx[SKUsByProvider<br/>Map: provider_uuid, sku_uuid → empty]
     end
     
     subgraph "Sequences"
@@ -120,11 +122,11 @@ graph LR
 
 | Collection | Key Type | Value Type | Purpose |
 |------------|----------|------------|---------|
-| `Providers` | `uint64` | `Provider` | Primary provider storage |
-| `ProviderSequence` | - | `uint64` | Auto-increment for provider IDs |
-| `SKUs` | `uint64` | `SKU` | Primary SKU storage |
-| `SKUSequence` | - | `uint64` | Auto-increment for SKU IDs |
-| `SKUsByProvider` | `(uint64, uint64)` | `bool` | Index for provider → SKU lookups |
+| `Providers` | `string` (UUID) | `Provider` | Primary provider storage |
+| `ProviderSequence` | - | `uint64` | Sequence counter for deterministic UUID generation |
+| `SKUs` | `string` (UUID) | `SKU` | Primary SKU storage |
+| `SKUSequence` | - | `uint64` | Sequence counter for deterministic UUID generation |
+| `SKUsByProvider` | `(string, string)` | `bool` | Index for provider → SKU lookups |
 
 ### Key Prefixes
 
@@ -137,6 +139,16 @@ var (
     SKUsByProviderKeyPrefix    = collections.NewPrefix(4)
 )
 ```
+
+### UUIDv7 Generation
+
+The module uses deterministic UUIDv7 generation for consensus compatibility:
+
+- **Timestamp**: Derived from block time (milliseconds)
+- **Random bits**: Derived from SHA-256 hash of (block height + sequence counter)
+- **Format**: Standard UUIDv7 with version 7 and variant bits set correctly
+
+This ensures all validators generate the same UUID for the same transaction.
 
 ## Message Flow
 
@@ -280,14 +292,14 @@ func ValidatePriceDivisibility(unit Unit, price sdk.Coin) error {
 
 | Event | Attributes | When Emitted |
 |-------|------------|--------------|
-| `provider_created` | `provider_id`, `address`, `payout_address` | Provider created |
-| `provider_updated` | `provider_id` | Provider updated |
-| `provider_activated` | `provider_id` | Provider reactivated via update |
-| `provider_deactivated` | `provider_id` | Provider deactivated |
-| `sku_created` | `sku_id`, `provider_id`, `name` | SKU created |
-| `sku_updated` | `sku_id`, `provider_id` | SKU updated |
-| `sku_activated` | `sku_id`, `provider_id` | SKU reactivated via update |
-| `sku_deactivated` | `sku_id`, `provider_id` | SKU deactivated |
+| `provider_created` | `provider_uuid`, `address`, `payout_address`, `created_by` | Provider created |
+| `provider_updated` | `provider_uuid` | Provider updated |
+| `provider_activated` | `provider_uuid` | Provider reactivated via update |
+| `provider_deactivated` | `provider_uuid`, `deactivated_by` | Provider deactivated |
+| `sku_created` | `sku_uuid`, `provider_uuid`, `name`, `base_price`, `created_by` | SKU created |
+| `sku_updated` | `sku_uuid`, `provider_uuid` | SKU updated |
+| `sku_activated` | `sku_uuid`, `provider_uuid` | SKU reactivated via update |
+| `sku_deactivated` | `sku_uuid`, `provider_uuid`, `deactivated_by` | SKU deactivated |
 | `params_updated` | - | Module parameters updated |
 
 ## Error Codes
@@ -331,11 +343,11 @@ Both providers and SKUs use soft delete (active flag):
 
 | Operation | Complexity | Notes |
 |-----------|------------|-------|
-| GetProvider | O(1) | Direct key lookup |
-| GetSKU | O(1) | Direct key lookup |
+| GetProvider | O(1) | Direct key lookup by UUID |
+| GetSKU | O(1) | Direct key lookup by UUID |
 | GetSKUsByProvider | O(n) | Index scan, n = SKUs per provider |
-| CreateProvider | O(1) | Single write |
-| CreateSKU | O(1) | Two writes (SKU + index) |
+| CreateProvider | O(1) | Single write + sequence increment |
+| CreateSKU | O(1) | Two writes (SKU + index) + sequence increment |
 | UpdateSKU | O(1) | Up to 3 writes if provider changes |
 
 ## Testing Strategy

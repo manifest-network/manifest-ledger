@@ -35,11 +35,13 @@ manifestd tx sku create-provider [address] [payout-address] [flags]
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
+| --api-url | string | HTTPS endpoint for provider's off-chain API (required) |
 | --meta-hash | string | Hex-encoded hash of off-chain metadata (optional) |
 
 **Example:**
 ```bash
 manifestd tx sku create-provider manifest1provider... manifest1payout... \
+  --api-url https://api.provider.com \
   --meta-hash deadbeef \
   --from authority
 ```
@@ -51,13 +53,13 @@ manifestd tx sku create-provider manifest1provider... manifest1payout... \
 Update an existing provider.
 
 ```bash
-manifestd tx sku update-provider [id] [address] [payout-address] [active] [flags]
+manifestd tx sku update-provider [uuid] [address] [payout-address] [active] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| id | uint64 | Provider ID |
+| uuid | string | Provider UUID (UUIDv7 format) |
 | address | string | New management address |
 | payout-address | string | New payout address |
 | active | bool | Whether the provider is active (true/false) |
@@ -65,11 +67,13 @@ manifestd tx sku update-provider [id] [address] [payout-address] [active] [flags
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
+| --api-url | string | HTTPS endpoint for provider's off-chain API (optional) |
 | --meta-hash | string | Hex-encoded hash of off-chain metadata (optional) |
 
 **Example:**
 ```bash
-manifestd tx sku update-provider 1 manifest1provider... manifest1payout... true \
+manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1provider... manifest1payout... true \
+  --api-url https://api.provider.com \
   --meta-hash cafebabe \
   --from authority
 ```
@@ -81,17 +85,17 @@ manifestd tx sku update-provider 1 manifest1provider... manifest1payout... true 
 Deactivate a provider (soft delete). The provider remains in state but is marked inactive. Inactive providers cannot have new SKUs created for them.
 
 ```bash
-manifestd tx sku deactivate-provider [id] [flags]
+manifestd tx sku deactivate-provider [uuid] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| id | uint64 | Provider ID to deactivate |
+| uuid | string | Provider UUID to deactivate |
 
 **Example:**
 ```bash
-manifestd tx sku deactivate-provider 1 --from authority
+manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab --from authority
 ```
 
 ---
@@ -101,13 +105,13 @@ manifestd tx sku deactivate-provider 1 --from authority
 Create a new SKU for an active provider.
 
 ```bash
-manifestd tx sku create-sku [provider-id] [name] [unit] [base-price] [flags]
+manifestd tx sku create-sku [provider-uuid] [name] [unit] [base-price] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-id | uint64 | ID of the provider this SKU belongs to |
+| provider-uuid | string | UUID of the provider this SKU belongs to |
 | name | string | Human-readable name for the SKU |
 | unit | int | Billing unit: 1 = per hour, 2 = per day |
 | base-price | coin | Base price (e.g., `3600upwr` for 1/second rate per hour) |
@@ -119,7 +123,7 @@ manifestd tx sku create-sku [provider-id] [name] [unit] [base-price] [flags]
 
 **Example:**
 ```bash
-manifestd tx sku create-sku 1 "Compute Instance Small" 1 3600000upwr \
+manifestd tx sku create-sku 01912345-6789-7abc-8def-0123456789ab "Compute Instance Small" 1 3600000upwr \
   --meta-hash deadbeef \
   --from authority
 ```
@@ -135,14 +139,14 @@ manifestd tx sku create-sku 1 "Compute Instance Small" 1 3600000upwr \
 Update an existing SKU.
 
 ```bash
-manifestd tx sku update-sku [id] [provider-id] [name] [unit] [base-price] [active] [flags]
+manifestd tx sku update-sku [uuid] [provider-uuid] [name] [unit] [base-price] [active] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| id | uint64 | SKU ID |
-| provider-id | uint64 | Provider ID |
+| uuid | string | SKU UUID |
+| provider-uuid | string | Provider UUID |
 | name | string | SKU name |
 | unit | int | Billing unit: 1 = per hour, 2 = per day |
 | base-price | coin | Base price |
@@ -155,7 +159,7 @@ manifestd tx sku update-sku [id] [provider-id] [name] [unit] [base-price] [activ
 
 **Example:**
 ```bash
-manifestd tx sku update-sku 1 1 "Compute Instance Medium" 1 7200000upwr true \
+manifestd tx sku update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab "Compute Instance Medium" 1 7200000upwr true \
   --meta-hash cafebabe \
   --from authority
 ```
@@ -167,17 +171,17 @@ manifestd tx sku update-sku 1 1 "Compute Instance Medium" 1 7200000upwr true \
 Deactivate a SKU (soft delete). The SKU remains in state but is marked inactive. Inactive SKUs cannot be used for new leases but existing leases continue with their locked prices.
 
 ```bash
-manifestd tx sku deactivate-sku [id] [flags]
+manifestd tx sku deactivate-sku [uuid] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| id | uint64 | SKU ID to deactivate |
+| uuid | string | SKU UUID to deactivate |
 
 **Example:**
 ```bash
-manifestd tx sku deactivate-sku 1 --from authority
+manifestd tx sku deactivate-sku 01912345-6789-7abc-8def-0123456789ab --from authority
 ```
 
 ---
@@ -233,24 +237,25 @@ manifestd query sku params
 
 #### provider
 
-Query a provider by ID.
+Query a provider by UUID.
 
 ```bash
-manifestd query sku provider [id]
+manifestd query sku provider [uuid]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| id | uint64 | Provider ID |
+| uuid | string | Provider UUID |
 
 **Response:**
 ```json
 {
   "provider": {
-    "id": "1",
+    "uuid": "01912345-6789-7abc-8def-0123456789ab",
     "address": "manifest1provider...",
     "payout_address": "manifest1payout...",
+    "api_url": "https://api.provider.com",
     "meta_hash": "",
     "active": true
   }
@@ -284,9 +289,10 @@ manifestd query sku providers --active-only --limit 10
 {
   "providers": [
     {
-      "id": "1",
+      "uuid": "01912345-6789-7abc-8def-0123456789ab",
       "address": "manifest1provider...",
       "payout_address": "manifest1payout...",
+      "api_url": "https://api.provider.com",
       "meta_hash": "",
       "active": true
     }
@@ -302,23 +308,23 @@ manifestd query sku providers --active-only --limit 10
 
 #### sku
 
-Query a SKU by ID.
+Query a SKU by UUID.
 
 ```bash
-manifestd query sku sku [id]
+manifestd query sku sku [uuid]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| id | uint64 | SKU ID |
+| uuid | string | SKU UUID |
 
 **Response:**
 ```json
 {
   "sku": {
-    "id": "1",
-    "provider_id": "1",
+    "uuid": "01912345-6789-7abc-8def-0123456789cd",
+    "provider_uuid": "01912345-6789-7abc-8def-0123456789ab",
     "name": "Compute Instance Small",
     "unit": "UNIT_PER_HOUR",
     "base_price": {
@@ -360,13 +366,13 @@ manifestd query sku skus --active-only --limit 10
 Query all SKUs for a specific provider.
 
 ```bash
-manifestd query sku skus-by-provider [provider-id] [flags]
+manifestd query sku skus-by-provider [provider-uuid] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-id | uint64 | Provider ID |
+| provider-uuid | string | Provider UUID |
 
 **Flags:**
 | Flag | Type | Description |
@@ -377,7 +383,7 @@ manifestd query sku skus-by-provider [provider-id] [flags]
 
 **Example:**
 ```bash
-manifestd query sku skus-by-provider 1 --active-only
+manifestd query sku skus-by-provider 01912345-6789-7abc-8def-0123456789ab --active-only
 ```
 
 ---
@@ -412,13 +418,14 @@ message MsgCreateProvider {
   string address = 2;         // Provider's management address
   string payout_address = 3;  // Provider's payout address
   bytes meta_hash = 4;        // Off-chain metadata hash
+  string api_url = 5;         // HTTPS endpoint for off-chain API
 }
 ```
 
 **Response:**
 ```protobuf
 message MsgCreateProviderResponse {
-  uint64 id = 1;  // Created provider ID
+  string uuid = 1;  // Created provider UUID
 }
 ```
 
@@ -432,11 +439,12 @@ Update an existing provider.
 ```protobuf
 message MsgUpdateProvider {
   string authority = 1;       // Authority or allowed address
-  uint64 id = 2;              // Provider ID
+  string uuid = 2;            // Provider UUID
   string address = 3;         // New management address
   string payout_address = 4;  // New payout address
   bytes meta_hash = 5;        // New metadata hash
   bool active = 6;            // Active status
+  string api_url = 7;         // HTTPS endpoint for off-chain API
 }
 ```
 
@@ -455,7 +463,7 @@ Deactivate a provider (soft delete).
 ```protobuf
 message MsgDeactivateProvider {
   string authority = 1;  // Authority or allowed address
-  uint64 id = 2;         // Provider ID
+  string uuid = 2;       // Provider UUID
 }
 ```
 
@@ -474,7 +482,7 @@ Create a new SKU.
 ```protobuf
 message MsgCreateSKU {
   string authority = 1;                    // Authority or allowed address
-  uint64 provider_id = 2;                  // Provider ID
+  string provider_uuid = 2;                // Provider UUID
   string name = 3;                         // SKU name
   Unit unit = 4;                           // Billing unit
   cosmos.base.v1beta1.Coin base_price = 5; // Base price
@@ -485,7 +493,7 @@ message MsgCreateSKU {
 **Response:**
 ```protobuf
 message MsgCreateSKUResponse {
-  uint64 id = 1;  // Created SKU ID
+  string uuid = 1;  // Created SKU UUID
 }
 ```
 
@@ -499,8 +507,8 @@ Update an existing SKU.
 ```protobuf
 message MsgUpdateSKU {
   string authority = 1;                    // Authority or allowed address
-  uint64 id = 2;                           // SKU ID
-  uint64 provider_id = 3;                  // Provider ID
+  string uuid = 2;                         // SKU UUID
+  string provider_uuid = 3;                // Provider UUID
   string name = 4;                         // SKU name
   Unit unit = 5;                           // Billing unit
   cosmos.base.v1beta1.Coin base_price = 6; // Base price
@@ -524,7 +532,7 @@ Deactivate a SKU (soft delete).
 ```protobuf
 message MsgDeactivateSKU {
   string authority = 1;  // Authority or allowed address
-  uint64 id = 2;         // SKU ID
+  string uuid = 2;       // SKU UUID
 }
 ```
 
@@ -589,14 +597,14 @@ message QueryParamsResponse {
 
 #### QueryProvider
 
-Get a provider by ID.
+Get a provider by UUID.
 
 **Endpoint:** `liftedinit.sku.v1.Query/Provider`
 
 **Request:**
 ```protobuf
 message QueryProviderRequest {
-  uint64 id = 1;
+  string uuid = 1;
 }
 ```
 
@@ -635,14 +643,14 @@ message QueryProvidersResponse {
 
 #### QuerySKU
 
-Get a SKU by ID.
+Get a SKU by UUID.
 
 **Endpoint:** `liftedinit.sku.v1.Query/SKU`
 
 **Request:**
 ```protobuf
 message QuerySKURequest {
-  uint64 id = 1;
+  string uuid = 1;
 }
 ```
 
@@ -688,7 +696,7 @@ List SKUs for a specific provider.
 **Request:**
 ```protobuf
 message QuerySKUsByProviderRequest {
-  uint64 provider_id = 1;
+  string provider_uuid = 1;
   cosmos.base.query.v1beta1.PageRequest pagination = 2;
   bool active_only = 3;
 }
@@ -719,11 +727,11 @@ http://localhost:1317/liftedinit/sku/v1
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/params` | Get module parameters |
-| GET | `/provider/{id}` | Get provider by ID |
+| GET | `/provider/{uuid}` | Get provider by UUID |
 | GET | `/providers` | List all providers |
-| GET | `/sku/{id}` | Get SKU by ID |
+| GET | `/sku/{uuid}` | Get SKU by UUID |
 | GET | `/skus` | List all SKUs |
-| GET | `/skus/provider/{provider_id}` | List SKUs by provider |
+| GET | `/skus/provider/{provider_uuid}` | List SKUs by provider |
 
 ### Examples
 
@@ -734,7 +742,7 @@ curl http://localhost:1317/liftedinit/sku/v1/params
 
 **Get Provider:**
 ```bash
-curl http://localhost:1317/liftedinit/sku/v1/provider/1
+curl http://localhost:1317/liftedinit/sku/v1/provider/01912345-6789-7abc-8def-0123456789ab
 ```
 
 **List Active Providers:**
@@ -744,7 +752,7 @@ curl "http://localhost:1317/liftedinit/sku/v1/providers?active_only=true&paginat
 
 **Get SKU:**
 ```bash
-curl http://localhost:1317/liftedinit/sku/v1/sku/1
+curl http://localhost:1317/liftedinit/sku/v1/sku/01912345-6789-7abc-8def-0123456789cd
 ```
 
 **List Active SKUs:**
@@ -754,7 +762,7 @@ curl "http://localhost:1317/liftedinit/sku/v1/skus?active_only=true&pagination.l
 
 **List SKUs by Provider:**
 ```bash
-curl "http://localhost:1317/liftedinit/sku/v1/skus/provider/1?active_only=true"
+curl "http://localhost:1317/liftedinit/sku/v1/skus/provider/01912345-6789-7abc-8def-0123456789ab?active_only=true"
 ```
 
 ---
@@ -765,11 +773,12 @@ curl "http://localhost:1317/liftedinit/sku/v1/skus/provider/1?active_only=true"
 
 ```protobuf
 message Provider {
-  uint64 id = 1;              // Unique identifier
+  string uuid = 1;            // Unique UUIDv7 identifier
   string address = 2;         // Management address
   string payout_address = 3;  // Payout address
-  bytes meta_hash = 4;        // Off-chain metadata hash
-  bool active = 5;            // Active status
+  string api_url = 4;         // HTTPS endpoint for off-chain API
+  bytes meta_hash = 5;        // Off-chain metadata hash
+  bool active = 6;            // Active status
 }
 ```
 
@@ -777,8 +786,8 @@ message Provider {
 
 ```protobuf
 message SKU {
-  uint64 id = 1;                           // Unique identifier
-  uint64 provider_id = 2;                  // Provider ID
+  string uuid = 1;                         // Unique UUIDv7 identifier
+  string provider_uuid = 2;                // Provider UUID
   string name = 3;                         // Human-readable name
   Unit unit = 4;                           // Billing unit
   cosmos.base.v1beta1.Coin base_price = 5; // Base price

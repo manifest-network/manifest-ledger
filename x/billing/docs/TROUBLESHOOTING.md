@@ -95,13 +95,28 @@ manifestd tx billing create-lease 5:1 --from tenant  # Provider 2 SKUs
 **Solution**: 
 1. Check current leases:
    ```bash
-   manifestd query billing leases-by-tenant [tenant-address] --active-only
+   manifestd query billing leases-by-tenant [tenant-address] --state active
    ```
 2. Close unused leases to free up slots:
    ```bash
-   manifestd tx billing close-lease [lease-id] --from tenant
+   manifestd tx billing close-lease [lease-uuid] --from tenant
    ```
 3. The default limit is 100 active leases per tenant.
+
+### "maximum pending leases per tenant reached"
+
+**Cause**: The tenant has too many pending leases awaiting acknowledgement.
+
+**Solution**: 
+1. Check current pending leases:
+   ```bash
+   manifestd query billing leases-by-tenant [tenant-address] --state pending
+   ```
+2. Wait for providers to acknowledge or reject pending leases, or cancel them:
+   ```bash
+   manifestd tx billing cancel-lease [lease-uuid] --from tenant
+   ```
+3. The default limit is 10 pending leases per tenant.
 
 ### "too many items in lease"
 
@@ -115,20 +130,20 @@ manifestd tx billing create-lease 5:1 --from tenant  # Provider 2 SKUs
 
 **Solution**: Ensure all items have quantity ≥ 1:
 ```bash
-manifestd tx billing create-lease 1:1 2:2 --from tenant
+manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1 --from tenant
 ```
 
 ### "duplicate sku in lease items"
 
-**Cause**: The same SKU ID appears multiple times in the lease items.
+**Cause**: The same SKU UUID appears multiple times in the lease items.
 
 **Solution**: Combine quantities into a single item:
 ```bash
 # Instead of this (fails):
-manifestd tx billing create-lease 1:2 1:3 --from tenant
+manifestd tx billing create-lease <sku-uuid>:2 <sku-uuid>:3 --from tenant
 
 # Do this:
-manifestd tx billing create-lease 1:5 --from tenant
+manifestd tx billing create-lease <sku-uuid>:5 --from tenant
 ```
 
 ### "lease must contain at least one item"
@@ -137,36 +152,76 @@ manifestd tx billing create-lease 1:5 --from tenant
 
 **Solution**: Specify at least one SKU item:
 ```bash
-manifestd tx billing create-lease 1:1 --from tenant
+manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1 --from tenant
 ```
+
+## Lease Acknowledgement Issues
+
+### "lease not pending"
+
+**Cause**: Attempting to acknowledge, reject, or cancel a lease that is not in PENDING state.
+
+**Solution**: Check the lease state:
+```bash
+manifestd query billing lease [lease-uuid]
+```
+
+Only PENDING leases can be acknowledged/rejected by providers or cancelled by tenants.
+
+### "unauthorized" (for acknowledge/reject)
+
+**Cause**: The sender is not the provider who owns the SKUs in the lease.
+
+**Solution**: Use the correct provider key:
+```bash
+manifestd tx billing acknowledge-lease [lease-uuid] --from [provider-key]
+```
+
+### Provider not responding to pending lease
+
+**What happens**:
+1. Lease remains in PENDING state
+2. After `pending_timeout` (default 30 minutes), the EndBlocker expires the lease
+3. Lease state changes to EXPIRED
+4. Credit is unlocked and remains in tenant's account
+
+**What tenant can do**:
+- Wait for automatic expiration
+- Cancel the lease manually:
+  ```bash
+  manifestd tx billing cancel-lease [lease-uuid] --from tenant
+  ```
 
 ## Lease Closure Issues
 
 ### "lease not found"
 
-**Cause**: The specified lease ID doesn't exist.
+**Cause**: The specified lease UUID doesn't exist or is invalid.
 
 **Solution**: 
 1. Query your leases:
    ```bash
    manifestd query billing leases-by-tenant [your-address]
    ```
-2. Use a valid lease ID.
+2. Use a valid lease UUID.
 
 ### "lease not active"
 
-**Cause**: Attempting to close a lease that's already closed.
+**Cause**: Attempting to close a lease that's not in ACTIVE state. Could be PENDING, CLOSED, REJECTED, or EXPIRED.
 
-**Solution**: No action needed - the lease is already closed. Query it to see details:
+**Solution**: Check the lease state:
 ```bash
-manifestd query billing lease [lease-id]
+manifestd query billing lease [lease-uuid]
 ```
+
+- **PENDING**: Use `cancel-lease` (tenant) or `reject-lease` (provider) instead
+- **CLOSED/REJECTED/EXPIRED**: No action needed, lease is already terminated
 
 ### "unauthorized"
 
 **Cause**: Attempting to close a lease you don't have permission to close.
 
-**Solution**: Only the following can close a lease:
+**Solution**: Only the following can close an ACTIVE lease:
 - The tenant who owns the lease
 - The provider of the SKUs in the lease
 - The module authority
@@ -176,25 +231,30 @@ manifestd query billing lease [lease-id]
 ### "no withdrawable amount"
 
 **Cause**: 
-1. The lease has no accrued charges yet (just created or just settled), OR
-2. The lease is not active (closed), OR
-3. The provider already withdrew recently
+1. The lease is in PENDING state (billing hasn't started), OR
+2. The lease has no accrued charges yet (just acknowledged or just settled), OR
+3. The lease is not active (closed), OR
+4. The provider already withdrew recently
 
 **Solution**: 
-1. Check the withdrawable amount:
+1. Check the lease state and withdrawable amount:
    ```bash
-   manifestd query billing withdrawable [lease-id]
+   manifestd query billing lease [lease-uuid]
+   manifestd query billing withdrawable [lease-uuid]
    ```
-2. For active leases, wait for more time to pass for charges to accrue.
-3. For closed leases, you cannot withdraw (settlement happened during close).
+2. For PENDING leases, wait for acknowledgement or acknowledge it first
+3. For ACTIVE leases, wait for more time to pass for charges to accrue
+4. For closed leases, you cannot withdraw (settlement happened during close)
 
 ### "lease not active"
 
-**Cause**: Attempting to withdraw from a closed lease.
+**Cause**: Attempting to withdraw from a lease that's not ACTIVE. PENDING leases don't accrue charges.
 
-**Solution**: You can only withdraw from active leases. Settlement happens during closure, so there's nothing left to withdraw:
+**Solution**: 
+- For PENDING leases: Acknowledge the lease first
+- For CLOSED leases: Settlement happened during closure, nothing left to withdraw
 ```bash
-manifestd query billing lease [lease-id]
+manifestd query billing lease [lease-uuid]
 ```
 
 ### "unauthorized"
@@ -203,7 +263,7 @@ manifestd query billing lease [lease-id]
 
 **Solution**: Use the provider's key to withdraw:
 ```bash
-manifestd tx billing withdraw [lease-id] --from [provider-key]
+manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 ```
 
 ### "provider not found"
@@ -215,17 +275,17 @@ manifestd tx billing withdraw [lease-id] --from [provider-key]
    ```bash
    manifestd query sku providers
    ```
-2. Use a valid provider ID.
+2. Use a valid provider UUID.
 
 ## WithdrawAll Issues
 
-### "provider_id is required for withdraw all"
+### "provider_uuid is required for withdraw all"
 
-**Cause**: Missing provider_id in the WithdrawAll command.
+**Cause**: Missing provider_uuid in the WithdrawAll command.
 
-**Solution**: Specify the provider ID:
+**Solution**: Specify the provider UUID:
 ```bash
-manifestd tx billing withdraw-all [provider-id] --from [key]
+manifestd tx billing withdraw-all [provider-uuid] --from [key]
 ```
 
 ### Response shows "has_more: true"
@@ -235,21 +295,21 @@ manifestd tx billing withdraw-all [provider-id] --from [key]
 **Solution**: Continue calling withdraw-all until has_more is false:
 ```bash
 # Process 50 leases at a time (default)
-manifestd tx billing withdraw-all [provider-id] --from [key]
+manifestd tx billing withdraw-all [provider-uuid] --from [key]
 
 # Or specify a larger limit (max 100)
-manifestd tx billing withdraw-all [provider-id] --limit 100 --from [key]
+manifestd tx billing withdraw-all [provider-uuid] --limit 100 --from [key]
 ```
 
 ## Query Issues
 
-### "lease_id cannot be zero"
+### "invalid lease_uuid format"
 
-**Cause**: Passing 0 as a lease ID.
+**Cause**: The lease UUID is not in valid UUIDv7 format.
 
-**Solution**: Lease IDs start at 1. Query your leases to find valid IDs:
+**Solution**: Ensure you're using a valid UUID (format: `xxxxxxxx-xxxx-7xxx-xxxx-xxxxxxxxxxxx`):
 ```bash
-manifestd query billing leases
+manifestd query billing lease 01912345-6789-7abc-8def-0123456789ab
 ```
 
 ### "invalid tenant address"
@@ -261,37 +321,64 @@ manifestd query billing leases
 manifestd query billing credit-account manifest1abc...
 ```
 
-## Auto-Close Behavior
+## Pending Lease Expiration
+
+### Understanding Pending Expiration
+
+Pending leases expire automatically if providers don't acknowledge them within `pending_timeout` (default 30 minutes).
+
+**How it works**:
+1. EndBlocker runs each block
+2. Checks pending leases against `created_at + pending_timeout`
+3. Expired leases transition to EXPIRED state
+4. Credit is unlocked (was never billed since lease was never active)
+5. `LeaseExpired` event is emitted
+
+**Rate limiting**: Max 100 expirations per block to prevent DoS.
+
+### Lease expired while waiting for provider
+
+**What happened**:
+1. Lease was created in PENDING state
+2. Provider did not acknowledge within `pending_timeout`
+3. EndBlocker expired the lease
+
+**What to do**:
+1. Credit remains in your account - no funds lost
+2. Contact the provider if this was unexpected
+3. Create a new lease if desired
+
+## Auto-Close Behavior (for ACTIVE leases)
 
 ### Understanding Auto-Close
 
-Auto-close is triggered when a lease's credit is exhausted (balance = 0). It happens during write operations only:
+Auto-close is triggered when an ACTIVE lease's credit is exhausted (balance = 0). It happens during write operations only:
 - `Withdraw` - If credit exhausted after settlement
 - `CloseLease` - If credit was already exhausted
 
 **Important:** Auto-close does NOT happen:
+- For PENDING leases (they don't accrue charges)
 - During query operations (queries are read-only)
-- At block boundaries (no EndBlocker processing)
-- Automatically in the background
+- Automatically in the background (except for pending expiration)
 
 ### Lease closed automatically
 
 **What happened**:
 1. During a Withdraw or CloseLease operation, the system detected zero credit
 2. Final settlement was performed (any remaining balance transferred to provider)
-3. The lease was closed with reason "credit_exhausted"
+3. The lease was closed
 
 **How to verify**:
 ```bash
 # Check lease state
-manifestd query billing lease [lease-id]
+manifestd query billing lease [lease-uuid]
 
 # Look for events in the transaction
 manifestd query tx [txhash] --output json | jq '.events'
 ```
 
 Events to look for:
-- `lease_auto_close` with `reason: credit_exhausted`
+- `lease_closed`
 
 **Resolution**: 
 1. Fund the credit account again
@@ -304,13 +391,14 @@ Events to look for:
 **Explanation**: 
 - Lease queries return the stored `last_settled_at` timestamp
 - They don't calculate time elapsed since then
+- PENDING leases don't accrue charges (billing starts at acknowledgement)
 - Use `WithdrawableAmount` or `ProviderWithdrawable` queries to get **real-time calculated amounts**:
   ```bash
   # Get real-time withdrawable for a specific lease
-  manifestd query billing withdrawable [lease-id]
+  manifestd query billing withdrawable [lease-uuid]
   
   # Get real-time total withdrawable for a provider
-  manifestd query billing provider-withdrawable [provider-id]
+  manifestd query billing provider-withdrawable [provider-uuid]
   ```
 
 ## Parameter Issues
@@ -323,6 +411,8 @@ Events to look for:
 - `min_lease_duration` must be > 0
 - `max_leases_per_tenant` must be > 0
 - `max_items_per_lease` must be > 0 and ≤ 100
+- `max_pending_leases_per_tenant` must be > 0
+- `pending_timeout` must be between 60 (1 min) and 86400 (24 hours)
 
 **Solution**: Check current params and ensure new values are valid:
 ```bash

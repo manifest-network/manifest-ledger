@@ -1,6 +1,7 @@
 package uuid
 
 import (
+	"encoding/hex"
 	"testing"
 	"time"
 
@@ -62,6 +63,74 @@ func TestGenerateUUIDv7FromTime(t *testing.T) {
 	}
 }
 
+func TestGenerateUUIDv7WithEntropy(t *testing.T) {
+	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	headerHash, _ := hex.DecodeString("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+	chainID := "manifest-1"
+
+	tests := []struct {
+		name       string
+		headerHash []byte
+		chainID    string
+		moduleName string
+		sequence   uint64
+	}{
+		{
+			name:       "with all entropy sources",
+			headerHash: headerHash,
+			chainID:    chainID,
+			moduleName: "sku",
+			sequence:   1,
+		},
+		{
+			name:       "with nil header hash",
+			headerHash: nil,
+			chainID:    chainID,
+			moduleName: "sku",
+			sequence:   1,
+		},
+		{
+			name:       "with empty chain ID",
+			headerHash: headerHash,
+			chainID:    "",
+			moduleName: "billing",
+			sequence:   1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			uuid1 := GenerateUUIDv7WithEntropy(testTime, tc.headerHash, tc.chainID, tc.moduleName, tc.sequence)
+			uuid2 := GenerateUUIDv7WithEntropy(testTime, tc.headerHash, tc.chainID, tc.moduleName, tc.sequence)
+
+			// Should be deterministic
+			require.Equal(t, uuid1, uuid2, "UUIDs should be deterministic")
+
+			// Should be valid UUIDv7
+			require.True(t, IsValidUUIDv7(uuid1), "UUID should be valid: %s", uuid1)
+		})
+	}
+}
+
+func TestCrossChainUniqueness(t *testing.T) {
+	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	headerHash1, _ := hex.DecodeString("1111111111111111111111111111111111111111111111111111111111111111")
+	headerHash2, _ := hex.DecodeString("2222222222222222222222222222222222222222222222222222222222222222")
+
+	// Same time, sequence, module but different chain IDs
+	uuid1 := GenerateUUIDv7WithEntropy(testTime, headerHash1, "chain-1", "sku", 1)
+	uuid2 := GenerateUUIDv7WithEntropy(testTime, headerHash1, "chain-2", "sku", 1)
+	require.NotEqual(t, uuid1, uuid2, "Different chain IDs should produce different UUIDs")
+
+	// Same time, sequence, module, chain ID but different header hashes
+	uuid3 := GenerateUUIDv7WithEntropy(testTime, headerHash1, "chain-1", "sku", 1)
+	uuid4 := GenerateUUIDv7WithEntropy(testTime, headerHash2, "chain-1", "sku", 1)
+	require.NotEqual(t, uuid3, uuid4, "Different header hashes should produce different UUIDs")
+
+	// Verify uuid1 and uuid3 are the same (same inputs)
+	require.Equal(t, uuid1, uuid3, "Same inputs should produce same UUIDs")
+}
+
 func TestUUIDUniqueness(t *testing.T) {
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 
@@ -78,6 +147,31 @@ func TestUUIDUniqueness(t *testing.T) {
 	otherTime := time.Date(2024, 1, 15, 10, 30, 1, 0, time.UTC)
 	uuid4 := GenerateUUIDv7FromTime(otherTime, "sku", 1)
 	require.NotEqual(t, uuid1, uuid4, "Different times should produce different UUIDs")
+}
+
+func TestMultiChainDeploymentScenario(t *testing.T) {
+	// Simulate a scenario where two chains are deployed at the exact same time
+	// with the same genesis and both create their first provider
+	deployTime := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	// Chain 1's first block after genesis
+	chain1HeaderHash, _ := hex.DecodeString("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	chain1ID := "manifest-mainnet"
+
+	// Chain 2's first block after genesis (testnet deployed same time)
+	chain2HeaderHash, _ := hex.DecodeString("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+	chain2ID := "manifest-testnet"
+
+	// Both chains create first provider (sequence 1) at the same block time
+	uuid1 := GenerateUUIDv7WithEntropy(deployTime, chain1HeaderHash, chain1ID, "sku-provider", 1)
+	uuid2 := GenerateUUIDv7WithEntropy(deployTime, chain2HeaderHash, chain2ID, "sku-provider", 1)
+
+	require.NotEqual(t, uuid1, uuid2,
+		"UUIDs from different chains should be unique even with same timestamp and sequence")
+
+	// Both should be valid
+	require.True(t, IsValidUUIDv7(uuid1))
+	require.True(t, IsValidUUIDv7(uuid2))
 }
 
 func TestIsValidUUIDv7(t *testing.T) {

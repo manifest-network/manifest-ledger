@@ -54,7 +54,7 @@ price_daily = 1 × 86400 = 86400 tokens
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| **Provider ID** | The ID of the provider offering this SKU | `1` |
+| **Provider UUID** | The UUID of the provider offering this SKU | `01912345-6789-7abc-8def-0123456789ab` |
 | **Name** | Human-readable name for the SKU | `"Compute Small"` |
 | **Unit** | Billing unit (1 = per hour, 2 = per day) | `1` |
 | **Base Price** | Price per billing unit (must be exactly divisible) | `3600upwr` |
@@ -91,7 +91,7 @@ The `meta_hash` field stores a hash of off-chain metadata describing the SKU in 
 Ensure your provider exists and is active:
 
 ```bash
-manifestd query sku provider <provider_id> --output json
+manifestd query sku provider <provider_uuid> --output json
 ```
 
 The provider must have `"active": true` to create SKUs for it.
@@ -100,7 +100,7 @@ The provider must have `"active": true` to create SKUs for it.
 
 ```bash
 manifestd tx sku create-sku \
-  <provider_id> \
+  <provider_uuid> \
   "<name>" \
   <unit> \
   <base_price> \
@@ -114,7 +114,7 @@ manifestd tx sku create-sku \
 
 ```bash
 manifestd tx sku create-sku \
-  1 \
+  01912345-6789-7abc-8def-0123456789ab \
   "Compute Small" \
   1 \
   3600upwr \
@@ -128,7 +128,7 @@ manifestd tx sku create-sku \
 
 ```bash
 manifestd tx sku create-sku \
-  1 \
+  01912345-6789-7abc-8def-0123456789ab \
   "Storage Basic" \
   2 \
   86400upwr \
@@ -148,8 +148,8 @@ manifestd tx sku create-sku \
     {
       "type": "sku_created",
       "attributes": [
-        {"key": "sku_id", "value": "1"},
-        {"key": "provider_id", "value": "1"},
+        {"key": "sku_uuid", "value": "01912345-6789-7abc-8def-0123456789cd"},
+        {"key": "provider_uuid", "value": "01912345-6789-7abc-8def-0123456789ab"},
         {"key": "name", "value": "Compute Small"}
       ]
     }
@@ -157,22 +157,22 @@ manifestd tx sku create-sku \
 }
 ```
 
-Note the `sku_id` from the response - tenants will use this when creating leases.
+Note the `sku_uuid` from the response - tenants will use this when creating leases.
 
 ## Step 5: Verify the SKU
 
 Query your newly created SKU:
 
 ```bash
-manifestd query sku sku 1 --output json
+manifestd query sku sku 01912345-6789-7abc-8def-0123456789cd --output json
 ```
 
 Response:
 ```json
 {
   "sku": {
-    "id": "1",
-    "provider_id": "1",
+    "uuid": "01912345-6789-7abc-8def-0123456789cd",
+    "provider_uuid": "01912345-6789-7abc-8def-0123456789ab",
     "name": "Compute Small",
     "unit": "UNIT_PER_HOUR",
     "base_price": {
@@ -192,7 +192,7 @@ manifestd query sku skus --output json
 
 List SKUs by provider:
 ```bash
-manifestd query sku skus-by-provider 1 --output json
+manifestd query sku skus-by-provider 01912345-6789-7abc-8def-0123456789ab --output json
 ```
 
 ## Step 6: Update SKU (Optional)
@@ -201,8 +201,8 @@ To update SKU details (e.g., change price, name):
 
 ```bash
 manifestd tx sku update-sku \
-  <sku_id> \
-  <provider_id> \
+  <sku_uuid> \
+  <provider_uuid> \
   "<new_name>" \
   <new_unit> \
   <new_base_price> \
@@ -216,8 +216,8 @@ manifestd tx sku update-sku \
 
 ```bash
 manifestd tx sku update-sku \
-  1 \
-  1 \
+  01912345-6789-7abc-8def-0123456789cd \
+  01912345-6789-7abc-8def-0123456789ab \
   "Compute Small" \
   1 \
   7200upwr \
@@ -233,7 +233,7 @@ manifestd tx sku update-sku \
 To deactivate a SKU (soft delete):
 
 ```bash
-manifestd tx sku deactivate-sku 1 \
+manifestd tx sku deactivate-sku 01912345-6789-7abc-8def-0123456789cd \
   --from mykey \
   --chain-id manifest-1
 ```
@@ -249,17 +249,19 @@ manifestd tx sku deactivate-sku 1 \
 For a typical service offering, you might create several SKUs:
 
 ```bash
+PROVIDER_UUID="01912345-6789-7abc-8def-0123456789ab"
+
 # Small instance - $1/hour (3600 tokens/hour)
-manifestd tx sku create-sku 1 "Compute Small" 1 3600upwr --from mykey --chain-id manifest-1
+manifestd tx sku create-sku $PROVIDER_UUID "Compute Small" 1 3600upwr --from mykey --chain-id manifest-1
 
 # Medium instance - $2/hour (7200 tokens/hour)
-manifestd tx sku create-sku 1 "Compute Medium" 1 7200upwr --from mykey --chain-id manifest-1
+manifestd tx sku create-sku $PROVIDER_UUID "Compute Medium" 1 7200upwr --from mykey --chain-id manifest-1
 
 # Large instance - $5/hour (18000 tokens/hour)
-manifestd tx sku create-sku 1 "Compute Large" 1 18000upwr --from mykey --chain-id manifest-1
+manifestd tx sku create-sku $PROVIDER_UUID "Compute Large" 1 18000upwr --from mykey --chain-id manifest-1
 
 # Storage - $1/day (86400 tokens/day)
-manifestd tx sku create-sku 1 "Storage 100GB" 2 86400upwr --from mykey --chain-id manifest-1
+manifestd tx sku create-sku $PROVIDER_UUID "Storage 100GB" 2 86400upwr --from mykey --chain-id manifest-1
 ```
 
 ## Common Issues
@@ -274,10 +276,10 @@ manifestd tx sku create-sku 1 "Storage 100GB" 2 86400upwr --from mykey --chain-i
 
 ### "provider not found"
 
-**Cause:** The provider ID doesn't exist.
+**Cause:** The provider UUID doesn't exist.
 
 **Solution:**
-- Verify provider exists: `manifestd query sku provider <id>`
+- Verify provider exists: `manifestd query sku provider <uuid>`
 - Create the provider first if needed (see Provider Setup Guide)
 
 ### "invalid provider" (provider not active)

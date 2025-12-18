@@ -174,11 +174,9 @@ func (AppModule) ConsensusVersion() uint64 {
 }
 
 // EndBlock contains the logic that is executed at the end of each block.
-// Note: Lease auto-closure is handled lazily ("check on touch") rather than in EndBlock
-// to avoid O(n) scanning of all leases which could be a bottleneck with many leases.
-// See x/billing/keeper/keeper.go CheckAndCloseExhaustedLease for the lazy evaluation logic.
-func (am AppModule) EndBlock(_ context.Context) error {
-	return nil
+// It handles automatic expiration of pending leases that have exceeded the timeout.
+func (am AppModule) EndBlock(ctx context.Context) error {
+	return am.keeper.EndBlocker(ctx)
 }
 
 // GenerateGenesisState creates a randomized GenState of the billing module.

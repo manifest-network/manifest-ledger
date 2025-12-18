@@ -144,6 +144,12 @@
 //   - Success: existing leases continue after provider deactivation
 //   - Success: provider can still withdraw after deactivation
 //   - Fail: cannot create new lease with deactivated provider's SKU
+//
+// ## Pending Lease Expiration Tests
+//
+// testPendingLeaseExpiration:
+//   - Success: pending lease expires after timeout
+//   - Success: credit refunded after expiration
 package interchaintest
 
 import (
@@ -282,6 +288,10 @@ func TestBilling(t *testing.T) {
 
 	t.Run("LeaseRejectAndCancel", func(t *testing.T) {
 		testLeaseRejectAndCancel(t, ctx, chain, authority, providerWallet)
+	})
+
+	t.Run("PendingLeaseExpiration", func(t *testing.T) {
+		testPendingLeaseExpiration(t, ctx, chain, authority, providerWallet)
 	})
 
 	t.Cleanup(func() {
@@ -2418,5 +2428,122 @@ func testLeaseRejectAndCancel(t *testing.T, ctx context.Context, chain *cosmos.C
 		lease, err := helpers.BillingQueryLease(ctx, chain, noReasonLeaseUUID)
 		require.NoError(t, err)
 		require.Equal(t, "LEASE_STATE_REJECTED", lease.Lease.State)
+	})
+}
+
+// testPendingLeaseExpiration tests that pending leases auto-expire after the timeout.
+// This test sets a very short pending_timeout and waits for blocks to pass.
+func testPendingLeaseExpiration(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, providerWallet ibc.Wallet) {
+	t.Log("=== Testing Pending Lease Expiration ===")
+
+	// Create a new tenant for this test
+	users := interchaintest.GetAndFundTestUsers(t, ctx, "expire_tenant", DefaultGenesisAmt, chain)
+	expireTenant := users[0]
+
+	// Fund the tenant with PWR tokens
+	err := chain.SendFunds(ctx, authority.KeyName(), ibc.WalletAmount{
+		Address: expireTenant.FormattedAddress(),
+		Denom:   testPWRDenom,
+		Amount:  sdkmath.NewInt(500_000_000),
+	})
+	require.NoError(t, err)
+	require.NoError(t, testutil.WaitForBlocks(ctx, 2, chain))
+
+	// Fund the credit account
+	fundAmount := fmt.Sprintf("200000000%s", testPWRDenom)
+	res, err := helpers.BillingFundCredit(ctx, chain, expireTenant, expireTenant.FormattedAddress(), fundAmount)
+	require.NoError(t, err)
+	txRes, err := chain.GetTransaction(res.TxHash)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), txRes.Code)
+
+	// Get current params
+	params, err := helpers.BillingQueryParams(ctx, chain)
+	require.NoError(t, err)
+	originalPendingTimeout := params.Params.PendingTimeout
+	t.Logf("Original pending timeout: %d", originalPendingTimeout)
+
+	// Set a very short pending timeout (10 seconds) for testing
+	// Note: The minimum is 60 seconds, so we'll use that
+	t.Run("setup: set short pending timeout", func(t *testing.T) {
+		res, err := helpers.BillingUpdateParams(
+			ctx, chain, authority,
+			params.Params.MaxLeasesPerTenant,
+			params.Params.MaxItemsPerLease,
+			params.Params.MinLeaseDuration,
+			params.Params.MaxPendingLeasesPerTenant,
+			60, // 60 seconds - minimum allowed
+			nil,
+		)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		// Verify params updated
+		newParams, err := helpers.BillingQueryParams(ctx, chain)
+		require.NoError(t, err)
+		require.Equal(t, uint64(60), newParams.Params.PendingTimeout)
+	})
+
+	var expireLeaseUUID string
+
+	t.Run("setup: create pending lease for expiration test", func(t *testing.T) {
+		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
+		res, err := helpers.BillingCreateLease(ctx, chain, expireTenant, items)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		expireLeaseUUID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Created pending lease for expiration: %s", expireLeaseUUID)
+
+		// Verify it's in PENDING state
+		lease, err := helpers.BillingQueryLease(ctx, chain, expireLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_PENDING", lease.Lease.State)
+	})
+
+	t.Run("success: pending lease expires after timeout", func(t *testing.T) {
+		// Wait for enough blocks to pass the pending timeout
+		// With ~1 second block time, wait for ~70 blocks to exceed 60 second timeout
+		t.Log("Waiting for pending timeout to expire (~70 blocks)...")
+		require.NoError(t, testutil.WaitForBlocks(ctx, 70, chain))
+
+		// Query the lease - it should now be EXPIRED
+		lease, err := helpers.BillingQueryLease(ctx, chain, expireLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_EXPIRED", lease.Lease.State, "lease should be expired after timeout")
+		t.Logf("Lease %s successfully expired", expireLeaseUUID)
+	})
+
+	t.Run("success: credit refunded after expiration", func(t *testing.T) {
+		// Get credit account balance - should have been refunded
+		creditAccount, err := helpers.BillingQueryCreditAccount(ctx, chain, expireTenant.FormattedAddress())
+		require.NoError(t, err)
+		t.Logf("Credit account after expiration: tenant=%s", creditAccount.CreditAccount.Tenant)
+
+		// Query the balance via bank module to verify credit was refunded
+		balance, err := chain.BankQueryBalance(ctx, creditAccount.CreditAccount.CreditAddress, "upwr")
+		require.NoError(t, err)
+		t.Logf("Credit balance after expiration: %s", balance.String())
+	})
+
+	t.Run("cleanup: restore original pending timeout", func(t *testing.T) {
+		res, err := helpers.BillingUpdateParams(
+			ctx, chain, authority,
+			params.Params.MaxLeasesPerTenant,
+			params.Params.MaxItemsPerLease,
+			params.Params.MinLeaseDuration,
+			params.Params.MaxPendingLeasesPerTenant,
+			originalPendingTimeout,
+			nil,
+		)
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
 	})
 }

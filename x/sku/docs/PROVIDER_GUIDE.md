@@ -13,9 +13,10 @@ This guide walks you through setting up a Provider in the x/sku module.
 A Provider represents an entity (organization, business, or individual) that offers services through the Manifest Network billing system. Before you can create SKUs (billable items), you must first create a Provider.
 
 Each Provider has:
-- **ID**: Auto-generated unique identifier
+- **UUID**: Auto-generated unique UUIDv7 identifier (deterministic for consensus)
 - **Address**: Management address for the provider
 - **Payout Address**: Where earned tokens are sent during withdrawals
+- **API URL**: HTTPS endpoint for the provider's off-chain API (tenant authentication)
 - **Meta Hash**: Optional hash of off-chain metadata
 - **Active**: Whether the provider can have new SKUs created
 
@@ -62,6 +63,7 @@ Before creating a provider, gather the following information:
 |-------|-------------|---------|
 | **Address** | The provider's operational address (can be used for management) | `manifest1provider...` |
 | **Payout Address** | Where earned tokens will be sent during withdrawals | `manifest1payout...` |
+| **API URL** | HTTPS endpoint where tenants can authenticate to get connection details | `https://api.provider.com` |
 | **Meta Hash** (optional) | Hex-encoded hash of off-chain metadata (e.g., business info, contact details) | `deadbeef` |
 
 ### About Meta Hash
@@ -89,6 +91,7 @@ Hash this JSON and store the hex-encoded hash on-chain.
 manifestd tx sku create-provider \
   <address> \
   <payout_address> \
+  --api-url <https_url> \
   --meta-hash <hex_encoded_hash> \
   --from <your_key> \
   --chain-id manifest-1 \
@@ -101,6 +104,7 @@ manifestd tx sku create-provider \
 manifestd tx sku create-provider \
   manifest1provideraddr123456789abcdef \
   manifest1payoutaddr987654321fedcba \
+  --api-url https://api.myprovider.com \
   --meta-hash a1b2c3d4e5f6 \
   --from mykey \
   --chain-id manifest-1 \
@@ -117,7 +121,7 @@ manifestd tx sku create-provider \
     {
       "type": "provider_created",
       "attributes": [
-        {"key": "provider_id", "value": "1"},
+        {"key": "provider_uuid", "value": "01912345-6789-7abc-8def-0123456789ab"},
         {"key": "address", "value": "manifest1provideraddr..."},
         {"key": "payout_address", "value": "manifest1payoutaddr..."}
       ]
@@ -126,24 +130,25 @@ manifestd tx sku create-provider \
 }
 ```
 
-Note the `provider_id` from the response - you'll need it when creating SKUs.
+Note the `provider_uuid` from the response - you'll need it when creating SKUs.
 
 ## Step 4: Verify the Provider
 
 Query your newly created provider:
 
 ```bash
-# By ID
-manifestd query sku provider 1 --output json
+# By UUID
+manifestd query sku provider 01912345-6789-7abc-8def-0123456789ab --output json
 ```
 
 Response:
 ```json
 {
   "provider": {
-    "id": "1",
+    "uuid": "01912345-6789-7abc-8def-0123456789ab",
     "address": "manifest1provideraddr...",
     "payout_address": "manifest1payoutaddr...",
+    "api_url": "https://api.myprovider.com",
     "meta_hash": "oLLD1OX2",
     "active": true
   }
@@ -166,10 +171,11 @@ If you need to update provider details:
 
 ```bash
 manifestd tx sku update-provider \
-  <provider_id> \
+  <provider_uuid> \
   <new_address> \
   <new_payout_address> \
   <active> \
+  --api-url <new_api_url> \
   --meta-hash <new_meta_hash> \
   --from <your_key> \
   --chain-id manifest-1
@@ -179,10 +185,11 @@ manifestd tx sku update-provider \
 
 ```bash
 manifestd tx sku update-provider \
-  1 \
+  01912345-6789-7abc-8def-0123456789ab \
   manifest1provideraddr123456789abcdef \
   manifest1newpayoutaddr111222333 \
   true \
+  --api-url https://api.myprovider.com \
   --from mykey \
   --chain-id manifest-1
 ```
@@ -192,7 +199,7 @@ manifestd tx sku update-provider \
 To deactivate a provider (soft delete):
 
 ```bash
-manifestd tx sku deactivate-provider 1 \
+manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab \
   --from mykey \
   --chain-id manifest-1
 ```
@@ -224,11 +231,11 @@ Once your provider is created, you can:
 
 ### "provider not found"
 
-**Cause:** The provider ID doesn't exist.
+**Cause:** The provider UUID doesn't exist.
 
 **Solution:** 
 - List all providers: `manifestd query sku providers`
-- Verify you're using the correct provider ID
+- Verify you're using the correct provider UUID
 
 ### "invalid provider" (invalid address)
 

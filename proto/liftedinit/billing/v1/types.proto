@@ -191,4 +191,9 @@ message CreditAccount {
   // active_lease_count tracks the number of active leases for O(1) count queries.
   uint64 active_lease_count = 3
       [(gogoproto.jsontag) = "active_lease_count,omitempty,string"];
+
+  // pending_lease_count tracks the number of pending leases for O(1) count queries.
+  // Used to enforce max_pending_leases_per_tenant limit.
+  uint64 pending_lease_count = 4
+      [(gogoproto.jsontag) = "pending_lease_count,omitempty,string"];
 }

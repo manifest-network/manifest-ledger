@@ -47,20 +47,20 @@ manifestd tx billing fund-credit manifest1abc... 1000000upwr --from mykey
 
 #### create-lease
 
-Create a new lease for the sender (tenant).
+Create a new lease for the sender (tenant). The lease starts in PENDING state.
 
 ```bash
-manifestd tx billing create-lease [sku_id:quantity...] [flags]
+manifestd tx billing create-lease [sku-uuid:quantity...] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| items | string... | Space-separated list of `sku_id:quantity` pairs |
+| items | string... | Space-separated list of `sku-uuid:quantity` pairs |
 
 **Example:**
 ```bash
-manifestd tx billing create-lease 1:2 2:1 3:5 --from mykey
+manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:2 01912345-6789-7abc-8def-0123456789ac:1 --from mykey
 ```
 
 **Constraints:**
@@ -70,56 +70,143 @@ manifestd tx billing create-lease 1:2 2:1 3:5 --from mykey
 - All SKUs must be active
 - Cannot exceed `max_items_per_lease`
 - Cannot exceed `max_leases_per_tenant`
+- Cannot exceed `max_pending_leases_per_tenant`
+
+**Notes:**
+- Lease starts in PENDING state awaiting provider acknowledgement
+- Credit is locked but billing does not start until acknowledgement
+- Returns the lease UUID on success
 
 ---
 
 #### create-lease-for-tenant
 
-Create a lease on behalf of a tenant (authority/allowed addresses only).
+Create a lease on behalf of a tenant (authority/allowed addresses only). The lease starts in PENDING state.
 
 ```bash
-manifestd tx billing create-lease-for-tenant [tenant] [sku_id:quantity...] [flags]
+manifestd tx billing create-lease-for-tenant [tenant] [sku-uuid:quantity...] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
 | tenant | string | Bech32 address of the tenant |
-| items | string... | Space-separated list of `sku_id:quantity` pairs |
+| items | string... | Space-separated list of `sku-uuid:quantity` pairs |
 
 **Example:**
 ```bash
-manifestd tx billing create-lease-for-tenant manifest1abc... 1:2 2:1 --from authority
+manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-6789-7abc-8def-0123456789ab:2 --from authority
 ```
 
 **Authorization:** Only module authority or addresses in `allowed_list` param.
 
 ---
 
-#### close-lease
+#### acknowledge-lease
 
-Close an active lease.
+Acknowledge a PENDING lease (provider only). Transitions lease to ACTIVE and starts billing.
 
 ```bash
-manifestd tx billing close-lease [lease-id] [flags]
+manifestd tx billing acknowledge-lease [lease-uuid] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-id | uint64 | ID of the lease to close |
+| lease-uuid | string | UUID of the lease to acknowledge |
 
 **Example:**
 ```bash
-manifestd tx billing close-lease 1 --from mykey
+manifestd tx billing acknowledge-lease 01912345-6789-7abc-8def-0123456789ab --from provider-key
+```
+
+**Authorization:** Provider address or authority.
+
+**Notes:**
+- Only PENDING leases can be acknowledged
+- Billing starts from the acknowledgement timestamp
+- Emits `lease_acknowledged` event
+
+---
+
+#### reject-lease
+
+Reject a PENDING lease (provider only). Credit is unlocked and returned to tenant.
+
+```bash
+manifestd tx billing reject-lease [lease-uuid] [flags]
+```
+
+**Arguments:**
+| Argument | Type | Description |
+|----------|------|-------------|
+| lease-uuid | string | UUID of the lease to reject |
+
+**Flags:**
+| Flag | Type | Description |
+|------|------|-------------|
+| --reason | string | Optional rejection reason (max 256 chars) |
+
+**Example:**
+```bash
+manifestd tx billing reject-lease 01912345-6789-7abc-8def-0123456789ab --reason "Resources unavailable" --from provider-key
+```
+
+**Authorization:** Provider address or authority.
+
+---
+
+#### cancel-lease
+
+Cancel a PENDING lease (tenant only). Credit is unlocked and returned.
+
+```bash
+manifestd tx billing cancel-lease [lease-uuid] [flags]
+```
+
+**Arguments:**
+| Argument | Type | Description |
+|----------|------|-------------|
+| lease-uuid | string | UUID of the lease to cancel |
+
+**Example:**
+```bash
+manifestd tx billing cancel-lease 01912345-6789-7abc-8def-0123456789ab --from tenant-key
+```
+
+**Authorization:** Tenant (owner) only.
+
+**Notes:**
+- Only PENDING leases can be cancelled
+- Credit is immediately unlocked
+
+---
+
+#### close-lease
+
+Close an ACTIVE lease.
+
+```bash
+manifestd tx billing close-lease [lease-uuid] [flags]
+```
+
+**Arguments:**
+| Argument | Type | Description |
+|----------|------|-------------|
+| lease-uuid | string | UUID of the lease to close |
+
+**Example:**
+```bash
+manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab --from mykey
 ```
 
 **Authorization:** Tenant (owner), provider (of SKUs), or authority.
 
 **Notes:**
+- Only ACTIVE leases can be closed
 - Performs final settlement during closure
 - Transfers accrued amount to provider payout address
-- Sets lease state to INACTIVE
+- Sets lease state to CLOSED
 
 ---
 
@@ -128,17 +215,17 @@ manifestd tx billing close-lease 1 --from mykey
 Withdraw accrued funds from a specific lease.
 
 ```bash
-manifestd tx billing withdraw [lease-id] [flags]
+manifestd tx billing withdraw [lease-uuid] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-id | uint64 | ID of the lease to withdraw from |
+| lease-uuid | string | UUID of the lease to withdraw from |
 
 **Example:**
 ```bash
-manifestd tx billing withdraw 1 --from provider-key
+manifestd tx billing withdraw 01912345-6789-7abc-8def-0123456789ab --from provider-key
 ```
 
 **Authorization:** Provider (of SKUs) or authority.
@@ -155,13 +242,13 @@ manifestd tx billing withdraw 1 --from provider-key
 Withdraw accrued funds from all leases for a provider.
 
 ```bash
-manifestd tx billing withdraw-all [provider-id] [flags]
+manifestd tx billing withdraw-all [provider-uuid] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-id | uint64 | ID of the provider |
+| provider-uuid | string | UUID of the provider |
 
 **Flags:**
 | Flag | Type | Default | Description |
@@ -170,7 +257,7 @@ manifestd tx billing withdraw-all [provider-id] [flags]
 
 **Example:**
 ```bash
-manifestd tx billing withdraw-all 1 --limit 100 --from provider-key
+manifestd tx billing withdraw-all 01912345-6789-7abc-8def-0123456789ab --limit 100 --from provider-key
 ```
 
 **Authorization:** Provider (address) or authority.
@@ -187,7 +274,7 @@ manifestd tx billing withdraw-all 1 --limit 100 --from provider-key
 Update module parameters (authority only).
 
 ```bash
-manifestd tx billing update-params [max-leases-per-tenant] [max-items-per-lease] [min-lease-duration] [flags]
+manifestd tx billing update-params [max-leases-per-tenant] [max-items-per-lease] [min-lease-duration] [max-pending-leases-per-tenant] [pending-timeout] [flags]
 ```
 
 **Arguments:**
@@ -196,6 +283,8 @@ manifestd tx billing update-params [max-leases-per-tenant] [max-items-per-lease]
 | max-leases-per-tenant | uint64 | Max active leases per tenant |
 | max-items-per-lease | uint64 | Max items per lease |
 | min-lease-duration | uint64 | Minimum lease duration in seconds |
+| max-pending-leases-per-tenant | uint64 | Max pending leases per tenant |
+| pending-timeout | uint64 | Pending lease timeout in seconds |
 
 **Flags:**
 | Flag | Type | Description |
@@ -208,6 +297,8 @@ manifestd tx billing update-params \
   100 \
   20 \
   3600 \
+  10 \
+  1800 \
   --allowed-list "manifest1abc...,manifest1def..." \
   --from authority
 ```
@@ -231,6 +322,8 @@ manifestd query billing params
     "max_leases_per_tenant": "100",
     "max_items_per_lease": "20",
     "min_lease_duration": "3600",
+    "max_pending_leases_per_tenant": "10",
+    "pending_timeout": "1800",
     "allowed_list": []
   }
 }
@@ -242,27 +335,27 @@ manifestd query billing params
 
 #### lease
 
-Query a lease by ID.
+Query a lease by UUID.
 
 ```bash
-manifestd query billing lease [lease-id]
+manifestd query billing lease [lease-uuid]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-id | uint64 | ID of the lease |
+| lease-uuid | string | UUID of the lease |
 
 **Response:**
 ```json
 {
   "lease": {
-    "id": "1",
+    "uuid": "01912345-6789-7abc-8def-0123456789ab",
     "tenant": "manifest1abc...",
-    "provider_id": "1",
+    "provider_uuid": "01912345-6789-7abc-8def-fedcba987654",
     "items": [
       {
-        "sku_id": "1",
+        "sku_uuid": "01912345-6789-7abc-8def-111111111111",
         "quantity": "2",
         "locked_price": {
           "denom": "upwr",
@@ -272,8 +365,9 @@ manifestd query billing lease [lease-id]
     ],
     "state": "LEASE_STATE_ACTIVE",
     "created_at": "2024-01-01T00:00:00Z",
+    "acknowledged_at": "2024-01-01T00:01:00Z",
     "closed_at": null,
-    "last_settled_at": "2024-01-01T00:00:00Z"
+    "last_settled_at": "2024-01-01T00:01:00Z"
   }
 }
 ```
@@ -293,13 +387,13 @@ manifestd query billing leases [flags]
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --active-only | bool | Filter to active leases only |
+| --state | string | Filter by state (pending, active, closed, rejected, expired) |
 | --limit | uint64 | Pagination limit |
 | --page-key | string | Pagination key |
 
 **Example:**
 ```bash
-manifestd query billing leases --active-only --limit 10
+manifestd query billing leases --state active --limit 10
 ```
 
 ---
@@ -320,7 +414,7 @@ manifestd query billing leases-by-tenant [tenant] [flags]
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --active-only | bool | Filter to active leases only |
+| --state | string | Filter by state (pending, active, closed, rejected, expired) |
 
 ---
 
@@ -329,18 +423,33 @@ manifestd query billing leases-by-tenant [tenant] [flags]
 Query leases for a specific provider.
 
 ```bash
-manifestd query billing leases-by-provider [provider-id] [flags]
+manifestd query billing leases-by-provider [provider-uuid] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-id | uint64 | ID of the provider |
+| provider-uuid | string | UUID of the provider |
 
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --active-only | bool | Filter to active leases only |
+| --state | string | Filter by state (pending, active, closed, rejected, expired) |
+
+---
+
+#### pending-leases-by-provider
+
+Query pending leases for a specific provider. Useful for providers to see which leases need acknowledgement.
+
+```bash
+manifestd query billing pending-leases-by-provider [provider-uuid] [flags]
+```
+
+**Arguments:**
+| Argument | Type | Description |
+|----------|------|-------------|
+| provider-uuid | string | UUID of the provider |
 
 ---
 
@@ -363,7 +472,8 @@ manifestd query billing credit-account [tenant]
   "credit_account": {
     "tenant": "manifest1abc...",
     "credit_address": "manifest1xyz...",
-    "active_lease_count": "2"
+    "active_lease_count": "2",
+    "pending_lease_count": "1"
   },
   "balances": [
     {
@@ -409,13 +519,13 @@ manifestd query billing credit-address [tenant]
 Query withdrawable amount for a lease. **This query calculates real-time accrued amounts.**
 
 ```bash
-manifestd query billing withdrawable [lease-id]
+manifestd query billing withdrawable [lease-uuid]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-id | uint64 | ID of the lease |
+| lease-uuid | string | UUID of the lease |
 
 **Response:**
 ```json
@@ -429,7 +539,7 @@ manifestd query billing withdrawable [lease-id]
 }
 ```
 
-**Note:** This calculates the real-time withdrawable amount based on time elapsed since `last_settled_at`. It is a read-only query and does NOT trigger actual settlement (no token transfer occurs).
+**Note:** This calculates the real-time withdrawable amount based on time elapsed since `last_settled_at`. It is a read-only query and does NOT trigger actual settlement (no token transfer occurs). Only ACTIVE leases accrue charges.
 
 ---
 
@@ -438,13 +548,13 @@ manifestd query billing withdrawable [lease-id]
 Query total withdrawable for a provider across all leases. **This query calculates real-time accrued amounts.**
 
 ```bash
-manifestd query billing provider-withdrawable [provider-id]
+manifestd query billing provider-withdrawable [provider-uuid]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-id | uint64 | ID of the provider |
+| provider-uuid | string | UUID of the provider |
 
 **Response:**
 ```json
@@ -475,6 +585,9 @@ service Msg {
   rpc FundCredit(MsgFundCredit) returns (MsgFundCreditResponse);
   rpc CreateLease(MsgCreateLease) returns (MsgCreateLeaseResponse);
   rpc CreateLeaseForTenant(MsgCreateLeaseForTenant) returns (MsgCreateLeaseForTenantResponse);
+  rpc AcknowledgeLease(MsgAcknowledgeLease) returns (MsgAcknowledgeLeaseResponse);
+  rpc RejectLease(MsgRejectLease) returns (MsgRejectLeaseResponse);
+  rpc CancelLease(MsgCancelLease) returns (MsgCancelLeaseResponse);
   rpc CloseLease(MsgCloseLease) returns (MsgCloseLeaseResponse);
   rpc Withdraw(MsgWithdraw) returns (MsgWithdrawResponse);
   rpc WithdrawAll(MsgWithdrawAll) returns (MsgWithdrawAllResponse);
@@ -507,7 +620,7 @@ message MsgFundCreditResponse {
 
 #### MsgCreateLease
 
-Create a lease for the sender (tenant).
+Create a lease for the sender (tenant). Lease starts in PENDING state.
 
 **Request:**
 ```protobuf
@@ -517,7 +630,7 @@ message MsgCreateLease {
 }
 
 message LeaseItemInput {
-  uint64 sku_id = 1;
+  string sku_uuid = 1;  // UUIDv7 of SKU
   uint64 quantity = 2;
 }
 ```
@@ -525,7 +638,7 @@ message LeaseItemInput {
 **Response:**
 ```protobuf
 message MsgCreateLeaseResponse {
-  uint64 lease_id = 1;  // Created lease ID
+  string lease_uuid = 1;  // Created lease UUID (UUIDv7)
 }
 ```
 
@@ -533,7 +646,7 @@ message MsgCreateLeaseResponse {
 
 #### MsgCreateLeaseForTenant
 
-Create a lease on behalf of a tenant (authority/allowed only).
+Create a lease on behalf of a tenant (authority/allowed only). Lease starts in PENDING state.
 
 **Request:**
 ```protobuf
@@ -547,7 +660,71 @@ message MsgCreateLeaseForTenant {
 **Response:**
 ```protobuf
 message MsgCreateLeaseForTenantResponse {
-  uint64 lease_id = 1;  // Created lease ID
+  string lease_uuid = 1;  // Created lease UUID (UUIDv7)
+}
+```
+
+---
+
+#### MsgAcknowledgeLease
+
+Provider acknowledges a PENDING lease, transitioning it to ACTIVE.
+
+**Request:**
+```protobuf
+message MsgAcknowledgeLease {
+  string sender = 1;      // Provider or authority
+  string lease_uuid = 2;  // Lease to acknowledge
+}
+```
+
+**Response:**
+```protobuf
+message MsgAcknowledgeLeaseResponse {
+  google.protobuf.Timestamp acknowledged_at = 1;  // When billing starts
+}
+```
+
+---
+
+#### MsgRejectLease
+
+Provider rejects a PENDING lease.
+
+**Request:**
+```protobuf
+message MsgRejectLease {
+  string sender = 1;      // Provider or authority
+  string lease_uuid = 2;  // Lease to reject
+  string reason = 3;      // Optional reason (max 256 chars)
+}
+```
+
+**Response:**
+```protobuf
+message MsgRejectLeaseResponse {
+  google.protobuf.Timestamp rejected_at = 1;
+}
+```
+
+---
+
+#### MsgCancelLease
+
+Tenant cancels their own PENDING lease.
+
+**Request:**
+```protobuf
+message MsgCancelLease {
+  string tenant = 1;      // Tenant (must own lease)
+  string lease_uuid = 2;  // Lease to cancel
+}
+```
+
+**Response:**
+```protobuf
+message MsgCancelLeaseResponse {
+  google.protobuf.Timestamp cancelled_at = 1;
 }
 ```
 
@@ -555,20 +732,20 @@ message MsgCreateLeaseForTenantResponse {
 
 #### MsgCloseLease
 
-Close an active lease.
+Close an ACTIVE lease.
 
 **Request:**
 ```protobuf
 message MsgCloseLease {
-  string sender = 1;    // Sender (tenant, provider, or authority)
-  uint64 lease_id = 2;  // Lease to close
+  string sender = 1;      // Sender (tenant, provider, or authority)
+  string lease_uuid = 2;  // Lease to close
 }
 ```
 
 **Response:**
 ```protobuf
 message MsgCloseLeaseResponse {
-  cosmos.base.v1beta1.Coin settled_amount = 1;  // Amount settled during close
+  repeated cosmos.base.v1beta1.Coin settled_amounts = 1;  // Amounts settled per denom
 }
 ```
 
@@ -581,15 +758,15 @@ Withdraw from a specific lease.
 **Request:**
 ```protobuf
 message MsgWithdraw {
-  string sender = 1;    // Provider or authority
-  uint64 lease_id = 2;  // Lease ID
+  string sender = 1;      // Provider or authority
+  string lease_uuid = 2;  // Lease UUID
 }
 ```
 
 **Response:**
 ```protobuf
 message MsgWithdrawResponse {
-  cosmos.base.v1beta1.Coin amount = 1;  // Withdrawn amount
+  repeated cosmos.base.v1beta1.Coin amounts = 1;  // Withdrawn amounts per denom
   string payout_address = 2;  // Destination address
 }
 ```
@@ -603,8 +780,8 @@ Withdraw from all provider leases.
 **Request:**
 ```protobuf
 message MsgWithdrawAll {
-  string sender = 1;       // Provider or authority
-  uint64 provider_id = 2;  // Provider ID
+  string sender = 1;         // Provider or authority
+  string provider_uuid = 2;  // Provider UUID
   uint64 limit = 3;        // Max leases (default 50, max 100)
 }
 ```
@@ -612,7 +789,7 @@ message MsgWithdrawAll {
 **Response:**
 ```protobuf
 message MsgWithdrawAllResponse {
-  cosmos.base.v1beta1.Coin total_amount = 1;  // Total withdrawn
+  repeated cosmos.base.v1beta1.Coin total_amounts = 1;  // Total withdrawn per denom
   uint64 lease_count = 2;   // Leases processed
   string payout_address = 3;  // Destination address
   bool has_more = 4;        // More leases remain
@@ -652,6 +829,7 @@ service Query {
   rpc Leases(QueryLeasesRequest) returns (QueryLeasesResponse);
   rpc LeasesByTenant(QueryLeasesByTenantRequest) returns (QueryLeasesByTenantResponse);
   rpc LeasesByProvider(QueryLeasesByProviderRequest) returns (QueryLeasesByProviderResponse);
+  rpc PendingLeasesByProvider(QueryPendingLeasesByProviderRequest) returns (QueryPendingLeasesByProviderResponse);
   rpc CreditAccount(QueryCreditAccountRequest) returns (QueryCreditAccountResponse);
   rpc CreditAddress(QueryCreditAddressRequest) returns (QueryCreditAddressResponse);
   rpc WithdrawableAmount(QueryWithdrawableAmountRequest) returns (QueryWithdrawableAmountResponse);
@@ -659,7 +837,7 @@ service Query {
 }
 ```
 
-**Important Note:** Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement or auto-close. However, `WithdrawableAmount` and `ProviderWithdrawable` queries calculate real-time accrued amounts based on elapsed time. Settlement (actual token transfer) only happens during write operations (Withdraw, CloseLease, WithdrawAll).
+**Important Note:** Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement or auto-close. However, `WithdrawableAmount` and `ProviderWithdrawable` queries calculate real-time accrued amounts based on elapsed time. Settlement (actual token transfer) only happens during write operations (Withdraw, CloseLease, WithdrawAll). Only ACTIVE leases accrue charges.
 
 #### QueryParams
 
@@ -680,14 +858,14 @@ message QueryParamsResponse {
 
 #### QueryLease
 
-Get a lease by ID.
+Get a lease by UUID.
 
 **Endpoint:** `liftedinit.billing.v1.Query/Lease`
 
 **Request:**
 ```protobuf
 message QueryLeaseRequest {
-  uint64 lease_id = 1;
+  string lease_uuid = 1;
 }
 ```
 
@@ -710,7 +888,7 @@ List all leases with pagination.
 ```protobuf
 message QueryLeasesRequest {
   cosmos.base.query.v1beta1.PageRequest pagination = 1;
-  bool active_only = 2;
+  LeaseState state = 2;  // Optional filter by state
 }
 ```
 
@@ -784,14 +962,15 @@ http://localhost:1317/liftedinit/billing/v1
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/params` | Get module parameters |
-| GET | `/lease/{lease_id}` | Get lease by ID |
+| GET | `/lease/{lease_uuid}` | Get lease by UUID |
 | GET | `/leases` | List all leases |
 | GET | `/leases/tenant/{tenant}` | List leases by tenant |
-| GET | `/leases/provider/{provider_id}` | List leases by provider |
+| GET | `/leases/provider/{provider_uuid}` | List leases by provider |
+| GET | `/pending-leases/provider/{provider_uuid}` | List pending leases for provider |
 | GET | `/credit-account/{tenant}` | Get credit account |
 | GET | `/credit-address/{tenant}` | Derive credit address |
-| GET | `/withdrawable/{lease_id}` | Get withdrawable amount |
-| GET | `/provider-withdrawable/{provider_id}` | Get provider total withdrawable |
+| GET | `/withdrawable/{lease_uuid}` | Get withdrawable amount |
+| GET | `/provider-withdrawable/{provider_uuid}` | Get provider total withdrawable |
 
 ### Examples
 
@@ -802,12 +981,12 @@ curl http://localhost:1317/liftedinit/billing/v1/params
 
 **Get Lease:**
 ```bash
-curl http://localhost:1317/liftedinit/billing/v1/lease/1
+curl http://localhost:1317/liftedinit/billing/v1/lease/01912345-6789-7abc-8def-0123456789ab
 ```
 
 **List Active Leases:**
 ```bash
-curl "http://localhost:1317/liftedinit/billing/v1/leases?active_only=true&pagination.limit=10"
+curl "http://localhost:1317/liftedinit/billing/v1/leases?state=active&pagination.limit=10"
 ```
 
 **Get Credit Account:**
@@ -817,7 +996,7 @@ curl http://localhost:1317/liftedinit/billing/v1/credit-account/manifest1abc...
 
 **Get Withdrawable Amount:**
 ```bash
-curl http://localhost:1317/liftedinit/billing/v1/withdrawable/1
+curl http://localhost:1317/liftedinit/billing/v1/withdrawable/01912345-6789-7abc-8def-0123456789ab
 ```
 
 ---
@@ -828,9 +1007,11 @@ curl http://localhost:1317/liftedinit/billing/v1/withdrawable/1
 |-------|------|-------------|
 | `ErrInvalidParams` | 1 | Invalid module parameters |
 | `ErrLeaseNotFound` | 2 | Lease doesn't exist |
-| `ErrLeaseNotActive` | 3 | Lease is already closed |
+| `ErrLeaseNotActive` | 3 | Lease is not in ACTIVE state |
+| `ErrLeaseNotPending` | - | Lease is not in PENDING state |
 | `ErrInsufficientCredit` | 4 | Not enough credit balance |
 | `ErrMaxLeasesReached` | 5 | Tenant at max active leases |
+| `ErrMaxPendingLeasesReached` | - | Tenant at max pending leases |
 | `ErrUnauthorized` | 6 | Sender not authorized |
 | `ErrInvalidDenom` | 7 | Wrong denomination for operation |
 | `ErrCreditAccountNotFound` | 8 | Credit account doesn't exist |
@@ -847,12 +1028,14 @@ curl http://localhost:1317/liftedinit/billing/v1/withdrawable/1
 | `ErrInvalidCreditOperation` | 19 | Credit operation failed |
 | `ErrInvalidDenomination` | 20 | Invalid denomination in lease item |
 | `ErrTooManyLeaseItems` | 21 | Lease exceeds max items |
+| `ErrInvalidUUID` | - | Invalid UUIDv7 format |
 
 ---
 
 ## Related Documentation
 
 - [Billing README](../README.md) - Complete billing module overview
+- [Lease Lifecycle Design](LEASE_LIFECYCLE_DESIGN.md) - Detailed lease lifecycle with PENDING state
 - [Migration Guide](MIGRATION.md) - Migrating existing off-chain leases
 - [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions
 - [Architecture](ARCHITECTURE.md) - Technical architecture details

@@ -63,9 +63,10 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 	if err != nil {
 		// Credit account doesn't exist, create it
 		creditAccount = types.CreditAccount{
-			Tenant:           msg.Tenant,
-			CreditAddress:    creditAddr.String(),
-			ActiveLeaseCount: 0,
+			Tenant:            msg.Tenant,
+			CreditAddress:     creditAddr.String(),
+			ActiveLeaseCount:  0,
+			PendingLeaseCount: 0,
 		}
 
 		// Ensure the credit account address is registered in the account keeper
@@ -102,11 +103,11 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 
 // leaseCreationResult holds the result of lease creation for use by the public methods.
 type leaseCreationResult struct {
-	leaseUUID    string
-	providerUUID string
-	itemCount    int
-	totalRates   sdk.Coins // total rate per second by denom
-	activeLeases uint64
+	leaseUUID     string
+	providerUUID  string
+	itemCount     int
+	totalRates    sdk.Coins // total rate per second by denom
+	pendingLeases uint64
 }
 
 // createLeaseInternal contains the shared lease creation logic.
@@ -146,6 +147,15 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 			"tenant has %d active leases, max is %d",
 			creditAccount.ActiveLeaseCount,
 			params.MaxLeasesPerTenant,
+		)
+	}
+
+	// Also check pending lease limit
+	if creditAccount.PendingLeaseCount >= params.MaxPendingLeasesPerTenant {
+		return nil, types.ErrMaxPendingLeasesReached.Wrapf(
+			"tenant has %d pending leases, max is %d",
+			creditAccount.PendingLeaseCount,
+			params.MaxPendingLeasesPerTenant,
 		)
 	}
 
@@ -238,18 +248,18 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		return nil, err
 	}
 
-	// 6. Increment active lease count in credit account
-	creditAccount.ActiveLeaseCount++
+	// 6. Increment pending lease count in credit account (lease starts in PENDING state)
+	creditAccount.PendingLeaseCount++
 	if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
 		return nil, err
 	}
 
 	return &leaseCreationResult{
-		leaseUUID:    leaseUUID,
-		providerUUID: providerUUID,
-		itemCount:    len(leaseItems),
-		totalRates:   totalRatesPerSecond,
-		activeLeases: creditAccount.ActiveLeaseCount,
+		leaseUUID:     leaseUUID,
+		providerUUID:  providerUUID,
+		itemCount:     len(leaseItems),
+		totalRates:    totalRatesPerSecond,
+		pendingLeases: creditAccount.PendingLeaseCount,
 	}, nil
 }
 
@@ -274,7 +284,7 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, result.providerUUID),
 			sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(result.itemCount)),
 			sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRates.String()),
-			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(result.activeLeases, 10)),
+			sdk.NewAttribute(types.AttributeKeyPendingLeaseCount, strconv.FormatUint(result.pendingLeases, 10)),
 			sdk.NewAttribute(types.AttributeKeyCreatedBy, "tenant"),
 		),
 	)
@@ -315,7 +325,7 @@ func (ms msgServer) CreateLeaseForTenant(ctx context.Context, msg *types.MsgCrea
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, result.providerUUID),
 			sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(result.itemCount)),
 			sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRates.String()),
-			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(result.activeLeases, 10)),
+			sdk.NewAttribute(types.AttributeKeyPendingLeaseCount, strconv.FormatUint(result.pendingLeases, 10)),
 			sdk.NewAttribute(types.AttributeKeyCreatedBy, "authority"),
 		),
 	)
@@ -422,6 +432,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	}
 
 	// Get active lease count for event (may have been decremented above or by auto-close)
+	// If credit account not found, we get zero value which is acceptable for the event
 	creditAccount, _ := ms.k.GetCreditAccount(ctx, lease.Tenant)
 
 	// 8. Emit detailed event
@@ -897,7 +908,19 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 		return nil, err
 	}
 
-	// 5. Emit event
+	// 5. Update lease counts: decrement pending, increment active
+	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
+	if err == nil {
+		if creditAccount.PendingLeaseCount > 0 {
+			creditAccount.PendingLeaseCount--
+		}
+		creditAccount.ActiveLeaseCount++
+		if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
+			return nil, err
+		}
+	}
+
+	// 6. Emit event
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeLeaseAcknowledged,
@@ -959,8 +982,8 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 
 	// 5. Decrement pending lease count in credit account
 	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
-	if err == nil && creditAccount.ActiveLeaseCount > 0 {
-		creditAccount.ActiveLeaseCount--
+	if err == nil && creditAccount.PendingLeaseCount > 0 {
+		creditAccount.PendingLeaseCount--
 		if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
 			return nil, err
 		}
@@ -1024,8 +1047,8 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 
 	// 5. Decrement pending lease count in credit account
 	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
-	if err == nil && creditAccount.ActiveLeaseCount > 0 {
-		creditAccount.ActiveLeaseCount--
+	if err == nil && creditAccount.PendingLeaseCount > 0 {
+		creditAccount.PendingLeaseCount--
 		if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
 			return nil, err
 		}
@@ -1038,6 +1061,7 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 			sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
 			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
+			sdk.NewAttribute(types.AttributeKeyCancelledBy, msg.Tenant),
 		),
 	)
 

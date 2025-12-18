@@ -29,7 +29,7 @@ var (
 	ErrInvalidRejectionReason  = errors.Register(ModuleName, 24, "invalid rejection reason")
 	ErrLeaseExpired            = errors.Register(ModuleName, 25, "lease has expired")
 	ErrInvalidAPIURL           = errors.Register(ModuleName, 26, "invalid API URL")
-	ErrInvalidPendingTimeout   = errors.Register(ModuleName, 28, "invalid pending timeout")
+	ErrInvalidPendingTimeout   = errors.Register(ModuleName, 27, "invalid pending timeout")
 )
 
 // MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.

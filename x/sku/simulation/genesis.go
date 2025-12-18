@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 
-	sdkmath "cosmossdk.io/math"
-
 	"github.com/cosmos/cosmos-sdk/codec"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 
@@ -79,7 +76,8 @@ func generateRandomProvider(r *rand.Rand, accs []simtypes.Account, uuid string) 
 func generateRandomSKU(r *rand.Rand, providerUUID string, uuid string) types.SKU {
 	name := skuNames[r.Intn(len(skuNames))]
 	unit := units[r.Intn(len(units))]
-	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(int64(r.Intn(10000)+1)))
+	// Generate a valid price that is exactly divisible by the unit's seconds
+	basePrice := generateValidPrice(r, unit)
 	active := r.Float32() > 0.2
 
 	return types.SKU{

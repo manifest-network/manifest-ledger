@@ -22,24 +22,35 @@ This document records key design decisions made during the development of the x/
 - Two-step creation process (provider then SKU)
 - More complex queries to get full SKU details
 
-## Decision 2: Auto-Incrementing IDs
+## Decision 2: UUIDv7 Identifiers
 
-**Decision:** Use auto-incrementing uint64 IDs for both Providers and SKUs rather than user-provided identifiers.
+**Decision:** Use deterministic UUIDv7 identifiers for both Providers and SKUs rather than auto-incrementing integers or user-provided identifiers.
 
 **Alternatives Considered:**
 1. User-provided string identifiers
 2. Hash-based identifiers
-3. Auto-incrementing integers (chosen)
+3. Auto-incrementing integers
+4. UUIDv7 with deterministic generation (chosen)
 
 **Rationale:**
-- **Simplicity:** No collision handling required
-- **Predictability:** Easy to reference in UI/CLI
-- **Storage Efficiency:** uint64 is compact
-- **Off-chain Mapping:** External systems can maintain their own mappings
+- **Uniqueness:** UUIDs are globally unique and collision-resistant
+- **Debuggability:** Easier to trace and reference in logs and UIs
+- **External Integration:** Standard format for external systems
+- **Time-ordering:** UUIDv7 encodes timestamp for natural ordering
+- **Consensus Safety:** Deterministic generation ensures all validators produce the same UUID
+
+**Implementation:**
+```go
+// UUIDv7 is generated using:
+// - Timestamp: block time in milliseconds
+// - Random bits: SHA-256(block_height || sequence_counter)
+uuid := uuidv7.NewDeterministic(ctx, sequence)
+```
 
 **Trade-offs:**
-- IDs are chain-specific (not portable across chains)
-- Sequential IDs reveal creation order
+- Slightly larger storage than uint64 (36 chars vs 8 bytes)
+- Requires custom deterministic generation for consensus
+- Cannot be predicted (intentional for security)
 
 ## Decision 3: Soft Delete Pattern
 
@@ -60,7 +71,7 @@ This document records key design decisions made during the development of the x/
 **Trade-offs:**
 - Storage grows indefinitely (no pruning)
 - Queries must filter by active status
-- No way to reclaim IDs
+- No way to reclaim UUIDs (by design)
 
 ## Decision 4: Authority-Only Access with AllowedList
 

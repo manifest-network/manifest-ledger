@@ -496,9 +496,9 @@ func TestMsgCreateLeaseMaxLeasesReached(t *testing.T) {
 	payoutAddr := f.TestAccs[2]
 	denom := testDenom
 
-	// Set max leases to 2
+	// Set max pending leases to 2 (leases start in PENDING state)
 	params := types.DefaultParams()
-	params.MaxLeasesPerTenant = 2
+	params.MaxPendingLeasesPerTenant = 2
 	err := f.App.BillingKeeper.SetParams(f.Ctx, params)
 	require.NoError(t, err)
 
@@ -518,7 +518,7 @@ func TestMsgCreateLeaseMaxLeasesReached(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Create max number of leases
+	// Create max number of pending leases
 	for i := 0; i < 2; i++ {
 		msg := &types.MsgCreateLease{
 			Tenant: tenant.String(),
@@ -533,7 +533,7 @@ func TestMsgCreateLeaseMaxLeasesReached(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Try to create one more - should fail
+	// Try to create one more - should fail (max pending leases reached)
 	msg := &types.MsgCreateLease{
 		Tenant: tenant.String(),
 		Items: []types.LeaseItemInput{
@@ -545,7 +545,7 @@ func TestMsgCreateLeaseMaxLeasesReached(t *testing.T) {
 	}
 	resp, err := msgServer.CreateLease(f.Ctx, msg)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "maximum leases per tenant reached")
+	require.Contains(t, err.Error(), "maximum pending leases per tenant reached")
 	require.Nil(t, resp)
 }
 
@@ -1033,12 +1033,11 @@ func TestMsgWithdraw_PartialCreditExhaustion(t *testing.T) {
 	denom := testDenom
 
 	// Set params with short min lease duration for testing
-	err := f.App.BillingKeeper.SetParams(f.Ctx, types.Params{
-		MaxLeasesPerTenant: 100,
-		MaxItemsPerLease:   20,
-		MinLeaseDuration:   10, // 10 seconds for testing
-		AllowedList:        nil,
-	})
+	params := types.DefaultParams()
+	params.MaxLeasesPerTenant = 100
+	params.MaxItemsPerLease = 20
+	params.MinLeaseDuration = 10 // 10 seconds for testing
+	err := f.App.BillingKeeper.SetParams(f.Ctx, params)
 	require.NoError(t, err)
 
 	// Create provider and SKU with 1 unit per second rate
@@ -1212,12 +1211,11 @@ func TestMsgCloseLease_PartialSettlement(t *testing.T) {
 	denom := testDenom
 
 	// Set params with short min lease duration for testing
-	err := f.App.BillingKeeper.SetParams(f.Ctx, types.Params{
-		MaxLeasesPerTenant: 100,
-		MaxItemsPerLease:   20,
-		MinLeaseDuration:   10, // 10 seconds for testing
-		AllowedList:        nil,
-	})
+	params := types.DefaultParams()
+	params.MaxLeasesPerTenant = 100
+	params.MaxItemsPerLease = 20
+	params.MinLeaseDuration = 10 // 10 seconds for testing
+	err := f.App.BillingKeeper.SetParams(f.Ctx, params)
 	require.NoError(t, err)
 
 	// Create provider and SKU with 1 unit per second rate
@@ -2185,6 +2183,94 @@ func TestMsgCancelLease(t *testing.T) {
 	})
 }
 
+// TestEndBlockerPendingLeaseExpiration tests that pending leases expire after the timeout.
+func TestEndBlockerPendingLeaseExpiration(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	// Set a short pending timeout for testing (60 seconds)
+	params := types.DefaultParams()
+	params.PendingTimeout = 60 // 60 seconds
+	err := f.App.BillingKeeper.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(10000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create a lease (will be in PENDING state)
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		},
+	})
+	require.NoError(t, err)
+	leaseUUID := createResp.LeaseUuid
+
+	// Verify lease is in PENDING state
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
+
+	// Verify pending lease count is 1
+	creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), creditAccount.PendingLeaseCount)
+
+	t.Run("lease not expired before timeout", func(t *testing.T) {
+		// Advance time by 30 seconds (less than timeout)
+		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(30 * time.Second))
+
+		// Run EndBlocker
+		err := f.App.BillingKeeper.EndBlocker(newCtx)
+		require.NoError(t, err)
+
+		// Lease should still be PENDING
+		lease, err := f.App.BillingKeeper.GetLease(newCtx, leaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
+	})
+
+	t.Run("lease expires after timeout", func(t *testing.T) {
+		// Advance time by 61 seconds (past the timeout)
+		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(61 * time.Second))
+
+		// Run EndBlocker
+		err := f.App.BillingKeeper.EndBlocker(newCtx)
+		require.NoError(t, err)
+
+		// Lease should now be EXPIRED
+		lease, err := f.App.BillingKeeper.GetLease(newCtx, leaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_EXPIRED, lease.State)
+		require.NotNil(t, lease.ExpiredAt)
+
+		// Pending lease count should be decremented
+		creditAccount, err := f.App.BillingKeeper.GetCreditAccount(newCtx, tenant.String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), creditAccount.PendingLeaseCount)
+	})
+}
+
 // TestLeaseLifecycleEvents tests that proper events are emitted during lease lifecycle.
 func TestLeaseLifecycleEvents(t *testing.T) {
 	f := initFixture(t)
@@ -2372,4 +2458,320 @@ func TestMsgCreateLease_MaxLeasesLimit(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "max")
 	})
+}
+
+// TestEndBlockerMultiplePendingLeases tests that EndBlocker correctly handles multiple pending leases.
+func TestEndBlockerMultiplePendingLeases(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	// Set a short pending timeout for testing (60 seconds)
+	params := types.DefaultParams()
+	params.PendingTimeout = 60 // 60 seconds
+	params.MaxPendingLeasesPerTenant = 5
+	err := f.App.BillingKeeper.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create 3 leases at different times
+	var leaseUUIDs []string
+
+	// Lease 1 at t=0
+	createResp1, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	leaseUUIDs = append(leaseUUIDs, createResp1.LeaseUuid)
+
+	// Advance time by 20 seconds for lease 2
+	ctx20 := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(20 * time.Second))
+
+	// Lease 2 at t=20
+	createResp2, err := msgServer.CreateLease(ctx20, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	leaseUUIDs = append(leaseUUIDs, createResp2.LeaseUuid)
+
+	// Advance time by 40 seconds for lease 3
+	ctx40 := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(40 * time.Second))
+
+	// Lease 3 at t=40
+	createResp3, err := msgServer.CreateLease(ctx40, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	leaseUUIDs = append(leaseUUIDs, createResp3.LeaseUuid)
+
+	// Verify all 3 leases are pending
+	creditAccount, err := f.App.BillingKeeper.GetCreditAccount(ctx40, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), creditAccount.PendingLeaseCount)
+
+	t.Run("only first lease expires at t=61", func(t *testing.T) {
+		// At t=61, only lease 1 should expire (created at t=0, timeout is 60s)
+		ctx61 := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(61 * time.Second))
+
+		err := f.App.BillingKeeper.EndBlocker(ctx61)
+		require.NoError(t, err)
+
+		// Lease 1 should be EXPIRED
+		lease1, err := f.App.BillingKeeper.GetLease(ctx61, leaseUUIDs[0])
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_EXPIRED, lease1.State)
+
+		// Lease 2 and 3 should still be PENDING
+		lease2, err := f.App.BillingKeeper.GetLease(ctx61, leaseUUIDs[1])
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_PENDING, lease2.State)
+
+		lease3, err := f.App.BillingKeeper.GetLease(ctx61, leaseUUIDs[2])
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_PENDING, lease3.State)
+
+		// Pending count should be 2
+		creditAccount, err := f.App.BillingKeeper.GetCreditAccount(ctx61, tenant.String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), creditAccount.PendingLeaseCount)
+	})
+
+	t.Run("all leases expire at t=101", func(t *testing.T) {
+		// At t=101, all leases should be expired
+		// Lease 1: created at t=0, expired at t=60
+		// Lease 2: created at t=20, expires at t=80
+		// Lease 3: created at t=40, expires at t=100
+		ctx101 := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(101 * time.Second))
+
+		err := f.App.BillingKeeper.EndBlocker(ctx101)
+		require.NoError(t, err)
+
+		// All leases should be EXPIRED
+		for _, leaseUUID := range leaseUUIDs {
+			lease, err := f.App.BillingKeeper.GetLease(ctx101, leaseUUID)
+			require.NoError(t, err)
+			require.Equal(t, types.LEASE_STATE_EXPIRED, lease.State, "lease %s should be expired", leaseUUID)
+		}
+
+		// Pending count should be 0
+		creditAccount, err := f.App.BillingKeeper.GetCreditAccount(ctx101, tenant.String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), creditAccount.PendingLeaseCount)
+	})
+}
+
+// TestEndBlockerCreditRefund tests that expired leases properly manage credit accounts.
+// Note: PENDING leases do NOT lock credit - credit is only consumed when lease is ACTIVE.
+func TestEndBlockerCreditRefund(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	// Set a short pending timeout for testing (60 seconds)
+	params := types.DefaultParams()
+	params.PendingTimeout = 60
+	err := f.App.BillingKeeper.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Create provider and SKU with known price
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 = 1 token per second
+
+	// Fund tenant's credit account with exact amount needed
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	initialBalance := sdk.NewCoin(denom, sdkmath.NewInt(50000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(initialBalance))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Get initial balance
+	balanceBefore := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom)
+	t.Logf("Balance before lease: %s", balanceBefore)
+
+	// Create a lease
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	leaseUUID := createResp.LeaseUuid
+
+	// Get the lease to see the locked price
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
+	t.Logf("Lease locked price per second: %v", lease.Items[0].LockedPrice)
+
+	// Balance should NOT be reduced for PENDING leases - credit is only consumed when ACTIVE
+	balanceAfterCreate := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom)
+	t.Logf("Balance after lease creation (PENDING): %s", balanceAfterCreate)
+	require.Equal(t, balanceBefore.Amount, balanceAfterCreate.Amount,
+		"balance should NOT decrease for PENDING lease - credit not locked until acknowledged")
+
+	// Verify pending lease count increased
+	creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), creditAccount.PendingLeaseCount)
+
+	// Now expire the lease
+	ctx61 := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(61 * time.Second))
+	err = f.App.BillingKeeper.EndBlocker(ctx61)
+	require.NoError(t, err)
+
+	// Verify lease is expired
+	expiredLease, err := f.App.BillingKeeper.GetLease(ctx61, leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_EXPIRED, expiredLease.State)
+
+	// Balance should be unchanged (no credit was consumed)
+	balanceAfterExpire := f.App.BankKeeper.GetBalance(ctx61, creditAddr, denom)
+	t.Logf("Balance after expiration: %s", balanceAfterExpire)
+	require.Equal(t, balanceBefore.Amount, balanceAfterExpire.Amount,
+		"balance should be unchanged - PENDING leases don't consume credit")
+
+	// Pending lease count should be decremented
+	creditAccount, err = f.App.BillingKeeper.GetCreditAccount(ctx61, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), creditAccount.PendingLeaseCount)
+}
+
+// TestEndBlockerDoesNotExpireAcknowledgedLeases tests that acknowledged leases are not expired.
+func TestEndBlockerDoesNotExpireAcknowledgedLeases(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	// Set a short pending timeout for testing (60 seconds)
+	params := types.DefaultParams()
+	params.PendingTimeout = 60
+	err := f.App.BillingKeeper.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(10000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create and acknowledge a lease
+	leaseUUID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr,
+		[]types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}})
+
+	// Verify lease is ACTIVE
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+
+	// Run EndBlocker well past the timeout
+	ctx200 := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(200 * time.Second))
+	err = f.App.BillingKeeper.EndBlocker(ctx200)
+	require.NoError(t, err)
+
+	// Lease should still be ACTIVE (not expired because it was acknowledged)
+	lease, err = f.App.BillingKeeper.GetLease(ctx200, leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State,
+		"acknowledged lease should not be expired by EndBlocker")
+}
+
+// TestEndBlockerExpiredLeaseQueryFilter tests querying expired leases by state.
+func TestEndBlockerExpiredLeaseQueryFilter(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	// Set a short pending timeout for testing
+	params := types.DefaultParams()
+	params.PendingTimeout = 60
+	err := f.App.BillingKeeper.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(10000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create a pending lease
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	leaseUUID := createResp.LeaseUuid
+
+	// Expire the lease
+	ctx61 := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(61 * time.Second))
+	err = f.App.BillingKeeper.EndBlocker(ctx61)
+	require.NoError(t, err)
+
+	// Query lease directly - should be expired
+	lease, err := f.App.BillingKeeper.GetLease(ctx61, leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_EXPIRED, lease.State)
+	require.NotNil(t, lease.ExpiredAt)
+	require.False(t, lease.ExpiredAt.IsZero())
 }

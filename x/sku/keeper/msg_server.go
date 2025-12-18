@@ -68,6 +68,9 @@ func (ms msgServer) CreateProvider(ctx context.Context, req *types.MsgCreateProv
 		sdk.NewEvent(
 			types.EventTypeProviderCreated,
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, uuid),
+			sdk.NewAttribute(types.AttributeKeyAddress, req.Address),
+			sdk.NewAttribute(types.AttributeKeyPayoutAddress, req.PayoutAddress),
+			sdk.NewAttribute(types.AttributeKeyCreatedBy, req.Authority),
 		),
 	})
 
@@ -173,6 +176,7 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 		sdk.NewEvent(
 			types.EventTypeProviderDeactivated,
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
+			sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
 		),
 	})
 
@@ -230,6 +234,8 @@ func (ms msgServer) CreateSKU(ctx context.Context, req *types.MsgCreateSKU) (*ty
 			sdk.NewAttribute(types.AttributeKeySKUUUID, uuid),
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, req.ProviderUuid),
 			sdk.NewAttribute(types.AttributeKeyName, req.Name),
+			sdk.NewAttribute(types.AttributeKeyBasePrice, req.BasePrice.String()),
+			sdk.NewAttribute(types.AttributeKeyCreatedBy, req.Authority),
 		),
 	})
 
@@ -337,6 +343,7 @@ func (ms msgServer) DeactivateSKU(ctx context.Context, req *types.MsgDeactivateS
 			types.EventTypeSKUDeactivated,
 			sdk.NewAttribute(types.AttributeKeySKUUUID, req.Uuid),
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, existingSKU.ProviderUuid),
+			sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
 		),
 	})
 
