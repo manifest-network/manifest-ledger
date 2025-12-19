@@ -136,7 +136,7 @@ ictest-sku:
 	cd interchaintest && go test -race -v -run TestSKU . -count=1
 
 ictest-billing:
-	cd interchaintest && go test -race -v -timeout 20m -run TestBilling . -count=1
+	cd interchaintest && go test -race -v -timeout 45m -run TestBilling . -count=1
 
 .PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku ictest-billing
 

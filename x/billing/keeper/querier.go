@@ -59,18 +59,19 @@ func (q Querier) Leases(ctx context.Context, req *types.QueryLeasesRequest) (*ty
 		return nil, status.Error(codes.InvalidArgument, "empty request")
 	}
 
-	// Use filtered pagination if state_filter is set
+	// Use state index for efficient lookup when filtering by state
 	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
-		leases, pageRes, err := query.CollectionFilteredPaginate(
+		iter, err := q.k.Leases.Indexes.State.MatchExact(ctx, int32(req.StateFilter))
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		leases, pageRes, err := PaginateStringIndex(
 			ctx,
-			q.k.Leases,
+			iter,
+			q.k.Leases.Get,
 			req.Pagination,
-			func(_ string, lease types.Lease) (bool, error) {
-				return lease.State == req.StateFilter, nil
-			},
-			func(_ string, lease types.Lease) (types.Lease, error) {
-				return lease, nil
-			},
+			nil, // No additional filter needed since we already used the state index
 		)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())

@@ -150,6 +150,20 @@
 // testPendingLeaseExpiration:
 //   - Success: pending lease expires after timeout
 //   - Success: credit refunded after expiration
+//
+// ## State Index Query Tests
+//
+// testStateIndexQueries:
+//   - Success: query all leases returns all states
+//   - Success: query leases by state=pending
+//   - Success: query leases by state=active
+//   - Success: query leases by state=closed
+//   - Success: query pending leases by provider (efficient index)
+//   - Success: query leases by tenant and state
+//   - Success: query leases by provider and state
+//   - Success: state filter returns empty for unmatched state
+//   - Success: pending lease not in active query
+//   - Success: closed lease not in active query
 package interchaintest
 
 import (
@@ -292,6 +306,10 @@ func TestBilling(t *testing.T) {
 
 	t.Run("PendingLeaseExpiration", func(t *testing.T) {
 		testPendingLeaseExpiration(t, ctx, chain, authority, providerWallet)
+	})
+
+	t.Run("StateIndexQueries", func(t *testing.T) {
+		testStateIndexQueries(t, ctx, chain, authority, providerWallet)
 	})
 
 	t.Cleanup(func() {
@@ -2545,5 +2563,280 @@ func testPendingLeaseExpiration(t *testing.T, ctx context.Context, chain *cosmos
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code)
+	})
+}
+
+// testStateIndexQueries tests efficient lease state index queries.
+func testStateIndexQueries(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, providerWallet ibc.Wallet) {
+	t.Log("=== Testing State Index Queries ===")
+
+	// Create a new tenant for isolated state testing
+	users := interchaintest.GetAndFundTestUsers(t, ctx, "state-index", sdkmath.NewInt(1_000_000_000), chain)
+	stateTestTenant := users[0]
+
+	// First send PWR to tenant so they can fund their credit
+	node := chain.GetNode()
+	err := node.SendFunds(ctx, authority.KeyName(), ibc.WalletAmount{
+		Address: stateTestTenant.FormattedAddress(),
+		Denom:   testPWRDenom,
+		Amount:  sdkmath.NewInt(100_000_000_000), // 100B PWR - enough for multiple leases
+	})
+	require.NoError(t, err)
+	require.NoError(t, testutil.WaitForBlocks(ctx, 2, chain))
+
+	// Fund credit account using BillingFundCredit (this creates the credit account record)
+	fundAmount := fmt.Sprintf("50000000000%s", testPWRDenom) // 50B PWR
+	res, err := helpers.BillingFundCredit(ctx, chain, stateTestTenant, stateTestTenant.FormattedAddress(), fundAmount)
+	require.NoError(t, err)
+	txRes, err := chain.GetTransaction(res.TxHash)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), txRes.Code, "fund credit should succeed: %s", txRes.RawLog)
+	require.NoError(t, testutil.WaitForBlocks(ctx, 2, chain))
+
+	// Track lease UUIDs for verification
+	var pendingLeaseUUID, activeLeaseUUID, closedLeaseUUID string
+
+	t.Run("setup: create leases in different states", func(t *testing.T) {
+		// Create first lease (will be acknowledged -> active)
+		res, err := helpers.BillingCreateLease(ctx, chain, stateTestTenant, []string{testSKUUUID + ":1"})
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "lease creation should succeed: %s", txRes.RawLog)
+		activeLeaseUUID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err, "failed to get lease UUID from tx events")
+		t.Logf("Created lease for ACTIVE state: %s", activeLeaseUUID)
+
+		// Acknowledge to make it active
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, activeLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackRes.Code, "acknowledge should succeed")
+		require.NoError(t, testutil.WaitForBlocks(ctx, 2, chain))
+
+		// Create second lease (will stay pending)
+		res2, err := helpers.BillingCreateLease(ctx, chain, stateTestTenant, []string{testSKUUUID + ":1"})
+		require.NoError(t, err)
+		txRes2, err := chain.GetTransaction(res2.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes2.Code, "lease creation should succeed: %s", txRes2.RawLog)
+		pendingLeaseUUID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res2.TxHash)
+		require.NoError(t, err, "failed to get pending lease UUID from tx events")
+		t.Logf("Created lease for PENDING state: %s", pendingLeaseUUID)
+
+		// Create third lease (will be acknowledged then closed)
+		res3, err := helpers.BillingCreateLease(ctx, chain, stateTestTenant, []string{testSKUUUID + ":1"})
+		require.NoError(t, err)
+		txRes3, err := chain.GetTransaction(res3.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes3.Code, "lease creation should succeed: %s", txRes3.RawLog)
+		closedLeaseUUID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res3.TxHash)
+		require.NoError(t, err, "failed to get closed lease UUID from tx events")
+		t.Logf("Created lease for CLOSED state: %s", closedLeaseUUID)
+
+		// Acknowledge and then close the third lease
+		ackRes3, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, closedLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackRes3.Code)
+		require.NoError(t, testutil.WaitForBlocks(ctx, 2, chain))
+
+		closeRes, err := helpers.BillingCloseLease(ctx, chain, stateTestTenant, closedLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), closeRes.Code, "close should succeed")
+		require.NoError(t, testutil.WaitForBlocks(ctx, 2, chain))
+	})
+
+	t.Run("success: query all leases returns all states", func(t *testing.T) {
+		res, err := helpers.BillingQueryLeases(ctx, chain, false)
+		require.NoError(t, err)
+
+		// Should contain leases in various states
+		stateCount := make(map[string]int)
+		for _, lease := range res.Leases {
+			stateCount[lease.State]++
+		}
+		t.Logf("All leases by state: %v", stateCount)
+
+		// We should have at least one of each state we created
+		require.GreaterOrEqual(t, len(res.Leases), 3, "should have at least 3 leases")
+	})
+
+	t.Run("success: query leases by state=pending", func(t *testing.T) {
+		res, err := helpers.BillingQueryLeasesByState(ctx, chain, "pending")
+		require.NoError(t, err)
+
+		// All returned leases should be PENDING
+		for _, lease := range res.Leases {
+			require.Equal(t, "LEASE_STATE_PENDING", lease.State, "all leases should be pending")
+		}
+
+		// Our pending lease should be in the results
+		found := false
+		for _, lease := range res.Leases {
+			if lease.Uuid == pendingLeaseUUID {
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "pending lease should be found in pending state query")
+		t.Logf("Found %d pending leases", len(res.Leases))
+	})
+
+	t.Run("success: query leases by state=active", func(t *testing.T) {
+		res, err := helpers.BillingQueryLeasesByState(ctx, chain, "active")
+		require.NoError(t, err)
+
+		// All returned leases should be ACTIVE
+		for _, lease := range res.Leases {
+			require.Equal(t, "LEASE_STATE_ACTIVE", lease.State, "all leases should be active")
+		}
+
+		// Our active lease should be in the results
+		found := false
+		for _, lease := range res.Leases {
+			if lease.Uuid == activeLeaseUUID {
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "active lease should be found in active state query")
+		t.Logf("Found %d active leases", len(res.Leases))
+	})
+
+	t.Run("success: query leases by state=closed", func(t *testing.T) {
+		res, err := helpers.BillingQueryLeasesByState(ctx, chain, "closed")
+		require.NoError(t, err)
+
+		// All returned leases should be CLOSED
+		for _, lease := range res.Leases {
+			require.Equal(t, "LEASE_STATE_CLOSED", lease.State, "all leases should be closed")
+		}
+
+		// Our closed lease should be in the results
+		found := false
+		for _, lease := range res.Leases {
+			if lease.Uuid == closedLeaseUUID {
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "closed lease should be found in closed state query")
+		t.Logf("Found %d closed leases", len(res.Leases))
+	})
+
+	t.Run("success: query pending leases by provider (efficient index)", func(t *testing.T) {
+		res, err := helpers.BillingQueryPendingLeasesByProvider(ctx, chain, testProviderUUID)
+		require.NoError(t, err)
+
+		// All returned leases should be PENDING and from this provider
+		for _, lease := range res.Leases {
+			require.Equal(t, "LEASE_STATE_PENDING", lease.State, "all leases should be pending")
+			require.Equal(t, testProviderUUID, lease.ProviderUuid, "all leases should be from test provider")
+		}
+
+		// Our pending lease should be in the results
+		found := false
+		for _, lease := range res.Leases {
+			if lease.Uuid == pendingLeaseUUID {
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "pending lease should be found in provider pending query")
+		t.Logf("Found %d pending leases for provider", len(res.Leases))
+	})
+
+	t.Run("success: query leases by tenant and state", func(t *testing.T) {
+		// Query active leases for our test tenant
+		res, err := helpers.BillingQueryLeasesByTenantAndState(ctx, chain, stateTestTenant.FormattedAddress(), "active")
+		require.NoError(t, err)
+
+		for _, lease := range res.Leases {
+			require.Equal(t, "LEASE_STATE_ACTIVE", lease.State)
+			require.Equal(t, stateTestTenant.FormattedAddress(), lease.Tenant)
+		}
+
+		// Our active lease should be in the results
+		found := false
+		for _, lease := range res.Leases {
+			if lease.Uuid == activeLeaseUUID {
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "active lease should be found for tenant")
+		t.Logf("Found %d active leases for tenant", len(res.Leases))
+	})
+
+	t.Run("success: query leases by provider and state", func(t *testing.T) {
+		// Query closed leases for our test provider
+		res, err := helpers.BillingQueryLeasesByProviderAndState(ctx, chain, testProviderUUID, "closed")
+		require.NoError(t, err)
+
+		for _, lease := range res.Leases {
+			require.Equal(t, "LEASE_STATE_CLOSED", lease.State)
+			require.Equal(t, testProviderUUID, lease.ProviderUuid)
+		}
+
+		// Our closed lease should be in the results
+		found := false
+		for _, lease := range res.Leases {
+			if lease.Uuid == closedLeaseUUID {
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "closed lease should be found for provider")
+		t.Logf("Found %d closed leases for provider", len(res.Leases))
+	})
+
+	t.Run("success: state filter returns empty for unmatched state", func(t *testing.T) {
+		// Query rejected leases - we haven't created any
+		res, err := helpers.BillingQueryLeasesByTenantAndState(ctx, chain, stateTestTenant.FormattedAddress(), "rejected")
+		require.NoError(t, err)
+
+		// No rejected leases for this tenant
+		require.Empty(t, res.Leases, "should have no rejected leases for this tenant")
+		t.Log("Correctly returned empty for rejected state")
+	})
+
+	t.Run("success: pending lease not in active query", func(t *testing.T) {
+		res, err := helpers.BillingQueryLeasesByState(ctx, chain, "active")
+		require.NoError(t, err)
+
+		// Pending lease should NOT be in active results
+		for _, lease := range res.Leases {
+			require.NotEqual(t, pendingLeaseUUID, lease.Uuid, "pending lease should not appear in active query")
+		}
+		t.Log("Correctly excluded pending lease from active query")
+	})
+
+	t.Run("success: closed lease not in active query", func(t *testing.T) {
+		res, err := helpers.BillingQueryLeasesByState(ctx, chain, "active")
+		require.NoError(t, err)
+
+		// Closed lease should NOT be in active results
+		for _, lease := range res.Leases {
+			require.NotEqual(t, closedLeaseUUID, lease.Uuid, "closed lease should not appear in active query")
+		}
+		t.Log("Correctly excluded closed lease from active query")
+	})
+
+	// Cleanup: acknowledge and close remaining pending lease
+	t.Run("cleanup: close remaining leases", func(t *testing.T) {
+		// Acknowledge the pending lease first
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, pendingLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackRes.Code)
+		require.NoError(t, testutil.WaitForBlocks(ctx, 2, chain))
+
+		// Then close it
+		closeRes, err := helpers.BillingCloseLease(ctx, chain, stateTestTenant, pendingLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), closeRes.Code)
+
+		// Close the active lease too
+		closeRes2, err := helpers.BillingCloseLease(ctx, chain, stateTestTenant, activeLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), closeRes2.Code)
 	})
 }

@@ -253,6 +253,49 @@ func BillingQueryLeasesByProvider(ctx context.Context, chain *cosmos.CosmosChain
 	return &res, nil
 }
 
+// BillingQueryLeasesByState queries leases filtered by a specific state.
+// Valid states: pending, active, closed, rejected, expired
+func BillingQueryLeasesByState(ctx context.Context, chain *cosmos.CosmosChain, state string) (*LeasesResponseJSON, error) {
+	var res LeasesResponseJSON
+	cmd := []string{"query", "billing", "leases", "--state", state}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// BillingQueryLeasesByTenantAndState queries leases by tenant address and state.
+// Valid states: pending, active, closed, rejected, expired
+func BillingQueryLeasesByTenantAndState(ctx context.Context, chain *cosmos.CosmosChain, tenant, state string) (*LeasesResponseJSON, error) {
+	var res LeasesResponseJSON
+	cmd := []string{"query", "billing", "leases-by-tenant", tenant, "--state", state}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// BillingQueryLeasesByProviderAndState queries leases by provider UUID and state.
+// Valid states: pending, active, closed, rejected, expired
+func BillingQueryLeasesByProviderAndState(ctx context.Context, chain *cosmos.CosmosChain, providerUUID, state string) (*LeasesResponseJSON, error) {
+	var res LeasesResponseJSON
+	cmd := []string{"query", "billing", "leases-by-provider", providerUUID, "--state", state}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// BillingQueryPendingLeasesByProvider queries pending leases for a provider using the --state pending filter.
+func BillingQueryPendingLeasesByProvider(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string) (*LeasesResponseJSON, error) {
+	var res LeasesResponseJSON
+	cmd := []string{"query", "billing", "leases-by-provider", providerUUID, "--state", "pending"}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
 // CreditAccountResponseJSON is a JSON-friendly version of QueryCreditAccountResponse.
 type CreditAccountResponseJSON struct {
 	CreditAccount CreditAccountJSON `json:"credit_account"`
@@ -328,16 +371,31 @@ func GetLeaseIDFromTxHash(_ context.Context, chain *cosmos.CosmosChain, txHash s
 		return "", err
 	}
 
+	// Check if the transaction failed
+	if txRes.Code != 0 {
+		return "", fmt.Errorf("tx %s failed with code %d: %s", txHash, txRes.Code, txRes.RawLog)
+	}
+
+	// Try multiple event name formats
+	eventNames := []string{"lease_created", "liftedinit.billing.v1.EventLeaseCreated"}
 	for _, event := range txRes.Events {
-		if event.Type == "lease_created" {
-			for _, attr := range event.Attributes {
-				if attr.Key == "lease_uuid" {
-					return attr.Value, nil
+		for _, eventName := range eventNames {
+			if event.Type == eventName {
+				for _, attr := range event.Attributes {
+					if attr.Key == "lease_uuid" {
+						return attr.Value, nil
+					}
 				}
 			}
 		}
 	}
-	return "", fmt.Errorf("lease_uuid not found in tx %s events", txHash)
+
+	// Collect event types for debugging
+	eventTypes := make([]string, 0, len(txRes.Events))
+	for _, event := range txRes.Events {
+		eventTypes = append(eventTypes, event.Type)
+	}
+	return "", fmt.Errorf("lease_uuid not found in tx %s events (found events: %v)", txHash, eventTypes)
 }
 
 // GetLeaseIDFromLeases returns the lease UUID from the first lease in the response.

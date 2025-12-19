@@ -1310,3 +1310,144 @@ func TestCheckAndCloseExhaustedLease_InactiveLease(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, closed)
 }
+
+func TestGetLeasesByState(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+
+	tenant := f.TestAccs[0]
+
+	// Create leases with different states
+	states := []types.LeaseState{
+		types.LEASE_STATE_PENDING,
+		types.LEASE_STATE_PENDING,
+		types.LEASE_STATE_ACTIVE,
+		types.LEASE_STATE_ACTIVE,
+		types.LEASE_STATE_ACTIVE,
+		types.LEASE_STATE_CLOSED,
+		types.LEASE_STATE_REJECTED,
+		types.LEASE_STATE_EXPIRED,
+	}
+
+	for i, state := range states {
+		lease := types.Lease{
+			Uuid:         fmt.Sprintf("lease-%d", i),
+			Tenant:       tenant.String(),
+			ProviderUuid: "provider-1",
+			Items: []types.LeaseItem{
+				{
+					SkuUuid:     fmt.Sprintf("sku-%d", i),
+					Quantity:    1,
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+				},
+			},
+			State:         state,
+			CreatedAt:     f.Ctx.BlockTime(),
+			LastSettledAt: f.Ctx.BlockTime(),
+		}
+		err := k.SetLease(f.Ctx, lease)
+		require.NoError(t, err)
+	}
+
+	// Test GetLeasesByState for each state
+	pendingLeases, err := k.GetLeasesByState(f.Ctx, types.LEASE_STATE_PENDING)
+	require.NoError(t, err)
+	require.Len(t, pendingLeases, 2)
+	for _, l := range pendingLeases {
+		require.Equal(t, types.LEASE_STATE_PENDING, l.State)
+	}
+
+	activeLeases, err := k.GetLeasesByState(f.Ctx, types.LEASE_STATE_ACTIVE)
+	require.NoError(t, err)
+	require.Len(t, activeLeases, 3)
+	for _, l := range activeLeases {
+		require.Equal(t, types.LEASE_STATE_ACTIVE, l.State)
+	}
+
+	closedLeases, err := k.GetLeasesByState(f.Ctx, types.LEASE_STATE_CLOSED)
+	require.NoError(t, err)
+	require.Len(t, closedLeases, 1)
+
+	rejectedLeases, err := k.GetLeasesByState(f.Ctx, types.LEASE_STATE_REJECTED)
+	require.NoError(t, err)
+	require.Len(t, rejectedLeases, 1)
+
+	expiredLeases, err := k.GetLeasesByState(f.Ctx, types.LEASE_STATE_EXPIRED)
+	require.NoError(t, err)
+	require.Len(t, expiredLeases, 1)
+
+	// Test GetPendingLeases helper
+	pendingLeases2, err := k.GetPendingLeases(f.Ctx)
+	require.NoError(t, err)
+	require.Len(t, pendingLeases2, 2)
+
+	// Test GetActiveLeases helper
+	activeLeases2, err := k.GetActiveLeases(f.Ctx)
+	require.NoError(t, err)
+	require.Len(t, activeLeases2, 3)
+}
+
+func TestGetPendingLeasesByProvider(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+
+	tenant := f.TestAccs[0]
+
+	// Create pending and active leases for different providers
+	testCases := []struct {
+		uuid         string
+		providerUUID string
+		state        types.LeaseState
+	}{
+		{"lease-1", "provider-1", types.LEASE_STATE_PENDING},
+		{"lease-2", "provider-1", types.LEASE_STATE_PENDING},
+		{"lease-3", "provider-1", types.LEASE_STATE_ACTIVE},
+		{"lease-4", "provider-2", types.LEASE_STATE_PENDING},
+		{"lease-5", "provider-2", types.LEASE_STATE_ACTIVE},
+		{"lease-6", "provider-2", types.LEASE_STATE_ACTIVE},
+	}
+
+	for _, tc := range testCases {
+		lease := types.Lease{
+			Uuid:         tc.uuid,
+			Tenant:       tenant.String(),
+			ProviderUuid: tc.providerUUID,
+			Items: []types.LeaseItem{
+				{
+					SkuUuid:     "sku-1",
+					Quantity:    1,
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+				},
+			},
+			State:         tc.state,
+			CreatedAt:     f.Ctx.BlockTime(),
+			LastSettledAt: f.Ctx.BlockTime(),
+		}
+		err := k.SetLease(f.Ctx, lease)
+		require.NoError(t, err)
+	}
+
+	// Test GetPendingLeasesByProvider
+	provider1Pending, err := k.GetPendingLeasesByProvider(f.Ctx, "provider-1")
+	require.NoError(t, err)
+	require.Len(t, provider1Pending, 2)
+	for _, l := range provider1Pending {
+		require.Equal(t, types.LEASE_STATE_PENDING, l.State)
+		require.Equal(t, "provider-1", l.ProviderUuid)
+	}
+
+	provider2Pending, err := k.GetPendingLeasesByProvider(f.Ctx, "provider-2")
+	require.NoError(t, err)
+	require.Len(t, provider2Pending, 1)
+	for _, l := range provider2Pending {
+		require.Equal(t, types.LEASE_STATE_PENDING, l.State)
+		require.Equal(t, "provider-2", l.ProviderUuid)
+	}
+
+	// Unknown provider should return empty
+	unknownPending, err := k.GetPendingLeasesByProvider(f.Ctx, "provider-999")
+	require.NoError(t, err)
+	require.Len(t, unknownPending, 0)
+}

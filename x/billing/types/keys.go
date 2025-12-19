@@ -25,6 +25,10 @@ var (
 	// CreditAddressIndexKey saves the reverse lookup from derived credit address to tenant.
 	// This enables O(1) lookup to check if an address is a credit account.
 	CreditAddressIndexKey = collections.NewPrefix(6)
+
+	// LeaseByStateIndexKey saves the state index for Leases.
+	// This enables efficient queries for leases by state (e.g., all pending leases).
+	LeaseByStateIndexKey = collections.NewPrefix(7)
 )
 
 const (

@@ -25,11 +25,13 @@ type LeaseIndexes struct {
 	Tenant *indexes.Multi[sdk.AccAddress, string, types.Lease]
 	// Provider is a multi-index that indexes Leases by provider_uuid.
 	Provider *indexes.Multi[string, string, types.Lease]
+	// State is a multi-index that indexes Leases by their state (pending, active, closed, etc).
+	State *indexes.Multi[int32, string, types.Lease]
 }
 
 // IndexesList returns all indexes defined for the Lease collection.
 func (i LeaseIndexes) IndexesList() []collections.Index[string, types.Lease] {
-	return []collections.Index[string, types.Lease]{i.Tenant, i.Provider}
+	return []collections.Index[string, types.Lease]{i.Tenant, i.Provider, i.State}
 }
 
 // NewLeaseIndexes creates a new LeaseIndexes instance.
@@ -54,6 +56,16 @@ func NewLeaseIndexes(sb *collections.SchemaBuilder) LeaseIndexes {
 			collections.StringKey,
 			func(_ string, lease types.Lease) (string, error) {
 				return lease.ProviderUuid, nil
+			},
+		),
+		State: indexes.NewMulti(
+			sb,
+			types.LeaseByStateIndexKey,
+			"leases_by_state",
+			collections.Int32Key,
+			collections.StringKey,
+			func(_ string, lease types.Lease) (int32, error) {
+				return int32(lease.State), nil
 			},
 		),
 	}
@@ -777,19 +789,66 @@ func (k *Keeper) countPendingLeasesByTenantScan(ctx context.Context, tenant stri
 }
 
 // GetPendingLeases returns all leases in PENDING state.
-// This iterates all leases and filters by state.
-// TODO: Consider adding a state index for more efficient queries.
+// Uses the state index for O(n) where n is pending leases, not all leases.
 func (k *Keeper) GetPendingLeases(ctx context.Context) ([]types.Lease, error) {
+	return k.GetLeasesByState(ctx, types.LEASE_STATE_PENDING)
+}
+
+// GetLeasesByState returns all leases with a specific state.
+// Uses the state index for efficient lookup.
+func (k *Keeper) GetLeasesByState(ctx context.Context, state types.LeaseState) ([]types.Lease, error) {
+	var leases []types.Lease
+
+	iter, err := k.Leases.Indexes.State.MatchExact(ctx, int32(state))
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		leaseUUID, err := iter.PrimaryKey()
+		if err != nil {
+			return nil, err
+		}
+		lease, err := k.Leases.Get(ctx, leaseUUID)
+		if err != nil {
+			return nil, err
+		}
+		leases = append(leases, lease)
+	}
+
+	return leases, nil
+}
+
+// GetActiveLeases returns all leases in ACTIVE state.
+// Uses the state index for efficient lookup.
+func (k *Keeper) GetActiveLeases(ctx context.Context) ([]types.Lease, error) {
+	return k.GetLeasesByState(ctx, types.LEASE_STATE_ACTIVE)
+}
+
+// GetPendingLeasesByProvider returns all pending leases for a specific provider.
+// Uses provider index and filters by state.
+func (k *Keeper) GetPendingLeasesByProvider(ctx context.Context, providerUUID string) ([]types.Lease, error) {
 	var pendingLeases []types.Lease
 
-	err := k.Leases.Walk(ctx, nil, func(_ string, lease types.Lease) (bool, error) {
+	iter, err := k.Leases.Indexes.Provider.MatchExact(ctx, providerUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		leaseUUID, err := iter.PrimaryKey()
+		if err != nil {
+			return nil, err
+		}
+		lease, err := k.Leases.Get(ctx, leaseUUID)
+		if err != nil {
+			return nil, err
+		}
 		if lease.State == types.LEASE_STATE_PENDING {
 			pendingLeases = append(pendingLeases, lease)
 		}
-		return false, nil
-	})
-	if err != nil {
-		return nil, err
 	}
 
 	return pendingLeases, nil
