@@ -370,7 +370,6 @@ If the lease expires (remains in PENDING past `pending_timeout`), it transitions
 ## Related Documentation
 
 - [Billing README](../README.md) - Complete billing module overview
-- [Lease Lifecycle Design](LEASE_LIFECYCLE_DESIGN.md) - Detailed lease lifecycle with PENDING state
 - [API Reference](API.md) - Detailed API documentation
 - [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions
 - [Architecture](ARCHITECTURE.md) - Technical architecture details

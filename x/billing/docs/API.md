@@ -1035,7 +1035,6 @@ curl http://localhost:1317/liftedinit/billing/v1/withdrawable/01912345-6789-7abc
 ## Related Documentation
 
 - [Billing README](../README.md) - Complete billing module overview
-- [Lease Lifecycle Design](LEASE_LIFECYCLE_DESIGN.md) - Detailed lease lifecycle with PENDING state
 - [Migration Guide](MIGRATION.md) - Migrating existing off-chain leases
 - [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions
 - [Architecture](ARCHITECTURE.md) - Technical architecture details

@@ -576,9 +576,10 @@ Credit that remains after a lease is closed stays in the credit account and can 
 2. **Credit Account Expiry**: Allow credit accounts to be cleaned up if empty and unused
 3. **Multi-Provider Leases**: Allow a single lease to span multiple providers
 4. **Delegation**: Allow tenants to delegate lease management to other addresses
-5. **Provider Reputation**: Track provider uptime and reliability for tenant decision-making
+5. **Provider Reputation**: Track provider acknowledgement rates and reliability for tenant decision-making
 6. **Provider Shutdown Handling**: Automated lease closure and refund mechanism when providers go offline
 7. **Dispute Resolution**: Mechanism for tenants to dispute charges or service quality
+8. **Per-Lease API URL Override**: Allow providers to specify regional or dedicated endpoints at acknowledgement time (optional `api_url` field on `MsgAcknowledgeLease` and `Lease`, falling back to `Provider.api_url` if not set)
 
 ## Additional Documentation
 
