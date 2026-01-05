@@ -372,10 +372,10 @@ func BenchmarkCalculateTotalAccruedForLease(b *testing.B) {
 	}
 
 	twentyItems := make([]LeaseItemWithPrice, 20)
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		twentyItems[i] = LeaseItemWithPrice{
 			SkuUUID:              "sku-" + string(rune('a'+i)),
-			Quantity:             uint64(i + 1),
+			Quantity:             uint64(i) + 1, //nolint:gosec // i is bounded [0,19]
 			LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(int64(100*(i+1)))),
 		}
 	}

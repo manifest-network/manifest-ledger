@@ -516,11 +516,12 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 
 	// 4. Determine settlement time based on lease state
 	var settleTime time.Time
-	if lease.State == types.LEASE_STATE_ACTIVE {
+	switch {
+	case lease.State == types.LEASE_STATE_ACTIVE:
 		settleTime = blockTime
-	} else if lease.ClosedAt != nil {
+	case lease.ClosedAt != nil:
 		settleTime = *lease.ClosedAt
-	} else {
+	default:
 		settleTime = lease.LastSettledAt // No duration, will return zero
 	}
 
@@ -612,11 +613,12 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 
 		// Determine settlement time based on lease state
 		var settleTime time.Time
-		if lease.State == types.LEASE_STATE_ACTIVE {
+		switch {
+		case lease.State == types.LEASE_STATE_ACTIVE:
 			settleTime = blockTime
-		} else if lease.ClosedAt != nil {
+		case lease.ClosedAt != nil:
 			settleTime = *lease.ClosedAt
-		} else {
+		default:
 			continue // No settlement possible
 		}
 
