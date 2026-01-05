@@ -9,6 +9,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
 
+	"github.com/manifest-network/manifest-ledger/pkg/pagination"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
@@ -66,7 +67,7 @@ func (q Querier) Leases(ctx context.Context, req *types.QueryLeasesRequest) (*ty
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 
-		leases, pageRes, err := PaginateStringIndex(
+		leases, pageRes, err := pagination.PaginateStringIndex(
 			ctx,
 			iter,
 			q.k.Leases.Get,
@@ -129,7 +130,7 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 		filter = func(l types.Lease) bool { return l.State == req.StateFilter }
 	}
 
-	leases, pageRes, err := PaginateStringIndex(
+	leases, pageRes, err := pagination.PaginateStringIndex(
 		ctx,
 		iter,
 		q.k.Leases.Get,
@@ -169,7 +170,7 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 		filter = func(l types.Lease) bool { return l.State == req.StateFilter }
 	}
 
-	leases, pageRes, err := PaginateStringIndex(
+	leases, pageRes, err := pagination.PaginateStringIndex(
 		ctx,
 		iter,
 		q.k.Leases.Get,

@@ -9,7 +9,6 @@ var (
 	ErrInsufficientCredit      = errors.Register(ModuleName, 4, "insufficient credit balance")
 	ErrMaxLeasesReached        = errors.Register(ModuleName, 5, "maximum leases per tenant reached")
 	ErrUnauthorized            = errors.Register(ModuleName, 6, "unauthorized")
-	ErrInvalidDenom            = errors.Register(ModuleName, 7, "invalid denomination")
 	ErrCreditAccountNotFound   = errors.Register(ModuleName, 8, "credit account not found")
 	ErrInvalidLease            = errors.Register(ModuleName, 9, "invalid lease")
 	ErrSKUNotFound             = errors.Register(ModuleName, 10, "sku not found")
@@ -22,14 +21,10 @@ var (
 	ErrInvalidQuantity         = errors.Register(ModuleName, 17, "quantity must be greater than zero")
 	ErrDuplicateSKU            = errors.Register(ModuleName, 18, "duplicate sku in lease items")
 	ErrInvalidCreditOperation  = errors.Register(ModuleName, 19, "invalid credit operation")
-	ErrInvalidDenomination     = errors.Register(ModuleName, 20, "invalid denomination for credit account")
 	ErrTooManyLeaseItems       = errors.Register(ModuleName, 21, "too many items in lease")
 	ErrLeaseNotPending         = errors.Register(ModuleName, 22, "lease not in pending state")
 	ErrMaxPendingLeasesReached = errors.Register(ModuleName, 23, "maximum pending leases per tenant reached")
 	ErrInvalidRejectionReason  = errors.Register(ModuleName, 24, "invalid rejection reason")
-	ErrLeaseExpired            = errors.Register(ModuleName, 25, "lease has expired")
-	ErrInvalidAPIURL           = errors.Register(ModuleName, 26, "invalid API URL")
-	ErrInvalidPendingTimeout   = errors.Register(ModuleName, 27, "invalid pending timeout")
 )
 
 // MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.

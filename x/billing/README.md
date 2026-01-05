@@ -25,10 +25,20 @@ The billing module supports multiple token denominations:
 A lease represents an agreement between a tenant and a provider for one or more SKU items.
 
 - **Tenant**: The address that created and pays for the lease
-- **Provider ID**: All SKUs in a lease must belong to the same provider
+- **Provider UUID**: All SKUs in a lease must belong to the same provider
 - **Items**: List of SKU items with locked-in prices and quantities
-- **State**: ACTIVE or INACTIVE
+- **State**: PENDING, ACTIVE, CLOSED, REJECTED, or EXPIRED
 - **Settlement**: Accrued charges are calculated based on time since last settlement
+
+### Lease Lifecycle
+
+Leases follow a two-phase commit pattern:
+
+1. **PENDING**: Tenant creates lease, credit is locked, awaiting provider acknowledgement
+2. **ACTIVE**: Provider acknowledges, billing starts from acknowledgement time
+3. **CLOSED**: Lease terminated normally (by tenant, provider, or credit exhaustion)
+4. **REJECTED**: Provider rejected the pending lease
+5. **EXPIRED**: Pending lease timed out (exceeded `pending_timeout` parameter)
 
 ### Price Locking
 
@@ -84,6 +94,8 @@ Module parameters stored at key `0x00`:
 | max_leases_per_tenant | uint64 | Maximum active leases per tenant (must be > 0) |
 | max_items_per_lease | uint64 | Maximum items per lease (default: 20, hard limit: 100) |
 | min_lease_duration | uint64 | Minimum lease duration in seconds (default: 3600 = 1 hour) |
+| max_pending_leases_per_tenant | uint64 | Maximum pending leases per tenant (default: 10) |
+| pending_timeout | uint64 | Seconds before pending lease expires (default: 1800 = 30 minutes) |
 | allowed_list | []string | List of addresses allowed to create leases on behalf of tenants |
 
 **Note:** There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`, enabling multi-denom billing.
@@ -94,20 +106,24 @@ Leases stored at key prefix `0x01`:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| id | uint64 | Unique lease identifier |
+| uuid | string | UUIDv7 unique identifier |
 | tenant | string | Tenant address |
-| provider_id | uint64 | Provider ID (from SKU module) |
+| provider_uuid | string | Provider UUID (from SKU module) |
 | items | []LeaseItem | List of SKU items |
-| state | LeaseState | ACTIVE or INACTIVE |
-| created_at | Timestamp | Creation time |
-| closed_at | Timestamp | Closure time (if inactive) |
+| state | LeaseState | PENDING, ACTIVE, CLOSED, REJECTED, or EXPIRED |
+| created_at | Timestamp | Creation time (credit locked) |
+| acknowledged_at | Timestamp | Provider acknowledgement time (billing starts) |
+| closed_at | Timestamp | Closure time |
+| rejected_at | Timestamp | Rejection time |
+| expired_at | Timestamp | Expiration time |
 | last_settled_at | Timestamp | Last settlement time |
+| rejection_reason | string | Provider's rejection reason (max 256 chars) |
 
 ### LeaseItem
 
 | Field | Type | Description |
 |-------|------|-------------|
-| sku_id | uint64 | SKU ID being leased |
+| sku_uuid | string | SKU UUID being leased |
 | quantity | uint64 | Number of instances |
 | locked_price | Coin | Price locked at creation (per second rate, includes denom) |
 
@@ -119,6 +135,8 @@ Credit accounts stored at key prefix `0x05`:
 |-------|------|-------------|
 | tenant | string | Tenant address |
 | credit_address | string | Derived credit account address |
+| active_lease_count | uint64 | Number of ACTIVE leases |
+| pending_lease_count | uint64 | Number of PENDING leases |
 
 Note: The actual balance is tracked by the bank module at the `credit_address`. Query the bank module or use `QueryCreditAccount` which includes the balance.
 
@@ -132,21 +150,51 @@ Transfers tokens from sender to tenant's credit account.
 sender → credit_address
 ```
 
-### Create Lease
+### Create Lease (PENDING)
 
 1. Verify tenant has a credit account
 2. Verify tenant has sufficient credit to cover minimum lease duration (credit >= rate * min_lease_duration)
 3. Verify all SKUs exist, are active, and belong to same provider
-4. Verify tenant hasn't exceeded max leases
+4. Verify tenant hasn't exceeded max active or pending leases
 5. Lock current SKU prices
-6. Create lease in ACTIVE state
+6. Create lease in PENDING state
+7. Increment pending_lease_count
 
-### Close Lease
+### Acknowledge Lease (PENDING → ACTIVE)
+
+1. Provider verifies they own the SKUs in the lease
+2. Set lease state to ACTIVE
+3. Set acknowledged_at to current block time (billing starts)
+4. Decrement pending_lease_count, increment active_lease_count
+
+### Reject Lease (PENDING → REJECTED)
+
+1. Provider verifies they own the SKUs in the lease
+2. Set lease state to REJECTED
+3. Set rejected_at and rejection_reason
+4. Decrement pending_lease_count
+
+### Cancel Lease (Tenant cancels PENDING)
+
+1. Verify sender is the lease tenant
+2. Verify lease is in PENDING state
+3. Set lease state to REJECTED
+4. Decrement pending_lease_count
+
+### Expire Lease (EndBlocker)
+
+1. EndBlocker checks pending leases older than pending_timeout
+2. Set lease state to EXPIRED
+3. Set expired_at timestamp
+4. Decrement pending_lease_count
+
+### Close Lease (ACTIVE → CLOSED)
 
 1. Calculate accrued charges since last settlement
-2. Transfer accrued amount from credit to provider
-3. Set lease state to INACTIVE
+2. Transfer accrued amount from credit to provider's payout address
+3. Set lease state to CLOSED
 4. Record closed_at timestamp
+5. Decrement active_lease_count
 
 ### Withdraw
 
@@ -170,12 +218,12 @@ message MsgFundCredit {
 
 ### MsgCreateLease
 
-Create a new lease.
+Create a new lease in PENDING state. Provider must acknowledge before billing starts.
 
 ```protobuf
 message MsgCreateLease {
   string tenant = 1;
-  repeated LeaseItemInput items = 2;
+  repeated LeaseItemInput items = 2;  // items use sku_uuid
 }
 ```
 
@@ -189,18 +237,52 @@ Addresses in the `allowed_list` params can use this message in addition to the m
 message MsgCreateLeaseForTenant {
   string authority = 1;
   string tenant = 2;
-  repeated LeaseItemInput items = 3;
+  repeated LeaseItemInput items = 3;  // items use sku_uuid
+}
+```
+
+### MsgAcknowledgeLease
+
+Provider acknowledges a PENDING lease, transitioning it to ACTIVE state and starting billing.
+
+```protobuf
+message MsgAcknowledgeLease {
+  string sender = 1;       // Provider address or authority
+  string lease_uuid = 2;
+}
+```
+
+### MsgRejectLease
+
+Provider rejects a PENDING lease with an optional reason.
+
+```protobuf
+message MsgRejectLease {
+  string sender = 1;       // Provider address or authority
+  string lease_uuid = 2;
+  string reason = 3;       // Optional, max 256 characters
+}
+```
+
+### MsgCancelLease
+
+Tenant cancels their own PENDING lease before provider acknowledgement.
+
+```protobuf
+message MsgCancelLease {
+  string tenant = 1;
+  string lease_uuid = 2;
 }
 ```
 
 ### MsgCloseLease
 
-Close an active lease. Can be called by tenant, provider, or authority.
+Close an ACTIVE lease. Can be called by tenant, provider, or authority.
 
 ```protobuf
 message MsgCloseLease {
   string sender = 1;
-  uint64 lease_id = 2;
+  string lease_uuid = 2;
 }
 ```
 
@@ -211,13 +293,13 @@ Withdraw accrued funds from a specific lease.
 ```protobuf
 message MsgWithdraw {
   string sender = 1;
-  uint64 lease_id = 2;
+  string lease_uuid = 2;
 }
 ```
 
 ### MsgWithdrawAll
 
-Withdraw accrued funds from all leases for a provider. The provider_id is required.
+Withdraw accrued funds from all leases for a provider. The provider_uuid is required.
 
 **Limits (DoS Protection):**
 - **Default limit**: 50 leases per call (when limit=0 or not specified)
@@ -227,7 +309,7 @@ Withdraw accrued funds from all leases for a provider. The provider_id is requir
 ```protobuf
 message MsgWithdrawAll {
   string sender = 1;
-  uint64 provider_id = 2;
+  string provider_uuid = 2;
   uint64 limit = 3;       // Max leases to process (0 = default 50, max 100)
 }
 ```
@@ -273,11 +355,15 @@ message MsgUpdateParams {
 | Event | Attributes | Description |
 |-------|------------|-------------|
 | credit_funded | tenant, credit_address, sender, amount, new_balance | Credit account funded |
-| lease_created | lease_id, tenant, provider_id, item_count, total_rate_per_second, active_lease_count, created_by | Lease created (created_by is "tenant" or "authority") |
-| lease_closed | lease_id, tenant, provider_id, settled_amount, closed_by, duration_seconds, active_lease_count | Lease closed manually |
-| lease_auto_closed | lease_id, tenant, provider_id, settled_amount, reason | Lease auto-closed due to credit exhaustion |
-| provider_withdraw | lease_id, provider_id, amount, payout_address | Provider withdrawal |
-| provider_withdraw_all | provider_id, amount, lease_count, payout_address | Provider withdrew from all leases |
+| lease_created | lease_uuid, tenant, provider_uuid, item_count, total_rate_per_second, pending_lease_count, created_by | Lease created in PENDING state |
+| lease_acknowledged | lease_uuid, tenant, provider_uuid, acknowledged_by | Provider acknowledged lease (→ ACTIVE) |
+| lease_rejected | lease_uuid, tenant, provider_uuid, reason, rejected_by | Provider rejected lease |
+| lease_cancelled | lease_uuid, tenant | Tenant cancelled pending lease |
+| lease_expired | lease_uuid, tenant, provider_uuid | Pending lease expired |
+| lease_closed | lease_uuid, tenant, provider_uuid, settled_amounts, closed_by, duration_seconds, active_lease_count | Lease closed manually |
+| lease_auto_closed | lease_uuid, tenant, provider_uuid, settled_amounts, reason | Lease auto-closed due to credit exhaustion |
+| provider_withdraw | lease_uuid, provider_uuid, amounts, payout_address | Provider withdrawal |
+| provider_withdraw_all | provider_uuid, total_amounts, lease_count, payout_address | Provider withdrew from all leases |
 | params_updated | | Module parameters updated |
 
 ## Client
@@ -290,20 +376,29 @@ message MsgUpdateParams {
 # Fund a credit account
 manifestd tx billing fund-credit [tenant] [amount] --from [key]
 
-# Create a lease (format: sku_id:quantity)
-manifestd tx billing create-lease 1:2 2:1 --from [key]
+# Create a lease in PENDING state (format: sku_uuid:quantity)
+manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:2 --from [key]
 
 # Create a lease on behalf of a tenant (authority only)
-manifestd tx billing create-lease-for-tenant [tenant] 1:2 2:1 --from [authority]
+manifestd tx billing create-lease-for-tenant [tenant] 01912345-6789-7abc-8def-0123456789ab:2 --from [authority]
 
-# Close a lease
-manifestd tx billing close-lease [lease-id] --from [key]
+# Acknowledge a pending lease (provider only)
+manifestd tx billing acknowledge-lease [lease-uuid] --from [provider-key]
+
+# Reject a pending lease (provider only)
+manifestd tx billing reject-lease [lease-uuid] --reason "Resource unavailable" --from [provider-key]
+
+# Cancel a pending lease (tenant only)
+manifestd tx billing cancel-lease [lease-uuid] --from [tenant-key]
+
+# Close an active lease
+manifestd tx billing close-lease [lease-uuid] --from [key]
 
 # Withdraw from a lease
-manifestd tx billing withdraw [lease-id] --from [key]
+manifestd tx billing withdraw [lease-uuid] --from [key]
 
 # Withdraw from all leases
-manifestd tx billing withdraw-all [provider-id] --from [key]
+manifestd tx billing withdraw-all [provider-uuid] --from [key]
 ```
 
 #### Queries
@@ -313,7 +408,7 @@ manifestd tx billing withdraw-all [provider-id] --from [key]
 manifestd query billing params
 
 # Query a lease
-manifestd query billing lease [lease-id]
+manifestd query billing lease [lease-uuid]
 
 # Query all leases
 manifestd query billing leases --active-only
@@ -322,7 +417,7 @@ manifestd query billing leases --active-only
 manifestd query billing leases-by-tenant [tenant] --active-only
 
 # Query leases by provider
-manifestd query billing leases-by-provider [provider-id] --active-only
+manifestd query billing leases-by-provider [provider-uuid] --active-only
 
 # Query credit account
 manifestd query billing credit-account [tenant]
@@ -331,10 +426,10 @@ manifestd query billing credit-account [tenant]
 manifestd query billing credit-address [tenant]
 
 # Query withdrawable amount
-manifestd query billing withdrawable [lease-id]
+manifestd query billing withdrawable [lease-uuid]
 
 # Query provider total withdrawable
-manifestd query billing provider-withdrawable [provider-id]
+manifestd query billing provider-withdrawable [provider-uuid]
 ```
 
 ## Default Parameters
@@ -344,6 +439,8 @@ manifestd query billing provider-withdrawable [provider-id]
 | max_leases_per_tenant | 100 |
 | max_items_per_lease | 20 (hard limit: 100) |
 | min_lease_duration | 3600 (1 hour) |
+| max_pending_leases_per_tenant | 10 |
+| pending_timeout | 1800 (30 minutes) |
 
 ## Authorization
 
@@ -351,7 +448,10 @@ manifestd query billing provider-withdrawable [provider-id]
 |--------|-----------------|
 | Fund Credit | Anyone |
 | Create Lease | Tenant (for themselves) |
-| Create Lease for Tenant | Authority only (for migrating off-chain leases) |
+| Create Lease for Tenant | Authority or Allow-Listed addresses |
+| Acknowledge Lease | Provider or Authority |
+| Reject Lease | Provider or Authority |
+| Cancel Lease | Tenant (own pending leases only) |
 | Close Lease | Tenant, Provider, or Authority |
 | Withdraw | Provider or Authority |
 | Withdraw All | Provider or Authority |
@@ -384,9 +484,9 @@ The following limitations exist in the current implementation and are tracked fo
 **Example**:
 ```bash
 # Process default 50 leases at a time
-manifestd tx billing withdraw-all 1 --from provider-key
+manifestd tx billing withdraw-all [provider-uuid] --from provider-key
 # Or specify a custom limit (max 100)
-manifestd tx billing withdraw-all 1 --limit 75 --from provider-key
+manifestd tx billing withdraw-all [provider-uuid] --limit 75 --from provider-key
 # If has_more is true, repeat until all leases are processed
 ```
 

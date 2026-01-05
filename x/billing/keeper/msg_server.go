@@ -421,7 +421,12 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			return nil, err
 		}
 
-		// Decrement active lease count in credit account
+		// Decrement active lease count in credit account.
+		// NOTE: We intentionally ignore GetCreditAccount errors here because:
+		// 1. The credit account may not exist if the lease was created before
+		//    credit accounts were tracked (backwards compatibility)
+		// 2. The lease closure itself has already succeeded at this point
+		// 3. The count is informational and its inconsistency is non-critical
 		creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
 		if err == nil && creditAccount.ActiveLeaseCount > 0 {
 			creditAccount.ActiveLeaseCount--
@@ -431,8 +436,9 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		}
 	}
 
-	// Get active lease count for event (may have been decremented above or by auto-close)
-	// If credit account not found, we get zero value which is acceptable for the event
+	// Get active lease count for event emission.
+	// NOTE: Error intentionally ignored - if credit account doesn't exist,
+	// we use zero value which is acceptable for event metadata.
 	creditAccount, _ := ms.k.GetCreditAccount(ctx, lease.Tenant)
 
 	// 8. Emit detailed event
@@ -508,76 +514,27 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 		}
 	}
 
-	// 4. Calculate accrued amounts since last settlement
-	var duration time.Duration
+	// 4. Determine settlement time based on lease state
+	var settleTime time.Time
 	if lease.State == types.LEASE_STATE_ACTIVE {
-		duration = blockTime.Sub(lease.LastSettledAt)
+		settleTime = blockTime
+	} else if lease.ClosedAt != nil {
+		settleTime = *lease.ClosedAt
 	} else {
-		// For inactive leases, calculate from last settled to closed
-		if lease.ClosedAt != nil {
-			duration = lease.ClosedAt.Sub(lease.LastSettledAt)
-		} else {
-			duration = 0
-		}
+		settleTime = lease.LastSettledAt // No duration, will return zero
 	}
 
-	// Calculate total accrued with overflow checking
-	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
-	for _, item := range lease.Items {
-		items = append(items, LeaseItemWithPrice{
-			SkuUUID:              item.SkuUuid,
-			Quantity:             item.Quantity,
-			LockedPricePerSecond: item.LockedPrice,
-		})
-	}
-	accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
-	if err != nil {
-		return nil, types.ErrInvalidCreditOperation.Wrapf("accrual calculation error: %s", err)
-	}
-
-	if accruedAmounts.IsZero() {
-		return nil, types.ErrNoWithdrawableAmount
-	}
-
-	// 5. Transfer accrued amounts from credit account to provider payout address
-	creditAddr, err := types.DeriveCreditAddressFromBech32(lease.Tenant)
+	// 5. Perform settlement
+	result, err := ms.k.PerformSettlement(ctx, &lease, settleTime)
 	if err != nil {
 		return nil, err
 	}
 
-	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
-	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
+	if result.AccruedAmounts.IsZero() {
+		return nil, types.ErrNoWithdrawableAmount
 	}
 
-	// Get credit balances
-	creditBalances := ms.k.bankKeeper.GetAllBalances(ctx, creditAddr)
-
-	// Calculate transfer amounts (minimum of accrued and available for each denom)
-	transferAmounts := sdk.NewCoins()
-	for _, accrued := range accruedAmounts {
-		balance := creditBalances.AmountOf(accrued.Denom)
-		transferAmount := accrued.Amount
-		if balance.LT(accrued.Amount) {
-			transferAmount = balance
-		}
-		if transferAmount.IsPositive() {
-			transferAmounts = transferAmounts.Add(sdk.NewCoin(accrued.Denom, transferAmount))
-		}
-	}
-
-	if !transferAmounts.IsZero() {
-		if err := ms.k.bankKeeper.SendCoins(
-			ctx,
-			creditAddr,
-			payoutAddr,
-			transferAmounts,
-		); err != nil {
-			return nil, types.ErrInvalidCreditOperation.Wrapf("failed to transfer: %s", err)
-		}
-	}
-
-	// 6. Update last_settled_at
+	// 6. Update last_settled_at for active leases
 	if lease.State == types.LEASE_STATE_ACTIVE {
 		lease.LastSettledAt = blockTime
 		if err := ms.k.SetLease(ctx, lease); err != nil {
@@ -591,13 +548,13 @@ func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*type
 			types.EventTypeProviderWithdraw,
 			sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
-			sdk.NewAttribute(types.AttributeKeyAmount, transferAmounts.String()),
+			sdk.NewAttribute(types.AttributeKeyAmount, result.TransferAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.PayoutAddress),
 		),
 	)
 
 	return &types.MsgWithdrawResponse{
-		Amounts:       transferAmounts,
+		Amounts:       result.TransferAmounts,
 		PayoutAddress: provider.PayoutAddress,
 	}, nil
 }
@@ -634,11 +591,6 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 		return nil, err
 	}
 
-	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
-	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
-	}
-
 	// 3. For each lease (up to limit), calculate and withdraw accrued amounts
 	totalAmounts := sdk.NewCoins()
 	var leaseCount uint64
@@ -658,88 +610,47 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 			break
 		}
 
-		// Calculate accrued amounts
-		var duration time.Duration
+		// Determine settlement time based on lease state
+		var settleTime time.Time
 		if lease.State == types.LEASE_STATE_ACTIVE {
-			duration = blockTime.Sub(lease.LastSettledAt)
+			settleTime = blockTime
 		} else if lease.ClosedAt != nil {
-			duration = lease.ClosedAt.Sub(lease.LastSettledAt)
+			settleTime = *lease.ClosedAt
+		} else {
+			continue // No settlement possible
 		}
 
-		if duration <= 0 {
+		// Skip if no duration to settle
+		if !settleTime.After(lease.LastSettledAt) {
 			continue
 		}
 
-		items := make([]LeaseItemWithPrice, 0, len(lease.Items))
-		for _, item := range lease.Items {
-			items = append(items, LeaseItemWithPrice{
-				SkuUUID:              item.SkuUuid,
-				Quantity:             item.Quantity,
-				LockedPricePerSecond: item.LockedPrice,
-			})
-		}
-		accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
+		// Perform settlement (silent mode: doesn't fail on overflow)
+		result, err := ms.k.PerformSettlementSilent(ctx, &lease, settleTime)
 		if err != nil {
-			// Log overflow error but continue with other leases
-			ms.k.Logger().Error("accrual calculation overflow",
+			// Log error but continue with other leases
+			ms.k.Logger().Error("failed to withdraw from lease",
 				"lease_id", lease.Uuid,
 				"error", err,
 			)
 			continue
 		}
 
-		if accruedAmounts.IsZero() {
+		if result.TransferAmounts.IsZero() {
 			continue
 		}
 
-		// Get credit balances
-		creditAddr, err := types.DeriveCreditAddressFromBech32(lease.Tenant)
-		if err != nil {
-			continue
-		}
+		totalAmounts = totalAmounts.Add(result.TransferAmounts...)
+		leaseCount++
 
-		creditBalances := ms.k.bankKeeper.GetAllBalances(ctx, creditAddr)
-
-		// Calculate transfer amounts (minimum of accrued and available for each denom)
-		transferAmounts := sdk.NewCoins()
-		for _, accrued := range accruedAmounts {
-			balance := creditBalances.AmountOf(accrued.Denom)
-			transferAmount := accrued.Amount
-			if balance.LT(accrued.Amount) {
-				transferAmount = balance
-			}
-			if transferAmount.IsPositive() {
-				transferAmounts = transferAmounts.Add(sdk.NewCoin(accrued.Denom, transferAmount))
-			}
-		}
-
-		if !transferAmounts.IsZero() {
-			if err := ms.k.bankKeeper.SendCoins(
-				ctx,
-				creditAddr,
-				payoutAddr,
-				transferAmounts,
-			); err != nil {
-				// Log error but continue with other leases
-				ms.k.Logger().Error("failed to withdraw from lease",
+		// Update last_settled_at for active leases
+		if lease.State == types.LEASE_STATE_ACTIVE {
+			lease.LastSettledAt = blockTime
+			if err := ms.k.SetLease(ctx, lease); err != nil {
+				ms.k.Logger().Error("failed to update lease",
 					"lease_id", lease.Uuid,
 					"error", err,
 				)
-				continue
-			}
-
-			totalAmounts = totalAmounts.Add(transferAmounts...)
-			leaseCount++
-
-			// Update last_settled_at for active leases
-			if lease.State == types.LEASE_STATE_ACTIVE {
-				lease.LastSettledAt = blockTime
-				if err := ms.k.SetLease(ctx, lease); err != nil {
-					ms.k.Logger().Error("failed to update lease",
-						"lease_id", lease.Uuid,
-						"error", err,
-					)
-				}
 			}
 		}
 
@@ -790,78 +701,15 @@ func (ms msgServer) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams
 // settleLease calculates and transfers accrued charges from tenant's credit account
 // to the provider's payout address. Returns the amounts settled (one per denom).
 func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleTime time.Time) (sdk.Coins, error) {
-	// Calculate duration since last settlement
-	duration := settleTime.Sub(lease.LastSettledAt)
-	if duration <= 0 {
-		return sdk.NewCoins(), nil
-	}
-
-	// Calculate total accrued with overflow checking
-	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
-	for _, item := range lease.Items {
-		items = append(items, LeaseItemWithPrice{
-			SkuUUID:              item.SkuUuid,
-			Quantity:             item.Quantity,
-			LockedPricePerSecond: item.LockedPrice,
-		})
-	}
-	accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
-	if err != nil {
-		return sdk.NewCoins(), types.ErrInvalidCreditOperation.Wrapf("accrual calculation error: %s", err)
-	}
-
-	if accruedAmounts.IsZero() {
-		return sdk.NewCoins(), nil
-	}
-
-	// Get credit address
-	creditAddr, err := types.DeriveCreditAddressFromBech32(lease.Tenant)
+	result, err := ms.k.PerformSettlement(ctx, lease, settleTime)
 	if err != nil {
 		return sdk.NewCoins(), err
-	}
-
-	// Get provider payout address
-	provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
-	if err != nil {
-		return sdk.NewCoins(), types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
-	}
-
-	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
-	if err != nil {
-		return sdk.NewCoins(), types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
-	}
-
-	// Get credit balances
-	creditBalances := ms.k.bankKeeper.GetAllBalances(ctx, creditAddr)
-
-	// Calculate transfer amounts (minimum of accrued and available for each denom)
-	transferAmounts := sdk.NewCoins()
-	for _, accrued := range accruedAmounts {
-		balance := creditBalances.AmountOf(accrued.Denom)
-		transferAmount := accrued.Amount
-		if balance.LT(accrued.Amount) {
-			transferAmount = balance
-		}
-		if transferAmount.IsPositive() {
-			transferAmounts = transferAmounts.Add(sdk.NewCoin(accrued.Denom, transferAmount))
-		}
-	}
-
-	if !transferAmounts.IsZero() {
-		if err := ms.k.bankKeeper.SendCoins(
-			ctx,
-			creditAddr,
-			payoutAddr,
-			transferAmounts,
-		); err != nil {
-			return sdk.NewCoins(), types.ErrInvalidCreditOperation.Wrapf("failed to transfer: %s", err)
-		}
 	}
 
 	// Update last_settled_at
 	lease.LastSettledAt = settleTime
 
-	return transferAmounts, nil
+	return result.TransferAmounts, nil
 }
 
 // AcknowledgeLease allows a provider to acknowledge a PENDING lease.
@@ -908,7 +756,11 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 		return nil, err
 	}
 
-	// 5. Update lease counts: decrement pending, increment active
+	// 5. Update lease counts: decrement pending, increment active.
+	// NOTE: We intentionally ignore GetCreditAccount errors here because:
+	// 1. The credit account may not exist in edge cases (e.g., migration scenarios)
+	// 2. The lease acknowledgement itself has already succeeded at this point
+	// 3. Lease counts are informational metadata, not critical state
 	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
 	if err == nil {
 		if creditAccount.PendingLeaseCount > 0 {
@@ -980,7 +832,11 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 		return nil, err
 	}
 
-	// 5. Decrement pending lease count in credit account
+	// 5. Decrement pending lease count in credit account.
+	// NOTE: We intentionally ignore GetCreditAccount errors here because:
+	// 1. The credit account may not exist in edge cases
+	// 2. The lease rejection itself has already succeeded at this point
+	// 3. Pending counts are informational metadata, not critical state
 	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
 	if err == nil && creditAccount.PendingLeaseCount > 0 {
 		creditAccount.PendingLeaseCount--
@@ -1045,7 +901,11 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 		return nil, err
 	}
 
-	// 5. Decrement pending lease count in credit account
+	// 5. Decrement pending lease count in credit account.
+	// NOTE: We intentionally ignore GetCreditAccount errors here because:
+	// 1. The credit account may not exist in edge cases
+	// 2. The lease cancellation itself has already succeeded at this point
+	// 3. Pending counts are informational metadata, not critical state
 	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
 	if err == nil && creditAccount.PendingLeaseCount > 0 {
 		creditAccount.PendingLeaseCount--

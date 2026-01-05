@@ -1,4 +1,8 @@
-package keeper
+// Package pagination provides generic pagination utilities for CosmosSDK collections.
+//
+// This package consolidates pagination helpers that are used across multiple modules
+// to avoid code duplication and ensure consistent pagination behavior.
+package pagination
 
 import (
 	"context"
@@ -63,8 +67,7 @@ func PaginateStringIndex[V any](
 
 		// For key-based pagination, skip until we reach the start key
 		if !foundStart {
-			pkBytes := []byte(pk)
-			if string(pkBytes) == string(startKey) {
+			if string(startKey) == pk {
 				foundStart = true
 			} else {
 				continue

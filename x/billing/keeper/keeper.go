@@ -650,73 +650,10 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 // This is used by both manual close and auto-close operations.
 // Returns the settled amounts (one per denom).
 func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, closeTime time.Time) (sdk.Coins, error) {
-	// Calculate duration since last settlement
-	duration := closeTime.Sub(lease.LastSettledAt)
-	if duration < 0 {
-		duration = 0
-	}
-
-	settledAmounts := sdk.NewCoins()
-
-	if duration > 0 {
-		// Calculate accrued amounts
-		items := make([]LeaseItemWithPrice, 0, len(lease.Items))
-		for _, item := range lease.Items {
-			items = append(items, LeaseItemWithPrice{
-				SkuUUID:              item.SkuUuid,
-				Quantity:             item.Quantity,
-				LockedPricePerSecond: item.LockedPrice,
-			})
-		}
-		accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
-		if err != nil {
-			// On overflow, use empty coins (better than failing the close)
-			accruedAmounts = sdk.NewCoins()
-		}
-
-		// Get credit balances
-		creditAddr, err := types.DeriveCreditAddressFromBech32(lease.Tenant)
-		if err != nil {
-			return sdk.NewCoins(), err
-		}
-		creditBalances := k.bankKeeper.GetAllBalances(ctx, creditAddr)
-
-		// Calculate transfer amounts (minimum of accrued and available for each denom)
-		transferAmounts := sdk.NewCoins()
-		for _, accrued := range accruedAmounts {
-			balance := creditBalances.AmountOf(accrued.Denom)
-			transferAmount := accrued.Amount
-			if balance.LT(accrued.Amount) {
-				transferAmount = balance
-			}
-			if transferAmount.IsPositive() {
-				transferAmounts = transferAmounts.Add(sdk.NewCoin(accrued.Denom, transferAmount))
-			}
-		}
-
-		if !transferAmounts.IsZero() {
-			// Get provider payout address
-			provider, err := k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
-			if err != nil {
-				return sdk.NewCoins(), types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
-			}
-
-			payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
-			if err != nil {
-				return sdk.NewCoins(), types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
-			}
-
-			if err := k.bankKeeper.SendCoins(
-				ctx,
-				creditAddr,
-				payoutAddr,
-				transferAmounts,
-			); err != nil {
-				return sdk.NewCoins(), types.ErrInvalidCreditOperation.Wrapf("failed to transfer: %s", err)
-			}
-		}
-
-		settledAmounts = transferAmounts
+	// Perform settlement using silent mode (doesn't fail on overflow)
+	result, err := k.PerformSettlementSilent(ctx, lease, closeTime)
+	if err != nil {
+		return sdk.NewCoins(), err
 	}
 
 	// Update lease state
@@ -733,11 +670,11 @@ func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, cl
 	if err == nil && creditAccount.ActiveLeaseCount > 0 {
 		creditAccount.ActiveLeaseCount--
 		if err := k.SetCreditAccount(ctx, creditAccount); err != nil {
-			return settledAmounts, err
+			return result.TransferAmounts, err
 		}
 	}
 
-	return settledAmounts, nil
+	return result.TransferAmounts, nil
 }
 
 // CountPendingLeasesByTenant counts the number of pending leases for a tenant.

@@ -8,19 +8,22 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/types/query"
 
+	"github.com/manifest-network/manifest-ledger/pkg/pagination"
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 var _ types.QueryServer = Querier{}
 
 // Querier implements the module gRPC query service.
+// It wraps the Keeper to provide query functionality without exposing
+// internal keeper methods, following the same pattern as billing module.
 type Querier struct {
-	Keeper
+	k Keeper
 }
 
 // NewQuerier returns a new Querier instance.
 func NewQuerier(keeper Keeper) Querier {
-	return Querier{Keeper: keeper}
+	return Querier{k: keeper}
 }
 
 // Params queries the module parameters.
@@ -29,7 +32,7 @@ func (q Querier) Params(ctx context.Context, req *types.QueryParamsRequest) (*ty
 		return nil, status.Error(codes.InvalidArgument, "invalid request")
 	}
 
-	params, err := q.Keeper.GetParams(ctx)
+	params, err := q.k.GetParams(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -47,7 +50,7 @@ func (q Querier) Provider(ctx context.Context, req *types.QueryProviderRequest) 
 		return nil, status.Error(codes.InvalidArgument, "uuid cannot be empty")
 	}
 
-	provider, err := q.Keeper.GetProvider(ctx, req.Uuid)
+	provider, err := q.k.GetProvider(ctx, req.Uuid)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
@@ -65,7 +68,7 @@ func (q Querier) Providers(ctx context.Context, req *types.QueryProvidersRequest
 	if req.ActiveOnly {
 		providers, pageRes, err := query.CollectionFilteredPaginate(
 			ctx,
-			q.Keeper.Providers,
+			q.k.Providers,
 			req.Pagination,
 			func(_ string, provider types.Provider) (bool, error) {
 				return provider.Active, nil
@@ -86,7 +89,7 @@ func (q Querier) Providers(ctx context.Context, req *types.QueryProvidersRequest
 
 	providers, pageRes, err := query.CollectionPaginate(
 		ctx,
-		q.Keeper.Providers,
+		q.k.Providers,
 		req.Pagination,
 		func(_ string, provider types.Provider) (types.Provider, error) {
 			return provider, nil
@@ -112,7 +115,7 @@ func (q Querier) SKU(ctx context.Context, req *types.QuerySKURequest) (*types.Qu
 		return nil, status.Error(codes.InvalidArgument, "uuid cannot be empty")
 	}
 
-	sku, err := q.Keeper.GetSKU(ctx, req.Uuid)
+	sku, err := q.k.GetSKU(ctx, req.Uuid)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
@@ -130,7 +133,7 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 	if req.ActiveOnly {
 		skus, pageRes, err := query.CollectionFilteredPaginate(
 			ctx,
-			q.Keeper.SKUs,
+			q.k.SKUs,
 			req.Pagination,
 			func(_ string, sku types.SKU) (bool, error) {
 				return sku.Active, nil
@@ -151,7 +154,7 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 
 	skus, pageRes, err := query.CollectionPaginate(
 		ctx,
-		q.Keeper.SKUs,
+		q.k.SKUs,
 		req.Pagination,
 		func(_ string, sku types.SKU) (types.SKU, error) {
 			return sku, nil
@@ -179,7 +182,7 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 	}
 
 	// Use the provider index to iterate only over this provider's SKUs
-	iter, err := q.Keeper.SKUs.Indexes.Provider.MatchExact(ctx, req.ProviderUuid)
+	iter, err := q.k.SKUs.Indexes.Provider.MatchExact(ctx, req.ProviderUuid)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -190,10 +193,10 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 		filter = func(s types.SKU) bool { return s.Active }
 	}
 
-	skus, pageRes, err := PaginateStringIndex(
+	skus, pageRes, err := pagination.PaginateStringIndex(
 		ctx,
 		iter,
-		q.Keeper.SKUs.Get,
+		q.k.SKUs.Get,
 		req.Pagination,
 		filter,
 	)

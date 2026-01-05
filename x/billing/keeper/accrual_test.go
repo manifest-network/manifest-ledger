@@ -308,3 +308,95 @@ func TestPrecisionLoss(t *testing.T) {
 	perSecond = ConvertBasePriceToPerSecond(basePrice, skutypes.Unit_UNIT_PER_HOUR)
 	require.Equal(t, math.NewInt(2), perSecond.Amount)
 }
+
+// ============================================================================
+// Benchmarks for Accrual Calculations
+// ============================================================================
+
+func BenchmarkConvertBasePriceToPerSecond(b *testing.B) {
+	basePrice := sdk.NewCoin(testDenom, math.NewInt(3600000))
+
+	b.Run("PerHour", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			ConvertBasePriceToPerSecond(basePrice, skutypes.Unit_UNIT_PER_HOUR)
+		}
+	})
+
+	b.Run("PerDay", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			ConvertBasePriceToPerSecond(basePrice, skutypes.Unit_UNIT_PER_DAY)
+		}
+	})
+}
+
+func BenchmarkCalculateAccruedAmount(b *testing.B) {
+	pricePerSecond := sdk.NewCoin(testDenom, math.NewInt(1000))
+
+	b.Run("SmallDuration_100s", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, _ = CalculateAccruedAmount(pricePerSecond, 1, 100*time.Second)
+		}
+	})
+
+	b.Run("MediumDuration_1hr", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, _ = CalculateAccruedAmount(pricePerSecond, 10, time.Hour)
+		}
+	})
+
+	b.Run("LargeDuration_1yr", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, _ = CalculateAccruedAmount(pricePerSecond, 100, 365*24*time.Hour)
+		}
+	})
+
+	b.Run("LargePrice_Trillion", func(b *testing.B) {
+		largePrice := sdk.NewCoin(testDenom, math.NewInt(1_000_000_000_000))
+		for i := 0; i < b.N; i++ {
+			_, _ = CalculateAccruedAmount(largePrice, 100, 365*24*time.Hour)
+		}
+	})
+}
+
+func BenchmarkCalculateTotalAccruedForLease(b *testing.B) {
+	singleItem := []LeaseItemWithPrice{
+		{SkuUUID: "sku-1", Quantity: 1, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(100))},
+	}
+
+	fiveItems := []LeaseItemWithPrice{
+		{SkuUUID: "sku-1", Quantity: 1, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(100))},
+		{SkuUUID: "sku-2", Quantity: 2, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(200))},
+		{SkuUUID: "sku-3", Quantity: 3, LockedPricePerSecond: sdk.NewCoin("umfx", math.NewInt(300))},
+		{SkuUUID: "sku-4", Quantity: 4, LockedPricePerSecond: sdk.NewCoin("uother", math.NewInt(400))},
+		{SkuUUID: "sku-5", Quantity: 5, LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(500))},
+	}
+
+	twentyItems := make([]LeaseItemWithPrice, 20)
+	for i := 0; i < 20; i++ {
+		twentyItems[i] = LeaseItemWithPrice{
+			SkuUUID:              "sku-" + string(rune('a'+i)),
+			Quantity:             uint64(i + 1),
+			LockedPricePerSecond: sdk.NewCoin(testDenom, math.NewInt(int64(100*(i+1)))),
+		}
+	}
+
+	duration := time.Hour
+
+	b.Run("SingleItem", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, _ = CalculateTotalAccruedForLease(singleItem, duration)
+		}
+	})
+
+	b.Run("FiveItems_MultiDenom", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, _ = CalculateTotalAccruedForLease(fiveItems, duration)
+		}
+	})
+
+	b.Run("TwentyItems", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, _ = CalculateTotalAccruedForLease(twentyItems, duration)
+		}
+	})
+}
