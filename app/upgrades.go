@@ -20,6 +20,8 @@ func (app *ManifestApp) RegisterUpgradeHandlers() {
 		AccountKeeper: app.AccountKeeper,
 		BankKeeper:    app.BankKeeper,
 		WasmKeeper:    app.WasmKeeper,
+		SKUKeeper:     app.SKUKeeper,
+		BillingKeeper: app.BillingKeeper,
 	}
 
 	// register all upgrade handlers

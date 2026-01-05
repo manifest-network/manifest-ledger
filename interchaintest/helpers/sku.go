@@ -400,3 +400,72 @@ type SKURawResponse struct {
 	Message string          `json:"message,omitempty"`
 	SKU     json.RawMessage `json:"sku,omitempty"`
 }
+
+// Message builders for governance proposals
+
+// CreateProviderMsg creates a MsgCreateProvider for use in governance proposals.
+func CreateProviderMsg(authority, address, metaHash, apiURL string) skutypes.MsgCreateProvider {
+	msg := skutypes.MsgCreateProvider{
+		Authority:     authority,
+		Address:       address,
+		PayoutAddress: address, // Default payout to same address
+	}
+	if metaHash != "" {
+		msg.MetaHash = []byte(metaHash)
+	}
+	if apiURL != "" {
+		msg.ApiUrl = apiURL
+	}
+	return msg
+}
+
+// CreateProviderMsgFull creates a MsgCreateProvider with all fields for use in governance proposals.
+func CreateProviderMsgFull(authority, address, payoutAddress, metaHash, apiURL string) skutypes.MsgCreateProvider {
+	msg := skutypes.MsgCreateProvider{
+		Authority:     authority,
+		Address:       address,
+		PayoutAddress: payoutAddress,
+	}
+	if metaHash != "" {
+		msg.MetaHash = []byte(metaHash)
+	}
+	if apiURL != "" {
+		msg.ApiUrl = apiURL
+	}
+	return msg
+}
+
+// CreateSKUMsg creates a MsgCreateSKU for use in governance proposals.
+// priceModel can be "UNIT_PER_HOUR" or "UNIT_PER_DAY"
+func CreateSKUMsg(authority, providerUUID, name string, basePrice sdk.Coin, priceModel string) skutypes.MsgCreateSKU {
+	// Map price model string to Unit enum
+	unit := skutypes.Unit_UNIT_UNSPECIFIED
+	switch priceModel {
+	case "UNIT_PER_HOUR":
+		unit = skutypes.Unit_UNIT_PER_HOUR
+	case "UNIT_PER_DAY":
+		unit = skutypes.Unit_UNIT_PER_DAY
+	}
+	return skutypes.MsgCreateSKU{
+		Authority:    authority,
+		ProviderUuid: providerUUID,
+		Name:         name,
+		Unit:         unit,
+		BasePrice:    basePrice,
+	}
+}
+
+// CreateSKUMsgFull creates a MsgCreateSKU with all fields for use in governance proposals.
+func CreateSKUMsgFull(authority, providerUUID, name string, unit skutypes.Unit, basePrice sdk.Coin, metaHash string) skutypes.MsgCreateSKU {
+	msg := skutypes.MsgCreateSKU{
+		Authority:    authority,
+		ProviderUuid: providerUUID,
+		Name:         name,
+		Unit:         unit,
+		BasePrice:    basePrice,
+	}
+	if metaHash != "" {
+		msg.MetaHash = []byte(metaHash)
+	}
+	return msg
+}

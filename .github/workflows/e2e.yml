@@ -70,6 +70,7 @@ jobs:
           - "ictest-chain-upgrade"
           - "ictest-sku"
           - "ictest-billing"
+          - "ictest-billing-upgrade"
       fail-fast: false
 
     steps:

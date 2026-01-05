@@ -9,12 +9,17 @@ import (
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
+
+	billingkeeper "github.com/manifest-network/manifest-ledger/x/billing/keeper"
+	skukeeper "github.com/manifest-network/manifest-ledger/x/sku/keeper"
 )
 
 type AppKeepers struct {
 	AccountKeeper authkeeper.AccountKeeper
 	BankKeeper    bankkeeper.BaseKeeper
 	WasmKeeper    wasmkeeper.Keeper
+	SKUKeeper     skukeeper.Keeper
+	BillingKeeper billingkeeper.Keeper
 }
 
 // Upgrade defines a struct containing necessary fields that a SoftwareUpgradeProposal

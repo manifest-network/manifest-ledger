@@ -6,7 +6,7 @@ DOCKER := $(shell which docker)
 LEDGER_ENABLED ?= true
 BINDIR ?= $(GOPATH)/bin
 BUILD_DIR = ./build
-VERSION = v1.0.13
+VERSION ?= v1.1.0
 GO ?= go
 GOROOT := $(shell $(GO) env GOROOT)
 export GOROOT
@@ -138,7 +138,10 @@ ictest-sku:
 ictest-billing:
 	cd interchaintest && go test -race -v -timeout 45m -run TestBilling . -count=1
 
-.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku ictest-billing
+ictest-billing-upgrade:
+	cd interchaintest && go test -race -v -timeout 45m -run TestBillingModuleUpgrade . -count=1
+
+.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku ictest-billing ictest-billing-upgrade
 
 ###############################################################################
 ###                                Build Image                              ###
