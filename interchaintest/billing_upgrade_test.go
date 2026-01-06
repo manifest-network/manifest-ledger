@@ -279,7 +279,7 @@ func testBillingModuleAfterUpgrade(t *testing.T, ctx context.Context, chain *cos
 	t.Logf("Billing params: %+v", params)
 
 	// Query leases - should be empty initially
-	leases, err := helpers.BillingQueryLeases(ctx, chain, false)
+	leases, err := helpers.BillingQueryLeases(ctx, chain, "")
 	require.NoError(t, err)
 	require.NotNil(t, leases)
 	require.Empty(t, leases.Leases, "expected no leases after fresh upgrade")
@@ -301,7 +301,7 @@ func testBillingModuleAfterUpgrade(t *testing.T, ctx context.Context, chain *cos
 	t.Logf("Credit account created: %s with address %s", creditAccount.CreditAccount.Tenant, creditAccount.CreditAccount.CreditAddress)
 
 	// Verify credit balance
-	require.NotNil(t, creditAccount.Balances)
+	require.NotEmpty(t, creditAccount.Balances)
 	require.True(t, creditAccount.Balances.AmountOf(Denom).Equal(fundAmount.Amount), "credit balance mismatch")
 	t.Logf("Credit balance: %s", creditAccount.Balances.String())
 

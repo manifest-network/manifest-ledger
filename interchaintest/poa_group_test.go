@@ -931,7 +931,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
 
 		// Query leases to get the created lease ID (query all, not just active, since lease is PENDING)
-		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, false)
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "")
 		require.NoError(t, err)
 		require.NotEmpty(t, leases.Leases, "tenant should have at least one lease")
 		leaseID = leases.Leases[len(leases.Leases)-1].Uuid
@@ -941,7 +941,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
 		require.Equal(t, tenantAddr, lease.Lease.Tenant)
-		require.Equal(t, "LEASE_STATE_PENDING", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_PENDING, lease.Lease.GetState())
 	})
 
 	// Acknowledge the lease via group proposal (provider is the group)
@@ -955,7 +955,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify lease is now ACTIVE
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_ACTIVE", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.Lease.GetState())
 	})
 
 	// Tenant can close their own lease (even though authority created it)
@@ -970,7 +970,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify lease is closed
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_CLOSED", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.Lease.GetState())
 	})
 
 	// Create another lease for withdrawal testing
@@ -986,12 +986,12 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
 
 		// Query all leases (not just active since this one is PENDING)
-		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, false)
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "")
 		require.NoError(t, err)
 		require.NotEmpty(t, leases.Leases)
 		// Get the most recent PENDING lease
 		for i := len(leases.Leases) - 1; i >= 0; i-- {
-			if leases.Leases[i].State == "LEASE_STATE_PENDING" {
+			if leases.Leases[i].GetState() == billingtypes.LEASE_STATE_PENDING {
 				withdrawLeaseID = leases.Leases[i].Uuid
 				break
 			}
@@ -1010,7 +1010,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify lease is now ACTIVE
 		lease, err := helpers.BillingQueryLease(ctx, chain, withdrawLeaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_ACTIVE", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.Lease.GetState())
 	})
 
 	// Wait for some accrual
@@ -1052,7 +1052,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify lease is closed
 		lease, err := helpers.BillingQueryLease(ctx, chain, withdrawLeaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_CLOSED", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.Lease.GetState())
 	})
 
 	// Test withdraw all via group proposal
@@ -1068,11 +1068,11 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
 
 		// Query to get the new lease ID (PENDING state)
-		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, false)
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "")
 		require.NoError(t, err)
 		var withdrawAllLeaseID string
 		for i := len(leases.Leases) - 1; i >= 0; i-- {
-			if leases.Leases[i].State == "LEASE_STATE_PENDING" {
+			if leases.Leases[i].GetState() == billingtypes.LEASE_STATE_PENDING {
 				withdrawAllLeaseID = leases.Leases[i].Uuid
 				break
 			}
@@ -1129,11 +1129,11 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createMultiLeaseMsg)})
 
 		// Get the newly created PENDING lease
-		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, false)
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "")
 		require.NoError(t, err)
 		var multiLeaseID string
 		for i := len(leases.Leases) - 1; i >= 0; i-- {
-			if leases.Leases[i].State == "LEASE_STATE_PENDING" && len(leases.Leases[i].Items) == 2 {
+			if leases.Leases[i].GetState() == billingtypes.LEASE_STATE_PENDING && len(leases.Leases[i].Items) == 2 {
 				multiLeaseID = leases.Leases[i].Uuid
 				break
 			}
@@ -1148,7 +1148,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
 
 		// Verify multi-SKU lease is now active
-		leases, err = helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, true)
+		leases, err = helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "active")
 		require.NoError(t, err)
 		require.NotEmpty(t, leases.Leases)
 

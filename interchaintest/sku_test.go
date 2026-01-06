@@ -113,6 +113,45 @@
 //   - Success: create provider without api_url
 //   - Success: update preserves existing values when not provided
 //   - Success: create provider with minimum and maximum pending_timeout
+//
+// ## Provider Pagination Tests
+//
+// testProviderPagination:
+//   - Success: paginate through all providers
+//   - Success: large limit returns all results
+//   - Success: verify no duplicates across pages
+//
+// ## SKU Validation Tests
+//
+// testSKUValidation:
+//   - Fail: create SKU with UNIT_UNSPECIFIED
+//   - Fail: create SKU with empty name
+//   - Fail: update SKU with UNIT_UNSPECIFIED
+//   - Fail: update SKU with empty name
+//
+// ## Invalid UUID Tests
+//
+// testSKUInvalidUUID:
+//   - Fail: update provider with invalid uuid format
+//   - Fail: deactivate provider with invalid uuid format
+//   - Fail: create SKU with invalid provider_uuid format
+//   - Fail: update SKU with invalid uuid format
+//   - Fail: update SKU with invalid provider_uuid format
+//   - Fail: deactivate SKU with invalid uuid format
+//   - Fail: query provider with invalid uuid format
+//   - Fail: query SKU with invalid uuid format
+//
+// ## Empty Params Tests
+//
+// testSKUEmptyParams:
+//   - Fail: create provider with empty address
+//   - Fail: create provider with empty payout_address
+//   - Fail: update provider with empty uuid/address/payout_address
+//   - Fail: deactivate provider with empty uuid
+//   - Fail: create SKU with empty provider_uuid
+//   - Fail: update SKU with empty uuid/provider_uuid
+//   - Fail: deactivate SKU with empty uuid
+//   - Fail: query provider/SKU with empty uuid
 package interchaintest
 
 import (
@@ -126,6 +165,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 // Test constants for SKU prices
@@ -231,6 +271,26 @@ func TestSKU(t *testing.T) {
 
 	t.Run("ProviderFullFields", func(t *testing.T) {
 		testProviderFullFields(t, ctx, chain, authority)
+	})
+
+	t.Run("UnitPerDay", func(t *testing.T) {
+		testSKUUnitPerDay(t, ctx, chain, authority)
+	})
+
+	t.Run("ProviderPagination", func(t *testing.T) {
+		testProviderPagination(t, ctx, chain, authority)
+	})
+
+	t.Run("SKUValidation", func(t *testing.T) {
+		testSKUValidation(t, ctx, chain, authority)
+	})
+
+	t.Run("InvalidUUID", func(t *testing.T) {
+		testSKUInvalidUUID(t, ctx, chain, authority)
+	})
+
+	t.Run("EmptyParams", func(t *testing.T) {
+		testSKUEmptyParams(t, ctx, chain, authority)
 	})
 
 	t.Cleanup(func() {
@@ -1224,4 +1284,534 @@ func testProviderFullFields(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.NoError(t, err)
 		require.Equal(t, apiURL, providerRes.Provider.ApiUrl, "api_url should be preserved")
 	})
+}
+
+// testSKUUnitPerDay tests SKU creation and updates with UNIT_PER_DAY pricing model.
+func testSKUUnitPerDay(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+	t.Log("=== Testing SKU UNIT_PER_DAY Pricing Model ===")
+
+	// Create a provider for UNIT_PER_DAY testing
+	var dailyProviderUUID string
+	t.Run("setup: create provider for daily pricing tests", func(t *testing.T) {
+		res, err := helpers.SKUCreateProvider(ctx, chain, authority, authority.FormattedAddress(), authority.FormattedAddress(), "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		dailyProviderUUID, err = helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+	})
+
+	var dailySKUUUID string
+
+	t.Run("success: create SKU with UNIT_PER_DAY", func(t *testing.T) {
+		// Unit 2 = UNIT_PER_DAY, price must be >= 86400 for non-zero per-second rate
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, dailyProviderUUID, "Daily Storage", 2, testPriceDaily, "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		dailySKUUUID, err = helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Verify SKU was created with correct unit
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, dailySKUUUID)
+		require.NoError(t, err)
+		require.Equal(t, dailyProviderUUID, skuRes.Sku.ProviderUuid)
+		require.Equal(t, "Daily Storage", skuRes.Sku.Name)
+		require.Equal(t, skutypes.Unit_UNIT_PER_DAY, skuRes.Sku.Unit, "SKU should have UNIT_PER_DAY")
+		require.Equal(t, "86400", skuRes.Sku.BasePrice.Amount.String())
+		require.True(t, skuRes.Sku.Active)
+	})
+
+	t.Run("success: create SKU with higher daily price", func(t *testing.T) {
+		// 172800 = 2 * 86400 (2 umfx per second)
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, dailyProviderUUID, "Premium Daily Storage", 2, "172800umfx", "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		skuUUID, err := helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, skuUUID)
+		require.NoError(t, err)
+		require.Equal(t, skutypes.Unit_UNIT_PER_DAY, skuRes.Sku.Unit)
+		require.Equal(t, "172800", skuRes.Sku.BasePrice.Amount.String())
+	})
+
+	t.Run("fail: create UNIT_PER_DAY SKU with price too low", func(t *testing.T) {
+		// 86399 is less than 86400 (seconds in a day), so per-second rate would be 0
+		_, err := helpers.SKUCreateSKU(ctx, chain, authority, dailyProviderUUID, "Too Cheap Daily", 2, "86399umfx", "")
+		require.Error(t, err, "should fail with price that results in zero per-second rate")
+		require.Contains(t, err.Error(), "zero")
+	})
+
+	t.Run("fail: create UNIT_PER_DAY SKU with non-divisible price", func(t *testing.T) {
+		// 86401 is not evenly divisible by 86400
+		_, err := helpers.SKUCreateSKU(ctx, chain, authority, dailyProviderUUID, "Non-Divisible Daily", 2, "86401umfx", "")
+		require.Error(t, err, "should fail with non-evenly divisible price")
+		require.Contains(t, err.Error(), "divisible")
+	})
+
+	t.Run("success: update SKU from UNIT_PER_HOUR to UNIT_PER_DAY", func(t *testing.T) {
+		// First create an hourly SKU
+		res, err := helpers.SKUCreateSKU(ctx, chain, authority, dailyProviderUUID, "Hourly To Daily", 1, testPriceHourly, "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+
+		hourlyUUID, err := helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+
+		// Verify it's UNIT_PER_HOUR
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, hourlyUUID)
+		require.NoError(t, err)
+		require.Equal(t, skutypes.Unit_UNIT_PER_HOUR, skuRes.Sku.Unit)
+
+		// Update to UNIT_PER_DAY
+		updateRes, err := helpers.SKUUpdateSKU(ctx, chain, authority, hourlyUUID, dailyProviderUUID, "Now Daily", 2, testPriceDaily, true, "")
+		require.NoError(t, err)
+
+		updateTxRes, err := chain.GetTransaction(updateRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), updateTxRes.Code, "tx should succeed: %s", updateTxRes.RawLog)
+
+		// Verify it's now UNIT_PER_DAY
+		skuRes, err = helpers.SKUQuerySKU(ctx, chain, hourlyUUID)
+		require.NoError(t, err)
+		require.Equal(t, skutypes.Unit_UNIT_PER_DAY, skuRes.Sku.Unit)
+		require.Equal(t, "Now Daily", skuRes.Sku.Name)
+		require.Equal(t, "86400", skuRes.Sku.BasePrice.Amount.String())
+	})
+
+	t.Run("success: update daily SKU price", func(t *testing.T) {
+		// Update the daily SKU to a higher price (259200 = 3 * 86400 = 3 umfx/second)
+		updateRes, err := helpers.SKUUpdateSKU(ctx, chain, authority, dailySKUUUID, dailyProviderUUID, "Daily Storage Updated", 2, "259200umfx", true, "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(updateRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		skuRes, err := helpers.SKUQuerySKU(ctx, chain, dailySKUUUID)
+		require.NoError(t, err)
+		require.Equal(t, skutypes.Unit_UNIT_PER_DAY, skuRes.Sku.Unit)
+		require.Equal(t, "Daily Storage Updated", skuRes.Sku.Name)
+		require.Equal(t, "259200", skuRes.Sku.BasePrice.Amount.String())
+	})
+
+	t.Run("success: query SKUs includes daily priced SKUs", func(t *testing.T) {
+		res, err := helpers.SKUQuerySKUsByProvider(ctx, chain, dailyProviderUUID)
+		require.NoError(t, err)
+
+		// Count SKUs by unit type
+		hourlyCount := 0
+		dailyCount := 0
+		for _, sku := range res.Skus {
+			switch sku.Unit {
+			case skutypes.Unit_UNIT_PER_HOUR:
+				hourlyCount++
+			case skutypes.Unit_UNIT_PER_DAY:
+				dailyCount++
+			}
+		}
+
+		require.GreaterOrEqual(t, dailyCount, 2, "should have at least 2 daily SKUs")
+		t.Logf("Provider has %d hourly SKUs and %d daily SKUs", hourlyCount, dailyCount)
+	})
+}
+
+// testProviderPagination tests provider query pagination.
+func testProviderPagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+	t.Log("=== Testing Provider Pagination ===")
+
+	// Create multiple providers to test pagination
+	var providerUUIDs []string
+	for i := 0; i < 5; i++ {
+		res, err := helpers.SKUCreateProvider(ctx, chain, authority, authority.FormattedAddress(), authority.FormattedAddress(), "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "provider creation should succeed")
+
+		uuid, err := helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		providerUUIDs = append(providerUUIDs, uuid)
+	}
+
+	t.Run("success: paginate through all providers", func(t *testing.T) {
+		// Query first page (limit 2)
+		res1, nextKey, err := helpers.SKUQueryProvidersPaginated(ctx, chain, 2, "")
+		require.NoError(t, err)
+		require.Len(t, res1.Providers, 2, "first page should have 2 providers")
+		require.NotEmpty(t, nextKey, "should have next key for more pages")
+
+		// Query second page
+		res2, _, err := helpers.SKUQueryProvidersPaginated(ctx, chain, 2, nextKey)
+		require.NoError(t, err)
+		require.NotEmpty(t, res2.Providers, "second page should have providers")
+
+		t.Logf("Page 1: %d providers, Page 2: %d providers", len(res1.Providers), len(res2.Providers))
+	})
+
+	t.Run("success: large limit returns all results", func(t *testing.T) {
+		res, nextKey, err := helpers.SKUQueryProvidersPaginated(ctx, chain, 100, "")
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(res.Providers), 5, "should return all providers")
+		require.Empty(t, nextKey, "no next key when all results fit in page")
+	})
+
+	t.Run("success: verify no duplicates across pages", func(t *testing.T) {
+		seen := make(map[string]bool)
+		var nextKey string
+		var err error
+
+		for {
+			var res *helpers.ProvidersResponseJSON
+			res, nextKey, err = helpers.SKUQueryProvidersPaginated(ctx, chain, 2, nextKey)
+			require.NoError(t, err)
+
+			for _, provider := range res.Providers {
+				require.False(t, seen[provider.Uuid], "duplicate provider found: %s", provider.Uuid)
+				seen[provider.Uuid] = true
+			}
+
+			if nextKey == "" {
+				break
+			}
+		}
+
+		t.Logf("Verified %d unique providers across pages", len(seen))
+	})
+
+	// Cleanup: deactivate test providers
+	for _, uuid := range providerUUIDs {
+		_, _ = helpers.SKUDeactivateProvider(ctx, chain, authority, uuid)
+	}
+}
+
+// testSKUValidation tests SKU validation edge cases.
+func testSKUValidation(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+	t.Log("=== Testing SKU Validation ===")
+
+	// Create a provider for testing
+	res, err := helpers.SKUCreateProvider(ctx, chain, authority, authority.FormattedAddress(), authority.FormattedAddress(), "")
+	require.NoError(t, err)
+	txRes, err := chain.GetTransaction(res.TxHash)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), txRes.Code, "provider creation should succeed")
+
+	providerUUID, err := helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
+	require.NoError(t, err)
+
+	t.Run("fail: create SKU with UNIT_UNSPECIFIED", func(t *testing.T) {
+		// Unit 0 is UNIT_UNSPECIFIED which is invalid - CLI validates before broadcast
+		_, err := helpers.SKUCreateSKU(ctx, chain, authority, providerUUID, "Invalid Unit SKU", 0, testPriceHourly, "")
+		require.Error(t, err, "CLI should reject UNIT_UNSPECIFIED")
+		require.Contains(t, err.Error(), "unit")
+
+		t.Log("Correctly rejected SKU with UNIT_UNSPECIFIED")
+	})
+
+	t.Run("fail: create SKU with empty name", func(t *testing.T) {
+		// Empty name should be rejected - CLI validates before broadcast
+		_, err := helpers.SKUCreateSKU(ctx, chain, authority, providerUUID, "", 1, testPriceHourly, "")
+		require.Error(t, err, "CLI should reject empty name")
+		require.Contains(t, err.Error(), "name")
+
+		t.Log("Correctly rejected SKU with empty name")
+	})
+
+	t.Run("fail: update SKU with UNIT_UNSPECIFIED", func(t *testing.T) {
+		// First create a valid SKU
+		createRes, err := helpers.SKUCreateSKU(ctx, chain, authority, providerUUID, "Valid SKU", 1, testPriceHourly, "")
+		require.NoError(t, err)
+		createTxRes, err := chain.GetTransaction(createRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), createTxRes.Code, "SKU creation should succeed")
+
+		skuUUID, err := helpers.GetSKUUUIDFromTxHash(ctx, chain, createRes.TxHash)
+		require.NoError(t, err)
+
+		// Try to update with UNIT_UNSPECIFIED - CLI validates before broadcast
+		_, err = helpers.SKUUpdateSKU(ctx, chain, authority, skuUUID, providerUUID, "Updated SKU", 0, testPriceHourly, true, "")
+		require.Error(t, err, "CLI should reject UNIT_UNSPECIFIED")
+		require.Contains(t, err.Error(), "unit")
+
+		t.Log("Correctly rejected SKU update with UNIT_UNSPECIFIED")
+	})
+
+	t.Run("fail: update SKU with empty name", func(t *testing.T) {
+		// First create a valid SKU
+		createRes, err := helpers.SKUCreateSKU(ctx, chain, authority, providerUUID, "Another Valid SKU", 1, testPriceHourly, "")
+		require.NoError(t, err)
+		createTxRes, err := chain.GetTransaction(createRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), createTxRes.Code, "SKU creation should succeed")
+
+		skuUUID, err := helpers.GetSKUUUIDFromTxHash(ctx, chain, createRes.TxHash)
+		require.NoError(t, err)
+
+		// Try to update with empty name - CLI validates before broadcast
+		_, err = helpers.SKUUpdateSKU(ctx, chain, authority, skuUUID, providerUUID, "", 1, testPriceHourly, true, "")
+		require.Error(t, err, "CLI should reject empty name")
+		require.Contains(t, err.Error(), "name")
+
+		t.Log("Correctly rejected SKU update with empty name")
+	})
+
+	// Cleanup: deactivate the test provider
+	_, _ = helpers.SKUDeactivateProvider(ctx, chain, authority, providerUUID)
+}
+
+// testSKUInvalidUUID tests that invalid UUID formats are rejected.
+func testSKUInvalidUUID(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+	t.Log("=== Testing Invalid UUID Format Rejection ===")
+
+	// Invalid UUID formats to test
+	invalidUUIDs := []struct {
+		uuid string
+		desc string
+	}{
+		{"not-a-uuid", "plain string"},
+		{"12345", "numeric string"},
+		{"01234567-89ab-cdef-0123-456789abcdef", "UUIDv4 format (not v7)"},
+		{"01912345-6789-7abc-8def-0123456789a", "too short"},
+		{"01912345-6789-7abc-8def-0123456789abcd", "too long"},
+		{"01912345-6789-7abc-8def-0123456789ag", "invalid character"},
+	}
+
+	t.Run("fail: update provider with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			res, err := helpers.SKUUpdateProvider(ctx, chain, authority, tc.uuid, authority.FormattedAddress(), authority.FormattedAddress(), true, "")
+			// CLI validation should reject invalid UUIDs
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected update provider with invalid UUIDs")
+	})
+
+	t.Run("fail: deactivate provider with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			res, err := helpers.SKUDeactivateProvider(ctx, chain, authority, tc.uuid)
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected deactivate provider with invalid UUIDs")
+	})
+
+	t.Run("fail: create SKU with invalid provider_uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			res, err := helpers.SKUCreateSKU(ctx, chain, authority, tc.uuid, "Test SKU", 1, testPriceHourly, "")
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid provider_uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid provider_uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected create SKU with invalid provider_uuid")
+	})
+
+	t.Run("fail: update SKU with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			// Use a valid provider UUID but invalid SKU UUID
+			res, err := helpers.SKUUpdateSKU(ctx, chain, authority, tc.uuid, nonExistentUUID, "Test SKU", 1, testPriceHourly, true, "")
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected update SKU with invalid uuid")
+	})
+
+	t.Run("fail: update SKU with invalid provider_uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			// Use a valid SKU UUID but invalid provider UUID
+			res, err := helpers.SKUUpdateSKU(ctx, chain, authority, nonExistentUUID, tc.uuid, "Test SKU", 1, testPriceHourly, true, "")
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid provider_uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid provider_uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected update SKU with invalid provider_uuid")
+	})
+
+	t.Run("fail: deactivate SKU with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			res, err := helpers.SKUDeactivateSKU(ctx, chain, authority, tc.uuid)
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected deactivate SKU with invalid uuid")
+	})
+
+	t.Run("fail: query provider with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			_, err := helpers.SKUQueryProvider(ctx, chain, tc.uuid)
+			require.Error(t, err, "query provider with invalid uuid (%s) should fail: %s", tc.desc, tc.uuid)
+		}
+		t.Log("Correctly rejected query provider with invalid UUIDs")
+	})
+
+	t.Run("fail: query SKU with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			_, err := helpers.SKUQuerySKU(ctx, chain, tc.uuid)
+			require.Error(t, err, "query SKU with invalid uuid (%s) should fail: %s", tc.desc, tc.uuid)
+		}
+		t.Log("Correctly rejected query SKU with invalid UUIDs")
+	})
+}
+
+// testSKUEmptyParams tests that empty string parameters are rejected.
+func testSKUEmptyParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+	t.Log("=== Testing Empty String Parameter Rejection ===")
+
+	t.Run("fail: create provider with empty address", func(t *testing.T) {
+		// Empty address should be rejected
+		_, err := helpers.SKUCreateProvider(ctx, chain, authority, "", authority.FormattedAddress(), "")
+		require.Error(t, err, "create provider with empty address should fail")
+		t.Log("Correctly rejected create provider with empty address")
+	})
+
+	t.Run("fail: create provider with empty payout_address", func(t *testing.T) {
+		// Empty payout address should be rejected
+		_, err := helpers.SKUCreateProvider(ctx, chain, authority, authority.FormattedAddress(), "", "")
+		require.Error(t, err, "create provider with empty payout_address should fail")
+		t.Log("Correctly rejected create provider with empty payout_address")
+	})
+
+	// Create a provider for update tests
+	createRes, err := helpers.SKUCreateProvider(ctx, chain, authority, authority.FormattedAddress(), authority.FormattedAddress(), "")
+	require.NoError(t, err)
+	createTxRes, err := chain.GetTransaction(createRes.TxHash)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), createTxRes.Code, "provider creation should succeed")
+
+	providerUUID, err := helpers.GetProviderUUIDFromTxHash(ctx, chain, createRes.TxHash)
+	require.NoError(t, err)
+
+	t.Run("fail: update provider with empty uuid", func(t *testing.T) {
+		// Empty uuid should be rejected
+		_, err := helpers.SKUUpdateProvider(ctx, chain, authority, "", authority.FormattedAddress(), authority.FormattedAddress(), true, "")
+		require.Error(t, err, "update provider with empty uuid should fail")
+		t.Log("Correctly rejected update provider with empty uuid")
+	})
+
+	t.Run("fail: update provider with empty address", func(t *testing.T) {
+		// Empty address should be rejected
+		_, err := helpers.SKUUpdateProvider(ctx, chain, authority, providerUUID, "", authority.FormattedAddress(), true, "")
+		require.Error(t, err, "update provider with empty address should fail")
+		t.Log("Correctly rejected update provider with empty address")
+	})
+
+	t.Run("fail: update provider with empty payout_address", func(t *testing.T) {
+		// Empty payout address should be rejected
+		_, err := helpers.SKUUpdateProvider(ctx, chain, authority, providerUUID, authority.FormattedAddress(), "", true, "")
+		require.Error(t, err, "update provider with empty payout_address should fail")
+		t.Log("Correctly rejected update provider with empty payout_address")
+	})
+
+	t.Run("fail: deactivate provider with empty uuid", func(t *testing.T) {
+		// Empty uuid should be rejected
+		_, err := helpers.SKUDeactivateProvider(ctx, chain, authority, "")
+		require.Error(t, err, "deactivate provider with empty uuid should fail")
+		t.Log("Correctly rejected deactivate provider with empty uuid")
+	})
+
+	t.Run("fail: create SKU with empty provider_uuid", func(t *testing.T) {
+		// Empty provider_uuid should be rejected (test may already exist)
+		_, err := helpers.SKUCreateSKU(ctx, chain, authority, "", "Test SKU", 1, testPriceHourly, "")
+		require.Error(t, err, "create SKU with empty provider_uuid should fail")
+		t.Log("Correctly rejected create SKU with empty provider_uuid")
+	})
+
+	// Create a SKU for update tests
+	skuRes, err := helpers.SKUCreateSKU(ctx, chain, authority, providerUUID, "Test SKU for Empty Params", 1, testPriceHourly, "")
+	require.NoError(t, err)
+	skuTxRes, err := chain.GetTransaction(skuRes.TxHash)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), skuTxRes.Code, "SKU creation should succeed")
+
+	skuUUID, err := helpers.GetSKUUUIDFromTxHash(ctx, chain, skuRes.TxHash)
+	require.NoError(t, err)
+
+	t.Run("fail: update SKU with empty uuid", func(t *testing.T) {
+		// Empty uuid should be rejected
+		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, "", providerUUID, "Updated SKU", 1, testPriceHourly, true, "")
+		require.Error(t, err, "update SKU with empty uuid should fail")
+		t.Log("Correctly rejected update SKU with empty uuid")
+	})
+
+	t.Run("fail: update SKU with empty provider_uuid", func(t *testing.T) {
+		// Empty provider_uuid should be rejected
+		_, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuUUID, "", "Updated SKU", 1, testPriceHourly, true, "")
+		require.Error(t, err, "update SKU with empty provider_uuid should fail")
+		t.Log("Correctly rejected update SKU with empty provider_uuid")
+	})
+
+	t.Run("fail: deactivate SKU with empty uuid", func(t *testing.T) {
+		// Empty uuid should be rejected
+		_, err := helpers.SKUDeactivateSKU(ctx, chain, authority, "")
+		require.Error(t, err, "deactivate SKU with empty uuid should fail")
+		t.Log("Correctly rejected deactivate SKU with empty uuid")
+	})
+
+	t.Run("fail: query provider with empty uuid", func(t *testing.T) {
+		// Empty uuid should be rejected
+		_, err := helpers.SKUQueryProvider(ctx, chain, "")
+		require.Error(t, err, "query provider with empty uuid should fail")
+		t.Log("Correctly rejected query provider with empty uuid")
+	})
+
+	t.Run("fail: query SKU with empty uuid", func(t *testing.T) {
+		// Empty uuid should be rejected
+		_, err := helpers.SKUQuerySKU(ctx, chain, "")
+		require.Error(t, err, "query SKU with empty uuid should fail")
+		t.Log("Correctly rejected query SKU with empty uuid")
+	})
+
+	t.Run("fail: query SKUs by provider with empty uuid", func(t *testing.T) {
+		// Empty provider_uuid should be rejected or return empty
+		res, err := helpers.SKUQuerySKUsByProvider(ctx, chain, "")
+		if err == nil {
+			require.Empty(t, res.Skus, "query SKUs by empty provider should return empty")
+		}
+		t.Log("Handled query SKUs by empty provider uuid")
+	})
+
+	// Cleanup
+	_, _ = helpers.SKUDeactivateProvider(ctx, chain, authority, providerUUID)
 }

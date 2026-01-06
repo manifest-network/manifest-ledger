@@ -164,6 +164,26 @@
 //   - Success: state filter returns empty for unmatched state
 //   - Success: pending lease not in active query
 //   - Success: closed lease not in active query
+//
+// ## Invalid UUID Tests
+//
+// testBillingInvalidUUID:
+//   - Fail: create lease with invalid sku_uuid format
+//   - Fail: close lease with invalid uuid format
+//   - Fail: acknowledge/reject/cancel lease with invalid uuid format
+//   - Fail: withdraw with invalid lease uuid format
+//   - Fail: withdraw-all with invalid provider uuid format
+//   - Fail: query lease/withdrawable with invalid uuid format
+//
+// ## Empty Params Tests
+//
+// testBillingEmptyParams:
+//   - Fail: fund credit with empty tenant
+//   - Fail: create lease with empty sku_uuid
+//   - Fail: close/acknowledge/reject/cancel lease with empty uuid
+//   - Fail: withdraw/withdraw-all with empty uuid
+//   - Fail: query credit account/address with empty tenant
+//   - Fail: query lease/withdrawable with empty uuid
 package interchaintest
 
 import (
@@ -180,6 +200,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
 // testPWRDenom is the test PWR denom created via tokenfactory
@@ -312,6 +333,26 @@ func TestBilling(t *testing.T) {
 		testStateIndexQueries(t, ctx, chain, authority, providerWallet)
 	})
 
+	t.Run("MaxLeaseLimits", func(t *testing.T) {
+		testMaxLeaseLimits(t, ctx, chain, authority, providerWallet)
+	})
+
+	t.Run("LeaseAcknowledgeEdgeCases", func(t *testing.T) {
+		testLeaseAcknowledgeEdgeCases(t, ctx, chain, authority, providerWallet)
+	})
+
+	t.Run("LeasePagination", func(t *testing.T) {
+		testLeasePagination(t, ctx, chain, authority, providerWallet)
+	})
+
+	t.Run("InvalidUUID", func(t *testing.T) {
+		testBillingInvalidUUID(t, ctx, chain, authority, providerWallet)
+	})
+
+	t.Run("EmptyParams", func(t *testing.T) {
+		testBillingEmptyParams(t, ctx, chain, authority, providerWallet)
+	})
+
 	t.Cleanup(func() {
 		dockerutil.CopyCoverageFromContainer(ctx, t, client, chain.GetNode().ContainerID(), chain.HomeDir(), ExternalGoCoverDir)
 		_ = ic.Close()
@@ -397,13 +438,13 @@ func setupBillingTestInfrastructure(t *testing.T, ctx context.Context, chain *co
 func testBillingQueryParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain) {
 	t.Log("=== Testing Billing Query Params ===")
 
-	res, err := helpers.BillingQueryParamsJSON(ctx, chain)
+	res, err := helpers.BillingQueryParams(ctx, chain)
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	require.NotEmpty(t, res.Params.MaxLeasesPerTenant, "max_leases_per_tenant should be set")
 	require.NotEmpty(t, res.Params.MaxItemsPerLease, "max_items_per_lease should be set")
 	require.NotEmpty(t, res.Params.MinLeaseDuration, "min_lease_duration should be set")
-	t.Logf("Billing params: max_leases_per_tenant=%s, max_items_per_lease=%s, min_lease_duration=%s",
+	t.Logf("Billing params: max_leases_per_tenant=%d, max_items_per_lease=%d, min_lease_duration=%d",
 		res.Params.MaxLeasesPerTenant, res.Params.MaxItemsPerLease, res.Params.MinLeaseDuration)
 }
 
@@ -518,9 +559,7 @@ func testLeaseCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 	})
 
 	t.Run("fail: create lease with non-existent SKU", func(t *testing.T) {
-		// Use a valid UUIDv7 format that doesn't exist
-		nonExistentSKU := "01912345-6789-7abc-8def-0123456789ab"
-		items := []string{fmt.Sprintf("%s:1", nonExistentSKU)}
+		items := []string{fmt.Sprintf("%s:1", nonExistentUUID)}
 		res, err := helpers.BillingCreateLease(ctx, chain, tenant1, items)
 		require.NoError(t, err)
 
@@ -591,14 +630,14 @@ func testLeaseQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	t.Log("=== Testing Lease Query ===")
 
 	t.Run("success: query all leases", func(t *testing.T) {
-		res, err := helpers.BillingQueryLeases(ctx, chain, false)
+		res, err := helpers.BillingQueryLeases(ctx, chain, "")
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, len(res.Leases), 2, "should have at least 2 leases")
 		t.Logf("Found %d leases", len(res.Leases))
 	})
 
 	t.Run("success: query leases by tenant", func(t *testing.T) {
-		res, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenant1.FormattedAddress(), false)
+		res, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenant1.FormattedAddress(), "")
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, len(res.Leases), 2, "tenant1 should have at least 2 leases")
 
@@ -608,7 +647,7 @@ func testLeaseQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	})
 
 	t.Run("success: query leases by provider", func(t *testing.T) {
-		res, err := helpers.BillingQueryLeasesByProvider(ctx, chain, testProviderUUID, false)
+		res, err := helpers.BillingQueryLeasesByProvider(ctx, chain, testProviderUUID, "")
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, len(res.Leases), 2, "provider should have at least 2 leases")
 
@@ -618,17 +657,17 @@ func testLeaseQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	})
 
 	t.Run("success: query active-only leases", func(t *testing.T) {
-		res, err := helpers.BillingQueryLeases(ctx, chain, true)
+		res, err := helpers.BillingQueryLeases(ctx, chain, "active")
 		require.NoError(t, err)
 
 		for _, lease := range res.Leases {
-			require.Equal(t, "LEASE_STATE_ACTIVE", lease.State)
+			require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.GetState())
 		}
 	})
 
 	t.Run("success: query lease by ID", func(t *testing.T) {
 		// Get first lease ID
-		allLeases, err := helpers.BillingQueryLeases(ctx, chain, false)
+		allLeases, err := helpers.BillingQueryLeases(ctx, chain, "")
 		require.NoError(t, err)
 		require.NotEmpty(t, allLeases.Leases)
 
@@ -644,7 +683,7 @@ func testAccrualCalculation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	t.Log("=== Testing Accrual Calculation ===")
 
 	// Get an active lease
-	leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenant1.FormattedAddress(), true)
+	leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenant1.FormattedAddress(), "active")
 	require.NoError(t, err)
 	require.NotEmpty(t, leases.Leases, "tenant should have active leases")
 
@@ -677,7 +716,7 @@ func testWithdraw(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 	t.Log("=== Testing Withdraw ===")
 
 	// Get an active lease
-	leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenant1.FormattedAddress(), true)
+	leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenant1.FormattedAddress(), "active")
 	require.NoError(t, err)
 	require.NotEmpty(t, leases.Leases)
 
@@ -761,7 +800,7 @@ func testWithdrawAll(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 		initialBalance, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), testPWRDenom)
 		require.NoError(t, err)
 
-		res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderUUID)
+		res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderUUID, 0)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -778,7 +817,7 @@ func testWithdrawAll(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 		// Wait for more accrual
 		require.NoError(t, testutil.WaitForBlocks(ctx, 3, chain))
 
-		res, err := helpers.BillingWithdrawAll(ctx, chain, authority, testProviderUUID)
+		res, err := helpers.BillingWithdrawAll(ctx, chain, authority, testProviderUUID, 0)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
@@ -833,7 +872,7 @@ func testLeaseClose(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 		// Verify lease is now inactive
 		leaseRes, err := helpers.BillingQueryLease(ctx, chain, closeLeaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_CLOSED", leaseRes.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, leaseRes.Lease.GetState())
 	})
 
 	t.Run("fail: close already inactive lease", func(t *testing.T) {
@@ -847,8 +886,6 @@ func testLeaseClose(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	})
 
 	t.Run("fail: close non-existent lease", func(t *testing.T) {
-		// Use valid UUIDv7 format that doesn't exist
-		nonExistentUUID := "01912345-6789-7abc-8def-0123456789ab"
 		res, err := helpers.BillingCloseLease(ctx, chain, tenant1, nonExistentUUID)
 		require.NoError(t, err)
 
@@ -925,7 +962,7 @@ func testWithdrawableQueries(t *testing.T, ctx context.Context, chain *cosmos.Co
 	t.Log("=== Testing Withdrawable Queries ===")
 
 	// Get an active lease
-	leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenant1.FormattedAddress(), true)
+	leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenant1.FormattedAddress(), "active")
 	require.NoError(t, err)
 
 	if len(leases.Leases) == 0 {
@@ -944,7 +981,7 @@ func testWithdrawableQueries(t *testing.T, ctx context.Context, chain *cosmos.Co
 	t.Run("success: query provider total withdrawable", func(t *testing.T) {
 		res, err := helpers.BillingQueryProviderWithdrawable(ctx, chain, testProviderUUID)
 		require.NoError(t, err)
-		t.Logf("Provider total withdrawable: %s (from %s leases)", res.Amounts, res.LeaseCount)
+		t.Logf("Provider total withdrawable: %s (from %d leases)", res.Amounts, res.LeaseCount)
 	})
 }
 
@@ -1000,12 +1037,12 @@ func testEdgeCases(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 
 	t.Run("success: provider cannot double-withdraw after lease closure", func(t *testing.T) {
 		// Get a closed lease from tenant2's tests
-		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenant2.FormattedAddress(), false)
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenant2.FormattedAddress(), "")
 		require.NoError(t, err)
 
 		var closedLeaseUUID string
 		for _, lease := range leases.Leases {
-			if lease.State == "LEASE_STATE_CLOSED" {
+			if lease.GetState() == billingtypes.LEASE_STATE_CLOSED {
 				closedLeaseUUID = lease.Uuid
 				break
 			}
@@ -1079,7 +1116,7 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 		leaseRes, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
 		require.Equal(t, newTenant.FormattedAddress(), leaseRes.Lease.Tenant)
-		require.Equal(t, "LEASE_STATE_ACTIVE", leaseRes.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, leaseRes.Lease.GetState())
 	})
 
 	t.Run("success: tenant can close lease created by authority", func(t *testing.T) {
@@ -1093,7 +1130,7 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 		// Verify lease is now inactive
 		leaseRes, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_CLOSED", leaseRes.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, leaseRes.Lease.GetState())
 	})
 
 	t.Run("success: authority creates multi-SKU lease for tenant", func(t *testing.T) {
@@ -1190,9 +1227,7 @@ func testCreateLeaseForTenant(t *testing.T, ctx context.Context, chain *cosmos.C
 	})
 
 	t.Run("fail: create lease for tenant with non-existent SKU", func(t *testing.T) {
-		// Use valid UUIDv7 format that doesn't exist
-		nonExistentSKU := "01912345-6789-7abc-8def-0123456789ab"
-		items := []string{fmt.Sprintf("%s:1", nonExistentSKU)}
+		items := []string{fmt.Sprintf("%s:1", nonExistentUUID)}
 		res, err := helpers.BillingCreateLeaseForTenant(ctx, chain, authority, newTenant.FormattedAddress(), items)
 		require.NoError(t, err)
 
@@ -1305,7 +1340,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify lease is active and check locked price
 		lease, err := helpers.BillingQueryLease(ctx, chain, autoCloseLeaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_ACTIVE", lease.Lease.State, "lease should be active")
+		require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.Lease.GetState(), "lease should be active")
 		t.Logf("Lease items: %+v", lease.Lease.Items)
 	})
 
@@ -1359,7 +1394,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Query lease - should now be inactive due to auto-close
 		lease, err := helpers.BillingQueryLease(ctx, chain, autoCloseLeaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_CLOSED", lease.Lease.State,
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.Lease.GetState(),
 			"lease should be auto-closed after credit exhaustion")
 		t.Log("Lease was auto-closed as expected")
 	})
@@ -1369,7 +1404,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Query the lease to verify it's closed
 		lease, err := helpers.BillingQueryLease(ctx, chain, autoCloseLeaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_CLOSED", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.Lease.GetState())
 
 		// Verify closed_at is set (indicates it was closed)
 		require.NotEmpty(t, lease.Lease.ClosedAt, "closed_at should be set for auto-closed lease")
@@ -1459,7 +1494,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify final state is inactive (explicit close)
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_CLOSED", lease.Lease.State, "lease should be inactive after exhaustion")
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.Lease.GetState(), "lease should be inactive after exhaustion")
 	})
 
 	// Test that closing a lease triggers settlement and transfers accrued amount
@@ -1524,7 +1559,7 @@ func testAutoCloseMechanism(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Verify lease is now inactive
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_CLOSED", lease.Lease.State, "lease should be inactive")
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.Lease.GetState(), "lease should be inactive")
 	})
 
 	// Restore original minLeaseDuration (1 hour) after auto-close tests
@@ -1621,7 +1656,7 @@ func testWithdrawAllLimits(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	// Test: withdraw all with custom limit
 	t.Run("success: withdraw all with custom limit", func(t *testing.T) {
 		// Use a limit of 2 to test pagination
-		res, err := helpers.BillingWithdrawAllWithLimit(ctx, chain, providerWallet, testProviderUUID, 2)
+		res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderUUID, 2)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -1633,7 +1668,7 @@ func testWithdrawAllLimits(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 
 	// Test: withdraw all with default limit (0 means default)
 	t.Run("success: withdraw all with default limit", func(t *testing.T) {
-		res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderUUID)
+		res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderUUID, 0)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -1643,7 +1678,7 @@ func testWithdrawAllLimits(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	// Test: withdraw all with limit exceeding maximum should fail at CLI validation
 	t.Run("fail: withdraw all with limit exceeding maximum", func(t *testing.T) {
 		// MaxWithdrawAllLimit is 100, try 150
-		_, err := helpers.BillingWithdrawAllWithLimit(ctx, chain, providerWallet, testProviderUUID, 150)
+		_, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderUUID, 150)
 		require.Error(t, err, "withdraw all with excessive limit should fail")
 	})
 }
@@ -1746,7 +1781,7 @@ func testProviderDeactivation(t *testing.T, ctx context.Context, chain *cosmos.C
 	t.Run("success: existing lease continues after provider deactivation", func(t *testing.T) {
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_ACTIVE", lease.Lease.State, "lease should still be active")
+		require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.Lease.GetState(), "lease should still be active")
 	})
 
 	// Wait for some accrual
@@ -2291,7 +2326,7 @@ func testLeaseRejectAndCancel(t *testing.T, ctx context.Context, chain *cosmos.C
 		// Verify it's in PENDING state
 		lease, err := helpers.BillingQueryLease(ctx, chain, pendingLeaseUUID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_PENDING", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_PENDING, lease.Lease.GetState())
 	})
 
 	t.Run("fail: tenant cannot reject lease", func(t *testing.T) {
@@ -2314,7 +2349,7 @@ func testLeaseRejectAndCancel(t *testing.T, ctx context.Context, chain *cosmos.C
 		// Verify lease is now REJECTED
 		lease, err := helpers.BillingQueryLease(ctx, chain, pendingLeaseUUID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_REJECTED", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_REJECTED, lease.Lease.GetState())
 	})
 
 	t.Run("fail: reject already rejected lease", func(t *testing.T) {
@@ -2341,7 +2376,7 @@ func testLeaseRejectAndCancel(t *testing.T, ctx context.Context, chain *cosmos.C
 		// Verify it's in PENDING state
 		lease, err := helpers.BillingQueryLease(ctx, chain, cancelLeaseUUID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_PENDING", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_PENDING, lease.Lease.GetState())
 	})
 
 	t.Run("fail: provider cannot cancel tenant's lease", func(t *testing.T) {
@@ -2363,7 +2398,7 @@ func testLeaseRejectAndCancel(t *testing.T, ctx context.Context, chain *cosmos.C
 		// Verify lease is now REJECTED (cancelled leases become rejected)
 		lease, err := helpers.BillingQueryLease(ctx, chain, cancelLeaseUUID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_REJECTED", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_REJECTED, lease.Lease.GetState())
 	})
 
 	t.Run("fail: cancel already cancelled lease", func(t *testing.T) {
@@ -2420,7 +2455,7 @@ func testLeaseRejectAndCancel(t *testing.T, ctx context.Context, chain *cosmos.C
 		// Verify lease is now REJECTED
 		lease, err := helpers.BillingQueryLease(ctx, chain, authorityRejectLeaseUUID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_REJECTED", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_REJECTED, lease.Lease.GetState())
 	})
 
 	t.Run("success: reject without reason", func(t *testing.T) {
@@ -2445,7 +2480,7 @@ func testLeaseRejectAndCancel(t *testing.T, ctx context.Context, chain *cosmos.C
 		// Verify lease is now REJECTED
 		lease, err := helpers.BillingQueryLease(ctx, chain, noReasonLeaseUUID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_REJECTED", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_REJECTED, lease.Lease.GetState())
 	})
 }
 
@@ -2521,7 +2556,7 @@ func testPendingLeaseExpiration(t *testing.T, ctx context.Context, chain *cosmos
 		// Verify it's in PENDING state
 		lease, err := helpers.BillingQueryLease(ctx, chain, expireLeaseUUID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_PENDING", lease.Lease.State)
+		require.Equal(t, billingtypes.LEASE_STATE_PENDING, lease.Lease.GetState())
 	})
 
 	t.Run("success: pending lease expires after timeout", func(t *testing.T) {
@@ -2533,7 +2568,7 @@ func testPendingLeaseExpiration(t *testing.T, ctx context.Context, chain *cosmos
 		// Query the lease - it should now be EXPIRED
 		lease, err := helpers.BillingQueryLease(ctx, chain, expireLeaseUUID)
 		require.NoError(t, err)
-		require.Equal(t, "LEASE_STATE_EXPIRED", lease.Lease.State, "lease should be expired after timeout")
+		require.Equal(t, billingtypes.LEASE_STATE_EXPIRED, lease.Lease.GetState(), "lease should be expired after timeout")
 		t.Logf("Lease %s successfully expired", expireLeaseUUID)
 	})
 
@@ -2646,13 +2681,13 @@ func testStateIndexQueries(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	})
 
 	t.Run("success: query all leases returns all states", func(t *testing.T) {
-		res, err := helpers.BillingQueryLeases(ctx, chain, false)
+		res, err := helpers.BillingQueryLeases(ctx, chain, "")
 		require.NoError(t, err)
 
 		// Should contain leases in various states
-		stateCount := make(map[string]int)
+		stateCount := make(map[billingtypes.LeaseState]int)
 		for _, lease := range res.Leases {
-			stateCount[lease.State]++
+			stateCount[lease.GetState()]++
 		}
 		t.Logf("All leases by state: %v", stateCount)
 
@@ -2661,12 +2696,12 @@ func testStateIndexQueries(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	})
 
 	t.Run("success: query leases by state=pending", func(t *testing.T) {
-		res, err := helpers.BillingQueryLeasesByState(ctx, chain, "pending")
+		res, err := helpers.BillingQueryLeases(ctx, chain, "pending")
 		require.NoError(t, err)
 
 		// All returned leases should be PENDING
 		for _, lease := range res.Leases {
-			require.Equal(t, "LEASE_STATE_PENDING", lease.State, "all leases should be pending")
+			require.Equal(t, billingtypes.LEASE_STATE_PENDING, lease.GetState(), "all leases should be pending")
 		}
 
 		// Our pending lease should be in the results
@@ -2682,12 +2717,12 @@ func testStateIndexQueries(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	})
 
 	t.Run("success: query leases by state=active", func(t *testing.T) {
-		res, err := helpers.BillingQueryLeasesByState(ctx, chain, "active")
+		res, err := helpers.BillingQueryLeases(ctx, chain, "active")
 		require.NoError(t, err)
 
 		// All returned leases should be ACTIVE
 		for _, lease := range res.Leases {
-			require.Equal(t, "LEASE_STATE_ACTIVE", lease.State, "all leases should be active")
+			require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.GetState(), "all leases should be active")
 		}
 
 		// Our active lease should be in the results
@@ -2703,12 +2738,12 @@ func testStateIndexQueries(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	})
 
 	t.Run("success: query leases by state=closed", func(t *testing.T) {
-		res, err := helpers.BillingQueryLeasesByState(ctx, chain, "closed")
+		res, err := helpers.BillingQueryLeases(ctx, chain, "closed")
 		require.NoError(t, err)
 
 		// All returned leases should be CLOSED
 		for _, lease := range res.Leases {
-			require.Equal(t, "LEASE_STATE_CLOSED", lease.State, "all leases should be closed")
+			require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.GetState(), "all leases should be closed")
 		}
 
 		// Our closed lease should be in the results
@@ -2724,12 +2759,12 @@ func testStateIndexQueries(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	})
 
 	t.Run("success: query pending leases by provider (efficient index)", func(t *testing.T) {
-		res, err := helpers.BillingQueryPendingLeasesByProvider(ctx, chain, testProviderUUID)
+		res, err := helpers.BillingQueryLeasesByProvider(ctx, chain, testProviderUUID, "pending")
 		require.NoError(t, err)
 
 		// All returned leases should be PENDING and from this provider
 		for _, lease := range res.Leases {
-			require.Equal(t, "LEASE_STATE_PENDING", lease.State, "all leases should be pending")
+			require.Equal(t, billingtypes.LEASE_STATE_PENDING, lease.GetState(), "all leases should be pending")
 			require.Equal(t, testProviderUUID, lease.ProviderUuid, "all leases should be from test provider")
 		}
 
@@ -2747,11 +2782,11 @@ func testStateIndexQueries(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 
 	t.Run("success: query leases by tenant and state", func(t *testing.T) {
 		// Query active leases for our test tenant
-		res, err := helpers.BillingQueryLeasesByTenantAndState(ctx, chain, stateTestTenant.FormattedAddress(), "active")
+		res, err := helpers.BillingQueryLeasesByTenant(ctx, chain, stateTestTenant.FormattedAddress(), "active")
 		require.NoError(t, err)
 
 		for _, lease := range res.Leases {
-			require.Equal(t, "LEASE_STATE_ACTIVE", lease.State)
+			require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.GetState())
 			require.Equal(t, stateTestTenant.FormattedAddress(), lease.Tenant)
 		}
 
@@ -2769,11 +2804,11 @@ func testStateIndexQueries(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 
 	t.Run("success: query leases by provider and state", func(t *testing.T) {
 		// Query closed leases for our test provider
-		res, err := helpers.BillingQueryLeasesByProviderAndState(ctx, chain, testProviderUUID, "closed")
+		res, err := helpers.BillingQueryLeasesByProvider(ctx, chain, testProviderUUID, "closed")
 		require.NoError(t, err)
 
 		for _, lease := range res.Leases {
-			require.Equal(t, "LEASE_STATE_CLOSED", lease.State)
+			require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.GetState())
 			require.Equal(t, testProviderUUID, lease.ProviderUuid)
 		}
 
@@ -2791,7 +2826,7 @@ func testStateIndexQueries(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 
 	t.Run("success: state filter returns empty for unmatched state", func(t *testing.T) {
 		// Query rejected leases - we haven't created any
-		res, err := helpers.BillingQueryLeasesByTenantAndState(ctx, chain, stateTestTenant.FormattedAddress(), "rejected")
+		res, err := helpers.BillingQueryLeasesByTenant(ctx, chain, stateTestTenant.FormattedAddress(), "rejected")
 		require.NoError(t, err)
 
 		// No rejected leases for this tenant
@@ -2800,7 +2835,7 @@ func testStateIndexQueries(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	})
 
 	t.Run("success: pending lease not in active query", func(t *testing.T) {
-		res, err := helpers.BillingQueryLeasesByState(ctx, chain, "active")
+		res, err := helpers.BillingQueryLeases(ctx, chain, "active")
 		require.NoError(t, err)
 
 		// Pending lease should NOT be in active results
@@ -2811,7 +2846,7 @@ func testStateIndexQueries(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	})
 
 	t.Run("success: closed lease not in active query", func(t *testing.T) {
-		res, err := helpers.BillingQueryLeasesByState(ctx, chain, "active")
+		res, err := helpers.BillingQueryLeases(ctx, chain, "active")
 		require.NoError(t, err)
 
 		// Closed lease should NOT be in active results
@@ -2838,5 +2873,601 @@ func testStateIndexQueries(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 		closeRes2, err := helpers.BillingCloseLease(ctx, chain, stateTestTenant, activeLeaseUUID)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), closeRes2.Code)
+	})
+}
+
+// testMaxLeaseLimits tests that the max_leases_per_tenant and max_pending_leases_per_tenant limits are enforced.
+func testMaxLeaseLimits(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, providerWallet ibc.Wallet) {
+	t.Log("=== Testing Max Lease Limits ===")
+
+	// Create a test tenant with funded credit
+	limitTestTenant, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, "limittenant", "", sdkmath.NewInt(10_000_000), chain)
+	require.NoError(t, err)
+
+	// Fund tenant's credit account generously
+	fundAmount := fmt.Sprintf("100000000%s", testPWRDenom)
+	fundRes, err := helpers.BillingFundCredit(ctx, chain, limitTestTenant, limitTestTenant.FormattedAddress(), fundAmount)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), fundRes.Code)
+
+	items := []string{testSKUUUID + ":1"}
+
+	t.Run("fail: exceed max_pending_leases_per_tenant", func(t *testing.T) {
+		// Get current params
+		params, err := helpers.BillingQueryParams(ctx, chain)
+		require.NoError(t, err)
+
+		// Update params to set a low max_pending_leases (2)
+		updateRes, err := helpers.BillingUpdateParams(ctx, chain, authority,
+			params.Params.MaxLeasesPerTenant,
+			params.Params.MaxItemsPerLease,
+			params.Params.MinLeaseDuration,
+			2, // max_pending_leases_per_tenant = 2
+			params.Params.PendingTimeout,
+			nil,
+		)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), updateRes.Code)
+
+		// Create first pending lease
+		res1, err := helpers.BillingCreateLease(ctx, chain, limitTestTenant, items)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), res1.Code, "first lease should succeed")
+
+		// Create second pending lease
+		res2, err := helpers.BillingCreateLease(ctx, chain, limitTestTenant, items)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), res2.Code, "second lease should succeed")
+
+		// Third pending lease should fail (exceeds max of 2)
+		res3, err := helpers.BillingCreateLease(ctx, chain, limitTestTenant, items)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), res3.Code, "third pending lease should fail")
+		require.Contains(t, res3.RawLog, "pending")
+
+		t.Log("Correctly rejected lease exceeding max_pending_leases_per_tenant")
+
+		// Cleanup: acknowledge and close the pending leases
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, limitTestTenant.FormattedAddress(), "pending")
+		require.NoError(t, err)
+		for _, lease := range leases.Leases {
+			ackRes, _ := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, lease.Uuid)
+			if ackRes.Code == 0 {
+				_, _ = helpers.BillingCloseLease(ctx, chain, limitTestTenant, lease.Uuid)
+			}
+		}
+
+		// Restore params
+		_, _ = helpers.BillingUpdateParams(ctx, chain, authority,
+			params.Params.MaxLeasesPerTenant,
+			params.Params.MaxItemsPerLease,
+			params.Params.MinLeaseDuration,
+			params.Params.MaxPendingLeasesPerTenant,
+			params.Params.PendingTimeout,
+			nil,
+		)
+	})
+
+	t.Run("fail: exceed max_leases_per_tenant (active)", func(t *testing.T) {
+		// Get current params
+		params, err := helpers.BillingQueryParams(ctx, chain)
+		require.NoError(t, err)
+
+		// Update params to set a low max_leases (2) and high pending limit
+		updateRes, err := helpers.BillingUpdateParams(ctx, chain, authority,
+			2, // max_leases_per_tenant = 2
+			params.Params.MaxItemsPerLease,
+			params.Params.MinLeaseDuration,
+			10, // allow many pending
+			params.Params.PendingTimeout,
+			nil,
+		)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), updateRes.Code)
+
+		// Create and acknowledge first lease
+		res1, err := helpers.BillingCreateLease(ctx, chain, limitTestTenant, items)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), res1.Code)
+		lease1UUID, _ := helpers.GetLeaseIDFromTxHash(ctx, chain, res1.TxHash)
+		ack1, _ := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, lease1UUID)
+		require.Equal(t, uint32(0), ack1.Code)
+
+		// Create and acknowledge second lease
+		res2, err := helpers.BillingCreateLease(ctx, chain, limitTestTenant, items)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), res2.Code)
+		lease2UUID, _ := helpers.GetLeaseIDFromTxHash(ctx, chain, res2.TxHash)
+		ack2, _ := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, lease2UUID)
+		require.Equal(t, uint32(0), ack2.Code)
+
+		// Third lease should fail (exceeds max_leases_per_tenant of 2)
+		res3, err := helpers.BillingCreateLease(ctx, chain, limitTestTenant, items)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), res3.Code, "third active lease should fail")
+		require.Contains(t, res3.RawLog, "maximum")
+
+		t.Log("Correctly rejected lease exceeding max_leases_per_tenant")
+
+		// Cleanup: close leases
+		_, _ = helpers.BillingCloseLease(ctx, chain, limitTestTenant, lease1UUID)
+		_, _ = helpers.BillingCloseLease(ctx, chain, limitTestTenant, lease2UUID)
+
+		// Restore params
+		_, _ = helpers.BillingUpdateParams(ctx, chain, authority,
+			params.Params.MaxLeasesPerTenant,
+			params.Params.MaxItemsPerLease,
+			params.Params.MinLeaseDuration,
+			params.Params.MaxPendingLeasesPerTenant,
+			params.Params.PendingTimeout,
+			nil,
+		)
+	})
+}
+
+// testLeaseAcknowledgeEdgeCases tests edge cases for lease acknowledgment.
+func testLeaseAcknowledgeEdgeCases(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, providerWallet ibc.Wallet) {
+	t.Log("=== Testing Lease Acknowledge Edge Cases ===")
+
+	// Create a second provider for wrong-provider tests
+	var secondProviderUUID string
+	secondProviderWallet, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, "secondprovider", "", sdkmath.NewInt(10_000_000), chain)
+	require.NoError(t, err)
+
+	t.Run("setup: create second provider", func(t *testing.T) {
+		res, err := helpers.SKUCreateProvider(ctx, chain, authority, secondProviderWallet.FormattedAddress(), secondProviderWallet.FormattedAddress(), "")
+		require.NoError(t, err)
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code)
+		secondProviderUUID, _ = helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
+	})
+
+	// Create a test tenant
+	ackTestTenant, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, "acktenant", "", sdkmath.NewInt(10_000_000), chain)
+	require.NoError(t, err)
+
+	fundAmount := fmt.Sprintf("10000000%s", testPWRDenom)
+	fundRes, err := helpers.BillingFundCredit(ctx, chain, ackTestTenant, ackTestTenant.FormattedAddress(), fundAmount)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), fundRes.Code)
+
+	items := []string{testSKUUUID + ":1"}
+
+	t.Run("fail: acknowledge non-existent lease", func(t *testing.T) {
+		fakeUUID := "01935f8a-1234-7000-8000-000000000000"
+		res, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, fakeUUID)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), res.Code, "acknowledging non-existent lease should fail")
+		require.Contains(t, res.RawLog, "not found")
+		t.Log("Correctly rejected acknowledge for non-existent lease")
+	})
+
+	t.Run("fail: wrong provider acknowledges lease", func(t *testing.T) {
+		// Create a pending lease for testProvider's SKU
+		createRes, err := helpers.BillingCreateLease(ctx, chain, ackTestTenant, items)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), createRes.Code)
+
+		leaseUUID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, createRes.TxHash)
+		require.NoError(t, err)
+
+		// Second provider tries to acknowledge (wrong provider)
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, secondProviderWallet, leaseUUID)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), ackRes.Code, "wrong provider should not be able to acknowledge")
+		require.Contains(t, ackRes.RawLog, "unauthorized")
+
+		t.Log("Correctly rejected acknowledge from wrong provider")
+
+		// Cleanup: cancel the lease
+		_, _ = helpers.BillingCancelLease(ctx, chain, ackTestTenant, leaseUUID)
+	})
+
+	t.Run("fail: acknowledge already active lease", func(t *testing.T) {
+		// Create and acknowledge a lease
+		createRes, err := helpers.BillingCreateLease(ctx, chain, ackTestTenant, items)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), createRes.Code)
+
+		leaseUUID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, createRes.TxHash)
+		require.NoError(t, err)
+
+		// First acknowledge succeeds
+		ack1, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, leaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ack1.Code)
+
+		// Second acknowledge should fail
+		ack2, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, leaseUUID)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), ack2.Code, "re-acknowledging active lease should fail")
+		require.Contains(t, ack2.RawLog, "not pending")
+
+		t.Log("Correctly rejected re-acknowledge of active lease")
+
+		// Cleanup
+		_, _ = helpers.BillingCloseLease(ctx, chain, ackTestTenant, leaseUUID)
+	})
+
+	t.Run("fail: reject non-existent lease", func(t *testing.T) {
+		fakeUUID := "01935f8a-5678-7000-8000-000000000000"
+		res, err := helpers.BillingRejectLease(ctx, chain, providerWallet, fakeUUID, "test rejection")
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), res.Code, "rejecting non-existent lease should fail")
+		require.Contains(t, res.RawLog, "not found")
+		t.Log("Correctly rejected reject for non-existent lease")
+	})
+
+	t.Run("fail: cancel non-existent lease", func(t *testing.T) {
+		fakeUUID := "01935f8a-9abc-7000-8000-000000000000"
+		res, err := helpers.BillingCancelLease(ctx, chain, ackTestTenant, fakeUUID)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), res.Code, "canceling non-existent lease should fail")
+		require.Contains(t, res.RawLog, "not found")
+		t.Log("Correctly rejected cancel for non-existent lease")
+	})
+
+	_ = secondProviderUUID // avoid unused variable
+}
+
+// testLeasePagination tests pagination for lease queries.
+func testLeasePagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, _, providerWallet ibc.Wallet) {
+	t.Log("=== Testing Lease Pagination ===")
+
+	// Create a test tenant with funded credit
+	paginationTenant, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, "pagetenant", "", sdkmath.NewInt(10_000_000), chain)
+	require.NoError(t, err)
+
+	fundAmount := fmt.Sprintf("100000000%s", testPWRDenom)
+	fundRes, err := helpers.BillingFundCredit(ctx, chain, paginationTenant, paginationTenant.FormattedAddress(), fundAmount)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), fundRes.Code)
+
+	items := []string{testSKUUUID + ":1"}
+	var leaseUUIDs []string
+
+	// Create 5 leases and acknowledge them
+	t.Run("setup: create 5 leases for pagination", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			createRes, err := helpers.BillingCreateLease(ctx, chain, paginationTenant, items)
+			require.NoError(t, err)
+			require.Equal(t, uint32(0), createRes.Code)
+
+			leaseUUID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, createRes.TxHash)
+			require.NoError(t, err)
+			leaseUUIDs = append(leaseUUIDs, leaseUUID)
+
+			// Acknowledge
+			ackRes, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, leaseUUID)
+			require.NoError(t, err)
+			require.Equal(t, uint32(0), ackRes.Code)
+		}
+		t.Logf("Created %d leases for pagination tests", len(leaseUUIDs))
+	})
+
+	t.Run("success: paginate through all leases", func(t *testing.T) {
+		// Query first page (limit 2)
+		res1, nextKey, err := helpers.BillingQueryLeasesPaginated(ctx, chain, "", 2, "")
+		require.NoError(t, err)
+		require.Len(t, res1.Leases, 2, "first page should have 2 leases")
+		require.NotEmpty(t, nextKey, "should have next key for more pages")
+
+		// Query second page
+		res2, _, err := helpers.BillingQueryLeasesPaginated(ctx, chain, "", 2, nextKey)
+		require.NoError(t, err)
+		require.NotEmpty(t, res2.Leases, "second page should have leases")
+
+		t.Logf("Page 1: %d leases, Page 2: %d leases", len(res1.Leases), len(res2.Leases))
+	})
+
+	t.Run("success: paginate leases by tenant", func(t *testing.T) {
+		// Query first page for this tenant
+		res1, nextKey, err := helpers.BillingQueryLeasesByTenantPaginated(ctx, chain, paginationTenant.FormattedAddress(), "", 2, "")
+		require.NoError(t, err)
+		require.Len(t, res1.Leases, 2, "first page should have 2 leases")
+		require.NotEmpty(t, nextKey, "should have next key")
+
+		// All leases should belong to our tenant
+		for _, lease := range res1.Leases {
+			require.Equal(t, paginationTenant.FormattedAddress(), lease.Tenant)
+		}
+
+		// Query remaining
+		res2, _, err := helpers.BillingQueryLeasesByTenantPaginated(ctx, chain, paginationTenant.FormattedAddress(), "", 10, nextKey)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(res2.Leases), 3, "should have remaining leases")
+
+		t.Logf("Tenant pagination: Page 1 = %d, Page 2 = %d", len(res1.Leases), len(res2.Leases))
+	})
+
+	t.Run("success: paginate leases by provider", func(t *testing.T) {
+		// Query first page for testProvider
+		res1, nextKey, err := helpers.BillingQueryLeasesByProviderPaginated(ctx, chain, testProviderUUID, "", 2, "")
+		require.NoError(t, err)
+		require.NotEmpty(t, res1.Leases, "should have leases")
+
+		t.Logf("Provider pagination: Page 1 = %d leases, has more = %v", len(res1.Leases), nextKey != "")
+	})
+
+	t.Run("success: paginate with state filter", func(t *testing.T) {
+		// Query active leases with pagination
+		res, _, err := helpers.BillingQueryLeasesPaginated(ctx, chain, "active", 3, "")
+		require.NoError(t, err)
+
+		// All returned leases should be active
+		for _, lease := range res.Leases {
+			require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.GetState())
+		}
+
+		t.Logf("Found %d active leases with state filter", len(res.Leases))
+	})
+
+	// Cleanup
+	t.Run("cleanup: close pagination test leases", func(_ *testing.T) {
+		for _, uuid := range leaseUUIDs {
+			_, _ = helpers.BillingCloseLease(ctx, chain, paginationTenant, uuid)
+		}
+	})
+}
+
+// testBillingInvalidUUID tests that invalid UUID formats are rejected.
+func testBillingInvalidUUID(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, _, providerWallet ibc.Wallet) {
+	t.Log("=== Testing Billing Invalid UUID Format Rejection ===")
+
+	// Invalid UUID formats to test
+	invalidUUIDs := []struct {
+		uuid string
+		desc string
+	}{
+		{"not-a-uuid", "plain string"},
+		{"12345", "numeric string"},
+		{"01234567-89ab-cdef-0123-456789abcdef", "UUIDv4 format (not v7)"},
+		{"01912345-6789-7abc-8def-0123456789a", "too short"},
+		{"01912345-6789-7abc-8def-0123456789abcd", "too long"},
+		{"01912345-6789-7abc-8def-0123456789ag", "invalid character"},
+	}
+
+	// Create a test tenant with funded credit
+	invalidUUIDTenant, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, "invaliduuid", "", sdkmath.NewInt(10_000_000), chain)
+	require.NoError(t, err)
+
+	// Fund credit account
+	fundRes, err := helpers.BillingFundCredit(ctx, chain, invalidUUIDTenant, invalidUUIDTenant.FormattedAddress(), fmt.Sprintf("1000000%s", testPWRDenom))
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), fundRes.Code)
+
+	t.Run("fail: create lease with invalid sku_uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			items := []string{fmt.Sprintf("%s:1", tc.uuid)}
+			res, err := helpers.BillingCreateLease(ctx, chain, invalidUUIDTenant, items)
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid sku_uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid sku_uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected create lease with invalid sku_uuid")
+	})
+
+	t.Run("fail: close lease with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			res, err := helpers.BillingCloseLease(ctx, chain, invalidUUIDTenant, tc.uuid)
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid lease_uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid lease_uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected close lease with invalid uuid")
+	})
+
+	t.Run("fail: acknowledge lease with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			res, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, tc.uuid)
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid lease_uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid lease_uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected acknowledge lease with invalid uuid")
+	})
+
+	t.Run("fail: reject lease with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			res, err := helpers.BillingRejectLease(ctx, chain, providerWallet, tc.uuid, "test")
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid lease_uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid lease_uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected reject lease with invalid uuid")
+	})
+
+	t.Run("fail: cancel lease with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			res, err := helpers.BillingCancelLease(ctx, chain, invalidUUIDTenant, tc.uuid)
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid lease_uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid lease_uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected cancel lease with invalid uuid")
+	})
+
+	t.Run("fail: withdraw with invalid lease uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			res, err := helpers.BillingWithdraw(ctx, chain, providerWallet, tc.uuid)
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid lease_uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid lease_uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected withdraw with invalid lease uuid")
+	})
+
+	t.Run("fail: withdraw-all with invalid provider uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, tc.uuid, 0)
+			if err != nil {
+				require.Contains(t, err.Error(), "uuid", "invalid provider_uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
+			} else {
+				txRes, err := chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.NotEqual(t, uint32(0), txRes.Code, "invalid provider_uuid (%s) should fail: %s", tc.desc, tc.uuid)
+			}
+		}
+		t.Log("Correctly rejected withdraw-all with invalid provider uuid")
+	})
+
+	t.Run("fail: query lease with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			_, err := helpers.BillingQueryLease(ctx, chain, tc.uuid)
+			require.Error(t, err, "query lease with invalid uuid (%s) should fail: %s", tc.desc, tc.uuid)
+		}
+		t.Log("Correctly rejected query lease with invalid uuid")
+	})
+
+	t.Run("fail: query withdrawable with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			_, err := helpers.BillingQueryWithdrawable(ctx, chain, tc.uuid)
+			require.Error(t, err, "query withdrawable with invalid uuid (%s) should fail: %s", tc.desc, tc.uuid)
+		}
+		t.Log("Correctly rejected query withdrawable with invalid uuid")
+	})
+
+	t.Run("fail: query provider withdrawable with invalid uuid", func(t *testing.T) {
+		for _, tc := range invalidUUIDs {
+			_, err := helpers.BillingQueryProviderWithdrawable(ctx, chain, tc.uuid)
+			require.Error(t, err, "query provider withdrawable with invalid uuid (%s) should fail: %s", tc.desc, tc.uuid)
+		}
+		t.Log("Correctly rejected query provider withdrawable with invalid uuid")
+	})
+}
+
+// testBillingEmptyParams tests that empty string parameters are rejected.
+func testBillingEmptyParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, _, providerWallet ibc.Wallet) {
+	t.Log("=== Testing Billing Empty String Parameter Rejection ===")
+
+	// Create a test tenant with funded credit
+	emptyParamsTenant, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, "emptyparams", "", sdkmath.NewInt(10_000_000), chain)
+	require.NoError(t, err)
+
+	// Fund credit account
+	fundRes, err := helpers.BillingFundCredit(ctx, chain, emptyParamsTenant, emptyParamsTenant.FormattedAddress(), fmt.Sprintf("1000000%s", testPWRDenom))
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), fundRes.Code)
+
+	t.Run("fail: fund credit with empty tenant", func(t *testing.T) {
+		_, err := helpers.BillingFundCredit(ctx, chain, emptyParamsTenant, "", fmt.Sprintf("1000%s", testPWRDenom))
+		require.Error(t, err, "fund credit with empty tenant should fail")
+		t.Log("Correctly rejected fund credit with empty tenant")
+	})
+
+	t.Run("fail: create lease with empty sku_uuid", func(t *testing.T) {
+		items := []string{":1"} // empty sku_uuid
+		_, err := helpers.BillingCreateLease(ctx, chain, emptyParamsTenant, items)
+		require.Error(t, err, "create lease with empty sku_uuid should fail")
+		t.Log("Correctly rejected create lease with empty sku_uuid")
+	})
+
+	t.Run("fail: close lease with empty uuid", func(t *testing.T) {
+		_, err := helpers.BillingCloseLease(ctx, chain, emptyParamsTenant, "")
+		require.Error(t, err, "close lease with empty uuid should fail")
+		t.Log("Correctly rejected close lease with empty uuid")
+	})
+
+	t.Run("fail: acknowledge lease with empty uuid", func(t *testing.T) {
+		_, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, "")
+		require.Error(t, err, "acknowledge lease with empty uuid should fail")
+		t.Log("Correctly rejected acknowledge lease with empty uuid")
+	})
+
+	t.Run("fail: reject lease with empty uuid", func(t *testing.T) {
+		_, err := helpers.BillingRejectLease(ctx, chain, providerWallet, "", "test")
+		require.Error(t, err, "reject lease with empty uuid should fail")
+		t.Log("Correctly rejected reject lease with empty uuid")
+	})
+
+	t.Run("fail: cancel lease with empty uuid", func(t *testing.T) {
+		_, err := helpers.BillingCancelLease(ctx, chain, emptyParamsTenant, "")
+		require.Error(t, err, "cancel lease with empty uuid should fail")
+		t.Log("Correctly rejected cancel lease with empty uuid")
+	})
+
+	t.Run("fail: withdraw with empty lease uuid", func(t *testing.T) {
+		_, err := helpers.BillingWithdraw(ctx, chain, providerWallet, "")
+		require.Error(t, err, "withdraw with empty lease uuid should fail")
+		t.Log("Correctly rejected withdraw with empty lease uuid")
+	})
+
+	t.Run("fail: withdraw-all with empty provider uuid", func(t *testing.T) {
+		_, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, "", 0)
+		require.Error(t, err, "withdraw-all with empty provider uuid should fail")
+		t.Log("Correctly rejected withdraw-all with empty provider uuid")
+	})
+
+	t.Run("fail: query credit account with empty tenant", func(t *testing.T) {
+		_, err := helpers.BillingQueryCreditAccount(ctx, chain, "")
+		require.Error(t, err, "query credit account with empty tenant should fail")
+		t.Log("Correctly rejected query credit account with empty tenant")
+	})
+
+	t.Run("fail: query credit address with empty tenant", func(t *testing.T) {
+		_, err := helpers.BillingQueryCreditAddress(ctx, chain, "")
+		require.Error(t, err, "query credit address with empty tenant should fail")
+		t.Log("Correctly rejected query credit address with empty tenant")
+	})
+
+	t.Run("fail: query lease with empty uuid", func(t *testing.T) {
+		_, err := helpers.BillingQueryLease(ctx, chain, "")
+		require.Error(t, err, "query lease with empty uuid should fail")
+		t.Log("Correctly rejected query lease with empty uuid")
+	})
+
+	t.Run("fail: query withdrawable with empty uuid", func(t *testing.T) {
+		_, err := helpers.BillingQueryWithdrawable(ctx, chain, "")
+		require.Error(t, err, "query withdrawable with empty uuid should fail")
+		t.Log("Correctly rejected query withdrawable with empty uuid")
+	})
+
+	t.Run("fail: query provider withdrawable with empty uuid", func(t *testing.T) {
+		_, err := helpers.BillingQueryProviderWithdrawable(ctx, chain, "")
+		require.Error(t, err, "query provider withdrawable with empty uuid should fail")
+		t.Log("Correctly rejected query provider withdrawable with empty uuid")
+	})
+
+	t.Run("fail: query leases by tenant with empty tenant", func(t *testing.T) {
+		// This might return empty or error depending on implementation
+		res, err := helpers.BillingQueryLeasesByTenant(ctx, chain, "", "")
+		if err == nil {
+			require.Empty(t, res.Leases, "query leases by empty tenant should return empty")
+		}
+		t.Log("Handled query leases by empty tenant")
+	})
+
+	t.Run("fail: query leases by provider with empty provider", func(t *testing.T) {
+		// This might return empty or error depending on implementation
+		res, err := helpers.BillingQueryLeasesByProvider(ctx, chain, "", "")
+		if err == nil {
+			require.Empty(t, res.Leases, "query leases by empty provider should return empty")
+		}
+		t.Log("Handled query leases by empty provider")
 	})
 }
