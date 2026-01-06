@@ -19,6 +19,39 @@ var (
 	_ sdk.Msg = &MsgCancelLease{}
 )
 
+// ValidateLeaseItems validates a slice of LeaseItemInput for use in lease creation messages.
+// It checks for empty items, hard limit violations, UUID validity, zero quantities, and duplicates.
+func ValidateLeaseItems(items []LeaseItemInput) error {
+	if len(items) == 0 {
+		return ErrEmptyLeaseItems
+	}
+
+	// Note: Full max_items_per_lease validation happens in keeper where params are accessible.
+	// Basic sanity check here to prevent obviously malicious transactions.
+	if len(items) > MaxItemsPerLeaseHardLimit {
+		return ErrTooManyLeaseItems.Wrapf("lease has %d items, maximum allowed is %d", len(items), MaxItemsPerLeaseHardLimit)
+	}
+
+	seenSKUs := make(map[string]bool)
+	for i, item := range items {
+		if item.SkuUuid == "" {
+			return ErrInvalidLease.Wrapf("item %d has empty sku_uuid", i)
+		}
+		if !pkguuid.IsValidUUID(item.SkuUuid) {
+			return ErrInvalidLease.Wrapf("item %d has invalid sku_uuid format: %s", i, item.SkuUuid)
+		}
+		if item.Quantity == 0 {
+			return ErrInvalidQuantity.Wrapf("item %d has zero quantity", i)
+		}
+		if seenSKUs[item.SkuUuid] {
+			return ErrDuplicateSKU.Wrapf("sku_uuid %s appears multiple times", item.SkuUuid)
+		}
+		seenSKUs[item.SkuUuid] = true
+	}
+
+	return nil
+}
+
 // ValidateBasic performs basic validation for MsgFundCredit.
 func (m *MsgFundCredit) ValidateBasic() error {
 	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
@@ -33,8 +66,8 @@ func (m *MsgFundCredit) ValidateBasic() error {
 		return ErrInvalidCreditOperation.Wrap("amount must be positive")
 	}
 
-	// Note: Denom validation against module params happens in the keeper
-	// because ValidateBasic cannot access module state.
+	// Note: Any valid bank denom is accepted. The denom only needs to match
+	// a SKU's base_price denom to be usable for leases with that SKU.
 
 	return nil
 }
@@ -45,34 +78,7 @@ func (m *MsgCreateLease) ValidateBasic() error {
 		return ErrInvalidLease.Wrapf("invalid tenant address: %s", err)
 	}
 
-	if len(m.Items) == 0 {
-		return ErrEmptyLeaseItems
-	}
-
-	// Note: Full max_items_per_lease validation happens in keeper where params are accessible.
-	// Basic sanity check here to prevent obviously malicious transactions.
-	if len(m.Items) > MaxItemsPerLeaseHardLimit {
-		return ErrTooManyLeaseItems.Wrapf("lease has %d items, maximum allowed is %d", len(m.Items), MaxItemsPerLeaseHardLimit)
-	}
-
-	seenSKUs := make(map[string]bool)
-	for i, item := range m.Items {
-		if item.SkuUuid == "" {
-			return ErrInvalidLease.Wrapf("item %d has empty sku_uuid", i)
-		}
-		if !pkguuid.IsValidUUID(item.SkuUuid) {
-			return ErrInvalidLease.Wrapf("item %d has invalid sku_uuid format: %s", i, item.SkuUuid)
-		}
-		if item.Quantity == 0 {
-			return ErrInvalidQuantity.Wrapf("item %d has zero quantity", i)
-		}
-		if seenSKUs[item.SkuUuid] {
-			return ErrDuplicateSKU.Wrapf("sku_uuid %s appears multiple times", item.SkuUuid)
-		}
-		seenSKUs[item.SkuUuid] = true
-	}
-
-	return nil
+	return ValidateLeaseItems(m.Items)
 }
 
 // ValidateBasic performs basic validation for MsgCreateLeaseForTenant.
@@ -85,34 +91,7 @@ func (m *MsgCreateLeaseForTenant) ValidateBasic() error {
 		return ErrInvalidLease.Wrapf("invalid tenant address: %s", err)
 	}
 
-	if len(m.Items) == 0 {
-		return ErrEmptyLeaseItems
-	}
-
-	// Note: Full max_items_per_lease validation happens in keeper where params are accessible.
-	// Basic sanity check here to prevent obviously malicious transactions.
-	if len(m.Items) > MaxItemsPerLeaseHardLimit {
-		return ErrTooManyLeaseItems.Wrapf("lease has %d items, maximum allowed is %d", len(m.Items), MaxItemsPerLeaseHardLimit)
-	}
-
-	seenSKUs := make(map[string]bool)
-	for i, item := range m.Items {
-		if item.SkuUuid == "" {
-			return ErrInvalidLease.Wrapf("item %d has empty sku_uuid", i)
-		}
-		if !pkguuid.IsValidUUID(item.SkuUuid) {
-			return ErrInvalidLease.Wrapf("item %d has invalid sku_uuid format: %s", i, item.SkuUuid)
-		}
-		if item.Quantity == 0 {
-			return ErrInvalidQuantity.Wrapf("item %d has zero quantity", i)
-		}
-		if seenSKUs[item.SkuUuid] {
-			return ErrDuplicateSKU.Wrapf("sku_uuid %s appears multiple times", item.SkuUuid)
-		}
-		seenSKUs[item.SkuUuid] = true
-	}
-
-	return nil
+	return ValidateLeaseItems(m.Items)
 }
 
 // ValidateBasic performs basic validation for MsgCloseLease.

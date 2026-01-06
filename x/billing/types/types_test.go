@@ -1288,7 +1288,7 @@ func TestGenesisState_Validate(t *testing.T) {
 				},
 			},
 			expectErr: true,
-			errMsg:    "inactive but has no closed_at timestamp",
+			errMsg:    "closed but has no closed_at timestamp",
 		},
 		{
 			name: "valid inactive lease with closed_at",

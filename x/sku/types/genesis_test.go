@@ -12,10 +12,14 @@ import (
 )
 
 func TestGenesisState_Validate(t *testing.T) {
+	// Generate valid test addresses using deterministic bytes
+	providerAddr := sdk.AccAddress([]byte("provider_address____")).String()
+	payoutAddr := sdk.AccAddress([]byte("payout_address______")).String()
+
 	validProvider := Provider{
 		Uuid:          "01912345-6789-7abc-8def-0123456789ab",
-		Address:       "manifest1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5z5tpwp",
-		PayoutAddress: "manifest1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5z5tpwq",
+		Address:       providerAddr,
+		PayoutAddress: payoutAddr,
 		Active:        true,
 	}
 
@@ -127,6 +131,75 @@ func TestGenesisState_Validate(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "duplicate provider uuid",
+		},
+		{
+			name: "invalid: provider address bad bech32",
+			genesis: &GenesisState{
+				Params: DefaultParams(),
+				Providers: []Provider{
+					{
+						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
+						Address:       "invalid-bech32-address",
+						PayoutAddress: payoutAddr,
+						Active:        true,
+					},
+				},
+				Skus: []SKU{},
+			},
+			expectErr: true,
+			errMsg:    "invalid address",
+		},
+		{
+			name: "invalid: provider payout address bad bech32",
+			genesis: &GenesisState{
+				Params: DefaultParams(),
+				Providers: []Provider{
+					{
+						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
+						Address:       providerAddr,
+						PayoutAddress: "invalid-payout-address",
+						Active:        true,
+					},
+				},
+				Skus: []SKU{},
+			},
+			expectErr: true,
+			errMsg:    "invalid payout address",
+		},
+		{
+			name: "invalid: provider API URL not HTTPS",
+			genesis: &GenesisState{
+				Params: DefaultParams(),
+				Providers: []Provider{
+					{
+						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
+						Address:       providerAddr,
+						PayoutAddress: payoutAddr,
+						ApiUrl:        "http://example.com/api",
+						Active:        true,
+					},
+				},
+				Skus: []SKU{},
+			},
+			expectErr: true,
+			errMsg:    "invalid api_url",
+		},
+		{
+			name: "valid: provider with valid HTTPS API URL",
+			genesis: &GenesisState{
+				Params: DefaultParams(),
+				Providers: []Provider{
+					{
+						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
+						Address:       providerAddr,
+						PayoutAddress: payoutAddr,
+						ApiUrl:        "https://example.com/api",
+						Active:        true,
+					},
+				},
+				Skus: []SKU{},
+			},
+			expectErr: false,
 		},
 	}
 

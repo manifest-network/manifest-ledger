@@ -3,8 +3,6 @@ package types
 import (
 	"net/url"
 
-	"cosmossdk.io/errors"
-
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
@@ -52,15 +50,15 @@ func (msg *MsgCreateProvider) GetSigners() []sdk.AccAddress {
 // Validate performs basic validation.
 func (msg *MsgCreateProvider) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
-		return errors.Wrap(err, "invalid authority address")
+		return ErrUnauthorized.Wrapf("invalid authority address: %s", err)
 	}
 
 	if _, err := sdk.AccAddressFromBech32(msg.Address); err != nil {
-		return errors.Wrap(err, "invalid provider address")
+		return ErrInvalidProvider.Wrapf("invalid provider address: %s", err)
 	}
 
 	if _, err := sdk.AccAddressFromBech32(msg.PayoutAddress); err != nil {
-		return errors.Wrap(err, "invalid payout address")
+		return ErrInvalidProvider.Wrapf("invalid payout address: %s", err)
 	}
 
 	// Validate api_url if provided
@@ -109,19 +107,19 @@ func (msg *MsgUpdateProvider) GetSigners() []sdk.AccAddress {
 // Validate performs basic validation.
 func (msg *MsgUpdateProvider) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
-		return errors.Wrap(err, "invalid authority address")
+		return ErrUnauthorized.Wrapf("invalid authority address: %s", err)
 	}
 
 	if err := pkguuid.ValidateUUIDv7(msg.Uuid); err != nil {
-		return errors.Wrap(ErrInvalidProvider, err.Error())
+		return ErrInvalidProvider.Wrapf("invalid uuid: %s", err)
 	}
 
 	if _, err := sdk.AccAddressFromBech32(msg.Address); err != nil {
-		return errors.Wrap(err, "invalid provider address")
+		return ErrInvalidProvider.Wrapf("invalid provider address: %s", err)
 	}
 
 	if _, err := sdk.AccAddressFromBech32(msg.PayoutAddress); err != nil {
-		return errors.Wrap(err, "invalid payout address")
+		return ErrInvalidProvider.Wrapf("invalid payout address: %s", err)
 	}
 
 	// Validate api_url if provided (empty means keep existing)
@@ -160,11 +158,11 @@ func (msg *MsgDeactivateProvider) GetSigners() []sdk.AccAddress {
 // Validate performs basic validation.
 func (msg *MsgDeactivateProvider) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
-		return errors.Wrap(err, "invalid authority address")
+		return ErrUnauthorized.Wrapf("invalid authority address: %s", err)
 	}
 
 	if err := pkguuid.ValidateUUIDv7(msg.Uuid); err != nil {
-		return errors.Wrap(ErrInvalidProvider, err.Error())
+		return ErrInvalidProvider.Wrapf("invalid uuid: %s", err)
 	}
 
 	return nil
@@ -204,15 +202,15 @@ func (msg *MsgCreateSKU) GetSigners() []sdk.AccAddress {
 // Validate performs basic validation.
 func (msg *MsgCreateSKU) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
-		return errors.Wrap(err, "invalid authority address")
+		return ErrUnauthorized.Wrapf("invalid authority address: %s", err)
 	}
 
 	if err := pkguuid.ValidateUUIDv7(msg.ProviderUuid); err != nil {
-		return errors.Wrap(ErrInvalidSKU, "invalid provider_uuid: "+err.Error())
+		return ErrInvalidSKU.Wrapf("invalid provider_uuid: %s", err)
 	}
 
 	if msg.Name == "" {
-		return errors.Wrap(ErrInvalidSKU, "name cannot be empty")
+		return ErrInvalidSKU.Wrap("name cannot be empty")
 	}
 
 	if len(msg.Name) > MaxSKUNameLength {
@@ -220,16 +218,16 @@ func (msg *MsgCreateSKU) Validate() error {
 	}
 
 	if msg.Unit == Unit_UNIT_UNSPECIFIED {
-		return errors.Wrap(ErrInvalidSKU, "unit cannot be unspecified")
+		return ErrInvalidSKU.Wrap("unit cannot be unspecified")
 	}
 
 	if !msg.BasePrice.IsValid() || msg.BasePrice.IsZero() {
-		return errors.Wrap(ErrInvalidSKU, "base price must be valid and non-zero")
+		return ErrInvalidSKU.Wrap("base price must be valid and non-zero")
 	}
 
 	// Validate that price and unit combination produces a non-zero per-second rate
 	if err := ValidatePriceAndUnit(msg.BasePrice, msg.Unit); err != nil {
-		return errors.Wrap(ErrInvalidSKU, err.Error())
+		return ErrInvalidSKU.Wrapf("invalid price/unit combination: %s", err)
 	}
 
 	return nil
@@ -273,19 +271,19 @@ func (msg *MsgUpdateSKU) GetSigners() []sdk.AccAddress {
 // Validate performs basic validation.
 func (msg *MsgUpdateSKU) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
-		return errors.Wrap(err, "invalid authority address")
+		return ErrUnauthorized.Wrapf("invalid authority address: %s", err)
 	}
 
 	if err := pkguuid.ValidateUUIDv7(msg.Uuid); err != nil {
-		return errors.Wrap(ErrInvalidSKU, "invalid uuid: "+err.Error())
+		return ErrInvalidSKU.Wrapf("invalid uuid: %s", err)
 	}
 
 	if err := pkguuid.ValidateUUIDv7(msg.ProviderUuid); err != nil {
-		return errors.Wrap(ErrInvalidSKU, "invalid provider_uuid: "+err.Error())
+		return ErrInvalidSKU.Wrapf("invalid provider_uuid: %s", err)
 	}
 
 	if msg.Name == "" {
-		return errors.Wrap(ErrInvalidSKU, "name cannot be empty")
+		return ErrInvalidSKU.Wrap("name cannot be empty")
 	}
 
 	if len(msg.Name) > MaxSKUNameLength {
@@ -293,16 +291,16 @@ func (msg *MsgUpdateSKU) Validate() error {
 	}
 
 	if msg.Unit == Unit_UNIT_UNSPECIFIED {
-		return errors.Wrap(ErrInvalidSKU, "unit cannot be unspecified")
+		return ErrInvalidSKU.Wrap("unit cannot be unspecified")
 	}
 
 	if !msg.BasePrice.IsValid() || msg.BasePrice.IsZero() {
-		return errors.Wrap(ErrInvalidSKU, "base price must be valid and non-zero")
+		return ErrInvalidSKU.Wrap("base price must be valid and non-zero")
 	}
 
 	// Validate that price and unit combination produces a non-zero per-second rate
 	if err := ValidatePriceAndUnit(msg.BasePrice, msg.Unit); err != nil {
-		return errors.Wrap(ErrInvalidSKU, err.Error())
+		return ErrInvalidSKU.Wrapf("invalid price/unit combination: %s", err)
 	}
 
 	return nil
@@ -334,11 +332,11 @@ func (msg *MsgDeactivateSKU) GetSigners() []sdk.AccAddress {
 // Validate performs basic validation.
 func (msg *MsgDeactivateSKU) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
-		return errors.Wrap(err, "invalid authority address")
+		return ErrUnauthorized.Wrapf("invalid authority address: %s", err)
 	}
 
 	if err := pkguuid.ValidateUUIDv7(msg.Uuid); err != nil {
-		return errors.Wrap(ErrInvalidSKU, "invalid uuid: "+err.Error())
+		return ErrInvalidSKU.Wrapf("invalid uuid: %s", err)
 	}
 
 	return nil
@@ -367,7 +365,7 @@ func (msg *MsgUpdateParams) GetSigners() []sdk.AccAddress {
 // Validate performs basic validation.
 func (msg *MsgUpdateParams) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
-		return errors.Wrap(err, "invalid authority address")
+		return ErrUnauthorized.Wrapf("invalid authority address: %s", err)
 	}
 
 	return msg.Params.Validate()

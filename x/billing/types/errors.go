@@ -9,6 +9,7 @@ var (
 	ErrInsufficientCredit      = errors.Register(ModuleName, 4, "insufficient credit balance")
 	ErrMaxLeasesReached        = errors.Register(ModuleName, 5, "maximum leases per tenant reached")
 	ErrUnauthorized            = errors.Register(ModuleName, 6, "unauthorized")
+	ErrReserved7               = errors.Register(ModuleName, 7, "reserved") // Reserved for future use
 	ErrCreditAccountNotFound   = errors.Register(ModuleName, 8, "credit account not found")
 	ErrInvalidLease            = errors.Register(ModuleName, 9, "invalid lease")
 	ErrSKUNotFound             = errors.Register(ModuleName, 10, "sku not found")
@@ -21,6 +22,7 @@ var (
 	ErrInvalidQuantity         = errors.Register(ModuleName, 17, "quantity must be greater than zero")
 	ErrDuplicateSKU            = errors.Register(ModuleName, 18, "duplicate sku in lease items")
 	ErrInvalidCreditOperation  = errors.Register(ModuleName, 19, "invalid credit operation")
+	ErrReserved20              = errors.Register(ModuleName, 20, "reserved") // Reserved for future use
 	ErrTooManyLeaseItems       = errors.Register(ModuleName, 21, "too many items in lease")
 	ErrLeaseNotPending         = errors.Register(ModuleName, 22, "lease not in pending state")
 	ErrMaxPendingLeasesReached = errors.Register(ModuleName, 23, "maximum pending leases per tenant reached")

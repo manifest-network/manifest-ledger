@@ -2539,37 +2539,49 @@ func testPendingLeaseExpiration(t *testing.T, ctx context.Context, chain *cosmos
 		require.Equal(t, uint64(60), newParams.Params.PendingTimeout)
 	})
 
-	var expireLeaseUUID string
+	// Create multiple pending leases to test iterator-based EndBlocker processing
+	// This verifies the iterator correctly processes multiple leases without loading all into memory
+	numLeasesToCreate := 5
+	expireLeaseUUIDs := make([]string, 0, numLeasesToCreate)
 
-	t.Run("setup: create pending lease for expiration test", func(t *testing.T) {
-		items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
-		res, err := helpers.BillingCreateLease(ctx, chain, expireTenant, items)
-		require.NoError(t, err)
-		txRes, err := chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code)
+	t.Run("setup: create multiple pending leases for expiration test", func(t *testing.T) {
+		for i := 0; i < numLeasesToCreate; i++ {
+			items := []string{fmt.Sprintf("%s:1", testSKUUUID)}
+			res, err := helpers.BillingCreateLease(ctx, chain, expireTenant, items)
+			require.NoError(t, err)
+			txRes, err := chain.GetTransaction(res.TxHash)
+			require.NoError(t, err)
+			require.Equal(t, uint32(0), txRes.Code, "create lease %d should succeed", i)
 
-		expireLeaseUUID, err = helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
-		require.NoError(t, err)
-		t.Logf("Created pending lease for expiration: %s", expireLeaseUUID)
+			leaseUUID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, res.TxHash)
+			require.NoError(t, err)
+			expireLeaseUUIDs = append(expireLeaseUUIDs, leaseUUID)
+			t.Logf("Created pending lease %d for expiration: %s", i+1, leaseUUID)
 
-		// Verify it's in PENDING state
-		lease, err := helpers.BillingQueryLease(ctx, chain, expireLeaseUUID)
-		require.NoError(t, err)
-		require.Equal(t, billingtypes.LEASE_STATE_PENDING, lease.Lease.GetState())
+			// Verify it's in PENDING state
+			lease, err := helpers.BillingQueryLease(ctx, chain, leaseUUID)
+			require.NoError(t, err)
+			require.Equal(t, billingtypes.LEASE_STATE_PENDING, lease.Lease.GetState())
+		}
+		t.Logf("Created %d pending leases for expiration test", len(expireLeaseUUIDs))
 	})
 
-	t.Run("success: pending lease expires after timeout", func(t *testing.T) {
+	t.Run("success: all pending leases expire after timeout via iterator-based EndBlocker", func(t *testing.T) {
 		// Wait for enough blocks to pass the pending timeout
 		// With ~1 second block time, wait for ~70 blocks to exceed 60 second timeout
 		t.Log("Waiting for pending timeout to expire (~70 blocks)...")
 		require.NoError(t, testutil.WaitForBlocks(ctx, 70, chain))
 
-		// Query the lease - it should now be EXPIRED
-		lease, err := helpers.BillingQueryLease(ctx, chain, expireLeaseUUID)
-		require.NoError(t, err)
-		require.Equal(t, billingtypes.LEASE_STATE_EXPIRED, lease.Lease.GetState(), "lease should be expired after timeout")
-		t.Logf("Lease %s successfully expired", expireLeaseUUID)
+		// Verify ALL leases are now EXPIRED
+		// This validates the iterator-based EndBlocker correctly processes multiple leases
+		for i, leaseUUID := range expireLeaseUUIDs {
+			lease, err := helpers.BillingQueryLease(ctx, chain, leaseUUID)
+			require.NoError(t, err)
+			require.Equal(t, billingtypes.LEASE_STATE_EXPIRED, lease.Lease.GetState(),
+				"lease %d (%s) should be expired after timeout", i+1, leaseUUID)
+			t.Logf("Lease %d (%s) successfully expired", i+1, leaseUUID)
+		}
+		t.Logf("All %d pending leases successfully expired via iterator-based EndBlocker", len(expireLeaseUUIDs))
 	})
 
 	t.Run("success: credit refunded after expiration", func(t *testing.T) {

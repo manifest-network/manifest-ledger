@@ -284,6 +284,60 @@ func TestInitGenesis_InvalidSKUReference(t *testing.T) {
 	require.Contains(t, err.Error(), "non-existent SKU")
 }
 
+func TestInitGenesis_SKUProviderMismatch(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+
+	// Create two providers
+	provider1Addr := f.TestAccs[1]
+	provider1 := f.createTestProvider(t, provider1Addr.String(), provider1Addr.String())
+
+	provider2Addr := f.TestAccs[2]
+	provider2 := f.createTestProvider(t, provider2Addr.String(), provider2Addr.String())
+
+	// Create a SKU that belongs to provider 1
+	sku := f.createTestSKU(t, provider1.Uuid, 3600)
+
+	tenant := f.TestAccs[0]
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+
+	// Create genesis with a lease that references provider 2 but uses provider 1's SKU
+	genesisState := &types.GenesisState{
+		Params: types.DefaultParams(),
+		Leases: []types.Lease{
+			{
+				Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+				Tenant:       tenant.String(),
+				ProviderUuid: provider2.Uuid, // Provider 2
+				Items: []types.LeaseItem{
+					{
+						SkuUuid:     sku.Uuid, // But SKU belongs to Provider 1
+						Quantity:    1,
+						LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+					},
+				},
+				State:         types.LEASE_STATE_ACTIVE,
+				CreatedAt:     f.Ctx.BlockTime(),
+				LastSettledAt: f.Ctx.BlockTime(),
+			},
+		},
+		CreditAccounts: []types.CreditAccount{
+			{
+				Tenant:        tenant.String(),
+				CreditAddress: creditAddr.String(),
+			},
+		},
+	}
+
+	err = k.InitGenesis(f.Ctx, genesisState)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "belongs to provider")
+	require.Contains(t, err.Error(), provider1.Uuid) // The actual provider
+	require.Contains(t, err.Error(), provider2.Uuid) // The claimed provider
+}
+
 func TestExportGenesis(t *testing.T) {
 	f := initFixture(t)
 

@@ -3,6 +3,8 @@ package types
 import (
 	"fmt"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 )
 
@@ -34,20 +36,33 @@ func (gs *GenesisState) Validate() error {
 	seenProviderUUIDs := make(map[string]bool)
 	for _, provider := range gs.Providers {
 		if err := pkguuid.ValidateUUIDv7(provider.Uuid); err != nil {
-			return fmt.Errorf("invalid provider uuid %s: %w", provider.Uuid, err)
+			return ErrInvalidProvider.Wrapf("invalid provider uuid %s: %s", provider.Uuid, err)
 		}
 
 		if seenProviderUUIDs[provider.Uuid] {
-			return fmt.Errorf("duplicate provider uuid: %s", provider.Uuid)
+			return ErrInvalidProvider.Wrapf("duplicate provider uuid: %s", provider.Uuid)
 		}
 		seenProviderUUIDs[provider.Uuid] = true
 
 		if provider.Address == "" {
-			return fmt.Errorf("provider %s has empty address", provider.Uuid)
+			return ErrInvalidProvider.Wrapf("provider %s has empty address", provider.Uuid)
+		}
+		if _, err := sdk.AccAddressFromBech32(provider.Address); err != nil {
+			return ErrInvalidProvider.Wrapf("provider %s has invalid address: %s", provider.Uuid, err)
 		}
 
 		if provider.PayoutAddress == "" {
-			return fmt.Errorf("provider %s has empty payout address", provider.Uuid)
+			return ErrInvalidProvider.Wrapf("provider %s has empty payout address", provider.Uuid)
+		}
+		if _, err := sdk.AccAddressFromBech32(provider.PayoutAddress); err != nil {
+			return ErrInvalidProvider.Wrapf("provider %s has invalid payout address: %s", provider.Uuid, err)
+		}
+
+		// Validate API URL if provided
+		if provider.ApiUrl != "" {
+			if err := ValidateAPIURL(provider.ApiUrl); err != nil {
+				return ErrInvalidProvider.Wrapf("provider %s has invalid api_url: %s", provider.Uuid, err)
+			}
 		}
 	}
 
@@ -55,37 +70,37 @@ func (gs *GenesisState) Validate() error {
 	seenSKUUUIDs := make(map[string]bool)
 	for _, sku := range gs.Skus {
 		if err := pkguuid.ValidateUUIDv7(sku.Uuid); err != nil {
-			return fmt.Errorf("invalid sku uuid %s: %w", sku.Uuid, err)
+			return ErrInvalidSKU.Wrapf("invalid sku uuid %s: %s", sku.Uuid, err)
 		}
 
 		if seenSKUUUIDs[sku.Uuid] {
-			return fmt.Errorf("duplicate sku uuid: %s", sku.Uuid)
+			return ErrInvalidSKU.Wrapf("duplicate sku uuid: %s", sku.Uuid)
 		}
 		seenSKUUUIDs[sku.Uuid] = true
 
 		if err := pkguuid.ValidateUUIDv7(sku.ProviderUuid); err != nil {
-			return fmt.Errorf("sku %s has invalid provider_uuid: %w", sku.Uuid, err)
+			return ErrInvalidSKU.Wrapf("sku %s has invalid provider_uuid: %s", sku.Uuid, err)
 		}
 
 		// Check that provider exists
 		if !seenProviderUUIDs[sku.ProviderUuid] {
-			return fmt.Errorf("sku %s references non-existent provider %s", sku.Uuid, sku.ProviderUuid)
+			return ErrInvalidSKU.Wrapf("sku %s references non-existent provider %s", sku.Uuid, sku.ProviderUuid)
 		}
 
 		if sku.Name == "" {
-			return fmt.Errorf("sku %s has empty name", sku.Uuid)
+			return ErrInvalidSKU.Wrapf("sku %s has empty name", sku.Uuid)
 		}
 
 		if len(sku.Name) > MaxSKUNameLength {
-			return fmt.Errorf("sku %s name exceeds maximum length of %d characters", sku.Uuid, MaxSKUNameLength)
+			return ErrInvalidSKU.Wrapf("sku %s name exceeds maximum length of %d characters", sku.Uuid, MaxSKUNameLength)
 		}
 
 		if sku.Unit == Unit_UNIT_UNSPECIFIED {
-			return fmt.Errorf("sku %s has unspecified unit", sku.Uuid)
+			return ErrInvalidSKU.Wrapf("sku %s has unspecified unit", sku.Uuid)
 		}
 
 		if !sku.BasePrice.IsValid() || sku.BasePrice.IsZero() {
-			return fmt.Errorf("sku %s has invalid or zero base price", sku.Uuid)
+			return ErrInvalidSKU.Wrapf("sku %s has invalid or zero base price", sku.Uuid)
 		}
 	}
 

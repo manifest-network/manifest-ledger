@@ -54,6 +54,14 @@ const (
 	MaxWithdrawAllLimit uint64 = 100
 )
 
+// EndBlocker limits to prevent DoS attacks.
+const (
+	// MaxPendingLeaseExpirationsPerBlock is the maximum number of pending leases
+	// that can be expired in a single block. This prevents DoS attacks where
+	// many pending leases expire simultaneously, causing block timeouts.
+	MaxPendingLeaseExpirationsPerBlock = 100
+)
+
 // Event types for the billing module.
 const (
 	EventTypeCreditFunded        = "credit_funded"

@@ -237,11 +237,16 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 				lease.Uuid, lease.ProviderUuid, err)
 		}
 
-		// Validate each SKU exists
+		// Validate each SKU exists and belongs to the lease's provider
 		for i, item := range lease.Items {
-			if _, err := k.skuKeeper.GetSKU(ctx, item.SkuUuid); err != nil {
+			sku, err := k.skuKeeper.GetSKU(ctx, item.SkuUuid)
+			if err != nil {
 				return fmt.Errorf("lease %s item %d references non-existent SKU %s: %w",
 					lease.Uuid, i, item.SkuUuid, err)
+			}
+			if sku.ProviderUuid != lease.ProviderUuid {
+				return fmt.Errorf("lease %s item %d SKU %s belongs to provider %s, not %s",
+					lease.Uuid, i, item.SkuUuid, sku.ProviderUuid, lease.ProviderUuid)
 			}
 		}
 
@@ -525,14 +530,7 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 	}
 
 	// Calculate total accrued with overflow handling
-	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
-	for _, item := range lease.Items {
-		items = append(items, LeaseItemWithPrice{
-			SkuUUID:              item.SkuUuid,
-			Quantity:             item.Quantity,
-			LockedPricePerSecond: item.LockedPrice,
-		})
-	}
+	items := LeaseItemsToWithPrice(lease.Items)
 	accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
 	if err != nil {
 		// Log overflow error and return empty
@@ -599,14 +597,7 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 	}
 
 	// Calculate what would be accrued for each denom
-	items := make([]LeaseItemWithPrice, 0, len(lease.Items))
-	for _, item := range lease.Items {
-		items = append(items, LeaseItemWithPrice{
-			SkuUUID:              item.SkuUuid,
-			Quantity:             item.Quantity,
-			LockedPricePerSecond: item.LockedPrice,
-		})
-	}
+	items := LeaseItemsToWithPrice(lease.Items)
 
 	// If duration is zero, no accrual - check if any balance is exhausted
 	shouldClose := false
@@ -858,8 +849,9 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 }
 
 // EndBlocker processes pending lease expirations.
-// It checks all pending leases and expires those that have exceeded the pending timeout.
-// Rate limited to MaxPendingLeaseExpirationsPerBlock to prevent DoS attacks.
+// It uses an iterator to process leases one-by-one without loading all into memory,
+// preventing DoS attacks from large numbers of pending leases.
+// Rate limited to MaxPendingLeaseExpirationsPerBlock expirations per block.
 func (k *Keeper) EndBlocker(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
@@ -873,45 +865,84 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 	// #nosec G115 -- PendingTimeout is validated in params to be within safe bounds (60-86400 seconds)
 	pendingTimeout := time.Duration(params.PendingTimeout) * time.Second
 
-	// Get all pending leases
-	pendingLeases, err := k.GetPendingLeases(ctx)
+	// Collect pending lease UUIDs that need expiration first, then process them.
+	// This two-pass approach avoids iterator invalidation: when ExpirePendingLease
+	// changes a lease's state from PENDING to EXPIRED, the State index is modified.
+	// Modifying an index while iterating over it can cause undefined behavior.
+	iter, err := k.Leases.Indexes.State.MatchExact(ctx, int32(types.LEASE_STATE_PENDING))
 	if err != nil {
 		return err
 	}
 
-	// Rate limit: process max N expirations per block to prevent DoS
-	const maxExpirationsPerBlock = 100
-	expiredCount := 0
+	// First pass: collect UUIDs of leases that have exceeded pending timeout
+	var expiredUUIDs []string
+	for ; iter.Valid(); iter.Next() {
+		// Rate limit: stop collecting after max expirations to process
+		if len(expiredUUIDs) >= types.MaxPendingLeaseExpirationsPerBlock {
+			break
+		}
 
-	for i := range pendingLeases {
-		lease := &pendingLeases[i]
+		leaseUUID, err := iter.PrimaryKey()
+		if err != nil {
+			k.logger.Error("failed to get lease UUID from iterator",
+				"error", err,
+			)
+			continue
+		}
+
+		lease, err := k.Leases.Get(ctx, leaseUUID)
+		if err != nil {
+			k.logger.Error("failed to get lease from storage",
+				"lease_uuid", leaseUUID,
+				"error", err,
+			)
+			continue
+		}
 
 		// Check if lease has exceeded pending timeout
 		expirationTime := lease.CreatedAt.Add(pendingTimeout)
 		if blockTime.After(expirationTime) {
-			if err := k.ExpirePendingLease(ctx, lease); err != nil {
-				k.logger.Error("failed to expire pending lease",
-					"lease_uuid", lease.Uuid,
-					"error", err,
-				)
-				continue
-			}
-			expiredCount++
-
-			// Rate limit check
-			if expiredCount >= maxExpirationsPerBlock {
-				k.logger.Warn("reached max pending lease expirations per block",
-					"expired_count", expiredCount,
-					"remaining", len(pendingLeases)-i-1,
-				)
-				break
-			}
+			expiredUUIDs = append(expiredUUIDs, leaseUUID)
 		}
+	}
+
+	// Close iterator before modifying state to avoid iterator invalidation
+	if err := iter.Close(); err != nil {
+		k.logger.Error("failed to close iterator", "error", err)
+	}
+
+	// Second pass: expire the collected leases
+	expiredCount := 0
+	for _, leaseUUID := range expiredUUIDs {
+		lease, err := k.Leases.Get(ctx, leaseUUID)
+		if err != nil {
+			k.logger.Error("failed to get lease for expiration",
+				"lease_uuid", leaseUUID,
+				"error", err,
+			)
+			continue
+		}
+
+		if err := k.ExpirePendingLease(ctx, &lease); err != nil {
+			k.logger.Error("failed to expire pending lease",
+				"lease_uuid", lease.Uuid,
+				"error", err,
+			)
+			continue
+		}
+		expiredCount++
 	}
 
 	if expiredCount > 0 {
 		k.logger.Info("expired pending leases in EndBlocker",
-			"count", expiredCount,
+			"expired_count", expiredCount,
+			"collected_count", len(expiredUUIDs),
+		)
+	}
+
+	if len(expiredUUIDs) >= types.MaxPendingLeaseExpirationsPerBlock {
+		k.logger.Warn("reached max pending lease expirations per block",
+			"limit", types.MaxPendingLeaseExpirationsPerBlock,
 		)
 	}
 

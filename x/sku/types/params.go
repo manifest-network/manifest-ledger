@@ -1,8 +1,6 @@
 package types
 
 import (
-	"fmt"
-
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -18,10 +16,10 @@ func (p Params) Validate() error {
 	seen := make(map[string]bool)
 	for _, addr := range p.AllowedList {
 		if _, err := sdk.AccAddressFromBech32(addr); err != nil {
-			return fmt.Errorf("invalid address in allowed list: %s", addr)
+			return ErrInvalidConfig.Wrapf("invalid address in allowed list: %s", addr)
 		}
 		if seen[addr] {
-			return fmt.Errorf("duplicate address in allowed list: %s", addr)
+			return ErrInvalidConfig.Wrapf("duplicate address in allowed list: %s", addr)
 		}
 		seen[addr] = true
 	}

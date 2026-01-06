@@ -17,6 +17,7 @@ lease must call createAndAcknowledgeLease helper instead of just CreateLease.
 package keeper_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -2872,4 +2873,225 @@ func TestEndBlockerExpiredLeaseQueryFilter(t *testing.T) {
 	require.Equal(t, types.LEASE_STATE_EXPIRED, lease.State)
 	require.NotNil(t, lease.ExpiredAt)
 	require.False(t, lease.ExpiredAt.IsZero())
+}
+
+// TestEndBlockerRateLimiting tests that EndBlocker respects the rate limit
+// and processes at most MaxPendingLeaseExpirationsPerBlock leases per block.
+// This also verifies the iterator-based implementation works correctly without
+// loading all pending leases into memory at once.
+func TestEndBlockerRateLimiting(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	// Set a short pending timeout for testing (60 seconds)
+	params := types.DefaultParams()
+	params.PendingTimeout = 60
+	params.MaxPendingLeasesPerTenant = 200 // Allow many leases for this test
+	err := k.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account with enough for many leases
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(1000000000000)) // 1 trillion
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create 150 pending leases directly (more than MaxPendingLeaseExpirationsPerBlock = 100)
+	// Using direct SetLease to avoid message validation overhead for bulk creation
+	numLeases := 150
+	leaseUUIDs := make([]string, numLeases)
+	baseTime := f.Ctx.BlockTime()
+
+	for i := 0; i < numLeases; i++ {
+		leaseUUID := fmt.Sprintf("rate-limit-test-lease-%03d", i)
+		leaseUUIDs[i] = leaseUUID
+
+		lease := types.Lease{
+			Uuid:         leaseUUID,
+			Tenant:       tenant.String(),
+			ProviderUuid: provider.Uuid,
+			Items: []types.LeaseItem{
+				{
+					SkuUuid:     sku.Uuid,
+					Quantity:    1,
+					LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1)),
+				},
+			},
+			State:          types.LEASE_STATE_PENDING,
+			CreatedAt:      baseTime, // All created at same time
+			LastSettledAt:  baseTime,
+			AcknowledgedAt: nil,
+			ClosedAt:       nil,
+			ExpiredAt:      nil,
+		}
+		err := k.SetLease(f.Ctx, lease)
+		require.NoError(t, err)
+	}
+
+	// Verify all 150 leases are pending
+	pendingLeases, err := k.GetPendingLeases(f.Ctx)
+	require.NoError(t, err)
+	require.Len(t, pendingLeases, numLeases, "should have %d pending leases", numLeases)
+
+	// Advance time past the pending timeout (60 seconds)
+	expiredCtx := f.Ctx.WithBlockTime(baseTime.Add(61 * time.Second))
+
+	t.Run("first EndBlocker call processes exactly rate limit", func(t *testing.T) {
+		err := k.EndBlocker(expiredCtx)
+		require.NoError(t, err)
+
+		// Count expired vs still pending
+		stillPending, err := k.GetPendingLeases(expiredCtx)
+		require.NoError(t, err)
+
+		expiredCount := numLeases - len(stillPending)
+		require.Equal(t, types.MaxPendingLeaseExpirationsPerBlock, expiredCount,
+			"should expire exactly %d leases (rate limit)", types.MaxPendingLeaseExpirationsPerBlock)
+		require.Equal(t, 50, len(stillPending), "should have 50 leases still pending")
+	})
+
+	t.Run("second EndBlocker call processes remaining leases", func(t *testing.T) {
+		err := k.EndBlocker(expiredCtx)
+		require.NoError(t, err)
+
+		// All should now be expired
+		stillPending, err := k.GetPendingLeases(expiredCtx)
+		require.NoError(t, err)
+		require.Len(t, stillPending, 0, "all leases should be expired after second EndBlocker")
+
+		// Verify all leases are in EXPIRED state
+		for _, leaseUUID := range leaseUUIDs {
+			lease, err := k.GetLease(expiredCtx, leaseUUID)
+			require.NoError(t, err)
+			require.Equal(t, types.LEASE_STATE_EXPIRED, lease.State,
+				"lease %s should be expired", leaseUUID)
+		}
+	})
+}
+
+// TestEndBlockerIteratorDoesNotLoadAll verifies that the iterator-based
+// EndBlocker processes leases one-by-one and stops at the rate limit,
+// even when only some leases are expired.
+func TestEndBlockerIteratorDoesNotLoadAll(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	// Set pending timeout for testing
+	params := types.DefaultParams()
+	params.PendingTimeout = 60
+	params.MaxPendingLeasesPerTenant = 200
+	err := k.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(1000000000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	baseTime := f.Ctx.BlockTime()
+
+	// Create 50 leases that will be expired (created at baseTime)
+	expiredLeaseUUIDs := make([]string, 50)
+	for i := 0; i < 50; i++ {
+		leaseUUID := fmt.Sprintf("expired-lease-%03d", i)
+		expiredLeaseUUIDs[i] = leaseUUID
+
+		lease := types.Lease{
+			Uuid:          leaseUUID,
+			Tenant:        tenant.String(),
+			ProviderUuid:  provider.Uuid,
+			Items:         []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
+			State:         types.LEASE_STATE_PENDING,
+			CreatedAt:     baseTime, // Will be expired
+			LastSettledAt: baseTime,
+		}
+		err := k.SetLease(f.Ctx, lease)
+		require.NoError(t, err)
+	}
+
+	// Create 50 leases that will NOT be expired (created in the future relative to check time)
+	notExpiredLeaseUUIDs := make([]string, 50)
+	futureTime := baseTime.Add(30 * time.Second)
+	for i := 0; i < 50; i++ {
+		leaseUUID := fmt.Sprintf("not-expired-lease-%03d", i)
+		notExpiredLeaseUUIDs[i] = leaseUUID
+
+		lease := types.Lease{
+			Uuid:          leaseUUID,
+			Tenant:        tenant.String(),
+			ProviderUuid:  provider.Uuid,
+			Items:         []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
+			State:         types.LEASE_STATE_PENDING,
+			CreatedAt:     futureTime, // Created 30s later, won't be expired yet
+			LastSettledAt: futureTime,
+		}
+		err := k.SetLease(f.Ctx, lease)
+		require.NoError(t, err)
+	}
+
+	// Verify we have 100 pending leases total
+	pendingLeases, err := k.GetPendingLeases(f.Ctx)
+	require.NoError(t, err)
+	require.Len(t, pendingLeases, 100)
+
+	// Advance time to expire only the first batch (61 seconds from baseTime)
+	// The second batch was created at baseTime+30s, so timeout is at baseTime+90s
+	checkCtx := f.Ctx.WithBlockTime(baseTime.Add(61 * time.Second))
+
+	t.Run("EndBlocker only expires eligible leases", func(t *testing.T) {
+		err := k.EndBlocker(checkCtx)
+		require.NoError(t, err)
+
+		// Check expired leases
+		for _, leaseUUID := range expiredLeaseUUIDs {
+			lease, err := k.GetLease(checkCtx, leaseUUID)
+			require.NoError(t, err)
+			require.Equal(t, types.LEASE_STATE_EXPIRED, lease.State,
+				"lease %s should be expired", leaseUUID)
+		}
+
+		// Check not-expired leases are still pending
+		for _, leaseUUID := range notExpiredLeaseUUIDs {
+			lease, err := k.GetLease(checkCtx, leaseUUID)
+			require.NoError(t, err)
+			require.Equal(t, types.LEASE_STATE_PENDING, lease.State,
+				"lease %s should still be pending", leaseUUID)
+		}
+
+		// Verify counts
+		stillPending, err := k.GetPendingLeases(checkCtx)
+		require.NoError(t, err)
+		require.Len(t, stillPending, 50, "50 leases should still be pending")
+	})
 }

@@ -145,6 +145,17 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 }
 
 // DeactivateProvider deactivates a Provider (soft delete).
+//
+// IMPORTANT: Deactivating a provider does NOT affect existing active leases.
+// Existing leases will continue to accrue charges and the provider can still
+// withdraw earned funds. This is by design because:
+//   - Lease prices are locked at creation time, providing price stability for tenants
+//   - Abruptly closing leases could disrupt tenant services
+//   - Tenants can close their own leases if the provider is no longer serving them
+//
+// Deactivation prevents:
+//   - Creation of new SKUs under this provider
+//   - Creation of new leases using this provider's SKUs
 func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeactivateProvider) (*types.MsgDeactivateProviderResponse, error) {
 	authorized, err := ms.isAuthorizedSender(ctx, req.Authority)
 	if err != nil {
@@ -271,6 +282,11 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 		return nil, types.ErrInvalidSKU.Wrapf("provider_uuid mismatch; expected %s, got %s", existingSKU.ProviderUuid, req.ProviderUuid)
 	}
 
+	// Verify provider still exists
+	if _, err := ms.k.GetProvider(ctx, existingSKU.ProviderUuid); err != nil {
+		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", existingSKU.ProviderUuid)
+	}
+
 	wasInactive := !existingSKU.Active
 
 	sku := types.SKU{
@@ -314,6 +330,17 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 }
 
 // DeactivateSKU deactivates a SKU (soft delete).
+//
+// IMPORTANT: Deactivating a SKU does NOT affect existing active leases.
+// Existing leases using this SKU will continue to accrue charges at the
+// locked-in price. This is by design because:
+//   - Lease prices are locked at creation time, providing price stability for tenants
+//   - Abruptly closing leases could disrupt tenant services
+//   - Tenants can close their own leases if the SKU is no longer being provided
+//
+// Deactivation prevents:
+//   - Creation of new leases using this SKU
+//   - This SKU from appearing in active SKU listings
 func (ms msgServer) DeactivateSKU(ctx context.Context, req *types.MsgDeactivateSKU) (*types.MsgDeactivateSKUResponse, error) {
 	authorized, err := ms.isAuthorizedSender(ctx, req.Authority)
 	if err != nil {
