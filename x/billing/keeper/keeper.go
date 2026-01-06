@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"cosmossdk.io/collections"
@@ -226,7 +227,24 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 		return err
 	}
 
+	// Validate and set leases
+	// NOTE: This validation requires the SKU module to be initialized first.
+	// Genesis order ensures: sku -> billing (see app/app.go)
 	for _, lease := range gs.Leases {
+		// Validate provider exists in SKU module
+		if _, err := k.skuKeeper.GetProvider(ctx, lease.ProviderUuid); err != nil {
+			return fmt.Errorf("lease %s references non-existent provider %s: %w",
+				lease.Uuid, lease.ProviderUuid, err)
+		}
+
+		// Validate each SKU exists
+		for i, item := range lease.Items {
+			if _, err := k.skuKeeper.GetSKU(ctx, item.SkuUuid); err != nil {
+				return fmt.Errorf("lease %s item %d references non-existent SKU %s: %w",
+					lease.Uuid, i, item.SkuUuid, err)
+			}
+		}
+
 		if err := k.Leases.Set(ctx, lease.Uuid, lease); err != nil {
 			return err
 		}

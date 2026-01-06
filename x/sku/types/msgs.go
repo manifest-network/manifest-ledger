@@ -215,6 +215,10 @@ func (msg *MsgCreateSKU) Validate() error {
 		return errors.Wrap(ErrInvalidSKU, "name cannot be empty")
 	}
 
+	if len(msg.Name) > MaxSKUNameLength {
+		return ErrInvalidSKU.Wrapf("name exceeds maximum length of %d characters", MaxSKUNameLength)
+	}
+
 	if msg.Unit == Unit_UNIT_UNSPECIFIED {
 		return errors.Wrap(ErrInvalidSKU, "unit cannot be unspecified")
 	}
@@ -282,6 +286,10 @@ func (msg *MsgUpdateSKU) Validate() error {
 
 	if msg.Name == "" {
 		return errors.Wrap(ErrInvalidSKU, "name cannot be empty")
+	}
+
+	if len(msg.Name) > MaxSKUNameLength {
+		return ErrInvalidSKU.Wrapf("name exceeds maximum length of %d characters", MaxSKUNameLength)
 	}
 
 	if msg.Unit == Unit_UNIT_UNSPECIFIED {

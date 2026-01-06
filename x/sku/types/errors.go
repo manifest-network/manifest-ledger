@@ -12,8 +12,11 @@ var (
 	ErrInvalidAPIURL    = errors.Register(ModuleName, 7, "invalid API URL")
 )
 
-// Validation constants for provider fields
+// Validation constants for provider and SKU fields
 const (
 	// MaxAPIURLLength is the maximum length of an API URL.
 	MaxAPIURLLength = 2048
+
+	// MaxSKUNameLength is the maximum length of a SKU name.
+	MaxSKUNameLength = 256
 )

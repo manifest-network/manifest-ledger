@@ -151,6 +151,18 @@ func TestMsgCreateSKUValidate(t *testing.T) {
 			errMsg:    "name cannot be empty",
 		},
 		{
+			name: "invalid: name exceeds max length",
+			msg: &MsgCreateSKU{
+				Authority:    authority.String(),
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Name:         string(make([]byte, MaxSKUNameLength+1)),
+				Unit:         Unit_UNIT_PER_HOUR,
+				BasePrice:    sdk.NewCoin(testDenom, math.NewInt(3600)),
+			},
+			expectErr: true,
+			errMsg:    "exceeds maximum length",
+		},
+		{
 			name: "invalid: unspecified unit",
 			msg: &MsgCreateSKU{
 				Authority:    authority.String(),
@@ -322,6 +334,20 @@ func TestMsgUpdateSKUValidate(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "invalid provider_uuid",
+		},
+		{
+			name: "invalid: name exceeds max length",
+			msg: &MsgUpdateSKU{
+				Authority:    authority.String(),
+				Uuid:         "01912345-6789-7abc-8def-0123456789ac",
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Name:         string(make([]byte, MaxSKUNameLength+1)),
+				Unit:         Unit_UNIT_PER_HOUR,
+				BasePrice:    sdk.NewCoin(testDenom, math.NewInt(3600)),
+				Active:       true,
+			},
+			expectErr: true,
+			errMsg:    "exceeds maximum length",
 		},
 	}
 

@@ -137,6 +137,11 @@ func TestInitGenesis(t *testing.T) {
 
 	k := f.App.BillingKeeper
 
+	// Create provider and SKU first (required for genesis validation)
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 umfx/hour
+
 	// Fund the credit address before importing genesis
 	tenant := f.TestAccs[0]
 	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
@@ -152,18 +157,19 @@ func TestInitGenesis(t *testing.T) {
 		Params: types.DefaultParams(),
 		Leases: []types.Lease{
 			{
-				Uuid:         "lease-1",
+				Uuid:         "01912345-6789-7abc-8def-0123456789ab",
 				Tenant:       tenant.String(),
-				ProviderUuid: "provider-1",
+				ProviderUuid: provider.Uuid,
 				Items: []types.LeaseItem{
 					{
-						SkuUuid:     "sku-1",
+						SkuUuid:     sku.Uuid,
 						Quantity:    2,
 						LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 					},
 				},
-				State:     types.LEASE_STATE_ACTIVE,
-				CreatedAt: f.Ctx.BlockTime(),
+				State:         types.LEASE_STATE_ACTIVE,
+				CreatedAt:     f.Ctx.BlockTime(),
+				LastSettledAt: f.Ctx.BlockTime(),
 			},
 		},
 		CreditAccounts: []types.CreditAccount{
@@ -178,16 +184,104 @@ func TestInitGenesis(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify lease was imported
-	lease, err := k.GetLease(f.Ctx, "lease-1")
+	lease, err := k.GetLease(f.Ctx, "01912345-6789-7abc-8def-0123456789ab")
 	require.NoError(t, err)
 	require.Equal(t, tenant.String(), lease.Tenant)
-	require.Equal(t, "provider-1", lease.ProviderUuid)
+	require.Equal(t, provider.Uuid, lease.ProviderUuid)
 	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
 
 	// Verify credit account was imported
 	ca, err := k.GetCreditAccount(f.Ctx, tenant.String())
 	require.NoError(t, err)
 	require.Equal(t, creditAddr.String(), ca.CreditAddress)
+}
+
+func TestInitGenesis_InvalidProviderReference(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+
+	tenant := f.TestAccs[0]
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+
+	// Create genesis with a lease referencing a non-existent provider
+	genesisState := &types.GenesisState{
+		Params: types.DefaultParams(),
+		Leases: []types.Lease{
+			{
+				Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+				Tenant:       tenant.String(),
+				ProviderUuid: "01912345-6789-7abc-8def-nonexistent1", // Does not exist
+				Items: []types.LeaseItem{
+					{
+						SkuUuid:     "01912345-6789-7abc-8def-000000000001",
+						Quantity:    1,
+						LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+					},
+				},
+				State:         types.LEASE_STATE_ACTIVE,
+				CreatedAt:     f.Ctx.BlockTime(),
+				LastSettledAt: f.Ctx.BlockTime(),
+			},
+		},
+		CreditAccounts: []types.CreditAccount{
+			{
+				Tenant:        tenant.String(),
+				CreditAddress: creditAddr.String(),
+			},
+		},
+	}
+
+	err = k.InitGenesis(f.Ctx, genesisState)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "non-existent provider")
+}
+
+func TestInitGenesis_InvalidSKUReference(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+
+	// Create a valid provider but no SKU
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+
+	tenant := f.TestAccs[0]
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+
+	// Create genesis with a lease referencing a non-existent SKU
+	genesisState := &types.GenesisState{
+		Params: types.DefaultParams(),
+		Leases: []types.Lease{
+			{
+				Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+				Tenant:       tenant.String(),
+				ProviderUuid: provider.Uuid, // Valid provider
+				Items: []types.LeaseItem{
+					{
+						SkuUuid:     "01912345-6789-7abc-8def-nonexistent2", // Does not exist
+						Quantity:    1,
+						LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+					},
+				},
+				State:         types.LEASE_STATE_ACTIVE,
+				CreatedAt:     f.Ctx.BlockTime(),
+				LastSettledAt: f.Ctx.BlockTime(),
+			},
+		},
+		CreditAccounts: []types.CreditAccount{
+			{
+				Tenant:        tenant.String(),
+				CreditAddress: creditAddr.String(),
+			},
+		},
+	}
+
+	err = k.InitGenesis(f.Ctx, genesisState)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "non-existent SKU")
 }
 
 func TestExportGenesis(t *testing.T) {
