@@ -136,7 +136,7 @@ ictest-sku:
 	cd interchaintest && go test -race -v -run TestSKU . -count=1
 
 ictest-billing:
-	cd interchaintest && go test -race -v -timeout 45m -run TestBilling . -count=1
+	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling$$" . -count=1
 
 ictest-billing-upgrade:
 	cd interchaintest && go test -race -v -timeout 45m -run TestBillingModuleUpgrade . -count=1

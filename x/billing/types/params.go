@@ -65,6 +65,10 @@ func (p *Params) Validate() error {
 		return ErrInvalidParams.Wrap("max_items_per_lease must be greater than zero")
 	}
 
+	if p.MaxItemsPerLease > MaxItemsPerLeaseHardLimit {
+		return ErrInvalidParams.Wrapf("max_items_per_lease %d exceeds hard limit of %d", p.MaxItemsPerLease, MaxItemsPerLeaseHardLimit)
+	}
+
 	if p.MinLeaseDuration == 0 {
 		return ErrInvalidParams.Wrap("min_lease_duration must be greater than zero")
 	}

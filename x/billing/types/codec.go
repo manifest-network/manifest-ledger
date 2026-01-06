@@ -12,10 +12,14 @@ import (
 func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	legacy.RegisterAminoMsg(cdc, &MsgFundCredit{}, "lifted/billing/MsgFundCredit")
 	legacy.RegisterAminoMsg(cdc, &MsgCreateLease{}, "lifted/billing/MsgCreateLease")
+	legacy.RegisterAminoMsg(cdc, &MsgCreateLeaseForTenant{}, "lifted/billing/MsgCreateLeaseForTenant")
 	legacy.RegisterAminoMsg(cdc, &MsgCloseLease{}, "lifted/billing/MsgCloseLease")
 	legacy.RegisterAminoMsg(cdc, &MsgWithdraw{}, "lifted/billing/MsgWithdraw")
 	legacy.RegisterAminoMsg(cdc, &MsgWithdrawAll{}, "lifted/billing/MsgWithdrawAll")
 	legacy.RegisterAminoMsg(cdc, &MsgUpdateParams{}, "lifted/billing/MsgUpdateParams")
+	legacy.RegisterAminoMsg(cdc, &MsgAcknowledgeLease{}, "lifted/billing/MsgAcknowledgeLease")
+	legacy.RegisterAminoMsg(cdc, &MsgRejectLease{}, "lifted/billing/MsgRejectLease")
+	legacy.RegisterAminoMsg(cdc, &MsgCancelLease{}, "lifted/billing/MsgCancelLease")
 }
 
 // RegisterInterfaces registers the module's interface types.
@@ -24,10 +28,14 @@ func RegisterInterfaces(registry types.InterfaceRegistry) {
 		(*sdk.Msg)(nil),
 		&MsgFundCredit{},
 		&MsgCreateLease{},
+		&MsgCreateLeaseForTenant{},
 		&MsgCloseLease{},
 		&MsgWithdraw{},
 		&MsgWithdrawAll{},
 		&MsgUpdateParams{},
+		&MsgAcknowledgeLease{},
+		&MsgRejectLease{},
+		&MsgCancelLease{},
 	)
 
 	msgservice.RegisterMsgServiceDesc(registry, &_Msg_serviceDesc)

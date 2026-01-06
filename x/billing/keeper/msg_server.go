@@ -9,6 +9,7 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/manifest-network/manifest-ledger/pkg/sanitize"
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
@@ -761,8 +762,7 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 	// 5. Update lease counts: decrement pending, increment active.
 	// NOTE: We intentionally ignore GetCreditAccount errors here because:
 	// 1. The credit account may not exist in edge cases (e.g., migration scenarios)
-	// 2. The lease acknowledgement itself has already succeeded at this point
-	// 3. Lease counts are informational metadata, not critical state
+	// 2. Lease counts are informational metadata, not critical state
 	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
 	if err == nil {
 		if creditAccount.PendingLeaseCount > 0 {
@@ -848,6 +848,8 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 	}
 
 	// 6. Emit event
+	// NOTE: We sanitize the rejection reason to prevent log injection attacks.
+	// The original reason is stored in the lease but the event uses sanitized version.
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeLeaseRejected,
@@ -855,7 +857,7 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
 			sdk.NewAttribute(types.AttributeKeyRejectedBy, msg.Sender),
-			sdk.NewAttribute(types.AttributeKeyRejectionReason, msg.Reason),
+			sdk.NewAttribute(types.AttributeKeyRejectionReason, sanitize.EventAttribute(msg.Reason)),
 		),
 	)
 

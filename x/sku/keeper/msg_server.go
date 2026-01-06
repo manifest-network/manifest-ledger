@@ -5,6 +5,7 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/manifest-network/manifest-ledger/pkg/sanitize"
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
@@ -228,18 +229,21 @@ func (ms msgServer) CreateSKU(ctx context.Context, req *types.MsgCreateSKU) (*ty
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	// NOTE: We sanitize the SKU name to prevent log injection attacks.
+	// The original name is stored in state but event/logs use sanitized version.
+	sanitizedName := sanitize.EventAttribute(req.Name)
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeSKUCreated,
 			sdk.NewAttribute(types.AttributeKeySKUUUID, uuid),
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, req.ProviderUuid),
-			sdk.NewAttribute(types.AttributeKeyName, req.Name),
+			sdk.NewAttribute(types.AttributeKeyName, sanitizedName),
 			sdk.NewAttribute(types.AttributeKeyBasePrice, req.BasePrice.String()),
 			sdk.NewAttribute(types.AttributeKeyCreatedBy, req.Authority),
 		),
 	})
 
-	ms.k.Logger().Info("SKU created", "uuid", uuid, "provider_uuid", req.ProviderUuid, "name", req.Name)
+	ms.k.Logger().Info("SKU created", "uuid", uuid, "provider_uuid", req.ProviderUuid, "name", sanitizedName)
 
 	return &types.MsgCreateSKUResponse{Uuid: uuid}, nil
 }

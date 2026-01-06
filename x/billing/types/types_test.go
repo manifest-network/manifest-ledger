@@ -97,6 +97,17 @@ func TestParams_Validate(t *testing.T) {
 			errMsg:    "max_items_per_lease must be greater than zero",
 		},
 		{
+			name:      "max items per lease exceeds hard limit",
+			params:    types.NewParams(10, []string{}, types.MaxItemsPerLeaseHardLimit+1, 3600, 10, 1800),
+			expectErr: true,
+			errMsg:    "exceeds hard limit",
+		},
+		{
+			name:      "max items per lease at hard limit",
+			params:    types.NewParams(10, []string{}, types.MaxItemsPerLeaseHardLimit, 3600, 10, 1800),
+			expectErr: false,
+		},
+		{
 			name:      "zero min lease duration",
 			params:    types.NewParams(10, []string{}, 20, 0, 10, 1800),
 			expectErr: true,
@@ -1370,6 +1381,20 @@ func TestGenesisState_Validate(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "invalid credit_address",
+		},
+		{
+			name: "credit account with mismatched credit_address",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				CreditAccounts: []types.CreditAccount{
+					{
+						Tenant:        tenant,
+						CreditAddress: creditAddr2.String(), // Wrong: using tenant2's credit address for tenant
+					},
+				},
+			},
+			expectErr: true,
+			errMsg:    "mismatched credit_address",
 		},
 	}
 

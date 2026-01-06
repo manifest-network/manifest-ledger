@@ -120,6 +120,14 @@ func (gs *GenesisState) Validate() error {
 			return fmt.Errorf("credit account for %s has invalid credit_address: %w", ca.Tenant, err)
 		}
 
+		// Verify credit address matches the deterministically derived address from tenant
+		tenantAddr, _ := sdk.AccAddressFromBech32(ca.Tenant) // Already validated above
+		expectedCreditAddr := DeriveCreditAddress(tenantAddr)
+		if ca.CreditAddress != expectedCreditAddr.String() {
+			return fmt.Errorf("credit account for %s has mismatched credit_address: got %s, expected %s",
+				ca.Tenant, ca.CreditAddress, expectedCreditAddr.String())
+		}
+
 		// Balance is tracked in bank module, no validation needed here
 	}
 
