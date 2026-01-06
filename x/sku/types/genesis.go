@@ -76,6 +76,10 @@ func (gs *GenesisState) Validate() error {
 			return fmt.Errorf("sku %s has empty name", sku.Uuid)
 		}
 
+		if len(sku.Name) > MaxSKUNameLength {
+			return fmt.Errorf("sku %s name exceeds maximum length of %d characters", sku.Uuid, MaxSKUNameLength)
+		}
+
 		if sku.Unit == Unit_UNIT_UNSPECIFIED {
 			return fmt.Errorf("sku %s has unspecified unit", sku.Uuid)
 		}

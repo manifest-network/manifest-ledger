@@ -628,10 +628,16 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 			continue
 		}
 
+		// Use CacheContext to make settlement + timestamp update atomic per lease.
+		// If either operation fails, the cache is discarded and no state changes
+		// are committed for this lease. This prevents the scenario where funds
+		// are transferred but LastSettledAt isn't updated.
+		cacheCtx, write := sdkCtx.CacheContext()
+
 		// Perform settlement (silent mode: doesn't fail on overflow)
-		result, err := ms.k.PerformSettlementSilent(ctx, &lease, settleTime)
+		result, err := ms.k.PerformSettlementSilent(cacheCtx, &lease, settleTime)
 		if err != nil {
-			// Log error but continue with other leases
+			// Log error but continue with other leases (cache discarded)
 			ms.k.Logger().Error("failed to withdraw from lease",
 				"lease_id", lease.Uuid,
 				"error", err,
@@ -643,20 +649,24 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 			continue
 		}
 
-		totalAmounts = totalAmounts.Add(result.TransferAmounts...)
-		leaseCount++
-
 		// Update last_settled_at for active leases
 		if lease.State == types.LEASE_STATE_ACTIVE {
 			lease.LastSettledAt = blockTime
-			if err := ms.k.SetLease(ctx, lease); err != nil {
+			if err := ms.k.SetLease(cacheCtx, lease); err != nil {
+				// Log error but continue (cache discarded, settlement NOT committed)
 				ms.k.Logger().Error("failed to update lease",
 					"lease_id", lease.Uuid,
 					"error", err,
 				)
+				continue
 			}
 		}
 
+		// Commit both settlement and timestamp update atomically
+		write()
+
+		totalAmounts = totalAmounts.Add(result.TransferAmounts...)
+		leaseCount++
 		processedCount++
 	}
 

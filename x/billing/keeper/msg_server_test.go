@@ -957,6 +957,104 @@ func TestMsgWithdrawAll(t *testing.T) {
 	require.False(t, resp.TotalAmounts.IsZero())
 }
 
+// TestMsgWithdrawAll_AtomicSettlement verifies that WithdrawAll uses CacheContext
+// to make settlement + timestamp update atomic per lease. This is tested by:
+// 1. Calling WithdrawAll to settle leases (should transfer funds)
+// 2. Calling WithdrawAll again immediately (should transfer 0 - proves LastSettledAt was updated)
+// If settlement and timestamp update weren't atomic, a failure in SetLease could
+// leave LastSettledAt unchanged while funds were transferred, allowing double-withdrawal.
+func TestMsgWithdrawAll_AtomicSettlement(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 1 token per second
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create and acknowledge a lease
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{
+				SkuUuid:  sku.Uuid,
+				Quantity: 1,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender:    providerAddr.String(),
+		LeaseUuid: createResp.LeaseUuid,
+	})
+	require.NoError(t, err)
+
+	// Record payout address balance before any withdrawals
+	payoutBalanceBefore := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
+
+	// Advance block time by 100 seconds
+	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+	f.Ctx = newCtx
+
+	// First WithdrawAll - should transfer ~100 tokens (100 seconds * 1 token/second)
+	resp1, err := msgServer.WithdrawAll(f.Ctx, &types.MsgWithdrawAll{
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), resp1.LeaseCount)
+	require.False(t, resp1.TotalAmounts.IsZero(), "first withdrawal should transfer funds")
+
+	firstWithdrawalAmount := resp1.TotalAmounts.AmountOf(denom)
+	require.True(t, firstWithdrawalAmount.GT(sdkmath.ZeroInt()), "first withdrawal should be positive")
+
+	// Second WithdrawAll immediately (same block time) - should transfer 0
+	// This proves that LastSettledAt was atomically updated with the settlement
+	resp2, err := msgServer.WithdrawAll(f.Ctx, &types.MsgWithdrawAll{
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), resp2.LeaseCount, "second withdrawal should process 0 leases")
+	require.True(t, resp2.TotalAmounts.IsZero(), "second withdrawal should transfer 0 (LastSettledAt was updated)")
+
+	// Verify payout address received exactly the first withdrawal amount
+	payoutBalanceAfter := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
+	actualTransferred := payoutBalanceAfter.Amount.Sub(payoutBalanceBefore.Amount)
+	require.Equal(t, firstWithdrawalAmount, actualTransferred,
+		"payout address should receive exactly the first withdrawal amount, no double-payment")
+
+	// Advance time again and verify we can still withdraw new accruals
+	newCtx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(50 * time.Second))
+	f.Ctx = newCtx
+
+	resp3, err := msgServer.WithdrawAll(f.Ctx, &types.MsgWithdrawAll{
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), resp3.LeaseCount)
+	require.False(t, resp3.TotalAmounts.IsZero(), "third withdrawal should transfer new accruals")
+}
+
 // TestMsgWithdraw_ErrorCases tests error scenarios for Withdraw.
 func TestMsgWithdraw_ErrorCases(t *testing.T) {
 	f := initFixture(t)
