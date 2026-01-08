@@ -17,38 +17,12 @@ A SKU (Stock Keeping Unit) represents a billable item or service offered by a Pr
 
 ### Billing Units
 
-| Unit Value | Name | Seconds | Description |
-|------------|------|---------|-------------|
-| 1 | `UNIT_PER_HOUR` | 3,600 | Hourly billing |
-| 2 | `UNIT_PER_DAY` | 86,400 | Daily billing |
+| Unit Value | Name | Seconds |
+|------------|------|---------|
+| 1 | `UNIT_PER_HOUR` | 3,600 |
+| 2 | `UNIT_PER_DAY` | 86,400 |
 
-### Exact Divisibility Rule
-
-**Important:** The base price MUST be exactly divisible by the billing unit's seconds. This ensures accurate per-second rate calculations with no rounding errors.
-
-| Unit | Valid Prices | Invalid Prices |
-|------|--------------|----------------|
-| UNIT_PER_HOUR (3600s) | 3600, 7200, 10800, 36000 | 3601, 5000, 10000 |
-| UNIT_PER_DAY (86400s) | 86400, 172800, 259200, 864000 | 86401, 100000, 150000 |
-
-**Formula:** `price % seconds_in_unit == 0`
-
-### Calculating Valid Prices
-
-To calculate a price for a desired per-second rate:
-
-```
-price = rate_per_second × seconds_in_unit
-
-# For $1/hour (1 token/second × 3600 seconds)
-price_hourly = 1 × 3600 = 3600 tokens
-
-# For $2/hour (2 tokens/second × 3600 seconds)  
-price_hourly = 2 × 3600 = 7200 tokens
-
-# For $1/day (1 token/second × 86400 seconds)
-price_daily = 1 × 86400 = 86400 tokens
-```
+**Important:** Base prices must be exactly divisible by the unit's seconds (e.g., 3600, 7200 for hourly; 86400 for daily). See [Pricing and Exact Divisibility](../README.md#pricing-and-exact-divisibility) for details.
 
 ## Step 2: Prepare SKU Information
 

@@ -11,6 +11,10 @@ This document provides a comprehensive API reference for the SKU module, coverin
   - [Msg Service](#msg-service)
   - [Query Service](#query-service)
 - [REST API](#rest-api)
+- [Data Types](#data-types)
+- [Events](#events)
+- [Error Codes](#error-codes)
+- [Authorization](#authorization)
 
 ---
 
@@ -35,7 +39,7 @@ manifestd tx sku create-provider [address] [payout-address] [flags]
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --api-url | string | HTTPS endpoint for provider's off-chain API (required) |
+| --api-url | string | HTTPS endpoint for provider's off-chain API (optional) |
 | --meta-hash | string | Hex-encoded hash of off-chain metadata (optional) |
 
 **Example:**
@@ -77,6 +81,8 @@ manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1p
   --meta-hash cafebabe \
   --from authority
 ```
+
+**Note:** If `--api-url` is omitted (empty string), the existing API URL is preserved. This allows updating other fields without accidentally clearing the API URL.
 
 ---
 
@@ -128,9 +134,18 @@ manifestd tx sku create-sku 01912345-6789-7abc-8def-0123456789ab "Compute Instan
   --from authority
 ```
 
-**Note:** The base price must be exactly divisible by the billing unit's seconds:
-- UNIT_PER_HOUR (1): Price must be divisible by 3600
-- UNIT_PER_DAY (2): Price must be divisible by 86400
+**Price Validation:**
+
+The base price must be exactly divisible by the billing unit's seconds to ensure precise per-second rate calculation:
+
+| Unit | Seconds | Example Valid Prices | Example Invalid Price |
+|------|---------|---------------------|----------------------|
+| UNIT_PER_HOUR (1) | 3600 | 3600upwr, 7200upwr, 36000upwr | 3601upwr (not divisible) |
+| UNIT_PER_DAY (2) | 86400 | 86400upwr, 172800upwr | 100000upwr (not divisible) |
+
+**Error Messages:**
+- If price is not divisible: `invalid sku: price X is not evenly divisible by unit seconds Y`
+- If price results in zero per-second rate: `invalid sku: price per second would be zero`
 
 ---
 
@@ -452,6 +467,8 @@ message MsgUpdateProvider {
 ```protobuf
 message MsgUpdateProviderResponse {}
 ```
+
+**Note:** If `api_url` is an empty string, the existing API URL is preserved rather than being cleared. This allows updating other fields without modifying the API URL.
 
 ---
 
@@ -816,6 +833,40 @@ message Params {
 
 ---
 
+## Events
+
+The SKU module emits the following events for state changes:
+
+| Event | Attributes | Description |
+|-------|------------|-------------|
+| `provider_created` | provider_uuid, address, payout_address, created_by | Provider created |
+| `provider_updated` | provider_uuid | Provider updated |
+| `provider_activated` | provider_uuid | Provider transitioned from inactive → active |
+| `provider_deactivated` | provider_uuid, deactivated_by | Provider deactivated |
+| `sku_created` | sku_uuid, provider_uuid, name, base_price, created_by | SKU created |
+| `sku_updated` | sku_uuid, provider_uuid | SKU updated |
+| `sku_activated` | sku_uuid, provider_uuid | SKU transitioned from inactive → active |
+| `sku_deactivated` | sku_uuid, provider_uuid, deactivated_by | SKU deactivated |
+| `params_updated` | | Module parameters updated |
+
+### Event Attribute Sanitization
+
+SKU names are sanitized before being emitted in events to prevent log injection attacks. The original name is stored in state unchanged, but the sanitized version appears in event attributes.
+
+### Querying Events
+
+Events can be queried from transaction results:
+
+```bash
+# Query events for a specific transaction
+manifestd query tx [txhash] --output json | jq '.events'
+
+# Example: Extract provider_uuid from a provider creation
+manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.type=="provider_created") | .attributes[] | select(.key=="provider_uuid") | .value'
+```
+
+---
+
 ## Error Codes
 
 | Error | Code | Description |
@@ -826,6 +877,7 @@ message Params {
 | `ErrInvalidConfig` | 4 | Invalid module configuration |
 | `ErrInvalidProvider` | 5 | Invalid provider parameters (includes inactive check) |
 | `ErrProviderNotFound` | 6 | Provider doesn't exist |
+| `ErrInvalidAPIURL` | 7 | Invalid API URL (not HTTPS, too long, contains credentials, etc.) |
 
 **Note:** Active status checks (e.g., "provider is not active", "SKU is not active") are reported via `ErrInvalidProvider` or `ErrInvalidSKU` respectively.
 

@@ -91,8 +91,13 @@ Credit accounts hold pre-funded tokens for lease payments:
 
 **Address Derivation:**
 ```go
-creditAddr = sha256("billing" + tenantAddr)[:20]
+// Uses the Cosmos SDK's address.Module function for proper module account derivation
+key := append([]byte("billing/credit/"), tenantAddr.Bytes()...)
+hash := sha256.Sum256(key)
+creditAddr = address.Module("billing", hash[:])
 ```
+
+See `x/billing/types/credit.go` for the implementation.
 
 ### Lease
 
@@ -132,9 +137,11 @@ LEASE_STATE_UNSPECIFIED = 0  // Invalid
 LEASE_STATE_PENDING     = 1  // Awaiting provider acknowledgement (credit locked, not billing)
 LEASE_STATE_ACTIVE      = 2  // Provider acknowledged, billing active
 LEASE_STATE_CLOSED      = 3  // Terminated normally
-LEASE_STATE_REJECTED    = 4  // Provider rejected (credit unlocked)
+LEASE_STATE_REJECTED    = 4  // Provider rejected OR tenant cancelled (credit unlocked)
 LEASE_STATE_EXPIRED     = 5  // Pending timeout exceeded (credit unlocked)
 ```
+
+**Note on REJECTED State**: The `REJECTED` state is used for both provider rejections and tenant cancellations. When a tenant cancels their pending lease via `MsgCancelLease`, the lease transitions to `REJECTED` state with `rejection_reason` set to `"cancelled by tenant"`. This design choice simplifies state management by treating all pre-acknowledgement terminations uniformly. The `lease_cancelled` event is emitted to distinguish tenant cancellations from provider rejections (which emit `lease_rejected`).
 
 ## Storage Layout
 
@@ -151,7 +158,7 @@ graph LR
     subgraph "Indexes"
         TenantIdx[LeasesByTenant<br/>Map: tenant, lease_uuid → empty]
         ProviderIdx[LeasesByProvider<br/>Map: provider_uuid, lease_uuid → empty]
-        PendingIdx[PendingLeases<br/>Map: created_at, lease_uuid → empty]
+        StateIdx[LeasesByState<br/>Map: state, lease_uuid → empty]
     end
     
     subgraph "Reverse Lookup"
@@ -170,7 +177,7 @@ graph LR
 | `Leases` | `string` (UUID) | `Lease` | Primary lease storage |
 | `LeasesByTenant` | `(AccAddress, string)` | `bool` | Tenant → leases index |
 | `LeasesByProvider` | `(string, string)` | `bool` | Provider UUID → leases index |
-| `PendingLeases` | `(time, string)` | `bool` | Time-ordered pending lease index for EndBlocker |
+| `LeasesByState` | `(int32, string)` | `bool` | State → leases index (for EndBlocker pending expiration) |
 | `Params` | - | `Params` | Module parameters |
 
 ## Core Flows
@@ -485,6 +492,34 @@ Settlement happens lazily at these points:
 
 **Note**: Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement. Use `WithdrawableAmount` or `ProviderWithdrawable` queries to get real-time calculated accrued amounts. Settlement (actual token transfer) only happens during write operations.
 
+### Atomic Settlement in WithdrawAll
+
+The `WithdrawAll` operation uses a **cached context pattern** to ensure atomicity per lease:
+
+```go
+// For each lease in the batch:
+cacheCtx, writeFn := ctx.CacheContext()
+
+// Perform settlement + timestamp update in cached context
+err := k.settleLease(cacheCtx, lease)
+if err != nil {
+    // Discard changes for this lease, continue with others
+    continue
+}
+
+// Commit changes only if settlement succeeded
+writeFn()
+```
+
+**Behavior**:
+- Each lease's settlement is atomic (all-or-nothing)
+- If settlement fails for one lease (e.g., overflow), only that lease is skipped
+- Other leases in the batch are processed normally
+- Failed leases don't affect the success of the overall operation
+- Provider can retry failed leases individually using `Withdraw`
+
+This pattern ensures that partial failures don't corrupt state while still providing best-effort batch processing.
+
 ### Auto-Close on Credit Exhaustion
 
 When a lease's credit is exhausted (balance = 0), it can be auto-closed via `CheckAndCloseExhaustedLease`:
@@ -518,24 +553,28 @@ func (k Keeper) EndBlocker(ctx context.Context) error {
     params := k.GetParams(ctx)
     pendingTimeout := time.Duration(params.PendingTimeout) * time.Second
 
-    // Iterate pending leases by creation time (oldest first)
-    expired := 0
-    maxPerBlock := 100
+    // Two-pass approach to avoid iterator invalidation
+    // Pass 1: Collect UUIDs of expired pending leases
+    iter := k.Leases.Indexes.State.MatchExact(ctx, LEASE_STATE_PENDING)
+    var expiredUUIDs []string
 
-    for _, lease := range k.IteratePendingLeasesByTime(ctx) {
-        if expired >= maxPerBlock {
+    for ; iter.Valid(); iter.Next() {
+        if len(expiredUUIDs) >= MaxPendingLeaseExpirationsPerBlock {
             break // Rate limit: max 100 per block
         }
-        
+        lease := iter.Value()
         expirationTime := lease.CreatedAt.Add(pendingTimeout)
         if now.After(expirationTime) {
-            k.ExpirePendingLease(ctx, &lease)
-            expired++
-        } else {
-            break // Leases are time-ordered, no more expired
+            expiredUUIDs = append(expiredUUIDs, lease.Uuid)
         }
     }
-    
+    iter.Close()
+
+    // Pass 2: Expire collected leases (safe to modify state)
+    for _, uuid := range expiredUUIDs {
+        k.ExpirePendingLease(ctx, uuid)
+    }
+
     return nil
 }
 ```
@@ -547,7 +586,8 @@ To prevent DoS attacks where an attacker creates many pending leases to overload
 1. **Max 100 expirations per block** - Ensures bounded computation
 2. **Max pending leases per tenant** (default 10) - Limits spam from individual accounts
 3. **Remaining leases expire in subsequent blocks** - No lease is left indefinitely
-4. **Time-ordered index** - O(1) access to oldest pending leases
+4. **State-based index** - Efficient iteration over PENDING leases only
+5. **Two-pass approach** - Avoids iterator invalidation during state modification
 
 #### Lease State on Expiration
 
@@ -638,97 +678,39 @@ item2_accrual = 100 × 2 × 3 = 600umfx
 total_accrual = [500upwr, 600umfx]
 ```
 
-## Parameters
+## Parameters, Events, and Error Codes
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `max_leases_per_tenant` | `uint64` | 100 | Max active leases per tenant |
-| `max_items_per_lease` | `uint64` | 20 | Max items in single lease |
-| `min_lease_duration` | `uint64` | 3600 | Minimum seconds of credit required to create a lease |
-| `max_pending_leases_per_tenant` | `uint64` | 10 | Max PENDING leases per tenant |
-| `pending_timeout` | `uint64` | 1800 | Seconds before PENDING lease expires (30 min) |
-| `allowed_list` | `[]string` | `[]` | Addresses that can create leases for tenants (in addition to authority) |
+For the complete reference of module parameters, events, error codes, and authorization matrix, see [API Reference](API.md).
 
-**Note**: There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`. This enables multi-denom billing where different SKUs can be priced in different tokens.
-
-**Note**: `WithdrawAll` limits are enforced via constants, not parameters:
-- Default limit: 50 leases per call
-- Maximum limit: 100 leases per call
-
-## Events
-
-| Event | Key Attributes | When Emitted |
-|-------|----------------|--------------|
-| `credit_funded` | `tenant`, `amount`, `credit_address` | Credit account funded |
-| `lease_created` | `lease_uuid`, `tenant`, `provider_uuid`, `items` | New lease created (PENDING) |
-| `lease_acknowledged` | `lease_uuid`, `provider_uuid`, `acknowledged_at` | Provider acknowledged lease (→ ACTIVE) |
-| `lease_rejected` | `lease_uuid`, `provider_uuid`, `reason`, `rejected_at` | Provider rejected lease |
-| `lease_cancelled` | `lease_uuid`, `tenant` | Tenant cancelled pending lease |
-| `lease_expired` | `lease_uuid`, `tenant`, `expired_at` | Pending lease expired |
-| `lease_closed` | `lease_uuid`, `tenant`, `settled_amounts` | Lease closed (manual or auto) |
-| `provider_withdrawal` | `lease_uuid`, `provider_uuid`, `amounts`, `payout_address` | Provider withdrew funds |
-
-## Error Codes
-
-| Error | Description |
-|-------|-------------|
-| `ErrCreditAccountNotFound` | Tenant has no credit account |
-| `ErrInsufficientCredit` | Credit balance below minimum required |
-| `ErrLeaseNotFound` | Lease does not exist |
-| `ErrLeaseNotActive` | Lease is not in ACTIVE state |
-| `ErrLeaseNotPending` | Lease is not in PENDING state |
-| `ErrUnauthorized` | Sender not authorized for operation |
-| `ErrInvalidLease` | Lease validation failed |
-| `ErrMaxLeasesReached` | Tenant at max active leases |
-| `ErrMaxPendingLeasesReached` | Tenant at max pending leases |
-| `ErrNoWithdrawable` | Nothing to withdraw |
-| `ErrInvalidCreditOperation` | Credit operation failed |
-| `ErrProviderNotFound` | Referenced provider not found |
-| `ErrSKUNotFound` | Referenced SKU not found |
-| `ErrSKUInactive` | SKU is deactivated |
-| `ErrInvalidDenomination` | Wrong token denomination |
-| `ErrEmptyLeaseItems` | Lease has no items |
-| `ErrTooManyLeaseItems` | Lease exceeds max items |
-| `ErrDuplicateSKU` | Same SKU appears multiple times in lease |
-| `ErrInvalidQuantity` | Item quantity is zero |
-| `ErrInvalidParams` | Invalid module parameters |
+**Architecture Notes:**
+- Parameters are stored at key prefix `0x00` using the Collections `Item` type
+- `WithdrawAll` limits are compile-time constants (default: 50, max: 100), not governance parameters
+- Each SKU defines its own denomination—no global denom parameter exists
 
 ## Security Considerations
-
-### Authorization Matrix
-
-| Operation | Tenant | Provider | Authority | Allow-Listed |
-|-----------|--------|----------|-----------|--------------|
-| FundCredit | ✓ (any) | ✓ (any) | ✓ | ✓ |
-| CreateLease | ✓ (self) | ✗ | ✗ | ✗ |
-| CreateLeaseForTenant | ✗ | ✗ | ✓ | ✓ |
-| AcknowledgeLease | ✗ | ✓ (own SKU) | ✓ | ✗ |
-| RejectLease | ✗ | ✓ (own SKU) | ✓ | ✗ |
-| CancelLease | ✓ (own pending) | ✗ | ✗ | ✗ |
-| CloseLease | ✓ (own active) | ✓ (own SKU) | ✓ | ✗ |
-| Withdraw | ✗ | ✓ (own) | ✓ | ✗ |
-| WithdrawAll | ✗ | ✓ (own) | ✓ | ✗ |
-| UpdateParams | ✗ | ✗ | ✓ | ✗ |
 
 ### Overflow Protection
 
 Accrual calculations use safe math operations to prevent overflow:
 
 ```go
-func CalculateTotalAccruedForLease(items []LeaseItemWithPrice, duration time.Duration) (math.Int, error) {
-    totalAccrued := math.ZeroInt()
-    durationSeconds := int64(duration.Seconds())
-    
+func CalculateTotalAccruedForLease(items []LeaseItemWithPrice, duration time.Duration) (sdk.Coins, error) {
+    totals := sdk.NewCoins()
+
     for _, item := range items {
-        itemAccrued, err := CalculateAccruedAmount(durationSeconds, item.LockedPricePerSecond, item.Quantity)
+        accrued, err := CalculateAccruedAmount(item.LockedPricePerSecond, item.Quantity, duration)
         if err != nil {
-            return math.Int{}, err
+            return nil, fmt.Errorf("overflow calculating accrual for SKU %s: %w", item.SkuUUID, err)
         }
-        totalAccrued = totalAccrued.Add(itemAccrued)
+        if accrued.IsPositive() {
+            totals = totals.Add(accrued)
+        }
     }
-    return totalAccrued, nil
+    return totals, nil
 }
 ```
+
+This returns `sdk.Coins` to support multi-denom leases where different SKUs may have different denominations.
 
 ### DoS Mitigations
 
@@ -760,6 +742,42 @@ func CalculateTotalAccruedForLease(items []LeaseItemWithPrice, duration time.Dur
 | GetLeasesByProvider | O(n) | n = provider's leases |
 | EndBlocker | O(e) | e = expired leases (max 100/block) |
 
+## Genesis Validation
+
+During `InitGenesis`, the billing module performs cross-module validation to ensure data consistency:
+
+### SKU-Provider Validation
+
+For each lease in the genesis state, the module verifies:
+
+1. **Provider Existence**: The lease's `provider_uuid` must reference an existing provider in the SKU module
+2. **SKU Existence**: Each `LeaseItem.sku_uuid` must reference an existing SKU in the SKU module
+3. **SKU-Provider Relationship**: Each SKU must belong to the lease's claimed provider
+
+```go
+// Example validation during InitGenesis
+for i, item := range lease.Items {
+    sku, err := k.skuKeeper.GetSKU(ctx, item.SkuUuid)
+    if err != nil {
+        return fmt.Errorf("lease %s item %d references non-existent SKU %s",
+            lease.Uuid, i, item.SkuUuid)
+    }
+    if sku.ProviderUuid != lease.ProviderUuid {
+        return fmt.Errorf("lease %s item %d SKU %s belongs to provider %s, not %s",
+            lease.Uuid, i, item.SkuUuid, sku.ProviderUuid, lease.ProviderUuid)
+    }
+}
+```
+
+This validation prevents inconsistent state where a lease claims to be for one provider but uses SKUs from a different provider.
+
+### Credit Account Validation
+
+The module also validates credit accounts:
+
+1. **Address Derivation**: Credit address must match the deterministically derived address from the tenant
+2. **Tenant Uniqueness**: No duplicate credit accounts for the same tenant
+
 ## Testing Strategy
 
 ### Unit Tests (`x/billing/keeper/*_test.go`)
@@ -772,7 +790,7 @@ func CalculateTotalAccruedForLease(items []LeaseItemWithPrice, duration time.Dur
 - Pending expiration
 - Authorization checks (tenant, provider, authority)
 - Error scenarios (non-existent lease, unauthorized, wrong state)
-- Genesis import/export
+- Genesis import/export with cross-module validation
 
 ### Integration Tests (`x/billing/keeper/*_test.go`)
 - Full message flows with real app context
@@ -799,158 +817,122 @@ func CalculateTotalAccruedForLease(items []LeaseItemWithPrice, duration time.Dur
 - Stress testing
 - State consistency
 
+## Scalability Considerations
+
+This section documents architectural decisions that affect scalability and outlines future improvement plans.
+
+### Lazy Settlement Design
+
+The billing module uses **lazy settlement** (on-touch evaluation) instead of per-block accrual:
+
+| Approach | Complexity | Trade-offs |
+|----------|------------|------------|
+| Per-block settlement | O(n) per block | Simple but doesn't scale; EndBlocker grows with lease count |
+| Lazy settlement | O(1) per operation | Scales to millions of leases; settlement only when touched |
+
+**Why lazy settlement works:**
+- Settlement cost is paid by the party initiating the operation (withdraw, close)
+- No per-block overhead regardless of total lease count
+- Credit balance reflects unspent funds accurately since accrual is calculated on-demand
+- Provider incentivized to withdraw regularly (they bear the risk of tenant credit exhaustion)
+
+### Credit Withdrawal Policy
+
+There is no mechanism for tenants to withdraw unused credit from credit accounts. Once tokens are funded, they can only be spent on leases. This design:
+
+- **Mimics typical cloud providers** (AWS credits, etc.)
+- **Prevents gaming**: Without this restriction, tenants could fund credit, create leases to lock in prices, then withdraw if prices drop
+- **Simplifies accounting**: Credit balance always represents available purchasing power
+- **Future consideration**: A governance-controlled refund mechanism could be added if needed
+
+### Provider/SKU Deactivation Behavior
+
+When a provider or SKU is deactivated:
+
+| Entity | Effect on Existing Leases | Effect on New Leases |
+|--------|--------------------------|---------------------|
+| Provider deactivated | Continue at locked prices | Cannot create |
+| SKU deactivated | Continue at locked prices | Cannot create |
+| Provider reactivated | No change | Can create again |
+
+**Implementation note**: The billing module queries SKU/provider status at lease creation time. Existing leases store `provider_uuid` and `locked_price`, making them independent of subsequent provider/SKU state changes.
+
+### WithdrawAll Batch Processing
+
+`MsgWithdrawAll` processes leases in batches to prevent DoS:
+
+```
+Default limit: 50 leases
+Maximum limit: 100 leases (hard cap)
+```
+
+**Handling large provider portfolios:**
+1. Provider calls `WithdrawAll` with desired `limit`
+2. Response includes `has_more` boolean
+3. If `has_more == true`, provider repeats call
+4. Leases are processed in deterministic order (by UUID)
+
+**Gas considerations**: Each batch is a single transaction. Providers with thousands of leases may need multiple transactions spread across blocks.
+
+### Time Manipulation Considerations
+
+The billing module relies on block timestamps for accrual calculations. Cosmos SDK provides the following guarantees:
+
+| Property | Guarantee |
+|----------|-----------|
+| Monotonicity | Block time always increases (enforced by CometBFT) |
+| Granularity | Millisecond precision |
+| Drift tolerance | ±1 second per block (CometBFT default) |
+
+**Attack surface analysis:**
+
+1. **Validator timestamp manipulation**: Limited to ±1 second per block. Over 1 hour, maximum drift is ~0.028%. Not economically viable for manipulation.
+
+2. **Network partition attacks**: Timestamps during partitions may differ slightly across chains. Resolved during consensus.
+
+3. **Leap seconds**: Go's time package handles leap seconds transparently.
+
+**Mitigations implemented:**
+- `MinLeaseDuration` prevents micro-leases that could amplify timing attacks
+- Per-second billing granularity absorbs small timing variations
+- Price locking means timestamp manipulation only affects billing duration, not rates
+
+### Arithmetic Precision
+
+All billing calculations use `math.Int` (arbitrary precision integers):
+
+```go
+// Accrual calculation (no floating point)
+accrued = duration_seconds × locked_price × quantity
+```
+
+**Why integer arithmetic:**
+- No rounding errors accumulate over time
+- Deterministic across all validators
+- SKU prices must be divisible by unit seconds (enforced at creation)
+
+**Overflow protection:**
+- `MaxDurationSeconds` (~100 years) prevents overflow in duration calculations
+- `CalculateAccruedAmount` returns error on overflow instead of wrapping
+- `WithdrawAll` uses cached context to isolate failures
+
+### Future Improvement Plans
+
+The following enhancements are under consideration:
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Credit refund mechanism | Planned | Governance-controlled tenant credit withdrawal |
+| Scheduled withdrawals | Proposed | Auto-withdraw at configurable intervals |
+| Lease renewal | Proposed | Extend leases without close/create cycle |
+| Multi-provider leases | Deferred | Single lease spanning multiple providers |
+| Tiered pricing | Deferred | Volume discounts within single lease |
+
+**Not planned:**
+- Per-block settlement (conflicts with scalability goals)
+- Negative credit/debt (complexity outweighs benefit)
+- Partial lease modification (close and create new lease instead)
+
 ## Provider Off-Chain API Integration
 
-Providers expose a REST API for tenants to retrieve connection details after lease acknowledgement. The API endpoint URL is stored on-chain in the `Provider.api_url` field.
-
-### Tenant Flow
-
-1. Tenant queries lease to get `provider_uuid`
-2. Tenant queries provider to get `api_url`
-3. Tenant calls provider's API with signature-based authentication
-
-### Authentication
-
-Authentication uses [ADR-036](https://docs.cosmos.network/main/build/architecture/adr-036-arbitrary-signature) signature verification without on-chain challenge storage. The tenant proves lease ownership by signing a message containing the lease UUID and timestamp:
-
-**Message format:**
-```
-manifest lease access {lease_uuid} {unix_timestamp}
-```
-
-**Example:**
-```
-manifest lease access 550e8400-e29b-41d4-a716-446655440000 1702834946
-```
-
-### API Endpoint
-
-```
-GET {provider.api_url}/v1/leases/{lease_uuid}/connection
-Authorization: Bearer <base64_encoded_auth_token>
-```
-
-**Bearer Token Format (base64-encoded JSON):**
-```json
-{
-  "tenant": "manifest1...",
-  "lease_uuid": "550e8400-e29b-41d4-a716-446655440000",
-  "timestamp": 1702834946,
-  "pub_key": {
-    "type": "tendermint/PubKeySecp256k1",
-    "value": "<base64_encoded_pubkey>"
-  },
-  "signature": "<base64_signature>"
-}
-```
-
-### Provider Validation Steps
-
-1. Decode the Bearer token
-2. Query the chain for the lease by UUID
-3. Verify lease is ACTIVE
-4. Verify tenant address matches lease tenant (derived from pubkey)
-5. Verify timestamp is within acceptable window (±5 minutes)
-6. Reconstruct the message: `manifest lease access {lease_uuid} {timestamp}`
-7. Verify signature using ADR-036 verification
-
-### Wallet Compatibility
-
-ADR-036 ensures compatibility with all major Cosmos wallets:
-
-| Wallet | API |
-|--------|-----|
-| Keplr | `signArbitrary()` - works with Ledger |
-| Leap | Same API as Keplr |
-| Ledger | Via Keplr/Leap (Amino signing) |
-| Web3Auth | Via CosmJS `OfflineAminoSigner` |
-
-**Keplr Example (JavaScript):**
-```js
-const message = `manifest lease access ${leaseUuid} ${Math.floor(Date.now() / 1000)}`;
-
-const signature = await window.keplr.signArbitrary(
-  "manifest-1",           // chainId
-  tenantAddress,          // signer address
-  message                 // the message to sign
-);
-
-const authToken = btoa(JSON.stringify({
-  tenant: tenantAddress,
-  lease_uuid: leaseUuid,
-  timestamp: Math.floor(Date.now() / 1000),
-  pub_key: signature.pub_key,
-  signature: signature.signature
-}));
-
-fetch(`${providerApiUrl}/v1/leases/${leaseUuid}/connection`, {
-  headers: { "Authorization": `Bearer ${authToken}` }
-});
-```
-
-**Note:** The Cosmos SDK does not include a built-in CLI command for ADR-036 signing. For CLI-based signing, use CosmJS or a custom signing tool. Wallet-based signing (Keplr, Leap) is the recommended approach for end users.
-
-### Provider Signature Verification
-
-For Go-based providers, use the `@keplr-wallet/cosmos` package's verification logic as reference, or use a library that implements ADR-036 verification.
-
-**Verification Steps (pseudocode):**
-```
-1. Decode base64 Bearer token to get: tenant, lease_uuid, timestamp, pub_key, signature
-2. Validate timestamp is within ±5 minutes of current time
-3. Query chain: verify lease exists, is ACTIVE, and tenant matches
-4. Reconstruct message: "manifest lease access {lease_uuid} {timestamp}"
-5. Verify ADR-036 signature using the reconstructed message
-6. Verify pub_key derives to the claimed tenant address
-```
-
-**ADR-036 Sign Doc Format:**
-```json
-{
-  "chain_id": "",
-  "account_number": "0",
-  "sequence": "0",
-  "fee": {"amount": [], "gas": "0"},
-  "msgs": [{
-    "type": "sign/MsgSignData",
-    "value": {
-      "signer": "<tenant_address>",
-      "data": "<base64_encoded_message>"
-    }
-  }],
-  "memo": ""
-}
-```
-
-**Important:** The exact byte representation of the sign doc must match what Keplr produces. Consider using the [`@keplr-wallet/cosmos`](https://www.npmjs.com/package/@keplr-wallet/cosmos) package's `verifyADR36Amino` function as a reference implementation, or test thoroughly against actual Keplr signatures.
-
-### Example Response
-
-```json
-{
-  "lease_uuid": "...",
-  "endpoints": [
-    {
-      "sku_uuid": "01912345-6789-7abc-8def-0123456789ab",
-      "type": "ssh",
-      "host": "192.168.1.100",
-      "port": 22,
-      "credentials": {
-        "username": "tenant",
-        "key": "..."
-      }
-    }
-  ],
-  "status": "running",
-  "provisioned_at": "2024-12-16T19:30:00Z"
-}
-```
-
-### Security Considerations for Off-Chain API
-
-| Risk | Mitigation |
-|------|------------|
-| Replay attacks | Timestamp validation (±5 min window), HTTPS required |
-| Provider API spoofing | Tenants verify `api_url` from on-chain provider record |
-| Clock skew | 5-minute tolerance, NTP recommended |
-| Signature reuse | Message includes lease-specific UUID |
+For details on how tenants authenticate to provider off-chain APIs using ADR-036 signatures, see [Integration Guide](INTEGRATION.md).

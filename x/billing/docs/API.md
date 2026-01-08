@@ -11,6 +11,10 @@ This document provides a comprehensive API reference for the billing module, cov
   - [Msg Service](#msg-service)
   - [Query Service](#query-service)
 - [REST API](#rest-api)
+- [Data Types](#data-types)
+- [Events](#events)
+- [Error Codes](#error-codes)
+- [Authorization](#authorization)
 
 ---
 
@@ -367,12 +371,21 @@ manifestd query billing lease [lease-uuid]
     "created_at": "2024-01-01T00:00:00Z",
     "acknowledged_at": "2024-01-01T00:01:00Z",
     "closed_at": null,
-    "last_settled_at": "2024-01-01T00:01:00Z"
+    "rejected_at": null,
+    "expired_at": null,
+    "last_settled_at": "2024-01-01T00:01:00Z",
+    "rejection_reason": ""
   }
 }
 ```
 
-**Note:** `locked_price` is a Coin with denom and amount, representing the per-second rate.
+**Notes:**
+- `locked_price` is a Coin with denom and amount, representing the per-second rate
+- `acknowledged_at` is set when provider acknowledges (ACTIVE state)
+- `closed_at` is set when lease is closed (CLOSED state)
+- `rejected_at` is set when provider rejects or tenant cancels (REJECTED state)
+- `expired_at` is set when pending lease times out (EXPIRED state)
+- `rejection_reason` contains the provider's reason for rejection (max 256 chars)
 
 ---
 
@@ -438,18 +451,16 @@ manifestd query billing leases-by-provider [provider-uuid] [flags]
 
 ---
 
-#### pending-leases-by-provider
+#### pending-leases-by-provider (gRPC/REST only)
 
 Query pending leases for a specific provider. Useful for providers to see which leases need acknowledgement.
 
+**Note:** This query is available via gRPC/REST only. For CLI, use:
 ```bash
-manifestd query billing pending-leases-by-provider [provider-uuid] [flags]
+manifestd query billing leases-by-provider [provider-uuid] --state pending
 ```
 
-**Arguments:**
-| Argument | Type | Description |
-|----------|------|-------------|
-| provider-uuid | string | UUID of the provider |
+See the [gRPC API](#query-service) and [REST API](#rest-api) sections for endpoint details.
 
 ---
 
@@ -615,6 +626,8 @@ message MsgFundCreditResponse {
   cosmos.base.v1beta1.Coin new_balance = 2;  // New credit balance
 }
 ```
+
+> **Note:** `new_balance` returns only the balance for the funded denomination, not all denominations in the credit account. To query all balances, use the `CreditAccount` query which includes full balance information.
 
 ---
 
@@ -919,7 +932,7 @@ message QueryCreditAccountRequest {
 ```protobuf
 message QueryCreditAccountResponse {
   CreditAccount credit_account = 1;
-  cosmos.base.v1beta1.Coin balance = 2;
+  repeated cosmos.base.v1beta1.Coin balances = 2;  // All token balances at credit address
 }
 ```
 
@@ -1001,6 +1014,114 @@ curl http://localhost:1317/liftedinit/billing/v1/withdrawable/01912345-6789-7abc
 
 ---
 
+## Data Types
+
+### Lease
+
+```protobuf
+message Lease {
+  string uuid = 1;                    // Unique UUIDv7 identifier
+  string tenant = 2;                  // Tenant address
+  string provider_uuid = 3;           // Provider UUID (from SKU module)
+  repeated LeaseItem items = 4;       // List of leased SKU items
+  LeaseState state = 5;               // Current state
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp acknowledged_at = 7;
+  google.protobuf.Timestamp closed_at = 8;
+  google.protobuf.Timestamp rejected_at = 9;
+  google.protobuf.Timestamp expired_at = 10;
+  google.protobuf.Timestamp last_settled_at = 11;
+  string rejection_reason = 12;       // Provider's rejection reason (max 256 chars)
+}
+```
+
+### LeaseItem
+
+```protobuf
+message LeaseItem {
+  string sku_uuid = 1;                         // SKU UUID
+  uint64 quantity = 2;                         // Number of instances
+  cosmos.base.v1beta1.Coin locked_price = 3;   // Per-second rate locked at creation
+}
+```
+
+### LeaseState
+
+```protobuf
+enum LeaseState {
+  LEASE_STATE_UNSPECIFIED = 0;
+  LEASE_STATE_PENDING = 1;    // Awaiting provider acknowledgement
+  LEASE_STATE_ACTIVE = 2;     // Provider acknowledged, billing active
+  LEASE_STATE_CLOSED = 3;     // Lease terminated normally
+  LEASE_STATE_REJECTED = 4;   // Provider rejected or tenant cancelled
+  LEASE_STATE_EXPIRED = 5;    // Pending lease timed out
+}
+```
+
+### CreditAccount
+
+```protobuf
+message CreditAccount {
+  string tenant = 1;              // Tenant address
+  string credit_address = 2;      // Derived credit account address
+  uint64 active_lease_count = 3;  // Number of ACTIVE leases
+  uint64 pending_lease_count = 4; // Number of PENDING leases
+}
+```
+
+### Params
+
+```protobuf
+message Params {
+  uint64 max_leases_per_tenant = 1;
+  uint64 max_items_per_lease = 2;
+  uint64 min_lease_duration = 3;
+  uint64 max_pending_leases_per_tenant = 4;
+  uint64 pending_timeout = 5;
+  repeated string allowed_list = 6;
+}
+```
+
+---
+
+## Events
+
+The billing module emits the following events for state changes:
+
+| Event | Attributes | Description |
+|-------|------------|-------------|
+| `credit_funded` | tenant, credit_address, sender, amount, new_balance | Credit account funded |
+| `lease_created` | lease_uuid, tenant, provider_uuid, item_count, total_rate_per_second, pending_lease_count, created_by | Lease created in PENDING state |
+| `lease_acknowledged` | lease_uuid, tenant, provider_uuid, acknowledged_by | Provider acknowledged lease (→ ACTIVE) |
+| `lease_rejected` | lease_uuid, tenant, provider_uuid, rejected_by, rejection_reason | Provider rejected lease |
+| `lease_cancelled` | lease_uuid, tenant, provider_uuid, cancelled_by | Tenant cancelled pending lease |
+| `lease_expired` | lease_uuid, tenant, provider_uuid, reason | Pending lease expired |
+| `lease_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, closed_by, duration_seconds, active_lease_count | Lease closed manually |
+| `lease_auto_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, reason | Lease auto-closed due to credit exhaustion |
+| `provider_withdraw` | lease_uuid, provider_uuid, amount, payout_address | Provider withdrawal |
+| `provider_withdraw_all` | provider_uuid, amount, lease_count, payout_address | Provider withdrew from all leases |
+| `params_updated` | | Module parameters updated |
+
+**Special Case - Withdrawal Auto-Close:** When a `MsgWithdraw` operation discovers the lease's credit is exhausted (balance = 0), it automatically closes the lease. In this case, the `provider_withdraw` event includes an additional `auto_closed: "true"` attribute and `amount: "0"` to indicate no funds were transferred. Note that the `payout_address` attribute is omitted in this case since no transfer occurred.
+
+### Event Attribute Sanitization
+
+Certain event attributes (like `rejection_reason`) are sanitized before being emitted to prevent log injection attacks. The original value is stored in state unchanged, but the sanitized version appears in events. This protects against malicious input containing control characters or log format strings.
+
+### Querying Events
+
+Events can be queried from transaction results:
+
+```bash
+# Query events for a specific transaction
+manifestd query tx [txhash] --output json | jq '.events'
+
+# Example: Extract lease_uuid from a lease creation
+manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.type=="lease_created") | .attributes[] | select(.key=="lease_uuid") | .value'
+```
+
+---
+
 ## Error Codes
 
 | Error | Code | Description |
@@ -1008,12 +1129,10 @@ curl http://localhost:1317/liftedinit/billing/v1/withdrawable/01912345-6789-7abc
 | `ErrInvalidParams` | 1 | Invalid module parameters |
 | `ErrLeaseNotFound` | 2 | Lease doesn't exist |
 | `ErrLeaseNotActive` | 3 | Lease is not in ACTIVE state |
-| `ErrLeaseNotPending` | - | Lease is not in PENDING state |
 | `ErrInsufficientCredit` | 4 | Not enough credit balance |
 | `ErrMaxLeasesReached` | 5 | Tenant at max active leases |
-| `ErrMaxPendingLeasesReached` | - | Tenant at max pending leases |
 | `ErrUnauthorized` | 6 | Sender not authorized |
-| `ErrInvalidDenom` | 7 | Wrong denomination for operation |
+| `ErrReserved7` | 7 | Reserved for future use |
 | `ErrCreditAccountNotFound` | 8 | Credit account doesn't exist |
 | `ErrInvalidLease` | 9 | Invalid lease parameters |
 | `ErrSKUNotFound` | 10 | SKU doesn't exist |
@@ -1026,9 +1145,36 @@ curl http://localhost:1317/liftedinit/billing/v1/withdrawable/01912345-6789-7abc
 | `ErrInvalidQuantity` | 17 | Item quantity is zero |
 | `ErrDuplicateSKU` | 18 | Same SKU appears multiple times |
 | `ErrInvalidCreditOperation` | 19 | Credit operation failed |
-| `ErrInvalidDenomination` | 20 | Invalid denomination in lease item |
+| `ErrReserved20` | 20 | Reserved for future use |
 | `ErrTooManyLeaseItems` | 21 | Lease exceeds max items |
-| `ErrInvalidUUID` | - | Invalid UUIDv7 format |
+| `ErrLeaseNotPending` | 22 | Lease is not in PENDING state |
+| `ErrMaxPendingLeasesReached` | 23 | Tenant at max pending leases |
+| `ErrInvalidRejectionReason` | 24 | Rejection reason too long (max 256 chars) |
+
+**Note on Reserved Codes:** Error codes 7 and 20 are explicitly reserved to maintain stable error code assignments. When adding new error types, these reserved codes ensure that error numbers remain consistent across module versions. Do not use these codes for new errors; instead, assign the next available number.
+
+---
+
+## Authorization
+
+| Operation | Tenant | Provider | Authority | Allowed List |
+|-----------|--------|----------|-----------|--------------|
+| FundCredit | ✓ (anyone) | ✓ (anyone) | ✓ | ✓ |
+| CreateLease | ✓ (self only) | ✗ | ✗ | ✗ |
+| CreateLeaseForTenant | ✗ | ✗ | ✓ | ✓ |
+| AcknowledgeLease | ✗ | ✓ | ✓ | ✗ |
+| RejectLease | ✗ | ✓ | ✓ | ✗ |
+| CancelLease | ✓ (own leases) | ✗ | ✗ | ✗ |
+| CloseLease | ✓ (own leases) | ✓ | ✓ | ✗ |
+| Withdraw | ✗ | ✓ | ✓ | ✗ |
+| WithdrawAll | ✗ | ✓ | ✓ | ✗ |
+| UpdateParams | ✗ | ✗ | ✓ | ✗ |
+
+**Notes:**
+- "Tenant" refers to the lease owner
+- "Provider" refers to the provider address associated with the lease's SKUs
+- "Authority" is the module authority (POA admin group)
+- "Allowed List" contains addresses permitted to create leases on behalf of tenants
 
 ---
 

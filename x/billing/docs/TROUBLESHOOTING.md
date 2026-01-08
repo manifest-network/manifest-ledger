@@ -81,11 +81,11 @@ The credit account is created automatically when first funded.
 **Solution**: Create separate leases for SKUs from different providers:
 ```bash
 # Instead of this (fails):
-manifestd tx billing create-lease 1:1 5:1 --from tenant  # SKUs from different providers
+manifestd tx billing create-lease <sku-uuid-provider1>:1 <sku-uuid-provider2>:1 --from tenant  # SKUs from different providers
 
 # Do this:
-manifestd tx billing create-lease 1:1 --from tenant  # Provider 1 SKUs
-manifestd tx billing create-lease 5:1 --from tenant  # Provider 2 SKUs
+manifestd tx billing create-lease <sku-uuid-provider1>:1 --from tenant  # Provider 1 SKUs only
+manifestd tx billing create-lease <sku-uuid-provider2>:1 --from tenant  # Provider 2 SKUs only
 ```
 
 ### "maximum leases per tenant reached"
@@ -175,6 +175,16 @@ Only PENDING leases can be acknowledged/rejected by providers or cancelled by te
 **Solution**: Use the correct provider key:
 ```bash
 manifestd tx billing acknowledge-lease [lease-uuid] --from [provider-key]
+```
+
+### "invalid rejection reason"
+
+**Cause**: The rejection reason provided to `reject-lease` exceeds the maximum length of 256 characters.
+
+**Solution**: Provide a shorter rejection reason:
+```bash
+# Maximum 256 characters
+manifestd tx billing reject-lease [lease-uuid] --reason "Service unavailable" --from provider
 ```
 
 ### Provider not responding to pending lease
@@ -268,7 +278,7 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 
 ### "provider not found"
 
-**Cause**: The provider_id doesn't exist in the SKU module.
+**Cause**: The provider_uuid doesn't exist in the SKU module.
 
 **Solution**: 
 1. Query available providers:
@@ -276,6 +286,30 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
    manifestd query sku providers
    ```
 2. Use a valid provider UUID.
+
+### Lease not included in WithdrawAll results
+
+**Cause**: During `WithdrawAll` batch operations, individual lease settlements that encounter arithmetic overflow (extremely long-running leases with high rates) are silently skipped to prevent the entire batch from failing.
+
+**What happens**:
+1. The lease is skipped during the batch operation
+2. Other leases in the batch are processed normally
+3. No error is returned for the skipped lease
+4. The skipped lease's funds remain available
+
+**Solution**:
+1. Use individual `Withdraw` for the specific lease to see the actual error:
+   ```bash
+   manifestd tx billing withdraw [lease-uuid] --from provider
+   ```
+2. If overflow is the issue, close the lease and create a new one:
+   ```bash
+   manifestd tx billing close-lease [lease-uuid] --from provider
+   ```
+
+**Note**: This scenario only occurs with extremely long-running leases (years) with high per-second rates. Normal usage will not encounter this issue.
+
+---
 
 ## WithdrawAll Issues
 

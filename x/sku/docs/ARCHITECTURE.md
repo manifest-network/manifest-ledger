@@ -122,21 +122,23 @@ graph LR
 
 | Collection | Key Type | Value Type | Purpose |
 |------------|----------|------------|---------|
-| `Providers` | `string` (UUID) | `Provider` | Primary provider storage |
-| `ProviderSequence` | - | `uint64` | Sequence counter for deterministic UUID generation |
+| `Params` | - | `Params` | Module parameters |
 | `SKUs` | `string` (UUID) | `SKU` | Primary SKU storage |
 | `SKUSequence` | - | `uint64` | Sequence counter for deterministic UUID generation |
 | `SKUsByProvider` | `(string, string)` | `bool` | Index for provider → SKU lookups |
+| `Providers` | `string` (UUID) | `Provider` | Primary provider storage |
+| `ProviderSequence` | - | `uint64` | Sequence counter for deterministic UUID generation |
 
 ### Key Prefixes
 
 ```go
 var (
-    ProvidersKeyPrefix         = collections.NewPrefix(0)
-    ProviderSequenceKeyPrefix  = collections.NewPrefix(1)
-    SKUsKeyPrefix              = collections.NewPrefix(2)
-    SKUSequenceKeyPrefix       = collections.NewPrefix(3)
-    SKUsByProviderKeyPrefix    = collections.NewPrefix(4)
+    ParamsKey             = collections.NewPrefix(0)
+    SKUKey                = collections.NewPrefix(1)
+    SKUSequenceKey        = collections.NewPrefix(2)
+    SKUByProviderIndexKey = collections.NewPrefix(3)
+    ProviderKey           = collections.NewPrefix(4)
+    ProviderSequenceKey   = collections.NewPrefix(5)
 )
 ```
 
@@ -255,16 +257,15 @@ sequenceDiagram
 
 ### Price Divisibility
 
-SKU prices must be evenly divisible by their unit's seconds to ensure exact per-second rate calculations:
+SKU prices must be evenly divisible by their unit's seconds to ensure exact per-second rate calculations. See [Pricing and Exact Divisibility](../README.md#pricing-and-exact-divisibility) for the user-facing explanation.
 
+**Implementation:**
 ```go
 func ValidatePriceDivisibility(unit Unit, price sdk.Coin) error {
     seconds := unit.Seconds()
     if seconds == 0 {
         return ErrInvalidUnit
     }
-    
-    // Check: price.Amount % seconds == 0
     remainder := price.Amount.Mod(math.NewInt(seconds))
     if !remainder.IsZero() {
         return ErrPriceNotDivisible
@@ -273,14 +274,6 @@ func ValidatePriceDivisibility(unit Unit, price sdk.Coin) error {
 }
 ```
 
-**Valid Examples:**
-- 3600upwr per hour (3600 / 3600 = 1 per second)
-- 86400upwr per day (86400 / 86400 = 1 per second)
-
-**Invalid Examples:**
-- 100upwr per hour (100 / 3600 ≠ integer)
-- 3601upwr per hour (3601 / 3600 ≠ integer)
-
 ### Provider State Validation
 
 - Cannot create SKU for non-existent provider
@@ -288,30 +281,9 @@ func ValidatePriceDivisibility(unit Unit, price sdk.Coin) error {
 - Can update SKU to reference different active provider
 - Deactivating provider does not affect existing SKUs
 
-## Events
+## Events and Error Codes
 
-| Event | Attributes | When Emitted |
-|-------|------------|--------------|
-| `provider_created` | `provider_uuid`, `address`, `payout_address`, `created_by` | Provider created |
-| `provider_updated` | `provider_uuid` | Provider updated |
-| `provider_activated` | `provider_uuid` | Provider reactivated via update |
-| `provider_deactivated` | `provider_uuid`, `deactivated_by` | Provider deactivated |
-| `sku_created` | `sku_uuid`, `provider_uuid`, `name`, `base_price`, `created_by` | SKU created |
-| `sku_updated` | `sku_uuid`, `provider_uuid` | SKU updated |
-| `sku_activated` | `sku_uuid`, `provider_uuid` | SKU reactivated via update |
-| `sku_deactivated` | `sku_uuid`, `provider_uuid`, `deactivated_by` | SKU deactivated |
-| `params_updated` | - | Module parameters updated |
-
-## Error Codes
-
-| Error | Code | Description |
-|-------|------|-------------|
-| `ErrInvalidSKU` | 2 | SKU validation failed |
-| `ErrSKUNotFound` | 3 | SKU does not exist |
-| `ErrUnauthorized` | 4 | Sender not authority |
-| `ErrInvalidProvider` | 5 | Provider validation failed |
-| `ErrProviderNotFound` | 6 | Provider does not exist |
-| `ErrProviderInactive` | 7 | Provider is not active |
+For the complete reference of events and error codes, see [API Reference](API.md#events).
 
 ## Security Considerations
 
@@ -333,9 +305,9 @@ Both providers and SKUs use soft delete (active flag):
 
 ### Input Validation
 
-- Provider names: Max 256 characters
-- SKU names: Max 256 characters
-- Payout addresses: Valid bech32 addresses
+- SKU names: Max 256 characters (`MaxSKUNameLength`)
+- API URLs: Max 2048 characters (`MaxAPIURLLength`), HTTPS required
+- Provider/Payout addresses: Valid bech32 addresses
 - Prices: Positive, divisible by unit seconds
 - Meta hash: Optional, max 64 bytes (SHA-256/SHA-512)
 

@@ -37,7 +37,7 @@ Leases follow a two-phase commit pattern:
 1. **PENDING**: Tenant creates lease, credit is locked, awaiting provider acknowledgement
 2. **ACTIVE**: Provider acknowledges, billing starts from acknowledgement time
 3. **CLOSED**: Lease terminated normally (by tenant, provider, or credit exhaustion)
-4. **REJECTED**: Provider rejected the pending lease
+4. **REJECTED**: Provider rejected the pending lease, or tenant cancelled it
 5. **EXPIRED**: Pending lease timed out (exceeded `pending_timeout` parameter)
 
 ### Price Locking
@@ -85,6 +85,19 @@ If a tenant's credit balance is insufficient to cover accrued charges, the billi
 
 ## State
 
+### Storage Key Prefixes
+
+| Prefix | Key Type | Description |
+|--------|----------|-------------|
+| `0x00` | Params | Module parameters |
+| `0x01` | Lease | Primary lease storage (UUID → Lease) |
+| `0x02` | LeaseSequence | Sequence counter for UUIDv7 generation |
+| `0x03` | LeaseByTenant | Index: tenant → lease UUIDs |
+| `0x04` | LeaseByProvider | Index: provider UUID → lease UUIDs |
+| `0x05` | CreditAccount | Credit accounts (tenant → CreditAccount) |
+| `0x06` | CreditAddressIndex | Reverse lookup: credit address → tenant |
+| `0x07` | LeaseByState | Index: state → lease UUIDs (for pending expiration) |
+
 ### Params
 
 Module parameters stored at key `0x00`:
@@ -95,10 +108,31 @@ Module parameters stored at key `0x00`:
 | max_items_per_lease | uint64 | Maximum items per lease (default: 20, hard limit: 100) |
 | min_lease_duration | uint64 | Minimum lease duration in seconds (default: 3600 = 1 hour) |
 | max_pending_leases_per_tenant | uint64 | Maximum pending leases per tenant (default: 10) |
-| pending_timeout | uint64 | Seconds before pending lease expires (default: 1800 = 30 minutes) |
+| pending_timeout | uint64 | Seconds before pending lease expires (default: 1800 = 30 minutes, min: 60, max: 86400) |
 | allowed_list | []string | List of addresses allowed to create leases on behalf of tenants |
 
+**Validation Constraints:**
+- `max_leases_per_tenant`: Must be > 0
+- `max_items_per_lease`: Must be > 0 and ≤ 100 (hard limit)
+- `min_lease_duration`: Must be > 0
+- `max_pending_leases_per_tenant`: Must be > 0
+- `pending_timeout`: Must be between 60 seconds (1 minute) and 86400 seconds (24 hours)
+
 **Note:** There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`, enabling multi-denom billing.
+
+### Hard Limits (Constants)
+
+These values are compile-time constants and cannot be changed via governance:
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `MaxItemsPerLeaseHardLimit` | 100 | Absolute maximum items per lease |
+| `MaxPendingLeaseExpirationsPerBlock` | 100 | Maximum pending lease expirations processed per block (DoS protection) |
+| `DefaultWithdrawAllLimit` | 50 | Default number of leases processed per `WithdrawAll` call |
+| `MaxWithdrawAllLimit` | 100 | Maximum number of leases that can be processed per `WithdrawAll` call |
+| `MaxRejectionReasonLength` | 256 | Maximum characters for lease rejection reason |
+| `MaxDurationSeconds` | ~3,153,600,000 (~100 years) | Maximum lease duration for accrual calculations (overflow protection). Defined in `keeper/accrual.go`. |
+| `CreditAccountAddressPrefix` | `billing/credit/` | Prefix used for deterministic credit address derivation |
 
 ### Lease
 
@@ -183,10 +217,15 @@ sender → credit_address
 
 ### Expire Lease (EndBlocker)
 
-1. EndBlocker checks pending leases older than pending_timeout
-2. Set lease state to EXPIRED
-3. Set expired_at timestamp
-4. Decrement pending_lease_count
+The EndBlocker automatically expires pending leases that exceed the `pending_timeout`:
+
+1. Query all leases in PENDING state using the state index
+2. For each lease where `now > created_at + pending_timeout`:
+   - Set lease state to EXPIRED
+   - Set expired_at timestamp
+   - Decrement pending_lease_count
+
+**Rate Limiting:** To prevent DoS attacks, the EndBlocker processes a maximum of **100 lease expirations per block** (`MaxPendingLeaseExpirationsPerBlock`). If more than 100 leases need to expire, the remaining leases are processed in subsequent blocks. This uses a two-pass approach to avoid iterator invalidation during state modification.
 
 ### Close Lease (ACTIVE → CLOSED)
 
@@ -204,137 +243,22 @@ sender → credit_address
 
 ## Messages
 
-### MsgFundCredit
+The billing module supports the following transaction messages:
 
-Fund a tenant's credit account.
+| Message | Description |
+|---------|-------------|
+| `MsgFundCredit` | Fund a tenant's credit account |
+| `MsgCreateLease` | Create a new lease (starts in PENDING state) |
+| `MsgCreateLeaseForTenant` | Create a lease on behalf of a tenant (authority/allowed only) |
+| `MsgAcknowledgeLease` | Provider acknowledges a pending lease (→ ACTIVE) |
+| `MsgRejectLease` | Provider rejects a pending lease |
+| `MsgCancelLease` | Tenant cancels their own pending lease |
+| `MsgCloseLease` | Close an active lease |
+| `MsgWithdraw` | Withdraw accrued funds from a lease |
+| `MsgWithdrawAll` | Withdraw from all leases for a provider (paginated) |
+| `MsgUpdateParams` | Update module parameters (authority only) |
 
-```protobuf
-message MsgFundCredit {
-  string sender = 1;
-  string tenant = 2;
-  cosmos.base.v1beta1.Coin amount = 3;
-}
-```
-
-### MsgCreateLease
-
-Create a new lease in PENDING state. Provider must acknowledge before billing starts.
-
-```protobuf
-message MsgCreateLease {
-  string tenant = 1;
-  repeated LeaseItemInput items = 2;  // items use sku_uuid
-}
-```
-
-### MsgCreateLeaseForTenant
-
-Create a lease on behalf of a tenant (authority or allowed addresses only). This is used for migrating off-chain leases to on-chain. The tenant's credit account must be pre-funded.
-
-Addresses in the `allowed_list` params can use this message in addition to the module authority.
-
-```protobuf
-message MsgCreateLeaseForTenant {
-  string authority = 1;
-  string tenant = 2;
-  repeated LeaseItemInput items = 3;  // items use sku_uuid
-}
-```
-
-### MsgAcknowledgeLease
-
-Provider acknowledges a PENDING lease, transitioning it to ACTIVE state and starting billing.
-
-```protobuf
-message MsgAcknowledgeLease {
-  string sender = 1;       // Provider address or authority
-  string lease_uuid = 2;
-}
-```
-
-### MsgRejectLease
-
-Provider rejects a PENDING lease with an optional reason.
-
-```protobuf
-message MsgRejectLease {
-  string sender = 1;       // Provider address or authority
-  string lease_uuid = 2;
-  string reason = 3;       // Optional, max 256 characters
-}
-```
-
-### MsgCancelLease
-
-Tenant cancels their own PENDING lease before provider acknowledgement.
-
-```protobuf
-message MsgCancelLease {
-  string tenant = 1;
-  string lease_uuid = 2;
-}
-```
-
-### MsgCloseLease
-
-Close an ACTIVE lease. Can be called by tenant, provider, or authority.
-
-```protobuf
-message MsgCloseLease {
-  string sender = 1;
-  string lease_uuid = 2;
-}
-```
-
-### MsgWithdraw
-
-Withdraw accrued funds from a specific lease.
-
-```protobuf
-message MsgWithdraw {
-  string sender = 1;
-  string lease_uuid = 2;
-}
-```
-
-### MsgWithdrawAll
-
-Withdraw accrued funds from all leases for a provider. The provider_uuid is required.
-
-**Limits (DoS Protection):**
-- **Default limit**: 50 leases per call (when limit=0 or not specified)
-- **Maximum limit**: 100 leases per call
-- Use the `has_more` response field to determine if additional calls are needed
-
-```protobuf
-message MsgWithdrawAll {
-  string sender = 1;
-  string provider_uuid = 2;
-  uint64 limit = 3;       // Max leases to process (0 = default 50, max 100)
-}
-```
-
-Response includes `has_more` to indicate if additional calls are needed:
-
-```protobuf
-message MsgWithdrawAllResponse {
-  repeated cosmos.base.v1beta1.Coin total_amounts = 1; // One per denom
-  uint64 lease_count = 2;
-  string payout_address = 3;
-  bool has_more = 4;      // True if more leases remain
-}
-```
-
-### MsgUpdateParams
-
-Update module parameters (authority only).
-
-```protobuf
-message MsgUpdateParams {
-  string authority = 1;
-  Params params = 2;
-}
-```
+For detailed message definitions, request/response formats, and CLI usage, see [API Reference](docs/API.md#cli-commands).
 
 ## Queries
 
@@ -345,91 +269,24 @@ message MsgUpdateParams {
 | Leases | List all leases with pagination |
 | LeasesByTenant | List leases for a tenant |
 | LeasesByProvider | List leases for a provider |
+| PendingLeasesByProvider | List pending leases for a provider (gRPC/REST only; CLI: use `leases-by-provider --state pending`) |
 | CreditAccount | Get a tenant's credit account |
 | CreditAddress | Derive credit address for a tenant |
 | WithdrawableAmount | Get withdrawable amount for a lease |
 | ProviderWithdrawable | Get total withdrawable for a provider |
 
-## Events
-
-| Event | Attributes | Description |
-|-------|------------|-------------|
-| credit_funded | tenant, credit_address, sender, amount, new_balance | Credit account funded |
-| lease_created | lease_uuid, tenant, provider_uuid, item_count, total_rate_per_second, pending_lease_count, created_by | Lease created in PENDING state |
-| lease_acknowledged | lease_uuid, tenant, provider_uuid, acknowledged_by | Provider acknowledged lease (→ ACTIVE) |
-| lease_rejected | lease_uuid, tenant, provider_uuid, reason, rejected_by | Provider rejected lease |
-| lease_cancelled | lease_uuid, tenant | Tenant cancelled pending lease |
-| lease_expired | lease_uuid, tenant, provider_uuid | Pending lease expired |
-| lease_closed | lease_uuid, tenant, provider_uuid, settled_amounts, closed_by, duration_seconds, active_lease_count | Lease closed manually |
-| lease_auto_closed | lease_uuid, tenant, provider_uuid, settled_amounts, reason | Lease auto-closed due to credit exhaustion |
-| provider_withdraw | lease_uuid, provider_uuid, amounts, payout_address | Provider withdrawal |
-| provider_withdraw_all | provider_uuid, total_amounts, lease_count, payout_address | Provider withdrew from all leases |
-| params_updated | | Module parameters updated |
+**Events**: See [API Reference - Events](docs/API.md#events) for the complete list of events emitted by this module.
 
 ## Client
 
-### CLI
+For complete CLI commands, gRPC endpoints, and REST API documentation, see [API Reference](docs/API.md).
 
-#### Transactions
-
+**Quick examples:**
 ```bash
-# Fund a credit account
-manifestd tx billing fund-credit [tenant] [amount] --from [key]
-
-# Create a lease in PENDING state (format: sku_uuid:quantity)
-manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:2 --from [key]
-
-# Create a lease on behalf of a tenant (authority only)
-manifestd tx billing create-lease-for-tenant [tenant] 01912345-6789-7abc-8def-0123456789ab:2 --from [authority]
-
-# Acknowledge a pending lease (provider only)
-manifestd tx billing acknowledge-lease [lease-uuid] --from [provider-key]
-
-# Reject a pending lease (provider only)
-manifestd tx billing reject-lease [lease-uuid] --reason "Resource unavailable" --from [provider-key]
-
-# Cancel a pending lease (tenant only)
-manifestd tx billing cancel-lease [lease-uuid] --from [tenant-key]
-
-# Close an active lease
-manifestd tx billing close-lease [lease-uuid] --from [key]
-
-# Withdraw from a lease
-manifestd tx billing withdraw [lease-uuid] --from [key]
-
-# Withdraw from all leases
-manifestd tx billing withdraw-all [provider-uuid] --from [key]
-```
-
-#### Queries
-
-```bash
-# Query parameters
-manifestd query billing params
-
-# Query a lease
-manifestd query billing lease [lease-uuid]
-
-# Query all leases
-manifestd query billing leases --active-only
-
-# Query leases by tenant
-manifestd query billing leases-by-tenant [tenant] --active-only
-
-# Query leases by provider
-manifestd query billing leases-by-provider [provider-uuid] --active-only
-
-# Query credit account
-manifestd query billing credit-account [tenant]
-
-# Query credit address
-manifestd query billing credit-address [tenant]
-
-# Query withdrawable amount
-manifestd query billing withdrawable [lease-uuid]
-
-# Query provider total withdrawable
-manifestd query billing provider-withdrawable [provider-uuid]
+# Fund credit, create lease, query status
+manifestd tx billing fund-credit [tenant] 1000000upwr --from [key]
+manifestd tx billing create-lease [sku-uuid]:2 --from [key]
+manifestd query billing leases-by-tenant [tenant] --state active
 ```
 
 ## Default Parameters
@@ -466,120 +323,27 @@ The billing module depends on the SKU module for:
 
 The SKU module remains independent and does not know about the billing module.
 
-## Known Limitations & Future Improvements (v2)
-
-### Scalability Considerations
-
-The following limitations exist in the current implementation and are tracked for future improvement:
-
-#### 1. WithdrawAll Performance
-
-**Issue**: `MsgWithdrawAll` iterates over all leases for a provider, which can become expensive with many leases.
-
-**Current Mitigation**:
-- **Hard limits enforced**: Default limit of 50 leases per call, maximum of 100 leases per call to prevent DoS attacks
-- **Pagination support**: Use the `limit` parameter to process leases in batches. When `has_more` is true in the response, make additional calls to process remaining leases
-- Settlement is O(1) per lease
-
-**Example**:
-```bash
-# Process default 50 leases at a time
-manifestd tx billing withdraw-all [provider-uuid] --from provider-key
-# Or specify a custom limit (max 100)
-manifestd tx billing withdraw-all [provider-uuid] --limit 75 --from provider-key
-# If has_more is true, repeat until all leases are processed
-```
-
-**Future Improvement**: Consider adding:
-- A secondary index mapping `provider_id -> active lease IDs` for O(1) lookup
-- Background batch processing for providers with very large lease counts
-
-#### 2. LeasesByProvider Query
-
-**Issue**: `QueryLeasesByProvider` uses `CollectionFilteredPaginate` which may scan non-matching leases.
-
-**Current Mitigation**: A secondary index (`LeasesByProvider` with key prefix `0x03`) exists for efficient lookup.
-
-**Future Improvement**: Ensure the index is used optimally and consider caching for read-heavy workloads.
-
-#### 3. Active Lease Counting
-
-**Issue**: `CountActiveLeasesByTenant` iterates over all tenant leases to count active ones.
-
-**Current Mitigation**: Added `active_lease_count` field to `CreditAccount` for O(1) lookup, updated on lease create/close.
-
-**Future Improvement**: If count accuracy issues arise, consider periodic reconciliation or event-sourcing.
-
-#### 4. Provider Rate Limiting
-
-**Issue**: Providers with many active leases could create expensive on-chain operations during bulk withdrawals.
-
-**Recommendation for Integrators**:
-- Use the `limit` parameter for `MsgWithdrawAll` to batch operations
-- Implement off-chain rate limiting for withdrawal operations
-- Consider gas limits appropriate for expected lease volumes
-- Monitor transaction costs during high-throughput periods
-
-### Arithmetic Precision
-
-**Issue**: Very long-running leases (years) could theoretically overflow during accrual calculation.
-
-**Current Mitigation**: Overflow checking is implemented in `CalculateAccrual` using `math.Int` safe operations with explicit checks before multiplication.
-
-### Time Manipulation Considerations
-
-**Context**: The billing module uses block time (from consensus) for all time-based calculations including:
-- Lease creation timestamps
-- Settlement calculations
-- Duration-based accrual
-
-**Security Model**:
-- Block time is determined by validator consensus and cannot be arbitrarily manipulated by a single malicious validator
-- Time manipulation attacks would require >2/3 of voting power to collude
-- Even with collusion, CometBFT enforces that block times must be monotonically increasing
-
-**Genesis Import Validation**:
-- When importing genesis state, `ValidateWithBlockTime` ensures that `LastSettledAt` timestamps are not in the future relative to the new chain's block time
-- This prevents issues when restarting a chain with a different genesis time
-
-**Recommendation**:
-- Monitor for abnormal block time patterns in production
-- The billing module is safe from single-validator time manipulation attacks
-
-### Provider/SKU Deactivation Impact
-
-**Provider Deactivation**:
-- Providers can be deactivated via the SKU module at any time
-- Active leases continue to work with locked-in prices
-- Providers can still withdraw accrued funds from existing leases
-- No new leases can be created with SKUs from the deactivated provider
-
-**SKU Deactivation**:
-- SKUs can be deactivated via the SKU module at any time
-- Active leases continue to work with locked-in prices
-- SKU details remain queryable for reporting purposes
-- No new leases can be created using the deactivated SKU
+## Known Limitations
 
 ### Credit Withdrawal Policy
 
-**Important**: There is no mechanism to withdraw unused credit from a credit account. Once tokens are funded to a credit account, they can only be spent on leases. This design choice:
+There is no mechanism to withdraw unused credit from a credit account. Once tokens are funded, they can only be spent on leases. This mimics typical cloud providers (AWS credits, etc.) and prevents gaming of the system. Unused credit remains available for future leases.
 
-- Mimics typical web2 cloud providers (AWS credits, Google Cloud credits, etc.)
-- Simplifies the economic model
-- Prevents gaming of the system
+### Provider/SKU Deactivation
 
-Credit that remains after a lease is closed stays in the credit account and can be used for future leases.
+When a provider or SKU is deactivated:
+- Active leases continue with locked-in prices
+- Providers can still withdraw accrued funds
+- No new leases can be created with deactivated providers/SKUs
 
-### Future Feature Candidates
+### WithdrawAll Pagination
 
-1. **Lease Pruning**: Implement automatic pruning of old inactive leases to reduce state size
-2. **Credit Account Expiry**: Allow credit accounts to be cleaned up if empty and unused
-3. **Multi-Provider Leases**: Allow a single lease to span multiple providers
-4. **Delegation**: Allow tenants to delegate lease management to other addresses
-5. **Provider Reputation**: Track provider acknowledgement rates and reliability for tenant decision-making
-6. **Provider Shutdown Handling**: Automated lease closure and refund mechanism when providers go offline
-7. **Dispute Resolution**: Mechanism for tenants to dispute charges or service quality
-8. **Per-Lease API URL Override**: Allow providers to specify regional or dedicated endpoints at acknowledgement time (optional `api_url` field on `MsgAcknowledgeLease` and `Lease`, falling back to `Provider.api_url` if not set)
+`MsgWithdrawAll` processes up to 100 leases per call. Use the `limit` parameter and check `has_more` in the response to process all leases:
+```bash
+manifestd tx billing withdraw-all [provider-uuid] --limit 100 --from provider-key
+```
+
+For detailed scalability analysis, time manipulation considerations, and future improvement plans, see [Architecture](docs/ARCHITECTURE.md#scalability-considerations).
 
 ## Additional Documentation
 
@@ -587,6 +351,7 @@ Credit that remains after a lease is closed stays in the credit account and can 
 - [Provider Setup Guide](../sku/docs/PROVIDER_GUIDE.md) - Creating and managing providers
 - [SKU Setup Guide](../sku/docs/SKU_GUIDE.md) - Creating and managing SKUs (billable items)
 - [Migration Guide](docs/MIGRATION.md) - Guide for authority members migrating off-chain leases
+- [Integration Guide](docs/INTEGRATION.md) - Tenant authentication to provider APIs (ADR-036)
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common errors and solutions
 - [API Reference](docs/API.md) - Complete CLI and gRPC/REST API reference
 

@@ -67,8 +67,13 @@ This document records key design decisions made during the development of the x/
 
 **Derivation Formula:**
 ```go
-creditAddr = sha256("billing" + tenantAddr)[:20]
+// Uses Cosmos SDK's address.Module function for proper module account derivation
+key := append([]byte("billing/credit/"), tenantAddr.Bytes()...)
+hash := sha256.Sum256(key)
+creditAddr = address.Module("billing", hash[:])
 ```
+
+See `x/billing/types/credit.go` for the implementation.
 
 ## Decision 4: Price Locking at Lease Creation
 

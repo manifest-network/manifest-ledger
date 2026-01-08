@@ -35,6 +35,8 @@ manifestd tx billing update-params \
   100 \
   20 \
   3600 \
+  10 \
+  1800 \
   --from authority
 ```
 
@@ -44,6 +46,8 @@ manifestd tx billing update-params \
 | `max_leases_per_tenant` | Max active leases per tenant | 100 |
 | `max_items_per_lease` | Max items in single lease | 20 |
 | `min_lease_duration` | Min seconds credit must cover | 3600 |
+| `max_pending_leases_per_tenant` | Max pending leases per tenant | 10 |
+| `pending_timeout` | Seconds before pending lease expires | 1800 |
 
 **Note:** There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`, enabling multi-denom billing.
 
@@ -53,10 +57,11 @@ If you want non-authority addresses to create leases for tenants:
 
 ```bash
 manifestd tx billing update-params \
-  "factory/manifest1.../upwr" \
   100 \
   20 \
   3600 \
+  10 \
+  1800 \
   --allowed-list "manifest1allowed1...,manifest1allowed2..." \
   --from authority
 ```
@@ -366,6 +371,38 @@ If the lease expires (remains in PENDING past `pending_timeout`), it transitions
 1. Increase `pending_timeout` temporarily via `update-params`
 2. Have provider ready to acknowledge immediately after creation
 3. Script the create and acknowledge together (as shown above)
+
+## Genesis Import Validation
+
+When importing billing state via genesis (e.g., during chain upgrades or migrations), the module performs two-phase validation:
+
+### Phase 1: Static Validation (`ValidateGenesis`)
+
+Validates without blockchain context:
+- Lease UUIDs are valid and unique
+- Credit account addresses are correctly derived
+- Required fields are present
+- SKU-provider relationships are consistent
+
+### Phase 2: Time-Based Validation (`ValidateWithBlockTime`)
+
+Validates timestamps against block time during `InitGenesis`:
+
+| Field | Validation |
+|-------|------------|
+| `last_settled_at` | Must not be in the future |
+| `created_at` | Must not be in the future |
+| `closed_at` | Must not be in the future (for CLOSED leases) |
+| `rejected_at` | Must not be in the future (for REJECTED leases) |
+| `expired_at` | Must not be in the future (for EXPIRED leases) |
+| `acknowledged_at` | Must not be in the future (for ACTIVE leases) |
+
+**Error Example:**
+```
+lease abc123 has last_settled_at (2025-01-08T00:00:00Z) in the future relative to block time (2025-01-07T12:00:00Z)
+```
+
+**Resolution:** Ensure all timestamps in genesis state are at or before the genesis block time.
 
 ## Related Documentation
 

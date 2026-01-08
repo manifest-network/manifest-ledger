@@ -137,12 +137,7 @@ ratePerSecond = basePrice.Amount / unit.Seconds()
 - Conversion overhead (minimal)
 - Enum evolution requires careful handling
 
-**Current Units:**
-| Enum Value | Name | Seconds |
-|------------|------|---------|
-| 0 | UNIT_UNSPECIFIED | Invalid |
-| 1 | UNIT_PER_HOUR | 3600 |
-| 2 | UNIT_PER_DAY | 86400 |
+See [Billing Units](../README.md#billing-units) for the complete unit reference.
 
 ## Decision 7: Meta Hash for Off-Chain Data
 

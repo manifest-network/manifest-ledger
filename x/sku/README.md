@@ -76,6 +76,25 @@ Provider and SKU operations (create, update, deactivate) can be performed by:
 
 Only the module authority can update the parameters (including the allowed list).
 
+### Validation Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `MaxSKUNameLength` | 256 | Maximum length of SKU name in characters |
+| `MaxAPIURLLength` | 2048 | Maximum length of provider API URL in characters |
+
+**API URL Requirements:**
+- Must use HTTPS scheme (http:// is rejected)
+- Must have a valid host (empty host is rejected)
+- Must not contain user credentials (e.g., `https://user:pass@host` is rejected)
+- Must not exceed `MaxAPIURLLength` (2048 characters)
+
+**Note on MsgUpdateProvider**: If `api_url` is an empty string during an update, the existing API URL is preserved rather than being cleared. This allows updating other fields without accidentally removing the API URL.
+
+### Security
+
+**SKU Name Sanitization:** When SKU names are emitted in events or logs, they are sanitized to prevent log injection attacks. The original name is stored in state unchanged, but the sanitized version is used for event attributes and log messages. This protects against malicious SKU names containing control characters or log format strings.
+
 ### Business Rules
 
 - SKUs can only be created for active Providers
@@ -83,6 +102,24 @@ Only the module authority can update the parameters (including the allowed list)
 - Deactivating a Provider does not affect existing SKUs (they remain active/inactive as they were)
 - Deactivating a SKU is a soft delete - the SKU remains queryable but cannot be used for new leases
 - Provider and SKU UUIDs are generated deterministically using UUIDv7 format and never reused
+
+### Deactivation Impact on Existing Leases
+
+When a Provider or SKU is deactivated, **existing active leases continue to operate normally**:
+
+**Provider Deactivation:**
+- Existing active leases using the provider's SKUs continue with locked-in prices
+- The provider can still withdraw accrued funds from existing leases
+- Tenants can still close their leases normally
+- Only **new lease creation** is blocked for the deactivated provider's SKUs
+
+**SKU Deactivation:**
+- Existing active leases using the SKU continue with locked-in prices
+- The SKU remains queryable for reporting and auditing
+- Settlement and withdrawal continue normally
+- Only **new lease creation** is blocked for the deactivated SKU
+
+This soft-delete approach maintains billing integrity and allows graceful phase-out of services.
 
 ## State
 
@@ -104,266 +141,38 @@ The module has the following configurable parameters:
 |-----------|------|-------------|
 | `allowed_list` | `[]string` | List of addresses authorized to manage Providers and SKUs |
 
+**Note:** The `allowed_list` must not contain duplicate addresses. Duplicate addresses will cause parameter validation to fail during `UpdateParams`.
+
 ## Messages
 
-### MsgCreateProvider
+The SKU module supports the following transaction messages:
 
-Creates a new Provider. Can be executed by the module authority or addresses in the allowed list.
+| Message | Description |
+|---------|-------------|
+| `MsgCreateProvider` | Create a new provider |
+| `MsgUpdateProvider` | Update an existing provider |
+| `MsgDeactivateProvider` | Deactivate a provider (soft delete) |
+| `MsgCreateSKU` | Create a new SKU for an active provider |
+| `MsgUpdateSKU` | Update an existing SKU |
+| `MsgDeactivateSKU` | Deactivate a SKU (soft delete) |
+| `MsgUpdateParams` | Update module parameters (authority only) |
 
-```protobuf
-message MsgCreateProvider {
-  string authority = 1;
-  string address = 2;
-  string payout_address = 3;
-  bytes meta_hash = 4;
-  string api_url = 5;
-}
-```
-
-**CLI Example:**
-
-```bash
-manifestd tx sku create-provider manifest1... manifest1... \
-  --api-url https://api.provider.com \
-  --meta-hash deadbeef \
-  --from mykey \
-  --chain-id manifest-1
-```
-
-### MsgUpdateProvider
-
-Updates an existing Provider. Can be executed by the module authority or addresses in the allowed list.
-
-```protobuf
-message MsgUpdateProvider {
-  string authority = 1;
-  string uuid = 2;
-  string address = 3;
-  string payout_address = 4;
-  bytes meta_hash = 5;
-  bool active = 6;
-  string api_url = 7;
-}
-```
-
-**CLI Example:**
-
-```bash
-manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1... manifest1... true \
-  --api-url https://api.provider.com \
-  --meta-hash cafebabe \
-  --from mykey \
-  --chain-id manifest-1
-```
-
-### MsgDeactivateProvider
-
-Deactivates an existing Provider (soft delete). The Provider remains in state but is marked as inactive.
-Inactive Providers cannot have new SKUs created for them.
-Can be executed by the module authority or addresses in the allowed list.
-
-```protobuf
-message MsgDeactivateProvider {
-  string authority = 1;
-  string uuid = 2;
-}
-```
-
-**CLI Example:**
-
-```bash
-manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab \
-  --from mykey \
-  --chain-id manifest-1
-```
-
-### MsgCreateSKU
-
-Creates a new SKU for an active Provider. Can be executed by the module authority or addresses in the allowed list.
-
-```protobuf
-message MsgCreateSKU {
-  string authority = 1;
-  string provider_uuid = 2;
-  string name = 3;
-  Unit unit = 4;
-  cosmos.base.v1beta1.Coin base_price = 5;
-  bytes meta_hash = 6;
-}
-```
-
-**CLI Example:**
-
-```bash
-manifestd tx sku create-sku 01912345-6789-7abc-8def-0123456789ab "Compute Small" 1 3600upwr \
-  --meta-hash deadbeef \
-  --from mykey \
-  --chain-id manifest-1
-```
-
-### MsgUpdateSKU
-
-Updates an existing SKU. Can be executed by the module authority or addresses in the allowed list.
-
-```protobuf
-message MsgUpdateSKU {
-  string authority = 1;
-  string uuid = 2;
-  string provider_uuid = 3;
-  string name = 4;
-  Unit unit = 5;
-  cosmos.base.v1beta1.Coin base_price = 6;
-  bytes meta_hash = 7;
-  bool active = 8;
-}
-```
-
-**CLI Example:**
-
-```bash
-manifestd tx sku update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab "Compute Medium" 2 86400upwr true \
-  --meta-hash cafebabe \
-  --from mykey \
-  --chain-id manifest-1
-```
-
-### MsgDeactivateSKU
-
-Deactivates an existing SKU (soft delete). The SKU remains in state but is marked as inactive.
-Inactive SKUs cannot be used for new leases but existing leases continue with their locked prices.
-Can be executed by the module authority or addresses in the allowed list.
-
-```protobuf
-message MsgDeactivateSKU {
-  string authority = 1;
-  string uuid = 2;
-}
-```
-
-**CLI Example:**
-
-```bash
-manifestd tx sku deactivate-sku 01912345-6789-7abc-8def-0123456789ab \
-  --from mykey \
-  --chain-id manifest-1
-```
-
-### MsgUpdateParams
-
-Updates the module parameters. Only the module authority can execute this message.
-
-```protobuf
-message MsgUpdateParams {
-  string authority = 1;
-  Params params = 2;
-}
-```
-
-**CLI Example:**
-
-```bash
-# Add addresses to the allowed list
-manifestd tx sku update-params \
-  --allowed-list "manifest1abc...,manifest1def..." \
-  --from authority \
-  --chain-id manifest-1
-
-# Clear the allowed list
-manifestd tx sku update-params \
-  --allowed-list "" \
-  --from authority \
-  --chain-id manifest-1
-```
+For detailed message definitions, request/response formats, and CLI usage, see [API Reference](docs/API.md#cli-commands).
 
 ## Queries
 
-### Params
+| Query | Description |
+|-------|-------------|
+| Params | Get module parameters |
+| Provider | Get a provider by UUID |
+| Providers | List all providers (supports `--active-only` filter) |
+| SKU | Get a SKU by UUID |
+| SKUs | List all SKUs (supports `--active-only` filter) |
+| SKUsByProvider | List SKUs for a specific provider |
 
-Query the module parameters.
+For detailed query documentation with response formats, see [API Reference](docs/API.md#query-commands).
 
-```bash
-manifestd query sku params
-```
-
-### Provider
-
-Query a specific Provider by UUID.
-
-```bash
-manifestd query sku provider [uuid]
-```
-
-### Providers
-
-Query all Providers with pagination.
-
-```bash
-manifestd query sku providers
-
-# With pagination
-manifestd query sku providers --limit 10 --page-key "AAAAAAAAAAM="
-
-# Filter to return only active Providers
-manifestd query sku providers --active-only
-```
-
-### SKU
-
-Query a specific SKU by UUID.
-
-```bash
-manifestd query sku sku [uuid]
-```
-
-### SKUs
-
-Query all SKUs with pagination.
-
-```bash
-manifestd query sku skus
-
-# With pagination (limit and offset)
-manifestd query sku skus --limit 10 --offset 0
-
-# With pagination (using page key from previous response)
-manifestd query sku skus --limit 10 --page-key "AAAAAAAAAAM="
-
-# Filter to return only active SKUs
-manifestd query sku skus --active-only
-```
-
-### SKUsByProvider
-
-Query all SKUs for a specific Provider with pagination.
-
-```bash
-manifestd query sku skus-by-provider [provider_uuid]
-
-# With pagination
-manifestd query sku skus-by-provider 01912345-6789-7abc-8def-0123456789ab --limit 10
-
-# With page key from previous response
-manifestd query sku skus-by-provider 01912345-6789-7abc-8def-0123456789ab --limit 10 --page-key "AAAAAAAAAAM="
-
-# Filter to return only active SKUs
-manifestd query sku skus-by-provider 01912345-6789-7abc-8def-0123456789ab --active-only
-```
-
-## Events
-
-The module emits the following events:
-
-| Event Type | Attributes | Description |
-|------------|------------|-------------|
-| `provider_created` | `provider_uuid`, `address`, `payout_address`, `created_by` | Emitted when a Provider is created |
-| `provider_updated` | `provider_uuid` | Emitted when a Provider is updated |
-| `provider_activated` | `provider_uuid` | Emitted when a Provider is re-activated via update |
-| `provider_deactivated` | `provider_uuid`, `deactivated_by` | Emitted when a Provider is deactivated |
-| `sku_created` | `sku_uuid`, `provider_uuid`, `name`, `base_price`, `created_by` | Emitted when a SKU is created |
-| `sku_updated` | `sku_uuid`, `provider_uuid` | Emitted when a SKU is updated |
-| `sku_activated` | `sku_uuid`, `provider_uuid` | Emitted when a SKU is re-activated via update |
-| `sku_deactivated` | `sku_uuid`, `provider_uuid`, `deactivated_by` | Emitted when a SKU is deactivated |
-| `params_updated` | - | Emitted when module parameters are updated |
+**Events & Error Codes**: See [API Reference](docs/API.md#events) for the complete list of events and error codes.
 
 ## Genesis
 
@@ -413,50 +222,26 @@ Example genesis configuration:
 }
 ```
 
+**Genesis Validation:**
+- Provider and SKU UUIDs must be valid UUIDv7 format
+- Each SKU must reference an existing provider UUID from the same genesis state
+- Provider API URLs are validated if provided (must be HTTPS, no credentials)
+- No duplicate provider or SKU UUIDs allowed
+
 ## Client
 
-### CLI
+For complete CLI commands, gRPC endpoints, and REST API documentation, see [API Reference](docs/API.md).
 
-The module provides CLI commands for both queries and transactions:
+**Quick examples:**
+```bash
+# Create provider and SKU
+manifestd tx sku create-provider [address] [payout-address] --api-url https://api.example.com --from [key]
+manifestd tx sku create-sku [provider-uuid] "Compute Small" 1 3600upwr --from [key]
 
-**Query Commands:**
-- `manifestd query sku params` - Query module parameters
-- `manifestd query sku provider [uuid]` - Query a specific Provider
-- `manifestd query sku providers` - Query all Providers
-- `manifestd query sku sku [uuid]` - Query a specific SKU
-- `manifestd query sku skus` - Query all SKUs
-- `manifestd query sku skus-by-provider [provider_uuid]` - Query SKUs by Provider
-
-**Transaction Commands:**
-- `manifestd tx sku create-provider` - Create a new Provider
-- `manifestd tx sku update-provider` - Update an existing Provider
-- `manifestd tx sku deactivate-provider` - Deactivate a Provider (soft delete)
-- `manifestd tx sku create-sku` - Create a new SKU
-- `manifestd tx sku update-sku` - Update an existing SKU
-- `manifestd tx sku deactivate-sku` - Deactivate a SKU (soft delete)
-- `manifestd tx sku update-params` - Update module parameters
-
-### gRPC
-
-The module exposes gRPC endpoints for all queries:
-
-- `liftedinit.sku.v1.Query/Params`
-- `liftedinit.sku.v1.Query/Provider`
-- `liftedinit.sku.v1.Query/Providers`
-- `liftedinit.sku.v1.Query/SKU`
-- `liftedinit.sku.v1.Query/SKUs`
-- `liftedinit.sku.v1.Query/SKUsByProvider`
-
-### REST
-
-REST endpoints are available through the gRPC gateway:
-
-- `GET /liftedinit/sku/v1/params`
-- `GET /liftedinit/sku/v1/provider/{uuid}`
-- `GET /liftedinit/sku/v1/providers`
-- `GET /liftedinit/sku/v1/sku/{uuid}`
-- `GET /liftedinit/sku/v1/skus`
-- `GET /liftedinit/sku/v1/skus/provider/{provider_uuid}`
+# Query providers and SKUs
+manifestd query sku providers --active-only
+manifestd query sku skus-by-provider [provider-uuid]
+```
 
 ## Additional Documentation
 
@@ -464,6 +249,7 @@ REST endpoints are available through the gRPC gateway:
 - [Provider Setup Guide](docs/PROVIDER_GUIDE.md) - Step-by-step guide to creating providers
 - [SKU Setup Guide](docs/SKU_GUIDE.md) - Step-by-step guide to creating SKUs
 - [API Reference](docs/API.md) - Complete CLI and gRPC/REST API reference
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common errors and solutions
 
 ### Developer Documentation
 - [Architecture](docs/ARCHITECTURE.md) - Internal architecture, data models, and flow diagrams
