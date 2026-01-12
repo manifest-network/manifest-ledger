@@ -159,18 +159,35 @@ func (m *MsgUpdateParams) ValidateBasic() error {
 	return m.Params.Validate()
 }
 
+// MaxBatchLeaseSize is the maximum number of leases that can be processed in a single batch operation.
+const MaxBatchLeaseSize = 100
+
 // ValidateBasic performs basic validation for MsgAcknowledgeLease.
 func (m *MsgAcknowledgeLease) ValidateBasic() error {
 	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
 		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
 	}
 
-	if m.LeaseUuid == "" {
-		return ErrInvalidLease.Wrap("lease_uuid cannot be empty")
+	if len(m.LeaseUuids) == 0 {
+		return ErrInvalidLease.Wrap("lease_uuids cannot be empty")
 	}
 
-	if !pkguuid.IsValidUUID(m.LeaseUuid) {
-		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", m.LeaseUuid)
+	if len(m.LeaseUuids) > MaxBatchLeaseSize {
+		return ErrInvalidLease.Wrapf("too many leases: %d exceeds maximum %d", len(m.LeaseUuids), MaxBatchLeaseSize)
+	}
+
+	seen := make(map[string]bool, len(m.LeaseUuids))
+	for i, uuid := range m.LeaseUuids {
+		if uuid == "" {
+			return ErrInvalidLease.Wrapf("lease_uuids[%d] is empty", i)
+		}
+		if !pkguuid.IsValidUUID(uuid) {
+			return ErrInvalidLease.Wrapf("lease_uuids[%d] invalid format: %s", i, uuid)
+		}
+		if seen[uuid] {
+			return ErrInvalidLease.Wrapf("duplicate lease_uuid: %s", uuid)
+		}
+		seen[uuid] = true
 	}
 
 	return nil

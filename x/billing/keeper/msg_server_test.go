@@ -53,8 +53,8 @@ func (f *testFixture) createAndAcknowledgeLease(
 
 	// Acknowledge the lease as the provider
 	ackResp, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-		Sender:    providerAddr.String(),
-		LeaseUuid: createResp.LeaseUuid,
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{createResp.LeaseUuid},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, ackResp)
@@ -936,8 +936,8 @@ func TestMsgWithdrawAll(t *testing.T) {
 
 		// Acknowledge each lease
 		_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-			Sender:    providerAddr.String(),
-			LeaseUuid: createResp.LeaseUuid,
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{createResp.LeaseUuid},
 		})
 		require.NoError(t, err)
 	}
@@ -1003,8 +1003,8 @@ func TestMsgWithdrawAll_AtomicSettlement(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-		Sender:    providerAddr.String(),
-		LeaseUuid: createResp.LeaseUuid,
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{createResp.LeaseUuid},
 	})
 	require.NoError(t, err)
 
@@ -2033,9 +2033,12 @@ func TestMsgAcknowledgeLease(t *testing.T) {
 	require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
 
 	t.Run("success: provider acknowledges lease", func(t *testing.T) {
+		// Clear event manager to isolate acknowledge events
+		f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+
 		resp, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-			Sender:    providerAddr.String(),
-			LeaseUuid: leaseID,
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{leaseID},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
@@ -2046,6 +2049,21 @@ func TestMsgAcknowledgeLease(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
 		require.NotNil(t, lease.AcknowledgedAt)
+
+		// Verify single lease does NOT emit batch event
+		events := f.Ctx.EventManager().Events()
+		perLeaseEventCount := 0
+		batchEventCount := 0
+		for _, event := range events {
+			switch event.Type {
+			case types.EventTypeLeaseAcknowledged:
+				perLeaseEventCount++
+			case types.EventTypeBatchAcknowledged:
+				batchEventCount++
+			}
+		}
+		require.Equal(t, 1, perLeaseEventCount, "should emit 1 per-lease event")
+		require.Equal(t, 0, batchEventCount, "should NOT emit batch event for single lease")
 	})
 
 	// Create another lease for error tests
@@ -2058,8 +2076,8 @@ func TestMsgAcknowledgeLease(t *testing.T) {
 
 	t.Run("fail: unauthorized user cannot acknowledge", func(t *testing.T) {
 		_, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-			Sender:    unauthorizedUser.String(),
-			LeaseUuid: leaseID2,
+			Sender:     unauthorizedUser.String(),
+			LeaseUuids: []string{leaseID2},
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unauthorized")
@@ -2067,8 +2085,8 @@ func TestMsgAcknowledgeLease(t *testing.T) {
 
 	t.Run("fail: cannot acknowledge non-existent lease", func(t *testing.T) {
 		_, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-			Sender:    providerAddr.String(),
-			LeaseUuid: "01912345-6789-7abc-8def-999999999999",
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{"01912345-6789-7abc-8def-999999999999"},
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not found")
@@ -2076,8 +2094,8 @@ func TestMsgAcknowledgeLease(t *testing.T) {
 
 	t.Run("fail: cannot acknowledge already active lease", func(t *testing.T) {
 		_, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-			Sender:    providerAddr.String(),
-			LeaseUuid: leaseID, // Already acknowledged above
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{leaseID}, // Already acknowledged above
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not in PENDING state")
@@ -2085,11 +2103,240 @@ func TestMsgAcknowledgeLease(t *testing.T) {
 
 	t.Run("success: authority can acknowledge lease", func(t *testing.T) {
 		resp, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-			Sender:    f.Authority.String(),
-			LeaseUuid: leaseID2,
+			Sender:     f.Authority.String(),
+			LeaseUuids: []string{leaseID2},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
+	})
+}
+
+// TestMsgAcknowledgeLeaseBatch tests batch acknowledgement of multiple leases.
+func TestMsgAcknowledgeLeaseBatch(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	provider2Addr := f.TestAccs[3]
+	payout2Addr := f.TestAccs[4]
+	denom := testDenom
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Create second provider for mixed-provider test
+	provider2 := f.createTestProvider(t, provider2Addr.String(), payout2Addr.String())
+	sku2 := f.createTestSKU(t, provider2.Uuid, 3600)
+
+	// Fund tenant's credit account generously
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	t.Run("success: acknowledge multiple leases at once", func(t *testing.T) {
+		// Create 3 pending leases for the same provider
+		lease1, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+
+		lease2, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 2}},
+		})
+		require.NoError(t, err)
+
+		lease3, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 3}},
+		})
+		require.NoError(t, err)
+
+		// Clear event manager to isolate acknowledge events
+		f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+
+		// Acknowledge all 3 at once
+		resp, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{lease1.LeaseUuid, lease2.LeaseUuid, lease3.LeaseUuid},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, uint64(3), resp.AcknowledgedCount)
+		require.False(t, resp.AcknowledgedAt.IsZero())
+
+		// Verify all leases are now ACTIVE
+		for _, uuid := range []string{lease1.LeaseUuid, lease2.LeaseUuid, lease3.LeaseUuid} {
+			lease, err := f.App.BillingKeeper.GetLease(f.Ctx, uuid)
+			require.NoError(t, err)
+			require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+			require.NotNil(t, lease.AcknowledgedAt)
+		}
+
+		// Verify events: 3 per-lease events + 1 batch summary event
+		events := f.Ctx.EventManager().Events()
+		perLeaseEventCount := 0
+		batchEventCount := 0
+		for _, event := range events {
+			switch event.Type {
+			case types.EventTypeLeaseAcknowledged:
+				perLeaseEventCount++
+			case types.EventTypeBatchAcknowledged:
+				batchEventCount++
+				// Verify batch event attributes
+				for _, attr := range event.Attributes {
+					switch attr.Key {
+					case types.AttributeKeyLeaseCount:
+						require.Equal(t, "3", attr.Value)
+					case types.AttributeKeyProviderUUID:
+						require.Equal(t, provider.Uuid, attr.Value)
+					case types.AttributeKeyAcknowledgedBy:
+						require.Equal(t, providerAddr.String(), attr.Value)
+					}
+				}
+			}
+		}
+		require.Equal(t, 3, perLeaseEventCount, "should emit 3 per-lease events")
+		require.Equal(t, 1, batchEventCount, "should emit 1 batch summary event")
+	})
+
+	t.Run("fail: mixed providers", func(t *testing.T) {
+		// Create leases for different providers
+		leaseP1, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+
+		leaseP2, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku2.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+
+		// Try to acknowledge both (different providers) - should fail
+		_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{leaseP1.LeaseUuid, leaseP2.LeaseUuid},
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "belongs to provider")
+
+		// Verify both leases are still PENDING (atomic rollback)
+		lease1, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseP1.LeaseUuid)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_PENDING, lease1.State)
+
+		lease2, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseP2.LeaseUuid)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_PENDING, lease2.State)
+	})
+
+	t.Run("fail: one lease not pending (atomicity)", func(t *testing.T) {
+		// Create two leases
+		pendingLease, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+
+		activeLease, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+
+		// Acknowledge one lease first
+		_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{activeLease.LeaseUuid},
+		})
+		require.NoError(t, err)
+
+		// Try to acknowledge both (one already active) - should fail
+		_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{pendingLease.LeaseUuid, activeLease.LeaseUuid},
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not in PENDING state")
+
+		// Verify the pending lease is still PENDING (atomic - no partial success)
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, pendingLease.LeaseUuid)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
+	})
+
+	t.Run("fail: empty lease list", func(t *testing.T) {
+		_, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{},
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot be empty")
+	})
+
+	t.Run("fail: duplicate UUIDs", func(t *testing.T) {
+		lease, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+
+		_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{lease.LeaseUuid, lease.LeaseUuid},
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "duplicate")
+	})
+
+	t.Run("fail: missing credit account (data integrity)", func(t *testing.T) {
+		// Create a new tenant address without a credit account
+		orphanTenant := sdk.AccAddress("orphan_tenant_addr__")
+
+		// Directly create a lease in the store (bypassing normal flow to simulate data integrity issue)
+		// Use valid UUIDv7 format (version 7 = 0x7xxx in the version nibble)
+		orphanLeaseUUID := "01912345-6789-7abc-8def-ffffffffffff"
+		orphanLease := types.Lease{
+			Uuid:         orphanLeaseUUID,
+			Tenant:       orphanTenant.String(),
+			ProviderUuid: provider.Uuid,
+			State:        types.LEASE_STATE_PENDING,
+			Items: []types.LeaseItem{
+				{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewInt64Coin(denom, 3600)},
+			},
+			CreatedAt:     f.Ctx.BlockTime(),
+			LastSettledAt: f.Ctx.BlockTime(),
+		}
+		err := f.App.BillingKeeper.SetLease(f.Ctx, orphanLease)
+		require.NoError(t, err)
+
+		// Try to acknowledge - should fail because credit account doesn't exist
+		_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{orphanLeaseUUID},
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "credit account not found")
+		require.Contains(t, err.Error(), "data integrity issue")
+
+		// Verify lease is still PENDING (no partial state change)
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, orphanLeaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
 	})
 }
 
@@ -2267,8 +2514,8 @@ func TestMsgCancelLease(t *testing.T) {
 
 	// First acknowledge the lease, then try to cancel
 	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-		Sender:    providerAddr.String(),
-		LeaseUuid: leaseID2,
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{leaseID2},
 	})
 	require.NoError(t, err)
 
@@ -2408,8 +2655,8 @@ func TestLeaseLifecycleEvents(t *testing.T) {
 	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
 
 	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-		Sender:    providerAddr.String(),
-		LeaseUuid: createResp.LeaseUuid,
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{createResp.LeaseUuid},
 	})
 	require.NoError(t, err)
 

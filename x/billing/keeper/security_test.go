@@ -145,8 +145,8 @@ func TestSecurity_UnauthorizedLeaseAcknowledgement(t *testing.T) {
 
 	// Attacker (not the provider) tries to acknowledge the lease
 	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-		Sender:    attacker.String(),
-		LeaseUuid: createResp.LeaseUuid,
+		Sender:     attacker.String(),
+		LeaseUuids: []string{createResp.LeaseUuid},
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unauthorized")
@@ -566,8 +566,8 @@ func TestSecurity_DoubleAcknowledgement(t *testing.T) {
 
 	// Try to acknowledge again (should fail)
 	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-		Sender:    providerAddr.String(),
-		LeaseUuid: leaseID,
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{leaseID},
 	})
 	require.Error(t, err)
 }

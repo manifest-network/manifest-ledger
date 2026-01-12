@@ -282,7 +282,9 @@ message MsgUpdateParams {
 // MsgUpdateParamsResponse is the response type for MsgUpdateParams.
 message MsgUpdateParamsResponse {}
 
-// MsgAcknowledgeLease allows a provider to acknowledge a PENDING lease.
+// MsgAcknowledgeLease allows a provider to acknowledge one or more PENDING leases.
+// All leases must belong to the same provider and be in PENDING state.
+// This is an atomic operation: all leases succeed or all fail.
 message MsgAcknowledgeLease {
   option (cosmos.msg.v1.signer) = "sender";
   option (amino.name) = "lifted/billing/MsgAcknowledgeLease";
@@ -293,19 +295,22 @@ message MsgAcknowledgeLease {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_uuid is the UUID of the lease to acknowledge.
-  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+  // lease_uuids are the UUIDs of the leases to acknowledge (1-100).
+  repeated string lease_uuids = 2 [(gogoproto.jsontag) = "lease_uuids,omitempty"];
 }
 
 // MsgAcknowledgeLeaseResponse is the response type for MsgAcknowledgeLease.
 message MsgAcknowledgeLeaseResponse {
-  // acknowledged_at is the timestamp when the lease was acknowledged.
+  // acknowledged_at is the timestamp when the leases were acknowledged.
   // Billing starts from this timestamp.
   google.protobuf.Timestamp acknowledged_at = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.stdtime) = true,
     (gogoproto.jsontag) = "acknowledged_at"
   ];
+
+  // acknowledged_count is the number of leases that were acknowledged.
+  uint64 acknowledged_count = 2 [(gogoproto.jsontag) = "acknowledged_count"];
 }
 
 // MsgRejectLease allows a provider to reject a PENDING lease.

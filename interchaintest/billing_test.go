@@ -3195,6 +3195,94 @@ func testLeaseAcknowledgeEdgeCases(t *testing.T, ctx context.Context, chain *cos
 		t.Log("Correctly rejected cancel for non-existent lease")
 	})
 
+	// ==================== Batch Acknowledge Tests ====================
+
+	t.Run("success: batch acknowledge multiple leases", func(t *testing.T) {
+		// Create 3 pending leases
+		var batchLeaseUUIDs []string
+		for i := 0; i < 3; i++ {
+			createRes, err := helpers.BillingCreateLease(ctx, chain, ackTestTenant, items)
+			require.NoError(t, err)
+			createTxRes, err := chain.GetTransaction(createRes.TxHash)
+			require.NoError(t, err)
+			require.Equal(t, uint32(0), createTxRes.Code, "lease %d creation should succeed: %s", i+1, createTxRes.RawLog)
+
+			leaseUUID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, createRes.TxHash)
+			require.NoError(t, err)
+			batchLeaseUUIDs = append(batchLeaseUUIDs, leaseUUID)
+		}
+
+		// Verify all are pending
+		for _, uuid := range batchLeaseUUIDs {
+			lease, err := helpers.BillingQueryLease(ctx, chain, uuid)
+			require.NoError(t, err)
+			require.Equal(t, "LEASE_STATE_PENDING", lease.Lease.State)
+		}
+
+		// Batch acknowledge all 3 at once
+		ackRes, err := helpers.BillingAcknowledgeLeases(ctx, chain, providerWallet, batchLeaseUUIDs)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "batch acknowledge should succeed: %s", ackTxRes.RawLog)
+
+		// Verify all leases are now active
+		for _, uuid := range batchLeaseUUIDs {
+			lease, err := helpers.BillingQueryLease(ctx, chain, uuid)
+			require.NoError(t, err)
+			require.Equal(t, "LEASE_STATE_ACTIVE", lease.Lease.State, "lease %s should be active after batch ack", uuid)
+		}
+
+		t.Logf("Successfully batch acknowledged %d leases", len(batchLeaseUUIDs))
+
+		// Cleanup
+		for _, uuid := range batchLeaseUUIDs {
+			_, _ = helpers.BillingCloseLease(ctx, chain, ackTestTenant, uuid)
+		}
+	})
+
+	t.Run("fail: batch acknowledge with one already active lease (atomicity)", func(t *testing.T) {
+		// Create 2 leases
+		var atomicLeaseUUIDs []string
+		for i := 0; i < 2; i++ {
+			createRes, err := helpers.BillingCreateLease(ctx, chain, ackTestTenant, items)
+			require.NoError(t, err)
+			createTxRes, err := chain.GetTransaction(createRes.TxHash)
+			require.NoError(t, err)
+			require.Equal(t, uint32(0), createTxRes.Code, "lease %d creation should succeed: %s", i+1, createTxRes.RawLog)
+
+			leaseUUID, err := helpers.GetLeaseIDFromTxHash(ctx, chain, createRes.TxHash)
+			require.NoError(t, err)
+			atomicLeaseUUIDs = append(atomicLeaseUUIDs, leaseUUID)
+		}
+
+		// Acknowledge one lease first
+		ack1, err := helpers.BillingAcknowledgeLease(ctx, chain, providerWallet, atomicLeaseUUIDs[0])
+		require.NoError(t, err)
+		ack1TxRes, err := chain.GetTransaction(ack1.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ack1TxRes.Code)
+
+		// Try to batch acknowledge both (one already active) - should fail
+		ackRes, err := helpers.BillingAcknowledgeLeases(ctx, chain, providerWallet, atomicLeaseUUIDs)
+		require.NoError(t, err)
+		ackTxRes, err := chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), ackTxRes.Code, "batch ack with active lease should fail")
+		require.Contains(t, ackTxRes.RawLog, "not in pending state")
+
+		// Verify the pending lease is still PENDING (atomic - no partial success)
+		lease, err := helpers.BillingQueryLease(ctx, chain, atomicLeaseUUIDs[1])
+		require.NoError(t, err)
+		require.Equal(t, "LEASE_STATE_PENDING", lease.Lease.State, "pending lease should still be pending after atomic failure")
+
+		t.Log("Correctly enforced atomicity: pending lease unchanged after batch failure")
+
+		// Cleanup
+		_, _ = helpers.BillingCloseLease(ctx, chain, ackTestTenant, atomicLeaseUUIDs[0])
+		_, _ = helpers.BillingCancelLease(ctx, chain, ackTestTenant, atomicLeaseUUIDs[1])
+	})
+
 	_ = secondProviderUUID // avoid unused variable
 }
 

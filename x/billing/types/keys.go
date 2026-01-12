@@ -69,6 +69,7 @@ const (
 	EventTypeLeaseClosed         = "lease_closed"
 	EventTypeLeaseAutoClose      = "lease_auto_closed"
 	EventTypeLeaseAcknowledged   = "lease_acknowledged"
+	EventTypeBatchAcknowledged   = "batch_acknowledged"
 	EventTypeLeaseRejected       = "lease_rejected"
 	EventTypeLeaseCancelled      = "lease_cancelled"
 	EventTypeLeaseExpired        = "lease_expired"

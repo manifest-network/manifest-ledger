@@ -488,8 +488,8 @@ func SimulateMsgAcknowledgeLease(txGen client.TxConfig, k keeper.Keeper, sk SKUK
 		}
 
 		msg := &types.MsgAcknowledgeLease{
-			Sender:    sender.Address.String(),
-			LeaseUuid: lease.Uuid,
+			Sender:     sender.Address.String(),
+			LeaseUuids: []string{lease.Uuid},
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)

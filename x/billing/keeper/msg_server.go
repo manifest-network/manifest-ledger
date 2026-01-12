@@ -725,8 +725,10 @@ func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleT
 	return result.TransferAmounts, nil
 }
 
-// AcknowledgeLease allows a provider to acknowledge a PENDING lease.
-// This transitions the lease to ACTIVE state and starts billing.
+// AcknowledgeLease allows a provider to acknowledge one or more PENDING leases.
+// This transitions the leases to ACTIVE state and starts billing.
+// All leases must belong to the same provider. This is an atomic operation:
+// all leases succeed or all fail.
 func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowledgeLease) (*types.MsgAcknowledgeLeaseResponse, error) {
 	if err := msg.ValidateBasic(); err != nil {
 		return nil, err
@@ -735,68 +737,120 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// 1. Get lease
-	lease, err := ms.k.GetLease(ctx, msg.LeaseUuid)
-	if err != nil {
-		return nil, err
+	// Phase 1: Validate ALL leases and credit accounts first (fail-fast)
+	leases := make([]types.Lease, 0, len(msg.LeaseUuids))
+	creditAccounts := make(map[string]types.CreditAccount) // keyed by tenant address
+	var providerUUID string
+
+	for _, uuid := range msg.LeaseUuids {
+		lease, err := ms.k.GetLease(ctx, uuid)
+		if err != nil {
+			return nil, types.ErrLeaseNotFound.Wrapf("lease %s not found", uuid)
+		}
+
+		if lease.State != types.LEASE_STATE_PENDING {
+			return nil, types.ErrLeaseNotPending.Wrapf("lease %s is not in PENDING state", uuid)
+		}
+
+		// All leases must belong to same provider
+		if providerUUID == "" {
+			providerUUID = lease.ProviderUuid
+		} else if lease.ProviderUuid != providerUUID {
+			return nil, types.ErrMixedProviders.Wrapf("lease %s belongs to provider %s, expected %s", uuid, lease.ProviderUuid, providerUUID)
+		}
+
+		// Validate credit account exists for this tenant (only fetch once per tenant)
+		if _, exists := creditAccounts[lease.Tenant]; !exists {
+			creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
+			if err != nil {
+				return nil, types.ErrCreditAccountNotFound.Wrapf(
+					"credit account not found for tenant %s (lease %s): data integrity issue",
+					lease.Tenant,
+					uuid,
+				)
+			}
+			creditAccounts[lease.Tenant] = creditAccount
+		}
+
+		leases = append(leases, lease)
 	}
 
-	// 2. Verify lease is in PENDING state
-	if lease.State != types.LEASE_STATE_PENDING {
-		return nil, types.ErrLeaseNotPending.Wrapf("lease %s is not in PENDING state", msg.LeaseUuid)
-	}
-
-	// 3. Verify sender is authorized (provider address or authority)
-	provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
+	// Verify sender is authorized (provider address or authority)
+	provider, err := ms.k.skuKeeper.GetProvider(ctx, providerUUID)
 	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
+		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
 	}
 
 	if msg.Sender != provider.Address && msg.Sender != ms.k.GetAuthority() {
 		return nil, types.ErrUnauthorized.Wrapf(
-			"sender %s is not authorized to acknowledge lease %s",
+			"sender %s is not authorized to acknowledge leases for provider %s",
 			msg.Sender,
-			msg.LeaseUuid,
+			providerUUID,
 		)
 	}
 
-	// 4. Transition lease to ACTIVE state
-	lease.State = types.LEASE_STATE_ACTIVE
-	lease.AcknowledgedAt = &blockTime
-	lease.LastSettledAt = blockTime // Billing starts from acknowledgement
+	// Phase 2: Apply all changes (already validated)
+	for i := range leases {
+		// Transition lease to ACTIVE state
+		leases[i].State = types.LEASE_STATE_ACTIVE
+		leases[i].AcknowledgedAt = &blockTime
+		leases[i].LastSettledAt = blockTime // Billing starts from acknowledgement
 
-	if err := ms.k.SetLease(ctx, lease); err != nil {
-		return nil, err
-	}
+		if err := ms.k.SetLease(ctx, leases[i]); err != nil {
+			return nil, err
+		}
 
-	// 5. Update lease counts: decrement pending, increment active.
-	// NOTE: We intentionally ignore GetCreditAccount errors here because:
-	// 1. The credit account may not exist in edge cases (e.g., migration scenarios)
-	// 2. Lease counts are informational metadata, not critical state
-	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
-	if err == nil {
+		// Update lease counts: decrement pending, increment active
+		// Credit account existence was validated in Phase 1
+		creditAccount := creditAccounts[leases[i].Tenant]
 		if creditAccount.PendingLeaseCount > 0 {
 			creditAccount.PendingLeaseCount--
+		} else {
+			// Log data inconsistency: lease was PENDING but credit account shows 0 pending
+			ms.k.Logger().Warn("data inconsistency: pending lease count already zero",
+				"tenant", leases[i].Tenant,
+				"lease_uuid", leases[i].Uuid,
+			)
 		}
 		creditAccount.ActiveLeaseCount++
+		creditAccounts[leases[i].Tenant] = creditAccount // Update map with new counts
+	}
+
+	// Persist all credit account updates
+	for _, creditAccount := range creditAccounts {
 		if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
 			return nil, err
 		}
 	}
 
-	// 6. Emit event
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeLeaseAcknowledged,
-			sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
-			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
-			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
-			sdk.NewAttribute(types.AttributeKeyAcknowledgedBy, msg.Sender),
-		),
-	)
+	// Emit per-lease events (maintains existing event structure for backwards compatibility)
+	for i := range leases {
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeLeaseAcknowledged,
+				sdk.NewAttribute(types.AttributeKeyLeaseUUID, leases[i].Uuid),
+				sdk.NewAttribute(types.AttributeKeyTenant, leases[i].Tenant),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, leases[i].ProviderUuid),
+				sdk.NewAttribute(types.AttributeKeyAcknowledgedBy, msg.Sender),
+			),
+		)
+	}
+
+	// Emit batch summary event when multiple leases are acknowledged
+	if len(leases) > 1 {
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeBatchAcknowledged,
+				sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(uint64(len(leases)), 10)),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, providerUUID),
+				sdk.NewAttribute(types.AttributeKeyAcknowledgedBy, msg.Sender),
+			),
+		)
+	}
 
 	return &types.MsgAcknowledgeLeaseResponse{
-		AcknowledgedAt: blockTime,
+		AcknowledgedAt:    blockTime,
+		AcknowledgedCount: uint64(len(leases)),
 	}, nil
 }
 

@@ -390,30 +390,38 @@ func splitAndTrim(s string) []string {
 	return result
 }
 
-// NewAcknowledgeLeaseCmd returns the command to acknowledge a pending lease.
+// NewAcknowledgeLeaseCmd returns the command to acknowledge one or more pending leases.
 func NewAcknowledgeLeaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "acknowledge-lease [lease-uuid]",
-		Short: "Acknowledge a pending lease (provider only)",
-		Long: `Acknowledge a pending lease to transition it to active state.
-Only the provider of the lease or the module authority can acknowledge.
+		Use:   "acknowledge-lease [lease-uuid]...",
+		Short: "Acknowledge one or more pending leases (provider only)",
+		Long: `Acknowledge one or more pending leases to transition them to active state.
+Only the provider of the leases or the module authority can acknowledge.
+All leases must belong to the same provider and be in PENDING state.
+This is an atomic operation: all leases succeed or all fail.
 Billing starts from the acknowledgement time.`,
-		Example: `acknowledge-lease 01902a9b-1234-7000-8000-000000000001 --from provider-key`,
-		Args:    cobra.ExactArgs(1),
+		Example: `# Acknowledge a single lease
+acknowledge-lease 01902a9b-1234-7000-8000-000000000001 --from provider-key
+
+# Acknowledge multiple leases (max 100)
+acknowledge-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000000002 --from provider-key`,
+		Args: cobra.RangeArgs(1, types.MaxBatchLeaseSize),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
 				return err
 			}
 
-			leaseUUID := args[0]
-			if !pkguuid.IsValidUUID(leaseUUID) {
-				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+			// Validate all UUIDs
+			for _, uuid := range args {
+				if !pkguuid.IsValidUUID(uuid) {
+					return fmt.Errorf("invalid lease_uuid format: %s", uuid)
+				}
 			}
 
 			msg := &types.MsgAcknowledgeLease{
-				Sender:    clientCtx.GetFromAddress().String(),
-				LeaseUuid: leaseUUID,
+				Sender:     clientCtx.GetFromAddress().String(),
+				LeaseUuids: args,
 			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)

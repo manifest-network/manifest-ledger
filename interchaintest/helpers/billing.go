@@ -94,6 +94,12 @@ func BillingAcknowledgeLease(ctx context.Context, chain *cosmos.CosmosChain, use
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
+// BillingAcknowledgeLeases acknowledges multiple pending leases atomically (provider only).
+func BillingAcknowledgeLeases(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUIDs []string, flags ...string) (sdk.TxResponse, error) {
+	cmd := append([]string{"tx", "billing", "acknowledge-lease"}, leaseUUIDs...)
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
 // BillingRejectLease rejects a pending lease (provider only).
 func BillingRejectLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID string, reason string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{"tx", "billing", "reject-lease", leaseUUID}

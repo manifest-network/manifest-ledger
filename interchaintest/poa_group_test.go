@@ -947,8 +947,8 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	// Acknowledge the lease via group proposal (provider is the group)
 	t.Run("acknowledge_lease_via_proposal", func(t *testing.T) {
 		ackLeaseMsg := billingtypes.MsgAcknowledgeLease{
-			Sender:    groupAddr,
-			LeaseUuid: leaseID,
+			Sender:     groupAddr,
+			LeaseUuids: []string{leaseID},
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
 
@@ -1002,8 +1002,8 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	// Acknowledge the withdrawal lease via group proposal
 	t.Run("acknowledge_withdrawal_lease_via_proposal", func(t *testing.T) {
 		ackLeaseMsg := billingtypes.MsgAcknowledgeLease{
-			Sender:    groupAddr,
-			LeaseUuid: withdrawLeaseID,
+			Sender:     groupAddr,
+			LeaseUuids: []string{withdrawLeaseID},
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
 
@@ -1081,8 +1081,8 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 
 		// Acknowledge the lease
 		ackLeaseMsg := billingtypes.MsgAcknowledgeLease{
-			Sender:    groupAddr,
-			LeaseUuid: withdrawAllLeaseID,
+			Sender:     groupAddr,
+			LeaseUuids: []string{withdrawAllLeaseID},
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
 
@@ -1142,8 +1142,8 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 
 		// Acknowledge the multi-SKU lease
 		ackLeaseMsg := billingtypes.MsgAcknowledgeLease{
-			Sender:    groupAddr,
-			LeaseUuid: multiLeaseID,
+			Sender:     groupAddr,
+			LeaseUuids: []string{multiLeaseID},
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
 

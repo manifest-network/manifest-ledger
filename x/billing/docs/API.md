@@ -108,28 +108,35 @@ manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-6789-7abc-
 
 #### acknowledge-lease
 
-Acknowledge a PENDING lease (provider only). Transitions lease to ACTIVE and starts billing.
+Acknowledge one or more PENDING leases atomically (provider only). Transitions leases to ACTIVE and starts billing.
 
 ```bash
-manifestd tx billing acknowledge-lease [lease-uuid] [flags]
+manifestd tx billing acknowledge-lease [lease-uuid]... [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID of the lease to acknowledge |
+| lease-uuid | string (repeated) | UUIDs of leases to acknowledge (1-100) |
 
-**Example:**
+**Examples:**
 ```bash
+# Single lease
 manifestd tx billing acknowledge-lease 01912345-6789-7abc-8def-0123456789ab --from provider-key
+
+# Multiple leases
+manifestd tx billing acknowledge-lease uuid1 uuid2 uuid3 --from provider-key
 ```
 
 **Authorization:** Provider address or authority.
 
 **Notes:**
 - Only PENDING leases can be acknowledged
+- All leases must belong to the same provider
+- Maximum 100 leases per transaction
+- Atomic operation: all succeed or all fail
 - Billing starts from the acknowledgement timestamp
-- Emits `lease_acknowledged` event
+- Emits `lease_acknowledged` event for each lease
 
 ---
 
@@ -681,13 +688,14 @@ message MsgCreateLeaseForTenantResponse {
 
 #### MsgAcknowledgeLease
 
-Provider acknowledges a PENDING lease, transitioning it to ACTIVE.
+Provider acknowledges one or more PENDING leases atomically, transitioning them to ACTIVE.
+All leases must belong to the same provider and be in PENDING state.
 
 **Request:**
 ```protobuf
 message MsgAcknowledgeLease {
-  string sender = 1;      // Provider or authority
-  string lease_uuid = 2;  // Lease to acknowledge
+  string sender = 1;               // Provider or authority
+  repeated string lease_uuids = 2; // Leases to acknowledge (1-100)
 }
 ```
 
@@ -695,7 +703,19 @@ message MsgAcknowledgeLease {
 ```protobuf
 message MsgAcknowledgeLeaseResponse {
   google.protobuf.Timestamp acknowledged_at = 1;  // When billing starts
+  uint64 acknowledged_count = 2;                  // Number of leases acknowledged
 }
+```
+
+**Constraints:**
+- All leases must belong to the same provider
+- All leases must be in PENDING state
+- Maximum 100 leases per call
+- Atomic: all succeed or all fail
+
+**CLI:**
+```bash
+manifestd tx billing acknowledge-lease <uuid1> [uuid2] [uuid3]... --from provider
 ```
 
 ---
