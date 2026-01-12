@@ -137,6 +137,7 @@ manifestd tx billing acknowledge-lease uuid1 uuid2 uuid3 --from provider-key
 - Atomic operation: all succeed or all fail
 - Billing starts from the acknowledgement timestamp
 - Emits `lease_acknowledged` event for each lease
+- Emits `batch_acknowledged` event when multiple leases are processed (includes lease_count, provider_uuid, acknowledged_by)
 
 ---
 
@@ -1113,6 +1114,7 @@ The billing module emits the following events for state changes:
 | `credit_funded` | tenant, credit_address, sender, amount, new_balance | Credit account funded |
 | `lease_created` | lease_uuid, tenant, provider_uuid, item_count, total_rate_per_second, pending_lease_count, created_by | Lease created in PENDING state |
 | `lease_acknowledged` | lease_uuid, tenant, provider_uuid, acknowledged_by | Provider acknowledged lease (→ ACTIVE) |
+| `batch_acknowledged` | lease_count, provider_uuid, acknowledged_by | Batch summary when multiple leases acknowledged |
 | `lease_rejected` | lease_uuid, tenant, provider_uuid, rejected_by, rejection_reason | Provider rejected lease |
 | `lease_cancelled` | lease_uuid, tenant, provider_uuid, cancelled_by | Tenant cancelled pending lease |
 | `lease_expired` | lease_uuid, tenant, provider_uuid, reason | Pending lease expired |
