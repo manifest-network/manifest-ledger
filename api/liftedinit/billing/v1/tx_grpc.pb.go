@@ -27,7 +27,6 @@ const (
 	Msg_CancelLease_FullMethodName          = "/liftedinit.billing.v1.Msg/CancelLease"
 	Msg_CloseLease_FullMethodName           = "/liftedinit.billing.v1.Msg/CloseLease"
 	Msg_Withdraw_FullMethodName             = "/liftedinit.billing.v1.Msg/Withdraw"
-	Msg_WithdrawAll_FullMethodName          = "/liftedinit.billing.v1.Msg/WithdrawAll"
 	Msg_UpdateParams_FullMethodName         = "/liftedinit.billing.v1.Msg/UpdateParams"
 )
 
@@ -55,10 +54,9 @@ type MsgClient interface {
 	CancelLease(ctx context.Context, in *MsgCancelLease, opts ...grpc.CallOption) (*MsgCancelLeaseResponse, error)
 	// CloseLease closes an active lease.
 	CloseLease(ctx context.Context, in *MsgCloseLease, opts ...grpc.CallOption) (*MsgCloseLeaseResponse, error)
-	// Withdraw allows a provider to withdraw accrued funds from a specific lease.
+	// Withdraw allows a provider to withdraw accrued funds from leases.
+	// Two modes: specific lease UUIDs, or provider-wide with pagination.
 	Withdraw(ctx context.Context, in *MsgWithdraw, opts ...grpc.CallOption) (*MsgWithdrawResponse, error)
-	// WithdrawAll allows a provider to withdraw all accrued funds from all their leases.
-	WithdrawAll(ctx context.Context, in *MsgWithdrawAll, opts ...grpc.CallOption) (*MsgWithdrawAllResponse, error)
 	// UpdateParams updates the module parameters.
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
 }
@@ -143,15 +141,6 @@ func (c *msgClient) Withdraw(ctx context.Context, in *MsgWithdraw, opts ...grpc.
 	return out, nil
 }
 
-func (c *msgClient) WithdrawAll(ctx context.Context, in *MsgWithdrawAll, opts ...grpc.CallOption) (*MsgWithdrawAllResponse, error) {
-	out := new(MsgWithdrawAllResponse)
-	err := c.cc.Invoke(ctx, Msg_WithdrawAll_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *msgClient) UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error) {
 	out := new(MsgUpdateParamsResponse)
 	err := c.cc.Invoke(ctx, Msg_UpdateParams_FullMethodName, in, out, opts...)
@@ -185,10 +174,9 @@ type MsgServer interface {
 	CancelLease(context.Context, *MsgCancelLease) (*MsgCancelLeaseResponse, error)
 	// CloseLease closes an active lease.
 	CloseLease(context.Context, *MsgCloseLease) (*MsgCloseLeaseResponse, error)
-	// Withdraw allows a provider to withdraw accrued funds from a specific lease.
+	// Withdraw allows a provider to withdraw accrued funds from leases.
+	// Two modes: specific lease UUIDs, or provider-wide with pagination.
 	Withdraw(context.Context, *MsgWithdraw) (*MsgWithdrawResponse, error)
-	// WithdrawAll allows a provider to withdraw all accrued funds from all their leases.
-	WithdrawAll(context.Context, *MsgWithdrawAll) (*MsgWithdrawAllResponse, error)
 	// UpdateParams updates the module parameters.
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
 	mustEmbedUnimplementedMsgServer()
@@ -221,9 +209,6 @@ func (UnimplementedMsgServer) CloseLease(context.Context, *MsgCloseLease) (*MsgC
 }
 func (UnimplementedMsgServer) Withdraw(context.Context, *MsgWithdraw) (*MsgWithdrawResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Withdraw not implemented")
-}
-func (UnimplementedMsgServer) WithdrawAll(context.Context, *MsgWithdrawAll) (*MsgWithdrawAllResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method WithdrawAll not implemented")
 }
 func (UnimplementedMsgServer) UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateParams not implemented")
@@ -385,24 +370,6 @@ func _Msg_Withdraw_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Msg_WithdrawAll_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MsgWithdrawAll)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(MsgServer).WithdrawAll(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Msg_WithdrawAll_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MsgServer).WithdrawAll(ctx, req.(*MsgWithdrawAll))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _Msg_UpdateParams_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(MsgUpdateParams)
 	if err := dec(in); err != nil {
@@ -459,10 +426,6 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Withdraw",
 			Handler:    _Msg_Withdraw_Handler,
-		},
-		{
-			MethodName: "WithdrawAll",
-			Handler:    _Msg_WithdrawAll_Handler,
 		},
 		{
 			MethodName: "UpdateParams",

@@ -27,6 +27,7 @@ var (
 	ErrLeaseNotPending         = errors.Register(ModuleName, 22, "lease not in pending state")
 	ErrMaxPendingLeasesReached = errors.Register(ModuleName, 23, "maximum pending leases per tenant reached")
 	ErrInvalidRejectionReason  = errors.Register(ModuleName, 24, "invalid rejection reason")
+	ErrInvalidRequest          = errors.Register(ModuleName, 25, "invalid request")
 )
 
 // MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.

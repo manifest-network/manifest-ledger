@@ -59,8 +59,8 @@ func TestSecurity_UnauthorizedLeaseClose(t *testing.T) {
 
 	// Attacker tries to close someone else's lease
 	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
-		Sender:    attacker.String(),
-		LeaseUuid: leaseID,
+		Sender:     attacker.String(),
+		LeaseUuids: []string{leaseID},
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unauthorized")
@@ -102,8 +102,8 @@ func TestSecurity_UnauthorizedProviderWithdrawal(t *testing.T) {
 
 	// Attacker (not the provider) tries to withdraw from the lease
 	_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-		Sender:    attacker.String(),
-		LeaseUuid: leaseID,
+		Sender:     attacker.String(),
+		LeaseUuids: []string{leaseID},
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unauthorized")
@@ -188,8 +188,8 @@ func TestSecurity_UnauthorizedLeaseRejection(t *testing.T) {
 
 	// Attacker (not the provider) tries to reject the lease
 	_, err = msgServer.RejectLease(f.Ctx, &types.MsgRejectLease{
-		Sender:    attacker.String(),
-		LeaseUuid: createResp.LeaseUuid,
+		Sender:     attacker.String(),
+		LeaseUuids: []string{createResp.LeaseUuid},
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unauthorized")
@@ -347,8 +347,8 @@ func TestSecurity_LeaseIsolation(t *testing.T) {
 
 	// Tenant2 cannot close tenant1's ACTIVE lease
 	_, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
-		Sender:    tenant2.String(),
-		LeaseUuid: leaseID,
+		Sender:     tenant2.String(),
+		LeaseUuids: []string{leaseID},
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unauthorized")
@@ -362,13 +362,13 @@ func TestSecurity_LeaseIsolation(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Tenant2 cannot cancel tenant1's PENDING lease
+	// Tenant2 cannot cancel tenant1's PENDING lease (both have credit accounts, but tenant2 doesn't own the lease)
 	_, err = msgServer.CancelLease(f.Ctx, &types.MsgCancelLease{
-		Tenant:    tenant2.String(),
-		LeaseUuid: createResp.LeaseUuid,
+		Tenant:     tenant2.String(),
+		LeaseUuids: []string{createResp.LeaseUuid},
 	})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "unauthorized")
+	require.Contains(t, err.Error(), "is not the tenant")
 }
 
 // ============================================================================
@@ -396,8 +396,8 @@ func TestSecurity_InvalidUUIDFormat(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
-				Sender:    tenant.String(),
-				LeaseUuid: tc.leaseID,
+				Sender:     tenant.String(),
+				LeaseUuids: []string{tc.leaseID},
 			})
 			require.Error(t, err)
 		})
@@ -603,15 +603,15 @@ func TestSecurity_CloseAlreadyClosedLease(t *testing.T) {
 
 	// Close the lease
 	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
-		Sender:    tenant.String(),
-		LeaseUuid: leaseID,
+		Sender:     tenant.String(),
+		LeaseUuids: []string{leaseID},
 	})
 	require.NoError(t, err)
 
 	// Try to close again (should fail)
 	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
-		Sender:    tenant.String(),
-		LeaseUuid: leaseID,
+		Sender:     tenant.String(),
+		LeaseUuids: []string{leaseID},
 	})
 	require.Error(t, err)
 }
@@ -651,15 +651,15 @@ func TestSecurity_WithdrawFromClosedLease(t *testing.T) {
 
 	// Close the lease
 	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
-		Sender:    tenant.String(),
-		LeaseUuid: leaseID,
+		Sender:     tenant.String(),
+		LeaseUuids: []string{leaseID},
 	})
 	require.NoError(t, err)
 
-	// Try to withdraw from closed lease (should fail)
+	// Try to withdraw from closed lease (should fail - no withdrawable amount)
 	_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-		Sender:    providerAddr.String(),
-		LeaseUuid: leaseID,
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{leaseID},
 	})
 	require.Error(t, err)
 }

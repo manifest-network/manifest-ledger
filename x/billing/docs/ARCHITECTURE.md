@@ -200,28 +200,37 @@ stateDiagram-v2
 
 ### Fund Credit Account
 
+Uses CacheContext for atomicity - either both token transfer and credit account creation succeed, or neither does.
+
 ```mermaid
 sequenceDiagram
     participant User
     participant MsgServer
-    participant Keeper
+    participant CacheCtx
     participant Bank
     participant Store
-    
+
     User->>MsgServer: MsgFundCredit
     MsgServer->>MsgServer: ValidateBasic()
-    
-    MsgServer->>Keeper: GetOrCreateCreditAccount()
-    alt New Account
-        Keeper->>Store: Create CreditAccount
-        Keeper->>Store: Add to Reverse Lookup
-    end
-    Keeper-->>MsgServer: CreditAccount
-    MsgServer->>Bank: SendCoins(user → credit_addr)
+    MsgServer->>CacheCtx: Create CacheContext
+
+    MsgServer->>Bank: SendCoins(user → credit_addr) [on cacheCtx]
     Bank-->>MsgServer: OK
+
+    MsgServer->>Store: GetOrCreateCreditAccount() [on cacheCtx]
+    alt New Account
+        Store->>Store: Create CreditAccount
+        Store->>Store: Register in AccountKeeper
+    end
+    Store-->>MsgServer: CreditAccount
+
+    MsgServer->>Store: SetCreditAccount() [on cacheCtx]
+    MsgServer->>CacheCtx: Commit (writeCache)
     MsgServer->>MsgServer: Emit Event
     MsgServer-->>User: Success
 ```
+
+**Atomicity Guarantee**: If `SetCreditAccount` fails after `SendCoins` succeeds, the cache is discarded and no state changes occur - tokens are not transferred and no credit account is created.
 
 ### Create Lease (PENDING State)
 
@@ -486,15 +495,15 @@ Settlement happens lazily at these points:
 
 | Trigger | Scope | Reason |
 |---------|-------|--------|
-| `CloseLease` | Target lease only | Final settlement before closure |
-| `Withdraw` | Target lease only | Settle accrued amount for provider |
-| `WithdrawAll` | All provider's active leases | Batch settlement |
+| `CloseLease` | Target lease(s) only | Final settlement before closure |
+| `Withdraw` (specific leases) | Target lease(s) only | Settle accrued amount for provider |
+| `Withdraw` (provider-wide) | All provider's active leases | Batch settlement |
 
 **Note**: Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement. Use `WithdrawableAmount` or `ProviderWithdrawable` queries to get real-time calculated accrued amounts. Settlement (actual token transfer) only happens during write operations.
 
-### Atomic Settlement in WithdrawAll
+### Atomic Settlement in Provider-Wide Withdraw
 
-The `WithdrawAll` operation uses a **cached context pattern** to ensure atomicity per lease:
+The provider-wide withdraw mode uses a **cached context pattern** to ensure atomicity per lease:
 
 ```go
 // For each lease in the batch:
@@ -516,7 +525,7 @@ writeFn()
 - If settlement fails for one lease (e.g., overflow), only that lease is skipped
 - Other leases in the batch are processed normally
 - Failed leases don't affect the success of the overall operation
-- Provider can retry failed leases individually using `Withdraw`
+- Provider can retry failed leases individually using specific lease UUIDs
 
 This pattern ensures that partial failures don't corrupt state while still providing best-effort batch processing.
 
@@ -684,7 +693,7 @@ For the complete reference of module parameters, events, error codes, and author
 
 **Architecture Notes:**
 - Parameters are stored at key prefix `0x00` using the Collections `Item` type
-- `WithdrawAll` limits are compile-time constants (default: 50, max: 100), not governance parameters
+- Provider-wide withdraw limits are compile-time constants (default: 50, max: 100), not governance parameters
 - Each SKU defines its own denomination—no global denom parameter exists
 
 ## Security Considerations
@@ -717,7 +726,7 @@ This returns `sdk.Coins` to support multi-denom leases where different SKUs may 
 1. **Max leases per tenant** - Prevents active lease spam
 2. **Max pending leases per tenant** - Prevents pending lease spam
 3. **Max items per lease** - Limits computation per lease
-4. **Withdrawal batch size** - Caps WithdrawAll iterations (max 100)
+4. **Withdrawal batch size** - Caps provider-wide withdraw iterations (max 100)
 5. **Min lease duration** - Prevents immediate exhaustion
 6. **Lazy settlement** - No per-block overhead for accrual calculation
 7. **EndBlocker rate limiting** - Max 100 pending lease expirations per block
@@ -734,8 +743,8 @@ This returns `sdk.Coins` to support multi-denom leases where different SKUs may 
 | RejectLease | O(1) | State change + index updates |
 | CancelLease | O(1) | State change + index updates |
 | CloseLease | O(m) | m = items in lease |
-| Withdraw | O(m) | m = items in lease |
-| WithdrawAll | O(k×m) | k = leases (max 100), m = avg items |
+| Withdraw (specific) | O(m) | m = items in lease |
+| Withdraw (provider) | O(k×m) | k = leases (max 100), m = avg items |
 | GetCreditBalance | O(1) | Bank query |
 | isCreditAccount | O(1) | Reverse lookup map |
 | GetLeasesByTenant | O(n) | n = tenant's leases |
@@ -857,9 +866,9 @@ When a provider or SKU is deactivated:
 
 **Implementation note**: The billing module queries SKU/provider status at lease creation time. Existing leases store `provider_uuid` and `locked_price`, making them independent of subsequent provider/SKU state changes.
 
-### WithdrawAll Batch Processing
+### Provider-Wide Withdraw Batch Processing
 
-`MsgWithdrawAll` processes leases in batches to prevent DoS:
+Provider-wide withdraw mode (`--provider` flag) processes leases in batches to prevent DoS:
 
 ```
 Default limit: 50 leases
@@ -867,7 +876,7 @@ Maximum limit: 100 leases (hard cap)
 ```
 
 **Handling large provider portfolios:**
-1. Provider calls `WithdrawAll` with desired `limit`
+1. Provider calls `withdraw --provider <uuid>` with desired `--limit`
 2. Response includes `has_more` boolean
 3. If `has_more == true`, provider repeats call
 4. Leases are processed in deterministic order (by UUID)
@@ -914,7 +923,7 @@ accrued = duration_seconds × locked_price × quantity
 **Overflow protection:**
 - `MaxDurationSeconds` (~100 years) prevents overflow in duration calculations
 - `CalculateAccruedAmount` returns error on overflow instead of wrapping
-- `WithdrawAll` uses cached context to isolate failures
+- Provider-wide withdraw uses cached context to isolate failures
 
 ### Future Improvement Plans
 

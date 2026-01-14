@@ -1029,8 +1029,8 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.NoError(t, err)
 
 		withdrawMsg := billingtypes.MsgWithdraw{
-			Sender:    groupAddr,
-			LeaseUuid: withdrawLeaseID,
+			Sender:     groupAddr,
+			LeaseUuids: []string{withdrawLeaseID},
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &withdrawMsg)})
 
@@ -1044,8 +1044,8 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	// Close lease via group proposal (authority can close any lease)
 	t.Run("close_lease_via_proposal", func(t *testing.T) {
 		closeLeaseMsg := billingtypes.MsgCloseLease{
-			Sender:    groupAddr,
-			LeaseUuid: withdrawLeaseID,
+			Sender:     groupAddr,
+			LeaseUuids: []string{withdrawLeaseID},
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &closeLeaseMsg)})
 
@@ -1089,13 +1089,13 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Wait for some accrual
 		require.NoError(t, testutil.WaitForBlocks(ctx, 3, chain))
 
-		// Withdraw all for provider
-		withdrawAllMsg := billingtypes.MsgWithdrawAll{
+		// Withdraw for provider (provider-wide mode)
+		withdrawMsg := billingtypes.MsgWithdraw{
 			Sender:       groupAddr,
 			ProviderUuid: providerUUID,
 			Limit:        0, // Use default limit
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &withdrawAllMsg)})
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &withdrawMsg)})
 	})
 
 	// Test multi-SKU lease creation

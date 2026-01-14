@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -354,10 +353,16 @@ func GetWithdrawableAmountCmd() *cobra.Command {
 // GetProviderWithdrawableCmd returns the command to query total withdrawable for a provider.
 func GetProviderWithdrawableCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "provider-withdrawable [provider-uuid]",
-		Short:   "Query the total withdrawable amount for a provider across all leases",
-		Example: `provider-withdrawable 01902a9b-1234-7000-8000-000000000001`,
-		Args:    cobra.ExactArgs(1),
+		Use:   "provider-withdrawable [provider-uuid]",
+		Short: "Query the total withdrawable amount for a provider across all leases",
+		Long: `Query the total withdrawable amount for a provider across all leases.
+
+This query uses pagination to prevent timeouts for providers with many leases.
+Use --limit to control how many leases to process (default: 100, max: 1000).
+Check the has_more field in the response to see if more leases exist.`,
+		Example: `provider-withdrawable 01902a9b-1234-7000-8000-000000000001
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 500`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
 			if err != nil {
@@ -369,10 +374,16 @@ func GetProviderWithdrawableCmd() *cobra.Command {
 				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
 			}
 
+			limit, err := cmd.Flags().GetUint64("limit")
+			if err != nil {
+				return err
+			}
+
 			queryClient := types.NewQueryClient(clientCtx)
 
 			res, err := queryClient.ProviderWithdrawable(cmd.Context(), &types.QueryProviderWithdrawableRequest{
 				ProviderUuid: providerUUID,
+				Limit:        limit,
 			})
 			if err != nil {
 				return err
@@ -382,10 +393,8 @@ func GetProviderWithdrawableCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().Uint64("limit", 0, "Maximum leases to process (default: 100, max: 1000)")
 	flags.AddQueryFlagsToCmd(cmd)
 
 	return cmd
 }
-
-// Helper to suppress unused import warning
-var _ = strconv.Itoa

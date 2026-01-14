@@ -12,7 +12,6 @@ var (
 	_ sdk.Msg = &MsgCreateLeaseForTenant{}
 	_ sdk.Msg = &MsgCloseLease{}
 	_ sdk.Msg = &MsgWithdraw{}
-	_ sdk.Msg = &MsgWithdrawAll{}
 	_ sdk.Msg = &MsgUpdateParams{}
 	_ sdk.Msg = &MsgAcknowledgeLease{}
 	_ sdk.Msg = &MsgRejectLease{}
@@ -100,51 +99,42 @@ func (m *MsgCloseLease) ValidateBasic() error {
 		return ErrInvalidLease.Wrapf("invalid sender address: %s", err)
 	}
 
-	if m.LeaseUuid == "" {
-		return ErrInvalidLease.Wrap("lease_uuid cannot be empty")
-	}
-
-	if !pkguuid.IsValidUUID(m.LeaseUuid) {
-		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", m.LeaseUuid)
-	}
-
-	return nil
+	return ValidateBatchLeaseUUIDs(m.LeaseUuids)
 }
 
 // ValidateBasic performs basic validation for MsgWithdraw.
+// Supports two mutually exclusive modes:
+// 1. Specific leases: lease_uuids must be set
+// 2. Provider-wide: provider_uuid must be set
 func (m *MsgWithdraw) ValidateBasic() error {
 	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
 		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
 	}
 
-	if m.LeaseUuid == "" {
-		return ErrInvalidLease.Wrap("lease_uuid cannot be empty")
+	// Check for mutually exclusive modes
+	hasLeases := len(m.LeaseUuids) > 0
+	hasProvider := m.ProviderUuid != ""
+
+	if hasLeases && hasProvider {
+		return ErrInvalidRequest.Wrap("cannot specify both lease_uuids and provider_uuid")
+	}
+	if !hasLeases && !hasProvider {
+		return ErrInvalidRequest.Wrap("must specify either lease_uuids or provider_uuid")
 	}
 
-	if !pkguuid.IsValidUUID(m.LeaseUuid) {
-		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", m.LeaseUuid)
+	// Mode 1: Specific leases
+	if hasLeases {
+		return ValidateBatchLeaseUUIDs(m.LeaseUuids)
 	}
 
-	return nil
-}
-
-// ValidateBasic performs basic validation for MsgWithdrawAll.
-func (m *MsgWithdrawAll) ValidateBasic() error {
-	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
-		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
-	}
-
-	if m.ProviderUuid == "" {
-		return ErrProviderNotFound.Wrap("provider_uuid cannot be empty")
-	}
-
+	// Mode 2: Provider-wide
 	if !pkguuid.IsValidUUID(m.ProviderUuid) {
 		return ErrProviderNotFound.Wrapf("invalid provider_uuid format: %s", m.ProviderUuid)
 	}
 
 	// Enforce maximum limit to prevent DoS attacks
-	if m.Limit > MaxWithdrawAllLimit {
-		return ErrInvalidLease.Wrapf("limit %d exceeds maximum allowed %d", m.Limit, MaxWithdrawAllLimit)
+	if m.Limit > MaxBatchLeaseSize {
+		return ErrInvalidLease.Wrapf("limit %d exceeds maximum allowed %d", m.Limit, MaxBatchLeaseSize)
 	}
 
 	return nil
@@ -162,22 +152,19 @@ func (m *MsgUpdateParams) ValidateBasic() error {
 // MaxBatchLeaseSize is the maximum number of leases that can be processed in a single batch operation.
 const MaxBatchLeaseSize = 100
 
-// ValidateBasic performs basic validation for MsgAcknowledgeLease.
-func (m *MsgAcknowledgeLease) ValidateBasic() error {
-	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
-		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
-	}
-
-	if len(m.LeaseUuids) == 0 {
+// ValidateBatchLeaseUUIDs validates a slice of lease UUIDs for batch operations.
+// It checks for empty slice, max batch size, UUID format validity, and duplicates.
+func ValidateBatchLeaseUUIDs(uuids []string) error {
+	if len(uuids) == 0 {
 		return ErrInvalidLease.Wrap("lease_uuids cannot be empty")
 	}
 
-	if len(m.LeaseUuids) > MaxBatchLeaseSize {
-		return ErrInvalidLease.Wrapf("too many leases: %d exceeds maximum %d", len(m.LeaseUuids), MaxBatchLeaseSize)
+	if len(uuids) > MaxBatchLeaseSize {
+		return ErrInvalidLease.Wrapf("too many leases: %d exceeds maximum %d", len(uuids), MaxBatchLeaseSize)
 	}
 
-	seen := make(map[string]bool, len(m.LeaseUuids))
-	for i, uuid := range m.LeaseUuids {
+	seen := make(map[string]bool, len(uuids))
+	for i, uuid := range uuids {
 		if uuid == "" {
 			return ErrInvalidLease.Wrapf("lease_uuids[%d] is empty", i)
 		}
@@ -193,18 +180,23 @@ func (m *MsgAcknowledgeLease) ValidateBasic() error {
 	return nil
 }
 
+// ValidateBasic performs basic validation for MsgAcknowledgeLease.
+func (m *MsgAcknowledgeLease) ValidateBasic() error {
+	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
+		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
+	}
+
+	return ValidateBatchLeaseUUIDs(m.LeaseUuids)
+}
+
 // ValidateBasic performs basic validation for MsgRejectLease.
 func (m *MsgRejectLease) ValidateBasic() error {
 	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
 		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
 	}
 
-	if m.LeaseUuid == "" {
-		return ErrInvalidLease.Wrap("lease_uuid cannot be empty")
-	}
-
-	if !pkguuid.IsValidUUID(m.LeaseUuid) {
-		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", m.LeaseUuid)
+	if err := ValidateBatchLeaseUUIDs(m.LeaseUuids); err != nil {
+		return err
 	}
 
 	if len(m.Reason) > MaxRejectionReasonLength {
@@ -220,13 +212,5 @@ func (m *MsgCancelLease) ValidateBasic() error {
 		return ErrInvalidLease.Wrapf("invalid tenant address: %s", err)
 	}
 
-	if m.LeaseUuid == "" {
-		return ErrInvalidLease.Wrap("lease_uuid cannot be empty")
-	}
-
-	if !pkguuid.IsValidUUID(m.LeaseUuid) {
-		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", m.LeaseUuid)
-	}
-
-	return nil
+	return ValidateBatchLeaseUUIDs(m.LeaseUuids)
 }

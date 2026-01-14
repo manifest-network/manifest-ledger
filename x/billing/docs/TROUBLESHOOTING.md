@@ -287,9 +287,9 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
    ```
 2. Use a valid provider UUID.
 
-### Lease not included in WithdrawAll results
+### Lease not included in provider-wide withdraw results
 
-**Cause**: During `WithdrawAll` batch operations, individual lease settlements that encounter arithmetic overflow (extremely long-running leases with high rates) are silently skipped to prevent the entire batch from failing.
+**Cause**: During provider-wide withdraw batch operations, individual lease settlements that encounter arithmetic overflow (extremely long-running leases with high rates) are silently skipped to prevent the entire batch from failing.
 
 **What happens**:
 1. The lease is skipped during the batch operation
@@ -298,7 +298,7 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 4. The skipped lease's funds remain available
 
 **Solution**:
-1. Use individual `Withdraw` for the specific lease to see the actual error:
+1. Use specific lease withdrawal for the problematic lease to see the actual error:
    ```bash
    manifestd tx billing withdraw [lease-uuid] --from provider
    ```
@@ -311,28 +311,45 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 
 ---
 
-## WithdrawAll Issues
+## Provider-Wide Withdraw Issues
 
-### "provider_uuid is required for withdraw all"
+### "cannot specify both lease_uuids and provider_uuid"
 
-**Cause**: Missing provider_uuid in the WithdrawAll command.
+**Cause**: Both specific lease UUIDs and --provider flag were provided. These are mutually exclusive modes.
 
-**Solution**: Specify the provider UUID:
+**Solution**: Use only one mode at a time:
 ```bash
-manifestd tx billing withdraw-all [provider-uuid] --from [key]
+# Mode 1: Specific leases (do NOT use --provider)
+manifestd tx billing withdraw [lease-uuid] --from [key]
+
+# Mode 2: Provider-wide (do NOT specify lease UUIDs)
+manifestd tx billing withdraw --provider [provider-uuid] --from [key]
+```
+
+### "must specify either lease_uuids or provider_uuid"
+
+**Cause**: Neither specific lease UUIDs nor --provider flag was provided.
+
+**Solution**: Use one of the two modes:
+```bash
+# Mode 1: Specific leases
+manifestd tx billing withdraw [lease-uuid] --from [key]
+
+# Mode 2: Provider-wide
+manifestd tx billing withdraw --provider [provider-uuid] --from [key]
 ```
 
 ### Response shows "has_more: true"
 
 **Cause**: There are more leases to process than the limit allows.
 
-**Solution**: Continue calling withdraw-all until has_more is false:
+**Solution**: Continue calling provider-wide withdraw until has_more is false:
 ```bash
 # Process 50 leases at a time (default)
-manifestd tx billing withdraw-all [provider-uuid] --from [key]
+manifestd tx billing withdraw --provider [provider-uuid] --from [key]
 
 # Or specify a larger limit (max 100)
-manifestd tx billing withdraw-all [provider-uuid] --limit 100 --from [key]
+manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --from [key]
 ```
 
 ## Query Issues

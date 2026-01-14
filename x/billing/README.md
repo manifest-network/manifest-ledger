@@ -128,8 +128,8 @@ These values are compile-time constants and cannot be changed via governance:
 |----------|-------|-------------|
 | `MaxItemsPerLeaseHardLimit` | 100 | Absolute maximum items per lease |
 | `MaxPendingLeaseExpirationsPerBlock` | 100 | Maximum pending lease expirations processed per block (DoS protection) |
-| `DefaultWithdrawAllLimit` | 50 | Default number of leases processed per `WithdrawAll` call |
-| `MaxWithdrawAllLimit` | 100 | Maximum number of leases that can be processed per `WithdrawAll` call |
+| `DefaultProviderWithdrawLimit` | 50 | Default number of leases processed per provider-wide withdraw call |
+| `MaxBatchLeaseSize` | 100 | Maximum number of leases per batch operation (withdraw, close, acknowledge, etc.) |
 | `MaxRejectionReasonLength` | 256 | Maximum characters for lease rejection reason |
 | `MaxDurationSeconds` | ~3,153,600,000 (~100 years) | Maximum lease duration for accrual calculations (overflow protection). Defined in `keeper/accrual.go`. |
 | `CreditAccountAddressPrefix` | `billing/credit/` | Prefix used for deterministic credit address derivation |
@@ -254,8 +254,7 @@ The billing module supports the following transaction messages:
 | `MsgRejectLease` | Provider rejects a pending lease |
 | `MsgCancelLease` | Tenant cancels their own pending lease |
 | `MsgCloseLease` | Close an active lease |
-| `MsgWithdraw` | Withdraw accrued funds from a lease |
-| `MsgWithdrawAll` | Withdraw from all leases for a provider (paginated) |
+| `MsgWithdraw` | Withdraw accrued funds (specific leases or provider-wide) |
 | `MsgUpdateParams` | Update module parameters (authority only) |
 
 For detailed message definitions, request/response formats, and CLI usage, see [API Reference](docs/API.md#cli-commands).
@@ -311,7 +310,6 @@ manifestd query billing leases-by-tenant [tenant] --state active
 | Cancel Lease | Tenant (own pending leases only) |
 | Close Lease | Tenant, Provider, or Authority |
 | Withdraw | Provider or Authority |
-| Withdraw All | Provider or Authority |
 | Update Params | Authority only |
 
 ## Integration with SKU Module
@@ -336,11 +334,11 @@ When a provider or SKU is deactivated:
 - Providers can still withdraw accrued funds
 - No new leases can be created with deactivated providers/SKUs
 
-### WithdrawAll Pagination
+### Provider-Wide Withdraw Pagination
 
-`MsgWithdrawAll` processes up to 100 leases per call. Use the `limit` parameter and check `has_more` in the response to process all leases:
+Provider-wide withdraw mode (`--provider` flag) processes up to 50 leases per call by default (max 100). Use the `--limit` parameter to increase and check `has_more` in the response to process all leases:
 ```bash
-manifestd tx billing withdraw-all [provider-uuid] --limit 100 --from provider-key
+manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --from provider-key
 ```
 
 For detailed scalability analysis, time manipulation considerations, and future improvement plans, see [Architecture](docs/ARCHITECTURE.md#scalability-considerations).

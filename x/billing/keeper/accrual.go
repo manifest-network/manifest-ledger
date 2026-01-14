@@ -21,11 +21,14 @@ const MaxDurationSeconds = 100 * 365 * 24 * 60 * 60 // ~100 years in seconds
 // - UNIT_PER_HOUR: divide by 3600
 // - UNIT_PER_DAY: divide by 86400
 // Returns the per-second rate as a Coin with the same denom as the base price.
-// Note: Integer division may result in precision loss for small amounts.
-// SKUs should be validated at creation time to ensure non-zero per-second rates.
-func ConvertBasePriceToPerSecond(basePrice sdk.Coin, unit skutypes.Unit) sdk.Coin {
-	perSecond, _ := skutypes.CalculatePricePerSecond(basePrice, unit)
-	return sdk.NewCoin(basePrice.Denom, perSecond)
+// Returns an error if the conversion fails (invalid unit, zero rate, or inexact division).
+// Note: SKUs are validated at creation time, so this should not fail for valid SKUs.
+func ConvertBasePriceToPerSecond(basePrice sdk.Coin, unit skutypes.Unit) (sdk.Coin, error) {
+	perSecond, ok := skutypes.CalculatePricePerSecond(basePrice, unit)
+	if !ok {
+		return sdk.Coin{}, fmt.Errorf("failed to convert base price %s with unit %s to per-second rate", basePrice, unit)
+	}
+	return sdk.NewCoin(basePrice.Denom, perSecond), nil
 }
 
 // CalculateAccruedAmount calculates the amount accrued for a lease item
@@ -68,7 +71,7 @@ func CalculateTotalAccruedForLease(items []LeaseItemWithPrice, duration time.Dur
 	for _, item := range items {
 		accrued, err := CalculateAccruedAmount(item.LockedPricePerSecond, item.Quantity, duration)
 		if err != nil {
-			return nil, fmt.Errorf("overflow calculating accrual for SKU %s: %w", item.SkuUUID, err)
+			return nil, fmt.Errorf("overflow calculating accrual for sku %s: %w", item.SkuUUID, err)
 		}
 		if accrued.IsPositive() {
 			totals = totals.Add(accrued)

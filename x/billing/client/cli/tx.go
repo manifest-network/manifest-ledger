@@ -35,7 +35,6 @@ func NewTxCmd() *cobra.Command {
 		NewCancelLeaseCmd(),
 		NewCloseLeaseCmd(),
 		NewWithdrawCmd(),
-		NewWithdrawAllCmd(),
 		NewUpdateParamsCmd(),
 	)
 
@@ -189,28 +188,37 @@ create-lease-for-tenant manifest1xyz... 01902a9b-1234-7000-8000-000000000005:10 
 	return cmd
 }
 
-// NewCloseLeaseCmd returns the command to close a lease.
+// NewCloseLeaseCmd returns the command to close one or more leases.
 func NewCloseLeaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "close-lease [lease-uuid]",
-		Short:   "Close an active lease",
-		Long:    `Close an active lease. The sender must be the tenant, the provider, or the module authority.`,
-		Example: `close-lease 01902a9b-1234-7000-8000-000000000001 --from mykey`,
-		Args:    cobra.ExactArgs(1),
+		Use:   "close-lease [lease-uuid]...",
+		Short: "Close one or more active leases",
+		Long: `Close one or more active leases atomically.
+The sender must be authorized for each lease (tenant, provider, or authority).
+All leases must be in ACTIVE state.
+This is an atomic operation: all leases succeed or all fail.`,
+		Example: `# Close a single lease
+close-lease 01902a9b-1234-7000-8000-000000000001 --from mykey
+
+# Close multiple leases (max 100)
+close-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000000002 --from mykey`,
+		Args: cobra.RangeArgs(1, types.MaxBatchLeaseSize),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
 				return err
 			}
 
-			leaseUUID := args[0]
-			if !pkguuid.IsValidUUID(leaseUUID) {
-				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+			// Validate all UUIDs
+			for _, uuid := range args {
+				if !pkguuid.IsValidUUID(uuid) {
+					return fmt.Errorf("invalid lease_uuid format: %s", uuid)
+				}
 			}
 
 			msg := &types.MsgCloseLease{
-				Sender:    clientCtx.GetFromAddress().String(),
-				LeaseUuid: leaseUUID,
+				Sender:     clientCtx.GetFromAddress().String(),
+				LeaseUuids: args,
 			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
@@ -222,64 +230,41 @@ func NewCloseLeaseCmd() *cobra.Command {
 	return cmd
 }
 
-// NewWithdrawCmd returns the command to withdraw from a lease.
+// NewWithdrawCmd returns the command to withdraw from leases.
 func NewWithdrawCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "withdraw [lease-uuid]",
-		Short:   "Withdraw accrued funds from a lease",
-		Long:    `Withdraw accrued funds from a specific lease. Only the provider or authority can withdraw.`,
-		Example: `withdraw 01902a9b-1234-7000-8000-000000000001 --from provider-key`,
-		Args:    cobra.ExactArgs(1),
+		Use:   "withdraw [lease-uuid]...",
+		Short: "Withdraw accrued funds from leases",
+		Long: fmt.Sprintf(`Withdraw accrued funds from leases. Only the provider or authority can withdraw.
+
+Two modes are supported:
+1. Specific leases: provide lease UUIDs as arguments (1-%d leases)
+2. Provider-wide: use --provider flag for paginated withdrawal from all provider's leases
+
+In specific lease mode, all leases must belong to the same provider and
+withdrawals are processed atomically - either all succeed or all fail.
+
+In provider-wide mode, leases are processed with pagination. Use --limit to
+control batch size (default %d, max %d). When has_more is true in the response,
+call withdraw again to process remaining leases.`, types.MaxBatchLeaseSize,
+			types.DefaultProviderWithdrawLimit, types.MaxBatchLeaseSize),
+		Example: `# Withdraw from specific leases
+withdraw 01902a9b-1234-7000-8000-000000000001 --from provider-key
+withdraw 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000000002 --from provider-key
+
+# Withdraw from all provider's leases (paginated)
+withdraw --provider 01902a9b-1234-7000-8000-000000000001 --from provider-key
+withdraw --provider 01902a9b-1234-7000-8000-000000000001 --limit 100 --from provider-key`,
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
 				return err
 			}
 
-			leaseUUID := args[0]
-			if !pkguuid.IsValidUUID(leaseUUID) {
-				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
-			}
-
-			msg := &types.MsgWithdraw{
-				Sender:    clientCtx.GetFromAddress().String(),
-				LeaseUuid: leaseUUID,
-			}
-
-			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
-		},
-	}
-
-	flags.AddTxFlagsToCmd(cmd)
-
-	return cmd
-}
-
-// NewWithdrawAllCmd returns the command to withdraw from all leases.
-func NewWithdrawAllCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "withdraw-all [provider-uuid]",
-		Short: "Withdraw all accrued funds from all leases for a provider",
-		Long: fmt.Sprintf(`Withdraw all accrued funds from all leases belonging to a provider.
-If the sender is the provider's address, provider-uuid must match.
-If the sender is the authority, provider-uuid must be specified.
-
-Use --limit to process leases in batches. Default limit is %d leases per call.
-Maximum allowed limit is %d to prevent gas exhaustion.
-When has_more is true in the response, call withdraw-all again to process remaining leases.`,
-			types.DefaultWithdrawAllLimit, types.MaxWithdrawAllLimit),
-		Example: `withdraw-all 01902a9b-1234-7000-8000-000000000001 --from provider-key
-withdraw-all 01902a9b-1234-7000-8000-000000000001 --limit 50 --from provider-key`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			clientCtx, err := client.GetClientTxContext(cmd)
+			providerUUID, err := cmd.Flags().GetString("provider")
 			if err != nil {
 				return err
-			}
-
-			providerUUID := args[0]
-			if !pkguuid.IsValidUUID(providerUUID) {
-				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
 			}
 
 			limit, err := cmd.Flags().GetUint64("limit")
@@ -287,17 +272,48 @@ withdraw-all 01902a9b-1234-7000-8000-000000000001 --limit 50 --from provider-key
 				return err
 			}
 
-			msg := &types.MsgWithdrawAll{
+			// Validate mutually exclusive modes
+			if len(args) > 0 && providerUUID != "" {
+				return fmt.Errorf("cannot specify both lease UUIDs and --provider flag")
+			}
+			if len(args) == 0 && providerUUID == "" {
+				return fmt.Errorf("must specify lease UUIDs or --provider flag")
+			}
+
+			// Mode 1: Specific leases
+			if len(args) > 0 {
+				if len(args) > types.MaxBatchLeaseSize {
+					return fmt.Errorf("cannot withdraw from more than %d leases at once", types.MaxBatchLeaseSize)
+				}
+				for _, leaseUUID := range args {
+					if !pkguuid.IsValidUUID(leaseUUID) {
+						return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+					}
+				}
+
+				msg := &types.MsgWithdraw{
+					Sender:     clientCtx.GetFromAddress().String(),
+					LeaseUuids: args,
+				}
+				return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+			}
+
+			// Mode 2: Provider-wide
+			if !pkguuid.IsValidUUID(providerUUID) {
+				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
+			}
+
+			msg := &types.MsgWithdraw{
 				Sender:       clientCtx.GetFromAddress().String(),
 				ProviderUuid: providerUUID,
 				Limit:        limit,
 			}
-
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
 
-	cmd.Flags().Uint64("limit", 0, fmt.Sprintf("Maximum number of leases to process (0 = default %d, max %d)", types.DefaultWithdrawAllLimit, types.MaxWithdrawAllLimit))
+	cmd.Flags().String("provider", "", "Provider UUID for paginated withdrawal from all leases")
+	cmd.Flags().Uint64("limit", 0, fmt.Sprintf("Maximum leases to process in provider mode (0 = default %d, max %d)", types.DefaultProviderWithdrawLimit, types.MaxBatchLeaseSize))
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd
@@ -433,70 +449,85 @@ acknowledge-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-0
 	return cmd
 }
 
-// NewRejectLeaseCmd returns the command to reject a pending lease.
+// NewRejectLeaseCmd returns the command to reject one or more pending leases.
 func NewRejectLeaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "reject-lease [lease-uuid]",
-		Short: "Reject a pending lease (provider only)",
-		Long: `Reject a pending lease. This will transition the lease to rejected state
-and release the tenant's locked credit. Only the provider of the lease or the
-module authority can reject. Use --reason to provide a rejection reason.`,
-		Example: `reject-lease 01902a9b-1234-7000-8000-000000000001 --from provider-key
-reject-lease 01902a9b-1234-7000-8000-000000000001 --reason "insufficient resources" --from provider-key`,
-		Args: cobra.ExactArgs(1),
+		Use:   "reject-lease [lease-uuid]...",
+		Short: "Reject one or more pending leases (provider only)",
+		Long: `Reject one or more pending leases atomically. This will transition the leases
+to rejected state and release the tenants' locked credit.
+Only the provider of the leases or the module authority can reject.
+All leases must belong to the same provider and be in PENDING state.
+Use --reason to provide a rejection reason (applied to all leases).
+This is an atomic operation: all leases succeed or all fail.`,
+		Example: `# Reject a single lease
+reject-lease 01902a9b-1234-7000-8000-000000000001 --from provider-key
+
+# Reject multiple leases with reason (max 100)
+reject-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000000002 --reason "insufficient resources" --from provider-key`,
+		Args: cobra.RangeArgs(1, types.MaxBatchLeaseSize),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
 				return err
 			}
 
-			leaseUUID := args[0]
-			if !pkguuid.IsValidUUID(leaseUUID) {
-				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+			// Validate all UUIDs
+			for _, uuid := range args {
+				if !pkguuid.IsValidUUID(uuid) {
+					return fmt.Errorf("invalid lease_uuid format: %s", uuid)
+				}
 			}
 
 			reason, _ := cmd.Flags().GetString("reason")
 
 			msg := &types.MsgRejectLease{
-				Sender:    clientCtx.GetFromAddress().String(),
-				LeaseUuid: leaseUUID,
-				Reason:    reason,
+				Sender:     clientCtx.GetFromAddress().String(),
+				LeaseUuids: args,
+				Reason:     reason,
 			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
 
-	cmd.Flags().String("reason", "", "Reason for rejecting the lease (max 256 characters)")
+	cmd.Flags().String("reason", "", "Reason for rejecting the leases (max 256 characters, applied to all)")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd
 }
 
-// NewCancelLeaseCmd returns the command to cancel a pending lease.
+// NewCancelLeaseCmd returns the command to cancel one or more pending leases.
 func NewCancelLeaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "cancel-lease [lease-uuid]",
-		Short: "Cancel a pending lease (tenant only)",
-		Long: `Cancel a pending lease that you created. This will transition the lease to
-rejected state and release your locked credit. Only the tenant who created the
-lease can cancel it.`,
-		Example: `cancel-lease 01902a9b-1234-7000-8000-000000000001 --from tenant-key`,
-		Args:    cobra.ExactArgs(1),
+		Use:   "cancel-lease [lease-uuid]...",
+		Short: "Cancel one or more pending leases (tenant only)",
+		Long: `Cancel one or more pending leases that you created. This will transition
+the leases to rejected state and release your locked credit. Only the tenant
+who created the leases can cancel them. All leases are cancelled atomically -
+either all succeed or all fail.`,
+		Example: `# Cancel a single lease
+cancel-lease 01902a9b-1234-7000-8000-000000000001 --from tenant-key
+
+# Cancel multiple leases in one transaction
+cancel-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000000002 --from tenant-key`,
+		Args: cobra.RangeArgs(1, types.MaxBatchLeaseSize),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
 				return err
 			}
 
-			leaseUUID := args[0]
-			if !pkguuid.IsValidUUID(leaseUUID) {
-				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+			// Validate all UUIDs
+			for _, leaseUUID := range args {
+				if !pkguuid.IsValidUUID(leaseUUID) {
+					return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+				}
 			}
 
 			msg := &types.MsgCancelLease{
-				Tenant:    clientCtx.GetFromAddress().String(),
-				LeaseUuid: leaseUUID,
+				Tenant:     clientCtx.GetFromAddress().String(),
+				LeaseUuids: args,
 			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)

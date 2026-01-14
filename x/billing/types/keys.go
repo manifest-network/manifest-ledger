@@ -42,16 +42,21 @@ const (
 // CreditAccountAddressPrefix is the prefix used to derive credit account addresses.
 const CreditAccountAddressPrefix = "billing/credit/"
 
-// WithdrawAll limits to prevent DoS attacks.
+// Provider-wide withdraw limits to prevent DoS attacks.
 const (
-	// DefaultWithdrawAllLimit is the default limit when limit=0 is specified.
-	// This prevents unbounded iterations over all leases.
-	DefaultWithdrawAllLimit uint64 = 50
+	// DefaultProviderWithdrawLimit is the default limit when limit=0 is specified
+	// for provider-wide withdrawal mode. This prevents unbounded iterations over all leases.
+	DefaultProviderWithdrawLimit uint64 = 50
+)
 
-	// MaxWithdrawAllLimit is the maximum allowed limit for WithdrawAll operations.
-	// This prevents a single transaction from processing too many leases and
-	// causing gas exhaustion or block timeouts.
-	MaxWithdrawAllLimit uint64 = 100
+// Query limits to prevent DoS attacks on RPC nodes.
+const (
+	// DefaultProviderWithdrawableQueryLimit is the default limit for ProviderWithdrawable queries.
+	DefaultProviderWithdrawableQueryLimit uint64 = 100
+
+	// MaxProviderWithdrawableQueryLimit is the maximum limit for ProviderWithdrawable queries.
+	// This prevents queries from iterating over unbounded numbers of leases.
+	MaxProviderWithdrawableQueryLimit uint64 = 1000
 )
 
 // EndBlocker limits to prevent DoS attacks.
@@ -64,18 +69,21 @@ const (
 
 // Event types for the billing module.
 const (
-	EventTypeCreditFunded        = "credit_funded"
-	EventTypeLeaseCreated        = "lease_created"
-	EventTypeLeaseClosed         = "lease_closed"
-	EventTypeLeaseAutoClose      = "lease_auto_closed"
-	EventTypeLeaseAcknowledged   = "lease_acknowledged"
-	EventTypeBatchAcknowledged   = "batch_acknowledged"
-	EventTypeLeaseRejected       = "lease_rejected"
-	EventTypeLeaseCancelled      = "lease_cancelled"
-	EventTypeLeaseExpired        = "lease_expired"
-	EventTypeProviderWithdraw    = "provider_withdraw"
-	EventTypeProviderWithdrawAll = "provider_withdraw_all"
-	EventTypeParamsUpdated       = "params_updated"
+	EventTypeCreditFunded      = "credit_funded"
+	EventTypeLeaseCreated      = "lease_created"
+	EventTypeLeaseClosed       = "lease_closed"
+	EventTypeLeaseAutoClose    = "lease_auto_closed"
+	EventTypeLeaseAcknowledged = "lease_acknowledged"
+	EventTypeBatchAcknowledged = "batch_acknowledged"
+	EventTypeLeaseRejected     = "lease_rejected"
+	EventTypeBatchRejected     = "batch_rejected"
+	EventTypeBatchClosed       = "batch_closed"
+	EventTypeLeaseCancelled    = "lease_cancelled"
+	EventTypeBatchCancelled    = "batch_cancelled"
+	EventTypeLeaseExpired      = "lease_expired"
+	EventTypeProviderWithdraw  = "provider_withdraw"
+	EventTypeBatchWithdraw     = "batch_withdraw"
+	EventTypeParamsUpdated     = "params_updated"
 
 	// Attribute keys for events.
 	AttributeKeyTenant            = "tenant"
@@ -101,4 +109,11 @@ const (
 	AttributeKeyRejectedBy        = "rejected_by"
 	AttributeKeyRejectionReason   = "rejection_reason"
 	AttributeKeyCancelledBy       = "cancelled_by"
+	AttributeKeyAutoClosed        = "auto_closed"
+)
+
+// Rejection reasons for lease cancellation/rejection.
+const (
+	// RejectionReasonCancelledByTenant is the reason set when a tenant cancels their own pending lease.
+	RejectionReasonCancelledByTenant = "cancelled by tenant"
 )

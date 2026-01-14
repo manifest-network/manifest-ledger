@@ -88,6 +88,12 @@ func BillingCloseLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
+// BillingCloseLeases closes multiple active leases atomically.
+func BillingCloseLeases(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUIDs []string, flags ...string) (sdk.TxResponse, error) {
+	cmd := append([]string{"tx", "billing", "close-lease"}, leaseUUIDs...)
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
 // BillingAcknowledgeLease acknowledges a pending lease (provider only).
 func BillingAcknowledgeLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{"tx", "billing", "acknowledge-lease", leaseUUID}
@@ -103,6 +109,15 @@ func BillingAcknowledgeLeases(ctx context.Context, chain *cosmos.CosmosChain, us
 // BillingRejectLease rejects a pending lease (provider only).
 func BillingRejectLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID string, reason string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{"tx", "billing", "reject-lease", leaseUUID}
+	if reason != "" {
+		cmd = append(cmd, "--reason", reason)
+	}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
+// BillingRejectLeases rejects multiple pending leases atomically (provider only).
+func BillingRejectLeases(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUIDs []string, reason string, flags ...string) (sdk.TxResponse, error) {
+	cmd := append([]string{"tx", "billing", "reject-lease"}, leaseUUIDs...)
 	if reason != "" {
 		cmd = append(cmd, "--reason", reason)
 	}
@@ -162,10 +177,11 @@ func BillingWithdraw(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wa
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
-// BillingWithdrawAll withdraws all accrued funds from all leases for a provider.
+// BillingWithdrawByProvider withdraws all accrued funds from all leases for a provider.
+// Uses the --provider flag for provider-wide withdrawal mode.
 // limit=0 uses the default limit (50).
-func BillingWithdrawAll(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, providerUUID string, limit uint64, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "withdraw-all", providerUUID}
+func BillingWithdrawByProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, providerUUID string, limit uint64, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "withdraw", "--provider", providerUUID}
 	if limit > 0 {
 		cmd = append(cmd, "--limit", strconv.FormatUint(limit, 10))
 	}

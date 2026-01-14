@@ -425,12 +425,14 @@ func (m *MsgCreateLeaseForTenantResponse) GetLeaseUuid() string {
 	return ""
 }
 
-// MsgCloseLease closes an active lease.
+// MsgCloseLease closes one or more active leases.
+// All leases must be ACTIVE and sender must be authorized for each.
+// This is an atomic operation: all leases succeed or all fail.
 type MsgCloseLease struct {
 	// sender is the address requesting the closure (tenant, provider, or authority).
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuid is the UUID of the lease to close.
-	LeaseUuid string `protobuf:"bytes,2,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
+	// lease_uuids are the UUIDs of the leases to close (1-100).
+	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
 }
 
 func (m *MsgCloseLease) Reset()         { *m = MsgCloseLease{} }
@@ -473,17 +475,21 @@ func (m *MsgCloseLease) GetSender() string {
 	return ""
 }
 
-func (m *MsgCloseLease) GetLeaseUuid() string {
+func (m *MsgCloseLease) GetLeaseUuids() []string {
 	if m != nil {
-		return m.LeaseUuid
+		return m.LeaseUuids
 	}
-	return ""
+	return nil
 }
 
 // MsgCloseLeaseResponse is the response type for MsgCloseLease.
 type MsgCloseLeaseResponse struct {
-	// settled_amounts is the amounts settled at closure (one per denom).
-	SettledAmounts github_com_cosmos_cosmos_sdk_types.Coins `protobuf:"bytes,1,rep,name=settled_amounts,json=settledAmounts,proto3,castrepeated=github.com/cosmos/cosmos-sdk/types.Coins" json:"settled_amounts"`
+	// closed_at is the timestamp when the leases were closed.
+	ClosedAt time.Time `protobuf:"bytes,1,opt,name=closed_at,json=closedAt,proto3,stdtime" json:"closed_at"`
+	// closed_count is the number of leases that were closed.
+	ClosedCount uint64 `protobuf:"varint,2,opt,name=closed_count,json=closedCount,proto3" json:"closed_count"`
+	// total_settled_amounts is the aggregated amounts settled across all leases (one per denom).
+	TotalSettledAmounts github_com_cosmos_cosmos_sdk_types.Coins `protobuf:"bytes,3,rep,name=total_settled_amounts,json=totalSettledAmounts,proto3,castrepeated=github.com/cosmos/cosmos-sdk/types.Coins" json:"total_settled_amounts"`
 }
 
 func (m *MsgCloseLeaseResponse) Reset()         { *m = MsgCloseLeaseResponse{} }
@@ -519,19 +525,46 @@ func (m *MsgCloseLeaseResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_MsgCloseLeaseResponse proto.InternalMessageInfo
 
-func (m *MsgCloseLeaseResponse) GetSettledAmounts() github_com_cosmos_cosmos_sdk_types.Coins {
+func (m *MsgCloseLeaseResponse) GetClosedAt() time.Time {
 	if m != nil {
-		return m.SettledAmounts
+		return m.ClosedAt
+	}
+	return time.Time{}
+}
+
+func (m *MsgCloseLeaseResponse) GetClosedCount() uint64 {
+	if m != nil {
+		return m.ClosedCount
+	}
+	return 0
+}
+
+func (m *MsgCloseLeaseResponse) GetTotalSettledAmounts() github_com_cosmos_cosmos_sdk_types.Coins {
+	if m != nil {
+		return m.TotalSettledAmounts
 	}
 	return nil
 }
 
-// MsgWithdraw allows a provider to withdraw from a specific lease.
+// MsgWithdraw allows a provider to withdraw from leases.
+// Two mutually exclusive modes:
+// 1. Specific leases: provide lease_uuids (1-100 UUIDs)
+// 2. Provider-wide: provide provider_uuid for paginated withdrawal from all leases
+// This is an atomic operation: all withdrawals succeed or all fail.
 type MsgWithdraw struct {
 	// sender is the provider's address or authority.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuid is the UUID of the lease to withdraw from.
-	LeaseUuid string `protobuf:"bytes,2,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
+	// lease_uuids are the UUIDs of the leases to withdraw from (1-100).
+	// Mutually exclusive with provider_uuid.
+	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
+	// provider_uuid enables provider-wide withdrawal mode.
+	// When set, withdraws from all active leases for this provider with pagination.
+	// Mutually exclusive with lease_uuids.
+	ProviderUuid string `protobuf:"bytes,3,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
+	// limit is the maximum number of leases to process in provider-wide mode.
+	// When 0, defaults to 50. Maximum allowed is 100.
+	// Ignored when lease_uuids is specified.
+	Limit uint64 `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty,string"`
 }
 
 func (m *MsgWithdraw) Reset()         { *m = MsgWithdraw{} }
@@ -574,19 +607,38 @@ func (m *MsgWithdraw) GetSender() string {
 	return ""
 }
 
-func (m *MsgWithdraw) GetLeaseUuid() string {
+func (m *MsgWithdraw) GetLeaseUuids() []string {
 	if m != nil {
-		return m.LeaseUuid
+		return m.LeaseUuids
+	}
+	return nil
+}
+
+func (m *MsgWithdraw) GetProviderUuid() string {
+	if m != nil {
+		return m.ProviderUuid
 	}
 	return ""
 }
 
+func (m *MsgWithdraw) GetLimit() uint64 {
+	if m != nil {
+		return m.Limit
+	}
+	return 0
+}
+
 // MsgWithdrawResponse is the response type for MsgWithdraw.
 type MsgWithdrawResponse struct {
-	// amounts is the amounts withdrawn (one per denom).
-	Amounts github_com_cosmos_cosmos_sdk_types.Coins `protobuf:"bytes,1,rep,name=amounts,proto3,castrepeated=github.com/cosmos/cosmos-sdk/types.Coins" json:"amounts"`
+	// total_amounts is the total amounts withdrawn across all leases (one per denom).
+	TotalAmounts github_com_cosmos_cosmos_sdk_types.Coins `protobuf:"bytes,1,rep,name=total_amounts,json=totalAmounts,proto3,castrepeated=github.com/cosmos/cosmos-sdk/types.Coins" json:"total_amounts"`
 	// payout_address is the address that received the funds.
 	PayoutAddress string `protobuf:"bytes,2,opt,name=payout_address,json=payoutAddress,proto3" json:"payout_address,omitempty"`
+	// withdrawal_count is the number of leases withdrawn from.
+	WithdrawalCount uint64 `protobuf:"varint,3,opt,name=withdrawal_count,json=withdrawalCount,proto3" json:"withdrawal_count,omitempty,string"`
+	// has_more indicates if there are more leases to process in provider-wide mode.
+	// Always false when using lease_uuids mode.
+	HasMore bool `protobuf:"varint,4,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
 }
 
 func (m *MsgWithdrawResponse) Reset()         { *m = MsgWithdrawResponse{} }
@@ -622,9 +674,9 @@ func (m *MsgWithdrawResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_MsgWithdrawResponse proto.InternalMessageInfo
 
-func (m *MsgWithdrawResponse) GetAmounts() github_com_cosmos_cosmos_sdk_types.Coins {
+func (m *MsgWithdrawResponse) GetTotalAmounts() github_com_cosmos_cosmos_sdk_types.Coins {
 	if m != nil {
-		return m.Amounts
+		return m.TotalAmounts
 	}
 	return nil
 }
@@ -636,142 +688,14 @@ func (m *MsgWithdrawResponse) GetPayoutAddress() string {
 	return ""
 }
 
-// MsgWithdrawAll allows a provider to withdraw from all their leases.
-type MsgWithdrawAll struct {
-	// sender is the provider's address or authority.
-	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// provider_uuid is the provider UUID to withdraw for.
-	// If sender is authority, this field specifies which provider.
-	// If sender is the provider's address, this field must match or be empty.
-	ProviderUuid string `protobuf:"bytes,2,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
-	// limit is the maximum number of leases to process in this call.
-	// When 0, defaults to 50. Maximum allowed is 100.
-	// Use pagination (multiple calls) for providers with many leases.
-	Limit uint64 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty,string"`
-}
-
-func (m *MsgWithdrawAll) Reset()         { *m = MsgWithdrawAll{} }
-func (m *MsgWithdrawAll) String() string { return proto.CompactTextString(m) }
-func (*MsgWithdrawAll) ProtoMessage()    {}
-func (*MsgWithdrawAll) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5e88d178776fa191, []int{11}
-}
-func (m *MsgWithdrawAll) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *MsgWithdrawAll) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_MsgWithdrawAll.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *MsgWithdrawAll) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_MsgWithdrawAll.Merge(m, src)
-}
-func (m *MsgWithdrawAll) XXX_Size() int {
-	return m.Size()
-}
-func (m *MsgWithdrawAll) XXX_DiscardUnknown() {
-	xxx_messageInfo_MsgWithdrawAll.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_MsgWithdrawAll proto.InternalMessageInfo
-
-func (m *MsgWithdrawAll) GetSender() string {
+func (m *MsgWithdrawResponse) GetWithdrawalCount() uint64 {
 	if m != nil {
-		return m.Sender
-	}
-	return ""
-}
-
-func (m *MsgWithdrawAll) GetProviderUuid() string {
-	if m != nil {
-		return m.ProviderUuid
-	}
-	return ""
-}
-
-func (m *MsgWithdrawAll) GetLimit() uint64 {
-	if m != nil {
-		return m.Limit
+		return m.WithdrawalCount
 	}
 	return 0
 }
 
-// MsgWithdrawAllResponse is the response type for MsgWithdrawAll.
-type MsgWithdrawAllResponse struct {
-	// total_amounts is the total amounts withdrawn across all leases (one per denom).
-	TotalAmounts github_com_cosmos_cosmos_sdk_types.Coins `protobuf:"bytes,1,rep,name=total_amounts,json=totalAmounts,proto3,castrepeated=github.com/cosmos/cosmos-sdk/types.Coins" json:"total_amounts"`
-	// lease_count is the number of leases withdrawn from.
-	LeaseCount uint64 `protobuf:"varint,2,opt,name=lease_count,json=leaseCount,proto3" json:"lease_count,omitempty,string"`
-	// payout_address is the address that received the funds.
-	PayoutAddress string `protobuf:"bytes,3,opt,name=payout_address,json=payoutAddress,proto3" json:"payout_address,omitempty"`
-	// has_more indicates if there are more leases to process.
-	// When true, the caller should make another WithdrawAll call.
-	HasMore bool `protobuf:"varint,4,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-}
-
-func (m *MsgWithdrawAllResponse) Reset()         { *m = MsgWithdrawAllResponse{} }
-func (m *MsgWithdrawAllResponse) String() string { return proto.CompactTextString(m) }
-func (*MsgWithdrawAllResponse) ProtoMessage()    {}
-func (*MsgWithdrawAllResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5e88d178776fa191, []int{12}
-}
-func (m *MsgWithdrawAllResponse) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *MsgWithdrawAllResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_MsgWithdrawAllResponse.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *MsgWithdrawAllResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_MsgWithdrawAllResponse.Merge(m, src)
-}
-func (m *MsgWithdrawAllResponse) XXX_Size() int {
-	return m.Size()
-}
-func (m *MsgWithdrawAllResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_MsgWithdrawAllResponse.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_MsgWithdrawAllResponse proto.InternalMessageInfo
-
-func (m *MsgWithdrawAllResponse) GetTotalAmounts() github_com_cosmos_cosmos_sdk_types.Coins {
-	if m != nil {
-		return m.TotalAmounts
-	}
-	return nil
-}
-
-func (m *MsgWithdrawAllResponse) GetLeaseCount() uint64 {
-	if m != nil {
-		return m.LeaseCount
-	}
-	return 0
-}
-
-func (m *MsgWithdrawAllResponse) GetPayoutAddress() string {
-	if m != nil {
-		return m.PayoutAddress
-	}
-	return ""
-}
-
-func (m *MsgWithdrawAllResponse) GetHasMore() bool {
+func (m *MsgWithdrawResponse) GetHasMore() bool {
 	if m != nil {
 		return m.HasMore
 	}
@@ -790,7 +714,7 @@ func (m *MsgUpdateParams) Reset()         { *m = MsgUpdateParams{} }
 func (m *MsgUpdateParams) String() string { return proto.CompactTextString(m) }
 func (*MsgUpdateParams) ProtoMessage()    {}
 func (*MsgUpdateParams) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5e88d178776fa191, []int{13}
+	return fileDescriptor_5e88d178776fa191, []int{11}
 }
 func (m *MsgUpdateParams) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -841,7 +765,7 @@ func (m *MsgUpdateParamsResponse) Reset()         { *m = MsgUpdateParamsResponse
 func (m *MsgUpdateParamsResponse) String() string { return proto.CompactTextString(m) }
 func (*MsgUpdateParamsResponse) ProtoMessage()    {}
 func (*MsgUpdateParamsResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5e88d178776fa191, []int{14}
+	return fileDescriptor_5e88d178776fa191, []int{12}
 }
 func (m *MsgUpdateParamsResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -884,7 +808,7 @@ func (m *MsgAcknowledgeLease) Reset()         { *m = MsgAcknowledgeLease{} }
 func (m *MsgAcknowledgeLease) String() string { return proto.CompactTextString(m) }
 func (*MsgAcknowledgeLease) ProtoMessage()    {}
 func (*MsgAcknowledgeLease) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5e88d178776fa191, []int{15}
+	return fileDescriptor_5e88d178776fa191, []int{13}
 }
 func (m *MsgAcknowledgeLease) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -940,7 +864,7 @@ func (m *MsgAcknowledgeLeaseResponse) Reset()         { *m = MsgAcknowledgeLease
 func (m *MsgAcknowledgeLeaseResponse) String() string { return proto.CompactTextString(m) }
 func (*MsgAcknowledgeLeaseResponse) ProtoMessage()    {}
 func (*MsgAcknowledgeLeaseResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5e88d178776fa191, []int{16}
+	return fileDescriptor_5e88d178776fa191, []int{14}
 }
 func (m *MsgAcknowledgeLeaseResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -983,13 +907,15 @@ func (m *MsgAcknowledgeLeaseResponse) GetAcknowledgedCount() uint64 {
 	return 0
 }
 
-// MsgRejectLease allows a provider to reject a PENDING lease.
+// MsgRejectLease allows a provider to reject one or more PENDING leases.
+// All leases must belong to the same provider and be in PENDING state.
+// This is an atomic operation: all leases succeed or all fail.
 type MsgRejectLease struct {
 	// sender is the provider's address or authority.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuid is the UUID of the lease to reject.
-	LeaseUuid string `protobuf:"bytes,2,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
-	// reason is an optional explanation for the rejection.
+	// lease_uuids are the UUIDs of the leases to reject (1-100).
+	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
+	// reason is an optional explanation for the rejection (applied to all leases).
 	// Maximum 256 characters.
 	Reason string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 }
@@ -998,7 +924,7 @@ func (m *MsgRejectLease) Reset()         { *m = MsgRejectLease{} }
 func (m *MsgRejectLease) String() string { return proto.CompactTextString(m) }
 func (*MsgRejectLease) ProtoMessage()    {}
 func (*MsgRejectLease) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5e88d178776fa191, []int{17}
+	return fileDescriptor_5e88d178776fa191, []int{15}
 }
 func (m *MsgRejectLease) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1034,11 +960,11 @@ func (m *MsgRejectLease) GetSender() string {
 	return ""
 }
 
-func (m *MsgRejectLease) GetLeaseUuid() string {
+func (m *MsgRejectLease) GetLeaseUuids() []string {
 	if m != nil {
-		return m.LeaseUuid
+		return m.LeaseUuids
 	}
-	return ""
+	return nil
 }
 
 func (m *MsgRejectLease) GetReason() string {
@@ -1050,15 +976,17 @@ func (m *MsgRejectLease) GetReason() string {
 
 // MsgRejectLeaseResponse is the response type for MsgRejectLease.
 type MsgRejectLeaseResponse struct {
-	// rejected_at is the timestamp when the lease was rejected.
+	// rejected_at is the timestamp when the leases were rejected.
 	RejectedAt time.Time `protobuf:"bytes,1,opt,name=rejected_at,json=rejectedAt,proto3,stdtime" json:"rejected_at"`
+	// rejected_count is the number of leases that were rejected.
+	RejectedCount uint64 `protobuf:"varint,2,opt,name=rejected_count,json=rejectedCount,proto3" json:"rejected_count"`
 }
 
 func (m *MsgRejectLeaseResponse) Reset()         { *m = MsgRejectLeaseResponse{} }
 func (m *MsgRejectLeaseResponse) String() string { return proto.CompactTextString(m) }
 func (*MsgRejectLeaseResponse) ProtoMessage()    {}
 func (*MsgRejectLeaseResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5e88d178776fa191, []int{18}
+	return fileDescriptor_5e88d178776fa191, []int{16}
 }
 func (m *MsgRejectLeaseResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1094,19 +1022,28 @@ func (m *MsgRejectLeaseResponse) GetRejectedAt() time.Time {
 	return time.Time{}
 }
 
-// MsgCancelLease allows a tenant to cancel their own PENDING lease.
+func (m *MsgRejectLeaseResponse) GetRejectedCount() uint64 {
+	if m != nil {
+		return m.RejectedCount
+	}
+	return 0
+}
+
+// MsgCancelLease allows a tenant to cancel one or more of their own PENDING leases.
+// All leases must belong to the tenant. This is an atomic operation:
+// all leases succeed or all fail.
 type MsgCancelLease struct {
-	// tenant is the address of the tenant who owns the lease.
+	// tenant is the address of the tenant who owns the leases.
 	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	// lease_uuid is the UUID of the lease to cancel.
-	LeaseUuid string `protobuf:"bytes,2,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
+	// lease_uuids are the UUIDs of the leases to cancel (1-100).
+	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
 }
 
 func (m *MsgCancelLease) Reset()         { *m = MsgCancelLease{} }
 func (m *MsgCancelLease) String() string { return proto.CompactTextString(m) }
 func (*MsgCancelLease) ProtoMessage()    {}
 func (*MsgCancelLease) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5e88d178776fa191, []int{19}
+	return fileDescriptor_5e88d178776fa191, []int{17}
 }
 func (m *MsgCancelLease) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1142,24 +1079,26 @@ func (m *MsgCancelLease) GetTenant() string {
 	return ""
 }
 
-func (m *MsgCancelLease) GetLeaseUuid() string {
+func (m *MsgCancelLease) GetLeaseUuids() []string {
 	if m != nil {
-		return m.LeaseUuid
+		return m.LeaseUuids
 	}
-	return ""
+	return nil
 }
 
 // MsgCancelLeaseResponse is the response type for MsgCancelLease.
 type MsgCancelLeaseResponse struct {
-	// cancelled_at is the timestamp when the lease was cancelled.
+	// cancelled_at is the timestamp when the leases were cancelled.
 	CancelledAt time.Time `protobuf:"bytes,1,opt,name=cancelled_at,json=cancelledAt,proto3,stdtime" json:"cancelled_at"`
+	// cancelled_count is the number of leases that were cancelled.
+	CancelledCount uint64 `protobuf:"varint,2,opt,name=cancelled_count,json=cancelledCount,proto3" json:"cancelled_count,omitempty"`
 }
 
 func (m *MsgCancelLeaseResponse) Reset()         { *m = MsgCancelLeaseResponse{} }
 func (m *MsgCancelLeaseResponse) String() string { return proto.CompactTextString(m) }
 func (*MsgCancelLeaseResponse) ProtoMessage()    {}
 func (*MsgCancelLeaseResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5e88d178776fa191, []int{20}
+	return fileDescriptor_5e88d178776fa191, []int{18}
 }
 func (m *MsgCancelLeaseResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1195,6 +1134,13 @@ func (m *MsgCancelLeaseResponse) GetCancelledAt() time.Time {
 	return time.Time{}
 }
 
+func (m *MsgCancelLeaseResponse) GetCancelledCount() uint64 {
+	if m != nil {
+		return m.CancelledCount
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*LeaseItemInput)(nil), "liftedinit.billing.v1.LeaseItemInput")
 	proto.RegisterType((*MsgFundCredit)(nil), "liftedinit.billing.v1.MsgFundCredit")
@@ -1207,8 +1153,6 @@ func init() {
 	proto.RegisterType((*MsgCloseLeaseResponse)(nil), "liftedinit.billing.v1.MsgCloseLeaseResponse")
 	proto.RegisterType((*MsgWithdraw)(nil), "liftedinit.billing.v1.MsgWithdraw")
 	proto.RegisterType((*MsgWithdrawResponse)(nil), "liftedinit.billing.v1.MsgWithdrawResponse")
-	proto.RegisterType((*MsgWithdrawAll)(nil), "liftedinit.billing.v1.MsgWithdrawAll")
-	proto.RegisterType((*MsgWithdrawAllResponse)(nil), "liftedinit.billing.v1.MsgWithdrawAllResponse")
 	proto.RegisterType((*MsgUpdateParams)(nil), "liftedinit.billing.v1.MsgUpdateParams")
 	proto.RegisterType((*MsgUpdateParamsResponse)(nil), "liftedinit.billing.v1.MsgUpdateParamsResponse")
 	proto.RegisterType((*MsgAcknowledgeLease)(nil), "liftedinit.billing.v1.MsgAcknowledgeLease")
@@ -1222,100 +1166,102 @@ func init() {
 func init() { proto.RegisterFile("liftedinit/billing/v1/tx.proto", fileDescriptor_5e88d178776fa191) }
 
 var fileDescriptor_5e88d178776fa191 = []byte{
-	// 1483 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xcc, 0x57, 0xcd, 0x6f, 0x1b, 0x45,
-	0x14, 0xcf, 0x3a, 0x6d, 0x9a, 0x8c, 0x93, 0xb4, 0x75, 0xd3, 0xc6, 0x71, 0x1b, 0x6f, 0x58, 0xd1,
-	0x2a, 0x8a, 0x92, 0x35, 0x09, 0x08, 0xd4, 0xf4, 0x82, 0x1d, 0x5a, 0xa9, 0x08, 0x0b, 0x30, 0xad,
-	0x2a, 0x95, 0x83, 0x3b, 0xf6, 0x4e, 0x36, 0x4b, 0x76, 0x77, 0xdc, 0x9d, 0xd9, 0xa4, 0xb9, 0x20,
-	0xe0, 0x82, 0x84, 0x38, 0xf4, 0x0f, 0xe0, 0x02, 0x47, 0x4e, 0x3d, 0x80, 0xc4, 0x01, 0x71, 0x03,
-	0x55, 0xe2, 0x52, 0x38, 0x21, 0x0e, 0x2e, 0x6a, 0x91, 0x2a, 0x59, 0x48, 0x9c, 0xb9, 0xa1, 0x9d,
-	0x99, 0xdd, 0x9d, 0xf5, 0x57, 0xb7, 0x8d, 0x25, 0xb8, 0xc4, 0xd9, 0xdf, 0xbc, 0x37, 0xf3, 0xe6,
-	0xf7, 0x3e, 0xe6, 0x3d, 0x50, 0xb4, 0xad, 0x6d, 0x8a, 0x0c, 0xcb, 0xb5, 0x68, 0xa9, 0x61, 0xd9,
-	0xb6, 0xe5, 0x9a, 0xa5, 0xbd, 0xf5, 0x12, 0xbd, 0xa3, 0xb7, 0x3c, 0x4c, 0x71, 0xee, 0x74, 0xbc,
-	0xae, 0x8b, 0x75, 0x7d, 0x6f, 0xbd, 0x70, 0x12, 0x3a, 0x96, 0x8b, 0x4b, 0xec, 0x2f, 0x97, 0x2c,
-	0x14, 0x9b, 0x98, 0x38, 0x98, 0x94, 0x1a, 0x90, 0xa0, 0xd2, 0xde, 0x7a, 0x03, 0x51, 0xb8, 0x5e,
-	0x6a, 0x62, 0xcb, 0x15, 0xeb, 0xf3, 0x62, 0xdd, 0x21, 0xec, 0x04, 0x87, 0x98, 0x62, 0x61, 0x81,
-	0x2f, 0xd4, 0xd9, 0x57, 0x89, 0x7f, 0x88, 0xa5, 0x39, 0x13, 0x9b, 0x98, 0xe3, 0xc1, 0x7f, 0x02,
-	0x55, 0x4d, 0x8c, 0x4d, 0x1b, 0x95, 0xd8, 0x57, 0xc3, 0xdf, 0x2e, 0x51, 0xcb, 0x41, 0x84, 0x42,
-	0xa7, 0x25, 0x04, 0x5e, 0x18, 0x70, 0xa9, 0x83, 0x16, 0x12, 0x3b, 0x6b, 0x5f, 0x29, 0x60, 0xf6,
-	0x2d, 0x04, 0x09, 0xba, 0x4a, 0x91, 0x73, 0xd5, 0x6d, 0xf9, 0x34, 0xb7, 0x0e, 0x26, 0xc9, 0xae,
-	0x5f, 0xf7, 0x7d, 0xcb, 0xc8, 0x2b, 0x4b, 0xca, 0xf2, 0x54, 0xe5, 0x4c, 0xa7, 0xad, 0xe6, 0x42,
-	0x6c, 0x15, 0x3b, 0x16, 0x45, 0x4e, 0x8b, 0x1e, 0xd4, 0x8e, 0x91, 0x5d, 0xff, 0xba, 0x6f, 0x19,
-	0xb9, 0x8b, 0x60, 0xf2, 0xb6, 0x0f, 0x5d, 0x6a, 0xd1, 0x83, 0x7c, 0x66, 0x49, 0x59, 0x3e, 0x52,
-	0x59, 0xec, 0xb4, 0xd5, 0x85, 0x10, 0x8b, 0x55, 0x56, 0x09, 0xf5, 0x2c, 0xd7, 0xac, 0x45, 0xe2,
-	0x9b, 0xda, 0x67, 0x4f, 0xee, 0xad, 0x2c, 0x72, 0x43, 0x23, 0x23, 0x93, 0x16, 0x69, 0x9f, 0x67,
-	0xc0, 0x4c, 0x95, 0x98, 0x57, 0x7c, 0xd7, 0xd8, 0xf2, 0x90, 0x61, 0xd1, 0xdc, 0x1b, 0x60, 0x82,
-	0x20, 0xd7, 0x40, 0x9e, 0xb0, 0x70, 0xb5, 0xd3, 0x56, 0x4f, 0x70, 0x24, 0x3e, 0xec, 0xd7, 0x6f,
-	0xd6, 0xe6, 0x04, 0x8d, 0x65, 0xc3, 0xf0, 0x10, 0x21, 0xef, 0xf1, 0xd3, 0x85, 0x6e, 0xb0, 0x0b,
-	0x45, 0x2e, 0x74, 0x29, 0x33, 0x5a, 0xec, 0xc2, 0x91, 0x34, 0xbb, 0x70, 0xc9, 0x5c, 0x19, 0x4c,
-	0x40, 0x07, 0xfb, 0x2e, 0xcd, 0x8f, 0x2f, 0x29, 0xcb, 0xd9, 0x8d, 0x05, 0x5d, 0x88, 0x07, 0x11,
-	0xa0, 0x8b, 0x08, 0xd0, 0xb7, 0xb0, 0xe5, 0x56, 0x66, 0xef, 0xb7, 0xd5, 0xb1, 0x4e, 0x5b, 0x15,
-	0x0a, 0x35, 0xf1, 0xbb, 0xb9, 0xfa, 0xc9, 0x93, 0x7b, 0x2b, 0xc2, 0xaa, 0x80, 0x8f, 0x73, 0x5d,
-	0x7c, 0x24, 0x2e, 0xaf, 0xfd, 0xa8, 0x80, 0xd3, 0x09, 0xa4, 0x86, 0x48, 0x0b, 0xbb, 0x04, 0xe5,
-	0xde, 0x07, 0xb3, 0x4d, 0x86, 0xd4, 0x21, 0x37, 0x55, 0xd0, 0xf3, 0x4a, 0xa7, 0xad, 0xe6, 0x93,
-	0x2b, 0x29, 0x2e, 0x38, 0xc3, 0x35, 0x04, 0x98, 0x7b, 0x1b, 0x64, 0x5d, 0xb4, 0x5f, 0x6f, 0x40,
-	0x1b, 0xba, 0x4d, 0xc4, 0x28, 0x1b, 0x7a, 0xd9, 0x53, 0xe2, 0xb2, 0xb2, 0x56, 0x0d, 0xb8, 0x68,
-	0xbf, 0xc2, 0xff, 0xd7, 0x7e, 0x51, 0xc0, 0x6c, 0x95, 0x98, 0x5b, 0x1e, 0x82, 0x14, 0x31, 0x97,
-	0x4b, 0x1e, 0x51, 0x0e, 0xe1, 0x91, 0x37, 0xc1, 0xd1, 0x40, 0x94, 0xe4, 0x33, 0x4b, 0xe3, 0xcb,
-	0xd9, 0x8d, 0xf3, 0x7a, 0xdf, 0xe4, 0xd5, 0x93, 0x51, 0x56, 0x99, 0x11, 0xf6, 0x72, 0xdd, 0x1a,
-	0xff, 0xd9, 0x5c, 0x63, 0xae, 0xe1, 0x1b, 0xf7, 0x0b, 0xd5, 0xe4, 0x05, 0xb4, 0x77, 0xc1, 0x99,
-	0x24, 0x12, 0xf9, 0xe6, 0x35, 0x00, 0xec, 0x00, 0x90, 0x13, 0x2b, 0xdf, 0x69, 0xab, 0x73, 0x31,
-	0x2a, 0xa5, 0xd6, 0x14, 0x43, 0x83, 0xe4, 0xd2, 0xbe, 0xcd, 0x80, 0xf9, 0xe4, 0x9e, 0x57, 0xb0,
-	0x77, 0x8d, 0xdf, 0xb4, 0x0a, 0xa6, 0xa0, 0x4f, 0x77, 0xb0, 0x17, 0x64, 0x1e, 0xdf, 0xb3, 0xd4,
-	0x69, 0xab, 0xa7, 0x22, 0x30, 0x05, 0x6b, 0xf1, 0x0e, 0x23, 0x4a, 0x88, 0x88, 0xfe, 0xf1, 0xc3,
-	0xd3, 0x7f, 0x31, 0xa0, 0x3f, 0xb6, 0x30, 0xf0, 0xc0, 0x85, 0xa1, 0x1e, 0x88, 0xb8, 0xd1, 0x6e,
-	0x02, 0x75, 0xc0, 0xd2, 0xe1, 0x7d, 0xf2, 0xbd, 0xc2, 0x2a, 0xd2, 0x96, 0x8d, 0x49, 0x1c, 0xb9,
-	0x23, 0xa8, 0x48, 0x49, 0x83, 0x32, 0xa9, 0x0d, 0x4a, 0x53, 0x41, 0x62, 0x63, 0xb5, 0x2f, 0x79,
-	0x05, 0x89, 0x91, 0x88, 0x91, 0x4f, 0x15, 0x70, 0x9c, 0x20, 0x4a, 0x6d, 0x64, 0xd4, 0x79, 0x71,
-	0x0a, 0x6a, 0xc8, 0xf8, 0xf0, 0x4c, 0xdf, 0x12, 0xae, 0xeb, 0xd6, 0xfc, 0xfa, 0xa1, 0xba, 0x6c,
-	0x5a, 0x74, 0xc7, 0x6f, 0xe8, 0x4d, 0xec, 0x88, 0x27, 0x4d, 0xfc, 0xac, 0x11, 0x63, 0x57, 0xbc,
-	0x44, 0xc1, 0x1e, 0xa4, 0x36, 0x2b, 0x94, 0xcb, 0x5c, 0x57, 0xfb, 0x4e, 0x01, 0xd9, 0x2a, 0x31,
-	0x6f, 0x58, 0x74, 0xc7, 0xf0, 0xe0, 0xfe, 0x7f, 0x4d, 0xf0, 0x4a, 0x17, 0xc1, 0x85, 0x5e, 0x82,
-	0x43, 0x53, 0xb5, 0x3f, 0x15, 0x70, 0x4a, 0xfa, 0x8e, 0xc8, 0x6d, 0x81, 0x63, 0xa9, 0x39, 0xbd,
-	0x24, 0x38, 0x3d, 0xf6, 0x3c, 0x5c, 0x86, 0x4a, 0xc1, 0x83, 0xd0, 0x82, 0x07, 0xd8, 0x8f, 0x1f,
-	0x84, 0x4c, 0xfc, 0x20, 0x24, 0x57, 0xd2, 0x3c, 0x08, 0x5c, 0x43, 0x80, 0xda, 0x3f, 0xbc, 0x7e,
-	0x87, 0xd7, 0x2c, 0xdb, 0xf6, 0x88, 0x9c, 0xf4, 0x3a, 0x98, 0x69, 0x79, 0x78, 0xcf, 0x32, 0x90,
-	0x27, 0xfb, 0xe9, 0x6c, 0xa7, 0xad, 0xce, 0x27, 0x16, 0x24, 0x57, 0x4d, 0x87, 0x0b, 0xac, 0x21,
-	0x79, 0x09, 0x1c, 0xb5, 0x2d, 0xc7, 0xe2, 0x4f, 0xf2, 0x91, 0x4a, 0xa1, 0xd3, 0x56, 0xcf, 0x30,
-	0xa0, 0xb7, 0x15, 0xe1, 0x82, 0xa2, 0xce, 0xc7, 0xfe, 0x5d, 0x1c, 0xec, 0xdf, 0xb2, 0x6d, 0x6b,
-	0x7f, 0x67, 0x58, 0xa1, 0x97, 0xa0, 0xc8, 0xcb, 0x1f, 0x2b, 0x60, 0x86, 0x62, 0x0a, 0xed, 0xf4,
-	0x09, 0x54, 0x16, 0xce, 0x4e, 0xea, 0x3d, 0x93, 0xcb, 0xa7, 0x99, 0xaa, 0x48, 0x9e, 0x5c, 0x19,
-	0x64, 0x79, 0x40, 0x37, 0x59, 0x63, 0xc2, 0x7b, 0xb2, 0xa5, 0x4e, 0x5b, 0x3d, 0x27, 0xc1, 0xbd,
-	0x5c, 0xf0, 0xdc, 0xd8, 0x0a, 0x16, 0xfb, 0x84, 0xce, 0xf8, 0xc8, 0x42, 0x27, 0xe8, 0x31, 0x77,
-	0x20, 0xa9, 0x3b, 0xd8, 0x43, 0xf9, 0x23, 0x4b, 0xca, 0xf2, 0x24, 0xef, 0x31, 0x43, 0x4c, 0xee,
-	0x31, 0x77, 0x20, 0xa9, 0x62, 0x0f, 0x69, 0xbf, 0x2b, 0xe0, 0x78, 0x95, 0x98, 0xd7, 0x5b, 0x06,
-	0xa4, 0xe8, 0x1d, 0xe8, 0x41, 0x87, 0x8c, 0xfa, 0xf9, 0xbb, 0x0c, 0x26, 0x5a, 0x6c, 0x63, 0xd1,
-	0xdc, 0x2c, 0x0e, 0x78, 0xb9, 0xf8, 0xe9, 0x71, 0x37, 0xc7, 0x95, 0x6a, 0xe2, 0x77, 0x73, 0xbd,
-	0xf7, 0xcd, 0x2a, 0xf6, 0x46, 0x93, 0x7c, 0x11, 0x6d, 0x81, 0x3d, 0xf1, 0x32, 0x14, 0x86, 0x93,
-	0xf6, 0x33, 0x2f, 0x26, 0xe5, 0xe6, 0xae, 0x8b, 0xf7, 0x6d, 0x64, 0x98, 0x23, 0x7d, 0x70, 0x36,
-	0xc3, 0x40, 0x09, 0xd2, 0x89, 0x37, 0x4c, 0x53, 0x95, 0x85, 0x4e, 0x5b, 0x3d, 0x2d, 0xc1, 0x92,
-	0x3b, 0x40, 0x54, 0x11, 0xc9, 0xe6, 0x46, 0x57, 0xca, 0x68, 0xbd, 0x97, 0xec, 0xb6, 0x5a, 0xfb,
-	0x49, 0x01, 0x67, 0xfb, 0xe0, 0x51, 0xf2, 0xdc, 0x02, 0xc7, 0x61, 0xbc, 0x66, 0xd4, 0x21, 0xef,
-	0x04, 0xb3, 0x1b, 0x05, 0x9d, 0x4f, 0x3b, 0x7a, 0x38, 0xed, 0xe8, 0xd7, 0xc2, 0x69, 0xa7, 0x72,
-	0x36, 0x7c, 0x7f, 0xba, 0x54, 0xef, 0x3e, 0x54, 0x95, 0xda, 0xac, 0x0c, 0x96, 0x69, 0xee, 0x32,
-	0xc8, 0x25, 0xc4, 0xe4, 0x0c, 0x61, 0x41, 0xd8, 0xbb, 0x5a, 0x3b, 0x29, 0x63, 0x2c, 0x3d, 0xb4,
-	0xbf, 0x78, 0xf1, 0xab, 0xa1, 0x0f, 0x50, 0x93, 0xfe, 0x1f, 0x5a, 0x80, 0xdc, 0x2a, 0x98, 0xf0,
-	0x10, 0x24, 0xd8, 0x15, 0x89, 0x3a, 0x17, 0x1c, 0xcf, 0x11, 0x49, 0x41, 0xc8, 0xa4, 0xa9, 0x77,
-	0xd2, 0xdd, 0x34, 0x97, 0x95, 0x3b, 0x09, 0x89, 0x3c, 0x76, 0x0d, 0x64, 0x3d, 0x06, 0xa7, 0xf5,
-	0xd6, 0x7c, 0x38, 0x17, 0x48, 0x6a, 0xcc, 0x53, 0x20, 0x04, 0xca, 0x54, 0xfb, 0x41, 0xcc, 0x06,
-	0xc1, 0xa0, 0x60, 0x8f, 0x72, 0x36, 0x78, 0xee, 0x06, 0x20, 0xcd, 0x20, 0x10, 0x5b, 0xab, 0xdd,
-	0xe6, 0x83, 0x40, 0x8c, 0x44, 0x84, 0xdd, 0x00, 0xd3, 0x4d, 0x06, 0xdb, 0x69, 0x19, 0xcb, 0x0b,
-	0xc6, 0x12, 0x7a, 0x8c, 0xb2, 0x6c, 0x84, 0x94, 0xe9, 0xc6, 0x17, 0x93, 0x60, 0xbc, 0x4a, 0xcc,
-	0xdc, 0x2d, 0x00, 0xa4, 0x51, 0xf9, 0xc5, 0x01, 0x45, 0x2c, 0x31, 0x41, 0x16, 0x56, 0xd3, 0x48,
-	0x45, 0x57, 0x68, 0x82, 0xac, 0x3c, 0xb5, 0x9d, 0x1f, 0xac, 0x2c, 0x89, 0x15, 0xd6, 0x52, 0x89,
-	0x45, 0x87, 0x7c, 0x08, 0xe6, 0xfa, 0xce, 0x3c, 0x7a, 0xaa, 0x6d, 0x22, 0xf9, 0xc2, 0xab, 0xcf,
-	0x26, 0x1f, 0x9d, 0xef, 0x81, 0x13, 0x3d, 0x45, 0x77, 0x65, 0xf0, 0x5e, 0xdd, 0xb2, 0x85, 0x8d,
-	0xf4, 0xb2, 0x32, 0xb1, 0x72, 0x45, 0x19, 0x42, 0xac, 0x24, 0x36, 0x8c, 0xd8, 0x7e, 0x19, 0x1b,
-	0x78, 0x4f, 0xca, 0xab, 0x61, 0xde, 0x8b, 0xc5, 0x86, 0x7a, 0xaf, 0x4f, 0x94, 0xdf, 0x02, 0x40,
-	0x9a, 0x8e, 0x86, 0x04, 0x61, 0x2c, 0x35, 0x2c, 0x08, 0xfb, 0x8c, 0x2a, 0x37, 0xc1, 0x64, 0x34,
-	0x1c, 0x68, 0x83, 0x35, 0x43, 0x99, 0xc2, 0xca, 0xd3, 0x65, 0x64, 0x8a, 0xe4, 0xb6, 0xf6, 0xfc,
-	0xd3, 0x55, 0xcb, 0xb6, 0x3d, 0x8c, 0xa2, 0x7e, 0x8d, 0xe2, 0x36, 0x98, 0x4e, 0x74, 0x33, 0x17,
-	0x06, 0xab, 0xcb, 0x72, 0x05, 0x3d, 0x9d, 0x5c, 0x78, 0x4e, 0xe1, 0xe8, 0x47, 0x4f, 0xee, 0xad,
-	0x28, 0x95, 0xeb, 0xf7, 0x1f, 0x15, 0x95, 0x07, 0x8f, 0x8a, 0xca, 0x1f, 0x8f, 0x8a, 0xca, 0xdd,
-	0xc7, 0xc5, 0xb1, 0x07, 0x8f, 0x8b, 0x63, 0xbf, 0x3d, 0x2e, 0x8e, 0xdd, 0xbc, 0x24, 0x75, 0x99,
-	0x0e, 0x74, 0xad, 0x6d, 0x44, 0xe8, 0x9a, 0x8b, 0xe8, 0x3e, 0xf6, 0x76, 0x63, 0x80, 0x85, 0xab,
-	0x57, 0xba, 0x13, 0x55, 0x3c, 0xd6, 0x7e, 0x36, 0x26, 0x58, 0xc1, 0x7a, 0xf9, 0xdf, 0x00, 0x00,
-	0x00, 0xff, 0xff, 0x93, 0x06, 0x6e, 0xbf, 0x42, 0x15, 0x00, 0x00,
+	// 1508 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xcc, 0x57, 0xcd, 0x6f, 0xdc, 0x44,
+	0x1b, 0x8f, 0x37, 0x6d, 0x9a, 0xcc, 0x26, 0x9b, 0xd4, 0x49, 0x9a, 0xcd, 0xf6, 0xed, 0x3a, 0xb5,
+	0xde, 0x56, 0x51, 0x94, 0x78, 0xdf, 0x4d, 0x5f, 0xbd, 0xaf, 0x1a, 0x2e, 0xec, 0x86, 0x56, 0x2a,
+	0x62, 0xa1, 0x6c, 0x5b, 0x55, 0x2a, 0x87, 0xad, 0x77, 0x3d, 0x71, 0x4c, 0x6c, 0xcf, 0xe2, 0x99,
+	0x4d, 0x9a, 0x0b, 0x02, 0x8e, 0x88, 0x43, 0x8f, 0x9c, 0xb9, 0xc1, 0x85, 0x1e, 0x40, 0x15, 0x27,
+	0xc4, 0x01, 0x54, 0x89, 0x4b, 0xe1, 0x84, 0x38, 0xb8, 0xa8, 0x3d, 0x54, 0xda, 0x0b, 0x7f, 0x00,
+	0x17, 0xe4, 0x99, 0xb1, 0x3d, 0xde, 0xaf, 0xba, 0x4a, 0x24, 0x7a, 0xc9, 0x66, 0x7e, 0xcf, 0xc7,
+	0x3c, 0xf3, 0xfc, 0x9e, 0x79, 0xe6, 0x31, 0x28, 0xda, 0xd6, 0x0e, 0x81, 0x86, 0xe5, 0x5a, 0xa4,
+	0xd4, 0xb4, 0x6c, 0xdb, 0x72, 0xcd, 0xd2, 0x7e, 0xb9, 0x44, 0xee, 0x69, 0x6d, 0x0f, 0x11, 0x24,
+	0x2f, 0xc6, 0x72, 0x8d, 0xcb, 0xb5, 0xfd, 0x72, 0xe1, 0xb4, 0xee, 0x58, 0x2e, 0x2a, 0xd1, 0xbf,
+	0x4c, 0xb3, 0x50, 0x6c, 0x21, 0xec, 0x20, 0x5c, 0x6a, 0xea, 0x18, 0x96, 0xf6, 0xcb, 0x4d, 0x48,
+	0xf4, 0x72, 0xa9, 0x85, 0x2c, 0x97, 0xcb, 0x97, 0xb8, 0xdc, 0xc1, 0x74, 0x07, 0x07, 0x9b, 0x5c,
+	0xb0, 0xcc, 0x04, 0x0d, 0xba, 0x2a, 0xb1, 0x05, 0x17, 0x2d, 0x98, 0xc8, 0x44, 0x0c, 0x0f, 0xfe,
+	0xe3, 0xa8, 0x62, 0x22, 0x64, 0xda, 0xb0, 0x44, 0x57, 0xcd, 0xce, 0x4e, 0x89, 0x58, 0x0e, 0xc4,
+	0x44, 0x77, 0xda, 0x5c, 0xe1, 0xfc, 0x90, 0x43, 0x1d, 0xb6, 0x21, 0xf7, 0xac, 0x7e, 0x21, 0x81,
+	0xdc, 0x5b, 0x50, 0xc7, 0xf0, 0x1a, 0x81, 0xce, 0x35, 0xb7, 0xdd, 0x21, 0x72, 0x19, 0x4c, 0xe2,
+	0xbd, 0x4e, 0xa3, 0xd3, 0xb1, 0x8c, 0xbc, 0xb4, 0x22, 0xad, 0x4e, 0x55, 0xcf, 0x74, 0x7d, 0x45,
+	0x0e, 0xb1, 0x75, 0xe4, 0x58, 0x04, 0x3a, 0x6d, 0x72, 0x58, 0x3f, 0x85, 0xf7, 0x3a, 0xb7, 0x3a,
+	0x96, 0x21, 0x5f, 0x06, 0x93, 0x1f, 0x74, 0x74, 0x97, 0x58, 0xe4, 0x30, 0x9f, 0x59, 0x91, 0x56,
+	0x4f, 0x54, 0xcf, 0x75, 0x7d, 0x65, 0x39, 0xc4, 0x62, 0x93, 0x75, 0x4c, 0x3c, 0xcb, 0x35, 0xeb,
+	0x91, 0xfa, 0x96, 0xfa, 0xe9, 0xf3, 0x07, 0x6b, 0xe7, 0x58, 0xa0, 0x51, 0x90, 0xc9, 0x88, 0xd4,
+	0xcf, 0x32, 0x60, 0xa6, 0x86, 0xcd, 0xab, 0x1d, 0xd7, 0xd8, 0xf6, 0xa0, 0x61, 0x11, 0xf9, 0x0d,
+	0x30, 0x81, 0xa1, 0x6b, 0x40, 0x8f, 0x47, 0xb8, 0xde, 0xf5, 0x95, 0x39, 0x86, 0xc4, 0x9b, 0xfd,
+	0xfa, 0xcd, 0xc6, 0x02, 0x4f, 0x63, 0xc5, 0x30, 0x3c, 0x88, 0xf1, 0x0d, 0xb6, 0x3b, 0xb7, 0x0d,
+	0xbc, 0x10, 0xe8, 0xea, 0x2e, 0xa1, 0x41, 0x73, 0x2f, 0x0c, 0x49, 0xe3, 0x85, 0x69, 0xca, 0x15,
+	0x30, 0xa1, 0x3b, 0xa8, 0xe3, 0x92, 0xfc, 0xf8, 0x8a, 0xb4, 0x9a, 0xdd, 0x5c, 0xd6, 0xb8, 0x7a,
+	0x50, 0x01, 0x1a, 0xaf, 0x00, 0x6d, 0x1b, 0x59, 0x6e, 0x35, 0xf7, 0xc8, 0x57, 0xc6, 0xba, 0xbe,
+	0xc2, 0x0d, 0xea, 0xfc, 0x77, 0x6b, 0xfd, 0x93, 0xe7, 0x0f, 0xd6, 0x78, 0x54, 0x41, 0x3e, 0xfe,
+	0xd5, 0x93, 0x8f, 0xc4, 0xe1, 0xd5, 0x1f, 0x25, 0xb0, 0x98, 0x40, 0xea, 0x10, 0xb7, 0x91, 0x8b,
+	0xa1, 0xfc, 0x1e, 0xc8, 0xb5, 0x28, 0xd2, 0xd0, 0x59, 0xa8, 0x3c, 0x3d, 0xff, 0xed, 0xfa, 0x4a,
+	0x3e, 0x29, 0x49, 0x71, 0xc0, 0x19, 0x66, 0xc1, 0x41, 0xf9, 0x1d, 0x90, 0x75, 0xe1, 0x41, 0xa3,
+	0xa9, 0xdb, 0xba, 0xdb, 0x82, 0x34, 0x65, 0x23, 0x0f, 0x3b, 0xcf, 0x0f, 0x2b, 0x5a, 0xd5, 0x81,
+	0x0b, 0x0f, 0xaa, 0xec, 0x7f, 0xf5, 0x17, 0x09, 0xe4, 0x6a, 0xd8, 0xdc, 0xf6, 0xa0, 0x4e, 0x20,
+	0xa5, 0x5c, 0x60, 0x44, 0x3a, 0x02, 0x23, 0x6f, 0x82, 0x93, 0x81, 0x2a, 0xce, 0x67, 0x56, 0xc6,
+	0x57, 0xb3, 0x9b, 0x17, 0xb4, 0x81, 0x97, 0x57, 0x4b, 0x56, 0x59, 0x75, 0x86, 0xc7, 0xcb, 0x6c,
+	0xeb, 0xec, 0x67, 0x6b, 0x83, 0x52, 0xc3, 0x1c, 0x0f, 0x2a, 0xd5, 0xe4, 0x01, 0xd4, 0x77, 0xc1,
+	0x99, 0x24, 0x12, 0x71, 0xf3, 0x7f, 0x00, 0xec, 0x00, 0x10, 0x2f, 0x56, 0xbe, 0xeb, 0x2b, 0x0b,
+	0x31, 0x2a, 0x5c, 0xad, 0x29, 0x8a, 0x06, 0x97, 0x4b, 0xfd, 0x36, 0x03, 0x96, 0x92, 0x3e, 0xaf,
+	0x22, 0xef, 0x26, 0x3b, 0x69, 0x0d, 0x4c, 0xe9, 0x1d, 0xb2, 0x8b, 0xbc, 0xe0, 0xe6, 0x31, 0x9f,
+	0xa5, 0xae, 0xaf, 0xcc, 0x47, 0x60, 0x8a, 0xac, 0xc5, 0x1e, 0x8e, 0xe9, 0x42, 0x44, 0xe9, 0x1f,
+	0x3f, 0x7a, 0xfa, 0x2f, 0x07, 0xe9, 0x8f, 0x23, 0x0c, 0x18, 0xb8, 0x38, 0x92, 0x81, 0x28, 0x37,
+	0xea, 0x1d, 0xa0, 0x0c, 0x11, 0x1d, 0x9d, 0x93, 0xef, 0x25, 0xda, 0x91, 0xb6, 0x6d, 0x84, 0xe3,
+	0xca, 0x3d, 0x86, 0x8e, 0xb4, 0x05, 0xb2, 0xf1, 0xd6, 0xac, 0x7e, 0xa7, 0xaa, 0xcb, 0x5d, 0x5f,
+	0x59, 0x14, 0x60, 0x21, 0x24, 0x10, 0x85, 0x84, 0xd3, 0x34, 0x91, 0x38, 0x5e, 0xf5, 0x61, 0x86,
+	0x36, 0x91, 0x18, 0x89, 0x92, 0xf2, 0x36, 0x98, 0x6a, 0x05, 0xa8, 0xd1, 0xd0, 0xd9, 0x35, 0xcc,
+	0x6e, 0x16, 0x34, 0xf6, 0xd4, 0x68, 0xe1, 0x53, 0xa3, 0xdd, 0x0c, 0x9f, 0x9a, 0xea, 0x22, 0xe7,
+	0x2d, 0x36, 0xba, 0xff, 0x44, 0x91, 0xea, 0x93, 0x6c, 0x59, 0x21, 0xf2, 0x25, 0x30, 0xcd, 0x45,
+	0x2d, 0xda, 0x25, 0xd9, 0x03, 0x31, 0xd7, 0xf5, 0x95, 0x04, 0x5e, 0xcf, 0xb2, 0xd5, 0x76, 0xb0,
+	0x90, 0x3f, 0x97, 0xc0, 0x22, 0x41, 0x44, 0xb7, 0x1b, 0x18, 0x12, 0x62, 0x07, 0x7e, 0x69, 0xab,
+	0x0c, 0x8b, 0x6a, 0x44, 0xdf, 0xb9, 0xc6, 0x03, 0x1a, 0x6c, 0xff, 0xd5, 0x13, 0x65, 0xd5, 0xb4,
+	0xc8, 0x6e, 0xa7, 0xa9, 0xb5, 0x90, 0xc3, 0x9f, 0x59, 0xfe, 0xb3, 0x81, 0x8d, 0x3d, 0xfe, 0x3a,
+	0x06, 0x9e, 0x70, 0x7d, 0x9e, 0xba, 0xb8, 0xc1, 0x3c, 0x54, 0x98, 0x03, 0xf5, 0xeb, 0x0c, 0xc8,
+	0xd6, 0xb0, 0x79, 0xdb, 0x22, 0xbb, 0x86, 0xa7, 0x1f, 0xfc, 0xf3, 0xcc, 0xcb, 0xaf, 0x83, 0x99,
+	0xb6, 0x87, 0xf6, 0x2d, 0x03, 0x7a, 0xac, 0x92, 0xc7, 0x69, 0x20, 0x67, 0xbb, 0xbe, 0xb2, 0x94,
+	0x10, 0x08, 0xf6, 0xd3, 0xa1, 0x80, 0x3e, 0xe0, 0xff, 0x01, 0x27, 0x6d, 0xcb, 0xb1, 0x48, 0xfe,
+	0x04, 0x25, 0xa7, 0xd0, 0xf5, 0x95, 0x33, 0x14, 0xe8, 0x7f, 0xba, 0x99, 0xe2, 0xd6, 0x5a, 0x4f,
+	0xb5, 0x15, 0xfa, 0xab, 0x2d, 0xcc, 0x90, 0xfa, 0x57, 0x06, 0xcc, 0x0b, 0xeb, 0xa8, 0xd2, 0x3e,
+	0x96, 0xc0, 0x0c, 0x23, 0x29, 0x24, 0x57, 0x7a, 0x11, 0xb9, 0x15, 0x4e, 0x6e, 0xd2, 0xee, 0xa5,
+	0x48, 0x9d, 0xa6, 0xa6, 0x9c, 0xcd, 0xe0, 0xc9, 0x6c, 0xeb, 0x87, 0xa8, 0x13, 0x3f, 0x99, 0x99,
+	0xf8, 0xc9, 0x4c, 0x4a, 0xd2, 0x3c, 0x99, 0xcc, 0x22, 0x7c, 0x32, 0xaf, 0x83, 0xb9, 0x03, 0x7e,
+	0x68, 0xdd, 0xe6, 0xe5, 0x3f, 0x4e, 0x33, 0x7c, 0xa1, 0xeb, 0x2b, 0xe7, 0x7b, 0x65, 0xfd, 0xc9,
+	0x9e, 0x8d, 0x55, 0xd8, 0xbd, 0x28, 0x83, 0xc9, 0x5d, 0x1d, 0x37, 0x1c, 0xe4, 0x41, 0xca, 0xd5,
+	0x24, 0x1b, 0xce, 0x42, 0x4c, 0x1c, 0xce, 0x76, 0x75, 0x5c, 0x43, 0x1e, 0x54, 0x7f, 0x97, 0xc0,
+	0x6c, 0x0d, 0x9b, 0xb7, 0xda, 0x86, 0x4e, 0xe0, 0x75, 0xdd, 0xd3, 0x1d, 0x7c, 0xdc, 0xef, 0xc6,
+	0x15, 0x30, 0xd1, 0xa6, 0x8e, 0xf9, 0x54, 0x70, 0x6e, 0x48, 0xcb, 0x67, 0xbb, 0xc7, 0x63, 0x10,
+	0x33, 0xaa, 0xf3, 0xdf, 0xad, 0x72, 0x7f, 0xb3, 0x2f, 0xf6, 0x97, 0x95, 0x78, 0x10, 0x75, 0x99,
+	0xbe, 0x8d, 0x22, 0x14, 0x56, 0x97, 0xfa, 0xb3, 0x44, 0xab, 0xae, 0xd2, 0xda, 0x73, 0xd1, 0x81,
+	0x0d, 0x0d, 0xf3, 0x95, 0xe9, 0xd4, 0x9b, 0x3d, 0x77, 0x47, 0xed, 0x3f, 0x64, 0x6f, 0xd4, 0xea,
+	0x4f, 0x12, 0x38, 0x3b, 0x00, 0x8f, 0xee, 0xd2, 0x5d, 0x30, 0xab, 0xc7, 0xb2, 0x94, 0xbd, 0xfb,
+	0x2c, 0x27, 0xa2, 0xd7, 0x94, 0x76, 0xf0, 0x9c, 0x08, 0x56, 0x88, 0x7c, 0x05, 0xc8, 0x09, 0x35,
+	0xb1, 0x9b, 0xd3, 0x22, 0xec, 0x97, 0xd6, 0x4f, 0x8b, 0x18, 0xad, 0x60, 0xf5, 0x4f, 0x36, 0xf5,
+	0xd5, 0xe1, 0xfb, 0xb0, 0x45, 0x5e, 0x11, 0x46, 0xe4, 0x75, 0x30, 0xe1, 0x41, 0x1d, 0x23, 0x97,
+	0xb7, 0xce, 0x85, 0x20, 0x02, 0x86, 0x08, 0x16, 0x5c, 0x87, 0xcf, 0x84, 0x31, 0x7f, 0x03, 0x66,
+	0x42, 0xe1, 0x78, 0xea, 0x97, 0x12, 0x1d, 0x0a, 0x05, 0x28, 0x62, 0xed, 0x26, 0xc8, 0x7a, 0x14,
+	0x4e, 0xcb, 0xd8, 0x52, 0x38, 0x54, 0x0b, 0x66, 0x94, 0x2d, 0x10, 0x02, 0x15, 0x22, 0x5f, 0x06,
+	0xb9, 0x48, 0x2c, 0xb2, 0x24, 0x77, 0x7d, 0xa5, 0x47, 0x52, 0x9f, 0x09, 0xd7, 0x8c, 0x9d, 0x1f,
+	0xf8, 0x4c, 0x1e, 0x0c, 0xe8, 0xf6, 0x71, 0xce, 0xe4, 0x47, 0xb9, 0x2f, 0x69, 0x66, 0xf0, 0x38,
+	0x60, 0xf5, 0x3b, 0x96, 0x6f, 0x01, 0x8a, 0xf2, 0x7d, 0x1b, 0x4c, 0xb7, 0x28, 0x6c, 0xa7, 0x4d,
+	0x78, 0x9e, 0x27, 0x3c, 0x61, 0x47, 0x33, 0x9e, 0x8d, 0x90, 0x0a, 0x91, 0xaf, 0x82, 0xd9, 0x58,
+	0x41, 0xcc, 0x39, 0xfd, 0x10, 0xee, 0x11, 0x09, 0xc7, 0xcc, 0x45, 0x22, 0x9a, 0xff, 0xcd, 0x87,
+	0xa7, 0xc0, 0x78, 0x0d, 0x9b, 0xf2, 0x5d, 0x00, 0x84, 0xcf, 0xdd, 0x7f, 0x0f, 0xe9, 0xa7, 0x89,
+	0xaf, 0xc0, 0xc2, 0x7a, 0x1a, 0xad, 0x28, 0x15, 0x2d, 0x90, 0x15, 0xbf, 0xbc, 0x2e, 0x0c, 0x37,
+	0x16, 0xd4, 0x0a, 0x1b, 0xa9, 0xd4, 0xa2, 0x4d, 0x3e, 0x04, 0x0b, 0x03, 0xbf, 0x5b, 0xb4, 0x54,
+	0x6e, 0x22, 0xfd, 0xc2, 0xff, 0x5e, 0x4e, 0x3f, 0xda, 0xdf, 0x03, 0x73, 0x7d, 0xfd, 0x7f, 0x6d,
+	0xb8, 0xaf, 0x5e, 0xdd, 0xc2, 0x66, 0x7a, 0x5d, 0x31, 0xb1, 0x62, 0x73, 0x1b, 0x91, 0x58, 0x41,
+	0x6d, 0x54, 0x62, 0x07, 0x35, 0x8e, 0x80, 0x3d, 0xe1, 0x8e, 0x8e, 0x62, 0x2f, 0x56, 0x1b, 0xc9,
+	0xde, 0x80, 0xdb, 0x72, 0x17, 0x00, 0xe1, 0x0b, 0x67, 0x44, 0x11, 0xc6, 0x5a, 0xa3, 0x8a, 0x70,
+	0xc0, 0xb7, 0xc6, 0x1d, 0x30, 0x19, 0xcd, 0xd1, 0xea, 0x70, 0xcb, 0x50, 0xa7, 0xb0, 0xf6, 0x62,
+	0x9d, 0xc8, 0xf7, 0x0e, 0x98, 0x4e, 0xcc, 0x3c, 0x17, 0x87, 0xdb, 0x8a, 0x7a, 0x05, 0x2d, 0x9d,
+	0x5e, 0xb8, 0x4f, 0xe1, 0xe4, 0x47, 0xcf, 0x1f, 0xac, 0x49, 0xd5, 0x5b, 0x8f, 0x9e, 0x16, 0xa5,
+	0xc7, 0x4f, 0x8b, 0xd2, 0x1f, 0x4f, 0x8b, 0xd2, 0xfd, 0x67, 0xc5, 0xb1, 0xc7, 0xcf, 0x8a, 0x63,
+	0xbf, 0x3d, 0x2b, 0x8e, 0xdd, 0x79, 0x4d, 0x18, 0x4d, 0x1d, 0xdd, 0xb5, 0x76, 0x20, 0x26, 0x1b,
+	0x2e, 0x24, 0x07, 0xc8, 0xdb, 0x8b, 0x01, 0x5a, 0x49, 0x5e, 0xe9, 0x5e, 0xd4, 0xd5, 0xe8, 0xcc,
+	0xda, 0x9c, 0xa0, 0x3d, 0xe9, 0xd2, 0xdf, 0x01, 0x00, 0x00, 0xff, 0xff, 0xd1, 0x1b, 0x7f, 0x09,
+	0xa1, 0x14, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -1350,10 +1296,9 @@ type MsgClient interface {
 	CancelLease(ctx context.Context, in *MsgCancelLease, opts ...grpc.CallOption) (*MsgCancelLeaseResponse, error)
 	// CloseLease closes an active lease.
 	CloseLease(ctx context.Context, in *MsgCloseLease, opts ...grpc.CallOption) (*MsgCloseLeaseResponse, error)
-	// Withdraw allows a provider to withdraw accrued funds from a specific lease.
+	// Withdraw allows a provider to withdraw accrued funds from leases.
+	// Two modes: specific lease UUIDs, or provider-wide with pagination.
 	Withdraw(ctx context.Context, in *MsgWithdraw, opts ...grpc.CallOption) (*MsgWithdrawResponse, error)
-	// WithdrawAll allows a provider to withdraw all accrued funds from all their leases.
-	WithdrawAll(ctx context.Context, in *MsgWithdrawAll, opts ...grpc.CallOption) (*MsgWithdrawAllResponse, error)
 	// UpdateParams updates the module parameters.
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
 }
@@ -1438,15 +1383,6 @@ func (c *msgClient) Withdraw(ctx context.Context, in *MsgWithdraw, opts ...grpc.
 	return out, nil
 }
 
-func (c *msgClient) WithdrawAll(ctx context.Context, in *MsgWithdrawAll, opts ...grpc.CallOption) (*MsgWithdrawAllResponse, error) {
-	out := new(MsgWithdrawAllResponse)
-	err := c.cc.Invoke(ctx, "/liftedinit.billing.v1.Msg/WithdrawAll", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *msgClient) UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error) {
 	out := new(MsgUpdateParamsResponse)
 	err := c.cc.Invoke(ctx, "/liftedinit.billing.v1.Msg/UpdateParams", in, out, opts...)
@@ -1478,10 +1414,9 @@ type MsgServer interface {
 	CancelLease(context.Context, *MsgCancelLease) (*MsgCancelLeaseResponse, error)
 	// CloseLease closes an active lease.
 	CloseLease(context.Context, *MsgCloseLease) (*MsgCloseLeaseResponse, error)
-	// Withdraw allows a provider to withdraw accrued funds from a specific lease.
+	// Withdraw allows a provider to withdraw accrued funds from leases.
+	// Two modes: specific lease UUIDs, or provider-wide with pagination.
 	Withdraw(context.Context, *MsgWithdraw) (*MsgWithdrawResponse, error)
-	// WithdrawAll allows a provider to withdraw all accrued funds from all their leases.
-	WithdrawAll(context.Context, *MsgWithdrawAll) (*MsgWithdrawAllResponse, error)
 	// UpdateParams updates the module parameters.
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
 }
@@ -1513,9 +1448,6 @@ func (*UnimplementedMsgServer) CloseLease(ctx context.Context, req *MsgCloseLeas
 }
 func (*UnimplementedMsgServer) Withdraw(ctx context.Context, req *MsgWithdraw) (*MsgWithdrawResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Withdraw not implemented")
-}
-func (*UnimplementedMsgServer) WithdrawAll(ctx context.Context, req *MsgWithdrawAll) (*MsgWithdrawAllResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method WithdrawAll not implemented")
 }
 func (*UnimplementedMsgServer) UpdateParams(ctx context.Context, req *MsgUpdateParams) (*MsgUpdateParamsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateParams not implemented")
@@ -1669,24 +1601,6 @@ func _Msg_Withdraw_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Msg_WithdrawAll_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MsgWithdrawAll)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(MsgServer).WithdrawAll(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/liftedinit.billing.v1.Msg/WithdrawAll",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MsgServer).WithdrawAll(ctx, req.(*MsgWithdrawAll))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _Msg_UpdateParams_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(MsgUpdateParams)
 	if err := dec(in); err != nil {
@@ -1740,10 +1654,6 @@ var _Msg_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Withdraw",
 			Handler:    _Msg_Withdraw_Handler,
-		},
-		{
-			MethodName: "WithdrawAll",
-			Handler:    _Msg_WithdrawAll_Handler,
 		},
 		{
 			MethodName: "UpdateParams",
@@ -2051,12 +1961,14 @@ func (m *MsgCloseLease) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.LeaseUuid) > 0 {
-		i -= len(m.LeaseUuid)
-		copy(dAtA[i:], m.LeaseUuid)
-		i = encodeVarintTx(dAtA, i, uint64(len(m.LeaseUuid)))
-		i--
-		dAtA[i] = 0x12
+	if len(m.LeaseUuids) > 0 {
+		for iNdEx := len(m.LeaseUuids) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.LeaseUuids[iNdEx])
+			copy(dAtA[i:], m.LeaseUuids[iNdEx])
+			i = encodeVarintTx(dAtA, i, uint64(len(m.LeaseUuids[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
 	}
 	if len(m.Sender) > 0 {
 		i -= len(m.Sender)
@@ -2088,10 +2000,10 @@ func (m *MsgCloseLeaseResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.SettledAmounts) > 0 {
-		for iNdEx := len(m.SettledAmounts) - 1; iNdEx >= 0; iNdEx-- {
+	if len(m.TotalSettledAmounts) > 0 {
+		for iNdEx := len(m.TotalSettledAmounts) - 1; iNdEx >= 0; iNdEx-- {
 			{
-				size, err := m.SettledAmounts[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				size, err := m.TotalSettledAmounts[iNdEx].MarshalToSizedBuffer(dAtA[:i])
 				if err != nil {
 					return 0, err
 				}
@@ -2099,9 +2011,22 @@ func (m *MsgCloseLeaseResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 				i = encodeVarintTx(dAtA, i, uint64(size))
 			}
 			i--
-			dAtA[i] = 0xa
+			dAtA[i] = 0x1a
 		}
 	}
+	if m.ClosedCount != 0 {
+		i = encodeVarintTx(dAtA, i, uint64(m.ClosedCount))
+		i--
+		dAtA[i] = 0x10
+	}
+	n3, err3 := github_com_cosmos_gogoproto_types.StdTimeMarshalTo(m.ClosedAt, dAtA[i-github_com_cosmos_gogoproto_types.SizeOfStdTime(m.ClosedAt):])
+	if err3 != nil {
+		return 0, err3
+	}
+	i -= n3
+	i = encodeVarintTx(dAtA, i, uint64(n3))
+	i--
+	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
 }
 
@@ -2125,12 +2050,26 @@ func (m *MsgWithdraw) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.LeaseUuid) > 0 {
-		i -= len(m.LeaseUuid)
-		copy(dAtA[i:], m.LeaseUuid)
-		i = encodeVarintTx(dAtA, i, uint64(len(m.LeaseUuid)))
+	if m.Limit != 0 {
+		i = encodeVarintTx(dAtA, i, uint64(m.Limit))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x20
+	}
+	if len(m.ProviderUuid) > 0 {
+		i -= len(m.ProviderUuid)
+		copy(dAtA[i:], m.ProviderUuid)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.ProviderUuid)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.LeaseUuids) > 0 {
+		for iNdEx := len(m.LeaseUuids) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.LeaseUuids[iNdEx])
+			copy(dAtA[i:], m.LeaseUuids[iNdEx])
+			i = encodeVarintTx(dAtA, i, uint64(len(m.LeaseUuids[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
 	}
 	if len(m.Sender) > 0 {
 		i -= len(m.Sender)
@@ -2162,92 +2101,6 @@ func (m *MsgWithdrawResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.PayoutAddress) > 0 {
-		i -= len(m.PayoutAddress)
-		copy(dAtA[i:], m.PayoutAddress)
-		i = encodeVarintTx(dAtA, i, uint64(len(m.PayoutAddress)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Amounts) > 0 {
-		for iNdEx := len(m.Amounts) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Amounts[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintTx(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0xa
-		}
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *MsgWithdrawAll) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *MsgWithdrawAll) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *MsgWithdrawAll) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.Limit != 0 {
-		i = encodeVarintTx(dAtA, i, uint64(m.Limit))
-		i--
-		dAtA[i] = 0x18
-	}
-	if len(m.ProviderUuid) > 0 {
-		i -= len(m.ProviderUuid)
-		copy(dAtA[i:], m.ProviderUuid)
-		i = encodeVarintTx(dAtA, i, uint64(len(m.ProviderUuid)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Sender) > 0 {
-		i -= len(m.Sender)
-		copy(dAtA[i:], m.Sender)
-		i = encodeVarintTx(dAtA, i, uint64(len(m.Sender)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *MsgWithdrawAllResponse) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *MsgWithdrawAllResponse) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *MsgWithdrawAllResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
 	if m.HasMore {
 		i--
 		if m.HasMore {
@@ -2258,17 +2111,17 @@ func (m *MsgWithdrawAllResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) 
 		i--
 		dAtA[i] = 0x20
 	}
+	if m.WithdrawalCount != 0 {
+		i = encodeVarintTx(dAtA, i, uint64(m.WithdrawalCount))
+		i--
+		dAtA[i] = 0x18
+	}
 	if len(m.PayoutAddress) > 0 {
 		i -= len(m.PayoutAddress)
 		copy(dAtA[i:], m.PayoutAddress)
 		i = encodeVarintTx(dAtA, i, uint64(len(m.PayoutAddress)))
 		i--
-		dAtA[i] = 0x1a
-	}
-	if m.LeaseCount != 0 {
-		i = encodeVarintTx(dAtA, i, uint64(m.LeaseCount))
-		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x12
 	}
 	if len(m.TotalAmounts) > 0 {
 		for iNdEx := len(m.TotalAmounts) - 1; iNdEx >= 0; iNdEx-- {
@@ -2414,12 +2267,12 @@ func (m *MsgAcknowledgeLeaseResponse) MarshalToSizedBuffer(dAtA []byte) (int, er
 		i--
 		dAtA[i] = 0x10
 	}
-	n4, err4 := github_com_cosmos_gogoproto_types.StdTimeMarshalTo(m.AcknowledgedAt, dAtA[i-github_com_cosmos_gogoproto_types.SizeOfStdTime(m.AcknowledgedAt):])
-	if err4 != nil {
-		return 0, err4
+	n5, err5 := github_com_cosmos_gogoproto_types.StdTimeMarshalTo(m.AcknowledgedAt, dAtA[i-github_com_cosmos_gogoproto_types.SizeOfStdTime(m.AcknowledgedAt):])
+	if err5 != nil {
+		return 0, err5
 	}
-	i -= n4
-	i = encodeVarintTx(dAtA, i, uint64(n4))
+	i -= n5
+	i = encodeVarintTx(dAtA, i, uint64(n5))
 	i--
 	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
@@ -2452,12 +2305,14 @@ func (m *MsgRejectLease) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x1a
 	}
-	if len(m.LeaseUuid) > 0 {
-		i -= len(m.LeaseUuid)
-		copy(dAtA[i:], m.LeaseUuid)
-		i = encodeVarintTx(dAtA, i, uint64(len(m.LeaseUuid)))
-		i--
-		dAtA[i] = 0x12
+	if len(m.LeaseUuids) > 0 {
+		for iNdEx := len(m.LeaseUuids) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.LeaseUuids[iNdEx])
+			copy(dAtA[i:], m.LeaseUuids[iNdEx])
+			i = encodeVarintTx(dAtA, i, uint64(len(m.LeaseUuids[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
 	}
 	if len(m.Sender) > 0 {
 		i -= len(m.Sender)
@@ -2489,12 +2344,17 @@ func (m *MsgRejectLeaseResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) 
 	_ = i
 	var l int
 	_ = l
-	n5, err5 := github_com_cosmos_gogoproto_types.StdTimeMarshalTo(m.RejectedAt, dAtA[i-github_com_cosmos_gogoproto_types.SizeOfStdTime(m.RejectedAt):])
-	if err5 != nil {
-		return 0, err5
+	if m.RejectedCount != 0 {
+		i = encodeVarintTx(dAtA, i, uint64(m.RejectedCount))
+		i--
+		dAtA[i] = 0x10
 	}
-	i -= n5
-	i = encodeVarintTx(dAtA, i, uint64(n5))
+	n6, err6 := github_com_cosmos_gogoproto_types.StdTimeMarshalTo(m.RejectedAt, dAtA[i-github_com_cosmos_gogoproto_types.SizeOfStdTime(m.RejectedAt):])
+	if err6 != nil {
+		return 0, err6
+	}
+	i -= n6
+	i = encodeVarintTx(dAtA, i, uint64(n6))
 	i--
 	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
@@ -2520,12 +2380,14 @@ func (m *MsgCancelLease) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.LeaseUuid) > 0 {
-		i -= len(m.LeaseUuid)
-		copy(dAtA[i:], m.LeaseUuid)
-		i = encodeVarintTx(dAtA, i, uint64(len(m.LeaseUuid)))
-		i--
-		dAtA[i] = 0x12
+	if len(m.LeaseUuids) > 0 {
+		for iNdEx := len(m.LeaseUuids) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.LeaseUuids[iNdEx])
+			copy(dAtA[i:], m.LeaseUuids[iNdEx])
+			i = encodeVarintTx(dAtA, i, uint64(len(m.LeaseUuids[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
 	}
 	if len(m.Tenant) > 0 {
 		i -= len(m.Tenant)
@@ -2557,12 +2419,17 @@ func (m *MsgCancelLeaseResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) 
 	_ = i
 	var l int
 	_ = l
-	n6, err6 := github_com_cosmos_gogoproto_types.StdTimeMarshalTo(m.CancelledAt, dAtA[i-github_com_cosmos_gogoproto_types.SizeOfStdTime(m.CancelledAt):])
-	if err6 != nil {
-		return 0, err6
+	if m.CancelledCount != 0 {
+		i = encodeVarintTx(dAtA, i, uint64(m.CancelledCount))
+		i--
+		dAtA[i] = 0x10
 	}
-	i -= n6
-	i = encodeVarintTx(dAtA, i, uint64(n6))
+	n7, err7 := github_com_cosmos_gogoproto_types.StdTimeMarshalTo(m.CancelledAt, dAtA[i-github_com_cosmos_gogoproto_types.SizeOfStdTime(m.CancelledAt):])
+	if err7 != nil {
+		return 0, err7
+	}
+	i -= n7
+	i = encodeVarintTx(dAtA, i, uint64(n7))
 	i--
 	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
@@ -2707,9 +2574,11 @@ func (m *MsgCloseLease) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovTx(uint64(l))
 	}
-	l = len(m.LeaseUuid)
-	if l > 0 {
-		n += 1 + l + sovTx(uint64(l))
+	if len(m.LeaseUuids) > 0 {
+		for _, s := range m.LeaseUuids {
+			l = len(s)
+			n += 1 + l + sovTx(uint64(l))
+		}
 	}
 	return n
 }
@@ -2720,8 +2589,13 @@ func (m *MsgCloseLeaseResponse) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if len(m.SettledAmounts) > 0 {
-		for _, e := range m.SettledAmounts {
+	l = github_com_cosmos_gogoproto_types.SizeOfStdTime(m.ClosedAt)
+	n += 1 + l + sovTx(uint64(l))
+	if m.ClosedCount != 0 {
+		n += 1 + sovTx(uint64(m.ClosedCount))
+	}
+	if len(m.TotalSettledAmounts) > 0 {
+		for _, e := range m.TotalSettledAmounts {
 			l = e.Size()
 			n += 1 + l + sovTx(uint64(l))
 		}
@@ -2739,41 +2613,11 @@ func (m *MsgWithdraw) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovTx(uint64(l))
 	}
-	l = len(m.LeaseUuid)
-	if l > 0 {
-		n += 1 + l + sovTx(uint64(l))
-	}
-	return n
-}
-
-func (m *MsgWithdrawResponse) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if len(m.Amounts) > 0 {
-		for _, e := range m.Amounts {
-			l = e.Size()
+	if len(m.LeaseUuids) > 0 {
+		for _, s := range m.LeaseUuids {
+			l = len(s)
 			n += 1 + l + sovTx(uint64(l))
 		}
-	}
-	l = len(m.PayoutAddress)
-	if l > 0 {
-		n += 1 + l + sovTx(uint64(l))
-	}
-	return n
-}
-
-func (m *MsgWithdrawAll) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Sender)
-	if l > 0 {
-		n += 1 + l + sovTx(uint64(l))
 	}
 	l = len(m.ProviderUuid)
 	if l > 0 {
@@ -2785,7 +2629,7 @@ func (m *MsgWithdrawAll) Size() (n int) {
 	return n
 }
 
-func (m *MsgWithdrawAllResponse) Size() (n int) {
+func (m *MsgWithdrawResponse) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -2797,12 +2641,12 @@ func (m *MsgWithdrawAllResponse) Size() (n int) {
 			n += 1 + l + sovTx(uint64(l))
 		}
 	}
-	if m.LeaseCount != 0 {
-		n += 1 + sovTx(uint64(m.LeaseCount))
-	}
 	l = len(m.PayoutAddress)
 	if l > 0 {
 		n += 1 + l + sovTx(uint64(l))
+	}
+	if m.WithdrawalCount != 0 {
+		n += 1 + sovTx(uint64(m.WithdrawalCount))
 	}
 	if m.HasMore {
 		n += 2
@@ -2877,9 +2721,11 @@ func (m *MsgRejectLease) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovTx(uint64(l))
 	}
-	l = len(m.LeaseUuid)
-	if l > 0 {
-		n += 1 + l + sovTx(uint64(l))
+	if len(m.LeaseUuids) > 0 {
+		for _, s := range m.LeaseUuids {
+			l = len(s)
+			n += 1 + l + sovTx(uint64(l))
+		}
 	}
 	l = len(m.Reason)
 	if l > 0 {
@@ -2896,6 +2742,9 @@ func (m *MsgRejectLeaseResponse) Size() (n int) {
 	_ = l
 	l = github_com_cosmos_gogoproto_types.SizeOfStdTime(m.RejectedAt)
 	n += 1 + l + sovTx(uint64(l))
+	if m.RejectedCount != 0 {
+		n += 1 + sovTx(uint64(m.RejectedCount))
+	}
 	return n
 }
 
@@ -2909,9 +2758,11 @@ func (m *MsgCancelLease) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovTx(uint64(l))
 	}
-	l = len(m.LeaseUuid)
-	if l > 0 {
-		n += 1 + l + sovTx(uint64(l))
+	if len(m.LeaseUuids) > 0 {
+		for _, s := range m.LeaseUuids {
+			l = len(s)
+			n += 1 + l + sovTx(uint64(l))
+		}
 	}
 	return n
 }
@@ -2924,6 +2775,9 @@ func (m *MsgCancelLeaseResponse) Size() (n int) {
 	_ = l
 	l = github_com_cosmos_gogoproto_types.SizeOfStdTime(m.CancelledAt)
 	n += 1 + l + sovTx(uint64(l))
+	if m.CancelledCount != 0 {
+		n += 1 + sovTx(uint64(m.CancelledCount))
+	}
 	return n
 }
 
@@ -3787,7 +3641,7 @@ func (m *MsgCloseLease) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LeaseUuid", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field LeaseUuids", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -3815,7 +3669,7 @@ func (m *MsgCloseLease) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.LeaseUuid = string(dAtA[iNdEx:postIndex])
+			m.LeaseUuids = append(m.LeaseUuids, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -3869,7 +3723,7 @@ func (m *MsgCloseLeaseResponse) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SettledAmounts", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ClosedAt", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -3896,8 +3750,60 @@ func (m *MsgCloseLeaseResponse) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.SettledAmounts = append(m.SettledAmounts, types.Coin{})
-			if err := m.SettledAmounts[len(m.SettledAmounts)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := github_com_cosmos_gogoproto_types.StdTimeUnmarshal(&m.ClosedAt, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClosedCount", wireType)
+			}
+			m.ClosedCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ClosedCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalSettledAmounts", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TotalSettledAmounts = append(m.TotalSettledAmounts, types.Coin{})
+			if err := m.TotalSettledAmounts[len(m.TotalSettledAmounts)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -3985,7 +3891,7 @@ func (m *MsgWithdraw) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LeaseUuid", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field LeaseUuids", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -4013,8 +3919,59 @@ func (m *MsgWithdraw) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.LeaseUuid = string(dAtA[iNdEx:postIndex])
+			m.LeaseUuids = append(m.LeaseUuids, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ProviderUuid", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ProviderUuid = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Limit", wireType)
+			}
+			m.Limit = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Limit |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTx(dAtA[iNdEx:])
@@ -4067,255 +4024,6 @@ func (m *MsgWithdrawResponse) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Amounts", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTx
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthTx
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTx
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Amounts = append(m.Amounts, types.Coin{})
-			if err := m.Amounts[len(m.Amounts)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PayoutAddress", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTx
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthTx
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthTx
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.PayoutAddress = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipTx(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthTx
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *MsgWithdrawAll) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowTx
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: MsgWithdrawAll: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MsgWithdrawAll: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Sender", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTx
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthTx
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthTx
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Sender = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ProviderUuid", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTx
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthTx
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthTx
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ProviderUuid = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Limit", wireType)
-			}
-			m.Limit = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTx
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Limit |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := skipTx(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthTx
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *MsgWithdrawAllResponse) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowTx
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: MsgWithdrawAllResponse: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MsgWithdrawAllResponse: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TotalAmounts", wireType)
 			}
 			var msglen int
@@ -4349,25 +4057,6 @@ func (m *MsgWithdrawAllResponse) Unmarshal(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LeaseCount", wireType)
-			}
-			m.LeaseCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTx
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LeaseCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PayoutAddress", wireType)
 			}
@@ -4399,6 +4088,25 @@ func (m *MsgWithdrawAllResponse) Unmarshal(dAtA []byte) error {
 			}
 			m.PayoutAddress = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WithdrawalCount", wireType)
+			}
+			m.WithdrawalCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.WithdrawalCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field HasMore", wireType)
@@ -4884,7 +4592,7 @@ func (m *MsgRejectLease) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LeaseUuid", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field LeaseUuids", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -4912,7 +4620,7 @@ func (m *MsgRejectLease) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.LeaseUuid = string(dAtA[iNdEx:postIndex])
+			m.LeaseUuids = append(m.LeaseUuids, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
@@ -5029,6 +4737,25 @@ func (m *MsgRejectLeaseResponse) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RejectedCount", wireType)
+			}
+			m.RejectedCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RejectedCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTx(dAtA[iNdEx:])
@@ -5113,7 +4840,7 @@ func (m *MsgCancelLease) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LeaseUuid", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field LeaseUuids", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -5141,7 +4868,7 @@ func (m *MsgCancelLease) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.LeaseUuid = string(dAtA[iNdEx:postIndex])
+			m.LeaseUuids = append(m.LeaseUuids, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -5226,6 +4953,25 @@ func (m *MsgCancelLeaseResponse) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CancelledCount", wireType)
+			}
+			m.CancelledCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CancelledCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTx(dAtA[iNdEx:])

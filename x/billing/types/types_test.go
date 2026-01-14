@@ -567,16 +567,16 @@ func TestMsgCloseLease_ValidateBasic(t *testing.T) {
 		{
 			name: "valid message",
 			msg: types.MsgCloseLease{
-				Sender:    sender,
-				LeaseUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Sender:     sender,
+				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
 			},
 			expectErr: false,
 		},
 		{
 			name: "invalid sender address",
 			msg: types.MsgCloseLease{
-				Sender:    invalidAddr,
-				LeaseUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Sender:     invalidAddr,
+				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
 			},
 			expectErr: true,
 			errMsg:    "invalid sender address",
@@ -584,20 +584,20 @@ func TestMsgCloseLease_ValidateBasic(t *testing.T) {
 		{
 			name: "empty sender address",
 			msg: types.MsgCloseLease{
-				Sender:    "",
-				LeaseUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Sender:     "",
+				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
 			},
 			expectErr: true,
 			errMsg:    "invalid sender address",
 		},
 		{
-			name: "zero lease_id",
+			name: "empty lease_uuids",
 			msg: types.MsgCloseLease{
-				Sender:    sender,
-				LeaseUuid: "",
+				Sender:     sender,
+				LeaseUuids: []string{},
 			},
 			expectErr: true,
-			errMsg:    "lease_uuid cannot be empty",
+			errMsg:    "lease_uuids cannot be empty",
 		},
 	}
 
@@ -631,16 +631,16 @@ func TestMsgWithdraw_ValidateBasic(t *testing.T) {
 		{
 			name: "valid message",
 			msg: types.MsgWithdraw{
-				Sender:    sender,
-				LeaseUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Sender:     sender,
+				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
 			},
 			expectErr: false,
 		},
 		{
 			name: "invalid sender address",
 			msg: types.MsgWithdraw{
-				Sender:    invalidAddr,
-				LeaseUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Sender:     invalidAddr,
+				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
 			},
 			expectErr: true,
 			errMsg:    "invalid sender address",
@@ -648,61 +648,42 @@ func TestMsgWithdraw_ValidateBasic(t *testing.T) {
 		{
 			name: "empty sender address",
 			msg: types.MsgWithdraw{
-				Sender:    "",
-				LeaseUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Sender:     "",
+				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
 			},
 			expectErr: true,
 			errMsg:    "invalid sender address",
 		},
 		{
-			name: "zero lease_id",
+			name: "neither mode specified",
 			msg: types.MsgWithdraw{
-				Sender:    sender,
-				LeaseUuid: "",
+				Sender:     sender,
+				LeaseUuids: []string{},
 			},
 			expectErr: true,
-			errMsg:    "lease_uuid cannot be empty",
+			errMsg:    "must specify either lease_uuids or provider_uuid",
 		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := tc.msg.ValidateBasic()
-			if tc.expectErr {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tc.errMsg)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-// ============================================================================
-// MsgWithdrawAll Tests
-// ============================================================================
-
-func TestMsgWithdrawAll_ValidateBasic(t *testing.T) {
-	_, _, senderAddr := testdata.KeyTestPubAddr()
-	sender := senderAddr.String()
-
-	tests := []struct {
-		name      string
-		msg       types.MsgWithdrawAll
-		expectErr bool
-		errMsg    string
-	}{
 		{
-			name: "valid message with provider_id",
-			msg: types.MsgWithdrawAll{
+			name: "both modes specified",
+			msg: types.MsgWithdraw{
+				Sender:       sender,
+				LeaseUuids:   []string{"01912345-6789-7abc-8def-0123456789ab"},
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+			},
+			expectErr: true,
+			errMsg:    "cannot specify both lease_uuids and provider_uuid",
+		},
+		{
+			name: "valid provider mode",
+			msg: types.MsgWithdraw{
 				Sender:       sender,
 				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: false,
 		},
 		{
-			name: "valid message with limit",
-			msg: types.MsgWithdrawAll{
+			name: "provider mode with limit",
+			msg: types.MsgWithdraw{
 				Sender:       sender,
 				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
 				Limit:        50,
@@ -710,50 +691,32 @@ func TestMsgWithdrawAll_ValidateBasic(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name: "valid message with max limit",
-			msg: types.MsgWithdrawAll{
+			name: "provider mode with max limit",
+			msg: types.MsgWithdraw{
 				Sender:       sender,
 				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
-				Limit:        types.MaxWithdrawAllLimit,
+				Limit:        types.MaxBatchLeaseSize,
 			},
 			expectErr: false,
 		},
 		{
-			name: "invalid limit exceeds max",
-			msg: types.MsgWithdrawAll{
+			name: "provider mode with invalid limit",
+			msg: types.MsgWithdraw{
 				Sender:       sender,
 				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
-				Limit:        types.MaxWithdrawAllLimit + 1,
+				Limit:        types.MaxBatchLeaseSize + 1,
 			},
 			expectErr: true,
 			errMsg:    "exceeds maximum allowed",
 		},
 		{
-			name: "invalid zero provider_id",
-			msg: types.MsgWithdrawAll{
+			name: "provider mode with invalid uuid",
+			msg: types.MsgWithdraw{
 				Sender:       sender,
-				ProviderUuid: "",
+				ProviderUuid: "invalid-uuid",
 			},
 			expectErr: true,
-			errMsg:    "provider_uuid cannot be empty",
-		},
-		{
-			name: "invalid sender address",
-			msg: types.MsgWithdrawAll{
-				Sender:       invalidAddr,
-				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
-			},
-			expectErr: true,
-			errMsg:    "invalid sender address",
-		},
-		{
-			name: "empty sender address",
-			msg: types.MsgWithdrawAll{
-				Sender:       "",
-				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
-			},
-			expectErr: true,
-			errMsg:    "invalid sender address",
+			errMsg:    "invalid provider_uuid format",
 		},
 	}
 

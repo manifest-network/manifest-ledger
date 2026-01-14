@@ -365,28 +365,54 @@ func (k *Keeper) GetLeasesByTenant(ctx context.Context, tenant string) ([]types.
 }
 
 // GetLeasesByProviderUUID returns all Leases for a given provider UUID.
+// WARNING: This loads all leases into memory. For large datasets, use
+// IterateLeasesByProvider instead to process leases one at a time.
 func (k *Keeper) GetLeasesByProviderUUID(ctx context.Context, providerUUID string) ([]types.Lease, error) {
 	var leases []types.Lease
 
-	iter, err := k.Leases.Indexes.Provider.MatchExact(ctx, providerUUID)
+	err := k.IterateLeasesByProvider(ctx, providerUUID, func(lease types.Lease) (stop bool, err error) {
+		leases = append(leases, lease)
+		return false, nil
+	})
 	if err != nil {
 		return nil, err
+	}
+
+	return leases, nil
+}
+
+// IterateLeasesByProvider iterates over all leases for a provider, calling the
+// callback for each lease. The callback should return (stop=true, nil) to stop
+// iteration early, or (false, err) to abort with an error.
+// This is the preferred method for processing large numbers of leases as it
+// doesn't load all leases into memory at once.
+func (k *Keeper) IterateLeasesByProvider(ctx context.Context, providerUUID string, cb func(lease types.Lease) (stop bool, err error)) error {
+	iter, err := k.Leases.Indexes.Provider.MatchExact(ctx, providerUUID)
+	if err != nil {
+		return err
 	}
 	defer iter.Close()
 
 	for ; iter.Valid(); iter.Next() {
 		leaseUUID, err := iter.PrimaryKey()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		lease, err := k.Leases.Get(ctx, leaseUUID)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		leases = append(leases, lease)
+
+		stop, err := cb(lease)
+		if err != nil {
+			return err
+		}
+		if stop {
+			break
+		}
 	}
 
-	return leases, nil
+	return nil
 }
 
 // Credit Account operations

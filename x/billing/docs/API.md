@@ -143,73 +143,95 @@ manifestd tx billing acknowledge-lease uuid1 uuid2 uuid3 --from provider-key
 
 #### reject-lease
 
-Reject a PENDING lease (provider only). Credit is unlocked and returned to tenant.
+Reject one or more PENDING leases (provider only). Credit is unlocked and returned to tenants.
 
 ```bash
-manifestd tx billing reject-lease [lease-uuid] [flags]
+manifestd tx billing reject-lease [lease-uuid]... [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID of the lease to reject |
+| lease-uuid | string | UUID(s) of leases to reject (1-100) |
 
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --reason | string | Optional rejection reason (max 256 chars) |
+| --reason | string | Optional rejection reason (max 256 chars, applied to all leases) |
 
-**Example:**
+**Examples:**
 ```bash
+# Reject a single lease
 manifestd tx billing reject-lease 01912345-6789-7abc-8def-0123456789ab --reason "Resources unavailable" --from provider-key
+
+# Reject multiple leases atomically (all must belong to same provider)
+manifestd tx billing reject-lease 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-fedcba987654 --reason "Batch rejection" --from provider-key
 ```
 
 **Authorization:** Provider address or authority.
+
+**Notes:**
+- All leases must belong to the same provider (atomic operation)
+- All leases must be in PENDING state
+- If any lease fails validation, the entire batch fails (no partial rejections)
+- Emits `batch_rejected` event when multiple leases are processed (includes lease_count, provider_uuid, rejected_by)
 
 ---
 
 #### cancel-lease
 
-Cancel a PENDING lease (tenant only). Credit is unlocked and returned.
+Cancel one or more PENDING leases (tenant only). Credit is unlocked and returned.
 
 ```bash
-manifestd tx billing cancel-lease [lease-uuid] [flags]
+manifestd tx billing cancel-lease [lease-uuid]... [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID of the lease to cancel |
+| lease-uuid | string | UUID(s) of leases to cancel (1-100) |
 
-**Example:**
+**Examples:**
 ```bash
+# Cancel a single lease
 manifestd tx billing cancel-lease 01912345-6789-7abc-8def-0123456789ab --from tenant-key
+
+# Cancel multiple leases atomically
+manifestd tx billing cancel-lease 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-fedcba987654 --from tenant-key
 ```
 
 **Authorization:** Tenant (owner) only.
 
 **Notes:**
 - Only PENDING leases can be cancelled
+- All leases must belong to the tenant making the request
+- If any lease fails validation, the entire batch fails (no partial cancellations)
 - Credit is immediately unlocked
+- Response includes cancelled_count showing how many leases were cancelled
+- Emits `batch_cancelled` event when multiple leases are processed (includes lease_count, tenant, cancelled_by)
 
 ---
 
 #### close-lease
 
-Close an ACTIVE lease.
+Close one or more ACTIVE leases.
 
 ```bash
-manifestd tx billing close-lease [lease-uuid] [flags]
+manifestd tx billing close-lease [lease-uuid]... [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID of the lease to close |
+| lease-uuid | string | UUID(s) of leases to close (1-100) |
 
-**Example:**
+**Examples:**
 ```bash
+# Close a single lease
 manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab --from mykey
+
+# Close multiple leases atomically
+manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-fedcba987654 --from mykey
 ```
 
 **Authorization:** Tenant (owner), provider (of SKUs), or authority.
@@ -217,6 +239,13 @@ manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab --from myk
 **Notes:**
 - Only ACTIVE leases can be closed
 - Performs final settlement during closure
+- All leases must pass authorization for the sender:
+  - Tenant: All leases must have that tenant
+  - Provider: All leases must belong to that provider
+  - Authority: Can close any leases
+- If any lease fails validation, the entire batch fails (no partial closures)
+- Response includes total_settled_amounts aggregated across all closed leases
+- Emits `batch_closed` event when multiple leases are processed (includes lease_count, closed_by)
 - Transfers accrued amount to provider payout address
 - Sets lease state to CLOSED
 
@@ -224,60 +253,61 @@ manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab --from myk
 
 #### withdraw
 
-Withdraw accrued funds from a specific lease.
+Withdraw accrued funds from leases. Supports two mutually exclusive modes:
+
+1. **Specific leases mode**: Withdraw from one or more specific lease UUIDs
+2. **Provider-wide mode**: Withdraw from all leases for a provider (paginated)
 
 ```bash
-manifestd tx billing withdraw [lease-uuid] [flags]
+# Mode 1: Specific leases
+manifestd tx billing withdraw [lease-uuid]... [flags]
+
+# Mode 2: Provider-wide
+manifestd tx billing withdraw --provider [provider-uuid] [flags]
 ```
 
-**Arguments:**
+**Arguments (Mode 1):**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID of the lease to withdraw from |
+| lease-uuid | string | UUID(s) of leases to withdraw from (1-100) |
 
-**Example:**
+**Flags:**
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --provider | string | - | Provider UUID for provider-wide withdrawal |
+| --limit | uint64 | 50 | Maximum leases to process in provider mode (max 100) |
+
+**Examples:**
 ```bash
+# Withdraw from a single lease
 manifestd tx billing withdraw 01912345-6789-7abc-8def-0123456789ab --from provider-key
+
+# Withdraw from multiple leases in one transaction
+manifestd tx billing withdraw 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-fedcba987654 --from provider-key
+
+# Withdraw from all provider's leases (provider-wide mode)
+manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --from provider-key
+
+# Provider-wide withdrawal with custom limit
+manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --limit 100 --from provider-key
 ```
 
 **Authorization:** Provider (of SKUs) or authority.
 
 **Notes:**
-- Settles accrued amount since last settlement
-- Transfers to provider's payout address
-- May trigger auto-close if credit exhausted
-
----
-
-#### withdraw-all
-
-Withdraw accrued funds from all leases for a provider.
-
-```bash
-manifestd tx billing withdraw-all [provider-uuid] [flags]
-```
-
-**Arguments:**
-| Argument | Type | Description |
-|----------|------|-------------|
-| provider-uuid | string | UUID of the provider |
-
-**Flags:**
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| --limit | uint64 | 50 | Maximum leases to process (max 100) |
-
-**Example:**
-```bash
-manifestd tx billing withdraw-all 01912345-6789-7abc-8def-0123456789ab --limit 100 --from provider-key
-```
-
-**Authorization:** Provider (address) or authority.
-
-**Notes:**
-- Processes up to `limit` active leases
-- Response includes `has_more` if more leases remain
-- Call repeatedly until `has_more` is false
+- **Mode 1 (Specific leases):**
+  - All leases must belong to the same provider
+  - If any lease fails validation, the entire batch fails (no partial withdrawals)
+  - `has_more` is always false in this mode
+- **Mode 2 (Provider-wide):**
+  - Processes up to `limit` active leases
+  - Response includes `has_more` if more leases remain
+  - Call repeatedly until `has_more` is false
+- Settles accrued amount since last settlement for each lease
+- Transfers aggregated amounts to provider's payout address
+- May trigger auto-close if credit exhausted during withdrawal
+- Response includes withdrawal_count and total_amounts aggregated across all leases
+- Emits `batch_withdraw` event when multiple leases are processed
 
 ---
 
@@ -568,12 +598,20 @@ Query total withdrawable for a provider across all leases. **This query calculat
 
 ```bash
 manifestd query billing provider-withdrawable [provider-uuid]
+
+# With custom limit (default: 100, max: 1000)
+manifestd query billing provider-withdrawable [provider-uuid] --limit 500
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
 | provider-uuid | string | UUID of the provider |
+
+**Flags:**
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --limit | uint64 | 100 | Maximum leases to process (max: 1000) |
 
 **Response:**
 ```json
@@ -584,11 +622,12 @@ manifestd query billing provider-withdrawable [provider-uuid]
       "amount": "5000000"
     }
   ],
-  "lease_count": "10"
+  "lease_count": "10",
+  "has_more": false
 }
 ```
 
-**Note:** This calculates the real-time total withdrawable amount across all active leases for the provider. It is a read-only query and does NOT trigger actual settlement.
+**Note:** This calculates the real-time total withdrawable amount across all active leases for the provider. It is a read-only query and does NOT trigger actual settlement. For providers with many leases, use the `--limit` flag and check `has_more` to process in batches.
 
 ---
 
@@ -609,7 +648,6 @@ service Msg {
   rpc CancelLease(MsgCancelLease) returns (MsgCancelLeaseResponse);
   rpc CloseLease(MsgCloseLease) returns (MsgCloseLeaseResponse);
   rpc Withdraw(MsgWithdraw) returns (MsgWithdrawResponse);
-  rpc WithdrawAll(MsgWithdrawAll) returns (MsgWithdrawAllResponse);
   rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
 }
 ```
@@ -723,110 +761,115 @@ manifestd tx billing acknowledge-lease <uuid1> [uuid2] [uuid3]... --from provide
 
 #### MsgRejectLease
 
-Provider rejects a PENDING lease.
+Provider rejects one or more PENDING leases atomically.
 
 **Request:**
 ```protobuf
 message MsgRejectLease {
-  string sender = 1;      // Provider or authority
-  string lease_uuid = 2;  // Lease to reject
-  string reason = 3;      // Optional reason (max 256 chars)
+  string sender = 1;               // Provider or authority
+  repeated string lease_uuids = 2; // Leases to reject (1-100)
+  string reason = 3;               // Optional reason (max 256 chars, applied to all)
 }
 ```
 
 **Response:**
 ```protobuf
 message MsgRejectLeaseResponse {
-  google.protobuf.Timestamp rejected_at = 1;
+  google.protobuf.Timestamp rejected_at = 1;  // When leases were rejected
+  uint64 rejected_count = 2;                  // Number of leases rejected
 }
 ```
+
+**Constraints:**
+- All leases must belong to the same provider
+- All leases must be in PENDING state
+- Maximum 100 leases per call
+- Atomic: all succeed or all fail
 
 ---
 
 #### MsgCancelLease
 
-Tenant cancels their own PENDING lease.
+Tenant cancels one or more of their own PENDING leases atomically.
 
 **Request:**
 ```protobuf
 message MsgCancelLease {
-  string tenant = 1;      // Tenant (must own lease)
-  string lease_uuid = 2;  // Lease to cancel
+  string tenant = 1;               // Tenant (must own all leases)
+  repeated string lease_uuids = 2; // Leases to cancel (1-100)
 }
 ```
 
 **Response:**
 ```protobuf
 message MsgCancelLeaseResponse {
-  google.protobuf.Timestamp cancelled_at = 1;
+  google.protobuf.Timestamp cancelled_at = 1;  // When leases were cancelled
+  uint64 cancelled_count = 2;                  // Number of leases cancelled
 }
 ```
+
+**Constraints:**
+- All leases must belong to the tenant
+- All leases must be in PENDING state
+- Maximum 100 leases per call
+- Atomic: all succeed or all fail
 
 ---
 
 #### MsgCloseLease
 
-Close an ACTIVE lease.
+Close one or more ACTIVE leases atomically.
 
 **Request:**
 ```protobuf
 message MsgCloseLease {
-  string sender = 1;      // Sender (tenant, provider, or authority)
-  string lease_uuid = 2;  // Lease to close
+  string sender = 1;               // Sender (tenant, provider, or authority)
+  repeated string lease_uuids = 2; // Leases to close (1-100)
 }
 ```
 
 **Response:**
 ```protobuf
 message MsgCloseLeaseResponse {
-  repeated cosmos.base.v1beta1.Coin settled_amounts = 1;  // Amounts settled per denom
+  google.protobuf.Timestamp closed_at = 1;                       // When leases were closed
+  uint64 closed_count = 2;                                       // Number of leases closed
+  repeated cosmos.base.v1beta1.Coin total_settled_amounts = 3;   // Total amounts settled per denom
 }
 ```
+
+**Constraints:**
+- All leases must be in ACTIVE state
+- All leases must pass authorization for the sender
+- Maximum 100 leases per call
+- Atomic: all succeed or all fail
 
 ---
 
 #### MsgWithdraw
 
-Withdraw from a specific lease.
+Withdraw from leases. Supports two mutually exclusive modes:
+1. **Specific leases mode**: Provide `lease_uuids` to withdraw from specific leases
+2. **Provider-wide mode**: Provide `provider_uuid` to withdraw from all provider's leases (paginated)
 
 **Request:**
 ```protobuf
 message MsgWithdraw {
-  string sender = 1;      // Provider or authority
-  string lease_uuid = 2;  // Lease UUID
+  string sender = 1;               // Provider or authority
+  repeated string lease_uuids = 2; // Mode 1: specific lease UUIDs (1-100)
+  string provider_uuid = 3;        // Mode 2: provider UUID for provider-wide withdrawal
+  uint64 limit = 4;                // Max leases in provider mode (default 50, max 100)
 }
 ```
+
+> **Note:** `lease_uuids` and `provider_uuid` are mutually exclusive - exactly one must be specified.
 
 **Response:**
 ```protobuf
 message MsgWithdrawResponse {
-  repeated cosmos.base.v1beta1.Coin amounts = 1;  // Withdrawn amounts per denom
-  string payout_address = 2;  // Destination address
-}
-```
-
----
-
-#### MsgWithdrawAll
-
-Withdraw from all provider leases.
-
-**Request:**
-```protobuf
-message MsgWithdrawAll {
-  string sender = 1;         // Provider or authority
-  string provider_uuid = 2;  // Provider UUID
-  uint64 limit = 3;        // Max leases (default 50, max 100)
-}
-```
-
-**Response:**
-```protobuf
-message MsgWithdrawAllResponse {
   repeated cosmos.base.v1beta1.Coin total_amounts = 1;  // Total withdrawn per denom
-  uint64 lease_count = 2;   // Leases processed
-  string payout_address = 3;  // Destination address
-  bool has_more = 4;        // More leases remain
+  string payout_address = 2;        // Destination address
+  uint64 withdrawal_count = 3;      // Number of leases processed
+  bool has_more = 4;                // More leases remain (only true in provider-wide mode)
 }
 ```
 
@@ -871,7 +914,7 @@ service Query {
 }
 ```
 
-**Important Note:** Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement or auto-close. However, `WithdrawableAmount` and `ProviderWithdrawable` queries calculate real-time accrued amounts based on elapsed time. Settlement (actual token transfer) only happens during write operations (Withdraw, CloseLease, WithdrawAll). Only ACTIVE leases accrue charges.
+**Important Note:** Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement or auto-close. However, `WithdrawableAmount` and `ProviderWithdrawable` queries calculate real-time accrued amounts based on elapsed time. Settlement (actual token transfer) only happens during write operations (Withdraw, CloseLease). Only ACTIVE leases accrue charges.
 
 #### QueryParams
 
@@ -1116,12 +1159,15 @@ The billing module emits the following events for state changes:
 | `lease_acknowledged` | lease_uuid, tenant, provider_uuid, acknowledged_by | Provider acknowledged lease (→ ACTIVE) |
 | `batch_acknowledged` | lease_count, provider_uuid, acknowledged_by | Batch summary when multiple leases acknowledged |
 | `lease_rejected` | lease_uuid, tenant, provider_uuid, rejected_by, rejection_reason | Provider rejected lease |
+| `batch_rejected` | lease_count, provider_uuid, rejected_by | Batch summary when multiple leases rejected |
 | `lease_cancelled` | lease_uuid, tenant, provider_uuid, cancelled_by | Tenant cancelled pending lease |
+| `batch_cancelled` | lease_count, tenant, cancelled_by | Batch summary when multiple leases cancelled |
 | `lease_expired` | lease_uuid, tenant, provider_uuid, reason | Pending lease expired |
 | `lease_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, closed_by, duration_seconds, active_lease_count | Lease closed manually |
+| `batch_closed` | lease_count, closed_by | Batch summary when multiple leases closed |
 | `lease_auto_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, reason | Lease auto-closed due to credit exhaustion |
-| `provider_withdraw` | lease_uuid, provider_uuid, amount, payout_address | Provider withdrawal |
-| `provider_withdraw_all` | provider_uuid, amount, lease_count, payout_address | Provider withdrew from all leases |
+| `provider_withdraw` | lease_uuid, provider_uuid, payout_address | Provider withdrawal from single lease |
+| `batch_withdraw` | lease_count, provider_uuid, amount, payout_address | Batch summary when multiple leases withdrawn from |
 | `params_updated` | | Module parameters updated |
 
 **Special Case - Withdrawal Auto-Close:** When a `MsgWithdraw` operation discovers the lease's credit is exhausted (balance = 0), it automatically closes the lease. In this case, the `provider_withdraw` event includes an additional `auto_closed: "true"` attribute and `amount: "0"` to indicate no funds were transferred. Note that the `payout_address` attribute is omitted in this case since no transfer occurred.
@@ -1172,6 +1218,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrLeaseNotPending` | 22 | Lease is not in PENDING state |
 | `ErrMaxPendingLeasesReached` | 23 | Tenant at max pending leases |
 | `ErrInvalidRejectionReason` | 24 | Rejection reason too long (max 256 chars) |
+| `ErrInvalidRequest` | 25 | Invalid request (e.g., conflicting fields in MsgWithdraw) |
 
 **Note on Reserved Codes:** Error codes 7 and 20 are explicitly reserved to maintain stable error code assignments. When adding new error types, these reserved codes ensure that error numbers remain consistent across module versions. Do not use these codes for new errors; instead, assign the next available number.
 
@@ -1189,7 +1236,6 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | CancelLease | ✓ (own leases) | ✗ | ✗ | ✗ |
 | CloseLease | ✓ (own leases) | ✓ | ✓ | ✗ |
 | Withdraw | ✗ | ✓ | ✓ | ✗ |
-| WithdrawAll | ✗ | ✓ | ✓ | ✗ |
 | UpdateParams | ✗ | ✗ | ✓ | ✗ |
 
 **Notes:**

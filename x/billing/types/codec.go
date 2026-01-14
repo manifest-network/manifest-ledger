@@ -15,7 +15,6 @@ func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	legacy.RegisterAminoMsg(cdc, &MsgCreateLeaseForTenant{}, "lifted/billing/MsgCreateLeaseForTenant")
 	legacy.RegisterAminoMsg(cdc, &MsgCloseLease{}, "lifted/billing/MsgCloseLease")
 	legacy.RegisterAminoMsg(cdc, &MsgWithdraw{}, "lifted/billing/MsgWithdraw")
-	legacy.RegisterAminoMsg(cdc, &MsgWithdrawAll{}, "lifted/billing/MsgWithdrawAll")
 	legacy.RegisterAminoMsg(cdc, &MsgUpdateParams{}, "lifted/billing/MsgUpdateParams")
 	legacy.RegisterAminoMsg(cdc, &MsgAcknowledgeLease{}, "lifted/billing/MsgAcknowledgeLease")
 	legacy.RegisterAminoMsg(cdc, &MsgRejectLease{}, "lifted/billing/MsgRejectLease")
@@ -31,7 +30,6 @@ func RegisterInterfaces(registry types.InterfaceRegistry) {
 		&MsgCreateLeaseForTenant{},
 		&MsgCloseLease{},
 		&MsgWithdraw{},
-		&MsgWithdrawAll{},
 		&MsgUpdateParams{},
 		&MsgAcknowledgeLease{},
 		&MsgRejectLease{},

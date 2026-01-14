@@ -93,7 +93,14 @@ func (k *Keeper) performSettlementCore(ctx context.Context, lease *types.Lease, 
 	accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
 	if err != nil {
 		if silentOnOverflow {
-			// On overflow, proceed with empty amounts rather than failing
+			// On overflow, proceed with empty amounts rather than failing.
+			// Log warning so this edge case is visible for investigation.
+			k.logger.Warn("accrual calculation overflow during settlement",
+				"lease_uuid", lease.Uuid,
+				"tenant", lease.Tenant,
+				"duration", duration.String(),
+				"error", err,
+			)
 			accruedAmounts = sdk.NewCoins()
 		} else {
 			return nil, types.ErrInvalidCreditOperation.Wrapf("accrual calculation error: %s", err)

@@ -1190,48 +1190,49 @@ func TestMsgValidation(t *testing.T) {
 		{
 			name: "valid MsgCloseLease",
 			msg: &types.MsgCloseLease{
-				Sender:    validAddr.String(),
-				LeaseUuid: validLeaseUUID,
+				Sender:     validAddr.String(),
+				LeaseUuids: []string{validLeaseUUID},
 			},
 			expectErr: false,
 		},
 		{
-			name: "MsgCloseLease empty lease_uuid",
+			name: "MsgCloseLease empty lease_uuids",
 			msg: &types.MsgCloseLease{
-				Sender:    validAddr.String(),
-				LeaseUuid: "",
+				Sender:     validAddr.String(),
+				LeaseUuids: []string{},
 			},
 			expectErr: true,
 		},
 		{
-			name: "valid MsgWithdraw",
+			name: "valid MsgWithdraw with lease_uuids",
 			msg: &types.MsgWithdraw{
-				Sender:    validAddr.String(),
-				LeaseUuid: validLeaseUUID,
+				Sender:     validAddr.String(),
+				LeaseUuids: []string{validLeaseUUID},
 			},
 			expectErr: false,
 		},
 		{
-			name: "MsgWithdraw empty lease_uuid",
+			name: "valid MsgWithdraw with provider_uuid",
 			msg: &types.MsgWithdraw{
-				Sender:    validAddr.String(),
-				LeaseUuid: "",
-			},
-			expectErr: true,
-		},
-		{
-			name: "valid MsgWithdrawAll",
-			msg: &types.MsgWithdrawAll{
 				Sender:       validAddr.String(),
 				ProviderUuid: validProviderUUID,
 			},
 			expectErr: false,
 		},
 		{
-			name: "MsgWithdrawAll empty provider_uuid",
-			msg: &types.MsgWithdrawAll{
+			name: "MsgWithdraw neither mode specified",
+			msg: &types.MsgWithdraw{
+				Sender:     validAddr.String(),
+				LeaseUuids: []string{},
+			},
+			expectErr: true,
+		},
+		{
+			name: "MsgWithdraw both modes specified",
+			msg: &types.MsgWithdraw{
 				Sender:       validAddr.String(),
-				ProviderUuid: "",
+				LeaseUuids:   []string{validLeaseUUID},
+				ProviderUuid: validProviderUUID,
 			},
 			expectErr: true,
 		},
@@ -1264,8 +1265,6 @@ func TestMsgValidation(t *testing.T) {
 			case *types.MsgCloseLease:
 				err = msg.ValidateBasic()
 			case *types.MsgWithdraw:
-				err = msg.ValidateBasic()
-			case *types.MsgWithdrawAll:
 				err = msg.ValidateBasic()
 			case *types.MsgUpdateParams:
 				err = msg.ValidateBasic()

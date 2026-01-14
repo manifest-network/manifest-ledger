@@ -242,6 +242,10 @@ message QueryWithdrawableAmountResponse {
 message QueryProviderWithdrawableRequest {
   // provider_uuid is the UUID of the provider.
   string provider_uuid = 1 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
+
+  // limit is the maximum number of leases to process (default: 100, max: 1000).
+  // Use this to prevent query timeouts for providers with many leases.
+  uint64 limit = 2 [(gogoproto.jsontag) = "limit,omitempty,string"];
 }
 
 // QueryProviderWithdrawableResponse is the response type for the
@@ -256,4 +260,8 @@ message QueryProviderWithdrawableResponse {
 
   // lease_count is the number of leases included in the withdrawable amount.
   uint64 lease_count = 2 [(gogoproto.jsontag) = "lease_count,omitempty,string"];
+
+  // has_more indicates whether there are more leases beyond the limit.
+  // If true, the amounts represent a partial total and there are more leases to query.
+  bool has_more = 3 [(gogoproto.jsontag) = "has_more,omitempty"];
 }

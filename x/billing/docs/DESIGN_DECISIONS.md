@@ -308,7 +308,7 @@ Item 2: SKU 2 (priced in 'umfx') - locked_price: 500umfx/second
 | `max_leases_per_tenant` | 100 | None |
 | `max_items_per_lease` | 20 | 100 |
 | `min_lease_duration` | 3600s | None |
-| WithdrawAll batch | 50 | 100 |
+| Provider withdraw batch | 50 | 100 |
 
 ## Decision 14: Minimum Lease Duration
 
@@ -451,7 +451,7 @@ if creditBalance < minRequired {
 2. **No Dispute Mechanism:** Trust-based provider relationship  
 3. **No Grace Period:** Immediate closure on exhaustion
 4. **No Lease Modification:** Cannot add/remove items after creation
-5. **Linear WithdrawAll:** O(n) for many leases (capped at 100)
+5. **Linear Provider Withdraw:** O(n) for many leases (capped at 100)
 6. **Single Provider Per Lease:** Cannot mix providers in one lease
 7. **Lease Queries Return Stored State:** `Lease`, `Leases`, etc. return stored `last_settled_at` (use `WithdrawableAmount` for real-time)
 8. **No Denom Conversion:** Must fund credit with exact denoms required by target SKUs

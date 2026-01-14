@@ -43,11 +43,9 @@ service Msg {
   // CloseLease closes an active lease.
   rpc CloseLease(MsgCloseLease) returns (MsgCloseLeaseResponse);
 
-  // Withdraw allows a provider to withdraw accrued funds from a specific lease.
+  // Withdraw allows a provider to withdraw accrued funds from leases.
+  // Two modes: specific lease UUIDs, or provider-wide with pagination.
   rpc Withdraw(MsgWithdraw) returns (MsgWithdrawResponse);
-
-  // WithdrawAll allows a provider to withdraw all accrued funds from all their leases.
-  rpc WithdrawAll(MsgWithdrawAll) returns (MsgWithdrawAllResponse);
 
   // UpdateParams updates the module parameters.
   rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
@@ -160,7 +158,9 @@ message MsgCreateLeaseForTenantResponse {
   string lease_uuid = 1 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
 }
 
-// MsgCloseLease closes an active lease.
+// MsgCloseLease closes one or more active leases.
+// All leases must be ACTIVE and sender must be authorized for each.
+// This is an atomic operation: all leases succeed or all fail.
 message MsgCloseLease {
   option (cosmos.msg.v1.signer) = "sender";
   option (amino.name) = "lifted/billing/MsgCloseLease";
@@ -171,21 +171,35 @@ message MsgCloseLease {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_uuid is the UUID of the lease to close.
-  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+  // lease_uuids are the UUIDs of the leases to close (1-100).
+  repeated string lease_uuids = 2 [(gogoproto.jsontag) = "lease_uuids,omitempty"];
 }
 
 // MsgCloseLeaseResponse is the response type for MsgCloseLease.
 message MsgCloseLeaseResponse {
-  // settled_amounts is the amounts settled at closure (one per denom).
-  repeated cosmos.base.v1beta1.Coin settled_amounts = 1 [
+  // closed_at is the timestamp when the leases were closed.
+  google.protobuf.Timestamp closed_at = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "closed_at"
+  ];
+
+  // closed_count is the number of leases that were closed.
+  uint64 closed_count = 2 [(gogoproto.jsontag) = "closed_count"];
+
+  // total_settled_amounts is the aggregated amounts settled across all leases (one per denom).
+  repeated cosmos.base.v1beta1.Coin total_settled_amounts = 3 [
     (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
-    (gogoproto.jsontag) = "settled_amounts"
+    (gogoproto.jsontag) = "total_settled_amounts"
   ];
 }
 
-// MsgWithdraw allows a provider to withdraw from a specific lease.
+// MsgWithdraw allows a provider to withdraw from leases.
+// Two mutually exclusive modes:
+// 1. Specific leases: provide lease_uuids (1-100 UUIDs)
+// 2. Provider-wide: provide provider_uuid for paginated withdrawal from all leases
+// This is an atomic operation: all withdrawals succeed or all fail.
 message MsgWithdraw {
   option (cosmos.msg.v1.signer) = "sender";
   option (amino.name) = "lifted/billing/MsgWithdraw";
@@ -196,50 +210,23 @@ message MsgWithdraw {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_uuid is the UUID of the lease to withdraw from.
-  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+  // lease_uuids are the UUIDs of the leases to withdraw from (1-100).
+  // Mutually exclusive with provider_uuid.
+  repeated string lease_uuids = 2 [(gogoproto.jsontag) = "lease_uuids,omitempty"];
+
+  // provider_uuid enables provider-wide withdrawal mode.
+  // When set, withdraws from all active leases for this provider with pagination.
+  // Mutually exclusive with lease_uuids.
+  string provider_uuid = 3 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
+
+  // limit is the maximum number of leases to process in provider-wide mode.
+  // When 0, defaults to 50. Maximum allowed is 100.
+  // Ignored when lease_uuids is specified.
+  uint64 limit = 4 [(gogoproto.jsontag) = "limit,omitempty,string"];
 }
 
 // MsgWithdrawResponse is the response type for MsgWithdraw.
 message MsgWithdrawResponse {
-  // amounts is the amounts withdrawn (one per denom).
-  repeated cosmos.base.v1beta1.Coin amounts = 1 [
-    (gogoproto.nullable) = false,
-    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
-    (gogoproto.jsontag) = "amounts"
-  ];
-
-  // payout_address is the address that received the funds.
-  string payout_address = 2 [
-    (cosmos_proto.scalar) = "cosmos.AddressString",
-    (gogoproto.jsontag) = "payout_address,omitempty"
-  ];
-}
-
-// MsgWithdrawAll allows a provider to withdraw from all their leases.
-message MsgWithdrawAll {
-  option (cosmos.msg.v1.signer) = "sender";
-  option (amino.name) = "lifted/billing/MsgWithdrawAll";
-
-  // sender is the provider's address or authority.
-  string sender = 1 [
-    (cosmos_proto.scalar) = "cosmos.AddressString",
-    (gogoproto.jsontag) = "sender,omitempty"
-  ];
-
-  // provider_uuid is the provider UUID to withdraw for.
-  // If sender is authority, this field specifies which provider.
-  // If sender is the provider's address, this field must match or be empty.
-  string provider_uuid = 2 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
-
-  // limit is the maximum number of leases to process in this call.
-  // When 0, defaults to 50. Maximum allowed is 100.
-  // Use pagination (multiple calls) for providers with many leases.
-  uint64 limit = 3 [(gogoproto.jsontag) = "limit,omitempty,string"];
-}
-
-// MsgWithdrawAllResponse is the response type for MsgWithdrawAll.
-message MsgWithdrawAllResponse {
   // total_amounts is the total amounts withdrawn across all leases (one per denom).
   repeated cosmos.base.v1beta1.Coin total_amounts = 1 [
     (gogoproto.nullable) = false,
@@ -247,17 +234,17 @@ message MsgWithdrawAllResponse {
     (gogoproto.jsontag) = "total_amounts"
   ];
 
-  // lease_count is the number of leases withdrawn from.
-  uint64 lease_count = 2 [(gogoproto.jsontag) = "lease_count,omitempty,string"];
-
   // payout_address is the address that received the funds.
-  string payout_address = 3 [
+  string payout_address = 2 [
     (cosmos_proto.scalar) = "cosmos.AddressString",
     (gogoproto.jsontag) = "payout_address,omitempty"
   ];
 
-  // has_more indicates if there are more leases to process.
-  // When true, the caller should make another WithdrawAll call.
+  // withdrawal_count is the number of leases withdrawn from.
+  uint64 withdrawal_count = 3 [(gogoproto.jsontag) = "withdrawal_count,omitempty,string"];
+
+  // has_more indicates if there are more leases to process in provider-wide mode.
+  // Always false when using lease_uuids mode.
   bool has_more = 4 [(gogoproto.jsontag) = "has_more,omitempty"];
 }
 
@@ -313,7 +300,9 @@ message MsgAcknowledgeLeaseResponse {
   uint64 acknowledged_count = 2 [(gogoproto.jsontag) = "acknowledged_count"];
 }
 
-// MsgRejectLease allows a provider to reject a PENDING lease.
+// MsgRejectLease allows a provider to reject one or more PENDING leases.
+// All leases must belong to the same provider and be in PENDING state.
+// This is an atomic operation: all leases succeed or all fail.
 message MsgRejectLease {
   option (cosmos.msg.v1.signer) = "sender";
   option (amino.name) = "lifted/billing/MsgRejectLease";
@@ -324,45 +313,53 @@ message MsgRejectLease {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_uuid is the UUID of the lease to reject.
-  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+  // lease_uuids are the UUIDs of the leases to reject (1-100).
+  repeated string lease_uuids = 2 [(gogoproto.jsontag) = "lease_uuids,omitempty"];
 
-  // reason is an optional explanation for the rejection.
+  // reason is an optional explanation for the rejection (applied to all leases).
   // Maximum 256 characters.
   string reason = 3 [(gogoproto.jsontag) = "reason,omitempty"];
 }
 
 // MsgRejectLeaseResponse is the response type for MsgRejectLease.
 message MsgRejectLeaseResponse {
-  // rejected_at is the timestamp when the lease was rejected.
+  // rejected_at is the timestamp when the leases were rejected.
   google.protobuf.Timestamp rejected_at = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.stdtime) = true,
     (gogoproto.jsontag) = "rejected_at"
   ];
+
+  // rejected_count is the number of leases that were rejected.
+  uint64 rejected_count = 2 [(gogoproto.jsontag) = "rejected_count"];
 }
 
-// MsgCancelLease allows a tenant to cancel their own PENDING lease.
+// MsgCancelLease allows a tenant to cancel one or more of their own PENDING leases.
+// All leases must belong to the tenant. This is an atomic operation:
+// all leases succeed or all fail.
 message MsgCancelLease {
   option (cosmos.msg.v1.signer) = "tenant";
   option (amino.name) = "lifted/billing/MsgCancelLease";
 
-  // tenant is the address of the tenant who owns the lease.
+  // tenant is the address of the tenant who owns the leases.
   string tenant = 1 [
     (cosmos_proto.scalar) = "cosmos.AddressString",
     (gogoproto.jsontag) = "tenant,omitempty"
   ];
 
-  // lease_uuid is the UUID of the lease to cancel.
-  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+  // lease_uuids are the UUIDs of the leases to cancel (1-100).
+  repeated string lease_uuids = 2 [(gogoproto.jsontag) = "lease_uuids,omitempty"];
 }
 
 // MsgCancelLeaseResponse is the response type for MsgCancelLease.
 message MsgCancelLeaseResponse {
-  // cancelled_at is the timestamp when the lease was cancelled.
+  // cancelled_at is the timestamp when the leases were cancelled.
   google.protobuf.Timestamp cancelled_at = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.stdtime) = true,
     (gogoproto.jsontag) = "cancelled_at"
   ];
+
+  // cancelled_count is the number of leases that were cancelled.
+  uint64 cancelled_count = 2 [(gogoproto.jsontag) = "cancelled_count,omitempty"];
 }

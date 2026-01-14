@@ -75,10 +75,10 @@
 //   - Fail: withdraw from non-existent lease
 //   - Success: partial withdrawal (accrual continues)
 //
-// testWithdrawAll:
-//   - Success: provider withdraws from all leases
+// testWithdrawByProvider:
+//   - Success: provider withdraws from all leases using --provider mode
 //   - Success: authority withdraws for specific provider
-//   - Fail: withdraw all from provider with no leases
+//   - Fail: withdraw from provider with no leases
 //
 // ## Query Helpers Tests
 //
@@ -129,13 +129,13 @@
 //   - Success: derive credit address for funded tenant matches actual credit account
 //   - Fail: derive credit address with invalid tenant address
 //
-// ## WithdrawAll Limits Tests
+// ## Provider Withdraw Limits Tests
 //
-// testWithdrawAllLimits:
-//   - Success: withdraw all with default limit
-//   - Success: withdraw all with custom limit
+// testProviderWithdrawLimits:
+//   - Success: provider withdraw with default limit
+//   - Success: provider withdraw with custom limit
 //   - Success: has_more flag indicates more leases to process
-//   - Fail: withdraw all with limit exceeding maximum
+//   - Fail: provider withdraw with limit exceeding maximum
 //
 // ## Provider Deactivation Tests
 //
@@ -274,8 +274,8 @@ func TestBilling(t *testing.T) {
 		testWithdraw(t, ctx, chain, authority, tenant1, providerWallet, unauthorizedUser)
 	})
 
-	t.Run("WithdrawAll", func(t *testing.T) {
-		testWithdrawAll(t, ctx, chain, authority, tenant1, providerWallet)
+	t.Run("WithdrawByProvider", func(t *testing.T) {
+		testWithdrawByProvider(t, ctx, chain, authority, tenant1, providerWallet)
 	})
 
 	t.Run("LeaseClose", func(t *testing.T) {
@@ -302,8 +302,8 @@ func TestBilling(t *testing.T) {
 		testCreditAddressQuery(t, ctx, chain, tenant1)
 	})
 
-	t.Run("WithdrawAllLimits", func(t *testing.T) {
-		testWithdrawAllLimits(t, ctx, chain, authority, providerWallet)
+	t.Run("ProviderWithdrawLimits", func(t *testing.T) {
+		testProviderWithdrawLimits(t, ctx, chain, authority, providerWallet)
 	})
 
 	t.Run("ProviderDeactivation", func(t *testing.T) {
@@ -789,8 +789,8 @@ func testWithdraw(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 	})
 }
 
-func testWithdrawAll(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, tenant1, providerWallet ibc.Wallet) {
-	t.Log("=== Testing Withdraw All ===")
+func testWithdrawByProvider(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, tenant1, providerWallet ibc.Wallet) {
+	t.Log("=== Testing Withdraw By Provider ===")
 
 	// Wait for some accrual
 	require.NoError(t, testutil.WaitForBlocks(ctx, 5, chain))
@@ -800,12 +800,12 @@ func testWithdrawAll(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 		initialBalance, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), testPWRDenom)
 		require.NoError(t, err)
 
-		res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderUUID, 0)
+		res, err := helpers.BillingWithdrawByProvider(ctx, chain, providerWallet, testProviderUUID, 0)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "withdraw all should succeed: %s", txRes.RawLog)
+		require.Equal(t, uint32(0), txRes.Code, "provider withdraw should succeed: %s", txRes.RawLog)
 
 		// Verify provider received funds
 		newBalance, err := chain.GetBalance(ctx, providerWallet.FormattedAddress(), testPWRDenom)
@@ -817,12 +817,12 @@ func testWithdrawAll(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 		// Wait for more accrual
 		require.NoError(t, testutil.WaitForBlocks(ctx, 3, chain))
 
-		res, err := helpers.BillingWithdrawAll(ctx, chain, authority, testProviderUUID, 0)
+		res, err := helpers.BillingWithdrawByProvider(ctx, chain, authority, testProviderUUID, 0)
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "authority withdraw all should succeed: %s", txRes.RawLog)
+		require.Equal(t, uint32(0), txRes.Code, "authority provider withdraw should succeed: %s", txRes.RawLog)
 	})
 }
 
@@ -1614,10 +1614,10 @@ func testCreditAddressQuery(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	})
 }
 
-// testWithdrawAllLimits tests the WithdrawAll limit functionality.
-func testWithdrawAllLimits(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, providerWallet ibc.Wallet) {
+// testProviderWithdrawLimits tests the provider withdraw limit functionality.
+func testProviderWithdrawLimits(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, providerWallet ibc.Wallet) {
 	// Create a new tenant for these tests
-	users := interchaintest.GetAndFundTestUsers(t, ctx, "withdrawall-limit-tenant", DefaultGenesisAmt, chain)
+	users := interchaintest.GetAndFundTestUsers(t, ctx, "provider-withdraw-limit-tenant", DefaultGenesisAmt, chain)
 	tenant := users[0]
 
 	// Fund tenant's credit account
@@ -1653,33 +1653,33 @@ func testWithdrawAllLimits(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	// Wait for some accrual
 	require.NoError(t, testutil.WaitForBlocks(ctx, 5, chain))
 
-	// Test: withdraw all with custom limit
-	t.Run("success: withdraw all with custom limit", func(t *testing.T) {
+	// Test: provider withdraw with custom limit
+	t.Run("success: provider withdraw with custom limit", func(t *testing.T) {
 		// Use a limit of 2 to test pagination
-		res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderUUID, 2)
+		res, err := helpers.BillingWithdrawByProvider(ctx, chain, providerWallet, testProviderUUID, 2)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "withdraw all should succeed")
+		require.Equal(t, uint32(0), txRes.Code, "provider withdraw should succeed")
 
 		// Check events for has_more flag
-		t.Logf("WithdrawAll with limit 2 succeeded")
+		t.Logf("Provider withdraw with limit 2 succeeded")
 	})
 
-	// Test: withdraw all with default limit (0 means default)
-	t.Run("success: withdraw all with default limit", func(t *testing.T) {
-		res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderUUID, 0)
+	// Test: provider withdraw with default limit (0 means default)
+	t.Run("success: provider withdraw with default limit", func(t *testing.T) {
+		res, err := helpers.BillingWithdrawByProvider(ctx, chain, providerWallet, testProviderUUID, 0)
 		require.NoError(t, err)
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "withdraw all should succeed")
+		require.Equal(t, uint32(0), txRes.Code, "provider withdraw should succeed")
 	})
 
-	// Test: withdraw all with limit exceeding maximum should fail at CLI validation
-	t.Run("fail: withdraw all with limit exceeding maximum", func(t *testing.T) {
-		// MaxWithdrawAllLimit is 100, try 150
-		_, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, testProviderUUID, 150)
-		require.Error(t, err, "withdraw all with excessive limit should fail")
+	// Test: provider withdraw with limit exceeding maximum should fail at CLI validation
+	t.Run("fail: provider withdraw with limit exceeding maximum", func(t *testing.T) {
+		// MaxBatchLeaseSize is 100, try 150
+		_, err := helpers.BillingWithdrawByProvider(ctx, chain, providerWallet, testProviderUUID, 150)
+		require.Error(t, err, "provider withdraw with excessive limit should fail")
 	})
 }
 
@@ -2385,7 +2385,7 @@ func testLeaseRejectAndCancel(t *testing.T, ctx context.Context, chain *cosmos.C
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.NotEqual(t, uint32(0), txRes.Code, "provider should not be able to cancel tenant's lease")
-		require.Contains(t, txRes.RawLog, "not the tenant")
+		require.Contains(t, txRes.RawLog, "is not the tenant")
 	})
 
 	t.Run("success: tenant cancels their own pending lease", func(t *testing.T) {
@@ -3529,9 +3529,9 @@ func testBillingInvalidUUID(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		t.Log("Correctly rejected withdraw with invalid lease uuid")
 	})
 
-	t.Run("fail: withdraw-all with invalid provider uuid", func(t *testing.T) {
+	t.Run("fail: provider withdraw with invalid provider uuid", func(t *testing.T) {
 		for _, tc := range invalidUUIDs {
-			res, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, tc.uuid, 0)
+			res, err := helpers.BillingWithdrawByProvider(ctx, chain, providerWallet, tc.uuid, 0)
 			if err != nil {
 				require.Contains(t, err.Error(), "uuid", "invalid provider_uuid (%s) should be rejected: %s", tc.desc, tc.uuid)
 			} else {
@@ -3540,7 +3540,7 @@ func testBillingInvalidUUID(t *testing.T, ctx context.Context, chain *cosmos.Cos
 				require.NotEqual(t, uint32(0), txRes.Code, "invalid provider_uuid (%s) should fail: %s", tc.desc, tc.uuid)
 			}
 		}
-		t.Log("Correctly rejected withdraw-all with invalid provider uuid")
+		t.Log("Correctly rejected provider withdraw with invalid provider uuid")
 	})
 
 	t.Run("fail: query lease with invalid uuid", func(t *testing.T) {
@@ -3637,10 +3637,10 @@ func testBillingEmptyParams(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		t.Log("Correctly rejected withdraw with empty lease uuid")
 	})
 
-	t.Run("fail: withdraw-all with empty provider uuid", func(t *testing.T) {
-		_, err := helpers.BillingWithdrawAll(ctx, chain, providerWallet, "", 0)
-		require.Error(t, err, "withdraw-all with empty provider uuid should fail")
-		t.Log("Correctly rejected withdraw-all with empty provider uuid")
+	t.Run("fail: provider withdraw with empty provider uuid", func(t *testing.T) {
+		_, err := helpers.BillingWithdrawByProvider(ctx, chain, providerWallet, "", 0)
+		require.Error(t, err, "provider withdraw with empty provider uuid should fail")
+		t.Log("Correctly rejected provider withdraw with empty provider uuid")
 	})
 
 	t.Run("fail: query credit account with empty tenant", func(t *testing.T) {

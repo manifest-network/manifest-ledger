@@ -12,6 +12,7 @@ import (
 	"github.com/manifest-network/manifest-ledger/pkg/sanitize"
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 var _ types.MsgServer = msgServer{}
@@ -49,18 +50,24 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 		return nil, err
 	}
 
-	// Transfer tokens from sender to credit address
+	// Parse sender address
 	senderAddr, err := sdk.AccAddressFromBech32(msg.Sender)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := ms.k.bankKeeper.SendCoins(ctx, senderAddr, creditAddr, sdk.NewCoins(msg.Amount)); err != nil {
+	// Use CacheContext to ensure atomicity: either all operations succeed
+	// (token transfer + credit account creation) or none do.
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	cacheCtx, writeCache := sdkCtx.CacheContext()
+
+	// Transfer tokens from sender to credit address
+	if err := ms.k.bankKeeper.SendCoins(cacheCtx, senderAddr, creditAddr, sdk.NewCoins(msg.Amount)); err != nil {
 		return nil, types.ErrInvalidCreditOperation.Wrapf("failed to transfer tokens: %s", err)
 	}
 
 	// Get or create credit account
-	creditAccount, err := ms.k.GetCreditAccount(ctx, msg.Tenant)
+	creditAccount, err := ms.k.GetCreditAccount(cacheCtx, msg.Tenant)
 	if err != nil {
 		// Credit account doesn't exist, create it
 		creditAccount = types.CreditAccount{
@@ -71,20 +78,23 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 		}
 
 		// Ensure the credit account address is registered in the account keeper
-		if ms.k.accountKeeper.GetAccount(ctx, creditAddr) == nil {
-			acc := ms.k.accountKeeper.NewAccountWithAddress(ctx, creditAddr)
-			ms.k.accountKeeper.SetAccount(ctx, acc)
+		if ms.k.accountKeeper.GetAccount(cacheCtx, creditAddr) == nil {
+			acc := ms.k.accountKeeper.NewAccountWithAddress(cacheCtx, creditAddr)
+			ms.k.accountKeeper.SetAccount(cacheCtx, acc)
 		}
 	}
 
-	if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
+	if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
 		return nil, err
 	}
 
-	// Get the new balance from the bank module for the funded denom
+	// All operations succeeded - commit atomically
+	writeCache()
+
+	// Get the new balance from the bank module for the funded denom (after commit)
 	newBalance := ms.k.bankKeeper.GetBalance(ctx, creditAddr, msg.Amount.Denom)
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	// Emit event on original context (events are not cached)
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeCreditFunded,
@@ -187,17 +197,12 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 			)
 		}
 
-		// Verify provider is active
-		provider, err := ms.k.skuKeeper.GetProvider(ctx, sku.ProviderUuid)
+		// Lock price from SKU (convert to per-second rate, preserving denom)
+		lockedPricePerSecond, err := ConvertBasePriceToPerSecond(sku.BasePrice, sku.Unit)
 		if err != nil {
-			return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", sku.ProviderUuid)
+			// This should not happen for valid SKUs (validated at creation time)
+			return nil, types.ErrSKUNotFound.Wrapf("invalid SKU pricing: %s", err)
 		}
-		if !provider.Active {
-			return nil, types.ErrProviderNotActive.Wrapf("provider_uuid %s is not active", sku.ProviderUuid)
-		}
-
-		// 4. Lock price from SKU (convert to per-second rate, preserving denom)
-		lockedPricePerSecond := ConvertBasePriceToPerSecond(sku.BasePrice, sku.Unit)
 
 		// Accumulate total rate for each denom
 		itemRate := sdk.NewCoin(lockedPricePerSecond.Denom, lockedPricePerSecond.Amount.Mul(sdkmath.NewIntFromUint64(inputItem.Quantity)))
@@ -210,7 +215,16 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		})
 	}
 
-	// 4. Verify tenant has enough credit to cover minimum lease duration for EACH denom
+	// 4. Verify provider is active (only need to check once since all SKUs belong to same provider)
+	provider, err := ms.k.skuKeeper.GetProvider(ctx, providerUUID)
+	if err != nil {
+		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
+	}
+	if !provider.Active {
+		return nil, types.ErrProviderNotActive.Wrapf("provider_uuid %s is not active", providerUUID)
+	}
+
+	// 5. Verify tenant has enough credit to cover minimum lease duration for EACH denom
 	// Required credit per denom = totalRatePerSecond[denom] * minLeaseDuration
 	for _, rate := range totalRatesPerSecond {
 		requiredCredit := rate.Amount.Mul(sdkmath.NewIntFromUint64(params.MinLeaseDuration))
@@ -228,7 +242,7 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		}
 	}
 
-	// 5. Create lease with deterministic UUIDv7
+	// 6. Create lease with deterministic UUIDv7
 	leaseSeq, err := ms.k.GetNextLeaseSequence(ctx)
 	if err != nil {
 		return nil, err
@@ -249,7 +263,7 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		return nil, err
 	}
 
-	// 6. Increment pending lease count in credit account (lease starts in PENDING state)
+	// 7. Increment pending lease count in credit account (lease starts in PENDING state)
 	creditAccount.PendingLeaseCount++
 	if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
 		return nil, err
@@ -336,7 +350,9 @@ func (ms msgServer) CreateLeaseForTenant(ctx context.Context, msg *types.MsgCrea
 	}, nil
 }
 
-// CloseLease closes an active lease.
+// CloseLease closes one or more active leases.
+// Sender must be authorized for each lease (tenant, provider, or authority).
+// This is an atomic operation: all leases succeed or all fail.
 func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*types.MsgCloseLeaseResponse, error) {
 	if err := msg.ValidateBasic(); err != nil {
 		return nil, err
@@ -345,233 +361,419 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// 1. Get lease (without auto-close - we'll handle it explicitly)
-	lease, err := ms.k.GetLease(ctx, msg.LeaseUuid)
-	if err != nil {
-		return nil, err
-	}
+	// Phase 1: Validate ALL leases and authorization first (fail-fast)
+	leases := make([]types.Lease, 0, len(msg.LeaseUuids))
+	creditAccounts := make(map[string]types.CreditAccount) // keyed by tenant address
+	providerCache := make(map[string]string)               // provider UUID -> provider address
+	var closedBy string                                    // consistent role for all leases
 
-	// 2. If lease is already inactive, nothing to do
-	if lease.State != types.LEASE_STATE_ACTIVE {
-		return nil, types.ErrLeaseNotActive.Wrapf("lease %s is not active", msg.LeaseUuid)
-	}
+	isAuthority := msg.Sender == ms.k.GetAuthority()
 
-	// 3. Verify sender is authorized (tenant, provider address, or authority)
-	authorized := false
-	closedBy := "unknown"
-
-	// Check if sender is tenant
-	if msg.Sender == lease.Tenant {
-		authorized = true
-		closedBy = "tenant"
-	}
-
-	// Check if sender is authority
-	if msg.Sender == ms.k.GetAuthority() {
-		authorized = true
-		closedBy = "authority"
-	}
-
-	// Check if sender is provider address
-	if !authorized {
-		provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
-		if err == nil && msg.Sender == provider.Address {
-			authorized = true
-			closedBy = "provider"
+	for _, uuid := range msg.LeaseUuids {
+		lease, err := ms.k.GetLease(ctx, uuid)
+		if err != nil {
+			return nil, types.ErrLeaseNotFound.Wrapf("lease %s not found", uuid)
 		}
+
+		if lease.State != types.LEASE_STATE_ACTIVE {
+			return nil, types.ErrLeaseNotActive.Wrapf("lease %s is not active", uuid)
+		}
+
+		// Determine authorization for this lease
+		leaseClosedBy := ""
+
+		// Check if sender is tenant
+		if msg.Sender == lease.Tenant {
+			leaseClosedBy = "tenant"
+		}
+
+		// Check if sender is authority (can close any lease)
+		if isAuthority {
+			leaseClosedBy = "authority"
+		}
+
+		// Check if sender is provider address (cache provider lookups)
+		if leaseClosedBy == "" {
+			providerAddr, exists := providerCache[lease.ProviderUuid]
+			if !exists {
+				provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
+				if err == nil {
+					providerAddr = provider.Address
+					providerCache[lease.ProviderUuid] = providerAddr
+				}
+			}
+			if providerAddr != "" && msg.Sender == providerAddr {
+				leaseClosedBy = "provider"
+			}
+		}
+
+		if leaseClosedBy == "" {
+			return nil, types.ErrUnauthorized.Wrapf(
+				"sender %s is not authorized to close lease %s",
+				msg.Sender,
+				uuid,
+			)
+		}
+
+		// For non-authority senders, ensure consistent role across all leases
+		if !isAuthority {
+			if closedBy == "" {
+				closedBy = leaseClosedBy
+			} else if closedBy != leaseClosedBy {
+				return nil, types.ErrUnauthorized.Wrapf(
+					"sender %s has inconsistent authorization: lease %s requires %s role but batch uses %s",
+					msg.Sender,
+					uuid,
+					leaseClosedBy,
+					closedBy,
+				)
+			}
+		} else {
+			closedBy = "authority"
+		}
+
+		// Validate credit account exists for this tenant (only fetch once per tenant)
+		if _, exists := creditAccounts[lease.Tenant]; !exists {
+			creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
+			if err != nil {
+				return nil, types.ErrCreditAccountNotFound.Wrapf(
+					"credit account not found for tenant %s (lease %s): data integrity issue",
+					lease.Tenant,
+					uuid,
+				)
+			}
+			creditAccounts[lease.Tenant] = creditAccount
+		}
+
+		leases = append(leases, lease)
 	}
 
-	if !authorized {
-		return nil, types.ErrUnauthorized.Wrapf(
-			"sender %s is not authorized to close lease %s",
-			msg.Sender,
-			msg.LeaseUuid,
-		)
+	// Phase 2: Apply all changes atomically using CacheContext
+	// This ensures that if any operation fails, all changes are rolled back.
+	cacheCtx, writeCache := sdkCtx.CacheContext()
+	totalSettledAmounts := sdk.NewCoins()
+
+	// Track events to emit after successful commit (events are not cached)
+	type leaseEvent struct {
+		uuid           string
+		tenant         string
+		providerUUID   string
+		settledAmounts sdk.Coins
+		closedBy       string
+		duration       time.Duration
+		activeCount    uint64
 	}
+	leaseEvents := make([]leaseEvent, 0, len(leases))
 
-	// 4. Check if lease should be auto-closed due to exhausted credit
-	// If so, the settlement happens during auto-close
-	closed, err := ms.k.CheckAndCloseExhaustedLease(ctx, &lease)
-	if err != nil {
-		return nil, err
-	}
+	for i := range leases {
+		var settledAmounts sdk.Coins
+		var duration time.Duration
+		leaseClosedBy := closedBy
 
-	var settledAmounts sdk.Coins
-	var duration time.Duration
-	if closed {
-		// Lease was auto-closed due to credit exhaustion
-		// Settlement already happened, so we just return success
-		settledAmounts = sdk.NewCoins()
-		closedBy = "credit_exhaustion"
-		duration = 0
-	} else {
-		// 5. Calculate duration for event
-		duration = blockTime.Sub(lease.LastSettledAt)
-
-		// 6. Settle accrued charges
-		settledAmounts, err = ms.settleLease(ctx, &lease, blockTime)
+		// Check if lease should be auto-closed due to exhausted credit
+		closed, err := ms.k.CheckAndCloseExhaustedLease(cacheCtx, &leases[i])
 		if err != nil {
 			return nil, err
 		}
 
-		// 7. Update lease state to inactive
-		lease.State = types.LEASE_STATE_CLOSED
-		lease.ClosedAt = &blockTime
+		if closed {
+			// Lease was auto-closed due to credit exhaustion.
+			// Refresh credit account from storage since auto-close modified it directly.
+			refreshedAccount, err := ms.k.GetCreditAccount(cacheCtx, leases[i].Tenant)
+			if err != nil {
+				return nil, types.ErrInvalidCreditOperation.Wrapf("failed to refresh credit account after auto-close for tenant %s: %s", leases[i].Tenant, err)
+			}
+			creditAccounts[leases[i].Tenant] = refreshedAccount
 
-		if err := ms.k.SetLease(ctx, lease); err != nil {
-			return nil, err
-		}
+			settledAmounts = sdk.NewCoins()
+			leaseClosedBy = "credit_exhaustion"
+			duration = 0
+		} else {
+			// Calculate duration for event
+			duration = blockTime.Sub(leases[i].LastSettledAt)
 
-		// Decrement active lease count in credit account.
-		// NOTE: We intentionally ignore GetCreditAccount errors here because:
-		// 1. The credit account may not exist if the lease was created before
-		//    credit accounts were tracked (backwards compatibility)
-		// 2. The lease closure itself has already succeeded at this point
-		// 3. The count is informational and its inconsistency is non-critical
-		creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
-		if err == nil && creditAccount.ActiveLeaseCount > 0 {
-			creditAccount.ActiveLeaseCount--
-			if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
+			// Settle accrued charges
+			settledAmounts, err = ms.settleLease(cacheCtx, &leases[i], blockTime)
+			if err != nil {
 				return nil, err
 			}
+
+			// Update lease state to inactive
+			leases[i].State = types.LEASE_STATE_CLOSED
+			leases[i].ClosedAt = &blockTime
+
+			if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil {
+				return nil, types.ErrInvalidLease.Wrapf("failed to update lease %s: %s", leases[i].Uuid, err)
+			}
+
+			// Update lease counts: decrement active
+			creditAccount := creditAccounts[leases[i].Tenant]
+			if creditAccount.ActiveLeaseCount > 0 {
+				creditAccount.ActiveLeaseCount--
+			} else {
+				ms.k.Logger().Warn("data inconsistency: active lease count already zero",
+					"tenant", leases[i].Tenant,
+					"lease_uuid", leases[i].Uuid,
+				)
+			}
+			creditAccounts[leases[i].Tenant] = creditAccount
+		}
+
+		// Aggregate settled amounts
+		totalSettledAmounts = totalSettledAmounts.Add(settledAmounts...)
+
+		// Get active lease count for event emission
+		creditAccount := creditAccounts[leases[i].Tenant]
+
+		// Queue event for emission after successful commit
+		leaseEvents = append(leaseEvents, leaseEvent{
+			uuid:           leases[i].Uuid,
+			tenant:         leases[i].Tenant,
+			providerUUID:   leases[i].ProviderUuid,
+			settledAmounts: settledAmounts,
+			closedBy:       leaseClosedBy,
+			duration:       duration,
+			activeCount:    creditAccount.ActiveLeaseCount,
+		})
+	}
+
+	// Persist all credit account updates to the cache context
+	for _, creditAccount := range creditAccounts {
+		if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
+			return nil, err
 		}
 	}
 
-	// Get active lease count for event emission.
-	// NOTE: Error intentionally ignored - if credit account doesn't exist,
-	// we use zero value which is acceptable for event metadata.
-	creditAccount, _ := ms.k.GetCreditAccount(ctx, lease.Tenant)
+	// All operations succeeded - commit the cache to the main context
+	writeCache()
 
-	// 8. Emit detailed event
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeLeaseClosed,
-			sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
-			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
-			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
-			sdk.NewAttribute(types.AttributeKeySettledAmounts, settledAmounts.String()),
-			sdk.NewAttribute(types.AttributeKeyClosedBy, closedBy),
-			sdk.NewAttribute(types.AttributeKeyDuration, strconv.FormatInt(int64(duration.Seconds()), 10)),
-			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(creditAccount.ActiveLeaseCount, 10)),
-		),
-	)
+	// Emit events after successful commit (events go to the original context)
+	for _, ev := range leaseEvents {
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeLeaseClosed,
+				sdk.NewAttribute(types.AttributeKeyLeaseUUID, ev.uuid),
+				sdk.NewAttribute(types.AttributeKeyTenant, ev.tenant),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, ev.providerUUID),
+				sdk.NewAttribute(types.AttributeKeySettledAmounts, ev.settledAmounts.String()),
+				sdk.NewAttribute(types.AttributeKeyClosedBy, ev.closedBy),
+				sdk.NewAttribute(types.AttributeKeyDuration, strconv.FormatInt(int64(ev.duration.Seconds()), 10)),
+				sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(ev.activeCount, 10)),
+			),
+		)
+	}
+
+	// Emit batch summary event when multiple leases are closed
+	if len(leases) > 1 {
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeBatchClosed,
+				sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(uint64(len(leases)), 10)),
+				sdk.NewAttribute(types.AttributeKeyClosedBy, closedBy),
+				sdk.NewAttribute(types.AttributeKeySettledAmounts, totalSettledAmounts.String()),
+			),
+		)
+	}
 
 	return &types.MsgCloseLeaseResponse{
-		SettledAmounts: settledAmounts,
+		ClosedAt:            blockTime,
+		ClosedCount:         uint64(len(leases)),
+		TotalSettledAmounts: totalSettledAmounts,
 	}, nil
 }
 
-// Withdraw allows a provider to withdraw accrued funds from a specific lease.
+// Withdraw allows a provider to withdraw accrued funds from one or more leases.
+// All leases must belong to the same provider.
+// This is an atomic operation: all withdrawals succeed or all fail.
 func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*types.MsgWithdrawResponse, error) {
 	if err := msg.ValidateBasic(); err != nil {
 		return nil, err
 	}
 
+	// Dispatch based on mode
+	if msg.ProviderUuid != "" {
+		return ms.withdrawFromProvider(ctx, msg)
+	}
+	return ms.withdrawFromLeases(ctx, msg)
+}
+
+// withdrawFromLeases handles withdrawal from specific lease UUIDs.
+// All leases must belong to the same provider.
+func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdraw) (*types.MsgWithdrawResponse, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// 1. Get lease (without auto-close - we'll handle it explicitly)
-	lease, err := ms.k.GetLease(ctx, msg.LeaseUuid)
-	if err != nil {
-		return nil, err
-	}
+	// Phase 1: Validate ALL leases first (fail-fast on any error)
+	leases := make([]types.Lease, 0, len(msg.LeaseUuids))
+	var provider skutypes.Provider
+	var providerUUID string
 
-	// 2. Get provider and verify sender is authorized (provider address or authority)
-	provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
-	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
-	}
-
-	if msg.Sender != provider.Address && msg.Sender != ms.k.GetAuthority() {
-		return nil, types.ErrUnauthorized.Wrapf(
-			"sender %s is not authorized to withdraw from lease %s",
-			msg.Sender,
-			msg.LeaseUuid,
-		)
-	}
-
-	// 3. For active leases, check if we need to auto-close due to exhausted credit
-	if lease.State == types.LEASE_STATE_ACTIVE {
-		closed, err := ms.k.CheckAndCloseExhaustedLease(ctx, &lease)
+	for i, leaseUUID := range msg.LeaseUuids {
+		// Get lease
+		lease, err := ms.k.GetLease(ctx, leaseUUID)
 		if err != nil {
 			return nil, err
 		}
-		if closed {
-			// Auto-close already performed settlement and transferred funds
-			// Emit withdrawal event with zero amount (settlement was done during auto-close)
-			sdkCtx.EventManager().EmitEvent(
-				sdk.NewEvent(
-					types.EventTypeProviderWithdraw,
-					sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
-					sdk.NewAttribute(sdk.AttributeKeyAmount, "0"),
-					sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
-					sdk.NewAttribute("auto_closed", "true"),
-				),
+
+		// Verify all leases belong to the same provider
+		if i == 0 {
+			providerUUID = lease.ProviderUuid
+			provider, err = ms.k.skuKeeper.GetProvider(ctx, providerUUID)
+			if err != nil {
+				return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
+			}
+
+			// Verify sender is authorized (provider address or authority)
+			if msg.Sender != provider.Address && msg.Sender != ms.k.GetAuthority() {
+				return nil, types.ErrUnauthorized.Wrapf(
+					"sender %s is not authorized to withdraw from provider %s leases",
+					msg.Sender,
+					providerUUID,
+				)
+			}
+		} else if lease.ProviderUuid != providerUUID {
+			return nil, types.ErrInvalidLease.Wrapf(
+				"lease %s belongs to provider %s, expected %s (all leases must belong to same provider)",
+				leaseUUID,
+				lease.ProviderUuid,
+				providerUUID,
 			)
-			return &types.MsgWithdrawResponse{
-				Amounts:       sdk.NewCoins(),
-				PayoutAddress: provider.PayoutAddress,
-			}, nil
 		}
+
+		leases = append(leases, lease)
 	}
 
-	// 4. Determine settlement time based on lease state
-	var settleTime time.Time
-	switch {
-	case lease.State == types.LEASE_STATE_ACTIVE:
-		settleTime = blockTime
-	case lease.ClosedAt != nil:
-		settleTime = *lease.ClosedAt
-	default:
-		settleTime = lease.LastSettledAt // No duration, will return zero
+	// Phase 2: Apply all changes atomically using CacheContext
+	cacheCtx, writeCache := sdkCtx.CacheContext()
+
+	totalAmounts := sdk.NewCoins()
+	withdrawalCount := uint64(0)
+	autoClosedLeases := make([]string, 0)
+	leaseAmounts := make(map[string]sdk.Coins) // Track per-lease amounts for events
+
+	for i := range leases {
+		lease := &leases[i]
+
+		// For active leases, check if we need to auto-close due to exhausted credit
+		if lease.State == types.LEASE_STATE_ACTIVE {
+			closed, err := ms.k.CheckAndCloseExhaustedLease(cacheCtx, lease)
+			if err != nil {
+				return nil, err
+			}
+			if closed {
+				// Auto-close already performed settlement and transferred funds
+				autoClosedLeases = append(autoClosedLeases, lease.Uuid)
+				withdrawalCount++
+				continue
+			}
+		}
+
+		// Determine settlement time based on lease state
+		var settleTime time.Time
+		switch {
+		case lease.State == types.LEASE_STATE_ACTIVE:
+			settleTime = blockTime
+		case lease.ClosedAt != nil:
+			settleTime = *lease.ClosedAt
+		default:
+			settleTime = lease.LastSettledAt // No duration, will return zero
+		}
+
+		// Perform settlement
+		result, err := ms.k.PerformSettlement(cacheCtx, lease, settleTime)
+		if err != nil {
+			return nil, err
+		}
+
+		// Skip leases with zero withdrawable amount (don't fail, just skip)
+		if result.AccruedAmounts.IsZero() {
+			continue
+		}
+
+		// Update last_settled_at for active leases
+		if lease.State == types.LEASE_STATE_ACTIVE {
+			lease.LastSettledAt = blockTime
+			if err := ms.k.SetLease(cacheCtx, *lease); err != nil {
+				return nil, err
+			}
+		}
+
+		totalAmounts = totalAmounts.Add(result.TransferAmounts...)
+		leaseAmounts[lease.Uuid] = result.TransferAmounts
+		withdrawalCount++
 	}
 
-	// 5. Perform settlement
-	result, err := ms.k.PerformSettlement(ctx, &lease, settleTime)
-	if err != nil {
-		return nil, err
-	}
-
-	if result.AccruedAmounts.IsZero() {
+	// Check if there was nothing to withdraw from any lease
+	if withdrawalCount == 0 && len(autoClosedLeases) == 0 {
 		return nil, types.ErrNoWithdrawableAmount
 	}
 
-	// 6. Update last_settled_at for active leases
-	if lease.State == types.LEASE_STATE_ACTIVE {
-		lease.LastSettledAt = blockTime
-		if err := ms.k.SetLease(ctx, lease); err != nil {
-			return nil, err
+	// All operations succeeded - commit the cache to the main context
+	writeCache()
+
+	// Phase 3: Emit events after successful commit
+	// Build lookup set for O(1) auto-close checks
+	autoClosedSet := make(map[string]struct{}, len(autoClosedLeases))
+	for _, uuid := range autoClosedLeases {
+		autoClosedSet[uuid] = struct{}{}
+	}
+
+	for i := range leases {
+		lease := &leases[i]
+		_, wasAutoClosed := autoClosedSet[lease.Uuid]
+
+		if wasAutoClosed {
+			sdkCtx.EventManager().EmitEvent(
+				sdk.NewEvent(
+					types.EventTypeProviderWithdraw,
+					sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
+					sdk.NewAttribute(types.AttributeKeyAmount, "0"),
+					sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
+					sdk.NewAttribute(types.AttributeKeyAutoClosed, "true"),
+				),
+			)
+		} else if amounts, ok := leaseAmounts[lease.Uuid]; ok {
+			// Only emit for leases that had a non-zero withdrawal
+			sdkCtx.EventManager().EmitEvent(
+				sdk.NewEvent(
+					types.EventTypeProviderWithdraw,
+					sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
+					sdk.NewAttribute(types.AttributeKeyAmount, amounts.String()),
+					sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
+					sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.PayoutAddress),
+				),
+			)
 		}
 	}
 
-	// 7. Emit detailed event
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeProviderWithdraw,
-			sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
-			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
-			sdk.NewAttribute(types.AttributeKeyAmount, result.TransferAmounts.String()),
-			sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.PayoutAddress),
-		),
-	)
+	// Emit batch event if multiple leases processed
+	if len(msg.LeaseUuids) > 1 {
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeBatchWithdraw,
+				sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(withdrawalCount, 10)),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, providerUUID),
+				sdk.NewAttribute(types.AttributeKeyAmount, totalAmounts.String()),
+				sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.PayoutAddress),
+			),
+		)
+	}
 
 	return &types.MsgWithdrawResponse{
-		Amounts:       result.TransferAmounts,
-		PayoutAddress: provider.PayoutAddress,
+		TotalAmounts:    totalAmounts,
+		PayoutAddress:   provider.PayoutAddress,
+		WithdrawalCount: withdrawalCount,
+		HasMore:         false, // Never has more in specific lease mode
 	}, nil
 }
 
-// WithdrawAll allows a provider to withdraw all accrued funds from all their leases.
-// Supports pagination via the `limit` field to avoid gas exhaustion for providers with many leases.
-func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) (*types.MsgWithdrawAllResponse, error) {
-	if err := msg.ValidateBasic(); err != nil {
-		return nil, err
-	}
-
+// withdrawFromProvider handles paginated withdrawal from all leases for a provider.
+// Uses streaming iteration to avoid loading all leases into memory at once.
+func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWithdraw) (*types.MsgWithdrawResponse, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// 1. Get provider by UUID (validated in ValidateBasic)
+	// Get provider by UUID
 	provider, err := ms.k.skuKeeper.GetProvider(ctx, msg.ProviderUuid)
 	if err != nil {
 		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", msg.ProviderUuid)
@@ -587,29 +789,23 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 		)
 	}
 
-	// 2. Get all leases for provider
-	leases, err := ms.k.GetLeasesByProviderUUID(ctx, providerUUID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 3. For each lease (up to limit), calculate and withdraw accrued amounts
-	totalAmounts := sdk.NewCoins()
-	var leaseCount uint64
-	var processedCount uint64
-
 	// Apply default limit if not specified (limit=0 means use default, not unlimited)
 	limit := msg.Limit
 	if limit == 0 {
-		limit = types.DefaultWithdrawAllLimit
+		limit = types.DefaultProviderWithdrawLimit
 	}
+
+	// Iterate over leases and withdraw, stopping after limit successful withdrawals
+	totalAmounts := sdk.NewCoins()
+	var withdrawalCount uint64
+	var processedCount uint64
 	hasMore := false
 
-	for _, lease := range leases {
-		// Check if we've reached the limit (always enforced now)
+	err = ms.k.IterateLeasesByProvider(ctx, providerUUID, func(lease types.Lease) (stop bool, iterErr error) {
+		// Check if we've reached the limit
 		if processedCount >= limit {
 			hasMore = true
-			break
+			return true, nil // Stop iteration
 		}
 
 		// Determine settlement time based on lease state
@@ -620,45 +816,44 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 		case lease.ClosedAt != nil:
 			settleTime = *lease.ClosedAt
 		default:
-			continue // No settlement possible
+			return false, nil // Skip, continue iteration
 		}
 
 		// Skip if no duration to settle
 		if !settleTime.After(lease.LastSettledAt) {
-			continue
+			return false, nil // Skip, continue iteration
 		}
 
 		// Use CacheContext to make settlement + timestamp update atomic per lease.
 		// If either operation fails, the cache is discarded and no state changes
-		// are committed for this lease. This prevents the scenario where funds
-		// are transferred but LastSettledAt isn't updated.
+		// are committed for this lease.
 		cacheCtx, write := sdkCtx.CacheContext()
 
 		// Perform settlement (silent mode: doesn't fail on overflow)
-		result, err := ms.k.PerformSettlementSilent(cacheCtx, &lease, settleTime)
-		if err != nil {
+		result, settleErr := ms.k.PerformSettlementSilent(cacheCtx, &lease, settleTime)
+		if settleErr != nil {
 			// Log error but continue with other leases (cache discarded)
 			ms.k.Logger().Error("failed to withdraw from lease",
 				"lease_id", lease.Uuid,
-				"error", err,
+				"error", settleErr,
 			)
-			continue
+			return false, nil // Continue iteration
 		}
 
 		if result.TransferAmounts.IsZero() {
-			continue
+			return false, nil // Skip, continue iteration
 		}
 
 		// Update last_settled_at for active leases
 		if lease.State == types.LEASE_STATE_ACTIVE {
 			lease.LastSettledAt = blockTime
-			if err := ms.k.SetLease(cacheCtx, lease); err != nil {
+			if setErr := ms.k.SetLease(cacheCtx, lease); setErr != nil {
 				// Log error but continue (cache discarded, settlement NOT committed)
 				ms.k.Logger().Error("failed to update lease",
 					"lease_id", lease.Uuid,
-					"error", err,
+					"error", setErr,
 				)
-				continue
+				return false, nil // Continue iteration
 			}
 		}
 
@@ -666,26 +861,31 @@ func (ms msgServer) WithdrawAll(ctx context.Context, msg *types.MsgWithdrawAll) 
 		write()
 
 		totalAmounts = totalAmounts.Add(result.TransferAmounts...)
-		leaseCount++
+		withdrawalCount++
 		processedCount++
+
+		return false, nil // Continue iteration
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	// 4. Emit event
+	// Emit batch event
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
-			types.EventTypeProviderWithdrawAll,
+			types.EventTypeBatchWithdraw,
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, providerUUID),
 			sdk.NewAttribute(types.AttributeKeyAmount, totalAmounts.String()),
-			sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(leaseCount, 10)),
+			sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(withdrawalCount, 10)),
 			sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.GetPayoutAddress()),
 		),
 	)
 
-	return &types.MsgWithdrawAllResponse{
-		TotalAmounts:  totalAmounts,
-		LeaseCount:    leaseCount,
-		PayoutAddress: provider.GetPayoutAddress(),
-		HasMore:       hasMore,
+	return &types.MsgWithdrawResponse{
+		TotalAmounts:    totalAmounts,
+		PayoutAddress:   provider.GetPayoutAddress(),
+		WithdrawalCount: withdrawalCount,
+		HasMore:         hasMore,
 	}, nil
 }
 
@@ -725,24 +925,22 @@ func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleT
 	return result.TransferAmounts, nil
 }
 
-// AcknowledgeLease allows a provider to acknowledge one or more PENDING leases.
-// This transitions the leases to ACTIVE state and starts billing.
-// All leases must belong to the same provider. This is an atomic operation:
-// all leases succeed or all fail.
-func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowledgeLease) (*types.MsgAcknowledgeLeaseResponse, error) {
-	if err := msg.ValidateBasic(); err != nil {
-		return nil, err
-	}
+// pendingLeaseBatchResult holds the result of validating a batch of pending leases.
+type pendingLeaseBatchResult struct {
+	leases         []types.Lease
+	creditAccounts map[string]types.CreditAccount
+	providerUUID   string
+}
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	blockTime := sdkCtx.BlockTime()
-
-	// Phase 1: Validate ALL leases and credit accounts first (fail-fast)
-	leases := make([]types.Lease, 0, len(msg.LeaseUuids))
-	creditAccounts := make(map[string]types.CreditAccount) // keyed by tenant address
+// validatePendingLeaseBatch validates a batch of leases for provider operations (acknowledge/reject).
+// It ensures all leases exist, are in PENDING state, belong to the same provider, and have valid credit accounts.
+// Returns the validated leases, credit accounts map, and provider UUID.
+func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []string) (*pendingLeaseBatchResult, error) {
+	leases := make([]types.Lease, 0, len(leaseUuids))
+	creditAccounts := make(map[string]types.CreditAccount)
 	var providerUUID string
 
-	for _, uuid := range msg.LeaseUuids {
+	for _, uuid := range leaseUuids {
 		lease, err := ms.k.GetLease(ctx, uuid)
 		if err != nil {
 			return nil, types.ErrLeaseNotFound.Wrapf("lease %s not found", uuid)
@@ -775,29 +973,78 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 		leases = append(leases, lease)
 	}
 
-	// Verify sender is authorized (provider address or authority)
+	return &pendingLeaseBatchResult{
+		leases:         leases,
+		creditAccounts: creditAccounts,
+		providerUUID:   providerUUID,
+	}, nil
+}
+
+// validateProviderAuthorization verifies the sender is authorized for provider operations.
+// Returns the provider if authorized, or an error if not.
+func (ms msgServer) validateProviderAuthorization(ctx context.Context, sender, providerUUID, operation string) error {
 	provider, err := ms.k.skuKeeper.GetProvider(ctx, providerUUID)
 	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
+		return types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
 	}
 
-	if msg.Sender != provider.Address && msg.Sender != ms.k.GetAuthority() {
-		return nil, types.ErrUnauthorized.Wrapf(
-			"sender %s is not authorized to acknowledge leases for provider %s",
-			msg.Sender,
+	if sender != provider.Address && sender != ms.k.GetAuthority() {
+		return types.ErrUnauthorized.Wrapf(
+			"sender %s is not authorized to %s leases for provider %s",
+			sender,
+			operation,
 			providerUUID,
 		)
 	}
 
-	// Phase 2: Apply all changes (already validated)
+	return nil
+}
+
+// AcknowledgeLease allows a provider to acknowledge one or more PENDING leases.
+// This transitions the leases to ACTIVE state and starts billing.
+// All leases must belong to the same provider. This is an atomic operation:
+// all leases succeed or all fail.
+func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowledgeLease) (*types.MsgAcknowledgeLeaseResponse, error) {
+	if err := msg.ValidateBasic(); err != nil {
+		return nil, err
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	blockTime := sdkCtx.BlockTime()
+
+	// Phase 1: Validate all leases and authorization (fail-fast)
+	validated, err := ms.validatePendingLeaseBatch(ctx, msg.LeaseUuids)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ms.validateProviderAuthorization(ctx, msg.Sender, validated.providerUUID, "acknowledge"); err != nil {
+		return nil, err
+	}
+
+	leases := validated.leases
+	creditAccounts := validated.creditAccounts
+
+	// Phase 2: Apply all changes atomically using CacheContext
+	// This ensures that if any operation fails, all changes are rolled back.
+	cacheCtx, writeCache := sdkCtx.CacheContext()
+
+	// Track events to emit after successful commit (events are not cached)
+	type leaseEvent struct {
+		uuid         string
+		tenant       string
+		providerUUID string
+	}
+	leaseEvents := make([]leaseEvent, 0, len(leases))
+
 	for i := range leases {
 		// Transition lease to ACTIVE state
 		leases[i].State = types.LEASE_STATE_ACTIVE
 		leases[i].AcknowledgedAt = &blockTime
 		leases[i].LastSettledAt = blockTime // Billing starts from acknowledgement
 
-		if err := ms.k.SetLease(ctx, leases[i]); err != nil {
-			return nil, err
+		if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil {
+			return nil, types.ErrInvalidLease.Wrapf("failed to update lease %s: %s", leases[i].Uuid, err)
 		}
 
 		// Update lease counts: decrement pending, increment active
@@ -814,23 +1061,33 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 		}
 		creditAccount.ActiveLeaseCount++
 		creditAccounts[leases[i].Tenant] = creditAccount // Update map with new counts
+
+		// Queue event for emission after successful commit
+		leaseEvents = append(leaseEvents, leaseEvent{
+			uuid:         leases[i].Uuid,
+			tenant:       leases[i].Tenant,
+			providerUUID: leases[i].ProviderUuid,
+		})
 	}
 
-	// Persist all credit account updates
+	// Persist all credit account updates to the cache context
 	for _, creditAccount := range creditAccounts {
-		if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
+		if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
 			return nil, err
 		}
 	}
 
-	// Emit per-lease events (maintains existing event structure for backwards compatibility)
-	for i := range leases {
+	// All operations succeeded - commit the cache to the main context
+	writeCache()
+
+	// Emit per-lease events after successful commit (events go to the original context)
+	for _, ev := range leaseEvents {
 		sdkCtx.EventManager().EmitEvent(
 			sdk.NewEvent(
 				types.EventTypeLeaseAcknowledged,
-				sdk.NewAttribute(types.AttributeKeyLeaseUUID, leases[i].Uuid),
-				sdk.NewAttribute(types.AttributeKeyTenant, leases[i].Tenant),
-				sdk.NewAttribute(types.AttributeKeyProviderUUID, leases[i].ProviderUuid),
+				sdk.NewAttribute(types.AttributeKeyLeaseUUID, ev.uuid),
+				sdk.NewAttribute(types.AttributeKeyTenant, ev.tenant),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, ev.providerUUID),
 				sdk.NewAttribute(types.AttributeKeyAcknowledgedBy, msg.Sender),
 			),
 		)
@@ -842,7 +1099,7 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 			sdk.NewEvent(
 				types.EventTypeBatchAcknowledged,
 				sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(uint64(len(leases)), 10)),
-				sdk.NewAttribute(types.AttributeKeyProviderUUID, providerUUID),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, validated.providerUUID),
 				sdk.NewAttribute(types.AttributeKeyAcknowledgedBy, msg.Sender),
 			),
 		)
@@ -854,8 +1111,9 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 	}, nil
 }
 
-// RejectLease allows a provider to reject a PENDING lease.
-// This transitions the lease to REJECTED state and unlocks tenant credit.
+// RejectLease allows a provider to reject one or more PENDING leases.
+// All leases must belong to the same provider and be in PENDING state.
+// This is an atomic operation: all leases succeed or all fail.
 func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) (*types.MsgRejectLeaseResponse, error) {
 	if err := msg.ValidateBasic(); err != nil {
 		return nil, err
@@ -864,74 +1122,109 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// 1. Get lease
-	lease, err := ms.k.GetLease(ctx, msg.LeaseUuid)
+	// Phase 1: Validate all leases and authorization (fail-fast)
+	validated, err := ms.validatePendingLeaseBatch(ctx, msg.LeaseUuids)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Verify lease is in PENDING state
-	if lease.State != types.LEASE_STATE_PENDING {
-		return nil, types.ErrLeaseNotPending.Wrapf("lease %s is not in PENDING state", msg.LeaseUuid)
-	}
-
-	// 3. Verify sender is authorized (provider address or authority)
-	provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
-	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
-	}
-
-	if msg.Sender != provider.Address && msg.Sender != ms.k.GetAuthority() {
-		return nil, types.ErrUnauthorized.Wrapf(
-			"sender %s is not authorized to reject lease %s",
-			msg.Sender,
-			msg.LeaseUuid,
-		)
-	}
-
-	// 4. Transition lease to REJECTED state
-	lease.State = types.LEASE_STATE_REJECTED
-	lease.RejectedAt = &blockTime
-	lease.RejectionReason = msg.Reason
-
-	if err := ms.k.SetLease(ctx, lease); err != nil {
+	if err := ms.validateProviderAuthorization(ctx, msg.Sender, validated.providerUUID, "reject"); err != nil {
 		return nil, err
 	}
 
-	// 5. Decrement pending lease count in credit account.
-	// NOTE: We intentionally ignore GetCreditAccount errors here because:
-	// 1. The credit account may not exist in edge cases
-	// 2. The lease rejection itself has already succeeded at this point
-	// 3. Pending counts are informational metadata, not critical state
-	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
-	if err == nil && creditAccount.PendingLeaseCount > 0 {
-		creditAccount.PendingLeaseCount--
-		if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
+	leases := validated.leases
+	creditAccounts := validated.creditAccounts
+
+	// Phase 2: Apply all changes atomically using CacheContext
+	// This ensures that if any operation fails, all changes are rolled back.
+	cacheCtx, writeCache := sdkCtx.CacheContext()
+
+	// Track events to emit after successful commit (events are not cached)
+	type leaseEvent struct {
+		uuid         string
+		tenant       string
+		providerUUID string
+	}
+	leaseEvents := make([]leaseEvent, 0, len(leases))
+
+	for i := range leases {
+		// Transition lease to REJECTED state
+		leases[i].State = types.LEASE_STATE_REJECTED
+		leases[i].RejectedAt = &blockTime
+		leases[i].RejectionReason = msg.Reason
+
+		if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil {
+			return nil, types.ErrInvalidLease.Wrapf("failed to update lease %s: %s", leases[i].Uuid, err)
+		}
+
+		// Update lease counts: decrement pending
+		// Credit account existence was validated in Phase 1
+		creditAccount := creditAccounts[leases[i].Tenant]
+		if creditAccount.PendingLeaseCount > 0 {
+			creditAccount.PendingLeaseCount--
+		} else {
+			// Log data inconsistency: lease was PENDING but credit account shows 0 pending
+			ms.k.Logger().Warn("data inconsistency: pending lease count already zero",
+				"tenant", leases[i].Tenant,
+				"lease_uuid", leases[i].Uuid,
+			)
+		}
+		creditAccounts[leases[i].Tenant] = creditAccount // Update map with new counts
+
+		// Queue event for emission after successful commit
+		leaseEvents = append(leaseEvents, leaseEvent{
+			uuid:         leases[i].Uuid,
+			tenant:       leases[i].Tenant,
+			providerUUID: leases[i].ProviderUuid,
+		})
+	}
+
+	// Persist all credit account updates to the cache context
+	for _, creditAccount := range creditAccounts {
+		if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
 			return nil, err
 		}
 	}
 
-	// 6. Emit event
+	// All operations succeeded - commit the cache to the main context
+	writeCache()
+
+	// Emit per-lease events after successful commit (events go to the original context)
 	// NOTE: We sanitize the rejection reason to prevent log injection attacks.
-	// The original reason is stored in the lease but the event uses sanitized version.
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeLeaseRejected,
-			sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
-			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
-			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
-			sdk.NewAttribute(types.AttributeKeyRejectedBy, msg.Sender),
-			sdk.NewAttribute(types.AttributeKeyRejectionReason, sanitize.EventAttribute(msg.Reason)),
-		),
-	)
+	for _, ev := range leaseEvents {
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeLeaseRejected,
+				sdk.NewAttribute(types.AttributeKeyLeaseUUID, ev.uuid),
+				sdk.NewAttribute(types.AttributeKeyTenant, ev.tenant),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, ev.providerUUID),
+				sdk.NewAttribute(types.AttributeKeyRejectedBy, msg.Sender),
+				sdk.NewAttribute(types.AttributeKeyRejectionReason, sanitize.EventAttribute(msg.Reason)),
+			),
+		)
+	}
+
+	// Emit batch summary event when multiple leases are rejected
+	if len(leases) > 1 {
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeBatchRejected,
+				sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(uint64(len(leases)), 10)),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, validated.providerUUID),
+				sdk.NewAttribute(types.AttributeKeyRejectedBy, msg.Sender),
+			),
+		)
+	}
 
 	return &types.MsgRejectLeaseResponse{
-		RejectedAt: blockTime,
+		RejectedAt:    blockTime,
+		RejectedCount: uint64(len(leases)),
 	}, nil
 }
 
-// CancelLease allows a tenant to cancel their own PENDING lease.
-// This transitions the lease to REJECTED state and unlocks tenant credit.
+// CancelLease allows a tenant to cancel one or more of their own PENDING leases.
+// All leases must belong to the tenant and be in PENDING state.
+// This is an atomic operation: all leases succeed or all fail.
 func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) (*types.MsgCancelLeaseResponse, error) {
 	if err := msg.ValidateBasic(); err != nil {
 		return nil, err
@@ -940,60 +1233,104 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// 1. Get lease
-	lease, err := ms.k.GetLease(ctx, msg.LeaseUuid)
+	// Phase 1: Validate ALL leases first (fail-fast on any error)
+	// Check lease existence and ownership before getting credit account
+	leases := make([]types.Lease, 0, len(msg.LeaseUuids))
+
+	for _, leaseUUID := range msg.LeaseUuids {
+		// Get lease
+		lease, err := ms.k.GetLease(ctx, leaseUUID)
+		if err != nil {
+			return nil, err
+		}
+
+		// Verify tenant owns this lease (check ownership before state)
+		if msg.Tenant != lease.Tenant {
+			return nil, types.ErrUnauthorized.Wrapf(
+				"sender %s is not the tenant of lease %s (owned by %s)",
+				msg.Tenant,
+				leaseUUID,
+				lease.Tenant,
+			)
+		}
+
+		// Verify lease is in PENDING state
+		if lease.State != types.LEASE_STATE_PENDING {
+			return nil, types.ErrLeaseNotPending.Wrapf("lease %s is not in PENDING state", leaseUUID)
+		}
+
+		leases = append(leases, lease)
+	}
+
+	// Get and cache the tenant's credit account (after ownership validation)
+	creditAccount, err := ms.k.GetCreditAccount(ctx, msg.Tenant)
 	if err != nil {
-		return nil, err
-	}
-
-	// 2. Verify lease is in PENDING state
-	if lease.State != types.LEASE_STATE_PENDING {
-		return nil, types.ErrLeaseNotPending.Wrapf("lease %s is not in PENDING state", msg.LeaseUuid)
-	}
-
-	// 3. Verify sender is the tenant
-	if msg.Tenant != lease.Tenant {
-		return nil, types.ErrUnauthorized.Wrapf(
-			"sender %s is not the tenant of lease %s",
+		return nil, types.ErrCreditAccountNotFound.Wrapf(
+			"credit account not found for tenant %s",
 			msg.Tenant,
-			msg.LeaseUuid,
 		)
 	}
 
-	// 4. Transition lease to REJECTED state (cancelled by tenant)
-	lease.State = types.LEASE_STATE_REJECTED
-	lease.RejectedAt = &blockTime
-	lease.RejectionReason = "cancelled by tenant"
+	// Phase 2: Apply all changes atomically using CacheContext
+	cacheCtx, writeCache := sdkCtx.CacheContext()
 
-	if err := ms.k.SetLease(ctx, lease); err != nil {
-		return nil, err
-	}
+	for i := range leases {
+		// Transition lease to REJECTED state (cancelled by tenant)
+		leases[i].State = types.LEASE_STATE_REJECTED
+		leases[i].RejectedAt = &blockTime
+		leases[i].RejectionReason = types.RejectionReasonCancelledByTenant
 
-	// 5. Decrement pending lease count in credit account.
-	// NOTE: We intentionally ignore GetCreditAccount errors here because:
-	// 1. The credit account may not exist in edge cases
-	// 2. The lease cancellation itself has already succeeded at this point
-	// 3. Pending counts are informational metadata, not critical state
-	creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
-	if err == nil && creditAccount.PendingLeaseCount > 0 {
-		creditAccount.PendingLeaseCount--
-		if err := ms.k.SetCreditAccount(ctx, creditAccount); err != nil {
-			return nil, err
+		if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil {
+			return nil, types.ErrInvalidLease.Wrapf("failed to update lease %s: %s", leases[i].Uuid, err)
+		}
+
+		// Decrement pending lease count in credit account
+		if creditAccount.PendingLeaseCount > 0 {
+			creditAccount.PendingLeaseCount--
+		} else {
+			// Log data inconsistency: lease was PENDING but credit account shows 0 pending
+			ms.k.Logger().Warn("data inconsistency: pending lease count already zero",
+				"tenant", leases[i].Tenant,
+				"lease_uuid", leases[i].Uuid,
+			)
 		}
 	}
 
-	// 6. Emit event
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeLeaseCancelled,
-			sdk.NewAttribute(types.AttributeKeyLeaseUUID, msg.LeaseUuid),
-			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
-			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
-			sdk.NewAttribute(types.AttributeKeyCancelledBy, msg.Tenant),
-		),
-	)
+	// Save credit account with updated pending count
+	if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
+		return nil, err
+	}
+
+	// All operations succeeded - commit the cache to the main context
+	writeCache()
+
+	// Phase 3: Emit events after successful commit
+	for i := range leases {
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeLeaseCancelled,
+				sdk.NewAttribute(types.AttributeKeyLeaseUUID, leases[i].Uuid),
+				sdk.NewAttribute(types.AttributeKeyTenant, leases[i].Tenant),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, leases[i].ProviderUuid),
+				sdk.NewAttribute(types.AttributeKeyCancelledBy, msg.Tenant),
+			),
+		)
+	}
+
+	// Emit batch event if multiple leases cancelled
+	if len(leases) > 1 {
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeBatchCancelled,
+				sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(uint64(len(leases)), 10)),
+				sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
+				sdk.NewAttribute(types.AttributeKeyCancelledBy, msg.Tenant),
+			),
+		)
+	}
 
 	return &types.MsgCancelLeaseResponse{
-		CancelledAt: blockTime,
+		CancelledAt:    blockTime,
+		CancelledCount: uint64(len(leases)),
 	}, nil
 }

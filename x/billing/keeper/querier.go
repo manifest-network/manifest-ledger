@@ -42,7 +42,7 @@ func (q Querier) Lease(ctx context.Context, req *types.QueryLeaseRequest) (*type
 	}
 
 	if req.LeaseUuid == "" {
-		return nil, status.Error(codes.InvalidArgument, "lease_id cannot be zero")
+		return nil, status.Error(codes.InvalidArgument, "lease_uuid cannot be empty")
 	}
 
 	// Use simple GetLease for queries - auto-close only happens during transactions
@@ -155,7 +155,7 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 	}
 
 	if req.ProviderUuid == "" {
-		return nil, status.Error(codes.InvalidArgument, "provider_id cannot be zero")
+		return nil, status.Error(codes.InvalidArgument, "provider_uuid cannot be empty")
 	}
 
 	// Use the provider index to iterate only over this provider's leases
@@ -245,7 +245,7 @@ func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdra
 	}
 
 	if req.LeaseUuid == "" {
-		return nil, status.Error(codes.InvalidArgument, "lease_id cannot be zero")
+		return nil, status.Error(codes.InvalidArgument, "lease_uuid cannot be empty")
 	}
 
 	// Use simple GetLease for queries - auto-close only happens during transactions
@@ -263,34 +263,55 @@ func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdra
 }
 
 // ProviderWithdrawable queries the total amounts available for a provider to withdraw.
+// This query uses streaming iteration with a configurable limit to prevent DoS attacks
+// on RPC nodes for providers with many leases.
 func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProviderWithdrawableRequest) (*types.QueryProviderWithdrawableResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
 	}
 
 	if req.ProviderUuid == "" {
-		return nil, status.Error(codes.InvalidArgument, "provider_id cannot be zero")
+		return nil, status.Error(codes.InvalidArgument, "provider_uuid cannot be empty")
 	}
 
-	leases, err := q.k.GetLeasesByProviderUUID(ctx, req.ProviderUuid)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+	// Apply default limit if not specified, cap at maximum
+	limit := req.Limit
+	if limit == 0 {
+		limit = types.DefaultProviderWithdrawableQueryLimit
+	}
+	if limit > types.MaxProviderWithdrawableQueryLimit {
+		limit = types.MaxProviderWithdrawableQueryLimit
 	}
 
-	// Calculate total withdrawable and count leases with withdrawable amounts
+	// Use streaming iteration to avoid loading all leases into memory
 	totalWithdrawable := sdk.NewCoins()
 	var leaseCount uint64
+	var processedCount uint64
+	hasMore := false
 
-	for _, lease := range leases {
+	err := q.k.IterateLeasesByProvider(ctx, req.ProviderUuid, func(lease types.Lease) (stop bool, iterErr error) {
+		// Check if we've reached the limit
+		if processedCount >= limit {
+			hasMore = true
+			return true, nil // Stop iteration
+		}
+		processedCount++
+
 		withdrawable := q.k.CalculateWithdrawableForLease(ctx, lease)
 		if !withdrawable.IsZero() {
 			totalWithdrawable = totalWithdrawable.Add(withdrawable...)
 			leaseCount++
 		}
+
+		return false, nil // Continue iteration
+	})
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &types.QueryProviderWithdrawableResponse{
 		Amounts:    totalWithdrawable,
 		LeaseCount: leaseCount,
+		HasMore:    hasMore,
 	}, nil
 }
