@@ -394,6 +394,7 @@ func generateRandomAPIURL(r *rand.Rand) string {
 
 // generateValidPrice generates a price that is exactly divisible by the unit's seconds.
 // This ensures the per-second rate calculation has no remainder.
+// Uses sdk.DefaultBondDenom ("stake") to match simulation account funding.
 func generateValidPrice(r *rand.Rand, unit types.Unit) sdk.Coin {
 	var secondsInUnit int64
 	switch unit {
@@ -411,7 +412,8 @@ func generateValidPrice(r *rand.Rand, unit types.Unit) sdk.Coin {
 	// Price = multiplier * secondsInUnit, ensuring exact divisibility
 	price := multiplier * secondsInUnit
 
-	return sdk.NewCoin("umfx", sdkmath.NewInt(price))
+	// Use DefaultBondDenom to match simulation account funding
+	return sdk.NewCoin(sdk.DefaultBondDenom, sdkmath.NewInt(price))
 }
 
 func newOperationInput(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, txGen client.TxConfig, simAccount simtypes.Account, msg sdk.Msg, k keeper.Keeper) simulation.OperationInput {

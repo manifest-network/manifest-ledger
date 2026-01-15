@@ -97,7 +97,7 @@ func WeightedOperations(
 
 	operations = append(operations, simulation.NewWeightedOperation(
 		weightMsgFundCredit,
-		SimulateMsgFundCredit(txGen, k),
+		SimulateMsgFundCredit(txGen, k, sk),
 	))
 
 	operations = append(operations, simulation.NewWeightedOperation(
@@ -139,7 +139,7 @@ func WeightedOperations(
 }
 
 // SimulateMsgFundCredit generates a MsgFundCredit with random values.
-func SimulateMsgFundCredit(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
+func SimulateMsgFundCredit(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		msgType := sdk.MsgTypeURL(&types.MsgFundCredit{})
@@ -150,9 +150,19 @@ func SimulateMsgFundCredit(txGen client.TxConfig, k keeper.Keeper) simtypes.Oper
 		// Select random tenant (can be same as sender or different)
 		tenant, _ := simtypes.RandomAcc(r, accs)
 
-		// Use the default bond denom for simulation
-		// In production, the denom comes from the SKU's base_price
+		// Get denom from an active SKU to ensure we fund credit in the correct denom
+		// Default to DefaultBondDenom ("stake") which matches SKU simulation
 		denom := sdk.DefaultBondDenom
+		allSKUs, err := sk.GetAllSKUs(ctx)
+		if err == nil && len(allSKUs) > 0 {
+			// Use the denom from an existing active SKU
+			for _, sku := range allSKUs {
+				if sku.Active {
+					denom = sku.BasePrice.Denom
+					break
+				}
+			}
+		}
 
 		// Get total spendable balance in billing denom
 		spendableCoins := k.GetBankKeeper().SpendableCoins(ctx, sender.Address)
@@ -227,37 +237,46 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no SKUs found"), nil, nil
 		}
 
-		// Filter to active SKUs
+		// Filter to active SKUs with active providers
 		var activeSKUs []skutypes.SKU
 		for _, sku := range allSKUs {
 			if sku.Active {
-				activeSKUs = append(activeSKUs, sku)
+				provider, err := sk.GetProvider(ctx, sku.ProviderUuid)
+				if err == nil && provider.Active {
+					activeSKUs = append(activeSKUs, sku)
+				}
 			}
 		}
 
 		if len(activeSKUs) == 0 {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "no active SKUs found"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no active SKUs with active providers"), nil, nil
 		}
 
-		// Pick a random SKU
+		// Pick a random active SKU
 		sku := activeSKUs[r.Intn(len(activeSKUs))]
-
-		// Verify provider is active
-		provider, err := sk.GetProvider(ctx, sku.ProviderUuid)
-		if err != nil || !provider.Active {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "provider not active"), nil, nil
-		}
-
-		// Select random tenant
-		tenant, _ := simtypes.RandomAcc(r, accs)
-
-		// Check if tenant has credit in the SKU's denom
-		// Use the SKU's base_price denom for credit checking
 		skuDenom := sku.BasePrice.Denom
 
-		creditBalance, err := k.GetCreditBalance(ctx, tenant.Address.String(), skuDenom)
-		if err != nil || creditBalance.Amount.IsZero() {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant has no credit"), nil, nil
+		// Find a simulation account that has credit in the SKU's denom
+		// Shuffle accounts to add randomness
+		shuffledAccs := make([]simtypes.Account, len(accs))
+		copy(shuffledAccs, accs)
+		r.Shuffle(len(shuffledAccs), func(i, j int) {
+			shuffledAccs[i], shuffledAccs[j] = shuffledAccs[j], shuffledAccs[i]
+		})
+
+		var tenant simtypes.Account
+		var tenantFound bool
+		for _, acc := range shuffledAccs {
+			creditBalance, err := k.GetCreditBalance(ctx, acc.Address.String(), skuDenom)
+			if err == nil && !creditBalance.Amount.IsZero() {
+				tenant = acc
+				tenantFound = true
+				break
+			}
+		}
+
+		if !tenantFound {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no accounts with credit found"), nil, nil
 		}
 
 		// Check tenant hasn't exceeded max leases
