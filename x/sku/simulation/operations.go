@@ -288,13 +288,25 @@ func SimulateMsgUpdateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 
 		sku := allSKUs[r.Intn(len(allSKUs))]
 
+		// Get the provider to check if it's active
+		provider, err := k.GetProvider(ctx, sku.ProviderUuid)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "provider not found for SKU"), nil, nil
+		}
+
 		name := skuNames[r.Intn(len(skuNames))]
 		unit := units[r.Intn(len(units))]
 
 		// Generate a price that is EXACTLY divisible by the unit's seconds
 		// to pass the exact division validation.
 		basePrice := generateValidPrice(r, unit)
+
+		// Determine active status: can only reactivate if provider is active
 		active := r.Float32() > 0.3
+		if active && !sku.Active && !provider.Active {
+			// Cannot reactivate SKU when provider is inactive
+			active = false
+		}
 
 		msg := &types.MsgUpdateSKU{
 			Authority:    simAccount.Address.String(),
