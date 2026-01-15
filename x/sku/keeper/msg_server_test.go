@@ -175,9 +175,8 @@ func TestUpdateProvider(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	providerUUID := "01912345-6789-7abc-8def-0123456789ab"
 	existingProvider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProviderUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        true,
@@ -199,7 +198,7 @@ func TestUpdateProvider(t *testing.T) {
 		{
 			name:          "success; update provider",
 			sender:        authority.String(),
-			uuid:          providerUUID,
+			uuid:          testProviderUUID,
 			address:       providerAddr.String(),
 			payoutAddress: newPayoutAddr.String(),
 			active:        false,
@@ -207,7 +206,7 @@ func TestUpdateProvider(t *testing.T) {
 		{
 			name:          "fail; unauthorized sender",
 			sender:        acc.String(),
-			uuid:          providerUUID,
+			uuid:          testProviderUUID,
 			address:       providerAddr.String(),
 			payoutAddress: newPayoutAddr.String(),
 			active:        true,
@@ -274,7 +273,6 @@ func TestProviderReactivation(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	providerUUID := "01912345-6789-7abc-8def-0123456789ab"
 	providerUUID2 := "01912345-6789-7abc-8def-0123456789ac"
 
 	// Add allowedUser to the allowed list
@@ -285,7 +283,7 @@ func TestProviderReactivation(t *testing.T) {
 
 	// Create an INACTIVE provider for allowed user test
 	inactiveProvider := types.Provider{
-		Uuid:          providerUUID,
+		Uuid:          testProviderUUID,
 		Address:       providerAddr.String(),
 		PayoutAddress: payoutAddr.String(),
 		Active:        false,
@@ -306,7 +304,7 @@ func TestProviderReactivation(t *testing.T) {
 	t.Run("allowed user can reactivate provider", func(t *testing.T) {
 		msg := &types.MsgUpdateProvider{
 			Authority:     allowedUser.String(),
-			Uuid:          providerUUID,
+			Uuid:          testProviderUUID,
 			Address:       providerAddr.String(),
 			PayoutAddress: newPayoutAddr.String(),
 			Active:        true, // Reactivating
@@ -314,7 +312,7 @@ func TestProviderReactivation(t *testing.T) {
 		_, err := ms.UpdateProvider(f.Ctx, msg)
 		require.NoError(t, err)
 
-		provider, err := k.GetProvider(f.Ctx, providerUUID)
+		provider, err := k.GetProvider(f.Ctx, testProviderUUID)
 		require.NoError(t, err)
 		require.True(t, provider.Active)
 	})
