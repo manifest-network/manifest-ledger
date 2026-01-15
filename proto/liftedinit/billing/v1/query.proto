@@ -67,6 +67,25 @@ service Query {
     option (google.api.http).get =
         "/liftedinit/billing/v1/provider/{provider_uuid}/withdrawable";
   }
+
+  // CreditAccounts queries all credit accounts with pagination.
+  rpc CreditAccounts(QueryCreditAccountsRequest)
+      returns (QueryCreditAccountsResponse) {
+    option (google.api.http).get = "/liftedinit/billing/v1/credits";
+  }
+
+  // LeasesBySKU queries leases by SKU UUID.
+  rpc LeasesBySKU(QueryLeasesBySKURequest) returns (QueryLeasesBySKUResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/leases/sku/{sku_uuid}";
+  }
+
+  // CreditEstimate estimates remaining lease duration for a tenant.
+  rpc CreditEstimate(QueryCreditEstimateRequest)
+      returns (QueryCreditEstimateResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/credit/{tenant}/estimate";
+  }
 }
 
 // QueryParamsRequest is the request type for the Query/Params RPC method.
@@ -264,4 +283,88 @@ message QueryProviderWithdrawableResponse {
   // has_more indicates whether there are more leases beyond the limit.
   // If true, the amounts represent a partial total and there are more leases to query.
   bool has_more = 3 [(gogoproto.jsontag) = "has_more,omitempty"];
+}
+
+// QueryCreditAccountsRequest is the request type for the Query/CreditAccounts
+// RPC method.
+message QueryCreditAccountsRequest {
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+// QueryCreditAccountsResponse is the response type for the Query/CreditAccounts
+// RPC method.
+message QueryCreditAccountsResponse {
+  // credit_accounts is the list of credit accounts.
+  repeated CreditAccount credit_accounts = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "credit_accounts"
+  ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryLeasesBySKURequest is the request type for the Query/LeasesBySKU
+// RPC method.
+message QueryLeasesBySKURequest {
+  // sku_uuid is the UUID of the SKU.
+  string sku_uuid = 1 [(gogoproto.jsontag) = "sku_uuid,omitempty"];
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+
+  // state_filter filters leases by state. If UNSPECIFIED, returns all leases.
+  LeaseState state_filter = 3 [(gogoproto.jsontag) = "state_filter,omitempty"];
+}
+
+// QueryLeasesBySKUResponse is the response type for the Query/LeasesBySKU
+// RPC method.
+message QueryLeasesBySKUResponse {
+  // leases is the list of leases containing the SKU.
+  repeated Lease leases = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "leases"
+  ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryCreditEstimateRequest is the request type for the Query/CreditEstimate
+// RPC method.
+message QueryCreditEstimateRequest {
+  // tenant is the address of the tenant.
+  string tenant = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
+}
+
+// QueryCreditEstimateResponse is the response type for the Query/CreditEstimate
+// RPC method.
+message QueryCreditEstimateResponse {
+  // current_balance is the tenant's current credit balance.
+  repeated cosmos.base.v1beta1.Coin current_balance = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "current_balance"
+  ];
+
+  // total_rate_per_second is the combined rate of all active leases (per denom).
+  repeated cosmos.base.v1beta1.Coin total_rate_per_second = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "total_rate_per_second"
+  ];
+
+  // estimated_duration_seconds is the estimated time until credit exhaustion.
+  // Calculated as min(balance[denom] / rate[denom]) across all denoms.
+  // Returns 0 if no active leases or no matching denoms.
+  uint64 estimated_duration_seconds = 3
+      [(gogoproto.jsontag) = "estimated_duration_seconds,omitempty,string"];
+
+  // active_lease_count is the number of active leases for this tenant.
+  uint64 active_lease_count = 4
+      [(gogoproto.jsontag) = "active_lease_count,omitempty,string"];
 }

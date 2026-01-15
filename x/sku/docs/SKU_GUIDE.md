@@ -217,6 +217,9 @@ manifestd tx sku deactivate-sku 01912345-6789-7abc-8def-0123456789cd \
 > - Does NOT affect existing leases (they continue at locked prices)
 > - The SKU remains queryable for reporting purposes
 > - Can be reactivated later via `update-sku` with `active=true`
+> - The provider must also be active for the SKU to be usable in new leases
+>
+> **Note:** Deactivating a **provider** automatically cascades to deactivate ALL its SKUs. See [Provider Guide](PROVIDER_GUIDE.md#step-6-deactivate-provider-if-needed) for details.
 
 ## Creating Multiple SKUs
 

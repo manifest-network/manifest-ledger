@@ -6,6 +6,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
 
 	"github.com/manifest-network/manifest-ledger/pkg/pagination"
@@ -208,4 +209,41 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 		Skus:       skus,
 		Pagination: pageRes,
 	}, nil
+}
+
+// ProviderByAddress queries a Provider by its management address.
+// Note: This query requires scanning all providers since there is no address index.
+// This is acceptable since the provider count is typically small.
+func (q Querier) ProviderByAddress(ctx context.Context, req *types.QueryProviderByAddressRequest) (*types.QueryProviderByAddressResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid request")
+	}
+
+	if req.Address == "" {
+		return nil, status.Error(codes.InvalidArgument, "address cannot be empty")
+	}
+
+	// Validate address format
+	if _, err := sdk.AccAddressFromBech32(req.Address); err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid address format")
+	}
+
+	// Iterate through all providers to find matching address
+	var foundProvider *types.Provider
+	err := q.k.Providers.Walk(ctx, nil, func(_ string, provider types.Provider) (stop bool, err error) {
+		if provider.Address == req.Address {
+			foundProvider = &provider
+			return true, nil // Stop iteration
+		}
+		return false, nil // Continue iteration
+	})
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if foundProvider == nil {
+		return nil, status.Error(codes.NotFound, "provider not found for address")
+	}
+
+	return &types.QueryProviderByAddressResponse{Provider: *foundProvider}, nil
 }

@@ -261,6 +261,81 @@ func TestUpdateProvider(t *testing.T) {
 	}
 }
 
+func TestProviderReactivation(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, allowedUser := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+	_, _, newPayoutAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	providerUUID := "01912345-6789-7abc-8def-0123456789ab"
+	providerUUID2 := "01912345-6789-7abc-8def-0123456789ac"
+
+	// Add allowedUser to the allowed list
+	err := k.SetParams(f.Ctx, types.Params{
+		AllowedList: []string{allowedUser.String()},
+	})
+	require.NoError(t, err)
+
+	// Create an INACTIVE provider for allowed user test
+	inactiveProvider := types.Provider{
+		Uuid:          providerUUID,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        false,
+	}
+	err = k.SetProvider(f.Ctx, inactiveProvider)
+	require.NoError(t, err)
+
+	// Create another INACTIVE provider for authority test
+	inactiveProvider2 := types.Provider{
+		Uuid:          providerUUID2,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        false,
+	}
+	err = k.SetProvider(f.Ctx, inactiveProvider2)
+	require.NoError(t, err)
+
+	t.Run("allowed user can reactivate provider", func(t *testing.T) {
+		msg := &types.MsgUpdateProvider{
+			Authority:     allowedUser.String(),
+			Uuid:          providerUUID,
+			Address:       providerAddr.String(),
+			PayoutAddress: newPayoutAddr.String(),
+			Active:        true, // Reactivating
+		}
+		_, err := ms.UpdateProvider(f.Ctx, msg)
+		require.NoError(t, err)
+
+		provider, err := k.GetProvider(f.Ctx, providerUUID)
+		require.NoError(t, err)
+		require.True(t, provider.Active)
+	})
+
+	t.Run("authority can reactivate provider", func(t *testing.T) {
+		msg := &types.MsgUpdateProvider{
+			Authority:     authority.String(),
+			Uuid:          providerUUID2,
+			Address:       providerAddr.String(),
+			PayoutAddress: newPayoutAddr.String(),
+			Active:        true, // Reactivating
+		}
+		_, err := ms.UpdateProvider(f.Ctx, msg)
+		require.NoError(t, err)
+
+		provider, err := k.GetProvider(f.Ctx, providerUUID2)
+		require.NoError(t, err)
+		require.True(t, provider.Active)
+	})
+}
+
 func TestDeactivateProvider(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, acc := testdata.KeyTestPubAddr()
@@ -363,6 +438,296 @@ func TestDeactivateProvider(t *testing.T) {
 			require.False(t, provider.Active, "provider should be inactive after deactivation")
 		})
 	}
+}
+
+func TestDeactivateProviderCascadesSKUs(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	// Price must be high enough that per-second rate is non-zero
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
+
+	providerUUID := "01912345-6789-7abc-8def-0123456789d1"
+
+	// Create an active provider
+	provider := types.Provider{
+		Uuid:          providerUUID,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        true,
+	}
+	err := k.SetProvider(f.Ctx, provider)
+	require.NoError(t, err)
+
+	// Create multiple SKUs under this provider (some active, some already inactive)
+	skuUUIDs := []string{
+		"01912345-6789-7abc-8def-0123456789d2",
+		"01912345-6789-7abc-8def-0123456789d3",
+		"01912345-6789-7abc-8def-0123456789d4",
+	}
+
+	// Two active SKUs
+	for i := 0; i < 2; i++ {
+		sku := types.SKU{
+			Uuid:         skuUUIDs[i],
+			ProviderUuid: providerUUID,
+			Name:         "Active SKU",
+			Unit:         types.Unit_UNIT_PER_HOUR,
+			BasePrice:    basePrice,
+			Active:       true,
+		}
+		err := k.SetSKU(f.Ctx, sku)
+		require.NoError(t, err)
+	}
+
+	// One already inactive SKU
+	inactiveSKU := types.SKU{
+		Uuid:         skuUUIDs[2],
+		ProviderUuid: providerUUID,
+		Name:         "Inactive SKU",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
+		Active:       false,
+	}
+	err = k.SetSKU(f.Ctx, inactiveSKU)
+	require.NoError(t, err)
+
+	// Verify initial state: 2 active SKUs, 1 inactive
+	skus, err := k.GetSKUsByProviderUUID(f.Ctx, providerUUID)
+	require.NoError(t, err)
+	require.Len(t, skus, 3)
+
+	activeCount := 0
+	for _, sku := range skus {
+		if sku.Active {
+			activeCount++
+		}
+	}
+	require.Equal(t, 2, activeCount, "should have 2 active SKUs before deactivation")
+
+	// Deactivate the provider
+	msg := &types.MsgDeactivateProvider{
+		Authority: authority.String(),
+		Uuid:      providerUUID,
+	}
+	_, err = ms.DeactivateProvider(f.Ctx, msg)
+	require.NoError(t, err)
+
+	// Verify provider is inactive
+	provider, err = k.GetProvider(f.Ctx, providerUUID)
+	require.NoError(t, err)
+	require.False(t, provider.Active, "provider should be inactive")
+
+	// Verify ALL SKUs are now inactive (cascade deactivation)
+	skus, err = k.GetSKUsByProviderUUID(f.Ctx, providerUUID)
+	require.NoError(t, err)
+	require.Len(t, skus, 3, "all SKUs should still exist")
+
+	for _, sku := range skus {
+		require.False(t, sku.Active, "SKU %s should be inactive after provider deactivation", sku.Uuid)
+	}
+
+	// Verify events were emitted for each deactivated SKU (only 2 were active)
+	sdkCtx := sdk.UnwrapSDKContext(f.Ctx)
+	events := sdkCtx.EventManager().Events()
+
+	skuDeactivatedCount := 0
+	providerDeactivatedCount := 0
+	for _, event := range events {
+		if event.Type == types.EventTypeSKUDeactivated {
+			skuDeactivatedCount++
+		}
+		if event.Type == types.EventTypeProviderDeactivated {
+			providerDeactivatedCount++
+		}
+	}
+	require.Equal(t, 2, skuDeactivatedCount, "should emit sku_deactivated event for each active SKU")
+	require.Equal(t, 1, providerDeactivatedCount, "should emit exactly one provider_deactivated event")
+}
+
+func TestDeactivateProviderCascadeDoesNotAffectOtherProviders(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
+
+	// Create two providers
+	provider1UUID := "01912345-6789-7abc-8def-0123456789e1"
+	provider2UUID := "01912345-6789-7abc-8def-0123456789e2"
+
+	for _, uuid := range []string{provider1UUID, provider2UUID} {
+		provider := types.Provider{
+			Uuid:          uuid,
+			Address:       providerAddr.String(),
+			PayoutAddress: payoutAddr.String(),
+			Active:        true,
+		}
+		err := k.SetProvider(f.Ctx, provider)
+		require.NoError(t, err)
+	}
+
+	// Create SKUs for provider 1
+	sku1UUID := "01912345-6789-7abc-8def-0123456789e3"
+	sku1 := types.SKU{
+		Uuid:         sku1UUID,
+		ProviderUuid: provider1UUID,
+		Name:         "Provider 1 SKU",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
+		Active:       true,
+	}
+	err := k.SetSKU(f.Ctx, sku1)
+	require.NoError(t, err)
+
+	// Create SKUs for provider 2
+	sku2UUID := "01912345-6789-7abc-8def-0123456789e4"
+	sku2 := types.SKU{
+		Uuid:         sku2UUID,
+		ProviderUuid: provider2UUID,
+		Name:         "Provider 2 SKU",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
+		Active:       true,
+	}
+	err = k.SetSKU(f.Ctx, sku2)
+	require.NoError(t, err)
+
+	// Deactivate provider 1
+	msg := &types.MsgDeactivateProvider{
+		Authority: authority.String(),
+		Uuid:      provider1UUID,
+	}
+	_, err = ms.DeactivateProvider(f.Ctx, msg)
+	require.NoError(t, err)
+
+	// Verify provider 1's SKU is inactive
+	sku1After, err := k.GetSKU(f.Ctx, sku1UUID)
+	require.NoError(t, err)
+	require.False(t, sku1After.Active, "provider 1's SKU should be inactive")
+
+	// Verify provider 2 is still active
+	provider2, err := k.GetProvider(f.Ctx, provider2UUID)
+	require.NoError(t, err)
+	require.True(t, provider2.Active, "provider 2 should still be active")
+
+	// Verify provider 2's SKU is still active
+	sku2After, err := k.GetSKU(f.Ctx, sku2UUID)
+	require.NoError(t, err)
+	require.True(t, sku2After.Active, "provider 2's SKU should still be active")
+}
+
+func TestDeactivateProviderCascadeByAllowedListUser(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, allowedUser := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	// Add allowedUser to the allowed list
+	err := k.SetParams(f.Ctx, types.Params{
+		AllowedList: []string{allowedUser.String()},
+	})
+	require.NoError(t, err)
+
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
+	providerUUID := "01912345-6789-7abc-8def-0123456789f1"
+
+	// Create provider
+	provider := types.Provider{
+		Uuid:          providerUUID,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        true,
+	}
+	err = k.SetProvider(f.Ctx, provider)
+	require.NoError(t, err)
+
+	// Create SKU
+	skuUUID := "01912345-6789-7abc-8def-0123456789f2"
+	sku := types.SKU{
+		Uuid:         skuUUID,
+		ProviderUuid: providerUUID,
+		Name:         "Test SKU",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
+		Active:       true,
+	}
+	err = k.SetSKU(f.Ctx, sku)
+	require.NoError(t, err)
+
+	// Allowed user deactivates the provider
+	msg := &types.MsgDeactivateProvider{
+		Authority: allowedUser.String(),
+		Uuid:      providerUUID,
+	}
+	_, err = ms.DeactivateProvider(f.Ctx, msg)
+	require.NoError(t, err)
+
+	// Verify provider is inactive
+	provider, err = k.GetProvider(f.Ctx, providerUUID)
+	require.NoError(t, err)
+	require.False(t, provider.Active, "provider should be inactive")
+
+	// Verify SKU is also inactive (cascade)
+	sku, err = k.GetSKU(f.Ctx, skuUUID)
+	require.NoError(t, err)
+	require.False(t, sku.Active, "SKU should be inactive after cascade deactivation by allowed user")
+}
+
+func TestDeactivateProviderWithNoSKUs(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	providerUUID := "01912345-6789-7abc-8def-0123456789e1"
+
+	// Create an active provider with no SKUs
+	provider := types.Provider{
+		Uuid:          providerUUID,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        true,
+	}
+	err := k.SetProvider(f.Ctx, provider)
+	require.NoError(t, err)
+
+	// Deactivate the provider (should succeed even with no SKUs)
+	msg := &types.MsgDeactivateProvider{
+		Authority: authority.String(),
+		Uuid:      providerUUID,
+	}
+	_, err = ms.DeactivateProvider(f.Ctx, msg)
+	require.NoError(t, err)
+
+	// Verify provider is inactive
+	provider, err = k.GetProvider(f.Ctx, providerUUID)
+	require.NoError(t, err)
+	require.False(t, provider.Active, "provider should be inactive")
 }
 
 func TestCreateSKU(t *testing.T) {
@@ -791,6 +1156,205 @@ func TestDeactivateSKUMsg(t *testing.T) {
 			require.False(t, sku.Active, "SKU should be inactive after deactivation")
 		})
 	}
+}
+
+func TestSKUReactivation(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, allowedUser := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	// Price must be high enough that per-second rate is non-zero
+	// 3600 umfx per hour = 1 umfx per second
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
+
+	// Add allowedUser to the allowed list
+	err := k.SetParams(f.Ctx, types.Params{
+		AllowedList: []string{allowedUser.String()},
+	})
+	require.NoError(t, err)
+
+	// Create an active provider (required for SKU operations)
+	provider := types.Provider{
+		Uuid:          testProvider1UUID,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        true,
+	}
+	err = k.SetProvider(f.Ctx, provider)
+	require.NoError(t, err)
+
+	skuUUID1 := "01912345-6789-7abc-8def-0123456789c1"
+	skuUUID2 := "01912345-6789-7abc-8def-0123456789c2"
+
+	// Create INACTIVE SKUs for reactivation tests
+	inactiveSKU1 := types.SKU{
+		Uuid:         skuUUID1,
+		ProviderUuid: testProvider1UUID,
+		Name:         "Inactive SKU 1",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
+		Active:       false,
+	}
+	err = k.SetSKU(f.Ctx, inactiveSKU1)
+	require.NoError(t, err)
+
+	inactiveSKU2 := types.SKU{
+		Uuid:         skuUUID2,
+		ProviderUuid: testProvider1UUID,
+		Name:         "Inactive SKU 2",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
+		Active:       false,
+	}
+	err = k.SetSKU(f.Ctx, inactiveSKU2)
+	require.NoError(t, err)
+
+	t.Run("allowed user can reactivate SKU", func(t *testing.T) {
+		msg := &types.MsgUpdateSKU{
+			Authority:    allowedUser.String(),
+			Uuid:         skuUUID1,
+			ProviderUuid: testProvider1UUID,
+			Name:         "Reactivated SKU 1",
+			Unit:         types.Unit_UNIT_PER_HOUR,
+			BasePrice:    basePrice,
+			Active:       true, // Reactivating
+		}
+		_, err := ms.UpdateSKU(f.Ctx, msg)
+		require.NoError(t, err)
+
+		sku, err := k.GetSKU(f.Ctx, skuUUID1)
+		require.NoError(t, err)
+		require.True(t, sku.Active, "SKU should be active after reactivation by allowed user")
+		require.Equal(t, "Reactivated SKU 1", sku.Name)
+	})
+
+	t.Run("authority can reactivate SKU", func(t *testing.T) {
+		msg := &types.MsgUpdateSKU{
+			Authority:    authority.String(),
+			Uuid:         skuUUID2,
+			ProviderUuid: testProvider1UUID,
+			Name:         "Reactivated SKU 2",
+			Unit:         types.Unit_UNIT_PER_HOUR,
+			BasePrice:    basePrice,
+			Active:       true, // Reactivating
+		}
+		_, err := ms.UpdateSKU(f.Ctx, msg)
+		require.NoError(t, err)
+
+		sku, err := k.GetSKU(f.Ctx, skuUUID2)
+		require.NoError(t, err)
+		require.True(t, sku.Active, "SKU should be active after reactivation by authority")
+		require.Equal(t, "Reactivated SKU 2", sku.Name)
+	})
+}
+
+func TestSKUReactivationRequiresActiveProvider(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
+
+	// Create an INACTIVE provider
+	providerUUID := "01912345-6789-7abc-8def-012345678901"
+	provider := types.Provider{
+		Uuid:          providerUUID,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        false, // Provider is inactive
+	}
+	err := k.SetProvider(f.Ctx, provider)
+	require.NoError(t, err)
+
+	// Create an inactive SKU under this inactive provider
+	skuUUID := "01912345-6789-7abc-8def-012345678902"
+	sku := types.SKU{
+		Uuid:         skuUUID,
+		ProviderUuid: providerUUID,
+		Name:         "Inactive SKU",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    basePrice,
+		Active:       false,
+	}
+	err = k.SetSKU(f.Ctx, sku)
+	require.NoError(t, err)
+
+	t.Run("fail: cannot reactivate SKU when provider is inactive", func(t *testing.T) {
+		msg := &types.MsgUpdateSKU{
+			Authority:    authority.String(),
+			Uuid:         skuUUID,
+			ProviderUuid: providerUUID,
+			Name:         "Trying to Reactivate",
+			Unit:         types.Unit_UNIT_PER_HOUR,
+			BasePrice:    basePrice,
+			Active:       true, // Attempting to reactivate
+		}
+		_, err := ms.UpdateSKU(f.Ctx, msg)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "cannot reactivate SKU: provider is inactive")
+
+		// Verify SKU is still inactive
+		sku, err := k.GetSKU(f.Ctx, skuUUID)
+		require.NoError(t, err)
+		require.False(t, sku.Active, "SKU should still be inactive")
+	})
+
+	t.Run("success: can update inactive SKU without reactivating when provider is inactive", func(t *testing.T) {
+		// Should be able to update metadata without reactivating
+		msg := &types.MsgUpdateSKU{
+			Authority:    authority.String(),
+			Uuid:         skuUUID,
+			ProviderUuid: providerUUID,
+			Name:         "Updated Name",
+			Unit:         types.Unit_UNIT_PER_HOUR,
+			BasePrice:    basePrice,
+			Active:       false, // Keeping it inactive
+		}
+		_, err := ms.UpdateSKU(f.Ctx, msg)
+		require.NoError(t, err)
+
+		sku, err := k.GetSKU(f.Ctx, skuUUID)
+		require.NoError(t, err)
+		require.False(t, sku.Active, "SKU should still be inactive")
+		require.Equal(t, "Updated Name", sku.Name)
+	})
+
+	t.Run("success: can reactivate SKU after provider is reactivated", func(t *testing.T) {
+		// First, reactivate the provider
+		provider.Active = true
+		err := k.SetProvider(f.Ctx, provider)
+		require.NoError(t, err)
+
+		// Now reactivating SKU should work
+		msg := &types.MsgUpdateSKU{
+			Authority:    authority.String(),
+			Uuid:         skuUUID,
+			ProviderUuid: providerUUID,
+			Name:         "Reactivated SKU",
+			Unit:         types.Unit_UNIT_PER_HOUR,
+			BasePrice:    basePrice,
+			Active:       true, // Reactivating
+		}
+		_, err = ms.UpdateSKU(f.Ctx, msg)
+		require.NoError(t, err)
+
+		sku, err := k.GetSKU(f.Ctx, skuUUID)
+		require.NoError(t, err)
+		require.True(t, sku.Active, "SKU should be active after reactivation")
+	})
 }
 
 func TestCreateMultipleSKUs(t *testing.T) {

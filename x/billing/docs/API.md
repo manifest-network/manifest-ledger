@@ -489,19 +489,6 @@ manifestd query billing leases-by-provider [provider-uuid] [flags]
 
 ---
 
-#### pending-leases-by-provider (gRPC/REST only)
-
-Query pending leases for a specific provider. Useful for providers to see which leases need acknowledgement.
-
-**Note:** This query is available via gRPC/REST only. For CLI, use:
-```bash
-manifestd query billing leases-by-provider [provider-uuid] --state pending
-```
-
-See the [gRPC API](#query-service) and [REST API](#rest-api) sections for endpoint details.
-
----
-
 #### credit-account
 
 Query a tenant's credit account.
@@ -906,8 +893,10 @@ service Query {
   rpc Leases(QueryLeasesRequest) returns (QueryLeasesResponse);
   rpc LeasesByTenant(QueryLeasesByTenantRequest) returns (QueryLeasesByTenantResponse);
   rpc LeasesByProvider(QueryLeasesByProviderRequest) returns (QueryLeasesByProviderResponse);
-  rpc PendingLeasesByProvider(QueryPendingLeasesByProviderRequest) returns (QueryPendingLeasesByProviderResponse);
+  rpc LeasesBySKU(QueryLeasesBySKURequest) returns (QueryLeasesBySKUResponse);
   rpc CreditAccount(QueryCreditAccountRequest) returns (QueryCreditAccountResponse);
+  rpc CreditAccounts(QueryCreditAccountsRequest) returns (QueryCreditAccountsResponse);
+  rpc CreditEstimate(QueryCreditEstimateRequest) returns (QueryCreditEstimateResponse);
   rpc CreditAddress(QueryCreditAddressRequest) returns (QueryCreditAddressResponse);
   rpc WithdrawableAmount(QueryWithdrawableAmountRequest) returns (QueryWithdrawableAmountResponse);
   rpc ProviderWithdrawable(QueryProviderWithdrawableRequest) returns (QueryProviderWithdrawableResponse);
@@ -1043,11 +1032,13 @@ http://localhost:1317/liftedinit/billing/v1
 | GET | `/leases` | List all leases |
 | GET | `/leases/tenant/{tenant}` | List leases by tenant |
 | GET | `/leases/provider/{provider_uuid}` | List leases by provider |
-| GET | `/pending-leases/provider/{provider_uuid}` | List pending leases for provider |
-| GET | `/credit-account/{tenant}` | Get credit account |
+| GET | `/leases/sku/{sku_uuid}` | List leases by SKU |
+| GET | `/credit/{tenant}` | Get credit account |
+| GET | `/credits` | List all credit accounts |
+| GET | `/credit/{tenant}/estimate` | Estimate credit duration |
 | GET | `/credit-address/{tenant}` | Derive credit address |
-| GET | `/withdrawable/{lease_uuid}` | Get withdrawable amount |
-| GET | `/provider-withdrawable/{provider_uuid}` | Get provider total withdrawable |
+| GET | `/lease/{lease_uuid}/withdrawable` | Get withdrawable amount |
+| GET | `/provider/{provider_uuid}/withdrawable` | Get provider total withdrawable |
 
 ### Examples
 
@@ -1068,12 +1059,12 @@ curl "http://localhost:1317/liftedinit/billing/v1/leases?state=active&pagination
 
 **Get Credit Account:**
 ```bash
-curl http://localhost:1317/liftedinit/billing/v1/credit-account/manifest1abc...
+curl http://localhost:1317/liftedinit/billing/v1/credit/manifest1abc...
 ```
 
 **Get Withdrawable Amount:**
 ```bash
-curl http://localhost:1317/liftedinit/billing/v1/withdrawable/01912345-6789-7abc-8def-0123456789ab
+curl http://localhost:1317/liftedinit/billing/v1/lease/01912345-6789-7abc-8def-0123456789ab/withdrawable
 ```
 
 ---

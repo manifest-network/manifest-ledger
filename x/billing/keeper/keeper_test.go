@@ -1323,7 +1323,7 @@ func TestBillingKeeperIntegration(t *testing.T) {
 	})
 }
 
-func TestCheckAndCloseExhaustedLease(t *testing.T) {
+func TestShouldAutoCloseLease(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.BillingKeeper
@@ -1357,22 +1357,23 @@ func TestCheckAndCloseExhaustedLease(t *testing.T) {
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
-	// Run CheckAndCloseExhaustedLease - should close the lease
-	closed, err := k.CheckAndCloseExhaustedLease(f.Ctx, &lease)
+	// Run ShouldAutoCloseLease - should return true (lease should be closed due to zero balance)
+	shouldClose, closeTime, err := k.ShouldAutoCloseLease(f.Ctx, &lease)
 	require.NoError(t, err)
-	require.True(t, closed)
+	require.True(t, shouldClose)
+	require.Equal(t, f.Ctx.BlockTime(), closeTime)
 
-	// Verify lease is now inactive
-	require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
-	require.NotNil(t, lease.ClosedAt)
+	// Verify lease state was NOT modified (function only checks, doesn't modify)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+	require.Nil(t, lease.ClosedAt)
 
-	// Verify active lease count was decremented
+	// Verify credit account was NOT modified
 	updatedCA, err := k.GetCreditAccount(f.Ctx, tenant.String())
 	require.NoError(t, err)
-	require.Equal(t, uint64(0), updatedCA.ActiveLeaseCount)
+	require.Equal(t, uint64(1), updatedCA.ActiveLeaseCount)
 }
 
-func TestCheckAndCloseExhaustedLease_WithBalance(t *testing.T) {
+func TestShouldAutoCloseLease_WithBalance(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.BillingKeeper
@@ -1410,16 +1411,16 @@ func TestCheckAndCloseExhaustedLease_WithBalance(t *testing.T) {
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
-	// Run CheckAndCloseExhaustedLease - should NOT close the lease (has balance)
-	closed, err := k.CheckAndCloseExhaustedLease(f.Ctx, &lease)
+	// Run ShouldAutoCloseLease - should NOT close the lease (has balance)
+	shouldClose, _, err := k.ShouldAutoCloseLease(f.Ctx, &lease)
 	require.NoError(t, err)
-	require.False(t, closed)
+	require.False(t, shouldClose)
 
 	// Verify lease is still active
 	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
 }
 
-func TestCheckAndCloseExhaustedLease_InactiveLease(t *testing.T) {
+func TestShouldAutoCloseLease_InactiveLease(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.BillingKeeper
@@ -1452,10 +1453,10 @@ func TestCheckAndCloseExhaustedLease_InactiveLease(t *testing.T) {
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
-	// Run CheckAndCloseExhaustedLease - should NOT try to close inactive leases
-	closed, err := k.CheckAndCloseExhaustedLease(f.Ctx, &lease)
+	// Run ShouldAutoCloseLease - should NOT try to close inactive leases
+	shouldClose, _, err := k.ShouldAutoCloseLease(f.Ctx, &lease)
 	require.NoError(t, err)
-	require.False(t, closed)
+	require.False(t, shouldClose)
 }
 
 func TestGetLeasesByState(t *testing.T) {

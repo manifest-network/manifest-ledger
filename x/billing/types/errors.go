@@ -36,5 +36,10 @@ var (
 // must be <= this value.
 const MaxItemsPerLeaseHardLimit = 100
 
+// MaxQuantityPerItem is the maximum quantity per lease item.
+// This prevents integer overflow when multiplying quantity by price (uint64->int64 conversion).
+// Value chosen to be well within int64 range while being more than any practical use case.
+const MaxQuantityPerItem uint64 = 1_000_000_000 // 1 billion
+
 // MaxRejectionReasonLength is the maximum length of a rejection reason.
 const MaxRejectionReasonLength = 256

@@ -4,11 +4,14 @@ Package keeper_test contains unit tests for the billing module querier.
 Test Coverage:
 - QueryParams: parameter queries
 - QueryLease: single lease queries
-- QueryLeases: paginated lease queries with active_only filter
+- QueryLeases: paginated lease queries with state filter
 - QueryLeasesByTenant: tenant-indexed lease queries
 - QueryLeasesByProvider: provider-indexed lease queries
+- QueryLeasesBySKU: SKU-based lease queries with state filter
 - QueryCreditAccount: credit account queries
+- QueryCreditAccounts: paginated credit account list queries
 - QueryCreditAddress: credit address derivation queries
+- QueryCreditEstimate: credit duration estimation queries
 - QueryWithdrawableAmount: per-lease withdrawable amount with accrual calculation
 - QueryProviderWithdrawable: provider total withdrawable across all leases
 */
@@ -708,5 +711,262 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 		require.NotNil(t, resp)
 		// Should still work, just capped at max
 		require.Equal(t, uint64(3), resp.LeaseCount)
+	})
+}
+
+func TestQueryCreditAccounts(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	t.Run("empty result when no credit accounts", func(t *testing.T) {
+		resp, err := querier.CreditAccounts(f.Ctx, &types.QueryCreditAccountsRequest{})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Empty(t, resp.CreditAccounts)
+	})
+
+	t.Run("returns credit accounts with pagination", func(t *testing.T) {
+		// Create credit accounts for multiple tenants
+		tenants := f.TestAccs[:3]
+		for _, tenant := range tenants {
+			creditAddr := types.DeriveCreditAddress(tenant)
+			ca := types.CreditAccount{
+				Tenant:           tenant.String(),
+				CreditAddress:    creditAddr.String(),
+				ActiveLeaseCount: 1,
+			}
+			err := k.SetCreditAccount(f.Ctx, ca)
+			require.NoError(t, err)
+		}
+
+		// Query all
+		resp, err := querier.CreditAccounts(f.Ctx, &types.QueryCreditAccountsRequest{})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.CreditAccounts, 3)
+
+		// Query with pagination
+		resp, err = querier.CreditAccounts(f.Ctx, &types.QueryCreditAccountsRequest{
+			Pagination: &query.PageRequest{Limit: 2},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.CreditAccounts, 2)
+		require.NotNil(t, resp.Pagination)
+	})
+
+	t.Run("nil request returns error", func(t *testing.T) {
+		_, err := querier.CreditAccounts(f.Ctx, nil)
+		require.Error(t, err)
+	})
+}
+
+func TestQueryLeasesBySKU(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+	providerUUID := testProviderUUID
+	skuUUID1 := "01912345-6789-7abc-8def-sku000000001"
+	skuUUID2 := "01912345-6789-7abc-8def-sku000000002"
+
+	t.Run("empty result when no leases exist", func(t *testing.T) {
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: skuUUID1,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Empty(t, resp.Leases)
+	})
+
+	t.Run("returns leases containing the SKU", func(t *testing.T) {
+		// Create leases with different SKUs
+		lease1 := types.Lease{
+			Uuid:         "01912345-6789-7abc-8def-lease0000001",
+			Tenant:       tenant.String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{
+				{SkuUuid: skuUUID1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))},
+			},
+			State:     types.LEASE_STATE_ACTIVE,
+			CreatedAt: f.Ctx.BlockTime(),
+		}
+		lease2 := types.Lease{
+			Uuid:         "01912345-6789-7abc-8def-lease0000002",
+			Tenant:       tenant.String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{
+				{SkuUuid: skuUUID1, Quantity: 2, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))},
+				{SkuUuid: skuUUID2, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(200))},
+			},
+			State:     types.LEASE_STATE_CLOSED,
+			CreatedAt: f.Ctx.BlockTime(),
+		}
+		lease3 := types.Lease{
+			Uuid:         "01912345-6789-7abc-8def-lease0000003",
+			Tenant:       tenant.String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{
+				{SkuUuid: skuUUID2, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(200))},
+			},
+			State:     types.LEASE_STATE_ACTIVE,
+			CreatedAt: f.Ctx.BlockTime(),
+		}
+
+		require.NoError(t, k.SetLease(f.Ctx, lease1))
+		require.NoError(t, k.SetLease(f.Ctx, lease2))
+		require.NoError(t, k.SetLease(f.Ctx, lease3))
+
+		// Query for skuUUID1 - should return lease1 and lease2
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: skuUUID1,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.Leases, 2)
+
+		// Query for skuUUID2 - should return lease2 and lease3
+		resp, err = querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: skuUUID2,
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Leases, 2)
+	})
+
+	t.Run("state filter works", func(t *testing.T) {
+		// Query for skuUUID1 with active state filter
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid:     skuUUID1,
+			StateFilter: types.LEASE_STATE_ACTIVE,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.Leases, 1)
+		require.Equal(t, types.LEASE_STATE_ACTIVE, resp.Leases[0].State)
+
+		// Query for skuUUID1 with closed state filter
+		resp, err = querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid:     skuUUID1,
+			StateFilter: types.LEASE_STATE_CLOSED,
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Leases, 1)
+		require.Equal(t, types.LEASE_STATE_CLOSED, resp.Leases[0].State)
+	})
+
+	t.Run("error cases", func(t *testing.T) {
+		// Nil request
+		_, err := querier.LeasesBySKU(f.Ctx, nil)
+		require.Error(t, err)
+
+		// Empty sku_uuid
+		_, err = querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: "",
+		})
+		require.Error(t, err)
+	})
+}
+
+func TestQueryCreditEstimate(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+	providerUUID := testProviderUUID
+
+	t.Run("error when credit account not found", func(t *testing.T) {
+		_, err := querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
+			Tenant: tenant.String(),
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("zero estimate with no active leases", func(t *testing.T) {
+		// Create credit account with balance
+		creditAddr := types.DeriveCreditAddress(tenant)
+		ca := types.CreditAccount{
+			Tenant:           tenant.String(),
+			CreditAddress:    creditAddr.String(),
+			ActiveLeaseCount: 0,
+		}
+		require.NoError(t, k.SetCreditAccount(f.Ctx, ca))
+
+		// Fund the credit account using the test fixture helper
+		fundCoins := sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1000000)))
+		f.fundAccount(t, creditAddr, fundCoins)
+
+		resp, err := querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
+			Tenant: tenant.String(),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, uint64(0), resp.ActiveLeaseCount)
+		require.Equal(t, uint64(0), resp.EstimatedDurationSeconds)
+		require.True(t, resp.TotalRatePerSecond.IsZero())
+		require.True(t, resp.CurrentBalance.AmountOf(testDenom).Equal(sdkmath.NewInt(1000000)))
+	})
+
+	t.Run("calculates estimate with active leases", func(t *testing.T) {
+		// Create an active lease with known rate
+		// Rate: 100 per second, quantity 2 = 200 per second total
+		lease := types.Lease{
+			Uuid:         "01912345-6789-7abc-8def-estimate0001",
+			Tenant:       tenant.String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{
+				{
+					SkuUuid:     "01912345-6789-7abc-8def-sku000000001",
+					Quantity:    2,
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)), // 100 per second
+				},
+			},
+			State:         types.LEASE_STATE_ACTIVE,
+			CreatedAt:     f.Ctx.BlockTime(),
+			LastSettledAt: f.Ctx.BlockTime(),
+		}
+		require.NoError(t, k.SetLease(f.Ctx, lease))
+
+		// Update credit account lease count
+		ca, err := k.GetCreditAccount(f.Ctx, tenant.String())
+		require.NoError(t, err)
+		ca.ActiveLeaseCount = 1
+		require.NoError(t, k.SetCreditAccount(f.Ctx, ca))
+
+		resp, err := querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
+			Tenant: tenant.String(),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, uint64(1), resp.ActiveLeaseCount)
+
+		// Rate should be 200 per second (100 * 2 quantity)
+		require.Equal(t, sdkmath.NewInt(200), resp.TotalRatePerSecond.AmountOf(testDenom))
+
+		// With 1,000,000 balance and 200/second rate, should last 5000 seconds
+		require.Equal(t, uint64(5000), resp.EstimatedDurationSeconds)
+	})
+
+	t.Run("error cases", func(t *testing.T) {
+		// Nil request
+		_, err := querier.CreditEstimate(f.Ctx, nil)
+		require.Error(t, err)
+
+		// Empty tenant
+		_, err = querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
+			Tenant: "",
+		})
+		require.Error(t, err)
+
+		// Invalid tenant address
+		_, err = querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
+			Tenant: "invalid-address",
+		})
+		require.Error(t, err)
 	})
 }

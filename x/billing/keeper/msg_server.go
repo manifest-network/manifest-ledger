@@ -468,64 +468,68 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	for i := range leases {
 		var settledAmounts sdk.Coins
 		var duration time.Duration
+		var closeTime time.Time
 		leaseClosedBy := closedBy
 
 		// Check if lease should be auto-closed due to exhausted credit
-		closed, err := ms.k.CheckAndCloseExhaustedLease(cacheCtx, &leases[i])
+		shouldAutoClose, autoCloseTime, err := ms.k.ShouldAutoCloseLease(cacheCtx, &leases[i])
 		if err != nil {
 			return nil, err
 		}
 
-		if closed {
-			// Lease was auto-closed due to credit exhaustion.
-			// Refresh credit account from storage since auto-close modified it directly.
-			refreshedAccount, err := ms.k.GetCreditAccount(cacheCtx, leases[i].Tenant)
-			if err != nil {
-				return nil, types.ErrInvalidCreditOperation.Wrapf("failed to refresh credit account after auto-close for tenant %s: %s", leases[i].Tenant, err)
-			}
-			creditAccounts[leases[i].Tenant] = refreshedAccount
+		if shouldAutoClose {
+			// Lease should be auto-closed due to credit exhaustion.
+			closeTime = autoCloseTime
 
-			settledAmounts = sdk.NewCoins()
+			// Calculate duration for event (before updating LastSettledAt)
+			duration = closeTime.Sub(leases[i].LastSettledAt)
+
+			// Perform settlement using silent mode (doesn't fail on overflow)
+			result, err := ms.k.PerformSettlementSilent(cacheCtx, &leases[i], closeTime)
+			if err != nil {
+				return nil, err
+			}
+			settledAmounts = result.TransferAmounts
+
+			// Update lease state
+			leases[i].State = types.LEASE_STATE_CLOSED
+			leases[i].ClosedAt = &closeTime
+			leases[i].LastSettledAt = closeTime
+
 			leaseClosedBy = "credit_exhaustion"
-			duration = 0
 		} else {
+			// Normal close - use block time
+			closeTime = blockTime
+
 			// Calculate duration for event
-			duration = blockTime.Sub(leases[i].LastSettledAt)
+			duration = closeTime.Sub(leases[i].LastSettledAt)
 
 			// Settle accrued charges
-			settledAmounts, err = ms.settleLease(cacheCtx, &leases[i], blockTime)
+			settledAmounts, err = ms.settleLease(cacheCtx, &leases[i], closeTime)
 			if err != nil {
 				return nil, err
 			}
 
 			// Update lease state to inactive
 			leases[i].State = types.LEASE_STATE_CLOSED
-			leases[i].ClosedAt = &blockTime
-
-			if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil {
-				return nil, types.ErrInvalidLease.Wrapf("failed to update lease %s: %s", leases[i].Uuid, err)
-			}
-
-			// Update lease counts: decrement active
-			creditAccount := creditAccounts[leases[i].Tenant]
-			if creditAccount.ActiveLeaseCount > 0 {
-				creditAccount.ActiveLeaseCount--
-			} else {
-				ms.k.Logger().Warn("data inconsistency: active lease count already zero",
-					"tenant", leases[i].Tenant,
-					"lease_uuid", leases[i].Uuid,
-				)
-			}
-			creditAccounts[leases[i].Tenant] = creditAccount
+			leases[i].ClosedAt = &closeTime
 		}
+
+		// Persist lease state update
+		if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil {
+			return nil, types.ErrInvalidLease.Wrapf("failed to update lease %s: %s", leases[i].Uuid, err)
+		}
+
+		// Update lease counts: decrement active (in memory map)
+		creditAccount := creditAccounts[leases[i].Tenant]
+		ms.k.DecrementActiveLeaseCount(&creditAccount, leases[i].Uuid)
+		creditAccounts[leases[i].Tenant] = creditAccount
 
 		// Aggregate settled amounts
 		totalSettledAmounts = totalSettledAmounts.Add(settledAmounts...)
 
-		// Get active lease count for event emission
-		creditAccount := creditAccounts[leases[i].Tenant]
-
 		// Queue event for emission after successful commit
+		// (creditAccount already has the updated ActiveLeaseCount from above)
 		leaseEvents = append(leaseEvents, leaseEvent{
 			uuid:           leases[i].Uuid,
 			tenant:         leases[i].Tenant,
@@ -656,13 +660,41 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 
 		// For active leases, check if we need to auto-close due to exhausted credit
 		if lease.State == types.LEASE_STATE_ACTIVE {
-			closed, err := ms.k.CheckAndCloseExhaustedLease(cacheCtx, lease)
+			shouldAutoClose, closeTime, err := ms.k.ShouldAutoCloseLease(cacheCtx, lease)
 			if err != nil {
 				return nil, err
 			}
-			if closed {
-				// Auto-close already performed settlement and transferred funds
+			if shouldAutoClose {
+				// Perform settlement using silent mode (doesn't fail on overflow)
+				result, err := ms.k.PerformSettlementSilent(cacheCtx, lease, closeTime)
+				if err != nil {
+					return nil, err
+				}
+
+				// Update lease state
+				lease.State = types.LEASE_STATE_CLOSED
+				lease.ClosedAt = &closeTime
+				lease.LastSettledAt = closeTime
+
+				if err := ms.k.SetLease(cacheCtx, *lease); err != nil {
+					return nil, err
+				}
+
+				// Update credit account's active lease count
+				creditAccount, err := ms.k.GetCreditAccount(cacheCtx, lease.Tenant)
+				if err == nil {
+					ms.k.DecrementActiveLeaseCount(&creditAccount, lease.Uuid)
+					if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
+						return nil, err
+					}
+				}
+
+				// Track the auto-closed lease and its settled amounts
 				autoClosedLeases = append(autoClosedLeases, lease.Uuid)
+				if !result.TransferAmounts.IsZero() {
+					totalAmounts = totalAmounts.Add(result.TransferAmounts...)
+					leaseAmounts[lease.Uuid] = result.TransferAmounts
+				}
 				withdrawalCount++
 				continue
 			}
@@ -801,6 +833,8 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 	var processedCount uint64
 	hasMore := false
 
+	autoClosedCount := uint64(0)
+
 	err = ms.k.IterateLeasesByProvider(ctx, providerUUID, func(lease types.Lease) (stop bool, iterErr error) {
 		// Check if we've reached the limit
 		if processedCount >= limit {
@@ -808,7 +842,85 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 			return true, nil // Stop iteration
 		}
 
-		// Determine settlement time based on lease state
+		// Use CacheContext to make all state changes atomic per lease.
+		// If any operation fails, the cache is discarded and no state changes
+		// are committed for this lease.
+		cacheCtx, write := sdkCtx.CacheContext()
+
+		// For active leases, check if we need to auto-close due to exhausted credit
+		if lease.State == types.LEASE_STATE_ACTIVE {
+			shouldAutoClose, closeTime, checkErr := ms.k.ShouldAutoCloseLease(cacheCtx, &lease)
+			if checkErr != nil {
+				ms.k.Logger().Error("failed to check auto-close for lease",
+					"lease_id", lease.Uuid,
+					"error", checkErr,
+				)
+				return false, nil // Continue iteration
+			}
+
+			if shouldAutoClose {
+				// Perform final settlement using silent mode
+				result, settleErr := ms.k.PerformSettlementSilent(cacheCtx, &lease, closeTime)
+				if settleErr != nil {
+					ms.k.Logger().Error("failed to settle auto-closing lease",
+						"lease_id", lease.Uuid,
+						"error", settleErr,
+					)
+					return false, nil // Continue iteration
+				}
+
+				// Update lease state to CLOSED
+				lease.State = types.LEASE_STATE_CLOSED
+				lease.ClosedAt = &closeTime
+				lease.LastSettledAt = closeTime
+
+				if setErr := ms.k.SetLease(cacheCtx, lease); setErr != nil {
+					ms.k.Logger().Error("failed to close lease",
+						"lease_id", lease.Uuid,
+						"error", setErr,
+					)
+					return false, nil // Continue iteration
+				}
+
+				// Update credit account's active lease count
+				creditAccount, caErr := ms.k.GetCreditAccount(cacheCtx, lease.Tenant)
+				if caErr == nil {
+					ms.k.DecrementActiveLeaseCount(&creditAccount, lease.Uuid)
+					if setErr := ms.k.SetCreditAccount(cacheCtx, creditAccount); setErr != nil {
+						ms.k.Logger().Error("failed to update credit account",
+							"lease_id", lease.Uuid,
+							"tenant", lease.Tenant,
+							"error", setErr,
+						)
+						return false, nil // Continue iteration
+					}
+				}
+
+				// Commit all changes atomically
+				write()
+
+				// Emit auto-close event
+				sdkCtx.EventManager().EmitEvent(
+					sdk.NewEvent(
+						types.EventTypeLeaseAutoClose,
+						sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
+						sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
+						sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
+						sdk.NewAttribute(types.AttributeKeyReason, "credit_exhausted"),
+					),
+				)
+
+				if !result.TransferAmounts.IsZero() {
+					totalAmounts = totalAmounts.Add(result.TransferAmounts...)
+				}
+				withdrawalCount++
+				autoClosedCount++
+				processedCount++
+				return false, nil // Continue iteration
+			}
+		}
+
+		// Determine settlement time based on lease state (normal path)
 		var settleTime time.Time
 		switch {
 		case lease.State == types.LEASE_STATE_ACTIVE:
@@ -823,11 +935,6 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 		if !settleTime.After(lease.LastSettledAt) {
 			return false, nil // Skip, continue iteration
 		}
-
-		// Use CacheContext to make settlement + timestamp update atomic per lease.
-		// If either operation fails, the cache is discarded and no state changes
-		// are committed for this lease.
-		cacheCtx, write := sdkCtx.CacheContext()
 
 		// Perform settlement (silent mode: doesn't fail on overflow)
 		result, settleErr := ms.k.PerformSettlementSilent(cacheCtx, &lease, settleTime)
@@ -878,6 +985,7 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 			sdk.NewAttribute(types.AttributeKeyAmount, totalAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(withdrawalCount, 10)),
 			sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.GetPayoutAddress()),
+			sdk.NewAttribute(types.AttributeKeyAutoClosed, strconv.FormatUint(autoClosedCount, 10)),
 		),
 	)
 
@@ -1050,15 +1158,7 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 		// Update lease counts: decrement pending, increment active
 		// Credit account existence was validated in Phase 1
 		creditAccount := creditAccounts[leases[i].Tenant]
-		if creditAccount.PendingLeaseCount > 0 {
-			creditAccount.PendingLeaseCount--
-		} else {
-			// Log data inconsistency: lease was PENDING but credit account shows 0 pending
-			ms.k.Logger().Warn("data inconsistency: pending lease count already zero",
-				"tenant", leases[i].Tenant,
-				"lease_uuid", leases[i].Uuid,
-			)
-		}
+		ms.k.DecrementPendingLeaseCount(&creditAccount, leases[i].Uuid)
 		creditAccount.ActiveLeaseCount++
 		creditAccounts[leases[i].Tenant] = creditAccount // Update map with new counts
 
@@ -1160,15 +1260,7 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 		// Update lease counts: decrement pending
 		// Credit account existence was validated in Phase 1
 		creditAccount := creditAccounts[leases[i].Tenant]
-		if creditAccount.PendingLeaseCount > 0 {
-			creditAccount.PendingLeaseCount--
-		} else {
-			// Log data inconsistency: lease was PENDING but credit account shows 0 pending
-			ms.k.Logger().Warn("data inconsistency: pending lease count already zero",
-				"tenant", leases[i].Tenant,
-				"lease_uuid", leases[i].Uuid,
-			)
-		}
+		ms.k.DecrementPendingLeaseCount(&creditAccount, leases[i].Uuid)
 		creditAccounts[leases[i].Tenant] = creditAccount // Update map with new counts
 
 		// Queue event for emission after successful commit
@@ -1285,15 +1377,7 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 		}
 
 		// Decrement pending lease count in credit account
-		if creditAccount.PendingLeaseCount > 0 {
-			creditAccount.PendingLeaseCount--
-		} else {
-			// Log data inconsistency: lease was PENDING but credit account shows 0 pending
-			ms.k.Logger().Warn("data inconsistency: pending lease count already zero",
-				"tenant", leases[i].Tenant,
-				"lease_uuid", leases[i].Uuid,
-			)
-		}
+		ms.k.DecrementPendingLeaseCount(&creditAccount, leases[i].Uuid)
 	}
 
 	// Save credit account with updated pending count

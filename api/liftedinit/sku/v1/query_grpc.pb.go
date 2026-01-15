@@ -19,12 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Query_Params_FullMethodName         = "/liftedinit.sku.v1.Query/Params"
-	Query_Provider_FullMethodName       = "/liftedinit.sku.v1.Query/Provider"
-	Query_Providers_FullMethodName      = "/liftedinit.sku.v1.Query/Providers"
-	Query_SKU_FullMethodName            = "/liftedinit.sku.v1.Query/SKU"
-	Query_SKUs_FullMethodName           = "/liftedinit.sku.v1.Query/SKUs"
-	Query_SKUsByProvider_FullMethodName = "/liftedinit.sku.v1.Query/SKUsByProvider"
+	Query_Params_FullMethodName            = "/liftedinit.sku.v1.Query/Params"
+	Query_Provider_FullMethodName          = "/liftedinit.sku.v1.Query/Provider"
+	Query_Providers_FullMethodName         = "/liftedinit.sku.v1.Query/Providers"
+	Query_SKU_FullMethodName               = "/liftedinit.sku.v1.Query/SKU"
+	Query_SKUs_FullMethodName              = "/liftedinit.sku.v1.Query/SKUs"
+	Query_SKUsByProvider_FullMethodName    = "/liftedinit.sku.v1.Query/SKUsByProvider"
+	Query_ProviderByAddress_FullMethodName = "/liftedinit.sku.v1.Query/ProviderByAddress"
 )
 
 // QueryClient is the client API for Query service.
@@ -43,6 +44,8 @@ type QueryClient interface {
 	SKUs(ctx context.Context, in *QuerySKUsRequest, opts ...grpc.CallOption) (*QuerySKUsResponse, error)
 	// SKUsByProvider queries SKUs by provider uuid.
 	SKUsByProvider(ctx context.Context, in *QuerySKUsByProviderRequest, opts ...grpc.CallOption) (*QuerySKUsByProviderResponse, error)
+	// ProviderByAddress queries a provider by management address.
+	ProviderByAddress(ctx context.Context, in *QueryProviderByAddressRequest, opts ...grpc.CallOption) (*QueryProviderByAddressResponse, error)
 }
 
 type queryClient struct {
@@ -107,6 +110,15 @@ func (c *queryClient) SKUsByProvider(ctx context.Context, in *QuerySKUsByProvide
 	return out, nil
 }
 
+func (c *queryClient) ProviderByAddress(ctx context.Context, in *QueryProviderByAddressRequest, opts ...grpc.CallOption) (*QueryProviderByAddressResponse, error) {
+	out := new(QueryProviderByAddressResponse)
+	err := c.cc.Invoke(ctx, Query_ProviderByAddress_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServer is the server API for Query service.
 // All implementations must embed UnimplementedQueryServer
 // for forward compatibility
@@ -123,6 +135,8 @@ type QueryServer interface {
 	SKUs(context.Context, *QuerySKUsRequest) (*QuerySKUsResponse, error)
 	// SKUsByProvider queries SKUs by provider uuid.
 	SKUsByProvider(context.Context, *QuerySKUsByProviderRequest) (*QuerySKUsByProviderResponse, error)
+	// ProviderByAddress queries a provider by management address.
+	ProviderByAddress(context.Context, *QueryProviderByAddressRequest) (*QueryProviderByAddressResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }
 
@@ -147,6 +161,9 @@ func (UnimplementedQueryServer) SKUs(context.Context, *QuerySKUsRequest) (*Query
 }
 func (UnimplementedQueryServer) SKUsByProvider(context.Context, *QuerySKUsByProviderRequest) (*QuerySKUsByProviderResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SKUsByProvider not implemented")
+}
+func (UnimplementedQueryServer) ProviderByAddress(context.Context, *QueryProviderByAddressRequest) (*QueryProviderByAddressResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProviderByAddress not implemented")
 }
 func (UnimplementedQueryServer) mustEmbedUnimplementedQueryServer() {}
 
@@ -269,6 +286,24 @@ func _Query_SKUsByProvider_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_ProviderByAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryProviderByAddressRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).ProviderByAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_ProviderByAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).ProviderByAddress(ctx, req.(*QueryProviderByAddressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Query_ServiceDesc is the grpc.ServiceDesc for Query service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -299,6 +334,10 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SKUsByProvider",
 			Handler:    _Query_SKUsByProvider_Handler,
+		},
+		{
+			MethodName: "ProviderByAddress",
+			Handler:    _Query_ProviderByAddress_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

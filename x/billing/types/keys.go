@@ -57,6 +57,10 @@ const (
 	// MaxProviderWithdrawableQueryLimit is the maximum limit for ProviderWithdrawable queries.
 	// This prevents queries from iterating over unbounded numbers of leases.
 	MaxProviderWithdrawableQueryLimit uint64 = 1000
+
+	// MaxCreditEstimateLeases is the maximum number of active leases to process
+	// in a CreditEstimate query. This prevents DoS on tenants with many leases.
+	MaxCreditEstimateLeases uint64 = 100
 )
 
 // EndBlocker limits to prevent DoS attacks.

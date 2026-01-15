@@ -14,7 +14,7 @@ This document records key design decisions made during the development of the x/
 **Rationale:**
 - **Data Normalization:** Avoids duplicating provider information across SKUs
 - **Payout Address Management:** Single source of truth for where payments go
-- **Provider Lifecycle:** Can deactivate a provider without touching individual SKUs
+- **Provider Lifecycle:** Deactivating a provider cascades to deactivate all its SKUs
 - **Future Extensibility:** Can add provider-level attributes (reputation, limits, etc.)
 
 **Trade-offs:**
@@ -67,11 +67,13 @@ uuid := uuidv7.NewDeterministic(ctx, sequence)
 - **Simplicity:** Boolean is simpler than full state machine
 - **Idempotency:** Deactivating twice is safe
 - **Billing Continuity:** Existing leases continue with inactive SKUs/providers
+- **Cascade Behavior:** Provider deactivation cascades to all its SKUs
 
 **Trade-offs:**
 - Storage grows indefinitely (no pruning)
 - Queries must filter by active status
 - No way to reclaim UUIDs (by design)
+- SKUs must be individually reactivated after provider reactivation (cascade is one-way)
 
 ## Decision 4: Authority-Only Access with AllowedList
 
@@ -264,3 +266,14 @@ When implementing breaking changes:
 - Version proto messages appropriately
 - Document upgrade procedures
 - Consider impact on existing leases in billing module
+
+## Related Documentation
+
+- [README](../README.md) - Module overview
+- [API Reference](API.md) - CLI and gRPC/REST API
+- [Architecture](ARCHITECTURE.md) - Technical architecture details
+- [Capabilities](CAPABILITIES.md) - Feature overview and roadmap
+- [Provider Guide](PROVIDER_GUIDE.md) - Creating and managing providers
+- [SKU Guide](SKU_GUIDE.md) - Creating and managing SKUs
+- [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
+- [Billing Module Design Decisions](../../billing/docs/DESIGN_DECISIONS.md) - Related billing design choices

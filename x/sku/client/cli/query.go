@@ -22,6 +22,7 @@ func GetQueryCmd() *cobra.Command {
 	queryCmd.AddCommand(
 		GetCmdQueryParams(),
 		GetCmdQueryProvider(),
+		GetCmdQueryProviderByAddress(),
 		GetCmdQueryProviders(),
 		GetCmdQuerySKU(),
 		GetCmdQuerySKUs(),
@@ -257,5 +258,37 @@ func GetCmdQuerySKUsByProvider() *cobra.Command {
 	cmd.Flags().Bool("active-only", false, "Filter to return only active SKUs")
 	flags.AddQueryFlagsToCmd(cmd)
 	flags.AddPaginationFlagsToCmd(cmd, "skus-by-provider")
+	return cmd
+}
+
+// GetCmdQueryProviderByAddress returns the command to query a Provider by address.
+func GetCmdQueryProviderByAddress() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "provider-by-address [address]",
+		Short: "Query a provider by management address",
+		Long: `Query a provider by its management address.
+
+This is useful when you know your address but not your provider UUID.`,
+		Example: "provider-by-address manifest1abc...",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			queryClient := types.NewQueryClient(clientCtx)
+			res, err := queryClient.ProviderByAddress(cmd.Context(), &types.QueryProviderByAddressRequest{
+				Address: args[0],
+			})
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
 	return cmd
 }

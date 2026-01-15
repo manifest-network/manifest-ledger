@@ -593,18 +593,25 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 	return result
 }
 
-// CheckAndCloseExhaustedLease checks if a lease should be auto-closed due to exhausted credit
-// and closes it if necessary. This implements "lazy evaluation" / "check on touch" pattern.
-// Returns true if the lease was closed, the updated lease, and any error.
+// ShouldAutoCloseLease checks if a lease should be auto-closed due to exhausted credit.
+// This implements "lazy evaluation" / "check on touch" pattern.
+// Returns true if the lease should be closed, along with the close time to use.
 // This is O(1) per lease check, avoiding O(n) scanning of all leases in EndBlock.
+//
+// IMPORTANT: This function does NOT modify any state. The caller is responsible for:
+// 1. Calling PerformSettlementSilent to settle the lease
+// 2. Updating the lease state (State, ClosedAt, LastSettledAt)
+// 3. Updating the credit account's ActiveLeaseCount
+// 4. Persisting the changes
+// 5. Emitting the appropriate event
 //
 // The function performs settlement calculation to determine if the balance would be exhausted
 // after accrual, rather than just checking the current balance. This ensures leases are
 // closed promptly when credit runs out, even if the balance isn't exactly zero yet.
-func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.Lease) (closed bool, err error) {
+func (k *Keeper) ShouldAutoCloseLease(ctx context.Context, lease *types.Lease) (shouldClose bool, closeTime time.Time, err error) {
 	// Only check active leases
 	if lease.State != types.LEASE_STATE_ACTIVE {
-		return false, nil
+		return false, time.Time{}, nil
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -619,14 +626,14 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 	// Check tenant's current credit balances
 	creditBalances, err := k.GetCreditBalances(ctx, lease.Tenant)
 	if err != nil {
-		return false, err
+		return false, time.Time{}, err
 	}
 
 	// Calculate what would be accrued for each denom
 	items := LeaseItemsToWithPrice(lease.Items)
 
 	// If duration is zero, no accrual - check if any balance is exhausted
-	shouldClose := false
+	shouldClose = false
 	if duration > 0 {
 		accruedAmounts, calcErr := CalculateTotalAccruedForLease(items, duration)
 		if calcErr == nil {
@@ -651,65 +658,38 @@ func (k *Keeper) CheckAndCloseExhaustedLease(ctx context.Context, lease *types.L
 	}
 
 	if !shouldClose {
-		return false, nil
+		return false, time.Time{}, nil
 	}
 
-	// Perform final settlement (transfer remaining balance to provider)
-	settledAmounts, err := k.settleAndCloseLease(ctx, lease, blockTime)
-	if err != nil {
-		return false, err
-	}
-
-	// Emit event for auto-closed lease
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeLeaseAutoClose,
-			sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
-			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
-			sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
-			sdk.NewAttribute(types.AttributeKeySettledAmounts, settledAmounts.String()),
-			sdk.NewAttribute(types.AttributeKeyReason, "credit_exhausted"),
-		),
-	)
-
-	k.logger.Info("auto-closed exhausted lease",
-		"lease_uuid", lease.Uuid,
-		"tenant", lease.Tenant,
-		"settled_amounts", settledAmounts.String(),
-	)
-
-	return true, nil
+	return true, blockTime, nil
 }
 
-// settleAndCloseLease performs final settlement and closes a lease.
-// This is used by both manual close and auto-close operations.
-// Returns the settled amounts (one per denom).
-func (k *Keeper) settleAndCloseLease(ctx context.Context, lease *types.Lease, closeTime time.Time) (sdk.Coins, error) {
-	// Perform settlement using silent mode (doesn't fail on overflow)
-	result, err := k.PerformSettlementSilent(ctx, lease, closeTime)
-	if err != nil {
-		return sdk.NewCoins(), err
+// DecrementActiveLeaseCount decrements the active lease count on a credit account.
+// If the count is already zero, it logs a warning about data inconsistency but does not fail.
+// This helper ensures consistent handling of lease count decrements across all code paths.
+func (k *Keeper) DecrementActiveLeaseCount(ca *types.CreditAccount, leaseUUID string) {
+	if ca.ActiveLeaseCount > 0 {
+		ca.ActiveLeaseCount--
+	} else {
+		k.logger.Warn("data inconsistency: active lease count already zero",
+			"tenant", ca.Tenant,
+			"lease_uuid", leaseUUID,
+		)
 	}
+}
 
-	// Update lease state
-	lease.State = types.LEASE_STATE_CLOSED
-	lease.ClosedAt = &closeTime
-	lease.LastSettledAt = closeTime
-
-	if err := k.SetLease(ctx, *lease); err != nil {
-		return sdk.NewCoins(), err
+// DecrementPendingLeaseCount decrements the pending lease count on a credit account.
+// If the count is already zero, it logs a warning about data inconsistency but does not fail.
+// This helper ensures consistent handling of lease count decrements across all code paths.
+func (k *Keeper) DecrementPendingLeaseCount(ca *types.CreditAccount, leaseUUID string) {
+	if ca.PendingLeaseCount > 0 {
+		ca.PendingLeaseCount--
+	} else {
+		k.logger.Warn("data inconsistency: pending lease count already zero",
+			"tenant", ca.Tenant,
+			"lease_uuid", leaseUUID,
+		)
 	}
-
-	// Decrement active lease count in credit account
-	creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
-	if err == nil && creditAccount.ActiveLeaseCount > 0 {
-		creditAccount.ActiveLeaseCount--
-		if err := k.SetCreditAccount(ctx, creditAccount); err != nil {
-			return result.TransferAmounts, err
-		}
-	}
-
-	return result.TransferAmounts, nil
 }
 
 // CountPendingLeasesByTenant counts the number of pending leases for a tenant.
@@ -828,6 +808,7 @@ func (k *Keeper) GetPendingLeasesByProvider(ctx context.Context, providerUUID st
 
 // ExpirePendingLease expires a pending lease, unlocking the tenant's credit.
 // This is called by the EndBlocker when a lease exceeds the pending timeout.
+// Uses CacheContext for atomicity - if any state update fails, no changes are committed.
 func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
@@ -837,24 +818,36 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 		return types.ErrLeaseNotPending.Wrapf("lease %s is not pending", lease.Uuid)
 	}
 
+	// Use CacheContext for atomic state changes
+	cacheCtx, write := sdkCtx.CacheContext()
+
 	// Update lease state to EXPIRED
 	lease.State = types.LEASE_STATE_EXPIRED
 	lease.ExpiredAt = &blockTime
 
-	if err := k.SetLease(ctx, *lease); err != nil {
+	if err := k.SetLease(cacheCtx, *lease); err != nil {
 		return err
 	}
 
 	// Decrement pending lease count in credit account
-	creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
-	if err == nil && creditAccount.PendingLeaseCount > 0 {
-		creditAccount.PendingLeaseCount--
-		if err := k.SetCreditAccount(ctx, creditAccount); err != nil {
+	creditAccount, err := k.GetCreditAccount(cacheCtx, lease.Tenant)
+	if err != nil {
+		// Log warning - a pending lease should always have a credit account
+		k.logger.Warn("credit account not found when expiring lease",
+			"tenant", lease.Tenant,
+			"lease_uuid", lease.Uuid,
+		)
+	} else {
+		k.DecrementPendingLeaseCount(&creditAccount, lease.Uuid)
+		if err := k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
 			return err
 		}
 	}
 
-	// Emit event
+	// Commit all state changes atomically
+	write()
+
+	// Emit event (after commit, events are not part of CacheContext)
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeLeaseExpired,

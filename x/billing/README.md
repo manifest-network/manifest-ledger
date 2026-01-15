@@ -133,6 +133,9 @@ These values are compile-time constants and cannot be changed via governance:
 | `MaxRejectionReasonLength` | 256 | Maximum characters for lease rejection reason |
 | `MaxDurationSeconds` | ~3,153,600,000 (~100 years) | Maximum lease duration for accrual calculations (overflow protection). Defined in `keeper/accrual.go`. |
 | `CreditAccountAddressPrefix` | `billing/credit/` | Prefix used for deterministic credit address derivation |
+| `DefaultProviderWithdrawableQueryLimit` | 100 | Default limit for ProviderWithdrawable query |
+| `MaxProviderWithdrawableQueryLimit` | 1000 | Maximum limit for ProviderWithdrawable query |
+| `MaxCreditEstimateLeases` | 100 | Maximum active leases processed in CreditEstimate query |
 
 ### Lease
 
@@ -267,9 +270,11 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 | Lease | Get a lease by ID |
 | Leases | List all leases with pagination |
 | LeasesByTenant | List leases for a tenant |
-| LeasesByProvider | List leases for a provider |
-| PendingLeasesByProvider | List pending leases for a provider (gRPC/REST only; CLI: use `leases-by-provider --state pending`) |
+| LeasesByProvider | List leases for a provider (use `--state pending` filter for pending leases) |
+| LeasesBySKU | List leases using a specific SKU |
 | CreditAccount | Get a tenant's credit account |
+| CreditAccounts | List all credit accounts |
+| CreditEstimate | Estimate remaining credit duration |
 | CreditAddress | Derive credit address for a tenant |
 | WithdrawableAmount | Get withdrawable amount for a lease |
 | ProviderWithdrawable | Get total withdrawable for a provider |
@@ -356,3 +361,5 @@ For detailed scalability analysis, time manipulation considerations, and future 
 ### Developer Documentation
 - [Architecture](docs/ARCHITECTURE.md) - Internal architecture, data models, and flow diagrams
 - [Design Decisions](docs/DESIGN_DECISIONS.md) - Key design decisions and rationale
+- [Comparison](docs/COMPARISON.md) - Comparison with Akash and architectural trade-offs
+- [Capabilities](docs/CAPABILITIES.md) - Feature overview and future roadmap

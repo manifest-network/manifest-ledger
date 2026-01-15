@@ -466,3 +466,14 @@ When implementing breaking changes:
 - Update indexes atomically
 - Version proto messages appropriately
 - Handle PENDING leases during upgrade (either expire or migrate to new state)
+
+## Related Documentation
+
+- [README](../README.md) - Module overview
+- [API Reference](API.md) - CLI and gRPC/REST API
+- [Architecture](ARCHITECTURE.md) - Technical architecture details
+- [Capabilities](CAPABILITIES.md) - Feature overview and roadmap
+- [Comparison](COMPARISON.md) - Comparison with Akash and architectural trade-offs
+- [Migration Guide](MIGRATION.md) - Migrating off-chain leases
+- [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
+- [SKU Module Design Decisions](../../sku/docs/DESIGN_DECISIONS.md) - Related SKU design choices

@@ -28,6 +28,9 @@ const (
 	Query_CreditAddress_FullMethodName        = "/liftedinit.billing.v1.Query/CreditAddress"
 	Query_WithdrawableAmount_FullMethodName   = "/liftedinit.billing.v1.Query/WithdrawableAmount"
 	Query_ProviderWithdrawable_FullMethodName = "/liftedinit.billing.v1.Query/ProviderWithdrawable"
+	Query_CreditAccounts_FullMethodName       = "/liftedinit.billing.v1.Query/CreditAccounts"
+	Query_LeasesBySKU_FullMethodName          = "/liftedinit.billing.v1.Query/LeasesBySKU"
+	Query_CreditEstimate_FullMethodName       = "/liftedinit.billing.v1.Query/CreditEstimate"
 )
 
 // QueryClient is the client API for Query service.
@@ -52,6 +55,12 @@ type QueryClient interface {
 	WithdrawableAmount(ctx context.Context, in *QueryWithdrawableAmountRequest, opts ...grpc.CallOption) (*QueryWithdrawableAmountResponse, error)
 	// ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
 	ProviderWithdrawable(ctx context.Context, in *QueryProviderWithdrawableRequest, opts ...grpc.CallOption) (*QueryProviderWithdrawableResponse, error)
+	// CreditAccounts queries all credit accounts with pagination.
+	CreditAccounts(ctx context.Context, in *QueryCreditAccountsRequest, opts ...grpc.CallOption) (*QueryCreditAccountsResponse, error)
+	// LeasesBySKU queries leases by SKU UUID.
+	LeasesBySKU(ctx context.Context, in *QueryLeasesBySKURequest, opts ...grpc.CallOption) (*QueryLeasesBySKUResponse, error)
+	// CreditEstimate estimates remaining lease duration for a tenant.
+	CreditEstimate(ctx context.Context, in *QueryCreditEstimateRequest, opts ...grpc.CallOption) (*QueryCreditEstimateResponse, error)
 }
 
 type queryClient struct {
@@ -143,6 +152,33 @@ func (c *queryClient) ProviderWithdrawable(ctx context.Context, in *QueryProvide
 	return out, nil
 }
 
+func (c *queryClient) CreditAccounts(ctx context.Context, in *QueryCreditAccountsRequest, opts ...grpc.CallOption) (*QueryCreditAccountsResponse, error) {
+	out := new(QueryCreditAccountsResponse)
+	err := c.cc.Invoke(ctx, Query_CreditAccounts_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) LeasesBySKU(ctx context.Context, in *QueryLeasesBySKURequest, opts ...grpc.CallOption) (*QueryLeasesBySKUResponse, error) {
+	out := new(QueryLeasesBySKUResponse)
+	err := c.cc.Invoke(ctx, Query_LeasesBySKU_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) CreditEstimate(ctx context.Context, in *QueryCreditEstimateRequest, opts ...grpc.CallOption) (*QueryCreditEstimateResponse, error) {
+	out := new(QueryCreditEstimateResponse)
+	err := c.cc.Invoke(ctx, Query_CreditEstimate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServer is the server API for Query service.
 // All implementations must embed UnimplementedQueryServer
 // for forward compatibility
@@ -165,6 +201,12 @@ type QueryServer interface {
 	WithdrawableAmount(context.Context, *QueryWithdrawableAmountRequest) (*QueryWithdrawableAmountResponse, error)
 	// ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
 	ProviderWithdrawable(context.Context, *QueryProviderWithdrawableRequest) (*QueryProviderWithdrawableResponse, error)
+	// CreditAccounts queries all credit accounts with pagination.
+	CreditAccounts(context.Context, *QueryCreditAccountsRequest) (*QueryCreditAccountsResponse, error)
+	// LeasesBySKU queries leases by SKU UUID.
+	LeasesBySKU(context.Context, *QueryLeasesBySKURequest) (*QueryLeasesBySKUResponse, error)
+	// CreditEstimate estimates remaining lease duration for a tenant.
+	CreditEstimate(context.Context, *QueryCreditEstimateRequest) (*QueryCreditEstimateResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }
 
@@ -198,6 +240,15 @@ func (UnimplementedQueryServer) WithdrawableAmount(context.Context, *QueryWithdr
 }
 func (UnimplementedQueryServer) ProviderWithdrawable(context.Context, *QueryProviderWithdrawableRequest) (*QueryProviderWithdrawableResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProviderWithdrawable not implemented")
+}
+func (UnimplementedQueryServer) CreditAccounts(context.Context, *QueryCreditAccountsRequest) (*QueryCreditAccountsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreditAccounts not implemented")
+}
+func (UnimplementedQueryServer) LeasesBySKU(context.Context, *QueryLeasesBySKURequest) (*QueryLeasesBySKUResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LeasesBySKU not implemented")
+}
+func (UnimplementedQueryServer) CreditEstimate(context.Context, *QueryCreditEstimateRequest) (*QueryCreditEstimateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreditEstimate not implemented")
 }
 func (UnimplementedQueryServer) mustEmbedUnimplementedQueryServer() {}
 
@@ -374,6 +425,60 @@ func _Query_ProviderWithdrawable_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_CreditAccounts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryCreditAccountsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).CreditAccounts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_CreditAccounts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).CreditAccounts(ctx, req.(*QueryCreditAccountsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_LeasesBySKU_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryLeasesBySKURequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).LeasesBySKU(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_LeasesBySKU_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).LeasesBySKU(ctx, req.(*QueryLeasesBySKURequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_CreditEstimate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryCreditEstimateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).CreditEstimate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_CreditEstimate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).CreditEstimate(ctx, req.(*QueryCreditEstimateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Query_ServiceDesc is the grpc.ServiceDesc for Query service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -416,6 +521,18 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProviderWithdrawable",
 			Handler:    _Query_ProviderWithdrawable_Handler,
+		},
+		{
+			MethodName: "CreditAccounts",
+			Handler:    _Query_CreditAccounts_Handler,
+		},
+		{
+			MethodName: "LeasesBySKU",
+			Handler:    _Query_LeasesBySKU_Handler,
+		},
+		{
+			MethodName: "CreditEstimate",
+			Handler:    _Query_CreditEstimate_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

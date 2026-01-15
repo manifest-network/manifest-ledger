@@ -2,6 +2,7 @@ syntax = "proto3";
 package liftedinit.sku.v1;
 
 import "cosmos/base/query/v1beta1/pagination.proto";
+import "cosmos_proto/cosmos.proto";
 import "gogoproto/gogo.proto";
 import "google/api/annotations.proto";
 import "liftedinit/sku/v1/types.proto";
@@ -39,6 +40,12 @@ service Query {
   rpc SKUsByProvider(QuerySKUsByProviderRequest)
       returns (QuerySKUsByProviderResponse) {
     option (google.api.http).get = "/liftedinit/sku/v1/skus/provider/{provider_uuid}";
+  }
+
+  // ProviderByAddress queries a provider by management address.
+  rpc ProviderByAddress(QueryProviderByAddressRequest)
+      returns (QueryProviderByAddressResponse) {
+    option (google.api.http).get = "/liftedinit/sku/v1/provider/address/{address}";
   }
 }
 
@@ -132,4 +139,18 @@ message QuerySKUsByProviderResponse {
 
   // pagination defines the pagination in the response.
   cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryProviderByAddressRequest is the request type for the Query/ProviderByAddress
+// RPC method.
+message QueryProviderByAddressRequest {
+  // address is the management address of the provider.
+  string address = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+}
+
+// QueryProviderByAddressResponse is the response type for the Query/ProviderByAddress
+// RPC method.
+message QueryProviderByAddressResponse {
+  // provider is the provider with the given address.
+  Provider provider = 1 [ (gogoproto.nullable) = false ];
 }

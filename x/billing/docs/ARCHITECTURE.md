@@ -858,13 +858,18 @@ There is no mechanism for tenants to withdraw unused credit from credit accounts
 
 When a provider or SKU is deactivated:
 
-| Entity | Effect on Existing Leases | Effect on New Leases |
-|--------|--------------------------|---------------------|
-| Provider deactivated | Continue at locked prices | Cannot create |
-| SKU deactivated | Continue at locked prices | Cannot create |
-| Provider reactivated | No change | Can create again |
+| Entity | Effect on SKUs | Effect on Existing Leases | Effect on New Leases |
+|--------|---------------|--------------------------|---------------------|
+| Provider deactivated | **All SKUs cascade to inactive** | Continue at locked prices | Cannot create |
+| SKU deactivated | Only that SKU affected | Continue at locked prices | Cannot create |
+| Provider reactivated | SKUs remain inactive* | No change | Requires SKU reactivation |
+| SKU reactivated | That SKU becomes active | No change | Can create (if provider active) |
 
-**Implementation note**: The billing module queries SKU/provider status at lease creation time. Existing leases store `provider_uuid` and `locked_price`, making them independent of subsequent provider/SKU state changes.
+*SKUs must be individually reactivated via `update-sku` after provider reactivation.
+
+**Cascade behavior**: When `DeactivateProvider` is called, the SKU module automatically deactivates all SKUs under that provider in the same transaction. This ensures consistency - an inactive provider has no active SKUs.
+
+**Implementation note**: The billing module queries SKU/provider status at lease creation time. Existing leases store `provider_uuid` and `locked_price`, making them independent of subsequent provider/SKU state changes. Tenants can close their leases at any time, even after provider/SKU deactivation.
 
 ### Provider-Wide Withdraw Batch Processing
 
@@ -945,3 +950,12 @@ The following enhancements are under consideration:
 ## Provider Off-Chain API Integration
 
 For details on how tenants authenticate to provider off-chain APIs using ADR-036 signatures, see [Integration Guide](INTEGRATION.md).
+
+## Related Documentation
+
+- [README](../README.md) - Module overview
+- [API Reference](API.md) - CLI and gRPC/REST API
+- [Design Decisions](DESIGN_DECISIONS.md) - Key design rationale
+- [Comparison](COMPARISON.md) - Comparison with Akash and architectural trade-offs
+- [Capabilities](CAPABILITIES.md) - Feature overview and roadmap
+- [SKU Module Architecture](../../sku/docs/ARCHITECTURE.md) - Provider and SKU internals

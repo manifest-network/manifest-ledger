@@ -42,6 +42,9 @@ func ValidateLeaseItems(items []LeaseItemInput) error {
 		if item.Quantity == 0 {
 			return ErrInvalidQuantity.Wrapf("item %d has zero quantity", i)
 		}
+		if item.Quantity > MaxQuantityPerItem {
+			return ErrInvalidQuantity.Wrapf("item %d quantity %d exceeds maximum %d", i, item.Quantity, MaxQuantityPerItem)
+		}
 		if seenSKUs[item.SkuUuid] {
 			return ErrDuplicateSKU.Wrapf("sku_uuid %s appears multiple times", item.SkuUuid)
 		}

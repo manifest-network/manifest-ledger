@@ -47,8 +47,11 @@ func GetQueryCmd() *cobra.Command {
 		GetLeasesCmd(),
 		GetLeasesByTenantCmd(),
 		GetLeasesByProviderCmd(),
+		GetLeasesBySKUCmd(),
 		GetCreditAccountCmd(),
+		GetCreditAccountsCmd(),
 		GetCreditAddressCmd(),
+		GetCreditEstimateCmd(),
 		GetWithdrawableAmountCmd(),
 		GetProviderWithdrawableCmd(),
 	)
@@ -132,7 +135,10 @@ func GetLeasesCmd() *cobra.Command {
 				return err
 			}
 
-			stateStr, _ := cmd.Flags().GetString("state")
+			stateStr, err := cmd.Flags().GetString("state")
+			if err != nil {
+				return err
+			}
 			stateFilter := parseLeaseState(stateStr)
 
 			pageReq, err := client.ReadPageRequest(cmd.Flags())
@@ -174,7 +180,10 @@ func GetLeasesByTenantCmd() *cobra.Command {
 				return err
 			}
 
-			stateStr, _ := cmd.Flags().GetString("state")
+			stateStr, err := cmd.Flags().GetString("state")
+			if err != nil {
+				return err
+			}
 			stateFilter := parseLeaseState(stateStr)
 
 			pageReq, err := client.ReadPageRequest(cmd.Flags())
@@ -222,7 +231,10 @@ func GetLeasesByProviderCmd() *cobra.Command {
 				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
 			}
 
-			stateStr, _ := cmd.Flags().GetString("state")
+			stateStr, err := cmd.Flags().GetString("state")
+			if err != nil {
+				return err
+			}
 			stateFilter := parseLeaseState(stateStr)
 
 			pageReq, err := client.ReadPageRequest(cmd.Flags())
@@ -394,6 +406,137 @@ provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 500`,
 	}
 
 	cmd.Flags().Uint64("limit", 0, "Maximum leases to process (default: 100, max: 1000)")
+	flags.AddQueryFlagsToCmd(cmd)
+
+	return cmd
+}
+
+// GetCreditAccountsCmd returns the command to query all credit accounts.
+func GetCreditAccountsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "credit-accounts",
+		Short:   "Query all credit accounts with pagination",
+		Example: `credit-accounts --limit 10`,
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			queryClient := types.NewQueryClient(clientCtx)
+
+			res, err := queryClient.CreditAccounts(cmd.Context(), &types.QueryCreditAccountsRequest{
+				Pagination: pageReq,
+			})
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
+	flags.AddPaginationFlagsToCmd(cmd, "credit-accounts")
+
+	return cmd
+}
+
+// GetLeasesBySKUCmd returns the command to query leases by SKU UUID.
+func GetLeasesBySKUCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "leases-by-sku [sku-uuid]",
+		Short: "Query leases by SKU UUID",
+		Long: `Query leases that contain a specific SKU.
+
+Note: This query scans all leases since there is no SKU index.
+For large datasets, use the --state filter to reduce results.
+Use pagination flags (--limit, --page-key) to page through results.`,
+		Example: `leases-by-sku 01902a9b-1234-7000-8000-000000000001 --state active`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			skuUUID := args[0]
+			if !pkguuid.IsValidUUID(skuUUID) {
+				return fmt.Errorf("invalid sku_uuid format: %s", skuUUID)
+			}
+
+			stateStr, err := cmd.Flags().GetString("state")
+			if err != nil {
+				return err
+			}
+			stateFilter := parseLeaseState(stateStr)
+
+			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			queryClient := types.NewQueryClient(clientCtx)
+
+			res, err := queryClient.LeasesBySKU(cmd.Context(), &types.QueryLeasesBySKURequest{
+				SkuUuid:     skuUUID,
+				Pagination:  pageReq,
+				StateFilter: stateFilter,
+			})
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	cmd.Flags().String("state", "", "Filter by lease state (pending, active, closed, rejected, expired)")
+	flags.AddQueryFlagsToCmd(cmd)
+	flags.AddPaginationFlagsToCmd(cmd, "leases")
+
+	return cmd
+}
+
+// GetCreditEstimateCmd returns the command to estimate remaining lease duration.
+func GetCreditEstimateCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "credit-estimate [tenant]",
+		Short: "Estimate remaining lease duration for a tenant",
+		Long: `Estimate how long a tenant's credit balance will last based on current active leases.
+
+Returns:
+  - Current credit balance
+  - Total burn rate per second across all active leases
+  - Estimated duration until credit exhaustion
+  - Number of active leases`,
+		Example: `credit-estimate manifest1abc...`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			queryClient := types.NewQueryClient(clientCtx)
+
+			res, err := queryClient.CreditEstimate(cmd.Context(), &types.QueryCreditEstimateRequest{
+				Tenant: args[0],
+			})
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
 	flags.AddQueryFlagsToCmd(cmd)
 
 	return cmd

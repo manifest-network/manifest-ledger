@@ -4081,6 +4081,65 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "must specify either")
 	})
+
+	t.Run("success: auto-closes leases on credit exhaustion", func(t *testing.T) {
+		// Create a new tenant with limited credit for this test
+		limitedTenant := f.TestAccs[3]
+		limitedCreditAddr, err := types.DeriveCreditAddressFromBech32(limitedTenant.String())
+		require.NoError(t, err)
+
+		// Fund with 5000 units - enough to create lease (min 3600 for 1hr min duration)
+		// but will be exhausted after 5000 seconds
+		limitedFundAmount := sdk.NewCoin(denom, sdkmath.NewInt(5000))
+		f.fundAccount(t, limitedCreditAddr, sdk.NewCoins(limitedFundAmount))
+
+		err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+			Tenant:        limitedTenant.String(),
+			CreditAddress: limitedCreditAddr.String(),
+		})
+		require.NoError(t, err)
+
+		// Create and acknowledge a lease (1 unit per second)
+		leaseUUID := f.createAndAcknowledgeLease(t, msgServer, limitedTenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		})
+
+		// Verify lease is active and credit account has correct counts
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+
+		creditAcct, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, limitedTenant.String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), creditAcct.ActiveLeaseCount)
+
+		// Advance time beyond credit capacity (10000 seconds > 5000 available)
+		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(10000 * time.Second))
+		f.Ctx = newCtx
+
+		// Provider-wide withdrawal should trigger auto-close
+		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider.Uuid,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify the lease was auto-closed
+		lease, err = f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_CLOSED, lease.State, "lease should be auto-closed due to credit exhaustion")
+		require.NotNil(t, lease.ClosedAt, "closed_at should be set")
+
+		// Verify credit account's active lease count was decremented
+		creditAcct, err = f.App.BillingKeeper.GetCreditAccount(f.Ctx, limitedTenant.String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), creditAcct.ActiveLeaseCount, "active lease count should be decremented")
+
+		// Verify provider received the available credit (5000 units)
+		// The transfer amount should be capped at available credit
+		require.False(t, resp.TotalAmounts.IsZero(), "provider should receive the available credit")
+	})
 }
 
 // TestMsgWithdraw_ProviderWideLargePagination tests provider-wide withdrawal with more leases

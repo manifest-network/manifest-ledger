@@ -22,7 +22,7 @@ func NewMsgServerImpl(keeper Keeper) types.MsgServer {
 
 // isAuthorizedSender checks if the sender is the authority or in the allowed list.
 func (ms msgServer) isAuthorizedSender(ctx context.Context, sender string) (bool, error) {
-	if ms.k.authority == sender {
+	if ms.k.GetAuthority() == sender {
 		return true, nil
 	}
 	params, err := ms.k.GetParams(ctx)
@@ -144,7 +144,7 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 	return &types.MsgUpdateProviderResponse{}, nil
 }
 
-// DeactivateProvider deactivates a Provider (soft delete).
+// DeactivateProvider deactivates a Provider and all its SKUs (soft delete).
 //
 // IMPORTANT: Deactivating a provider does NOT affect existing active leases.
 // Existing leases will continue to accrue charges and the provider can still
@@ -152,6 +152,11 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 //   - Lease prices are locked at creation time, providing price stability for tenants
 //   - Abruptly closing leases could disrupt tenant services
 //   - Tenants can close their own leases if the provider is no longer serving them
+//
+// Deactivation:
+//   - Deactivates the provider
+//   - Cascades to deactivate ALL SKUs under this provider
+//   - Emits events for each deactivated SKU
 //
 // Deactivation prevents:
 //   - Creation of new SKUs under this provider
@@ -178,12 +183,42 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 		return nil, types.ErrInvalidProvider.Wrapf("provider %s is already inactive", req.Uuid)
 	}
 
+	// Deactivate the provider
 	existingProvider.Active = false
 	if err := ms.k.SetProvider(ctx, existingProvider); err != nil {
 		return nil, err
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// Cascade: deactivate all SKUs under this provider
+	skus, err := ms.k.GetSKUsByProviderUUID(ctx, req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	var deactivatedSKUCount int
+	for i := range skus {
+		if skus[i].Active {
+			skus[i].Active = false
+			if err := ms.k.SetSKU(ctx, skus[i]); err != nil {
+				return nil, err
+			}
+			deactivatedSKUCount++
+
+			// Emit deactivation event for each SKU
+			sdkCtx.EventManager().EmitEvents(sdk.Events{
+				sdk.NewEvent(
+					types.EventTypeSKUDeactivated,
+					sdk.NewAttribute(types.AttributeKeySKUUUID, skus[i].Uuid),
+					sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
+					sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
+				),
+			})
+		}
+	}
+
+	// Emit provider deactivation event
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeProviderDeactivated,
@@ -192,7 +227,7 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 		),
 	})
 
-	ms.k.Logger().Info("Provider deactivated", "uuid", req.Uuid)
+	ms.k.Logger().Info("Provider deactivated", "uuid", req.Uuid, "deactivated_skus", deactivatedSKUCount)
 
 	return &types.MsgDeactivateProviderResponse{}, nil
 }
@@ -283,11 +318,17 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 	}
 
 	// Verify provider still exists
-	if _, err := ms.k.GetProvider(ctx, existingSKU.ProviderUuid); err != nil {
+	provider, err := ms.k.GetProvider(ctx, existingSKU.ProviderUuid)
+	if err != nil {
 		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", existingSKU.ProviderUuid)
 	}
 
 	wasInactive := !existingSKU.Active
+
+	// Reactivating a SKU requires the provider to be active
+	if wasInactive && req.Active && !provider.Active {
+		return nil, types.ErrInvalidProvider.Wrap("cannot reactivate SKU: provider is inactive")
+	}
 
 	sku := types.SKU{
 		Uuid:         req.Uuid,
@@ -385,8 +426,8 @@ func (ms msgServer) DeactivateSKU(ctx context.Context, req *types.MsgDeactivateS
 
 // UpdateParams updates the module parameters.
 func (ms msgServer) UpdateParams(ctx context.Context, req *types.MsgUpdateParams) (*types.MsgUpdateParamsResponse, error) {
-	if ms.k.authority != req.Authority {
-		return nil, types.ErrUnauthorized.Wrapf("expected %s, got %s", ms.k.authority, req.Authority)
+	if ms.k.GetAuthority() != req.Authority {
+		return nil, types.ErrUnauthorized.Wrapf("expected %s, got %s", ms.k.GetAuthority(), req.Authority)
 	}
 
 	if err := req.Validate(); err != nil {

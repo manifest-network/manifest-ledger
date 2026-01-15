@@ -24,9 +24,9 @@ This guide covers common errors and issues users may encounter when using the SK
    ```bash
    manifestd query sku provider [provider-uuid]
    ```
-2. If the provider is inactive, contact the authority to reactivate it:
+2. If the provider is inactive, contact an authorized user (authority or allowed list member) to reactivate it:
    ```bash
-   manifestd tx sku update-provider [provider-uuid] [address] [payout-address] true --from authority
+   manifestd tx sku update-provider [provider-uuid] [address] [payout-address] true --from [authorized-key]
    ```
 
 ### "unauthorized"
@@ -71,9 +71,9 @@ This guide covers common errors and issues users may encounter when using the SK
    ```bash
    manifestd query sku sku [sku-uuid]
    ```
-2. If the SKU is inactive, contact the authority to reactivate it:
+2. If the SKU is inactive, contact an authorized user (authority or allowed list member) to reactivate it:
    ```bash
-   manifestd tx sku update-sku [sku-uuid] [provider-uuid] [name] [unit] [base-price] true --from authority
+   manifestd tx sku update-sku [sku-uuid] [provider-uuid] [name] [unit] [base-price] true --from [authorized-key]
    ```
 
 ### "invalid sku" (price not divisible)

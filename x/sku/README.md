@@ -99,7 +99,7 @@ Only the module authority can update the parameters (including the allowed list)
 
 - SKUs can only be created for active Providers
 - SKU base price must be exactly divisible by the billing unit's seconds (no rounding)
-- Deactivating a Provider does not affect existing SKUs (they remain active/inactive as they were)
+- Deactivating a Provider **cascades to deactivate all its SKUs** (one-way cascade)
 - Deactivating a SKU is a soft delete - the SKU remains queryable but cannot be used for new leases
 - Provider and SKU UUIDs are generated deterministically using UUIDv7 format and never reused
 
@@ -165,6 +165,7 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 |-------|-------------|
 | Params | Get module parameters |
 | Provider | Get a provider by UUID |
+| ProviderByAddress | Get a provider by management address |
 | Providers | List all providers (supports `--active-only` filter) |
 | SKU | Get a SKU by UUID |
 | SKUs | List all SKUs (supports `--active-only` filter) |

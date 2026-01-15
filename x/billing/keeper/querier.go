@@ -2,6 +2,9 @@ package keeper
 
 import (
 	"context"
+	"math"
+
+	sdkmath "cosmossdk.io/math"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -313,5 +316,191 @@ func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProvi
 		Amounts:    totalWithdrawable,
 		LeaseCount: leaseCount,
 		HasMore:    hasMore,
+	}, nil
+}
+
+// CreditAccounts queries all credit accounts with pagination.
+func (q Querier) CreditAccounts(ctx context.Context, req *types.QueryCreditAccountsRequest) (*types.QueryCreditAccountsResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	creditAccounts, pageRes, err := query.CollectionPaginate(
+		ctx,
+		q.k.CreditAccounts,
+		req.Pagination,
+		func(_ sdk.AccAddress, ca types.CreditAccount) (types.CreditAccount, error) {
+			return ca, nil
+		},
+	)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &types.QueryCreditAccountsResponse{
+		CreditAccounts: creditAccounts,
+		Pagination:     pageRes,
+	}, nil
+}
+
+// LeasesBySKU queries leases by SKU UUID.
+// Note: This query requires scanning all leases since there is no SKU index.
+// For performance with large datasets, consider filtering by state.
+func (q Querier) LeasesBySKU(ctx context.Context, req *types.QueryLeasesBySKURequest) (*types.QueryLeasesBySKUResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	if req.SkuUuid == "" {
+		return nil, status.Error(codes.InvalidArgument, "sku_uuid cannot be empty")
+	}
+
+	// Build filter function that checks if lease contains the SKU
+	filterFn := func(_ string, lease types.Lease) (bool, error) {
+		// Check state filter first (cheaper check)
+		if req.StateFilter != types.LEASE_STATE_UNSPECIFIED && lease.State != req.StateFilter {
+			return false, nil
+		}
+		// Check if any lease item has the matching SKU
+		for _, item := range lease.Items {
+			if item.SkuUuid == req.SkuUuid {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
+	leases, pageRes, err := query.CollectionFilteredPaginate(
+		ctx,
+		q.k.Leases,
+		req.Pagination,
+		filterFn,
+		func(_ string, lease types.Lease) (types.Lease, error) {
+			return lease, nil
+		},
+	)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &types.QueryLeasesBySKUResponse{
+		Leases:     leases,
+		Pagination: pageRes,
+	}, nil
+}
+
+// CreditEstimate estimates remaining lease duration for a tenant.
+func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstimateRequest) (*types.QueryCreditEstimateResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	if req.Tenant == "" {
+		return nil, status.Error(codes.InvalidArgument, "tenant cannot be empty")
+	}
+
+	tenantAddr, err := sdk.AccAddressFromBech32(req.Tenant)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid tenant address")
+	}
+
+	// Get credit account
+	ca, err := q.k.GetCreditAccount(ctx, req.Tenant)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	// Get current balance
+	creditAddr, err := sdk.AccAddressFromBech32(ca.CreditAddress)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "invalid credit address")
+	}
+	currentBalance := q.k.bankKeeper.GetAllBalances(ctx, creditAddr)
+
+	// Calculate total rate per second across all active leases
+	// Limited to MaxCreditEstimateLeases to prevent DoS on tenants with many leases
+	totalRatePerSecond := sdk.NewCoins()
+	var activeLeaseCount uint64
+	var processedCount uint64
+
+	// Use tenant index to iterate over tenant's leases
+	iter, err := q.k.Leases.Indexes.Tenant.MatchExact(ctx, tenantAddr)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		// Limit total iterations to prevent DoS from accumulated historical leases
+		processedCount++
+		if processedCount > types.MaxCreditEstimateLeases*10 {
+			// Allow 10x the active lease limit for iteration to account for historical leases
+			break
+		}
+
+		leaseUUID, err := iter.PrimaryKey()
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		lease, err := q.k.Leases.Get(ctx, leaseUUID)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		if lease.State != types.LEASE_STATE_ACTIVE {
+			continue // Skip non-active leases
+		}
+		activeLeaseCount++
+
+		// Limit active leases processed (should match max_leases_per_tenant param)
+		if activeLeaseCount > types.MaxCreditEstimateLeases {
+			break
+		}
+
+		// Sum up rates for all items in this lease
+		for _, item := range lease.Items {
+			// Rate per second = locked_price * quantity
+			// locked_price is already in per-second terms
+			itemRate := sdk.NewCoin(item.LockedPrice.Denom, item.LockedPrice.Amount.Mul(sdkmath.NewIntFromUint64(item.Quantity)))
+			totalRatePerSecond = totalRatePerSecond.Add(itemRate)
+		}
+	}
+
+	// Calculate estimated duration
+	// Find minimum duration across all denoms: min(balance[denom] / rate[denom])
+	var estimatedDurationSeconds uint64
+	if activeLeaseCount > 0 && !totalRatePerSecond.IsZero() {
+		// Start with max uint64, then find minimum
+		estimatedDurationSeconds = math.MaxUint64
+
+		for _, rateCoin := range totalRatePerSecond {
+			if rateCoin.Amount.IsZero() {
+				continue
+			}
+			balanceAmount := currentBalance.AmountOf(rateCoin.Denom)
+			if balanceAmount.IsZero() {
+				// No balance for this denom means immediate exhaustion
+				estimatedDurationSeconds = 0
+				break
+			}
+			// Duration = balance / rate (integer division, rounds down)
+			duration := balanceAmount.Quo(rateCoin.Amount).Uint64()
+			if duration < estimatedDurationSeconds {
+				estimatedDurationSeconds = duration
+			}
+		}
+
+		// If we never found a matching denom, set to 0
+		if estimatedDurationSeconds == math.MaxUint64 {
+			estimatedDurationSeconds = 0
+		}
+	}
+
+	return &types.QueryCreditEstimateResponse{
+		CurrentBalance:           currentBalance,
+		TotalRatePerSecond:       totalRatePerSecond,
+		EstimatedDurationSeconds: estimatedDurationSeconds,
+		ActiveLeaseCount:         activeLeaseCount,
 	}, nil
 }

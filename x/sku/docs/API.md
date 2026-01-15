@@ -136,12 +136,7 @@ manifestd tx sku create-sku 01912345-6789-7abc-8def-0123456789ab "Compute Instan
 
 **Price Validation:**
 
-The base price must be exactly divisible by the billing unit's seconds to ensure precise per-second rate calculation:
-
-| Unit | Seconds | Example Valid Prices | Example Invalid Price |
-|------|---------|---------------------|----------------------|
-| UNIT_PER_HOUR (1) | 3600 | 3600upwr, 7200upwr, 36000upwr | 3601upwr (not divisible) |
-| UNIT_PER_DAY (2) | 86400 | 86400upwr, 172800upwr | 100000upwr (not divisible) |
+The base price must be exactly divisible by the billing unit's seconds. See [Pricing and Exact Divisibility](../README.md#pricing-and-exact-divisibility) for requirements and examples.
 
 **Error Messages:**
 - If price is not divisible: `invalid sku: price X is not evenly divisible by unit seconds Y`
@@ -276,6 +271,37 @@ manifestd query sku provider [uuid]
   }
 }
 ```
+
+---
+
+#### provider-by-address
+
+Query a provider by management address.
+
+```bash
+manifestd query sku provider-by-address [address]
+```
+
+**Arguments:**
+| Argument | Type | Description |
+|----------|------|-------------|
+| address | string | Provider's management address (Bech32) |
+
+**Response:**
+```json
+{
+  "provider": {
+    "uuid": "01912345-6789-7abc-8def-0123456789ab",
+    "address": "manifest1provider...",
+    "payout_address": "manifest1payout...",
+    "api_url": "https://api.provider.com",
+    "meta_hash": "",
+    "active": true
+  }
+}
+```
+
+**Note:** This query scans all providers to find a match since there is no address index. This is acceptable for typical provider counts (dozens to hundreds).
 
 ---
 
@@ -588,6 +614,7 @@ The Query service provides read-only access to state.
 service Query {
   rpc Params(QueryParamsRequest) returns (QueryParamsResponse);
   rpc Provider(QueryProviderRequest) returns (QueryProviderResponse);
+  rpc ProviderByAddress(QueryProviderByAddressRequest) returns (QueryProviderByAddressResponse);
   rpc Providers(QueryProvidersRequest) returns (QueryProvidersResponse);
   rpc SKU(QuerySKURequest) returns (QuerySKUResponse);
   rpc SKUs(QuerySKUsRequest) returns (QuerySKUsResponse);
@@ -631,6 +658,30 @@ message QueryProviderResponse {
   Provider provider = 1;
 }
 ```
+
+---
+
+#### QueryProviderByAddress
+
+Get a provider by management address.
+
+**Endpoint:** `liftedinit.sku.v1.Query/ProviderByAddress`
+
+**Request:**
+```protobuf
+message QueryProviderByAddressRequest {
+  string address = 1;  // Provider's management address
+}
+```
+
+**Response:**
+```protobuf
+message QueryProviderByAddressResponse {
+  Provider provider = 1;
+}
+```
+
+**Note:** This query requires scanning all providers since there is no address index.
 
 ---
 
@@ -745,6 +796,7 @@ http://localhost:1317/liftedinit/sku/v1
 |--------|----------|-------------|
 | GET | `/params` | Get module parameters |
 | GET | `/provider/{uuid}` | Get provider by UUID |
+| GET | `/provider/address/{address}` | Get provider by management address |
 | GET | `/providers` | List all providers |
 | GET | `/sku/{uuid}` | Get SKU by UUID |
 | GET | `/skus` | List all SKUs |
@@ -760,6 +812,11 @@ curl http://localhost:1317/liftedinit/sku/v1/params
 **Get Provider:**
 ```bash
 curl http://localhost:1317/liftedinit/sku/v1/provider/01912345-6789-7abc-8def-0123456789ab
+```
+
+**Get Provider by Address:**
+```bash
+curl http://localhost:1317/liftedinit/sku/v1/provider/address/manifest1provider...
 ```
 
 **List Active Providers:**

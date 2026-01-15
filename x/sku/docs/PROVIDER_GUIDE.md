@@ -205,11 +205,12 @@ manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab \
 ```
 
 > **Important:** Deactivating a provider:
+> - **Cascades to deactivate ALL SKUs** under this provider automatically
 > - Prevents creation of new SKUs for this provider
-> - Does NOT affect existing SKUs (they remain as-is)
-> - Does NOT affect existing leases (billing continues)
+> - Does NOT affect existing leases (billing continues at locked prices)
 > - The provider can still receive withdrawals from active leases
 > - Can be reactivated via `update-provider` with `active=true`
+> - SKUs must be individually reactivated via `update-sku` after provider reactivation
 
 ## Next Steps
 
@@ -262,15 +263,21 @@ Once your provider is created, you can:
 │                  new SKUs           new SKUs                    │
 │                       │                  │                      │
 │                       v                  v                      │
-│                  Existing SKUs     Existing SKUs                │
-│                  work normally     work normally                │
+│                  SKUs active       ALL SKUs cascade             │
+│                                    to INACTIVE                  │
 │                       │                  │                      │
 │                       v                  v                      │
-│                  Can receive       Can receive                  │
+│                  Existing leases   Existing leases              │
+│                  work normally     continue (locked price)      │
+│                       │                  │                      │
+│                       v                  v                      │
+│                  Can receive       Can still receive            │
 │                  withdrawals       withdrawals                  │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+> **Note:** When a provider is reactivated, its SKUs remain inactive and must be individually reactivated via `update-sku` with `active=true`.
 
 ## Related Documentation
 

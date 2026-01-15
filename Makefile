@@ -136,12 +136,24 @@ ictest-sku:
 	cd interchaintest && go test -race -v -run TestSKU . -count=1
 
 ictest-billing:
-	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling$$" . -count=1
+	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(Lease|Credit|Advanced|State)$$" . -count=1
+
+ictest-billing-lease:
+	cd interchaintest && go test -race -v -timeout 45m -run TestBillingLease . -count=1
+
+ictest-billing-credit:
+	cd interchaintest && go test -race -v -timeout 45m -run TestBillingCredit . -count=1
+
+ictest-billing-advanced:
+	cd interchaintest && go test -race -v -timeout 45m -run TestBillingAdvanced . -count=1
+
+ictest-billing-state:
+	cd interchaintest && go test -race -v -timeout 45m -run TestBillingState . -count=1
 
 ictest-billing-upgrade:
 	cd interchaintest && go test -race -v -timeout 45m -run TestBillingModuleUpgrade . -count=1
 
-.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku ictest-billing ictest-billing-upgrade
+.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku ictest-billing ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-upgrade
 
 ###############################################################################
 ###                                Build Image                              ###

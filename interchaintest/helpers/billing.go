@@ -376,6 +376,78 @@ func BillingQueryProviderWithdrawable(ctx context.Context, chain *cosmos.CosmosC
 	return &res, nil
 }
 
+// CreditAccountsResponseJSON wraps credit accounts query that includes pagination.
+type CreditAccountsResponseJSON struct {
+	CreditAccounts []billingtypes.CreditAccount `json:"credit_accounts"`
+	Pagination     *PageResponseJSON            `json:"pagination,omitempty"`
+}
+
+// BillingQueryCreditAccounts queries all credit accounts with pagination.
+func BillingQueryCreditAccounts(ctx context.Context, chain *cosmos.CosmosChain) (*CreditAccountsResponseJSON, error) {
+	var res CreditAccountsResponseJSON
+	cmd := []string{"query", "billing", "credit-accounts"}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// BillingQueryCreditAccountsPaginated queries all credit accounts with pagination.
+func BillingQueryCreditAccountsPaginated(ctx context.Context, chain *cosmos.CosmosChain, limit uint64, key string) (*CreditAccountsResponseJSON, string, error) {
+	var res CreditAccountsResponseJSON
+	cmd := []string{"query", "billing", "credit-accounts", "--limit", strconv.FormatUint(limit, 10)}
+	if key != "" {
+		cmd = append(cmd, "--page-key", key)
+	}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, "", err
+	}
+	nextKey := ""
+	if res.Pagination != nil {
+		nextKey = res.Pagination.NextKey
+	}
+	return &res, nextKey, nil
+}
+
+// BillingQueryLeasesBySKU queries leases by SKU UUID with optional state filter.
+func BillingQueryLeasesBySKU(ctx context.Context, chain *cosmos.CosmosChain, skuUUID, state string) (*LeasesResponseJSON, error) {
+	var res LeasesResponseJSON
+	cmd := []string{"query", "billing", "leases-by-sku", skuUUID}
+	if state != "" {
+		cmd = append(cmd, "--state", state)
+	}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// BillingQueryLeasesBySKUPaginated queries leases by SKU UUID with pagination.
+func BillingQueryLeasesBySKUPaginated(ctx context.Context, chain *cosmos.CosmosChain, skuUUID, state string, limit uint64, key string) (*LeasesResponseJSON, string, error) {
+	var res LeasesResponseJSON
+	cmd := []string{"query", "billing", "leases-by-sku", skuUUID, "--limit", strconv.FormatUint(limit, 10)}
+	if state != "" {
+		cmd = append(cmd, "--state", state)
+	}
+	if key != "" {
+		cmd = append(cmd, "--page-key", key)
+	}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, "", err
+	}
+	return &res, res.GetNextKeyString(), nil
+}
+
+// BillingQueryCreditEstimate queries the credit estimate for a tenant.
+func BillingQueryCreditEstimate(ctx context.Context, chain *cosmos.CosmosChain, tenant string) (*billingtypes.QueryCreditEstimateResponse, error) {
+	var res billingtypes.QueryCreditEstimateResponse
+	cmd := []string{"query", "billing", "credit-estimate", tenant}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
 // Event extraction helpers
 
 // GetLeaseIDFromTxHash queries a transaction and extracts the lease UUID from it.

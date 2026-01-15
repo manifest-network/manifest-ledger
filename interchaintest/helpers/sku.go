@@ -155,6 +155,16 @@ func SKUQueryProvider(ctx context.Context, chain *cosmos.CosmosChain, uuid strin
 	return &res, nil
 }
 
+// SKUQueryProviderByAddress queries a provider by their address.
+func SKUQueryProviderByAddress(ctx context.Context, chain *cosmos.CosmosChain, address string) (*skutypes.QueryProviderByAddressResponse, error) {
+	var res skutypes.QueryProviderByAddressResponse
+	cmd := []string{"query", "sku", "provider-by-address", address}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
 // SKUQueryProviders queries all providers.
 func SKUQueryProviders(ctx context.Context, chain *cosmos.CosmosChain) (*ProvidersResponseJSON, error) {
 	var res ProvidersResponseJSON
