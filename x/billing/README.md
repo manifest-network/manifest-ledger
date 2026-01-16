@@ -97,6 +97,10 @@ If a tenant's credit balance is insufficient to cover accrued charges, the billi
 | `0x05` | CreditAccount | Credit accounts (tenant → CreditAccount) |
 | `0x06` | CreditAddressIndex | Reverse lookup: credit address → tenant |
 | `0x07` | LeaseByState | Index: state → lease UUIDs (for pending expiration) |
+| `0x08` | LeaseByProviderState | Compound index: provider+state → lease UUIDs |
+| `0x09` | LeaseByTenantState | Compound index: tenant+state → lease UUIDs |
+| `0x0A` | LeaseBySKU | Many-to-many index: SKU UUID → lease UUIDs |
+| `0x0B` | LeaseByStateCreatedAt | Compound index: state+created_at → lease UUIDs |
 
 ### Params
 
@@ -127,9 +131,10 @@ These values are compile-time constants and cannot be changed via governance:
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `MaxItemsPerLeaseHardLimit` | 100 | Absolute maximum items per lease |
+| `MaxQuantityPerItem` | 1,000,000,000 | Maximum quantity per lease item (1 billion). Defined in `types/errors.go`. |
 | `MaxPendingLeaseExpirationsPerBlock` | 100 | Maximum pending lease expirations processed per block (DoS protection) |
 | `DefaultProviderWithdrawLimit` | 50 | Default number of leases processed per provider-wide withdraw call |
-| `MaxBatchLeaseSize` | 100 | Maximum number of leases per batch operation (withdraw, close, acknowledge, etc.) |
+| `MaxBatchLeaseSize` | 100 | Maximum number of leases per batch operation (withdraw, close, acknowledge, etc.). Defined in `types/msgs.go`. |
 | `MaxRejectionReasonLength` | 256 | Maximum characters for lease rejection reason |
 | `MaxDurationSeconds` | ~3,153,600,000 (~100 years) | Maximum lease duration for accrual calculations (overflow protection). Defined in `keeper/accrual.go`. |
 | `CreditAccountAddressPrefix` | `billing/credit/` | Prefix used for deterministic credit address derivation |
@@ -305,17 +310,15 @@ manifestd query billing leases-by-tenant [tenant] --state active
 
 ## Authorization
 
-| Action | Who Can Perform |
-|--------|-----------------|
-| Fund Credit | Anyone |
-| Create Lease | Tenant (for themselves) |
-| Create Lease for Tenant | Authority or Allow-Listed addresses |
-| Acknowledge Lease | Provider or Authority |
-| Reject Lease | Provider or Authority |
-| Cancel Lease | Tenant (own pending leases only) |
-| Close Lease | Tenant, Provider, or Authority |
-| Withdraw | Provider or Authority |
-| Update Params | Authority only |
+For detailed authorization matrix, see [API Reference - Authorization](docs/API.md#authorization).
+
+**Summary:**
+- **Fund Credit**: Anyone can fund any tenant's credit account
+- **Create Lease**: Tenants create their own leases; Authority/allow-list can create for others
+- **Acknowledge/Reject Lease**: Provider or Authority
+- **Cancel Lease**: Tenant (own pending leases only)
+- **Close Lease**: Tenant, Provider, or Authority
+- **Withdraw**: Provider or Authority
 
 ## Integration with SKU Module
 

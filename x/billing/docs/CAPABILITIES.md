@@ -118,17 +118,7 @@ When credit is exhausted:
 
 ## Authorization Model
 
-| Action | Authority | Provider | Tenant | Allowed List |
-|--------|-----------|----------|--------|--------------|
-| Fund Credit | - | - | Anyone | - |
-| Create Lease | - | - | Self | - |
-| Create Lease for Tenant | ✓ | - | - | ✓ |
-| Acknowledge Lease | ✓ | ✓ | - | - |
-| Reject Lease | ✓ | ✓ | - | - |
-| Cancel Pending Lease | - | - | Self | - |
-| Close Lease | ✓ | ✓ | Self | - |
-| Withdraw | ✓ | ✓ | - | - |
-| Update Params | ✓ | - | - | - |
+For the complete authorization matrix, see [API Reference - Authorization](API.md#authorization).
 
 ---
 

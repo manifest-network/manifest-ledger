@@ -19,4 +19,8 @@ const (
 
 	// MaxSKUNameLength is the maximum length of a SKU name.
 	MaxSKUNameLength = 256
+
+	// MaxMetaHashLength is the maximum length of a metadata hash in bytes.
+	// Set to 64 to accommodate SHA-512 and similar hash algorithms.
+	MaxMetaHashLength = 64
 )

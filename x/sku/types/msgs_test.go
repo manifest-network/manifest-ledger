@@ -186,6 +186,31 @@ func TestMsgCreateSKUValidate(t *testing.T) {
 			expectErr: true,
 			errMsg:    "base price must be valid and non-zero",
 		},
+		{
+			name: "invalid: meta_hash exceeds max length",
+			msg: &MsgCreateSKU{
+				Authority:    authority.String(),
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Name:         "Test SKU",
+				Unit:         Unit_UNIT_PER_HOUR,
+				BasePrice:    sdk.NewCoin(testDenom, math.NewInt(3600)),
+				MetaHash:     make([]byte, MaxMetaHashLength+1),
+			},
+			expectErr: true,
+			errMsg:    "meta_hash exceeds maximum length",
+		},
+		{
+			name: "valid: meta_hash at max length",
+			msg: &MsgCreateSKU{
+				Authority:    authority.String(),
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Name:         "Test SKU",
+				Unit:         Unit_UNIT_PER_HOUR,
+				BasePrice:    sdk.NewCoin(testDenom, math.NewInt(3600)),
+				MetaHash:     make([]byte, MaxMetaHashLength),
+			},
+			expectErr: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -349,6 +374,35 @@ func TestMsgUpdateSKUValidate(t *testing.T) {
 			expectErr: true,
 			errMsg:    "exceeds maximum length",
 		},
+		{
+			name: "invalid: meta_hash exceeds max length",
+			msg: &MsgUpdateSKU{
+				Authority:    authority.String(),
+				Uuid:         "01912345-6789-7abc-8def-0123456789ac",
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Name:         "Updated SKU",
+				Unit:         Unit_UNIT_PER_HOUR,
+				BasePrice:    sdk.NewCoin(testDenom, math.NewInt(3600)),
+				Active:       true,
+				MetaHash:     make([]byte, MaxMetaHashLength+1),
+			},
+			expectErr: true,
+			errMsg:    "meta_hash exceeds maximum length",
+		},
+		{
+			name: "valid: meta_hash at max length",
+			msg: &MsgUpdateSKU{
+				Authority:    authority.String(),
+				Uuid:         "01912345-6789-7abc-8def-0123456789ac",
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Name:         "Updated SKU",
+				Unit:         Unit_UNIT_PER_HOUR,
+				BasePrice:    sdk.NewCoin(testDenom, math.NewInt(3600)),
+				Active:       true,
+				MetaHash:     make([]byte, MaxMetaHashLength),
+			},
+			expectErr: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -414,6 +468,27 @@ func TestMsgCreateProviderValidate(t *testing.T) {
 			expectErr: true,
 			errMsg:    "invalid payout address",
 		},
+		{
+			name: "invalid: meta_hash exceeds max length",
+			msg: &MsgCreateProvider{
+				Authority:     authority.String(),
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				MetaHash:      make([]byte, MaxMetaHashLength+1),
+			},
+			expectErr: true,
+			errMsg:    "meta_hash exceeds maximum length",
+		},
+		{
+			name: "valid: meta_hash at max length",
+			msg: &MsgCreateProvider{
+				Authority:     authority.String(),
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				MetaHash:      make([]byte, MaxMetaHashLength),
+			},
+			expectErr: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -462,6 +537,31 @@ func TestMsgUpdateProviderValidate(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "uuid cannot be empty",
+		},
+		{
+			name: "invalid: meta_hash exceeds max length",
+			msg: &MsgUpdateProvider{
+				Authority:     authority.String(),
+				Uuid:          "01912345-6789-7abc-8def-0123456789ac",
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				Active:        true,
+				MetaHash:      make([]byte, MaxMetaHashLength+1),
+			},
+			expectErr: true,
+			errMsg:    "meta_hash exceeds maximum length",
+		},
+		{
+			name: "valid: meta_hash at max length",
+			msg: &MsgUpdateProvider{
+				Authority:     authority.String(),
+				Uuid:          "01912345-6789-7abc-8def-0123456789ac",
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				Active:        true,
+				MetaHash:      make([]byte, MaxMetaHashLength),
+			},
+			expectErr: false,
 		},
 	}
 

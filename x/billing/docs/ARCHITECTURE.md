@@ -154,17 +154,21 @@ graph LR
         Leases[Leases<br/>Map: string UUID → Lease]
         Params[Params<br/>Item: Params]
     end
-    
+
     subgraph "Indexes"
         TenantIdx[LeasesByTenant<br/>Map: tenant, lease_uuid → empty]
         ProviderIdx[LeasesByProvider<br/>Map: provider_uuid, lease_uuid → empty]
         StateIdx[LeasesByState<br/>Map: state, lease_uuid → empty]
+        ProviderStateIdx[LeasesByProviderState<br/>Map: provider_uuid+state, lease_uuid → empty]
+        TenantStateIdx[LeasesByTenantState<br/>Map: tenant+state, lease_uuid → empty]
+        SKUIdx[LeasesBySKU<br/>Map: sku_uuid, lease_uuid → empty]
+        StateCreatedAtIdx[LeasesByStateCreatedAt<br/>Map: state+created_at, lease_uuid → empty]
     end
-    
+
     subgraph "Reverse Lookup"
         CreditReverse[CreditAccountReverse<br/>Map: credit_addr → tenant_addr]
     end
-    
+
     subgraph "Sequences"
         UUIDSeq[UUIDSequence<br/>uint64 per block]
     end
@@ -178,6 +182,10 @@ graph LR
 | `LeasesByTenant` | `(AccAddress, string)` | `bool` | Tenant → leases index |
 | `LeasesByProvider` | `(string, string)` | `bool` | Provider UUID → leases index |
 | `LeasesByState` | `(int32, string)` | `bool` | State → leases index (for EndBlocker pending expiration) |
+| `LeasesByProviderState` | `(string, int32, string)` | `bool` | Compound provider+state → leases index |
+| `LeasesByTenantState` | `(AccAddress, int32, string)` | `bool` | Compound tenant+state → leases index |
+| `LeasesBySKU` | `(string, string)` | `bool` | Many-to-many SKU → leases index |
+| `LeasesByStateCreatedAt` | `(int32, time.Time, string)` | `bool` | Compound state+created_at → leases index (time-ordered) |
 | `Params` | - | `Params` | Module parameters |
 
 ## Core Flows
@@ -748,8 +756,22 @@ This returns `sdk.Coins` to support multi-denom leases where different SKUs may 
 | GetCreditBalance | O(1) | Bank query |
 | isCreditAccount | O(1) | Reverse lookup map |
 | GetLeasesByTenant | O(n) | n = tenant's leases |
+| GetLeasesByTenant (with state filter) | O(k) | k = matching leases (compound index) |
 | GetLeasesByProvider | O(n) | n = provider's leases |
-| EndBlocker | O(e) | e = expired leases (max 100/block) |
+| GetLeasesByProvider (with state filter) | O(k) | k = matching leases (compound index) |
+| GetPendingLeasesByProvider | O(k) | k = pending leases (compound index) |
+| GetLeasesBySKU | O(k) | k = leases containing the SKU (SKU index) |
+| CreditEstimate | O(k) | k = active leases for tenant (compound index) |
+| EndBlocker | O(p) | p = pending leases (max 100/block) |
+
+### Future Improvements
+
+The following optimizations have been identified but deferred:
+
+| Index/Feature | Current | Potential | Notes |
+|---------------|---------|-----------|-------|
+| `StateCreatedAt` for EndBlocker | O(p) all pending | O(e) expired only | The `LeaseByStateCreatedAt` index (prefix 0x0B) exists and maintains time-ordering. Once Cosmos SDK collections support efficient prefix range queries on Multi-indexes, EndBlocker can iterate only expired leases instead of all pending. Currently rate-limited to 100/block which mitigates the O(p) concern. |
+| `LeasesBySKU` + State filter | O(k) + post-filter | O(m) direct | Cannot create compound (SKU, State) index due to many-to-many design (leases contain multiple SKUs). Current post-filtering is acceptable since SKU-specific queries are infrequent. |
 
 ## Genesis Validation
 

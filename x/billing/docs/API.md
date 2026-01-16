@@ -618,6 +618,146 @@ manifestd query billing provider-withdrawable [provider-uuid] --limit 500
 
 ---
 
+#### credit-accounts
+
+Query all credit accounts with pagination.
+
+```bash
+manifestd query billing credit-accounts [flags]
+```
+
+**Flags:**
+| Flag | Type | Description |
+|------|------|-------------|
+| --limit | uint64 | Pagination limit |
+| --page-key | string | Pagination key |
+
+**Example:**
+```bash
+manifestd query billing credit-accounts --limit 10
+```
+
+**Response:**
+```json
+{
+  "credit_accounts": [
+    {
+      "tenant": "manifest1abc...",
+      "credit_address": "manifest1xyz...",
+      "active_lease_count": "2",
+      "pending_lease_count": "1"
+    }
+  ],
+  "pagination": {
+    "next_key": "...",
+    "total": "50"
+  }
+}
+```
+
+**Note:** This returns credit account metadata only. To get balances for a specific account, use the `credit-account` query.
+
+---
+
+#### leases-by-sku
+
+Query leases that contain a specific SKU.
+
+```bash
+manifestd query billing leases-by-sku [sku-uuid] [flags]
+```
+
+**Arguments:**
+| Argument | Type | Description |
+|----------|------|-------------|
+| sku-uuid | string | UUID of the SKU |
+
+**Flags:**
+| Flag | Type | Description |
+|------|------|-------------|
+| --state | string | Filter by state (pending, active, closed, rejected, expired) |
+| --limit | uint64 | Pagination limit |
+| --page-key | string | Pagination key |
+
+**Example:**
+```bash
+manifestd query billing leases-by-sku 01912345-6789-7abc-8def-0123456789ab --state active
+```
+
+**Response:**
+```json
+{
+  "leases": [
+    {
+      "uuid": "01912345-6789-7abc-8def-fedcba987654",
+      "tenant": "manifest1abc...",
+      "provider_uuid": "01912345-6789-7abc-8def-111111111111",
+      "items": [...],
+      "state": "LEASE_STATE_ACTIVE",
+      ...
+    }
+  ],
+  "pagination": {
+    "next_key": "...",
+    "total": "10"
+  }
+}
+```
+
+**Note:** This query uses the SKU index for efficient lookups. Use the `--state` filter to narrow results and pagination flags to page through large result sets.
+
+---
+
+#### credit-estimate
+
+Estimate how long a tenant's credit balance will last based on current active leases.
+
+```bash
+manifestd query billing credit-estimate [tenant]
+```
+
+**Arguments:**
+| Argument | Type | Description |
+|----------|------|-------------|
+| tenant | string | Bech32 address of the tenant |
+
+**Example:**
+```bash
+manifestd query billing credit-estimate manifest1abc...
+```
+
+**Response:**
+```json
+{
+  "current_balance": [
+    {
+      "denom": "upwr",
+      "amount": "1000000000"
+    }
+  ],
+  "total_rate_per_second": [
+    {
+      "denom": "upwr",
+      "amount": "1000"
+    }
+  ],
+  "estimated_duration_seconds": "1000000",
+  "active_lease_count": "3"
+}
+```
+
+**Fields:**
+| Field | Description |
+|-------|-------------|
+| `current_balance` | Tenant's current credit balance (all denominations) |
+| `total_rate_per_second` | Combined burn rate of all active leases (per denom) |
+| `estimated_duration_seconds` | Seconds until credit exhaustion (minimum across all denoms) |
+| `active_lease_count` | Number of currently active leases |
+
+**Note:** The estimate is calculated in real-time based on current balances and active lease rates. If no active leases exist, `estimated_duration_seconds` will be `0` and `total_rate_per_second` will be empty.
+
+---
+
 ## gRPC API
 
 ### Msg Service

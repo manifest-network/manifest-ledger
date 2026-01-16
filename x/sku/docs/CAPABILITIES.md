@@ -28,25 +28,12 @@ This document provides a comprehensive overview of the SKU module's capabilities
 
 ## Authorization Model
 
-| Actor | Permissions |
-|-------|-------------|
-| **Authority (Governance)** | Full control: create, update, deactivate, reactivate, modify params |
-| **Allowed List Members** | Create, update, deactivate, reactivate providers/SKUs |
-| **Params Update** | Authority-only |
+For the complete authorization matrix, see [API Reference - Authorization](API.md#authorization).
 
-### Permission Matrix
-
-| Action | Authority | Allowed List |
-|--------|-----------|--------------|
-| Create Provider | ✓ | ✓ |
-| Update Provider | ✓ | ✓ |
-| Deactivate Provider | ✓ | ✓ |
-| Reactivate Provider | ✓ | ✓ |
-| Create SKU | ✓ | ✓ |
-| Update SKU | ✓ | ✓ |
-| Deactivate SKU | ✓ | ✓ |
-| Reactivate SKU | ✓ | ✓ |
-| Update Params | ✓ | ✗ |
+**Summary:**
+- **Authority (Governance)**: Full control over all operations
+- **Allowed List Members**: Can manage providers and SKUs
+- **Params Update**: Authority-only
 
 ---
 

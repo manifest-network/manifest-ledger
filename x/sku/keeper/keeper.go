@@ -17,15 +17,65 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
+// ProviderIndexes defines the indexes for the Provider collection.
+type ProviderIndexes struct {
+	// Address is a multi-index that indexes Providers by their management address.
+	// This enables efficient lookup of providers by address (a single address can manage multiple providers).
+	Address *indexes.Multi[sdk.AccAddress, string, types.Provider]
+
+	// Active is a multi-index that indexes Providers by their active status.
+	// This enables efficient queries for active providers only (O(k) instead of O(n)).
+	Active *indexes.Multi[bool, string, types.Provider]
+}
+
+// IndexesList returns all indexes defined for the Provider collection.
+func (i ProviderIndexes) IndexesList() []collections.Index[string, types.Provider] {
+	return []collections.Index[string, types.Provider]{i.Address, i.Active}
+}
+
+// NewProviderIndexes creates a new ProviderIndexes instance.
+func NewProviderIndexes(sb *collections.SchemaBuilder) ProviderIndexes {
+	return ProviderIndexes{
+		Address: indexes.NewMulti(
+			sb,
+			types.ProviderByAddressIndexKey,
+			"providers_by_address",
+			sdk.AccAddressKey,
+			collections.StringKey,
+			func(_ string, provider types.Provider) (sdk.AccAddress, error) {
+				return sdk.AccAddressFromBech32(provider.Address)
+			},
+		),
+		Active: indexes.NewMulti(
+			sb,
+			types.ProviderByActiveIndexKey,
+			"providers_by_active",
+			collections.BoolKey,
+			collections.StringKey,
+			func(_ string, provider types.Provider) (bool, error) {
+				return provider.Active, nil
+			},
+		),
+	}
+}
+
 // SKUIndexes defines the indexes for the SKU collection.
 type SKUIndexes struct {
 	// Provider is a multi-index that indexes SKUs by provider_uuid.
 	Provider *indexes.Multi[string, string, types.SKU]
+
+	// Active is a multi-index that indexes SKUs by their active status.
+	// This enables efficient queries for active SKUs only (O(k) instead of O(n)).
+	Active *indexes.Multi[bool, string, types.SKU]
+
+	// ProviderActive is a compound multi-index that indexes SKUs by (provider_uuid, active).
+	// This enables efficient queries for active SKUs filtered by provider.
+	ProviderActive *indexes.Multi[collections.Pair[string, bool], string, types.SKU]
 }
 
 // IndexesList returns all indexes defined for the SKU collection.
 func (i SKUIndexes) IndexesList() []collections.Index[string, types.SKU] {
-	return []collections.Index[string, types.SKU]{i.Provider}
+	return []collections.Index[string, types.SKU]{i.Provider, i.Active, i.ProviderActive}
 }
 
 // NewSKUIndexes creates a new SKUIndexes instance.
@@ -39,6 +89,26 @@ func NewSKUIndexes(sb *collections.SchemaBuilder) SKUIndexes {
 			collections.StringKey,
 			func(_ string, sku types.SKU) (string, error) {
 				return sku.ProviderUuid, nil
+			},
+		),
+		Active: indexes.NewMulti(
+			sb,
+			types.SKUByActiveIndexKey,
+			"skus_by_active",
+			collections.BoolKey,
+			collections.StringKey,
+			func(_ string, sku types.SKU) (bool, error) {
+				return sku.Active, nil
+			},
+		),
+		ProviderActive: indexes.NewMulti(
+			sb,
+			types.SKUByProviderActiveIndexKey,
+			"skus_by_provider_active",
+			collections.PairKeyCodec(collections.StringKey, collections.BoolKey),
+			collections.StringKey,
+			func(_ string, sku types.SKU) (collections.Pair[string, bool], error) {
+				return collections.Join(sku.ProviderUuid, sku.Active), nil
 			},
 		),
 	}
@@ -56,7 +126,7 @@ type Keeper struct {
 	// state management
 	Schema    collections.Schema
 	Params    collections.Item[types.Params]
-	Providers *collections.IndexedMap[string, types.Provider, noIndexes[string, types.Provider]]
+	Providers *collections.IndexedMap[string, types.Provider, ProviderIndexes]
 	SKUs      *collections.IndexedMap[string, types.SKU, SKUIndexes]
 
 	// Sequences for deterministic UUID generation
@@ -64,13 +134,6 @@ type Keeper struct {
 	SKUSequence      collections.Sequence
 
 	authority string
-}
-
-// noIndexes is a placeholder for collections with no indexes.
-type noIndexes[K, V any] struct{}
-
-func (n noIndexes[K, V]) IndexesList() []collections.Index[K, V] {
-	return nil
 }
 
 // NewKeeper creates a new sku Keeper instance.
@@ -101,7 +164,7 @@ func NewKeeper(
 			"providers",
 			collections.StringKey,
 			codec.CollValue[types.Provider](cdc),
-			noIndexes[string, types.Provider]{},
+			NewProviderIndexes(sb),
 		),
 		SKUs: collections.NewIndexedMap(
 			sb,

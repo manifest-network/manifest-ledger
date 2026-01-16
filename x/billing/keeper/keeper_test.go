@@ -31,6 +31,7 @@ import (
 	"github.com/manifest-network/manifest-ledger/app"
 	"github.com/manifest-network/manifest-ledger/app/apptesting"
 	appparams "github.com/manifest-network/manifest-ledger/app/params"
+	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
@@ -736,6 +737,113 @@ func TestCreditAccountOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ca.Tenant, gotCA.Tenant)
 	require.Equal(t, ca.CreditAddress, gotCA.CreditAddress)
+}
+
+// TestActiveLeaseCountAccuracy verifies that ActiveLeaseCount tracking is accurate
+// through the lease lifecycle: creation, acknowledgment, close, and batch operations.
+func TestActiveLeaseCountAccuracy(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	t.Run("initial count is zero", func(t *testing.T) {
+		creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), creditAccount.ActiveLeaseCount)
+		require.Equal(t, uint64(0), creditAccount.PendingLeaseCount)
+	})
+
+	// Create multiple leases
+	var leaseUUIDs []string
+	for i := 0; i < 3; i++ {
+		resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+		leaseUUIDs = append(leaseUUIDs, resp.LeaseUuid)
+	}
+
+	t.Run("pending count increments on create", func(t *testing.T) {
+		creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), creditAccount.ActiveLeaseCount, "active count should still be 0")
+		require.Equal(t, uint64(3), creditAccount.PendingLeaseCount, "pending count should be 3")
+	})
+
+	// Acknowledge all leases
+	for _, uuid := range leaseUUIDs {
+		_, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{uuid},
+		})
+		require.NoError(t, err)
+	}
+
+	t.Run("active count increments on acknowledge, pending decrements", func(t *testing.T) {
+		creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(3), creditAccount.ActiveLeaseCount, "active count should be 3")
+		require.Equal(t, uint64(0), creditAccount.PendingLeaseCount, "pending count should be 0")
+	})
+
+	// Close one lease
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     tenant.String(),
+		LeaseUuids: []string{leaseUUIDs[0]},
+	})
+	require.NoError(t, err)
+
+	t.Run("active count decrements on close", func(t *testing.T) {
+		creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), creditAccount.ActiveLeaseCount, "active count should be 2")
+	})
+
+	// Batch close remaining leases
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     tenant.String(),
+		LeaseUuids: []string{leaseUUIDs[1], leaseUUIDs[2]},
+	})
+	require.NoError(t, err)
+
+	t.Run("batch close decrements correctly", func(t *testing.T) {
+		creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), creditAccount.ActiveLeaseCount, "active count should be 0 after batch close")
+	})
+
+	t.Run("count never goes negative", func(t *testing.T) {
+		// Manually create a credit account with count=0 and verify decrement doesn't go negative
+		creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), creditAccount.ActiveLeaseCount)
+
+		// The DecrementActiveLeaseCount function has a guard against going negative
+		f.App.BillingKeeper.DecrementActiveLeaseCount(&creditAccount, "non-existent-lease")
+		require.Equal(t, uint64(0), creditAccount.ActiveLeaseCount, "count should not go negative")
+	})
 }
 
 func TestGetAllCreditAccounts(t *testing.T) {

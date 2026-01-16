@@ -21,6 +21,21 @@ var (
 
 	// ProviderSequenceKey saves the next Provider id.
 	ProviderSequenceKey = collections.NewPrefix(5)
+
+	// ProviderByAddressIndexKey saves the address index for Providers.
+	ProviderByAddressIndexKey = collections.NewPrefix(6)
+
+	// ProviderByActiveIndexKey saves the active index for Providers.
+	// This enables efficient queries for active providers only.
+	ProviderByActiveIndexKey = collections.NewPrefix(7)
+
+	// SKUByActiveIndexKey saves the active index for SKUs.
+	// This enables efficient queries for active SKUs only.
+	SKUByActiveIndexKey = collections.NewPrefix(8)
+
+	// SKUByProviderActiveIndexKey saves the compound (provider, active) index for SKUs.
+	// This enables efficient queries for active SKUs filtered by provider.
+	SKUByProviderActiveIndexKey = collections.NewPrefix(9)
 )
 
 const (

@@ -261,15 +261,16 @@ func GetCmdQuerySKUsByProvider() *cobra.Command {
 	return cmd
 }
 
-// GetCmdQueryProviderByAddress returns the command to query a Provider by address.
+// GetCmdQueryProviderByAddress returns the command to query Providers by address.
 func GetCmdQueryProviderByAddress() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "provider-by-address [address]",
-		Short: "Query a provider by management address",
-		Long: `Query a provider by its management address.
+		Short: "Query providers by management address",
+		Long: `Query all providers with the given management address.
 
-This is useful when you know your address but not your provider UUID.`,
-		Example: "provider-by-address manifest1abc...",
+A single address can manage multiple providers. This command returns all
+providers associated with the given address.`,
+		Example: "provider-by-address manifest1abc... --active-only",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -277,9 +278,26 @@ This is useful when you know your address but not your provider UUID.`,
 				return err
 			}
 
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
+			if err != nil {
+				return err
+			}
+
+			activeOnly, err := cmd.Flags().GetBool("active-only")
+			if err != nil {
+				return err
+			}
+
 			queryClient := types.NewQueryClient(clientCtx)
 			res, err := queryClient.ProviderByAddress(cmd.Context(), &types.QueryProviderByAddressRequest{
-				Address: args[0],
+				Address:    args[0],
+				Pagination: pageReq,
+				ActiveOnly: activeOnly,
 			})
 			if err != nil {
 				return err
@@ -289,6 +307,8 @@ This is useful when you know your address but not your provider UUID.`,
 		},
 	}
 
+	cmd.Flags().Bool("active-only", false, "Filter to return only active providers")
 	flags.AddQueryFlagsToCmd(cmd)
+	flags.AddPaginationFlagsToCmd(cmd, "providers-by-address")
 	return cmd
 }

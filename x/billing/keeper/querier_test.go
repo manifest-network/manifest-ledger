@@ -871,6 +871,111 @@ func TestQueryLeasesBySKU(t *testing.T) {
 	})
 }
 
+// TestQueryLeasesBySKUPaginationEdgeCases tests edge cases in LeasesBySKU pagination.
+func TestQueryLeasesBySKUPaginationEdgeCases(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+	providerUUID := testProviderUUID
+	skuUUID := "01912345-6789-7abc-8def-skupage00001"
+
+	// Create 5 leases with the same SKU
+	for i := 0; i < 5; i++ {
+		lease := types.Lease{
+			Uuid:         fmt.Sprintf("01912345-6789-7abc-8def-leasepage0%02d", i+1),
+			Tenant:       tenant.String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{
+				{SkuUuid: skuUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))},
+			},
+			State:     types.LEASE_STATE_ACTIVE,
+			CreatedAt: f.Ctx.BlockTime(),
+		}
+		require.NoError(t, k.SetLease(f.Ctx, lease))
+	}
+
+	t.Run("offset exceeds total results returns empty", func(t *testing.T) {
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: skuUUID,
+			Pagination: &query.PageRequest{
+				Offset: 100, // Far exceeds 5 leases
+				Limit:  10,
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Empty(t, resp.Leases, "should return empty when offset exceeds total")
+	})
+
+	t.Run("limit of 0 uses default", func(t *testing.T) {
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: skuUUID,
+			Pagination: &query.PageRequest{
+				Limit: 0, // Should use default
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.Leases, 5, "should return all 5 leases with default limit")
+	})
+
+	t.Run("pagination with limit works", func(t *testing.T) {
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: skuUUID,
+			Pagination: &query.PageRequest{
+				Limit: 2,
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.Leases, 2, "should return only 2 leases")
+		require.NotNil(t, resp.Pagination, "should have pagination response")
+	})
+
+	t.Run("pagination with offset and limit works", func(t *testing.T) {
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: skuUUID,
+			Pagination: &query.PageRequest{
+				Offset: 2,
+				Limit:  2,
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.Leases, 2, "should return 2 leases starting from offset 2")
+	})
+
+	t.Run("offset at boundary returns remaining", func(t *testing.T) {
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: skuUUID,
+			Pagination: &query.PageRequest{
+				Offset: 4, // 5 total, offset 4 = last one
+				Limit:  10,
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.Leases, 1, "should return 1 lease at boundary")
+	})
+
+	t.Run("empty SKU index with pagination", func(t *testing.T) {
+		nonExistentSKU := "01912345-6789-7abc-8def-skunotexist1"
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: nonExistentSKU,
+			Pagination: &query.PageRequest{
+				Offset: 0,
+				Limit:  10,
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Empty(t, resp.Leases, "should return empty for non-existent SKU")
+	})
+}
+
 func TestQueryCreditEstimate(t *testing.T) {
 	f := initFixture(t)
 

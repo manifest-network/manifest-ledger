@@ -123,15 +123,30 @@ This soft-delete approach maintains billing integrity and allows graceful phase-
 
 ## State
 
-The module stores the following state:
+### Storage Key Prefixes
 
-| Key | Description |
-|-----|-------------|
-| `Params` | Module parameters including the allowed list |
-| `Providers` | A map of Provider UUID to Provider data |
-| `ProviderSequence` | A sequence for deterministic UUID generation |
-| `SKUs` | A map of SKU UUID to SKU data with a secondary index on provider_uuid |
-| `SKUSequence` | A sequence for deterministic UUID generation |
+| Prefix | Key Type | Description |
+|--------|----------|-------------|
+| `0x00` | Params | Module parameters |
+| `0x01` | SKU | Primary SKU storage (UUID → SKU) |
+| `0x02` | SKUSequence | Sequence counter for UUIDv7 generation |
+| `0x03` | SKUByProvider | Index: provider UUID → SKU UUIDs |
+| `0x04` | Provider | Primary provider storage (UUID → Provider) |
+| `0x05` | ProviderSequence | Sequence counter for UUIDv7 generation |
+| `0x06` | ProviderByAddress | Index: address → provider UUIDs |
+| `0x07` | ProviderByActive | Index: active status → provider UUIDs |
+| `0x08` | SKUByActive | Index: active status → SKU UUIDs |
+| `0x09` | SKUByProviderActive | Compound index: provider+active → SKU UUIDs |
+
+### Collections
+
+| Collection | Key Type | Value Type | Description |
+|------------|----------|------------|-------------|
+| `Params` | - | `Params` | Module parameters including the allowed list |
+| `Providers` | `string` (UUID) | `Provider` | Primary provider storage |
+| `ProviderSequence` | - | `uint64` | Sequence for deterministic UUID generation |
+| `SKUs` | `string` (UUID) | `SKU` | Primary SKU storage |
+| `SKUSequence` | - | `uint64` | Sequence for deterministic UUID generation |
 
 ## Parameters
 
@@ -165,7 +180,7 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 |-------|-------------|
 | Params | Get module parameters |
 | Provider | Get a provider by UUID |
-| ProviderByAddress | Get a provider by management address |
+| ProviderByAddress | Get providers by management address |
 | Providers | List all providers (supports `--active-only` filter) |
 | SKU | Get a SKU by UUID |
 | SKUs | List all SKUs (supports `--active-only` filter) |

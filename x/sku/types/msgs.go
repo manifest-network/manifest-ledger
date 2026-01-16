@@ -61,6 +61,11 @@ func (msg *MsgCreateProvider) Validate() error {
 		return ErrInvalidProvider.Wrapf("invalid payout address: %s", err)
 	}
 
+	// Validate meta_hash length if provided
+	if len(msg.MetaHash) > MaxMetaHashLength {
+		return ErrInvalidProvider.Wrapf("meta_hash exceeds maximum length of %d bytes", MaxMetaHashLength)
+	}
+
 	// Validate api_url if provided
 	if msg.ApiUrl != "" {
 		if err := ValidateAPIURL(msg.ApiUrl); err != nil {
@@ -120,6 +125,11 @@ func (msg *MsgUpdateProvider) Validate() error {
 
 	if _, err := sdk.AccAddressFromBech32(msg.PayoutAddress); err != nil {
 		return ErrInvalidProvider.Wrapf("invalid payout address: %s", err)
+	}
+
+	// Validate meta_hash length if provided
+	if len(msg.MetaHash) > MaxMetaHashLength {
+		return ErrInvalidProvider.Wrapf("meta_hash exceeds maximum length of %d bytes", MaxMetaHashLength)
 	}
 
 	// Validate api_url if provided (empty means keep existing)
@@ -230,6 +240,11 @@ func (msg *MsgCreateSKU) Validate() error {
 		return ErrInvalidSKU.Wrapf("invalid price/unit combination: %s", err)
 	}
 
+	// Validate meta_hash length if provided
+	if len(msg.MetaHash) > MaxMetaHashLength {
+		return ErrInvalidSKU.Wrapf("meta_hash exceeds maximum length of %d bytes", MaxMetaHashLength)
+	}
+
 	return nil
 }
 
@@ -301,6 +316,11 @@ func (msg *MsgUpdateSKU) Validate() error {
 	// Validate that price and unit combination produces a non-zero per-second rate
 	if err := ValidatePriceAndUnit(msg.BasePrice, msg.Unit); err != nil {
 		return ErrInvalidSKU.Wrapf("invalid price/unit combination: %s", err)
+	}
+
+	// Validate meta_hash length if provided
+	if len(msg.MetaHash) > MaxMetaHashLength {
+		return ErrInvalidSKU.Wrapf("meta_hash exceeds maximum length of %d bytes", MaxMetaHashLength)
 	}
 
 	return nil

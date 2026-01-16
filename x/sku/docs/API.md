@@ -276,10 +276,10 @@ manifestd query sku provider [uuid]
 
 #### provider-by-address
 
-Query a provider by management address.
+Query all providers with a given management address.
 
 ```bash
-manifestd query sku provider-by-address [address]
+manifestd query sku provider-by-address [address] [flags]
 ```
 
 **Arguments:**
@@ -287,21 +287,39 @@ manifestd query sku provider-by-address [address]
 |----------|------|-------------|
 | address | string | Provider's management address (Bech32) |
 
+**Flags:**
+| Flag | Type | Description |
+|------|------|-------------|
+| --active-only | bool | Filter to return only active providers |
+| --limit | uint64 | Pagination limit |
+| --page-key | string | Pagination key from previous response |
+
+**Example:**
+```bash
+manifestd query sku provider-by-address manifest1abc... --active-only --limit 10
+```
+
 **Response:**
 ```json
 {
-  "provider": {
-    "uuid": "01912345-6789-7abc-8def-0123456789ab",
-    "address": "manifest1provider...",
-    "payout_address": "manifest1payout...",
-    "api_url": "https://api.provider.com",
-    "meta_hash": "",
-    "active": true
+  "providers": [
+    {
+      "uuid": "01912345-6789-7abc-8def-0123456789ab",
+      "address": "manifest1provider...",
+      "payout_address": "manifest1payout...",
+      "api_url": "https://api.provider.com",
+      "meta_hash": "",
+      "active": true
+    }
+  ],
+  "pagination": {
+    "next_key": null,
+    "total": "1"
   }
 }
 ```
 
-**Note:** This query scans all providers to find a match since there is no address index. This is acceptable for typical provider counts (dozens to hundreds).
+**Note:** A single address can manage multiple providers. This query returns all providers associated with the given address, using an efficient address index.
 
 ---
 
@@ -663,7 +681,7 @@ message QueryProviderResponse {
 
 #### QueryProviderByAddress
 
-Get a provider by management address.
+Get all providers with a given management address.
 
 **Endpoint:** `liftedinit.sku.v1.Query/ProviderByAddress`
 
@@ -671,17 +689,20 @@ Get a provider by management address.
 ```protobuf
 message QueryProviderByAddressRequest {
   string address = 1;  // Provider's management address
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+  bool active_only = 3;
 }
 ```
 
 **Response:**
 ```protobuf
 message QueryProviderByAddressResponse {
-  Provider provider = 1;
+  repeated Provider providers = 1;
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
 }
 ```
 
-**Note:** This query requires scanning all providers since there is no address index.
+**Note:** A single address can manage multiple providers. This query returns all providers associated with the given address, using an efficient address index.
 
 ---
 
@@ -796,7 +817,7 @@ http://localhost:1317/liftedinit/sku/v1
 |--------|----------|-------------|
 | GET | `/params` | Get module parameters |
 | GET | `/provider/{uuid}` | Get provider by UUID |
-| GET | `/provider/address/{address}` | Get provider by management address |
+| GET | `/provider/address/{address}` | Get providers by management address |
 | GET | `/providers` | List all providers |
 | GET | `/sku/{uuid}` | Get SKU by UUID |
 | GET | `/skus` | List all SKUs |
@@ -814,7 +835,7 @@ curl http://localhost:1317/liftedinit/sku/v1/params
 curl http://localhost:1317/liftedinit/sku/v1/provider/01912345-6789-7abc-8def-0123456789ab
 ```
 
-**Get Provider by Address:**
+**Get Providers by Address:**
 ```bash
 curl http://localhost:1317/liftedinit/sku/v1/provider/address/manifest1provider...
 ```

@@ -146,11 +146,20 @@ message QuerySKUsByProviderResponse {
 message QueryProviderByAddressRequest {
   // address is the management address of the provider.
   string address = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+
+  // active_only filters to return only active providers when true.
+  bool active_only = 3;
 }
 
 // QueryProviderByAddressResponse is the response type for the Query/ProviderByAddress
 // RPC method.
 message QueryProviderByAddressResponse {
-  // provider is the provider with the given address.
-  Provider provider = 1 [ (gogoproto.nullable) = false ];
+  // providers is the list of providers with the given address.
+  repeated Provider providers = 1 [ (gogoproto.nullable) = false ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
 }

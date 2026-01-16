@@ -28,11 +28,21 @@ type LeaseIndexes struct {
 	Provider *indexes.Multi[string, string, types.Lease]
 	// State is a multi-index that indexes Leases by their state (pending, active, closed, etc).
 	State *indexes.Multi[int32, string, types.Lease]
+	// ProviderState is a compound index that indexes Leases by (provider_uuid, state).
+	// This enables O(1) lookup of leases by provider and state combined.
+	ProviderState *indexes.Multi[collections.Pair[string, int32], string, types.Lease]
+	// TenantState is a compound index that indexes Leases by (tenant, state).
+	// This enables O(1) lookup of leases by tenant and state combined.
+	TenantState *indexes.Multi[collections.Pair[sdk.AccAddress, int32], string, types.Lease]
+	// StateCreatedAt is a compound index that indexes Leases by (state, created_at).
+	// This enables efficient time-based queries for leases in a specific state,
+	// particularly for EndBlocker pending lease expiration.
+	StateCreatedAt *indexes.Multi[collections.Pair[int32, time.Time], string, types.Lease]
 }
 
 // IndexesList returns all indexes defined for the Lease collection.
 func (i LeaseIndexes) IndexesList() []collections.Index[string, types.Lease] {
-	return []collections.Index[string, types.Lease]{i.Tenant, i.Provider, i.State}
+	return []collections.Index[string, types.Lease]{i.Tenant, i.Provider, i.State, i.ProviderState, i.TenantState, i.StateCreatedAt}
 }
 
 // NewLeaseIndexes creates a new LeaseIndexes instance.
@@ -69,6 +79,40 @@ func NewLeaseIndexes(sb *collections.SchemaBuilder) LeaseIndexes {
 				return int32(lease.State), nil
 			},
 		),
+		ProviderState: indexes.NewMulti(
+			sb,
+			types.LeaseByProviderStateIndexKey,
+			"leases_by_provider_state",
+			collections.PairKeyCodec(collections.StringKey, collections.Int32Key),
+			collections.StringKey,
+			func(_ string, lease types.Lease) (collections.Pair[string, int32], error) {
+				return collections.Join(lease.ProviderUuid, int32(lease.State)), nil
+			},
+		),
+		TenantState: indexes.NewMulti(
+			sb,
+			types.LeaseByTenantStateIndexKey,
+			"leases_by_tenant_state",
+			collections.PairKeyCodec(sdk.AccAddressKey, collections.Int32Key),
+			collections.StringKey,
+			func(_ string, lease types.Lease) (collections.Pair[sdk.AccAddress, int32], error) {
+				tenantAddr, err := sdk.AccAddressFromBech32(lease.Tenant)
+				if err != nil {
+					return collections.Pair[sdk.AccAddress, int32]{}, err
+				}
+				return collections.Join(tenantAddr, int32(lease.State)), nil
+			},
+		),
+		StateCreatedAt: indexes.NewMulti(
+			sb,
+			types.LeaseByStateCreatedAtIndexKey,
+			"leases_by_state_created_at",
+			collections.PairKeyCodec(collections.Int32Key, sdk.TimeKey),
+			collections.StringKey,
+			func(_ string, lease types.Lease) (collections.Pair[int32, time.Time], error) {
+				return collections.Join(int32(lease.State), lease.CreatedAt), nil
+			},
+		),
 	}
 }
 
@@ -92,6 +136,10 @@ type Keeper struct {
 	// CreditAddressIndex is a reverse lookup from derived credit address to tenant address.
 	// This enables O(1) lookup to check if an address is a credit account.
 	CreditAddressIndex collections.Map[sdk.AccAddress, sdk.AccAddress] // keyed by derived credit address, value is tenant address
+	// LeaseBySKUIndex is a many-to-many index from SKU UUID to Lease UUID.
+	// Since a lease can contain multiple SKUs, this is managed as a separate Map
+	// with composite key (sku_uuid, lease_uuid) rather than as part of LeaseIndexes.
+	LeaseBySKUIndex collections.Map[collections.Pair[string, string], bool]
 
 	authority string
 
@@ -149,6 +197,13 @@ func NewKeeper(
 			"credit_address_index",
 			sdk.AccAddressKey, // derived credit address
 			collcodec.KeyToValueCodec(sdk.AccAddressKey), // tenant address
+		),
+		LeaseBySKUIndex: collections.NewMap(
+			sb,
+			types.LeaseBySKUIndexKey,
+			"leases_by_sku",
+			collections.PairKeyCodec(collections.StringKey, collections.StringKey), // (sku_uuid, lease_uuid)
+			collections.BoolValue,
 		),
 	}
 
@@ -308,9 +363,23 @@ func (k *Keeper) GetLease(ctx context.Context, uuid string) (types.Lease, error)
 	return lease, nil
 }
 
-// SetLease sets a Lease in the store.
+// SetLease sets a Lease in the store and updates the SKU index.
+// The SKU index update is idempotent - safe to call for both new and existing leases.
 func (k *Keeper) SetLease(ctx context.Context, lease types.Lease) error {
-	return k.Leases.Set(ctx, lease.Uuid, lease)
+	// Store the lease in the indexed map (handles all standard indexes)
+	if err := k.Leases.Set(ctx, lease.Uuid, lease); err != nil {
+		return err
+	}
+
+	// Update the many-to-many SKU index (one entry per SKU in the lease)
+	for _, item := range lease.Items {
+		key := collections.Join(item.SkuUuid, lease.Uuid)
+		if err := k.LeaseBySKUIndex.Set(ctx, key, true); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // GetNextLeaseSequence returns the next sequence number for deterministic UUID generation.
@@ -779,11 +848,19 @@ func (k *Keeper) GetActiveLeases(ctx context.Context) ([]types.Lease, error) {
 }
 
 // GetPendingLeasesByProvider returns all pending leases for a specific provider.
-// Uses provider index and filters by state.
+// Uses the compound (provider, state) index for O(1) direct lookup instead of filtering.
 func (k *Keeper) GetPendingLeasesByProvider(ctx context.Context, providerUUID string) ([]types.Lease, error) {
-	var pendingLeases []types.Lease
+	return k.GetLeasesByProviderAndState(ctx, providerUUID, types.LEASE_STATE_PENDING)
+}
 
-	iter, err := k.Leases.Indexes.Provider.MatchExact(ctx, providerUUID)
+// GetLeasesByProviderAndState returns leases for a provider with a specific state.
+// Uses the compound (provider, state) index for O(1) direct lookup.
+func (k *Keeper) GetLeasesByProviderAndState(ctx context.Context, providerUUID string, state types.LeaseState) ([]types.Lease, error) {
+	var leases []types.Lease
+
+	// Use the compound index for direct lookup
+	key := collections.Join(providerUUID, int32(state))
+	iter, err := k.Leases.Indexes.ProviderState.MatchExact(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -798,12 +875,72 @@ func (k *Keeper) GetPendingLeasesByProvider(ctx context.Context, providerUUID st
 		if err != nil {
 			return nil, err
 		}
-		if lease.State == types.LEASE_STATE_PENDING {
-			pendingLeases = append(pendingLeases, lease)
-		}
+		leases = append(leases, lease)
 	}
 
-	return pendingLeases, nil
+	return leases, nil
+}
+
+// GetLeasesByTenantAndState returns leases for a tenant with a specific state.
+// Uses the compound (tenant, state) index for O(1) direct lookup.
+func (k *Keeper) GetLeasesByTenantAndState(ctx context.Context, tenant string, state types.LeaseState) ([]types.Lease, error) {
+	var leases []types.Lease
+
+	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
+	if err != nil {
+		return nil, err
+	}
+
+	// Use the compound index for direct lookup
+	key := collections.Join(tenantAddr, int32(state))
+	iter, err := k.Leases.Indexes.TenantState.MatchExact(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		leaseUUID, err := iter.PrimaryKey()
+		if err != nil {
+			return nil, err
+		}
+		lease, err := k.Leases.Get(ctx, leaseUUID)
+		if err != nil {
+			return nil, err
+		}
+		leases = append(leases, lease)
+	}
+
+	return leases, nil
+}
+
+// GetLeasesBySKU returns leases that contain the specified SKU.
+// Uses the LeaseBySKUIndex for efficient O(k) lookup where k = leases containing the SKU.
+func (k *Keeper) GetLeasesBySKU(ctx context.Context, skuUUID string) ([]types.Lease, error) {
+	var leases []types.Lease
+
+	// Create a range that matches all (skuUUID, *) keys
+	rng := collections.NewPrefixedPairRange[string, string](skuUUID)
+	iter, err := k.LeaseBySKUIndex.Iterate(ctx, rng)
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		key, err := iter.Key()
+		if err != nil {
+			return nil, err
+		}
+		leaseUUID := key.K2()
+		lease, err := k.Leases.Get(ctx, leaseUUID)
+		if err != nil {
+			return nil, err
+		}
+		leases = append(leases, lease)
+	}
+
+	return leases, nil
 }
 
 // ExpirePendingLease expires a pending lease, unlocking the tenant's credit.

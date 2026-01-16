@@ -140,6 +140,18 @@ make ictest-chain-upgrade
 make ictest-cosmwasm
 ```
 
+**To test the SKU module run:**
+
+```bash
+make ictest-sku
+```
+
+**To test the Billing module run:**
+
+```bash
+make ictest-billing
+```
+
 ## Simulation
 
 **To execute the full application simulation run:**

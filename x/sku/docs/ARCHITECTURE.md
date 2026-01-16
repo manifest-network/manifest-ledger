@@ -109,11 +109,15 @@ graph LR
         Providers[Providers<br/>Map: string → Provider]
         SKUs[SKUs<br/>Map: string → SKU]
     end
-    
+
     subgraph "Indexes"
         ProviderIdx[SKUsByProvider<br/>Map: provider_uuid, sku_uuid → empty]
+        AddrIdx[ProvidersByAddress<br/>Map: address, provider_uuid → empty]
+        ProviderActiveIdx[ProvidersByActive<br/>Map: active, provider_uuid → empty]
+        SKUActiveIdx[SKUsByActive<br/>Map: active, sku_uuid → empty]
+        SKUProviderActiveIdx[SKUsByProviderActive<br/>Map: provider_uuid+active, sku_uuid → empty]
     end
-    
+
     subgraph "Sequences"
         ProviderSeq[ProviderSequence<br/>uint64]
         SKUSeq[SKUSequence<br/>uint64]
@@ -126,19 +130,27 @@ graph LR
 | `SKUs` | `string` (UUID) | `SKU` | Primary SKU storage |
 | `SKUSequence` | - | `uint64` | Sequence counter for deterministic UUID generation |
 | `SKUsByProvider` | `(string, string)` | `bool` | Index for provider → SKU lookups |
+| `SKUsByActive` | `(bool, string)` | `bool` | Index for active status → SKU lookups |
+| `SKUsByProviderActive` | `(string, bool, string)` | `bool` | Compound index for provider+active → SKU lookups |
 | `Providers` | `string` (UUID) | `Provider` | Primary provider storage |
 | `ProviderSequence` | - | `uint64` | Sequence counter for deterministic UUID generation |
+| `ProvidersByAddress` | `(AccAddress, string)` | `bool` | Index for address → provider lookups |
+| `ProvidersByActive` | `(bool, string)` | `bool` | Index for active status → provider lookups |
 
 ### Key Prefixes
 
 ```go
 var (
-    ParamsKey             = collections.NewPrefix(0)
-    SKUKey                = collections.NewPrefix(1)
-    SKUSequenceKey        = collections.NewPrefix(2)
-    SKUByProviderIndexKey = collections.NewPrefix(3)
-    ProviderKey           = collections.NewPrefix(4)
-    ProviderSequenceKey   = collections.NewPrefix(5)
+    ParamsKey                    = collections.NewPrefix(0)
+    SKUKey                       = collections.NewPrefix(1)
+    SKUSequenceKey               = collections.NewPrefix(2)
+    SKUByProviderIndexKey        = collections.NewPrefix(3)
+    ProviderKey                  = collections.NewPrefix(4)
+    ProviderSequenceKey          = collections.NewPrefix(5)
+    ProviderByAddressIndexKey    = collections.NewPrefix(6)
+    ProviderByActiveIndexKey     = collections.NewPrefix(7)
+    SKUByActiveIndexKey          = collections.NewPrefix(8)
+    SKUByProviderActiveIndexKey  = collections.NewPrefix(9)
 )
 ```
 
@@ -316,11 +328,24 @@ Both providers and SKUs use soft delete (active flag):
 | Operation | Complexity | Notes |
 |-----------|------------|-------|
 | GetProvider | O(1) | Direct key lookup by UUID |
+| GetProvidersByAddress | O(k) | Address index scan, k = providers for address |
+| GetActiveProviders | O(k) | Active index scan, k = active providers |
 | GetSKU | O(1) | Direct key lookup by UUID |
 | GetSKUsByProvider | O(n) | Index scan, n = SKUs per provider |
-| CreateProvider | O(1) | Single write + sequence increment |
-| CreateSKU | O(1) | Two writes (SKU + index) + sequence increment |
-| UpdateSKU | O(1) | Up to 3 writes if provider changes |
+| GetSKUsByProvider (active only) | O(k) | Compound index scan, k = active SKUs for provider |
+| GetActiveSKUs | O(k) | Active index scan, k = active SKUs |
+| CreateProvider | O(1) | Single write + index writes + sequence increment |
+| CreateSKU | O(1) | Three writes (SKU + indexes) + sequence increment |
+| UpdateSKU | O(1) | Up to 5 writes if provider or active status changes |
+| UpdateProvider | O(1) | Up to 3 writes if active status changes |
+
+### Future Improvements
+
+The following optimizations have been identified but deferred due to marginal benefit:
+
+| Index | Current | Improvement | Notes |
+|-------|---------|-------------|-------|
+| `ProviderByAddressActive` | O(k) + post-filter | O(m) direct | Compound (address, active) index for `ProviderByAddress` with `active_only=true`. Deferred because provider counts per address are typically small (1-5), making post-filtering negligible. |
 
 ## Testing Strategy
 

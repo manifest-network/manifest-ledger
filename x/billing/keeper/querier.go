@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"cosmossdk.io/collections"
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -106,7 +107,8 @@ func (q Querier) Leases(ctx context.Context, req *types.QueryLeasesRequest) (*ty
 }
 
 // LeasesByTenant queries leases by tenant address.
-// Uses the Tenant index for efficient lookup - only iterates over leases belonging to this tenant.
+// Uses the compound (tenant, state) index when state filter is provided for O(1) lookup.
+// Falls back to Tenant index when no state filter is provided.
 func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTenantRequest) (*types.QueryLeasesByTenantResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -121,16 +123,35 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 		return nil, status.Error(codes.InvalidArgument, "invalid tenant address")
 	}
 
-	// Use the tenant index to iterate only over this tenant's leases
+	// Use compound index when state filter is provided - O(1) direct lookup
+	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
+		key := collections.Join(tenantAddr, int32(req.StateFilter))
+		iter, err := q.k.Leases.Indexes.TenantState.MatchExact(ctx, key)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		leases, pageRes, err := pagination.PaginateStringIndex(
+			ctx,
+			iter,
+			q.k.Leases.Get,
+			req.Pagination,
+			nil, // No filter needed - compound index already filtered by state
+		)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		return &types.QueryLeasesByTenantResponse{
+			Leases:     leases,
+			Pagination: pageRes,
+		}, nil
+	}
+
+	// Use tenant index when no state filter - iterate all tenant's leases
 	iter, err := q.k.Leases.Indexes.Tenant.MatchExact(ctx, tenantAddr)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	// Build filter based on state_filter
-	var filter func(types.Lease) bool
-	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
-		filter = func(l types.Lease) bool { return l.State == req.StateFilter }
 	}
 
 	leases, pageRes, err := pagination.PaginateStringIndex(
@@ -138,7 +159,7 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 		iter,
 		q.k.Leases.Get,
 		req.Pagination,
-		filter,
+		nil,
 	)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -151,7 +172,8 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 }
 
 // LeasesByProvider queries leases by provider ID.
-// Uses the Provider index for efficient lookup - only iterates over leases belonging to this provider.
+// Uses the compound (provider, state) index when state filter is provided for O(1) lookup.
+// Falls back to Provider index when no state filter is provided.
 func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByProviderRequest) (*types.QueryLeasesByProviderResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -161,16 +183,35 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 		return nil, status.Error(codes.InvalidArgument, "provider_uuid cannot be empty")
 	}
 
-	// Use the provider index to iterate only over this provider's leases
+	// Use compound index when state filter is provided - O(1) direct lookup
+	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
+		key := collections.Join(req.ProviderUuid, int32(req.StateFilter))
+		iter, err := q.k.Leases.Indexes.ProviderState.MatchExact(ctx, key)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		leases, pageRes, err := pagination.PaginateStringIndex(
+			ctx,
+			iter,
+			q.k.Leases.Get,
+			req.Pagination,
+			nil, // No filter needed - compound index already filtered by state
+		)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		return &types.QueryLeasesByProviderResponse{
+			Leases:     leases,
+			Pagination: pageRes,
+		}, nil
+	}
+
+	// Use provider index when no state filter - iterate all provider's leases
 	iter, err := q.k.Leases.Indexes.Provider.MatchExact(ctx, req.ProviderUuid)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	// Build filter based on state_filter
-	var filter func(types.Lease) bool
-	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
-		filter = func(l types.Lease) bool { return l.State == req.StateFilter }
 	}
 
 	leases, pageRes, err := pagination.PaginateStringIndex(
@@ -178,7 +219,7 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 		iter,
 		q.k.Leases.Get,
 		req.Pagination,
-		filter,
+		nil,
 	)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -344,8 +385,7 @@ func (q Querier) CreditAccounts(ctx context.Context, req *types.QueryCreditAccou
 }
 
 // LeasesBySKU queries leases by SKU UUID.
-// Note: This query requires scanning all leases since there is no SKU index.
-// For performance with large datasets, consider filtering by state.
+// Uses the LeaseBySKUIndex for efficient O(k) lookup where k = leases containing the SKU.
 func (q Querier) LeasesBySKU(ctx context.Context, req *types.QueryLeasesBySKURequest) (*types.QueryLeasesBySKUResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -355,29 +395,26 @@ func (q Querier) LeasesBySKU(ctx context.Context, req *types.QueryLeasesBySKUReq
 		return nil, status.Error(codes.InvalidArgument, "sku_uuid cannot be empty")
 	}
 
-	// Build filter function that checks if lease contains the SKU
-	filterFn := func(_ string, lease types.Lease) (bool, error) {
-		// Check state filter first (cheaper check)
-		if req.StateFilter != types.LEASE_STATE_UNSPECIFIED && lease.State != req.StateFilter {
-			return false, nil
-		}
-		// Check if any lease item has the matching SKU
-		for _, item := range lease.Items {
-			if item.SkuUuid == req.SkuUuid {
-				return true, nil
-			}
-		}
-		return false, nil
+	// Use the SKU index to iterate only over leases containing this SKU
+	rng := collections.NewPrefixedPairRange[string, string](req.SkuUuid)
+	iter, err := q.k.LeaseBySKUIndex.Iterate(ctx, rng)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	leases, pageRes, err := query.CollectionFilteredPaginate(
+	// Build filter based on state_filter
+	var filter func(types.Lease) bool
+	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
+		filter = func(l types.Lease) bool { return l.State == req.StateFilter }
+	}
+
+	// Custom pagination over the SKU index
+	leases, pageRes, err := paginateSKUIndex(
 		ctx,
-		q.k.Leases,
+		iter,
+		q.k.Leases.Get,
 		req.Pagination,
-		filterFn,
-		func(_ string, lease types.Lease) (types.Lease, error) {
-			return lease, nil
-		},
+		filter,
 	)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -421,20 +458,20 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 	// Limited to MaxCreditEstimateLeases to prevent DoS on tenants with many leases
 	totalRatePerSecond := sdk.NewCoins()
 	var activeLeaseCount uint64
-	var processedCount uint64
 
-	// Use tenant index to iterate over tenant's leases
-	iter, err := q.k.Leases.Indexes.Tenant.MatchExact(ctx, tenantAddr)
+	// Use TenantState compound index to iterate only over active leases - O(k) instead of O(n)
+	key := collections.Join(tenantAddr, int32(types.LEASE_STATE_ACTIVE))
+	iter, err := q.k.Leases.Indexes.TenantState.MatchExact(ctx, key)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	defer iter.Close()
 
 	for ; iter.Valid(); iter.Next() {
-		// Limit total iterations to prevent DoS from accumulated historical leases
-		processedCount++
-		if processedCount > types.MaxCreditEstimateLeases*10 {
-			// Allow 10x the active lease limit for iteration to account for historical leases
+		activeLeaseCount++
+
+		// Limit active leases processed (should match max_leases_per_tenant param)
+		if activeLeaseCount > types.MaxCreditEstimateLeases {
 			break
 		}
 
@@ -446,16 +483,6 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		lease, err := q.k.Leases.Get(ctx, leaseUUID)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
-		}
-
-		if lease.State != types.LEASE_STATE_ACTIVE {
-			continue // Skip non-active leases
-		}
-		activeLeaseCount++
-
-		// Limit active leases processed (should match max_leases_per_tenant param)
-		if activeLeaseCount > types.MaxCreditEstimateLeases {
-			break
 		}
 
 		// Sum up rates for all items in this lease
@@ -503,4 +530,75 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		EstimatedDurationSeconds: estimatedDurationSeconds,
 		ActiveLeaseCount:         activeLeaseCount,
 	}, nil
+}
+
+// paginateSKUIndex paginates over the LeaseBySKUIndex iterator.
+// This is a custom pagination function for the many-to-many SKU → Lease index.
+func paginateSKUIndex(
+	ctx context.Context,
+	iter collections.Iterator[collections.Pair[string, string], bool],
+	getLease func(ctx context.Context, leaseUUID string) (types.Lease, error),
+	pageReq *query.PageRequest,
+	filter func(types.Lease) bool,
+) ([]types.Lease, *query.PageResponse, error) {
+	defer iter.Close()
+
+	// Default pagination values
+	limit := uint64(100)
+	offset := uint64(0)
+	countTotal := false
+
+	if pageReq != nil {
+		if pageReq.Limit > 0 {
+			limit = pageReq.Limit
+		}
+		offset = pageReq.Offset
+		countTotal = pageReq.CountTotal
+	}
+
+	var leases []types.Lease
+	var total uint64
+	var currentOffset uint64
+
+	for ; iter.Valid(); iter.Next() {
+		key, err := iter.Key()
+		if err != nil {
+			return nil, nil, err
+		}
+		leaseUUID := key.K2()
+
+		lease, err := getLease(ctx, leaseUUID)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Apply filter if provided
+		if filter != nil && !filter(lease) {
+			continue
+		}
+
+		// Count for total (if requested)
+		if countTotal {
+			total++
+		}
+
+		// Skip until we reach the offset
+		if currentOffset < offset {
+			currentOffset++
+			continue
+		}
+
+		// Collect results up to limit
+		if uint64(len(leases)) < limit {
+			leases = append(leases, lease)
+		}
+	}
+
+	// Build response
+	pageRes := &query.PageResponse{}
+	if countTotal {
+		pageRes.Total = total
+	}
+
+	return leases, pageRes, nil
 }

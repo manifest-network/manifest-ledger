@@ -29,6 +29,24 @@ var (
 	// LeaseByStateIndexKey saves the state index for Leases.
 	// This enables efficient queries for leases by state (e.g., all pending leases).
 	LeaseByStateIndexKey = collections.NewPrefix(7)
+
+	// LeaseByProviderStateIndexKey saves the compound (provider, state) index for Leases.
+	// This enables O(1) lookup of leases by provider and state combined (e.g., pending leases for a provider).
+	LeaseByProviderStateIndexKey = collections.NewPrefix(8)
+
+	// LeaseByTenantStateIndexKey saves the compound (tenant, state) index for Leases.
+	// This enables O(1) lookup of leases by tenant and state combined (e.g., active leases for a tenant).
+	LeaseByTenantStateIndexKey = collections.NewPrefix(9)
+
+	// LeaseBySKUIndexKey saves the SKU → Lease index for many-to-many relationship.
+	// Since a lease can contain multiple SKUs, this is managed as a separate Map collection
+	// rather than as part of LeaseIndexes.
+	LeaseBySKUIndexKey = collections.NewPrefix(10)
+
+	// LeaseByStateCreatedAtIndexKey saves the compound (state, created_at) index for Leases.
+	// This enables efficient time-based queries for leases in a specific state,
+	// particularly for EndBlocker pending lease expiration (O(e) expired instead of O(p) all pending).
+	LeaseByStateCreatedAtIndexKey = collections.NewPrefix(11)
 )
 
 const (

@@ -36,7 +36,9 @@ func ConvertBasePriceToPerSecond(basePrice sdk.Coin, unit skutypes.Unit) (sdk.Co
 // accrued = lockedPricePerSecond * quantity * durationSeconds
 // Returns an error if the calculation would overflow.
 func CalculateAccruedAmount(lockedPricePerSecond sdk.Coin, quantity uint64, duration time.Duration) (sdk.Coin, error) {
-	durationSeconds := int64(duration.Seconds())
+	// Use integer division instead of duration.Seconds() (which returns float64)
+	// to avoid potential precision loss for large durations.
+	durationSeconds := int64(duration / time.Second)
 	if durationSeconds < 0 {
 		return sdk.NewCoin(lockedPricePerSecond.Denom, math.ZeroInt()), nil
 	}
