@@ -1278,23 +1278,26 @@ func testProviderByAddressQueryIndependent(t *testing.T, ctx context.Context, tc
 		res, err := helpers.SKUQueryProviderByAddress(ctx, tc.chain, tc.providerWallet.FormattedAddress())
 		require.NoError(t, err)
 		require.NotNil(t, res)
-		require.NotNil(t, res.Provider)
+		require.Len(t, res.Providers, 1, "should return exactly one provider")
 
+		provider := res.Providers[0]
 		// Verify the provider details match
-		require.Equal(t, tc.providerWallet.FormattedAddress(), res.Provider.Address,
+		require.Equal(t, tc.providerWallet.FormattedAddress(), provider.Address,
 			"provider address should match")
-		require.Equal(t, tc.providerUUID, res.Provider.Uuid,
+		require.Equal(t, tc.providerUUID, provider.Uuid,
 			"provider UUID should match the test provider")
-		require.True(t, res.Provider.Active, "provider should be active")
+		require.True(t, provider.Active, "provider should be active")
 
-		t.Logf("Found provider %s with UUID %s", res.Provider.Address, res.Provider.Uuid)
+		t.Logf("Found provider %s with UUID %s", provider.Address, provider.Uuid)
 	})
 
-	t.Run("fail: query non-existent provider address", func(t *testing.T) {
+	t.Run("success: query non-existent provider returns empty list", func(t *testing.T) {
 		nonExistentAddr := "manifest1qqqqqqqqqqqqqqqqqqqqqqqqqqqqphgzfs"
-		_, err := helpers.SKUQueryProviderByAddress(ctx, tc.chain, nonExistentAddr)
-		require.Error(t, err, "should fail for non-existent provider address")
-		t.Log("Correctly rejected query for non-existent provider")
+		res, err := helpers.SKUQueryProviderByAddress(ctx, tc.chain, nonExistentAddr)
+		require.NoError(t, err, "query should succeed")
+		require.NotNil(t, res)
+		require.Empty(t, res.Providers, "should return empty list for non-existent provider address")
+		t.Log("Correctly returned empty list for non-existent provider")
 	})
 
 	t.Run("fail: query with invalid address format", func(t *testing.T) {
