@@ -1292,12 +1292,12 @@ func testProviderByAddressQueryIndependent(t *testing.T, ctx context.Context, tc
 	})
 
 	t.Run("success: query non-existent provider returns empty list", func(t *testing.T) {
-		nonExistentAddr := "manifest1qqqqqqqqqqqqqqqqqqqqqqqqqqqqphgzfs"
-		res, err := helpers.SKUQueryProviderByAddress(ctx, tc.chain, nonExistentAddr)
+		// Use tenant2's address - it's a valid address but has no provider
+		res, err := helpers.SKUQueryProviderByAddress(ctx, tc.chain, tc.tenant2.FormattedAddress())
 		require.NoError(t, err, "query should succeed")
 		require.NotNil(t, res)
-		require.Empty(t, res.Providers, "should return empty list for non-existent provider address")
-		t.Log("Correctly returned empty list for non-existent provider")
+		require.Empty(t, res.Providers, "should return empty list for address without provider")
+		t.Log("Correctly returned empty list for address without provider")
 	})
 
 	t.Run("fail: query with invalid address format", func(t *testing.T) {

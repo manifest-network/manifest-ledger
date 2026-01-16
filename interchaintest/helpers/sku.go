@@ -43,6 +43,12 @@ type SKUsResponseJSON struct {
 	Pagination *PageResponseJSON `json:"pagination,omitempty"`
 }
 
+// ProviderByAddressResponseJSON wraps provider-by-address queries with pagination.
+type ProviderByAddressResponseJSON struct {
+	Providers  []skutypes.Provider `json:"providers"`
+	Pagination *PageResponseJSON   `json:"pagination,omitempty"`
+}
+
 // GetNextKeyString returns the base64-encoded next key for CLI pagination.
 func (r *SKUsResponseJSON) GetNextKeyString() string {
 	if r.Pagination != nil {
@@ -156,8 +162,8 @@ func SKUQueryProvider(ctx context.Context, chain *cosmos.CosmosChain, uuid strin
 }
 
 // SKUQueryProviderByAddress queries a provider by their address.
-func SKUQueryProviderByAddress(ctx context.Context, chain *cosmos.CosmosChain, address string) (*skutypes.QueryProviderByAddressResponse, error) {
-	var res skutypes.QueryProviderByAddressResponse
+func SKUQueryProviderByAddress(ctx context.Context, chain *cosmos.CosmosChain, address string) (*ProviderByAddressResponseJSON, error) {
+	var res ProviderByAddressResponseJSON
 	cmd := []string{"query", "sku", "provider-by-address", address}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
