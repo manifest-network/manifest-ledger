@@ -352,6 +352,73 @@ manifestd tx billing withdraw --provider [provider-uuid] --from [key]
 manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --from [key]
 ```
 
+## Batch Operation Failures
+
+### Batch operation failed entirely
+
+**Cause**: All batch operations (acknowledge, reject, cancel, close, withdraw with specific UUIDs) are **atomic**. If any single lease in the batch fails validation, the entire batch fails and no changes are made.
+
+**Common failure reasons:**
+- One or more leases are in the wrong state (e.g., trying to acknowledge a CLOSED lease)
+- Authorization failure on one lease (e.g., not the provider for that lease)
+- One lease doesn't exist
+- Leases belong to different providers (for operations requiring same-provider)
+
+**Solution:**
+1. Check each lease individually to identify the problem:
+   ```bash
+   for uuid in uuid1 uuid2 uuid3; do
+     manifestd query billing lease $uuid
+   done
+   ```
+2. Remove the problematic lease(s) from the batch
+3. Retry the batch without the problematic lease(s)
+4. Handle the problematic lease separately
+
+**Example:**
+```bash
+# If batch acknowledge fails:
+manifestd tx billing acknowledge-lease uuid1 uuid2 uuid3 --from provider  # FAILS
+
+# Check each lease:
+manifestd query billing lease uuid1  # PENDING - ok
+manifestd query billing lease uuid2  # CLOSED - this is the problem!
+manifestd query billing lease uuid3  # PENDING - ok
+
+# Retry without uuid2:
+manifestd tx billing acknowledge-lease uuid1 uuid3 --from provider  # SUCCESS
+```
+
+### "too many lease items in batch"
+
+**Cause**: Exceeding `MaxBatchLeaseSize` (100 leases) in a single batch operation.
+
+**Solution**: Split into multiple smaller batches:
+```bash
+# Instead of 150 leases in one call:
+manifestd tx billing acknowledge-lease uuid1 uuid2 ... uuid150 --from provider  # FAILS
+
+# Split into batches of 100:
+manifestd tx billing acknowledge-lease uuid1 ... uuid100 --from provider
+manifestd tx billing acknowledge-lease uuid101 ... uuid150 --from provider
+```
+
+### Batch event not showing all details
+
+**Cause**: Batch operations emit summary events (`batch_acknowledged`, `batch_rejected`, etc.) alongside individual events. The batch event shows aggregate information (count, provider) while individual events show per-lease details.
+
+**Solution**: To see all details, check both event types:
+```bash
+# Get transaction events
+manifestd query tx [txhash] --output json | jq '.events[] | select(.type | startswith("batch_") or startswith("lease_"))'
+```
+
+**Event pattern:**
+- Individual operations: `lease_acknowledged`, `lease_rejected`, etc. (one per lease)
+- Batch summary: `batch_acknowledged`, `batch_rejected`, etc. (one per transaction)
+
+---
+
 ## Query Issues
 
 ### "invalid lease_uuid format"

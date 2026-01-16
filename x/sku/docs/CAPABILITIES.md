@@ -69,10 +69,15 @@ SKU
 | Key Prefix | Description |
 |------------|-------------|
 | `0x00` | Module parameters |
-| `0x01` | Providers (UUID → Provider) |
-| `0x02` | Provider sequence (for UUIDv7 generation) |
-| `0x03` | SKUs (UUID → SKU) with provider index |
-| `0x04` | SKU sequence (for UUIDv7 generation) |
+| `0x01` | SKUs (UUID → SKU) |
+| `0x02` | SKU sequence (for UUIDv7 generation) |
+| `0x03` | SKU by provider index |
+| `0x04` | Providers (UUID → Provider) |
+| `0x05` | Provider sequence (for UUIDv7 generation) |
+| `0x06` | Provider by address index |
+| `0x07` | Provider by active index |
+| `0x08` | SKU by active index |
+| `0x09` | SKU by provider+active compound index |
 
 ---
 

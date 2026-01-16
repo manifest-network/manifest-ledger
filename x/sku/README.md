@@ -82,12 +82,19 @@ Only the module authority can update the parameters (including the allowed list)
 |----------|-------|-------------|
 | `MaxSKUNameLength` | 256 | Maximum length of SKU name in characters |
 | `MaxAPIURLLength` | 2048 | Maximum length of provider API URL in characters |
+| `MaxMetaHashLength` | 64 | Maximum length of meta_hash field in bytes (accommodates SHA-512) |
 
 **API URL Requirements:**
 - Must use HTTPS scheme (http:// is rejected)
 - Must have a valid host (empty host is rejected)
 - Must not contain user credentials (e.g., `https://user:pass@host` is rejected)
 - Must not exceed `MaxAPIURLLength` (2048 characters)
+
+**MetaHash Requirements:**
+- Optional field for both Providers and SKUs
+- Maximum length of 64 bytes (to accommodate SHA-512 hashes)
+- Typically contains a hash reference to off-chain metadata (e.g., IPFS CID, SHA-256/SHA-512 hash)
+- Stored unchanged in state; validated only for length
 
 **Note on MsgUpdateProvider**: If `api_url` is an empty string during an update, the existing API URL is preserved rather than being cleared. This allows updating other fields without accidentally removing the API URL.
 
