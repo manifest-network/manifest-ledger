@@ -743,8 +743,8 @@ func TestProviderReactivationDoesNotReactivateSKUs(t *testing.T) {
 	ms := keeper.NewMsgServerImpl(k)
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
-	providerUUID := "01912345-6789-7abc-8def-0123456789e1"
-	skuUUID := "01912345-6789-7abc-8def-0123456789e2"
+	providerUUID := "01912345-6789-7abc-8def-0123456789f1"
+	skuUUID := "01912345-6789-7abc-8def-0123456789f2"
 
 	// Create an active provider with an active SKU
 	provider := types.Provider{
