@@ -254,6 +254,7 @@ manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab 01912345-6
 - Emits `batch_closed` event when multiple leases are processed (includes lease_count, closed_by)
 - Transfers accrued amount to provider payout address
 - Sets lease state to CLOSED
+- **Auto-close**: When a lease is automatically closed due to credit exhaustion (lazy settlement), the closure_reason is automatically set to "credit exhausted"
 
 ---
 

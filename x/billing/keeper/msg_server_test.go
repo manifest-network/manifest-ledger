@@ -4130,6 +4130,7 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, types.LEASE_STATE_CLOSED, lease.State, "lease should be auto-closed due to credit exhaustion")
 		require.NotNil(t, lease.ClosedAt, "closed_at should be set")
+		require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason, "closure reason should indicate credit exhaustion")
 
 		// Verify credit account's active lease count was decremented
 		creditAcct, err = f.App.BillingKeeper.GetCreditAccount(f.Ctx, limitedTenant.String())

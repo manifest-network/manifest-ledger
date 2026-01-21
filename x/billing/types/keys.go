@@ -140,3 +140,9 @@ const (
 	// RejectionReasonCancelledByTenant is the reason set when a tenant cancels their own pending lease.
 	RejectionReasonCancelledByTenant = "cancelled by tenant"
 )
+
+// Closure reasons for lease closure.
+const (
+	// ClosureReasonCreditExhausted is the reason set when a lease is auto-closed due to credit exhaustion.
+	ClosureReasonCreditExhausted = "credit exhausted"
+)

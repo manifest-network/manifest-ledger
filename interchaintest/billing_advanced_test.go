@@ -395,6 +395,11 @@ func testAutoCloseMechanismIndependent(t *testing.T, ctx context.Context, tc *bi
 		// Verify closed_at is set (indicates it was closed)
 		require.NotEmpty(t, lease.Lease.ClosedAt, "closed_at should be set for auto-closed lease")
 		t.Logf("Lease closed_at: %s", lease.Lease.ClosedAt)
+
+		// Verify closure_reason is set to indicate credit exhaustion
+		require.Equal(t, billingtypes.ClosureReasonCreditExhausted, lease.Lease.GetClosureReason(),
+			"auto-closed lease should have closure_reason set to 'credit exhausted'")
+		t.Logf("Lease closure_reason: %s", lease.Lease.GetClosureReason())
 	})
 
 	t.Run("success: provider already withdrew during auto-close", func(t *testing.T) {

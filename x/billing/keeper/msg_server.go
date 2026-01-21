@@ -496,6 +496,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			leases[i].State = types.LEASE_STATE_CLOSED
 			leases[i].ClosedAt = &closeTime
 			leases[i].LastSettledAt = closeTime
+			leases[i].ClosureReason = types.ClosureReasonCreditExhausted
 
 			leaseClosedBy = "credit_exhaustion"
 		} else {
@@ -681,6 +682,7 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 				lease.State = types.LEASE_STATE_CLOSED
 				lease.ClosedAt = &closeTime
 				lease.LastSettledAt = closeTime
+				lease.ClosureReason = types.ClosureReasonCreditExhausted
 
 				if err := ms.k.SetLease(cacheCtx, *lease); err != nil {
 					return nil, err
@@ -879,6 +881,7 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 				lease.State = types.LEASE_STATE_CLOSED
 				lease.ClosedAt = &closeTime
 				lease.LastSettledAt = closeTime
+				lease.ClosureReason = types.ClosureReasonCreditExhausted
 
 				if setErr := ms.k.SetLease(cacheCtx, lease); setErr != nil {
 					ms.k.Logger().Error("failed to close lease",
