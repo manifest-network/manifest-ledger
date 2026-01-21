@@ -196,12 +196,13 @@ func NewCloseLeaseCmd() *cobra.Command {
 		Long: `Close one or more active leases atomically.
 The sender must be authorized for each lease (tenant, provider, or authority).
 All leases must be in ACTIVE state.
+Use --reason to provide a closure reason (applied to all leases).
 This is an atomic operation: all leases succeed or all fail.`,
 		Example: `# Close a single lease
 close-lease 01902a9b-1234-7000-8000-000000000001 --from mykey
 
-# Close multiple leases (max 100)
-close-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000000002 --from mykey`,
+# Close multiple leases with reason (max 100)
+close-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000000002 --reason "service no longer needed" --from mykey`,
 		Args: cobra.RangeArgs(1, types.MaxBatchLeaseSize),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -216,15 +217,19 @@ close-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-0000000
 				}
 			}
 
+			reason, _ := cmd.Flags().GetString("reason")
+
 			msg := &types.MsgCloseLease{
 				Sender:     clientCtx.GetFromAddress().String(),
 				LeaseUuids: args,
+				Reason:     reason,
 			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
 
+	cmd.Flags().String("reason", "", "Reason for closing the leases (max 256 characters, applied to all)")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd

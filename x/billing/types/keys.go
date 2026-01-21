@@ -130,6 +130,7 @@ const (
 	AttributeKeyAcknowledgedBy    = "acknowledged_by"
 	AttributeKeyRejectedBy        = "rejected_by"
 	AttributeKeyRejectionReason   = "rejection_reason"
+	AttributeKeyClosureReason     = "closure_reason"
 	AttributeKeyCancelledBy       = "cancelled_by"
 	AttributeKeyAutoClosed        = "auto_closed"
 )

@@ -462,6 +462,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		closedBy       string
 		duration       time.Duration
 		activeCount    uint64
+		closureReason  string
 	}
 	leaseEvents := make([]leaseEvent, 0, len(leases))
 
@@ -513,6 +514,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			// Update lease state to inactive
 			leases[i].State = types.LEASE_STATE_CLOSED
 			leases[i].ClosedAt = &closeTime
+			leases[i].ClosureReason = msg.Reason
 		}
 
 		// Persist lease state update
@@ -538,6 +540,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			closedBy:       leaseClosedBy,
 			duration:       duration,
 			activeCount:    creditAccount.ActiveLeaseCount,
+			closureReason:  leases[i].ClosureReason,
 		})
 	}
 
@@ -553,17 +556,20 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 
 	// Emit events after successful commit (events go to the original context)
 	for _, ev := range leaseEvents {
+		eventAttrs := []sdk.Attribute{
+			sdk.NewAttribute(types.AttributeKeyLeaseUUID, ev.uuid),
+			sdk.NewAttribute(types.AttributeKeyTenant, ev.tenant),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, ev.providerUUID),
+			sdk.NewAttribute(types.AttributeKeySettledAmounts, ev.settledAmounts.String()),
+			sdk.NewAttribute(types.AttributeKeyClosedBy, ev.closedBy),
+			sdk.NewAttribute(types.AttributeKeyDuration, strconv.FormatInt(int64(ev.duration.Seconds()), 10)),
+			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(ev.activeCount, 10)),
+		}
+		if ev.closureReason != "" {
+			eventAttrs = append(eventAttrs, sdk.NewAttribute(types.AttributeKeyClosureReason, ev.closureReason))
+		}
 		sdkCtx.EventManager().EmitEvent(
-			sdk.NewEvent(
-				types.EventTypeLeaseClosed,
-				sdk.NewAttribute(types.AttributeKeyLeaseUUID, ev.uuid),
-				sdk.NewAttribute(types.AttributeKeyTenant, ev.tenant),
-				sdk.NewAttribute(types.AttributeKeyProviderUUID, ev.providerUUID),
-				sdk.NewAttribute(types.AttributeKeySettledAmounts, ev.settledAmounts.String()),
-				sdk.NewAttribute(types.AttributeKeyClosedBy, ev.closedBy),
-				sdk.NewAttribute(types.AttributeKeyDuration, strconv.FormatInt(int64(ev.duration.Seconds()), 10)),
-				sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(ev.activeCount, 10)),
-			),
+			sdk.NewEvent(types.EventTypeLeaseClosed, eventAttrs...),
 		)
 	}
 

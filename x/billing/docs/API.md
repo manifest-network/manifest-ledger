@@ -225,13 +225,18 @@ manifestd tx billing close-lease [lease-uuid]... [flags]
 |----------|------|-------------|
 | lease-uuid | string | UUID(s) of leases to close (1-100) |
 
+**Flags:**
+| Flag | Type | Description |
+|------|------|-------------|
+| --reason | string | Reason for closing the leases (max 256 characters, applied to all) |
+
 **Examples:**
 ```bash
 # Close a single lease
 manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab --from mykey
 
-# Close multiple leases atomically
-manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-fedcba987654 --from mykey
+# Close multiple leases with a reason
+manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-fedcba987654 --reason "service no longer needed" --from mykey
 ```
 
 **Authorization:** Tenant (owner), provider (of SKUs), or authority.
@@ -239,6 +244,7 @@ manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab 01912345-6
 **Notes:**
 - Only ACTIVE leases can be closed
 - Performs final settlement during closure
+- Optional reason is stored on the lease and included in closure event
 - All leases must pass authorization for the sender:
   - Tenant: All leases must have that tenant
   - Provider: All leases must belong to that provider
@@ -424,6 +430,7 @@ manifestd query billing lease [lease-uuid]
 - `rejected_at` is set when provider rejects or tenant cancels (REJECTED state)
 - `expired_at` is set when pending lease times out (EXPIRED state)
 - `rejection_reason` contains the provider's reason for rejection (max 256 chars)
+- `closure_reason` contains the reason for closure (max 256 chars)
 
 ---
 
@@ -952,6 +959,7 @@ Close one or more ACTIVE leases atomically.
 message MsgCloseLease {
   string sender = 1;               // Sender (tenant, provider, or authority)
   repeated string lease_uuids = 2; // Leases to close (1-100)
+  string reason = 3;               // Optional closure reason (max 256 chars, applied to all)
 }
 ```
 
@@ -969,6 +977,7 @@ message MsgCloseLeaseResponse {
 - All leases must pass authorization for the sender
 - Maximum 100 leases per call
 - Atomic: all succeed or all fail
+- Reason is stored on each lease's `closure_reason` field
 
 ---
 
@@ -1227,6 +1236,7 @@ message Lease {
   google.protobuf.Timestamp expired_at = 10;
   google.protobuf.Timestamp last_settled_at = 11;
   string rejection_reason = 12;       // Provider's rejection reason (max 256 chars)
+  string closure_reason = 13;         // Closure reason (max 256 chars)
 }
 ```
 
@@ -1294,7 +1304,7 @@ The billing module emits the following events for state changes:
 | `lease_cancelled` | lease_uuid, tenant, provider_uuid, cancelled_by | Tenant cancelled pending lease |
 | `batch_cancelled` | lease_count, tenant, cancelled_by | Batch summary when multiple leases cancelled |
 | `lease_expired` | lease_uuid, tenant, provider_uuid, reason | Pending lease expired |
-| `lease_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, closed_by, duration_seconds, active_lease_count | Lease closed manually |
+| `lease_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, closed_by, duration_seconds, active_lease_count, closure_reason (optional) | Lease closed manually |
 | `batch_closed` | lease_count, closed_by | Batch summary when multiple leases closed |
 | `lease_auto_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, reason | Lease auto-closed due to credit exhaustion |
 | `provider_withdraw` | lease_uuid, provider_uuid, payout_address | Provider withdrawal from single lease |
@@ -1305,7 +1315,7 @@ The billing module emits the following events for state changes:
 
 ### Event Attribute Sanitization
 
-Certain event attributes (like `rejection_reason`) are sanitized before being emitted to prevent log injection attacks. The original value is stored in state unchanged, but the sanitized version appears in events. This protects against malicious input containing control characters or log format strings.
+Certain event attributes (like `rejection_reason` and `closure_reason`) are sanitized before being emitted to prevent log injection attacks. The original value is stored in state unchanged, but the sanitized version appears in events. This protects against malicious input containing control characters or log format strings.
 
 ### Querying Events
 

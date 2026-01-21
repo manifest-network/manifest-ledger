@@ -28,6 +28,7 @@ var (
 	ErrMaxPendingLeasesReached = errors.Register(ModuleName, 23, "maximum pending leases per tenant reached")
 	ErrInvalidRejectionReason  = errors.Register(ModuleName, 24, "invalid rejection reason")
 	ErrInvalidRequest          = errors.Register(ModuleName, 25, "invalid request")
+	ErrInvalidClosureReason    = errors.Register(ModuleName, 26, "invalid closure reason")
 )
 
 // MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.
@@ -43,3 +44,6 @@ const MaxQuantityPerItem uint64 = 1_000_000_000 // 1 billion
 
 // MaxRejectionReasonLength is the maximum length of a rejection reason.
 const MaxRejectionReasonLength = 256
+
+// MaxClosureReasonLength is the maximum length of a closure reason.
+const MaxClosureReasonLength = 256

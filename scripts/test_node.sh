@@ -160,6 +160,6 @@ sed -i 's/address = ":8080"/address = "0.0.0.0:'$ROSETTA'"/g' $HOME_DIR/config/a
 sed -i 's/timeout_commit = "5s"/timeout_commit = "'$TIMEOUT_COMMIT'"/g' $HOME_DIR/config/config.toml
 
 # Start the node
-BINARY start --pruning=nothing  --minimum-gas-prices=0umfx --rpc.laddr="tcp://0.0.0.0:$RPC"
+BINARY start --pruning=nothing  --minimum-gas-prices=0umfx --rpc.laddr="tcp://0.0.0.0:$RPC" --api.enabled-unsafe-cors
 #cosmovisor init $(which $BINARY)
 #cosmovisor run start --pruning=nothing  --minimum-gas-prices=0umfx --rpc.laddr="tcp://0.0.0.0:$RPC" --home $HOME_DIR

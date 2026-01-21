@@ -173,6 +173,10 @@ message MsgCloseLease {
 
   // lease_uuids are the UUIDs of the leases to close (1-100).
   repeated string lease_uuids = 2 [(gogoproto.jsontag) = "lease_uuids,omitempty"];
+
+  // reason is an optional explanation for the closure (applied to all leases).
+  // Maximum 256 characters.
+  string reason = 3 [(gogoproto.jsontag) = "reason,omitempty"];
 }
 
 // MsgCloseLeaseResponse is the response type for MsgCloseLease.

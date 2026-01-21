@@ -169,6 +169,10 @@ message Lease {
     (gogoproto.stdtime) = true,
     (gogoproto.jsontag) = "expired_at,omitempty"
   ];
+
+  // closure_reason is a free-form explanation for why the lease was closed.
+  // Only set when state is CLOSED. Maximum 256 characters.
+  string closure_reason = 13 [(gogoproto.jsontag) = "closure_reason,omitempty"];
 }
 
 // CreditAccount represents a tenant's credit account.

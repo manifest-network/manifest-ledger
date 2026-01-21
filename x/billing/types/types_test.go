@@ -599,6 +599,25 @@ func TestMsgCloseLease_ValidateBasic(t *testing.T) {
 			expectErr: true,
 			errMsg:    "lease_uuids cannot be empty",
 		},
+		{
+			name: "valid message with reason",
+			msg: types.MsgCloseLease{
+				Sender:     sender,
+				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
+				Reason:     "service no longer needed",
+			},
+			expectErr: false,
+		},
+		{
+			name: "reason exceeds max length",
+			msg: types.MsgCloseLease{
+				Sender:     sender,
+				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
+				Reason:     string(make([]byte, types.MaxClosureReasonLength+1)),
+			},
+			expectErr: true,
+			errMsg:    "reason exceeds maximum length",
+		},
 	}
 
 	for _, tc := range tests {

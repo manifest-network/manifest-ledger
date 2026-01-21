@@ -253,6 +253,67 @@ func testLeaseCloseIndependent(t *testing.T, ctx context.Context, tc *billingTes
 		require.NoError(t, err)
 		require.NotEqual(t, uint32(0), txRes.Code, "unauthorized close should fail")
 	})
+
+	t.Run("success: close lease with reason", func(t *testing.T) {
+		// Create another lease for this test
+		leaseUUID4, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant1, tc.providerWallet, items)
+		require.NoError(t, err)
+
+		closureReason := "service no longer needed"
+		res, err := helpers.BillingCloseLeaseWithReason(ctx, tc.chain, tc.tenant1, leaseUUID4, closureReason)
+		require.NoError(t, err)
+
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "lease close with reason should succeed: %s", txRes.RawLog)
+
+		// Verify lease is closed and has the closure reason
+		leaseRes, err := helpers.BillingQueryLease(ctx, tc.chain, leaseUUID4)
+		require.NoError(t, err)
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, leaseRes.Lease.GetState())
+		require.Equal(t, closureReason, leaseRes.Lease.GetClosureReason(), "closure reason should be stored on lease")
+		t.Logf("Lease %s closed with reason: %s", leaseUUID4, leaseRes.Lease.GetClosureReason())
+	})
+
+	t.Run("success: close lease without reason has empty closure_reason", func(t *testing.T) {
+		// Create another lease for this test
+		leaseUUID5, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant1, tc.providerWallet, items)
+		require.NoError(t, err)
+
+		// Close without reason
+		res, err := helpers.BillingCloseLease(ctx, tc.chain, tc.tenant1, leaseUUID5)
+		require.NoError(t, err)
+
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "lease close should succeed")
+
+		// Verify lease is closed and closure_reason is empty
+		leaseRes, err := helpers.BillingQueryLease(ctx, tc.chain, leaseUUID5)
+		require.NoError(t, err)
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, leaseRes.Lease.GetState())
+		require.Empty(t, leaseRes.Lease.GetClosureReason(), "closure reason should be empty when not provided")
+	})
+
+	t.Run("success: provider closes lease with reason", func(t *testing.T) {
+		// Create another lease for this test
+		leaseUUID6, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant1, tc.providerWallet, items)
+		require.NoError(t, err)
+
+		closureReason := "provider maintenance"
+		res, err := helpers.BillingCloseLeaseWithReason(ctx, tc.chain, tc.providerWallet, leaseUUID6, closureReason)
+		require.NoError(t, err)
+
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "provider close with reason should succeed")
+
+		// Verify closure reason is stored
+		leaseRes, err := helpers.BillingQueryLease(ctx, tc.chain, leaseUUID6)
+		require.NoError(t, err)
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, leaseRes.Lease.GetState())
+		require.Equal(t, closureReason, leaseRes.Lease.GetClosureReason())
+	})
 }
 
 // testLeaseRejectAndCancelIndependent tests lease reject and cancel operations.

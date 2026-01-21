@@ -88,9 +88,27 @@ func BillingCloseLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
+// BillingCloseLeaseWithReason closes an active lease with a closure reason.
+func BillingCloseLeaseWithReason(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseID, reason string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "close-lease", leaseID}
+	if reason != "" {
+		cmd = append(cmd, "--reason", reason)
+	}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
 // BillingCloseLeases closes multiple active leases atomically.
 func BillingCloseLeases(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUIDs []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := append([]string{"tx", "billing", "close-lease"}, leaseUUIDs...)
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
+// BillingCloseLeasesWithReason closes multiple active leases atomically with a closure reason.
+func BillingCloseLeasesWithReason(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUIDs []string, reason string, flags ...string) (sdk.TxResponse, error) {
+	cmd := append([]string{"tx", "billing", "close-lease"}, leaseUUIDs...)
+	if reason != "" {
+		cmd = append(cmd, "--reason", reason)
+	}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 

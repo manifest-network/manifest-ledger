@@ -102,7 +102,15 @@ func (m *MsgCloseLease) ValidateBasic() error {
 		return ErrInvalidLease.Wrapf("invalid sender address: %s", err)
 	}
 
-	return ValidateBatchLeaseUUIDs(m.LeaseUuids)
+	if err := ValidateBatchLeaseUUIDs(m.LeaseUuids); err != nil {
+		return err
+	}
+
+	if len(m.Reason) > MaxClosureReasonLength {
+		return ErrInvalidClosureReason.Wrapf("reason exceeds maximum length of %d characters", MaxClosureReasonLength)
+	}
+
+	return nil
 }
 
 // ValidateBasic performs basic validation for MsgWithdraw.
