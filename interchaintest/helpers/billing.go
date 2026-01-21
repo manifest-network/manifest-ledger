@@ -38,6 +38,7 @@ type LeaseJSON struct {
 	RejectedAt      *time.Time      `json:"rejected_at,omitempty"`
 	RejectionReason string          `json:"rejection_reason,omitempty"`
 	ExpiredAt       *time.Time      `json:"expired_at,omitempty"`
+	ClosureReason   string          `json:"closure_reason,omitempty"`
 }
 
 // GetState returns the LeaseState enum value from the string state.
@@ -56,6 +57,11 @@ func (l *LeaseJSON) GetState() billingtypes.LeaseState {
 	default:
 		return billingtypes.LEASE_STATE_UNSPECIFIED
 	}
+}
+
+// GetClosureReason returns the closure reason for the lease.
+func (l *LeaseJSON) GetClosureReason() string {
+	return l.ClosureReason
 }
 
 // Billing transaction helpers
