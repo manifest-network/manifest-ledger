@@ -1,6 +1,8 @@
 package types
 
 import (
+	"slices"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -100,10 +102,5 @@ func (p *Params) Validate() error {
 
 // IsAllowed checks if an address is in the allowed list.
 func (p Params) IsAllowed(addr string) bool {
-	for _, allowed := range p.AllowedList {
-		if allowed == addr {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.AllowedList, addr)
 }

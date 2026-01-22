@@ -19,7 +19,7 @@ func RandomizedGenState(simState *module.SimulationState) {
 
 	// Create random providers
 	numProviders := simState.Rand.Intn(5) + 1
-	for i := 0; i < numProviders; i++ {
+	for i := range numProviders {
 		providerUUID := generateSimUUID(simState.Rand, i)
 		provider := generateRandomProvider(simState.Rand, simState.Accounts, providerUUID)
 		providers = append(providers, provider)
@@ -27,7 +27,7 @@ func RandomizedGenState(simState *module.SimulationState) {
 
 	// Create random SKUs for each provider
 	numSKUs := simState.Rand.Intn(10) + 1
-	for i := 0; i < numSKUs; i++ {
+	for i := range numSKUs {
 		// Pick a random provider
 		providerIdx := simState.Rand.Intn(len(providers))
 		providerUUID := providers[providerIdx].Uuid

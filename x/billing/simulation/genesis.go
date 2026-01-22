@@ -66,7 +66,7 @@ func RandomAccounts(r *rand.Rand, accs []simtypes.Account, n int) []simtypes.Acc
 
 	result := make([]simtypes.Account, n)
 	perm := r.Perm(len(accs))
-	for i := 0; i < n; i++ {
+	for i := range n {
 		result[i] = accs[perm[i]]
 	}
 

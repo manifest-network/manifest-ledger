@@ -311,7 +311,7 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 		})
 
 		items := make([]types.LeaseItemInput, numItems)
-		for i := 0; i < numItems; i++ {
+		for i := range numItems {
 			items[i] = types.LeaseItemInput{
 				SkuUuid:  providerSKUs[i].Uuid,
 				Quantity: uint64(r.Intn(10) + 1), //nolint:gosec
@@ -404,7 +404,7 @@ func SimulateMsgCreateLeaseForTenant(txGen client.TxConfig, k keeper.Keeper, sk 
 		})
 
 		items := make([]types.LeaseItemInput, numItems)
-		for i := 0; i < numItems; i++ {
+		for i := range numItems {
 			items[i] = types.LeaseItemInput{
 				SkuUuid:  providerSKUs[i].Uuid,
 				Quantity: uint64(r.Intn(10) + 1), //nolint:gosec
@@ -769,7 +769,7 @@ func simulateSpecificLeaseWithdraw(
 	})
 
 	leaseUUIDs := make([]string, numLeases)
-	for i := 0; i < numLeases; i++ {
+	for i := range numLeases {
 		leaseUUIDs[i] = providerLeases[i].Uuid
 	}
 
