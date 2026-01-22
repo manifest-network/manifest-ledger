@@ -258,9 +258,14 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 
 	balances := q.k.bankKeeper.GetAllBalances(ctx, creditAddr)
 
+	// Calculate available balances (balance - reserved amounts)
+	// This is what can be used for new lease reservations
+	availableBalances := types.GetAvailableCredit(balances, ca.ReservedAmounts)
+
 	return &types.QueryCreditAccountResponse{
-		CreditAccount: ca,
-		Balances:      balances,
+		CreditAccount:     ca,
+		Balances:          balances,
+		AvailableBalances: availableBalances,
 	}, nil
 }
 

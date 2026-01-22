@@ -1055,9 +1055,14 @@ func TestGenesisState_Validate(t *testing.T) {
 		LastSettledAt: now,
 	}
 
+	// Calculate expected reservation for validLease: locked_price * quantity * min_lease_duration
+	// 100 * 1 * 3600 = 360000 (using default MinLeaseDuration)
+	validLeaseReservation := sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(360000)))
+
 	validCreditAccount := types.CreditAccount{
-		Tenant:        tenant,
-		CreditAddress: creditAddr.String(),
+		Tenant:          tenant,
+		CreditAddress:   creditAddr.String(),
+		ReservedAmounts: validLeaseReservation, // Must match sum of active/pending lease reservations
 	}
 
 	tests := []struct {
@@ -1467,6 +1472,167 @@ func TestGenesisState_Validate(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "mismatched credit_address",
+		},
+		// Cross-validation: reserved_amounts must match lease reservations
+		{
+			name: "reserved_amounts mismatch - too low",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{validLease}, // Active lease needs 360000 reserved
+				CreditAccounts: []types.CreditAccount{
+					{
+						Tenant:          tenant,
+						CreditAddress:   creditAddr.String(),
+						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(100000))), // Wrong: too low
+					},
+				},
+			},
+			expectErr: true,
+			errMsg:    "reserved_amounts",
+		},
+		{
+			name: "reserved_amounts mismatch - too high",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{validLease}, // Active lease needs 360000 reserved
+				CreditAccounts: []types.CreditAccount{
+					{
+						Tenant:          tenant,
+						CreditAddress:   creditAddr.String(),
+						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(1000000))), // Wrong: too high
+					},
+				},
+			},
+			expectErr: true,
+			errMsg:    "reserved_amounts",
+		},
+		{
+			name: "reserved_amounts should be empty for closed lease",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:        tenant,
+						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
+						Items:         []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
+						State:         types.LEASE_STATE_CLOSED, // Closed - no reservation
+						CreatedAt:     now,
+						LastSettledAt: now,
+						ClosedAt:      &closedAt,
+					},
+				},
+				CreditAccounts: []types.CreditAccount{
+					{
+						Tenant:          tenant,
+						CreditAddress:   creditAddr.String(),
+						ReservedAmounts: sdk.NewCoins(), // Correct: closed lease has no reservation
+					},
+				},
+			},
+			expectErr: false,
+		},
+		{
+			name: "reserved_amounts required for pending lease",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:        tenant,
+						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
+						Items:         []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
+						State:         types.LEASE_STATE_PENDING, // Pending - needs reservation
+						CreatedAt:     now,
+						LastSettledAt: now,
+					},
+				},
+				CreditAccounts: []types.CreditAccount{
+					{
+						Tenant:          tenant,
+						CreditAddress:   creditAddr.String(),
+						ReservedAmounts: sdk.NewCoins(), // Wrong: pending lease needs reservation
+					},
+				},
+			},
+			expectErr: true,
+			errMsg:    "reserved_amounts",
+		},
+		{
+			name: "multiple leases - combined reservation",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:        tenant,
+						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
+						Items:         []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     now,
+						LastSettledAt: now,
+					},
+					{
+						Uuid:          "01912345-6789-7abc-8def-0123456789ae",
+						Tenant:        tenant,
+						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
+						Items:         []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 2, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(50))}},
+						State:         types.LEASE_STATE_PENDING,
+						CreatedAt:     now,
+						LastSettledAt: now,
+					},
+				},
+				CreditAccounts: []types.CreditAccount{
+					{
+						Tenant:        tenant,
+						CreditAddress: creditAddr.String(),
+						// Lease 1: 100 * 1 * 3600 = 360000
+						// Lease 2: 50 * 2 * 3600 = 360000
+						// Total: 720000
+						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(720000))),
+					},
+				},
+			},
+			expectErr: false,
+		},
+		{
+			name: "lease with stored min_lease_duration_at_creation",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(), // Current param is 3600
+				Leases: []types.Lease{
+					{
+						Uuid:                       "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:                     tenant,
+						ProviderUuid:               "01912345-6789-7abc-8def-0123456789ac",
+						Items:                      []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
+						State:                      types.LEASE_STATE_ACTIVE,
+						CreatedAt:                  now,
+						LastSettledAt:              now,
+						MinLeaseDurationAtCreation: 7200, // Was 7200 at creation, not 3600
+					},
+				},
+				CreditAccounts: []types.CreditAccount{
+					{
+						Tenant:        tenant,
+						CreditAddress: creditAddr.String(),
+						// Should use stored duration: 100 * 1 * 7200 = 720000
+						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(720000))),
+					},
+				},
+			},
+			expectErr: false,
+		},
+		{
+			name: "tenant with leases but no credit account",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease}, // Active lease for tenant
+				CreditAccounts: []types.CreditAccount{
+					// Missing credit account for tenant
+				},
+			},
+			expectErr: true,
+			errMsg:    "no credit account",
 		},
 	}
 

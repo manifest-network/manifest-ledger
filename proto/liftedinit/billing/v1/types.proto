@@ -177,6 +177,13 @@ message Lease {
   // meta_hash is an optional hash/reference to off-chain deployment data.
   // Set once at lease creation and immutable. Maximum 64 bytes.
   bytes meta_hash = 14 [(gogoproto.jsontag) = "meta_hash,omitempty"];
+
+  // min_lease_duration_at_creation stores the min_lease_duration parameter value
+  // at the time this lease was created. This ensures consistent reservation
+  // calculation regardless of subsequent parameter changes.
+  // reservation = sum(locked_price × quantity) × min_lease_duration_at_creation
+  uint64 min_lease_duration_at_creation = 15
+      [(gogoproto.jsontag) = "min_lease_duration_at_creation,omitempty,string"];
 }
 
 // CreditAccount represents a tenant's credit account.
@@ -204,4 +211,13 @@ message CreditAccount {
   // Used to enforce max_pending_leases_per_tenant limit.
   uint64 pending_lease_count = 4
       [(gogoproto.jsontag) = "pending_lease_count,omitempty,string"];
+
+  // reserved_amounts holds the sum of all credit reservations for active and pending leases.
+  // Each lease reserves: rate_per_second × min_lease_duration for each denom.
+  // This prevents overbooking by ensuring credit availability before lease creation.
+  repeated cosmos.base.v1beta1.Coin reserved_amounts = 5 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "reserved_amounts"
+  ];
 }

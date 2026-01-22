@@ -226,23 +226,29 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		return nil, types.ErrProviderNotActive.Wrapf("provider_uuid %s is not active", providerUUID)
 	}
 
-	// 5. Verify tenant has enough credit to cover minimum lease duration for EACH denom
-	// Required credit per denom = totalRatePerSecond[denom] * minLeaseDuration
-	for _, rate := range totalRatesPerSecond {
-		requiredCredit := rate.Amount.Mul(sdkmath.NewIntFromUint64(params.MinLeaseDuration))
-		balance := creditBalances.AmountOf(rate.Denom)
-		if balance.LT(requiredCredit) {
+	// 5. Calculate reservation and verify tenant has enough AVAILABLE credit
+	// Available credit = balance - already reserved amounts
+	// This prevents overbooking where multiple leases could exhaust the same credit
+	reservationAmount := types.CalculateLeaseReservationFromRates(totalRatesPerSecond, params.MinLeaseDuration)
+	availableCredit := types.GetAvailableCredit(creditBalances, creditAccount.ReservedAmounts)
+
+	// Check each denom in the reservation has sufficient available credit
+	for _, res := range reservationAmount {
+		available := availableCredit.AmountOf(res.Denom)
+		if available.LT(res.Amount) {
 			return nil, types.ErrInsufficientCredit.Wrapf(
-				"credit balance %s %s cannot cover minimum lease duration of %d seconds (requires %s %s at rate %s/second)",
-				balance.String(),
-				rate.Denom,
-				params.MinLeaseDuration,
-				requiredCredit.String(),
-				rate.Denom,
-				rate.Amount.String(),
+				"insufficient available credit for denom %s: need %s, have %s available (balance: %s, reserved: %s)",
+				res.Denom,
+				res.Amount.String(),
+				available.String(),
+				creditBalances.AmountOf(res.Denom).String(),
+				creditAccount.ReservedAmounts.AmountOf(res.Denom).String(),
 			)
 		}
 	}
+
+	// Reserve credit immediately (lease is PENDING but credit is locked)
+	creditAccount.ReservedAmounts = types.AddReservation(creditAccount.ReservedAmounts, reservationAmount)
 
 	// 6. Create lease with deterministic UUIDv7
 	leaseSeq, err := ms.k.GetNextLeaseSequence(ctx)
@@ -252,14 +258,15 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 	leaseUUID := pkguuid.GenerateUUIDv7(sdkCtx, types.ModuleName, leaseSeq)
 
 	lease := types.Lease{
-		Uuid:          leaseUUID,
-		Tenant:        tenant,
-		ProviderUuid:  providerUUID,
-		Items:         leaseItems,
-		State:         types.LEASE_STATE_PENDING, // Start in PENDING, awaiting provider acknowledgement
-		CreatedAt:     blockTime,
-		LastSettledAt: blockTime, // Will be updated to AcknowledgedAt when provider acknowledges
-		MetaHash:      metaHash,
+		Uuid:                       leaseUUID,
+		Tenant:                     tenant,
+		ProviderUuid:               providerUUID,
+		Items:                      leaseItems,
+		State:                      types.LEASE_STATE_PENDING, // Start in PENDING, awaiting provider acknowledgement
+		CreatedAt:                  blockTime,
+		LastSettledAt:              blockTime, // Will be updated to AcknowledgedAt when provider acknowledges
+		MetaHash:                   metaHash,
+		MinLeaseDurationAtCreation: params.MinLeaseDuration, // Store for consistent reservation release
 	}
 
 	if err := ms.k.SetLease(ctx, lease); err != nil {
@@ -355,6 +362,12 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
+
+	// Get params for reservation calculation
+	params, err := ms.k.GetParams(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	// Phase 1: Validate ALL leases and authorization first (fail-fast)
 	leases := make([]types.Lease, 0, len(msg.LeaseUuids))
@@ -521,6 +534,10 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		// Update lease counts: decrement active (in memory map)
 		creditAccount := creditAccounts[leases[i].Tenant]
 		ms.k.DecrementActiveLeaseCount(&creditAccount, leases[i].Uuid)
+
+		// Release reservation for this lease
+		ms.k.ReleaseLeaseReservation(&creditAccount, &leases[i], params.MinLeaseDuration)
+
 		creditAccounts[leases[i].Tenant] = creditAccount
 
 		// Aggregate settled amounts
@@ -609,6 +626,12 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
+	// Get params for reservation calculation (needed for auto-close)
+	params, err := ms.k.GetParams(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// Phase 1: Validate ALL leases first (fail-fast on any error)
 	leases := make([]types.Lease, 0, len(msg.LeaseUuids))
 	var provider skutypes.Provider
@@ -683,10 +706,14 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 					return nil, err
 				}
 
-				// Update credit account's active lease count
+				// Update credit account's active lease count and release reservation
 				creditAccount, err := ms.k.GetCreditAccount(cacheCtx, lease.Tenant)
 				if err == nil {
 					ms.k.DecrementActiveLeaseCount(&creditAccount, lease.Uuid)
+
+					// Release reservation for this lease (ACTIVE leases have reservations)
+					ms.k.ReleaseLeaseReservation(&creditAccount, lease, params.MinLeaseDuration)
+
 					if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
 						return nil, err
 					}
@@ -808,6 +835,12 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
+	// Get params for reservation calculation (needed for auto-close)
+	params, err := ms.k.GetParams(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get provider by UUID
 	provider, err := ms.k.skuKeeper.GetProvider(ctx, msg.ProviderUuid)
 	if err != nil {
@@ -886,10 +919,14 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 					return false, nil // Continue iteration
 				}
 
-				// Update credit account's active lease count
+				// Update credit account's active lease count and release reservation
 				creditAccount, caErr := ms.k.GetCreditAccount(cacheCtx, lease.Tenant)
 				if caErr == nil {
 					ms.k.DecrementActiveLeaseCount(&creditAccount, lease.Uuid)
+
+					// Release reservation for this lease (ACTIVE leases have reservations)
+					ms.k.ReleaseLeaseReservation(&creditAccount, &lease, params.MinLeaseDuration)
+
 					if setErr := ms.k.SetCreditAccount(cacheCtx, creditAccount); setErr != nil {
 						ms.k.Logger().Error("failed to update credit account",
 							"lease_id", lease.Uuid,
@@ -1226,6 +1263,12 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
+	// Get params for reservation calculation
+	params, err := ms.k.GetParams(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// Phase 1: Validate all leases and authorization (fail-fast)
 	validated, err := ms.validatePendingLeaseBatch(ctx, msg.LeaseUuids)
 	if err != nil {
@@ -1265,6 +1308,10 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 		// Credit account existence was validated in Phase 1
 		creditAccount := creditAccounts[leases[i].Tenant]
 		ms.k.DecrementPendingLeaseCount(&creditAccount, leases[i].Uuid)
+
+		// Release reservation for this lease (PENDING leases have reservations)
+		ms.k.ReleaseLeaseReservation(&creditAccount, &leases[i], params.MinLeaseDuration)
+
 		creditAccounts[leases[i].Tenant] = creditAccount // Update map with new counts
 
 		// Queue event for emission after successful commit
@@ -1329,6 +1376,12 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
+	// Get params for reservation calculation
+	params, err := ms.k.GetParams(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// Phase 1: Validate ALL leases first (fail-fast on any error)
 	// Check lease existence and ownership before getting credit account
 	leases := make([]types.Lease, 0, len(msg.LeaseUuids))
@@ -1382,9 +1435,12 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 
 		// Decrement pending lease count in credit account
 		ms.k.DecrementPendingLeaseCount(&creditAccount, leases[i].Uuid)
+
+		// Release reservation for this lease (PENDING leases have reservations)
+		ms.k.ReleaseLeaseReservation(&creditAccount, &leases[i], params.MinLeaseDuration)
 	}
 
-	// Save credit account with updated pending count
+	// Save credit account with updated pending count and released reservations
 	if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
 		return nil, err
 	}

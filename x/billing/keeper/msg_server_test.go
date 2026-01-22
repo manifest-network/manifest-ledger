@@ -4427,3 +4427,479 @@ func TestMsgWithdraw_ProviderWideLargePagination(t *testing.T) {
 			finalBalance.Amount, initialBalance.Amount)
 	})
 }
+
+// ============================================================================
+// Credit Reservation / Overbooking Prevention Tests
+// ============================================================================
+
+// TestOverbookingPrevention tests that the credit reservation system prevents
+// creating more leases than available credit can support.
+func TestOverbookingPrevention(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	denom := testDenom
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	// SKU: 3600 per hour = 1 per second
+	// With min_lease_duration of 3600 seconds (default), each lease reserves 3600 credits
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 umfx per hour
+
+	// Fund tenant with 10000 credits
+	// With 3600 credits reserved per lease, tenant should only be able to create 2 leases
+	// (2 * 3600 = 7200 < 10000, but 3 * 3600 = 10800 > 10000)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(10000))
+	f.fundAccount(t, tenant, sdk.NewCoins(fundAmount))
+
+	// Fund credit account
+	_, err := msgServer.FundCredit(f.Ctx, &types.MsgFundCredit{
+		Sender: tenant.String(),
+		Tenant: tenant.String(),
+		Amount: fundAmount,
+	})
+	require.NoError(t, err)
+
+	// Lease 1: Should succeed (reserves 3600, available: 10000 - 3600 = 6400)
+	createResp1, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, createResp1)
+	t.Logf("Lease 1 created: %s", createResp1.LeaseUuid)
+
+	// Verify reservation was made
+	creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(3600), creditAccount.ReservedAmounts.AmountOf(denom))
+
+	// Lease 2: Should succeed (reserves 3600, available: 10000 - 7200 = 2800)
+	createResp2, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, createResp2)
+	t.Logf("Lease 2 created: %s", createResp2.LeaseUuid)
+
+	// Verify reservation increased
+	creditAccount, err = f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(7200), creditAccount.ReservedAmounts.AmountOf(denom))
+
+	// Lease 3: Should FAIL (need 3600, only 2800 available)
+	_, err = msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "insufficient available credit")
+	t.Logf("Lease 3 correctly rejected: %v", err)
+
+	// Verify reservation unchanged after failed attempt
+	creditAccount, err = f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(7200), creditAccount.ReservedAmounts.AmountOf(denom))
+}
+
+// TestReservationReleaseOnClose tests that closing an active lease releases its reservation.
+func TestReservationReleaseOnClose(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	denom := testDenom
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 umfx per hour = 1 per second
+
+	// Fund tenant with just enough for 2 leases
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(8000))
+	f.fundAccount(t, tenant, sdk.NewCoins(fundAmount))
+
+	_, err := msgServer.FundCredit(f.Ctx, &types.MsgFundCredit{
+		Sender: tenant.String(),
+		Tenant: tenant.String(),
+		Amount: fundAmount,
+	})
+	require.NoError(t, err)
+
+	// Create and acknowledge 2 leases
+	leaseUUID1 := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr,
+		[]types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}})
+	leaseUUID2 := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr,
+		[]types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}})
+
+	// Verify both reservations exist
+	creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(7200), creditAccount.ReservedAmounts.AmountOf(denom))
+
+	// Third lease should fail
+	_, err = msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "insufficient available credit")
+
+	// Close lease 1
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     tenant.String(),
+		LeaseUuids: []string{leaseUUID1},
+	})
+	require.NoError(t, err)
+
+	// Verify reservation was released
+	creditAccount, err = f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(3600), creditAccount.ReservedAmounts.AmountOf(denom))
+
+	// Now third lease should succeed (after closing first)
+	createResp3, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, createResp3)
+	t.Logf("Lease 3 created after closing lease 1: %s", createResp3.LeaseUuid)
+
+	// Cleanup: verify we can still close all leases
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     tenant.String(),
+		LeaseUuids: []string{leaseUUID2},
+	})
+	require.NoError(t, err)
+}
+
+// TestReservationReleaseOnReject tests that rejecting a pending lease releases its reservation.
+func TestReservationReleaseOnReject(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	denom := testDenom
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(8000))
+	f.fundAccount(t, tenant, sdk.NewCoins(fundAmount))
+
+	_, err := msgServer.FundCredit(f.Ctx, &types.MsgFundCredit{
+		Sender: tenant.String(),
+		Tenant: tenant.String(),
+		Amount: fundAmount,
+	})
+	require.NoError(t, err)
+
+	// Create 2 pending leases (don't acknowledge)
+	createResp1, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+
+	createResp2, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+
+	// Verify reservations
+	creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(7200), creditAccount.ReservedAmounts.AmountOf(denom))
+
+	// Third lease should fail
+	_, err = msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.Error(t, err)
+
+	// Provider rejects lease 1
+	_, err = msgServer.RejectLease(f.Ctx, &types.MsgRejectLease{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{createResp1.LeaseUuid},
+		Reason:     "Test rejection",
+	})
+	require.NoError(t, err)
+
+	// Verify reservation was released
+	creditAccount, err = f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(3600), creditAccount.ReservedAmounts.AmountOf(denom))
+
+	// Now third lease should succeed
+	createResp3, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, createResp3)
+	t.Logf("Lease 3 created after rejecting lease 1: %s", createResp3.LeaseUuid)
+
+	// Cleanup
+	_, err = msgServer.RejectLease(f.Ctx, &types.MsgRejectLease{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{createResp2.LeaseUuid, createResp3.LeaseUuid},
+		Reason:     "Cleanup",
+	})
+	require.NoError(t, err)
+}
+
+// TestReservationReleaseOnCancel tests that cancelling a pending lease releases its reservation.
+func TestReservationReleaseOnCancel(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	denom := testDenom
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(8000))
+	f.fundAccount(t, tenant, sdk.NewCoins(fundAmount))
+
+	_, err := msgServer.FundCredit(f.Ctx, &types.MsgFundCredit{
+		Sender: tenant.String(),
+		Tenant: tenant.String(),
+		Amount: fundAmount,
+	})
+	require.NoError(t, err)
+
+	// Create 2 pending leases
+	createResp1, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+
+	createResp2, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+
+	// Verify reservations
+	creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(7200), creditAccount.ReservedAmounts.AmountOf(denom))
+
+	// Tenant cancels lease 1
+	_, err = msgServer.CancelLease(f.Ctx, &types.MsgCancelLease{
+		Tenant:     tenant.String(),
+		LeaseUuids: []string{createResp1.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	// Verify reservation was released
+	creditAccount, err = f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(3600), creditAccount.ReservedAmounts.AmountOf(denom))
+
+	// Now third lease should succeed
+	createResp3, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, createResp3)
+	t.Logf("Lease 3 created after cancelling lease 1: %s", createResp3.LeaseUuid)
+
+	// Cleanup
+	_, err = msgServer.CancelLease(f.Ctx, &types.MsgCancelLease{
+		Tenant:     tenant.String(),
+		LeaseUuids: []string{createResp2.LeaseUuid, createResp3.LeaseUuid},
+	})
+	require.NoError(t, err)
+}
+
+// TestReservationReleaseOnExpire tests that expiring a pending lease releases its reservation.
+func TestReservationReleaseOnExpire(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	denom := testDenom
+
+	// Set a short pending timeout for testing
+	params := types.DefaultParams()
+	params.PendingTimeout = 60 // 60 seconds
+	err := f.App.BillingKeeper.SetParams(f.Ctx, params)
+	require.NoError(t, err)
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(8000))
+	f.fundAccount(t, tenant, sdk.NewCoins(fundAmount))
+
+	_, err = msgServer.FundCredit(f.Ctx, &types.MsgFundCredit{
+		Sender: tenant.String(),
+		Tenant: tenant.String(),
+		Amount: fundAmount,
+	})
+	require.NoError(t, err)
+
+	// Create 2 pending leases
+	createResp1, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+
+	createResp2, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+
+	// Verify reservations
+	creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(7200), creditAccount.ReservedAmounts.AmountOf(denom))
+
+	// Third lease should fail
+	_, err = msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.Error(t, err)
+
+	// Advance time past pending timeout
+	ctx61 := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(61 * time.Second))
+
+	// Run EndBlocker to expire pending leases
+	err = f.App.BillingKeeper.EndBlocker(ctx61)
+	require.NoError(t, err)
+
+	// Verify both leases are now EXPIRED
+	lease1, err := f.App.BillingKeeper.GetLease(ctx61, createResp1.LeaseUuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_EXPIRED, lease1.State)
+
+	lease2, err := f.App.BillingKeeper.GetLease(ctx61, createResp2.LeaseUuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_EXPIRED, lease2.State)
+
+	// Verify reservations were released
+	creditAccount, err = f.App.BillingKeeper.GetCreditAccount(ctx61, tenant.String())
+	require.NoError(t, err)
+	require.True(t, creditAccount.ReservedAmounts.IsZero() || creditAccount.ReservedAmounts.AmountOf(denom).IsZero(),
+		"reservations should be released after expiry, got: %s", creditAccount.ReservedAmounts)
+
+	// Now new leases should succeed
+	createResp3, err := msgServer.CreateLease(ctx61, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, createResp3)
+	t.Logf("Lease 3 created after lease 1 and 2 expired: %s", createResp3.LeaseUuid)
+}
+
+// TestQueryAvailableBalances tests that the CreditAccount query returns correct available_balances.
+func TestQueryAvailableBalances(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+	querier := keeper.NewQuerier(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	denom := testDenom
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant with 10000 credits
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(10000))
+	f.fundAccount(t, tenant, sdk.NewCoins(fundAmount))
+
+	_, err := msgServer.FundCredit(f.Ctx, &types.MsgFundCredit{
+		Sender: tenant.String(),
+		Tenant: tenant.String(),
+		Amount: fundAmount,
+	})
+	require.NoError(t, err)
+
+	// Query initial state - all balances should be available
+	resp, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+		Tenant: tenant.String(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(10000), resp.Balances.AmountOf(denom))
+	require.Equal(t, sdkmath.NewInt(10000), resp.AvailableBalances.AmountOf(denom))
+	require.True(t, resp.CreditAccount.ReservedAmounts.IsZero())
+
+	// Create a lease (reserves 3600)
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+
+	// Query after lease creation
+	resp, err = querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+		Tenant: tenant.String(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(10000), resp.Balances.AmountOf(denom), "total balance should be unchanged")
+	require.Equal(t, sdkmath.NewInt(6400), resp.AvailableBalances.AmountOf(denom), "available should be balance - reserved")
+	require.Equal(t, sdkmath.NewInt(3600), resp.CreditAccount.ReservedAmounts.AmountOf(denom), "reserved should show lease reservation")
+
+	// Create another lease
+	_, err = msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+
+	// Query after second lease
+	resp, err = querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+		Tenant: tenant.String(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(10000), resp.Balances.AmountOf(denom))
+	require.Equal(t, sdkmath.NewInt(2800), resp.AvailableBalances.AmountOf(denom))
+	require.Equal(t, sdkmath.NewInt(7200), resp.CreditAccount.ReservedAmounts.AmountOf(denom))
+
+	// Cancel first lease
+	_, err = msgServer.CancelLease(f.Ctx, &types.MsgCancelLease{
+		Tenant:     tenant.String(),
+		LeaseUuids: []string{createResp.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	// Query after cancellation
+	resp, err = querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+		Tenant: tenant.String(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(10000), resp.Balances.AmountOf(denom))
+	require.Equal(t, sdkmath.NewInt(6400), resp.AvailableBalances.AmountOf(denom))
+	require.Equal(t, sdkmath.NewInt(3600), resp.CreditAccount.ReservedAmounts.AmountOf(denom))
+}

@@ -216,6 +216,14 @@ message QueryCreditAccountResponse {
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
     (gogoproto.jsontag) = "balances"
   ];
+
+  // available_balances is the amount available for new leases (balances - reserved_amounts).
+  // This is what can be used to create new leases without overbooking.
+  repeated cosmos.base.v1beta1.Coin available_balances = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "available_balances"
+  ];
 }
 
 // QueryCreditAddressRequest is the request type for the Query/CreditAddress RPC

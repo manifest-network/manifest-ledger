@@ -92,6 +92,9 @@ func (gs *GenesisState) Validate() error {
 			return ErrInvalidMetaHash.Wrapf("lease %s has meta_hash exceeding maximum length of %d bytes", lease.Uuid, MaxMetaHashLength)
 		}
 
+		// Note: min_lease_duration_at_creation is a uint64 and doesn't require validation.
+		// Zero value is valid for legacy leases (will fall back to current param).
+
 		// For inactive leases, validate closed_at is set
 		if lease.State == LEASE_STATE_CLOSED {
 			if lease.ClosedAt == nil || lease.ClosedAt.IsZero() {
@@ -132,7 +135,45 @@ func (gs *GenesisState) Validate() error {
 				ca.Tenant, ca.CreditAddress, expectedCreditAddr.String())
 		}
 
+		// Validate reserved_amounts if present
+		if !ca.ReservedAmounts.IsValid() {
+			return ErrInvalidCreditOperation.Wrapf("credit account for %s has invalid reserved_amounts", ca.Tenant)
+		}
+
 		// Balance is tracked in bank module, no validation needed here
+	}
+
+	// Cross-validate: reserved_amounts must match sum of lease reservations per tenant
+	// Only PENDING and ACTIVE leases have reservations
+	expectedReservations := CalculateExpectedReservationsByTenant(gs.Leases, gs.Params.MinLeaseDuration)
+
+	// Check each credit account's reserved_amounts matches expected
+	for _, ca := range gs.CreditAccounts {
+		expected := expectedReservations[ca.Tenant]
+		if expected == nil {
+			expected = sdk.NewCoins()
+		}
+
+		// Normalize both for comparison (removes zero coins)
+		actualNormalized := sdk.NewCoins(ca.ReservedAmounts...)
+		expectedNormalized := sdk.NewCoins(expected...)
+
+		if !actualNormalized.Equal(expectedNormalized) {
+			return ErrInvalidCreditOperation.Wrapf(
+				"credit account for %s has reserved_amounts %s but lease reservations sum to %s",
+				ca.Tenant, actualNormalized.String(), expectedNormalized.String(),
+			)
+		}
+	}
+
+	// Check for tenants with leases but no credit account
+	for tenant, expected := range expectedReservations {
+		if !expected.IsZero() && !seenTenants[tenant] {
+			return ErrInvalidCreditOperation.Wrapf(
+				"tenant %s has lease reservations totaling %s but no credit account",
+				tenant, expected.String(),
+			)
+		}
 	}
 
 	return nil

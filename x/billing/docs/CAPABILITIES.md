@@ -14,6 +14,7 @@ This document provides a comprehensive overview of the Billing module's capabili
 - [Architecture Overview](#architecture-overview)
 - [Future Improvements](#future-improvements)
   - [Lease Scaling (Detailed Design)](#lease-scaling-detailed-design)
+  - [Task-Based Billing (Detailed Design)](#task-based-billing-detailed-design)
 
 ---
 
@@ -431,6 +432,333 @@ manifestd query billing lease [lease-uuid]
 | **Clean Settlement** | Automatic settlement before rate change |
 | **Audit Trail** | Events track all scaling operations |
 | **Simple UX** | Single transaction to scale |
+
+---
+
+## Task-Based Billing (Detailed Design)
+
+### Current Limitation
+
+The billing module only supports **time-based billing** - charges accrue per-second regardless of actual work performed. This doesn't fit use cases like:
+
+- **Batch inference**: Run 1000 predictions, pay per prediction
+- **Rendering jobs**: Render 50 frames, pay per frame
+- **One-off tasks**: Process a file, pay for the task
+
+### Use Cases
+
+| Use Case | Current (Time-Based) | Desired (Task-Based) |
+|----------|----------------------|----------------------|
+| AI inference | Reserve GPU for 1 hour, pay $10/hour | Run 100 inferences, pay $0.10 each |
+| Rendering | Reserve node for 2 hours | Render 20 frames, pay $0.50/frame |
+| Data processing | Reserve compute for 30 min | Process 5GB, pay $0.02/GB |
+
+### Design Overview
+
+Extend leases to support a `billing_mode` that determines how charges accrue:
+
+- **TIME**: Current behavior - charges accrue per-second
+- **TASK**: Charges accrue per-task completion submitted by provider
+
+### Proposed Data Model
+
+```protobuf
+// New enum for billing mode
+enum BillingMode {
+  BILLING_MODE_UNSPECIFIED = 0;
+  BILLING_MODE_TIME = 1;   // Current behavior - per-second accrual
+  BILLING_MODE_TASK = 2;   // Per-task completion
+}
+
+// Extended LeaseItem for task-based pricing
+message LeaseItem {
+  string sku_uuid = 1;
+  uint64 quantity = 2;
+  cosmos.base.v1beta1.Coin locked_price = 3;  // Per-second (TIME) or per-task (TASK)
+}
+
+// Extended Lease
+message Lease {
+  // ... existing fields ...
+
+  // Task-based billing fields
+  BillingMode billing_mode = 15;
+  uint64 tasks_completed = 16;     // Counter for completed tasks
+  uint64 max_tasks = 17;           // Optional: cap on tasks (0 = unlimited)
+  cosmos.base.v1beta1.Coin max_cost = 18;  // Optional: spending limit
+}
+
+// New message for task completion
+message MsgCompleteTask {
+  string provider = 1;           // Must be the lease's provider
+  string lease_uuid = 2;
+  uint64 task_count = 3;         // How many tasks completed (usually 1)
+  bytes task_proof = 4;          // Optional: attestation or proof data
+  string task_id = 5;            // Optional: external reference ID
+  string task_meta = 6;          // Optional: task metadata (e.g., input hash)
+}
+
+message MsgCompleteTaskResponse {
+  cosmos.base.v1beta1.Coins charged = 1;    // Amount charged for this completion
+  uint64 total_tasks_completed = 2;         // Running total
+  cosmos.base.v1beta1.Coins total_charged = 3;  // Total charged so far
+}
+```
+
+### SKU Extension
+
+SKUs need to indicate whether they support task-based billing:
+
+```protobuf
+message SKU {
+  // ... existing fields ...
+
+  BillingMode billing_mode = 10;  // What billing mode this SKU uses
+  // For TASK mode: base_price is per-task, not per-time-unit
+}
+```
+
+### Settlement Logic
+
+```go
+func (ms msgServer) CompleteTask(ctx context.Context, msg *types.MsgCompleteTask) (*types.MsgCompleteTaskResponse, error) {
+    sdkCtx := sdk.UnwrapSDKContext(ctx)
+    blockTime := sdkCtx.BlockTime()
+
+    // 1. Get and validate lease
+    lease, err := ms.k.GetLease(ctx, msg.LeaseUuid)
+    if err != nil {
+        return nil, err
+    }
+
+    if lease.State != types.LEASE_STATE_ACTIVE {
+        return nil, types.ErrLeaseNotActive
+    }
+
+    if lease.BillingMode != types.BILLING_MODE_TASK {
+        return nil, types.ErrInvalidBillingMode.Wrap("lease is not task-based")
+    }
+
+    // 2. Verify sender is the provider
+    provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
+    if err != nil {
+        return nil, err
+    }
+    if msg.Provider != provider.Address {
+        return nil, types.ErrUnauthorized.Wrap("only provider can complete tasks")
+    }
+
+    // 3. Check max_tasks limit
+    if lease.MaxTasks > 0 && lease.TasksCompleted+msg.TaskCount > lease.MaxTasks {
+        return nil, types.ErrMaxTasksExceeded.Wrapf(
+            "completing %d tasks would exceed max_tasks (%d), current: %d",
+            msg.TaskCount, lease.MaxTasks, lease.TasksCompleted,
+        )
+    }
+
+    // 4. Calculate cost: locked_price × quantity × task_count
+    cost := sdk.NewCoins()
+    for _, item := range lease.Items {
+        itemCost := item.LockedPrice.Amount.
+            MulRaw(int64(item.Quantity)).
+            MulRaw(int64(msg.TaskCount))
+        cost = cost.Add(sdk.NewCoin(item.LockedPrice.Denom, itemCost))
+    }
+
+    // 5. Check max_cost limit (if set)
+    if !lease.MaxCost.IsZero() {
+        totalAfter := ms.k.CalculateTotalCharged(ctx, lease).Add(cost...)
+        if totalAfter.IsAnyGT(sdk.NewCoins(lease.MaxCost)) {
+            return nil, types.ErrMaxCostExceeded.Wrapf(
+                "completing tasks would exceed max_cost (%s)",
+                lease.MaxCost.String(),
+            )
+        }
+    }
+
+    // 6. Use CacheContext for atomicity
+    cacheCtx, write := sdkCtx.CacheContext()
+
+    // 7. Transfer from credit account to provider
+    creditAddr, _ := types.DeriveCreditAddressFromBech32(lease.Tenant)
+    payoutAddr, _ := sdk.AccAddressFromBech32(provider.PayoutAddress)
+
+    // Check available credit
+    available := ms.k.bankKeeper.GetAllBalances(cacheCtx, creditAddr)
+    if !available.IsAllGTE(cost) {
+        // Partial payment or auto-close?
+        // Option A: Reject if insufficient
+        return nil, types.ErrInsufficientCredit.Wrapf(
+            "task completion costs %s, only %s available",
+            cost.String(), available.String(),
+        )
+        // Option B: Allow partial and auto-close (more complex)
+    }
+
+    if err := ms.k.bankKeeper.SendCoins(cacheCtx, creditAddr, payoutAddr, cost); err != nil {
+        return nil, err
+    }
+
+    // 8. Update lease
+    lease.TasksCompleted += msg.TaskCount
+
+    if err := ms.k.SetLease(cacheCtx, lease); err != nil {
+        return nil, err
+    }
+
+    // 9. Commit
+    write()
+
+    // 10. Emit event
+    sdkCtx.EventManager().EmitEvent(
+        sdk.NewEvent(
+            types.EventTypeTaskCompleted,
+            sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
+            sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
+            sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
+            sdk.NewAttribute("task_count", strconv.FormatUint(msg.TaskCount, 10)),
+            sdk.NewAttribute("task_id", msg.TaskId),
+            sdk.NewAttribute(types.AttributeKeyAmount, cost.String()),
+            sdk.NewAttribute("total_completed", strconv.FormatUint(lease.TasksCompleted, 10)),
+        ),
+    )
+
+    return &types.MsgCompleteTaskResponse{
+        Charged:             cost,
+        TotalTasksCompleted: lease.TasksCompleted,
+        TotalCharged:        ms.k.CalculateTotalCharged(ctx, lease),
+    }, nil
+}
+```
+
+### Credit Reservation for Task-Based Leases
+
+For time-based leases, we reserve `rate × min_lease_duration`. For task-based leases:
+
+```go
+func CalculateLeaseReservation(lease *Lease, params Params) sdk.Coins {
+    switch lease.BillingMode {
+    case BILLING_MODE_TIME:
+        // Existing logic: rate × min_lease_duration
+        return CalculateTimeBasedReservation(lease.Items, params.MinLeaseDuration)
+
+    case BILLING_MODE_TASK:
+        // Reserve for max_tasks if set, otherwise min_tasks parameter
+        taskCount := lease.MaxTasks
+        if taskCount == 0 {
+            taskCount = params.MinTaskReservation  // e.g., 10 tasks
+        }
+        return CalculateTaskBasedReservation(lease.Items, taskCount)
+    }
+}
+```
+
+### Hybrid Billing Mode
+
+A lease could support both time-based and task-based charges:
+
+```
+Example: AI API Service
+- Base rate: $5/hour for API access (TIME)
+- Per-inference: $0.01 per inference (TASK)
+
+Tenant pays:
+- Continuous $5/hour while lease is active
+- Additional $0.01 for each inference completed
+```
+
+This would require:
+- Separate `time_items` and `task_items` in the lease
+- Both accrual mechanisms active
+- More complex settlement
+
+**Recommendation**: Start with pure TASK mode, add hybrid later if needed.
+
+### Query Extensions
+
+```protobuf
+// Extended credit estimate for task-based leases
+message QueryCreditEstimateResponse {
+  // ... existing fields for TIME mode ...
+
+  // Task-based estimates
+  uint64 estimated_remaining_tasks = 5;  // How many tasks can be completed
+  cosmos.base.v1beta1.Coins cost_per_task = 6;
+}
+```
+
+### CLI Commands
+
+```bash
+# Create task-based lease
+manifestd tx billing create-lease [provider-uuid] \
+  --item [sku-uuid]:quantity \
+  --billing-mode task \
+  --max-tasks 1000 \
+  --max-cost 100000umfx \
+  --from tenant
+
+# Provider completes task
+manifestd tx billing complete-task [lease-uuid] \
+  --task-count 1 \
+  --task-id "inference-12345" \
+  --from provider
+
+# Query task-based lease
+manifestd query billing lease [lease-uuid]
+# Returns: tasks_completed, max_tasks, cost_per_task, etc.
+```
+
+### Implementation Phases
+
+| Phase | Feature | Complexity | Dependencies |
+|-------|---------|------------|--------------|
+| **1** | `BillingMode` enum and field | Low | Proto regeneration |
+| **2** | `MsgCompleteTask` message | Medium | None |
+| **3** | Task settlement logic | Medium | Phase 2 |
+| **4** | Task-based credit reservation | Medium | Credit reservation system |
+| **5** | SKU billing mode support | Low | Phase 1 |
+| **6** | `max_tasks` and `max_cost` limits | Low | Phase 2 |
+| **7** | Task completion events and indexing | Low | Phase 2 |
+| **8** | Hybrid billing mode | High | All above |
+
+### Migration Considerations
+
+- Existing leases default to `BILLING_MODE_TIME`
+- New field `billing_mode` with default value
+- SKUs need migration to specify their billing mode
+- No breaking changes to existing functionality
+
+### Security Considerations
+
+| Concern | Mitigation |
+|---------|------------|
+| Provider spam (fake completions) | Off-chain verification, reputation |
+| Task count manipulation | `max_tasks` limit, credit exhaustion check |
+| Credit exhaustion mid-task | Check before allowing completion |
+| Replay attacks | `task_id` uniqueness (optional enforcement) |
+
+### Comparison with Other Systems
+
+| System | Task Billing Approach |
+|--------|----------------------|
+| **Golem** | Task market - providers bid on tasks, payment on completion |
+| **Render** | Job-based - submit render job, pay when frames complete |
+| **AWS Lambda** | Invocation-based - pay per function call + duration |
+| **Manifest (proposed)** | Provider-attested completion - trust provider reports |
+
+Our approach is simpler (no bidding, no proofs) but requires trusted providers. This fits V1 where we are the provider.
+
+### Benefits Summary
+
+| Benefit | Description |
+|---------|-------------|
+| **Pay-Per-Use** | Only pay for actual work done |
+| **No Idle Charges** | No cost when provider isn't processing |
+| **Predictable Costs** | Know exact cost per task upfront |
+| **Flexible Limits** | Set task count or cost caps |
+| **Simple Provider Integration** | Just call `CompleteTask` when done |
+| **Audit Trail** | Every task completion is an on-chain event |
 
 ---
 

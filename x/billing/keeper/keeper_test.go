@@ -1025,6 +1025,8 @@ func TestGenesisValidation(t *testing.T) {
 					{
 						Tenant:        tenant.String(),
 						CreditAddress: creditAddr.String(),
+						// Reservation: 100 * 1 * 3600 = 360000 (active lease needs reservation)
+						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(360000))),
 					},
 				},
 			},
