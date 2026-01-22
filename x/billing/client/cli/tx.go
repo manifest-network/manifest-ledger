@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -39,6 +40,28 @@ func NewTxCmd() *cobra.Command {
 	)
 
 	return cmd
+}
+
+// parseMetaHashFlag parses and validates the --meta-hash flag value.
+// Returns nil if the flag is empty. Returns an error if the value is not valid hex
+// or exceeds the maximum allowed length.
+func parseMetaHashFlag(cmd *cobra.Command) ([]byte, error) {
+	metaHashStr, _ := cmd.Flags().GetString("meta-hash")
+	if metaHashStr == "" {
+		return nil, nil
+	}
+	// Defense-in-depth: check hex string length before decoding
+	if len(metaHashStr) > types.MaxMetaHashLength*2 {
+		return nil, fmt.Errorf("meta-hash too long: max %d hex characters", types.MaxMetaHashLength*2)
+	}
+	metaHash, err := hex.DecodeString(metaHashStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid meta-hash: must be hex-encoded: %w", err)
+	}
+	if len(metaHash) > types.MaxMetaHashLength {
+		return nil, fmt.Errorf("meta-hash exceeds maximum length of %d bytes", types.MaxMetaHashLength)
+	}
+	return metaHash, nil
 }
 
 // NewFundCreditCmd returns the command to fund a credit account.
@@ -87,9 +110,11 @@ func NewCreateLeaseCmd() *cobra.Command {
 		Use:   "create-lease [sku-uuid:quantity] [sku-uuid:quantity] ...",
 		Short: "Create a new lease with the specified SKUs",
 		Long: `Create a new lease with one or more SKU items. Each item is specified as sku_uuid:quantity.
-All SKUs must belong to the same provider.`,
+All SKUs must belong to the same provider.
+Use --meta-hash to include a hash/reference to off-chain deployment data (hex-encoded, max 64 bytes).`,
 		Example: `create-lease 01902a9b-1234-7000-8000-000000000001:2 01902a9b-1234-7000-8000-000000000002:1
-create-lease 01902a9b-1234-7000-8000-000000000005:10 --from mykey`,
+create-lease 01902a9b-1234-7000-8000-000000000005:10 --from mykey
+create-lease 01902a9b-1234-7000-8000-000000000001:1 --meta-hash a1b2c3d4e5f6... --from mykey`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -117,15 +142,23 @@ create-lease 01902a9b-1234-7000-8000-000000000005:10 --from mykey`,
 				})
 			}
 
+			// Parse optional meta_hash
+			metaHash, err := parseMetaHashFlag(cmd)
+			if err != nil {
+				return err
+			}
+
 			msg := &types.MsgCreateLease{
-				Tenant: clientCtx.GetFromAddress().String(),
-				Items:  items,
+				Tenant:   clientCtx.GetFromAddress().String(),
+				Items:    items,
+				MetaHash: metaHash,
 			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
 
+	cmd.Flags().String("meta-hash", "", "Hex-encoded hash/reference to off-chain deployment data (max 64 bytes)")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd
@@ -138,9 +171,11 @@ func NewCreateLeaseForTenantCmd() *cobra.Command {
 		Short: "Create a new lease on behalf of a tenant (authority only)",
 		Long: `Create a new lease on behalf of a tenant. This command is used by the authority
 to migrate off-chain leases to on-chain. Each item is specified as sku_uuid:quantity.
-All SKUs must belong to the same provider. The tenant's credit account must be pre-funded.`,
+All SKUs must belong to the same provider. The tenant's credit account must be pre-funded.
+Use --meta-hash to include a hash/reference to off-chain deployment data (hex-encoded, max 64 bytes).`,
 		Example: `create-lease-for-tenant manifest1abc... 01902a9b-1234-7000-8000-000000000001:2 01902a9b-1234-7000-8000-000000000002:1 --from authority
-create-lease-for-tenant manifest1xyz... 01902a9b-1234-7000-8000-000000000005:10 --from authority`,
+create-lease-for-tenant manifest1xyz... 01902a9b-1234-7000-8000-000000000005:10 --from authority
+create-lease-for-tenant manifest1abc... 01902a9b-1234-7000-8000-000000000001:1 --meta-hash a1b2c3d4e5f6... --from authority`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -173,16 +208,24 @@ create-lease-for-tenant manifest1xyz... 01902a9b-1234-7000-8000-000000000005:10 
 				})
 			}
 
+			// Parse optional meta_hash
+			metaHash, err := parseMetaHashFlag(cmd)
+			if err != nil {
+				return err
+			}
+
 			msg := &types.MsgCreateLeaseForTenant{
 				Authority: clientCtx.GetFromAddress().String(),
 				Tenant:    tenant,
 				Items:     items,
+				MetaHash:  metaHash,
 			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
 
+	cmd.Flags().String("meta-hash", "", "Hex-encoded hash/reference to off-chain deployment data (max 64 bytes)")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd

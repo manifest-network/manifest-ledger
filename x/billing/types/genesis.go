@@ -87,6 +87,11 @@ func (gs *GenesisState) Validate() error {
 			return ErrInvalidLease.Wrapf("lease %s has unspecified state", lease.Uuid)
 		}
 
+		// Validate meta_hash length
+		if len(lease.MetaHash) > MaxMetaHashLength {
+			return ErrInvalidMetaHash.Wrapf("lease %s has meta_hash exceeding maximum length of %d bytes", lease.Uuid, MaxMetaHashLength)
+		}
+
 		// For inactive leases, validate closed_at is set
 		if lease.State == LEASE_STATE_CLOSED {
 			if lease.ClosedAt == nil || lease.ClosedAt.IsZero() {

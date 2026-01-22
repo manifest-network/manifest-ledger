@@ -133,6 +133,7 @@ const (
 	AttributeKeyClosureReason     = "closure_reason"
 	AttributeKeyCancelledBy       = "cancelled_by"
 	AttributeKeyAutoClosed        = "auto_closed"
+	AttributeKeyMetaHash          = "meta_hash"
 )
 
 // Rejection reasons for lease cancellation/rejection.

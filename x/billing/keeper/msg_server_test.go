@@ -549,6 +549,167 @@ func TestMsgCreateLeaseMaxLeasesReached(t *testing.T) {
 	require.Nil(t, resp)
 }
 
+func TestMsgCreateLeaseWithMetaHash(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 per hour = 1 per second
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(10000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create a SHA-256 hash (32 bytes) as meta_hash
+	metaHash := []byte{
+		0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x01, 0x12,
+		0x23, 0x34, 0x45, 0x56, 0x67, 0x78, 0x89, 0x9a,
+		0xab, 0xbc, 0xcd, 0xde, 0xef, 0xf0, 0x01, 0x12,
+		0x23, 0x34, 0x45, 0x56, 0x67, 0x78, 0x89, 0x9a,
+	}
+
+	t.Run("success: create lease with meta_hash", func(t *testing.T) {
+		msg := &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items: []types.LeaseItemInput{
+				{
+					SkuUuid:  sku.Uuid,
+					Quantity: 1,
+				},
+			},
+			MetaHash: metaHash,
+		}
+
+		resp, err := msgServer.CreateLease(f.Ctx, msg)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.NotEmpty(t, resp.LeaseUuid)
+
+		// Verify meta_hash was stored
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, resp.LeaseUuid)
+		require.NoError(t, err)
+		require.Equal(t, metaHash, lease.MetaHash)
+	})
+
+	t.Run("success: create lease without meta_hash", func(t *testing.T) {
+		msg := &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items: []types.LeaseItemInput{
+				{
+					SkuUuid:  sku.Uuid,
+					Quantity: 1,
+				},
+			},
+			// MetaHash not set - should be nil/empty
+		}
+
+		resp, err := msgServer.CreateLease(f.Ctx, msg)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify meta_hash is empty
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, resp.LeaseUuid)
+		require.NoError(t, err)
+		require.Empty(t, lease.MetaHash)
+	})
+
+	t.Run("success: create lease with max length meta_hash", func(t *testing.T) {
+		maxMetaHash := make([]byte, types.MaxMetaHashLength)
+		for i := range maxMetaHash {
+			maxMetaHash[i] = byte(i)
+		}
+
+		msg := &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items: []types.LeaseItemInput{
+				{
+					SkuUuid:  sku.Uuid,
+					Quantity: 1,
+				},
+			},
+			MetaHash: maxMetaHash,
+		}
+
+		resp, err := msgServer.CreateLease(f.Ctx, msg)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify max length meta_hash was stored
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, resp.LeaseUuid)
+		require.NoError(t, err)
+		require.Equal(t, maxMetaHash, lease.MetaHash)
+	})
+}
+
+func TestMsgCreateLeaseForTenantWithMetaHash(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	authority := f.App.BillingKeeper.GetAuthority()
+	denom := testDenom
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(10000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	metaHash := []byte{0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe}
+
+	t.Run("success: authority creates lease with meta_hash", func(t *testing.T) {
+		msg := &types.MsgCreateLeaseForTenant{
+			Authority: authority,
+			Tenant:    tenant.String(),
+			Items: []types.LeaseItemInput{
+				{
+					SkuUuid:  sku.Uuid,
+					Quantity: 1,
+				},
+			},
+			MetaHash: metaHash,
+		}
+
+		resp, err := msgServer.CreateLeaseForTenant(f.Ctx, msg)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.NotEmpty(t, resp.LeaseUuid)
+
+		// Verify meta_hash was stored
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, resp.LeaseUuid)
+		require.NoError(t, err)
+		require.Equal(t, metaHash, lease.MetaHash)
+	})
+}
+
 func TestMsgCreateLeaseForTenant(t *testing.T) {
 	f := initFixture(t)
 

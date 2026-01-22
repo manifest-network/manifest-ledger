@@ -173,6 +173,10 @@ message Lease {
   // closure_reason is a free-form explanation for why the lease was closed.
   // Only set when state is CLOSED. Maximum 256 characters.
   string closure_reason = 13 [(gogoproto.jsontag) = "closure_reason,omitempty"];
+
+  // meta_hash is an optional hash/reference to off-chain deployment data.
+  // Set once at lease creation and immutable. Maximum 64 bytes.
+  bytes meta_hash = 14 [(gogoproto.jsontag) = "meta_hash,omitempty"];
 }
 
 // CreditAccount represents a tenant's credit account.

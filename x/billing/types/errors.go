@@ -29,6 +29,7 @@ var (
 	ErrInvalidRejectionReason  = errors.Register(ModuleName, 24, "invalid rejection reason")
 	ErrInvalidRequest          = errors.Register(ModuleName, 25, "invalid request")
 	ErrInvalidClosureReason    = errors.Register(ModuleName, 26, "invalid closure reason")
+	ErrInvalidMetaHash         = errors.Register(ModuleName, 27, "invalid meta hash")
 )
 
 // MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.
@@ -47,3 +48,7 @@ const MaxRejectionReasonLength = 256
 
 // MaxClosureReasonLength is the maximum length of a closure reason.
 const MaxClosureReasonLength = 256
+
+// MaxMetaHashLength is the maximum length of a meta_hash field.
+// 64 bytes accommodates SHA-256 (32 bytes) and SHA-512 (64 bytes) hashes.
+const MaxMetaHashLength = 64

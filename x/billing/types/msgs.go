@@ -80,6 +80,10 @@ func (m *MsgCreateLease) ValidateBasic() error {
 		return ErrInvalidLease.Wrapf("invalid tenant address: %s", err)
 	}
 
+	if len(m.MetaHash) > MaxMetaHashLength {
+		return ErrInvalidMetaHash.Wrapf("meta_hash exceeds maximum length of %d bytes", MaxMetaHashLength)
+	}
+
 	return ValidateLeaseItems(m.Items)
 }
 
@@ -91,6 +95,10 @@ func (m *MsgCreateLeaseForTenant) ValidateBasic() error {
 
 	if _, err := sdk.AccAddressFromBech32(m.Tenant); err != nil {
 		return ErrInvalidLease.Wrapf("invalid tenant address: %s", err)
+	}
+
+	if len(m.MetaHash) > MaxMetaHashLength {
+		return ErrInvalidMetaHash.Wrapf("meta_hash exceeds maximum length of %d bytes", MaxMetaHashLength)
 	}
 
 	return ValidateLeaseItems(m.Items)

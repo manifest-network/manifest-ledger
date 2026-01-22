@@ -39,6 +39,7 @@ type LeaseJSON struct {
 	RejectionReason string          `json:"rejection_reason,omitempty"`
 	ExpiredAt       *time.Time      `json:"expired_at,omitempty"`
 	ClosureReason   string          `json:"closure_reason,omitempty"`
+	MetaHash        []byte          `json:"meta_hash,omitempty"`
 }
 
 // GetState returns the LeaseState enum value from the string state.
@@ -77,6 +78,18 @@ func BillingFundCredit(ctx context.Context, chain *cosmos.CosmosChain, user ibc.
 func BillingCreateLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, items []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{"tx", "billing", "create-lease"}
 	cmd = append(cmd, items...)
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
+// BillingCreateLeaseWithMetaHash creates a new lease with the specified SKU items and meta_hash.
+// items should be in the format "sku_uuid:quantity" (e.g., "uuid1:2", "uuid2:1")
+// metaHash should be a hex-encoded string (e.g., "a1b2c3d4...")
+func BillingCreateLeaseWithMetaHash(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, items []string, metaHash string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "create-lease"}
+	cmd = append(cmd, items...)
+	if metaHash != "" {
+		cmd = append(cmd, "--meta-hash", metaHash)
+	}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 

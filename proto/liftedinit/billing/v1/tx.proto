@@ -118,6 +118,11 @@ message MsgCreateLease {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "items"
   ];
+
+  // meta_hash is an optional hash/reference to off-chain deployment data.
+  // Maximum 64 bytes to accommodate SHA-256/SHA-512 hashes.
+  // Immutable once set at lease creation.
+  bytes meta_hash = 3 [(gogoproto.jsontag) = "meta_hash,omitempty"];
 }
 
 // MsgCreateLeaseResponse is the response type for MsgCreateLease.
@@ -150,6 +155,11 @@ message MsgCreateLeaseForTenant {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "items"
   ];
+
+  // meta_hash is an optional hash/reference to off-chain deployment data.
+  // Maximum 64 bytes to accommodate SHA-256/SHA-512 hashes.
+  // Immutable once set at lease creation.
+  bytes meta_hash = 4 [(gogoproto.jsontag) = "meta_hash,omitempty"];
 }
 
 // MsgCreateLeaseForTenantResponse is the response type for MsgCreateLeaseForTenant.

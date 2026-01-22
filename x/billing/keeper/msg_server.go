@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"encoding/hex"
 	"strconv"
 	"time"
 
@@ -119,11 +120,12 @@ type leaseCreationResult struct {
 	itemCount     int
 	totalRates    sdk.Coins // total rate per second by denom
 	pendingLeases uint64
+	metaHash      []byte
 }
 
 // createLeaseInternal contains the shared lease creation logic.
 // It validates inputs, creates the lease, and returns the result for event emission.
-func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, items []types.LeaseItemInput) (*leaseCreationResult, error) {
+func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, items []types.LeaseItemInput, metaHash []byte) (*leaseCreationResult, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
@@ -257,6 +259,7 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		State:         types.LEASE_STATE_PENDING, // Start in PENDING, awaiting provider acknowledgement
 		CreatedAt:     blockTime,
 		LastSettledAt: blockTime, // Will be updated to AcknowledgedAt when provider acknowledges
+		MetaHash:      metaHash,
 	}
 
 	if err := ms.k.SetLease(ctx, lease); err != nil {
@@ -275,7 +278,25 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		itemCount:     len(leaseItems),
 		totalRates:    totalRatesPerSecond,
 		pendingLeases: creditAccount.PendingLeaseCount,
+		metaHash:      metaHash,
 	}, nil
+}
+
+// emitLeaseCreatedEvent emits a lease_created event with the given parameters.
+func emitLeaseCreatedEvent(ctx sdk.Context, result *leaseCreationResult, tenant, createdBy string) {
+	eventAttrs := []sdk.Attribute{
+		sdk.NewAttribute(types.AttributeKeyLeaseUUID, result.leaseUUID),
+		sdk.NewAttribute(types.AttributeKeyTenant, tenant),
+		sdk.NewAttribute(types.AttributeKeyProviderUUID, result.providerUUID),
+		sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(result.itemCount)),
+		sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRates.String()),
+		sdk.NewAttribute(types.AttributeKeyPendingLeaseCount, strconv.FormatUint(result.pendingLeases, 10)),
+		sdk.NewAttribute(types.AttributeKeyCreatedBy, createdBy),
+	}
+	if len(result.metaHash) > 0 {
+		eventAttrs = append(eventAttrs, sdk.NewAttribute(types.AttributeKeyMetaHash, hex.EncodeToString(result.metaHash)))
+	}
+	ctx.EventManager().EmitEvent(sdk.NewEvent(types.EventTypeLeaseCreated, eventAttrs...))
 }
 
 // CreateLease creates a new lease for the tenant.
@@ -284,25 +305,12 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 		return nil, err
 	}
 
-	result, err := ms.createLeaseInternal(ctx, msg.Tenant, msg.Items)
+	result, err := ms.createLeaseInternal(ctx, msg.Tenant, msg.Items, msg.MetaHash)
 	if err != nil {
 		return nil, err
 	}
 
-	// Emit detailed event
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeLeaseCreated,
-			sdk.NewAttribute(types.AttributeKeyLeaseUUID, result.leaseUUID),
-			sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
-			sdk.NewAttribute(types.AttributeKeyProviderUUID, result.providerUUID),
-			sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(result.itemCount)),
-			sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRates.String()),
-			sdk.NewAttribute(types.AttributeKeyPendingLeaseCount, strconv.FormatUint(result.pendingLeases, 10)),
-			sdk.NewAttribute(types.AttributeKeyCreatedBy, "tenant"),
-		),
-	)
+	emitLeaseCreatedEvent(sdk.UnwrapSDKContext(ctx), result, msg.Tenant, "tenant")
 
 	return &types.MsgCreateLeaseResponse{
 		LeaseUuid: result.leaseUUID,
@@ -325,25 +333,12 @@ func (ms msgServer) CreateLeaseForTenant(ctx context.Context, msg *types.MsgCrea
 		return nil, types.ErrUnauthorized.Wrapf("%s is not the authority or in the allowed list", msg.Authority)
 	}
 
-	result, err := ms.createLeaseInternal(ctx, msg.Tenant, msg.Items)
+	result, err := ms.createLeaseInternal(ctx, msg.Tenant, msg.Items, msg.MetaHash)
 	if err != nil {
 		return nil, err
 	}
 
-	// Emit detailed event (with created_by = "authority" to distinguish from tenant-created leases)
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeLeaseCreated,
-			sdk.NewAttribute(types.AttributeKeyLeaseUUID, result.leaseUUID),
-			sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
-			sdk.NewAttribute(types.AttributeKeyProviderUUID, result.providerUUID),
-			sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(result.itemCount)),
-			sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRates.String()),
-			sdk.NewAttribute(types.AttributeKeyPendingLeaseCount, strconv.FormatUint(result.pendingLeases, 10)),
-			sdk.NewAttribute(types.AttributeKeyCreatedBy, "authority"),
-		),
-	)
+	emitLeaseCreatedEvent(sdk.UnwrapSDKContext(ctx), result, msg.Tenant, "authority")
 
 	return &types.MsgCreateLeaseForTenantResponse{
 		LeaseUuid: result.leaseUUID,

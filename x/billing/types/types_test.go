@@ -378,6 +378,43 @@ func TestMsgCreateLease_ValidateBasic(t *testing.T) {
 			expectErr: true,
 			errMsg:    "too many items",
 		},
+		{
+			name: "valid message with meta_hash",
+			msg: types.MsgCreateLease{
+				Tenant:   tenant,
+				Items:    []types.LeaseItemInput{{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 1}},
+				MetaHash: make([]byte, 32), // SHA-256 hash length
+			},
+			expectErr: false,
+		},
+		{
+			name: "valid message with max length meta_hash",
+			msg: types.MsgCreateLease{
+				Tenant:   tenant,
+				Items:    []types.LeaseItemInput{{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 1}},
+				MetaHash: make([]byte, types.MaxMetaHashLength), // Max 64 bytes
+			},
+			expectErr: false,
+		},
+		{
+			name: "valid message with empty meta_hash",
+			msg: types.MsgCreateLease{
+				Tenant:   tenant,
+				Items:    []types.LeaseItemInput{{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 1}},
+				MetaHash: []byte{},
+			},
+			expectErr: false,
+		},
+		{
+			name: "meta_hash exceeds max length",
+			msg: types.MsgCreateLease{
+				Tenant:   tenant,
+				Items:    []types.LeaseItemInput{{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 1}},
+				MetaHash: make([]byte, types.MaxMetaHashLength+1), // 65 bytes - too long
+			},
+			expectErr: true,
+			errMsg:    "meta_hash exceeds maximum length",
+		},
 	}
 
 	for _, tc := range tests {
@@ -534,6 +571,37 @@ func TestMsgCreateLeaseForTenant_ValidateBasic(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "too many items",
+		},
+		{
+			name: "valid message with meta_hash",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant,
+				Items:     []types.LeaseItemInput{{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 1}},
+				MetaHash:  make([]byte, 32), // SHA-256 hash length
+			},
+			expectErr: false,
+		},
+		{
+			name: "valid message with max length meta_hash",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant,
+				Items:     []types.LeaseItemInput{{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 1}},
+				MetaHash:  make([]byte, types.MaxMetaHashLength), // Max 64 bytes
+			},
+			expectErr: false,
+		},
+		{
+			name: "meta_hash exceeds max length",
+			msg: types.MsgCreateLeaseForTenant{
+				Authority: authority,
+				Tenant:    tenant,
+				Items:     []types.LeaseItemInput{{SkuUuid: "01912345-6789-7abc-8def-0123456789ab", Quantity: 1}},
+				MetaHash:  make([]byte, types.MaxMetaHashLength+1), // 65 bytes - too long
+			},
+			expectErr: true,
+			errMsg:    "meta_hash exceeds maximum length",
 		},
 	}
 
@@ -1292,6 +1360,28 @@ func TestGenesisState_Validate(t *testing.T) {
 				},
 			},
 			expectErr: false,
+		},
+		{
+			name: "lease with meta_hash exceeding max length",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items: []types.LeaseItem{
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+						},
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     now,
+						LastSettledAt: now,
+						MetaHash:      make([]byte, types.MaxMetaHashLength+1), // 65 bytes - too long
+					},
+				},
+			},
+			expectErr: true,
+			errMsg:    "meta_hash exceeding maximum length",
 		},
 		{
 			name: "duplicate credit account tenant",

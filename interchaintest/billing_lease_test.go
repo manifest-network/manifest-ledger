@@ -99,6 +99,35 @@ func testLeaseCreateIndependent(t *testing.T, ctx context.Context, tc *billingTe
 		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed")
 	})
 
+	t.Run("success: tenant creates lease with meta_hash", func(t *testing.T) {
+		// Create a SHA-256 hash as meta_hash (hex-encoded)
+		metaHash := "a1b2c3d4e5f60112233445566778899aabbccddeeff001122334455667788"
+
+		items := []string{fmt.Sprintf("%s:1", tc.skuUUID)}
+		res, err := helpers.BillingCreateLeaseWithMetaHash(ctx, tc.chain, tc.tenant1, items, metaHash)
+		require.NoError(t, err)
+
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "lease creation with meta_hash should succeed: %s", txRes.RawLog)
+
+		leaseID, err := helpers.GetLeaseIDFromTxHash(ctx, tc.chain, res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Created lease with meta_hash, ID: %s", leaseID)
+
+		// Query the lease and verify meta_hash is stored
+		leaseRes, err := helpers.BillingQueryLease(ctx, tc.chain, leaseID)
+		require.NoError(t, err)
+		require.NotEmpty(t, leaseRes.Lease.MetaHash, "meta_hash should be stored on the lease")
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, tc.chain, tc.providerWallet, leaseID)
+		require.NoError(t, err)
+		ackTxRes, err := tc.chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed")
+	})
+
 	t.Run("fail: create lease with non-existent SKU", func(t *testing.T) {
 		items := []string{fmt.Sprintf("%s:1", nonExistentUUID)}
 		res, err := helpers.BillingCreateLease(ctx, tc.chain, tc.tenant1, items)

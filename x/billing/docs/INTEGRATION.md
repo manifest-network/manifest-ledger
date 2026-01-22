@@ -158,6 +158,159 @@ For Go-based providers, use the `@keplr-wallet/cosmos` package's verification lo
 | Clock skew | 5-minute tolerance, NTP recommended |
 | Signature reuse | Message includes lease-specific UUID |
 
+## Deployment Data Upload (POST) - Optional
+
+Tenants can optionally upload deployment data to providers using the same ADR-036 authentication pattern used for connection info retrieval. The on-chain lease stores only a hash of the deployment data (`meta_hash`), while the actual payload is transmitted off-chain.
+
+### When to Use
+
+This feature is optional and depends on the provider's requirements:
+
+| Provider Type | Data Upload Needed | Example |
+|--------------|-------------------|---------|
+| Fixed SKUs | No | Pre-configured VMs, standard database instances |
+| Configurable SKUs | Yes | Custom Kubernetes deployments, tenant-specific settings |
+
+For providers with fixed SKUs (pre-configured resources), tenants create leases without `meta_hash` and providers acknowledge based solely on the SKU selection.
+
+### Workflow
+
+```
+1. Tenant prepares deployment manifest (e.g., YAML, JSON)
+2. Tenant computes hash: meta_hash = SHA-256(manifest)
+3. Tenant creates lease with meta_hash on-chain (lease is PENDING)
+4. Tenant POSTs manifest to provider while PENDING
+5. Provider validates: SHA-256(received) == lease.meta_hash
+6. Provider provisions resources
+7. Provider acknowledges lease (lease becomes ACTIVE)
+8. Tenant retrieves connection info
+```
+
+**Important**: Upload deployment data BEFORE the provider acknowledges. This allows the provider to validate the manifest and provision resources before committing to the lease.
+
+### On-Chain Storage
+
+Only the hash is stored on-chain:
+- **Field**: `lease.meta_hash`
+- **Max size**: 64 bytes (accommodates SHA-256 and SHA-512)
+- **Format**: Raw bytes
+- **Immutable**: Set once at creation, cannot be updated
+
+### Message Format for Signing
+
+```
+manifest lease data {lease_uuid} {meta_hash_hex} {unix_timestamp}
+```
+
+**Example:**
+```
+manifest lease data 550e8400-e29b-41d4-a716-446655440000 a1b2c3d4e5f6... 1702834946
+```
+
+### API Endpoint
+
+```
+POST {provider.api_url}/v1/leases/{lease_uuid}/data
+Authorization: Bearer <base64_encoded_auth_token>
+Content-Type: application/octet-stream
+
+<raw payload bytes>
+```
+
+### Bearer Token Format
+
+Same structure as connection info, but message includes `meta_hash`:
+
+```json
+{
+  "tenant": "manifest1...",
+  "lease_uuid": "550e8400-e29b-41d4-a716-446655440000",
+  "meta_hash": "a1b2c3d4e5f6...",
+  "timestamp": 1702834946,
+  "pub_key": {
+    "type": "tendermint/PubKeySecp256k1",
+    "value": "<base64_encoded_pubkey>"
+  },
+  "signature": "<base64_signature>"
+}
+```
+
+### Provider Validation Steps
+
+1. Decode Bearer token
+2. Query chain: verify lease exists, tenant matches, and `meta_hash` matches
+3. Verify lease is in PENDING state (not yet acknowledged)
+4. Verify timestamp within ±5 minutes
+5. Verify ADR-036 signature of message: `manifest lease data {uuid} {meta_hash} {ts}`
+6. Compute SHA-256 of received payload body
+7. Verify `SHA-256(payload) == lease.meta_hash`
+8. Accept/reject based on payload content (provider's discretion)
+
+### Payload Size Recommendations
+
+| Location | Limit | Notes |
+|----------|-------|-------|
+| On-chain | 64 bytes | Hash only, not the payload |
+| Off-chain | 1-10 MB | Provider-defined, recommended max |
+
+### CLI Example
+
+```bash
+# 1. Prepare and hash deployment manifest
+MANIFEST_HASH=$(sha256sum deployment.yaml | cut -d' ' -f1)
+
+# 2. Create lease with meta_hash on-chain
+manifestd tx billing create-lease \
+  01912345-6789-7abc-8def-0123456789ab:2 \
+  --meta-hash "$MANIFEST_HASH" \
+  --from tenant
+
+# 3. Query provider's api_url
+PROVIDER_API=$(manifestd query sku provider <provider-uuid> -o json | jq -r '.provider.api_url')
+
+# 4. POST deployment data to provider (see auth section for signature generation)
+curl -X POST "${PROVIDER_API}/v1/leases/${LEASE_UUID}/data" \
+  -H "Content-Type: application/octet-stream" \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  --data-binary @deployment.yaml
+
+# 5. Provider validates and acknowledges lease
+# 6. Tenant can now retrieve connection info
+```
+
+### JavaScript Example (Browser)
+
+```js
+const manifest = new TextEncoder().encode(deploymentYaml);
+const hashBuffer = await crypto.subtle.digest('SHA-256', manifest);
+const metaHash = Array.from(new Uint8Array(hashBuffer))
+  .map(b => b.toString(16).padStart(2, '0'))
+  .join('');
+
+// After creating lease with metaHash on-chain...
+const message = `manifest lease data ${leaseUuid} ${metaHash} ${Math.floor(Date.now() / 1000)}`;
+
+const signature = await window.keplr.signArbitrary("manifest-1", tenantAddress, message);
+
+const authToken = btoa(JSON.stringify({
+  tenant: tenantAddress,
+  lease_uuid: leaseUuid,
+  meta_hash: metaHash,
+  timestamp: Math.floor(Date.now() / 1000),
+  pub_key: signature.pub_key,
+  signature: signature.signature
+}));
+
+await fetch(`${providerApiUrl}/v1/leases/${leaseUuid}/data`, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${authToken}`,
+    'Content-Type': 'application/octet-stream'
+  },
+  body: manifest
+});
+```
+
 ## Related Documentation
 
 - [Billing README](../README.md) - Module overview

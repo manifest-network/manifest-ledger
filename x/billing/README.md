@@ -160,6 +160,8 @@ Leases stored at key prefix `0x01`:
 | expired_at | Timestamp | Expiration time |
 | last_settled_at | Timestamp | Last settlement time |
 | rejection_reason | string | Provider's rejection reason (max 256 chars) |
+| closure_reason | string | Closure reason (max 256 chars) |
+| meta_hash | bytes | Hash/reference to off-chain deployment data (max 64 bytes, immutable) |
 
 ### LeaseItem
 
