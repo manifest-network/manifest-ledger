@@ -100,8 +100,8 @@ func testLeaseCreateIndependent(t *testing.T, ctx context.Context, tc *billingTe
 	})
 
 	t.Run("success: tenant creates lease with meta_hash", func(t *testing.T) {
-		// Create a SHA-256 hash as meta_hash (hex-encoded)
-		metaHash := "a1b2c3d4e5f60112233445566778899aabbccddeeff001122334455667788"
+		// Create a SHA-256 hash as meta_hash (hex-encoded, 64 chars = 32 bytes)
+		metaHash := "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6"
 
 		items := []string{fmt.Sprintf("%s:1", tc.skuUUID)}
 		res, err := helpers.BillingCreateLeaseWithMetaHash(ctx, tc.chain, tc.tenant1, items, metaHash)
