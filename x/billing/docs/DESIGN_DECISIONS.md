@@ -138,7 +138,7 @@ See `x/billing/types/credit.go` for the implementation.
 
 ## Decision 7: Soft Delete for Leases
 
-**Decision:** Keep closed leases with INACTIVE state rather than deleting them.
+**Decision:** Keep closed leases with CLOSED state rather than deleting them.
 
 **Alternatives Considered:**
 1. Hard delete closed leases

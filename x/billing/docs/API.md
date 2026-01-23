@@ -330,11 +330,54 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
   - Processes up to `limit` active leases
   - Response includes `has_more` if more leases remain
   - Call repeatedly until `has_more` is false
+  - See [Provider-Wide Withdraw Workflow](#provider-wide-withdraw-workflow) below for example
 - Settles accrued amount since last settlement for each lease
 - Transfers aggregated amounts to provider's payout address
 - May trigger auto-close if credit exhausted during withdrawal
 - Response includes withdrawal_count and total_amounts aggregated across all leases
 - Emits `batch_withdraw` event when multiple leases are processed
+
+##### Provider-Wide Withdraw Workflow
+
+When a provider has many active leases, use provider-wide mode with pagination to withdraw from all:
+
+```bash
+# Step 1: Initial withdrawal (processes up to 100 leases)
+manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --limit 100 --from provider-key
+
+# Response example:
+# {
+#   "total_amounts": [{"denom": "upwr", "amount": "5000000"}],
+#   "payout_address": "manifest1payout...",
+#   "withdrawal_count": "100",
+#   "has_more": true    <-- More leases remain
+# }
+
+# Step 2: Continue withdrawing until has_more is false
+manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --limit 100 --from provider-key
+
+# Response:
+# {
+#   "total_amounts": [{"denom": "upwr", "amount": "2500000"}],
+#   "payout_address": "manifest1payout...",
+#   "withdrawal_count": "50",
+#   "has_more": false   <-- All leases processed
+# }
+```
+
+**Automation Script Example (bash):**
+```bash
+#!/bin/bash
+PROVIDER_UUID="01912345-6789-7abc-8def-0123456789ab"
+HAS_MORE=true
+
+while [ "$HAS_MORE" = "true" ]; do
+  RESULT=$(manifestd tx billing withdraw --provider $PROVIDER_UUID --limit 100 --from provider-key -o json -y)
+  HAS_MORE=$(echo $RESULT | jq -r '.has_more')
+  echo "Withdrew from $(echo $RESULT | jq -r '.withdrawal_count') leases, has_more=$HAS_MORE"
+done
+echo "All withdrawals complete"
+```
 
 ---
 
@@ -440,7 +483,9 @@ manifestd query billing lease [lease-uuid]
     "expired_at": null,
     "last_settled_at": "2024-01-01T00:01:00Z",
     "rejection_reason": "",
-    "meta_hash": "a1b2c3d4..."
+    "closure_reason": "",
+    "meta_hash": "a1b2c3d4...",
+    "min_lease_duration_at_creation": "3600"
   }
 }
 ```
@@ -454,6 +499,7 @@ manifestd query billing lease [lease-uuid]
 - `rejection_reason` contains the provider's reason for rejection (max 256 chars)
 - `closure_reason` contains the reason for closure (max 256 chars)
 - `meta_hash` contains the optional hash/reference to off-chain deployment data (max 64 bytes, immutable)
+- `min_lease_duration_at_creation` stores the `min_lease_duration` parameter value at creation time for consistent reservation calculation
 
 ---
 
@@ -539,7 +585,13 @@ manifestd query billing credit-account [tenant]
     "tenant": "manifest1abc...",
     "credit_address": "manifest1xyz...",
     "active_lease_count": "2",
-    "pending_lease_count": "1"
+    "pending_lease_count": "1",
+    "reserved_amounts": [
+      {
+        "denom": "upwr",
+        "amount": "360000"
+      }
+    ]
   },
   "balances": [
     {
@@ -550,11 +602,24 @@ manifestd query billing credit-account [tenant]
       "denom": "umfx",
       "amount": "500000000"
     }
+  ],
+  "available_balances": [
+    {
+      "denom": "upwr",
+      "amount": "999640000"
+    },
+    {
+      "denom": "umfx",
+      "amount": "500000000"
+    }
   ]
 }
 ```
 
-**Note:** Credit accounts can hold multiple denominations. The balances shown include all tokens in the account.
+**Response Fields:**
+- `credit_account.reserved_amounts`: Credit reserved by active and pending leases. Each lease reserves `rate_per_second × min_lease_duration` per denom.
+- `balances`: Total credit balance at the credit address (from bank module).
+- `available_balances`: Credit available for new leases (`balances - reserved_amounts`). New leases can only be created if this covers the required reservation.
 
 ---
 
@@ -784,7 +849,15 @@ manifestd query billing credit-estimate manifest1abc...
 | `estimated_duration_seconds` | Seconds until credit exhaustion (minimum across all denoms) |
 | `active_lease_count` | Number of currently active leases |
 
-**Note:** The estimate is calculated in real-time based on current balances and active lease rates. If no active leases exist, `estimated_duration_seconds` will be `0` and `total_rate_per_second` will be empty.
+**Notes:**
+- The estimate is calculated in real-time based on current balances and active lease rates
+- If no active leases exist, `estimated_duration_seconds` will be `0` and `total_rate_per_second` will be empty
+- With multi-denom support, the estimate returns the minimum duration across all denominations (the limiting factor)
+
+**Limitations:**
+- **Maximum 100 leases processed**: If a tenant has more than 100 active leases, only the first 100 are included in the calculation. The `active_lease_count` will show the actual count, but rates may be underestimated for tenants with >100 leases.
+- **Does not account for pending withdrawals**: The estimate uses current balance, not accounting for any unsettled accrued amounts from existing leases.
+- **Assumes constant rate**: The estimate assumes all current leases continue at their current rates. Actual duration may differ if leases are closed or new leases are created.
 
 ---
 
@@ -1263,8 +1336,15 @@ message Lease {
   string rejection_reason = 12;       // Provider's rejection reason (max 256 chars)
   string closure_reason = 13;         // Closure reason (max 256 chars)
   bytes meta_hash = 14;               // Hash/reference to off-chain deployment data (max 64 bytes, immutable)
+  uint64 min_lease_duration_at_creation = 15; // Snapshot of min_lease_duration param at creation
 }
 ```
+
+**Field Notes:**
+- `rejection_reason`: Set when a provider rejects a PENDING lease via `MsgRejectLease`. Contains the provider's explanation for rejecting the lease (e.g., "resources unavailable", "invalid configuration"). Maximum 256 characters. Only present when `state` is `LEASE_STATE_REJECTED`.
+- `closure_reason`: Set when a lease is closed via `MsgCloseLease` with a reason, or automatically set to `"credit exhausted"` when a lease is auto-closed due to insufficient credit during settlement. Maximum 256 characters. Only present when `state` is `LEASE_STATE_CLOSED`.
+- `meta_hash`: Optional immutable hash or reference linking to off-chain deployment data (e.g., deployment manifest hash, configuration reference). Set at lease creation and cannot be modified afterward. Maximum 64 bytes to accommodate SHA-256 or SHA-512 hashes.
+- `min_lease_duration_at_creation`: Snapshot of the `min_lease_duration` parameter at the time this lease was created. Used to calculate consistent credit reservations (`reservation = sum(locked_price × quantity) × min_lease_duration_at_creation`) regardless of subsequent governance changes to the parameter. This ensures existing reservations remain valid when parameters are updated.
 
 ### LeaseItem
 
@@ -1297,8 +1377,12 @@ message CreditAccount {
   string credit_address = 2;      // Derived credit account address
   uint64 active_lease_count = 3;  // Number of ACTIVE leases
   uint64 pending_lease_count = 4; // Number of PENDING leases
+  repeated Coin reserved_amounts = 5; // Credit reserved by active/pending leases
 }
 ```
+
+**Field Notes:**
+- `reserved_amounts`: Sum of credit reservations for all PENDING and ACTIVE leases. Each lease reserves `rate_per_second × min_lease_duration` per denom. This prevents overbooking by ensuring credit availability before lease creation. Available credit = balances - reserved_amounts.
 
 ### Params
 
@@ -1342,6 +1426,24 @@ The billing module emits the following events for state changes:
 ### Event Attribute Sanitization
 
 Certain event attributes (like `rejection_reason` and `closure_reason`) are sanitized before being emitted to prevent log injection attacks. The original value is stored in state unchanged, but the sanitized version appears in events. This protects against malicious input containing control characters or log format strings.
+
+**Sanitization Rules:**
+- Control characters (ASCII 0-31, 127) are removed
+- Newlines (`\n`, `\r`) are replaced with spaces
+- Log format specifiers (e.g., `%s`, `%d`) are escaped
+- Maximum length enforced (256 characters for reasons)
+
+**Example:**
+```
+# Original input to MsgRejectLease:
+reason: "Invalid config\nSee logs for details"
+
+# Stored in state (unchanged):
+rejection_reason: "Invalid config\nSee logs for details"
+
+# Emitted in event (sanitized):
+rejection_reason: "Invalid config See logs for details"
+```
 
 ### Querying Events
 
@@ -1389,7 +1491,14 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrInvalidClosureReason` | 26 | Closure reason too long (max 256 chars) |
 | `ErrInvalidMetaHash` | 27 | Meta hash exceeds maximum length (max 64 bytes) |
 
-**Note on Reserved Codes:** Error codes 7 and 20 are explicitly reserved to maintain stable error code assignments. When adding new error types, these reserved codes ensure that error numbers remain consistent across module versions. Do not use these codes for new errors; instead, assign the next available number.
+**Note on Reserved Codes:** Error codes 7 and 20 are explicitly reserved to maintain stable error code assignments across module versions.
+
+**Why reserve codes?** During development, some error types were removed or consolidated (e.g., separate errors that were merged into a single error). Rather than renumbering all subsequent codes (which would break client error handling that relies on specific codes), the removed codes are marked as reserved. This ensures:
+- Existing client code that handles specific error codes continues to work after upgrades
+- Error codes in logs and metrics remain comparable across versions
+- New errors get the next available number (28+) rather than reusing gaps
+
+**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code.
 
 ---
 

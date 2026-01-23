@@ -279,5 +279,8 @@ manifestd query sku skus-by-provider [provider-uuid]
 - [Design Decisions](docs/DESIGN_DECISIONS.md) - Key design decisions and rationale
 
 ### Related Modules
-- [Billing Module README](../billing/README.md) - Understanding the billing system
+- [Billing Module README](../billing/README.md) - Credit accounts, leases, and settlement
+- [Billing API Reference](../billing/docs/API.md) - Billing CLI and API documentation
+- [Credit Reservation System](../billing/README.md#credit-reservation-system) - How credit is reserved for leases
+- [Price Locking](../billing/docs/DESIGN_DECISIONS.md#decision-4-price-locking-at-lease-creation) - How SKU prices are locked at lease creation
 - [Migration Guide](../billing/docs/MIGRATION.md) - Migrating existing off-chain leases

@@ -12,6 +12,55 @@ Each tenant has a credit account with a derived address. Credit accounts can hol
 - **Balances**: Current credit balances (supports multiple denominations)
 - **Top-up**: Anyone can fund a tenant's credit account with any token
 
+### Credit Reservation System
+
+The credit reservation system prevents overbooking by tracking reserved amounts per tenant. When a lease is created, credits are reserved to guarantee that sufficient funds exist for at least `min_lease_duration` seconds of operation.
+
+**Why Reservations Matter:**
+
+Without reservations, a tenant could create multiple leases that exceed their credit balance:
+```
+Tenant balance: 100 credits
+MinLeaseDuration: 1 hour
+
+Lease A: 30/hour → Check: 100 >= 30 ✓ Created
+Lease B: 30/hour → Check: 100 >= 30 ✓ Created
+Lease C: 30/hour → Check: 100 >= 30 ✓ Created
+Lease D: 30/hour → Check: 100 >= 30 ✓ Created
+
+Result: 4 leases × 30/hour = 120/hour liability, only 100 credits
+→ Overbooking! Providers don't get paid fairly.
+```
+
+With the reservation system:
+```
+Tenant balance: 100 credits, reserved: 0
+Available: 100 - 0 = 100
+
+Lease A: 30/hour → Reserve 30 → Available: 100 - 30 = 70 ✓
+Lease B: 30/hour → Reserve 30 → Available: 70 - 30 = 40 ✓
+Lease C: 30/hour → Reserve 30 → Available: 40 - 30 = 10 ✓
+Lease D: 30/hour → Reserve 30 → Available: 10 < 30 ✗ Rejected
+
+Result: 3 leases, properly collateralized.
+```
+
+**Available Credit Calculation:**
+```
+AvailableCredit = CreditBalance - ReservedAmounts
+```
+
+New leases can only be created if `AvailableCredit >= NewLeaseReservation` for all required denominations.
+
+**Reservation Lifecycle:**
+- **Added**: When a lease is created (enters PENDING state)
+- **Maintained**: When a lease is acknowledged (transitions to ACTIVE state)
+- **Released**: When a lease transitions to CLOSED, REJECTED, or EXPIRED
+
+**Parameter Change Protection:**
+
+Each lease stores `MinLeaseDurationAtCreation` to ensure consistent reservation calculation regardless of subsequent governance changes to the `MinLeaseDuration` parameter. This prevents existing reservations from becoming inconsistent when parameters change.
+
 ### Multi-Denomination Support
 
 The billing module supports multiple token denominations:
@@ -142,6 +191,23 @@ These values are compile-time constants and cannot be changed via governance:
 | `MaxProviderWithdrawableQueryLimit` | 1000 | Maximum limit for ProviderWithdrawable query |
 | `MaxCreditEstimateLeases` | 100 | Maximum active leases processed in CreditEstimate query |
 
+### Batch Operations
+
+Several messages support batch processing of multiple leases in a single transaction:
+
+| Message | Max Leases | Behavior |
+|---------|------------|----------|
+| `MsgAcknowledgeLease` | 100 | All leases must be PENDING, same provider. Atomic. |
+| `MsgRejectLease` | 100 | All leases must be PENDING, same provider. Atomic. |
+| `MsgCancelLease` | 100 | All leases must be PENDING, same tenant. Atomic. |
+| `MsgCloseLease` | 100 | All leases must be ACTIVE, authorized for sender. Atomic. |
+| `MsgWithdraw` (specific) | 100 | All leases must be ACTIVE, same provider. Atomic. |
+| `MsgWithdraw` (provider-wide) | 50 (default), 100 (max) | Paginated, use `has_more` to continue. |
+
+**Atomic Batch Operations:** When providing specific lease UUIDs, the operation is atomic—all leases succeed or all fail. If any lease fails validation (wrong state, unauthorized, etc.), the entire transaction is rejected.
+
+**Provider-Wide Withdraw:** Unlike specific-lease operations, provider-wide withdraw is paginated. It processes up to `--limit` leases (default 50, max 100) and returns `has_more: true` if more remain. Call repeatedly until `has_more: false`.
+
 ### Lease
 
 Leases stored at key prefix `0x01`:
@@ -162,6 +228,7 @@ Leases stored at key prefix `0x01`:
 | rejection_reason | string | Provider's rejection reason (max 256 chars) |
 | closure_reason | string | Closure reason (max 256 chars) |
 | meta_hash | bytes | Hash/reference to off-chain deployment data (max 64 bytes, immutable) |
+| min_lease_duration_at_creation | uint64 | Snapshot of `min_lease_duration` param at creation (for consistent reservation calculation) |
 
 ### LeaseItem
 
@@ -326,10 +393,16 @@ For detailed authorization matrix, see [API Reference - Authorization](docs/API.
 
 The billing module depends on the SKU module for:
 - Validating SKU existence and active status
-- Getting SKU prices for price locking
+- Getting SKU prices for price locking (see [Price Locking](docs/DESIGN_DECISIONS.md#decision-4-price-locking-at-lease-creation))
 - Getting provider information for authorization and payouts
+- Per-second rate calculation (see [SKU Pricing](../sku/README.md#pricing-and-exact-divisibility))
 
 The SKU module remains independent and does not know about the billing module.
+
+**Key SKU Module Concepts for Billing:**
+- [Provider and Payout Addresses](../sku/README.md#provider) - Where lease payments are sent
+- [SKU Deactivation Impact](../sku/README.md#deactivation-impact-on-existing-leases) - How deactivated SKUs affect leases
+- [Billing Units](../sku/README.md#billing-units) - Per-hour vs per-day pricing
 
 ## Known Limitations
 
@@ -353,6 +426,41 @@ manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --from prov
 
 For detailed scalability analysis, time manipulation considerations, and future improvement plans, see [Architecture](docs/ARCHITECTURE.md#scalability-considerations).
 
+## Genesis Validation
+
+The billing module performs comprehensive validation during genesis initialization to ensure state consistency.
+
+### Reservation Invariant Validation
+
+Genesis validation enforces the credit reservation invariant:
+
+```
+CreditAccount.ReservedAmounts == SUM(GetLeaseReservationAmount(lease, params.MinLeaseDuration))
+                                 for all PENDING and ACTIVE leases of the tenant
+```
+
+**Validation Steps:**
+1. Compute expected reservations by iterating all leases and summing reservation amounts for PENDING/ACTIVE leases per tenant
+2. Compare each credit account's `reserved_amounts` against the computed expected value
+3. Verify that every tenant with active reservations has a corresponding credit account
+
+**Error Examples:**
+```
+# Mismatch between stored and calculated reservations
+invalid credit operation: credit account for manifest1abc... has reserved_amounts 500upwr but lease reservations sum to 600upwr
+
+# Tenant with leases but missing credit account
+invalid credit operation: tenant manifest1def... has lease reservations totaling 1000upwr but no credit account
+```
+
+### Other Genesis Validations
+
+- **Lease UUIDs**: All leases must have valid UUIDv7 format, no duplicates
+- **Tenant/Provider addresses**: All addresses must be valid bech32 format
+- **Credit address derivation**: Credit addresses must match deterministic derivation from tenant address
+- **Lease state consistency**: Timestamps must be consistent with lease state (e.g., `acknowledged_at` only for ACTIVE leases)
+- **Parameter validation**: All params must pass validation constraints
+
 ## Additional Documentation
 
 ### User Guides
@@ -368,3 +476,8 @@ For detailed scalability analysis, time manipulation considerations, and future 
 - [Design Decisions](docs/DESIGN_DECISIONS.md) - Key design decisions and rationale
 - [Comparison](docs/COMPARISON.md) - Comparison with Akash and architectural trade-offs
 - [Capabilities](docs/CAPABILITIES.md) - Feature overview and future roadmap
+
+### Related Modules
+- [SKU Module README](../sku/README.md) - Provider and SKU management (prerequisite for billing)
+- [SKU API Reference](../sku/docs/API.md) - SKU module CLI and API documentation
+- [SKU Design Decisions](../sku/docs/DESIGN_DECISIONS.md) - SKU architecture rationale

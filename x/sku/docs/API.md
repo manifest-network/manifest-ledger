@@ -872,10 +872,13 @@ message Provider {
   string address = 2;         // Management address
   string payout_address = 3;  // Payout address
   string api_url = 4;         // HTTPS endpoint for off-chain API
-  bytes meta_hash = 5;        // Off-chain metadata hash
+  bytes meta_hash = 5;        // Off-chain metadata hash (max 64 bytes)
   bool active = 6;            // Active status
 }
 ```
+
+**Field Notes:**
+- `meta_hash`: Optional hash or reference linking to off-chain metadata (e.g., provider description, terms of service, contact info). Maximum 64 bytes to accommodate SHA-256 or SHA-512 hashes. This value is mutable and can be updated via `MsgUpdateProvider`.
 
 ### SKU
 
@@ -886,10 +889,13 @@ message SKU {
   string name = 3;                         // Human-readable name
   Unit unit = 4;                           // Billing unit
   cosmos.base.v1beta1.Coin base_price = 5; // Base price
-  bytes meta_hash = 6;                     // Off-chain metadata hash
+  bytes meta_hash = 6;                     // Off-chain metadata hash (max 64 bytes)
   bool active = 7;                         // Active status
 }
 ```
+
+**Field Notes:**
+- `meta_hash`: Optional hash or reference linking to off-chain metadata (e.g., detailed specifications, SLA terms, resource configurations). Maximum 64 bytes to accommodate SHA-256 or SHA-512 hashes. This value is mutable and can be updated via `MsgUpdateSKU`.
 
 ### Unit
 
