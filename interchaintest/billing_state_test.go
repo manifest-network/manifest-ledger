@@ -753,7 +753,10 @@ func testLeaseAcknowledgeEdgeCasesIndependent(t *testing.T, ctx context.Context,
 	require.NoError(t, err)
 	require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
 
-	fundAmount := fmt.Sprintf("10000000%s", tc.pwrDenom)
+	// Fund enough for multiple leases with reservations
+	// Each lease reserves ~3,600,000 (SKU rate × min_lease_duration)
+	// Test creates up to 5-6 leases across sub-tests
+	fundAmount := fmt.Sprintf("40000000%s", tc.pwrDenom)
 	fundRes, err := helpers.BillingFundCredit(ctx, tc.chain, ackTestTenant, ackTestTenant.FormattedAddress(), fundAmount)
 	require.NoError(t, err)
 	fundTxRes, err := tc.chain.GetTransaction(fundRes.TxHash)
