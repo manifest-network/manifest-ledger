@@ -160,14 +160,6 @@ func GetLeaseReservationAmount(lease *Lease, minLeaseDuration uint64) sdk.Coins 
 	return CalculateLeaseReservation(lease.Items, duration)
 }
 
-// ReleaseLeaseReservation releases the reservation for a lease from a credit account.
-// This is called when a lease transitions out of PENDING or ACTIVE state (close, reject, cancel, expire).
-// The credit account's ReservedAmounts is updated in place.
-func ReleaseLeaseReservation(creditAccount *CreditAccount, lease *Lease, minLeaseDuration uint64) {
-	reservationAmount := GetLeaseReservationAmount(lease, minLeaseDuration)
-	creditAccount.ReservedAmounts = SubtractReservation(creditAccount.ReservedAmounts, reservationAmount)
-}
-
 // CheckReservationRelease checks if releasing a reservation would cause underflow.
 // Returns a map of denoms that would underflow and the amount of underflow for each.
 // An empty map indicates the release is safe with no underflow.

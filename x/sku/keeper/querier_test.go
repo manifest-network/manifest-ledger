@@ -436,3 +436,194 @@ func TestQuerierSKUsByProviderPagination(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, res3.Skus, 1)
 }
+
+func TestQuerierProviderByAddress(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.SKUKeeper
+	q := keeper.NewQuerier(k)
+
+	addr1 := f.TestAccs[0]
+	addr2 := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+
+	t.Run("empty result when no providers exist", func(t *testing.T) {
+		resp, err := q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+			Address: addr1.String(),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Empty(t, resp.Providers)
+	})
+
+	t.Run("returns providers for address", func(t *testing.T) {
+		// Create two providers with the same address (different UUIDs)
+		provider1 := types.Provider{
+			Uuid:          testProvider1UUID,
+			Address:       addr1.String(),
+			PayoutAddress: payoutAddr.String(),
+			Active:        true,
+		}
+		provider2 := types.Provider{
+			Uuid:          testProvider2UUID,
+			Address:       addr1.String(),
+			PayoutAddress: payoutAddr.String(),
+			Active:        false,
+		}
+		// Provider with different address
+		provider3 := types.Provider{
+			Uuid:          "01912345-6789-7abc-8def-0123456789a3",
+			Address:       addr2.String(),
+			PayoutAddress: payoutAddr.String(),
+			Active:        true,
+		}
+
+		require.NoError(t, k.SetProvider(f.Ctx, provider1))
+		require.NoError(t, k.SetProvider(f.Ctx, provider2))
+		require.NoError(t, k.SetProvider(f.Ctx, provider3))
+
+		// Query for addr1 - should return 2 providers
+		resp, err := q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+			Address: addr1.String(),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.Providers, 2)
+		for _, p := range resp.Providers {
+			require.Equal(t, addr1.String(), p.Address)
+		}
+
+		// Query for addr2 - should return 1 provider
+		resp, err = q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+			Address: addr2.String(),
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Providers, 1)
+		require.Equal(t, addr2.String(), resp.Providers[0].Address)
+	})
+
+	t.Run("pagination works", func(t *testing.T) {
+		// Query addr1 with pagination limit
+		resp, err := q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+			Address:    addr1.String(),
+			Pagination: &query.PageRequest{Limit: 1},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Providers, 1)
+		require.NotNil(t, resp.Pagination)
+		require.NotEmpty(t, resp.Pagination.NextKey)
+
+		// Query next page
+		resp2, err := q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+			Address:    addr1.String(),
+			Pagination: &query.PageRequest{Key: resp.Pagination.NextKey, Limit: 1},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp2.Providers, 1)
+	})
+
+	t.Run("error cases", func(t *testing.T) {
+		// Nil request
+		_, err := q.ProviderByAddress(f.Ctx, nil)
+		require.Error(t, err)
+
+		// Empty address
+		_, err = q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+			Address: "",
+		})
+		require.Error(t, err)
+
+		// Invalid address
+		_, err = q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+			Address: "invalid-address",
+		})
+		require.Error(t, err)
+	})
+}
+
+// TestQueryErrorCasesComprehensive tests additional error cases across SKU queries
+// including invalid UUID formats and non-existent resources.
+func TestQueryErrorCasesComprehensive(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.SKUKeeper
+	q := keeper.NewQuerier(k)
+
+	t.Run("Provider query with invalid UUID format", func(t *testing.T) {
+		// Not a valid UUIDv7 format
+		_, err := q.Provider(f.Ctx, &types.QueryProviderRequest{
+			Uuid: "not-a-valid-uuid",
+		})
+		require.Error(t, err)
+
+		// Too short
+		_, err = q.Provider(f.Ctx, &types.QueryProviderRequest{
+			Uuid: "12345",
+		})
+		require.Error(t, err)
+
+		// Empty UUID
+		_, err = q.Provider(f.Ctx, &types.QueryProviderRequest{
+			Uuid: "",
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("SKU query with invalid UUID format", func(t *testing.T) {
+		_, err := q.SKU(f.Ctx, &types.QuerySKURequest{
+			Uuid: "invalid-uuid-format",
+		})
+		require.Error(t, err)
+
+		_, err = q.SKU(f.Ctx, &types.QuerySKURequest{
+			Uuid: "",
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("SKUsByProvider with empty provider_uuid", func(t *testing.T) {
+		// Empty provider_uuid should error
+		_, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: "",
+		})
+		require.Error(t, err)
+
+		// Invalid UUID format returns empty results (no validation on format)
+		resp, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: "bad-uuid",
+		})
+		require.NoError(t, err)
+		require.Empty(t, resp.Skus, "invalid UUID should return empty results")
+	})
+
+	t.Run("non-existent resources return appropriate errors", func(t *testing.T) {
+		// Non-existent provider (valid UUID format but doesn't exist)
+		nonExistentUUID := "01912345-6789-7abc-8def-999999999999"
+		_, err := q.Provider(f.Ctx, &types.QueryProviderRequest{
+			Uuid: nonExistentUUID,
+		})
+		require.Error(t, err, "should error for non-existent provider")
+
+		// Non-existent SKU
+		_, err = q.SKU(f.Ctx, &types.QuerySKURequest{
+			Uuid: nonExistentUUID,
+		})
+		require.Error(t, err, "should error for non-existent SKU")
+	})
+
+	t.Run("queries with valid but empty results", func(t *testing.T) {
+		// Provider with no SKUs (valid UUID format)
+		validProviderUUID := "01912345-6789-7abc-8def-000000000001"
+		resp, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: validProviderUUID,
+		})
+		require.NoError(t, err, "should not error for provider with no SKUs")
+		require.Empty(t, resp.Skus, "should return empty list")
+
+		// Address with no providers
+		validAddr := f.TestAccs[4].String()
+		resp2, err := q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+			Address: validAddr,
+		})
+		require.NoError(t, err, "should not error for address with no providers")
+		require.Empty(t, resp2.Providers, "should return empty list")
+	})
+}

@@ -17,6 +17,7 @@ package keeper_test
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -1708,4 +1709,1096 @@ func TestGetPendingLeasesByProvider(t *testing.T) {
 	unknownPending, err := k.GetPendingLeasesByProvider(f.Ctx, "provider-999")
 	require.NoError(t, err)
 	require.Len(t, unknownPending, 0)
+}
+
+// ============================================================================
+// Critical Gap Tests: Genesis Round-Trip with Reservations
+// ============================================================================
+
+// TestGenesisExportImportWithReservations verifies that reserved_amounts are correctly
+// preserved through a full genesis export/import cycle with PENDING and ACTIVE leases.
+func TestGenesisExportImportWithReservations(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 per hour = 1 per second
+
+	// Fund tenant's credit account with enough for multiple leases
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(testDenom, sdkmath.NewInt(100000000)) // 100M
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	// Create credit account
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Get params for reservation calculation
+	params, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+
+	// Create first lease (will remain PENDING)
+	resp1, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 2},
+		},
+	})
+	require.NoError(t, err)
+	pendingLeaseUUID := resp1.LeaseUuid
+
+	// Create second lease (will be acknowledged to ACTIVE)
+	resp2, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 3},
+		},
+	})
+	require.NoError(t, err)
+	activeLeaseUUID := resp2.LeaseUuid
+
+	// Acknowledge the second lease to make it ACTIVE
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{activeLeaseUUID},
+	})
+	require.NoError(t, err)
+
+	// Verify credit account has correct reservations before export
+	caBeforeExport, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+
+	// Get leases to calculate expected reservations
+	pendingLease, err := k.GetLease(f.Ctx, pendingLeaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_PENDING, pendingLease.State)
+
+	activeLease, err := k.GetLease(f.Ctx, activeLeaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, activeLease.State)
+
+	// Calculate expected reservations (both PENDING and ACTIVE leases have reservations)
+	pendingReservation := types.CalculateLeaseReservation(pendingLease.Items, params.MinLeaseDuration)
+	activeReservation := types.CalculateLeaseReservation(activeLease.Items, params.MinLeaseDuration)
+	expectedReservations := pendingReservation.Add(activeReservation...)
+
+	require.True(t, expectedReservations.Equal(caBeforeExport.ReservedAmounts),
+		"before export: expected reservations %s, got %s",
+		expectedReservations.String(), caBeforeExport.ReservedAmounts.String())
+
+	// Verify lease counts
+	require.Equal(t, uint64(1), caBeforeExport.PendingLeaseCount)
+	require.Equal(t, uint64(1), caBeforeExport.ActiveLeaseCount)
+
+	// Export genesis
+	exportedGenesis := k.ExportGenesis(f.Ctx)
+
+	// Verify exported genesis has correct data
+	require.Len(t, exportedGenesis.Leases, 2)
+	require.Len(t, exportedGenesis.CreditAccounts, 1)
+
+	exportedCA := exportedGenesis.CreditAccounts[0]
+	require.True(t, expectedReservations.Equal(exportedCA.ReservedAmounts),
+		"exported genesis: expected reservations %s, got %s",
+		expectedReservations.String(), exportedCA.ReservedAmounts.String())
+	require.Equal(t, uint64(1), exportedCA.PendingLeaseCount)
+	require.Equal(t, uint64(1), exportedCA.ActiveLeaseCount)
+
+	// Validate the exported genesis (this is what ValidateGenesis does)
+	err = exportedGenesis.Validate()
+	require.NoError(t, err, "exported genesis should be valid")
+
+	// Create a fresh fixture for import
+	f2 := initFixture(t)
+	k2 := f2.App.BillingKeeper
+
+	// Create the same provider and SKU in the new context (required for InitGenesis validation)
+	// We directly set them with the same UUIDs from the first fixture
+	err = f2.App.SKUKeeper.SetProvider(f2.Ctx, provider)
+	require.NoError(t, err)
+	err = f2.App.SKUKeeper.SetSKU(f2.Ctx, sku)
+	require.NoError(t, err)
+
+	// Fund the credit address in the new context
+	f2.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	// Import genesis
+	err = k2.InitGenesis(f2.Ctx, exportedGenesis)
+	require.NoError(t, err)
+
+	// Verify imported state
+	caAfterImport, err := k2.GetCreditAccount(f2.Ctx, tenant.String())
+	require.NoError(t, err)
+
+	// Verify reservations are preserved
+	require.True(t, expectedReservations.Equal(caAfterImport.ReservedAmounts),
+		"after import: expected reservations %s, got %s",
+		expectedReservations.String(), caAfterImport.ReservedAmounts.String())
+
+	// Verify lease counts are preserved
+	require.Equal(t, uint64(1), caAfterImport.PendingLeaseCount)
+	require.Equal(t, uint64(1), caAfterImport.ActiveLeaseCount)
+
+	// Verify leases are preserved
+	importedPendingLease, err := k2.GetLease(f2.Ctx, pendingLeaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_PENDING, importedPendingLease.State)
+	require.Equal(t, pendingLease.MinLeaseDurationAtCreation, importedPendingLease.MinLeaseDurationAtCreation)
+
+	importedActiveLease, err := k2.GetLease(f2.Ctx, activeLeaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, importedActiveLease.State)
+	require.Equal(t, activeLease.MinLeaseDurationAtCreation, importedActiveLease.MinLeaseDurationAtCreation)
+
+	// Verify available credit is correct after import
+	creditBalance := f2.App.BankKeeper.GetBalance(f2.Ctx, creditAddr, testDenom)
+	availableCredit := types.GetAvailableCredit(
+		sdk.NewCoins(creditBalance),
+		caAfterImport.ReservedAmounts,
+	)
+	expectedAvailable := creditBalance.Amount.Sub(expectedReservations.AmountOf(testDenom))
+	require.True(t, availableCredit.AmountOf(testDenom).Equal(expectedAvailable),
+		"available credit: expected %s, got %s",
+		expectedAvailable.String(), availableCredit.AmountOf(testDenom).String())
+}
+
+// ============================================================================
+// Critical Gap Tests: Settlement Atomicity
+// ============================================================================
+
+// TestSettlementAtomicityOnClose verifies that when a lease is closed,
+// the settlement and state changes are applied atomically.
+func TestSettlementAtomicityOnClose(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 per hour = 1 per second
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(testDenom, sdkmath.NewInt(10000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	// Create and fund credit account
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create and acknowledge a lease
+	resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		},
+	})
+	require.NoError(t, err)
+	leaseUUID := resp.LeaseUuid
+
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{leaseUUID},
+	})
+	require.NoError(t, err)
+
+	// Verify lease is active with reservation
+	lease, err := k.GetLease(f.Ctx, leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+
+	caBeforeClose, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), caBeforeClose.ActiveLeaseCount)
+	require.False(t, caBeforeClose.ReservedAmounts.IsZero())
+
+	// Record balances before close
+	creditBalanceBefore := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom)
+	payoutBalanceBefore := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
+
+	// Advance time to accrue some charges
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+	// Close the lease - this should atomically:
+	// 1. Settle any accrued charges
+	// 2. Release the reservation
+	// 3. Update lease state to CLOSED
+	// 4. Decrement active lease count
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     tenant.String(),
+		LeaseUuids: []string{leaseUUID},
+	})
+	require.NoError(t, err)
+
+	// Verify all state changes happened atomically
+	leaseAfterClose, err := k.GetLease(f.Ctx, leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_CLOSED, leaseAfterClose.State)
+	require.NotNil(t, leaseAfterClose.ClosedAt)
+
+	caAfterClose, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), caAfterClose.ActiveLeaseCount)
+	require.True(t, caAfterClose.ReservedAmounts.IsZero(),
+		"reservation should be released after close, got %s", caAfterClose.ReservedAmounts.String())
+
+	// Verify settlement occurred (provider received payment)
+	payoutBalanceAfter := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
+	require.True(t, payoutBalanceAfter.Amount.GT(payoutBalanceBefore.Amount),
+		"provider should have received payment")
+
+	// Verify credit was deducted
+	creditBalanceAfter := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom)
+	require.True(t, creditBalanceAfter.Amount.LT(creditBalanceBefore.Amount),
+		"credit should have been deducted for settlement")
+
+	// Verify trying to close again fails
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     tenant.String(),
+		LeaseUuids: []string{leaseUUID},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not active")
+}
+
+// TestEndBlockerSkipsAlreadyClosedLeases verifies that EndBlocker's batch settlement
+// correctly skips leases that were already closed during the same block.
+func TestEndBlockerSkipsAlreadyClosedLeases(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(testDenom, sdkmath.NewInt(10000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create and acknowledge a lease
+	resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{resp.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	// Advance time
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+	// Close the lease manually (simulating a transaction in the block)
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     tenant.String(),
+		LeaseUuids: []string{resp.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	// Record state after close
+	caAfterClose, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	creditBalanceAfterClose := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom)
+	payoutBalanceAfterClose := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
+
+	// Run EndBlocker (simulating end of block processing)
+	// This should NOT process the already-closed lease
+	err = k.EndBlocker(f.Ctx)
+	require.NoError(t, err)
+
+	// Verify state is unchanged - EndBlocker should have skipped the closed lease
+	caAfterEndBlocker, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, caAfterClose.ActiveLeaseCount, caAfterEndBlocker.ActiveLeaseCount)
+	require.True(t, caAfterClose.ReservedAmounts.Equal(caAfterEndBlocker.ReservedAmounts))
+
+	// Verify balances unchanged
+	creditBalanceAfterEndBlocker := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom)
+	payoutBalanceAfterEndBlocker := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
+
+	require.True(t, creditBalanceAfterClose.Equal(creditBalanceAfterEndBlocker),
+		"credit balance should be unchanged after EndBlocker")
+	require.True(t, payoutBalanceAfterClose.Equal(payoutBalanceAfterEndBlocker),
+		"payout balance should be unchanged after EndBlocker")
+}
+
+// TestReservationConsistencyAfterFailedClose verifies that if a close operation
+// fails mid-way, the reservation remains intact (atomicity via CacheContext).
+func TestReservationConsistencyAfterFailedClose(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(testDenom, sdkmath.NewInt(10000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create and acknowledge a lease
+	resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{resp.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	// Record state before failed close attempt
+	caBeforeFailedClose, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	reservationBefore := caBeforeFailedClose.ReservedAmounts
+
+	// Try to close with wrong sender (should fail)
+	wrongSender := f.TestAccs[3]
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     wrongSender.String(),
+		LeaseUuids: []string{resp.LeaseUuid},
+	})
+	require.Error(t, err)
+
+	// Verify reservation is unchanged after failed close
+	caAfterFailedClose, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.True(t, reservationBefore.Equal(caAfterFailedClose.ReservedAmounts),
+		"reservation should be unchanged after failed close: expected %s, got %s",
+		reservationBefore.String(), caAfterFailedClose.ReservedAmounts.String())
+
+	// Verify lease is still active
+	lease, err := k.GetLease(f.Ctx, resp.LeaseUuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+	require.Equal(t, uint64(1), caAfterFailedClose.ActiveLeaseCount)
+}
+
+// ============================================================================
+// Major Gap Tests: Parameter Change Impact
+// ============================================================================
+
+// TestParamChangeDoesNotAffectExistingLeaseReservations verifies that changing
+// min_lease_duration parameter does not affect reservations for existing leases.
+// Existing leases use their stored MinLeaseDurationAtCreation for consistency.
+func TestParamChangeDoesNotAffectExistingLeaseReservations(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 per hour = 1 per second
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(testDenom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Get initial params (min_lease_duration = 3600 by default)
+	params, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	initialMinDuration := params.MinLeaseDuration
+	require.Equal(t, uint64(3600), initialMinDuration)
+
+	// Create a lease with initial min_lease_duration
+	resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		},
+	})
+	require.NoError(t, err)
+	leaseUUID := resp.LeaseUuid
+
+	// Get the lease and verify MinLeaseDurationAtCreation is stored
+	lease, err := k.GetLease(f.Ctx, leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, initialMinDuration, lease.MinLeaseDurationAtCreation,
+		"lease should store min_lease_duration at creation")
+
+	// Get reservation before parameter change
+	caBeforeParamChange, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	reservationBeforeChange := caBeforeParamChange.ReservedAmounts
+
+	// Calculate expected reservation based on initial min_lease_duration
+	// rate = 1/sec, quantity = 1, duration = 3600 => reservation = 3600
+	expectedReservation := types.CalculateLeaseReservation(lease.Items, initialMinDuration)
+	require.True(t, expectedReservation.Equal(reservationBeforeChange),
+		"initial reservation should match: expected %s, got %s",
+		expectedReservation.String(), reservationBeforeChange.String())
+
+	// Change min_lease_duration parameter to double the value
+	newMinDuration := uint64(7200) // Double the duration
+	newParams := types.NewParams(
+		params.MaxLeasesPerTenant,
+		params.AllowedList,
+		params.MaxItemsPerLease,
+		newMinDuration,
+		params.MaxPendingLeasesPerTenant,
+		params.PendingTimeout,
+	)
+	err = k.SetParams(f.Ctx, newParams)
+	require.NoError(t, err)
+
+	// Verify params changed
+	updatedParams, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, newMinDuration, updatedParams.MinLeaseDuration)
+
+	// Verify existing lease's reservation is UNCHANGED
+	// The lease should use its stored MinLeaseDurationAtCreation, not the new param
+	caAfterParamChange, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.True(t, reservationBeforeChange.Equal(caAfterParamChange.ReservedAmounts),
+		"existing lease reservation should be unchanged after param change: before %s, after %s",
+		reservationBeforeChange.String(), caAfterParamChange.ReservedAmounts.String())
+
+	// Create a NEW lease - it should use the new min_lease_duration
+	resp2, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		},
+	})
+	require.NoError(t, err)
+
+	// Verify new lease has the new min_lease_duration stored
+	newLease, err := k.GetLease(f.Ctx, resp2.LeaseUuid)
+	require.NoError(t, err)
+	require.Equal(t, newMinDuration, newLease.MinLeaseDurationAtCreation,
+		"new lease should store new min_lease_duration")
+
+	// Verify total reservations include both leases with their respective durations
+	caAfterNewLease, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+
+	// First lease: rate * quantity * 3600 = 3600
+	// Second lease: rate * quantity * 7200 = 7200
+	// Total: 10800
+	expectedOldReservation := types.CalculateLeaseReservation(lease.Items, initialMinDuration)
+	expectedNewReservation := types.CalculateLeaseReservation(newLease.Items, newMinDuration)
+	expectedTotalReservation := expectedOldReservation.Add(expectedNewReservation...)
+
+	require.True(t, expectedTotalReservation.Equal(caAfterNewLease.ReservedAmounts),
+		"total reservations should be sum of both leases: expected %s, got %s",
+		expectedTotalReservation.String(), caAfterNewLease.ReservedAmounts.String())
+
+	// Verify that releasing the old lease uses its stored duration (not new param)
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{leaseUUID},
+	})
+	require.NoError(t, err)
+
+	// Close the old lease
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     tenant.String(),
+		LeaseUuids: []string{leaseUUID},
+	})
+	require.NoError(t, err)
+
+	// Verify only the old lease's reservation was released (using its stored duration)
+	caAfterOldClose, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+
+	// Should have only the new lease's reservation remaining
+	require.True(t, expectedNewReservation.Equal(caAfterOldClose.ReservedAmounts),
+		"after closing old lease, only new lease reservation should remain: expected %s, got %s",
+		expectedNewReservation.String(), caAfterOldClose.ReservedAmounts.String())
+}
+
+// ============================================================================
+// Major Gap Tests: Partial Settlement on Credit Exhaustion
+// ============================================================================
+
+// TestPartialSettlementOnCreditExhaustion verifies the exact behavior when
+// credit runs out during settlement - the lease should be settled up to the
+// available credit and then closed.
+func TestPartialSettlementOnCreditExhaustion(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+
+	// Create provider and SKU with a rate of 1 per second (3600 per hour)
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account with LIMITED funds
+	// Reservation for 1 hour = 3600, fund just enough for reservation + small amount
+	// Rate = 1/sec * 1 quantity = 1/sec
+	// We'll fund 5000 - reservation takes 3600, leaving 1400 available for new leases
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(testDenom, sdkmath.NewInt(5000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create and acknowledge a lease
+	resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{resp.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	// Verify lease is active and reservation is made
+	lease, err := k.GetLease(f.Ctx, resp.LeaseUuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+
+	ca, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), ca.ActiveLeaseCount)
+
+	// Check available credit (balance - reserved)
+	// Balance: 5000, Reserved: 3600, Available: 1400
+	creditBalance := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom)
+	available := types.GetAvailableCredit(sdk.NewCoins(creditBalance), ca.ReservedAmounts)
+	require.Equal(t, sdkmath.NewInt(1400), available.AmountOf(testDenom),
+		"available credit should be balance minus reservation")
+
+	// Record provider balance before settlement
+	providerBalanceBefore := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
+
+	// Advance time beyond what the credit balance can cover
+	// At 1/sec rate, with 5000 total balance = 5000 seconds max
+	// Advance 6000 seconds (more than total credit)
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(6000 * time.Second))
+
+	// Close the lease - this triggers settlement first
+	// Settlement should:
+	// 1. Calculate accrued: 6000 (6000 seconds * 1/sec)
+	// 2. Available credit balance: 5000
+	// 3. Transfer min(6000, 5000) = 5000 (partial settlement)
+	closeResp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     tenant.String(),
+		LeaseUuids: []string{resp.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	// Verify lease is closed
+	leaseAfterClose, err := k.GetLease(f.Ctx, resp.LeaseUuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_CLOSED, leaseAfterClose.State)
+	require.NotNil(t, leaseAfterClose.ClosedAt)
+
+	// Verify provider received partial payment (only what was available = 5000)
+	providerBalanceAfter := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
+	settlementAmount := providerBalanceAfter.Amount.Sub(providerBalanceBefore.Amount)
+
+	// Should receive exactly the available credit (5000), not the full accrued (6000)
+	require.Equal(t, sdkmath.NewInt(5000), settlementAmount,
+		"provider should receive partial settlement (available credit)")
+
+	// Verify the settlement amount is reported in response
+	require.True(t, closeResp.TotalSettledAmounts.AmountOf(testDenom).Equal(sdkmath.NewInt(5000)),
+		"response should report settled amount")
+
+	// Verify reservation was released
+	caAfterClose, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.True(t, caAfterClose.ReservedAmounts.IsZero(),
+		"reservation should be released after close")
+	require.Equal(t, uint64(0), caAfterClose.ActiveLeaseCount)
+
+	// Verify credit balance is zero (all consumed)
+	creditBalanceAfter := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom)
+	require.Equal(t, sdkmath.NewInt(0), creditBalanceAfter.Amount,
+		"credit balance should be zero after exhaustion")
+}
+
+// TestAutoCloseOnWithdraw verifies that leases are automatically closed
+// when credit is exhausted during provider Withdraw operation.
+func TestAutoCloseOnWithdraw(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 1/sec
+
+	// Fund with very limited credit (just enough for reservation + tiny amount)
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	// Fund 3700: reservation=3600, leaves only 100 for actual usage
+	fundAmount := sdk.NewCoin(testDenom, sdkmath.NewInt(3700))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create and acknowledge a lease
+	resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{resp.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	// Verify lease is active
+	lease, err := k.GetLease(f.Ctx, resp.LeaseUuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+
+	// Record provider balance
+	providerBalanceBefore := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
+
+	// Advance time significantly beyond credit capacity
+	// At 1/sec, 3700 total = 3700 seconds max
+	// Advance 5000 seconds to ensure exhaustion
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(5000 * time.Second))
+
+	// Provider calls Withdraw - this triggers settlement and auto-close detection
+	withdrawResp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{resp.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	// Verify lease was auto-closed due to credit exhaustion
+	leaseAfter, err := k.GetLease(f.Ctx, resp.LeaseUuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_CLOSED, leaseAfter.State,
+		"lease should be auto-closed due to credit exhaustion")
+	require.NotNil(t, leaseAfter.ClosedAt)
+
+	// Verify provider received payment (full available credit = 3700)
+	providerBalanceAfter := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
+	settlementAmount := providerBalanceAfter.Amount.Sub(providerBalanceBefore.Amount)
+	require.Equal(t, sdkmath.NewInt(3700), settlementAmount,
+		"provider should receive all available credit")
+
+	// Verify the withdraw response indicates what happened
+	require.NotNil(t, withdrawResp)
+	require.True(t, withdrawResp.TotalAmounts.AmountOf(testDenom).Equal(sdkmath.NewInt(3700)))
+
+	// Verify reservation released and counts updated
+	caAfter, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.True(t, caAfter.ReservedAmounts.IsZero(),
+		"reservation should be released after auto-close")
+	require.Equal(t, uint64(0), caAfter.ActiveLeaseCount)
+
+	// Verify credit balance is zero
+	creditBalanceAfter := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom)
+	require.True(t, creditBalanceAfter.IsZero())
+}
+
+// TestClosureReasonTracking verifies that closure reasons are properly recorded
+// for different lease closure scenarios: manual close with custom reason,
+// auto-close due to credit exhaustion.
+func TestClosureReasonTracking(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 1/sec
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(testDenom, sdkmath.NewInt(1000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	t.Run("manual close with custom reason", func(t *testing.T) {
+		// Create and acknowledge lease
+		resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+
+		_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{resp.LeaseUuid},
+		})
+		require.NoError(t, err)
+
+		// Close with custom reason
+		customReason := "Resource no longer needed"
+		_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+			Sender:     tenant.String(),
+			LeaseUuids: []string{resp.LeaseUuid},
+			Reason:     customReason,
+		})
+		require.NoError(t, err)
+
+		// Verify the closure reason was recorded
+		lease, err := k.GetLease(f.Ctx, resp.LeaseUuid)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+		require.Equal(t, customReason, lease.ClosureReason,
+			"closure reason should match the custom reason provided")
+	})
+
+	t.Run("manual close without reason", func(t *testing.T) {
+		// Create and acknowledge another lease
+		resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+
+		_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{resp.LeaseUuid},
+		})
+		require.NoError(t, err)
+
+		// Close without reason
+		_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+			Sender:     tenant.String(),
+			LeaseUuids: []string{resp.LeaseUuid},
+			// No Reason field set
+		})
+		require.NoError(t, err)
+
+		// Verify the closure reason is empty
+		lease, err := k.GetLease(f.Ctx, resp.LeaseUuid)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+		require.Empty(t, lease.ClosureReason,
+			"closure reason should be empty when not provided")
+	})
+
+	t.Run("auto-close sets credit exhausted reason", func(t *testing.T) {
+		// Create new tenant with limited credit
+		limitedTenant := f.TestAccs[3]
+		limitedCreditAddr, err := types.DeriveCreditAddressFromBech32(limitedTenant.String())
+		require.NoError(t, err)
+
+		// Fund with minimal credit (just enough for reservation + small buffer)
+		limitedFund := sdk.NewCoin(testDenom, sdkmath.NewInt(3700))
+		f.fundAccount(t, limitedCreditAddr, sdk.NewCoins(limitedFund))
+
+		err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+			Tenant:        limitedTenant.String(),
+			CreditAddress: limitedCreditAddr.String(),
+		})
+		require.NoError(t, err)
+
+		// Create and acknowledge lease
+		resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: limitedTenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+
+		_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{resp.LeaseUuid},
+		})
+		require.NoError(t, err)
+
+		// Advance time to exhaust credit
+		f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(5000 * time.Second))
+
+		// Provider withdraws, triggering auto-close
+		_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{resp.LeaseUuid},
+		})
+		require.NoError(t, err)
+
+		// Verify auto-close reason
+		lease, err := k.GetLease(f.Ctx, resp.LeaseUuid)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+		require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason,
+			"auto-closed lease should have credit exhausted reason")
+	})
+}
+
+// TestAllowedListCreateLeaseForTenant verifies that the AllowedList parameter
+// correctly restricts who can create leases on behalf of tenants.
+func TestAllowedListCreateLeaseForTenant(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	allowedAuthority := f.TestAccs[3]
+	unauthorizedAddr := f.TestAccs[4]
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(testDenom, sdkmath.NewInt(1000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	t.Run("unauthorized address cannot create lease for tenant", func(t *testing.T) {
+		// Try to create lease without being on the allowed list
+		_, err := msgServer.CreateLeaseForTenant(f.Ctx, &types.MsgCreateLeaseForTenant{
+			Authority: unauthorizedAddr.String(),
+			Tenant:    tenant.String(),
+			Items:     []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unauthorized")
+	})
+
+	t.Run("allowed address can create lease for tenant", func(t *testing.T) {
+		// Update params to add allowedAuthority to the allowed list
+		params, err := k.GetParams(f.Ctx)
+		require.NoError(t, err)
+		params.AllowedList = []string{allowedAuthority.String()}
+		err = k.SetParams(f.Ctx, params)
+		require.NoError(t, err)
+
+		// Now the allowed address should be able to create a lease for tenant
+		resp, err := msgServer.CreateLeaseForTenant(f.Ctx, &types.MsgCreateLeaseForTenant{
+			Authority: allowedAuthority.String(),
+			Tenant:    tenant.String(),
+			Items:     []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, resp.LeaseUuid)
+
+		// Verify the lease was created for the correct tenant
+		lease, err := k.GetLease(f.Ctx, resp.LeaseUuid)
+		require.NoError(t, err)
+		require.Equal(t, tenant.String(), lease.Tenant)
+	})
+
+	t.Run("unauthorized after removal from allowed list", func(t *testing.T) {
+		// Remove the authority from allowed list
+		params, err := k.GetParams(f.Ctx)
+		require.NoError(t, err)
+		params.AllowedList = []string{}
+		err = k.SetParams(f.Ctx, params)
+		require.NoError(t, err)
+
+		// The previously allowed address should now fail
+		_, err = msgServer.CreateLeaseForTenant(f.Ctx, &types.MsgCreateLeaseForTenant{
+			Authority: allowedAuthority.String(),
+			Tenant:    tenant.String(),
+			Items:     []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unauthorized")
+	})
+}
+
+// TestMetaHashValidation verifies that the MetaHash field validation
+// works correctly during lease creation.
+func TestMetaHashValidation(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant's credit account
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(testDenom, sdkmath.NewInt(1000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	t.Run("valid meta_hash is accepted", func(t *testing.T) {
+		// SHA-256 hash is 32 bytes
+		validHash := make([]byte, 32)
+		for i := range validHash {
+			validHash[i] = byte(i)
+		}
+
+		resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant:   tenant.String(),
+			Items:    []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+			MetaHash: validHash,
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, resp.LeaseUuid)
+
+		// Verify meta_hash was stored
+		lease, err := k.GetLease(f.Ctx, resp.LeaseUuid)
+		require.NoError(t, err)
+		require.Equal(t, validHash, lease.MetaHash)
+	})
+
+	t.Run("max length meta_hash is accepted", func(t *testing.T) {
+		// Max length is 64 bytes (for SHA-512)
+		maxHash := make([]byte, types.MaxMetaHashLength)
+		for i := range maxHash {
+			maxHash[i] = byte(i % 256)
+		}
+
+		resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant:   tenant.String(),
+			Items:    []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+			MetaHash: maxHash,
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, resp.LeaseUuid)
+	})
+
+	t.Run("meta_hash exceeding max length is rejected", func(t *testing.T) {
+		// Exceed max length
+		oversizedHash := make([]byte, types.MaxMetaHashLength+1)
+
+		_, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant:   tenant.String(),
+			Items:    []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+			MetaHash: oversizedHash,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "meta_hash")
+	})
+
+	t.Run("empty meta_hash is allowed", func(t *testing.T) {
+		resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+			// No MetaHash set
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, resp.LeaseUuid)
+
+		// Verify meta_hash is empty/nil
+		lease, err := k.GetLease(f.Ctx, resp.LeaseUuid)
+		require.NoError(t, err)
+		require.Empty(t, lease.MetaHash)
+	})
 }

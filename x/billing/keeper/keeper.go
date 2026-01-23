@@ -780,8 +780,8 @@ func (k *Keeper) ReleaseLeaseReservation(ca *types.CreditAccount, lease *types.L
 		)
 	}
 
-	// Proceed with release (clamps negative values to zero)
-	types.ReleaseLeaseReservation(ca, lease, minLeaseDuration)
+	// Subtract reservation (clamps negative values to zero)
+	ca.ReservedAmounts = types.SubtractReservation(ca.ReservedAmounts, reservationAmount)
 }
 
 // CountPendingLeasesByTenant counts the number of pending leases for a tenant.

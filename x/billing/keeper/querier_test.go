@@ -1075,3 +1075,132 @@ func TestQueryCreditEstimate(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+// TestQueryErrorCasesComprehensive tests additional error cases across queries
+// including invalid UUID formats, non-existent resources, and malformed requests.
+func TestQueryErrorCasesComprehensive(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	t.Run("Lease query with invalid UUID format", func(t *testing.T) {
+		// Not a valid UUIDv7 format
+		_, err := querier.Lease(f.Ctx, &types.QueryLeaseRequest{
+			LeaseUuid: "not-a-valid-uuid",
+		})
+		require.Error(t, err)
+
+		// Too short
+		_, err = querier.Lease(f.Ctx, &types.QueryLeaseRequest{
+			LeaseUuid: "12345",
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("LeasesByProvider with empty/invalid UUID", func(t *testing.T) {
+		// Empty provider_uuid should error
+		_, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+			ProviderUuid: "",
+		})
+		require.Error(t, err, "empty provider_uuid should error")
+
+		// Invalid UUID format returns empty results (no format validation)
+		resp, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+			ProviderUuid: "invalid-uuid-format",
+		})
+		require.NoError(t, err)
+		require.Empty(t, resp.Leases, "invalid UUID should return empty results")
+	})
+
+	t.Run("WithdrawableAmount with empty/invalid UUID", func(t *testing.T) {
+		// Empty lease_uuid should error
+		_, err := querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
+			LeaseUuid: "",
+		})
+		require.Error(t, err, "empty lease_uuid should error")
+
+		// Invalid UUID format should error (does format validation)
+		_, err = querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
+			LeaseUuid: "not-valid",
+		})
+		require.Error(t, err, "invalid UUID format should error")
+	})
+
+	t.Run("ProviderWithdrawable with empty/invalid UUID", func(t *testing.T) {
+		// Empty provider_uuid should error
+		_, err := querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
+			ProviderUuid: "",
+		})
+		require.Error(t, err, "empty provider_uuid should error")
+
+		// Invalid UUID format returns empty results (no format validation)
+		resp, err := querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
+			ProviderUuid: "bad-uuid",
+		})
+		require.NoError(t, err)
+		require.True(t, resp.Amounts.IsZero(), "invalid UUID should return zero amounts")
+	})
+
+	t.Run("LeasesBySKU with empty/invalid UUID", func(t *testing.T) {
+		// Empty sku_uuid should error
+		_, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: "",
+		})
+		require.Error(t, err, "empty sku_uuid should error")
+
+		// Invalid UUID format returns empty results (no format validation)
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: "invalid",
+		})
+		require.NoError(t, err)
+		require.Empty(t, resp.Leases, "invalid UUID should return empty results")
+	})
+
+	t.Run("non-existent resources return appropriate errors", func(t *testing.T) {
+		// Non-existent lease (valid UUID format but doesn't exist)
+		nonExistentUUID := "01912345-6789-7abc-8def-999999999999"
+		_, err := querier.Lease(f.Ctx, &types.QueryLeaseRequest{
+			LeaseUuid: nonExistentUUID,
+		})
+		require.Error(t, err, "should error for non-existent lease")
+
+		// Non-existent credit account (valid address but no account)
+		validButNonExistent := f.TestAccs[4].String()
+		_, err = querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+			Tenant: validButNonExistent,
+		})
+		require.Error(t, err, "should error for non-existent credit account")
+
+		// Non-existent lease for withdrawable amount
+		_, err = querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
+			LeaseUuid: nonExistentUUID,
+		})
+		require.Error(t, err, "should error for withdrawable on non-existent lease")
+	})
+
+	t.Run("queries with valid but empty results", func(t *testing.T) {
+		// Provider with no leases (valid UUID format)
+		validProviderUUID := "01912345-6789-7abc-8def-000000000001"
+		resp, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+			ProviderUuid: validProviderUUID,
+		})
+		require.NoError(t, err, "should not error for provider with no leases")
+		require.Empty(t, resp.Leases, "should return empty list")
+
+		// Tenant with no leases (valid address)
+		resp2, err := querier.LeasesByTenant(f.Ctx, &types.QueryLeasesByTenantRequest{
+			Tenant: f.TestAccs[4].String(),
+		})
+		require.NoError(t, err, "should not error for tenant with no leases")
+		require.Empty(t, resp2.Leases, "should return empty list")
+
+		// SKU with no leases
+		validSKUUUID := "01912345-6789-7abc-8def-000000000002"
+		resp3, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: validSKUUUID,
+		})
+		require.NoError(t, err, "should not error for SKU with no leases")
+		require.Empty(t, resp3.Leases, "should return empty list")
+	})
+}

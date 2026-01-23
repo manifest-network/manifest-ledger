@@ -4428,6 +4428,117 @@ func TestMsgWithdraw_ProviderWideLargePagination(t *testing.T) {
 	})
 }
 
+// TestMsgWithdraw_ProviderWideMultiDenom tests provider-wide withdrawal from
+// multiple leases using different denoms, verifying correct aggregation.
+func TestMsgWithdraw_ProviderWideMultiDenom(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+
+	// Create provider with SKUs in different denoms
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku1 := f.createTestSKUWithDenom(t, provider.Uuid, 3600, testDenom)  // 1 per second in testDenom
+	sku2 := f.createTestSKUWithDenom(t, provider.Uuid, 7200, testDenom2) // 2 per second in testDenom2
+
+	// Fund tenant's credit account with BOTH denoms
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount1 := sdk.NewCoin(testDenom, sdkmath.NewInt(100000000))  // 100M testDenom
+	fundAmount2 := sdk.NewCoin(testDenom2, sdkmath.NewInt(200000000)) // 200M testDenom2
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount1, fundAmount2))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	t.Run("success: provider-wide withdraw aggregates multiple denoms", func(t *testing.T) {
+		// Create lease 1 with testDenom SKU
+		lease1 := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku1.Uuid, Quantity: 1},
+		})
+
+		// Create lease 2 with testDenom2 SKU
+		lease2 := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku2.Uuid, Quantity: 1},
+		})
+
+		// Create lease 3 with both denoms
+		lease3 := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku1.Uuid, Quantity: 1},
+			{SkuUuid: sku2.Uuid, Quantity: 1},
+		})
+
+		// Advance time by 100 seconds
+		// testDenom: lease1 (1*100) + lease3 (1*100) = 200
+		// testDenom2: lease2 (2*100) + lease3 (2*100) = 400
+		f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+		// Get initial balances
+		initialBalance1 := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
+		initialBalance2 := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom2)
+
+		// Provider-wide withdraw
+		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider.Uuid,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, uint64(3), resp.WithdrawalCount, "should withdraw from all 3 leases")
+
+		// Verify both denoms were received
+		newBalance1 := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
+		newBalance2 := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom2)
+
+		withdrawnDenom1 := newBalance1.Amount.Sub(initialBalance1.Amount)
+		withdrawnDenom2 := newBalance2.Amount.Sub(initialBalance2.Amount)
+
+		require.Equal(t, sdkmath.NewInt(200), withdrawnDenom1,
+			"should receive 200 testDenom (1/sec * 100sec * 2 leases)")
+		require.Equal(t, sdkmath.NewInt(400), withdrawnDenom2,
+			"should receive 400 testDenom2 (2/sec * 100sec * 2 leases)")
+
+		// Verify response includes both denoms
+		require.Equal(t, sdkmath.NewInt(200), resp.TotalAmounts.AmountOf(testDenom))
+		require.Equal(t, sdkmath.NewInt(400), resp.TotalAmounts.AmountOf(testDenom2))
+
+		// Verify all leases were settled
+		for _, leaseUUID := range []string{lease1, lease2, lease3} {
+			lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
+			require.NoError(t, err)
+			require.Equal(t, f.Ctx.BlockTime(), lease.LastSettledAt)
+		}
+	})
+
+	t.Run("empty result when no withdrawable amounts", func(t *testing.T) {
+		// Create a new provider for isolation
+		provider2Addr := f.TestAccs[3]
+		provider2 := f.createTestProvider(t, provider2Addr.String(), provider2Addr.String())
+		sku3 := f.createTestSKU(t, provider2.Uuid, 3600)
+
+		// Create and acknowledge a lease
+		f.createAndAcknowledgeLease(t, msgServer, tenant, provider2Addr, []types.LeaseItemInput{
+			{SkuUuid: sku3.Uuid, Quantity: 1},
+		})
+
+		// Withdraw immediately without advancing time - nothing to withdraw
+		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       provider2Addr.String(),
+			ProviderUuid: provider2.Uuid,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, uint64(0), resp.WithdrawalCount, "should process 0 leases with withdrawable amounts")
+		require.True(t, resp.TotalAmounts.IsZero(), "total amounts should be zero")
+	})
+}
+
 // ============================================================================
 // Credit Reservation / Overbooking Prevention Tests
 // ============================================================================
