@@ -1,6 +1,6 @@
 module github.com/manifest-network/manifest-ledger
 
-go 1.25.4
+go 1.25.5
 
 replace (
 	// core v0.12 was tagged wrong (SDK v51)
@@ -34,7 +34,7 @@ require (
 	cosmossdk.io/x/tx v0.13.7
 	cosmossdk.io/x/upgrade v0.1.4
 	github.com/CosmWasm/wasmd v0.54.2
-	github.com/cometbft/cometbft v0.38.19
+	github.com/cometbft/cometbft v0.38.21
 	github.com/cosmos/cosmos-db v1.1.1
 	github.com/cosmos/cosmos-proto v1.0.0-beta.5
 	github.com/cosmos/cosmos-sdk v0.50.14
