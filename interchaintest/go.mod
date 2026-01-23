@@ -1,6 +1,6 @@
 module github.com/manifest-network/manifest-ledger/interchaintest
 
-go 1.25.4
+go 1.25.5
 
 replace (
 	cosmossdk.io/core => cosmossdk.io/core v0.11.3 // proper SDK v50 version
