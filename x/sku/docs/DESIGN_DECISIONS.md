@@ -95,6 +95,29 @@ uuid := uuidv7.NewDeterministic(ctx, sequence)
 - Authority or allowed_list becomes bottleneck
 - Less decentralized, but more flexible than POA-only
 
+**Important Clarification - Management Address Authorization:**
+
+The Provider's `Address` field (management address) grants **limited** authorization for billing operations, but **not** for SKU module operations:
+
+| Operation | Management Address | Authority/AllowedList |
+|-----------|-------------------|----------------------|
+| Acknowledge leases | ✓ | ✓ |
+| Reject leases | ✓ | ✓ |
+| Withdraw earnings | ✓ | ✓ |
+| Close leases (as provider) | ✓ | ✓ |
+| Create/Update/Deactivate Provider | ✗ | ✓ |
+| Create/Update/Deactivate SKU | ✗ | ✓ |
+| Transfer Provider to new address | ✗ | ✓ |
+
+**Transferability:**
+- Providers and SKUs **are transferable** via `UpdateProvider` and `UpdateSKU`
+- Transfer requires authority or `allowed_list` membership
+- The current management address holder **cannot** transfer to another address themselves
+- To transfer a provider: an authorized party calls `UpdateProvider` with the new `Address`
+- Upon transfer, the new management address gains billing operation rights (acknowledge, reject, withdraw)
+
+This model separates operational control (billing) from administrative control (provider/SKU management), ensuring quality control over the provider registry while allowing day-to-day operations by the provider.
+
 ## Decision 5: Price Divisibility Validation
 
 **Decision:** Require SKU prices to be evenly divisible by their unit's seconds.

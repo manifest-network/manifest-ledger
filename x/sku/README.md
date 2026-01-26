@@ -76,6 +76,10 @@ Provider and SKU operations (create, update, deactivate) can be performed by:
 
 Only the module authority can update the parameters (including the allowed list).
 
+**Management Address Permissions:** The Provider's `Address` field (management address) grants authorization for **billing operations only** (acknowledge/reject leases, withdraw earnings). It does **not** grant permission to modify provider or SKU records—those operations require authority or `allowed_list` membership.
+
+**Transferability:** Providers and SKUs can be transferred to a new management address via `UpdateProvider` or `UpdateSKU`, but only by the authority or `allowed_list` members—not by the current management address holder. Upon transfer, the new address gains billing operation rights.
+
 ### Validation Constants
 
 | Constant | Value | Description |
