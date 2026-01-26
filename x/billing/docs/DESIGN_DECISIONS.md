@@ -94,6 +94,7 @@ See `x/billing/types/credit.go` for the implementation.
 - Provider cannot increase prices for existing leases
 - Long-running leases may have stale prices
 - No volume discount adjustments
+- **Price decrease gaming**: When a provider reduces SKU prices, savvy tenants may close existing leases and create new ones at the lower rate. This is acceptable behavior—tenants are not obligated to maintain leases, and providers should factor this into pricing decisions.
 
 **Implementation Note:** The `locked_price` stored in `LeaseItem` is the pre-computed per-second rate (not the original SKU price), calculated at lease creation using `skutypes.CalculatePricePerSecond()`.
 

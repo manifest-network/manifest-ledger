@@ -509,6 +509,8 @@ Settlement happens lazily at these points:
 
 **Note**: Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement. Use `WithdrawableAmount` or `ProviderWithdrawable` queries to get real-time calculated accrued amounts. Settlement (actual token transfer) only happens during write operations.
 
+**Transaction Ordering Note**: Within a single block, transaction order matters. If a block contains both a `FundCredit` transaction and a `CloseLease` transaction for the same tenant, the outcome depends on which transaction is processed first. This is standard blockchain behavior—settlement reads the credit balance at the time of execution. Users should ensure funding is confirmed before triggering settlement-dependent operations.
+
 ### Atomic Settlement in Provider-Wide Withdraw
 
 The provider-wide withdraw mode uses a **cached context pattern** to ensure atomicity per lease:
