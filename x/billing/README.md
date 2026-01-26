@@ -185,6 +185,7 @@ These values are compile-time constants and cannot be changed via governance:
 | `DefaultProviderWithdrawLimit` | 50 | Default number of leases processed per provider-wide withdraw call (can be increased to MaxBatchLeaseSize) |
 | `MaxBatchLeaseSize` | 100 | Hard limit for any batch operation. For provider-wide withdraw: configurable via `--limit` up to this value. For specific lease operations: maximum UUIDs per call. |
 | `MaxRejectionReasonLength` | 256 | Maximum characters for lease rejection reason |
+| `MaxClosureReasonLength` | 256 | Maximum characters for lease closure reason |
 | `MaxDurationSeconds` | 3,153,600,000 (100 years) | Maximum lease duration for accrual calculations (overflow protection). Defined in `keeper/accrual.go`. |
 | `CreditAccountAddressPrefix` | `billing/credit/` | Prefix used for deterministic credit address derivation |
 | `DefaultProviderWithdrawableQueryLimit` | 100 | Default limit for ProviderWithdrawable query |

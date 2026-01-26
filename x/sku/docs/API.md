@@ -871,9 +871,9 @@ message Provider {
   string uuid = 1;            // Unique UUIDv7 identifier
   string address = 2;         // Management address
   string payout_address = 3;  // Payout address
-  string api_url = 4;         // HTTPS endpoint for off-chain API
-  bytes meta_hash = 5;        // Off-chain metadata hash (max 64 bytes)
-  bool active = 6;            // Active status
+  bytes meta_hash = 4;        // Off-chain metadata hash (max 64 bytes)
+  bool active = 5;            // Active status
+  string api_url = 6;         // HTTPS endpoint for off-chain API
 }
 ```
 

@@ -95,7 +95,6 @@ See [Pricing and Exact Divisibility](../README.md#pricing-and-exact-divisibility
 
 | Improvement | Description | Benefit |
 |-------------|-------------|---------|
-| **Address Index for Providers** | Secondary index: address → provider UUID | O(1) `ProviderByAddress` query instead of O(n) scan |
 | **Provider Reputation** | On-chain ratings/reviews | Trust signals for tenants |
 | **Provider Categories** | Tagging/categorization system | Easier discovery |
 
