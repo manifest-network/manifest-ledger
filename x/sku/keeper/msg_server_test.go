@@ -67,6 +67,7 @@
 package keeper_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -726,6 +727,151 @@ func TestDeactivateProviderWithNoSKUs(t *testing.T) {
 	provider, err = k.GetProvider(f.Ctx, providerUUID)
 	require.NoError(t, err)
 	require.False(t, provider.Active, "provider should be inactive")
+}
+
+// TestDeactivateProviderPagination verifies that SKU deactivation is paginated
+// to prevent gas exhaustion when a provider has many SKUs.
+func TestDeactivateProviderPagination(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	providerUUID := "01912345-6789-7abc-8def-0123456789f1"
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
+
+	// Create an active provider
+	provider := types.Provider{
+		Uuid:          providerUUID,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        true,
+	}
+	err := k.SetProvider(f.Ctx, provider)
+	require.NoError(t, err)
+
+	// Create 10 active SKUs (more than our test limit of 3)
+	const totalSKUs = 10
+	const testLimit uint64 = 3
+
+	for i := 0; i < totalSKUs; i++ {
+		sku := types.SKU{
+			Uuid:         fmt.Sprintf("01912345-6789-7abc-8def-01234567%04d", i),
+			ProviderUuid: providerUUID,
+			Name:         fmt.Sprintf("SKU %d", i),
+			Unit:         types.Unit_UNIT_PER_HOUR,
+			BasePrice:    basePrice,
+			Active:       true,
+		}
+		err := k.SetSKU(f.Ctx, sku)
+		require.NoError(t, err)
+	}
+
+	// First call: should deactivate provider and first batch of SKUs
+	msg := &types.MsgDeactivateProvider{
+		Authority: authority.String(),
+		Uuid:      providerUUID,
+		Limit:     testLimit,
+	}
+	resp, err := ms.DeactivateProvider(f.Ctx, msg)
+	require.NoError(t, err)
+	require.Equal(t, testLimit, resp.DeactivatedSkuCount, "first call should deactivate limit SKUs")
+	require.True(t, resp.HasMore, "should have more SKUs to deactivate")
+
+	// Verify provider is now inactive
+	provider, err = k.GetProvider(f.Ctx, providerUUID)
+	require.NoError(t, err)
+	require.False(t, provider.Active, "provider should be inactive after first call")
+
+	// Second call: should deactivate another batch
+	resp, err = ms.DeactivateProvider(f.Ctx, msg)
+	require.NoError(t, err)
+	require.Equal(t, testLimit, resp.DeactivatedSkuCount, "second call should deactivate limit SKUs")
+	require.True(t, resp.HasMore, "should still have more SKUs to deactivate")
+
+	// Third call: should deactivate another batch
+	resp, err = ms.DeactivateProvider(f.Ctx, msg)
+	require.NoError(t, err)
+	require.Equal(t, testLimit, resp.DeactivatedSkuCount, "third call should deactivate limit SKUs")
+	require.True(t, resp.HasMore, "should still have more SKUs to deactivate")
+
+	// Fourth call: should deactivate the remaining SKU (10 - 3*3 = 1)
+	resp, err = ms.DeactivateProvider(f.Ctx, msg)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), resp.DeactivatedSkuCount, "fourth call should deactivate remaining SKU")
+	require.False(t, resp.HasMore, "should have no more SKUs to deactivate")
+
+	// Fifth call: should fail because provider and all SKUs are already inactive
+	_, err = ms.DeactivateProvider(f.Ctx, msg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already inactive")
+
+	// Verify all SKUs are now inactive
+	skus, err := k.GetSKUsByProviderUUID(f.Ctx, providerUUID)
+	require.NoError(t, err)
+	require.Len(t, skus, totalSKUs)
+	for _, sku := range skus {
+		require.False(t, sku.Active, "all SKUs should be inactive")
+	}
+}
+
+// TestDeactivateProviderPaginationDefaultLimit verifies that the default limit
+// is applied when limit is set to 0.
+func TestDeactivateProviderPaginationDefaultLimit(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	providerUUID := "01912345-6789-7abc-8def-0123456789f2"
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
+
+	// Create an active provider
+	provider := types.Provider{
+		Uuid:          providerUUID,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        true,
+	}
+	err := k.SetProvider(f.Ctx, provider)
+	require.NoError(t, err)
+
+	// Create fewer SKUs than the default limit
+	const totalSKUs = 5
+
+	for i := 0; i < totalSKUs; i++ {
+		sku := types.SKU{
+			Uuid:         fmt.Sprintf("01912345-6789-7abc-8def-02234567%04d", i),
+			ProviderUuid: providerUUID,
+			Name:         fmt.Sprintf("SKU %d", i),
+			Unit:         types.Unit_UNIT_PER_HOUR,
+			BasePrice:    basePrice,
+			Active:       true,
+		}
+		err := k.SetSKU(f.Ctx, sku)
+		require.NoError(t, err)
+	}
+
+	// Call with limit=0 (should use default limit)
+	msg := &types.MsgDeactivateProvider{
+		Authority: authority.String(),
+		Uuid:      providerUUID,
+		Limit:     0, // Use default
+	}
+	resp, err := ms.DeactivateProvider(f.Ctx, msg)
+	require.NoError(t, err)
+	require.Equal(t, uint64(totalSKUs), resp.DeactivatedSkuCount, "should deactivate all SKUs in one call")
+	require.False(t, resp.HasMore, "should have no more SKUs to deactivate")
 }
 
 // TestProviderReactivationDoesNotReactivateSKUs verifies that when a provider is

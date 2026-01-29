@@ -378,6 +378,8 @@ func (k *Keeper) GetAllSKUs(ctx context.Context) ([]types.SKU, error) {
 }
 
 // GetSKUsByProviderUUID returns all SKUs for a given provider UUID using the provider index.
+// WARNING: This loads all SKUs into memory. For large datasets or batch operations,
+// use IterateActiveSKUsByProvider instead to process SKUs with a limit.
 func (k *Keeper) GetSKUsByProviderUUID(ctx context.Context, providerUUID string) ([]types.SKU, error) {
 	var skus []types.SKU
 
@@ -400,4 +402,66 @@ func (k *Keeper) GetSKUsByProviderUUID(ctx context.Context, providerUUID string)
 	}
 
 	return skus, nil
+}
+
+// IterateActiveSKUsByProvider iterates over active SKUs for a provider with a limit.
+// The callback is called for each active SKU. If the callback returns true, iteration stops.
+// Returns the number of SKUs processed and whether there are more active SKUs remaining.
+func (k *Keeper) IterateActiveSKUsByProvider(
+	ctx context.Context,
+	providerUUID string,
+	limit uint64,
+	cb func(sku types.SKU) (stop bool, err error),
+) (processed uint64, hasMore bool, err error) {
+	// Use the ProviderActive compound index to efficiently query active SKUs for this provider
+	iter, err := k.SKUs.Indexes.ProviderActive.MatchExact(ctx, collections.Join(providerUUID, true))
+	if err != nil {
+		return 0, false, err
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		// Check if we've reached the limit
+		if processed >= limit {
+			hasMore = true
+			return processed, hasMore, nil
+		}
+
+		skuUUID, err := iter.PrimaryKey()
+		if err != nil {
+			return processed, false, err
+		}
+
+		sku, err := k.SKUs.Get(ctx, skuUUID)
+		if err != nil {
+			return processed, false, err
+		}
+
+		stop, err := cb(sku)
+		if err != nil {
+			return processed, false, err
+		}
+
+		processed++
+
+		if stop {
+			// Check if there are more items after this one
+			iter.Next()
+			hasMore = iter.Valid()
+			return processed, hasMore, nil
+		}
+	}
+
+	return processed, false, nil
+}
+
+// HasActiveSKUsByProvider returns true if the provider has any active SKUs.
+func (k *Keeper) HasActiveSKUsByProvider(ctx context.Context, providerUUID string) (bool, error) {
+	iter, err := k.SKUs.Indexes.ProviderActive.MatchExact(ctx, collections.Join(providerUUID, true))
+	if err != nil {
+		return false, err
+	}
+	defer iter.Close()
+
+	return iter.Valid(), nil
 }

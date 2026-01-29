@@ -1570,6 +1570,47 @@ func TestShouldAutoCloseLease_InactiveLease(t *testing.T) {
 	require.False(t, shouldClose)
 }
 
+// TestShouldAutoCloseLease_FutureLastSettledAt tests that ShouldAutoCloseLease returns
+// an error when LastSettledAt is in the future, indicating data corruption.
+func TestShouldAutoCloseLease_FutureLastSettledAt(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+
+	tenant := f.TestAccs[0]
+	providerUUID := "test-provider"
+	skuUUID := "test-sku"
+
+	// Create a lease with LastSettledAt in the future (simulating data corruption)
+	blockTime := f.Ctx.BlockTime()
+	futureTime := blockTime.Add(time.Hour) // 1 hour in the future
+
+	lease := types.Lease{
+		Uuid:         "test-future-lease",
+		Tenant:       tenant.String(),
+		ProviderUuid: providerUUID,
+		Items: []types.LeaseItem{
+			{
+				SkuUuid:     skuUUID,
+				Quantity:    1,
+				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(3600)),
+			},
+		},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     blockTime,
+		LastSettledAt: futureTime, // Future timestamp - data corruption
+	}
+	err := k.SetLease(f.Ctx, lease)
+	require.NoError(t, err)
+
+	// Run ShouldAutoCloseLease - should return an error due to future LastSettledAt
+	shouldClose, _, err := k.ShouldAutoCloseLease(f.Ctx, &lease)
+	require.Error(t, err, "should return error when LastSettledAt is in the future")
+	require.Contains(t, err.Error(), "in the future")
+	require.Contains(t, err.Error(), lease.Uuid)
+	require.False(t, shouldClose, "shouldClose should be false when error is returned")
+}
+
 func TestGetLeasesByState(t *testing.T) {
 	f := initFixture(t)
 

@@ -156,6 +156,7 @@ package interchaintest
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/strangelove-ventures/interchaintest/v8"
@@ -247,6 +248,10 @@ func TestSKU(t *testing.T) {
 
 	t.Run("DeactivateProvider", func(t *testing.T) {
 		testProviderDeactivate(t, ctx, chain, authority, user1)
+	})
+
+	t.Run("DeactivateProviderPagination", func(t *testing.T) {
+		testProviderDeactivatePagination(t, ctx, chain, authority)
 	})
 
 	t.Run("UpdateParams", func(t *testing.T) {
@@ -476,6 +481,151 @@ func testProviderDeactivate(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		require.NoError(t, err)
 		require.NotEqual(t, uint32(0), txRes.Code, "tx should fail")
 		require.Contains(t, txRes.RawLog, "not found")
+	})
+}
+
+// testProviderDeactivatePagination tests that SKU deactivation is paginated
+// to prevent gas exhaustion when a provider has many SKUs.
+func testProviderDeactivatePagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+	t.Log("=== Testing Provider Deactivate Pagination ===")
+
+	address := authority.FormattedAddress()
+	payoutAddress := authority.FormattedAddress()
+
+	// Create a provider specifically for pagination testing
+	var providerUUID string
+	t.Run("setup: create provider", func(t *testing.T) {
+		res, err := helpers.SKUCreateProvider(ctx, chain, authority, address, payoutAddress, "")
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		providerUUID, err = helpers.GetProviderUUIDFromTxHash(ctx, chain, res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Created provider: %s", providerUUID)
+	})
+
+	// Create 10 SKUs for this provider
+	const totalSKUs = 10
+	const testLimit = 3 // Small limit to test pagination
+	var skuUUIDs []string
+
+	t.Run("setup: create multiple SKUs", func(t *testing.T) {
+		for i := 0; i < totalSKUs; i++ {
+			name := fmt.Sprintf("Pagination Test SKU %d", i)
+			res, err := helpers.SKUCreateSKU(ctx, chain, authority, providerUUID, name, 1, testPriceHourly, "")
+			require.NoError(t, err)
+
+			txRes, err := chain.GetTransaction(res.TxHash)
+			require.NoError(t, err)
+			require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+			skuUUID, err := helpers.GetSKUUUIDFromTxHash(ctx, chain, res.TxHash)
+			require.NoError(t, err)
+			skuUUIDs = append(skuUUIDs, skuUUID)
+		}
+		t.Logf("Created %d SKUs", len(skuUUIDs))
+	})
+
+	// Verify all SKUs are active
+	t.Run("verify: all SKUs initially active", func(t *testing.T) {
+		skusRes, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerUUID)
+		require.NoError(t, err)
+		require.Len(t, skusRes.Skus, totalSKUs)
+
+		activeCount := 0
+		for _, sku := range skusRes.Skus {
+			if sku.Active {
+				activeCount++
+			}
+		}
+		require.Equal(t, totalSKUs, activeCount, "all SKUs should be active initially")
+	})
+
+	// First deactivation call with limit - should deactivate provider + first batch of SKUs
+	t.Run("success: first deactivation call with limit", func(t *testing.T) {
+		res, err := helpers.SKUDeactivateProvider(ctx, chain, authority, providerUUID, "--limit", fmt.Sprintf("%d", testLimit))
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+		// Verify provider is now inactive
+		providerRes, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
+		require.NoError(t, err)
+		require.False(t, providerRes.Provider.Active, "provider should be inactive after first call")
+
+		// Verify some SKUs are still active (not all deactivated yet)
+		skusRes, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerUUID)
+		require.NoError(t, err)
+
+		activeCount := 0
+		for _, sku := range skusRes.Skus {
+			if sku.Active {
+				activeCount++
+			}
+		}
+		expectedActive := totalSKUs - testLimit
+		require.Equal(t, expectedActive, activeCount, "should have %d active SKUs after first call (deactivated %d)", expectedActive, testLimit)
+		t.Logf("After first call: %d SKUs still active", activeCount)
+	})
+
+	// Continue calling until all SKUs are deactivated
+	t.Run("success: continue deactivation until complete", func(t *testing.T) {
+		maxCalls := 10 // Safety limit to prevent infinite loop
+		for i := 0; i < maxCalls; i++ {
+			// Query current state
+			skusRes, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerUUID)
+			require.NoError(t, err)
+
+			activeCount := 0
+			for _, sku := range skusRes.Skus {
+				if sku.Active {
+					activeCount++
+				}
+			}
+
+			if activeCount == 0 {
+				t.Logf("All SKUs deactivated after %d additional calls", i)
+				break
+			}
+
+			// Call deactivate again
+			res, err := helpers.SKUDeactivateProvider(ctx, chain, authority, providerUUID, "--limit", fmt.Sprintf("%d", testLimit))
+			require.NoError(t, err)
+
+			txRes, err := chain.GetTransaction(res.TxHash)
+			require.NoError(t, err)
+			require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
+
+			t.Logf("Call %d: deactivated more SKUs", i+1)
+		}
+	})
+
+	// Verify all SKUs are now inactive
+	t.Run("verify: all SKUs deactivated", func(t *testing.T) {
+		skusRes, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerUUID)
+		require.NoError(t, err)
+		require.Len(t, skusRes.Skus, totalSKUs)
+
+		for _, sku := range skusRes.Skus {
+			require.False(t, sku.Active, "SKU %s should be inactive", sku.Uuid)
+		}
+		t.Log("All SKUs confirmed inactive")
+	})
+
+	// Calling deactivate again should fail since provider and all SKUs are already inactive
+	t.Run("fail: deactivate when already fully deactivated", func(t *testing.T) {
+		res, err := helpers.SKUDeactivateProvider(ctx, chain, authority, providerUUID, "--limit", fmt.Sprintf("%d", testLimit))
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "tx should fail when nothing to deactivate")
+		require.Contains(t, txRes.RawLog, "already inactive")
 	})
 }
 

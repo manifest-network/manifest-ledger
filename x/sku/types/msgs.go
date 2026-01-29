@@ -146,10 +146,12 @@ func (msg *MsgUpdateProvider) Validate() error {
 func NewMsgDeactivateProvider(
 	authority string,
 	uuid string,
+	limit uint64,
 ) *MsgDeactivateProvider {
 	return &MsgDeactivateProvider{
 		Authority: authority,
 		Uuid:      uuid,
+		Limit:     limit,
 	}
 }
 
@@ -173,6 +175,10 @@ func (msg *MsgDeactivateProvider) Validate() error {
 
 	if err := pkguuid.ValidateUUIDv7(msg.Uuid); err != nil {
 		return ErrInvalidProvider.Wrapf("invalid uuid: %s", err)
+	}
+
+	if msg.Limit > MaxDeactivateSKULimit {
+		return ErrInvalidProvider.Wrapf("limit %d exceeds maximum allowed %d", msg.Limit, MaxDeactivateSKULimit)
 	}
 
 	return nil

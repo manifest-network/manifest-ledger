@@ -23,4 +23,12 @@ const (
 	// MaxMetaHashLength is the maximum length of a metadata hash in bytes.
 	// Set to 64 to accommodate SHA-512 and similar hash algorithms.
 	MaxMetaHashLength = 64
+
+	// DefaultDeactivateSKULimit is the default number of SKUs to deactivate
+	// per DeactivateProvider call when limit is not specified (0).
+	DefaultDeactivateSKULimit uint64 = 50
+
+	// MaxDeactivateSKULimit is the maximum number of SKUs that can be
+	// deactivated in a single DeactivateProvider call.
+	MaxDeactivateSKULimit uint64 = 100
 )

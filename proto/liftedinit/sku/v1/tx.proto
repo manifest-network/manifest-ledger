@@ -100,6 +100,8 @@ message MsgUpdateProviderResponse {}
 
 // MsgDeactivateProvider is the Msg/DeactivateProvider request type.
 // This performs a soft delete - the provider remains in state but is marked inactive.
+// SKU deactivation is paginated to prevent gas exhaustion with many SKUs.
+// If has_more is true in the response, call again to continue deactivating SKUs.
 message MsgDeactivateProvider {
   option (cosmos.msg.v1.signer) = "authority";
   option (gogoproto.equal) = false;
@@ -110,10 +112,21 @@ message MsgDeactivateProvider {
 
   // uuid is the unique identifier of the provider to deactivate.
   string uuid = 2;
+
+  // limit is the maximum number of SKUs to deactivate in this call.
+  // If 0, uses default limit. Cannot exceed MaxDeactivateSKULimit.
+  uint64 limit = 3;
 }
 
 // MsgDeactivateProviderResponse is the Msg/DeactivateProvider response type.
-message MsgDeactivateProviderResponse {}
+message MsgDeactivateProviderResponse {
+  // deactivated_sku_count is the number of SKUs deactivated in this call.
+  uint64 deactivated_sku_count = 1;
+
+  // has_more indicates whether there are more active SKUs to deactivate.
+  // If true, call DeactivateProvider again to continue.
+  bool has_more = 2;
+}
 
 // MsgCreateSKU is the Msg/CreateSKU request type.
 message MsgCreateSKU {

@@ -164,9 +164,15 @@ func MsgDeactivateProvider() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deactivate-provider [uuid]",
 		Short: "Deactivate a provider (soft delete)",
-		Long: `Deactivate a provider. This is a soft delete - the provider remains in state but is marked inactive.
-Inactive providers cannot create new SKUs but existing SKUs continue to work.`,
-		Example: "deactivate-provider 01912345-6789-7abc-8def-0123456789ab",
+		Long: fmt.Sprintf(`Deactivate a provider. This is a soft delete - the provider remains in state but is marked inactive.
+Inactive providers cannot create new SKUs but existing SKUs continue to work.
+
+SKU deactivation is paginated to prevent gas exhaustion with many SKUs.
+If has_more is true in the response, call again to continue deactivating SKUs.
+
+Use --limit to control how many SKUs are deactivated per call (default %d, max %d).`,
+			types.DefaultDeactivateSKULimit, types.MaxDeactivateSKULimit),
+		Example: "deactivate-provider 01912345-6789-7abc-8def-0123456789ab --limit 50",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -175,12 +181,17 @@ Inactive providers cannot create new SKUs but existing SKUs continue to work.`,
 			}
 
 			authority := clientCtx.GetFromAddress()
-
 			uuid := args[0]
+
+			limit, err := cmd.Flags().GetUint64("limit")
+			if err != nil {
+				return err
+			}
 
 			msg := types.NewMsgDeactivateProvider(
 				authority.String(),
 				uuid,
+				limit,
 			)
 
 			if err := msg.Validate(); err != nil {
@@ -191,6 +202,7 @@ Inactive providers cannot create new SKUs but existing SKUs continue to work.`,
 		},
 	}
 
+	cmd.Flags().Uint64("limit", 0, fmt.Sprintf("Maximum SKUs to deactivate per call (0 = default %d, max %d)", types.DefaultDeactivateSKULimit, types.MaxDeactivateSKULimit))
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }

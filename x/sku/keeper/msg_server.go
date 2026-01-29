@@ -161,6 +161,10 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 // Deactivation prevents:
 //   - Creation of new SKUs under this provider
 //   - Creation of new leases using this provider's SKUs
+//
+// SKU deactivation is paginated to prevent gas exhaustion when a provider has many SKUs.
+// If has_more is true in the response, call again to continue deactivating remaining SKUs.
+// The provider is deactivated on the first call; subsequent calls only deactivate SKUs.
 func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeactivateProvider) (*types.MsgDeactivateProviderResponse, error) {
 	authorized, err := ms.isAuthorizedSender(ctx, req.Authority)
 	if err != nil {
@@ -179,57 +183,93 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.Uuid)
 	}
 
-	if !existingProvider.Active {
-		return nil, types.ErrInvalidProvider.Wrapf("provider %s is already inactive", req.Uuid)
-	}
-
-	// Deactivate the provider
-	existingProvider.Active = false
-	if err := ms.k.SetProvider(ctx, existingProvider); err != nil {
-		return nil, err
-	}
-
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	providerWasActive := existingProvider.Active
 
-	// Cascade: deactivate all SKUs under this provider
-	skus, err := ms.k.GetSKUsByProviderUUID(ctx, req.Uuid)
+	// If provider is already inactive, check if there are active SKUs to deactivate
+	if !providerWasActive {
+		hasActiveSKUs, err := ms.k.HasActiveSKUsByProvider(ctx, req.Uuid)
+		if err != nil {
+			return nil, err
+		}
+		if !hasActiveSKUs {
+			return nil, types.ErrInvalidProvider.Wrapf("provider %s and all its SKUs are already inactive", req.Uuid)
+		}
+		// Continue to SKU deactivation
+	} else {
+		// Deactivate the provider first
+		existingProvider.Active = false
+		if err := ms.k.SetProvider(ctx, existingProvider); err != nil {
+			return nil, err
+		}
+
+		// Emit provider deactivation event only on first call
+		sdkCtx.EventManager().EmitEvents(sdk.Events{
+			sdk.NewEvent(
+				types.EventTypeProviderDeactivated,
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
+				sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
+			),
+		})
+	}
+
+	// Apply default limit if not specified
+	limit := req.Limit
+	if limit == 0 {
+		limit = types.DefaultDeactivateSKULimit
+	}
+
+	// Cascade: deactivate SKUs under this provider with pagination
+	var deactivatedSKUCount uint64
+	processed, hasMore, err := ms.k.IterateActiveSKUsByProvider(ctx, req.Uuid, limit, func(sku types.SKU) (stop bool, err error) {
+		sku.Active = false
+		if err := ms.k.SetSKU(ctx, sku); err != nil {
+			return true, err
+		}
+		deactivatedSKUCount++
+
+		// Emit deactivation event for each SKU
+		sdkCtx.EventManager().EmitEvents(sdk.Events{
+			sdk.NewEvent(
+				types.EventTypeSKUDeactivated,
+				sdk.NewAttribute(types.AttributeKeySKUUUID, sku.Uuid),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
+				sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
+			),
+		})
+
+		return false, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	var deactivatedSKUCount int
-	for i := range skus {
-		if skus[i].Active {
-			skus[i].Active = false
-			if err := ms.k.SetSKU(ctx, skus[i]); err != nil {
-				return nil, err
-			}
-			deactivatedSKUCount++
-
-			// Emit deactivation event for each SKU
-			sdkCtx.EventManager().EmitEvents(sdk.Events{
-				sdk.NewEvent(
-					types.EventTypeSKUDeactivated,
-					sdk.NewAttribute(types.AttributeKeySKUUUID, skus[i].Uuid),
-					sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
-					sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
-				),
-			})
-		}
+	// Sanity check: processed count should match deactivated count
+	if processed != deactivatedSKUCount {
+		ms.k.Logger().Warn("SKU deactivation count mismatch",
+			"processed", processed,
+			"deactivated", deactivatedSKUCount,
+		)
 	}
 
-	// Emit provider deactivation event
-	sdkCtx.EventManager().EmitEvents(sdk.Events{
-		sdk.NewEvent(
-			types.EventTypeProviderDeactivated,
-			sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
-			sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
-		),
-	})
+	if providerWasActive {
+		ms.k.Logger().Info("Provider deactivated",
+			"uuid", req.Uuid,
+			"deactivated_skus", deactivatedSKUCount,
+			"has_more", hasMore,
+		)
+	} else {
+		ms.k.Logger().Info("Provider SKUs deactivated (continuation)",
+			"uuid", req.Uuid,
+			"deactivated_skus", deactivatedSKUCount,
+			"has_more", hasMore,
+		)
+	}
 
-	ms.k.Logger().Info("Provider deactivated", "uuid", req.Uuid, "deactivated_skus", deactivatedSKUCount)
-
-	return &types.MsgDeactivateProviderResponse{}, nil
+	return &types.MsgDeactivateProviderResponse{
+		DeactivatedSkuCount: deactivatedSKUCount,
+		HasMore:             hasMore,
+	}, nil
 }
 
 // CreateSKU creates a new SKU.

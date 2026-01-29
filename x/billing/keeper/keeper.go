@@ -689,7 +689,20 @@ func (k *Keeper) ShouldAutoCloseLease(ctx context.Context, lease *types.Lease) (
 	// Calculate duration since last settlement
 	duration := blockTime.Sub(lease.LastSettledAt)
 	if duration < 0 {
-		duration = 0
+		// LastSettledAt is in the future - this indicates data corruption or clock issues.
+		// Return an error rather than silently masking the issue, as this could leave
+		// leases in an invalid state where credit is exhausted but the lease stays active.
+		k.logger.Error("data inconsistency: LastSettledAt is in the future",
+			"lease_uuid", lease.Uuid,
+			"tenant", lease.Tenant,
+			"last_settled_at", lease.LastSettledAt,
+			"block_time", blockTime,
+			"difference", -duration,
+		)
+		return false, time.Time{}, types.ErrInvalidLease.Wrapf(
+			"lease %s has LastSettledAt (%s) in the future relative to block time (%s)",
+			lease.Uuid, lease.LastSettledAt, blockTime,
+		)
 	}
 
 	// Check tenant's current credit balances
