@@ -202,7 +202,7 @@ func TestUpdateProvider(t *testing.T) {
 			uuid:          testProviderUUID,
 			address:       providerAddr.String(),
 			payoutAddress: newPayoutAddr.String(),
-			active:        false,
+			active:        true,
 		},
 		{
 			name:          "fail; unauthorized sender",
@@ -230,6 +230,15 @@ func TestUpdateProvider(t *testing.T) {
 			payoutAddress: newPayoutAddr.String(),
 			active:        true,
 			errMsg:        "uuid cannot be empty",
+		},
+		{
+			name:          "fail; cannot deactivate via UpdateProvider",
+			sender:        authority.String(),
+			uuid:          testProviderUUID,
+			address:       providerAddr.String(),
+			payoutAddress: newPayoutAddr.String(),
+			active:        false,
+			errMsg:        "use DeactivateProvider instead",
 		},
 	}
 
@@ -648,7 +657,7 @@ func TestDeactivateProviderCascadeByAllowedListUser(t *testing.T) {
 	require.NoError(t, err)
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
-	providerUUID := "01912345-6789-7abc-8def-0123456789f1"
+	providerUUID := testProvider3UUID
 
 	// Create provider
 	provider := types.Provider{
@@ -661,7 +670,7 @@ func TestDeactivateProviderCascadeByAllowedListUser(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create SKU
-	skuUUID := "01912345-6789-7abc-8def-0123456789f2"
+	skuUUID := testSKU3UUID
 	sku := types.SKU{
 		Uuid:         skuUUID,
 		ProviderUuid: providerUUID,
@@ -742,7 +751,7 @@ func TestDeactivateProviderPagination(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	providerUUID := "01912345-6789-7abc-8def-0123456789f1"
+	providerUUID := testProvider3UUID
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
 
 	// Create an active provider
@@ -833,7 +842,7 @@ func TestDeactivateProviderPaginationDefaultLimit(t *testing.T) {
 	k.SetAuthority(authority.String())
 	ms := keeper.NewMsgServerImpl(k)
 
-	providerUUID := "01912345-6789-7abc-8def-0123456789f2"
+	providerUUID := testProvider4UUID
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
 
 	// Create an active provider
@@ -889,8 +898,8 @@ func TestProviderReactivationDoesNotReactivateSKUs(t *testing.T) {
 	ms := keeper.NewMsgServerImpl(k)
 
 	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
-	providerUUID := "01912345-6789-7abc-8def-0123456789f1"
-	skuUUID := "01912345-6789-7abc-8def-0123456789f2"
+	providerUUID := testProvider3UUID
+	skuUUID := testSKU3UUID
 
 	// Create an active provider with an active SKU
 	provider := types.Provider{
@@ -1189,7 +1198,7 @@ func TestUpdateSKU(t *testing.T) {
 			skuName:      "Updated SKU",
 			unit:         types.Unit_UNIT_PER_DAY,
 			basePrice:    newPrice,
-			active:       false,
+			active:       true,
 		},
 		{
 			name:         "fail; unauthorized sender",
@@ -1245,6 +1254,17 @@ func TestUpdateSKU(t *testing.T) {
 			basePrice:    newPrice,
 			active:       true,
 			errMsg:       "invalid provider_uuid",
+		},
+		{
+			name:         "fail; cannot deactivate via UpdateSKU",
+			sender:       authority.String(),
+			uuid:         skuUUID,
+			providerUUID: testProvider1UUID,
+			skuName:      "Updated SKU",
+			unit:         types.Unit_UNIT_PER_DAY,
+			basePrice:    newPrice,
+			active:       false,
+			errMsg:       "use DeactivateSKU instead",
 		},
 	}
 

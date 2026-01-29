@@ -18,6 +18,8 @@ service Msg {
   rpc CreateProvider(MsgCreateProvider) returns (MsgCreateProviderResponse);
 
   // UpdateProvider updates an existing provider.
+  // Can reactivate an inactive provider but cannot deactivate an active one.
+  // Use DeactivateProvider to deactivate (ensures proper SKU cascade).
   rpc UpdateProvider(MsgUpdateProvider) returns (MsgUpdateProviderResponse);
 
   // DeactivateProvider deactivates a provider (soft delete).
@@ -28,6 +30,8 @@ service Msg {
   rpc CreateSKU(MsgCreateSKU) returns (MsgCreateSKUResponse);
 
   // UpdateSKU updates an existing SKU.
+  // Can reactivate an inactive SKU (if provider is active) but cannot deactivate an active one.
+  // Use DeactivateSKU to deactivate.
   rpc UpdateSKU(MsgUpdateSKU) returns (MsgUpdateSKUResponse);
 
   // DeactivateSKU deactivates a SKU (soft delete).
@@ -68,6 +72,8 @@ message MsgCreateProviderResponse {
 }
 
 // MsgUpdateProvider is the Msg/UpdateProvider request type.
+// Note: Setting active=false on an active provider will fail.
+// Use MsgDeactivateProvider instead to ensure proper SKU cascade.
 message MsgUpdateProvider {
   option (cosmos.msg.v1.signer) = "authority";
   option (gogoproto.equal) = false;
@@ -165,6 +171,8 @@ message MsgCreateSKUResponse {
 }
 
 // MsgUpdateSKU is the Msg/UpdateSKU request type.
+// Note: Setting active=false on an active SKU will fail.
+// Use MsgDeactivateSKU instead for deactivation.
 message MsgUpdateSKU {
   option (cosmos.msg.v1.signer) = "authority";
   option (gogoproto.equal) = false;

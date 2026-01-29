@@ -22,8 +22,11 @@ const (
 	testProviderUUID  = "01912345-6789-7abc-8def-0123456789ab"
 	testProvider1UUID = "01912345-6789-7abc-8def-0123456789a1"
 	testProvider2UUID = "01912345-6789-7abc-8def-0123456789a2"
+	testProvider3UUID = "01912345-6789-7abc-8def-0123456789f1"
+	testProvider4UUID = "01912345-6789-7abc-8def-0123456789f2"
 	testSKU1UUID      = "01912345-6789-7abc-8def-0123456789ac"
 	testSKU2UUID      = "01912345-6789-7abc-8def-0123456789ad"
+	testSKU3UUID      = "01912345-6789-7abc-8def-0123456789f3"
 )
 
 type testFixture struct {

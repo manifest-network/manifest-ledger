@@ -61,13 +61,9 @@ off-chain API is hosted for tenant authentication and connection details.`,
 			address := args[0]
 			payoutAddress := args[1]
 
-			metaHashStr, _ := cmd.Flags().GetString("meta-hash")
-			var metaHash []byte
-			if metaHashStr != "" {
-				metaHash, err = hex.DecodeString(metaHashStr)
-				if err != nil {
-					return fmt.Errorf("invalid meta-hash (must be hex): %w", err)
-				}
+			metaHash, err := parseMetaHash(cmd)
+			if err != nil {
+				return err
 			}
 
 			apiURL, _ := cmd.Flags().GetString("api-url")
@@ -102,7 +98,11 @@ func MsgUpdateProvider() *cobra.Command {
 		Long: `Update an existing provider with the given parameters.
 
 Active values:
-  true or false
+  true  - keep active or reactivate an inactive provider
+  false - NOT ALLOWED (use deactivate-provider instead)
+
+Note: To deactivate a provider, use the 'deactivate-provider' command which
+properly cascades deactivation to all associated SKUs.
 
 The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.`,
 		Example: "update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com",
@@ -124,13 +124,9 @@ The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.`
 				return fmt.Errorf("invalid active value (must be true or false): %w", err)
 			}
 
-			metaHashStr, _ := cmd.Flags().GetString("meta-hash")
-			var metaHash []byte
-			if metaHashStr != "" {
-				metaHash, err = hex.DecodeString(metaHashStr)
-				if err != nil {
-					return fmt.Errorf("invalid meta-hash (must be hex): %w", err)
-				}
+			metaHash, err := parseMetaHash(cmd)
+			if err != nil {
+				return err
 			}
 
 			apiURL, _ := cmd.Flags().GetString("api-url")
@@ -241,13 +237,9 @@ Unit values:
 				return fmt.Errorf("invalid base price: %w", err)
 			}
 
-			metaHashStr, _ := cmd.Flags().GetString("meta-hash")
-			var metaHash []byte
-			if metaHashStr != "" {
-				metaHash, err = hex.DecodeString(metaHashStr)
-				if err != nil {
-					return fmt.Errorf("invalid meta-hash (must be hex): %w", err)
-				}
+			metaHash, err := parseMetaHash(cmd)
+			if err != nil {
+				return err
 			}
 
 			msg := types.NewMsgCreateSKU(
@@ -284,7 +276,10 @@ Unit values:
   2 = per day
 
 Active values:
-  true or false`,
+  true  - keep active or reactivate an inactive SKU (requires active provider)
+  false - NOT ALLOWED (use deactivate-sku instead)
+
+Note: To deactivate a SKU, use the 'deactivate-sku' command.`,
 		Example: "update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab \"Updated Name\" 2 200umfx true --meta-hash deadbeef",
 		Args:    cobra.ExactArgs(6),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -315,13 +310,9 @@ Active values:
 				return fmt.Errorf("invalid active value (must be true or false): %w", err)
 			}
 
-			metaHashStr, _ := cmd.Flags().GetString("meta-hash")
-			var metaHash []byte
-			if metaHashStr != "" {
-				metaHash, err = hex.DecodeString(metaHashStr)
-				if err != nil {
-					return fmt.Errorf("invalid meta-hash (must be hex): %w", err)
-				}
+			metaHash, err := parseMetaHash(cmd)
+			if err != nil {
+				return err
 			}
 
 			msg := types.NewMsgUpdateSKU(
@@ -439,4 +430,17 @@ func splitAddresses(s string) []string {
 		}
 	}
 	return result
+}
+
+// parseMetaHash parses a hex-encoded meta-hash string from command flags.
+func parseMetaHash(cmd *cobra.Command) ([]byte, error) {
+	metaHashStr, _ := cmd.Flags().GetString("meta-hash")
+	if metaHashStr == "" {
+		return nil, nil
+	}
+	metaHash, err := hex.DecodeString(metaHashStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid meta-hash (must be hex): %w", err)
+	}
+	return metaHash, nil
 }

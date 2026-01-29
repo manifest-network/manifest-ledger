@@ -99,6 +99,12 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.Uuid)
 	}
 
+	// Forbid deactivation via UpdateProvider - use DeactivateProvider instead
+	// This ensures proper cascade behavior for associated SKUs
+	if existingProvider.Active && !req.Active {
+		return nil, types.ErrInvalidProvider.Wrap("cannot deactivate provider via UpdateProvider; use DeactivateProvider instead")
+	}
+
 	wasInactive := !existingProvider.Active
 
 	// Preserve existing api_url if not provided in the update
@@ -364,6 +370,12 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 	}
 
 	wasInactive := !existingSKU.Active
+
+	// Forbid deactivation via UpdateSKU - use DeactivateSKU instead
+	// This keeps the API consistent: Update for modifications, Deactivate for deactivation
+	if existingSKU.Active && !req.Active {
+		return nil, types.ErrInvalidSKU.Wrap("cannot deactivate SKU via UpdateSKU; use DeactivateSKU instead")
+	}
 
 	// Reactivating a SKU requires the provider to be active
 	if wasInactive && req.Active && !provider.Active {

@@ -75,6 +75,21 @@ uuid := uuidv7.NewDeterministic(ctx, sequence)
 - No way to reclaim UUIDs (by design)
 - SKUs must be individually reactivated after provider reactivation (cascade is one-way)
 
+**Update vs Deactivate Message Separation:**
+
+The API enforces a clear separation between Update and Deactivate operations:
+
+| Operation | `MsgUpdateProvider`/`MsgUpdateSKU` | `MsgDeactivateProvider`/`MsgDeactivateSKU` |
+|-----------|-----------------------------------|-------------------------------------------|
+| Modify fields | ✓ | ✗ |
+| Reactivate (inactive→active) | ✓ | ✗ |
+| Deactivate (active→inactive) | ✗ (error) | ✓ |
+
+This separation exists because:
+- **Deactivation has side effects:** `MsgDeactivateProvider` cascades to deactivate all associated SKUs (with pagination for gas safety). A simple field update would bypass this cascade.
+- **API clarity:** Users must explicitly choose the deactivation path, making the cascade behavior intentional and visible.
+- **Reactivation is simple:** No cascade needed—just flip the flag. For SKUs, reactivation requires the provider to be active.
+
 ## Decision 4: Authority-Only Access with AllowedList
 
 **Decision:** All write operations require either POA authority or user inclusion in the `allowed_list` parameter.

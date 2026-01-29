@@ -512,25 +512,35 @@ message MsgUpdateProvider {
 message MsgUpdateProviderResponse {}
 ```
 
-**Note:** If `api_url` is an empty string, the existing API URL is preserved rather than being cleared. This allows updating other fields without modifying the API URL.
+**Notes:**
+- If `api_url` is an empty string, the existing API URL is preserved rather than being cleared. This allows updating other fields without modifying the API URL.
+- **Reactivation is allowed:** Setting `active=true` on an inactive provider will reactivate it.
+- **Deactivation is forbidden:** Setting `active=false` on an active provider will return an error. Use `MsgDeactivateProvider` instead, which properly cascades deactivation to all associated SKUs.
 
 ---
 
 #### MsgDeactivateProvider
 
-Deactivate a provider (soft delete).
+Deactivate a provider (soft delete). This also deactivates all associated SKUs.
+
+SKU deactivation is paginated to prevent gas exhaustion when a provider has many SKUs.
+If `has_more` is true in the response, call again to continue deactivating SKUs.
 
 **Request:**
 ```protobuf
 message MsgDeactivateProvider {
   string authority = 1;  // Authority or allowed address
   string uuid = 2;       // Provider UUID
+  uint64 limit = 3;      // Max SKUs to deactivate (0 = default 50, max 100)
 }
 ```
 
 **Response:**
 ```protobuf
-message MsgDeactivateProviderResponse {}
+message MsgDeactivateProviderResponse {
+  uint64 deactivated_sku_count = 1;  // Number of SKUs deactivated in this call
+  bool has_more = 2;                  // True if more SKUs need deactivation
+}
 ```
 
 ---
@@ -582,6 +592,10 @@ message MsgUpdateSKU {
 ```protobuf
 message MsgUpdateSKUResponse {}
 ```
+
+**Notes:**
+- **Reactivation is allowed:** Setting `active=true` on an inactive SKU will reactivate it (requires the provider to be active).
+- **Deactivation is forbidden:** Setting `active=false` on an active SKU will return an error. Use `MsgDeactivateSKU` instead.
 
 ---
 
