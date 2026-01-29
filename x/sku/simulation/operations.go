@@ -160,7 +160,18 @@ func SimulateMsgUpdateProvider(txGen client.TxConfig, k keeper.Keeper) simtypes.
 		// Select random accounts for address and payout address
 		addressAccount, _ := simtypes.RandomAcc(r, accs)
 		payoutAccount, _ := simtypes.RandomAcc(r, accs)
-		active := r.Float32() > 0.3
+
+		// Determine active status based on current provider state:
+		// - Cannot deactivate via UpdateProvider (must use DeactivateProvider)
+		// - Can reactivate an inactive provider
+		var active bool
+		if provider.Active {
+			// Provider is active: must remain active (deactivation requires DeactivateProvider)
+			active = true
+		} else {
+			// Provider is inactive: can reactivate
+			active = r.Float32() > 0.5 // 50% chance to reactivate
+		}
 
 		// Generate a random API URL
 		apiURL := generateRandomAPIURL(r)
@@ -301,11 +312,20 @@ func SimulateMsgUpdateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 		// to pass the exact division validation.
 		basePrice := generateValidPrice(r, unit)
 
-		// Determine active status: can only reactivate if provider is active
-		active := r.Float32() > 0.3
-		if active && !sku.Active && !provider.Active {
-			// Cannot reactivate SKU when provider is inactive
-			active = false
+		// Determine active status based on current SKU state:
+		// - Cannot deactivate via UpdateSKU (must use DeactivateSKU)
+		// - Can only reactivate if provider is active
+		var active bool
+		if sku.Active {
+			// SKU is active: must remain active (deactivation requires DeactivateSKU)
+			active = true
+		} else {
+			// SKU is inactive: can reactivate only if provider is active
+			if provider.Active {
+				active = r.Float32() > 0.5 // 50% chance to reactivate
+			} else {
+				active = false // cannot reactivate when provider is inactive
+			}
 		}
 
 		msg := &types.MsgUpdateSKU{
