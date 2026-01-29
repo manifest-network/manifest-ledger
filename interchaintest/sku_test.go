@@ -49,7 +49,7 @@
 //
 // testSKUUpdate:
 //   - Success: authority updates SKU (name, price)
-//   - Success: authority deactivates SKU via update (active=false)
+//   - Fail: cannot deactivate SKU via update (must use DeactivateSKU)
 //   - Fail: unauthorized user updates SKU
 //   - Fail: update with wrong provider_id (mismatch)
 //   - Fail: update non-existent SKU
@@ -783,22 +783,15 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		require.Equal(t, "7200", skuRes.Sku.BasePrice.Amount.String())
 	})
 
-	t.Run("success: authority deactivates SKU via update", func(t *testing.T) {
+	t.Run("fail: cannot deactivate SKU via update", func(t *testing.T) {
+		// Deactivation via UpdateSKU is forbidden - must use DeactivateSKU instead
 		res, err := helpers.SKUUpdateSKU(ctx, chain, authority, skuUUID, providerUUID, "Compute Small Updated", 1, updatedPrice, false, "")
 		require.NoError(t, err)
 
 		txRes, err := chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "tx should succeed: %s", txRes.RawLog)
-
-		// Verify deactivation
-		skuRes, err := helpers.SKUQuerySKU(ctx, chain, skuUUID)
-		require.NoError(t, err)
-		require.False(t, skuRes.Sku.Active)
-
-		// Reactivate for other tests
-		_, err = helpers.SKUUpdateSKU(ctx, chain, authority, skuUUID, providerUUID, "Compute Small Updated", 1, updatedPrice, true, "")
-		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "tx should fail")
+		require.Contains(t, txRes.RawLog, "cannot deactivate SKU via UpdateSKU")
 	})
 
 	t.Run("fail: unauthorized user updates SKU", func(t *testing.T) {
