@@ -176,6 +176,36 @@ func (gs *GenesisState) Validate() error {
 		}
 	}
 
+	// Cross-validate: active_lease_count and pending_lease_count must match actual lease counts per tenant
+	activeCounts := make(map[string]uint64)
+	pendingCounts := make(map[string]uint64)
+	for _, lease := range gs.Leases {
+		switch lease.State {
+		case LEASE_STATE_ACTIVE:
+			activeCounts[lease.Tenant]++
+		case LEASE_STATE_PENDING:
+			pendingCounts[lease.Tenant]++
+		}
+	}
+
+	for _, ca := range gs.CreditAccounts {
+		expectedActive := activeCounts[ca.Tenant]
+		if ca.ActiveLeaseCount != expectedActive {
+			return ErrInvalidCreditOperation.Wrapf(
+				"credit account for %s has active_lease_count %d but has %d active leases",
+				ca.Tenant, ca.ActiveLeaseCount, expectedActive,
+			)
+		}
+
+		expectedPending := pendingCounts[ca.Tenant]
+		if ca.PendingLeaseCount != expectedPending {
+			return ErrInvalidCreditOperation.Wrapf(
+				"credit account for %s has pending_lease_count %d but has %d pending leases",
+				ca.Tenant, ca.PendingLeaseCount, expectedPending,
+			)
+		}
+	}
+
 	return nil
 }
 

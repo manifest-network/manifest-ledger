@@ -1,6 +1,7 @@
 package keeper_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -714,7 +715,7 @@ func TestQuerierSKUsByProviderReverse(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		allRev := append(page1.Skus, page2.Skus...)
+		allRev := slices.Concat(page1.Skus, page2.Skus)
 		require.Len(t, allRev, len(respFwd.Skus))
 		for i := range respFwd.Skus {
 			require.Equal(t, respFwd.Skus[i].Uuid, allRev[len(allRev)-1-i].Uuid)

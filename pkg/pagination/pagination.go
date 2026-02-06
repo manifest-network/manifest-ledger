@@ -68,8 +68,11 @@ func PaginateStringIndex[V any](
 		limit = query.DefaultLimit
 	}
 
+	countTotal := pageReq.CountTotal
+
 	var values []V
 	var count uint64
+	var total uint64
 	var nextKey []byte
 
 	// Handle key-based pagination: skip items until we reach the start key
@@ -110,6 +113,11 @@ func PaginateStringIndex[V any](
 			continue
 		}
 
+		// Count for total (if requested)
+		if countTotal {
+			total++
+		}
+
 		// Handle offset-based pagination (only applies if no key provided)
 		if len(startKey) == 0 && skipped < offset {
 			skipped++
@@ -118,14 +126,23 @@ func PaginateStringIndex[V any](
 
 		// Check if we've reached the limit
 		if count >= limit {
-			// Encode the primary key for next_key
-			nextKey = []byte(pk)
-			break
+			if len(nextKey) == 0 {
+				nextKey = []byte(pk)
+			}
+			if !countTotal {
+				break
+			}
+			continue
 		}
 
 		values = append(values, value)
 		count++
 	}
 
-	return values, &query.PageResponse{NextKey: nextKey}, nil
+	pageRes := &query.PageResponse{NextKey: nextKey}
+	if countTotal {
+		pageRes.Total = total
+	}
+
+	return values, pageRes, nil
 }

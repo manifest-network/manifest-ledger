@@ -249,8 +249,9 @@ Credit accounts stored at key prefix `0x05`:
 | credit_address | string | Derived credit account address |
 | active_lease_count | uint64 | Number of ACTIVE leases |
 | pending_lease_count | uint64 | Number of PENDING leases |
+| reserved_amounts | []Coin | Sum of all credit reservations for active and pending leases |
 
-Note: The actual balance is tracked by the bank module at the `credit_address`. Query the bank module or use `QueryCreditAccount` which includes the balance.
+Note: The actual balance is tracked by the bank module at the `credit_address`. Query the bank module or use `QueryCreditAccount` which includes the balance. The `reserved_amounts` field tracks how much credit is reserved by existing leases (rate × min_lease_duration per denom), preventing overbooking.
 
 ## State Transitions
 

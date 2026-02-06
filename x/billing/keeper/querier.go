@@ -521,7 +521,13 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 				break
 			}
 			// Duration = balance / rate (integer division, rounds down)
-			duration := balanceAmount.Quo(rateCoin.Amount).Uint64()
+			quotient := balanceAmount.Quo(rateCoin.Amount)
+			var duration uint64
+			if quotient.IsUint64() {
+				duration = quotient.Uint64()
+			} else {
+				duration = math.MaxUint64
+			}
 			if duration < estimatedDurationSeconds {
 				estimatedDurationSeconds = duration
 			}

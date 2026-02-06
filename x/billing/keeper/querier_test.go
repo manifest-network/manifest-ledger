@@ -19,6 +19,7 @@ package keeper_test
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -166,7 +167,7 @@ func TestQueryLeasesByTenant(t *testing.T) {
 	tenant1 := f.TestAccs[0]
 	tenant2 := f.TestAccs[1]
 
-	providerUUID := "01912345-6789-7abc-8def-0123456789ac"
+	providerUUID := testLeaseUUID2
 
 	// Create leases for tenant1
 	for i := 1; i <= 3; i++ {
@@ -280,7 +281,7 @@ func TestQueryLeasesByProvider(t *testing.T) {
 	k := f.App.BillingKeeper
 	querier := keeper.NewQuerier(k)
 
-	providerUUID1 := "01912345-6789-7abc-8def-0123456789ac"
+	providerUUID1 := testLeaseUUID2
 	providerUUID2 := "01912345-6789-7abc-8def-0123456789ad"
 
 	// Create leases for provider 1
@@ -440,7 +441,7 @@ func TestQueryLeasesByTenantReverse(t *testing.T) {
 	querier := keeper.NewQuerier(k)
 
 	tenant := f.TestAccs[0]
-	providerUUID := "01912345-6789-7abc-8def-0123456789ac"
+	providerUUID := testLeaseUUID2
 
 	// Create 4 leases for tenant (3 active, 1 closed)
 	for i := 1; i <= 3; i++ {
@@ -549,7 +550,7 @@ func TestQueryLeasesByTenantReverse(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, respFwd.Leases, 4)
 
-		allRev := append(page1.Leases, page2.Leases...)
+		allRev := slices.Concat(page1.Leases, page2.Leases)
 		for i := range respFwd.Leases {
 			require.Equal(t, respFwd.Leases[i].Uuid, allRev[len(allRev)-1-i].Uuid)
 		}
@@ -562,7 +563,7 @@ func TestQueryLeasesByProviderReverse(t *testing.T) {
 	k := f.App.BillingKeeper
 	querier := keeper.NewQuerier(k)
 
-	providerUUID := "01912345-6789-7abc-8def-0123456789ac"
+	providerUUID := testLeaseUUID2
 
 	// Create 4 active leases + 1 closed
 	for i := 1; i <= 4; i++ {

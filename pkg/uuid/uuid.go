@@ -139,29 +139,29 @@ func hashEntropy(headerHash []byte, chainID, moduleName string, sequence uint64)
 	// Hash header hash (if available)
 	// This is typically the hash of the previous block, providing
 	// unpredictable but deterministic entropy
-	for i := 0; i < len(headerHash); i++ {
-		hash ^= uint64(headerHash[i])
+	for _, b := range headerHash {
+		hash ^= uint64(b)
 		hash *= fnvPrime
 	}
 
 	// Hash chain ID
 	// This ensures different chains produce different UUIDs
-	for i := 0; i < len(chainID); i++ {
-		hash ^= uint64(chainID[i])
+	for _, b := range []byte(chainID) {
+		hash ^= uint64(b)
 		hash *= fnvPrime
 	}
 
 	// Hash module name
-	for i := 0; i < len(moduleName); i++ {
-		hash ^= uint64(moduleName[i])
+	for _, b := range []byte(moduleName) {
+		hash ^= uint64(b)
 		hash *= fnvPrime
 	}
 
 	// Hash sequence (as 8 bytes)
 	var seqBytes [8]byte
 	binary.BigEndian.PutUint64(seqBytes[:], sequence)
-	for i := 0; i < 8; i++ {
-		hash ^= uint64(seqBytes[i])
+	for _, b := range seqBytes {
+		hash ^= uint64(b)
 		hash *= fnvPrime
 	}
 

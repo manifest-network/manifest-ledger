@@ -579,7 +579,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(ev.activeCount, 10)),
 		}
 		if ev.closureReason != "" {
-			eventAttrs = append(eventAttrs, sdk.NewAttribute(types.AttributeKeyClosureReason, ev.closureReason))
+			eventAttrs = append(eventAttrs, sdk.NewAttribute(types.AttributeKeyClosureReason, sanitize.EventAttribute(ev.closureReason)))
 		}
 		sdkCtx.EventManager().EmitEvent(
 			sdk.NewEvent(types.EventTypeLeaseClosed, eventAttrs...),
@@ -647,18 +647,9 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 		// Verify all leases belong to the same provider
 		if i == 0 {
 			providerUUID = lease.ProviderUuid
-			provider, err = ms.k.skuKeeper.GetProvider(ctx, providerUUID)
+			provider, err = ms.validateProviderAuthorization(ctx, msg.Sender, providerUUID, "withdraw from")
 			if err != nil {
-				return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
-			}
-
-			// Verify sender is authorized (provider address or authority)
-			if msg.Sender != provider.Address && msg.Sender != ms.k.GetAuthority() {
-				return nil, types.ErrUnauthorized.Wrapf(
-					"sender %s is not authorized to withdraw from provider %s leases",
-					msg.Sender,
-					providerUUID,
-				)
+				return nil, err
 			}
 		} else if lease.ProviderUuid != providerUUID {
 			return nil, types.ErrInvalidLease.Wrapf(
@@ -841,20 +832,11 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 		return nil, err
 	}
 
-	// Get provider by UUID
-	provider, err := ms.k.skuKeeper.GetProvider(ctx, msg.ProviderUuid)
-	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", msg.ProviderUuid)
-	}
+	// Get provider and verify authorization
 	providerUUID := msg.ProviderUuid
-
-	// Verify sender is authorized (provider address or authority)
-	if msg.Sender != provider.Address && msg.Sender != ms.k.GetAuthority() {
-		return nil, types.ErrUnauthorized.Wrapf(
-			"sender %s is not authorized for provider %s",
-			msg.Sender,
-			providerUUID,
-		)
+	provider, err := ms.validateProviderAuthorization(ctx, msg.Sender, providerUUID, "withdraw from")
+	if err != nil {
+		return nil, err
 	}
 
 	// Apply default limit if not specified (limit=0 means use default, not unlimited)
@@ -863,19 +845,40 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 		limit = types.DefaultProviderWithdrawLimit
 	}
 
-	// Iterate over leases and withdraw, stopping after limit successful withdrawals
-	totalAmounts := sdk.NewCoins()
-	var withdrawalCount uint64
-	var processedCount uint64
+	// Two-pass approach: collect lease UUIDs first, then process them.
+	// This avoids iterator invalidation: when we modify lease state (e.g., auto-close),
+	// the indexed map updates its indexes. Modifying indexes while iterating over them
+	// can cause undefined behavior. This matches the pattern used in EndBlocker.
+
+	// Phase 1: Collect lease UUIDs to process
+	var leaseUUIDs []string
 	hasMore := false
 
-	autoClosedCount := uint64(0)
-
 	err = ms.k.IterateLeasesByProvider(ctx, providerUUID, func(lease types.Lease) (stop bool, iterErr error) {
-		// Check if we've reached the limit
-		if processedCount >= limit {
+		if uint64(len(leaseUUIDs)) >= limit {
 			hasMore = true
 			return true, nil // Stop iteration
+		}
+		leaseUUIDs = append(leaseUUIDs, lease.Uuid)
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Phase 2: Process collected leases (iterator is closed, safe to modify state)
+	totalAmounts := sdk.NewCoins()
+	var withdrawalCount uint64
+	autoClosedCount := uint64(0)
+
+	for _, leaseUUID := range leaseUUIDs {
+		lease, getErr := ms.k.GetLease(ctx, leaseUUID)
+		if getErr != nil {
+			ms.k.Logger().Error("failed to get lease for withdrawal",
+				"lease_id", leaseUUID,
+				"error", getErr,
+			)
+			continue
 		}
 
 		// Use CacheContext to make all state changes atomic per lease.
@@ -891,7 +894,7 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 					"lease_id", lease.Uuid,
 					"error", checkErr,
 				)
-				return false, nil // Continue iteration
+				continue
 			}
 
 			if shouldAutoClose {
@@ -902,7 +905,7 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 						"lease_id", lease.Uuid,
 						"error", settleErr,
 					)
-					return false, nil // Continue iteration
+					continue
 				}
 
 				// Update lease state to CLOSED
@@ -916,28 +919,39 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 						"lease_id", lease.Uuid,
 						"error", setErr,
 					)
-					return false, nil // Continue iteration
+					continue
 				}
 
 				// Update credit account's active lease count and release reservation
 				creditAccount, caErr := ms.k.GetCreditAccount(cacheCtx, lease.Tenant)
-				if caErr == nil {
-					ms.k.DecrementActiveLeaseCount(&creditAccount, lease.Uuid)
-
-					// Release reservation for this lease (ACTIVE leases have reservations)
-					ms.k.ReleaseLeaseReservation(&creditAccount, &lease, params.MinLeaseDuration)
-
-					if setErr := ms.k.SetCreditAccount(cacheCtx, creditAccount); setErr != nil {
-						ms.k.Logger().Error("failed to update credit account",
-							"lease_id", lease.Uuid,
-							"tenant", lease.Tenant,
-							"error", setErr,
-						)
-						return false, nil // Continue iteration
-					}
+				if caErr != nil {
+					// Credit account lookup failed - discard the entire auto-close
+					// (CacheContext is not committed) to avoid state inconsistency
+					// where the lease is CLOSED but credit account counters are not updated.
+					ms.k.Logger().Error("failed to get credit account for auto-close, skipping lease",
+						"lease_id", lease.Uuid,
+						"tenant", lease.Tenant,
+						"error", caErr,
+					)
+					continue
 				}
 
-				// Commit all changes atomically
+				ms.k.DecrementActiveLeaseCount(&creditAccount, lease.Uuid)
+
+				// Release reservation for this lease (ACTIVE leases have reservations)
+				ms.k.ReleaseLeaseReservation(&creditAccount, &lease, params.MinLeaseDuration)
+
+				if setErr := ms.k.SetCreditAccount(cacheCtx, creditAccount); setErr != nil {
+					// SetCreditAccount failed - discard the entire auto-close
+					ms.k.Logger().Error("failed to update credit account for auto-close, skipping lease",
+						"lease_id", lease.Uuid,
+						"tenant", lease.Tenant,
+						"error", setErr,
+					)
+					continue
+				}
+
+				// Commit all changes atomically (lease + credit account)
 				write()
 
 				// Emit auto-close event
@@ -956,8 +970,7 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 				}
 				withdrawalCount++
 				autoClosedCount++
-				processedCount++
-				return false, nil // Continue iteration
+				continue
 			}
 		}
 
@@ -969,12 +982,12 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 		case lease.ClosedAt != nil:
 			settleTime = *lease.ClosedAt
 		default:
-			return false, nil // Skip, continue iteration
+			continue // Skip
 		}
 
 		// Skip if no duration to settle
 		if !settleTime.After(lease.LastSettledAt) {
-			return false, nil // Skip, continue iteration
+			continue // Skip
 		}
 
 		// Perform settlement (silent mode: doesn't fail on overflow)
@@ -985,11 +998,11 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 				"lease_id", lease.Uuid,
 				"error", settleErr,
 			)
-			return false, nil // Continue iteration
+			continue
 		}
 
 		if result.TransferAmounts.IsZero() {
-			return false, nil // Skip, continue iteration
+			continue // Skip
 		}
 
 		// Update last_settled_at for active leases
@@ -1001,7 +1014,7 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 					"lease_id", lease.Uuid,
 					"error", setErr,
 				)
-				return false, nil // Continue iteration
+				continue
 			}
 		}
 
@@ -1010,12 +1023,6 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 
 		totalAmounts = totalAmounts.Add(result.TransferAmounts...)
 		withdrawalCount++
-		processedCount++
-
-		return false, nil // Continue iteration
-	})
-	if err != nil {
-		return nil, err
 	}
 
 	// Emit batch event
@@ -1131,14 +1138,14 @@ func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []
 
 // validateProviderAuthorization verifies the sender is authorized for provider operations.
 // Returns the provider if authorized, or an error if not.
-func (ms msgServer) validateProviderAuthorization(ctx context.Context, sender, providerUUID, operation string) error {
+func (ms msgServer) validateProviderAuthorization(ctx context.Context, sender, providerUUID, operation string) (skutypes.Provider, error) {
 	provider, err := ms.k.skuKeeper.GetProvider(ctx, providerUUID)
 	if err != nil {
-		return types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
+		return skutypes.Provider{}, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
 	}
 
 	if sender != provider.Address && sender != ms.k.GetAuthority() {
-		return types.ErrUnauthorized.Wrapf(
+		return skutypes.Provider{}, types.ErrUnauthorized.Wrapf(
 			"sender %s is not authorized to %s leases for provider %s",
 			sender,
 			operation,
@@ -1146,7 +1153,7 @@ func (ms msgServer) validateProviderAuthorization(ctx context.Context, sender, p
 		)
 	}
 
-	return nil
+	return provider, nil
 }
 
 // AcknowledgeLease allows a provider to acknowledge one or more PENDING leases.
@@ -1167,7 +1174,7 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 		return nil, err
 	}
 
-	if err := ms.validateProviderAuthorization(ctx, msg.Sender, validated.providerUUID, "acknowledge"); err != nil {
+	if _, err := ms.validateProviderAuthorization(ctx, msg.Sender, validated.providerUUID, "acknowledge"); err != nil {
 		return nil, err
 	}
 
@@ -1275,7 +1282,7 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 		return nil, err
 	}
 
-	if err := ms.validateProviderAuthorization(ctx, msg.Sender, validated.providerUUID, "reject"); err != nil {
+	if _, err := ms.validateProviderAuthorization(ctx, msg.Sender, validated.providerUUID, "reject"); err != nil {
 		return nil, err
 	}
 

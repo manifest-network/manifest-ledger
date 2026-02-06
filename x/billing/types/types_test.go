@@ -1060,9 +1060,10 @@ func TestGenesisState_Validate(t *testing.T) {
 	validLeaseReservation := sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(360000)))
 
 	validCreditAccount := types.CreditAccount{
-		Tenant:          tenant,
-		CreditAddress:   creditAddr.String(),
-		ReservedAmounts: validLeaseReservation, // Must match sum of active/pending lease reservations
+		Tenant:           tenant,
+		CreditAddress:    creditAddr.String(),
+		ActiveLeaseCount: 1,                     // validLease is ACTIVE
+		ReservedAmounts:  validLeaseReservation, // Must match sum of active/pending lease reservations
 	}
 
 	tests := []struct {
@@ -1584,8 +1585,10 @@ func TestGenesisState_Validate(t *testing.T) {
 				},
 				CreditAccounts: []types.CreditAccount{
 					{
-						Tenant:        tenant,
-						CreditAddress: creditAddr.String(),
+						Tenant:            tenant,
+						CreditAddress:     creditAddr.String(),
+						ActiveLeaseCount:  1, // 1 ACTIVE lease
+						PendingLeaseCount: 1, // 1 PENDING lease
 						// Lease 1: 100 * 1 * 3600 = 360000
 						// Lease 2: 50 * 2 * 3600 = 360000
 						// Total: 720000
@@ -1613,8 +1616,9 @@ func TestGenesisState_Validate(t *testing.T) {
 				},
 				CreditAccounts: []types.CreditAccount{
 					{
-						Tenant:        tenant,
-						CreditAddress: creditAddr.String(),
+						Tenant:           tenant,
+						CreditAddress:    creditAddr.String(),
+						ActiveLeaseCount: 1, // 1 ACTIVE lease
 						// Should use stored duration: 100 * 1 * 7200 = 720000
 						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(720000))),
 					},
@@ -1633,6 +1637,49 @@ func TestGenesisState_Validate(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "no credit account",
+		},
+		{
+			name: "active_lease_count mismatch",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{validLease}, // 1 ACTIVE lease
+				CreditAccounts: []types.CreditAccount{
+					{
+						Tenant:           tenant,
+						CreditAddress:    creditAddr.String(),
+						ActiveLeaseCount: 5, // Wrong: says 5 but only 1 active
+						ReservedAmounts:  validLeaseReservation,
+					},
+				},
+			},
+			expectErr: true,
+			errMsg:    "active_lease_count 5 but has 1 active leases",
+		},
+		{
+			name: "pending_lease_count mismatch",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items:        []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
+						State:        types.LEASE_STATE_PENDING,
+						CreatedAt:    now,
+					},
+				},
+				CreditAccounts: []types.CreditAccount{
+					{
+						Tenant:            tenant,
+						CreditAddress:     creditAddr.String(),
+						PendingLeaseCount: 3, // Wrong: says 3 but only 1 pending
+						ReservedAmounts:   validLeaseReservation,
+					},
+				},
+			},
+			expectErr: true,
+			errMsg:    "pending_lease_count 3 but has 1 pending leases",
 		},
 	}
 

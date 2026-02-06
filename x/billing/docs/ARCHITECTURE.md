@@ -49,6 +49,7 @@ erDiagram
         string credit_address
         uint64 active_lease_count
         uint64 pending_lease_count
+        Coins reserved_amounts
     }
     
     LEASE {
@@ -63,6 +64,9 @@ erDiagram
         timestamp expired_at
         timestamp last_settled_at
         string rejection_reason
+        string closure_reason
+        bytes meta_hash
+        uint64 min_lease_duration_at_creation
     }
     
     LEASE_ITEM {
@@ -88,6 +92,7 @@ Credit accounts hold pre-funded tokens for lease payments:
 | `credit_address` | `string` | Derived credit account address |
 | `active_lease_count` | `uint64` | Number of ACTIVE leases |
 | `pending_lease_count` | `uint64` | Number of PENDING leases |
+| `reserved_amounts` | `[]Coin` | Sum of all credit reservations for active and pending leases. Each lease reserves `rate_per_second × min_lease_duration` per denom to prevent overbooking. |
 
 **Address Derivation:**
 ```go
@@ -117,6 +122,9 @@ Leases represent resource rentals with full lifecycle tracking:
 | `expired_at` | `*Timestamp` | When lease expired in PENDING state |
 | `last_settled_at` | `Timestamp` | Last settlement time for the entire lease |
 | `rejection_reason` | `string` | Provider's rejection explanation (max 256 chars) |
+| `closure_reason` | `string` | Explanation for why the lease was closed (max 256 chars) |
+| `meta_hash` | `bytes` | Optional hash/reference to off-chain deployment data (max 64 bytes, immutable) |
+| `min_lease_duration_at_creation` | `uint64` | The `min_lease_duration` parameter value at lease creation time, for consistent reservation calculation |
 
 ### LeaseItem
 

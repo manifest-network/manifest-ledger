@@ -34,9 +34,10 @@ const (
 )
 
 var (
-	_ module.AppModuleBasic   = AppModuleBasic{}
-	_ module.AppModuleGenesis = AppModule{}
-	_ module.AppModule        = AppModule{}
+	_ module.AppModuleBasic      = AppModuleBasic{}
+	_ module.AppModuleGenesis    = AppModule{}
+	_ module.AppModule           = AppModule{}
+	_ module.AppModuleSimulation = AppModule{}
 
 	_ autocli.HasAutoCLIConfig      = AppModule{}
 	_ autocli.HasCustomQueryCommand = AppModule{}

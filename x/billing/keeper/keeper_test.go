@@ -1024,8 +1024,9 @@ func TestGenesisValidation(t *testing.T) {
 				},
 				CreditAccounts: []types.CreditAccount{
 					{
-						Tenant:        tenant.String(),
-						CreditAddress: creditAddr.String(),
+						Tenant:           tenant.String(),
+						CreditAddress:    creditAddr.String(),
+						ActiveLeaseCount: 1, // 1 ACTIVE lease
 						// Reservation: 100 * 1 * 3600 = 360000 (active lease needs reservation)
 						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(360000))),
 					},

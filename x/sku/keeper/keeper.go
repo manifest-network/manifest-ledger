@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/collections/indexes"
@@ -301,7 +302,10 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 func (k *Keeper) GetProvider(ctx context.Context, uuid string) (types.Provider, error) {
 	provider, err := k.Providers.Get(ctx, uuid)
 	if err != nil {
-		return types.Provider{}, types.ErrProviderNotFound
+		if errors.Is(err, collections.ErrNotFound) {
+			return types.Provider{}, types.ErrProviderNotFound
+		}
+		return types.Provider{}, err
 	}
 	return provider, nil
 }
@@ -342,7 +346,10 @@ func (k *Keeper) GetAllProviders(ctx context.Context) ([]types.Provider, error) 
 func (k *Keeper) GetSKU(ctx context.Context, uuid string) (types.SKU, error) {
 	sku, err := k.SKUs.Get(ctx, uuid)
 	if err != nil {
-		return types.SKU{}, types.ErrSKUNotFound
+		if errors.Is(err, collections.ErrNotFound) {
+			return types.SKU{}, types.ErrSKUNotFound
+		}
+		return types.SKU{}, err
 	}
 	return sku, nil
 }

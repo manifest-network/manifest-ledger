@@ -455,8 +455,8 @@ func GetLeasesBySKUCmd() *cobra.Command {
 		Short: "Query leases by SKU UUID",
 		Long: `Query leases that contain a specific SKU.
 
-Note: This query scans all leases since there is no SKU index.
-For large datasets, use the --state filter to reduce results.
+Uses the LeasesBySKU index for efficient lookup.
+Use the --state filter to narrow results.
 Use pagination flags (--limit, --page-key) to page through results.`,
 		Example: `leases-by-sku 01902a9b-1234-7000-8000-000000000001 --state active`,
 		Args:    cobra.ExactArgs(1),

@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -305,7 +306,8 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 			}
 		}
 
-		if err := k.Leases.Set(ctx, lease.Uuid, lease); err != nil {
+		// Use SetLease (not k.Leases.Set) to also populate the LeaseBySKUIndex.
+		if err := k.SetLease(ctx, lease); err != nil {
 			return err
 		}
 	}
@@ -358,7 +360,10 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 func (k *Keeper) GetLease(ctx context.Context, uuid string) (types.Lease, error) {
 	lease, err := k.Leases.Get(ctx, uuid)
 	if err != nil {
-		return types.Lease{}, types.ErrLeaseNotFound
+		if errors.Is(err, collections.ErrNotFound) {
+			return types.Lease{}, types.ErrLeaseNotFound
+		}
+		return types.Lease{}, err
 	}
 	return lease, nil
 }
@@ -496,7 +501,10 @@ func (k *Keeper) GetCreditAccount(ctx context.Context, tenant string) (types.Cre
 
 	ca, err := k.CreditAccounts.Get(ctx, tenantAddr)
 	if err != nil {
-		return types.CreditAccount{}, types.ErrCreditAccountNotFound
+		if errors.Is(err, collections.ErrNotFound) {
+			return types.CreditAccount{}, types.ErrCreditAccountNotFound
+		}
+		return types.CreditAccount{}, err
 	}
 	return ca, nil
 }
@@ -718,7 +726,17 @@ func (k *Keeper) ShouldAutoCloseLease(ctx context.Context, lease *types.Lease) (
 	shouldClose = false
 	if duration > 0 {
 		accruedAmounts, calcErr := CalculateTotalAccruedForLease(items, duration)
-		if calcErr == nil {
+		if calcErr != nil {
+			// Overflow in accrual calculation means the accrued amount is extremely large,
+			// which certainly exceeds any credit balance. Defensively close the lease.
+			k.logger.Error("accrual calculation overflow in auto-close check, closing lease defensively",
+				"lease_uuid", lease.Uuid,
+				"tenant", lease.Tenant,
+				"duration", duration.String(),
+				"error", calcErr,
+			)
+			shouldClose = true
+		} else {
 			// Check if any denom's accrued amount exceeds the balance
 			for _, accrued := range accruedAmounts {
 				balance := creditBalances.AmountOf(accrued.Denom)
@@ -1011,20 +1029,23 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 	// Decrement pending lease count and release reservation in credit account
 	creditAccount, err := k.GetCreditAccount(cacheCtx, lease.Tenant)
 	if err != nil {
-		// Log warning - a pending lease should always have a credit account
-		k.logger.Warn("credit account not found when expiring lease",
+		// A pending lease should always have a credit account. If it's missing,
+		// do not commit the lease state change to avoid inconsistent state.
+		k.logger.Error("credit account not found when expiring lease, skipping expiration",
 			"tenant", lease.Tenant,
 			"lease_uuid", lease.Uuid,
+			"error", err,
 		)
-	} else {
-		k.DecrementPendingLeaseCount(&creditAccount, lease.Uuid)
+		return err
+	}
 
-		// Release reservation for this lease (PENDING leases have reservations)
-		k.ReleaseLeaseReservation(&creditAccount, lease, params.MinLeaseDuration)
+	k.DecrementPendingLeaseCount(&creditAccount, lease.Uuid)
 
-		if err := k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
-			return err
-		}
+	// Release reservation for this lease (PENDING leases have reservations)
+	k.ReleaseLeaseReservation(&creditAccount, lease, params.MinLeaseDuration)
+
+	if err := k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
+		return err
 	}
 
 	// Commit all state changes atomically

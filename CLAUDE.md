@@ -113,7 +113,7 @@ make proto-lint    # Lint proto files
 
 BeginBlockers: manifest (minting) -> distr -> slashing -> evidence -> poa -> staking -> ...
 
-EndBlockers: crisis -> gov -> poa -> staking -> ... -> billing (batch settlement) -> wasm
+EndBlockers: crisis -> gov -> poa -> staking -> ... -> billing (pending lease expiration) -> wasm
 
 Genesis: capability -> tokenfactory -> auth -> bank -> ... -> poa -> manifest -> sku -> billing -> wasm
 

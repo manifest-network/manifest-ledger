@@ -344,40 +344,61 @@ The SKU module manages providers (service entities) and SKUs (Stock Keeping Unit
 
 ##### Create Provider (create-provider):
 
-- Syntax: `manifestd tx sku create-provider [address] [payout-address] [meta-hash] [api-url] [flags]`
+- Syntax: `manifestd tx sku create-provider [address] [payout-address] [flags]`
 
   - Parameters:
     - `address`: The provider's operator address
     - `payout-address`: Address to receive lease payments
-    - `meta-hash`: Hash of off-chain metadata (IPFS CID, etc.)
-    - `api-url`: Provider's API endpoint URL
+  - Flags:
+    - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
+    - `--api-url`: Provider's HTTPS API endpoint URL (optional)
 
-  **Example:** `manifestd tx sku create-provider manifest1abc... manifest1xyz... QmHash https://api.provider.com --from authority`
+  **Example:** `manifestd tx sku create-provider manifest1abc... manifest1xyz... --api-url https://api.provider.com --from authority`
 
 ##### Create SKU (create-sku):
 
-- Syntax: `manifestd tx sku create-sku [provider-uuid] [name] [unit] [base-price] [meta-hash] [flags]`
+- Syntax: `manifestd tx sku create-sku [provider-uuid] [name] [unit] [base-price] [flags]`
 
   - Parameters:
     - `provider-uuid`: UUID of the provider
     - `name`: Human-readable SKU name
-    - `unit`: Pricing unit (`UNIT_PER_HOUR` or `UNIT_PER_DAY`)
+    - `unit`: Pricing unit integer (`1` = per hour, `2` = per day)
     - `base-price`: Price per unit (e.g., `3600upwr` for 1 token/second when hourly)
-    - `meta-hash`: Hash of off-chain metadata
+  - Flags:
+    - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
 
-  **Example:** `manifestd tx sku create-sku 01912345-6789-7abc-8def-0123456789ab "GPU Instance" UNIT_PER_HOUR 3600upwr QmHash --from authority`
+  **Example:** `manifestd tx sku create-sku 01912345-6789-7abc-8def-0123456789ab "GPU Instance" 1 3600upwr --meta-hash deadbeef --from authority`
 
 ##### Update Provider (update-provider):
 
-- Syntax: `manifestd tx sku update-provider [provider-uuid] [flags]`
+- Syntax: `manifestd tx sku update-provider [uuid] [address] [payout-address] [active] [flags]`
 
-  **Example:** `manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab --active=false --from authority`
+  - Parameters:
+    - `uuid`: Provider UUID
+    - `address`: The provider's operator address
+    - `payout-address`: Address to receive lease payments
+    - `active`: `true` or `false` (note: `false` is not allowed; use `deactivate-provider` instead)
+  - Flags:
+    - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
+    - `--api-url`: Provider's HTTPS API endpoint URL (optional)
+
+  **Example:** `manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com --from authority`
 
 ##### Update SKU (update-sku):
 
-- Syntax: `manifestd tx sku update-sku [sku-uuid] [flags]`
+- Syntax: `manifestd tx sku update-sku [uuid] [provider-uuid] [name] [unit] [base-price] [active] [flags]`
 
-  **Example:** `manifestd tx sku update-sku 01912345-6789-7abc-8def-0123456789ab --active=false --from authority`
+  - Parameters:
+    - `uuid`: SKU UUID
+    - `provider-uuid`: Provider UUID
+    - `name`: Human-readable SKU name
+    - `unit`: Pricing unit integer (`1` = per hour, `2` = per day)
+    - `base-price`: Price per unit (e.g., `200umfx`)
+    - `active`: `true` or `false` (note: `false` is not allowed; use `deactivate-sku` instead)
+  - Flags:
+    - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
+
+  **Example:** `manifestd tx sku update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab "Updated Name" 2 200umfx true --meta-hash deadbeef --from authority`
 
 ## Billing Module
 

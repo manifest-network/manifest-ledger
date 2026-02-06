@@ -35,21 +35,27 @@ func (e *PriceValidationError) Error() string {
 	return fmt.Sprintf("base price %s is not evenly divisible by %s (remainder: %s); price must be exactly divisible to avoid rounding errors", e.BasePrice, e.Unit, e.Remainder)
 }
 
+// divisorForUnit returns the number of seconds in the given unit's period.
+// Returns zero and false for invalid/unspecified units.
+func divisorForUnit(unit Unit) (math.Int, bool) {
+	switch unit {
+	case Unit_UNIT_PER_HOUR:
+		return math.NewInt(SecondsPerHour), true
+	case Unit_UNIT_PER_DAY:
+		return math.NewInt(SecondsPerDay), true
+	default:
+		return math.Int{}, false
+	}
+}
+
 // CalculatePricePerSecond converts a base price to a per-second rate based on the unit.
 // Returns the per-second rate and whether the conversion is valid (non-zero and exact).
 // The conversion is considered valid only if:
 // 1. The per-second rate is non-zero
 // 2. The division is exact (no remainder/truncation)
 func CalculatePricePerSecond(basePrice sdk.Coin, unit Unit) (math.Int, bool) {
-	var divisor math.Int
-
-	switch unit {
-	case Unit_UNIT_PER_HOUR:
-		divisor = math.NewInt(SecondsPerHour)
-	case Unit_UNIT_PER_DAY:
-		divisor = math.NewInt(SecondsPerDay)
-	default:
-		// UNIT_UNSPECIFIED - invalid
+	divisor, ok := divisorForUnit(unit)
+	if !ok {
 		return math.ZeroInt(), false
 	}
 
@@ -79,14 +85,8 @@ func CalculatePricePerSecond(basePrice sdk.Coin, unit Unit) (math.Int, bool) {
 // - UNIT_PER_HOUR: price must be divisible by 3600
 // - UNIT_PER_DAY: price must be divisible by 86400
 func ValidatePriceAndUnit(basePrice sdk.Coin, unit Unit) error {
-	var divisor math.Int
-
-	switch unit {
-	case Unit_UNIT_PER_HOUR:
-		divisor = math.NewInt(SecondsPerHour)
-	case Unit_UNIT_PER_DAY:
-		divisor = math.NewInt(SecondsPerDay)
-	default:
+	divisor, ok := divisorForUnit(unit)
+	if !ok {
 		return fmt.Errorf("invalid unit: %s", unit)
 	}
 
