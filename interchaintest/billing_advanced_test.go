@@ -624,8 +624,10 @@ func testProviderWithdrawLimitsIndependent(t *testing.T, ctx context.Context, tc
 	})
 
 	// Test: provider withdraw with default limit (0 means default)
+	// Uses higher gas because provider-wide withdraw processes all leases for this provider
+	// across the entire test suite (not just the 5 created in this function).
 	t.Run("success: provider withdraw with default limit", func(t *testing.T) {
-		res, err := helpers.BillingWithdrawByProvider(ctx, tc.chain, tc.providerWallet, tc.providerUUID, 0)
+		res, err := helpers.BillingWithdrawByProvider(ctx, tc.chain, tc.providerWallet, tc.providerUUID, 0, "--gas", "2000000")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)

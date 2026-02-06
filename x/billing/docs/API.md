@@ -1201,7 +1201,7 @@ List all leases with pagination.
 ```protobuf
 message QueryLeasesRequest {
   cosmos.base.query.v1beta1.PageRequest pagination = 1;
-  LeaseState state = 2;  // Optional filter by state
+  LeaseState state_filter = 2;  // Optional filter by state
 }
 ```
 
@@ -1233,6 +1233,7 @@ message QueryCreditAccountRequest {
 message QueryCreditAccountResponse {
   CreditAccount credit_account = 1;
   repeated cosmos.base.v1beta1.Coin balances = 2;  // All token balances at credit address
+  repeated cosmos.base.v1beta1.Coin available_balances = 3;  // Available for new leases (balances - reserved_amounts)
 }
 ```
 
@@ -1328,12 +1329,12 @@ message Lease {
   repeated LeaseItem items = 4;       // List of leased SKU items
   LeaseState state = 5;               // Current state
   google.protobuf.Timestamp created_at = 6;
-  google.protobuf.Timestamp acknowledged_at = 7;
-  google.protobuf.Timestamp closed_at = 8;
-  google.protobuf.Timestamp rejected_at = 9;
-  google.protobuf.Timestamp expired_at = 10;
-  google.protobuf.Timestamp last_settled_at = 11;
-  string rejection_reason = 12;       // Provider's rejection reason (max 256 chars)
+  google.protobuf.Timestamp closed_at = 7;
+  google.protobuf.Timestamp last_settled_at = 8;
+  google.protobuf.Timestamp acknowledged_at = 9;
+  google.protobuf.Timestamp rejected_at = 10;
+  string rejection_reason = 11;       // Provider's rejection reason (max 256 chars)
+  google.protobuf.Timestamp expired_at = 12;
   string closure_reason = 13;         // Closure reason (max 256 chars)
   bytes meta_hash = 14;               // Hash/reference to off-chain deployment data (max 64 bytes, immutable)
   uint64 min_lease_duration_at_creation = 15; // Snapshot of min_lease_duration param at creation
@@ -1388,12 +1389,12 @@ message CreditAccount {
 
 ```protobuf
 message Params {
-  uint64 max_leases_per_tenant = 1;
-  uint64 max_items_per_lease = 2;
-  uint64 min_lease_duration = 3;
-  uint64 max_pending_leases_per_tenant = 4;
-  uint64 pending_timeout = 5;
-  repeated string allowed_list = 6;
+  uint64 max_leases_per_tenant = 3;
+  repeated string allowed_list = 4;
+  uint64 max_items_per_lease = 5;
+  uint64 min_lease_duration = 6;
+  uint64 max_pending_leases_per_tenant = 7;
+  uint64 pending_timeout = 8;
 }
 ```
 

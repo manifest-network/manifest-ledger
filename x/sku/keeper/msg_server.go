@@ -225,16 +225,24 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 		limit = types.DefaultDeactivateSKULimit
 	}
 
-	// Cascade: deactivate SKUs under this provider with pagination
-	var deactivatedSKUCount uint64
-	processed, hasMore, err := ms.k.IterateActiveSKUsByProvider(ctx, req.Uuid, limit, func(sku types.SKU) (stop bool, err error) {
+	// Cascade: collect active SKUs first, then deactivate after iteration completes.
+	// This avoids modifying the ProviderActive index while iterating over it.
+	var skusToDeactivate []types.SKU
+	_, hasMore, err := ms.k.IterateActiveSKUsByProvider(ctx, req.Uuid, limit, func(sku types.SKU) (stop bool, err error) {
+		skusToDeactivate = append(skusToDeactivate, sku)
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Deactivate collected SKUs after iteration is complete
+	for _, sku := range skusToDeactivate {
 		sku.Active = false
 		if err := ms.k.SetSKU(ctx, sku); err != nil {
-			return true, err
+			return nil, err
 		}
-		deactivatedSKUCount++
 
-		// Emit deactivation event for each SKU
 		sdkCtx.EventManager().EmitEvents(sdk.Events{
 			sdk.NewEvent(
 				types.EventTypeSKUDeactivated,
@@ -243,20 +251,8 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 				sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
 			),
 		})
-
-		return false, nil
-	})
-	if err != nil {
-		return nil, err
 	}
-
-	// Sanity check: processed count should match deactivated count
-	if processed != deactivatedSKUCount {
-		ms.k.Logger().Warn("SKU deactivation count mismatch",
-			"processed", processed,
-			"deactivated", deactivatedSKUCount,
-		)
-	}
+	deactivatedSKUCount := uint64(len(skusToDeactivate))
 
 	if providerWasActive {
 		ms.k.Logger().Info("Provider deactivated",

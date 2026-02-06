@@ -102,6 +102,11 @@ func (gs *GenesisState) Validate() error {
 		if !sku.BasePrice.IsValid() || sku.BasePrice.IsZero() {
 			return ErrInvalidSKU.Wrapf("sku %s has invalid or zero base price", sku.Uuid)
 		}
+
+		// Validate that price and unit combination produces a valid per-second rate
+		if err := ValidatePriceAndUnit(sku.BasePrice, sku.Unit); err != nil {
+			return ErrInvalidSKU.Wrapf("sku %s has invalid price/unit combination: %s", sku.Uuid, err)
+		}
 	}
 
 	return nil

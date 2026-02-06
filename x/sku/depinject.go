@@ -1,8 +1,6 @@
 package module
 
 import (
-	"os"
-
 	"cosmossdk.io/core/appmodule"
 	"cosmossdk.io/core/store"
 	"cosmossdk.io/depinject"
@@ -39,6 +37,7 @@ type ModuleInputs struct {
 
 	Cdc          codec.Codec
 	StoreService store.KVStoreService
+	Logger       log.Logger
 }
 
 // ModuleOutputs defines the outputs provided by the module.
@@ -56,7 +55,7 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 	k := keeper.NewKeeper(
 		in.Cdc,
 		in.StoreService,
-		log.NewLogger(os.Stderr),
+		in.Logger,
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 	)
 	m := NewAppModule(in.Cdc, k)
