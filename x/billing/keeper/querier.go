@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 	"math"
 
 	"google.golang.org/grpc/codes"
@@ -66,7 +67,7 @@ func (q Querier) Leases(ctx context.Context, req *types.QueryLeasesRequest) (*ty
 
 	// Use state index for efficient lookup when filtering by state
 	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
-		iter, err := q.k.Leases.Indexes.State.MatchExact(ctx, int32(req.StateFilter))
+		iter, err := pagination.MatchExactWithOrder(ctx, q.k.Leases.Indexes.State, int32(req.StateFilter), req.Pagination)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
@@ -126,7 +127,7 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 	// Use compound index when state filter is provided - O(1) direct lookup
 	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
 		key := collections.Join(tenantAddr, int32(req.StateFilter))
-		iter, err := q.k.Leases.Indexes.TenantState.MatchExact(ctx, key)
+		iter, err := pagination.MatchExactWithOrder(ctx, q.k.Leases.Indexes.TenantState, key, req.Pagination)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
@@ -149,7 +150,7 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 	}
 
 	// Use tenant index when no state filter - iterate all tenant's leases
-	iter, err := q.k.Leases.Indexes.Tenant.MatchExact(ctx, tenantAddr)
+	iter, err := pagination.MatchExactWithOrder(ctx, q.k.Leases.Indexes.Tenant, tenantAddr, req.Pagination)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -186,7 +187,7 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 	// Use compound index when state filter is provided - O(1) direct lookup
 	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
 		key := collections.Join(req.ProviderUuid, int32(req.StateFilter))
-		iter, err := q.k.Leases.Indexes.ProviderState.MatchExact(ctx, key)
+		iter, err := pagination.MatchExactWithOrder(ctx, q.k.Leases.Indexes.ProviderState, key, req.Pagination)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
@@ -209,7 +210,7 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 	}
 
 	// Use provider index when no state filter - iterate all provider's leases
-	iter, err := q.k.Leases.Indexes.Provider.MatchExact(ctx, req.ProviderUuid)
+	iter, err := pagination.MatchExactWithOrder(ctx, q.k.Leases.Indexes.Provider, req.ProviderUuid, req.Pagination)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -402,6 +403,9 @@ func (q Querier) LeasesBySKU(ctx context.Context, req *types.QueryLeasesBySKUReq
 
 	// Use the SKU index to iterate only over leases containing this SKU
 	rng := collections.NewPrefixedPairRange[string, string](req.SkuUuid)
+	if req.Pagination != nil && req.Pagination.Reverse {
+		rng = rng.Descending()
+	}
 	iter, err := q.k.LeaseBySKUIndex.Iterate(ctx, rng)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -539,6 +543,7 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 
 // paginateSKUIndex paginates over the LeaseBySKUIndex iterator.
 // This is a custom pagination function for the many-to-many SKU → Lease index.
+// It supports key-based cursor pagination, offset-based pagination, and countTotal.
 func paginateSKUIndex(
 	ctx context.Context,
 	iter collections.Iterator[collections.Pair[string, string], bool],
@@ -552,6 +557,7 @@ func paginateSKUIndex(
 	limit := uint64(100)
 	offset := uint64(0)
 	countTotal := false
+	var startKey []byte
 
 	if pageReq != nil {
 		if pageReq.Limit > 0 {
@@ -559,11 +565,16 @@ func paginateSKUIndex(
 		}
 		offset = pageReq.Offset
 		countTotal = pageReq.CountTotal
+		startKey = pageReq.Key
 	}
 
 	var leases []types.Lease
 	var total uint64
-	var currentOffset uint64
+	var skipped uint64
+	var nextKey []byte
+
+	// For key-based pagination, skip until we reach the start key
+	foundStart := len(startKey) == 0
 
 	for ; iter.Valid(); iter.Next() {
 		key, err := iter.Key()
@@ -572,8 +583,20 @@ func paginateSKUIndex(
 		}
 		leaseUUID := key.K2()
 
+		// Key-based pagination: skip entries until we find the cursor key
+		if !foundStart {
+			if string(startKey) == leaseUUID {
+				foundStart = true
+			} else {
+				continue
+			}
+		}
+
 		lease, err := getLease(ctx, leaseUUID)
 		if err != nil {
+			if errors.Is(err, collections.ErrNotFound) {
+				continue
+			}
 			return nil, nil, err
 		}
 
@@ -587,20 +610,28 @@ func paginateSKUIndex(
 			total++
 		}
 
-		// Skip until we reach the offset
-		if currentOffset < offset {
-			currentOffset++
+		// Handle offset-based pagination (only when no key provided)
+		if len(startKey) == 0 && skipped < offset {
+			skipped++
 			continue
 		}
 
-		// Collect results up to limit
-		if uint64(len(leases)) < limit {
-			leases = append(leases, lease)
+		// Check if we've reached the limit
+		if uint64(len(leases)) >= limit {
+			if len(nextKey) == 0 {
+				nextKey = []byte(leaseUUID)
+			}
+			if !countTotal {
+				break
+			}
+			continue
 		}
+
+		leases = append(leases, lease)
 	}
 
 	// Build response
-	pageRes := &query.PageResponse{}
+	pageRes := &query.PageResponse{NextKey: nextKey}
 	if countTotal {
 		pageRes.Total = total
 	}

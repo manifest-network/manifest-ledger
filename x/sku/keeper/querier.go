@@ -69,7 +69,7 @@ func (q Querier) Providers(ctx context.Context, req *types.QueryProvidersRequest
 
 	// Use Active index if active_only is set (O(k) instead of O(n))
 	if req.ActiveOnly {
-		iter, err := q.k.Providers.Indexes.Active.MatchExact(ctx, true)
+		iter, err := pagination.MatchExactWithOrder(ctx, q.k.Providers.Indexes.Active, true, req.Pagination)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
@@ -135,7 +135,7 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 
 	// Use Active index if active_only is set (O(k) instead of O(n))
 	if req.ActiveOnly {
-		iter, err := q.k.SKUs.Indexes.Active.MatchExact(ctx, true)
+		iter, err := pagination.MatchExactWithOrder(ctx, q.k.SKUs.Indexes.Active, true, req.Pagination)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
@@ -189,7 +189,7 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 
 	// Use ProviderActive compound index if active_only is set (O(k) direct lookup)
 	if req.ActiveOnly {
-		iter, err := q.k.SKUs.Indexes.ProviderActive.MatchExact(ctx, collections.Join(req.ProviderUuid, true))
+		iter, err := pagination.MatchExactWithOrder(ctx, q.k.SKUs.Indexes.ProviderActive, collections.Join(req.ProviderUuid, true), req.Pagination)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
@@ -212,7 +212,7 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 	}
 
 	// Use the provider index to iterate only over this provider's SKUs
-	iter, err := q.k.SKUs.Indexes.Provider.MatchExact(ctx, req.ProviderUuid)
+	iter, err := pagination.MatchExactWithOrder(ctx, q.k.SKUs.Indexes.Provider, req.ProviderUuid, req.Pagination)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -252,7 +252,7 @@ func (q Querier) ProviderByAddress(ctx context.Context, req *types.QueryProvider
 	}
 
 	// Use the address index to iterate only over providers with this address
-	iter, err := q.k.Providers.Indexes.Address.MatchExact(ctx, addr)
+	iter, err := pagination.MatchExactWithOrder(ctx, q.k.Providers.Indexes.Address, addr, req.Pagination)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

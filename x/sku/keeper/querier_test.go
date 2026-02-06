@@ -540,6 +540,225 @@ func TestQuerierProviderByAddress(t *testing.T) {
 	})
 }
 
+func TestQuerierProvidersReverse(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.SKUKeeper
+	q := keeper.NewQuerier(k)
+
+	// Create 3 active providers
+	for i := 1; i <= 3; i++ {
+		provider := types.Provider{
+			Uuid:          "01912345-6789-7abc-8def-0123456789a" + string(rune('0'+i)),
+			Address:       f.TestAccs[i%5].String(),
+			PayoutAddress: f.TestAccs[(i+1)%5].String(),
+			Active:        true,
+		}
+		err := k.SetProvider(f.Ctx, provider)
+		require.NoError(t, err)
+	}
+
+	respFwd, err := q.Providers(f.Ctx, &types.QueryProvidersRequest{ActiveOnly: true})
+	require.NoError(t, err)
+	require.Len(t, respFwd.Providers, 3)
+
+	respRev, err := q.Providers(f.Ctx, &types.QueryProvidersRequest{
+		ActiveOnly: true,
+		Pagination: &query.PageRequest{Reverse: true},
+	})
+	require.NoError(t, err)
+	require.Len(t, respRev.Providers, 3)
+
+	for i := range respFwd.Providers {
+		require.Equal(t, respFwd.Providers[i].Uuid, respRev.Providers[len(respRev.Providers)-1-i].Uuid)
+	}
+}
+
+func TestQuerierSKUsReverse(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.SKUKeeper
+	q := keeper.NewQuerier(k)
+
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+
+	// Create provider
+	provider := types.Provider{
+		Uuid:          testProvider1UUID,
+		Address:       f.TestAccs[0].String(),
+		PayoutAddress: f.TestAccs[1].String(),
+		Active:        true,
+	}
+	err := k.SetProvider(f.Ctx, provider)
+	require.NoError(t, err)
+
+	// Create 3 active SKUs
+	for i := 1; i <= 3; i++ {
+		skuUUID := "01912345-6789-7abc-8def-0123456789b" + string(rune('0'+i))
+		sku := types.SKU{
+			Uuid:         skuUUID,
+			ProviderUuid: testProvider1UUID,
+			Name:         "SKU",
+			Unit:         types.Unit_UNIT_PER_HOUR,
+			BasePrice:    basePrice,
+			Active:       true,
+		}
+		err := k.SetSKU(f.Ctx, sku)
+		require.NoError(t, err)
+	}
+
+	respFwd, err := q.SKUs(f.Ctx, &types.QuerySKUsRequest{ActiveOnly: true})
+	require.NoError(t, err)
+	require.Len(t, respFwd.Skus, 3)
+
+	respRev, err := q.SKUs(f.Ctx, &types.QuerySKUsRequest{
+		ActiveOnly: true,
+		Pagination: &query.PageRequest{Reverse: true},
+	})
+	require.NoError(t, err)
+	require.Len(t, respRev.Skus, 3)
+
+	for i := range respFwd.Skus {
+		require.Equal(t, respFwd.Skus[i].Uuid, respRev.Skus[len(respRev.Skus)-1-i].Uuid)
+	}
+}
+
+func TestQuerierSKUsByProviderReverse(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.SKUKeeper
+	q := keeper.NewQuerier(k)
+
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+
+	// Create provider
+	provider := types.Provider{
+		Uuid:          testProvider1UUID,
+		Address:       f.TestAccs[0].String(),
+		PayoutAddress: f.TestAccs[1].String(),
+		Active:        true,
+	}
+	err := k.SetProvider(f.Ctx, provider)
+	require.NoError(t, err)
+
+	// Create 3 active SKUs + 1 inactive
+	skus := []types.SKU{
+		{Uuid: "01912345-6789-7abc-8def-0123456789b1", ProviderUuid: testProvider1UUID, Name: "SKU 1", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
+		{Uuid: "01912345-6789-7abc-8def-0123456789b2", ProviderUuid: testProvider1UUID, Name: "SKU 2", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: false},
+		{Uuid: "01912345-6789-7abc-8def-0123456789b3", ProviderUuid: testProvider1UUID, Name: "SKU 3", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
+		{Uuid: "01912345-6789-7abc-8def-0123456789b4", ProviderUuid: testProvider1UUID, Name: "SKU 4", Unit: types.Unit_UNIT_PER_HOUR, BasePrice: basePrice, Active: true},
+	}
+	for _, sku := range skus {
+		err := k.SetSKU(f.Ctx, sku)
+		require.NoError(t, err)
+	}
+
+	t.Run("reverse active only", func(t *testing.T) {
+		respFwd, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: testProvider1UUID,
+			ActiveOnly:   true,
+		})
+		require.NoError(t, err)
+		require.Len(t, respFwd.Skus, 3)
+
+		respRev, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: testProvider1UUID,
+			ActiveOnly:   true,
+			Pagination:   &query.PageRequest{Reverse: true},
+		})
+		require.NoError(t, err)
+		require.Len(t, respRev.Skus, 3)
+
+		for i := range respFwd.Skus {
+			require.Equal(t, respFwd.Skus[i].Uuid, respRev.Skus[len(respRev.Skus)-1-i].Uuid)
+		}
+	})
+
+	t.Run("reverse all", func(t *testing.T) {
+		respFwd, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: testProvider1UUID,
+		})
+		require.NoError(t, err)
+		require.Len(t, respFwd.Skus, 4)
+
+		respRev, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: testProvider1UUID,
+			Pagination:   &query.PageRequest{Reverse: true},
+		})
+		require.NoError(t, err)
+		require.Len(t, respRev.Skus, 4)
+
+		for i := range respFwd.Skus {
+			require.Equal(t, respFwd.Skus[i].Uuid, respRev.Skus[len(respRev.Skus)-1-i].Uuid)
+		}
+	})
+
+	t.Run("reverse all with limit and cursor", func(t *testing.T) {
+		// 4 SKUs total, page through in reverse with limit=2
+		page1, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: testProvider1UUID,
+			Pagination:   &query.PageRequest{Reverse: true, Limit: 2},
+		})
+		require.NoError(t, err)
+		require.Len(t, page1.Skus, 2)
+		require.NotEmpty(t, page1.Pagination.NextKey)
+
+		page2, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: testProvider1UUID,
+			Pagination:   &query.PageRequest{Reverse: true, Key: page1.Pagination.NextKey, Limit: 2},
+		})
+		require.NoError(t, err)
+		require.Len(t, page2.Skus, 2)
+		require.Empty(t, page2.Pagination.NextKey, "last page should have no next cursor")
+
+		// Combine pages and verify they match the full reverse set
+		respFwd, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: testProvider1UUID,
+		})
+		require.NoError(t, err)
+
+		allRev := append(page1.Skus, page2.Skus...)
+		require.Len(t, allRev, len(respFwd.Skus))
+		for i := range respFwd.Skus {
+			require.Equal(t, respFwd.Skus[i].Uuid, allRev[len(allRev)-1-i].Uuid)
+		}
+	})
+}
+
+func TestQuerierProviderByAddressReverse(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.SKUKeeper
+	q := keeper.NewQuerier(k)
+
+	addr := f.TestAccs[0]
+	payoutAddr := f.TestAccs[2]
+
+	// Create 3 providers with the same address
+	for i := 1; i <= 3; i++ {
+		provider := types.Provider{
+			Uuid:          "01912345-6789-7abc-8def-0123456789a" + string(rune('0'+i)),
+			Address:       addr.String(),
+			PayoutAddress: payoutAddr.String(),
+			Active:        true,
+		}
+		require.NoError(t, k.SetProvider(f.Ctx, provider))
+	}
+
+	respFwd, err := q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+		Address: addr.String(),
+	})
+	require.NoError(t, err)
+	require.Len(t, respFwd.Providers, 3)
+
+	respRev, err := q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+		Address:    addr.String(),
+		Pagination: &query.PageRequest{Reverse: true},
+	})
+	require.NoError(t, err)
+	require.Len(t, respRev.Providers, 3)
+
+	for i := range respFwd.Providers {
+		require.Equal(t, respFwd.Providers[i].Uuid, respRev.Providers[len(respRev.Providers)-1-i].Uuid)
+	}
+}
+
 // TestQueryErrorCasesComprehensive tests additional error cases across SKU queries
 // including invalid UUID formats and non-existent resources.
 func TestQueryErrorCasesComprehensive(t *testing.T) {

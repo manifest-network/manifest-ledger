@@ -6,9 +6,30 @@ package pagination
 
 import (
 	"context"
+	"errors"
+
+	"cosmossdk.io/collections"
+	"cosmossdk.io/collections/indexes"
 
 	"github.com/cosmos/cosmos-sdk/types/query"
 )
+
+// MatchExactWithOrder is like indexes.Multi.MatchExact but applies descending
+// iteration order when pageReq.Reverse is true.
+// It only controls iteration direction; limit, offset, and key-based cursor
+// pagination are handled by PaginateStringIndex (or similar) downstream.
+func MatchExactWithOrder[RK, V any](
+	ctx context.Context,
+	idx *indexes.Multi[RK, string, V],
+	refKey RK,
+	pageReq *query.PageRequest,
+) (indexes.MultiIterator[RK, string], error) {
+	rng := collections.NewPrefixedPairRange[RK, string](refKey)
+	if pageReq != nil && pageReq.Reverse {
+		rng = rng.Descending()
+	}
+	return idx.Iterate(ctx, rng)
+}
 
 // StringIndexIterator is an interface for index iterators that return string primary keys.
 type StringIndexIterator interface {
@@ -76,8 +97,12 @@ func PaginateStringIndex[V any](
 
 		value, err := getter(ctx, pk)
 		if err != nil {
-			// Skip if value not found (index inconsistency - shouldn't happen)
-			continue
+			if errors.Is(err, collections.ErrNotFound) {
+				// Index references a key that no longer exists (index inconsistency).
+				// Skip the entry rather than failing the entire query.
+				continue
+			}
+			return nil, nil, err
 		}
 
 		// Apply filter if provided

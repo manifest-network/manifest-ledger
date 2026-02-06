@@ -382,6 +382,435 @@ func TestQueryLeasesByProvider(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestQueryLeasesReverse(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	providerUUID := testProviderUUID
+
+	// Create 5 active leases with ordered UUIDs
+	for i := 1; i <= 5; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+		skuUUID := fmt.Sprintf("01912345-6789-7abc-8def-1%011d", i)
+
+		lease := types.Lease{
+			Uuid:         leaseUUID,
+			Tenant:       f.TestAccs[0].String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{
+				{
+					SkuUuid:     skuUUID,
+					Quantity:    1,
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+				},
+			},
+			State:     types.LEASE_STATE_ACTIVE,
+			CreatedAt: f.Ctx.BlockTime(),
+		}
+		err := k.SetLease(f.Ctx, lease)
+		require.NoError(t, err)
+	}
+
+	t.Run("reverse with state filter", func(t *testing.T) {
+		respFwd, err := querier.Leases(f.Ctx, &types.QueryLeasesRequest{
+			StateFilter: types.LEASE_STATE_ACTIVE,
+		})
+		require.NoError(t, err)
+		require.Len(t, respFwd.Leases, 5)
+
+		respRev, err := querier.Leases(f.Ctx, &types.QueryLeasesRequest{
+			StateFilter: types.LEASE_STATE_ACTIVE,
+			Pagination:  &query.PageRequest{Reverse: true},
+		})
+		require.NoError(t, err)
+		require.Len(t, respRev.Leases, 5)
+
+		for i := range respFwd.Leases {
+			require.Equal(t, respFwd.Leases[i].Uuid, respRev.Leases[len(respRev.Leases)-1-i].Uuid)
+		}
+	})
+}
+
+func TestQueryLeasesByTenantReverse(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+	providerUUID := "01912345-6789-7abc-8def-0123456789ac"
+
+	// Create 4 leases for tenant (3 active, 1 closed)
+	for i := 1; i <= 3; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+		skuUUID := fmt.Sprintf("01912345-6789-7abc-8def-1%011d", i)
+
+		lease := types.Lease{
+			Uuid:         leaseUUID,
+			Tenant:       tenant.String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{
+				{
+					SkuUuid:     skuUUID,
+					Quantity:    1,
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+				},
+			},
+			State:     types.LEASE_STATE_ACTIVE,
+			CreatedAt: f.Ctx.BlockTime(),
+		}
+		err := k.SetLease(f.Ctx, lease)
+		require.NoError(t, err)
+	}
+
+	closedAt := f.Ctx.BlockTime()
+	err := k.SetLease(f.Ctx, types.Lease{
+		Uuid:         "01912345-6789-7abc-8def-000000000004",
+		Tenant:       tenant.String(),
+		ProviderUuid: providerUUID,
+		Items: []types.LeaseItem{
+			{
+				SkuUuid:     "01912345-6789-7abc-8def-100000000004",
+				Quantity:    1,
+				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+			},
+		},
+		State:     types.LEASE_STATE_CLOSED,
+		CreatedAt: f.Ctx.BlockTime(),
+		ClosedAt:  &closedAt,
+	})
+	require.NoError(t, err)
+
+	t.Run("reverse without state filter", func(t *testing.T) {
+		respFwd, err := querier.LeasesByTenant(f.Ctx, &types.QueryLeasesByTenantRequest{
+			Tenant: tenant.String(),
+		})
+		require.NoError(t, err)
+		require.Len(t, respFwd.Leases, 4)
+
+		respRev, err := querier.LeasesByTenant(f.Ctx, &types.QueryLeasesByTenantRequest{
+			Tenant:     tenant.String(),
+			Pagination: &query.PageRequest{Reverse: true},
+		})
+		require.NoError(t, err)
+		require.Len(t, respRev.Leases, 4)
+
+		for i := range respFwd.Leases {
+			require.Equal(t, respFwd.Leases[i].Uuid, respRev.Leases[len(respRev.Leases)-1-i].Uuid)
+		}
+	})
+
+	t.Run("reverse with state filter", func(t *testing.T) {
+		respFwd, err := querier.LeasesByTenant(f.Ctx, &types.QueryLeasesByTenantRequest{
+			Tenant:      tenant.String(),
+			StateFilter: types.LEASE_STATE_ACTIVE,
+		})
+		require.NoError(t, err)
+		require.Len(t, respFwd.Leases, 3)
+
+		respRev, err := querier.LeasesByTenant(f.Ctx, &types.QueryLeasesByTenantRequest{
+			Tenant:      tenant.String(),
+			StateFilter: types.LEASE_STATE_ACTIVE,
+			Pagination:  &query.PageRequest{Reverse: true},
+		})
+		require.NoError(t, err)
+		require.Len(t, respRev.Leases, 3)
+
+		for i := range respFwd.Leases {
+			require.Equal(t, respFwd.Leases[i].Uuid, respRev.Leases[len(respRev.Leases)-1-i].Uuid)
+		}
+	})
+
+	t.Run("reverse with limit and cursor", func(t *testing.T) {
+		// 4 leases total. Reverse with limit=2 should paginate: [3,2], [1,closed4]
+		// (reverse of forward order: [closed4, 1, 2, 3])
+		page1, err := querier.LeasesByTenant(f.Ctx, &types.QueryLeasesByTenantRequest{
+			Tenant:     tenant.String(),
+			Pagination: &query.PageRequest{Reverse: true, Limit: 2},
+		})
+		require.NoError(t, err)
+		require.Len(t, page1.Leases, 2)
+		require.NotEmpty(t, page1.Pagination.NextKey, "should have a next page cursor")
+
+		page2, err := querier.LeasesByTenant(f.Ctx, &types.QueryLeasesByTenantRequest{
+			Tenant:     tenant.String(),
+			Pagination: &query.PageRequest{Reverse: true, Key: page1.Pagination.NextKey, Limit: 2},
+		})
+		require.NoError(t, err)
+		require.Len(t, page2.Leases, 2)
+		require.Empty(t, page2.Pagination.NextKey, "last page should have no next cursor")
+
+		// Combine pages and verify they are the full reversed forward set
+		respFwd, err := querier.LeasesByTenant(f.Ctx, &types.QueryLeasesByTenantRequest{
+			Tenant: tenant.String(),
+		})
+		require.NoError(t, err)
+		require.Len(t, respFwd.Leases, 4)
+
+		allRev := append(page1.Leases, page2.Leases...)
+		for i := range respFwd.Leases {
+			require.Equal(t, respFwd.Leases[i].Uuid, allRev[len(allRev)-1-i].Uuid)
+		}
+	})
+}
+
+func TestQueryLeasesByProviderReverse(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	providerUUID := "01912345-6789-7abc-8def-0123456789ac"
+
+	// Create 4 active leases + 1 closed
+	for i := 1; i <= 4; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+		skuUUID := fmt.Sprintf("01912345-6789-7abc-8def-1%011d", i)
+
+		lease := types.Lease{
+			Uuid:         leaseUUID,
+			Tenant:       f.TestAccs[0].String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{
+				{
+					SkuUuid:     skuUUID,
+					Quantity:    1,
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+				},
+			},
+			State:     types.LEASE_STATE_ACTIVE,
+			CreatedAt: f.Ctx.BlockTime(),
+		}
+		err := k.SetLease(f.Ctx, lease)
+		require.NoError(t, err)
+	}
+
+	closedAt := f.Ctx.BlockTime()
+	err := k.SetLease(f.Ctx, types.Lease{
+		Uuid:         "01912345-6789-7abc-8def-000000000005",
+		Tenant:       f.TestAccs[0].String(),
+		ProviderUuid: providerUUID,
+		Items: []types.LeaseItem{
+			{
+				SkuUuid:     "01912345-6789-7abc-8def-100000000005",
+				Quantity:    1,
+				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+			},
+		},
+		State:     types.LEASE_STATE_CLOSED,
+		CreatedAt: f.Ctx.BlockTime(),
+		ClosedAt:  &closedAt,
+	})
+	require.NoError(t, err)
+
+	t.Run("reverse without state filter", func(t *testing.T) {
+		respFwd, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+			ProviderUuid: providerUUID,
+		})
+		require.NoError(t, err)
+		require.Len(t, respFwd.Leases, 5)
+
+		respRev, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+			ProviderUuid: providerUUID,
+			Pagination:   &query.PageRequest{Reverse: true},
+		})
+		require.NoError(t, err)
+		require.Len(t, respRev.Leases, 5)
+
+		for i := range respFwd.Leases {
+			require.Equal(t, respFwd.Leases[i].Uuid, respRev.Leases[len(respRev.Leases)-1-i].Uuid)
+		}
+	})
+
+	t.Run("reverse with state filter", func(t *testing.T) {
+		respFwd, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+			ProviderUuid: providerUUID,
+			StateFilter:  types.LEASE_STATE_ACTIVE,
+		})
+		require.NoError(t, err)
+		require.Len(t, respFwd.Leases, 4)
+
+		respRev, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+			ProviderUuid: providerUUID,
+			StateFilter:  types.LEASE_STATE_ACTIVE,
+			Pagination:   &query.PageRequest{Reverse: true},
+		})
+		require.NoError(t, err)
+		require.Len(t, respRev.Leases, 4)
+
+		for i := range respFwd.Leases {
+			require.Equal(t, respFwd.Leases[i].Uuid, respRev.Leases[len(respRev.Leases)-1-i].Uuid)
+		}
+	})
+}
+
+func TestQueryLeasesBySKUReverse(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+	providerUUID := testProviderUUID
+	skuUUID := "01912345-6789-7abc-8def-sku000000001"
+
+	// Create 5 leases with the same SKU for pagination testing
+	for i := 1; i <= 5; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-lease00000%02d", i)
+		lease := types.Lease{
+			Uuid:         leaseUUID,
+			Tenant:       tenant.String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{
+				{SkuUuid: skuUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))},
+			},
+			State:     types.LEASE_STATE_ACTIVE,
+			CreatedAt: f.Ctx.BlockTime(),
+		}
+		require.NoError(t, k.SetLease(f.Ctx, lease))
+	}
+
+	t.Run("full reverse", func(t *testing.T) {
+		respFwd, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: skuUUID,
+		})
+		require.NoError(t, err)
+		require.Len(t, respFwd.Leases, 5)
+
+		respRev, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid:    skuUUID,
+			Pagination: &query.PageRequest{Reverse: true},
+		})
+		require.NoError(t, err)
+		require.Len(t, respRev.Leases, 5)
+
+		for i := range respFwd.Leases {
+			require.Equal(t, respFwd.Leases[i].Uuid, respRev.Leases[len(respRev.Leases)-1-i].Uuid)
+		}
+	})
+
+	t.Run("reverse with limit and cursor", func(t *testing.T) {
+		// Page through all 5 leases in reverse with limit=2
+		page1, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid:    skuUUID,
+			Pagination: &query.PageRequest{Reverse: true, Limit: 2},
+		})
+		require.NoError(t, err)
+		require.Len(t, page1.Leases, 2)
+		require.NotEmpty(t, page1.Pagination.NextKey)
+
+		page2, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid:    skuUUID,
+			Pagination: &query.PageRequest{Reverse: true, Key: page1.Pagination.NextKey, Limit: 2},
+		})
+		require.NoError(t, err)
+		require.Len(t, page2.Leases, 2)
+		require.NotEmpty(t, page2.Pagination.NextKey)
+
+		page3, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid:    skuUUID,
+			Pagination: &query.PageRequest{Reverse: true, Key: page2.Pagination.NextKey, Limit: 2},
+		})
+		require.NoError(t, err)
+		require.Len(t, page3.Leases, 1)
+		require.Empty(t, page3.Pagination.NextKey, "last page should have no next cursor")
+
+		// Combine all pages and verify they match the full reverse set
+		respFwd, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: skuUUID,
+		})
+		require.NoError(t, err)
+
+		allRev := append(append(page1.Leases, page2.Leases...), page3.Leases...)
+		require.Len(t, allRev, len(respFwd.Leases))
+		for i := range respFwd.Leases {
+			require.Equal(t, respFwd.Leases[i].Uuid, allRev[len(allRev)-1-i].Uuid)
+		}
+	})
+}
+
+func TestQueryLeasesBySKUCountTotal(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+	providerUUID := testProviderUUID
+	skuUUID := "01912345-6789-7abc-8def-sku00count01"
+
+	// Create 5 leases with the same SKU
+	for i := 1; i <= 5; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-leasecount%02d", i)
+		lease := types.Lease{
+			Uuid:         leaseUUID,
+			Tenant:       tenant.String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{
+				{SkuUuid: skuUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))},
+			},
+			State:     types.LEASE_STATE_ACTIVE,
+			CreatedAt: f.Ctx.BlockTime(),
+		}
+		require.NoError(t, k.SetLease(f.Ctx, lease))
+	}
+
+	t.Run("countTotal with limit", func(t *testing.T) {
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid:    skuUUID,
+			Pagination: &query.PageRequest{Limit: 2, CountTotal: true},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Leases, 2)
+		require.Equal(t, uint64(5), resp.Pagination.Total)
+		require.NotEmpty(t, resp.Pagination.NextKey)
+	})
+
+	t.Run("countTotal cursor continues correctly", func(t *testing.T) {
+		// Page 1 with countTotal
+		page1, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid:    skuUUID,
+			Pagination: &query.PageRequest{Limit: 2, CountTotal: true},
+		})
+		require.NoError(t, err)
+		require.Len(t, page1.Leases, 2)
+		require.NotEmpty(t, page1.Pagination.NextKey)
+
+		// Page 2 using cursor from page 1
+		page2, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid:    skuUUID,
+			Pagination: &query.PageRequest{Limit: 2, Key: page1.Pagination.NextKey},
+		})
+		require.NoError(t, err)
+		require.Len(t, page2.Leases, 2)
+		require.NotEmpty(t, page2.Pagination.NextKey)
+
+		// Page 3
+		page3, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid:    skuUUID,
+			Pagination: &query.PageRequest{Limit: 2, Key: page2.Pagination.NextKey},
+		})
+		require.NoError(t, err)
+		require.Len(t, page3.Leases, 1)
+		require.Empty(t, page3.Pagination.NextKey)
+
+		// Verify all 5 leases were returned across pages with no duplicates
+		allUUIDs := make(map[string]bool)
+		for _, l := range page1.Leases {
+			allUUIDs[l.Uuid] = true
+		}
+		for _, l := range page2.Leases {
+			allUUIDs[l.Uuid] = true
+		}
+		for _, l := range page3.Leases {
+			allUUIDs[l.Uuid] = true
+		}
+		require.Len(t, allUUIDs, 5, "all 5 leases should be returned across pages with no duplicates")
+	})
+}
+
 func TestQueryCreditAccount(t *testing.T) {
 	f := initFixture(t)
 
