@@ -8,7 +8,7 @@ Manifest Ledger is a Cosmos SDK-based blockchain for decentralized AI infrastruc
 
 **Binary**: `manifestd`
 **Bech32 Prefix**: `manifest`
-**Go Version**: 1.25.6
+**Go Version**: 1.25.7
 
 ## Build Commands
 
