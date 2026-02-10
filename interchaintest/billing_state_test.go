@@ -1286,7 +1286,7 @@ func testParamUpperBoundsIndependent(t *testing.T, ctx context.Context, tc *bill
 	p := params.Params
 
 	t.Run("fail: max_leases_per_tenant exceeds upper bound", func(t *testing.T) {
-		res, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
+		_, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
 			billingtypes.MaxLeasesPerTenantUpperBound+1,
 			p.MaxItemsPerLease,
 			p.MinLeaseDuration,
@@ -1294,16 +1294,13 @@ func testParamUpperBoundsIndependent(t *testing.T, ctx context.Context, tc *bill
 			p.PendingTimeout,
 			nil,
 		)
-		require.NoError(t, err)
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.NotEqual(t, uint32(0), txRes.Code, "should reject max_leases_per_tenant exceeding upper bound")
-		require.Contains(t, txRes.RawLog, "exceeds upper bound")
+		require.Error(t, err, "should reject max_leases_per_tenant exceeding upper bound")
+		require.Contains(t, err.Error(), "exceeds upper bound")
 		t.Logf("Correctly rejected max_leases_per_tenant=%d (upper bound=%d)", billingtypes.MaxLeasesPerTenantUpperBound+1, billingtypes.MaxLeasesPerTenantUpperBound)
 	})
 
 	t.Run("fail: min_lease_duration exceeds upper bound", func(t *testing.T) {
-		res, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
+		_, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
 			p.MaxLeasesPerTenant,
 			p.MaxItemsPerLease,
 			billingtypes.MaxMinLeaseDuration+1,
@@ -1311,16 +1308,13 @@ func testParamUpperBoundsIndependent(t *testing.T, ctx context.Context, tc *bill
 			p.PendingTimeout,
 			nil,
 		)
-		require.NoError(t, err)
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.NotEqual(t, uint32(0), txRes.Code, "should reject min_lease_duration exceeding upper bound")
-		require.Contains(t, txRes.RawLog, "exceeds upper bound")
+		require.Error(t, err, "should reject min_lease_duration exceeding upper bound")
+		require.Contains(t, err.Error(), "exceeds upper bound")
 		t.Logf("Correctly rejected min_lease_duration=%d (upper bound=%d)", billingtypes.MaxMinLeaseDuration+1, billingtypes.MaxMinLeaseDuration)
 	})
 
 	t.Run("fail: max_pending_leases_per_tenant exceeds upper bound", func(t *testing.T) {
-		res, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
+		_, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
 			p.MaxLeasesPerTenant,
 			p.MaxItemsPerLease,
 			p.MinLeaseDuration,
@@ -1328,11 +1322,8 @@ func testParamUpperBoundsIndependent(t *testing.T, ctx context.Context, tc *bill
 			p.PendingTimeout,
 			nil,
 		)
-		require.NoError(t, err)
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.NotEqual(t, uint32(0), txRes.Code, "should reject max_pending_leases_per_tenant exceeding upper bound")
-		require.Contains(t, txRes.RawLog, "exceeds upper bound")
+		require.Error(t, err, "should reject max_pending_leases_per_tenant exceeding upper bound")
+		require.Contains(t, err.Error(), "exceeds upper bound")
 		t.Logf("Correctly rejected max_pending_leases_per_tenant=%d (upper bound=%d)", billingtypes.MaxPendingLeasesPerTenantUpperBound+1, billingtypes.MaxPendingLeasesPerTenantUpperBound)
 	})
 
