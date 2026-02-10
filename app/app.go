@@ -1,12 +1,13 @@
 package app
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/spf13/cast"
 
@@ -1112,8 +1113,8 @@ func (app *ManifestApp) GetStoreKeys() []storetypes.StoreKey {
 	for _, key := range app.keys {
 		keys = append(keys, key)
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i].Name() < keys[j].Name()
+	slices.SortFunc(keys, func(a, b storetypes.StoreKey) int {
+		return cmp.Compare(a.Name(), b.Name())
 	})
 	return keys
 }

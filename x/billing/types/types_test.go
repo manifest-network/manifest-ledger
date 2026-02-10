@@ -91,6 +91,17 @@ func TestParams_Validate(t *testing.T) {
 			errMsg:    "max_leases_per_tenant must be greater than zero",
 		},
 		{
+			name:      "max leases per tenant exceeds upper bound",
+			params:    types.NewParams(types.MaxLeasesPerTenantUpperBound+1, []string{}, 20, 3600, 10, 1800),
+			expectErr: true,
+			errMsg:    "exceeds upper bound",
+		},
+		{
+			name:      "max leases per tenant at upper bound",
+			params:    types.NewParams(types.MaxLeasesPerTenantUpperBound, []string{}, 20, 3600, 10, 1800),
+			expectErr: false,
+		},
+		{
 			name:      "zero max items per lease",
 			params:    types.NewParams(10, []string{}, 0, 3600, 10, 1800),
 			expectErr: true,
@@ -112,6 +123,28 @@ func TestParams_Validate(t *testing.T) {
 			params:    types.NewParams(10, []string{}, 20, 0, 10, 1800),
 			expectErr: true,
 			errMsg:    "min_lease_duration must be greater than zero",
+		},
+		{
+			name:      "min lease duration exceeds upper bound",
+			params:    types.NewParams(10, []string{}, 20, types.MaxMinLeaseDuration+1, 10, 1800),
+			expectErr: true,
+			errMsg:    "exceeds upper bound",
+		},
+		{
+			name:      "min lease duration at upper bound",
+			params:    types.NewParams(10, []string{}, 20, types.MaxMinLeaseDuration, 10, 1800),
+			expectErr: false,
+		},
+		{
+			name:      "max pending leases per tenant exceeds upper bound",
+			params:    types.NewParams(10, []string{}, 20, 3600, types.MaxPendingLeasesPerTenantUpperBound+1, 1800),
+			expectErr: true,
+			errMsg:    "exceeds upper bound",
+		},
+		{
+			name:      "max pending leases per tenant at upper bound",
+			params:    types.NewParams(10, []string{}, 20, 3600, types.MaxPendingLeasesPerTenantUpperBound, 1800),
+			expectErr: false,
 		},
 		{
 			name:      "valid params with allowed list",

@@ -291,7 +291,7 @@ func ValidatePriceDivisibility(unit Unit, price sdk.Coin) error {
 - Cannot create SKU for non-existent provider
 - Cannot create SKU for inactive provider
 - Can update SKU to reference different active provider
-- Deactivating provider does not affect existing SKUs
+- Deactivating provider cascades to deactivate all its SKUs (paginated for gas safety)
 
 ## Events and Error Codes
 

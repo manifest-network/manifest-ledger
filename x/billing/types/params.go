@@ -31,6 +31,15 @@ const MinPendingTimeout = uint64(60)
 // MaxPendingTimeout is the maximum allowed pending timeout (24 hours).
 const MaxPendingTimeout = uint64(86400)
 
+// MaxLeasesPerTenantUpperBound is the maximum allowed value for max_leases_per_tenant (10,000).
+const MaxLeasesPerTenantUpperBound = uint64(10_000)
+
+// MaxPendingLeasesPerTenantUpperBound is the maximum allowed value for max_pending_leases_per_tenant (1,000).
+const MaxPendingLeasesPerTenantUpperBound = uint64(1_000)
+
+// MaxMinLeaseDuration is the maximum allowed value for min_lease_duration (30 days).
+const MaxMinLeaseDuration = uint64(30 * 24 * 3600)
+
 // DefaultParams returns the default billing module parameters.
 func DefaultParams() Params {
 	return Params{
@@ -61,6 +70,10 @@ func (p *Params) Validate() error {
 		return ErrInvalidParams.Wrap("max_leases_per_tenant must be greater than zero")
 	}
 
+	if p.MaxLeasesPerTenant > MaxLeasesPerTenantUpperBound {
+		return ErrInvalidParams.Wrapf("max_leases_per_tenant %d exceeds upper bound of %d", p.MaxLeasesPerTenant, MaxLeasesPerTenantUpperBound)
+	}
+
 	if p.MaxItemsPerLease == 0 {
 		return ErrInvalidParams.Wrap("max_items_per_lease must be greater than zero")
 	}
@@ -73,8 +86,16 @@ func (p *Params) Validate() error {
 		return ErrInvalidParams.Wrap("min_lease_duration must be greater than zero")
 	}
 
+	if p.MinLeaseDuration > MaxMinLeaseDuration {
+		return ErrInvalidParams.Wrapf("min_lease_duration %d exceeds upper bound of %d seconds (30 days)", p.MinLeaseDuration, MaxMinLeaseDuration)
+	}
+
 	if p.MaxPendingLeasesPerTenant == 0 {
 		return ErrInvalidParams.Wrap("max_pending_leases_per_tenant must be greater than zero")
+	}
+
+	if p.MaxPendingLeasesPerTenant > MaxPendingLeasesPerTenantUpperBound {
+		return ErrInvalidParams.Wrapf("max_pending_leases_per_tenant %d exceeds upper bound of %d", p.MaxPendingLeasesPerTenant, MaxPendingLeasesPerTenantUpperBound)
 	}
 
 	if p.PendingTimeout < MinPendingTimeout {

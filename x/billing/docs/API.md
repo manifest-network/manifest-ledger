@@ -1302,7 +1302,7 @@ curl http://localhost:1317/liftedinit/billing/v1/lease/01912345-6789-7abc-8def-0
 
 **List Active Leases:**
 ```bash
-curl "http://localhost:1317/liftedinit/billing/v1/leases?state=active&pagination.limit=10"
+curl "http://localhost:1317/liftedinit/billing/v1/leases?state_filter=2&pagination.limit=10"
 ```
 
 **Get Credit Account:**

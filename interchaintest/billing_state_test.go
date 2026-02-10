@@ -1,7 +1,7 @@
 // Package interchaintest contains end-to-end tests for the billing module.
 // This file contains state, validation, and edge case tests: EdgeCases, PendingLeaseExpiration,
 // StateIndexQueries, MaxLeaseLimits, LeaseAcknowledgeEdgeCases, LeasePagination,
-// InvalidUUID, EmptyParams, LeasesBySKUQuery, ProviderByAddressQuery.
+// InvalidUUID, EmptyParams, LeasesBySKUQuery, ProviderByAddressQuery, ParamUpperBounds.
 package interchaintest
 
 import (
@@ -64,6 +64,9 @@ func TestBillingState(t *testing.T) {
 	})
 	t.Run("ProviderByAddressQuery", func(t *testing.T) {
 		testProviderByAddressQueryIndependent(t, ctx, tc)
+	})
+	t.Run("ParamUpperBounds", func(t *testing.T) {
+		testParamUpperBoundsIndependent(t, ctx, tc)
 	})
 }
 
@@ -1271,6 +1274,113 @@ func testLeasesBySKUQueryIndependent(t *testing.T, ctx context.Context, tc *bill
 	// Clean up - close the lease
 	_, err = helpers.BillingCloseLease(ctx, tc.chain, tenant, leaseUUID)
 	require.NoError(t, err)
+}
+
+// testParamUpperBoundsIndependent tests that parameter upper bounds are enforced via MsgUpdateParams.
+func testParamUpperBoundsIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+	t.Log("=== Testing Parameter Upper Bounds ===")
+
+	// Get current params to use as baseline
+	params, err := helpers.BillingQueryParams(ctx, tc.chain)
+	require.NoError(t, err)
+	p := params.Params
+
+	t.Run("fail: max_leases_per_tenant exceeds upper bound", func(t *testing.T) {
+		res, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
+			billingtypes.MaxLeasesPerTenantUpperBound+1,
+			p.MaxItemsPerLease,
+			p.MinLeaseDuration,
+			p.MaxPendingLeasesPerTenant,
+			p.PendingTimeout,
+			nil,
+		)
+		require.NoError(t, err)
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "should reject max_leases_per_tenant exceeding upper bound")
+		require.Contains(t, txRes.RawLog, "exceeds upper bound")
+		t.Logf("Correctly rejected max_leases_per_tenant=%d (upper bound=%d)", billingtypes.MaxLeasesPerTenantUpperBound+1, billingtypes.MaxLeasesPerTenantUpperBound)
+	})
+
+	t.Run("fail: min_lease_duration exceeds upper bound", func(t *testing.T) {
+		res, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
+			p.MaxLeasesPerTenant,
+			p.MaxItemsPerLease,
+			billingtypes.MaxMinLeaseDuration+1,
+			p.MaxPendingLeasesPerTenant,
+			p.PendingTimeout,
+			nil,
+		)
+		require.NoError(t, err)
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "should reject min_lease_duration exceeding upper bound")
+		require.Contains(t, txRes.RawLog, "exceeds upper bound")
+		t.Logf("Correctly rejected min_lease_duration=%d (upper bound=%d)", billingtypes.MaxMinLeaseDuration+1, billingtypes.MaxMinLeaseDuration)
+	})
+
+	t.Run("fail: max_pending_leases_per_tenant exceeds upper bound", func(t *testing.T) {
+		res, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
+			p.MaxLeasesPerTenant,
+			p.MaxItemsPerLease,
+			p.MinLeaseDuration,
+			billingtypes.MaxPendingLeasesPerTenantUpperBound+1,
+			p.PendingTimeout,
+			nil,
+		)
+		require.NoError(t, err)
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "should reject max_pending_leases_per_tenant exceeding upper bound")
+		require.Contains(t, txRes.RawLog, "exceeds upper bound")
+		t.Logf("Correctly rejected max_pending_leases_per_tenant=%d (upper bound=%d)", billingtypes.MaxPendingLeasesPerTenantUpperBound+1, billingtypes.MaxPendingLeasesPerTenantUpperBound)
+	})
+
+	t.Run("success: params unchanged after rejected updates", func(t *testing.T) {
+		after, err := helpers.BillingQueryParams(ctx, tc.chain)
+		require.NoError(t, err)
+		require.Equal(t, p.MaxLeasesPerTenant, after.Params.MaxLeasesPerTenant, "max_leases_per_tenant should be unchanged")
+		require.Equal(t, p.MinLeaseDuration, after.Params.MinLeaseDuration, "min_lease_duration should be unchanged")
+		require.Equal(t, p.MaxPendingLeasesPerTenant, after.Params.MaxPendingLeasesPerTenant, "max_pending_leases_per_tenant should be unchanged")
+		t.Log("Params correctly unchanged after all rejected updates")
+	})
+
+	t.Run("success: values at upper bound are accepted", func(t *testing.T) {
+		res, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
+			billingtypes.MaxLeasesPerTenantUpperBound,
+			p.MaxItemsPerLease,
+			billingtypes.MaxMinLeaseDuration,
+			billingtypes.MaxPendingLeasesPerTenantUpperBound,
+			p.PendingTimeout,
+			nil,
+		)
+		require.NoError(t, err)
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "params at upper bound should be accepted: %s", txRes.RawLog)
+
+		// Verify the update took effect
+		updated, err := helpers.BillingQueryParams(ctx, tc.chain)
+		require.NoError(t, err)
+		require.Equal(t, billingtypes.MaxLeasesPerTenantUpperBound, updated.Params.MaxLeasesPerTenant)
+		require.Equal(t, billingtypes.MaxMinLeaseDuration, updated.Params.MinLeaseDuration)
+		require.Equal(t, billingtypes.MaxPendingLeasesPerTenantUpperBound, updated.Params.MaxPendingLeasesPerTenant)
+		t.Log("Params at upper bound correctly accepted")
+
+		// Restore original params
+		res, err = helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
+			p.MaxLeasesPerTenant,
+			p.MaxItemsPerLease,
+			p.MinLeaseDuration,
+			p.MaxPendingLeasesPerTenant,
+			p.PendingTimeout,
+			nil,
+		)
+		require.NoError(t, err)
+		txRes, err = tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "restoring original params should succeed: %s", txRes.RawLog)
+	})
 }
 
 // testProviderByAddressQueryIndependent tests the provider-by-address query in the SKU module.

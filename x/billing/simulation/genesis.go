@@ -60,9 +60,7 @@ func GetGenesisStateFromAppState(cdc codec.JSONCodec, appState map[string]json.R
 
 // RandomAccounts returns a slice of random simulation accounts.
 func RandomAccounts(r *rand.Rand, accs []simtypes.Account, n int) []simtypes.Account {
-	if n > len(accs) {
-		n = len(accs)
-	}
+	n = min(n, len(accs))
 
 	result := make([]simtypes.Account, n)
 	perm := r.Perm(len(accs))

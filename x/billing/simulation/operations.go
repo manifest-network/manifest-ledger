@@ -301,9 +301,7 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 			}
 		}
 
-		if len(providerSKUs) < numItems {
-			numItems = len(providerSKUs)
-		}
+		numItems = min(numItems, len(providerSKUs))
 
 		// Shuffle and pick unique SKUs
 		r.Shuffle(len(providerSKUs), func(i, j int) {
@@ -394,9 +392,7 @@ func SimulateMsgCreateLeaseForTenant(txGen client.TxConfig, k keeper.Keeper, sk 
 			}
 		}
 
-		if len(providerSKUs) < numItems {
-			numItems = len(providerSKUs)
-		}
+		numItems = min(numItems, len(providerSKUs))
 
 		// Shuffle and pick unique SKUs
 		r.Shuffle(len(providerSKUs), func(i, j int) {
@@ -759,9 +755,7 @@ func simulateSpecificLeaseWithdraw(
 	}
 
 	numLeases := r.Intn(3) + 1
-	if numLeases > len(providerLeases) {
-		numLeases = len(providerLeases)
-	}
+	numLeases = min(numLeases, len(providerLeases))
 
 	// Shuffle and pick
 	r.Shuffle(len(providerLeases), func(i, j int) {

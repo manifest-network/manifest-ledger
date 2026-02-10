@@ -324,6 +324,54 @@ func TestMsgUpdateParams(t *testing.T) {
 			expectErr: true,
 			errMsg:    "max_leases_per_tenant must be greater than zero",
 		},
+		{
+			name: "fail: max_leases_per_tenant exceeds upper bound",
+			msg: &types.MsgUpdateParams{
+				Authority: authority.String(),
+				Params: types.NewParams(
+					types.MaxLeasesPerTenantUpperBound+1,
+					[]string{},
+					20,
+					3600,
+					10,
+					1800,
+				),
+			},
+			expectErr: true,
+			errMsg:    "exceeds upper bound",
+		},
+		{
+			name: "fail: min_lease_duration exceeds upper bound",
+			msg: &types.MsgUpdateParams{
+				Authority: authority.String(),
+				Params: types.NewParams(
+					100,
+					[]string{},
+					20,
+					types.MaxMinLeaseDuration+1,
+					10,
+					1800,
+				),
+			},
+			expectErr: true,
+			errMsg:    "exceeds upper bound",
+		},
+		{
+			name: "fail: max_pending_leases_per_tenant exceeds upper bound",
+			msg: &types.MsgUpdateParams{
+				Authority: authority.String(),
+				Params: types.NewParams(
+					100,
+					[]string{},
+					20,
+					3600,
+					types.MaxPendingLeasesPerTenantUpperBound+1,
+					1800,
+				),
+			},
+			expectErr: true,
+			errMsg:    "exceeds upper bound",
+		},
 	}
 
 	for _, tc := range tests {

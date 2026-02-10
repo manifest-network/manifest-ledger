@@ -528,9 +528,7 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 			} else {
 				duration = math.MaxUint64
 			}
-			if duration < estimatedDurationSeconds {
-				estimatedDurationSeconds = duration
-			}
+			estimatedDurationSeconds = min(estimatedDurationSeconds, duration)
 		}
 
 		// If we never found a matching denom, set to 0
@@ -560,7 +558,7 @@ func paginateSKUIndex(
 	defer iter.Close()
 
 	// Default pagination values
-	limit := uint64(100)
+	limit := uint64(query.DefaultLimit)
 	offset := uint64(0)
 	countTotal := false
 	var startKey []byte
