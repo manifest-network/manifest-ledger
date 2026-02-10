@@ -14,20 +14,24 @@ import (
 )
 
 // parseLeaseState parses a string into a LeaseState enum value.
-func parseLeaseState(s string) types.LeaseState {
+// An empty string returns LEASE_STATE_UNSPECIFIED (no filter).
+// A non-empty string that doesn't match a known state returns an error.
+func parseLeaseState(s string) (types.LeaseState, error) {
 	switch strings.ToLower(s) {
+	case "":
+		return types.LEASE_STATE_UNSPECIFIED, nil
 	case "pending":
-		return types.LEASE_STATE_PENDING
+		return types.LEASE_STATE_PENDING, nil
 	case "active":
-		return types.LEASE_STATE_ACTIVE
+		return types.LEASE_STATE_ACTIVE, nil
 	case "closed":
-		return types.LEASE_STATE_CLOSED
+		return types.LEASE_STATE_CLOSED, nil
 	case "rejected":
-		return types.LEASE_STATE_REJECTED
+		return types.LEASE_STATE_REJECTED, nil
 	case "expired":
-		return types.LEASE_STATE_EXPIRED
+		return types.LEASE_STATE_EXPIRED, nil
 	default:
-		return types.LEASE_STATE_UNSPECIFIED
+		return types.LEASE_STATE_UNSPECIFIED, fmt.Errorf("unknown lease state %q: valid values are pending, active, closed, rejected, expired", s)
 	}
 }
 
@@ -139,7 +143,10 @@ func GetLeasesCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			stateFilter := parseLeaseState(stateStr)
+			stateFilter, err := parseLeaseState(stateStr)
+			if err != nil {
+				return err
+			}
 
 			pageReq, err := client.ReadPageRequest(cmd.Flags())
 			if err != nil {
@@ -184,7 +191,10 @@ func GetLeasesByTenantCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			stateFilter := parseLeaseState(stateStr)
+			stateFilter, err := parseLeaseState(stateStr)
+			if err != nil {
+				return err
+			}
 
 			pageReq, err := client.ReadPageRequest(cmd.Flags())
 			if err != nil {
@@ -235,7 +245,10 @@ func GetLeasesByProviderCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			stateFilter := parseLeaseState(stateStr)
+			stateFilter, err := parseLeaseState(stateStr)
+			if err != nil {
+				return err
+			}
 
 			pageReq, err := client.ReadPageRequest(cmd.Flags())
 			if err != nil {
@@ -405,7 +418,7 @@ provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 500`,
 		},
 	}
 
-	cmd.Flags().Uint64("limit", 0, "Maximum leases to process (default: 100, max: 1000)")
+	cmd.Flags().Uint64("limit", 0, "Maximum leases to process; 0 means server default of 100 (max: 1000)")
 	flags.AddQueryFlagsToCmd(cmd)
 
 	return cmd
@@ -475,7 +488,10 @@ Use pagination flags (--limit, --page-key) to page through results.`,
 			if err != nil {
 				return err
 			}
-			stateFilter := parseLeaseState(stateStr)
+			stateFilter, err := parseLeaseState(stateStr)
+			if err != nil {
+				return err
+			}
 
 			pageReq, err := client.ReadPageRequest(cmd.Flags())
 			if err != nil {
