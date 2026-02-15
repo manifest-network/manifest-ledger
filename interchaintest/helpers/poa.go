@@ -13,3 +13,8 @@ func POASetPower(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet
 	cmd := TxCommandBuilder(ctx, chain, []string{"tx", "poa", "set-power", valoper, fmt.Sprintf("%d", power)}, user.KeyName(), flags...)
 	return ExecuteTransaction(ctx, chain, cmd)
 }
+
+func POACreateValidator(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, jsonPath string, flags ...string) (sdk.TxResponse, error) {
+	cmd := TxCommandBuilder(ctx, chain, []string{"tx", "poa", "create-validator", jsonPath}, user.KeyName(), flags...)
+	return ExecuteTransaction(ctx, chain, cmd)
+}

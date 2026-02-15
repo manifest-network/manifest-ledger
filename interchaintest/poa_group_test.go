@@ -22,6 +22,7 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
+	poatypes "github.com/strangelove-ventures/poa"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 	"github.com/stretchr/testify/require"
 
@@ -567,6 +568,51 @@ func createTfMetadata(base, denom, display, name, symbol, description string) ba
 				Exponent: 6,
 				Aliases:  []string{denom},
 			},
+		},
+	}
+}
+
+func createValidator(monicker, valAddr string, pubkey *types.Any) poatypes.MsgCreateValidator {
+	return poatypes.MsgCreateValidator{
+		Description: poatypes.Description{
+			Moniker:         monicker,
+			Identity:        "",
+			Website:         "",
+			SecurityContact: "",
+			Details:         "validator",
+		},
+		Commission:        poatypes.NewCommissionRates(sdkmath.LegacyMustNewDecFromStr("0"), sdkmath.LegacyMustNewDecFromStr("0.2"), sdkmath.LegacyMustNewDecFromStr("0.01")),
+		MinSelfDelegation: sdkmath.NewInt(1),
+		Pubkey:            pubkey,
+		ValidatorAddress:  valAddr,
+	}
+}
+
+func createSetPowerProposal(sender, valAddr string, power int64, unsafe bool) poatypes.MsgSetPower {
+	return poatypes.MsgSetPower{
+		Sender:           sender,
+		ValidatorAddress: valAddr,
+		Power:            uint64(power),
+		Unsafe:           unsafe,
+	}
+}
+
+func createRemoveValidatorProposal(sender, valAddr string) poatypes.MsgRemoveValidator {
+	return poatypes.MsgRemoveValidator{
+		Sender:           sender,
+		ValidatorAddress: valAddr,
+	}
+}
+
+func createSetStakingParamsProposal(sender string, unbondingTime time.Duration, maxValidators uint32, maxEntries uint32, historicalEntries uint32, bondDenom string) poatypes.MsgUpdateStakingParams {
+	return poatypes.MsgUpdateStakingParams{
+		Sender: sender,
+		Params: poatypes.StakingParams{
+			UnbondingTime:     unbondingTime,
+			MaxValidators:     maxValidators,
+			MaxEntries:        maxEntries,
+			HistoricalEntries: historicalEntries,
+			BondDenom:         bondDenom,
 		},
 	}
 }
