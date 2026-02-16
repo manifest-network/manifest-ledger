@@ -16,37 +16,37 @@ message Params {
 
   // max_leases_per_tenant is the maximum number of active leases a tenant can have.
   // Must be greater than zero.
-  uint64 max_leases_per_tenant = 3
+  uint64 max_leases_per_tenant = 1
       [(gogoproto.jsontag) = "max_leases_per_tenant,omitempty,string"];
 
   // allowed_list is the list of addresses allowed to create leases on behalf of tenants
   // in addition to the module authority.
-  repeated string allowed_list = 4 [
+  repeated string allowed_list = 2 [
     (cosmos_proto.scalar) = "cosmos.AddressString",
     (gogoproto.jsontag) = "allowed_list,omitempty"
   ];
 
   // max_items_per_lease is the maximum number of items (SKUs) allowed in a single lease.
   // Must be greater than zero. Prevents excessive gas consumption from large leases.
-  uint64 max_items_per_lease = 5
+  uint64 max_items_per_lease = 3
       [(gogoproto.jsontag) = "max_items_per_lease,omitempty,string"];
 
   // min_lease_duration is the minimum duration (in seconds) that a tenant's credit balance
   // must be able to cover when creating a lease. This prevents tenants from creating leases
   // that would immediately exhaust their credit. Default is 3600 (1 hour).
-  uint64 min_lease_duration = 6
+  uint64 min_lease_duration = 4
       [(gogoproto.jsontag) = "min_lease_duration,omitempty,string"];
 
   // max_pending_leases_per_tenant is the maximum number of PENDING leases a tenant can have.
   // Prevents spam attacks where tenants create many leases that providers must process.
   // Default is 10.
-  uint64 max_pending_leases_per_tenant = 7
+  uint64 max_pending_leases_per_tenant = 5
       [(gogoproto.jsontag) = "max_pending_leases_per_tenant,omitempty,string"];
 
   // pending_timeout is the duration in seconds that a lease can remain in PENDING state
   // before it expires. Applies globally to all providers. Default is 1800 (30 minutes).
   // Must be between 60 (1 minute) and 86400 (24 hours).
-  uint64 pending_timeout = 8
+  uint64 pending_timeout = 6
       [(gogoproto.jsontag) = "pending_timeout,omitempty,string"];
 }
 

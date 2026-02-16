@@ -10333,6 +10333,8 @@ type LeaseItemInput struct {
 	// quantity is the number of instances.
 	Quantity uint64 `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	// service_name is an optional DNS-label identifier for this item within a stack deployment.
+	// Must be a valid RFC 1123 DNS label: 1-63 lowercase alphanumeric characters or hyphens,
+	// must not start or end with a hyphen (e.g., "web", "db", "my-service-1").
 	// When used, all items must have a service_name and uniqueness shifts from sku_uuid to service_name.
 	ServiceName string `protobuf:"bytes,3,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
 }

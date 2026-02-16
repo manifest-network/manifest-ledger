@@ -17,49 +17,49 @@ import (
 	sync "sync"
 )
 
-var _ protoreflect.List = (*_Params_4_list)(nil)
+var _ protoreflect.List = (*_Params_2_list)(nil)
 
-type _Params_4_list struct {
+type _Params_2_list struct {
 	list *[]string
 }
 
-func (x *_Params_4_list) Len() int {
+func (x *_Params_2_list) Len() int {
 	if x.list == nil {
 		return 0
 	}
 	return len(*x.list)
 }
 
-func (x *_Params_4_list) Get(i int) protoreflect.Value {
+func (x *_Params_2_list) Get(i int) protoreflect.Value {
 	return protoreflect.ValueOfString((*x.list)[i])
 }
 
-func (x *_Params_4_list) Set(i int, value protoreflect.Value) {
+func (x *_Params_2_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.String()
 	concreteValue := valueUnwrapped
 	(*x.list)[i] = concreteValue
 }
 
-func (x *_Params_4_list) Append(value protoreflect.Value) {
+func (x *_Params_2_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.String()
 	concreteValue := valueUnwrapped
 	*x.list = append(*x.list, concreteValue)
 }
 
-func (x *_Params_4_list) AppendMutable() protoreflect.Value {
+func (x *_Params_2_list) AppendMutable() protoreflect.Value {
 	panic(fmt.Errorf("AppendMutable can not be called on message Params at list field AllowedList as it is not of Message kind"))
 }
 
-func (x *_Params_4_list) Truncate(n int) {
+func (x *_Params_2_list) Truncate(n int) {
 	*x.list = (*x.list)[:n]
 }
 
-func (x *_Params_4_list) NewElement() protoreflect.Value {
+func (x *_Params_2_list) NewElement() protoreflect.Value {
 	v := ""
 	return protoreflect.ValueOfString(v)
 }
 
-func (x *_Params_4_list) IsValid() bool {
+func (x *_Params_2_list) IsValid() bool {
 	return x.list != nil
 }
 
@@ -156,7 +156,7 @@ func (x *fastReflection_Params) Range(f func(protoreflect.FieldDescriptor, proto
 		}
 	}
 	if len(x.AllowedList) != 0 {
-		value := protoreflect.ValueOfList(&_Params_4_list{list: &x.AllowedList})
+		value := protoreflect.ValueOfList(&_Params_2_list{list: &x.AllowedList})
 		if !f(fd_Params_allowed_list, value) {
 			return
 		}
@@ -261,9 +261,9 @@ func (x *fastReflection_Params) Get(descriptor protoreflect.FieldDescriptor) pro
 		return protoreflect.ValueOfUint64(value)
 	case "liftedinit.billing.v1.Params.allowed_list":
 		if len(x.AllowedList) == 0 {
-			return protoreflect.ValueOfList(&_Params_4_list{})
+			return protoreflect.ValueOfList(&_Params_2_list{})
 		}
-		listValue := &_Params_4_list{list: &x.AllowedList}
+		listValue := &_Params_2_list{list: &x.AllowedList}
 		return protoreflect.ValueOfList(listValue)
 	case "liftedinit.billing.v1.Params.max_items_per_lease":
 		value := x.MaxItemsPerLease
@@ -301,7 +301,7 @@ func (x *fastReflection_Params) Set(fd protoreflect.FieldDescriptor, value proto
 		x.MaxLeasesPerTenant = value.Uint()
 	case "liftedinit.billing.v1.Params.allowed_list":
 		lv := value.List()
-		clv := lv.(*_Params_4_list)
+		clv := lv.(*_Params_2_list)
 		x.AllowedList = *clv.list
 	case "liftedinit.billing.v1.Params.max_items_per_lease":
 		x.MaxItemsPerLease = value.Uint()
@@ -335,7 +335,7 @@ func (x *fastReflection_Params) Mutable(fd protoreflect.FieldDescriptor) protore
 		if x.AllowedList == nil {
 			x.AllowedList = []string{}
 		}
-		value := &_Params_4_list{list: &x.AllowedList}
+		value := &_Params_2_list{list: &x.AllowedList}
 		return protoreflect.ValueOfList(value)
 	case "liftedinit.billing.v1.Params.max_leases_per_tenant":
 		panic(fmt.Errorf("field max_leases_per_tenant of message liftedinit.billing.v1.Params is not mutable"))
@@ -364,7 +364,7 @@ func (x *fastReflection_Params) NewField(fd protoreflect.FieldDescriptor) protor
 		return protoreflect.ValueOfUint64(uint64(0))
 	case "liftedinit.billing.v1.Params.allowed_list":
 		list := []string{}
-		return protoreflect.ValueOfList(&_Params_4_list{list: &list})
+		return protoreflect.ValueOfList(&_Params_2_list{list: &list})
 	case "liftedinit.billing.v1.Params.max_items_per_lease":
 		return protoreflect.ValueOfUint64(uint64(0))
 	case "liftedinit.billing.v1.Params.min_lease_duration":
@@ -495,22 +495,22 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 		if x.PendingTimeout != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.PendingTimeout))
 			i--
-			dAtA[i] = 0x40
+			dAtA[i] = 0x30
 		}
 		if x.MaxPendingLeasesPerTenant != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.MaxPendingLeasesPerTenant))
 			i--
-			dAtA[i] = 0x38
+			dAtA[i] = 0x28
 		}
 		if x.MinLeaseDuration != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.MinLeaseDuration))
 			i--
-			dAtA[i] = 0x30
+			dAtA[i] = 0x20
 		}
 		if x.MaxItemsPerLease != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.MaxItemsPerLease))
 			i--
-			dAtA[i] = 0x28
+			dAtA[i] = 0x18
 		}
 		if len(x.AllowedList) > 0 {
 			for iNdEx := len(x.AllowedList) - 1; iNdEx >= 0; iNdEx-- {
@@ -518,13 +518,13 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 				copy(dAtA[i:], x.AllowedList[iNdEx])
 				i = runtime.EncodeVarint(dAtA, i, uint64(len(x.AllowedList[iNdEx])))
 				i--
-				dAtA[i] = 0x22
+				dAtA[i] = 0x12
 			}
 		}
 		if x.MaxLeasesPerTenant != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.MaxLeasesPerTenant))
 			i--
-			dAtA[i] = 0x18
+			dAtA[i] = 0x8
 		}
 		if input.Buf != nil {
 			input.Buf = append(input.Buf, dAtA...)
@@ -575,7 +575,7 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: Params: illegal tag %d (wire type %d)", fieldNum, wire)
 			}
 			switch fieldNum {
-			case 3:
+			case 1:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field MaxLeasesPerTenant", wireType)
 				}
@@ -594,7 +594,7 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 						break
 					}
 				}
-			case 4:
+			case 2:
 				if wireType != 2 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field AllowedList", wireType)
 				}
@@ -626,7 +626,7 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 				}
 				x.AllowedList = append(x.AllowedList, string(dAtA[iNdEx:postIndex]))
 				iNdEx = postIndex
-			case 5:
+			case 3:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field MaxItemsPerLease", wireType)
 				}
@@ -645,7 +645,7 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 						break
 					}
 				}
-			case 6:
+			case 4:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field MinLeaseDuration", wireType)
 				}
@@ -664,7 +664,7 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 						break
 					}
 				}
-			case 7:
+			case 5:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field MaxPendingLeasesPerTenant", wireType)
 				}
@@ -683,7 +683,7 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 						break
 					}
 				}
-			case 8:
+			case 6:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field PendingTimeout", wireType)
 				}
@@ -3608,25 +3608,25 @@ type Params struct {
 
 	// max_leases_per_tenant is the maximum number of active leases a tenant can have.
 	// Must be greater than zero.
-	MaxLeasesPerTenant uint64 `protobuf:"varint,3,opt,name=max_leases_per_tenant,json=maxLeasesPerTenant,proto3" json:"max_leases_per_tenant,omitempty"`
+	MaxLeasesPerTenant uint64 `protobuf:"varint,1,opt,name=max_leases_per_tenant,json=maxLeasesPerTenant,proto3" json:"max_leases_per_tenant,omitempty"`
 	// allowed_list is the list of addresses allowed to create leases on behalf of tenants
 	// in addition to the module authority.
-	AllowedList []string `protobuf:"bytes,4,rep,name=allowed_list,json=allowedList,proto3" json:"allowed_list,omitempty"`
+	AllowedList []string `protobuf:"bytes,2,rep,name=allowed_list,json=allowedList,proto3" json:"allowed_list,omitempty"`
 	// max_items_per_lease is the maximum number of items (SKUs) allowed in a single lease.
 	// Must be greater than zero. Prevents excessive gas consumption from large leases.
-	MaxItemsPerLease uint64 `protobuf:"varint,5,opt,name=max_items_per_lease,json=maxItemsPerLease,proto3" json:"max_items_per_lease,omitempty"`
+	MaxItemsPerLease uint64 `protobuf:"varint,3,opt,name=max_items_per_lease,json=maxItemsPerLease,proto3" json:"max_items_per_lease,omitempty"`
 	// min_lease_duration is the minimum duration (in seconds) that a tenant's credit balance
 	// must be able to cover when creating a lease. This prevents tenants from creating leases
 	// that would immediately exhaust their credit. Default is 3600 (1 hour).
-	MinLeaseDuration uint64 `protobuf:"varint,6,opt,name=min_lease_duration,json=minLeaseDuration,proto3" json:"min_lease_duration,omitempty"`
+	MinLeaseDuration uint64 `protobuf:"varint,4,opt,name=min_lease_duration,json=minLeaseDuration,proto3" json:"min_lease_duration,omitempty"`
 	// max_pending_leases_per_tenant is the maximum number of PENDING leases a tenant can have.
 	// Prevents spam attacks where tenants create many leases that providers must process.
 	// Default is 10.
-	MaxPendingLeasesPerTenant uint64 `protobuf:"varint,7,opt,name=max_pending_leases_per_tenant,json=maxPendingLeasesPerTenant,proto3" json:"max_pending_leases_per_tenant,omitempty"`
+	MaxPendingLeasesPerTenant uint64 `protobuf:"varint,5,opt,name=max_pending_leases_per_tenant,json=maxPendingLeasesPerTenant,proto3" json:"max_pending_leases_per_tenant,omitempty"`
 	// pending_timeout is the duration in seconds that a lease can remain in PENDING state
 	// before it expires. Applies globally to all providers. Default is 1800 (30 minutes).
 	// Must be between 60 (1 minute) and 86400 (24 hours).
-	PendingTimeout uint64 `protobuf:"varint,8,opt,name=pending_timeout,json=pendingTimeout,proto3" json:"pending_timeout,omitempty"`
+	PendingTimeout uint64 `protobuf:"varint,6,opt,name=pending_timeout,json=pendingTimeout,proto3" json:"pending_timeout,omitempty"`
 }
 
 func (x *Params) Reset() {
@@ -3705,6 +3705,8 @@ type LeaseItem struct {
 	// The denom comes from the SKU's base_price at lease creation time.
 	LockedPrice *types.Coin `protobuf:"bytes,3,opt,name=locked_price,json=lockedPrice,proto3" json:"locked_price,omitempty"`
 	// service_name is an optional DNS-label identifier for this item within a stack deployment.
+	// Must be a valid RFC 1123 DNS label: 1-63 lowercase alphanumeric characters or hyphens,
+	// must not start or end with a hyphen (e.g., "web", "db", "my-service-1").
 	// When used, all items must have a service_name and uniqueness shifts from sku_uuid to service_name,
 	// allowing the same SKU to appear multiple times (e.g., "web" and "db" both using docker-small).
 	ServiceName string `protobuf:"bytes,4,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
@@ -4027,36 +4029,36 @@ var file_liftedinit_billing_v1_types_proto_rawDesc = []byte{
 	0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22,
 	0xd3, 0x04, 0x0a, 0x06, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x5d, 0x0a, 0x15, 0x6d, 0x61,
 	0x78, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x73, 0x5f, 0x70, 0x65, 0x72, 0x5f, 0x74, 0x65, 0x6e,
-	0x61, 0x6e, 0x74, 0x18, 0x03, 0x20, 0x01, 0x28, 0x04, 0x42, 0x2a, 0xea, 0xde, 0x1f, 0x26, 0x6d,
+	0x61, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x42, 0x2a, 0xea, 0xde, 0x1f, 0x26, 0x6d,
 	0x61, 0x78, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x73, 0x5f, 0x70, 0x65, 0x72, 0x5f, 0x74, 0x65,
 	0x6e, 0x61, 0x6e, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73,
 	0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x12, 0x6d, 0x61, 0x78, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x73,
 	0x50, 0x65, 0x72, 0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x55, 0x0a, 0x0c, 0x61, 0x6c, 0x6c,
-	0x6f, 0x77, 0x65, 0x64, 0x5f, 0x6c, 0x69, 0x73, 0x74, 0x18, 0x04, 0x20, 0x03, 0x28, 0x09, 0x42,
+	0x6f, 0x77, 0x65, 0x64, 0x5f, 0x6c, 0x69, 0x73, 0x74, 0x18, 0x02, 0x20, 0x03, 0x28, 0x09, 0x42,
 	0x32, 0xea, 0xde, 0x1f, 0x16, 0x61, 0x6c, 0x6c, 0x6f, 0x77, 0x65, 0x64, 0x5f, 0x6c, 0x69, 0x73,
 	0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0xd2, 0xb4, 0x2d, 0x14, 0x63,
 	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x53, 0x74, 0x72,
 	0x69, 0x6e, 0x67, 0x52, 0x0b, 0x61, 0x6c, 0x6c, 0x6f, 0x77, 0x65, 0x64, 0x4c, 0x69, 0x73, 0x74,
 	0x12, 0x57, 0x0a, 0x13, 0x6d, 0x61, 0x78, 0x5f, 0x69, 0x74, 0x65, 0x6d, 0x73, 0x5f, 0x70, 0x65,
-	0x72, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x18, 0x05, 0x20, 0x01, 0x28, 0x04, 0x42, 0x28, 0xea,
+	0x72, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x04, 0x42, 0x28, 0xea,
 	0xde, 0x1f, 0x24, 0x6d, 0x61, 0x78, 0x5f, 0x69, 0x74, 0x65, 0x6d, 0x73, 0x5f, 0x70, 0x65, 0x72,
 	0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79,
 	0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x10, 0x6d, 0x61, 0x78, 0x49, 0x74, 0x65, 0x6d,
 	0x73, 0x50, 0x65, 0x72, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x12, 0x55, 0x0a, 0x12, 0x6d, 0x69, 0x6e,
 	0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x64, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18,
-	0x06, 0x20, 0x01, 0x28, 0x04, 0x42, 0x27, 0xea, 0xde, 0x1f, 0x23, 0x6d, 0x69, 0x6e, 0x5f, 0x6c,
+	0x04, 0x20, 0x01, 0x28, 0x04, 0x42, 0x27, 0xea, 0xde, 0x1f, 0x23, 0x6d, 0x69, 0x6e, 0x5f, 0x6c,
 	0x65, 0x61, 0x73, 0x65, 0x5f, 0x64, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2c, 0x6f, 0x6d,
 	0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x10,
 	0x6d, 0x69, 0x6e, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x44, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e,
 	0x12, 0x74, 0x0a, 0x1d, 0x6d, 0x61, 0x78, 0x5f, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x5f,
 	0x6c, 0x65, 0x61, 0x73, 0x65, 0x73, 0x5f, 0x70, 0x65, 0x72, 0x5f, 0x74, 0x65, 0x6e, 0x61, 0x6e,
-	0x74, 0x18, 0x07, 0x20, 0x01, 0x28, 0x04, 0x42, 0x32, 0xea, 0xde, 0x1f, 0x2e, 0x6d, 0x61, 0x78,
+	0x74, 0x18, 0x05, 0x20, 0x01, 0x28, 0x04, 0x42, 0x32, 0xea, 0xde, 0x1f, 0x2e, 0x6d, 0x61, 0x78,
 	0x5f, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x73, 0x5f,
 	0x70, 0x65, 0x72, 0x5f, 0x74, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65,
 	0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x19, 0x6d, 0x61, 0x78,
 	0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x73, 0x50, 0x65, 0x72,
 	0x54, 0x65, 0x6e, 0x61, 0x6e, 0x74, 0x12, 0x4d, 0x0a, 0x0f, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e,
-	0x67, 0x5f, 0x74, 0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74, 0x18, 0x08, 0x20, 0x01, 0x28, 0x04, 0x42,
+	0x67, 0x5f, 0x74, 0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74, 0x18, 0x06, 0x20, 0x01, 0x28, 0x04, 0x42,
 	0x24, 0xea, 0xde, 0x1f, 0x20, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x5f, 0x74, 0x69, 0x6d,
 	0x65, 0x6f, 0x75, 0x74, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2c, 0x73,
 	0x74, 0x72, 0x69, 0x6e, 0x67, 0x52, 0x0e, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x54, 0x69,
