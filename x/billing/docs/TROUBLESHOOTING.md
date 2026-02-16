@@ -135,15 +135,15 @@ manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1 --from 
 
 ### "duplicate sku in lease items"
 
-**Cause**: The same SKU UUID appears multiple times in the lease items.
+**Cause**: The same SKU UUID appears multiple times in the lease items without using service names.
 
-**Solution**: Combine quantities into a single item:
+**Solution**: Either combine quantities into a single item, or use service names for stack deployments:
 ```bash
-# Instead of this (fails):
-manifestd tx billing create-lease <sku-uuid>:2 <sku-uuid>:3 --from tenant
-
-# Do this:
+# Option 1: Combine quantities into a single item
 manifestd tx billing create-lease <sku-uuid>:5 --from tenant
+
+# Option 2: Use service_names for stack deployments (same SKU, different services)
+manifestd tx billing create-lease <sku-uuid>:2:web <sku-uuid>:3:db --from tenant
 ```
 
 ### "lease must contain at least one item"

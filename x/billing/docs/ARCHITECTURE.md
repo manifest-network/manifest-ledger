@@ -73,6 +73,7 @@ erDiagram
         string sku_uuid FK
         uint64 quantity
         Coin locked_price
+        string service_name
     }
     
     PROVIDER {
@@ -135,8 +136,11 @@ Individual line items within a lease:
 | `sku_uuid` | `string` | Reference to SKU (UUIDv7) |
 | `quantity` | `uint64` | Number of units (e.g., 5 instances) |
 | `locked_price` | `Coin` | Per-second price locked at lease creation (includes denom) |
+| `service_name` | `string` | Optional RFC 1123 DNS label for stack deployments (1-63 lowercase alphanumeric/hyphens) |
 
 **Note**: The `locked_price` is pre-computed at lease creation as the per-second rate for billing calculations. This is derived from the SKU's base price and unit at the time of lease creation. The denomination is preserved from the SKU's `base_price`, enabling multi-denom billing.
+
+**Service Names**: When `service_name` is set, all items in the lease must have one (all-or-nothing). Uniqueness shifts from `sku_uuid` to `service_name`, allowing the same SKU to appear multiple times for different named services (e.g., "web" and "db" both using a docker-small SKU). This enables stack deployments where the off-chain orchestrator maps each service to its container.
 
 ### LeaseState Enum
 
@@ -549,20 +553,22 @@ This pattern ensures that partial failures don't corrupt state while still provi
 
 ### Auto-Close on Credit Exhaustion
 
-When a lease's credit is exhausted (balance = 0), it can be auto-closed via `CheckAndCloseExhaustedLease`:
+When a lease's credit is exhausted, it can be auto-closed via `ShouldAutoCloseLease` + `AutoCloseLease`:
 
 ```mermaid
 flowchart TD
-    A[CheckAndCloseExhaustedLease] --> B{Is Lease ACTIVE?}
+    A[ShouldAutoCloseLease] --> B{Is Lease ACTIVE?}
     B -->|No| C[Return: not closed]
     B -->|Yes| D[Get Credit Balance]
-    D --> E{Balance == 0?}
-    E -->|No| F[Return: not closed]
-    E -->|Yes| G[Close Lease]
-    G --> H[Set State = CLOSED]
-    H --> I[Set closed_at]
-    I --> J[Decrement active_lease_count]
-    J --> K[Return: closed]
+    D --> E[Calculate Accrued Amounts]
+    E --> F{Accrued >= Balance?}
+    F -->|No| G[Return: not closed]
+    F -->|Yes| H[AutoCloseLease]
+    H --> I[Settle + Set State = CLOSED]
+    I --> J[Set closed_at]
+    J --> K[Decrement active_lease_count]
+    K --> L[Release reservation]
+    L --> M[Return: closed]
 ```
 
 ## EndBlocker
@@ -650,13 +656,16 @@ The module uses deterministic UUIDv7 generation for all identifiers (providers, 
 
 ```go
 // UUIDv7 format: timestamp (48 bits) + version (4 bits) + sequence (12 bits) + variant (2 bits) + node (62 bits)
-func GenerateUUIDv7(ctx context.Context, sequence uint64) string {
-    blockTime := sdk.UnwrapSDKContext(ctx).BlockTime()
+func GenerateUUIDv7(ctx sdk.Context, moduleName string, sequence uint64) string {
+    blockTime := ctx.BlockTime()
+    headerHash := ctx.HeaderHash()
+    chainID := ctx.ChainID()
     timestamp := blockTime.UnixMilli()
-    
-    // Deterministic node ID from chain-id + module name
-    nodeID := hash(chainID + moduleName)[:8]
-    
+
+    // Deterministic node ID from header hash + chain ID + module name + sequence
+    // Uses FNV-1a hash for determinism across all validators
+    nodeID := hashEntropy(headerHash, chainID, moduleName, sequence)
+
     // Combine: timestamp + version(7) + sequence + variant + nodeID
     return formatUUIDv7(timestamp, sequence, nodeID)
 }

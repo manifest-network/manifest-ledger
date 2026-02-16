@@ -2,6 +2,7 @@ package simulation
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 
 	sdkmath "cosmossdk.io/math"
@@ -308,13 +309,7 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 			providerSKUs[i], providerSKUs[j] = providerSKUs[j], providerSKUs[i]
 		})
 
-		items := make([]types.LeaseItemInput, numItems)
-		for i := range numItems {
-			items[i] = types.LeaseItemInput{
-				SkuUuid:  providerSKUs[i].Uuid,
-				Quantity: uint64(r.Intn(10) + 1), //nolint:gosec
-			}
-		}
+		items := buildSimLeaseItems(r, providerSKUs[:numItems])
 
 		msg := &types.MsgCreateLease{
 			Tenant: tenant.Address.String(),
@@ -399,13 +394,7 @@ func SimulateMsgCreateLeaseForTenant(txGen client.TxConfig, k keeper.Keeper, sk 
 			providerSKUs[i], providerSKUs[j] = providerSKUs[j], providerSKUs[i]
 		})
 
-		items := make([]types.LeaseItemInput, numItems)
-		for i := range numItems {
-			items[i] = types.LeaseItemInput{
-				SkuUuid:  providerSKUs[i].Uuid,
-				Quantity: uint64(r.Intn(10) + 1), //nolint:gosec
-			}
-		}
+		items := buildSimLeaseItems(r, providerSKUs[:numItems])
 
 		// Use the module authority as sender
 		// In simulation, we use the authority address from params
@@ -860,4 +849,34 @@ func newOperationInput(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, txGe
 
 func genAndDeliverTxWithRandFees(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, txGen client.TxConfig, simAccount simtypes.Account, msg sdk.Msg, k keeper.Keeper) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 	return simulation.GenAndDeliverTxWithRandFees(newOperationInput(r, app, ctx, txGen, simAccount, msg, k))
+}
+
+// buildSimLeaseItems constructs lease items from the given SKUs.
+// 50% of the time it uses service_name mode (allowing the same SKU to appear
+// multiple times with distinct DNS-label names), otherwise it uses legacy mode.
+func buildSimLeaseItems(r *rand.Rand, skus []skutypes.SKU) []types.LeaseItemInput {
+	useServiceNames := r.Intn(2) == 0
+
+	if useServiceNames {
+		// Service-name mode: reuse the first SKU for every item with unique names.
+		items := make([]types.LeaseItemInput, len(skus))
+		for i := range skus {
+			items[i] = types.LeaseItemInput{
+				SkuUuid:     skus[0].Uuid,
+				Quantity:    uint64(r.Intn(10) + 1), //nolint:gosec
+				ServiceName: fmt.Sprintf("svc-%d", i),
+			}
+		}
+		return items
+	}
+
+	// Legacy mode: unique SKUs, no service_name.
+	items := make([]types.LeaseItemInput, len(skus))
+	for i, s := range skus {
+		items[i] = types.LeaseItemInput{
+			SkuUuid:  s.Uuid,
+			Quantity: uint64(r.Intn(10) + 1), //nolint:gosec
+		}
+	}
+	return items
 }

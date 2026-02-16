@@ -7453,6 +7453,8 @@ func (x *MsgCreateProviderResponse) GetUuid() string {
 }
 
 // MsgUpdateProvider is the Msg/UpdateProvider request type.
+// Note: Setting active=false on an active provider will fail.
+// Use MsgDeactivateProvider instead to ensure proper SKU cascade.
 type MsgUpdateProvider struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -7796,6 +7798,8 @@ func (x *MsgCreateSKUResponse) GetUuid() string {
 }
 
 // MsgUpdateSKU is the Msg/UpdateSKU request type.
+// Note: Setting active=false on an active SKU will fail.
+// Use MsgDeactivateSKU instead for deactivation.
 type MsgUpdateSKU struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

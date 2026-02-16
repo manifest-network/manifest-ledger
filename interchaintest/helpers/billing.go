@@ -20,6 +20,7 @@ type LeaseItemJSON struct {
 	SkuUuid     string   `json:"sku_uuid,omitempty"`
 	Quantity    string   `json:"quantity,omitempty"`
 	LockedPrice sdk.Coin `json:"locked_price"`
+	ServiceName string   `json:"service_name,omitempty"`
 }
 
 // LeaseJSON is a JSON-compatible version of Lease.
@@ -74,7 +75,7 @@ func BillingFundCredit(ctx context.Context, chain *cosmos.CosmosChain, user ibc.
 }
 
 // BillingCreateLease creates a new lease with the specified SKU items.
-// items should be in the format "sku_uuid:quantity" (e.g., "uuid1:2", "uuid2:1")
+// items should be in the format "sku_uuid:quantity[:service_name]" (e.g., "uuid1:2", "uuid2:1:web")
 func BillingCreateLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, items []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{"tx", "billing", "create-lease"}
 	cmd = append(cmd, items...)
@@ -82,7 +83,7 @@ func BillingCreateLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 }
 
 // BillingCreateLeaseWithMetaHash creates a new lease with the specified SKU items and meta_hash.
-// items should be in the format "sku_uuid:quantity" (e.g., "uuid1:2", "uuid2:1")
+// items should be in the format "sku_uuid:quantity[:service_name]" (e.g., "uuid1:2", "uuid2:1:web")
 // metaHash should be a hex-encoded string (e.g., "a1b2c3d4...")
 func BillingCreateLeaseWithMetaHash(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, items []string, metaHash string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{"tx", "billing", "create-lease"}
@@ -94,7 +95,7 @@ func BillingCreateLeaseWithMetaHash(ctx context.Context, chain *cosmos.CosmosCha
 }
 
 // BillingCreateLeaseForTenant creates a new lease on behalf of a tenant (authority only).
-// items should be in the format "sku_uuid:quantity" (e.g., "uuid1:2", "uuid2:1")
+// items should be in the format "sku_uuid:quantity[:service_name]" (e.g., "uuid1:2", "uuid2:1:web")
 func BillingCreateLeaseForTenant(ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet, tenant string, items []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{"tx", "billing", "create-lease-for-tenant", tenant}
 	cmd = append(cmd, items...)

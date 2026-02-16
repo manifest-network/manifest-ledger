@@ -5062,3 +5062,107 @@ func TestQueryAvailableBalances(t *testing.T) {
 	require.Equal(t, sdkmath.NewInt(6400), resp.AvailableBalances.AmountOf(denom))
 	require.Equal(t, sdkmath.NewInt(3600), resp.CreditAccount.ReservedAmounts.AmountOf(denom))
 }
+
+// TestMsgCreateLease_ServiceName tests lease creation with service_name fields.
+func TestMsgCreateLease_ServiceName(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 per hour = 1 per second
+
+	// Fund tenant's credit account generously
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(100000000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
+
+	// Create credit account
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	t.Run("success: same SKU with different service_names", func(t *testing.T) {
+		resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items: []types.LeaseItemInput{
+				{SkuUuid: sku.Uuid, Quantity: 1, ServiceName: "web"},
+				{SkuUuid: sku.Uuid, Quantity: 1, ServiceName: "db"},
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.NotEmpty(t, resp.LeaseUuid)
+
+		// Verify stored lease has correct service_names
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, resp.LeaseUuid)
+		require.NoError(t, err)
+		require.Len(t, lease.Items, 2)
+		require.Equal(t, "web", lease.Items[0].ServiceName)
+		require.Equal(t, "db", lease.Items[1].ServiceName)
+		require.Equal(t, sku.Uuid, lease.Items[0].SkuUuid)
+		require.Equal(t, sku.Uuid, lease.Items[1].SkuUuid)
+	})
+
+	t.Run("fail: mixed service_names (some set, some not)", func(t *testing.T) {
+		_, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items: []types.LeaseItemInput{
+				{SkuUuid: sku.Uuid, Quantity: 1, ServiceName: "web"},
+				{SkuUuid: sku.Uuid, Quantity: 1},
+			},
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "all items must have service_name or none")
+	})
+
+	t.Run("fail: duplicate service_name", func(t *testing.T) {
+		_, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items: []types.LeaseItemInput{
+				{SkuUuid: sku.Uuid, Quantity: 1, ServiceName: "web"},
+				{SkuUuid: sku.Uuid, Quantity: 1, ServiceName: "web"},
+			},
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "duplicate service_name")
+	})
+
+	t.Run("backward compat: no service_names, duplicate SKU rejected", func(t *testing.T) {
+		_, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items: []types.LeaseItemInput{
+				{SkuUuid: sku.Uuid, Quantity: 1},
+				{SkuUuid: sku.Uuid, Quantity: 2},
+			},
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "appears multiple times")
+	})
+
+	t.Run("backward compat: no service_names, single item passes", func(t *testing.T) {
+		resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items: []types.LeaseItemInput{
+				{SkuUuid: sku.Uuid, Quantity: 3},
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify service_name is empty
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, resp.LeaseUuid)
+		require.NoError(t, err)
+		require.Len(t, lease.Items, 1)
+		require.Empty(t, lease.Items[0].ServiceName)
+	})
+}

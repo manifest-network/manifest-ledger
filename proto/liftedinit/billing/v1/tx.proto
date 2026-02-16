@@ -60,6 +60,12 @@ message LeaseItemInput {
 
   // quantity is the number of instances.
   uint64 quantity = 2 [(gogoproto.jsontag) = "quantity,omitempty,string"];
+
+  // service_name is an optional DNS-label identifier for this item within a stack deployment.
+  // Must be a valid RFC 1123 DNS label: 1-63 lowercase alphanumeric characters or hyphens,
+  // must not start or end with a hyphen (e.g., "web", "db", "my-service-1").
+  // When used, all items must have a service_name and uniqueness shifts from sku_uuid to service_name.
+  string service_name = 3 [(gogoproto.jsontag) = "service_name,omitempty"];
 }
 
 // MsgFundCredit funds a tenant's credit account.

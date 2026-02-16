@@ -30,6 +30,7 @@ var (
 	ErrInvalidRequest          = errors.Register(ModuleName, 25, "invalid request")
 	ErrInvalidClosureReason    = errors.Register(ModuleName, 26, "invalid closure reason")
 	ErrInvalidMetaHash         = errors.Register(ModuleName, 27, "invalid meta hash")
+	ErrInvalidServiceName      = errors.Register(ModuleName, 28, "invalid service name")
 )
 
 // MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.
@@ -52,3 +53,7 @@ const MaxClosureReasonLength = 256
 // MaxMetaHashLength is the maximum length of a meta_hash field.
 // 64 bytes accommodates SHA-256 (32 bytes) and SHA-512 (64 bytes) hashes.
 const MaxMetaHashLength = 64
+
+// MaxServiceNameLength is the maximum length of a service_name field.
+// Matches DNS label maximum length (RFC 1123).
+const MaxServiceNameLength = 63

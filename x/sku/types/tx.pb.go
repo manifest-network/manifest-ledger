@@ -163,6 +163,8 @@ func (m *MsgCreateProviderResponse) GetUuid() string {
 }
 
 // MsgUpdateProvider is the Msg/UpdateProvider request type.
+// Note: Setting active=false on an active provider will fail.
+// Use MsgDeactivateProvider instead to ensure proper SKU cascade.
 type MsgUpdateProvider struct {
 	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
@@ -561,6 +563,8 @@ func (m *MsgCreateSKUResponse) GetUuid() string {
 }
 
 // MsgUpdateSKU is the Msg/UpdateSKU request type.
+// Note: Setting active=false on an active SKU will fail.
+// Use MsgDeactivateSKU instead for deactivation.
 type MsgUpdateSKU struct {
 	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
@@ -991,6 +995,8 @@ type MsgClient interface {
 	// CreateProvider creates a new provider.
 	CreateProvider(ctx context.Context, in *MsgCreateProvider, opts ...grpc.CallOption) (*MsgCreateProviderResponse, error)
 	// UpdateProvider updates an existing provider.
+	// Can reactivate an inactive provider but cannot deactivate an active one.
+	// Use DeactivateProvider to deactivate (ensures proper SKU cascade).
 	UpdateProvider(ctx context.Context, in *MsgUpdateProvider, opts ...grpc.CallOption) (*MsgUpdateProviderResponse, error)
 	// DeactivateProvider deactivates a provider (soft delete).
 	// Deactivated providers cannot create new SKUs but existing SKUs continue.
@@ -998,6 +1004,8 @@ type MsgClient interface {
 	// CreateSKU creates a new SKU.
 	CreateSKU(ctx context.Context, in *MsgCreateSKU, opts ...grpc.CallOption) (*MsgCreateSKUResponse, error)
 	// UpdateSKU updates an existing SKU.
+	// Can reactivate an inactive SKU (if provider is active) but cannot deactivate an active one.
+	// Use DeactivateSKU to deactivate.
 	UpdateSKU(ctx context.Context, in *MsgUpdateSKU, opts ...grpc.CallOption) (*MsgUpdateSKUResponse, error)
 	// DeactivateSKU deactivates a SKU (soft delete).
 	// Deactivated SKUs cannot be used for new leases but existing leases continue.
@@ -1082,6 +1090,8 @@ type MsgServer interface {
 	// CreateProvider creates a new provider.
 	CreateProvider(context.Context, *MsgCreateProvider) (*MsgCreateProviderResponse, error)
 	// UpdateProvider updates an existing provider.
+	// Can reactivate an inactive provider but cannot deactivate an active one.
+	// Use DeactivateProvider to deactivate (ensures proper SKU cascade).
 	UpdateProvider(context.Context, *MsgUpdateProvider) (*MsgUpdateProviderResponse, error)
 	// DeactivateProvider deactivates a provider (soft delete).
 	// Deactivated providers cannot create new SKUs but existing SKUs continue.
@@ -1089,6 +1099,8 @@ type MsgServer interface {
 	// CreateSKU creates a new SKU.
 	CreateSKU(context.Context, *MsgCreateSKU) (*MsgCreateSKUResponse, error)
 	// UpdateSKU updates an existing SKU.
+	// Can reactivate an inactive SKU (if provider is active) but cannot deactivate an active one.
+	// Use DeactivateSKU to deactivate.
 	UpdateSKU(context.Context, *MsgUpdateSKU) (*MsgUpdateSKUResponse, error)
 	// DeactivateSKU deactivates a SKU (soft delete).
 	// Deactivated SKUs cannot be used for new leases but existing leases continue.

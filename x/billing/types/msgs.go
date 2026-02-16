@@ -18,8 +18,36 @@ var (
 	_ sdk.Msg = &MsgCancelLease{}
 )
 
+// IsValidDNSLabel checks whether name is a valid DNS label per RFC 1123:
+// 1-63 characters, lowercase alphanumeric and hyphens, must start and end with alphanumeric.
+func IsValidDNSLabel(name string) bool {
+	n := len(name)
+	if n == 0 || n > MaxServiceNameLength {
+		return false
+	}
+	for i := 0; i < n; i++ {
+		c := name[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= '0' && c <= '9':
+		case c == '-':
+			if i == 0 || i == n-1 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // ValidateLeaseItems validates a slice of LeaseItemInput for use in lease creation messages.
 // It checks for empty items, hard limit violations, UUID validity, zero quantities, and duplicates.
+//
+// Dual-mode uniqueness:
+//   - If any item has service_name set, all must have it. Uniqueness is enforced on service_name
+//     (the same SKU may appear more than once).
+//   - If no items have service_name, uniqueness is enforced on sku_uuid (original behaviour).
 func ValidateLeaseItems(items []LeaseItemInput) error {
 	if len(items) == 0 {
 		return ErrEmptyLeaseItems
@@ -31,7 +59,8 @@ func ValidateLeaseItems(items []LeaseItemInput) error {
 		return ErrTooManyLeaseItems.Wrapf("lease has %d items, maximum allowed is %d", len(items), MaxItemsPerLeaseHardLimit)
 	}
 
-	seenSKUs := make(map[string]bool)
+	// First pass: validate per-item fields and detect service_name mode.
+	hasServiceName := 0
 	for i, item := range items {
 		if item.SkuUuid == "" {
 			return ErrInvalidLease.Wrapf("item %d has empty sku_uuid", i)
@@ -45,10 +74,37 @@ func ValidateLeaseItems(items []LeaseItemInput) error {
 		if item.Quantity > MaxQuantityPerItem {
 			return ErrInvalidQuantity.Wrapf("item %d quantity %d exceeds maximum %d", i, item.Quantity, MaxQuantityPerItem)
 		}
-		if seenSKUs[item.SkuUuid] {
-			return ErrDuplicateSKU.Wrapf("sku_uuid %s appears multiple times", item.SkuUuid)
+		if item.ServiceName != "" {
+			hasServiceName++
 		}
-		seenSKUs[item.SkuUuid] = true
+	}
+
+	// All-or-nothing: either every item has a service_name or none do.
+	if hasServiceName > 0 && hasServiceName != len(items) {
+		return ErrInvalidServiceName.Wrap("all items must have service_name or none")
+	}
+
+	if hasServiceName > 0 {
+		// Service-name mode: validate DNS labels and enforce service_name uniqueness.
+		seenNames := make(map[string]bool, len(items))
+		for i, item := range items {
+			if !IsValidDNSLabel(item.ServiceName) {
+				return ErrInvalidServiceName.Wrapf("item %d has invalid service_name: %q", i, item.ServiceName)
+			}
+			if seenNames[item.ServiceName] {
+				return ErrInvalidServiceName.Wrapf("duplicate service_name %q", item.ServiceName)
+			}
+			seenNames[item.ServiceName] = true
+		}
+	} else {
+		// Legacy mode: enforce sku_uuid uniqueness.
+		seenSKUs := make(map[string]bool, len(items))
+		for _, item := range items {
+			if seenSKUs[item.SkuUuid] {
+				return ErrDuplicateSKU.Wrapf("sku_uuid %s appears multiple times", item.SkuUuid)
+			}
+			seenSKUs[item.SkuUuid] = true
+		}
 	}
 
 	return nil

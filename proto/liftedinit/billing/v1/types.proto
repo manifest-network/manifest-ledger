@@ -95,6 +95,13 @@ message LeaseItem {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "locked_price"
   ];
+
+  // service_name is an optional DNS-label identifier for this item within a stack deployment.
+  // Must be a valid RFC 1123 DNS label: 1-63 lowercase alphanumeric characters or hyphens,
+  // must not start or end with a hyphen (e.g., "web", "db", "my-service-1").
+  // When used, all items must have a service_name and uniqueness shifts from sku_uuid to service_name,
+  // allowing the same SKU to appear multiple times (e.g., "web" and "db" both using docker-small).
+  string service_name = 4 [(gogoproto.jsontag) = "service_name,omitempty"];
 }
 
 // Lease represents a billing lease between a tenant and provider.

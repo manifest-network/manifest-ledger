@@ -134,8 +134,6 @@ func TestCreateProvider(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
-
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgCreateProvider{
 				Authority:     c.sender,
@@ -243,8 +241,6 @@ func TestUpdateProvider(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
-
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgUpdateProvider{
 				Authority:     c.sender,
@@ -424,8 +420,6 @@ func TestDeactivateProvider(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
-
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgDeactivateProvider{
 				Authority: c.sender,
@@ -1104,8 +1098,6 @@ func TestCreateSKU(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
-
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgCreateSKU{
 				Authority:    c.sender,
@@ -1269,8 +1261,6 @@ func TestUpdateSKU(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
-
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgUpdateSKU{
 				Authority:    c.sender,
@@ -1397,8 +1387,6 @@ func TestDeactivateSKUMsg(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
-
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgDeactivateSKU{
 				Authority: c.sender,
@@ -1709,8 +1697,6 @@ func TestUpdateParams(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
-
 		t.Run(c.name, func(t *testing.T) {
 			msg := &types.MsgUpdateParams{
 				Authority: c.sender,

@@ -400,6 +400,35 @@ The SKU module manages providers (service entities) and SKUs (Stock Keeping Unit
 
   **Example:** `manifestd tx sku update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab "Updated Name" 2 200umfx true --meta-hash deadbeef --from authority`
 
+##### Deactivate Provider (deactivate-provider):
+
+- Syntax: `manifestd tx sku deactivate-provider [uuid] [flags]`
+
+  - Parameters:
+    - `uuid`: Provider UUID
+  - Flags:
+    - `--limit`: Maximum SKUs to deactivate per call (default 50, max 100). If `has_more` is true in the response, call again to continue deactivating remaining SKUs.
+
+  **Example:** `manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab --limit 50 --from authority`
+
+##### Deactivate SKU (deactivate-sku):
+
+- Syntax: `manifestd tx sku deactivate-sku [uuid] [flags]`
+
+  - Parameters:
+    - `uuid`: SKU UUID
+
+  **Example:** `manifestd tx sku deactivate-sku 01912345-6789-7abc-8def-0123456789ab --from authority`
+
+##### Update Params (update-params):
+
+- Syntax: `manifestd tx sku update-params [flags]`
+
+  - Flags:
+    - `--allowed-list`: Comma-separated list of addresses allowed to manage SKUs
+
+  **Example:** `manifestd tx sku update-params --allowed-list manifest1abc...,manifest1def... --from authority`
+
 ## Billing Module
 
 The Billing module implements a credit-based leasing system for AI infrastructure resources. Tenants fund credit accounts, create leases for SKUs, and providers withdraw earned funds.
@@ -441,12 +470,24 @@ The Billing module implements a credit-based leasing system for AI infrastructur
 
 ##### Create Lease (create-lease):
 
-- Syntax: `manifestd tx billing create-lease [sku-uuid:quantity...] [flags]`
+- Syntax: `manifestd tx billing create-lease [sku-uuid:quantity[:service_name]] ... [flags]`
 
   - Parameters:
-    - `items`: Space-separated list of `sku-uuid:quantity` pairs
+    - `items`: Space-separated list of `sku-uuid:quantity` or `sku-uuid:quantity:service_name` triples
+    - `--meta-hash`: Optional hex-encoded hash/reference to off-chain deployment data (max 64 bytes)
 
   **Example:** `manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:2 --from tenant`
+  **Example (stack):** `manifestd tx billing create-lease 01912345-...:1:web 01912345-...:1:db --from tenant`
+
+##### Create Lease For Tenant (create-lease-for-tenant):
+
+- Syntax: `manifestd tx billing create-lease-for-tenant [tenant] [sku-uuid:quantity[:service_name]] ... [flags]`
+
+  - Parameters:
+    - `tenant`: Bech32 address of the tenant
+    - `items`: Space-separated list of `sku-uuid:quantity` or `sku-uuid:quantity:service_name` triples
+
+  **Example:** `manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-...:2 --from authority`
 
 ##### Acknowledge Lease (acknowledge-lease):
 
@@ -454,9 +495,27 @@ The Billing module implements a credit-based leasing system for AI infrastructur
 
   **Example:** `manifestd tx billing acknowledge-lease 01912345-6789-7abc-8def-0123456789ab --from provider`
 
+##### Reject Lease (reject-lease):
+
+- Syntax: `manifestd tx billing reject-lease [lease-uuid...] [flags]`
+
+  - Parameters:
+    - `--reason`: Optional rejection reason (max 256 chars)
+
+  **Example:** `manifestd tx billing reject-lease 01912345-6789-7abc-8def-0123456789ab --reason "insufficient resources" --from provider`
+
+##### Cancel Lease (cancel-lease):
+
+- Syntax: `manifestd tx billing cancel-lease [lease-uuid...] [flags]`
+
+  **Example:** `manifestd tx billing cancel-lease 01912345-6789-7abc-8def-0123456789ab --from tenant`
+
 ##### Close Lease (close-lease):
 
 - Syntax: `manifestd tx billing close-lease [lease-uuid...] [flags]`
+
+  - Parameters:
+    - `--reason`: Optional closure reason (max 256 chars)
 
   **Example:** `manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab --from tenant`
 
@@ -466,3 +525,18 @@ The Billing module implements a credit-based leasing system for AI infrastructur
 - Or: `manifestd tx billing withdraw --provider [provider-uuid] [flags]`
 
   **Example:** `manifestd tx billing withdraw 01912345-6789-7abc-8def-0123456789ab --from provider`
+
+##### Update Params (update-params):
+
+- Syntax: `manifestd tx billing update-params [max-leases-per-tenant] [max-items-per-lease] [min-lease-duration] [max-pending-leases-per-tenant] [pending-timeout] [flags]`
+
+  - Parameters:
+    - `max-leases-per-tenant`: Maximum active leases per tenant
+    - `max-items-per-lease`: Maximum SKU items per lease
+    - `min-lease-duration`: Minimum lease duration in seconds
+    - `max-pending-leases-per-tenant`: Maximum pending leases per tenant
+    - `pending-timeout`: Pending lease timeout in seconds (60-86400)
+  - Flags:
+    - `--allowed-list`: Comma-separated list of addresses allowed to create leases for tenants
+
+  **Example:** `manifestd tx billing update-params 100 20 3600 10 1800 --from authority`

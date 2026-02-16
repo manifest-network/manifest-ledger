@@ -438,15 +438,18 @@ func (k *Keeper) GetLeasesByTenant(ctx context.Context, tenant string) ([]types.
 	return leases, nil
 }
 
-// GetLeasesByProviderUUID returns all Leases for a given provider UUID.
-// WARNING: This loads all leases into memory. For large datasets, use
-// IterateLeasesByProvider instead to process leases one at a time.
+// maxGetLeasesByProviderUUID is a safety limit to prevent unbounded memory usage.
+const maxGetLeasesByProviderUUID = 10_000
+
+// GetLeasesByProviderUUID returns leases for a given provider UUID.
+// Results are capped at maxGetLeasesByProviderUUID to prevent unbounded memory usage.
+// For production query paths, use the paginated querier or IterateLeasesByProvider instead.
 func (k *Keeper) GetLeasesByProviderUUID(ctx context.Context, providerUUID string) ([]types.Lease, error) {
 	var leases []types.Lease
 
 	err := k.IterateLeasesByProvider(ctx, providerUUID, func(lease types.Lease) (stop bool, err error) {
 		leases = append(leases, lease)
-		return false, nil
+		return len(leases) >= maxGetLeasesByProviderUUID, nil
 	})
 	if err != nil {
 		return nil, err
@@ -553,12 +556,12 @@ func (k *Keeper) CountActiveLeasesByTenant(ctx context.Context, tenant string) (
 	}
 
 	// Fall back to iteration if credit account doesn't exist
-	return k.countActiveLeasesByTenantScan(ctx, tenant)
+	return k.countLeasesByTenantAndStateScan(ctx, tenant, types.LEASE_STATE_ACTIVE)
 }
 
-// countActiveLeasesByTenantScan counts active leases by iterating (O(n)).
+// countLeasesByTenantAndStateScan counts leases in a specific state by iterating (O(n)).
 // This is used as a fallback when credit account doesn't exist.
-func (k *Keeper) countActiveLeasesByTenantScan(ctx context.Context, tenant string) (uint64, error) {
+func (k *Keeper) countLeasesByTenantAndStateScan(ctx context.Context, tenant string, state types.LeaseState) (uint64, error) {
 	var count uint64
 
 	// Convert bech32 address to bytes for index lookup
@@ -582,7 +585,7 @@ func (k *Keeper) countActiveLeasesByTenantScan(ctx context.Context, tenant strin
 		if err != nil {
 			return 0, err
 		}
-		if lease.State == types.LEASE_STATE_ACTIVE {
+		if lease.State == state {
 			count++
 		}
 	}
@@ -764,6 +767,45 @@ func (k *Keeper) ShouldAutoCloseLease(ctx context.Context, lease *types.Lease) (
 	return true, blockTime, nil
 }
 
+// AutoCloseLeaseResult holds the result of an auto-close operation.
+type AutoCloseLeaseResult struct {
+	TransferAmounts sdk.Coins
+}
+
+// AutoCloseLease performs the auto-close sequence for a lease with exhausted credit.
+// It settles the lease, updates its state to CLOSED, decrements the active lease count,
+// and releases the reservation. All changes are applied to the provided context.
+// The caller is responsible for CacheContext management and event emission.
+func (k *Keeper) AutoCloseLease(ctx context.Context, lease *types.Lease, closeTime time.Time, minLeaseDuration uint64) (*AutoCloseLeaseResult, error) {
+	result, err := k.PerformSettlementSilent(ctx, lease, closeTime)
+	if err != nil {
+		return nil, err
+	}
+
+	lease.State = types.LEASE_STATE_CLOSED
+	lease.ClosedAt = &closeTime
+	lease.LastSettledAt = closeTime
+	lease.ClosureReason = types.ClosureReasonCreditExhausted
+
+	if err := k.SetLease(ctx, *lease); err != nil {
+		return nil, err
+	}
+
+	creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
+	if err != nil {
+		return nil, err
+	}
+
+	k.DecrementActiveLeaseCount(&creditAccount, lease.Uuid)
+	k.ReleaseLeaseReservation(&creditAccount, lease, minLeaseDuration)
+
+	if err := k.SetCreditAccount(ctx, creditAccount); err != nil {
+		return nil, err
+	}
+
+	return &AutoCloseLeaseResult{TransferAmounts: result.TransferAmounts}, nil
+}
+
 // DecrementActiveLeaseCount decrements the active lease count on a credit account.
 // If the count is already zero, it logs a warning about data inconsistency but does not fail.
 // This helper ensures consistent handling of lease count decrements across all code paths.
@@ -826,41 +868,7 @@ func (k *Keeper) CountPendingLeasesByTenant(ctx context.Context, tenant string) 
 	}
 
 	// Fall back to iteration if credit account doesn't exist
-	return k.countPendingLeasesByTenantScan(ctx, tenant)
-}
-
-// countPendingLeasesByTenantScan counts pending leases by iterating (O(n)).
-// This is used as a fallback when credit account doesn't exist.
-func (k *Keeper) countPendingLeasesByTenantScan(ctx context.Context, tenant string) (uint64, error) {
-	var count uint64
-
-	// Convert bech32 address to bytes for index lookup
-	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
-	if err != nil {
-		return 0, err
-	}
-
-	iter, err := k.Leases.Indexes.Tenant.MatchExact(ctx, tenantAddr)
-	if err != nil {
-		return 0, err
-	}
-	defer iter.Close()
-
-	for ; iter.Valid(); iter.Next() {
-		leaseUUID, err := iter.PrimaryKey()
-		if err != nil {
-			return 0, err
-		}
-		lease, err := k.Leases.Get(ctx, leaseUUID)
-		if err != nil {
-			return 0, err
-		}
-		if lease.State == types.LEASE_STATE_PENDING {
-			count++
-		}
-	}
-
-	return count, nil
+	return k.countLeasesByTenantAndStateScan(ctx, tenant, types.LEASE_STATE_PENDING)
 }
 
 // GetPendingLeases returns all leases in PENDING state.
@@ -1092,6 +1100,11 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 	// This two-pass approach avoids iterator invalidation: when ExpirePendingLease
 	// changes a lease's state from PENDING to EXPIRED, the State index is modified.
 	// Modifying an index while iterating over it can cause undefined behavior.
+	//
+	// NOTE: The StateCreatedAt compound index exists for potential time-bounded
+	// range queries, but the Collections PairRange API doesn't support partial-prefix
+	// range queries on compound reference keys (Pair[int32, time.Time]). The State
+	// index with per-lease time filtering is sufficient given the rate limit.
 	iter, err := k.Leases.Indexes.State.MatchExact(ctx, int32(types.LEASE_STATE_PENDING))
 	if err != nil {
 		return err

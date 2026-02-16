@@ -90,6 +90,8 @@ manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1p
 
 Deactivate a provider (soft delete). The provider remains in state but is marked inactive. Inactive providers cannot have new SKUs created for them.
 
+SKU deactivation is paginated to prevent gas exhaustion with many SKUs. If `has_more` is true in the response, call again to continue deactivating SKUs.
+
 ```bash
 manifestd tx sku deactivate-provider [uuid] [flags]
 ```
@@ -99,9 +101,15 @@ manifestd tx sku deactivate-provider [uuid] [flags]
 |----------|------|-------------|
 | uuid | string | Provider UUID to deactivate |
 
+**Flags:**
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --limit | uint64 | 50 | Maximum SKUs to deactivate per call (max 200) |
+
 **Example:**
 ```bash
 manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab --from authority
+manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab --limit 100 --from authority
 ```
 
 ---

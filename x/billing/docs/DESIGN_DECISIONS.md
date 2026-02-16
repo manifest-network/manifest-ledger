@@ -306,9 +306,10 @@ Item 2: SKU 2 (priced in 'umfx') - locked_price: 500umfx/second
 **Default Limits:**
 | Parameter | Default | Hard Limit |
 |-----------|---------|------------|
-| `max_leases_per_tenant` | 100 | None |
+| `max_leases_per_tenant` | 100 | 10,000 |
 | `max_items_per_lease` | 20 | 100 |
-| `min_lease_duration` | 3600s | None |
+| `min_lease_duration` | 3600s | 2,592,000s (30 days) |
+| `max_pending_leases_per_tenant` | 10 | 1,000 |
 | Provider withdraw batch | 50 | 100 |
 
 ## Decision 14: Minimum Lease Duration
@@ -360,7 +361,7 @@ if creditBalance < minRequired {
 // UUIDv7 = timestamp (48 bits) + version (4 bits) + sequence (12 bits) + variant (2 bits) + node (62 bits)
 // timestamp: block time in milliseconds
 // sequence: per-block counter
-// node: hash of chain-id + module name
+// node: hash of header-hash + chain-id + module name + sequence
 ```
 
 **Trade-offs:**
@@ -457,6 +458,9 @@ if creditBalance < minRequired {
 7. **Lease Queries Return Stored State:** `Lease`, `Leases`, etc. return stored `last_settled_at` (use `WithdrawableAmount` for real-time)
 8. **No Denom Conversion:** Must fund credit with exact denoms required by target SKUs
 9. **PENDING Lease Timeout:** Fixed timeout for all providers (governance parameter)
+10. **Closed Lease State Bloat:** Soft-deleted leases (CLOSED, REJECTED, EXPIRED) remain in state indefinitely. High-volume deployments will accumulate state over time. See "Lease Pruning" in Future Considerations for the planned mitigation.
+11. **No SKU Deactivation Cascade to Billing:** Deactivating a provider or SKU in the SKU module does not automatically close active leases in the billing module. Existing leases continue at their locked prices until explicitly closed or credit is exhausted. This is intentional — tenants should not lose running services due to provider-side changes.
+12. **No Credit Withdrawal:** Tenants cannot withdraw unused credits from their credit account. Credits are locked until consumed by leases. This prevents gaming (deposit to block, withdraw immediately) and simplifies the accounting model. See "Credit Withdrawal" in Future Considerations for the planned enhancement.
 
 ### Migration Considerations
 

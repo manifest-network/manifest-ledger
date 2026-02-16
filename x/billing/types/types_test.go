@@ -1714,6 +1714,128 @@ func TestGenesisState_Validate(t *testing.T) {
 			expectErr: true,
 			errMsg:    "pending_lease_count 3 but has 1 pending leases",
 		},
+		// ---- service_name genesis validation ----
+		{
+			name: "valid lease with service_names on all items",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items: []types.LeaseItem{
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)), ServiceName: "web"},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)), ServiceName: "db"},
+						},
+						State:        types.LEASE_STATE_ACTIVE,
+						CreatedAt:    now,
+						LastSettledAt: now,
+					},
+				},
+				CreditAccounts: []types.CreditAccount{
+					{
+						Tenant:           tenant,
+						CreditAddress:    creditAddr.String(),
+						ActiveLeaseCount: 1,
+						// 2 items: 100 * 1 * 3600 * 2 = 720000
+						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(720000))),
+					},
+				},
+			},
+			expectErr: false,
+		},
+		{
+			name: "lease with mixed service_names (some set, some not)",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items: []types.LeaseItem{
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)), ServiceName: "web"},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ae", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+						},
+						State:        types.LEASE_STATE_ACTIVE,
+						CreatedAt:    now,
+						LastSettledAt: now,
+					},
+				},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+			},
+			expectErr: true,
+			errMsg:    "all items must have service_name or none",
+		},
+		{
+			name: "lease with duplicate service_name",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items: []types.LeaseItem{
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)), ServiceName: "web"},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ae", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)), ServiceName: "web"},
+						},
+						State:        types.LEASE_STATE_ACTIVE,
+						CreatedAt:    now,
+						LastSettledAt: now,
+					},
+				},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+			},
+			expectErr: true,
+			errMsg:    "duplicate service_name",
+		},
+		{
+			name: "lease with invalid DNS label in service_name",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items: []types.LeaseItem{
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)), ServiceName: "INVALID"},
+						},
+						State:        types.LEASE_STATE_ACTIVE,
+						CreatedAt:    now,
+						LastSettledAt: now,
+					},
+				},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+			},
+			expectErr: true,
+			errMsg:    "invalid service_name",
+		},
+		{
+			name: "lease with duplicate sku_uuid in legacy mode (no service_names)",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items: []types.LeaseItem{
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 2, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+						},
+						State:        types.LEASE_STATE_ACTIVE,
+						CreatedAt:    now,
+						LastSettledAt: now,
+					},
+				},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+			},
+			expectErr: true,
+			errMsg:    "duplicate sku_uuid",
+		},
 	}
 
 	for _, tc := range tests {

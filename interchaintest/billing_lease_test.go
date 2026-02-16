@@ -128,6 +128,41 @@ func testLeaseCreateIndependent(t *testing.T, ctx context.Context, tc *billingTe
 		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed")
 	})
 
+	t.Run("success: tenant creates stack lease with service_names", func(t *testing.T) {
+		// Use the same SKU twice with different service_names (stack deployment)
+		items := []string{
+			fmt.Sprintf("%s:1:web", tc.skuUUID),
+			fmt.Sprintf("%s:1:db", tc.skuUUID),
+		}
+		res, err := helpers.BillingCreateLease(ctx, tc.chain, tc.tenant1, items)
+		require.NoError(t, err)
+
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "stack lease creation should succeed: %s", txRes.RawLog)
+
+		leaseID, err := helpers.GetLeaseIDFromTxHash(ctx, tc.chain, res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Created stack lease ID: %s", leaseID)
+
+		// Query lease and verify service_names are stored
+		leaseRes, err := helpers.BillingQueryLease(ctx, tc.chain, leaseID)
+		require.NoError(t, err)
+		require.Len(t, leaseRes.Lease.Items, 2, "stack lease should have 2 items")
+		require.Equal(t, "web", leaseRes.Lease.Items[0].ServiceName)
+		require.Equal(t, "db", leaseRes.Lease.Items[1].ServiceName)
+		// Both items should reference the same SKU
+		require.Equal(t, tc.skuUUID, leaseRes.Lease.Items[0].SkuUuid)
+		require.Equal(t, tc.skuUUID, leaseRes.Lease.Items[1].SkuUuid)
+
+		// Acknowledge the lease to make it ACTIVE
+		ackRes, err := helpers.BillingAcknowledgeLease(ctx, tc.chain, tc.providerWallet, leaseID)
+		require.NoError(t, err)
+		ackTxRes, err := tc.chain.GetTransaction(ackRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTxRes.Code, "stack lease acknowledgement should succeed")
+	})
+
 	t.Run("fail: create lease with non-existent SKU", func(t *testing.T) {
 		items := []string{fmt.Sprintf("%s:1", nonExistentUUID)}
 		res, err := helpers.BillingCreateLease(ctx, tc.chain, tc.tenant1, items)

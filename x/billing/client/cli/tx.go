@@ -64,6 +64,38 @@ func parseMetaHashFlag(cmd *cobra.Command) ([]byte, error) {
 	return metaHash, nil
 }
 
+// parseLeaseItemInputs parses CLI arguments into LeaseItemInput values.
+// Format: sku_uuid:quantity or sku_uuid:quantity:service_name
+func parseLeaseItemInputs(args []string) ([]types.LeaseItemInput, error) {
+	items := make([]types.LeaseItemInput, 0, len(args))
+	for _, arg := range args {
+		parts := strings.SplitN(arg, ":", 3)
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("invalid item format '%s': expected sku_uuid:quantity[:service_name]", arg)
+		}
+		skuUUID := parts[0]
+		if !pkguuid.IsValidUUID(skuUUID) {
+			return nil, fmt.Errorf("invalid sku_uuid format: %s", skuUUID)
+		}
+		quantity, err := strconv.ParseUint(parts[1], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid quantity in '%s': %w", arg, err)
+		}
+		item := types.LeaseItemInput{
+			SkuUuid:  skuUUID,
+			Quantity: quantity,
+		}
+		if len(parts) == 3 {
+			if parts[2] == "" {
+				return nil, fmt.Errorf("invalid item format '%s': service_name cannot be empty (omit the trailing colon for legacy mode)", arg)
+			}
+			item.ServiceName = parts[2]
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
 // NewFundCreditCmd returns the command to fund a credit account.
 func NewFundCreditCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -107,13 +139,16 @@ fund-credit manifest1abc... 5000000umfx --from mykey`,
 // NewCreateLeaseCmd returns the command to create a lease.
 func NewCreateLeaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "create-lease [sku-uuid:quantity] [sku-uuid:quantity] ...",
+		Use:   "create-lease [sku-uuid:quantity[:service_name]] ...",
 		Short: "Create a new lease with the specified SKUs",
-		Long: `Create a new lease with one or more SKU items. Each item is specified as sku_uuid:quantity.
+		Long: `Create a new lease with one or more SKU items. Each item is specified as sku_uuid:quantity
+or sku_uuid:quantity:service_name for stack deployments. When service_name is used, all items
+must have one and the same SKU may appear multiple times with different service names.
 All SKUs must belong to the same provider.
 Use --meta-hash to include a hash/reference to off-chain deployment data (hex-encoded, max 64 bytes).`,
 		Example: `create-lease 01902a9b-1234-7000-8000-000000000001:2 01902a9b-1234-7000-8000-000000000002:1
 create-lease 01902a9b-1234-7000-8000-000000000005:10 --from mykey
+create-lease 01902a9b-1234-7000-8000-000000000001:1:web 01902a9b-1234-7000-8000-000000000001:1:db --from mykey
 create-lease 01902a9b-1234-7000-8000-000000000001:1 --meta-hash a1b2c3d4e5f6... --from mykey`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -122,24 +157,9 @@ create-lease 01902a9b-1234-7000-8000-000000000001:1 --meta-hash a1b2c3d4e5f6... 
 				return err
 			}
 
-			items := make([]types.LeaseItemInput, 0, len(args))
-			for _, arg := range args {
-				parts := strings.SplitN(arg, ":", 2)
-				if len(parts) != 2 {
-					return fmt.Errorf("invalid item format '%s': expected sku_uuid:quantity (e.g., 01902a9b-1234-7000-8000-000000000001:2)", arg)
-				}
-				skuUUID := parts[0]
-				if !pkguuid.IsValidUUID(skuUUID) {
-					return fmt.Errorf("invalid sku_uuid format: %s", skuUUID)
-				}
-				quantity, err := strconv.ParseUint(parts[1], 10, 64)
-				if err != nil {
-					return fmt.Errorf("invalid quantity in '%s': %w", arg, err)
-				}
-				items = append(items, types.LeaseItemInput{
-					SkuUuid:  skuUUID,
-					Quantity: quantity,
-				})
+			items, err := parseLeaseItemInputs(args)
+			if err != nil {
+				return err
 			}
 
 			// Parse optional meta_hash
@@ -167,14 +187,17 @@ create-lease 01902a9b-1234-7000-8000-000000000001:1 --meta-hash a1b2c3d4e5f6... 
 // NewCreateLeaseForTenantCmd returns the command to create a lease on behalf of a tenant.
 func NewCreateLeaseForTenantCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "create-lease-for-tenant [tenant] [sku-uuid:quantity] [sku-uuid:quantity] ...",
+		Use:   "create-lease-for-tenant [tenant] [sku-uuid:quantity[:service_name]] ...",
 		Short: "Create a new lease on behalf of a tenant (authority only)",
 		Long: `Create a new lease on behalf of a tenant. This command is used by the authority
-to migrate off-chain leases to on-chain. Each item is specified as sku_uuid:quantity.
+to migrate off-chain leases to on-chain. Each item is specified as sku_uuid:quantity
+or sku_uuid:quantity:service_name for stack deployments. When service_name is used, all items
+must have one and the same SKU may appear multiple times with different service names.
 All SKUs must belong to the same provider. The tenant's credit account must be pre-funded.
 Use --meta-hash to include a hash/reference to off-chain deployment data (hex-encoded, max 64 bytes).`,
 		Example: `create-lease-for-tenant manifest1abc... 01902a9b-1234-7000-8000-000000000001:2 01902a9b-1234-7000-8000-000000000002:1 --from authority
 create-lease-for-tenant manifest1xyz... 01902a9b-1234-7000-8000-000000000005:10 --from authority
+create-lease-for-tenant manifest1abc... 01902a9b-1234-7000-8000-000000000001:1:web 01902a9b-1234-7000-8000-000000000001:1:db --from authority
 create-lease-for-tenant manifest1abc... 01902a9b-1234-7000-8000-000000000001:1 --meta-hash a1b2c3d4e5f6... --from authority`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -188,24 +211,9 @@ create-lease-for-tenant manifest1abc... 01902a9b-1234-7000-8000-000000000001:1 -
 				return fmt.Errorf("invalid tenant address: %w", err)
 			}
 
-			items := make([]types.LeaseItemInput, 0, len(args)-1)
-			for _, arg := range args[1:] {
-				parts := strings.SplitN(arg, ":", 2)
-				if len(parts) != 2 {
-					return fmt.Errorf("invalid item format '%s': expected sku_uuid:quantity (e.g., 01902a9b-1234-7000-8000-000000000001:2)", arg)
-				}
-				skuUUID := parts[0]
-				if !pkguuid.IsValidUUID(skuUUID) {
-					return fmt.Errorf("invalid sku_uuid format: %s", skuUUID)
-				}
-				quantity, err := strconv.ParseUint(parts[1], 10, 64)
-				if err != nil {
-					return fmt.Errorf("invalid quantity in '%s': %w", arg, err)
-				}
-				items = append(items, types.LeaseItemInput{
-					SkuUuid:  skuUUID,
-					Quantity: quantity,
-				})
+			items, err := parseLeaseItemInputs(args[1:])
+			if err != nil {
+				return err
 			}
 
 			// Parse optional meta_hash

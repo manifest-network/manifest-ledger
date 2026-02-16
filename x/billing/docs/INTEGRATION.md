@@ -23,7 +23,7 @@ manifest lease access {lease_uuid} {unix_timestamp}
 
 **Example:**
 ```
-manifest lease access 550e8400-e29b-41d4-a716-446655440000 1702834946
+manifest lease access 019abcde-f012-7abc-8def-abcdef012345 1702834946
 ```
 
 ### API Endpoint
@@ -37,7 +37,7 @@ Authorization: Bearer <base64_encoded_auth_token>
 ```json
 {
   "tenant": "manifest1...",
-  "lease_uuid": "550e8400-e29b-41d4-a716-446655440000",
+  "lease_uuid": "019abcde-f012-7abc-8def-abcdef012345",
   "timestamp": 1702834946,
   "pub_key": {
     "type": "tendermint/PubKeySecp256k1",
@@ -204,7 +204,7 @@ manifest lease data {lease_uuid} {meta_hash_hex} {unix_timestamp}
 
 **Example:**
 ```
-manifest lease data 550e8400-e29b-41d4-a716-446655440000 a1b2c3d4e5f6... 1702834946
+manifest lease data 019abcde-f012-7abc-8def-abcdef012345 a1b2c3d4e5f6... 1702834946
 ```
 
 ### API Endpoint
@@ -224,7 +224,7 @@ Same structure as connection info, but message includes `meta_hash`:
 ```json
 {
   "tenant": "manifest1...",
-  "lease_uuid": "550e8400-e29b-41d4-a716-446655440000",
+  "lease_uuid": "019abcde-f012-7abc-8def-abcdef012345",
   "meta_hash": "a1b2c3d4e5f6...",
   "timestamp": 1702834946,
   "pub_key": {

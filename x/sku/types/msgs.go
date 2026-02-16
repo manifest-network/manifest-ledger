@@ -35,18 +35,6 @@ func NewMsgCreateProvider(
 	}
 }
 
-// Route returns the message route.
-func (msg *MsgCreateProvider) Route() string { return ModuleName }
-
-// Type returns the message type.
-func (msg *MsgCreateProvider) Type() string { return "create_provider" }
-
-// GetSigners returns the expected signers for the message.
-func (msg *MsgCreateProvider) GetSigners() []sdk.AccAddress {
-	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
-	return []sdk.AccAddress{addr}
-}
-
 // Validate performs basic validation.
 func (msg *MsgCreateProvider) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
@@ -97,18 +85,6 @@ func NewMsgUpdateProvider(
 	}
 }
 
-// Route returns the message route.
-func (msg *MsgUpdateProvider) Route() string { return ModuleName }
-
-// Type returns the message type.
-func (msg *MsgUpdateProvider) Type() string { return "update_provider" }
-
-// GetSigners returns the expected signers for the message.
-func (msg *MsgUpdateProvider) GetSigners() []sdk.AccAddress {
-	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
-	return []sdk.AccAddress{addr}
-}
-
 // Validate performs basic validation.
 func (msg *MsgUpdateProvider) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
@@ -155,18 +131,6 @@ func NewMsgDeactivateProvider(
 	}
 }
 
-// Route returns the message route.
-func (msg *MsgDeactivateProvider) Route() string { return ModuleName }
-
-// Type returns the message type.
-func (msg *MsgDeactivateProvider) Type() string { return "deactivate_provider" }
-
-// GetSigners returns the expected signers for the message.
-func (msg *MsgDeactivateProvider) GetSigners() []sdk.AccAddress {
-	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
-	return []sdk.AccAddress{addr}
-}
-
 // Validate performs basic validation.
 func (msg *MsgDeactivateProvider) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
@@ -201,18 +165,6 @@ func NewMsgCreateSKU(
 		BasePrice:    basePrice,
 		MetaHash:     metaHash,
 	}
-}
-
-// Route returns the message route.
-func (msg *MsgCreateSKU) Route() string { return ModuleName }
-
-// Type returns the message type.
-func (msg *MsgCreateSKU) Type() string { return "create_sku" }
-
-// GetSigners returns the expected signers for the message.
-func (msg *MsgCreateSKU) GetSigners() []sdk.AccAddress {
-	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
-	return []sdk.AccAddress{addr}
 }
 
 // Validate performs basic validation.
@@ -277,18 +229,6 @@ func NewMsgUpdateSKU(
 	}
 }
 
-// Route returns the message route.
-func (msg *MsgUpdateSKU) Route() string { return ModuleName }
-
-// Type returns the message type.
-func (msg *MsgUpdateSKU) Type() string { return "update_sku" }
-
-// GetSigners returns the expected signers for the message.
-func (msg *MsgUpdateSKU) GetSigners() []sdk.AccAddress {
-	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
-	return []sdk.AccAddress{addr}
-}
-
 // Validate performs basic validation.
 func (msg *MsgUpdateSKU) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
@@ -343,18 +283,6 @@ func NewMsgDeactivateSKU(
 	}
 }
 
-// Route returns the message route.
-func (msg *MsgDeactivateSKU) Route() string { return ModuleName }
-
-// Type returns the message type.
-func (msg *MsgDeactivateSKU) Type() string { return "deactivate_sku" }
-
-// GetSigners returns the expected signers for the message.
-func (msg *MsgDeactivateSKU) GetSigners() []sdk.AccAddress {
-	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
-	return []sdk.AccAddress{addr}
-}
-
 // Validate performs basic validation.
 func (msg *MsgDeactivateSKU) Validate() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
@@ -374,18 +302,6 @@ func NewMsgUpdateParams(authority string, params Params) *MsgUpdateParams {
 		Authority: authority,
 		Params:    params,
 	}
-}
-
-// Route returns the message route.
-func (msg *MsgUpdateParams) Route() string { return ModuleName }
-
-// Type returns the message type.
-func (msg *MsgUpdateParams) Type() string { return "update_params" }
-
-// GetSigners returns the expected signers for the message.
-func (msg *MsgUpdateParams) GetSigners() []sdk.AccAddress {
-	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
-	return []sdk.AccAddress{addr}
 }
 
 // Validate performs basic validation.

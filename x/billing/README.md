@@ -165,10 +165,10 @@ Module parameters stored at key `0x00`:
 | allowed_list | []string | List of addresses allowed to create leases on behalf of tenants |
 
 **Validation Constraints:**
-- `max_leases_per_tenant`: Must be > 0
+- `max_leases_per_tenant`: Must be > 0 and ≤ 10,000
 - `max_items_per_lease`: Must be > 0 and ≤ 100 (hard limit)
-- `min_lease_duration`: Must be > 0
-- `max_pending_leases_per_tenant`: Must be > 0
+- `min_lease_duration`: Must be > 0 and ≤ 2,592,000 (30 days)
+- `max_pending_leases_per_tenant`: Must be > 0 and ≤ 1,000
 - `pending_timeout`: Must be between 60 seconds (1 minute) and 86400 seconds (24 hours)
 
 **Note:** There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`, enabling multi-denom billing.
@@ -238,6 +238,7 @@ Leases stored at key prefix `0x01`:
 | sku_uuid | string | SKU UUID being leased |
 | quantity | uint64 | Number of instances |
 | locked_price | Coin | Price locked at creation (per second rate, includes denom) |
+| service_name | string | Optional DNS-label for stack deployments (all-or-nothing per lease, unique within lease) |
 
 ### CreditAccount
 
@@ -286,6 +287,7 @@ sender → credit_address
 2. Set lease state to REJECTED
 3. Set rejected_at and rejection_reason
 4. Decrement pending_lease_count
+5. Release credit reservation (rate × min_lease_duration)
 
 ### Cancel Lease (Tenant cancels PENDING)
 
@@ -293,6 +295,7 @@ sender → credit_address
 2. Verify lease is in PENDING state
 3. Set lease state to REJECTED
 4. Decrement pending_lease_count
+5. Release credit reservation (rate × min_lease_duration)
 
 ### Expire Lease (EndBlocker)
 
@@ -303,6 +306,7 @@ The EndBlocker automatically expires pending leases that exceed the `pending_tim
    - Set lease state to EXPIRED
    - Set expired_at timestamp
    - Decrement pending_lease_count
+   - Release credit reservation (rate × min_lease_duration)
 
 **Rate Limiting:** To prevent DoS attacks, the EndBlocker processes a maximum of **100 lease expirations per block** (`MaxPendingLeaseExpirationsPerBlock`). If more than 100 leases need to expire, the remaining leases are processed in subsequent blocks. This uses a two-pass approach to avoid iterator invalidation during state modification.
 
@@ -313,6 +317,7 @@ The EndBlocker automatically expires pending leases that exceed the `pending_tim
 3. Set lease state to CLOSED
 4. Record closed_at timestamp
 5. Decrement active_lease_count
+6. Release credit reservation (rate × min_lease_duration)
 
 ### Withdraw
 

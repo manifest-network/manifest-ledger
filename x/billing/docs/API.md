@@ -54,13 +54,13 @@ manifestd tx billing fund-credit manifest1abc... 1000000upwr --from mykey
 Create a new lease for the sender (tenant). The lease starts in PENDING state.
 
 ```bash
-manifestd tx billing create-lease [sku-uuid:quantity...] [flags]
+manifestd tx billing create-lease [sku-uuid:quantity[:service_name]...] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| items | string... | Space-separated list of `sku-uuid:quantity` pairs |
+| items | string... | Space-separated list of `sku-uuid:quantity[:service_name]` entries |
 
 **Flags:**
 | Flag | Type | Description |
@@ -69,11 +69,14 @@ manifestd tx billing create-lease [sku-uuid:quantity...] [flags]
 
 **Examples:**
 ```bash
-# Create lease without meta_hash
+# Create lease (legacy mode, unique SKUs)
 manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:2 01912345-6789-7abc-8def-0123456789ac:1 --from mykey
 
 # Create lease with meta_hash (SHA-256 hash of deployment manifest)
 manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1 --meta-hash a1b2c3d4e5f6... --from mykey
+
+# Create stack lease with service_names (same SKU, different services)
+manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1:web 01912345-6789-7abc-8def-0123456789ab:1:db --from mykey
 ```
 
 **Constraints:**
@@ -85,12 +88,16 @@ manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1 --meta-
 - Cannot exceed `max_leases_per_tenant`
 - Cannot exceed `max_pending_leases_per_tenant`
 - `meta_hash` cannot exceed 64 bytes (accommodates SHA-256/SHA-512 hashes)
+- If any item has a `service_name`, all items must have one (all-or-nothing)
+- `service_name` must be a valid RFC 1123 DNS label (1-63 lowercase alphanumeric/hyphens, no leading/trailing hyphen)
+- In service_name mode, uniqueness is by `service_name` (same SKU allowed); in legacy mode, uniqueness is by `sku_uuid`
 
 **Notes:**
 - Lease starts in PENDING state awaiting provider acknowledgement
 - Credit is locked but billing does not start until acknowledgement
 - Returns the lease UUID on success
 - `meta_hash` is optional and immutable once set
+- `service_name` enables stack deployments where the same SKU maps to different named services
 
 ---
 
@@ -99,14 +106,14 @@ manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1 --meta-
 Create a lease on behalf of a tenant (authority/allowed addresses only). The lease starts in PENDING state.
 
 ```bash
-manifestd tx billing create-lease-for-tenant [tenant] [sku-uuid:quantity...] [flags]
+manifestd tx billing create-lease-for-tenant [tenant] [sku-uuid:quantity[:service_name]...] [flags]
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
 | tenant | string | Bech32 address of the tenant |
-| items | string... | Space-separated list of `sku-uuid:quantity` pairs |
+| items | string... | Space-separated list of `sku-uuid:quantity[:service_name]` entries |
 
 **Flags:**
 | Flag | Type | Description |
@@ -115,11 +122,14 @@ manifestd tx billing create-lease-for-tenant [tenant] [sku-uuid:quantity...] [fl
 
 **Examples:**
 ```bash
-# Create lease without meta_hash
+# Create lease (legacy mode)
 manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-6789-7abc-8def-0123456789ab:2 --from authority
 
 # Create lease with meta_hash
 manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-6789-7abc-8def-0123456789ab:1 --meta-hash a1b2c3d4e5f6... --from authority
+
+# Create stack lease with service_names
+manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-6789-7abc-8def-0123456789ab:1:web 01912345-6789-7abc-8def-0123456789ab:1:db --from authority
 ```
 
 **Authorization:** Only module authority or addresses in `allowed_list` param.
@@ -920,8 +930,9 @@ message MsgCreateLease {
 }
 
 message LeaseItemInput {
-  string sku_uuid = 1;  // UUIDv7 of SKU
+  string sku_uuid = 1;      // UUIDv7 of SKU
   uint64 quantity = 2;
+  string service_name = 3;  // Optional RFC 1123 DNS label for stack deployments
 }
 ```
 
@@ -1354,6 +1365,7 @@ message LeaseItem {
   string sku_uuid = 1;                         // SKU UUID
   uint64 quantity = 2;                         // Number of instances
   cosmos.base.v1beta1.Coin locked_price = 3;   // Per-second rate locked at creation
+  string service_name = 4;                     // Optional RFC 1123 DNS label for stack deployments
 }
 ```
 
@@ -1416,10 +1428,10 @@ The billing module emits the following events for state changes:
 | `batch_cancelled` | lease_count, tenant, cancelled_by | Batch summary when multiple leases cancelled |
 | `lease_expired` | lease_uuid, tenant, provider_uuid, reason | Pending lease expired |
 | `lease_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, closed_by, duration_seconds, active_lease_count, closure_reason (optional) | Lease closed manually |
-| `batch_closed` | lease_count, closed_by | Batch summary when multiple leases closed |
-| `lease_auto_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, reason | Lease auto-closed due to credit exhaustion |
+| `batch_closed` | lease_count, closed_by, settled_amounts | Batch summary when multiple leases closed |
+| `lease_auto_closed` | lease_uuid, tenant, provider_uuid, reason | Lease auto-closed due to credit exhaustion |
 | `provider_withdraw` | lease_uuid, provider_uuid, payout_address | Provider withdrawal from single lease |
-| `batch_withdraw` | lease_count, provider_uuid, amount, payout_address | Batch summary when multiple leases withdrawn from |
+| `batch_withdraw` | lease_count, provider_uuid, amount, payout_address, auto_closed | Batch summary when multiple leases withdrawn from |
 | `params_updated` | | Module parameters updated |
 
 **Special Case - Withdrawal Auto-Close:** When a `MsgWithdraw` operation discovers the lease's credit is exhausted (balance = 0), it automatically closes the lease. In this case, the `provider_withdraw` event includes an additional `auto_closed: "true"` attribute and `amount: "0"` to indicate no funds were transferred. Note that the `payout_address` attribute is omitted in this case since no transfer occurred.
@@ -1491,13 +1503,14 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrInvalidRequest` | 25 | Invalid request (e.g., conflicting fields in MsgWithdraw) |
 | `ErrInvalidClosureReason` | 26 | Closure reason too long (max 256 chars) |
 | `ErrInvalidMetaHash` | 27 | Meta hash exceeds maximum length (max 64 bytes) |
+| `ErrInvalidServiceName` | 28 | Invalid service name (must be RFC 1123 DNS label: 1-63 lowercase alphanumeric/hyphens, no leading/trailing hyphen) |
 
 **Note on Reserved Codes:** Error codes 7 and 20 are explicitly reserved to maintain stable error code assignments across module versions.
 
 **Why reserve codes?** During development, some error types were removed or consolidated (e.g., separate errors that were merged into a single error). Rather than renumbering all subsequent codes (which would break client error handling that relies on specific codes), the removed codes are marked as reserved. This ensures:
 - Existing client code that handles specific error codes continues to work after upgrades
 - Error codes in logs and metrics remain comparable across versions
-- New errors get the next available number (28+) rather than reusing gaps
+- New errors get the next available number (29+) rather than reusing gaps
 
 **For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code.
 
