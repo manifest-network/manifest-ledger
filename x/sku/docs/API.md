@@ -104,7 +104,7 @@ manifestd tx sku deactivate-provider [uuid] [flags]
 **Flags:**
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| --limit | uint64 | 50 | Maximum SKUs to deactivate per call (max 200) |
+| --limit | uint64 | 50 | Maximum SKUs to deactivate per call (max 100) |
 
 **Example:**
 ```bash

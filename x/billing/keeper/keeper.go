@@ -554,13 +554,16 @@ func (k *Keeper) CountActiveLeasesByTenant(ctx context.Context, tenant string) (
 	if err == nil {
 		return creditAccount.ActiveLeaseCount, nil
 	}
+	if !errors.Is(err, types.ErrCreditAccountNotFound) {
+		return 0, err
+	}
 
 	// Fall back to iteration if credit account doesn't exist
 	return k.countLeasesByTenantAndStateScan(ctx, tenant, types.LEASE_STATE_ACTIVE)
 }
 
-// countLeasesByTenantAndStateScan counts leases in a specific state by iterating (O(n)).
-// This is used as a fallback when credit account doesn't exist.
+// countLeasesByTenantAndStateScan counts leases in a specific state using the TenantState
+// compound index. This is used as a fallback when credit account doesn't exist.
 func (k *Keeper) countLeasesByTenantAndStateScan(ctx context.Context, tenant string, state types.LeaseState) (uint64, error) {
 	var count uint64
 
@@ -570,24 +573,16 @@ func (k *Keeper) countLeasesByTenantAndStateScan(ctx context.Context, tenant str
 		return 0, err
 	}
 
-	iter, err := k.Leases.Indexes.Tenant.MatchExact(ctx, tenantAddr)
+	// Use the TenantState compound index for efficient lookup by (tenant, state)
+	key := collections.Join(tenantAddr, int32(state))
+	iter, err := k.Leases.Indexes.TenantState.MatchExact(ctx, key)
 	if err != nil {
 		return 0, err
 	}
 	defer iter.Close()
 
 	for ; iter.Valid(); iter.Next() {
-		leaseUUID, err := iter.PrimaryKey()
-		if err != nil {
-			return 0, err
-		}
-		lease, err := k.Leases.Get(ctx, leaseUUID)
-		if err != nil {
-			return 0, err
-		}
-		if lease.State == state {
-			count++
-		}
+		count++
 	}
 
 	return count, nil
@@ -654,6 +649,11 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 	// Get credit balances to cap the withdrawable amounts
 	creditBalances, err := k.GetCreditBalances(ctx, lease.Tenant)
 	if err != nil {
+		k.logger.Error("failed to get credit balances for withdrawable calculation",
+			"lease_uuid", lease.Uuid,
+			"tenant", lease.Tenant,
+			"error", err,
+		)
 		return sdk.NewCoins()
 	}
 
@@ -865,6 +865,9 @@ func (k *Keeper) CountPendingLeasesByTenant(ctx context.Context, tenant string) 
 	creditAccount, err := k.GetCreditAccount(ctx, tenant)
 	if err == nil {
 		return creditAccount.PendingLeaseCount, nil
+	}
+	if !errors.Is(err, types.ErrCreditAccountNotFound) {
+		return 0, err
 	}
 
 	// Fall back to iteration if credit account doesn't exist

@@ -42,9 +42,10 @@ This document records key design decisions made during the development of the x/
 **Implementation:**
 ```go
 // UUIDv7 is generated using:
-// - Timestamp: block time in milliseconds
-// - Random bits: SHA-256(block_height || sequence_counter)
-uuid := uuidv7.NewDeterministic(ctx, sequence)
+// - Timestamp: block time in milliseconds (48 bits)
+// - Sequence: per-module counter (12 bits)
+// - Node: FNV-1a(header_hash + chain_id + module_name + sequence) (62 bits)
+uuid := uuid.GenerateUUIDv7(ctx, moduleName, sequence)
 ```
 
 **Trade-offs:**
@@ -65,7 +66,7 @@ uuid := uuidv7.NewDeterministic(ctx, sequence)
 - **Referential Integrity:** Billing module leases reference SKUs by ID
 - **Audit Trail:** Historical records preserved
 - **Simplicity:** Boolean is simpler than full state machine
-- **Idempotency:** Deactivating twice is safe
+- **Safety:** Deactivating an already-inactive provider returns an error if all SKUs are also inactive
 - **Billing Continuity:** Existing leases continue with inactive SKUs/providers
 - **Cascade Behavior:** Provider deactivation cascades to all its SKUs
 

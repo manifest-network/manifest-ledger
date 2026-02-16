@@ -411,7 +411,12 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			providerAddr, exists := providerCache[lease.ProviderUuid]
 			if !exists {
 				provider, err := ms.k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
-				if err == nil {
+				if err != nil {
+					if !errors.Is(err, skutypes.ErrProviderNotFound) {
+						return nil, err
+					}
+					// Provider not found — sender cannot be the provider
+				} else {
 					providerAddr = provider.Address
 					providerCache[lease.ProviderUuid] = providerAddr
 				}

@@ -7,7 +7,7 @@ This guide is for authority members responsible for migrating existing off-chain
 The migration process involves:
 1. Setting up providers in the SKU module
 2. Creating SKUs for billable items in the SKU module
-3. Configuring billing parameters (denom, limits)
+3. Configuring billing parameters (limits, timeouts)
 4. Funding tenant credit accounts
 5. Creating leases on behalf of tenants using `MsgCreateLeaseForTenant`
 

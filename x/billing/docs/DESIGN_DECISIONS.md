@@ -360,8 +360,8 @@ if creditBalance < minRequired {
 ```go
 // UUIDv7 = timestamp (48 bits) + version (4 bits) + sequence (12 bits) + variant (2 bits) + node (62 bits)
 // timestamp: block time in milliseconds
-// sequence: per-block counter
-// node: hash of header-hash + chain-id + module name + sequence
+// sequence: monotonic per-module counter (collections.Sequence)
+// node: FNV-1a(header-hash + chain-id + module name + sequence)
 ```
 
 **Trade-offs:**

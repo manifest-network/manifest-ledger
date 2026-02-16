@@ -406,9 +406,11 @@ func TestPerformSettlementSilent_OverflowHandling(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	// Should return empty amounts due to overflow being silently handled
-	require.True(t, result.AccruedAmounts.IsZero())
-	require.True(t, result.TransferAmounts.IsZero())
+	// On overflow, all remaining credit should be transferred to the provider
+	// (accrued amount would far exceed balance, so provider gets everything)
+	require.Equal(t, int64(10000), result.AccruedAmounts.AmountOf(testDenom).Int64())
+	require.Equal(t, int64(10000), result.TransferAmounts.AmountOf(testDenom).Int64())
+	require.True(t, result.CreditBalanceAfter.IsZero())
 }
 
 func TestPerformSettlementSilent_NormalOperation(t *testing.T) {

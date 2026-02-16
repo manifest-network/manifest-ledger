@@ -7,6 +7,7 @@ package pagination
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/collections/indexes"
@@ -103,6 +104,9 @@ func PaginateStringIndex[V any](
 			if errors.Is(err, collections.ErrNotFound) {
 				// Index references a key that no longer exists (index inconsistency).
 				// Skip the entry rather than failing the entire query.
+				slog.Warn("index references non-existent key, skipping orphaned entry",
+					"primary_key", pk,
+				)
 				continue
 			}
 			return nil, nil, err

@@ -241,8 +241,9 @@ func TestSecurity_AccrualOverflowProtection(t *testing.T) {
 	// PerformSettlementSilent should NOT error (silently handles overflow)
 	result, err := k.PerformSettlementSilent(f.Ctx, &lease, veryFarFuture)
 	require.NoError(t, err)
-	// Should return zero amounts due to overflow being silently handled
-	require.True(t, result.AccruedAmounts.IsZero())
+	// On overflow, all remaining credit should be transferred to the provider
+	require.Equal(t, int64(1_000_000_000_000), result.AccruedAmounts.AmountOf(testDenom).Int64())
+	require.Equal(t, int64(1_000_000_000_000), result.TransferAmounts.AmountOf(testDenom).Int64())
 }
 
 func TestSecurity_ExtremeQuantityValues(t *testing.T) {
