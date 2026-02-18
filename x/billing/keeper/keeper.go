@@ -588,15 +588,6 @@ func (k *Keeper) countLeasesByTenantAndStateScan(ctx context.Context, tenant str
 	return count, nil
 }
 
-// GetCreditBalances returns all credit balances from the bank module for a tenant.
-func (k *Keeper) GetCreditBalances(ctx context.Context, tenant string) (sdk.Coins, error) {
-	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant)
-	if err != nil {
-		return nil, err
-	}
-	return k.bankKeeper.GetAllBalances(ctx, creditAddr), nil
-}
-
 // GetCreditBalance returns the credit balance for a specific denom from the bank module for a tenant.
 func (k *Keeper) GetCreditBalance(ctx context.Context, tenant string, denom string) (sdk.Coin, error) {
 	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant)
@@ -604,6 +595,23 @@ func (k *Keeper) GetCreditBalance(ctx context.Context, tenant string, denom stri
 		return sdk.Coin{}, err
 	}
 	return k.bankKeeper.GetBalance(ctx, creditAddr, denom), nil
+}
+
+// getCreditBalancesForDenoms returns credit balances for only the specified denoms,
+// using per-denom GetBalance to avoid loading dust from unrelated token sends.
+func (k *Keeper) getCreditBalancesForDenoms(ctx context.Context, tenant string, denoms []string) (sdk.Coins, error) {
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant)
+	if err != nil {
+		return nil, err
+	}
+	coins := sdk.NewCoins()
+	for _, denom := range denoms {
+		bal := k.bankKeeper.GetBalance(ctx, creditAddr, denom)
+		if bal.IsPositive() {
+			coins = coins.Add(bal)
+		}
+	}
+	return coins, nil
 }
 
 // CalculateWithdrawableForLease calculates the amounts that can be withdrawn from a lease.
@@ -646,8 +654,8 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 		return sdk.NewCoins()
 	}
 
-	// Get credit balances to cap the withdrawable amounts
-	creditBalances, err := k.GetCreditBalances(ctx, lease.Tenant)
+	// Get credit balances for only the lease's denoms to cap the withdrawable amounts
+	creditBalances, err := k.getCreditBalancesForDenoms(ctx, lease.Tenant, leaseItemDenoms(lease.Items))
 	if err != nil {
 		k.logger.Error("failed to get credit balances for withdrawable calculation",
 			"lease_uuid", lease.Uuid,
@@ -716,8 +724,8 @@ func (k *Keeper) ShouldAutoCloseLease(ctx context.Context, lease *types.Lease) (
 		)
 	}
 
-	// Check tenant's current credit balances
-	creditBalances, err := k.GetCreditBalances(ctx, lease.Tenant)
+	// Check tenant's credit balances for only the lease's denoms
+	creditBalances, err := k.getCreditBalancesForDenoms(ctx, lease.Tenant, leaseItemDenoms(lease.Items))
 	if err != nil {
 		return false, time.Time{}, err
 	}

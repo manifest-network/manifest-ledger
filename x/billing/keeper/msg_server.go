@@ -148,13 +148,7 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		)
 	}
 
-	// 1. Get tenant's credit balances (all denoms)
-	creditBalances, err := ms.k.GetCreditBalances(ctx, tenant)
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. Get credit account and verify tenant hasn't exceeded max leases (O(1) check)
+	// 1. Get credit account and verify tenant hasn't exceeded max leases (O(1) check)
 	creditAccount, err := ms.k.GetCreditAccount(ctx, tenant)
 	if err != nil {
 		return nil, types.ErrCreditAccountNotFound.Wrapf("tenant %s has no credit account", tenant)
@@ -236,6 +230,19 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 	// Available credit = balance - already reserved amounts
 	// This prevents overbooking where multiple leases could exhaust the same credit
 	reservationAmount := types.CalculateLeaseReservationFromRates(totalRatesPerSecond, params.MinLeaseDuration)
+
+	// Fetch credit balances for only the denoms needed by this lease.
+	// This avoids loading dust from unrelated token sends to the credit address.
+	// totalRatesPerSecond is sdk.Coins (sorted, deduplicated) so leaseDenoms has no duplicates.
+	leaseDenoms := make([]string, 0, len(totalRatesPerSecond))
+	for _, coin := range totalRatesPerSecond {
+		leaseDenoms = append(leaseDenoms, coin.Denom)
+	}
+	creditBalances, err := ms.k.getCreditBalancesForDenoms(ctx, tenant, leaseDenoms)
+	if err != nil {
+		return nil, err
+	}
+
 	availableCredit := types.GetAvailableCredit(creditBalances, creditAccount.ReservedAmounts)
 
 	// Check each denom in the reservation has sufficient available credit

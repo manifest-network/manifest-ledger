@@ -19,6 +19,19 @@ type SettlementResult struct {
 	CreditBalanceAfter sdk.Coins
 }
 
+// leaseItemDenoms returns the unique denoms used by a lease's items.
+func leaseItemDenoms(items []types.LeaseItem) []string {
+	seen := make(map[string]struct{}, len(items))
+	denoms := make([]string, 0, len(items))
+	for _, item := range items {
+		if _, ok := seen[item.LockedPrice.Denom]; !ok {
+			seen[item.LockedPrice.Denom] = struct{}{}
+			denoms = append(denoms, item.LockedPrice.Denom)
+		}
+	}
+	return denoms
+}
+
 // LeaseItemsToWithPrice converts lease items to LeaseItemWithPrice for accrual calculations.
 func LeaseItemsToWithPrice(items []types.LeaseItem) []LeaseItemWithPrice {
 	result := make([]LeaseItemWithPrice, 0, len(items))
@@ -110,15 +123,15 @@ func (k *Keeper) performSettlementCore(ctx context.Context, lease *types.Lease, 
 		}
 	}
 
-	// Get credit address and balances
-	creditAddr, err := types.DeriveCreditAddressFromBech32(lease.Tenant)
+	// Get credit balances for only the denoms used by this lease.
+	// This avoids loading dust from unrelated token sends to the credit address.
+	creditBalances, err := k.getCreditBalancesForDenoms(ctx, lease.Tenant, leaseItemDenoms(lease.Items))
 	if err != nil {
 		return nil, err
 	}
-	creditBalances := k.bankKeeper.GetAllBalances(ctx, creditAddr)
 
 	if overflowed {
-		// On overflow, transfer all remaining credit balance to the provider.
+		// On overflow, transfer all remaining credit in the lease's denoms to the provider.
 		// The actual accrual would far exceed the balance, so this is the
 		// correct settlement: the provider receives everything that remains.
 		accruedAmounts = creditBalances
@@ -143,6 +156,12 @@ func (k *Keeper) performSettlementCore(ctx context.Context, lease *types.Lease, 
 			AccruedAmounts:     accruedAmounts,
 			CreditBalanceAfter: creditBalances,
 		}, nil
+	}
+
+	// Get credit address for the transfer
+	creditAddr, err := types.DeriveCreditAddressFromBech32(lease.Tenant)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get provider payout address
