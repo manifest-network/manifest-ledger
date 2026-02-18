@@ -6,6 +6,7 @@ Security Test Coverage:
 - Overflow protection: calculations handle extreme values safely
 - Cross-tenant isolation: users cannot access other users' resources
 - Input validation: malformed inputs are properly rejected
+- Denom-spam resistance: dust tokens on credit addresses don't leak into billing paths
 */
 package keeper_test
 
@@ -663,4 +664,205 @@ func TestSecurity_WithdrawFromClosedLease(t *testing.T) {
 		LeaseUuids: []string{leaseID},
 	})
 	require.Error(t, err)
+}
+
+// ============================================================================
+// Denom-Spam Resistance Tests
+// ============================================================================
+
+// TestSecurity_DenomSpamDoesNotAffectSettlement verifies that dust tokens
+// sent to a credit address by third parties do not leak into settlement
+// transfers.
+func TestSecurity_DenomSpamDoesNotAffectSettlement(t *testing.T) {
+	f := initFixture(t)
+
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+
+	// Create provider and SKU (priced in umfx)
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 umfx/hour
+
+	// Fund tenant credit account with the real denom
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))))
+
+	// Spam the credit address with many dust denoms (simulating attacker)
+	dustDenoms := []string{"dust1", "dust2", "dust3", "dust4", "dust5"}
+	for _, denom := range dustDenoms {
+		f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(1))))
+	}
+
+	// Verify dust is actually on the credit address
+	allBalances := f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddr)
+	require.Equal(t, len(dustDenoms)+1, len(allBalances), "credit address should have real denom + dust denoms")
+
+	// Create credit account
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create and acknowledge a lease
+	leaseID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+		{SkuUuid: sku.Uuid, Quantity: 1},
+	})
+
+	// Advance time so there's something to settle
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+	// Withdraw (triggers settlement)
+	resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{leaseID},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Verify: provider received ONLY the lease denom, not dust
+	for _, denom := range dustDenoms {
+		providerBal := f.App.BankKeeper.GetBalance(f.Ctx, sdk.MustAccAddressFromBech32(provider.PayoutAddress), denom)
+		require.True(t, providerBal.IsZero(), "provider should not receive dust denom %s", denom)
+	}
+
+	// Verify: dust is still on the credit address (untouched)
+	for _, denom := range dustDenoms {
+		creditBal := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom)
+		require.Equal(t, sdkmath.NewInt(1), creditBal.Amount, "dust denom %s should remain on credit address", denom)
+	}
+
+	// Verify: the lease's real denom was settled correctly
+	providerBal := f.App.BankKeeper.GetBalance(f.Ctx, sdk.MustAccAddressFromBech32(provider.PayoutAddress), testDenom)
+	require.True(t, providerBal.IsPositive(), "provider should have received settlement in %s", testDenom)
+}
+
+// TestSecurity_DenomSpamDoesNotAffectAutoClose verifies that dust tokens
+// on a credit address do not interfere with the auto-close decision.
+func TestSecurity_DenomSpamDoesNotAffectAutoClose(t *testing.T) {
+	f := initFixture(t)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund credit account with a small amount (will be exhausted quickly)
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(10))))
+
+	// Spam dust denoms
+	for _, denom := range []string{"spam1", "spam2", "spam3"} {
+		f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(999_999_999))))
+	}
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Build a lease manually in ACTIVE state
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{
+			{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
+		},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     f.Ctx.BlockTime(),
+		LastSettledAt: f.Ctx.BlockTime(),
+	}
+	err = f.App.BillingKeeper.SetLease(f.Ctx, lease)
+	require.NoError(t, err)
+
+	// Advance time far enough to exhaust the real denom balance
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(3600 * time.Second))
+
+	// Auto-close should trigger based on the lease's denom (umfx), not be
+	// confused by the large balances in spam denoms.
+	shouldClose, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease)
+	require.NoError(t, err)
+	require.True(t, shouldClose, "lease should auto-close: real denom exhausted despite large dust balances")
+}
+
+// TestSecurity_DenomSpamDoesNotLeakOnOverflow verifies that when accrual
+// overflows (duration > ~100 years) and PerformSettlementSilent transfers
+// all remaining credit, only the lease's denoms are transferred — not dust.
+func TestSecurity_DenomSpamDoesNotLeakOnOverflow(t *testing.T) {
+	f := initFixture(t)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund credit account with the real denom
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(5000))))
+
+	// Spam dust denoms with large balances
+	dustDenoms := []string{"overflow_dust1", "overflow_dust2", "overflow_dust3"}
+	for _, denom := range dustDenoms {
+		f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(999_999_999))))
+	}
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Build a lease manually in ACTIVE state
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{
+			{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
+		},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     f.Ctx.BlockTime(),
+		LastSettledAt: f.Ctx.BlockTime(),
+	}
+	err = f.App.BillingKeeper.SetLease(f.Ctx, lease)
+	require.NoError(t, err)
+
+	// Settle with a time > 100 years in the future to trigger accrual overflow.
+	// PerformSettlementSilent handles overflow by transferring all remaining
+	// credit rather than returning an error.
+	overflowTime := f.Ctx.BlockTime().Add(101 * 365 * 24 * time.Hour)
+	result, err := f.App.BillingKeeper.PerformSettlementSilent(f.Ctx, &lease, overflowTime)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Verify: only the lease's denom was transferred, not dust
+	require.Len(t, result.TransferAmounts, 1, "overflow settlement should transfer exactly one denom")
+	require.Equal(t, testDenom, result.TransferAmounts[0].Denom)
+	require.Equal(t, sdkmath.NewInt(5000), result.TransferAmounts[0].Amount,
+		"overflow settlement should transfer all remaining credit in the lease's denom")
+
+	// Verify: provider received none of the dust denoms
+	payoutAddr := sdk.MustAccAddressFromBech32(provider.PayoutAddress)
+	for _, denom := range dustDenoms {
+		bal := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
+		require.True(t, bal.IsZero(), "provider should not receive dust denom %s on overflow", denom)
+	}
+
+	// Verify: dust is still on the credit address
+	for _, denom := range dustDenoms {
+		bal := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom)
+		require.Equal(t, sdkmath.NewInt(999_999_999), bal.Amount,
+			"dust denom %s should remain untouched on credit address after overflow settlement", denom)
+	}
 }
