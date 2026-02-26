@@ -60,6 +60,7 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		in.Logger,
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 	)
+	k.SetSKUKeeper(&in.SKUKeeper)
 	m := NewAppModule(in.Cdc, k, in.SKUKeeper)
 
 	return ModuleOutputs{Module: m, Keeper: k, Out: depinject.Out{}}

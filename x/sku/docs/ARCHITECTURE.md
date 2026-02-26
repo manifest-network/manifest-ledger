@@ -159,7 +159,7 @@ var (
 The module uses deterministic UUIDv7 generation for consensus compatibility:
 
 - **Timestamp**: Derived from block time (milliseconds)
-- **Random bits**: Derived from SHA-256 hash of (block height + sequence counter)
+- **Random bits**: Derived from FNV-1a hash of (header hash + chain ID + module name + sequence)
 - **Format**: Standard UUIDv7 with version 7 and variant bits set correctly
 
 This ensures all validators generate the same UUID for the same transaction.

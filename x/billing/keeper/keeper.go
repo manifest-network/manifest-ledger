@@ -614,6 +614,62 @@ func (k *Keeper) getCreditBalancesForDenoms(ctx context.Context, tenant string, 
 	return coins, nil
 }
 
+// getRelevantDenomsForTenant collects the unique denoms from a tenant's active and pending leases
+// plus any denoms in the reserved amounts. This avoids GetAllBalances which loads dust from spam.
+// Uses streaming iteration with a cap to avoid loading all leases into memory.
+func (k *Keeper) getRelevantDenomsForTenant(ctx context.Context, tenant string, reservedAmounts sdk.Coins) ([]string, error) {
+	denomSet := make(map[string]struct{})
+
+	// Include denoms from reserved amounts
+	for _, coin := range reservedAmounts {
+		denomSet[coin.Denom] = struct{}{}
+	}
+
+	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
+	if err != nil {
+		return nil, err
+	}
+
+	// Include denoms from active and pending leases via streaming iteration.
+	// Cap to MaxCreditEstimateLeases per state to bound query cost.
+	for _, state := range []types.LeaseState{types.LEASE_STATE_ACTIVE, types.LEASE_STATE_PENDING} {
+		key := collections.Join(tenantAddr, int32(state))
+		iter, err := k.Leases.Indexes.TenantState.MatchExact(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+
+		var count int
+		for ; iter.Valid(); iter.Next() {
+			if count >= int(types.MaxCreditEstimateLeases) {
+				break
+			}
+			count++
+
+			leaseUUID, err := iter.PrimaryKey()
+			if err != nil {
+				iter.Close()
+				return nil, err
+			}
+			lease, err := k.Leases.Get(ctx, leaseUUID)
+			if err != nil {
+				iter.Close()
+				return nil, err
+			}
+			for _, item := range lease.Items {
+				denomSet[item.LockedPrice.Denom] = struct{}{}
+			}
+		}
+		iter.Close()
+	}
+
+	denoms := make([]string, 0, len(denomSet))
+	for d := range denomSet {
+		denoms = append(denoms, d)
+	}
+	return denoms, nil
+}
+
 // CalculateWithdrawableForLease calculates the amounts that can be withdrawn from a lease.
 // It considers the time since last settlement and the credit balance available.
 // Returns a Coins collection (one entry per denom).

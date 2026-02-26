@@ -1444,7 +1444,8 @@ func TestQueryCreditEstimate(t *testing.T) {
 		require.Equal(t, uint64(0), resp.ActiveLeaseCount)
 		require.Equal(t, uint64(0), resp.EstimatedDurationSeconds)
 		require.True(t, resp.TotalRatePerSecond.IsZero())
-		require.True(t, resp.CurrentBalance.AmountOf(testDenom).Equal(sdkmath.NewInt(1000000)))
+		// With no active leases, only denoms from active leases are fetched (DoS mitigation)
+		require.True(t, resp.CurrentBalance.IsZero())
 	})
 
 	t.Run("calculates estimate with active leases", func(t *testing.T) {

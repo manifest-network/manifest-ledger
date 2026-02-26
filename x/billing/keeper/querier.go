@@ -251,13 +251,32 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	// Fetch all balances from the bank module
-	creditAddr, err := sdk.AccAddressFromBech32(ca.CreditAddress)
+	// Collect relevant denoms from the tenant's leases and reserved amounts.
+	// Uses per-denom GetBalance to avoid loading dust from unrelated token sends (DoS mitigation).
+	relevantDenoms, err := q.k.getRelevantDenomsForTenant(ctx, req.Tenant, ca.ReservedAmounts)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "invalid credit address")
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	balances := q.k.bankKeeper.GetAllBalances(ctx, creditAddr)
+	var balances sdk.Coins
+	if len(relevantDenoms) > 0 {
+		// Primary path: per-denom queries using only lease/reservation denoms (DoS-safe).
+		balances, err = q.k.getCreditBalancesForDenoms(ctx, req.Tenant, relevantDenoms)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	} else {
+		// Fallback for pre-lease accounts (funded but no active/pending leases or reservations).
+		// Uses GetAllBalances since we have no denom hints. This path is only reachable in the
+		// narrow window between FundCredit and lease creation; once a lease exists, the primary
+		// path above handles all queries. The node-side cost is O(n) where n is the number of
+		// denoms on the credit address, but exploiting this requires spending gas to send dust.
+		creditAddr, addrErr := types.DeriveCreditAddressFromBech32(req.Tenant)
+		if addrErr != nil {
+			return nil, status.Error(codes.Internal, addrErr.Error())
+		}
+		balances = q.k.bankKeeper.GetAllBalances(ctx, creditAddr)
+	}
 
 	// Calculate available balances (balance - reserved amounts)
 	// This is what can be used for new lease reservations
@@ -450,23 +469,17 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		return nil, status.Error(codes.InvalidArgument, "invalid tenant address")
 	}
 
-	// Get credit account
-	ca, err := q.k.GetCreditAccount(ctx, req.Tenant)
-	if err != nil {
+	// Verify credit account exists
+	if _, err := q.k.GetCreditAccount(ctx, req.Tenant); err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	// Get current balance
-	creditAddr, err := sdk.AccAddressFromBech32(ca.CreditAddress)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "invalid credit address")
-	}
-	currentBalance := q.k.bankKeeper.GetAllBalances(ctx, creditAddr)
-
-	// Calculate total rate per second across all active leases
-	// Limited to MaxCreditEstimateLeases to prevent DoS on tenants with many leases
+	// Calculate total rate per second across all active leases.
+	// Also collect relevant denoms for per-denom balance queries (DoS mitigation).
+	// Limited to MaxCreditEstimateLeases to prevent DoS on tenants with many leases.
 	totalRatePerSecond := sdk.NewCoins()
 	var activeLeaseCount uint64
+	denomSet := make(map[string]struct{})
 
 	// Use TenantState compound index to iterate only over active leases - O(k) instead of O(n)
 	key := collections.Join(tenantAddr, int32(types.LEASE_STATE_ACTIVE))
@@ -500,7 +513,18 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 			// locked_price is already in per-second terms
 			itemRate := sdk.NewCoin(item.LockedPrice.Denom, item.LockedPrice.Amount.Mul(sdkmath.NewIntFromUint64(item.Quantity)))
 			totalRatePerSecond = totalRatePerSecond.Add(itemRate)
+			denomSet[item.LockedPrice.Denom] = struct{}{}
 		}
+	}
+
+	// Fetch balances for only the denoms used by active leases (DoS mitigation).
+	denoms := make([]string, 0, len(denomSet))
+	for d := range denomSet {
+		denoms = append(denoms, d)
+	}
+	currentBalance, err := q.k.getCreditBalancesForDenoms(ctx, req.Tenant, denoms)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// Calculate estimated duration

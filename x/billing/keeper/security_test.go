@@ -11,6 +11,7 @@ Security Test Coverage:
 package keeper_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -865,4 +866,170 @@ func TestSecurity_DenomSpamDoesNotLeakOnOverflow(t *testing.T) {
 		require.Equal(t, sdkmath.NewInt(999_999_999), bal.Amount,
 			"dust denom %s should remain untouched on credit address after overflow settlement", denom)
 	}
+}
+
+// TestSecurity_DenomSpamDoesNotAffectCreditAccountQuery verifies that the CreditAccount
+// query uses per-denom balance fetching rather than GetAllBalances, so denom-spam on the
+// credit address does not cause the query to load thousands of irrelevant balances.
+func TestSecurity_DenomSpamDoesNotAffectCreditAccountQuery(t *testing.T) {
+	f := initFixture(t)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+
+	// Fund credit account with the real denom
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create and acknowledge a lease so there's an active lease with testDenom
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{createResp.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	// Spam the credit address with 50 different dust denoms
+	dustDenoms := make([]string, 50)
+	for i := range dustDenoms {
+		dustDenoms[i] = fmt.Sprintf("dust%03d", i)
+		f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(dustDenoms[i], sdkmath.NewInt(1))))
+	}
+
+	// Query CreditAccount — should only return the relevant denom (testDenom), not dust
+	querier := keeper.NewQuerier(f.App.BillingKeeper)
+	resp, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+		Tenant: tenant.String(),
+	})
+	require.NoError(t, err)
+
+	// The response should contain testDenom but NOT any dust denoms
+	require.True(t, resp.Balances.AmountOf(testDenom).IsPositive(),
+		"should contain the real denom balance")
+	for _, denom := range dustDenoms {
+		require.True(t, resp.Balances.AmountOf(denom).IsZero(),
+			"dust denom %s should not appear in CreditAccount query response", denom)
+	}
+}
+
+// TestSecurity_DenomSpamDoesNotAffectCreditEstimateQuery verifies that the CreditEstimate
+// query uses per-denom balance fetching rather than GetAllBalances.
+func TestSecurity_DenomSpamDoesNotAffectCreditEstimateQuery(t *testing.T) {
+	f := initFixture(t)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+
+	// Fund credit account
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create and acknowledge a lease
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{createResp.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	// Spam the credit address with 50 different dust denoms
+	for i := range 50 {
+		denom := fmt.Sprintf("dust%03d", i)
+		f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(1))))
+	}
+
+	// Query CreditEstimate — should only consider testDenom, not dust
+	querier := keeper.NewQuerier(f.App.BillingKeeper)
+	resp, err := querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
+		Tenant: tenant.String(),
+	})
+	require.NoError(t, err)
+
+	// The response should contain testDenom balance but NOT dust
+	require.True(t, resp.CurrentBalance.AmountOf(testDenom).IsPositive(),
+		"should contain the real denom balance")
+	for i := range 50 {
+		denom := fmt.Sprintf("dust%03d", i)
+		require.True(t, resp.CurrentBalance.AmountOf(denom).IsZero(),
+			"dust denom %s should not appear in CreditEstimate response", denom)
+	}
+
+	// Estimate should be valid (non-zero duration since we have credit)
+	require.Greater(t, resp.EstimatedDurationSeconds, uint64(0),
+		"should have a positive estimated duration")
+	require.Equal(t, uint64(1), resp.ActiveLeaseCount)
+}
+
+// TestSecurity_CreditAccountPreLeaseFallbackWithSpam verifies the CreditAccount query
+// fallback path (pre-lease accounts) returns the funded balance and does not panic or
+// return incorrect data when the credit address has been spammed with dust denoms.
+func TestSecurity_CreditAccountPreLeaseFallbackWithSpam(t *testing.T) {
+	f := initFixture(t)
+
+	tenant := f.TestAccs[0]
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+
+	// Fund credit account with the real denom
+	realAmount := sdk.NewCoin(testDenom, sdkmath.NewInt(500_000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(realAmount))
+
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Spam the credit address with dust BEFORE any lease is created.
+	// This exercises the GetAllBalances fallback since there are no relevant denoms.
+	for i := range 50 {
+		denom := fmt.Sprintf("spam%03d", i)
+		f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(1))))
+	}
+
+	querier := keeper.NewQuerier(f.App.BillingKeeper)
+	resp, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+		Tenant: tenant.String(),
+	})
+	require.NoError(t, err)
+
+	// The fallback returns all balances (including dust), but the real denom must be present
+	require.True(t, resp.Balances.AmountOf(testDenom).Equal(sdkmath.NewInt(500_000)),
+		"pre-lease fallback must return the funded balance")
+	// Available balances should equal balances when there are no reservations
+	require.True(t, resp.AvailableBalances.AmountOf(testDenom).Equal(sdkmath.NewInt(500_000)),
+		"available balance should match total balance with no reservations")
 }
