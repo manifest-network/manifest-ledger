@@ -1,0 +1,188 @@
+package keeper
+
+import (
+	"context"
+	"time"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/manifest-network/manifest-ledger/x/billing/types"
+)
+
+// SettlementResult contains the results of a settlement operation.
+type SettlementResult struct {
+	// TransferAmounts is the actual amount transferred to the provider.
+	TransferAmounts sdk.Coins
+	// AccruedAmounts is the total amount accrued (may be higher than transferred if credit is insufficient).
+	AccruedAmounts sdk.Coins
+	// CreditBalanceAfter is the tenant's credit balance after the settlement.
+	CreditBalanceAfter sdk.Coins
+}
+
+// leaseItemDenoms returns the unique denoms used by a lease's items.
+func leaseItemDenoms(items []types.LeaseItem) []string {
+	seen := make(map[string]struct{}, len(items))
+	denoms := make([]string, 0, len(items))
+	for _, item := range items {
+		if _, ok := seen[item.LockedPrice.Denom]; !ok {
+			seen[item.LockedPrice.Denom] = struct{}{}
+			denoms = append(denoms, item.LockedPrice.Denom)
+		}
+	}
+	return denoms
+}
+
+// LeaseItemsToWithPrice converts lease items to LeaseItemWithPrice for accrual calculations.
+func LeaseItemsToWithPrice(items []types.LeaseItem) []LeaseItemWithPrice {
+	result := make([]LeaseItemWithPrice, 0, len(items))
+	for _, item := range items {
+		result = append(result, LeaseItemWithPrice{
+			SkuUUID:              item.SkuUuid,
+			Quantity:             item.Quantity,
+			LockedPricePerSecond: item.LockedPrice,
+		})
+	}
+	return result
+}
+
+// CalculateTransferAmounts returns the minimum of accrued and available for each denom.
+// This ensures we never try to transfer more than what's available in the credit account.
+func CalculateTransferAmounts(accrued, available sdk.Coins) sdk.Coins {
+	result := sdk.NewCoins()
+	for _, coin := range accrued {
+		balance := available.AmountOf(coin.Denom)
+		transferAmount := coin.Amount
+		if balance.LT(coin.Amount) {
+			transferAmount = balance
+		}
+		if transferAmount.IsPositive() {
+			result = result.Add(sdk.NewCoin(coin.Denom, transferAmount))
+		}
+	}
+	return result
+}
+
+// PerformSettlement calculates and transfers accrued amounts from a tenant's credit account
+// to the provider's payout address. This is the core settlement logic used by all settlement operations.
+//
+// Parameters:
+//   - ctx: the context
+//   - lease: the lease to settle (LastSettledAt will NOT be modified - caller must handle this)
+//   - settleTime: the time to settle up to
+//
+// Returns:
+//   - SettlementResult containing transfer amounts and balances
+//   - error if settlement fails (including accrual calculation errors)
+//
+// Note: This function does NOT update the lease's LastSettledAt - the caller is responsible
+// for updating the lease state after a successful settlement.
+func (k *Keeper) PerformSettlement(ctx context.Context, lease *types.Lease, settleTime time.Time) (*SettlementResult, error) {
+	return k.performSettlementCore(ctx, lease, settleTime, false)
+}
+
+// PerformSettlementSilent is like PerformSettlement but returns empty amounts on overflow
+// instead of an error. This is useful for close operations where we want to proceed
+// even if accrual calculation fails due to overflow.
+func (k *Keeper) PerformSettlementSilent(ctx context.Context, lease *types.Lease, settleTime time.Time) (*SettlementResult, error) {
+	return k.performSettlementCore(ctx, lease, settleTime, true)
+}
+
+// performSettlementCore contains the shared settlement logic.
+// If silentOnOverflow is true, accrual calculation errors result in empty amounts
+// rather than returning an error.
+func (k *Keeper) performSettlementCore(ctx context.Context, lease *types.Lease, settleTime time.Time, silentOnOverflow bool) (*SettlementResult, error) {
+	// Calculate duration since last settlement
+	duration := settleTime.Sub(lease.LastSettledAt)
+	if duration <= 0 {
+		return &SettlementResult{
+			TransferAmounts:    sdk.NewCoins(),
+			AccruedAmounts:     sdk.NewCoins(),
+			CreditBalanceAfter: sdk.NewCoins(),
+		}, nil
+	}
+
+	// Calculate accrued amounts
+	items := LeaseItemsToWithPrice(lease.Items)
+	accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
+	overflowed := false
+	if err != nil {
+		if silentOnOverflow {
+			// On overflow, the accrued amount exceeds representable range.
+			// This means accrued >> available credit. Transfer all remaining
+			// credit to the provider rather than zeroing it out, which would
+			// grant free service to the tenant.
+			k.logger.Warn("accrual calculation overflow during settlement, will transfer remaining credit",
+				"lease_uuid", lease.Uuid,
+				"tenant", lease.Tenant,
+				"duration", duration.String(),
+				"error", err,
+			)
+			overflowed = true
+		} else {
+			return nil, types.ErrInvalidCreditOperation.Wrapf("accrual calculation error: %s", err)
+		}
+	}
+
+	// Get credit balances for only the denoms used by this lease.
+	// This avoids loading dust from unrelated token sends to the credit address.
+	creditBalances, err := k.getCreditBalancesForDenoms(ctx, lease.Tenant, leaseItemDenoms(lease.Items))
+	if err != nil {
+		return nil, err
+	}
+
+	if overflowed {
+		// On overflow, transfer all remaining credit in the lease's denoms to the provider.
+		// The actual accrual would far exceed the balance, so this is the
+		// correct settlement: the provider receives everything that remains.
+		accruedAmounts = creditBalances
+	}
+
+	// If nothing accrued, return early with current balances
+	if accruedAmounts.IsZero() {
+		return &SettlementResult{
+			TransferAmounts:    sdk.NewCoins(),
+			AccruedAmounts:     sdk.NewCoins(),
+			CreditBalanceAfter: creditBalances,
+		}, nil
+	}
+
+	// Calculate transfer amounts (min of accrued and available)
+	transferAmounts := CalculateTransferAmounts(accruedAmounts, creditBalances)
+
+	// If nothing to transfer, return early
+	if transferAmounts.IsZero() {
+		return &SettlementResult{
+			TransferAmounts:    sdk.NewCoins(),
+			AccruedAmounts:     accruedAmounts,
+			CreditBalanceAfter: creditBalances,
+		}, nil
+	}
+
+	// Get credit address for the transfer
+	creditAddr, err := types.DeriveCreditAddressFromBech32(lease.Tenant)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get provider payout address
+	provider, err := k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
+	if err != nil {
+		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
+	}
+
+	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
+	if err != nil {
+		return nil, types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
+	}
+
+	// Transfer funds
+	if err := k.bankKeeper.SendCoins(ctx, creditAddr, payoutAddr, transferAmounts); err != nil {
+		return nil, types.ErrInvalidCreditOperation.Wrapf("failed to transfer: %s", err)
+	}
+
+	return &SettlementResult{
+		TransferAmounts:    transferAmounts,
+		AccruedAmounts:     accruedAmounts,
+		CreditBalanceAfter: creditBalances.Sub(transferAmounts...),
+	}, nil
+}

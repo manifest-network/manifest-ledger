@@ -1,0 +1,230 @@
+syntax = "proto3";
+package liftedinit.billing.v1;
+
+import "amino/amino.proto";
+import "cosmos/base/v1beta1/coin.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/manifest-network/manifest-ledger/x/billing/types";
+
+// Params defines the parameters for the billing module.
+message Params {
+  option (amino.name) = "lifted/billing/Params";
+  option (gogoproto.equal) = true;
+
+  // max_leases_per_tenant is the maximum number of active leases a tenant can have.
+  // Must be greater than zero.
+  uint64 max_leases_per_tenant = 1
+      [(gogoproto.jsontag) = "max_leases_per_tenant,omitempty,string"];
+
+  // allowed_list is the list of addresses allowed to create leases on behalf of tenants
+  // in addition to the module authority.
+  repeated string allowed_list = 2 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "allowed_list,omitempty"
+  ];
+
+  // max_items_per_lease is the maximum number of items (SKUs) allowed in a single lease.
+  // Must be greater than zero. Prevents excessive gas consumption from large leases.
+  uint64 max_items_per_lease = 3
+      [(gogoproto.jsontag) = "max_items_per_lease,omitempty,string"];
+
+  // min_lease_duration is the minimum duration (in seconds) that a tenant's credit balance
+  // must be able to cover when creating a lease. This prevents tenants from creating leases
+  // that would immediately exhaust their credit. Default is 3600 (1 hour).
+  uint64 min_lease_duration = 4
+      [(gogoproto.jsontag) = "min_lease_duration,omitempty,string"];
+
+  // max_pending_leases_per_tenant is the maximum number of PENDING leases a tenant can have.
+  // Prevents spam attacks where tenants create many leases that providers must process.
+  // Default is 10.
+  uint64 max_pending_leases_per_tenant = 5
+      [(gogoproto.jsontag) = "max_pending_leases_per_tenant,omitempty,string"];
+
+  // pending_timeout is the duration in seconds that a lease can remain in PENDING state
+  // before it expires. Applies globally to all providers. Default is 1800 (30 minutes).
+  // Must be between 60 (1 minute) and 86400 (24 hours).
+  uint64 pending_timeout = 6
+      [(gogoproto.jsontag) = "pending_timeout,omitempty,string"];
+}
+
+// LeaseState defines the state of a lease.
+enum LeaseState {
+  option (gogoproto.goproto_enum_prefix) = false;
+
+  // LEASE_STATE_UNSPECIFIED is the default value.
+  LEASE_STATE_UNSPECIFIED = 0;
+
+  // LEASE_STATE_PENDING indicates the lease is awaiting provider acknowledgement.
+  // Credit is locked but billing has not started.
+  LEASE_STATE_PENDING = 1;
+
+  // LEASE_STATE_ACTIVE indicates the lease is active and accruing charges.
+  // Provider has acknowledged and resources are provisioned.
+  LEASE_STATE_ACTIVE = 2;
+
+  // LEASE_STATE_CLOSED indicates the lease has been closed normally.
+  // Final settlement has occurred.
+  LEASE_STATE_CLOSED = 3;
+
+  // LEASE_STATE_REJECTED indicates the provider rejected the lease.
+  // Credit has been unlocked and returned to tenant.
+  LEASE_STATE_REJECTED = 4;
+
+  // LEASE_STATE_EXPIRED indicates the lease expired while in PENDING state.
+  // Provider did not acknowledge within the timeout period.
+  // Credit has been unlocked and returned to tenant.
+  LEASE_STATE_EXPIRED = 5;
+}
+
+// LeaseItem represents a single SKU item within a lease.
+message LeaseItem {
+  option (amino.name) = "lifted/billing/LeaseItem";
+
+  // sku_uuid is the UUID of the SKU being leased.
+  string sku_uuid = 1 [(gogoproto.jsontag) = "sku_uuid,omitempty"];
+
+  // quantity is the number of instances of this SKU.
+  uint64 quantity = 2 [(gogoproto.jsontag) = "quantity,omitempty,string"];
+
+  // locked_price is the price per unit locked at lease creation (per second).
+  // The denom comes from the SKU's base_price at lease creation time.
+  cosmos.base.v1beta1.Coin locked_price = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "locked_price"
+  ];
+
+  // service_name is an optional DNS-label identifier for this item within a stack deployment.
+  // Must be a valid RFC 1123 DNS label: 1-63 lowercase alphanumeric characters or hyphens,
+  // must not start or end with a hyphen (e.g., "web", "db", "my-service-1").
+  // When used, all items must have a service_name and uniqueness shifts from sku_uuid to service_name,
+  // allowing the same SKU to appear multiple times (e.g., "web" and "db" both using docker-small).
+  string service_name = 4 [(gogoproto.jsontag) = "service_name,omitempty"];
+}
+
+// Lease represents a billing lease between a tenant and provider.
+message Lease {
+  option (amino.name) = "lifted/billing/Lease";
+
+  // uuid is the unique identifier of the lease (UUIDv7 format).
+  string uuid = 1 [(gogoproto.jsontag) = "uuid,omitempty"];
+
+  // tenant is the address of the tenant who owns this lease.
+  string tenant = 2 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
+
+  // provider_uuid is the provider UUID (denormalized from SKUs for efficient querying).
+  string provider_uuid = 3 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
+
+  // items is the list of SKU items in this lease.
+  repeated LeaseItem items = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "items"
+  ];
+
+  // state is the current state of the lease.
+  LeaseState state = 5 [(gogoproto.jsontag) = "state,omitempty"];
+
+  // created_at is the timestamp when the lease was created.
+  // Credit is locked at this time.
+  google.protobuf.Timestamp created_at = 6 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "created_at"
+  ];
+
+  // closed_at is the timestamp when the lease was closed (if CLOSED state).
+  google.protobuf.Timestamp closed_at = 7 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "closed_at,omitempty"
+  ];
+
+  // last_settled_at is the timestamp of the last settlement/withdrawal.
+  // Only applicable for ACTIVE and CLOSED states.
+  google.protobuf.Timestamp last_settled_at = 8 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "last_settled_at"
+  ];
+
+  // acknowledged_at is the timestamp when the provider acknowledged the lease.
+  // Only set when state transitions from PENDING to ACTIVE.
+  // Billing starts from this timestamp.
+  google.protobuf.Timestamp acknowledged_at = 9 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "acknowledged_at,omitempty"
+  ];
+
+  // rejected_at is the timestamp when the provider rejected the lease.
+  // Only set when state is REJECTED.
+  google.protobuf.Timestamp rejected_at = 10 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "rejected_at,omitempty"
+  ];
+
+  // rejection_reason is a free-form explanation for why the lease was rejected.
+  // Only set when state is REJECTED. Maximum 256 characters.
+  string rejection_reason = 11 [(gogoproto.jsontag) = "rejection_reason,omitempty"];
+
+  // expired_at is the timestamp when the lease expired while in PENDING state.
+  // Only set when state is EXPIRED.
+  google.protobuf.Timestamp expired_at = 12 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "expired_at,omitempty"
+  ];
+
+  // closure_reason is a free-form explanation for why the lease was closed.
+  // Only set when state is CLOSED. Maximum 256 characters.
+  string closure_reason = 13 [(gogoproto.jsontag) = "closure_reason,omitempty"];
+
+  // meta_hash is an optional hash/reference to off-chain deployment data.
+  // Set once at lease creation and immutable. Maximum 64 bytes.
+  bytes meta_hash = 14 [(gogoproto.jsontag) = "meta_hash,omitempty"];
+
+  // min_lease_duration_at_creation stores the min_lease_duration parameter value
+  // at the time this lease was created. This ensures consistent reservation
+  // calculation regardless of subsequent parameter changes.
+  // reservation = sum(locked_price × quantity) × min_lease_duration_at_creation
+  uint64 min_lease_duration_at_creation = 15
+      [(gogoproto.jsontag) = "min_lease_duration_at_creation,omitempty,string"];
+}
+
+// CreditAccount represents a tenant's credit account.
+// The actual balance is tracked by the bank module at the credit_address.
+message CreditAccount {
+  option (amino.name) = "lifted/billing/CreditAccount";
+
+  // tenant is the address of the tenant who owns this credit account.
+  string tenant = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
+
+  // credit_address is the derived address where credit funds are held.
+  string credit_address = 2 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "credit_address,omitempty"
+  ];
+
+  // active_lease_count tracks the number of active leases for O(1) count queries.
+  uint64 active_lease_count = 3
+      [(gogoproto.jsontag) = "active_lease_count,omitempty,string"];
+
+  // pending_lease_count tracks the number of pending leases for O(1) count queries.
+  // Used to enforce max_pending_leases_per_tenant limit.
+  uint64 pending_lease_count = 4
+      [(gogoproto.jsontag) = "pending_lease_count,omitempty,string"];
+
+  // reserved_amounts holds the sum of all credit reservations for active and pending leases.
+  // Each lease reserves: rate_per_second × min_lease_duration for each denom.
+  // This prevents overbooking by ensuring credit availability before lease creation.
+  repeated cosmos.base.v1beta1.Coin reserved_amounts = 5 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "reserved_amounts"
+  ];
+}

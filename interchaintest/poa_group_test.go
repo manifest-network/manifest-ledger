@@ -22,11 +22,14 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
+	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 )
@@ -135,6 +138,10 @@ func TestGroupPOA(t *testing.T) {
 	// Bank
 	testBankSend(t, ctx, chain, &cfgA, accAddr)
 	testBankSendIllegal(t, ctx, chain, &cfgA, accAddr)
+	// SKU Module - Provider and SKU Management via Group
+	testGroupProviderAndSKU(t, ctx, chain, &cfgA, accAddr)
+	// Billing Module - Lease Creation via Group
+	testGroupLeaseCreation(t, ctx, chain, &cfgA, accAddr)
 
 	t.Cleanup(func() {
 		dockerutil.CopyCoverageFromContainer(ctx, t, client, chain.GetNode().ContainerID(), chain.HomeDir(), ExternalGoCoverDir)
@@ -675,4 +682,547 @@ func queryLatestContractAddress(t *testing.T, ctx context.Context, chain *cosmos
 	require.NotEmpty(t, res.Contracts)
 
 	return res.Contracts[len(res.Contracts)-1]
+}
+
+// testGroupProviderAndSKU tests provider and SKU creation/management via group proposals.
+func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposerAddr string) {
+	t.Log("\n===== TEST GROUP PROVIDER AND SKU MANAGEMENT =====")
+
+	// Create provider via group proposal
+	var providerUUID string
+	t.Run("create_provider_via_proposal", func(t *testing.T) {
+		createProviderMsg := createSKUCreateProviderProposal(groupAddr, groupAddr, groupAddr, nil)
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createProviderMsg)})
+
+		// Query providers to get the created provider ID
+		providers, err := helpers.SKUQueryProviders(ctx, chain)
+		require.NoError(t, err)
+		require.NotEmpty(t, providers.Providers, "should have at least one provider")
+		providerUUID = providers.Providers[len(providers.Providers)-1].Uuid
+		t.Logf("Created provider ID: %s", providerUUID)
+
+		// Verify provider was created correctly
+		provider, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
+		require.NoError(t, err)
+		require.Equal(t, groupAddr, provider.Provider.Address)
+		require.Equal(t, groupAddr, provider.Provider.PayoutAddress)
+		require.True(t, provider.Provider.Active)
+	})
+
+	// Create SKU via group proposal
+	var skuUUID string
+	t.Run("create_sku_via_proposal", func(t *testing.T) {
+		// Price: 3600 umfx per hour (evenly divisible by 3600 seconds)
+		basePrice := sdk.NewInt64Coin(Denom, 3600)
+		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerUUID, "Compute Small", skutypes.Unit_UNIT_PER_HOUR, basePrice, nil)
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
+
+		// Query SKUs to get the created SKU ID
+		skus, err := helpers.SKUQuerySKUs(ctx, chain)
+		require.NoError(t, err)
+		require.NotEmpty(t, skus.Skus, "should have at least one SKU")
+		skuUUID = skus.Skus[len(skus.Skus)-1].Uuid
+		t.Logf("Created SKU ID: %s", skuUUID)
+
+		// Verify SKU was created correctly
+		sku, err := helpers.SKUQuerySKU(ctx, chain, skuUUID)
+		require.NoError(t, err)
+		require.Equal(t, providerUUID, sku.Sku.ProviderUuid)
+		require.Equal(t, "Compute Small", sku.Sku.Name)
+		require.True(t, sku.Sku.Active)
+	})
+
+	// Update provider via group proposal
+	t.Run("update_provider_via_proposal", func(t *testing.T) {
+		updateProviderMsg := createSKUUpdateProviderProposal(groupAddr, providerUUID, groupAddr, acc2Addr, true, []byte("cafebabe"))
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &updateProviderMsg)})
+
+		// Verify update
+		provider, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
+		require.NoError(t, err)
+		require.Equal(t, acc2Addr, provider.Provider.PayoutAddress)
+	})
+
+	// Update SKU via group proposal
+	t.Run("update_sku_via_proposal", func(t *testing.T) {
+		// Updated price: 7200 umfx per hour
+		updatedPrice := sdk.NewInt64Coin(Denom, 7200)
+		updateSKUMsg := createSKUUpdateSKUProposal(groupAddr, skuUUID, providerUUID, "Compute Medium", skutypes.Unit_UNIT_PER_HOUR, updatedPrice, true, nil)
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &updateSKUMsg)})
+
+		// Verify update
+		sku, err := helpers.SKUQuerySKU(ctx, chain, skuUUID)
+		require.NoError(t, err)
+		require.Equal(t, "Compute Medium", sku.Sku.Name)
+		require.Equal(t, sdkmath.NewInt(7200), sku.Sku.BasePrice.Amount)
+	})
+
+	// Create another SKU for deactivation testing
+	var skuToDeactivateUUID string
+	t.Run("create_sku_for_deactivation", func(t *testing.T) {
+		basePrice := sdk.NewInt64Coin(Denom, 86400) // 86400 umfx per day
+		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerUUID, "Storage Large", skutypes.Unit_UNIT_PER_DAY, basePrice, nil)
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
+
+		// Get the SKU ID
+		skus, err := helpers.SKUQuerySKUs(ctx, chain)
+		require.NoError(t, err)
+		skuToDeactivateUUID = skus.Skus[len(skus.Skus)-1].Uuid
+	})
+
+	// Deactivate SKU via group proposal
+	t.Run("deactivate_sku_via_proposal", func(t *testing.T) {
+		deactivateSKUMsg := createSKUDeactivateSKUProposal(groupAddr, skuToDeactivateUUID)
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &deactivateSKUMsg)})
+
+		// Verify deactivation
+		sku, err := helpers.SKUQuerySKU(ctx, chain, skuToDeactivateUUID)
+		require.NoError(t, err)
+		require.False(t, sku.Sku.Active, "SKU should be inactive after deactivation")
+	})
+
+	// Create another provider for deactivation testing
+	var providerToDeactivateUUID string
+	t.Run("create_provider_for_deactivation", func(t *testing.T) {
+		createProviderMsg := createSKUCreateProviderProposal(groupAddr, acc3Addr, acc3Addr, nil)
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createProviderMsg)})
+
+		providers, err := helpers.SKUQueryProviders(ctx, chain)
+		require.NoError(t, err)
+		providerToDeactivateUUID = providers.Providers[len(providers.Providers)-1].Uuid
+	})
+
+	// Deactivate provider via group proposal
+	t.Run("deactivate_provider_via_proposal", func(t *testing.T) {
+		deactivateProviderMsg := createSKUDeactivateProviderProposal(groupAddr, providerToDeactivateUUID)
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &deactivateProviderMsg)})
+
+		// Verify deactivation
+		provider, err := helpers.SKUQueryProvider(ctx, chain, providerToDeactivateUUID)
+		require.NoError(t, err)
+		require.False(t, provider.Provider.Active, "Provider should be inactive after deactivation")
+	})
+}
+
+// testGroupLeaseCreation tests lease creation via group proposals (as POA admin authority).
+func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposerAddr string) {
+	t.Log("\n===== TEST GROUP LEASE CREATION =====")
+
+	node := chain.GetNode()
+
+	// First, create a PWR denom for billing using tokenfactory via group proposal
+	var pwrDenom string
+	t.Run("create_pwr_denom_via_proposal", func(t *testing.T) {
+		pwrSubdenom := "upwr"
+		createDenomMsg := tokenfactorytypes.MsgCreateDenom{
+			Sender:   groupAddr,
+			Subdenom: pwrSubdenom,
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createDenomMsg)})
+		pwrDenom = fmt.Sprintf("factory/%s/%s", groupAddr, pwrSubdenom)
+		t.Logf("Created PWR denom: %s", pwrDenom)
+	})
+
+	// Mint PWR tokens to group address for distribution
+	t.Run("mint_pwr_tokens_via_proposal", func(t *testing.T) {
+		mintMsg := tokenfactorytypes.MsgMint{
+			Sender:        groupAddr,
+			Amount:        sdk.NewInt64Coin(pwrDenom, 1_000_000_000_000),
+			MintToAddress: groupAddr,
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &mintMsg)})
+
+		// Verify minting
+		balance, err := chain.GetBalance(ctx, groupAddr, pwrDenom)
+		require.NoError(t, err)
+		require.True(t, balance.GT(sdkmath.ZeroInt()), "group should have PWR balance")
+	})
+
+	// Update billing params via group proposal
+	t.Run("update_billing_params_via_proposal", func(t *testing.T) {
+		// minLeaseDuration = 10 seconds for testing (quick lease tests)
+		updateParamsMsg := billingtypes.MsgUpdateParams{
+			Authority: groupAddr,
+			Params: billingtypes.Params{
+				MaxLeasesPerTenant:        100,
+				MaxItemsPerLease:          20,
+				MinLeaseDuration:          10,
+				MaxPendingLeasesPerTenant: 10,
+				PendingTimeout:            1800,
+				AllowedList:               nil, // Empty allowed list - only authority can create leases for tenants
+			},
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &updateParamsMsg)})
+
+		// Verify params
+		params, err := helpers.BillingQueryParams(ctx, chain)
+		require.NoError(t, err)
+		require.Equal(t, uint64(10), params.Params.MinLeaseDuration)
+	})
+
+	// Get the first provider created in the previous test
+	providers, err := helpers.SKUQueryProviders(ctx, chain)
+	require.NoError(t, err)
+	require.NotEmpty(t, providers.Providers)
+	providerUUID := providers.Providers[0].Uuid
+
+	// Create a new SKU priced in PWR for lease testing
+	// (existing SKUs are priced in umfx, but we fund tenant credit with PWR)
+	var activeSKUUUID string
+	t.Run("create_pwr_sku_via_proposal", func(t *testing.T) {
+		// Price: 7200 upwr per hour (2 upwr per second)
+		basePrice := sdk.NewInt64Coin(pwrDenom, 7200)
+		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerUUID, "Compute PWR", skutypes.Unit_UNIT_PER_HOUR, basePrice, nil)
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
+
+		// Query SKUs to get the created SKU ID
+		skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerUUID)
+		require.NoError(t, err)
+		require.NotEmpty(t, skus.Skus, "should have at least one SKU")
+		// Find the PWR-priced SKU we just created
+		for _, sku := range skus.Skus {
+			if sku.Active && sku.BasePrice.Denom == pwrDenom {
+				activeSKUUUID = sku.Uuid
+				break
+			}
+		}
+		require.NotZero(t, activeSKUUUID, "should have created a PWR-priced SKU")
+		t.Logf("Created PWR SKU ID: %s with denom: %s", activeSKUUUID, pwrDenom)
+	})
+
+	// Create a tenant user for lease testing
+	tenantUsers := interchaintest.GetAndFundTestUsers(t, ctx, "lease-tenant", DefaultGenesisAmt, chain)
+	tenant := tenantUsers[0]
+	tenantAddr := tenant.FormattedAddress()
+
+	// Fund tenant's credit account via group proposal
+	t.Run("fund_tenant_credit_via_proposal", func(t *testing.T) {
+		// First send PWR from group to fund the credit
+		// We need to fund credit using MsgFundCredit
+		fundCreditMsg := billingtypes.MsgFundCredit{
+			Sender: groupAddr,
+			Tenant: tenantAddr,
+			Amount: sdk.NewInt64Coin(pwrDenom, 100_000_000), // 100 PWR
+		}
+
+		// But first, we need to send PWR to the group address's bank account
+		// so the FundCredit can transfer from there to the credit account
+		// The group already has PWR from minting, so we can directly fund
+
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &fundCreditMsg)})
+
+		// Verify credit account
+		creditRes, err := helpers.BillingQueryCreditAccount(ctx, chain, tenantAddr)
+		require.NoError(t, err)
+		require.True(t, len(creditRes.Balances) > 0 && creditRes.Balances[0].Amount.IsPositive(), "tenant should have credit balance")
+		t.Logf("Tenant credit balance: %s", creditRes.Balances)
+	})
+
+	// Create lease for tenant via group proposal (authority creates lease for tenant)
+	var leaseID string
+	t.Run("create_lease_for_tenant_via_proposal", func(t *testing.T) {
+		createLeaseForTenantMsg := billingtypes.MsgCreateLeaseForTenant{
+			Authority: groupAddr,
+			Tenant:    tenantAddr,
+			Items: []billingtypes.LeaseItemInput{
+				{SkuUuid: activeSKUUUID, Quantity: 1},
+			},
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
+
+		// Query leases to get the created lease ID (query all, not just active, since lease is PENDING)
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "")
+		require.NoError(t, err)
+		require.NotEmpty(t, leases.Leases, "tenant should have at least one lease")
+		leaseID = leases.Leases[len(leases.Leases)-1].Uuid
+		t.Logf("Created lease UUID: %s for tenant: %s", leaseID, tenantAddr)
+
+		// Verify lease is in PENDING state
+		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
+		require.NoError(t, err)
+		require.Equal(t, tenantAddr, lease.Lease.Tenant)
+		require.Equal(t, billingtypes.LEASE_STATE_PENDING, lease.Lease.GetState())
+	})
+
+	// Acknowledge the lease via group proposal (provider is the group)
+	t.Run("acknowledge_lease_via_proposal", func(t *testing.T) {
+		ackLeaseMsg := billingtypes.MsgAcknowledgeLease{
+			Sender:     groupAddr,
+			LeaseUuids: []string{leaseID},
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
+
+		// Verify lease is now ACTIVE
+		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
+		require.NoError(t, err)
+		require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.Lease.GetState())
+	})
+
+	// Tenant can close their own lease (even though authority created it)
+	t.Run("tenant_closes_own_lease", func(t *testing.T) {
+		res, err := helpers.BillingCloseLease(ctx, chain, tenant, leaseID)
+		require.NoError(t, err)
+
+		txRes, err := chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "tenant should be able to close lease: %s", txRes.RawLog)
+
+		// Verify lease is closed
+		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
+		require.NoError(t, err)
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.Lease.GetState())
+	})
+
+	// Create another lease for withdrawal testing
+	var withdrawLeaseID string
+	t.Run("create_another_lease_for_tenant", func(t *testing.T) {
+		createLeaseForTenantMsg := billingtypes.MsgCreateLeaseForTenant{
+			Authority: groupAddr,
+			Tenant:    tenantAddr,
+			Items: []billingtypes.LeaseItemInput{
+				{SkuUuid: activeSKUUUID, Quantity: 2},
+			},
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
+
+		// Query all leases (not just active since this one is PENDING)
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "")
+		require.NoError(t, err)
+		require.NotEmpty(t, leases.Leases)
+		// Get the most recent PENDING lease
+		for i := len(leases.Leases) - 1; i >= 0; i-- {
+			if leases.Leases[i].GetState() == billingtypes.LEASE_STATE_PENDING {
+				withdrawLeaseID = leases.Leases[i].Uuid
+				break
+			}
+		}
+		require.NotEmpty(t, withdrawLeaseID, "should find a pending lease")
+	})
+
+	// Acknowledge the withdrawal lease via group proposal
+	t.Run("acknowledge_withdrawal_lease_via_proposal", func(t *testing.T) {
+		ackLeaseMsg := billingtypes.MsgAcknowledgeLease{
+			Sender:     groupAddr,
+			LeaseUuids: []string{withdrawLeaseID},
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
+
+		// Verify lease is now ACTIVE
+		lease, err := helpers.BillingQueryLease(ctx, chain, withdrawLeaseID)
+		require.NoError(t, err)
+		require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.Lease.GetState())
+	})
+
+	// Wait for some accrual
+	require.NoError(t, testutil.WaitForBlocks(ctx, 5, chain))
+
+	// Withdraw via group proposal
+	t.Run("withdraw_via_proposal", func(t *testing.T) {
+		// Update provider payout address to acc2Addr (done in previous test)
+		// so we verify withdrawal goes to the payout address
+		provider, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
+		require.NoError(t, err)
+		payoutAddr := provider.Provider.PayoutAddress
+
+		// Get initial balance
+		initialBalance, err := chain.GetBalance(ctx, payoutAddr, pwrDenom)
+		require.NoError(t, err)
+
+		withdrawMsg := billingtypes.MsgWithdraw{
+			Sender:     groupAddr,
+			LeaseUuids: []string{withdrawLeaseID},
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &withdrawMsg)})
+
+		// Verify provider received funds
+		newBalance, err := chain.GetBalance(ctx, payoutAddr, pwrDenom)
+		require.NoError(t, err)
+		require.True(t, newBalance.GTE(initialBalance), "provider should have received funds")
+		t.Logf("Provider payout address balance changed: %s -> %s", initialBalance, newBalance)
+	})
+
+	// Close lease via group proposal (authority can close any lease)
+	t.Run("close_lease_via_proposal", func(t *testing.T) {
+		closeLeaseMsg := billingtypes.MsgCloseLease{
+			Sender:     groupAddr,
+			LeaseUuids: []string{withdrawLeaseID},
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &closeLeaseMsg)})
+
+		// Verify lease is closed
+		lease, err := helpers.BillingQueryLease(ctx, chain, withdrawLeaseID)
+		require.NoError(t, err)
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.Lease.GetState())
+	})
+
+	// Test withdraw all via group proposal
+	t.Run("withdraw_all_via_proposal", func(t *testing.T) {
+		// First create another lease for the tenant
+		createLeaseForTenantMsg := billingtypes.MsgCreateLeaseForTenant{
+			Authority: groupAddr,
+			Tenant:    tenantAddr,
+			Items: []billingtypes.LeaseItemInput{
+				{SkuUuid: activeSKUUUID, Quantity: 1},
+			},
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
+
+		// Query to get the new lease ID (PENDING state)
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "")
+		require.NoError(t, err)
+		var withdrawAllLeaseID string
+		for i := len(leases.Leases) - 1; i >= 0; i-- {
+			if leases.Leases[i].GetState() == billingtypes.LEASE_STATE_PENDING {
+				withdrawAllLeaseID = leases.Leases[i].Uuid
+				break
+			}
+		}
+		require.NotEmpty(t, withdrawAllLeaseID, "should find a pending lease")
+
+		// Acknowledge the lease
+		ackLeaseMsg := billingtypes.MsgAcknowledgeLease{
+			Sender:     groupAddr,
+			LeaseUuids: []string{withdrawAllLeaseID},
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
+
+		// Wait for some accrual
+		require.NoError(t, testutil.WaitForBlocks(ctx, 3, chain))
+
+		// Withdraw for provider (provider-wide mode)
+		withdrawMsg := billingtypes.MsgWithdraw{
+			Sender:       groupAddr,
+			ProviderUuid: providerUUID,
+			Limit:        0, // Use default limit
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &withdrawMsg)})
+	})
+
+	// Test multi-SKU lease creation
+	t.Run("create_multi_sku_lease", func(t *testing.T) {
+		// Create another SKU for multi-item lease (priced in PWR to match tenant credit)
+		basePrice := sdk.NewInt64Coin(pwrDenom, 86400) // 86400 upwr per day (1 upwr per second)
+		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerUUID, "Storage Small", skutypes.Unit_UNIT_PER_DAY, basePrice, nil)
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
+
+		// Get the new SKU ID (find a PWR-priced SKU that's not activeSKUUUID)
+		skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerUUID)
+		require.NoError(t, err)
+		var secondSKUUUID string
+		for _, sku := range skus.Skus {
+			if sku.Active && sku.Uuid != activeSKUUUID && sku.BasePrice.Denom == pwrDenom {
+				secondSKUUUID = sku.Uuid
+				break
+			}
+		}
+		require.NotZero(t, secondSKUUUID, "should have a second active PWR-priced SKU")
+
+		// Create multi-SKU lease
+		createMultiLeaseMsg := billingtypes.MsgCreateLeaseForTenant{
+			Authority: groupAddr,
+			Tenant:    tenantAddr,
+			Items: []billingtypes.LeaseItemInput{
+				{SkuUuid: activeSKUUUID, Quantity: 2},
+				{SkuUuid: secondSKUUUID, Quantity: 1},
+			},
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createMultiLeaseMsg)})
+
+		// Get the newly created PENDING lease
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "")
+		require.NoError(t, err)
+		var multiLeaseID string
+		for i := len(leases.Leases) - 1; i >= 0; i-- {
+			if leases.Leases[i].GetState() == billingtypes.LEASE_STATE_PENDING && len(leases.Leases[i].Items) == 2 {
+				multiLeaseID = leases.Leases[i].Uuid
+				break
+			}
+		}
+		require.NotEmpty(t, multiLeaseID, "should find a pending multi-item lease")
+
+		// Acknowledge the multi-SKU lease
+		ackLeaseMsg := billingtypes.MsgAcknowledgeLease{
+			Sender:     groupAddr,
+			LeaseUuids: []string{multiLeaseID},
+		}
+		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
+
+		// Verify multi-SKU lease is now active
+		leases, err = helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "active")
+		require.NoError(t, err)
+		require.NotEmpty(t, leases.Leases)
+
+		// Find the lease with 2 items
+		var multiItemLease *helpers.LeaseJSON
+		for i := range leases.Leases {
+			if len(leases.Leases[i].Items) == 2 {
+				multiItemLease = &leases.Leases[i]
+				break
+			}
+		}
+		require.NotNil(t, multiItemLease, "should have a multi-item lease")
+		require.Len(t, multiItemLease.Items, 2, "lease should have 2 items")
+	})
+
+	_ = node // avoid unused variable
+}
+
+// SKU proposal creation helpers
+
+func createSKUCreateProviderProposal(authority, address, payoutAddress string, metaHash []byte) skutypes.MsgCreateProvider {
+	return skutypes.MsgCreateProvider{
+		Authority:     authority,
+		Address:       address,
+		PayoutAddress: payoutAddress,
+		MetaHash:      metaHash,
+	}
+}
+
+func createSKUUpdateProviderProposal(authority string, uuid string, address, payoutAddress string, active bool, metaHash []byte) skutypes.MsgUpdateProvider {
+	return skutypes.MsgUpdateProvider{
+		Authority:     authority,
+		Uuid:          uuid,
+		Address:       address,
+		PayoutAddress: payoutAddress,
+		Active:        active,
+		MetaHash:      metaHash,
+	}
+}
+
+func createSKUDeactivateProviderProposal(authority string, uuid string) skutypes.MsgDeactivateProvider {
+	return skutypes.MsgDeactivateProvider{
+		Authority: authority,
+		Uuid:      uuid,
+	}
+}
+
+func createSKUCreateSKUProposal(authority string, providerUUID string, name string, unit skutypes.Unit, basePrice sdk.Coin, metaHash []byte) skutypes.MsgCreateSKU {
+	return skutypes.MsgCreateSKU{
+		Authority:    authority,
+		ProviderUuid: providerUUID,
+		Name:         name,
+		Unit:         unit,
+		BasePrice:    basePrice,
+		MetaHash:     metaHash,
+	}
+}
+
+func createSKUUpdateSKUProposal(authority string, uuid, providerUUID string, name string, unit skutypes.Unit, basePrice sdk.Coin, active bool, metaHash []byte) skutypes.MsgUpdateSKU {
+	return skutypes.MsgUpdateSKU{
+		Authority:    authority,
+		Uuid:         uuid,
+		ProviderUuid: providerUUID,
+		Name:         name,
+		Unit:         unit,
+		BasePrice:    basePrice,
+		Active:       active,
+		MetaHash:     metaHash,
+	}
+}
+
+func createSKUDeactivateSKUProposal(authority string, uuid string) skutypes.MsgDeactivateSKU {
+	return skutypes.MsgDeactivateSKU{
+		Authority: authority,
+		Uuid:      uuid,
+	}
 }

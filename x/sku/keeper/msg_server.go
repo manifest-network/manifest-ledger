@@ -1,0 +1,497 @@
+package keeper
+
+import (
+	"context"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/manifest-network/manifest-ledger/pkg/sanitize"
+	"github.com/manifest-network/manifest-ledger/x/sku/types"
+)
+
+type msgServer struct {
+	k Keeper
+}
+
+var _ types.MsgServer = msgServer{}
+
+// NewMsgServerImpl returns an implementation of the module MsgServer interface.
+func NewMsgServerImpl(keeper Keeper) types.MsgServer {
+	return &msgServer{k: keeper}
+}
+
+// isAuthorizedSender checks if the sender is the authority or in the allowed list.
+func (ms msgServer) isAuthorizedSender(ctx context.Context, sender string) (bool, error) {
+	if ms.k.GetAuthority() == sender {
+		return true, nil
+	}
+	params, err := ms.k.GetParams(ctx)
+	if err != nil {
+		return false, err
+	}
+	return params.IsAllowed(sender), nil
+}
+
+// CreateProvider creates a new Provider.
+func (ms msgServer) CreateProvider(ctx context.Context, req *types.MsgCreateProvider) (*types.MsgCreateProviderResponse, error) {
+	authorized, err := ms.isAuthorizedSender(ctx, req.Authority)
+	if err != nil {
+		return nil, types.ErrUnauthorized.Wrapf("failed to check authorization: %s", err)
+	}
+	if !authorized {
+		return nil, types.ErrUnauthorized.Wrapf("%s is not the authority or in the allowed list", req.Authority)
+	}
+
+	if err := req.Validate(); err != nil {
+		return nil, types.ErrInvalidProvider.Wrapf("invalid create provider message: %s", err)
+	}
+
+	uuid, err := ms.k.GenerateProviderUUID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	provider := types.Provider{
+		Uuid:          uuid,
+		Address:       req.Address,
+		PayoutAddress: req.PayoutAddress,
+		MetaHash:      req.MetaHash,
+		Active:        true,
+		ApiUrl:        req.ApiUrl,
+	}
+
+	if err := ms.k.SetProvider(ctx, provider); err != nil {
+		return nil, err
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvents(sdk.Events{
+		sdk.NewEvent(
+			types.EventTypeProviderCreated,
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, uuid),
+			sdk.NewAttribute(types.AttributeKeyAddress, req.Address),
+			sdk.NewAttribute(types.AttributeKeyPayoutAddress, req.PayoutAddress),
+			sdk.NewAttribute(types.AttributeKeyCreatedBy, req.Authority),
+		),
+	})
+
+	ms.k.Logger().Info("Provider created", "uuid", uuid, "address", req.Address)
+
+	return &types.MsgCreateProviderResponse{Uuid: uuid}, nil
+}
+
+// UpdateProvider updates an existing Provider.
+func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProvider) (*types.MsgUpdateProviderResponse, error) {
+	authorized, err := ms.isAuthorizedSender(ctx, req.Authority)
+	if err != nil {
+		return nil, types.ErrUnauthorized.Wrapf("failed to check authorization: %s", err)
+	}
+	if !authorized {
+		return nil, types.ErrUnauthorized.Wrapf("%s is not the authority or in the allowed list", req.Authority)
+	}
+
+	if err := req.Validate(); err != nil {
+		return nil, types.ErrInvalidProvider.Wrapf("invalid update provider message: %s", err)
+	}
+
+	existingProvider, err := ms.k.GetProvider(ctx, req.Uuid)
+	if err != nil {
+		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.Uuid)
+	}
+
+	// Forbid deactivation via UpdateProvider - use DeactivateProvider instead
+	// This ensures proper cascade behavior for associated SKUs
+	if existingProvider.Active && !req.Active {
+		return nil, types.ErrInvalidProvider.Wrap("cannot deactivate provider via UpdateProvider; use DeactivateProvider instead")
+	}
+
+	wasInactive := !existingProvider.Active
+
+	// Preserve existing api_url if not provided in the update
+	apiURL := req.ApiUrl
+	if apiURL == "" {
+		apiURL = existingProvider.ApiUrl
+	}
+
+	provider := types.Provider{
+		Uuid:          req.Uuid,
+		Address:       req.Address,
+		PayoutAddress: req.PayoutAddress,
+		MetaHash:      req.MetaHash,
+		Active:        req.Active,
+		ApiUrl:        apiURL,
+	}
+
+	if err := ms.k.SetProvider(ctx, provider); err != nil {
+		return nil, err
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// Emit activated event if transitioning from inactive to active
+	if wasInactive && req.Active {
+		sdkCtx.EventManager().EmitEvents(sdk.Events{
+			sdk.NewEvent(
+				types.EventTypeProviderActivated,
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
+			),
+		})
+	}
+
+	sdkCtx.EventManager().EmitEvents(sdk.Events{
+		sdk.NewEvent(
+			types.EventTypeProviderUpdated,
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
+		),
+	})
+
+	ms.k.Logger().Info("Provider updated", "uuid", req.Uuid)
+
+	return &types.MsgUpdateProviderResponse{}, nil
+}
+
+// DeactivateProvider deactivates a Provider and all its SKUs (soft delete).
+//
+// IMPORTANT: Deactivating a provider does NOT affect existing active leases.
+// Existing leases will continue to accrue charges and the provider can still
+// withdraw earned funds. This is by design because:
+//   - Lease prices are locked at creation time, providing price stability for tenants
+//   - Abruptly closing leases could disrupt tenant services
+//   - Tenants can close their own leases if the provider is no longer serving them
+//
+// Deactivation:
+//   - Deactivates the provider
+//   - Cascades to deactivate ALL SKUs under this provider
+//   - Emits events for each deactivated SKU
+//
+// Deactivation prevents:
+//   - Creation of new SKUs under this provider
+//   - Creation of new leases using this provider's SKUs
+//
+// SKU deactivation is paginated to prevent gas exhaustion when a provider has many SKUs.
+// If has_more is true in the response, call again to continue deactivating remaining SKUs.
+// The provider is deactivated on the first call; subsequent calls only deactivate SKUs.
+func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeactivateProvider) (*types.MsgDeactivateProviderResponse, error) {
+	authorized, err := ms.isAuthorizedSender(ctx, req.Authority)
+	if err != nil {
+		return nil, types.ErrUnauthorized.Wrapf("failed to check authorization: %s", err)
+	}
+	if !authorized {
+		return nil, types.ErrUnauthorized.Wrapf("%s is not the authority or in the allowed list", req.Authority)
+	}
+
+	if err := req.Validate(); err != nil {
+		return nil, types.ErrInvalidProvider.Wrapf("invalid deactivate provider message: %s", err)
+	}
+
+	existingProvider, err := ms.k.GetProvider(ctx, req.Uuid)
+	if err != nil {
+		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.Uuid)
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	providerWasActive := existingProvider.Active
+
+	// If provider is already inactive, check if there are active SKUs to deactivate
+	if !providerWasActive {
+		hasActiveSKUs, err := ms.k.HasActiveSKUsByProvider(ctx, req.Uuid)
+		if err != nil {
+			return nil, err
+		}
+		if !hasActiveSKUs {
+			return nil, types.ErrInvalidProvider.Wrapf("provider %s and all its SKUs are already inactive", req.Uuid)
+		}
+		// Continue to SKU deactivation
+	} else {
+		// Deactivate the provider first
+		existingProvider.Active = false
+		if err := ms.k.SetProvider(ctx, existingProvider); err != nil {
+			return nil, err
+		}
+
+		// Emit provider deactivation event only on first call
+		sdkCtx.EventManager().EmitEvents(sdk.Events{
+			sdk.NewEvent(
+				types.EventTypeProviderDeactivated,
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
+				sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
+			),
+		})
+	}
+
+	// Apply default limit if not specified
+	limit := req.Limit
+	if limit == 0 {
+		limit = types.DefaultDeactivateSKULimit
+	}
+
+	// Cascade: collect active SKUs first, then deactivate after iteration completes.
+	// This avoids modifying the ProviderActive index while iterating over it.
+	var skusToDeactivate []types.SKU
+	_, hasMore, err := ms.k.IterateActiveSKUsByProvider(ctx, req.Uuid, limit, func(sku types.SKU) (stop bool, err error) {
+		skusToDeactivate = append(skusToDeactivate, sku)
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Deactivate collected SKUs after iteration is complete
+	for _, sku := range skusToDeactivate {
+		sku.Active = false
+		if err := ms.k.SetSKU(ctx, sku); err != nil {
+			return nil, err
+		}
+
+		sdkCtx.EventManager().EmitEvents(sdk.Events{
+			sdk.NewEvent(
+				types.EventTypeSKUDeactivated,
+				sdk.NewAttribute(types.AttributeKeySKUUUID, sku.Uuid),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
+				sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
+			),
+		})
+	}
+	deactivatedSKUCount := uint64(len(skusToDeactivate))
+
+	if providerWasActive {
+		ms.k.Logger().Info("Provider deactivated",
+			"uuid", req.Uuid,
+			"deactivated_skus", deactivatedSKUCount,
+			"has_more", hasMore,
+		)
+	} else {
+		ms.k.Logger().Info("Provider SKUs deactivated (continuation)",
+			"uuid", req.Uuid,
+			"deactivated_skus", deactivatedSKUCount,
+			"has_more", hasMore,
+		)
+	}
+
+	return &types.MsgDeactivateProviderResponse{
+		DeactivatedSkuCount: deactivatedSKUCount,
+		HasMore:             hasMore,
+	}, nil
+}
+
+// CreateSKU creates a new SKU.
+func (ms msgServer) CreateSKU(ctx context.Context, req *types.MsgCreateSKU) (*types.MsgCreateSKUResponse, error) {
+	authorized, err := ms.isAuthorizedSender(ctx, req.Authority)
+	if err != nil {
+		return nil, types.ErrUnauthorized.Wrapf("failed to check authorization: %s", err)
+	}
+	if !authorized {
+		return nil, types.ErrUnauthorized.Wrapf("%s is not the authority or in the allowed list", req.Authority)
+	}
+
+	if err := req.Validate(); err != nil {
+		return nil, types.ErrInvalidSKU.Wrapf("invalid create sku message: %s", err)
+	}
+
+	// Verify provider exists and is active
+	provider, err := ms.k.GetProvider(ctx, req.ProviderUuid)
+	if err != nil {
+		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.ProviderUuid)
+	}
+	if !provider.Active {
+		return nil, types.ErrInvalidProvider.Wrapf("provider %s is not active", req.ProviderUuid)
+	}
+
+	uuid, err := ms.k.GenerateSKUUUID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	sku := types.SKU{
+		Uuid:         uuid,
+		ProviderUuid: req.ProviderUuid,
+		Name:         req.Name,
+		Unit:         req.Unit,
+		BasePrice:    req.BasePrice,
+		MetaHash:     req.MetaHash,
+		Active:       true,
+	}
+
+	if err := ms.k.SetSKU(ctx, sku); err != nil {
+		return nil, err
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	// NOTE: We sanitize the SKU name to prevent log injection attacks.
+	// The original name is stored in state but event/logs use sanitized version.
+	sanitizedName := sanitize.EventAttribute(req.Name)
+	sdkCtx.EventManager().EmitEvents(sdk.Events{
+		sdk.NewEvent(
+			types.EventTypeSKUCreated,
+			sdk.NewAttribute(types.AttributeKeySKUUUID, uuid),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, req.ProviderUuid),
+			sdk.NewAttribute(types.AttributeKeyName, sanitizedName),
+			sdk.NewAttribute(types.AttributeKeyBasePrice, req.BasePrice.String()),
+			sdk.NewAttribute(types.AttributeKeyCreatedBy, req.Authority),
+		),
+	})
+
+	ms.k.Logger().Info("SKU created", "uuid", uuid, "provider_uuid", req.ProviderUuid, "name", sanitizedName)
+
+	return &types.MsgCreateSKUResponse{Uuid: uuid}, nil
+}
+
+// UpdateSKU updates an existing SKU.
+func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*types.MsgUpdateSKUResponse, error) {
+	authorized, err := ms.isAuthorizedSender(ctx, req.Authority)
+	if err != nil {
+		return nil, types.ErrUnauthorized.Wrapf("failed to check authorization: %s", err)
+	}
+	if !authorized {
+		return nil, types.ErrUnauthorized.Wrapf("%s is not the authority or in the allowed list", req.Authority)
+	}
+
+	if err := req.Validate(); err != nil {
+		return nil, types.ErrInvalidSKU.Wrapf("invalid update sku message: %s", err)
+	}
+
+	existingSKU, err := ms.k.GetSKU(ctx, req.Uuid)
+	if err != nil {
+		return nil, types.ErrSKUNotFound.Wrapf("sku %s not found", req.Uuid)
+	}
+
+	if existingSKU.ProviderUuid != req.ProviderUuid {
+		return nil, types.ErrInvalidSKU.Wrapf("provider_uuid mismatch; expected %s, got %s", existingSKU.ProviderUuid, req.ProviderUuid)
+	}
+
+	// Verify provider still exists
+	provider, err := ms.k.GetProvider(ctx, existingSKU.ProviderUuid)
+	if err != nil {
+		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", existingSKU.ProviderUuid)
+	}
+
+	wasInactive := !existingSKU.Active
+
+	// Forbid deactivation via UpdateSKU - use DeactivateSKU instead
+	// This keeps the API consistent: Update for modifications, Deactivate for deactivation
+	if existingSKU.Active && !req.Active {
+		return nil, types.ErrInvalidSKU.Wrap("cannot deactivate SKU via UpdateSKU; use DeactivateSKU instead")
+	}
+
+	// Reactivating a SKU requires the provider to be active
+	if wasInactive && req.Active && !provider.Active {
+		return nil, types.ErrInvalidProvider.Wrap("cannot reactivate SKU: provider is inactive")
+	}
+
+	sku := types.SKU{
+		Uuid:         req.Uuid,
+		ProviderUuid: req.ProviderUuid,
+		Name:         req.Name,
+		Unit:         req.Unit,
+		BasePrice:    req.BasePrice,
+		MetaHash:     req.MetaHash,
+		Active:       req.Active,
+	}
+
+	if err := ms.k.SetSKU(ctx, sku); err != nil {
+		return nil, err
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// Emit activated event if transitioning from inactive to active
+	if wasInactive && req.Active {
+		sdkCtx.EventManager().EmitEvents(sdk.Events{
+			sdk.NewEvent(
+				types.EventTypeSKUActivated,
+				sdk.NewAttribute(types.AttributeKeySKUUUID, req.Uuid),
+				sdk.NewAttribute(types.AttributeKeyProviderUUID, req.ProviderUuid),
+			),
+		})
+	}
+
+	sdkCtx.EventManager().EmitEvents(sdk.Events{
+		sdk.NewEvent(
+			types.EventTypeSKUUpdated,
+			sdk.NewAttribute(types.AttributeKeySKUUUID, req.Uuid),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, req.ProviderUuid),
+		),
+	})
+
+	ms.k.Logger().Info("SKU updated", "uuid", req.Uuid, "provider_uuid", req.ProviderUuid)
+
+	return &types.MsgUpdateSKUResponse{}, nil
+}
+
+// DeactivateSKU deactivates a SKU (soft delete).
+//
+// IMPORTANT: Deactivating a SKU does NOT affect existing active leases.
+// Existing leases using this SKU will continue to accrue charges at the
+// locked-in price. This is by design because:
+//   - Lease prices are locked at creation time, providing price stability for tenants
+//   - Abruptly closing leases could disrupt tenant services
+//   - Tenants can close their own leases if the SKU is no longer being provided
+//
+// Deactivation prevents:
+//   - Creation of new leases using this SKU
+//   - This SKU from appearing in active SKU listings
+func (ms msgServer) DeactivateSKU(ctx context.Context, req *types.MsgDeactivateSKU) (*types.MsgDeactivateSKUResponse, error) {
+	authorized, err := ms.isAuthorizedSender(ctx, req.Authority)
+	if err != nil {
+		return nil, types.ErrUnauthorized.Wrapf("failed to check authorization: %s", err)
+	}
+	if !authorized {
+		return nil, types.ErrUnauthorized.Wrapf("%s is not the authority or in the allowed list", req.Authority)
+	}
+
+	if err := req.Validate(); err != nil {
+		return nil, types.ErrInvalidSKU.Wrapf("invalid deactivate sku message: %s", err)
+	}
+
+	existingSKU, err := ms.k.GetSKU(ctx, req.Uuid)
+	if err != nil {
+		return nil, types.ErrSKUNotFound.Wrapf("sku %s not found", req.Uuid)
+	}
+
+	if !existingSKU.Active {
+		return nil, types.ErrInvalidSKU.Wrapf("sku %s is already inactive", req.Uuid)
+	}
+
+	existingSKU.Active = false
+	if err := ms.k.SetSKU(ctx, existingSKU); err != nil {
+		return nil, err
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvents(sdk.Events{
+		sdk.NewEvent(
+			types.EventTypeSKUDeactivated,
+			sdk.NewAttribute(types.AttributeKeySKUUUID, req.Uuid),
+			sdk.NewAttribute(types.AttributeKeyProviderUUID, existingSKU.ProviderUuid),
+			sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
+		),
+	})
+
+	ms.k.Logger().Info("SKU deactivated", "uuid", req.Uuid, "provider_uuid", existingSKU.ProviderUuid)
+
+	return &types.MsgDeactivateSKUResponse{}, nil
+}
+
+// UpdateParams updates the module parameters.
+func (ms msgServer) UpdateParams(ctx context.Context, req *types.MsgUpdateParams) (*types.MsgUpdateParamsResponse, error) {
+	if ms.k.GetAuthority() != req.Authority {
+		return nil, types.ErrUnauthorized.Wrapf("expected %s, got %s", ms.k.GetAuthority(), req.Authority)
+	}
+
+	if err := req.Validate(); err != nil {
+		return nil, types.ErrInvalidConfig.Wrapf("invalid params: %s", err)
+	}
+
+	if err := ms.k.SetParams(ctx, req.Params); err != nil {
+		return nil, err
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvents(sdk.Events{
+		sdk.NewEvent(types.EventTypeParamsUpdated),
+	})
+
+	ms.k.Logger().Info("Params updated")
+
+	return &types.MsgUpdateParamsResponse{}, nil
+}

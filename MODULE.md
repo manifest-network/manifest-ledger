@@ -38,6 +38,12 @@
       - [Upload Contract (upload-contract):](#upload-contract-upload-contract)
       - [Instantiate Contract (instantiate-contract):](#instantiate-contract-instantiate-contract)
       - [Execute Contract (execute-contract):](#execute-contract-execute-contract)
+- [SKU Module](#sku-module)
+  - [Module Functionality](#module-functionality-4)
+    - [Commands](#commands-4)
+- [Billing Module](#billing-module)
+  - [Module Functionality](#module-functionality-5)
+    - [Commands](#commands-5)
 
 <!-- TOC -->
 
@@ -313,3 +319,224 @@ The WASM module provides several key functionalities for managing smart contract
     - Optional flags for sending funds with execution
 
   **Example:** `manifestd tx wasm execute manifest14hj2tavq8fpesdwxxcu44rty3hh90vhujrvcmstl4zr3txmfvw9s0phg4d '{"increment":{}}' --from mykey`
+
+## SKU Module
+
+The SKU module manages providers (service entities) and SKUs (Stock Keeping Units - billable items). It provides the foundation for the billing system by defining what can be leased and at what price.
+
+> For detailed documentation, see [x/sku/README.md](./x/sku/README.md) and [x/sku/docs/](./x/sku/docs/).
+
+### Module Functionality
+
+#### Provider Management:
+
+- Create and manage service providers with unique UUIDv7 identifiers
+- Configure provider metadata, API URLs, and payout addresses
+- Activate/deactivate providers (cascade deactivates associated SKUs)
+
+#### SKU Management:
+
+- Create billable items with per-hour or per-day pricing
+- Support multiple denominations for pricing flexibility
+- Activate/deactivate SKUs independently
+
+#### Commands
+
+##### Create Provider (create-provider):
+
+- Syntax: `manifestd tx sku create-provider [address] [payout-address] [flags]`
+
+  - Parameters:
+    - `address`: The provider's operator address
+    - `payout-address`: Address to receive lease payments
+  - Flags:
+    - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
+    - `--api-url`: Provider's HTTPS API endpoint URL (optional)
+
+  **Example:** `manifestd tx sku create-provider manifest1abc... manifest1xyz... --api-url https://api.provider.com --from authority`
+
+##### Create SKU (create-sku):
+
+- Syntax: `manifestd tx sku create-sku [provider-uuid] [name] [unit] [base-price] [flags]`
+
+  - Parameters:
+    - `provider-uuid`: UUID of the provider
+    - `name`: Human-readable SKU name
+    - `unit`: Pricing unit integer (`1` = per hour, `2` = per day)
+    - `base-price`: Price per unit (e.g., `3600upwr` for 1 token/second when hourly)
+  - Flags:
+    - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
+
+  **Example:** `manifestd tx sku create-sku 01912345-6789-7abc-8def-0123456789ab "GPU Instance" 1 3600upwr --meta-hash deadbeef --from authority`
+
+##### Update Provider (update-provider):
+
+- Syntax: `manifestd tx sku update-provider [uuid] [address] [payout-address] [active] [flags]`
+
+  - Parameters:
+    - `uuid`: Provider UUID
+    - `address`: The provider's operator address
+    - `payout-address`: Address to receive lease payments
+    - `active`: `true` or `false` (note: `false` is not allowed; use `deactivate-provider` instead)
+  - Flags:
+    - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
+    - `--api-url`: Provider's HTTPS API endpoint URL (optional)
+
+  **Example:** `manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com --from authority`
+
+##### Update SKU (update-sku):
+
+- Syntax: `manifestd tx sku update-sku [uuid] [provider-uuid] [name] [unit] [base-price] [active] [flags]`
+
+  - Parameters:
+    - `uuid`: SKU UUID
+    - `provider-uuid`: Provider UUID
+    - `name`: Human-readable SKU name
+    - `unit`: Pricing unit integer (`1` = per hour, `2` = per day)
+    - `base-price`: Price per unit (e.g., `200umfx`)
+    - `active`: `true` or `false` (note: `false` is not allowed; use `deactivate-sku` instead)
+  - Flags:
+    - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
+
+  **Example:** `manifestd tx sku update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab "Updated Name" 2 200umfx true --meta-hash deadbeef --from authority`
+
+##### Deactivate Provider (deactivate-provider):
+
+- Syntax: `manifestd tx sku deactivate-provider [uuid] [flags]`
+
+  - Parameters:
+    - `uuid`: Provider UUID
+  - Flags:
+    - `--limit`: Maximum SKUs to deactivate per call (default 50, max 100). If `has_more` is true in the response, call again to continue deactivating remaining SKUs.
+
+  **Example:** `manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab --limit 50 --from authority`
+
+##### Deactivate SKU (deactivate-sku):
+
+- Syntax: `manifestd tx sku deactivate-sku [uuid] [flags]`
+
+  - Parameters:
+    - `uuid`: SKU UUID
+
+  **Example:** `manifestd tx sku deactivate-sku 01912345-6789-7abc-8def-0123456789ab --from authority`
+
+##### Update Params (update-params):
+
+- Syntax: `manifestd tx sku update-params [flags]`
+
+  - Flags:
+    - `--allowed-list`: Comma-separated list of addresses allowed to manage SKUs
+
+  **Example:** `manifestd tx sku update-params --allowed-list manifest1abc...,manifest1def... --from authority`
+
+## Billing Module
+
+The Billing module implements a credit-based leasing system for AI infrastructure resources. Tenants fund credit accounts, create leases for SKUs, and providers withdraw earned funds.
+
+> For detailed documentation, see [x/billing/README.md](./x/billing/README.md) and [x/billing/docs/](./x/billing/docs/).
+
+### Module Functionality
+
+#### Credit Management:
+
+- Fund tenant credit accounts with any supported denomination
+- Deterministic credit address derivation from tenant address
+- Multi-denomination support per credit account
+
+#### Lease Lifecycle:
+
+- Two-phase commit: tenant creates (PENDING), provider acknowledges (ACTIVE)
+- Price locking at lease creation for predictable billing
+- Lazy settlement (on-touch) for scalability
+- Auto-close when credit is exhausted
+
+#### Provider Operations:
+
+- Withdraw earned funds from individual leases or all leases at once
+- Reject pending leases with optional reason
+- Close leases and trigger final settlement
+
+#### Commands
+
+##### Fund Credit (fund-credit):
+
+- Syntax: `manifestd tx billing fund-credit [tenant] [amount] [flags]`
+
+  - Parameters:
+    - `tenant`: Bech32 address of the tenant
+    - `amount`: Amount to fund (e.g., `1000000upwr`)
+
+  **Example:** `manifestd tx billing fund-credit manifest1abc... 1000000upwr --from mykey`
+
+##### Create Lease (create-lease):
+
+- Syntax: `manifestd tx billing create-lease [sku-uuid:quantity[:service_name]] ... [flags]`
+
+  - Parameters:
+    - `items`: Space-separated list of `sku-uuid:quantity` or `sku-uuid:quantity:service_name` triples
+    - `--meta-hash`: Optional hex-encoded hash/reference to off-chain deployment data (max 64 bytes)
+
+  **Example:** `manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:2 --from tenant`
+  **Example (stack):** `manifestd tx billing create-lease 01912345-...:1:web 01912345-...:1:db --from tenant`
+
+##### Create Lease For Tenant (create-lease-for-tenant):
+
+- Syntax: `manifestd tx billing create-lease-for-tenant [tenant] [sku-uuid:quantity[:service_name]] ... [flags]`
+
+  - Parameters:
+    - `tenant`: Bech32 address of the tenant
+    - `items`: Space-separated list of `sku-uuid:quantity` or `sku-uuid:quantity:service_name` triples
+
+  **Example:** `manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-...:2 --from authority`
+
+##### Acknowledge Lease (acknowledge-lease):
+
+- Syntax: `manifestd tx billing acknowledge-lease [lease-uuid...] [flags]`
+
+  **Example:** `manifestd tx billing acknowledge-lease 01912345-6789-7abc-8def-0123456789ab --from provider`
+
+##### Reject Lease (reject-lease):
+
+- Syntax: `manifestd tx billing reject-lease [lease-uuid...] [flags]`
+
+  - Parameters:
+    - `--reason`: Optional rejection reason (max 256 chars)
+
+  **Example:** `manifestd tx billing reject-lease 01912345-6789-7abc-8def-0123456789ab --reason "insufficient resources" --from provider`
+
+##### Cancel Lease (cancel-lease):
+
+- Syntax: `manifestd tx billing cancel-lease [lease-uuid...] [flags]`
+
+  **Example:** `manifestd tx billing cancel-lease 01912345-6789-7abc-8def-0123456789ab --from tenant`
+
+##### Close Lease (close-lease):
+
+- Syntax: `manifestd tx billing close-lease [lease-uuid...] [flags]`
+
+  - Parameters:
+    - `--reason`: Optional closure reason (max 256 chars)
+
+  **Example:** `manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab --from tenant`
+
+##### Withdraw (withdraw):
+
+- Syntax: `manifestd tx billing withdraw [lease-uuid...] [flags]`
+- Or: `manifestd tx billing withdraw --provider [provider-uuid] [flags]`
+
+  **Example:** `manifestd tx billing withdraw 01912345-6789-7abc-8def-0123456789ab --from provider`
+
+##### Update Params (update-params):
+
+- Syntax: `manifestd tx billing update-params [max-leases-per-tenant] [max-items-per-lease] [min-lease-duration] [max-pending-leases-per-tenant] [pending-timeout] [flags]`
+
+  - Parameters:
+    - `max-leases-per-tenant`: Maximum active leases per tenant
+    - `max-items-per-lease`: Maximum SKU items per lease
+    - `min-lease-duration`: Minimum lease duration in seconds
+    - `max-pending-leases-per-tenant`: Maximum pending leases per tenant
+    - `pending-timeout`: Pending lease timeout in seconds (60-86400)
+  - Flags:
+    - `--allowed-list`: Comma-separated list of addresses allowed to create leases for tenants
+
+  **Example:** `manifestd tx billing update-params 100 20 3600 10 1800 --from authority`

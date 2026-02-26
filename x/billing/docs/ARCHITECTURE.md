@@ -1,0 +1,1002 @@
+# Billing Module Architecture
+
+This document describes the internal architecture of the x/billing module for developers who need to understand, maintain, or extend the module.
+
+## Overview
+
+The Billing module implements a cloud-like billing system where tenants lease resources (SKUs) and are charged from a pre-funded credit account. Key features:
+
+- **PENDING → ACTIVE lifecycle**: Leases start in PENDING state and require provider acknowledgement before billing begins
+- **UUIDv7 identifiers**: Providers, SKUs, and Leases use deterministic UUIDv7 for unique identification
+- **Multi-denom support**: Different SKUs can use different payment tokens
+- **Lazy settlement**: Charges are calculated on-demand during withdrawals/closures
+- **Automatic expiration**: EndBlocker expires pending leases that exceed timeout
+
+## Module Dependencies
+
+```mermaid
+graph TD
+    Billing[x/billing Module]
+    SKU[x/sku Module]
+    Bank[x/bank Module]
+    POA[x/poa Module]
+    
+    Billing -->|SKU/Provider lookups| SKU
+    Billing -->|token transfers| Bank
+    Billing -->|authority validation| POA
+```
+
+The Billing module:
+- **Depends on**: 
+  - `x/sku` for SKU and Provider information (UUIDs, prices, payout addresses)
+  - `x/bank` for token transfers
+  - `x/poa` for authority validation
+
+## Data Model
+
+### Entity Relationship Diagram
+
+```mermaid
+erDiagram
+    TENANT ||--o| CREDIT_ACCOUNT : "has one"
+    TENANT ||--o{ LEASE : "owns"
+    LEASE ||--|{ LEASE_ITEM : "contains"
+    LEASE_ITEM }o--|| SKU : "references"
+    SKU }o--|| PROVIDER : "belongs to"
+    
+    CREDIT_ACCOUNT {
+        string tenant PK
+        string credit_address
+        uint64 active_lease_count
+        uint64 pending_lease_count
+        Coins reserved_amounts
+    }
+    
+    LEASE {
+        string uuid PK
+        string tenant FK
+        string provider_uuid FK
+        LeaseState state
+        timestamp created_at
+        timestamp acknowledged_at
+        timestamp closed_at
+        timestamp rejected_at
+        timestamp expired_at
+        timestamp last_settled_at
+        string rejection_reason
+        string closure_reason
+        bytes meta_hash
+        uint64 min_lease_duration_at_creation
+    }
+    
+    LEASE_ITEM {
+        string sku_uuid FK
+        uint64 quantity
+        Coin locked_price
+        string service_name
+    }
+    
+    PROVIDER {
+        string uuid PK
+        string payout_address
+        string api_url
+    }
+```
+
+### CreditAccount
+
+Credit accounts hold pre-funded tokens for lease payments:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tenant` | `string` | Tenant's original address (primary key) |
+| `credit_address` | `string` | Derived credit account address |
+| `active_lease_count` | `uint64` | Number of ACTIVE leases |
+| `pending_lease_count` | `uint64` | Number of PENDING leases |
+| `reserved_amounts` | `[]Coin` | Sum of all credit reservations for active and pending leases. Each lease reserves `rate_per_second × min_lease_duration` per denom to prevent overbooking. |
+
+**Address Derivation:**
+```go
+// Uses the Cosmos SDK's address.Module function for proper module account derivation
+key := append([]byte("billing/credit/"), tenantAddr.Bytes()...)
+hash := sha256.Sum256(key)
+creditAddr = address.Module("billing", hash[:])
+```
+
+See `x/billing/types/credit.go` for the implementation.
+
+### Lease
+
+Leases represent resource rentals with full lifecycle tracking:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `uuid` | `string` | UUIDv7 unique identifier |
+| `tenant` | `string` | Tenant address |
+| `provider_uuid` | `string` | Provider UUID (denormalized for efficient querying) |
+| `items` | `[]LeaseItem` | List of SKU items in this lease |
+| `state` | `LeaseState` | PENDING, ACTIVE, CLOSED, REJECTED, or EXPIRED |
+| `created_at` | `Timestamp` | When lease was created (credit locked) |
+| `acknowledged_at` | `*Timestamp` | When provider acknowledged (billing starts) |
+| `closed_at` | `*Timestamp` | When lease was closed |
+| `rejected_at` | `*Timestamp` | When provider rejected |
+| `expired_at` | `*Timestamp` | When lease expired in PENDING state |
+| `last_settled_at` | `Timestamp` | Last settlement time for the entire lease |
+| `rejection_reason` | `string` | Provider's rejection explanation (max 256 chars) |
+| `closure_reason` | `string` | Explanation for why the lease was closed (max 256 chars) |
+| `meta_hash` | `bytes` | Optional hash/reference to off-chain deployment data (max 64 bytes, immutable) |
+| `min_lease_duration_at_creation` | `uint64` | The `min_lease_duration` parameter value at lease creation time, for consistent reservation calculation |
+
+### LeaseItem
+
+Individual line items within a lease:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sku_uuid` | `string` | Reference to SKU (UUIDv7) |
+| `quantity` | `uint64` | Number of units (e.g., 5 instances) |
+| `locked_price` | `Coin` | Per-second price locked at lease creation (includes denom) |
+| `service_name` | `string` | Optional RFC 1123 DNS label for stack deployments (1-63 lowercase alphanumeric/hyphens) |
+
+**Note**: The `locked_price` is pre-computed at lease creation as the per-second rate for billing calculations. This is derived from the SKU's base price and unit at the time of lease creation. The denomination is preserved from the SKU's `base_price`, enabling multi-denom billing.
+
+**Service Names**: When `service_name` is set, all items in the lease must have one (all-or-nothing). Uniqueness shifts from `sku_uuid` to `service_name`, allowing the same SKU to appear multiple times for different named services (e.g., "web" and "db" both using a docker-small SKU). This enables stack deployments where the off-chain orchestrator maps each service to its container.
+
+### LeaseState Enum
+
+```
+LEASE_STATE_UNSPECIFIED = 0  // Invalid
+LEASE_STATE_PENDING     = 1  // Awaiting provider acknowledgement (credit locked, not billing)
+LEASE_STATE_ACTIVE      = 2  // Provider acknowledged, billing active
+LEASE_STATE_CLOSED      = 3  // Terminated normally
+LEASE_STATE_REJECTED    = 4  // Provider rejected OR tenant cancelled (credit unlocked)
+LEASE_STATE_EXPIRED     = 5  // Pending timeout exceeded (credit unlocked)
+```
+
+**Note on REJECTED State**: The `REJECTED` state is used for both provider rejections and tenant cancellations. When a tenant cancels their pending lease via `MsgCancelLease`, the lease transitions to `REJECTED` state with `rejection_reason` set to `"cancelled by tenant"`. This design choice simplifies state management by treating all pre-acknowledgement terminations uniformly. The `lease_cancelled` event is emitted to distinguish tenant cancellations from provider rejections (which emit `lease_rejected`).
+
+## Storage Layout
+
+### Collections
+
+```mermaid
+graph LR
+    subgraph "Primary Storage"
+        CreditAccounts[CreditAccounts<br/>Map: AccAddress → CreditAccount]
+        Leases[Leases<br/>Map: string UUID → Lease]
+        Params[Params<br/>Item: Params]
+    end
+
+    subgraph "Indexes"
+        TenantIdx[LeasesByTenant<br/>Map: tenant, lease_uuid → empty]
+        ProviderIdx[LeasesByProvider<br/>Map: provider_uuid, lease_uuid → empty]
+        StateIdx[LeasesByState<br/>Map: state, lease_uuid → empty]
+        ProviderStateIdx[LeasesByProviderState<br/>Map: provider_uuid+state, lease_uuid → empty]
+        TenantStateIdx[LeasesByTenantState<br/>Map: tenant+state, lease_uuid → empty]
+        SKUIdx[LeasesBySKU<br/>Map: sku_uuid, lease_uuid → empty]
+        StateCreatedAtIdx[LeasesByStateCreatedAt<br/>Map: state+created_at, lease_uuid → empty]
+    end
+
+    subgraph "Reverse Lookup"
+        CreditReverse[CreditAccountReverse<br/>Map: credit_addr → tenant_addr]
+    end
+
+    subgraph "Sequences"
+        UUIDSeq[UUIDSequence<br/>uint64 per block]
+    end
+```
+
+| Collection | Key Type | Value Type | Purpose |
+|------------|----------|------------|---------|
+| `CreditAccounts` | `sdk.AccAddress` | `CreditAccount` | Credit account storage |
+| `CreditAccountReverse` | `sdk.AccAddress` | `sdk.AccAddress` | O(1) credit account detection |
+| `Leases` | `string` (UUID) | `Lease` | Primary lease storage |
+| `LeasesByTenant` | `(AccAddress, string)` | `bool` | Tenant → leases index |
+| `LeasesByProvider` | `(string, string)` | `bool` | Provider UUID → leases index |
+| `LeasesByState` | `(int32, string)` | `bool` | State → leases index (for EndBlocker pending expiration) |
+| `LeasesByProviderState` | `(string, int32, string)` | `bool` | Compound provider+state → leases index |
+| `LeasesByTenantState` | `(AccAddress, int32, string)` | `bool` | Compound tenant+state → leases index |
+| `LeasesBySKU` | `(string, string)` | `bool` | Many-to-many SKU → leases index |
+| `LeasesByStateCreatedAt` | `(int32, time.Time, string)` | `bool` | Compound state+created_at → leases index (time-ordered) |
+| `Params` | - | `Params` | Module parameters |
+
+## Core Flows
+
+### Lease Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: CreateLease
+    PENDING --> ACTIVE: AcknowledgeLease (provider)
+    PENDING --> REJECTED: RejectLease (provider)
+    PENDING --> REJECTED: CancelLease (tenant)
+    PENDING --> EXPIRED: EndBlocker (timeout)
+    ACTIVE --> CLOSED: CloseLease
+    ACTIVE --> CLOSED: Auto-close (credit exhausted)
+    REJECTED --> [*]
+    EXPIRED --> [*]
+    CLOSED --> [*]
+```
+
+### Fund Credit Account
+
+Uses CacheContext for atomicity - either both token transfer and credit account creation succeed, or neither does.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant MsgServer
+    participant CacheCtx
+    participant Bank
+    participant Store
+
+    User->>MsgServer: MsgFundCredit
+    MsgServer->>MsgServer: ValidateBasic()
+    MsgServer->>CacheCtx: Create CacheContext
+
+    MsgServer->>Bank: SendCoins(user → credit_addr) [on cacheCtx]
+    Bank-->>MsgServer: OK
+
+    MsgServer->>Store: GetOrCreateCreditAccount() [on cacheCtx]
+    alt New Account
+        Store->>Store: Create CreditAccount
+        Store->>Store: Register in AccountKeeper
+    end
+    Store-->>MsgServer: CreditAccount
+
+    MsgServer->>Store: SetCreditAccount() [on cacheCtx]
+    MsgServer->>CacheCtx: Commit (writeCache)
+    MsgServer->>MsgServer: Emit Event
+    MsgServer-->>User: Success
+```
+
+**Atomicity Guarantee**: If `SetCreditAccount` fails after `SendCoins` succeeds, the cache is discarded and no state changes occur - tokens are not transferred and no credit account is created.
+
+### Create Lease (PENDING State)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant MsgServer
+    participant Keeper
+    participant SKU
+    participant Store
+    
+    User->>MsgServer: MsgCreateLease
+    MsgServer->>MsgServer: ValidateBasic()
+    MsgServer->>Keeper: GetCreditAccount()
+    
+    alt No Credit Account
+        Keeper-->>MsgServer: Error
+        MsgServer-->>User: Error
+    else Has Credit Account
+        Keeper-->>MsgServer: CreditAccount
+        
+        alt Exceeds max_pending_leases_per_tenant
+            MsgServer-->>User: Error: too many pending leases
+        else Under Pending Limit
+            MsgServer->>Keeper: GetCreditBalance()
+            
+            alt Balance < MinLeaseDuration Cost
+                MsgServer-->>User: Error: insufficient credit
+            else Sufficient Credit
+                MsgServer->>Keeper: CountActiveLeases()
+                
+                alt At Max Leases
+                    MsgServer-->>User: Error: max leases
+                else Under Limit
+                    loop For Each Item
+                        MsgServer->>SKU: GetSKU()
+                        alt SKU Invalid/Inactive
+                            SKU-->>MsgServer: Error
+                            MsgServer-->>User: Error
+                        else SKU OK
+                            SKU-->>MsgServer: SKU
+                            MsgServer->>MsgServer: Validate same provider
+                            MsgServer->>MsgServer: Build LeaseItem with locked_price
+                        end
+                    end
+                    
+                    MsgServer->>Keeper: GenerateUUIDv7()
+                    MsgServer->>Store: Save Lease (state=PENDING)
+                    MsgServer->>Store: Update Indexes
+                    MsgServer->>Store: Add to PendingLeases index
+                    MsgServer->>Store: Increment pending_lease_count
+                    MsgServer->>MsgServer: Emit LeaseCreated Event
+                    MsgServer-->>User: Success + Lease UUID
+                end
+            end
+        end
+    end
+```
+
+### Acknowledge Lease (PENDING → ACTIVE)
+
+```mermaid
+sequenceDiagram
+    participant Provider
+    participant MsgServer
+    participant Keeper
+    participant SKU
+    participant Store
+    
+    Provider->>MsgServer: MsgAcknowledgeLease
+    MsgServer->>MsgServer: ValidateBasic()
+    MsgServer->>Keeper: GetLease()
+    
+    alt Lease Not Found
+        Keeper-->>MsgServer: Error: not found
+    else Lease Found
+        alt State != PENDING
+            MsgServer-->>Provider: Error: not pending
+        else State == PENDING
+            MsgServer->>SKU: GetProvider(lease.provider_uuid)
+            SKU-->>MsgServer: Provider
+            
+            alt Sender != Provider.Address
+                MsgServer-->>Provider: Error: unauthorized
+            else Authorized
+                MsgServer->>Store: Set state = ACTIVE
+                MsgServer->>Store: Set acknowledged_at = now
+                MsgServer->>Store: Set last_settled_at = now
+                MsgServer->>Store: Remove from PendingLeases index
+                MsgServer->>Store: Decrement pending_lease_count
+                MsgServer->>Store: Increment active_lease_count
+                MsgServer->>MsgServer: Emit LeaseAcknowledged Event
+                MsgServer-->>Provider: Success + acknowledged_at
+            end
+        end
+    end
+```
+
+### Reject Lease (PENDING → REJECTED)
+
+```mermaid
+sequenceDiagram
+    participant Provider
+    participant MsgServer
+    participant Keeper
+    participant SKU
+    participant Store
+    
+    Provider->>MsgServer: MsgRejectLease
+    MsgServer->>MsgServer: ValidateBasic()
+    MsgServer->>Keeper: GetLease()
+    
+    alt Lease Not Found
+        Keeper-->>MsgServer: Error: not found
+    else Lease Found
+        alt State != PENDING
+            MsgServer-->>Provider: Error: not pending
+        else State == PENDING
+            MsgServer->>SKU: GetProvider(lease.provider_uuid)
+            SKU-->>MsgServer: Provider
+            
+            alt Sender != Provider.Address
+                MsgServer-->>Provider: Error: unauthorized
+            else Authorized
+                MsgServer->>Store: Set state = REJECTED
+                MsgServer->>Store: Set rejected_at = now
+                MsgServer->>Store: Set rejection_reason
+                MsgServer->>Store: Remove from PendingLeases index
+                MsgServer->>Store: Decrement pending_lease_count
+                MsgServer->>MsgServer: Emit LeaseRejected Event
+                MsgServer-->>Provider: Success + rejected_at
+            end
+        end
+    end
+```
+
+### Settlement (Lazy Evaluation)
+
+Settlement happens during withdrawal or lease closure, not continuously:
+
+```mermaid
+sequenceDiagram
+    participant Trigger
+    participant Keeper
+    participant Bank
+    participant Store
+    
+    Trigger->>Keeper: settleLease()
+    Keeper->>Store: Get Lease
+    
+    alt Lease Not ACTIVE
+        Keeper-->>Trigger: Skip (nothing to settle)
+    else Lease ACTIVE
+        Keeper->>Keeper: Get Current Time
+        Keeper->>Keeper: Calculate Duration Since last_settled_at
+        
+        alt Duration <= 0
+            Keeper-->>Trigger: Zero amount (nothing accrued)
+        else Duration > 0
+            loop For Each Item
+                Keeper->>Keeper: Calculate Accrual
+                Note over Keeper: accrual = duration_seconds × locked_price × quantity
+            end
+            
+            Keeper->>Keeper: Group by denom
+            Keeper->>Bank: Get Credit Balance per denom
+            
+            alt Accrued > Balance for any denom
+                Keeper->>Keeper: Cap Transfer to Balance
+            end
+            
+            alt Transfer Amount > 0
+                Keeper->>Bank: Transfer each denom to Provider Payout Address
+            end
+            
+            Keeper->>Store: Update last_settled_at
+            Keeper-->>Trigger: Settlement Amounts
+        end
+    end
+```
+
+### Close Lease with Settlement
+
+```mermaid
+sequenceDiagram
+    participant Sender
+    participant MsgServer
+    participant Keeper
+    participant Bank
+    participant Store
+    
+    Sender->>MsgServer: MsgCloseLease
+    MsgServer->>MsgServer: ValidateBasic()
+    MsgServer->>Keeper: GetLease()
+    
+    alt Lease Not Found
+        Keeper-->>MsgServer: Error: not found
+    else Lease Found
+        Keeper-->>MsgServer: Lease
+        
+        alt Lease Not ACTIVE
+            MsgServer-->>Sender: Error: not active
+        else Lease ACTIVE
+            MsgServer->>MsgServer: Verify Authorization
+            alt Not Authorized
+                MsgServer-->>Sender: Error: unauthorized
+            else Authorized
+                MsgServer->>Keeper: settleAndCloseLease()
+                Keeper->>Keeper: Calculate Final Settlement
+                Keeper->>Bank: Transfer Settlement to Provider (per denom)
+                Keeper->>Store: Update Lease State to CLOSED
+                Keeper->>Store: Set closed_at
+                Keeper->>Store: Decrement active_lease_count
+                Keeper-->>MsgServer: Settlement Amounts
+                MsgServer->>MsgServer: Emit Events
+                MsgServer-->>Sender: Success
+            end
+        end
+    end
+```
+
+### Withdrawal Flow
+
+```mermaid
+sequenceDiagram
+    participant Provider
+    participant MsgServer
+    participant Keeper
+    participant SKU
+    participant Bank
+    
+    Provider->>MsgServer: MsgWithdraw
+    MsgServer->>MsgServer: ValidateBasic()
+    MsgServer->>Keeper: GetLease()
+    Keeper-->>MsgServer: Lease
+    
+    alt Lease Not ACTIVE
+        MsgServer-->>Provider: Error: not active
+    else Lease ACTIVE
+        MsgServer->>SKU: Get Provider for Lease
+        SKU-->>MsgServer: Provider
+        
+        alt Sender Not Provider/Authority
+            MsgServer-->>Provider: Error: unauthorized
+        else Authorized
+            MsgServer->>Keeper: settleLease()
+            Note over Keeper: Calculate and transfer accrued amount
+            
+            alt Nothing Settled
+                MsgServer-->>Provider: Error: no withdrawable amount
+            else Has Settlement
+                MsgServer->>MsgServer: Emit Event
+                MsgServer-->>Provider: Success + Amounts
+            end
+        end
+    end
+```
+
+## Settlement Triggers
+
+Settlement happens lazily at these points:
+
+| Trigger | Scope | Reason |
+|---------|-------|--------|
+| `CloseLease` | Target lease(s) only | Final settlement before closure |
+| `Withdraw` (specific leases) | Target lease(s) only | Settle accrued amount for provider |
+| `Withdraw` (provider-wide) | All provider's active leases | Batch settlement |
+
+**Note**: Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement. Use `WithdrawableAmount` or `ProviderWithdrawable` queries to get real-time calculated accrued amounts. Settlement (actual token transfer) only happens during write operations.
+
+**Transaction Ordering Note**: Within a single block, transaction order matters. If a block contains both a `FundCredit` transaction and a `CloseLease` transaction for the same tenant, the outcome depends on which transaction is processed first. This is standard blockchain behavior—settlement reads the credit balance at the time of execution. Users should ensure funding is confirmed before triggering settlement-dependent operations.
+
+### Atomic Settlement in Provider-Wide Withdraw
+
+The provider-wide withdraw mode uses a **cached context pattern** to ensure atomicity per lease:
+
+```go
+// For each lease in the batch:
+cacheCtx, writeFn := ctx.CacheContext()
+
+// Perform settlement + timestamp update in cached context
+err := k.settleLease(cacheCtx, lease)
+if err != nil {
+    // Discard changes for this lease, continue with others
+    continue
+}
+
+// Commit changes only if settlement succeeded
+writeFn()
+```
+
+**Behavior**:
+- Each lease's settlement is atomic (all-or-nothing)
+- If settlement fails for one lease (e.g., overflow), only that lease is skipped
+- Other leases in the batch are processed normally
+- Failed leases don't affect the success of the overall operation
+- Provider can retry failed leases individually using specific lease UUIDs
+
+This pattern ensures that partial failures don't corrupt state while still providing best-effort batch processing.
+
+### Auto-Close on Credit Exhaustion
+
+When a lease's credit is exhausted, it can be auto-closed via `ShouldAutoCloseLease` + `AutoCloseLease`:
+
+```mermaid
+flowchart TD
+    A[ShouldAutoCloseLease] --> B{Is Lease ACTIVE?}
+    B -->|No| C[Return: not closed]
+    B -->|Yes| D[Get Credit Balance]
+    D --> E[Calculate Accrued Amounts]
+    E --> F{Accrued >= Balance?}
+    F -->|No| G[Return: not closed]
+    F -->|Yes| H[AutoCloseLease]
+    H --> I[Settle + Set State = CLOSED]
+    I --> J[Set closed_at]
+    J --> K[Decrement active_lease_count]
+    K --> L[Release reservation]
+    L --> M[Return: closed]
+```
+
+## EndBlocker
+
+The billing module implements an EndBlocker to handle automatic expiration of pending leases:
+
+### Pending Lease Expiration
+
+Leases that remain in `PENDING` state beyond the `pending_timeout` (default 30 minutes) are automatically expired:
+
+```go
+func (k Keeper) EndBlocker(ctx context.Context) error {
+    sdkCtx := sdk.UnwrapSDKContext(ctx)
+    now := sdkCtx.BlockTime()
+    params := k.GetParams(ctx)
+    pendingTimeout := time.Duration(params.PendingTimeout) * time.Second
+
+    // Two-pass approach to avoid iterator invalidation
+    // Pass 1: Collect UUIDs of expired pending leases
+    iter := k.Leases.Indexes.State.MatchExact(ctx, LEASE_STATE_PENDING)
+    var expiredUUIDs []string
+
+    for ; iter.Valid(); iter.Next() {
+        if len(expiredUUIDs) >= MaxPendingLeaseExpirationsPerBlock {
+            break // Rate limit: max 100 per block
+        }
+        lease := iter.Value()
+        expirationTime := lease.CreatedAt.Add(pendingTimeout)
+        if now.After(expirationTime) {
+            expiredUUIDs = append(expiredUUIDs, lease.Uuid)
+        }
+    }
+    iter.Close()
+
+    // Pass 2: Expire collected leases (safe to modify state)
+    for _, uuid := range expiredUUIDs {
+        k.ExpirePendingLease(ctx, uuid)
+    }
+
+    return nil
+}
+```
+
+#### Rate Limiting
+
+To prevent DoS attacks where an attacker creates many pending leases to overload the EndBlocker:
+
+1. **Max 100 expirations per block** - Ensures bounded computation
+2. **Max pending leases per tenant** (default 10) - Limits spam from individual accounts
+3. **Remaining leases expire in subsequent blocks** - No lease is left indefinitely
+4. **State-based index** - Efficient iteration over PENDING leases only
+5. **Two-pass approach** - Avoids iterator invalidation during state modification
+
+#### Lease State on Expiration
+
+When a lease expires:
+- State changes from `PENDING` → `EXPIRED`
+- `expired_at` timestamp is set
+- `pending_lease_count` is decremented
+- Credit remains in tenant's account (was never billed since lease never activated)
+- `LeaseExpired` event is emitted
+
+## Credit Account Multi-Denom Support
+
+Credit accounts support multiple token denominations. Since credit accounts are regular bank module accounts, they can hold any token type. This enables:
+
+- Different SKUs can use different payment tokens
+- Tenants fund their credit with the tokens required by their target SKUs
+- Settlement transfers happen per-denom to the provider's payout address
+
+**No send restrictions** are applied to credit accounts - any token can be sent to them.
+
+## UUIDv7 Generation
+
+The module uses deterministic UUIDv7 generation for all identifiers (providers, SKUs, leases):
+
+### Why UUIDv7?
+
+- **Time-ordered**: Embeds millisecond timestamp, enabling natural sorting
+- **Deterministic**: All validators generate identical UUIDs for the same block
+- **Debugging**: Easier to trace and correlate with external systems
+- **Future-proof**: No practical limit vs uint64
+
+### Generation Strategy
+
+```go
+// UUIDv7 format: timestamp (48 bits) + version (4 bits) + sequence (12 bits) + variant (2 bits) + node (62 bits)
+func GenerateUUIDv7(ctx sdk.Context, moduleName string, sequence uint64) string {
+    blockTime := ctx.BlockTime()
+    headerHash := ctx.HeaderHash()
+    chainID := ctx.ChainID()
+    timestamp := blockTime.UnixMilli()
+
+    // Deterministic node ID from header hash + chain ID + module name + sequence
+    // Uses FNV-1a hash for determinism across all validators
+    nodeID := hashEntropy(headerHash, chainID, moduleName, sequence)
+
+    // Combine: timestamp + version(7) + sequence + variant + nodeID
+    return formatUUIDv7(timestamp, sequence, nodeID)
+}
+```
+
+See `pkg/uuid/uuid.go` for the full implementation.
+
+## Accrual Calculation
+
+**Important**: Billing only accrues for ACTIVE leases. PENDING leases do not accrue charges. Billing starts from `acknowledged_at` timestamp.
+
+### Per-Second Rate (at Lease Creation)
+
+The `locked_price` stored in `LeaseItem` is already the per-second rate, calculated at lease creation:
+
+```go
+// During lease creation
+lockedPricePerSecond = skutypes.CalculatePricePerSecond(sku.BasePrice, sku.Unit)
+```
+
+### Accrual Formula
+
+```
+elapsed_seconds = current_time - last_settled_at
+item_accrual = elapsed_seconds × locked_price.Amount × quantity
+total_accrual = sum(item_accrual for all items, grouped by denom)
+```
+
+### Multi-Denom Settlement
+
+When a lease contains SKUs with different denominations:
+1. Accruals are calculated per-item
+2. Amounts are grouped by denomination
+3. Each denom is transferred separately to the provider's payout address
+
+### Example
+
+SKU 1: 3600upwr per hour → 1upwr per second (locked_price = {denom: "upwr", amount: 1})
+SKU 2: 7200umfx per hour → 2umfx per second (locked_price = {denom: "umfx", amount: 2})
+Quantities: SKU 1 = 5 instances, SKU 2 = 3 instances
+Elapsed: 100 seconds
+
+```
+item1_accrual = 100 × 1 × 5 = 500upwr
+item2_accrual = 100 × 2 × 3 = 600umfx
+total_accrual = [500upwr, 600umfx]
+```
+
+## Parameters, Events, and Error Codes
+
+For the complete reference of module parameters, events, error codes, and authorization matrix, see [API Reference](API.md).
+
+**Architecture Notes:**
+- Parameters are stored at key prefix `0x00` using the Collections `Item` type
+- Provider-wide withdraw limits are compile-time constants (default: 50, max: 100), not governance parameters
+- Each SKU defines its own denomination—no global denom parameter exists
+
+## Security Considerations
+
+### Overflow Protection
+
+Accrual calculations use safe math operations to prevent overflow:
+
+```go
+func CalculateTotalAccruedForLease(items []LeaseItemWithPrice, duration time.Duration) (sdk.Coins, error) {
+    totals := sdk.NewCoins()
+
+    for _, item := range items {
+        accrued, err := CalculateAccruedAmount(item.LockedPricePerSecond, item.Quantity, duration)
+        if err != nil {
+            return nil, fmt.Errorf("overflow calculating accrual for SKU %s: %w", item.SkuUUID, err)
+        }
+        if accrued.IsPositive() {
+            totals = totals.Add(accrued)
+        }
+    }
+    return totals, nil
+}
+```
+
+This returns `sdk.Coins` to support multi-denom leases where different SKUs may have different denominations.
+
+### DoS Mitigations
+
+1. **Max leases per tenant** - Prevents active lease spam
+2. **Max pending leases per tenant** - Prevents pending lease spam
+3. **Max items per lease** - Limits computation per lease
+4. **Withdrawal batch size** - Caps provider-wide withdraw iterations (max 100)
+5. **Min lease duration** - Prevents immediate exhaustion
+6. **Lazy settlement** - No per-block overhead for accrual calculation
+7. **EndBlocker rate limiting** - Max 100 pending lease expirations per block
+8. **Indexed lookups** - O(1) credit account detection
+9. **Same provider requirement** - Simplifies acknowledgement flow
+
+## Performance Characteristics
+
+| Operation | Complexity | Notes |
+|-----------|------------|-------|
+| FundCredit | O(1) | Bank transfer + storage write |
+| CreateLease | O(m) | m = items in lease |
+| AcknowledgeLease | O(1) | State change + index updates |
+| RejectLease | O(1) | State change + index updates |
+| CancelLease | O(1) | State change + index updates |
+| CloseLease | O(m) | m = items in lease |
+| Withdraw (specific) | O(m) | m = items in lease |
+| Withdraw (provider) | O(k×m) | k = leases (max 100), m = avg items |
+| GetCreditBalance | O(1) | Bank query |
+| isCreditAccount | O(1) | Reverse lookup map |
+| GetLeasesByTenant | O(n) | n = tenant's leases |
+| GetLeasesByTenant (with state filter) | O(k) | k = matching leases (compound index) |
+| GetLeasesByProvider | O(n) | n = provider's leases |
+| GetLeasesByProvider (with state filter) | O(k) | k = matching leases (compound index) |
+| GetPendingLeasesByProvider | O(k) | k = pending leases (compound index) |
+| GetLeasesBySKU | O(k) | k = leases containing the SKU (SKU index) |
+| CreditEstimate | O(k) | k = active leases for tenant (compound index) |
+| EndBlocker | O(p) | p = pending leases (max 100/block) |
+
+### Future Improvements
+
+The following optimizations have been identified but deferred:
+
+| Index/Feature | Current | Potential | Notes |
+|---------------|---------|-----------|-------|
+| `StateCreatedAt` for EndBlocker | O(p) all pending | O(e) expired only | The `LeaseByStateCreatedAt` index (prefix 0x0B) exists and maintains time-ordering. Once Cosmos SDK collections support efficient prefix range queries on Multi-indexes, EndBlocker can iterate only expired leases instead of all pending. Currently rate-limited to 100/block which mitigates the O(p) concern. |
+| `LeasesBySKU` + State filter | O(k) + post-filter | O(m) direct | Cannot create compound (SKU, State) index due to many-to-many design (leases contain multiple SKUs). Current post-filtering is acceptable since SKU-specific queries are infrequent. |
+
+## Genesis Validation
+
+During `InitGenesis`, the billing module performs cross-module validation to ensure data consistency:
+
+### SKU-Provider Validation
+
+For each lease in the genesis state, the module verifies:
+
+1. **Provider Existence**: The lease's `provider_uuid` must reference an existing provider in the SKU module
+2. **SKU Existence**: Each `LeaseItem.sku_uuid` must reference an existing SKU in the SKU module
+3. **SKU-Provider Relationship**: Each SKU must belong to the lease's claimed provider
+
+```go
+// Example validation during InitGenesis
+for i, item := range lease.Items {
+    sku, err := k.skuKeeper.GetSKU(ctx, item.SkuUuid)
+    if err != nil {
+        return fmt.Errorf("lease %s item %d references non-existent SKU %s",
+            lease.Uuid, i, item.SkuUuid)
+    }
+    if sku.ProviderUuid != lease.ProviderUuid {
+        return fmt.Errorf("lease %s item %d SKU %s belongs to provider %s, not %s",
+            lease.Uuid, i, item.SkuUuid, sku.ProviderUuid, lease.ProviderUuid)
+    }
+}
+```
+
+This validation prevents inconsistent state where a lease claims to be for one provider but uses SKUs from a different provider.
+
+### Credit Account Validation
+
+The module also validates credit accounts:
+
+1. **Address Derivation**: Credit address must match the deterministically derived address from the tenant
+2. **Tenant Uniqueness**: No duplicate credit accounts for the same tenant
+
+## Testing Strategy
+
+### Unit Tests (`x/billing/keeper/*_test.go`)
+- Message validation (`ValidateBasic`)
+- Accrual calculations
+- Settlement logic (partial/full credit exhaustion)
+- Lease lifecycle (PENDING → ACTIVE → CLOSED)
+- Provider acknowledgement/rejection
+- Tenant cancellation
+- Pending expiration
+- Authorization checks (tenant, provider, authority)
+- Error scenarios (non-existent lease, unauthorized, wrong state)
+- Genesis import/export with cross-module validation
+
+### Integration Tests (`x/billing/keeper/*_test.go`)
+- Full message flows with real app context
+- Multi-lease scenarios
+- Credit account lifecycle
+- EndBlocker pending expiration
+
+### E2E Tests (`interchaintest/billing_test.go`)
+- Complete billing cycle with PENDING → ACTIVE flow
+- Provider acknowledgement and rejection
+- Tenant lease cancellation
+- Provider withdrawals
+- Multi-denom scenarios
+- Credit exhaustion and auto-close
+
+### Group/POA Tests (`interchaintest/poa_group_test.go`)
+- Provider/SKU management via group proposals
+- Lease creation for tenants via authority
+- Lease acknowledgement via group proposals
+- Withdrawal via group proposals
+
+### Simulation (`x/billing/simulation/`)
+- Random operations including acknowledge/reject
+- Stress testing
+- State consistency
+
+## Scalability Considerations
+
+This section documents architectural decisions that affect scalability and outlines future improvement plans.
+
+### Lazy Settlement Design
+
+The billing module uses **lazy settlement** (on-touch evaluation) instead of per-block accrual:
+
+| Approach | Complexity | Trade-offs |
+|----------|------------|------------|
+| Per-block settlement | O(n) per block | Simple but doesn't scale; EndBlocker grows with lease count |
+| Lazy settlement | O(1) per operation | Scales to millions of leases; settlement only when touched |
+
+**Why lazy settlement works:**
+- Settlement cost is paid by the party initiating the operation (withdraw, close)
+- No per-block overhead regardless of total lease count
+- Credit balance reflects unspent funds accurately since accrual is calculated on-demand
+- Provider incentivized to withdraw regularly (they bear the risk of tenant credit exhaustion)
+
+### Credit Withdrawal Policy
+
+There is no mechanism for tenants to withdraw unused credit from credit accounts. Once tokens are funded, they can only be spent on leases. This design:
+
+- **Mimics typical cloud providers** (AWS credits, etc.)
+- **Prevents gaming**: Without this restriction, tenants could fund credit, create leases to lock in prices, then withdraw if prices drop
+- **Simplifies accounting**: Credit balance always represents available purchasing power
+- **Future consideration**: A governance-controlled refund mechanism could be added if needed
+
+### Provider/SKU Deactivation Behavior
+
+When a provider or SKU is deactivated:
+
+| Entity | Effect on SKUs | Effect on Existing Leases | Effect on New Leases |
+|--------|---------------|--------------------------|---------------------|
+| Provider deactivated | **All SKUs cascade to inactive** | Continue at locked prices | Cannot create |
+| SKU deactivated | Only that SKU affected | Continue at locked prices | Cannot create |
+| Provider reactivated | SKUs remain inactive* | No change | Requires SKU reactivation |
+| SKU reactivated | That SKU becomes active | No change | Can create (if provider active) |
+
+*SKUs must be individually reactivated via `update-sku` after provider reactivation.
+
+**Cascade behavior**: When `DeactivateProvider` is called, the SKU module automatically deactivates all SKUs under that provider in the same transaction. This ensures consistency - an inactive provider has no active SKUs.
+
+**Implementation note**: The billing module queries SKU/provider status at lease creation time. Existing leases store `provider_uuid` and `locked_price`, making them independent of subsequent provider/SKU state changes. Tenants can close their leases at any time, even after provider/SKU deactivation.
+
+### Provider-Wide Withdraw Batch Processing
+
+Provider-wide withdraw mode (`--provider` flag) processes leases in batches to prevent DoS:
+
+```
+Default limit: 50 leases
+Maximum limit: 100 leases (hard cap)
+```
+
+**Handling large provider portfolios:**
+1. Provider calls `withdraw --provider <uuid>` with desired `--limit`
+2. Response includes `has_more` boolean
+3. If `has_more == true`, provider repeats call
+4. Leases are processed in deterministic order (by UUID)
+
+**Gas considerations**: Each batch is a single transaction. Providers with thousands of leases may need multiple transactions spread across blocks.
+
+### Time Manipulation Considerations
+
+The billing module relies on block timestamps for accrual calculations. Cosmos SDK provides the following guarantees:
+
+| Property | Guarantee |
+|----------|-----------|
+| Monotonicity | Block time always increases (enforced by CometBFT) |
+| Granularity | Millisecond precision |
+| Drift tolerance | ±1 second per block (CometBFT default) |
+
+**Attack surface analysis:**
+
+1. **Validator timestamp manipulation**: Limited to ±1 second per block. Over 1 hour, maximum drift is ~0.028%. Not economically viable for manipulation.
+
+2. **Network partition attacks**: Timestamps during partitions may differ slightly across chains. Resolved during consensus.
+
+3. **Leap seconds**: Go's time package handles leap seconds transparently.
+
+**Mitigations implemented:**
+- `MinLeaseDuration` prevents micro-leases that could amplify timing attacks
+- Per-second billing granularity absorbs small timing variations
+- Price locking means timestamp manipulation only affects billing duration, not rates
+
+### Arithmetic Precision
+
+All billing calculations use `math.Int` (arbitrary precision integers):
+
+```go
+// Accrual calculation (no floating point)
+accrued = duration_seconds × locked_price × quantity
+```
+
+**Why integer arithmetic:**
+- No rounding errors accumulate over time
+- Deterministic across all validators
+- SKU prices must be divisible by unit seconds (enforced at creation)
+
+**Overflow protection:**
+- `MaxDurationSeconds` (~100 years) prevents overflow in duration calculations
+- `CalculateAccruedAmount` returns error on overflow instead of wrapping
+- Provider-wide withdraw uses cached context to isolate failures
+
+### Future Improvement Plans
+
+The following enhancements are under consideration:
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Credit refund mechanism | Planned | Governance-controlled tenant credit withdrawal |
+| Scheduled withdrawals | Proposed | Auto-withdraw at configurable intervals |
+| Lease renewal | Proposed | Extend leases without close/create cycle |
+| Multi-provider leases | Deferred | Single lease spanning multiple providers |
+| Tiered pricing | Deferred | Volume discounts within single lease |
+
+**Not planned:**
+- Per-block settlement (conflicts with scalability goals)
+- Negative credit/debt (complexity outweighs benefit)
+- Partial lease modification (close and create new lease instead)
+
+## Provider Off-Chain API Integration
+
+For details on how tenants authenticate to provider off-chain APIs using ADR-036 signatures, see [Integration Guide](INTEGRATION.md).
+
+## Related Documentation
+
+- [README](../README.md) - Module overview
+- [API Reference](API.md) - CLI and gRPC/REST API
+- [Design Decisions](DESIGN_DECISIONS.md) - Key design rationale
+- [Comparison](COMPARISON.md) - Comparison with Akash and architectural trade-offs
+- [Capabilities](CAPABILITIES.md) - Feature overview and roadmap
+- [SKU Module Architecture](../../sku/docs/ARCHITECTURE.md) - Provider and SKU internals

@@ -6,7 +6,10 @@ DOCKER := $(shell which docker)
 LEDGER_ENABLED ?= true
 BINDIR ?= $(GOPATH)/bin
 BUILD_DIR = ./build
-VERSION = v1.0.14
+VERSION ?= v1.1.0
+GO ?= go
+GOROOT := $(shell $(GO) env GOROOT)
+export GOROOT
 
 export GO111MODULE = on
 
@@ -118,7 +121,7 @@ ictest-poa:
 	cd interchaintest && go test -race -v -run TestPOA . -count=1
 
 ictest-group-poa:
-	cd interchaintest && go test -race -v -run TestGroupPOA . -count=1
+	cd interchaintest && go test -timeout 25m -race -v -run TestGroupPOA . -count=1
 
 ictest-cosmwasm:
 	cd interchaintest && go test -race -v -run TestCosmWasm . -count=1
@@ -129,7 +132,31 @@ ictest-chain-upgrade:
 ictest-group:
 	cd interchaintest && go test -race -v -run TestGroupMetadataLimits . -count=1
 
-.PHONY: ictest-ibc ictest-tokenfactory
+ictest-sku:
+	cd interchaintest && go test -race -v -run TestSKU . -count=1
+
+ictest-billing:
+	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(Lease|Credit|Advanced|State|Reservation)$$" . -count=1
+
+ictest-billing-lease:
+	cd interchaintest && go test -race -v -timeout 45m -run TestBillingLease . -count=1
+
+ictest-billing-credit:
+	cd interchaintest && go test -race -v -timeout 45m -run TestBillingCredit . -count=1
+
+ictest-billing-advanced:
+	cd interchaintest && go test -race -v -timeout 45m -run TestBillingAdvanced . -count=1
+
+ictest-billing-state:
+	cd interchaintest && go test -race -v -timeout 45m -run TestBillingState . -count=1
+
+ictest-billing-upgrade:
+	cd interchaintest && go test -race -v -timeout 45m -run TestBillingModuleUpgrade . -count=1
+
+ictest-billing-reservation:
+	cd interchaintest && go test -race -v -timeout 45m -run TestBillingReservation . -count=1
+
+.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku ictest-billing ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-upgrade ictest-billing-reservation
 
 ###############################################################################
 ###                                Build Image                              ###
@@ -159,6 +186,9 @@ COV_SIM_CMD=${COV_SIMULATION}/simulation.test
 COV_SIM_COMMON=-Enabled=True -NumBlocks=100 -Commit=true -Period=5 -Params=$(shell pwd)/simulation/sim_params.json -Verbose=false -test.v -test.gocoverdir=${COV_SIMULATION}
 
 coverage: ## Run coverage report
+	@echo "--> Using Go: $(shell $(GO) version)"
+	@echo "--> GOROOT: $(GOROOT)"
+
 	@echo "--> Creating GOCOVERDIR"
 	@mkdir -p ${COV_UNIT_E2E} ${COV_SIMULATION}
 	@echo "--> Cleaning up coverage files, if any"
@@ -172,7 +202,7 @@ coverage: ## Run coverage report
 	@echo "  --> Running App State Determinism Simulation"
 	@${COV_SIM_CMD} -test.run TestAppStateDeterminism ${COV_SIM_COMMON} > /dev/null 2>&1
 	@echo "--> Running unit & e2e tests coverage"
-	@go test -p 1 -timeout 30m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
+	@go test -p 1 -timeout 90m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
 	@echo "--> Merging coverage reports"
 	@go tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_ROOT}
 	@echo "--> Converting binary coverage report to text format"

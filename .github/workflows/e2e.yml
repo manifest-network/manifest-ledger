@@ -16,7 +16,7 @@ permissions:
   packages: write
 
 env:
-  GO_VERSION: 1.25.5
+  GO_VERSION: 1.25.7
   TAR_PATH: /tmp/manifest-docker-image.tar
   IMAGE_NAME: manifest-docker-image
 
@@ -68,6 +68,9 @@ jobs:
           - "ictest-group-poa"
           - "ictest-cosmwasm"
           - "ictest-chain-upgrade"
+          - "ictest-sku"
+          - "ictest-billing"
+          - "ictest-billing-upgrade"
       fail-fast: false
 
     steps:

@@ -1,0 +1,378 @@
+syntax = "proto3";
+package liftedinit.billing.v1;
+
+import "cosmos/base/query/v1beta1/pagination.proto";
+import "cosmos/base/v1beta1/coin.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+import "liftedinit/billing/v1/types.proto";
+
+option go_package = "github.com/manifest-network/manifest-ledger/x/billing/types";
+
+// Query defines the gRPC querier service for the billing module.
+service Query {
+  // Params queries the module parameters.
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/liftedinit/billing/v1/params";
+  }
+
+  // Lease queries a lease by UUID.
+  rpc Lease(QueryLeaseRequest) returns (QueryLeaseResponse) {
+    option (google.api.http).get = "/liftedinit/billing/v1/lease/{lease_uuid}";
+  }
+
+  // Leases queries all leases with pagination.
+  rpc Leases(QueryLeasesRequest) returns (QueryLeasesResponse) {
+    option (google.api.http).get = "/liftedinit/billing/v1/leases";
+  }
+
+  // LeasesByTenant queries leases by tenant address.
+  rpc LeasesByTenant(QueryLeasesByTenantRequest)
+      returns (QueryLeasesByTenantResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/leases/tenant/{tenant}";
+  }
+
+  // LeasesByProvider queries leases by provider.
+  rpc LeasesByProvider(QueryLeasesByProviderRequest)
+      returns (QueryLeasesByProviderResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/leases/provider/{provider_uuid}";
+  }
+
+  // CreditAccount queries a tenant's credit account.
+  rpc CreditAccount(QueryCreditAccountRequest)
+      returns (QueryCreditAccountResponse) {
+    option (google.api.http).get = "/liftedinit/billing/v1/credit/{tenant}";
+  }
+
+  // CreditAddress derives the credit address for a tenant.
+  rpc CreditAddress(QueryCreditAddressRequest)
+      returns (QueryCreditAddressResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/credit-address/{tenant}";
+  }
+
+  // WithdrawableAmount queries the amount available for provider withdrawal from a lease.
+  rpc WithdrawableAmount(QueryWithdrawableAmountRequest)
+      returns (QueryWithdrawableAmountResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/lease/{lease_uuid}/withdrawable";
+  }
+
+  // ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
+  rpc ProviderWithdrawable(QueryProviderWithdrawableRequest)
+      returns (QueryProviderWithdrawableResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/provider/{provider_uuid}/withdrawable";
+  }
+
+  // CreditAccounts queries all credit accounts with pagination.
+  rpc CreditAccounts(QueryCreditAccountsRequest)
+      returns (QueryCreditAccountsResponse) {
+    option (google.api.http).get = "/liftedinit/billing/v1/credits";
+  }
+
+  // LeasesBySKU queries leases by SKU UUID.
+  rpc LeasesBySKU(QueryLeasesBySKURequest) returns (QueryLeasesBySKUResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/leases/sku/{sku_uuid}";
+  }
+
+  // CreditEstimate estimates remaining lease duration for a tenant.
+  rpc CreditEstimate(QueryCreditEstimateRequest)
+      returns (QueryCreditEstimateResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/credit/{tenant}/estimate";
+  }
+}
+
+// QueryParamsRequest is the request type for the Query/Params RPC method.
+message QueryParamsRequest {}
+
+// QueryParamsResponse is the response type for the Query/Params RPC method.
+message QueryParamsResponse {
+  // params defines the module parameters.
+  Params params = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "params"
+  ];
+}
+
+// QueryLeaseRequest is the request type for the Query/Lease RPC method.
+message QueryLeaseRequest {
+  // lease_uuid is the UUID of the lease to query.
+  string lease_uuid = 1 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+}
+
+// QueryLeaseResponse is the response type for the Query/Lease RPC method.
+message QueryLeaseResponse {
+  // lease is the queried lease.
+  Lease lease = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "lease"
+  ];
+}
+
+// QueryLeasesRequest is the request type for the Query/Leases RPC method.
+message QueryLeasesRequest {
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+
+  // state_filter filters leases by state. If UNSPECIFIED, returns all leases.
+  LeaseState state_filter = 2 [(gogoproto.jsontag) = "state_filter,omitempty"];
+}
+
+// QueryLeasesResponse is the response type for the Query/Leases RPC method.
+message QueryLeasesResponse {
+  // leases is the list of leases.
+  repeated Lease leases = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "leases"
+  ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryLeasesByTenantRequest is the request type for the Query/LeasesByTenant
+// RPC method.
+message QueryLeasesByTenantRequest {
+  // tenant is the address of the tenant.
+  string tenant = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+
+  // state_filter filters leases by state. If UNSPECIFIED, returns all leases.
+  LeaseState state_filter = 3 [(gogoproto.jsontag) = "state_filter,omitempty"];
+}
+
+// QueryLeasesByTenantResponse is the response type for the Query/LeasesByTenant
+// RPC method.
+message QueryLeasesByTenantResponse {
+  // leases is the list of leases for the tenant.
+  repeated Lease leases = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "leases"
+  ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryLeasesByProviderRequest is the request type for the
+// Query/LeasesByProvider RPC method.
+message QueryLeasesByProviderRequest {
+  // provider_uuid is the provider UUID.
+  string provider_uuid = 1 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+
+  // state_filter filters leases by state. If UNSPECIFIED, returns all leases.
+  LeaseState state_filter = 3 [(gogoproto.jsontag) = "state_filter,omitempty"];
+}
+
+// QueryLeasesByProviderResponse is the response type for the
+// Query/LeasesByProvider RPC method.
+message QueryLeasesByProviderResponse {
+  // leases is the list of leases for the provider.
+  repeated Lease leases = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "leases"
+  ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryCreditAccountRequest is the request type for the Query/CreditAccount RPC
+// method.
+message QueryCreditAccountRequest {
+  // tenant is the address of the tenant.
+  string tenant = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
+}
+
+// QueryCreditAccountResponse is the response type for the Query/CreditAccount
+// RPC method.
+message QueryCreditAccountResponse {
+  // credit_account is the tenant's credit account.
+  CreditAccount credit_account = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "credit_account"
+  ];
+
+  // balances is the current balances at the credit address (fetched from bank module).
+  repeated cosmos.base.v1beta1.Coin balances = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "balances"
+  ];
+
+  // available_balances is the amount available for new leases (balances - reserved_amounts).
+  // This is what can be used to create new leases without overbooking.
+  repeated cosmos.base.v1beta1.Coin available_balances = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "available_balances"
+  ];
+}
+
+// QueryCreditAddressRequest is the request type for the Query/CreditAddress RPC
+// method.
+message QueryCreditAddressRequest {
+  // tenant is the address of the tenant.
+  string tenant = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
+}
+
+// QueryCreditAddressResponse is the response type for the Query/CreditAddress
+// RPC method.
+message QueryCreditAddressResponse {
+  // credit_address is the derived credit account address.
+  string credit_address = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "credit_address,omitempty"
+  ];
+}
+
+// QueryWithdrawableAmountRequest is the request type for the
+// Query/WithdrawableAmount RPC method.
+message QueryWithdrawableAmountRequest {
+  // lease_uuid is the UUID of the lease.
+  string lease_uuid = 1 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+}
+
+// QueryWithdrawableAmountResponse is the response type for the
+// Query/WithdrawableAmount RPC method.
+message QueryWithdrawableAmountResponse {
+  // amounts is the amounts available for withdrawal (one per denom).
+  repeated cosmos.base.v1beta1.Coin amounts = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "amounts"
+  ];
+}
+
+// QueryProviderWithdrawableRequest is the request type for the
+// Query/ProviderWithdrawable RPC method.
+message QueryProviderWithdrawableRequest {
+  // provider_uuid is the UUID of the provider.
+  string provider_uuid = 1 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
+
+  // limit is the maximum number of leases to process (default: 100, max: 1000).
+  // Use this to prevent query timeouts for providers with many leases.
+  uint64 limit = 2 [(gogoproto.jsontag) = "limit,omitempty,string"];
+}
+
+// QueryProviderWithdrawableResponse is the response type for the
+// Query/ProviderWithdrawable RPC method.
+message QueryProviderWithdrawableResponse {
+  // amounts is the total amounts available for withdrawal across all leases (one per denom).
+  repeated cosmos.base.v1beta1.Coin amounts = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "amounts"
+  ];
+
+  // lease_count is the number of leases included in the withdrawable amount.
+  uint64 lease_count = 2 [(gogoproto.jsontag) = "lease_count,omitempty,string"];
+
+  // has_more indicates whether there are more leases beyond the limit.
+  // If true, the amounts represent a partial total and there are more leases to query.
+  bool has_more = 3 [(gogoproto.jsontag) = "has_more,omitempty"];
+}
+
+// QueryCreditAccountsRequest is the request type for the Query/CreditAccounts
+// RPC method.
+message QueryCreditAccountsRequest {
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+// QueryCreditAccountsResponse is the response type for the Query/CreditAccounts
+// RPC method.
+message QueryCreditAccountsResponse {
+  // credit_accounts is the list of credit accounts.
+  repeated CreditAccount credit_accounts = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "credit_accounts"
+  ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryLeasesBySKURequest is the request type for the Query/LeasesBySKU
+// RPC method.
+message QueryLeasesBySKURequest {
+  // sku_uuid is the UUID of the SKU.
+  string sku_uuid = 1 [(gogoproto.jsontag) = "sku_uuid,omitempty"];
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+
+  // state_filter filters leases by state. If UNSPECIFIED, returns all leases.
+  LeaseState state_filter = 3 [(gogoproto.jsontag) = "state_filter,omitempty"];
+}
+
+// QueryLeasesBySKUResponse is the response type for the Query/LeasesBySKU
+// RPC method.
+message QueryLeasesBySKUResponse {
+  // leases is the list of leases containing the SKU.
+  repeated Lease leases = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "leases"
+  ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryCreditEstimateRequest is the request type for the Query/CreditEstimate
+// RPC method.
+message QueryCreditEstimateRequest {
+  // tenant is the address of the tenant.
+  string tenant = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
+}
+
+// QueryCreditEstimateResponse is the response type for the Query/CreditEstimate
+// RPC method.
+message QueryCreditEstimateResponse {
+  // current_balance is the tenant's current credit balance.
+  repeated cosmos.base.v1beta1.Coin current_balance = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "current_balance"
+  ];
+
+  // total_rate_per_second is the combined rate of all active leases (per denom).
+  repeated cosmos.base.v1beta1.Coin total_rate_per_second = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "total_rate_per_second"
+  ];
+
+  // estimated_duration_seconds is the estimated time until credit exhaustion.
+  // Calculated as min(balance[denom] / rate[denom]) across all denoms.
+  // Returns 0 if no active leases or no matching denoms.
+  uint64 estimated_duration_seconds = 3
+      [(gogoproto.jsontag) = "estimated_duration_seconds,omitempty,string"];
+
+  // active_lease_count is the number of active leases for this tenant.
+  uint64 active_lease_count = 4
+      [(gogoproto.jsontag) = "active_lease_count,omitempty,string"];
+}

@@ -1,12 +1,13 @@
 package app
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/spf13/cast"
 
@@ -140,9 +141,15 @@ import (
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
 	"github.com/manifest-network/manifest-ledger/app/helpers"
+	billing "github.com/manifest-network/manifest-ledger/x/billing"
+	billingkeeper "github.com/manifest-network/manifest-ledger/x/billing/keeper"
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 	manifest "github.com/manifest-network/manifest-ledger/x/manifest"
 	manifestkeeper "github.com/manifest-network/manifest-ledger/x/manifest/keeper"
 	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
+	sku "github.com/manifest-network/manifest-ledger/x/sku"
+	skukeeper "github.com/manifest-network/manifest-ledger/x/sku/keeper"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 // We pull these out so we can set them with LDFLAGS in the Makefile
@@ -260,6 +267,8 @@ type ManifestApp struct {
 	TokenFactoryKeeper tokenfactorykeeper.Keeper
 	POAKeeper          poakeeper.Keeper
 	ManifestKeeper     manifestkeeper.Keeper
+	SKUKeeper          skukeeper.Keeper
+	BillingKeeper      billingkeeper.Keeper
 	WasmKeeper         wasmkeeper.Keeper
 
 	// the module manager
@@ -320,7 +329,7 @@ func NewApp(
 		capabilitytypes.StoreKey, ibcexported.StoreKey, ibctransfertypes.StoreKey, ibcfeetypes.StoreKey,
 		icahosttypes.StoreKey,
 		icacontrollertypes.StoreKey, tokenfactorytypes.StoreKey, poa.StoreKey,
-		manifesttypes.StoreKey,
+		manifesttypes.StoreKey, skutypes.StoreKey, billingtypes.StoreKey,
 		wasmtypes.StoreKey,
 	)
 
@@ -574,6 +583,27 @@ func NewApp(
 	)
 	app.ManifestKeeper.SetTestAccountKeeper(app.AccountKeeper)
 
+	// Create the SKU Keeper
+	app.SKUKeeper = skukeeper.NewKeeper(
+		appCodec,
+		runtime.NewKVStoreService(keys[skutypes.StoreKey]),
+		logger,
+		helpers.GetPoAAdmin(),
+	)
+	app.SKUKeeper.SetAccountKeeper(app.AccountKeeper)
+	app.SKUKeeper.SetBankKeeper(app.BankKeeper)
+
+	// Create the Billing Keeper
+	app.BillingKeeper = billingkeeper.NewKeeper(
+		appCodec,
+		runtime.NewKVStoreService(keys[billingtypes.StoreKey]),
+		logger,
+		helpers.GetPoAAdmin(),
+	)
+	app.BillingKeeper.SetSKUKeeper(&app.SKUKeeper)
+	app.BillingKeeper.SetBankKeeper(app.BankKeeper)
+	app.BillingKeeper.SetAccountKeeper(app.AccountKeeper)
+
 	// Create the TokenFactory Keeper
 	app.TokenFactoryKeeper = tokenfactorykeeper.NewKeeper(
 		appCodec,
@@ -732,6 +762,8 @@ func NewApp(
 		// sdk
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)),
 		manifest.NewAppModule(appCodec, app.ManifestKeeper, app.MintKeeper),
+		sku.NewAppModule(appCodec, app.SKUKeeper),
+		billing.NewAppModule(appCodec, app.BillingKeeper, app.SKUKeeper),
 		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
 	)
 
@@ -799,6 +831,7 @@ func NewApp(
 		ibcfeetypes.ModuleName,
 		tokenfactorytypes.ModuleName,
 		manifesttypes.ModuleName,
+		billingtypes.ModuleName, // batch settlement
 		wasmtypes.ModuleName,
 	)
 
@@ -826,6 +859,8 @@ func NewApp(
 		ibcfeetypes.ModuleName,
 		poa.ModuleName,
 		manifesttypes.ModuleName,
+		skutypes.ModuleName,
+		billingtypes.ModuleName, // after sku (billing depends on sku)
 		wasmtypes.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
@@ -1078,8 +1113,8 @@ func (app *ManifestApp) GetStoreKeys() []storetypes.StoreKey {
 	for _, key := range app.keys {
 		keys = append(keys, key)
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i].Name() < keys[j].Name()
+	slices.SortFunc(keys, func(a, b storetypes.StoreKey) int {
+		return cmp.Compare(a.Name(), b.Name())
 	})
 	return keys
 }
