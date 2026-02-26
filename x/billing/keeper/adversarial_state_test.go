@@ -185,7 +185,7 @@ func TestAdversarial_MultipleLeaseReservationAccumulation(t *testing.T) {
 	var leaseIDs []string
 	for i := 0; i < 5; i++ {
 		leaseID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
-			{SkuUuid: sku.Uuid, Quantity: uint64(i + 1)},
+			{SkuUuid: sku.Uuid, Quantity: uint64(i + 1)}, //nolint:gosec // test code, i is [0,4]
 		})
 		leaseIDs = append(leaseIDs, leaseID)
 	}

@@ -288,9 +288,11 @@ func CheckGenesisRoundTripInvariant(ctx context.Context, k keeper.Keeper) Invari
 }
 
 // RunAllInvariants runs all invariant checks and returns results.
-func RunAllInvariants(ctx context.Context, k keeper.Keeper, bankKeeper interface {
-	GetBalance(ctx context.Context, addr sdk.AccAddress, denom string) sdk.Coin
-}, blockTime time.Time) []InvariantResult {
+func RunAllInvariants(
+	ctx context.Context, k keeper.Keeper, bankKeeper interface {
+		GetBalance(ctx context.Context, addr sdk.AccAddress, denom string) sdk.Coin
+	}, blockTime time.Time,
+) []InvariantResult {
 	return []InvariantResult{
 		CheckFundConservationInvariant(ctx, k, bankKeeper),
 		CheckReservationConsistencyInvariant(ctx, k),
