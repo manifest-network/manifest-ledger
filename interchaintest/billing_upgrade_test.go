@@ -135,8 +135,8 @@ func TestBillingModuleUpgrade(t *testing.T) {
 	haltHeight := height + billingHaltHeightDelta
 
 	// The upgrade name must match app.Version() in the new binary
-	// This must match VERSION in the Makefile (currently v1.1.0)
-	upgradeName := "v1.1.0"
+	// This must match VERSION in the Makefile (currently v2.0.0)
+	upgradeName := "v2.0.0"
 
 	t.Logf("Upgrade name: %s", upgradeName)
 	t.Logf("Current height: %d, halt height: %d", height, haltHeight)
