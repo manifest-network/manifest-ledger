@@ -22,8 +22,6 @@ import (
 )
 
 const (
-	upgradeName = "v0.0.1-rc.6"
-
 	haltHeightDelta    = int64(15) // will propose upgrade this many blocks in the future
 	blocksAfterUpgrade = int64(7)
 )
@@ -31,8 +29,8 @@ const (
 var (
 	// baseChain is the current version of the chain that will be upgraded from
 	baseChain = ibc.DockerImage{
-		Repository: "ghcr.io/manifest-network/manifest-ledger", // GitHub Container Registry path
-		Version:    "v0.0.1-rc.4",                              // The version we're upgrading from
+		Repository: "ghcr.io/manifest-network/manifest-ledger",
+		Version:    "2.0.0",
 		UIDGID:     "1025:1025",
 	}
 
@@ -59,8 +57,6 @@ var (
 )
 
 func TestBasicManifestUpgrade(t *testing.T) {
-	t.Skip("Skipping test, we know the migration to rc.6 works")
-
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}
@@ -81,13 +77,12 @@ func TestBasicManifestUpgrade(t *testing.T) {
 		fmt.Sprintf("POA_ADMIN_ADDRESS=%s", groupAddr), // Set group address as POA admin
 	}
 
-	v := 16
 	chains, err := interchaintest.NewBuiltinChainFactory(zaptest.NewLogger(t), []*interchaintest.ChainSpec{
 		{
 			Name:          "manifest-2",
-			Version:       baseChain.Version, // Use the base version initially
+			Version:       baseChain.Version,
 			ChainName:     cfg.ChainID,
-			NumValidators: &v,
+			NumValidators: &vals,
 			NumFullNodes:  &fullNodes,
 			ChainConfig:   cfg,
 		},
@@ -114,6 +109,10 @@ func TestBasicManifestUpgrade(t *testing.T) {
 		SkipPathCreation: true,
 	}))
 
+	t.Cleanup(func() {
+		_ = ic.Close()
+	})
+
 	// Get test users
 	user1Wallet, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, user1, accMnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
@@ -126,7 +125,11 @@ func TestBasicManifestUpgrade(t *testing.T) {
 
 	haltHeight := height + haltHeightDelta
 
-	t.Log("Upgrade name:", upgradeName)
+	// The upgrade name must match app.Version() in the new binary
+	upgradeName := "v2.0.1"
+
+	t.Logf("Upgrade name: %s", upgradeName)
+	t.Logf("Current height: %d, halt height: %d", height, haltHeight)
 	t.Log("Submitting upgrade proposal through group")
 	upgradeMsg := createUpgradeProposal(groupAddr, upgradeName, haltHeight)
 
@@ -164,7 +167,7 @@ func TestBasicManifestUpgrade(t *testing.T) {
 
 	t.Log("Starting upgraded nodes...")
 
-	// Make sure we have the v2 upgrade handler in the local build
+	// Make sure we have the upgrade handler in the local build
 	err = chain.StartAllNodes(ctx)
 	require.NoError(t, err, "error starting upgraded node(s)")
 
