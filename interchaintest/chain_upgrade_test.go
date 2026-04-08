@@ -126,7 +126,7 @@ func TestBasicManifestUpgrade(t *testing.T) {
 	haltHeight := height + haltHeightDelta
 
 	// The upgrade name must match app.Version() in the new binary
-	upgradeName := "v2.0.1"
+	upgradeName := "v2.0.2"
 
 	t.Logf("Upgrade name: %s", upgradeName)
 	t.Logf("Current height: %d, halt height: %d", height, haltHeight)
