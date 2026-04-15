@@ -480,6 +480,7 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 	totalRatePerSecond := sdk.NewCoins()
 	var activeLeaseCount uint64
 	denomSet := make(map[string]struct{})
+	denoms := make([]string, 0, 4)
 
 	// Use TenantState compound index to iterate only over active leases - O(k) instead of O(n)
 	key := collections.Join(tenantAddr, int32(types.LEASE_STATE_ACTIVE))
@@ -513,15 +514,14 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 			// locked_price is already in per-second terms
 			itemRate := sdk.NewCoin(item.LockedPrice.Denom, item.LockedPrice.Amount.Mul(sdkmath.NewIntFromUint64(item.Quantity)))
 			totalRatePerSecond = totalRatePerSecond.Add(itemRate)
-			denomSet[item.LockedPrice.Denom] = struct{}{}
+			if _, ok := denomSet[item.LockedPrice.Denom]; !ok {
+				denomSet[item.LockedPrice.Denom] = struct{}{}
+				denoms = append(denoms, item.LockedPrice.Denom)
+			}
 		}
 	}
 
 	// Fetch balances for only the denoms used by active leases (DoS mitigation).
-	denoms := make([]string, 0, len(denomSet))
-	for d := range denomSet {
-		denoms = append(denoms, d)
-	}
 	currentBalance, err := q.k.getCreditBalancesForDenoms(ctx, req.Tenant, denoms)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())

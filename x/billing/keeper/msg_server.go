@@ -385,6 +385,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	// Phase 1: Validate ALL leases and authorization first (fail-fast)
 	leases := make([]types.Lease, 0, len(msg.LeaseUuids))
 	creditAccounts := make(map[string]types.CreditAccount) // keyed by tenant address
+	tenantOrder := make([]string, 0, len(msg.LeaseUuids)) // deterministic iteration order
 	providerCache := make(map[string]string)               // provider UUID -> provider address
 	var closedBy string                                    // consistent role for all leases
 
@@ -469,6 +470,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 				)
 			}
 			creditAccounts[lease.Tenant] = creditAccount
+			tenantOrder = append(tenantOrder, lease.Tenant)
 		}
 
 		leases = append(leases, lease)
@@ -575,9 +577,10 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		})
 	}
 
-	// Persist all credit account updates to the cache context
-	for _, creditAccount := range creditAccounts {
-		if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
+	// Persist all credit account updates to the cache context.
+	// Use tenantOrder (insertion-order slice) instead of ranging over the map.
+	for _, tenant := range tenantOrder {
+		if err := ms.k.SetCreditAccount(cacheCtx, creditAccounts[tenant]); err != nil {
 			return nil, err
 		}
 	}
@@ -1052,6 +1055,7 @@ func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleT
 type pendingLeaseBatchResult struct {
 	leases         []types.Lease
 	creditAccounts map[string]types.CreditAccount
+	tenantOrder    []string // deterministic iteration order (insertion order)
 	providerUUID   string
 }
 
@@ -1061,6 +1065,7 @@ type pendingLeaseBatchResult struct {
 func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []string) (*pendingLeaseBatchResult, error) {
 	leases := make([]types.Lease, 0, len(leaseUuids))
 	creditAccounts := make(map[string]types.CreditAccount)
+	tenantOrder := make([]string, 0, len(leaseUuids))
 	var providerUUID string
 
 	for _, uuid := range leaseUuids {
@@ -1091,6 +1096,7 @@ func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []
 				)
 			}
 			creditAccounts[lease.Tenant] = creditAccount
+			tenantOrder = append(tenantOrder, lease.Tenant)
 		}
 
 		leases = append(leases, lease)
@@ -1099,6 +1105,7 @@ func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []
 	return &pendingLeaseBatchResult{
 		leases:         leases,
 		creditAccounts: creditAccounts,
+		tenantOrder:    tenantOrder,
 		providerUUID:   providerUUID,
 	}, nil
 }
@@ -1185,9 +1192,10 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 		})
 	}
 
-	// Persist all credit account updates to the cache context
-	for _, creditAccount := range creditAccounts {
-		if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
+	// Persist all credit account updates to the cache context.
+	// Use validated.tenantOrder (insertion-order slice) instead of ranging over the map.
+	for _, tenant := range validated.tenantOrder {
+		if err := ms.k.SetCreditAccount(cacheCtx, creditAccounts[tenant]); err != nil {
 			return nil, err
 		}
 	}
@@ -1296,9 +1304,10 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 		})
 	}
 
-	// Persist all credit account updates to the cache context
-	for _, creditAccount := range creditAccounts {
-		if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
+	// Persist all credit account updates to the cache context.
+	// Use validated.tenantOrder (insertion-order slice) instead of ranging over the map.
+	for _, tenant := range validated.tenantOrder {
+		if err := ms.k.SetCreditAccount(cacheCtx, creditAccounts[tenant]); err != nil {
 			return nil, err
 		}
 	}

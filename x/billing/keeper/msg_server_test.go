@@ -5166,3 +5166,208 @@ func TestMsgCreateLease_ServiceName(t *testing.T) {
 		require.Empty(t, lease.Items[0].ServiceName)
 	})
 }
+
+// TestBatchMultiTenantDeterminism is a regression test for non-deterministic map
+// iteration in batch lease operations. When multiple tenants appear in a single
+// AcknowledgeLease / RejectLease / CloseLease message, their credit accounts are
+// collected in a map[string]CreditAccount. Iterating that map with `range` produces
+// a random order per Go spec, which can cause divergent state across validators.
+//
+// The fix tracks a tenantOrder slice at insertion time. This test runs each
+// batch operation 50 times on independent fixtures and asserts that the resulting
+// credit-account state and event sequence are identical every time.
+func TestBatchMultiTenantDeterminism(t *testing.T) {
+	denom := testDenom
+
+	// setupMultiTenant returns two tenants each with a pending lease for the same provider.
+	setupMultiTenant := func(t *testing.T) (*testFixture, types.MsgServer, sdk.AccAddress, sdk.AccAddress, sdk.AccAddress, string, string) {
+		t.Helper()
+		f := initFixture(t)
+		msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+		tenant1 := f.TestAccs[0]
+		tenant2 := f.TestAccs[1]
+		providerAddr := f.TestAccs[2]
+		payoutAddr := f.TestAccs[3]
+
+		provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+		sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+		for _, tenant := range []sdk.AccAddress{tenant1, tenant2} {
+			creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+			require.NoError(t, err)
+			f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(100_000_000))))
+			err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+				Tenant:        tenant.String(),
+				CreditAddress: creditAddr.String(),
+			})
+			require.NoError(t, err)
+		}
+
+		// Create one pending lease per tenant, both for the same provider.
+		resp1, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant1.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+		resp2, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant2.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 2}},
+		})
+		require.NoError(t, err)
+
+		return f, msgServer, tenant1, tenant2, providerAddr, resp1.LeaseUuid, resp2.LeaseUuid
+	}
+
+	t.Run("AcknowledgeLease multi-tenant determinism", func(t *testing.T) {
+		type snapshot struct {
+			ca1Pending uint64
+			ca1Active  uint64
+			ca2Pending uint64
+			ca2Active  uint64
+			eventTypes []string
+		}
+
+		var reference *snapshot
+		for i := range 50 {
+			f, msgServer, tenant1, tenant2, providerAddr, lease1, lease2 := setupMultiTenant(t)
+			f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+
+			_, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+				Sender:     providerAddr.String(),
+				LeaseUuids: []string{lease1, lease2},
+			})
+			require.NoError(t, err)
+
+			ca1, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant1.String())
+			require.NoError(t, err)
+			ca2, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant2.String())
+			require.NoError(t, err)
+
+			events := f.Ctx.EventManager().Events()
+			eventTypes := make([]string, len(events))
+			for j, ev := range events {
+				eventTypes[j] = ev.Type
+			}
+
+			s := &snapshot{
+				ca1Pending: ca1.PendingLeaseCount,
+				ca1Active:  ca1.ActiveLeaseCount,
+				ca2Pending: ca2.PendingLeaseCount,
+				ca2Active:  ca2.ActiveLeaseCount,
+				eventTypes: eventTypes,
+			}
+
+			if i == 0 {
+				reference = s
+			} else {
+				require.Equal(t, reference, s, "iteration %d produced different results", i)
+			}
+		}
+	})
+
+	t.Run("RejectLease multi-tenant determinism", func(t *testing.T) {
+		type snapshot struct {
+			ca1Pending uint64
+			ca2Pending uint64
+			ca1Reserved string
+			ca2Reserved string
+			eventTypes  []string
+		}
+
+		var reference *snapshot
+		for i := range 50 {
+			f, msgServer, tenant1, tenant2, providerAddr, lease1, lease2 := setupMultiTenant(t)
+			f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+
+			_, err := msgServer.RejectLease(f.Ctx, &types.MsgRejectLease{
+				Sender:     providerAddr.String(),
+				LeaseUuids: []string{lease1, lease2},
+				Reason:     "test rejection",
+			})
+			require.NoError(t, err)
+
+			ca1, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant1.String())
+			require.NoError(t, err)
+			ca2, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant2.String())
+			require.NoError(t, err)
+
+			events := f.Ctx.EventManager().Events()
+			eventTypes := make([]string, len(events))
+			for j, ev := range events {
+				eventTypes[j] = ev.Type
+			}
+
+			s := &snapshot{
+				ca1Pending:  ca1.PendingLeaseCount,
+				ca2Pending:  ca2.PendingLeaseCount,
+				ca1Reserved: ca1.ReservedAmounts.String(),
+				ca2Reserved: ca2.ReservedAmounts.String(),
+				eventTypes:  eventTypes,
+			}
+
+			if i == 0 {
+				reference = s
+			} else {
+				require.Equal(t, reference, s, "iteration %d produced different results", i)
+			}
+		}
+	})
+
+	t.Run("CloseLease multi-tenant determinism", func(t *testing.T) {
+		type snapshot struct {
+			ca1Active  uint64
+			ca2Active  uint64
+			ca1Reserved string
+			ca2Reserved string
+			eventTypes  []string
+		}
+
+		var reference *snapshot
+		for i := range 50 {
+			f, msgServer, tenant1, tenant2, providerAddr, lease1, lease2 := setupMultiTenant(t)
+
+			// Acknowledge both leases first
+			_, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+				Sender:     providerAddr.String(),
+				LeaseUuids: []string{lease1, lease2},
+			})
+			require.NoError(t, err)
+
+			// Advance time to accrue billing
+			f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(10 * time.Second))
+			f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+
+			_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+				Sender:     providerAddr.String(),
+				LeaseUuids: []string{lease1, lease2},
+			})
+			require.NoError(t, err)
+
+			ca1, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant1.String())
+			require.NoError(t, err)
+			ca2, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant2.String())
+			require.NoError(t, err)
+
+			events := f.Ctx.EventManager().Events()
+			eventTypes := make([]string, len(events))
+			for j, ev := range events {
+				eventTypes[j] = ev.Type
+			}
+
+			s := &snapshot{
+				ca1Active:   ca1.ActiveLeaseCount,
+				ca2Active:   ca2.ActiveLeaseCount,
+				ca1Reserved: ca1.ReservedAmounts.String(),
+				ca2Reserved: ca2.ReservedAmounts.String(),
+				eventTypes:  eventTypes,
+			}
+
+			if i == 0 {
+				reference = s
+			} else {
+				require.Equal(t, reference, s, "iteration %d produced different results", i)
+			}
+		}
+	})
+}

@@ -619,10 +619,18 @@ func (k *Keeper) getCreditBalancesForDenoms(ctx context.Context, tenant string, 
 // Uses streaming iteration with a cap to avoid loading all leases into memory.
 func (k *Keeper) getRelevantDenomsForTenant(ctx context.Context, tenant string, reservedAmounts sdk.Coins) ([]string, error) {
 	denomSet := make(map[string]struct{})
+	denoms := make([]string, 0, 4)
+
+	addDenom := func(d string) {
+		if _, ok := denomSet[d]; !ok {
+			denomSet[d] = struct{}{}
+			denoms = append(denoms, d)
+		}
+	}
 
 	// Include denoms from reserved amounts
 	for _, coin := range reservedAmounts {
-		denomSet[coin.Denom] = struct{}{}
+		addDenom(coin.Denom)
 	}
 
 	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
@@ -657,16 +665,12 @@ func (k *Keeper) getRelevantDenomsForTenant(ctx context.Context, tenant string, 
 				return nil, err
 			}
 			for _, item := range lease.Items {
-				denomSet[item.LockedPrice.Denom] = struct{}{}
+				addDenom(item.LockedPrice.Denom)
 			}
 		}
 		iter.Close()
 	}
 
-	denoms := make([]string, 0, len(denomSet))
-	for d := range denomSet {
-		denoms = append(denoms, d)
-	}
 	return denoms, nil
 }
 

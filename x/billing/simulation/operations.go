@@ -777,21 +777,21 @@ func simulateProviderWideWithdraw(
 ) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 	msgType := sdk.MsgTypeURL(&types.MsgWithdraw{})
 
-	// Build map of provider UUIDs with withdrawable leases
-	providerUUIDs := make(map[string]bool)
+	// Collect unique provider UUIDs in deterministic insertion order.
+	// A map range would randomise the slice and break simulation determinism.
+	seen := make(map[string]struct{})
+	uuids := make([]string, 0, 4)
 	for _, lease := range withdrawableLeases {
-		providerUUIDs[lease.ProviderUuid] = true
+		if _, ok := seen[lease.ProviderUuid]; !ok {
+			seen[lease.ProviderUuid] = struct{}{}
+			uuids = append(uuids, lease.ProviderUuid)
+		}
 	}
 
-	if len(providerUUIDs) == 0 {
+	if len(uuids) == 0 {
 		return simtypes.NoOpMsg(types.ModuleName, msgType, "no providers with withdrawable leases"), nil, nil
 	}
 
-	// Convert to slice and pick random provider
-	uuids := make([]string, 0, len(providerUUIDs))
-	for uuid := range providerUUIDs {
-		uuids = append(uuids, uuid)
-	}
 	providerUUID := uuids[r.Intn(len(uuids))]
 
 	// Get provider to find the provider address
