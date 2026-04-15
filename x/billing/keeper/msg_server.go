@@ -385,7 +385,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	// Phase 1: Validate ALL leases and authorization first (fail-fast)
 	leases := make([]types.Lease, 0, len(msg.LeaseUuids))
 	creditAccounts := make(map[string]types.CreditAccount) // keyed by tenant address
-	tenantOrder := make([]string, 0, len(msg.LeaseUuids)) // deterministic iteration order
+	tenantOrder := make([]string, 0, len(msg.LeaseUuids))  // deterministic iteration order
 	providerCache := make(map[string]string)               // provider UUID -> provider address
 	var closedBy string                                    // consistent role for all leases
 

@@ -5268,8 +5268,8 @@ func TestBatchMultiTenantDeterminism(t *testing.T) {
 
 	t.Run("RejectLease multi-tenant determinism", func(t *testing.T) {
 		type snapshot struct {
-			ca1Pending uint64
-			ca2Pending uint64
+			ca1Pending  uint64
+			ca2Pending  uint64
 			ca1Reserved string
 			ca2Reserved string
 			eventTypes  []string
@@ -5316,8 +5316,8 @@ func TestBatchMultiTenantDeterminism(t *testing.T) {
 
 	t.Run("CloseLease multi-tenant determinism", func(t *testing.T) {
 		type snapshot struct {
-			ca1Active  uint64
-			ca2Active  uint64
+			ca1Active   uint64
+			ca2Active   uint64
 			ca1Reserved string
 			ca2Reserved string
 			eventTypes  []string
