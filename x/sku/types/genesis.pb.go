@@ -31,9 +31,11 @@ type GenesisState struct {
 	Providers []Provider `protobuf:"bytes,2,rep,name=providers,proto3" json:"providers"`
 	// skus is the list of SKUs.
 	Skus []SKU `protobuf:"bytes,3,rep,name=skus,proto3" json:"skus"`
-	// provider_sequence is the next sequence number for deterministic provider UUID generation.
+	// provider_sequence is the sequence counter for deterministic provider UUID generation.
+	// Exported via Sequence.Peek(); the next Sequence.Next() call will return this value.
 	ProviderSequence uint64 `protobuf:"varint,4,opt,name=provider_sequence,json=providerSequence,proto3" json:"provider_sequence,omitempty"`
-	// sku_sequence is the next sequence number for deterministic SKU UUID generation.
+	// sku_sequence is the sequence counter for deterministic SKU UUID generation.
+	// Exported via Sequence.Peek(); the next Sequence.Next() call will return this value.
 	SkuSequence uint64 `protobuf:"varint,5,opt,name=sku_sequence,json=skuSequence,proto3" json:"sku_sequence,omitempty"`
 }
 

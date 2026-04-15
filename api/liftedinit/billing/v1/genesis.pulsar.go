@@ -798,7 +798,8 @@ type GenesisState struct {
 	Leases []*Lease `protobuf:"bytes,2,rep,name=leases,proto3" json:"leases,omitempty"`
 	// credit_accounts is the list of all credit accounts.
 	CreditAccounts []*CreditAccount `protobuf:"bytes,3,rep,name=credit_accounts,json=creditAccounts,proto3" json:"credit_accounts,omitempty"`
-	// lease_sequence is the next sequence number for deterministic lease UUID generation.
+	// lease_sequence is the sequence counter for deterministic lease UUID generation.
+	// Exported via Sequence.Peek(); the next Sequence.Next() call will return this value.
 	LeaseSequence uint64 `protobuf:"varint,4,opt,name=lease_sequence,json=leaseSequence,proto3" json:"lease_sequence,omitempty"`
 }
 
