@@ -1057,11 +1057,12 @@ func TestGenesisState_NewGenesisState(t *testing.T) {
 		},
 	}
 
-	gs := types.NewGenesisState(params, leases, creditAccounts)
+	gs := types.NewGenesisState(params, leases, creditAccounts, 5)
 
 	require.Equal(t, params, gs.Params)
 	require.Equal(t, leases, gs.Leases)
 	require.Equal(t, creditAccounts, gs.CreditAccounts)
+	require.Equal(t, uint64(5), gs.LeaseSequence)
 }
 
 func TestGenesisState_Validate(t *testing.T) {
@@ -1116,6 +1117,7 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params:         types.DefaultParams(),
 				Leases:         []types.Lease{validLease},
 				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
 			},
 			expectErr: false,
 		},
@@ -1397,6 +1399,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						ClosedAt:      &closedAt,
 					},
 				},
+				LeaseSequence: 1,
 			},
 			expectErr: false,
 		},
@@ -1563,6 +1566,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						ReservedAmounts: sdk.NewCoins(), // Correct: closed lease has no reservation
 					},
 				},
+				LeaseSequence: 1,
 			},
 			expectErr: false,
 		},
@@ -1628,6 +1632,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(720000))),
 					},
 				},
+				LeaseSequence: 2,
 			},
 			expectErr: false,
 		},
@@ -1656,6 +1661,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(720000))),
 					},
 				},
+				LeaseSequence: 1,
 			},
 			expectErr: false,
 		},
@@ -1742,6 +1748,7 @@ func TestGenesisState_Validate(t *testing.T) {
 						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(720000))),
 					},
 				},
+				LeaseSequence: 1,
 			},
 			expectErr: false,
 		},

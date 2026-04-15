@@ -18,11 +18,13 @@ func DefaultGenesis() *GenesisState {
 }
 
 // NewGenesisState creates a new genesis state with the given parameters.
-func NewGenesisState(params Params, providers []Provider, skus []SKU) *GenesisState {
+func NewGenesisState(params Params, providers []Provider, skus []SKU, providerSequence, skuSequence uint64) *GenesisState {
 	return &GenesisState{
-		Params:    params,
-		Providers: providers,
-		Skus:      skus,
+		Params:           params,
+		Providers:        providers,
+		Skus:             skus,
+		ProviderSequence: providerSequence,
+		SkuSequence:      skuSequence,
 	}
 }
 
@@ -107,6 +109,22 @@ func (gs *GenesisState) Validate() error {
 		if err := ValidatePriceAndUnit(sku.BasePrice, sku.Unit); err != nil {
 			return ErrInvalidSKU.Wrapf("sku %s has invalid price/unit combination: %s", sku.Uuid, err)
 		}
+	}
+
+	// Validate sequences: must be >= number of entities to prevent UUID
+	// collisions after genesis import. Each Create call advances the
+	// sequence, so a valid export always has sequence >= len(entities).
+	if uint64(len(gs.Providers)) > gs.ProviderSequence {
+		return ErrInvalidProvider.Wrapf(
+			"provider_sequence %d is less than number of providers %d",
+			gs.ProviderSequence, len(gs.Providers),
+		)
+	}
+	if uint64(len(gs.Skus)) > gs.SkuSequence {
+		return ErrInvalidSKU.Wrapf(
+			"sku_sequence %d is less than number of skus %d",
+			gs.SkuSequence, len(gs.Skus),
+		)
 	}
 
 	return nil

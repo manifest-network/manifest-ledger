@@ -1031,6 +1031,7 @@ func TestGenesisValidation(t *testing.T) {
 						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(360000))),
 					},
 				},
+				LeaseSequence: 1,
 			},
 			expectErr: false,
 		},
@@ -1139,6 +1140,7 @@ func TestGenesisValidation(t *testing.T) {
 						ClosedAt:  &closedAt,
 					},
 				},
+				LeaseSequence: 1,
 			},
 			expectErr: false,
 		},
@@ -1913,6 +1915,90 @@ func TestGenesisExportImportWithReservations(t *testing.T) {
 	require.True(t, availableCredit.AmountOf(testDenom).Equal(expectedAvailable),
 		"available credit: expected %s, got %s",
 		expectedAvailable.String(), availableCredit.AmountOf(testDenom).String())
+}
+
+// TestGenesisSequenceRoundTrip verifies that UUID generation sequences survive
+// a genesis export/import cycle, preventing UUID collisions after chain restart.
+func TestGenesisSequenceRoundTrip(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+
+	// Create provider and SKU
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Fund tenant
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(100_000_000))))
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// Create 3 leases to advance the sequence to 3
+	var leaseUUIDs []string
+	for range 3 {
+		resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+		leaseUUIDs = append(leaseUUIDs, resp.LeaseUuid)
+	}
+
+	// Export genesis
+	exportedGenesis := k.ExportGenesis(f.Ctx)
+
+	// Verify sequence was exported
+	require.Equal(t, uint64(3), exportedGenesis.LeaseSequence,
+		"exported LeaseSequence should equal number of leases created")
+
+	// Verify exported genesis passes validation (same path as chain restart)
+	require.NoError(t, exportedGenesis.Validate())
+
+	// Import into fresh fixture
+	f2 := initFixture(t)
+	k2 := f2.App.BillingKeeper
+
+	// Set up required provider/SKU in new context
+	err = f2.App.SKUKeeper.SetProvider(f2.Ctx, provider)
+	require.NoError(t, err)
+	err = f2.App.SKUKeeper.SetSKU(f2.Ctx, sku)
+	require.NoError(t, err)
+
+	// Fund credit address in new context
+	f2.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(100_000_000))))
+
+	// Import genesis
+	err = k2.InitGenesis(f2.Ctx, exportedGenesis)
+	require.NoError(t, err)
+
+	// Verify sequence was restored
+	seq, err := k2.LeaseSequence.Peek(f2.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), seq, "LeaseSequence should be restored after import")
+
+	// Create a new lease post-import and verify no UUID collision
+	msgServer2 := keeper.NewMsgServerImpl(k2)
+	resp, err := msgServer2.CreateLease(f2.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+
+	// New lease UUID must not collide with any pre-import UUID
+	for _, existingUUID := range leaseUUIDs {
+		require.NotEqual(t, existingUUID, resp.LeaseUuid,
+			"post-import lease UUID should not collide with pre-import UUIDs")
+	}
 }
 
 // ============================================================================
