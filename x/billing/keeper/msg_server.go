@@ -596,7 +596,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, ev.providerUUID),
 			sdk.NewAttribute(types.AttributeKeySettledAmounts, ev.settledAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyClosedBy, ev.closedBy),
-			sdk.NewAttribute(types.AttributeKeyDuration, strconv.FormatInt(int64(ev.duration.Seconds()), 10)),
+			sdk.NewAttribute(types.AttributeKeyDuration, strconv.FormatInt(int64(ev.duration/time.Second), 10)),
 			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(ev.activeCount, 10)),
 		}
 		if ev.closureReason != "" {

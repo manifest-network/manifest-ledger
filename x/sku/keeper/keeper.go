@@ -261,6 +261,19 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 		}
 	}
 
+	// Restore UUID generation sequences so new entities don't collide
+	// with previously generated UUIDs after a genesis export/import cycle.
+	if gs.ProviderSequence > 0 {
+		if err := k.ProviderSequence.Set(ctx, gs.ProviderSequence); err != nil {
+			return err
+		}
+	}
+	if gs.SkuSequence > 0 {
+		if err := k.SKUSequence.Set(ctx, gs.SkuSequence); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -289,10 +302,21 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		panic(err)
 	}
 
+	providerSeq, err := k.ProviderSequence.Peek(ctx)
+	if err != nil {
+		panic(err)
+	}
+	skuSeq, err := k.SKUSequence.Peek(ctx)
+	if err != nil {
+		panic(err)
+	}
+
 	return &types.GenesisState{
-		Params:    params,
-		Providers: providers,
-		Skus:      skus,
+		Params:           params,
+		Providers:        providers,
+		Skus:             skus,
+		ProviderSequence: providerSeq,
+		SkuSequence:      skuSeq,
 	}
 }
 

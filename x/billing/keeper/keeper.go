@@ -319,6 +319,14 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 		}
 	}
 
+	// Restore UUID generation sequence so new leases don't collide
+	// with previously generated UUIDs after a genesis export/import cycle.
+	if gs.LeaseSequence > 0 {
+		if err := k.LeaseSequence.Set(ctx, gs.LeaseSequence); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -347,10 +355,16 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		panic(err)
 	}
 
+	leaseSeq, err := k.LeaseSequence.Peek(ctx)
+	if err != nil {
+		panic(err)
+	}
+
 	return &types.GenesisState{
 		Params:         params,
 		Leases:         leases,
 		CreditAccounts: creditAccounts,
+		LeaseSequence:  leaseSeq,
 	}
 }
 
