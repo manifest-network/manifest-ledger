@@ -37,9 +37,11 @@ func RandomizedGenState(simState *module.SimulationState) {
 	}
 
 	genesisState := types.GenesisState{
-		Params:    types.DefaultParams(),
-		Providers: providers,
-		Skus:      skus,
+		Params:           types.DefaultParams(),
+		Providers:        providers,
+		Skus:             skus,
+		ProviderSequence: uint64(numProviders),
+		SkuSequence:      uint64(numSKUs),
 	}
 
 	simState.GenState[types.ModuleName] = simState.Cdc.MustMarshalJSON(&genesisState)

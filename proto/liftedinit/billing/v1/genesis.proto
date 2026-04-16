@@ -28,4 +28,8 @@ message GenesisState {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "credit_accounts"
   ];
+
+  // lease_sequence is the sequence counter for deterministic lease UUID generation.
+  // Exported via Sequence.Peek(); the next Sequence.Next() call will return this value.
+  uint64 lease_sequence = 4 [ (gogoproto.jsontag) = "lease_sequence" ];
 }

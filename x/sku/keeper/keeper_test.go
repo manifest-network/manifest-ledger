@@ -167,6 +167,82 @@ func TestExportGenesis(t *testing.T) {
 	require.Equal(t, testProviderUUID, genState.Skus[0].ProviderUuid)
 }
 
+// TestGenesisSequenceRoundTrip verifies that UUID generation sequences survive
+// a genesis export/import cycle, preventing UUID collisions after chain restart.
+func TestGenesisSequenceRoundTrip(t *testing.T) {
+	f := initFixture(t)
+
+	k := f.App.SKUKeeper
+	providerAddr := f.TestAccs[0]
+	payoutAddr := f.TestAccs[1]
+
+	// Create 2 providers and 3 SKUs via the UUID generation path
+	providerUUID1, err := k.GenerateProviderUUID(f.Ctx)
+	require.NoError(t, err)
+	err = k.SetProvider(f.Ctx, types.Provider{
+		Uuid: providerUUID1, Address: providerAddr.String(),
+		PayoutAddress: payoutAddr.String(), Active: true,
+	})
+	require.NoError(t, err)
+
+	providerUUID2, err := k.GenerateProviderUUID(f.Ctx)
+	require.NoError(t, err)
+	err = k.SetProvider(f.Ctx, types.Provider{
+		Uuid: providerUUID2, Address: payoutAddr.String(),
+		PayoutAddress: providerAddr.String(), Active: true,
+	})
+	require.NoError(t, err)
+
+	var skuUUIDs []string
+	for range 3 {
+		skuUUID, err := k.GenerateSKUUUID(f.Ctx)
+		require.NoError(t, err)
+		err = k.SetSKU(f.Ctx, types.SKU{
+			Uuid: skuUUID, ProviderUuid: providerUUID1,
+			Name: "Test SKU", Unit: types.Unit_UNIT_PER_HOUR,
+			BasePrice: sdk.NewCoin("umfx", sdkmath.NewInt(3600)), Active: true,
+		})
+		require.NoError(t, err)
+		skuUUIDs = append(skuUUIDs, skuUUID)
+	}
+
+	// Export genesis
+	exportedGenesis := k.ExportGenesis(f.Ctx)
+	require.Equal(t, uint64(2), exportedGenesis.ProviderSequence)
+	require.Equal(t, uint64(3), exportedGenesis.SkuSequence)
+
+	// Verify exported genesis passes validation (same path as chain restart)
+	require.NoError(t, exportedGenesis.Validate())
+
+	// Import into fresh fixture
+	f2 := initFixture(t)
+	k2 := f2.App.SKUKeeper
+	err = k2.InitGenesis(f2.Ctx, exportedGenesis)
+	require.NoError(t, err)
+
+	// Verify sequences were restored
+	provSeq, err := k2.ProviderSequence.Peek(f2.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), provSeq)
+
+	skuSeq, err := k2.SKUSequence.Peek(f2.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), skuSeq)
+
+	// Create new entities post-import and verify no UUID collision
+	newProviderUUID, err := k2.GenerateProviderUUID(f2.Ctx)
+	require.NoError(t, err)
+	require.NotEqual(t, providerUUID1, newProviderUUID)
+	require.NotEqual(t, providerUUID2, newProviderUUID)
+
+	newSKUUUID, err := k2.GenerateSKUUUID(f2.Ctx)
+	require.NoError(t, err)
+	for _, existing := range skuUUIDs {
+		require.NotEqual(t, existing, newSKUUUID,
+			"post-import SKU UUID should not collide with pre-import UUIDs")
+	}
+}
+
 func TestGetProvider(t *testing.T) {
 	_, _, providerAddr := testdata.KeyTestPubAddr()
 	_, _, payoutAddr := testdata.KeyTestPubAddr()

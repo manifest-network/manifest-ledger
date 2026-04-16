@@ -20,7 +20,7 @@ You are an expert Go developer specializing in Cosmos SDK blockchain development
 
 This project uses:
 - **Binary**: `manifestd` with Bech32 prefix `manifest`
-- **Go Version**: 1.25.8
+- **Go Version**: 1.25.9
 - **Custom Modules**: manifest (token minting), sku (provider/billing units with UUIDv7), billing (credit-based leasing)
 - **External**: strangelove-ventures/poa, strangelove-ventures/tokenfactory, CosmWasm/wasmd
 - **Import Order**: standard -> default -> cometbft -> cosmos -> cosmossdk.io -> cosmos-sdk -> poa -> tokenfactory -> wasmd -> wasmvm -> manifest-ledger

@@ -18,11 +18,12 @@ func DefaultGenesis() *GenesisState {
 }
 
 // NewGenesisState creates a new genesis state with the given parameters.
-func NewGenesisState(params Params, leases []Lease, creditAccounts []CreditAccount) *GenesisState {
+func NewGenesisState(params Params, leases []Lease, creditAccounts []CreditAccount, leaseSequence uint64) *GenesisState {
 	return &GenesisState{
 		Params:         params,
 		Leases:         leases,
 		CreditAccounts: creditAccounts,
+		LeaseSequence:  leaseSequence,
 	}
 }
 
@@ -234,6 +235,16 @@ func (gs *GenesisState) Validate() error {
 				ca.Tenant, ca.PendingLeaseCount, expectedPending,
 			)
 		}
+	}
+
+	// Validate lease_sequence: must be >= number of leases to prevent UUID
+	// collisions after genesis import. Each CreateLease call advances the
+	// sequence, so a valid export always has sequence >= len(leases).
+	if uint64(len(gs.Leases)) > gs.LeaseSequence {
+		return ErrInvalidLease.Wrapf(
+			"lease_sequence %d is less than number of leases %d",
+			gs.LeaseSequence, len(gs.Leases),
+		)
 	}
 
 	return nil
