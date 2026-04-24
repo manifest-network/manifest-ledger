@@ -12,14 +12,20 @@ import (
 )
 
 // NewUpgrade creates the upgrade handler for the next version.
-// v3.0.0 migrates the chain from Cosmos SDK v0.50 to v0.53. No new modules are
-// introduced, so StoreUpgrades stays empty; module ConsensusVersion bumps are
-// handled automatically by RunMigrations.
+// v3.0.0 migrates the chain from Cosmos SDK v0.50 to v0.53 and from ibc-go v8
+// to v10. ibc-go v10 removes the capability module and the 29-fee middleware,
+// so their KV stores are deleted. Module ConsensusVersion bumps are handled
+// automatically by RunMigrations.
 func NewUpgrade(name string) upgrades.Upgrade {
 	return upgrades.Upgrade{
 		UpgradeName:          name,
 		CreateUpgradeHandler: CreateUpgradeHandler,
-		StoreUpgrades:        storetypes.StoreUpgrades{},
+		StoreUpgrades: storetypes.StoreUpgrades{
+			Deleted: []string{
+				"capability", // capabilitytypes.StoreKey (removed in ibc-go v10)
+				"feeibc",     // ibcfeetypes.StoreKey (29-fee removed in ibc-go v10)
+			},
+		},
 	}
 }
 
