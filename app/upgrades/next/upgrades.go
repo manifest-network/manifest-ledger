@@ -11,8 +11,10 @@ import (
 	"github.com/manifest-network/manifest-ledger/app/upgrades"
 )
 
-// NewUpgrade creates a noop upgrade handler for the next version.
-// The x/sku and x/billing modules were already added in v2.0.0.
+// NewUpgrade creates the upgrade handler for the next version.
+// v3.0.0 migrates the chain from Cosmos SDK v0.50 to v0.53. No new modules are
+// introduced, so StoreUpgrades stays empty; module ConsensusVersion bumps are
+// handled automatically by RunMigrations.
 func NewUpgrade(name string) upgrades.Upgrade {
 	return upgrades.Upgrade{
 		UpgradeName:          name,
@@ -21,7 +23,7 @@ func NewUpgrade(name string) upgrades.Upgrade {
 	}
 }
 
-// CreateUpgradeHandler returns a noop upgrade handler that only runs module migrations.
+// CreateUpgradeHandler returns an upgrade handler that runs module migrations.
 func CreateUpgradeHandler(
 	mm *module.Manager,
 	configurator module.Configurator,

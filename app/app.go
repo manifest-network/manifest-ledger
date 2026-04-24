@@ -786,8 +786,10 @@ func NewApp(
 	app.BasicModuleManager.RegisterInterfaces(interfaceRegistry)
 
 	// NOTE: upgrade module is required to be prioritized
+	// x/auth gained a PreBlocker in Cosmos SDK v0.53 and must be included here.
 	app.ModuleManager.SetOrderPreBlockers(
 		upgradetypes.ModuleName,
+		authtypes.ModuleName,
 	)
 	// During begin block slashing happens after distr.BeginBlocker so that
 	// there is nothing left over in the validator fee pool, so as to keep the
@@ -796,7 +798,9 @@ func NewApp(
 	// NOTE: capability module's beginblocker must come before any modules using capabilities (e.g. IBC)
 
 	app.ModuleManager.SetOrderBeginBlockers(
-		// minttypes.ModuleName, // we override with the manifest module logic
+		// The liftedinit SDK fork defaults mint's MintFn to NoOpMintFn, so this
+		// is a no-op call; x/manifest still performs the actual minting below.
+		minttypes.ModuleName,
 		manifesttypes.ModuleName, // minter to stakeholders
 		distrtypes.ModuleName,
 		slashingtypes.ModuleName,
