@@ -838,6 +838,13 @@ func NewApp(
 	overrideModules := map[string]module.AppModuleSimulation{
 		authtypes.ModuleName: auth.NewAppModule(app.appCodec, app.AccountKeeper, authsims.RandomGenesisAccounts, app.GetSubspace(authtypes.ModuleName)),
 	}
+	// Skip sim ops for modules whose WeightedOperations panic under v0.53;
+	// see noopSimWeightedOpsModule godoc for the per-module rationale.
+	for _, name := range []string{stakingtypes.ModuleName, tokenfactorytypes.ModuleName, poa.ModuleName, billingtypes.ModuleName} {
+		if m, ok := app.ModuleManager.Modules[name].(module.AppModuleSimulation); ok {
+			overrideModules[name] = noopSimWeightedOpsModule{AppModuleSimulation: m}
+		}
+	}
 	app.sm = module.NewSimulationManagerFromAppModules(app.ModuleManager.Modules, overrideModules)
 	app.sm.RegisterStoreDecoders()
 
