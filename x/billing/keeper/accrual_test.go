@@ -96,7 +96,7 @@ func TestConvertBasePriceToPerSecond(t *testing.T) {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				require.True(t, tc.expected.IsEqual(result), "expected %s, got %s", tc.expected, result)
+				require.True(t, tc.expected.Equal(result), "expected %s, got %s", tc.expected, result)
 			}
 		})
 	}
@@ -172,7 +172,7 @@ func TestCalculateAccruedAmount(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			result, err := CalculateAccruedAmount(tc.lockedPricePerSecond, tc.quantity, tc.duration)
 			require.NoError(t, err)
-			require.True(t, tc.expected.IsEqual(result), "expected %s, got %s", tc.expected, result)
+			require.True(t, tc.expected.Equal(result), "expected %s, got %s", tc.expected, result)
 		})
 	}
 }

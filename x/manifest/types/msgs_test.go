@@ -39,7 +39,6 @@ func TestMsgBurn(t *testing.T) {
 			success: true,
 		},
 	} {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			if c.success {
 				require.NoError(t, c.msg.Validate())
@@ -95,7 +94,6 @@ func TestMsgPayout(t *testing.T) {
 			success: true,
 		},
 	} {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			if c.success {
 				require.NoError(t, c.msg.Validate())
