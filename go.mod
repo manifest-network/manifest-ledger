@@ -13,6 +13,12 @@ replace (
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides
 
+	// Pinned to the manifest-network fork: the audited strangelove
+	// v0.50.7-wasmvm2 base bumped to SDK v0.53 / ibc-go v10 / wasmd v0.60.
+	// Preserves the IsSudoAdminFunc + EnableSudoMint capability the PoA admin
+	// needs to mint any tokenfactory denom for stakeholder distribution.
+	github.com/strangelove-ventures/tokenfactory => github.com/manifest-network/tokenfactory v0.53.0-liftedinit.1
+
 	// Downgraded to avoid bugs in following commits which caused simulations to fail.
 	github.com/syndtr/goleveldb => github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 )

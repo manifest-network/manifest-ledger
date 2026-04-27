@@ -14,6 +14,8 @@ replace (
 	github.com/cosmos/cosmos-sdk => github.com/manifest-network/cosmos-sdk v0.53.7-liftedinit.1
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/manifest-network/manifest-ledger => ../
+	// Pinned to the manifest-network fork: audited strangelove base bumped to SDK v0.53.
+	github.com/strangelove-ventures/tokenfactory => github.com/manifest-network/tokenfactory v0.53.0-liftedinit.1
 )
 
 require (
