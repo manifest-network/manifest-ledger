@@ -664,6 +664,8 @@ github.com/magiconair/properties v1.8.10 h1:s31yESBquKXCV9a/ScB3ESkOjUYYv+X0rg8S
 github.com/magiconair/properties v1.8.10/go.mod h1:Dhd985XPs7jluiymwWYZ0G4Z61jb3vdS329zhj2hYo0=
 github.com/manifest-network/cosmos-sdk v0.53.7-liftedinit.1 h1:yNr/FjvrlZRCzedpBegHOMEmbbd3sOLVhgc/jnwWgiE=
 github.com/manifest-network/cosmos-sdk v0.53.7-liftedinit.1/go.mod h1:N6YuprhAabInbT3YGumGDKONbvPX5dNro7RjHvkQoKE=
+github.com/manifest-network/poa v0.53.0-liftedinit.1 h1:Nd3xu6cebi8lq7JQuB5OIEOGnMTmJ2uT7gLNIRn0NGM=
+github.com/manifest-network/poa v0.53.0-liftedinit.1/go.mod h1:6U/ROY2WqcwFVPyWSq4eC5nZGQs+ebAPVBQ7Y3QsZRg=
 github.com/manifest-network/tokenfactory v0.53.0-liftedinit.1 h1:pRn9kuyF4BW/n1HeOJ/fP+h/WEf4MA2NjrowI1ra8QM=
 github.com/manifest-network/tokenfactory v0.53.0-liftedinit.1/go.mod h1:fn2bvpX6x3a5CtEMo/i4PHpNxjo1fqRap71bycXAwwo=
 github.com/manifoldco/promptui v0.9.0 h1:3V4HzJk1TtXW1MTZMP7mdlwbBpIinw3HztaIlYthEiA=
@@ -916,8 +918,6 @@ github.com/spf13/viper v1.21.0 h1:x5S+0EU27Lbphp4UKm1C+1oQO+rKx36vfCoaVebLFSU=
 github.com/spf13/viper v1.21.0/go.mod h1:P0lhsswPGWD/1lZJ9ny3fYnVqxiegrlNrEmgLjbTCAY=
 github.com/spiffe/go-spiffe/v2 v2.6.0 h1:l+DolpxNWYgruGQVV0xsfeya3CsC7m8iBzDnMpsbLuo=
 github.com/spiffe/go-spiffe/v2 v2.6.0/go.mod h1:gm2SeUoMZEtpnzPNs2Csc0D/gX33k1xIx7lEzqblHEs=
-github.com/strangelove-ventures/poa v0.50.6 h1:txqahJvx2AIkIfDLIo+A/grnJQ9q8WpY4jpDfLUAw4s=
-github.com/strangelove-ventures/poa v0.50.6/go.mod h1:hCoBNFkrAxmRvVVXVsaIN8j3jpxzBUxDXZ0LP3NrRyw=
 github.com/streadway/amqp v0.0.0-20190404075320-75d898a42a94/go.mod h1:AZpEONHx3DKn8O/DFsRAY58/XVQiIPMTMB1SddzLXVw=
 github.com/streadway/amqp v0.0.0-20190827072141-edfb9018d271/go.mod h1:AZpEONHx3DKn8O/DFsRAY58/XVQiIPMTMB1SddzLXVw=
 github.com/streadway/handy v0.0.0-20190108123426-d5acb3125c2a/go.mod h1:qNTQ5P5JnDBl6z3cMAg/SywNDC5ABu5ApDIw6lUbRmI=

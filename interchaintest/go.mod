@@ -14,7 +14,9 @@ replace (
 	github.com/cosmos/cosmos-sdk => github.com/manifest-network/cosmos-sdk v0.53.7-liftedinit.1
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/manifest-network/manifest-ledger => ../
-	// Pinned to the manifest-network fork: audited strangelove base bumped to SDK v0.53.
+	// Pinned to the manifest-network fork: strangelove poa v0.50.7 base bumped to SDK v0.53.
+	github.com/strangelove-ventures/poa => github.com/manifest-network/poa v0.53.0-liftedinit.1
+	// Pinned to the manifest-network fork: audited strangelove tokenfactory base bumped to SDK v0.53.
 	github.com/strangelove-ventures/tokenfactory => github.com/manifest-network/tokenfactory v0.53.0-liftedinit.1
 )
 
