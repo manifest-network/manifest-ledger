@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
+	"github.com/cosmos/interchaintest/v10/chain/cosmos"
 )
 
 func GetBlockData(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, height int64) BlockData {
