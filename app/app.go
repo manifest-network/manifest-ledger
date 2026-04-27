@@ -840,7 +840,7 @@ func NewApp(
 	}
 	// Skip sim ops for modules whose WeightedOperations panic under v0.53;
 	// see noopSimWeightedOpsModule godoc for the per-module rationale.
-	for _, name := range []string{stakingtypes.ModuleName, poa.ModuleName, billingtypes.ModuleName} {
+	for _, name := range []string{stakingtypes.ModuleName, billingtypes.ModuleName} {
 		if m, ok := app.ModuleManager.Modules[name].(module.AppModuleSimulation); ok {
 			overrideModules[name] = noopSimWeightedOpsModule{AppModuleSimulation: m}
 		}

@@ -11,14 +11,11 @@ import (
 // for other modules; only the per-module sim ops are skipped.
 //
 // Used to skip module sim ops that panic or fail under SDK v0.53:
-//   - x/poa: PoA sim ops bypass the admin check and add validators
-//     directly, eventually exceeding staking's MaxValidators and
-//     triggering "more validators than maxValidators found" in
-//     staking's BeginBlock historical-info tracking. Long-term fix lives
-//     in the manifest-network/poa fork (Linear ENG-40).
-//   - x/staking: defensive — sim ops include MsgCreateValidator which
-//     would compound the PoA issue above and have other v0.53 friction.
-//     Upstream-driven; expected to be carried along by future SDK bumps.
+//   - x/staking: sim ops include MsgCreateValidator, which combined with
+//     PoA's POA_BYPASS_ADMIN_CHECK_FOR_SIMULATION_TESTING_ONLY env-flag
+//     bypass eventually exceeds staking's MaxValidators and triggers
+//     "more validators than maxValidators found" in staking's BeginBlock
+//     historical-info tracking.
 //   - x/billing: SimulateMsgCreateLease picks a random SKU + random
 //     quantities/durations without pre-flighting that the chosen lease
 //     cost fits within the tenant's available credit, so the tx fails
@@ -27,8 +24,7 @@ import (
 //     fix is to pre-compute lease cost and compare against
 //     GetAvailableCredit before submitting.
 //
-// Tracking: ENG-43. Drop the poa entry once ENG-40 lands; drop the
-// billing entry once ENG-44 lands.
+// Tracking: ENG-43. Drop the billing entry once ENG-44 lands.
 type noopSimWeightedOpsModule struct {
 	module.AppModuleSimulation
 }
