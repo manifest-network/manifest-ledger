@@ -3,15 +3,25 @@ module github.com/manifest-network/manifest-ledger
 go 1.25.9
 
 replace (
-	// SDK v0.53.x pins core v0.11.3; v0.12.0 drops comet.BlockInfo.
+	// Intentionally replace cosmossdk.io/core down to v0.11.3. The require
+	// below resolves to v0.12.0 (transitively pulled by the v0.53.x SDK
+	// line), but v0.12.0 drops comet.BlockInfo, which is still consumed by
+	// SDK v0.53.7. The replace is what actually pins; aligning the require
+	// is not durable (`go mod tidy` re-bumps it from transitive deps).
 	cosmossdk.io/core => cosmossdk.io/core v0.11.3
 
 	// Pinned to the manifest-network fork, which defaults x/mint to NoOpMintFn
 	// so the x/manifest module remains the sole minter.
 	github.com/cosmos/cosmos-sdk => github.com/manifest-network/cosmos-sdk v0.53.7-liftedinit.1
 
-	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
-	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides
+	// Pin viper to v1.17.0 even though the require resolves higher
+	// (currently v1.21.0). Reasons:
+	//   - v1.18+ breaks app.toml override merging we rely on.
+	//   - v1.17.0 is also the version chosen by spf13/viper's GHSA-h395-qcrw-5vmq
+	//     advisory mitigation guidance.
+	// Aligning the require is not durable; tidy keeps re-bumping from
+	// transitive deps. Only the replace is load-bearing.
+	github.com/spf13/viper => github.com/spf13/viper v1.17.0
 
 	// Pinned to the manifest-network fork: strangelove poa v0.50.7 base
 	// with cosmos-sdk / cometbft bumped to the v0.53 era.

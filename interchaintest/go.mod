@@ -3,7 +3,11 @@ module github.com/manifest-network/manifest-ledger/interchaintest
 go 1.25.9
 
 replace (
-	// SDK v0.53.x pins core v0.11.3; v0.12.0 drops comet.BlockInfo.
+	// Intentionally replace cosmossdk.io/core down to v0.11.3. The indirect
+	// require below resolves to v0.12.0 via the v0.53.x SDK line, but v0.12.0
+	// drops comet.BlockInfo, still consumed by SDK v0.53.7. The replace is
+	// what actually pins; aligning the require is not durable (`go mod tidy`
+	// re-bumps it from transitive deps).
 	cosmossdk.io/core => cosmossdk.io/core v0.11.3
 
 	// use cosmos compatible ChainSafe/go-schnorrkel
