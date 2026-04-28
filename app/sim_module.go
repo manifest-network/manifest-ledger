@@ -17,12 +17,14 @@ import (
 //     env-flag and add validators directly. Combined with staking's own
 //     sim ops, the validator set eventually exceeds MaxValidators and
 //     triggers "more validators than maxValidators found" in staking's
-//     BeginBlock historical-info tracking. Long-term fix would be to
-//     update the PoA fork's sim ops to respect MaxValidators.
-//   - x/staking: defensive — sim ops include MsgCreateValidator which
-//     compounds the PoA issue above.
+//     BeginBlock historical-info tracking
+//     (manifest-network/poa/keeper.GetLastValidators -> staking abci).
+//   - x/staking: precautionary — staking's own SimulateMsgCreateValidator
+//     compounds the PoA issue above; not independently reproduced.
 //
-// Tracking: ENG-43.
+// Tracking: ENG-43 — drop both wraps once manifest-network/poa's sim
+// ops respect MaxValidators (or the bypass env-flag is gated to a
+// stricter mode).
 type noopSimWeightedOpsModule struct {
 	module.AppModuleSimulation
 }

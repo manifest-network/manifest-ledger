@@ -59,7 +59,12 @@ issues:
     - linters: [staticcheck]
       text: "SA1019: params\\.NewAppModule"
     # x/crisis is deprecated module-wide; full removal is tracked separately as a
-    # state-affecting change (requires upgrade-handler store deletion).
+    # state-affecting change (requires upgrade-handler store deletion). The
+    # InvariantRegistry suppression below also covers the no-op
+    # RegisterInvariants(_ sdk.InvariantRegistry) stubs in our own modules
+    # (x/manifest, x/sku, x/billing) that satisfy the legacy module.AppModule
+    # interface; those keep flagging SA1019 until those modules migrate to
+    # appmodule.AppModule.
     - linters: [staticcheck]
       text: "SA1019: crisiskeeper\\."
     - linters: [staticcheck]

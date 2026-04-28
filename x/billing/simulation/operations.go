@@ -77,7 +77,10 @@ func computeSimLeaseReservation(
 
 // hasSufficientAvailableCredit checks that a tenant's available credit
 // (balance - already reserved) covers the given reservation in every
-// denom. Mirrors the keeper's check at MsgCreateLease handling time.
+// denom. Mirrors only the credit-availability portion of the keeper's
+// MsgCreateLease pre-flight; the keeper's separate MaxLeasesPerTenant
+// and MaxPendingLeasesPerTenant caps are checked by the calling
+// SimulateMsg* function.
 func hasSufficientAvailableCredit(
 	ctx context.Context,
 	k keeper.Keeper,
@@ -377,11 +380,11 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 		// halting the sim with "insufficient credit balance".
 		reservation, err := computeSimLeaseReservation(ctx, items, sk, params.MinLeaseDuration)
 		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to compute lease reservation"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, fmt.Sprintf("failed to compute lease reservation: %v", err)), nil, nil
 		}
 		ok, err := hasSufficientAvailableCredit(ctx, k, tenant.Address.String(), reservation)
 		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to check available credit"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, fmt.Sprintf("failed to check available credit: %v", err)), nil, nil
 		}
 		if !ok {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "insufficient available credit for selected lease items"), nil, nil
@@ -477,11 +480,11 @@ func SimulateMsgCreateLeaseForTenant(txGen client.TxConfig, k keeper.Keeper, sk 
 		// credit on the tenant). Same rationale as SimulateMsgCreateLease.
 		reservation, err := computeSimLeaseReservation(ctx, items, sk, params.MinLeaseDuration)
 		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to compute lease reservation"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, fmt.Sprintf("failed to compute lease reservation: %v", err)), nil, nil
 		}
 		ok, err := hasSufficientAvailableCredit(ctx, k, tenant.Address.String(), reservation)
 		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to check available credit"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, fmt.Sprintf("failed to check available credit: %v", err)), nil, nil
 		}
 		if !ok {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "insufficient available credit for selected lease items"), nil, nil

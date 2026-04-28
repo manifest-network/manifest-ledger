@@ -737,7 +737,6 @@ func NewApp(
 	// there is nothing left over in the validator fee pool, so as to keep the
 	// CanWithdrawInvariant invariant.
 	// NOTE: staking module is required if HistoricalEntries param > 0
-	// NOTE: capability module's beginblocker must come before any modules using capabilities (e.g. IBC)
 
 	app.ModuleManager.SetOrderBeginBlockers(
 		// The liftedinit SDK fork defaults mint's MintFn to NoOpMintFn, so this
@@ -840,10 +839,19 @@ func NewApp(
 	}
 	// Skip sim ops for modules whose WeightedOperations panic under v0.53;
 	// see noopSimWeightedOpsModule godoc for the per-module rationale.
+	// The wrap is intentional, not best-effort: panic if a target module is
+	// missing or doesn't implement AppModuleSimulation, otherwise a stale
+	// list silently re-enables broken sim ops.
 	for _, name := range []string{stakingtypes.ModuleName, poa.ModuleName} {
-		if m, ok := app.ModuleManager.Modules[name].(module.AppModuleSimulation); ok {
-			overrideModules[name] = noopSimWeightedOpsModule{AppModuleSimulation: m}
+		mod, ok := app.ModuleManager.Modules[name]
+		if !ok {
+			panic(fmt.Errorf("noopSimWeightedOpsModule: module %q not registered", name))
 		}
+		sim, ok := mod.(module.AppModuleSimulation)
+		if !ok {
+			panic(fmt.Errorf("noopSimWeightedOpsModule: %q does not implement AppModuleSimulation; wrap list is stale", name))
+		}
+		overrideModules[name] = noopSimWeightedOpsModule{AppModuleSimulation: sim}
 	}
 	app.sm = module.NewSimulationManagerFromAppModules(app.ModuleManager.Modules, overrideModules)
 	app.sm.RegisterStoreDecoders()

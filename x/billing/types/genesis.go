@@ -254,11 +254,13 @@ func (gs *GenesisState) Validate() error {
 // This is called during InitGenesis when block time is available.
 // It validates that LastSettledAt timestamps are not in the future relative to block time.
 //
-// When blockTime is zero (e.g. in `make sim-after-import`, where the test's manual
-// InitChain call doesn't set a Time on RequestInitChain), the comparison is
-// meaningless — every non-zero timestamp is "after" the SDK's zero time. Skip the
-// check in that case. Real chain init always supplies a non-zero genesis_time, so
-// this does not weaken on-chain validation.
+// When blockTime is zero (every non-zero timestamp is then "after" it), the
+// comparison is meaningless — skip it. CometBFT requires `genesis_time`
+// (RFC3339) in genesis.json and propagates it as RequestInitChain.Time, so
+// production chains always reach this with a non-zero blockTime; the zero
+// path occurs only in tests that build BaseApp manually and call InitChain
+// without setting Time (currently just app/sim_test.go's
+// TestAppSimulationAfterImport for `make sim-after-import`).
 func (gs *GenesisState) ValidateWithBlockTime(blockTime time.Time) error {
 	if blockTime.IsZero() {
 		return nil
