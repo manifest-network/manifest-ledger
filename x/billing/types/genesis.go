@@ -253,7 +253,16 @@ func (gs *GenesisState) Validate() error {
 // ValidateWithBlockTime performs additional genesis state validation that requires block time.
 // This is called during InitGenesis when block time is available.
 // It validates that LastSettledAt timestamps are not in the future relative to block time.
+//
+// When blockTime is zero (e.g. in `make sim-after-import`, where the test's manual
+// InitChain call doesn't set a Time on RequestInitChain), the comparison is
+// meaningless — every non-zero timestamp is "after" the SDK's zero time. Skip the
+// check in that case. Real chain init always supplies a non-zero genesis_time, so
+// this does not weaken on-chain validation.
 func (gs *GenesisState) ValidateWithBlockTime(blockTime time.Time) error {
+	if blockTime.IsZero() {
+		return nil
+	}
 	for _, lease := range gs.Leases {
 		// Validate LastSettledAt is not in the future
 		if lease.LastSettledAt.After(blockTime) {

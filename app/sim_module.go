@@ -11,20 +11,18 @@ import (
 // for other modules; only the per-module sim ops are skipped.
 //
 // Used to skip module sim ops that panic or fail under SDK v0.53:
-//   - x/staking: sim ops include MsgCreateValidator, which combined with
-//     PoA's POA_BYPASS_ADMIN_CHECK_FOR_SIMULATION_TESTING_ONLY env-flag
-//     bypass eventually exceeds staking's MaxValidators and triggers
-//     "more validators than maxValidators found" in staking's BeginBlock
-//     historical-info tracking.
-//   - x/billing: SimulateMsgCreateLease picks a random SKU + random
-//     quantities/durations without pre-flighting that the chosen lease
-//     cost fits within the tenant's available credit, so the tx fails
-//     with "insufficient credit balance" once accumulated leases drain
-//     the credit account. Pre-existing bug (Linear ENG-44); the proper
-//     fix is to pre-compute lease cost and compare against
-//     GetAvailableCredit before submitting.
+//   - x/poa: PoA sim ops (SimulateMsgCreateValidator, SimulateMsgSetPower,
+//     etc., registered via module/depinject.go) bypass the admin check
+//     under the POA_BYPASS_ADMIN_CHECK_FOR_SIMULATION_TESTING_ONLY
+//     env-flag and add validators directly. Combined with staking's own
+//     sim ops, the validator set eventually exceeds MaxValidators and
+//     triggers "more validators than maxValidators found" in staking's
+//     BeginBlock historical-info tracking. Long-term fix would be to
+//     update the PoA fork's sim ops to respect MaxValidators.
+//   - x/staking: defensive — sim ops include MsgCreateValidator which
+//     compounds the PoA issue above.
 //
-// Tracking: ENG-43. Drop the billing entry once ENG-44 lands.
+// Tracking: ENG-43.
 type noopSimWeightedOpsModule struct {
 	module.AppModuleSimulation
 }
