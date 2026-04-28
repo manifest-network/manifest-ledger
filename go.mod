@@ -15,12 +15,14 @@ replace (
 	github.com/cosmos/cosmos-sdk => github.com/manifest-network/cosmos-sdk v0.53.7-liftedinit.1
 
 	// Pin viper to v1.17.0 even though the require resolves higher
-	// (currently v1.21.0). Reasons:
-	//   - v1.18+ breaks app.toml override merging we rely on.
-	//   - v1.17.0 is also the version chosen by spf13/viper's GHSA-h395-qcrw-5vmq
-	//     advisory mitigation guidance.
-	// Aligning the require is not durable; tidy keeps re-bumping from
-	// transitive deps. Only the replace is load-bearing.
+	// (currently v1.21.0). The pin is carried forward from manifest-ledger
+	// v2.0.x with rationale "v1.18+ breaks app.toml override merging we rely
+	// on" — we have not located a public upstream issue reproducing this.
+	// Cosmos SDK v0.53.7 itself uses viper v1.21.0 without complaint, so the
+	// pin may no longer be necessary. Re-evaluate via empirical app.toml
+	// override testing before dropping. Aligning the require is not durable
+	// regardless: tidy keeps re-bumping from transitive deps. Only the
+	// replace is load-bearing.
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0
 
 	// Pinned to the manifest-network fork: strangelove poa v0.50.7 base
