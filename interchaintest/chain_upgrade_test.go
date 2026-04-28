@@ -7,9 +7,11 @@ import (
 	"testing"
 	"time"
 
+	sdkmath "cosmossdk.io/math"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
 	"github.com/cosmos/interchaintest/v10/testutil"
 
@@ -19,6 +21,10 @@ import (
 	"github.com/cosmos/interchaintest/v10/testreporter"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
+
+	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
+
+	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 )
 
 const (
@@ -119,6 +125,11 @@ func TestBasicManifestUpgrade(t *testing.T) {
 	_, err = interchaintest.GetAndFundTestUserWithMnemonic(ctx, user2, acc1Mnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
 
+	// Seed pre-upgrade state across every custom module so the post-upgrade
+	// asserts can prove the in-place migration preserves on-chain records.
+	t.Log("Seeding pre-upgrade state (tokenfactory, sku, billing)")
+	preState := seedPreUpgradeState(t, ctx, chain, &cfg, user1Wallet)
+
 	// Get current height and calculate halt height
 	height, err := chain.Height(ctx)
 	require.NoError(t, err, "error fetching height before submit upgrade proposal")
@@ -182,9 +193,150 @@ func TestBasicManifestUpgrade(t *testing.T) {
 
 	require.GreaterOrEqual(t, height, haltHeight+blocksAfterUpgrade, "height did not increment enough after upgrade")
 
+	// Verify pre-upgrade state (tokenfactory, sku, billing) survived the
+	// migration. This is the load-bearing check for an in-place upgrade.
+	t.Log("Verifying pre-upgrade state survived the upgrade")
+	verifyPreUpgradeStateSurvived(t, ctx, chain, preState)
+
 	// Test CosmWasm functionality after upgrade
 	t.Log("Testing CosmWasm functionality after upgrade")
 	StoreAndInstantiateContract(t, ctx, chain, user1Wallet, accAddr)
+}
+
+// preUpgradeState captures state seeded before the v3.0.0 upgrade so we can
+// verify it survives the in-place migration intact. Each module's keeper
+// state should round-trip identically across the SDK v0.50→v0.53 boundary.
+type preUpgradeState struct {
+	providerUUID    string
+	skuUUID         string
+	skuBasePrice    sdk.Coin
+	leaseUUID       string
+	leaseTenant     string
+	creditAddress   string
+	creditBalances  sdk.Coins
+	tfDenom         string
+	tfMintRecipient string
+	tfMintBalance   sdkmath.Int
+}
+
+// seedPreUpgradeState exercises one create path per custom module so the
+// post-upgrade verification has something to query for. Group governance
+// is used for any path that requires the PoA admin (the chain's POA admin
+// is groupAddr in this test).
+func seedPreUpgradeState(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, cfg *ibc.ChainConfig, tenantWallet ibc.Wallet) *preUpgradeState {
+	t.Helper()
+
+	state := &preUpgradeState{leaseTenant: tenantWallet.FormattedAddress()}
+
+	// 1. Tokenfactory denom (group proposal — exercises the PoA admin's
+	// MsgCreateDenom path).
+	subdenom := "uupgradeseed"
+	state.tfDenom = fmt.Sprintf("factory/%s/%s", groupAddr, subdenom)
+	createDenomMsg := tokenfactorytypes.MsgCreateDenom{Sender: groupAddr, Subdenom: subdenom}
+	createAndRunProposalSuccess(t, ctx, chain, cfg, accAddr, []*types.Any{createAny(t, &createDenomMsg)})
+
+	// 2. Sudo-mint to the tenant (exercises EnableSudoMint capability that
+	// the manifest-network/tokenfactory fork preserves from strangelove).
+	state.tfMintRecipient = tenantWallet.FormattedAddress()
+	state.tfMintBalance = sdkmath.NewInt(123_456_789)
+	mintMsg := tokenfactorytypes.MsgMint{
+		Sender:        groupAddr,
+		Amount:        sdk.NewCoin(state.tfDenom, state.tfMintBalance),
+		MintToAddress: state.tfMintRecipient,
+	}
+	createAndRunProposalSuccess(t, ctx, chain, cfg, accAddr, []*types.Any{createAny(t, &mintMsg)})
+
+	// 3. Provider via group proposal (x/sku authority path).
+	createProviderMsg := helpers.CreateProviderMsg(groupAddr, accAddr, "upgrade-seed-meta", "")
+	createAndRunProposalSuccess(t, ctx, chain, cfg, accAddr, []*types.Any{createAny(t, &createProviderMsg)})
+	providers, err := helpers.SKUQueryProviders(ctx, chain)
+	require.NoError(t, err)
+	require.Len(t, providers.Providers, 1, "expected exactly one provider after seeding")
+	state.providerUUID = providers.Providers[0].Uuid
+
+	// 4. SKU via group proposal (per-hour pricing — base price must be
+	// evenly divisible by 3600 to give a non-zero per-second rate).
+	state.skuBasePrice = sdk.NewCoin(Denom, sdkmath.NewInt(3600))
+	createSKUMsg := helpers.CreateSKUMsg(groupAddr, state.providerUUID, "upgrade-seed-sku", state.skuBasePrice, "UNIT_PER_HOUR")
+	createAndRunProposalSuccess(t, ctx, chain, cfg, accAddr, []*types.Any{createAny(t, &createSKUMsg)})
+	skus, err := helpers.SKUQuerySKUs(ctx, chain)
+	require.NoError(t, err)
+	require.Len(t, skus.Skus, 1, "expected exactly one SKU after seeding")
+	state.skuUUID = skus.Skus[0].Uuid
+
+	// 5. Tenant funds credit (user-driven; deterministic creates a credit
+	// account for the tenant).
+	fundAmount := sdk.NewCoin(Denom, sdkmath.NewInt(10_000_000))
+	fundResp, err := helpers.BillingFundCredit(ctx, chain, tenantWallet, state.leaseTenant, fundAmount.String())
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), fundResp.Code, "fund credit failed: %s", fundResp.RawLog)
+	ca, err := helpers.BillingQueryCreditAccount(ctx, chain, state.leaseTenant)
+	require.NoError(t, err)
+	state.creditAddress = ca.CreditAccount.CreditAddress
+	state.creditBalances = ca.Balances
+
+	// 6. Tenant creates a lease (stays in PENDING — we verify state survives
+	// regardless of state-machine progress).
+	items := []string{fmt.Sprintf("%s:1", state.skuUUID)}
+	leaseResp, err := helpers.BillingCreateLease(ctx, chain, tenantWallet, items)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), leaseResp.Code, "create lease failed: %s", leaseResp.RawLog)
+	leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, state.leaseTenant, "")
+	require.NoError(t, err)
+	require.Len(t, leases.Leases, 1, "expected exactly one lease after seeding")
+	state.leaseUUID = leases.Leases[0].Uuid
+
+	t.Logf("Seeded: tfDenom=%s tfMint=%s provider=%s sku=%s lease=%s",
+		state.tfDenom, state.tfMintBalance, state.providerUUID, state.skuUUID, state.leaseUUID)
+	return state
+}
+
+// verifyPreUpgradeStateSurvived asserts every record seeded before the
+// upgrade is queryable post-upgrade with byte-identical content.
+func verifyPreUpgradeStateSurvived(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, state *preUpgradeState) {
+	t.Helper()
+
+	// x/sku: provider survives.
+	providerRes, err := helpers.SKUQueryProvider(ctx, chain, state.providerUUID)
+	require.NoError(t, err, "provider query after upgrade")
+	require.Equal(t, state.providerUUID, providerRes.Provider.Uuid)
+	require.Equal(t, accAddr, providerRes.Provider.Address)
+	require.True(t, providerRes.Provider.Active, "provider should still be active")
+
+	// x/sku: SKU survives.
+	skuRes, err := helpers.SKUQuerySKU(ctx, chain, state.skuUUID)
+	require.NoError(t, err, "sku query after upgrade")
+	require.Equal(t, state.skuUUID, skuRes.Sku.Uuid)
+	require.Equal(t, state.providerUUID, skuRes.Sku.ProviderUuid)
+	require.True(t, skuRes.Sku.Active, "sku should still be active")
+	require.True(t, skuRes.Sku.BasePrice.Equal(state.skuBasePrice),
+		"sku base price changed: pre=%s post=%s", state.skuBasePrice, skuRes.Sku.BasePrice)
+
+	// x/billing: credit account address + balances survive.
+	ca, err := helpers.BillingQueryCreditAccount(ctx, chain, state.leaseTenant)
+	require.NoError(t, err, "credit account query after upgrade")
+	require.Equal(t, state.creditAddress, ca.CreditAccount.CreditAddress,
+		"credit account derived address should be deterministic across upgrade")
+	require.True(t, ca.Balances.Equal(state.creditBalances),
+		"credit balances changed: pre=%s post=%s", state.creditBalances, ca.Balances)
+
+	// x/billing: lease record survives, including tenant + provider linkage.
+	leaseRes, err := helpers.BillingQueryLease(ctx, chain, state.leaseUUID)
+	require.NoError(t, err, "lease query after upgrade")
+	require.Equal(t, state.leaseUUID, leaseRes.Lease.Uuid)
+	require.Equal(t, state.leaseTenant, leaseRes.Lease.Tenant)
+	require.Equal(t, state.providerUUID, leaseRes.Lease.ProviderUuid)
+	require.NotEmpty(t, leaseRes.Lease.Items, "lease items should survive")
+
+	// x/tokenfactory: minted balance survives (proves both the denom record
+	// in the tokenfactory store AND the bank balance survive).
+	tfBalance, err := chain.GetBalance(ctx, state.tfMintRecipient, state.tfDenom)
+	require.NoError(t, err, "tokenfactory balance query after upgrade")
+	require.True(t, tfBalance.Equal(state.tfMintBalance),
+		"tokenfactory balance changed: pre=%s post=%s", state.tfMintBalance, tfBalance)
+
+	t.Logf("Post-upgrade state survived: provider=%s sku=%s lease=%s tfBalance=%s",
+		state.providerUUID, state.skuUUID, state.leaseUUID, tfBalance)
 }
 
 func StoreAndInstantiateContract(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, accAddr string) string {
