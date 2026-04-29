@@ -920,3 +920,75 @@ func TestSetLeaseItemCustomDomain_LifecycleCleanup_MultiItem_EndBlockerExpiry(t 
 		require.False(t, has, "all per-item index entries must release on EndBlocker expiry; %q still resolved", dom)
 	}
 }
+
+// --- idempotency: no state change + no event for no-op operations ---
+
+// countEvents returns how many events of the given type the context has emitted.
+func countEvents(ctx sdk.Context, eventType string) int {
+	n := 0
+	for _, ev := range ctx.EventManager().Events() {
+		if ev.Type == eventType {
+			n++
+		}
+	}
+	return n
+}
+
+// TestSetLeaseItemCustomDomain_IdempotentClear verifies that clearing a domain
+// on an item whose CustomDomain is already empty is a true no-op: no SetLease
+// write, no Cleared event, no state mutation. Caller still receives the role.
+func TestSetLeaseItemCustomDomain_IdempotentClear(t *testing.T) {
+	s := setupCustomDomain(t)
+
+	leaseBefore, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+	require.NoError(t, err)
+	require.Empty(t, leaseBefore.Items[0].CustomDomain, "fixture lease starts with no custom_domain")
+
+	clearedBefore := countEvents(s.f.Ctx, types.EventTypeLeaseCustomDomainCleared)
+
+	role, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "")
+	require.NoError(t, err)
+	require.Equal(t, types.AttributeValueRoleTenant, role, "role still returned for authorisation confirmation")
+
+	// No Cleared event emitted for the no-op.
+	require.Equal(t, clearedBefore, countEvents(s.f.Ctx, types.EventTypeLeaseCustomDomainCleared),
+		"idempotent clear must not emit a lease_custom_domain_cleared event")
+
+	// Lease record byte-for-byte identical.
+	leaseAfter, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, leaseBefore, leaseAfter, "idempotent clear must not mutate the lease record")
+}
+
+// TestSetLeaseItemCustomDomain_IdempotentReSet verifies that re-setting the
+// same domain on the same item is a true no-op: no SetLease write, no Set
+// event, no state mutation. Caller still receives the role.
+func TestSetLeaseItemCustomDomain_IdempotentReSet(t *testing.T) {
+	s := setupCustomDomain(t)
+
+	// Initial set produces a Set event and a state change.
+	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "idem.example.com")
+	require.NoError(t, err)
+
+	leaseBefore, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+	require.NoError(t, err)
+	setBefore := countEvents(s.f.Ctx, types.EventTypeLeaseCustomDomainSet)
+
+	// Re-set with the same domain: no-op.
+	role, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "idem.example.com")
+	require.NoError(t, err)
+	require.Equal(t, types.AttributeValueRoleTenant, role)
+
+	require.Equal(t, setBefore, countEvents(s.f.Ctx, types.EventTypeLeaseCustomDomainSet),
+		"idempotent re-set must not emit a lease_custom_domain_set event")
+
+	leaseAfter, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, leaseBefore, leaseAfter, "idempotent re-set must not mutate the lease record")
+
+	// Reverse-lookup still resolves correctly.
+	got, _, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, "idem.example.com")
+	require.NoError(t, err)
+	require.True(t, has)
+	require.Equal(t, s.leaseUUID, got.Uuid)
+}

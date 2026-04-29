@@ -148,6 +148,12 @@ func (k *Keeper) SetLeaseItemCustomDomain(ctx context.Context, sender, leaseUUID
 
 	if domain == "" {
 		previous := lease.Items[itemIdx].CustomDomain
+		if previous == "" {
+			// Idempotent clear: nothing to update, nothing to emit. Caller still
+			// receives the role so they can confirm authorisation independently
+			// of event presence.
+			return role, nil
+		}
 		lease.Items[itemIdx].CustomDomain = ""
 		if err := k.SetLease(ctx, lease); err != nil {
 			return "", err
@@ -185,7 +191,11 @@ func (k *Keeper) SetLeaseItemCustomDomain(ctx context.Context, sender, leaseUUID
 	case err == nil:
 		switch {
 		case target.LeaseUuid == leaseUUID && target.ServiceName == itemServiceName:
-			// idempotent re-set; proceed.
+			// Idempotent re-set: the index already points at this exact item
+			// with this exact domain. No state change, no event. Returning
+			// early avoids a wasted SetLease cycle and keeps the audit log
+			// honest (no Set event for a non-change).
+			return role, nil
 		case target.LeaseUuid == leaseUUID:
 			return "", types.ErrCustomDomainAlreadyClaimed.Wrapf(
 				"domain %q is already claimed by item %q on this lease",
