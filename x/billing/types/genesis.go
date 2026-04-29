@@ -114,17 +114,24 @@ func (gs *GenesisState) Validate() error {
 			}
 		}
 
-		// Defensive: any item carrying a custom_domain must be addressable by
-		// its service_name. Specifically, a multi-item legacy lease (no
-		// service_names) cannot host custom_domains because the lookup would
-		// be ambiguous. Reject malformed genesis instead of silently importing
-		// an unaddressable claim.
+		// Defensive: any item carrying a custom_domain must (1) be a valid FQDN,
+		// (2) not match a reserved provider suffix from gs.Params, and (3) be
+		// uniquely addressable by its service_name (specifically: a multi-item
+		// legacy lease cannot host custom_domains because the lookup would be
+		// ambiguous). Reject malformed genesis up front so the chain cannot
+		// start in a state the msg layer would refuse.
 		for i, item := range lease.Items {
 			if item.CustomDomain == "" {
 				continue
 			}
 			if err := IsValidFQDN(item.CustomDomain); err != nil {
 				return ErrInvalidCustomDomain.Wrapf("lease %s item %d: %s", lease.Uuid, i, err)
+			}
+			if MatchesReservedSuffix(item.CustomDomain, gs.Params.ReservedDomainSuffixes) {
+				return ErrInvalidCustomDomain.Wrapf(
+					"lease %s item %d custom_domain %q matches a reserved provider suffix in gs.Params.ReservedDomainSuffixes",
+					lease.Uuid, i, item.CustomDomain,
+				)
 			}
 			matches := 0
 			for _, candidate := range lease.Items {

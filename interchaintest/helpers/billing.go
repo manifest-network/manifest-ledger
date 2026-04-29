@@ -236,9 +236,18 @@ func BillingWithdrawByProvider(ctx context.Context, chain *cosmos.CosmosChain, u
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
-// BillingUpdateParams updates the billing module parameters.
+// BillingUpdateParams updates the billing module parameters using the v1 field
+// set. Because MsgUpdateParams is replace-style, this helper queries the
+// chain's current Params first and preserves the v2 ReservedDomainSuffixes
+// list — without that, the legacy callers would silently wipe a suffix list
+// that some other code path had seeded. Callers that want to set or clear
+// ReservedDomainSuffixes should use BillingUpdateParamsFull directly.
 func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, maxLeasesPerTenant uint64, maxItemsPerLease uint64, minLeaseDuration uint64, maxPendingLeasesPerTenant uint64, pendingTimeout uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
-	return BillingUpdateParamsFull(ctx, chain, user, maxLeasesPerTenant, maxItemsPerLease, minLeaseDuration, maxPendingLeasesPerTenant, pendingTimeout, allowedList, nil, flags...)
+	current, err := BillingQueryParams(ctx, chain)
+	if err != nil {
+		return sdk.TxResponse{}, fmt.Errorf("BillingUpdateParams: query current params: %w", err)
+	}
+	return BillingUpdateParamsFull(ctx, chain, user, maxLeasesPerTenant, maxItemsPerLease, minLeaseDuration, maxPendingLeasesPerTenant, pendingTimeout, allowedList, current.Params.ReservedDomainSuffixes, flags...)
 }
 
 // BillingUpdateParamsFull updates the billing module parameters including the

@@ -153,6 +153,46 @@ func TestGenesisValidate_RejectsAmbiguousCustomDomain(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrAmbiguousLeaseItem)
 }
 
+// TestGenesisValidate_RejectsReservedSuffixCustomDomain verifies that genesis
+// import refuses a custom_domain claim that falls under a reserved provider
+// suffix in the same Params.ReservedDomainSuffixes list. Without this check, a
+// hand-crafted genesis could land the chain in a state the msg layer would
+// reject (since SetLeaseItemCustomDomain enforces the same rule at runtime).
+func TestGenesisValidate_RejectsReservedSuffixCustomDomain(t *testing.T) {
+	now := time.Now().UTC()
+	const leaseUUID = "01912345-6789-7abc-8def-eeeeeeeeeeee"
+	const skuUUID = "01912345-6789-7abc-8def-ffffffffffff"
+	const providerUUID = "01912345-6789-7abc-8def-ffffffffeeee"
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+
+	params := types.DefaultParams()
+	params.ReservedDomainSuffixes = []string{".barney0.manifest0.net"}
+
+	gs := types.GenesisState{
+		Params: params,
+		Leases: []types.Lease{{
+			Uuid:         leaseUUID,
+			Tenant:       tenantAddr.String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{
+				{
+					SkuUuid:      skuUUID,
+					Quantity:     1,
+					LockedPrice:  sdk.NewCoin("umfx", math.NewInt(1)),
+					CustomDomain: "app.barney0.manifest0.net",
+				},
+			},
+			State:         types.LEASE_STATE_PENDING,
+			CreatedAt:     now,
+			LastSettledAt: now,
+		}},
+	}
+	err := gs.Validate()
+	require.Error(t, err)
+	require.ErrorIs(t, err, types.ErrInvalidCustomDomain)
+	require.Contains(t, err.Error(), "reserved provider suffix")
+}
+
 func TestMsgSetLeaseItemCustomDomain_ValidateBasic(t *testing.T) {
 	const validUUID = "01912345-6789-7abc-8def-0123456789ab"
 	_, _, addr := testdata.KeyTestPubAddr()
