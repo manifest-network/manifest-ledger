@@ -37,7 +37,7 @@ func NewTxCmd() *cobra.Command {
 		NewCloseLeaseCmd(),
 		NewWithdrawCmd(),
 		NewUpdateParamsCmd(),
-		NewSetLeaseCustomDomainCmd(),
+		NewSetLeaseItemCustomDomainCmd(),
 	)
 
 	return cmd
@@ -604,20 +604,26 @@ cancel-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000
 	return cmd
 }
 
-// NewSetLeaseCustomDomainCmd returns the set-custom-domain command.
-func NewSetLeaseCustomDomainCmd() *cobra.Command {
+// NewSetLeaseItemCustomDomainCmd returns the set-item-custom-domain command.
+func NewSetLeaseItemCustomDomainCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "set-custom-domain [lease-uuid] [domain]",
-		Short: "Set or clear the custom_domain on a lease",
-		Long: `Set or clear the custom_domain on a lease. Pass an empty string for
-[domain] to clear the field. Authorised senders are the lease tenant, the module
-authority, or any address in params.allowed_list.`,
-		Example: `# Set a custom domain
-set-custom-domain 01902a9b-1234-7000-8000-000000000001 app.example.com --from tenant-key
+		Use:   "set-item-custom-domain [lease-uuid] [service-name] [domain]",
+		Short: "Set or clear the custom_domain on a specific lease item",
+		Long: `Set or clear the custom_domain on a specific LeaseItem identified by
+service_name. For a 1-item legacy lease (item.service_name unset), pass "" for
+[service-name]. Multi-item legacy leases cannot use custom_domain — recreate the
+lease in service-name mode. Pass "" for [domain] to clear the field. Authorised
+senders are the lease tenant, the module authority, or any address in
+params.allowed_list.`,
+		Example: `# 1-item lease, item has no service_name
+set-item-custom-domain 01902a9b-1234-7000-8000-000000000001 "" app.example.com --from tenant-key
 
-# Clear a custom domain
-set-custom-domain 01902a9b-1234-7000-8000-000000000001 "" --from tenant-key`,
-		Args: cobra.ExactArgs(2),
+# multi-item lease, target the "web" item
+set-item-custom-domain 01902a9b-1234-7000-8000-000000000001 web app.example.com --from tenant-key
+
+# clear the domain on the "web" item
+set-item-custom-domain 01902a9b-1234-7000-8000-000000000001 web "" --from tenant-key`,
+		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
@@ -629,10 +635,11 @@ set-custom-domain 01902a9b-1234-7000-8000-000000000001 "" --from tenant-key`,
 				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
 			}
 
-			msg := &types.MsgSetLeaseCustomDomain{
+			msg := &types.MsgSetLeaseItemCustomDomain{
 				Sender:       clientCtx.GetFromAddress().String(),
 				LeaseUuid:    leaseUUID,
-				CustomDomain: args[1],
+				ServiceName:  args[1],
+				CustomDomain: args[2],
 			}
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},

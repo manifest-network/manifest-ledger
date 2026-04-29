@@ -48,10 +48,11 @@ var (
 	// particularly for EndBlocker pending lease expiration (O(e) expired instead of O(p) all pending).
 	LeaseByStateCreatedAtIndexKey = collections.NewPrefix(11)
 
-	// CustomDomainIndexKey saves the unique reverse index from custom_domain to leaseUUID.
-	// This enables both O(1) reverse lookup (Query/LeaseByCustomDomain) and uniqueness
-	// enforcement at SetLeaseCustomDomain. The entry is removed when the lease enters
-	// a terminal state (CLOSED/REJECTED/EXPIRED) or when the domain is cleared.
+	// CustomDomainIndexKey saves the unique reverse index from custom_domain to
+	// CustomDomainTarget{lease_uuid, service_name}. This enables both O(1) reverse
+	// lookup (Query/LeaseByCustomDomain) and uniqueness enforcement at
+	// SetLeaseItemCustomDomain. Entries are reconciled by reconcileCustomDomainIndex
+	// inside SetLease, derived from each item's (state, custom_domain).
 	CustomDomainIndexKey = collections.NewPrefix(12)
 )
 
@@ -144,6 +145,7 @@ const (
 	AttributeKeyMetaHash          = "meta_hash"
 	AttributeKeyCustomDomain      = "custom_domain"
 	AttributeKeySetBy             = "set_by"
+	AttributeKeyServiceName       = "service_name"
 )
 
 // Rejection reasons for lease cancellation/rejection.

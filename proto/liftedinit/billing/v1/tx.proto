@@ -50,12 +50,13 @@ service Msg {
   // UpdateParams updates the module parameters.
   rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
 
-  // SetLeaseCustomDomain sets or clears the custom_domain on a Lease.
-  // Authorised senders: the lease's tenant, the module authority, or any
-  // address in params.allowed_list. The lease must be in PENDING or ACTIVE
-  // state; an empty custom_domain clears the field and frees the index entry.
-  rpc SetLeaseCustomDomain(MsgSetLeaseCustomDomain)
-      returns (MsgSetLeaseCustomDomainResponse);
+  // SetLeaseItemCustomDomain sets or clears the custom_domain on a specific
+  // LeaseItem, identified by service_name. Authorised senders: the lease's
+  // tenant, the module authority, or any address in params.allowed_list. The
+  // lease must be in PENDING or ACTIVE state; an empty custom_domain clears
+  // the field and frees the index entry.
+  rpc SetLeaseItemCustomDomain(MsgSetLeaseItemCustomDomain)
+      returns (MsgSetLeaseItemCustomDomainResponse);
 }
 
 // LeaseItemInput is the input for creating a lease item.
@@ -391,11 +392,15 @@ message MsgCancelLeaseResponse {
   uint64 cancelled_count = 2 [(gogoproto.jsontag) = "cancelled_count,omitempty"];
 }
 
-// MsgSetLeaseCustomDomain sets or clears Lease.custom_domain.
-// An empty custom_domain clears the field and frees the index entry.
-message MsgSetLeaseCustomDomain {
+// MsgSetLeaseItemCustomDomain sets or clears the custom_domain on a specific
+// LeaseItem, identified by its service_name (the lease's commit-time uniqueness
+// key). For a 1-item legacy lease, service_name is "". An empty custom_domain
+// clears the field and frees the index entry.
+message MsgSetLeaseItemCustomDomain {
   option (cosmos.msg.v1.signer) = "sender";
-  option (amino.name) = "lifted/billing/MsgSetLeaseCustomDomain";
+  // amino.name shortened from MsgSetLeaseItemCustomDomain to fit the legacy
+  // amino 39-char limit while remaining unambiguous within this module.
+  option (amino.name) = "lifted/billing/MsgSetItemCustomDomain";
 
   // sender is the address signing the transaction. Must be the lease tenant,
   // the module authority, or an address in params.allowed_list.
@@ -404,13 +409,20 @@ message MsgSetLeaseCustomDomain {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_uuid is the UUID of the lease to update.
+  // lease_uuid is the UUID of the lease that owns the target item.
   string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+
+  // service_name addresses the target LeaseItem. The keeper finds the unique
+  // item where item.service_name == this value. For a 1-item legacy lease
+  // (item.service_name == ""), pass "". Multi-item legacy leases cannot use
+  // custom_domain because the lookup would be ambiguous.
+  string service_name = 3 [(gogoproto.jsontag) = "service_name,omitempty"];
 
   // custom_domain is the FQDN to assign. An empty string clears the field
   // and removes any existing reverse-index entry.
-  string custom_domain = 3 [(gogoproto.jsontag) = "custom_domain,omitempty"];
+  string custom_domain = 4 [(gogoproto.jsontag) = "custom_domain,omitempty"];
 }
 
-// MsgSetLeaseCustomDomainResponse is the response type for MsgSetLeaseCustomDomain.
-message MsgSetLeaseCustomDomainResponse {}
+// MsgSetLeaseItemCustomDomainResponse is the response type for
+// MsgSetLeaseItemCustomDomain.
+message MsgSetLeaseItemCustomDomainResponse {}

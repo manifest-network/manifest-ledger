@@ -668,18 +668,19 @@ func paginateSKUIndex(
 	return leases, pageRes, nil
 }
 
-// LeaseByCustomDomain returns the lease that has claimed the given custom_domain.
+// LeaseByCustomDomain returns the lease and the service_name of the item that
+// has claimed the given custom_domain.
 func (q Querier) LeaseByCustomDomain(ctx context.Context, req *types.QueryLeaseByCustomDomainRequest) (*types.QueryLeaseByCustomDomainResponse, error) {
 	if req == nil || req.CustomDomain == "" {
 		return nil, status.Error(codes.InvalidArgument, "custom_domain cannot be empty")
 	}
 	domain := strings.ToLower(strings.TrimSpace(req.CustomDomain))
-	lease, has, err := q.k.GetLeaseByCustomDomain(ctx, domain)
+	lease, serviceName, has, err := q.k.GetLeaseByCustomDomain(ctx, domain)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if !has {
 		return nil, status.Errorf(codes.NotFound, "no lease with custom_domain %s", domain)
 	}
-	return &types.QueryLeaseByCustomDomainResponse{Lease: lease}, nil
+	return &types.QueryLeaseByCustomDomainResponse{Lease: lease, ServiceName: serviceName}, nil
 }

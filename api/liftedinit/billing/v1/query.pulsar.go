@@ -12605,14 +12605,16 @@ func (x *fastReflection_QueryLeaseByCustomDomainRequest) ProtoMethods() *protoif
 }
 
 var (
-	md_QueryLeaseByCustomDomainResponse       protoreflect.MessageDescriptor
-	fd_QueryLeaseByCustomDomainResponse_lease protoreflect.FieldDescriptor
+	md_QueryLeaseByCustomDomainResponse              protoreflect.MessageDescriptor
+	fd_QueryLeaseByCustomDomainResponse_lease        protoreflect.FieldDescriptor
+	fd_QueryLeaseByCustomDomainResponse_service_name protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_liftedinit_billing_v1_query_proto_init()
 	md_QueryLeaseByCustomDomainResponse = File_liftedinit_billing_v1_query_proto.Messages().ByName("QueryLeaseByCustomDomainResponse")
 	fd_QueryLeaseByCustomDomainResponse_lease = md_QueryLeaseByCustomDomainResponse.Fields().ByName("lease")
+	fd_QueryLeaseByCustomDomainResponse_service_name = md_QueryLeaseByCustomDomainResponse.Fields().ByName("service_name")
 }
 
 var _ protoreflect.Message = (*fastReflection_QueryLeaseByCustomDomainResponse)(nil)
@@ -12686,6 +12688,12 @@ func (x *fastReflection_QueryLeaseByCustomDomainResponse) Range(f func(protorefl
 			return
 		}
 	}
+	if x.ServiceName != "" {
+		value := protoreflect.ValueOfString(x.ServiceName)
+		if !f(fd_QueryLeaseByCustomDomainResponse_service_name, value) {
+			return
+		}
+	}
 }
 
 // Has reports whether a field is populated.
@@ -12703,6 +12711,8 @@ func (x *fastReflection_QueryLeaseByCustomDomainResponse) Has(fd protoreflect.Fi
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.QueryLeaseByCustomDomainResponse.lease":
 		return x.Lease != nil
+	case "liftedinit.billing.v1.QueryLeaseByCustomDomainResponse.service_name":
+		return x.ServiceName != ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.QueryLeaseByCustomDomainResponse"))
@@ -12721,6 +12731,8 @@ func (x *fastReflection_QueryLeaseByCustomDomainResponse) Clear(fd protoreflect.
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.QueryLeaseByCustomDomainResponse.lease":
 		x.Lease = nil
+	case "liftedinit.billing.v1.QueryLeaseByCustomDomainResponse.service_name":
+		x.ServiceName = ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.QueryLeaseByCustomDomainResponse"))
@@ -12740,6 +12752,9 @@ func (x *fastReflection_QueryLeaseByCustomDomainResponse) Get(descriptor protore
 	case "liftedinit.billing.v1.QueryLeaseByCustomDomainResponse.lease":
 		value := x.Lease
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
+	case "liftedinit.billing.v1.QueryLeaseByCustomDomainResponse.service_name":
+		value := x.ServiceName
+		return protoreflect.ValueOfString(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.QueryLeaseByCustomDomainResponse"))
@@ -12762,6 +12777,8 @@ func (x *fastReflection_QueryLeaseByCustomDomainResponse) Set(fd protoreflect.Fi
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.QueryLeaseByCustomDomainResponse.lease":
 		x.Lease = value.Message().Interface().(*Lease)
+	case "liftedinit.billing.v1.QueryLeaseByCustomDomainResponse.service_name":
+		x.ServiceName = value.Interface().(string)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.QueryLeaseByCustomDomainResponse"))
@@ -12787,6 +12804,8 @@ func (x *fastReflection_QueryLeaseByCustomDomainResponse) Mutable(fd protoreflec
 			x.Lease = new(Lease)
 		}
 		return protoreflect.ValueOfMessage(x.Lease.ProtoReflect())
+	case "liftedinit.billing.v1.QueryLeaseByCustomDomainResponse.service_name":
+		panic(fmt.Errorf("field service_name of message liftedinit.billing.v1.QueryLeaseByCustomDomainResponse is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.QueryLeaseByCustomDomainResponse"))
@@ -12803,6 +12822,8 @@ func (x *fastReflection_QueryLeaseByCustomDomainResponse) NewField(fd protorefle
 	case "liftedinit.billing.v1.QueryLeaseByCustomDomainResponse.lease":
 		m := new(Lease)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
+	case "liftedinit.billing.v1.QueryLeaseByCustomDomainResponse.service_name":
+		return protoreflect.ValueOfString("")
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.QueryLeaseByCustomDomainResponse"))
@@ -12876,6 +12897,10 @@ func (x *fastReflection_QueryLeaseByCustomDomainResponse) ProtoMethods() *protoi
 			l = options.Size(x.Lease)
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
+		l = len(x.ServiceName)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
 		}
@@ -12904,6 +12929,13 @@ func (x *fastReflection_QueryLeaseByCustomDomainResponse) ProtoMethods() *protoi
 		if x.unknownFields != nil {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
+		}
+		if len(x.ServiceName) > 0 {
+			i -= len(x.ServiceName)
+			copy(dAtA[i:], x.ServiceName)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.ServiceName)))
+			i--
+			dAtA[i] = 0x12
 		}
 		if x.Lease != nil {
 			encoded, err := options.Marshal(x.Lease)
@@ -13003,6 +13035,38 @@ func (x *fastReflection_QueryLeaseByCustomDomainResponse) ProtoMethods() *protoi
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Lease); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
+				iNdEx = postIndex
+			case 2:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ServiceName", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.ServiceName = string(dAtA[iNdEx:postIndex])
 				iNdEx = postIndex
 			default:
 				iNdEx = preIndex
@@ -14178,8 +14242,11 @@ type QueryLeaseByCustomDomainResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// lease is the lease that has claimed this custom_domain.
+	// lease is the lease that owns the LeaseItem holding this custom_domain.
 	Lease *Lease `protobuf:"bytes,1,opt,name=lease,proto3" json:"lease,omitempty"`
+	// service_name identifies the specific LeaseItem within the lease.
+	// For a 1-item legacy lease, this is "".
+	ServiceName string `protobuf:"bytes,2,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
 }
 
 func (x *QueryLeaseByCustomDomainResponse) Reset() {
@@ -14207,6 +14274,13 @@ func (x *QueryLeaseByCustomDomainResponse) GetLease() *Lease {
 		return x.Lease
 	}
 	return nil
+}
+
+func (x *QueryLeaseByCustomDomainResponse) GetServiceName() string {
+	if x != nil {
+		return x.ServiceName
+	}
+	return ""
 }
 
 var File_liftedinit_billing_v1_query_proto protoreflect.FileDescriptor
@@ -14500,14 +14574,18 @@ var file_liftedinit_billing_v1_query_proto_rawDesc = []byte{
 	0x74, 0x6f, 0x6d, 0x5f, 0x64, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09,
 	0x42, 0x1b, 0xea, 0xde, 0x1f, 0x17, 0x63, 0x75, 0x73, 0x74, 0x6f, 0x6d, 0x5f, 0x64, 0x6f, 0x6d,
 	0x61, 0x69, 0x6e, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x0c, 0x63,
-	0x75, 0x73, 0x74, 0x6f, 0x6d, 0x44, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x22, 0x65, 0x0a, 0x20, 0x51,
-	0x75, 0x65, 0x72, 0x79, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x42, 0x79, 0x43, 0x75, 0x73, 0x74, 0x6f,
-	0x6d, 0x44, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12,
-	0x41, 0x0a, 0x05, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1c,
-	0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c,
-	0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x42, 0x0d, 0xc8, 0xde,
-	0x1f, 0x00, 0xea, 0xde, 0x1f, 0x05, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x52, 0x05, 0x6c, 0x65, 0x61,
-	0x73, 0x65, 0x32, 0xcf, 0x11, 0x0a, 0x05, 0x51, 0x75, 0x65, 0x72, 0x79, 0x12, 0x86, 0x01, 0x0a,
+	0x75, 0x73, 0x74, 0x6f, 0x6d, 0x44, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x22, 0xa4, 0x01, 0x0a, 0x20,
+	0x51, 0x75, 0x65, 0x72, 0x79, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x42, 0x79, 0x43, 0x75, 0x73, 0x74,
+	0x6f, 0x6d, 0x44, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x12, 0x41, 0x0a, 0x05, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32,
+	0x1c, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c,
+	0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x42, 0x0d, 0xc8,
+	0xde, 0x1f, 0x00, 0xea, 0xde, 0x1f, 0x05, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x52, 0x05, 0x6c, 0x65,
+	0x61, 0x73, 0x65, 0x12, 0x3d, 0x0a, 0x0c, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x5f, 0x6e,
+	0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x42, 0x1a, 0xea, 0xde, 0x1f, 0x16, 0x73,
+	0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x2c, 0x6f, 0x6d, 0x69, 0x74,
+	0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x0b, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x4e, 0x61,
+	0x6d, 0x65, 0x32, 0xcf, 0x11, 0x0a, 0x05, 0x51, 0x75, 0x65, 0x72, 0x79, 0x12, 0x86, 0x01, 0x0a,
 	0x06, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x29, 0x2e, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64,
 	0x69, 0x6e, 0x69, 0x74, 0x2e, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e,
 	0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65,

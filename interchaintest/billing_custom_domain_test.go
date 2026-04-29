@@ -1,5 +1,8 @@
 // Package interchaintest contains end-to-end tests for the billing module.
-// This file contains custom_domain feature tests (set, query, lifecycle, override).
+// This file contains custom_domain feature tests at the LeaseItem level:
+// per-item set, reverse-lookup query (with service_name in response),
+// uniqueness conflicts, reserved-suffix rejection, authority override,
+// allowed-list sender, lifecycle cleanup on close, and 1-item legacy support.
 //
 // Run with: go test -v ./interchaintest -run TestBillingCustomDomain -timeout 45m
 package interchaintest
@@ -14,9 +17,9 @@ import (
 	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
-// TestBillingCustomDomain exercises the on-chain custom_domain feature end-to-end:
-// set, reverse-lookup query, uniqueness conflict, reserved-suffix rejection,
-// authority override, and lifecycle cleanup on close.
+// TestBillingCustomDomain exercises the on-chain custom_domain feature
+// end-to-end at the LeaseItem level, covering both 1-item legacy leases and
+// multi-item service-mode leases.
 func TestBillingCustomDomain(t *testing.T) {
 	ctx, tc, cleanup := setupBillingTest(t, "billing-custom-domain-test")
 	t.Cleanup(cleanup)
@@ -28,42 +31,73 @@ func TestBillingCustomDomain(t *testing.T) {
 	fundTenantCredit(t, ctx, tc, tc.tenant1, 100_000_000)
 	fundTenantCredit(t, ctx, tc, tc.tenant2, 100_000_000)
 
-	// Lease for tenant1 (active).
-	items := []string{fmt.Sprintf("%s:1", tc.skuUUID)}
-	leaseUUID1, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant1, tc.providerWallet, items)
+	// Multi-item service-mode lease for tenant1: web + db.
+	multiItems := []string{
+		fmt.Sprintf("%s:1:web", tc.skuUUID),
+		fmt.Sprintf("%s:1:db", tc.skuUUID),
+	}
+	multiLease, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant1, tc.providerWallet, multiItems)
 	require.NoError(t, err)
 
-	// Lease for tenant2 (active).
-	leaseUUID2, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant2, tc.providerWallet, items)
+	// 1-item legacy lease for tenant2 (no service_name on the item).
+	legacyItems := []string{fmt.Sprintf("%s:1", tc.skuUUID)}
+	legacyLease, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant2, tc.providerWallet, legacyItems)
 	require.NoError(t, err)
 
-	t.Run("set domain by tenant", func(t *testing.T) {
-		res, err := helpers.BillingSetLeaseCustomDomain(ctx, tc.chain, tc.tenant1, leaseUUID1, "app.example.com")
+	t.Run("multi-item: per-item domains", func(t *testing.T) {
+		// Set domain on web.
+		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant1, multiLease, "web", "web.example.com")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "set custom_domain should succeed: %s", txRes.RawLog)
-	})
+		require.Equal(t, uint32(0), txRes.Code, "set web custom_domain should succeed: %s", txRes.RawLog)
 
-	t.Run("query reverse lookup", func(t *testing.T) {
-		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "app.example.com")
+		// Set domain on db.
+		res, err = helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant1, multiLease, "db", "db.example.com")
 		require.NoError(t, err)
-		require.Equal(t, leaseUUID1, got.Lease.Uuid)
+		txRes, err = tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "set db custom_domain should succeed: %s", txRes.RawLog)
+
+		// Reverse-query both, verify service_name attribution.
+		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "web.example.com")
+		require.NoError(t, err)
+		require.Equal(t, multiLease, got.Lease.Uuid)
+		require.Equal(t, "web", got.ServiceName)
+
+		got, err = helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "db.example.com")
+		require.NoError(t, err)
+		require.Equal(t, multiLease, got.Lease.Uuid)
+		require.Equal(t, "db", got.ServiceName)
 	})
 
-	t.Run("conflict on second tenant", func(t *testing.T) {
-		// Should fail at delivery — same domain on a different lease.
-		res, err := helpers.BillingSetLeaseCustomDomain(ctx, tc.chain, tc.tenant2, leaseUUID2, "app.example.com")
-		require.NoError(t, err) // tx broadcast succeeds; assert deliver fails
+	t.Run("1-item legacy: empty service_name addresses the only item", func(t *testing.T) {
+		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant2, legacyLease, "", "legacy.example.com")
+		require.NoError(t, err)
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "1-item legacy set should succeed: %s", txRes.RawLog)
+
+		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "legacy.example.com")
+		require.NoError(t, err)
+		require.Equal(t, legacyLease, got.Lease.Uuid)
+		require.Equal(t, "", got.ServiceName, "1-item legacy lease returns empty service_name")
+	})
+
+	t.Run("cross-lease conflict", func(t *testing.T) {
+		// tenant2 tries to claim "web.example.com" on the legacy lease — already claimed by multi-item lease's web item.
+		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant2, legacyLease, "", "web.example.com")
+		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.NotEqual(t, uint32(0), txRes.Code, "expected delivery failure")
 		require.Contains(t, txRes.RawLog, billingtypes.ErrCustomDomainAlreadyClaimed.Error())
 	})
 
-	t.Run("authority override sets domain on another tenant's lease", func(t *testing.T) {
-		// Authority can set a (different) domain on tenant2's lease.
-		res, err := helpers.BillingSetLeaseCustomDomain(ctx, tc.chain, tc.authority, leaseUUID2, "ops.example.com")
+	t.Run("authority override on a different tenant's lease", func(t *testing.T) {
+		// Authority sets a domain on tenant1's multi-item lease, addressing the db item.
+		// Override via the new domain that nobody has claimed.
+		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.authority, multiLease, "db", "ops.example.com")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -71,64 +105,28 @@ func TestBillingCustomDomain(t *testing.T) {
 
 		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "ops.example.com")
 		require.NoError(t, err)
-		require.Equal(t, leaseUUID2, got.Lease.Uuid)
+		require.Equal(t, multiLease, got.Lease.Uuid)
+		require.Equal(t, "db", got.ServiceName)
 	})
 
-	t.Run("close releases domain index entry", func(t *testing.T) {
-		closeRes, err := helpers.BillingCloseLease(ctx, tc.chain, tc.tenant1, leaseUUID1)
-		require.NoError(t, err)
-		closeTx, err := tc.chain.GetTransaction(closeRes.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), closeTx.Code, "close should succeed: %s", closeTx.RawLog)
-
-		// Domain reverse-lookup now misses.
-		_, err = helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "app.example.com")
-		require.Error(t, err, "expected NotFound after close")
-
-		// Domain still recorded on the (now CLOSED) lease for audit.
-		closedLease, err := helpers.BillingQueryLease(ctx, tc.chain, leaseUUID1)
-		require.NoError(t, err)
-		require.Equal(t, "app.example.com", closedLease.Lease.CustomDomain)
-		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, closedLease.Lease.GetState())
-	})
-
-	t.Run("reclaim domain after close", func(t *testing.T) {
-		// A brand-new lease for tenant1 can claim the same domain that was
-		// released when leaseUUID1 closed.
-		newLeaseUUID, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant1, tc.providerWallet, items)
-		require.NoError(t, err)
-
-		res, err := helpers.BillingSetLeaseCustomDomain(ctx, tc.chain, tc.tenant1, newLeaseUUID, "app.example.com")
-		require.NoError(t, err)
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "reclaim should succeed: %s", txRes.RawLog)
-
-		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "app.example.com")
-		require.NoError(t, err)
-		require.Equal(t, newLeaseUUID, got.Lease.Uuid, "reverse lookup must point at the new lease")
-	})
-
-	t.Run("clear domain via empty argument", func(t *testing.T) {
-		// tenant2 clears the "ops.example.com" claim on leaseUUID2.
-		res, err := helpers.BillingSetLeaseCustomDomain(ctx, tc.chain, tc.tenant2, leaseUUID2, "")
+	t.Run("clear domain leaves siblings intact", func(t *testing.T) {
+		// Clear the multi-item lease's web domain; db's "ops.example.com" must still resolve.
+		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant1, multiLease, "web", "")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "clear should succeed: %s", txRes.RawLog)
 
-		_, err = helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "ops.example.com")
+		_, err = helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "web.example.com")
 		require.Error(t, err, "expected NotFound after clear")
 
-		// Lease itself remains ACTIVE with empty CustomDomain.
-		lease, err := helpers.BillingQueryLease(ctx, tc.chain, leaseUUID2)
+		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "ops.example.com")
 		require.NoError(t, err)
-		require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.Lease.GetState())
-		require.Empty(t, lease.Lease.CustomDomain)
+		require.Equal(t, multiLease, got.Lease.Uuid)
+		require.Equal(t, "db", got.ServiceName)
 	})
 
-	t.Run("allowed-list sender can set domain on tenant lease", func(t *testing.T) {
-		// Add unauthorizedUser to params.allowed_list via authority MsgUpdateParams.
+	t.Run("allowed-list sender can set domain", func(t *testing.T) {
 		_, err := helpers.BillingUpdateParamsFull(ctx, tc.chain, tc.authority,
 			100, 20, 3600, 10, 1800,
 			[]string{tc.unauthorizedUser.FormattedAddress()},
@@ -136,8 +134,8 @@ func TestBillingCustomDomain(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		// Now unauthorizedUser (in allowed_list) sets a domain on tenant2's lease.
-		res, err := helpers.BillingSetLeaseCustomDomain(ctx, tc.chain, tc.unauthorizedUser, leaseUUID2, "allowed.example.com")
+		// Allowed-list sender re-claims web.example.com on tenant1's multi-item lease.
+		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.unauthorizedUser, multiLease, "web", "allowed.example.com")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -145,11 +143,11 @@ func TestBillingCustomDomain(t *testing.T) {
 
 		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "allowed.example.com")
 		require.NoError(t, err)
-		require.Equal(t, leaseUUID2, got.Lease.Uuid)
+		require.Equal(t, multiLease, got.Lease.Uuid)
+		require.Equal(t, "web", got.ServiceName)
 	})
 
 	t.Run("reserved suffix rejected", func(t *testing.T) {
-		// Authority seeds a reserved suffix.
 		_, err := helpers.BillingUpdateParamsFull(ctx, tc.chain, tc.authority,
 			100, 20, 3600, 10, 1800,
 			[]string{tc.unauthorizedUser.FormattedAddress()},
@@ -157,12 +155,52 @@ func TestBillingCustomDomain(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		// tenant2 tries to claim a domain inside the reserved zone.
-		res, err := helpers.BillingSetLeaseCustomDomain(ctx, tc.chain, tc.tenant2, leaseUUID2, "app.barney0.manifest0.net")
-		require.NoError(t, err) // tx broadcast succeeds; deliver should fail
+		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant1, multiLease, "db", "x.barney0.manifest0.net")
+		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		require.NotEqual(t, uint32(0), txRes.Code, "reserved-suffix claim must be rejected at deliver")
+		require.NotEqual(t, uint32(0), txRes.Code, "reserved-suffix claim must be rejected")
 		require.Contains(t, txRes.RawLog, billingtypes.ErrInvalidCustomDomain.Error())
+	})
+
+	t.Run("close releases all per-item index entries; audit fields preserved", func(t *testing.T) {
+		closeRes, err := helpers.BillingCloseLease(ctx, tc.chain, tc.tenant1, multiLease)
+		require.NoError(t, err)
+		closeTx, err := tc.chain.GetTransaction(closeRes.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), closeTx.Code, "close should succeed: %s", closeTx.RawLog)
+
+		// Both per-item index entries are gone.
+		for _, dom := range []string{"allowed.example.com", "ops.example.com"} {
+			_, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, dom)
+			require.Error(t, err, "expected NotFound for %s after close", dom)
+		}
+
+		// Lease record preserves per-item CustomDomain for audit.
+		closed, err := helpers.BillingQueryLease(ctx, tc.chain, multiLease)
+		require.NoError(t, err)
+		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, closed.Lease.GetState())
+		domainsByService := map[string]string{}
+		for _, item := range closed.Lease.Items {
+			domainsByService[item.ServiceName] = item.CustomDomain
+		}
+		require.Equal(t, "allowed.example.com", domainsByService["web"])
+		require.Equal(t, "ops.example.com", domainsByService["db"])
+	})
+
+	t.Run("reclaim after close on a fresh lease", func(t *testing.T) {
+		newLease, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant1, tc.providerWallet, multiItems)
+		require.NoError(t, err)
+
+		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant1, newLease, "web", "allowed.example.com")
+		require.NoError(t, err)
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "reclaim should succeed: %s", txRes.RawLog)
+
+		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "allowed.example.com")
+		require.NoError(t, err)
+		require.Equal(t, newLease, got.Lease.Uuid)
+		require.Equal(t, "web", got.ServiceName)
 	})
 }

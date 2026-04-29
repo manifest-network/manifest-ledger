@@ -1036,15 +1036,16 @@ func (ms msgServer) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams
 	return &types.MsgUpdateParamsResponse{}, nil
 }
 
-// SetLeaseCustomDomain sets or clears Lease.custom_domain for a lease.
-func (ms msgServer) SetLeaseCustomDomain(ctx context.Context, msg *types.MsgSetLeaseCustomDomain) (*types.MsgSetLeaseCustomDomainResponse, error) {
+// SetLeaseItemCustomDomain sets or clears the custom_domain on a specific
+// LeaseItem within a lease.
+func (ms msgServer) SetLeaseItemCustomDomain(ctx context.Context, msg *types.MsgSetLeaseItemCustomDomain) (*types.MsgSetLeaseItemCustomDomainResponse, error) {
 	if err := msg.ValidateBasic(); err != nil {
 		return nil, err
 	}
-	if _, err := ms.k.SetLeaseCustomDomain(ctx, msg.Sender, msg.LeaseUuid, msg.CustomDomain); err != nil {
+	if _, err := ms.k.SetLeaseItemCustomDomain(ctx, msg.Sender, msg.LeaseUuid, msg.ServiceName, msg.CustomDomain); err != nil {
 		return nil, err
 	}
-	return &types.MsgSetLeaseCustomDomainResponse{}, nil
+	return &types.MsgSetLeaseItemCustomDomainResponse{}, nil
 }
 
 // settleLease calculates and transfers accrued charges from tenant's credit account

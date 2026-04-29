@@ -34,6 +34,8 @@ var (
 	ErrInvalidCustomDomain     = errors.Register(ModuleName, 29, "invalid custom domain")
 	ErrCustomDomainAlreadyClaimed = errors.Register(ModuleName, 30, "custom domain already claimed")
 	ErrLeaseNotEditable        = errors.Register(ModuleName, 31, "lease state does not allow custom_domain edit")
+	ErrLeaseItemNotFound       = errors.Register(ModuleName, 32, "lease item not found")
+	ErrAmbiguousLeaseItem      = errors.Register(ModuleName, 33, "lease item lookup is ambiguous")
 )
 
 // MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.

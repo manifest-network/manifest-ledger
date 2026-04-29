@@ -17,10 +17,11 @@ import (
 // LeaseItemJSON is a JSON-compatible version of LeaseItem.
 // Quantity is a string in CLI JSON output.
 type LeaseItemJSON struct {
-	SkuUuid     string   `json:"sku_uuid,omitempty"`
-	Quantity    string   `json:"quantity,omitempty"`
-	LockedPrice sdk.Coin `json:"locked_price"`
-	ServiceName string   `json:"service_name,omitempty"`
+	SkuUuid      string   `json:"sku_uuid,omitempty"`
+	Quantity     string   `json:"quantity,omitempty"`
+	LockedPrice  sdk.Coin `json:"locked_price"`
+	ServiceName  string   `json:"service_name,omitempty"`
+	CustomDomain string   `json:"custom_domain,omitempty"`
 }
 
 // LeaseJSON is a JSON-compatible version of Lease.
@@ -41,7 +42,6 @@ type LeaseJSON struct {
 	ExpiredAt       *time.Time      `json:"expired_at,omitempty"`
 	ClosureReason   string          `json:"closure_reason,omitempty"`
 	MetaHash        []byte          `json:"meta_hash,omitempty"`
-	CustomDomain    string          `json:"custom_domain,omitempty"`
 }
 
 // GetState returns the LeaseState enum value from the string state.
@@ -169,11 +169,12 @@ func BillingCancelLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
-// BillingSetLeaseCustomDomain sets or clears the custom_domain on a lease.
+// BillingSetLeaseItemCustomDomain sets or clears the custom_domain on a
+// specific LeaseItem. For a 1-item legacy lease, pass "" for serviceName.
 // An empty domain clears the field; sender must be tenant, authority, or
 // in params.allowed_list.
-func BillingSetLeaseCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID, domain string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "set-custom-domain", leaseUUID, domain}
+func BillingSetLeaseItemCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID, serviceName, domain string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "set-item-custom-domain", leaseUUID, serviceName, domain}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
@@ -275,6 +276,13 @@ type LeaseResponseJSON struct {
 	Lease LeaseJSON `json:"lease"`
 }
 
+// LeaseByCustomDomainResponseJSON wraps the LeaseByCustomDomain query response,
+// which includes the service_name of the matching item alongside the lease.
+type LeaseByCustomDomainResponseJSON struct {
+	Lease       LeaseJSON `json:"lease"`
+	ServiceName string    `json:"service_name,omitempty"`
+}
+
 // BillingQueryParams queries the billing module parameters.
 func BillingQueryParams(ctx context.Context, chain *cosmos.CosmosChain) (*billingtypes.QueryParamsResponse, error) {
 	var res billingtypes.QueryParamsResponse
@@ -295,9 +303,10 @@ func BillingQueryLease(ctx context.Context, chain *cosmos.CosmosChain, leaseUUID
 	return &res, nil
 }
 
-// BillingQueryLeaseByCustomDomain queries the lease that has claimed a given custom_domain.
-func BillingQueryLeaseByCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, domain string) (*LeaseResponseJSON, error) {
-	var res LeaseResponseJSON
+// BillingQueryLeaseByCustomDomain queries the lease and matching service_name
+// for a given custom_domain.
+func BillingQueryLeaseByCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, domain string) (*LeaseByCustomDomainResponseJSON, error) {
+	var res LeaseByCustomDomainResponseJSON
 	cmd := []string{"query", "billing", "lease-by-domain", domain}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err

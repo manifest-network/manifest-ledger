@@ -3,9 +3,13 @@ package types_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"cosmossdk.io/math"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
@@ -116,44 +120,92 @@ func TestParamsValidate_ReservedDomainSuffixes(t *testing.T) {
 	}
 }
 
-func TestMsgSetLeaseCustomDomain_ValidateBasic(t *testing.T) {
+func TestGenesisValidate_RejectsAmbiguousCustomDomain(t *testing.T) {
+	// Multi-item legacy lease (no service_names) with a custom_domain on one
+	// item is unaddressable. The new defensive check must reject it before any
+	// downstream credit-account check fires. Constructing a fully-valid happy-
+	// path genesis is covered by the keeper-level genesis tests; this focuses
+	// on the new rejection branch.
+	now := time.Now().UTC()
+	const leaseUUID = "01912345-6789-7abc-8def-aaaaaaaaaaaa"
+	const skuUUID1 = "01912345-6789-7abc-8def-bbbbbbbbbbbb"
+	const skuUUID2 = "01912345-6789-7abc-8def-cccccccccccc"
+	const providerUUID = "01912345-6789-7abc-8def-dddddddddddd"
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+
+	gs := types.GenesisState{
+		Params: types.DefaultParams(),
+		Leases: []types.Lease{{
+			Uuid:         leaseUUID,
+			Tenant:       tenantAddr.String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{
+				{SkuUuid: skuUUID1, Quantity: 1, LockedPrice: sdk.NewCoin("umfx", math.NewInt(1)), CustomDomain: "x.example.com"},
+				{SkuUuid: skuUUID2, Quantity: 1, LockedPrice: sdk.NewCoin("umfx", math.NewInt(1))},
+			},
+			State:         types.LEASE_STATE_PENDING,
+			CreatedAt:     now,
+			LastSettledAt: now,
+		}},
+	}
+	err := gs.Validate()
+	require.Error(t, err)
+	require.ErrorIs(t, err, types.ErrAmbiguousLeaseItem)
+}
+
+func TestMsgSetLeaseItemCustomDomain_ValidateBasic(t *testing.T) {
 	const validUUID = "01912345-6789-7abc-8def-0123456789ab"
 	_, _, addr := testdata.KeyTestPubAddr()
 	validAddr := addr.String()
 
 	cases := []struct {
 		name    string
-		msg     types.MsgSetLeaseCustomDomain
+		msg     types.MsgSetLeaseItemCustomDomain
 		wantErr bool
 	}{
 		{
-			name:    "valid_set",
-			msg:     types.MsgSetLeaseCustomDomain{Sender: validAddr, LeaseUuid: validUUID, CustomDomain: "app.example.com"},
+			name:    "valid_set_with_service_name",
+			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "web", CustomDomain: "app.example.com"},
+			wantErr: false,
+		},
+		{
+			name:    "valid_set_empty_service_name_for_legacy_lease",
+			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "", CustomDomain: "app.example.com"},
 			wantErr: false,
 		},
 		{
 			name:    "valid_clear",
-			msg:     types.MsgSetLeaseCustomDomain{Sender: validAddr, LeaseUuid: validUUID, CustomDomain: ""},
+			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "web", CustomDomain: ""},
 			wantErr: false,
 		},
 		{
 			name:    "invalid_sender",
-			msg:     types.MsgSetLeaseCustomDomain{Sender: "not-bech32", LeaseUuid: validUUID, CustomDomain: "x.com"},
+			msg:     types.MsgSetLeaseItemCustomDomain{Sender: "not-bech32", LeaseUuid: validUUID, ServiceName: "web", CustomDomain: "x.com"},
 			wantErr: true,
 		},
 		{
 			name:    "empty_uuid",
-			msg:     types.MsgSetLeaseCustomDomain{Sender: validAddr, LeaseUuid: "", CustomDomain: "x.com"},
+			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: "", ServiceName: "web", CustomDomain: "x.com"},
 			wantErr: true,
 		},
 		{
 			name:    "bad_uuid",
-			msg:     types.MsgSetLeaseCustomDomain{Sender: validAddr, LeaseUuid: "not-a-uuid", CustomDomain: "x.com"},
+			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: "not-a-uuid", ServiceName: "web", CustomDomain: "x.com"},
+			wantErr: true,
+		},
+		{
+			name:    "bad_service_name_uppercase",
+			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "Web", CustomDomain: "x.com"},
+			wantErr: true,
+		},
+		{
+			name:    "bad_service_name_too_long",
+			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: strings.Repeat("a", 64), CustomDomain: "x.com"},
 			wantErr: true,
 		},
 		{
 			name:    "bad_fqdn",
-			msg:     types.MsgSetLeaseCustomDomain{Sender: validAddr, LeaseUuid: validUUID, CustomDomain: "NoUpper.com"},
+			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "web", CustomDomain: "NoUpper.com"},
 			wantErr: true,
 		},
 	}

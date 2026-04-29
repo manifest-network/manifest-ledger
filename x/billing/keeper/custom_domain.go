@@ -45,33 +45,60 @@ func (k *Keeper) IsAuthorizedForTenant(ctx context.Context, sender, tenant strin
 	return k.HasAdminPrivileges(ctx, sender)
 }
 
-// GetLeaseByCustomDomain returns the lease that has claimed the given custom_domain.
-// The second return is false (with nil error) when no lease has claimed the domain.
-func (k *Keeper) GetLeaseByCustomDomain(ctx context.Context, domain string) (types.Lease, bool, error) {
-	leaseUUID, err := k.CustomDomainIndex.Get(ctx, domain)
+// GetLeaseByCustomDomain returns the lease and the service_name of the item
+// that claims the given custom_domain. The third return is false (with nil
+// error) when no item has claimed the domain.
+func (k *Keeper) GetLeaseByCustomDomain(ctx context.Context, domain string) (types.Lease, string, bool, error) {
+	target, err := k.CustomDomainIndex.Get(ctx, domain)
 	if err != nil {
 		if errors.Is(err, collections.ErrNotFound) {
-			return types.Lease{}, false, nil
+			return types.Lease{}, "", false, nil
 		}
-		return types.Lease{}, false, err
+		return types.Lease{}, "", false, err
 	}
-	lease, err := k.GetLease(ctx, leaseUUID)
+	lease, err := k.GetLease(ctx, target.LeaseUuid)
 	if err != nil {
-		return types.Lease{}, false, err
+		return types.Lease{}, "", false, err
 	}
-	return lease, true, nil
+	return lease, target.ServiceName, true, nil
 }
 
-// SetLeaseCustomDomain sets or clears Lease.custom_domain on behalf of sender.
-// An empty domain clears the field. Returns the role under which the call was
-// authorised ("tenant" / "authority" / "allowed") so the msg server can include
-// it in the emitted event.
+// findLeaseItemByServiceName returns the index of the unique LeaseItem whose
+// ServiceName equals serviceName. Zero matches yields ErrLeaseItemNotFound;
+// more than one yields ErrAmbiguousLeaseItem (only possible for multi-item
+// legacy leases looked up with serviceName == "").
+func findLeaseItemByServiceName(lease types.Lease, serviceName string) (int, error) {
+	idx := -1
+	matches := 0
+	for i := range lease.Items {
+		if lease.Items[i].ServiceName == serviceName {
+			matches++
+			idx = i
+		}
+	}
+	switch matches {
+	case 0:
+		return -1, types.ErrLeaseItemNotFound.Wrapf("lease %s has no item with service_name %q", lease.Uuid, serviceName)
+	case 1:
+		return idx, nil
+	default:
+		return -1, types.ErrAmbiguousLeaseItem.Wrapf(
+			"lease %s has %d items matching service_name %q; multi-item legacy leases must be recreated in service-name mode to use custom_domain",
+			lease.Uuid, matches, serviceName,
+		)
+	}
+}
+
+// SetLeaseItemCustomDomain sets or clears the custom_domain on a specific
+// LeaseItem identified by serviceName. An empty domain clears the field.
+// Returns the role under which the call was authorised ("tenant" / "authority"
+// / "allowed") so the msg server can include it in the emitted event.
 //
-// Index maintenance is delegated to SetLease — this method only validates input
-// and writes the new field value. The pre-flight uniqueness check exists to
-// surface a friendly ErrCustomDomainAlreadyClaimed before mutation; SetLease's
+// Index maintenance is delegated to SetLease — this method only validates
+// input and writes the new field value. The pre-flight uniqueness check
+// surfaces a friendly ErrCustomDomainAlreadyClaimed before mutation; SetLease's
 // storage-level uniqueness enforcement is the defence-in-depth.
-func (k *Keeper) SetLeaseCustomDomain(ctx context.Context, sender, leaseUUID, domain string) (string, error) {
+func (k *Keeper) SetLeaseItemCustomDomain(ctx context.Context, sender, leaseUUID, serviceName, domain string) (string, error) {
 	lease, err := k.GetLease(ctx, leaseUUID)
 	if err != nil {
 		return "", err
@@ -89,12 +116,21 @@ func (k *Keeper) SetLeaseCustomDomain(ctx context.Context, sender, leaseUUID, do
 		return "", types.ErrLeaseNotEditable.Wrapf("lease %s is in state %s", leaseUUID, lease.State)
 	}
 
+	itemIdx, err := findLeaseItemByServiceName(lease, serviceName)
+	if err != nil {
+		return "", err
+	}
+	// Use the resolved item's ServiceName (canonical) for the index value and
+	// event attributes — same as msg.service_name in every case except the
+	// 1-item legacy lookup (both are "").
+	itemServiceName := lease.Items[itemIdx].ServiceName
+
 	domain = strings.ToLower(strings.TrimSpace(domain))
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
 	if domain == "" {
-		previous := lease.CustomDomain
-		lease.CustomDomain = ""
+		previous := lease.Items[itemIdx].CustomDomain
+		lease.Items[itemIdx].CustomDomain = ""
 		if err := k.SetLease(ctx, lease); err != nil {
 			return "", err
 		}
@@ -103,6 +139,7 @@ func (k *Keeper) SetLeaseCustomDomain(ctx context.Context, sender, leaseUUID, do
 				types.EventTypeLeaseCustomDomainCleared,
 				sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
 				sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
+				sdk.NewAttribute(types.AttributeKeyServiceName, itemServiceName),
 				sdk.NewAttribute(types.AttributeKeyCustomDomain, previous),
 				sdk.NewAttribute(types.AttributeKeySetBy, role),
 			),
@@ -122,17 +159,33 @@ func (k *Keeper) SetLeaseCustomDomain(ctx context.Context, sender, leaseUUID, do
 		return "", types.ErrInvalidCustomDomain.Wrapf("domain %q matches a reserved provider suffix", domain)
 	}
 
-	// Pre-flight uniqueness so the caller gets a friendly error before mutation.
-	// SetLease re-checks at the storage layer as defence-in-depth.
-	existing, has, err := k.GetLeaseByCustomDomain(ctx, domain)
-	if err != nil {
+	// Pre-flight uniqueness with three branches: idempotent re-set on the
+	// same (lease, item), reject within-lease cross-item collision with a
+	// helpful message, reject cross-lease collision with a helpful message.
+	target, err := k.CustomDomainIndex.Get(ctx, domain)
+	switch {
+	case err == nil:
+		switch {
+		case target.LeaseUuid == leaseUUID && target.ServiceName == itemServiceName:
+			// idempotent re-set; proceed.
+		case target.LeaseUuid == leaseUUID:
+			return "", types.ErrCustomDomainAlreadyClaimed.Wrapf(
+				"domain %q is already claimed by item %q on this lease",
+				domain, target.ServiceName,
+			)
+		default:
+			return "", types.ErrCustomDomainAlreadyClaimed.Wrapf(
+				"domain %q is already claimed by lease %s",
+				domain, target.LeaseUuid,
+			)
+		}
+	case errors.Is(err, collections.ErrNotFound):
+		// no existing claim; proceed.
+	default:
 		return "", err
 	}
-	if has && existing.Uuid != leaseUUID {
-		return "", types.ErrCustomDomainAlreadyClaimed.Wrapf("domain %q is already claimed by lease %s", domain, existing.Uuid)
-	}
 
-	lease.CustomDomain = domain
+	lease.Items[itemIdx].CustomDomain = domain
 	if err := k.SetLease(ctx, lease); err != nil {
 		return "", err
 	}
@@ -142,6 +195,7 @@ func (k *Keeper) SetLeaseCustomDomain(ctx context.Context, sender, leaseUUID, do
 			types.EventTypeLeaseCustomDomainSet,
 			sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
 			sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
+			sdk.NewAttribute(types.AttributeKeyServiceName, itemServiceName),
 			sdk.NewAttribute(types.AttributeKeyCustomDomain, domain),
 			sdk.NewAttribute(types.AttributeKeySetBy, role),
 		),

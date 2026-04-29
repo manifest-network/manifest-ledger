@@ -18,7 +18,7 @@ var (
 	_ sdk.Msg = &MsgAcknowledgeLease{}
 	_ sdk.Msg = &MsgRejectLease{}
 	_ sdk.Msg = &MsgCancelLease{}
-	_ sdk.Msg = &MsgSetLeaseCustomDomain{}
+	_ sdk.Msg = &MsgSetLeaseItemCustomDomain{}
 )
 
 // IsValidDNSLabel checks whether name is a valid DNS label per RFC 1123:
@@ -377,8 +377,12 @@ func MatchesReservedSuffix(domain string, reserved []string) bool {
 	return false
 }
 
-// ValidateBasic performs basic validation for MsgSetLeaseCustomDomain.
-func (m *MsgSetLeaseCustomDomain) ValidateBasic() error {
+// ValidateBasic performs basic validation for MsgSetLeaseItemCustomDomain.
+// Note: msg.service_name is intentionally NOT required to be non-empty here —
+// the keeper resolves addressing against the lease's actual item shape (a
+// 1-item legacy lease has item.service_name = "" and so does the msg). When
+// service_name is non-empty, validate it as a DNS label.
+func (m *MsgSetLeaseItemCustomDomain) ValidateBasic() error {
 	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
 		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
 	}
@@ -387,6 +391,9 @@ func (m *MsgSetLeaseCustomDomain) ValidateBasic() error {
 	}
 	if !pkguuid.IsValidUUID(m.LeaseUuid) {
 		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", m.LeaseUuid)
+	}
+	if m.ServiceName != "" && !IsValidDNSLabel(m.ServiceName) {
+		return ErrInvalidServiceName.Wrapf("invalid service_name: %q", m.ServiceName)
 	}
 	if m.CustomDomain == "" {
 		return nil

@@ -395,9 +395,13 @@ message QueryLeaseByCustomDomainRequest {
 // QueryLeaseByCustomDomainResponse is the response type for the
 // Query/LeaseByCustomDomain RPC method.
 message QueryLeaseByCustomDomainResponse {
-  // lease is the lease that has claimed this custom_domain.
+  // lease is the lease that owns the LeaseItem holding this custom_domain.
   Lease lease = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "lease"
   ];
+
+  // service_name identifies the specific LeaseItem within the lease.
+  // For a 1-item legacy lease, this is "".
+  string service_name = 2 [(gogoproto.jsontag) = "service_name,omitempty"];
 }
