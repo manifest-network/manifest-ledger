@@ -559,7 +559,6 @@ Returns:
 	return cmd
 }
 
-
 // GetLeaseByCustomDomainCmd returns the command to look up a lease by its custom_domain.
 func GetLeaseByCustomDomainCmd() *cobra.Command {
 	cmd := &cobra.Command{
