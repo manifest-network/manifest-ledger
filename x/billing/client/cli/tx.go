@@ -425,6 +425,12 @@ update-params 100 20 3600 10 1800 --allowed-list manifest1abc...,manifest1xyz...
 				allowedList = splitAndTrim(allowedListStr)
 			}
 
+			reservedSuffixesStr, _ := cmd.Flags().GetString("reserved-domain-suffixes")
+			var reservedSuffixes []string
+			if reservedSuffixesStr != "" {
+				reservedSuffixes = splitAndTrim(reservedSuffixesStr)
+			}
+
 			msg := &types.MsgUpdateParams{
 				Authority: clientCtx.GetFromAddress().String(),
 				Params: types.Params{
@@ -434,6 +440,7 @@ update-params 100 20 3600 10 1800 --allowed-list manifest1abc...,manifest1xyz...
 					MinLeaseDuration:          minLeaseDuration,
 					MaxPendingLeasesPerTenant: maxPendingLeasesPerTenant,
 					PendingTimeout:            pendingTimeout,
+					ReservedDomainSuffixes:    reservedSuffixes,
 				},
 			}
 
@@ -442,6 +449,7 @@ update-params 100 20 3600 10 1800 --allowed-list manifest1abc...,manifest1xyz...
 	}
 
 	cmd.Flags().String("allowed-list", "", "Comma-separated list of addresses allowed to create leases for tenants")
+	cmd.Flags().String("reserved-domain-suffixes", "", "Comma-separated list of reserved domain suffixes (each must begin with '.')")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd

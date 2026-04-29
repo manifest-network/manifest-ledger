@@ -237,6 +237,12 @@ func BillingWithdrawByProvider(ctx context.Context, chain *cosmos.CosmosChain, u
 
 // BillingUpdateParams updates the billing module parameters.
 func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, maxLeasesPerTenant uint64, maxItemsPerLease uint64, minLeaseDuration uint64, maxPendingLeasesPerTenant uint64, pendingTimeout uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
+	return BillingUpdateParamsFull(ctx, chain, user, maxLeasesPerTenant, maxItemsPerLease, minLeaseDuration, maxPendingLeasesPerTenant, pendingTimeout, allowedList, nil, flags...)
+}
+
+// BillingUpdateParamsFull updates the billing module parameters including the
+// reserved_domain_suffixes list.
+func BillingUpdateParamsFull(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, maxLeasesPerTenant uint64, maxItemsPerLease uint64, minLeaseDuration uint64, maxPendingLeasesPerTenant uint64, pendingTimeout uint64, allowedList []string, reservedDomainSuffixes []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{
 		"tx", "billing", "update-params",
 		strconv.FormatUint(maxLeasesPerTenant, 10),
@@ -247,6 +253,9 @@ func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ib
 	}
 	if len(allowedList) > 0 {
 		cmd = append(cmd, "--allowed-list", strings.Join(allowedList, ","))
+	}
+	if len(reservedDomainSuffixes) > 0 {
+		cmd = append(cmd, "--reserved-domain-suffixes", strings.Join(reservedDomainSuffixes, ","))
 	}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }

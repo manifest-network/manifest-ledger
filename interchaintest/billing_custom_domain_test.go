@@ -91,4 +91,78 @@ func TestBillingCustomDomain(t *testing.T) {
 		require.Equal(t, "app.example.com", closedLease.Lease.CustomDomain)
 		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, closedLease.Lease.GetState())
 	})
+
+	t.Run("reclaim domain after close", func(t *testing.T) {
+		// A brand-new lease for tenant1 can claim the same domain that was
+		// released when leaseUUID1 closed.
+		newLeaseUUID, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant1, tc.providerWallet, items)
+		require.NoError(t, err)
+
+		res, err := helpers.BillingSetLeaseCustomDomain(ctx, tc.chain, tc.tenant1, newLeaseUUID, "app.example.com")
+		require.NoError(t, err)
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "reclaim should succeed: %s", txRes.RawLog)
+
+		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "app.example.com")
+		require.NoError(t, err)
+		require.Equal(t, newLeaseUUID, got.Lease.Uuid, "reverse lookup must point at the new lease")
+	})
+
+	t.Run("clear domain via empty argument", func(t *testing.T) {
+		// tenant2 clears the "ops.example.com" claim on leaseUUID2.
+		res, err := helpers.BillingSetLeaseCustomDomain(ctx, tc.chain, tc.tenant2, leaseUUID2, "")
+		require.NoError(t, err)
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "clear should succeed: %s", txRes.RawLog)
+
+		_, err = helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "ops.example.com")
+		require.Error(t, err, "expected NotFound after clear")
+
+		// Lease itself remains ACTIVE with empty CustomDomain.
+		lease, err := helpers.BillingQueryLease(ctx, tc.chain, leaseUUID2)
+		require.NoError(t, err)
+		require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.Lease.GetState())
+		require.Empty(t, lease.Lease.CustomDomain)
+	})
+
+	t.Run("allowed-list sender can set domain on tenant lease", func(t *testing.T) {
+		// Add unauthorizedUser to params.allowed_list via authority MsgUpdateParams.
+		_, err := helpers.BillingUpdateParamsFull(ctx, tc.chain, tc.authority,
+			100, 20, 3600, 10, 1800,
+			[]string{tc.unauthorizedUser.FormattedAddress()},
+			nil,
+		)
+		require.NoError(t, err)
+
+		// Now unauthorizedUser (in allowed_list) sets a domain on tenant2's lease.
+		res, err := helpers.BillingSetLeaseCustomDomain(ctx, tc.chain, tc.unauthorizedUser, leaseUUID2, "allowed.example.com")
+		require.NoError(t, err)
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), txRes.Code, "allowed-list sender should succeed: %s", txRes.RawLog)
+
+		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "allowed.example.com")
+		require.NoError(t, err)
+		require.Equal(t, leaseUUID2, got.Lease.Uuid)
+	})
+
+	t.Run("reserved suffix rejected", func(t *testing.T) {
+		// Authority seeds a reserved suffix.
+		_, err := helpers.BillingUpdateParamsFull(ctx, tc.chain, tc.authority,
+			100, 20, 3600, 10, 1800,
+			[]string{tc.unauthorizedUser.FormattedAddress()},
+			[]string{".barney0.manifest0.net"},
+		)
+		require.NoError(t, err)
+
+		// tenant2 tries to claim a domain inside the reserved zone.
+		res, err := helpers.BillingSetLeaseCustomDomain(ctx, tc.chain, tc.tenant2, leaseUUID2, "app.barney0.manifest0.net")
+		require.NoError(t, err) // tx broadcast succeeds; deliver should fail
+		txRes, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.NotEqual(t, uint32(0), txRes.Code, "reserved-suffix claim must be rejected at deliver")
+		require.Contains(t, txRes.RawLog, billingtypes.ErrInvalidCustomDomain.Error())
+	})
 }
