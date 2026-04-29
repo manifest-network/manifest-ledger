@@ -65,9 +65,23 @@ func (k *Keeper) GetLeaseByCustomDomain(ctx context.Context, domain string) (typ
 
 // findLeaseItemByServiceName returns the index of the unique LeaseItem whose
 // ServiceName equals serviceName. Zero matches yields ErrLeaseItemNotFound;
-// more than one yields ErrAmbiguousLeaseItem (only possible for multi-item
-// legacy leases looked up with serviceName == "").
+// more than one yields ErrAmbiguousLeaseItem.
+//
+// Defensive guard: a multi-item lease in legacy mode (no item has a
+// service_name, by the all-or-nothing rule on ValidateLeaseItems) cannot be
+// addressed for custom_domain — every match key is empty, so msg.service_name
+// can only be "" and would match all items. Reject at the lookup site rather
+// than relying on construction-time invariants enforced elsewhere
+// (ValidateLeaseItems, genesis defensive check, lease.Items immutability). The
+// match-counting loop below would also produce >1 matches in this exact case,
+// but the explicit guard documents the addressing contract here.
 func findLeaseItemByServiceName(lease types.Lease, serviceName string) (int, error) {
+	if len(lease.Items) > 1 && lease.Items[0].ServiceName == "" {
+		return -1, types.ErrAmbiguousLeaseItem.Wrapf(
+			"lease %s is in legacy mode with %d items; multi-item leases must be created in service-name mode to use custom_domain",
+			lease.Uuid, len(lease.Items),
+		)
+	}
 	idx := -1
 	matches := 0
 	for i := range lease.Items {
@@ -82,8 +96,12 @@ func findLeaseItemByServiceName(lease types.Lease, serviceName string) (int, err
 	case 1:
 		return idx, nil
 	default:
+		// Unreachable in practice: the defensive guard above catches multi-item
+		// legacy mode (the only configuration that produces duplicate
+		// service_names; service-mode validates uniqueness). Kept as a fail-safe
+		// in case a future change relaxes the upstream invariants.
 		return -1, types.ErrAmbiguousLeaseItem.Wrapf(
-			"lease %s has %d items matching service_name %q; multi-item legacy leases must be recreated in service-name mode to use custom_domain",
+			"lease %s has %d items matching service_name %q",
 			lease.Uuid, matches, serviceName,
 		)
 	}

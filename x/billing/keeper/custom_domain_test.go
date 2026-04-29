@@ -622,3 +622,280 @@ func TestMigrate1to2(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, custom, params.ReservedDomainSuffixes)
 }
+
+// --- direct SetLease coverage (defence-in-depth and reconcile edges) ---
+
+// TestSetLease_StorageLevelUniquenessRejection exercises the storage-level
+// ErrCustomDomainAlreadyClaimed branch inside reconcileCustomDomainIndex via a
+// direct SetLease call (bypassing SetLeaseItemCustomDomain's pre-flight). This
+// branch is otherwise reachable only through genesis import.
+func TestSetLease_StorageLevelUniquenessRejection(t *testing.T) {
+	s := setupCustomDomain(t)
+
+	// First lease (the fixture's 1-item legacy lease) claims a domain via the
+	// supported path.
+	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "shared.example.com")
+	require.NoError(t, err)
+
+	// Build a second multi-item lease and try to set the same domain on its
+	// "web" item via direct SetLease. The pre-flight check in
+	// SetLeaseItemCustomDomain would catch this; we deliberately bypass it.
+	secondUUID := s.createMultiItemLease(t)
+	lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, secondUUID)
+	require.NoError(t, err)
+	for i := range lease.Items {
+		if lease.Items[i].ServiceName == "web" {
+			lease.Items[i].CustomDomain = "shared.example.com"
+		}
+	}
+
+	err = s.f.App.BillingKeeper.SetLease(s.f.Ctx, lease)
+	require.Error(t, err)
+	require.ErrorIs(t, err, types.ErrCustomDomainAlreadyClaimed)
+	require.Contains(t, err.Error(), s.leaseUUID, "error must identify the conflicting lease")
+}
+
+// TestSetLease_StorageLevelUniqueness_SameLeaseCrossItem exercises the new
+// "same lease different item" branch in reconcileCustomDomainIndex, which
+// must produce a more helpful error than the generic cross-lease form.
+func TestSetLease_StorageLevelUniqueness_SameLeaseCrossItem(t *testing.T) {
+	s := setupCustomDomain(t)
+	leaseUUID := s.createMultiItemLease(t)
+
+	// Set web → some.example.com via the supported path.
+	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "some.example.com")
+	require.NoError(t, err)
+
+	// Mutate the lease so db ALSO carries some.example.com (web still has it).
+	// Direct SetLease bypasses the pre-flight; reconcile must reject with the
+	// "this lease, item X" message rather than "lease Y item X".
+	lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
+	require.NoError(t, err)
+	for i := range lease.Items {
+		if lease.Items[i].ServiceName == "db" {
+			lease.Items[i].CustomDomain = "some.example.com"
+		}
+	}
+	err = s.f.App.BillingKeeper.SetLease(s.f.Ctx, lease)
+	require.Error(t, err)
+	require.ErrorIs(t, err, types.ErrCustomDomainAlreadyClaimed)
+	require.Contains(t, err.Error(), "on this lease", "must use the same-lease error variant")
+}
+
+// TestSetLease_CrossSwap covers a single SetLease call that swaps domains
+// between two items: web's previous value moves to db, and web takes a new
+// value. The reconcile must release web's old entry before installing it on
+// db, otherwise the install would observe its own previous value and fail
+// uniqueness.
+func TestSetLease_CrossSwap(t *testing.T) {
+	s := setupCustomDomain(t)
+	leaseUUID := s.createMultiItemLease(t)
+
+	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "a.example.com")
+	require.NoError(t, err)
+	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "db", "b.example.com")
+	require.NoError(t, err)
+
+	// Swap: web now carries b.example.com (db's old value), db carries
+	// c.example.com (new). Direct SetLease so both moves land in one reconcile.
+	lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
+	require.NoError(t, err)
+	for i := range lease.Items {
+		switch lease.Items[i].ServiceName {
+		case "web":
+			lease.Items[i].CustomDomain = "b.example.com"
+		case "db":
+			lease.Items[i].CustomDomain = "c.example.com"
+		}
+	}
+	require.NoError(t, s.f.App.BillingKeeper.SetLease(s.f.Ctx, lease))
+
+	// Reverse-lookup confirms the new shape.
+	got, serviceName, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, "b.example.com")
+	require.NoError(t, err)
+	require.True(t, has)
+	require.Equal(t, leaseUUID, got.Uuid)
+	require.Equal(t, "web", serviceName, "b.example.com must now belong to web")
+
+	got, serviceName, has, err = s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, "c.example.com")
+	require.NoError(t, err)
+	require.True(t, has)
+	require.Equal(t, leaseUUID, got.Uuid)
+	require.Equal(t, "db", serviceName)
+
+	// a.example.com (web's pre-swap domain) is gone.
+	_, _, has, err = s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, "a.example.com")
+	require.NoError(t, err)
+	require.False(t, has, "a.example.com must be released after web's domain changed")
+}
+
+// --- event attribute coverage ---
+
+// findEvent returns the most recent event with the given type from the
+// fixture's event manager, or fails the test if not found.
+func findEvent(t *testing.T, ctx sdk.Context, eventType string) sdk.Event {
+	t.Helper()
+	events := ctx.EventManager().Events()
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type == eventType {
+			return events[i]
+		}
+	}
+	t.Fatalf("event %q not found among %d emitted events", eventType, len(events))
+	return sdk.Event{}
+}
+
+// attrValue returns the value of the named attribute from an event, or fails.
+func attrValue(t *testing.T, ev sdk.Event, key string) string {
+	t.Helper()
+	for _, a := range ev.Attributes {
+		if a.Key == key {
+			return a.Value
+		}
+	}
+	t.Fatalf("attribute %q not found on event %q", key, ev.Type)
+	return ""
+}
+
+func TestSetLeaseItemCustomDomain_SetEvent_Attributes_Legacy(t *testing.T) {
+	s := setupCustomDomain(t)
+
+	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "evt.example.com")
+	require.NoError(t, err)
+
+	ev := findEvent(t, s.f.Ctx, types.EventTypeLeaseCustomDomainSet)
+	require.Equal(t, s.leaseUUID, attrValue(t, ev, types.AttributeKeyLeaseUUID))
+	require.Equal(t, s.tenant.String(), attrValue(t, ev, types.AttributeKeyTenant))
+	require.Equal(t, "", attrValue(t, ev, types.AttributeKeyServiceName), "1-item legacy emits empty service_name")
+	require.Equal(t, "evt.example.com", attrValue(t, ev, types.AttributeKeyCustomDomain))
+	require.Equal(t, types.AttributeValueRoleTenant, attrValue(t, ev, types.AttributeKeySetBy))
+}
+
+func TestSetLeaseItemCustomDomain_SetEvent_Attributes_MultiItem(t *testing.T) {
+	s := setupCustomDomain(t)
+	leaseUUID := s.createMultiItemLease(t)
+
+	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.f.Authority.String(), leaseUUID, "web", "evt.example.com")
+	require.NoError(t, err)
+
+	ev := findEvent(t, s.f.Ctx, types.EventTypeLeaseCustomDomainSet)
+	require.Equal(t, leaseUUID, attrValue(t, ev, types.AttributeKeyLeaseUUID))
+	require.Equal(t, "web", attrValue(t, ev, types.AttributeKeyServiceName))
+	require.Equal(t, "evt.example.com", attrValue(t, ev, types.AttributeKeyCustomDomain))
+	require.Equal(t, types.AttributeValueRoleAuthority, attrValue(t, ev, types.AttributeKeySetBy), "authority sender attribution")
+}
+
+func TestSetLeaseItemCustomDomain_ClearEvent_Attributes(t *testing.T) {
+	s := setupCustomDomain(t)
+	leaseUUID := s.createMultiItemLease(t)
+
+	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "to-clear.example.com")
+	require.NoError(t, err)
+	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "")
+	require.NoError(t, err)
+
+	ev := findEvent(t, s.f.Ctx, types.EventTypeLeaseCustomDomainCleared)
+	require.Equal(t, leaseUUID, attrValue(t, ev, types.AttributeKeyLeaseUUID))
+	require.Equal(t, "web", attrValue(t, ev, types.AttributeKeyServiceName))
+	require.Equal(t, "to-clear.example.com", attrValue(t, ev, types.AttributeKeyCustomDomain),
+		"cleared event reports the previous domain for audit consumers")
+	require.Equal(t, types.AttributeValueRoleTenant, attrValue(t, ev, types.AttributeKeySetBy))
+}
+
+// --- multi-item lifecycle cleanup beyond Close ---
+
+func TestSetLeaseItemCustomDomain_LifecycleCleanup_MultiItem_Cancel(t *testing.T) {
+	s := setupCustomDomain(t)
+
+	pendingResp, err := s.msgServer.CreateLease(s.f.Ctx, &types.MsgCreateLease{
+		Tenant: s.tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: s.sku.Uuid, Quantity: 1, ServiceName: "web"},
+			{SkuUuid: s.sku.Uuid, Quantity: 1, ServiceName: "db"},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "web", "cancel-web.example.com")
+	require.NoError(t, err)
+	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "db", "cancel-db.example.com")
+	require.NoError(t, err)
+
+	_, err = s.msgServer.CancelLease(s.f.Ctx, &types.MsgCancelLease{
+		Tenant:     s.tenant.String(),
+		LeaseUuids: []string{pendingResp.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	for _, dom := range []string{"cancel-web.example.com", "cancel-db.example.com"} {
+		_, _, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, dom)
+		require.NoError(t, err)
+		require.False(t, has, "all per-item index entries must release on cancel; %q still resolved", dom)
+	}
+}
+
+func TestSetLeaseItemCustomDomain_LifecycleCleanup_MultiItem_Reject(t *testing.T) {
+	s := setupCustomDomain(t)
+
+	pendingResp, err := s.msgServer.CreateLease(s.f.Ctx, &types.MsgCreateLease{
+		Tenant: s.tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: s.sku.Uuid, Quantity: 1, ServiceName: "web"},
+			{SkuUuid: s.sku.Uuid, Quantity: 1, ServiceName: "db"},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "web", "reject-web.example.com")
+	require.NoError(t, err)
+	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "db", "reject-db.example.com")
+	require.NoError(t, err)
+
+	_, err = s.msgServer.RejectLease(s.f.Ctx, &types.MsgRejectLease{
+		Sender:     s.providerAddr.String(),
+		LeaseUuids: []string{pendingResp.LeaseUuid},
+	})
+	require.NoError(t, err)
+
+	for _, dom := range []string{"reject-web.example.com", "reject-db.example.com"} {
+		_, _, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, dom)
+		require.NoError(t, err)
+		require.False(t, has, "all per-item index entries must release on reject; %q still resolved", dom)
+	}
+}
+
+func TestSetLeaseItemCustomDomain_LifecycleCleanup_MultiItem_EndBlockerExpiry(t *testing.T) {
+	s := setupCustomDomain(t)
+
+	params, err := s.f.App.BillingKeeper.GetParams(s.f.Ctx)
+	require.NoError(t, err)
+	params.PendingTimeout = 60
+	require.NoError(t, s.f.App.BillingKeeper.SetParams(s.f.Ctx, params))
+
+	pendingResp, err := s.msgServer.CreateLease(s.f.Ctx, &types.MsgCreateLease{
+		Tenant: s.tenant.String(),
+		Items: []types.LeaseItemInput{
+			{SkuUuid: s.sku.Uuid, Quantity: 1, ServiceName: "web"},
+			{SkuUuid: s.sku.Uuid, Quantity: 1, ServiceName: "db"},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "web", "expire-web.example.com")
+	require.NoError(t, err)
+	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "db", "expire-db.example.com")
+	require.NoError(t, err)
+
+	s.f.Ctx = s.f.Ctx.WithBlockTime(s.f.Ctx.BlockTime().Add(61 * time.Second))
+	require.NoError(t, s.f.App.BillingKeeper.EndBlocker(s.f.Ctx))
+
+	expired, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, pendingResp.LeaseUuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_EXPIRED, expired.State)
+
+	for _, dom := range []string{"expire-web.example.com", "expire-db.example.com"} {
+		_, _, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, dom)
+		require.NoError(t, err)
+		require.False(t, has, "all per-item index entries must release on EndBlocker expiry; %q still resolved", dom)
+	}
+}

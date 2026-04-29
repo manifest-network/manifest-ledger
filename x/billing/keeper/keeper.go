@@ -406,16 +406,17 @@ func (k *Keeper) GetLease(ctx context.Context, uuid string) (types.Lease, error)
 
 // SetLease sets a Lease in the store and reconciles all derived indexes.
 // The SKU index update is idempotent. The custom_domain reverse index is
-// reconciled from (lease.State, lease.CustomDomain): if the lease is editable
-// (PENDING or ACTIVE) and CustomDomain is non-empty, the index points to this
-// lease; otherwise the entry (if any) is removed. This collapses lifecycle
-// cleanup into a single rule and removes the need for callers to call
-// clearCustomDomainIndex around every state transition.
+// reconciled per-item from (lease.State, item.CustomDomain) for each item: if
+// the lease is editable (PENDING or ACTIVE) and the item's CustomDomain is
+// non-empty, an index entry points the domain at (lease.Uuid, item.ServiceName);
+// otherwise the entry (if any) is removed. This collapses lifecycle cleanup
+// into a single rule and removes the need for callers to clear index entries
+// around state transitions.
 //
 // The previous lease (if any) is read once to detect renames (the old domain
-// must be released even if the new one is the same lease) and to enforce
-// uniqueness at the storage layer (an in-flight write that would overwrite
-// another lease's claim returns ErrCustomDomainAlreadyClaimed).
+// must be released even if the new domain belongs to the same item) and to
+// enforce uniqueness at the storage layer (an in-flight write that would
+// overwrite another claim returns ErrCustomDomainAlreadyClaimed).
 func (k *Keeper) SetLease(ctx context.Context, lease types.Lease) error {
 	prev, hadPrev, err := k.getPreviousLease(ctx, lease.Uuid)
 	if err != nil {
@@ -503,13 +504,20 @@ func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Leas
 		existing, err := k.CustomDomainIndex.Get(ctx, newDomain)
 		switch {
 		case err == nil:
-			if existing.LeaseUuid == lease.Uuid && existing.ServiceName == s {
+			switch {
+			case existing.LeaseUuid == lease.Uuid && existing.ServiceName == s:
 				continue // idempotent re-set
+			case existing.LeaseUuid == lease.Uuid:
+				return types.ErrCustomDomainAlreadyClaimed.Wrapf(
+					"domain %q is already claimed by item %q on this lease",
+					newDomain, existing.ServiceName,
+				)
+			default:
+				return types.ErrCustomDomainAlreadyClaimed.Wrapf(
+					"domain %q is already claimed by lease %s item %q",
+					newDomain, existing.LeaseUuid, existing.ServiceName,
+				)
 			}
-			return types.ErrCustomDomainAlreadyClaimed.Wrapf(
-				"domain %q is already claimed by lease %s item %q",
-				newDomain, existing.LeaseUuid, existing.ServiceName,
-			)
 		case errors.Is(err, collections.ErrNotFound):
 			if err := k.CustomDomainIndex.Set(ctx, newDomain, types.CustomDomainTarget{
 				LeaseUuid:   lease.Uuid,
