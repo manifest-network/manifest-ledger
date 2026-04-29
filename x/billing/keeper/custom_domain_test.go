@@ -605,15 +605,20 @@ func TestInitGenesis_DuplicateCustomDomainFails(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrCustomDomainAlreadyClaimed)
 }
 
+// TestMigrate1to2 verifies the v1→v2 migration is a true no-op: it must not
+// touch Params.ReservedDomainSuffixes regardless of the pre-migration value.
+// Operators seed the list at upgrade time or via post-upgrade MsgUpdateParams.
 func TestMigrate1to2(t *testing.T) {
 	f := initFixture(t)
 
+	// Empty starting state stays empty.
 	require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, types.DefaultParams()))
 	require.NoError(t, keeper.NewMigrator(f.App.BillingKeeper).Migrate1to2(f.Ctx))
 	params, err := f.App.BillingKeeper.GetParams(f.Ctx)
 	require.NoError(t, err)
-	require.ElementsMatch(t, keeper.DefaultReservedDomainSuffixesV2, params.ReservedDomainSuffixes)
+	require.Empty(t, params.ReservedDomainSuffixes, "migration must not seed defaults")
 
+	// Pre-existing operator values are preserved unchanged.
 	custom := []string{".operator.zone"}
 	params.ReservedDomainSuffixes = custom
 	require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, params))

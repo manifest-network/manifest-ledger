@@ -116,6 +116,7 @@ message LeaseItem {
   // than the generic billing lease. It lives here today as a pragmatic shortcut
   // alongside LeaseItem.custom_domain. When a non-compute lease kind ships,
   // migrate this (and custom_domain) into x/deployment via a state migration.
+  // Tracked: ENG-80.
   string service_name = 4 [(gogoproto.jsontag) = "service_name,omitempty"];
 
   // custom_domain is the optional FQDN the tenant has assigned to this item.
@@ -126,6 +127,7 @@ message LeaseItem {
   // than the generic billing lease. It lives here today as a pragmatic shortcut
   // alongside LeaseItem.service_name. When a non-compute lease kind ships,
   // migrate this (and service_name) into x/deployment via a state migration.
+  // Tracked: ENG-80.
   string custom_domain = 5 [(gogoproto.jsontag) = "custom_domain,omitempty"];
 }
 

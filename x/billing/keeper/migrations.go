@@ -14,24 +14,22 @@ func NewMigrator(k Keeper) Migrator {
 	return Migrator{keeper: k}
 }
 
-// DefaultReservedDomainSuffixesV2 are the provider wildcard zones that the
-// Migrate1to2 migration seeds into Params.ReservedDomainSuffixes when the
-// field is empty. New zones added later are managed via MsgUpdateParams.
-var DefaultReservedDomainSuffixesV2 = []string{
-	".barney0.manifest0.net",
-	".barney8.manifest0.net",
-}
-
-// Migrate1to2 seeds Params.ReservedDomainSuffixes for the custom_domain
-// feature. If operator-defined values already exist, the migration leaves
-// them in place (idempotent / defensive).
-func (m Migrator) Migrate1to2(ctx sdk.Context) error {
-	params, err := m.keeper.GetParams(ctx)
-	if err != nil {
-		return err
-	}
-	if len(params.ReservedDomainSuffixes) == 0 {
-		params.ReservedDomainSuffixes = append([]string{}, DefaultReservedDomainSuffixesV2...)
-	}
-	return m.keeper.SetParams(ctx, params)
+// Migrate1to2 marks the v1→v2 consensus-version bump for the custom_domain
+// feature. It is a no-op: the new Params.ReservedDomainSuffixes field defaults
+// to an empty slice (proto3 zero value) and the new CustomDomainIndex
+// collection lives at a fresh store prefix, so no on-chain state needs
+// rewriting.
+//
+// Operators are responsible for seeding Params.ReservedDomainSuffixes with
+// the network's provider wildcard zones either:
+//   - in the upgrade plan's genesis overlay at upgrade time, or
+//   - via MsgUpdateParams from the module authority post-upgrade.
+//
+// Provider-zone defaults are intentionally NOT baked into the binary; once a
+// hostname ships in a release tag it cannot be unshipped from chains that
+// have run the upgrade. See ENG-82 for the planned automation
+// (provider-declared wildcard zones in x/sku) that will replace manual
+// reservation for the common case.
+func (m Migrator) Migrate1to2(_ sdk.Context) error {
+	return nil
 }

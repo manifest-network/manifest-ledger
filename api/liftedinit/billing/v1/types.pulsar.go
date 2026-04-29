@@ -4401,6 +4401,7 @@ type LeaseItem struct {
 	// than the generic billing lease. It lives here today as a pragmatic shortcut
 	// alongside LeaseItem.custom_domain. When a non-compute lease kind ships,
 	// migrate this (and custom_domain) into x/deployment via a state migration.
+	// Tracked: ENG-80.
 	ServiceName string `protobuf:"bytes,4,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
 	// custom_domain is the optional FQDN the tenant has assigned to this item.
 	// When set, requests to this domain are routed to this item's container by
@@ -4410,6 +4411,7 @@ type LeaseItem struct {
 	// than the generic billing lease. It lives here today as a pragmatic shortcut
 	// alongside LeaseItem.service_name. When a non-compute lease kind ships,
 	// migrate this (and service_name) into x/deployment via a state migration.
+	// Tracked: ENG-80.
 	CustomDomain string `protobuf:"bytes,5,opt,name=custom_domain,json=customDomain,proto3" json:"custom_domain,omitempty"`
 }
 
