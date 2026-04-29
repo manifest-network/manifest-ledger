@@ -497,13 +497,35 @@ func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Leas
 	}
 
 	// Release any prev entry whose live domain disappeared, changed, or whose
-	// lease moved to terminal state.
+	// lease moved to terminal state. The Remove is gated on an ownership check
+	// against the current index target: terminal-state leases preserve their
+	// LeaseItem.CustomDomain field for audit, so subsequent SetLease calls on
+	// the same closed lease (e.g. post-close withdraw settlement, which updates
+	// LastSettledAt) re-derive prevByService from the still-populated field
+	// and would otherwise unconditionally Remove an entry that another lease
+	// has since legitimately claimed. Removing only when the index still
+	// targets (this lease, this service) closes that hole without sacrificing
+	// the audit-trail field on the closed lease record.
 	for s, prevDomain := range prevByService {
-		if !editable || newByService[s] != prevDomain {
-			if err := k.CustomDomainIndex.Remove(ctx, prevDomain); err != nil &&
-				!errors.Is(err, collections.ErrNotFound) {
+		if editable && newByService[s] == prevDomain {
+			continue
+		}
+		existing, err := k.CustomDomainIndex.Get(ctx, prevDomain)
+		switch {
+		case err == nil:
+			if existing.LeaseUuid != lease.Uuid || existing.ServiceName != s {
+				// Entry has been re-claimed by another (lease, service) since
+				// our prev snapshot. Do not remove; it isn't ours.
+				continue
+			}
+			if err := k.CustomDomainIndex.Remove(ctx, prevDomain); err != nil {
 				return err
 			}
+		case errors.Is(err, collections.ErrNotFound):
+			// Already gone (e.g., a previous reconcile already cleaned up).
+			// Idempotent — nothing to do.
+		default:
+			return err
 		}
 	}
 

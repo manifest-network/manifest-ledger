@@ -1039,3 +1039,59 @@ func TestQuerier_LeaseByCustomDomain_WhitespaceRejectedAsInvalidArgument(t *test
 		})
 	}
 }
+
+// TestSetLease_TerminalReconcileDoesNotPoisonAnotherLeasesIndexEntry is a
+// regression for a cross-lease index-poisoning bug: terminal-state leases
+// preserve LeaseItem.CustomDomain for audit, so a subsequent SetLease on the
+// same closed lease (e.g. post-close withdraw settlement) used to fire an
+// unconditional Remove against the still-populated prev domain — silently
+// deleting whatever lease had legitimately re-claimed that domain in the
+// meantime. The fix gates the Remove on an ownership check; this test asserts
+// a re-claim by lease B survives a second SetLease on the closed lease A.
+func TestSetLease_TerminalReconcileDoesNotPoisonAnotherLeasesIndexEntry(t *testing.T) {
+	s := setupCustomDomain(t)
+	const sharedDomain = "shared.example.com"
+
+	// Lease A claims the domain.
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", sharedDomain)
+	require.NoError(t, err)
+
+	// Lease A closes. The first SetLease reconcile correctly removes the
+	// index entry; the LeaseItem.CustomDomain field stays populated for audit.
+	_, err = s.msgServer.CloseLease(s.f.Ctx, &types.MsgCloseLease{
+		Sender:     s.tenant.String(),
+		LeaseUuids: []string{s.leaseUUID},
+	})
+	require.NoError(t, err)
+	closedA, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_CLOSED, closedA.State)
+	require.Equal(t, sharedDomain, closedA.Items[0].CustomDomain, "audit field preserved on close")
+
+	// Lease B (different tenant, fresh fixture state) re-claims the now-free
+	// domain. We simulate this by creating a second active lease for the same
+	// fixture's tenant on a fresh provider/sku — the lease UUID differs.
+	leaseB := s.createMultiItemLease(t)
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseB, "web", sharedDomain)
+	require.NoError(t, err)
+	got, sn, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, sharedDomain)
+	require.NoError(t, err)
+	require.True(t, has)
+	require.Equal(t, leaseB, got.Uuid, "after re-claim, index points at lease B")
+	require.Equal(t, "web", sn)
+
+	// Now simulate a post-close settlement on lease A: SetLease is called on
+	// the still-CLOSED lease (e.g. withdrawFromLeases updating LastSettledAt
+	// after PerformSettlement on the residual accrual between LastSettledAt
+	// and ClosedAt). Pre-fix, this would Remove(sharedDomain) unconditionally
+	// because closedA.Items[0].CustomDomain is still set and editable=false.
+	require.NoError(t, s.f.App.BillingKeeper.SetLease(s.f.Ctx, closedA))
+
+	// The fix asserts: lease B's index entry must survive the spurious
+	// reconcile pass on lease A.
+	got, sn, has, err = s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, sharedDomain)
+	require.NoError(t, err)
+	require.True(t, has, "lease B's index entry must survive a SetLease on the closed lease A")
+	require.Equal(t, leaseB, got.Uuid)
+	require.Equal(t, "web", sn)
+}
