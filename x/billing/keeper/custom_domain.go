@@ -48,7 +48,13 @@ func (k *Keeper) IsAuthorizedForTenant(ctx context.Context, sender, tenant strin
 // GetLeaseByCustomDomain returns the lease and the service_name of the item
 // that claims the given custom_domain. The third return is false (with nil
 // error) when no item has claimed the domain.
+//
+// The input is normalised (lower-cased and trimmed) so callers don't need to
+// remember to do it themselves — the index keys are always written in
+// canonical form by SetLeaseItemCustomDomain, and a non-canonical query string
+// would otherwise miss a real match.
 func (k *Keeper) GetLeaseByCustomDomain(ctx context.Context, domain string) (types.Lease, string, bool, error) {
+	domain = strings.ToLower(strings.TrimSpace(domain))
 	target, err := k.CustomDomainIndex.Get(ctx, domain)
 	if err != nil {
 		if errors.Is(err, collections.ErrNotFound) {

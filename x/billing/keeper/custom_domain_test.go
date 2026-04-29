@@ -992,3 +992,29 @@ func TestSetLeaseItemCustomDomain_IdempotentReSet(t *testing.T) {
 	require.True(t, has)
 	require.Equal(t, s.leaseUUID, got.Uuid)
 }
+
+// TestGetLeaseByCustomDomain_NormalisesInput verifies that the keeper-level
+// reverse-lookup function normalises its input (lowercase + trim) so callers
+// who skip the msg-server / querier layers (future IBC handlers, internal
+// hooks, etc.) get consistent matching with the canonical-form index keys.
+func TestGetLeaseByCustomDomain_NormalisesInput(t *testing.T) {
+	s := setupCustomDomain(t)
+	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "norm.example.com")
+	require.NoError(t, err)
+
+	cases := []string{
+		"norm.example.com",
+		"NORM.example.com",
+		"  norm.example.com  ",
+		"\tNorm.Example.COM\n",
+	}
+	for _, q := range cases {
+		t.Run(q, func(t *testing.T) {
+			got, serviceName, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, q)
+			require.NoError(t, err)
+			require.True(t, has, "non-canonical input %q must still match the canonical index entry", q)
+			require.Equal(t, s.leaseUUID, got.Uuid)
+			require.Equal(t, "", serviceName)
+		})
+	}
+}
