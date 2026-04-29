@@ -31,7 +31,9 @@ import (
 
 const (
 	// ConsensusVersion defines the current x/billing module consensus version.
-	ConsensusVersion = 1
+	// v2 introduced Params.ReservedDomainSuffixes (seeded by Migrate1to2) and
+	// the custom_domain feature on Lease.
+	ConsensusVersion = 2
 )
 
 var (
@@ -166,6 +168,11 @@ func (am AppModule) QuerierRoute() string {
 func (am AppModule) RegisterServices(cfg module.Configurator) {
 	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImpl(am.keeper))
 	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQuerier(am.keeper))
+
+	migrator := keeper.NewMigrator(am.keeper)
+	if err := cfg.RegisterMigration(types.ModuleName, 1, migrator.Migrate1to2); err != nil {
+		panic(fmt.Errorf("failed to register %s migration v1→v2: %w", types.ModuleName, err))
+	}
 }
 
 // ConsensusVersion implements AppModule/ConsensusVersion.

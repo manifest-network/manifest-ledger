@@ -31,6 +31,9 @@ var (
 	ErrInvalidClosureReason    = errors.Register(ModuleName, 26, "invalid closure reason")
 	ErrInvalidMetaHash         = errors.Register(ModuleName, 27, "invalid meta hash")
 	ErrInvalidServiceName      = errors.Register(ModuleName, 28, "invalid service name")
+	ErrInvalidCustomDomain     = errors.Register(ModuleName, 29, "invalid custom domain")
+	ErrCustomDomainAlreadyClaimed = errors.Register(ModuleName, 30, "custom domain already claimed")
+	ErrLeaseNotEditable        = errors.Register(ModuleName, 31, "lease state does not allow custom_domain edit")
 )
 
 // MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.
@@ -57,3 +60,7 @@ const MaxMetaHashLength = 64
 // MaxServiceNameLength is the maximum length of a service_name field.
 // Matches DNS label maximum length (RFC 1123).
 const MaxServiceNameLength = 63
+
+// MaxCustomDomainLength is the maximum total length of a Lease.custom_domain
+// FQDN. Matches the RFC 1035 maximum length for a domain name.
+const MaxCustomDomainLength = 253

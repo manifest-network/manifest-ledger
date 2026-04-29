@@ -48,6 +48,16 @@ message Params {
   // Must be between 60 (1 minute) and 86400 (24 hours).
   uint64 pending_timeout = 6
       [(gogoproto.jsontag) = "pending_timeout,omitempty,string"];
+
+  // reserved_domain_suffixes is the list of DNS suffixes (each beginning with `.`)
+  // that tenants are forbidden from claiming as a Lease.custom_domain. These match
+  // provider wildcard zones (e.g. `.barney0.manifest0.net`) where the provider
+  // already serves auto-generated subdomains under a wildcard TLS cert. The match
+  // is a case-insensitive label-boundary suffix check and also covers the apex
+  // (e.g. `barney0.manifest0.net` itself). Tunable via MsgUpdateParams so new
+  // provider zones can be reserved without a chain upgrade.
+  repeated string reserved_domain_suffixes = 7
+      [(gogoproto.jsontag) = "reserved_domain_suffixes,omitempty"];
 }
 
 // LeaseState defines the state of a lease.
@@ -101,6 +111,11 @@ message LeaseItem {
   // must not start or end with a hyphen (e.g., "web", "db", "my-service-1").
   // When used, all items must have a service_name and uniqueness shifts from sku_uuid to service_name,
   // allowing the same SKU to appear multiple times (e.g., "web" and "db" both using docker-small).
+  //
+  // COMPUTE-SPECIFIC: this field belongs in a future x/deployment module rather
+  // than the generic billing lease. It lives here today as a pragmatic shortcut
+  // alongside Lease.custom_domain. When a non-compute lease kind ships, migrate
+  // this (and custom_domain) into x/deployment via a state migration.
   string service_name = 4 [(gogoproto.jsontag) = "service_name,omitempty"];
 }
 
@@ -191,6 +206,16 @@ message Lease {
   // reservation = sum(locked_price × quantity) × min_lease_duration_at_creation
   uint64 min_lease_duration_at_creation = 15
       [(gogoproto.jsontag) = "min_lease_duration_at_creation,omitempty,string"];
+
+  // custom_domain is the optional FQDN the tenant has assigned to this deployment.
+  // When set, requests to this domain are routed to the deployment's containers by
+  // the provider, with a TLS cert provisioned via HTTP-01.
+  //
+  // COMPUTE-SPECIFIC: this field belongs in a future x/deployment module rather
+  // than the generic billing lease. It lives here today as a pragmatic shortcut
+  // alongside LeaseItem.service_name. When a non-compute lease kind ships,
+  // migrate this (and service_name) into x/deployment via a state migration.
+  string custom_domain = 16 [(gogoproto.jsontag) = "custom_domain,omitempty"];
 }
 
 // CreditAccount represents a tenant's credit account.

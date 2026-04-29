@@ -30,15 +30,13 @@ func NewMsgServerImpl(keeper Keeper) types.MsgServer {
 }
 
 // isAuthorizedForTenantLeaseCreation checks if the sender is the authority or in the allowed list.
+// Thin wrapper over the keeper's shared HasAdminPrivileges helper.
 func (ms msgServer) isAuthorizedForTenantLeaseCreation(ctx context.Context, sender string) (bool, error) {
-	if ms.k.GetAuthority() == sender {
-		return true, nil
-	}
-	params, err := ms.k.GetParams(ctx)
+	role, err := ms.k.HasAdminPrivileges(ctx, sender)
 	if err != nil {
 		return false, err
 	}
-	return params.IsAllowed(sender), nil
+	return role != "", nil
 }
 
 // FundCredit funds a tenant's credit account.
@@ -546,7 +544,8 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			leases[i].ClosureReason = msg.Reason
 		}
 
-		// Persist lease state update
+		// SetLease reconciles the custom_domain reverse index from the lease's
+		// new (terminal) state.
 		if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil {
 			return nil, types.ErrInvalidLease.Wrapf("failed to update lease %s: %s", leases[i].Uuid, err)
 		}
@@ -1035,6 +1034,17 @@ func (ms msgServer) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams
 	)
 
 	return &types.MsgUpdateParamsResponse{}, nil
+}
+
+// SetLeaseCustomDomain sets or clears Lease.custom_domain for a lease.
+func (ms msgServer) SetLeaseCustomDomain(ctx context.Context, msg *types.MsgSetLeaseCustomDomain) (*types.MsgSetLeaseCustomDomainResponse, error) {
+	if err := msg.ValidateBasic(); err != nil {
+		return nil, err
+	}
+	if _, err := ms.k.SetLeaseCustomDomain(ctx, msg.Sender, msg.LeaseUuid, msg.CustomDomain); err != nil {
+		return nil, err
+	}
+	return &types.MsgSetLeaseCustomDomainResponse{}, nil
 }
 
 // settleLease calculates and transfers accrued charges from tenant's credit account

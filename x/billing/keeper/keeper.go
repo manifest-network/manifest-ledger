@@ -141,6 +141,17 @@ type Keeper struct {
 	// Since a lease can contain multiple SKUs, this is managed as a separate Map
 	// with composite key (sku_uuid, lease_uuid) rather than as part of LeaseIndexes.
 	LeaseBySKUIndex collections.Map[collections.Pair[string, string], bool]
+	// CustomDomainIndex is the unique reverse index from custom_domain to leaseUUID.
+	// Maintained automatically by SetLease via reconcileCustomDomainIndex, which
+	// derives the index entry from (lease.State, lease.CustomDomain): the entry
+	// exists iff the lease is in PENDING or ACTIVE state and CustomDomain is
+	// non-empty. Not part of LeaseIndexes because empty domains must not be
+	// indexed and lifecycle removal is conditional on state. Storage-level
+	// uniqueness is enforced inside reconcileCustomDomainIndex; callers that
+	// mutate Lease.CustomDomain outside SetLeaseCustomDomain should wrap their
+	// SetLease call in a CacheContext to roll back cleanly on
+	// ErrCustomDomainAlreadyClaimed.
+	CustomDomainIndex collections.Map[string, string]
 
 	authority string
 
@@ -205,6 +216,13 @@ func NewKeeper(
 			"leases_by_sku",
 			collections.PairKeyCodec(collections.StringKey, collections.StringKey), // (sku_uuid, lease_uuid)
 			collections.BoolValue,
+		),
+		CustomDomainIndex: collections.NewMap(
+			sb,
+			types.CustomDomainIndexKey,
+			"leases_by_custom_domain",
+			collections.StringKey,
+			collections.StringValue,
 		),
 	}
 
@@ -306,7 +324,10 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 			}
 		}
 
-		// Use SetLease (not k.Leases.Set) to also populate the LeaseBySKUIndex.
+		// SetLease populates LeaseBySKUIndex and reconciles the custom_domain
+		// reverse index from (state, custom_domain). Storage-level uniqueness
+		// detects two genesis leases claiming the same domain via
+		// ErrCustomDomainAlreadyClaimed.
 		if err := k.SetLease(ctx, lease); err != nil {
 			return err
 		}
@@ -382,15 +403,28 @@ func (k *Keeper) GetLease(ctx context.Context, uuid string) (types.Lease, error)
 	return lease, nil
 }
 
-// SetLease sets a Lease in the store and updates the SKU index.
-// The SKU index update is idempotent - safe to call for both new and existing leases.
+// SetLease sets a Lease in the store and reconciles all derived indexes.
+// The SKU index update is idempotent. The custom_domain reverse index is
+// reconciled from (lease.State, lease.CustomDomain): if the lease is editable
+// (PENDING or ACTIVE) and CustomDomain is non-empty, the index points to this
+// lease; otherwise the entry (if any) is removed. This collapses lifecycle
+// cleanup into a single rule and removes the need for callers to call
+// clearCustomDomainIndex around every state transition.
+//
+// The previous lease (if any) is read once to detect renames (the old domain
+// must be released even if the new one is the same lease) and to enforce
+// uniqueness at the storage layer (an in-flight write that would overwrite
+// another lease's claim returns ErrCustomDomainAlreadyClaimed).
 func (k *Keeper) SetLease(ctx context.Context, lease types.Lease) error {
-	// Store the lease in the indexed map (handles all standard indexes)
+	prev, hadPrev, err := k.getPreviousLease(ctx, lease.Uuid)
+	if err != nil {
+		return err
+	}
+
 	if err := k.Leases.Set(ctx, lease.Uuid, lease); err != nil {
 		return err
 	}
 
-	// Update the many-to-many SKU index (one entry per SKU in the lease)
 	for _, item := range lease.Items {
 		key := collections.Join(item.SkuUuid, lease.Uuid)
 		if err := k.LeaseBySKUIndex.Set(ctx, key, true); err != nil {
@@ -398,7 +432,71 @@ func (k *Keeper) SetLease(ctx context.Context, lease types.Lease) error {
 		}
 	}
 
-	return nil
+	return k.reconcileCustomDomainIndex(ctx, prev, hadPrev, lease)
+}
+
+// getPreviousLease loads the existing lease at uuid (if any) before SetLease
+// overwrites it. Returns (lease, true, nil) when present, (zero, false, nil)
+// when not, or (zero, false, err) on a real error.
+func (k *Keeper) getPreviousLease(ctx context.Context, uuid string) (types.Lease, bool, error) {
+	prev, err := k.Leases.Get(ctx, uuid)
+	if err != nil {
+		if errors.Is(err, collections.ErrNotFound) {
+			return types.Lease{}, false, nil
+		}
+		return types.Lease{}, false, err
+	}
+	return prev, true, nil
+}
+
+// reconcileCustomDomainIndex enforces the (state, custom_domain) → index
+// invariant after a SetLease write. It releases the previous lease's index
+// entry when the lease's domain changes or its state moves to terminal, and
+// installs the new entry when the lease is editable with a non-empty domain.
+// Returns ErrCustomDomainAlreadyClaimed if the new entry would overwrite a
+// different lease's claim — a defence-in-depth check above
+// SetLeaseCustomDomain's pre-check.
+func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Lease, hadPrev bool, lease types.Lease) error {
+	editable := lease.State == types.LEASE_STATE_PENDING || lease.State == types.LEASE_STATE_ACTIVE
+
+	// Release the previous index entry whenever the lease's "live" domain
+	// changes — either because the domain string itself changed, or because
+	// the lease moved out of an editable state.
+	if hadPrev && prev.CustomDomain != "" {
+		shouldRelease := !editable ||
+			lease.CustomDomain == "" ||
+			prev.CustomDomain != lease.CustomDomain
+		if shouldRelease {
+			if err := k.CustomDomainIndex.Remove(ctx, prev.CustomDomain); err != nil &&
+				!errors.Is(err, collections.ErrNotFound) {
+				return err
+			}
+		}
+	}
+
+	if !editable || lease.CustomDomain == "" {
+		return nil
+	}
+
+	// Storage-level uniqueness: refuse to overwrite an entry pointing at a
+	// different lease. SetLeaseCustomDomain pre-checks this with a friendlier
+	// error; this is the last-line defence (genesis import, future writers).
+	existing, err := k.CustomDomainIndex.Get(ctx, lease.CustomDomain)
+	switch {
+	case err == nil:
+		if existing != lease.Uuid {
+			return types.ErrCustomDomainAlreadyClaimed.Wrapf(
+				"domain %q is already claimed by lease %s",
+				lease.CustomDomain, existing,
+			)
+		}
+		// Entry already points at us — nothing to do.
+		return nil
+	case errors.Is(err, collections.ErrNotFound):
+		return k.CustomDomainIndex.Set(ctx, lease.CustomDomain, lease.Uuid)
+	default:
+		return err
+	}
 }
 
 // GetNextLeaseSequence returns the next sequence number for deterministic UUID generation.

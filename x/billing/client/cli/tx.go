@@ -37,6 +37,7 @@ func NewTxCmd() *cobra.Command {
 		NewCloseLeaseCmd(),
 		NewWithdrawCmd(),
 		NewUpdateParamsCmd(),
+		NewSetLeaseCustomDomainCmd(),
 	)
 
 	return cmd
@@ -592,5 +593,43 @@ cancel-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000
 
 	flags.AddTxFlagsToCmd(cmd)
 
+	return cmd
+}
+
+// NewSetLeaseCustomDomainCmd returns the set-custom-domain command.
+func NewSetLeaseCustomDomainCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "set-custom-domain [lease-uuid] [domain]",
+		Short: "Set or clear the custom_domain on a lease",
+		Long: `Set or clear the custom_domain on a lease. Pass an empty string for
+[domain] to clear the field. Authorised senders are the lease tenant, the module
+authority, or any address in params.allowed_list.`,
+		Example: `# Set a custom domain
+set-custom-domain 01902a9b-1234-7000-8000-000000000001 app.example.com --from tenant-key
+
+# Clear a custom domain
+set-custom-domain 01902a9b-1234-7000-8000-000000000001 "" --from tenant-key`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			leaseUUID := args[0]
+			if !pkguuid.IsValidUUID(leaseUUID) {
+				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+			}
+
+			msg := &types.MsgSetLeaseCustomDomain{
+				Sender:       clientCtx.GetFromAddress().String(),
+				LeaseUuid:    leaseUUID,
+				CustomDomain: args[1],
+			}
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }

@@ -1,6 +1,8 @@
 package types
 
 import (
+	"strings"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
@@ -16,6 +18,7 @@ var (
 	_ sdk.Msg = &MsgAcknowledgeLease{}
 	_ sdk.Msg = &MsgRejectLease{}
 	_ sdk.Msg = &MsgCancelLease{}
+	_ sdk.Msg = &MsgSetLeaseCustomDomain{}
 )
 
 // IsValidDNSLabel checks whether name is a valid DNS label per RFC 1123:
@@ -288,4 +291,105 @@ func (m *MsgCancelLease) ValidateBasic() error {
 	}
 
 	return ValidateBatchLeaseUUIDs(m.LeaseUuids)
+}
+
+// IsValidFQDN validates a custom-domain FQDN.
+// Rules: lowercase, length 1..MaxCustomDomainLength, no scheme/path/space/`@`/`*`,
+// no leading/trailing dot, ≥1 dot separator, each label is a valid RFC 1123 DNS
+// label (1-63 alphanum + hyphen, no leading/trailing hyphen), the TLD label has
+// at least one non-digit character (rejects raw IPs).
+func IsValidFQDN(domain string) error {
+	n := len(domain)
+	if n == 0 {
+		return ErrInvalidCustomDomain.Wrap("empty domain")
+	}
+	if n > MaxCustomDomainLength {
+		return ErrInvalidCustomDomain.Wrapf("domain length %d exceeds maximum %d", n, MaxCustomDomainLength)
+	}
+	if domain != strings.ToLower(domain) {
+		return ErrInvalidCustomDomain.Wrap("domain must be lowercase")
+	}
+	if strings.Contains(domain, "://") {
+		return ErrInvalidCustomDomain.Wrap("domain must not contain a scheme")
+	}
+	for _, c := range domain {
+		switch c {
+		case '/', ' ', '\t', '@', '*', '?', '#':
+			return ErrInvalidCustomDomain.Wrapf("domain contains forbidden character %q", c)
+		}
+	}
+	if domain[0] == '.' {
+		return ErrInvalidCustomDomain.Wrap("domain must not start with '.'")
+	}
+	if domain[n-1] == '.' {
+		return ErrInvalidCustomDomain.Wrap("domain must not end with '.'")
+	}
+
+	labels := strings.Split(domain, ".")
+	if len(labels) < 2 {
+		return ErrInvalidCustomDomain.Wrap("domain must contain at least one '.' separator")
+	}
+	for i, label := range labels {
+		if !IsValidDNSLabel(label) {
+			return ErrInvalidCustomDomain.Wrapf("label %d %q is not a valid RFC 1123 DNS label", i, label)
+		}
+	}
+	tld := labels[len(labels)-1]
+	hasNonDigit := false
+	for i := 0; i < len(tld); i++ {
+		c := tld[i]
+		if c < '0' || c > '9' {
+			hasNonDigit = true
+			break
+		}
+	}
+	if !hasNonDigit {
+		return ErrInvalidCustomDomain.Wrap("top-level label must contain at least one non-digit character")
+	}
+	return nil
+}
+
+// MatchesReservedSuffix reports whether domain falls inside any reserved suffix.
+// Each entry in reserved is expected to begin with '.' (enforced by Params.Validate).
+// A match occurs when domain ends with the suffix at a label boundary, or when
+// domain equals the suffix's apex (the substring after the leading dot).
+// The comparison is case-insensitive.
+//
+// Fail-closed: a malformed entry (one that does not begin with '.', or is shorter
+// than 2 characters) is treated as a match. Params.Validate rejects malformed
+// entries, so this branch is reachable only if the params slice was set without
+// validation. Refusing the claim in that case is the safe default for a
+// security-flavoured check.
+func MatchesReservedSuffix(domain string, reserved []string) bool {
+	d := strings.ToLower(domain)
+	for _, raw := range reserved {
+		s := strings.ToLower(raw)
+		if len(s) < 2 || s[0] != '.' {
+			return true
+		}
+		if strings.HasSuffix(d, s) {
+			return true
+		}
+		if d == s[1:] {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidateBasic performs basic validation for MsgSetLeaseCustomDomain.
+func (m *MsgSetLeaseCustomDomain) ValidateBasic() error {
+	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
+		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
+	}
+	if m.LeaseUuid == "" {
+		return ErrInvalidLease.Wrap("lease_uuid cannot be empty")
+	}
+	if !pkguuid.IsValidUUID(m.LeaseUuid) {
+		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", m.LeaseUuid)
+	}
+	if m.CustomDomain == "" {
+		return nil
+	}
+	return IsValidFQDN(m.CustomDomain)
 }

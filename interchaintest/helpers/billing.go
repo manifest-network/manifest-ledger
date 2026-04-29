@@ -41,6 +41,7 @@ type LeaseJSON struct {
 	ExpiredAt       *time.Time      `json:"expired_at,omitempty"`
 	ClosureReason   string          `json:"closure_reason,omitempty"`
 	MetaHash        []byte          `json:"meta_hash,omitempty"`
+	CustomDomain    string          `json:"custom_domain,omitempty"`
 }
 
 // GetState returns the LeaseState enum value from the string state.
@@ -168,6 +169,14 @@ func BillingCancelLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
+// BillingSetLeaseCustomDomain sets or clears the custom_domain on a lease.
+// An empty domain clears the field; sender must be tenant, authority, or
+// in params.allowed_list.
+func BillingSetLeaseCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID, domain string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "set-custom-domain", leaseUUID, domain}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
 // BillingCreateAndAcknowledgeLease creates a new lease and immediately acknowledges it.
 // This is a convenience function for tests where an active lease is needed.
 // Returns the lease UUID and any error.
@@ -271,6 +280,16 @@ func BillingQueryParams(ctx context.Context, chain *cosmos.CosmosChain) (*billin
 func BillingQueryLease(ctx context.Context, chain *cosmos.CosmosChain, leaseUUID string) (*LeaseResponseJSON, error) {
 	var res LeaseResponseJSON
 	cmd := []string{"query", "billing", "lease", leaseUUID}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// BillingQueryLeaseByCustomDomain queries the lease that has claimed a given custom_domain.
+func BillingQueryLeaseByCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, domain string) (*LeaseResponseJSON, error) {
+	var res LeaseResponseJSON
+	cmd := []string{"query", "billing", "lease-by-domain", domain}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}

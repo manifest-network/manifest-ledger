@@ -41,6 +41,9 @@ const MaxPendingLeasesPerTenantUpperBound = uint64(1_000)
 const MaxMinLeaseDuration = uint64(30 * 24 * 3600)
 
 // DefaultParams returns the default billing module parameters.
+// ReservedDomainSuffixes is intentionally empty — operators are expected to
+// seed provider wildcard zones via genesis JSON, MsgUpdateParams, or the
+// Migrate1to2 migration on existing chains.
 func DefaultParams() Params {
 	return Params{
 		MaxLeasesPerTenant:        DefaultMaxLeasesPerTenant,
@@ -49,10 +52,12 @@ func DefaultParams() Params {
 		MinLeaseDuration:          DefaultMinLeaseDuration,
 		MaxPendingLeasesPerTenant: DefaultMaxPendingLeasesPerTenant,
 		PendingTimeout:            DefaultPendingTimeout,
+		ReservedDomainSuffixes:    nil,
 	}
 }
 
-// NewParams creates a new Params instance.
+// NewParams creates a new Params instance with the legacy field set
+// (ReservedDomainSuffixes defaults to nil; set on the struct if needed).
 func NewParams(maxLeasesPerTenant uint64, allowedList []string, maxItemsPerLease uint64, minLeaseDuration uint64, maxPendingLeasesPerTenant uint64, pendingTimeout uint64) Params {
 	return Params{
 		MaxLeasesPerTenant:        maxLeasesPerTenant,
@@ -116,6 +121,22 @@ func (p *Params) Validate() error {
 			return ErrInvalidParams.Wrapf("duplicate address in allowed list: %s", addr)
 		}
 		seen[addr] = true
+	}
+
+	// Validate reserved domain suffixes: each entry must start with '.' and
+	// the substring after the dot must be a valid FQDN. Duplicates rejected.
+	seenSuffix := make(map[string]bool)
+	for _, s := range p.ReservedDomainSuffixes {
+		if len(s) < 2 || s[0] != '.' {
+			return ErrInvalidParams.Wrapf("reserved domain suffix must begin with '.': %q", s)
+		}
+		if err := IsValidFQDN(s[1:]); err != nil {
+			return ErrInvalidParams.Wrapf("invalid reserved domain suffix %q: %s", s, err)
+		}
+		if seenSuffix[s] {
+			return ErrInvalidParams.Wrapf("duplicate reserved domain suffix: %q", s)
+		}
+		seenSuffix[s] = true
 	}
 
 	return nil

@@ -49,6 +49,13 @@ service Msg {
 
   // UpdateParams updates the module parameters.
   rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+
+  // SetLeaseCustomDomain sets or clears the custom_domain on a Lease.
+  // Authorised senders: the lease's tenant, the module authority, or any
+  // address in params.allowed_list. The lease must be in PENDING or ACTIVE
+  // state; an empty custom_domain clears the field and frees the index entry.
+  rpc SetLeaseCustomDomain(MsgSetLeaseCustomDomain)
+      returns (MsgSetLeaseCustomDomainResponse);
 }
 
 // LeaseItemInput is the input for creating a lease item.
@@ -383,3 +390,27 @@ message MsgCancelLeaseResponse {
   // cancelled_count is the number of leases that were cancelled.
   uint64 cancelled_count = 2 [(gogoproto.jsontag) = "cancelled_count,omitempty"];
 }
+
+// MsgSetLeaseCustomDomain sets or clears Lease.custom_domain.
+// An empty custom_domain clears the field and frees the index entry.
+message MsgSetLeaseCustomDomain {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (amino.name) = "lifted/billing/MsgSetLeaseCustomDomain";
+
+  // sender is the address signing the transaction. Must be the lease tenant,
+  // the module authority, or an address in params.allowed_list.
+  string sender = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "sender,omitempty"
+  ];
+
+  // lease_uuid is the UUID of the lease to update.
+  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+
+  // custom_domain is the FQDN to assign. An empty string clears the field
+  // and removes any existing reverse-index entry.
+  string custom_domain = 3 [(gogoproto.jsontag) = "custom_domain,omitempty"];
+}
+
+// MsgSetLeaseCustomDomainResponse is the response type for MsgSetLeaseCustomDomain.
+message MsgSetLeaseCustomDomainResponse {}
