@@ -236,22 +236,23 @@ func BillingWithdrawByProvider(ctx context.Context, chain *cosmos.CosmosChain, u
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
-// BillingUpdateParams updates the billing module parameters using the v1 field
-// set. Because MsgUpdateParams is replace-style, this helper queries the
-// chain's current Params first and preserves the v2 ReservedDomainSuffixes
-// list — without that, the legacy callers would silently wipe a suffix list
-// that some other code path had seeded. Callers that want to set or clear
-// ReservedDomainSuffixes should use BillingUpdateParamsFull directly.
+// BillingUpdateParams updates the billing module parameters using the v1
+// field set only. ReservedDomainSuffixes is left untouched: the CLI's
+// preserve-on-omit semantic keeps the existing on-chain value when the flag
+// is absent. Callers that want to set or clear ReservedDomainSuffixes should
+// use BillingUpdateParamsFull directly.
 func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, maxLeasesPerTenant uint64, maxItemsPerLease uint64, minLeaseDuration uint64, maxPendingLeasesPerTenant uint64, pendingTimeout uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
-	current, err := BillingQueryParams(ctx, chain)
-	if err != nil {
-		return sdk.TxResponse{}, fmt.Errorf("BillingUpdateParams: query current params: %w", err)
-	}
-	return BillingUpdateParamsFull(ctx, chain, user, maxLeasesPerTenant, maxItemsPerLease, minLeaseDuration, maxPendingLeasesPerTenant, pendingTimeout, allowedList, current.Params.ReservedDomainSuffixes, flags...)
+	return BillingUpdateParamsFull(ctx, chain, user, maxLeasesPerTenant, maxItemsPerLease, minLeaseDuration, maxPendingLeasesPerTenant, pendingTimeout, allowedList, nil, flags...)
 }
 
 // BillingUpdateParamsFull updates the billing module parameters including the
 // reserved_domain_suffixes list.
+//
+// Slice arguments use Go nil-vs-empty distinction to match the CLI's
+// preserve-on-omit semantic:
+//   - nil slice: omit the corresponding flag → CLI preserves the existing on-chain value.
+//   - non-nil slice (including length zero): pass the flag with the joined value
+//     → CLI sets the value (an empty []string{} explicitly clears).
 func BillingUpdateParamsFull(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, maxLeasesPerTenant uint64, maxItemsPerLease uint64, minLeaseDuration uint64, maxPendingLeasesPerTenant uint64, pendingTimeout uint64, allowedList []string, reservedDomainSuffixes []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{
 		"tx", "billing", "update-params",
@@ -261,10 +262,10 @@ func BillingUpdateParamsFull(ctx context.Context, chain *cosmos.CosmosChain, use
 		strconv.FormatUint(maxPendingLeasesPerTenant, 10),
 		strconv.FormatUint(pendingTimeout, 10),
 	}
-	if len(allowedList) > 0 {
+	if allowedList != nil {
 		cmd = append(cmd, "--allowed-list", strings.Join(allowedList, ","))
 	}
-	if len(reservedDomainSuffixes) > 0 {
+	if reservedDomainSuffixes != nil {
 		cmd = append(cmd, "--reserved-domain-suffixes", strings.Join(reservedDomainSuffixes, ","))
 	}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
