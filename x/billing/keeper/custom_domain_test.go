@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	sdkmath "cosmossdk.io/math"
 
@@ -1015,6 +1017,25 @@ func TestGetLeaseByCustomDomain_NormalisesInput(t *testing.T) {
 			require.True(t, has, "non-canonical input %q must still match the canonical index entry", q)
 			require.Equal(t, s.leaseUUID, got.Uuid)
 			require.Equal(t, "", serviceName)
+		})
+	}
+}
+
+// TestQuerier_LeaseByCustomDomain_WhitespaceRejectedAsInvalidArgument verifies
+// that whitespace-only requests produce a single InvalidArgument error rather
+// than passing the empty check, normalising to "", and returning a misleading
+// NotFound for an empty domain.
+func TestQuerier_LeaseByCustomDomain_WhitespaceRejectedAsInvalidArgument(t *testing.T) {
+	s := setupCustomDomain(t)
+	q := keeper.NewQuerier(s.f.App.BillingKeeper)
+
+	cases := []string{"", "   ", "\t", "\n  \t"}
+	for _, in := range cases {
+		t.Run("input="+in, func(t *testing.T) {
+			_, err := q.LeaseByCustomDomain(s.f.Ctx, &types.QueryLeaseByCustomDomainRequest{CustomDomain: in})
+			require.Error(t, err)
+			require.Equal(t, codes.InvalidArgument, status.Code(err),
+				"whitespace-only input must canonicalise to empty and be rejected as InvalidArgument, not NotFound")
 		})
 	}
 }

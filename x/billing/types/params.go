@@ -57,8 +57,10 @@ func DefaultParams() Params {
 	}
 }
 
-// NewParams creates a new Params instance with the legacy field set
-// (ReservedDomainSuffixes defaults to nil; set on the struct if needed).
+// NewParams creates a new Params instance using the v1 field set only.
+// ReservedDomainSuffixes (introduced in v2) is left at its zero value (nil);
+// callers who need to populate it should mutate the returned struct directly.
+// Kept signature-stable to avoid touching the ~30 existing test callers.
 func NewParams(maxLeasesPerTenant uint64, allowedList []string, maxItemsPerLease uint64, minLeaseDuration uint64, maxPendingLeasesPerTenant uint64, pendingTimeout uint64) Params {
 	return Params{
 		MaxLeasesPerTenant:        maxLeasesPerTenant,
