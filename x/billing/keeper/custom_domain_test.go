@@ -646,18 +646,26 @@ func TestSetLease_StorageLevelUniquenessRejection(t *testing.T) {
 	// "web" item via direct SetLease. The pre-flight check in
 	// SetLeaseItemCustomDomain would catch this; we deliberately bypass it.
 	secondUUID := s.createMultiItemLease(t)
-	lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, secondUUID)
+	leaseBeforeAttempt, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, secondUUID)
 	require.NoError(t, err)
-	for i := range lease.Items {
-		if lease.Items[i].ServiceName == "web" {
-			lease.Items[i].CustomDomain = "shared.example.com"
+	mutated := leaseBeforeAttempt
+	mutated.Items = append([]types.LeaseItem(nil), leaseBeforeAttempt.Items...)
+	for i := range mutated.Items {
+		if mutated.Items[i].ServiceName == "web" {
+			mutated.Items[i].CustomDomain = "shared.example.com"
 		}
 	}
 
-	err = s.f.App.BillingKeeper.SetLease(s.f.Ctx, lease)
+	err = s.f.App.BillingKeeper.SetLease(s.f.Ctx, mutated)
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrCustomDomainAlreadyClaimed)
 	require.Contains(t, err.Error(), s.leaseUUID, "error must identify the conflicting lease")
+
+	// SetLease is atomic — the failed write must not have mutated the lease
+	// record. The second lease's items should still have empty CustomDomain.
+	leaseAfterAttempt, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, secondUUID)
+	require.NoError(t, err)
+	require.Equal(t, leaseBeforeAttempt, leaseAfterAttempt, "rejected SetLease must not mutate the lease record")
 }
 
 // TestSetLease_StorageLevelUniqueness_SameLeaseCrossItem exercises the new
@@ -674,17 +682,25 @@ func TestSetLease_StorageLevelUniqueness_SameLeaseCrossItem(t *testing.T) {
 	// Mutate the lease so db ALSO carries some.example.com (web still has it).
 	// Direct SetLease bypasses the pre-flight; reconcile must reject with the
 	// "this lease, item X" message rather than "lease Y item X".
-	lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
+	leaseBeforeAttempt, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
 	require.NoError(t, err)
-	for i := range lease.Items {
-		if lease.Items[i].ServiceName == "db" {
-			lease.Items[i].CustomDomain = "some.example.com"
+	mutated := leaseBeforeAttempt
+	mutated.Items = append([]types.LeaseItem(nil), leaseBeforeAttempt.Items...)
+	for i := range mutated.Items {
+		if mutated.Items[i].ServiceName == "db" {
+			mutated.Items[i].CustomDomain = "some.example.com"
 		}
 	}
-	err = s.f.App.BillingKeeper.SetLease(s.f.Ctx, lease)
+	err = s.f.App.BillingKeeper.SetLease(s.f.Ctx, mutated)
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrCustomDomainAlreadyClaimed)
 	require.Contains(t, err.Error(), "on this lease", "must use the same-lease error variant")
+
+	// Atomicity: the rejected SetLease must not have mutated the lease record.
+	// The "db" item must still carry its empty CustomDomain.
+	leaseAfterAttempt, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, leaseBeforeAttempt, leaseAfterAttempt, "rejected SetLease must not mutate the lease record")
 }
 
 // TestSetLease_CrossSwap covers a single SetLease call that swaps domains

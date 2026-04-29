@@ -63,6 +63,6 @@ const MaxMetaHashLength = 64
 // Matches DNS label maximum length (RFC 1123).
 const MaxServiceNameLength = 63
 
-// MaxCustomDomainLength is the maximum total length of a Lease.custom_domain
+// MaxCustomDomainLength is the maximum total length of a LeaseItem.custom_domain
 // FQDN. Matches the RFC 1035 maximum length for a domain name.
 const MaxCustomDomainLength = 253

@@ -31,8 +31,12 @@ import (
 
 const (
 	// ConsensusVersion defines the current x/billing module consensus version.
-	// v2 introduced Params.ReservedDomainSuffixes (seeded by Migrate1to2) and
-	// the custom_domain feature on Lease.
+	// v2 introduced the LeaseItem.custom_domain feature: a per-item FQDN claim,
+	// the CustomDomainIndex reverse-lookup map, and the
+	// Params.ReservedDomainSuffixes list. Migrate1to2 is a no-op — the new
+	// state shape is forward-compatible (proto3 zero values + a fresh store
+	// prefix), and operators seed ReservedDomainSuffixes at upgrade time or via
+	// post-upgrade MsgUpdateParams rather than baking values into the binary.
 	ConsensusVersion = 2
 )
 

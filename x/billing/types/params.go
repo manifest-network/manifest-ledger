@@ -42,8 +42,9 @@ const MaxMinLeaseDuration = uint64(30 * 24 * 3600)
 
 // DefaultParams returns the default billing module parameters.
 // ReservedDomainSuffixes is intentionally empty — operators are expected to
-// seed provider wildcard zones via genesis JSON, MsgUpdateParams, or the
-// Migrate1to2 migration on existing chains.
+// seed provider wildcard zones via genesis JSON for new chains, or via
+// MsgUpdateParams shortly after a v1→v2 upgrade for existing chains. The
+// migration itself is a no-op (no hardcoded hostnames in the binary).
 func DefaultParams() Params {
 	return Params{
 		MaxLeasesPerTenant:        DefaultMaxLeasesPerTenant,

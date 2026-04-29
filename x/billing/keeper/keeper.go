@@ -148,10 +148,9 @@ type Keeper struct {
 	// in PENDING or ACTIVE state and the item's CustomDomain is non-empty. Not
 	// part of LeaseIndexes because empty domains must not be indexed and
 	// lifecycle removal is conditional on state. Storage-level uniqueness is
-	// enforced inside reconcileCustomDomainIndex; callers that mutate
-	// LeaseItem.CustomDomain outside SetLeaseItemCustomDomain should wrap their
-	// SetLease call in a CacheContext to roll back cleanly on
-	// ErrCustomDomainAlreadyClaimed.
+	// enforced inside reconcileCustomDomainIndex; SetLease itself is atomic
+	// (wraps the lease + index updates in a CacheContext), so a uniqueness
+	// conflict cannot leave a partially-applied lease record.
 	CustomDomainIndex collections.Map[string, types.CustomDomainTarget]
 
 	authority string
@@ -417,24 +416,38 @@ func (k *Keeper) GetLease(ctx context.Context, uuid string) (types.Lease, error)
 // must be released even if the new domain belongs to the same item) and to
 // enforce uniqueness at the storage layer (an in-flight write that would
 // overwrite another claim returns ErrCustomDomainAlreadyClaimed).
+//
+// SetLease is atomic: the lease record, the SKU index, and the custom_domain
+// reverse index updates are staged in a CacheContext and committed only if
+// every step succeeds. A reconcile error (uniqueness conflict or KV failure)
+// rolls back the partial writes, so callers do not need their own
+// CacheContext to keep state consistent.
 func (k *Keeper) SetLease(ctx context.Context, lease types.Lease) error {
-	prev, hadPrev, err := k.getPreviousLease(ctx, lease.Uuid)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	cacheCtx, write := sdkCtx.CacheContext()
+
+	prev, hadPrev, err := k.getPreviousLease(cacheCtx, lease.Uuid)
 	if err != nil {
 		return err
 	}
 
-	if err := k.Leases.Set(ctx, lease.Uuid, lease); err != nil {
+	if err := k.Leases.Set(cacheCtx, lease.Uuid, lease); err != nil {
 		return err
 	}
 
 	for _, item := range lease.Items {
 		key := collections.Join(item.SkuUuid, lease.Uuid)
-		if err := k.LeaseBySKUIndex.Set(ctx, key, true); err != nil {
+		if err := k.LeaseBySKUIndex.Set(cacheCtx, key, true); err != nil {
 			return err
 		}
 	}
 
-	return k.reconcileCustomDomainIndex(ctx, prev, hadPrev, lease)
+	if err := k.reconcileCustomDomainIndex(cacheCtx, prev, hadPrev, lease); err != nil {
+		return err
+	}
+
+	write()
+	return nil
 }
 
 // getPreviousLease loads the existing lease at uuid (if any) before SetLease
