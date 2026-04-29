@@ -169,11 +169,11 @@ func BillingCancelLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
-// BillingSetLeaseItemCustomDomain sets or clears the custom_domain on a
+// BillingSetItemCustomDomain sets or clears the custom_domain on a
 // specific LeaseItem. For a 1-item legacy lease, pass "" for serviceName.
 // An empty domain clears the field; sender must be tenant, authority, or
 // in params.allowed_list.
-func BillingSetLeaseItemCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID, serviceName, domain string, flags ...string) (sdk.TxResponse, error) {
+func BillingSetItemCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID, serviceName, domain string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{"tx", "billing", "set-item-custom-domain", leaseUUID, serviceName, domain}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }

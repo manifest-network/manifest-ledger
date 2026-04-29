@@ -50,13 +50,13 @@ service Msg {
   // UpdateParams updates the module parameters.
   rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
 
-  // SetLeaseItemCustomDomain sets or clears the custom_domain on a specific
+  // SetItemCustomDomain sets or clears the custom_domain on a specific
   // LeaseItem, identified by service_name. Authorised senders: the lease's
   // tenant, the module authority, or any address in params.allowed_list. The
   // lease must be in PENDING or ACTIVE state; an empty custom_domain clears
   // the field and frees the index entry.
-  rpc SetLeaseItemCustomDomain(MsgSetLeaseItemCustomDomain)
-      returns (MsgSetLeaseItemCustomDomainResponse);
+  rpc SetItemCustomDomain(MsgSetItemCustomDomain)
+      returns (MsgSetItemCustomDomainResponse);
 }
 
 // LeaseItemInput is the input for creating a lease item.
@@ -392,14 +392,12 @@ message MsgCancelLeaseResponse {
   uint64 cancelled_count = 2 [(gogoproto.jsontag) = "cancelled_count,omitempty"];
 }
 
-// MsgSetLeaseItemCustomDomain sets or clears the custom_domain on a specific
+// MsgSetItemCustomDomain sets or clears the custom_domain on a specific
 // LeaseItem, identified by its service_name (the lease's commit-time uniqueness
 // key). For a 1-item legacy lease, service_name is "". An empty custom_domain
 // clears the field and frees the index entry.
-message MsgSetLeaseItemCustomDomain {
+message MsgSetItemCustomDomain {
   option (cosmos.msg.v1.signer) = "sender";
-  // amino.name shortened from MsgSetLeaseItemCustomDomain to fit the legacy
-  // amino 39-char limit while remaining unambiguous within this module.
   option (amino.name) = "lifted/billing/MsgSetItemCustomDomain";
 
   // sender is the address signing the transaction. Must be the lease tenant,
@@ -423,6 +421,6 @@ message MsgSetLeaseItemCustomDomain {
   string custom_domain = 4 [(gogoproto.jsontag) = "custom_domain,omitempty"];
 }
 
-// MsgSetLeaseItemCustomDomainResponse is the response type for
-// MsgSetLeaseItemCustomDomain.
-message MsgSetLeaseItemCustomDomainResponse {}
+// MsgSetItemCustomDomainResponse is the response type for
+// MsgSetItemCustomDomain.
+message MsgSetItemCustomDomainResponse {}

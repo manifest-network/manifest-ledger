@@ -19,16 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Msg_FundCredit_FullMethodName               = "/liftedinit.billing.v1.Msg/FundCredit"
-	Msg_CreateLease_FullMethodName              = "/liftedinit.billing.v1.Msg/CreateLease"
-	Msg_CreateLeaseForTenant_FullMethodName     = "/liftedinit.billing.v1.Msg/CreateLeaseForTenant"
-	Msg_AcknowledgeLease_FullMethodName         = "/liftedinit.billing.v1.Msg/AcknowledgeLease"
-	Msg_RejectLease_FullMethodName              = "/liftedinit.billing.v1.Msg/RejectLease"
-	Msg_CancelLease_FullMethodName              = "/liftedinit.billing.v1.Msg/CancelLease"
-	Msg_CloseLease_FullMethodName               = "/liftedinit.billing.v1.Msg/CloseLease"
-	Msg_Withdraw_FullMethodName                 = "/liftedinit.billing.v1.Msg/Withdraw"
-	Msg_UpdateParams_FullMethodName             = "/liftedinit.billing.v1.Msg/UpdateParams"
-	Msg_SetLeaseItemCustomDomain_FullMethodName = "/liftedinit.billing.v1.Msg/SetLeaseItemCustomDomain"
+	Msg_FundCredit_FullMethodName           = "/liftedinit.billing.v1.Msg/FundCredit"
+	Msg_CreateLease_FullMethodName          = "/liftedinit.billing.v1.Msg/CreateLease"
+	Msg_CreateLeaseForTenant_FullMethodName = "/liftedinit.billing.v1.Msg/CreateLeaseForTenant"
+	Msg_AcknowledgeLease_FullMethodName     = "/liftedinit.billing.v1.Msg/AcknowledgeLease"
+	Msg_RejectLease_FullMethodName          = "/liftedinit.billing.v1.Msg/RejectLease"
+	Msg_CancelLease_FullMethodName          = "/liftedinit.billing.v1.Msg/CancelLease"
+	Msg_CloseLease_FullMethodName           = "/liftedinit.billing.v1.Msg/CloseLease"
+	Msg_Withdraw_FullMethodName             = "/liftedinit.billing.v1.Msg/Withdraw"
+	Msg_UpdateParams_FullMethodName         = "/liftedinit.billing.v1.Msg/UpdateParams"
+	Msg_SetItemCustomDomain_FullMethodName  = "/liftedinit.billing.v1.Msg/SetItemCustomDomain"
 )
 
 // MsgClient is the client API for Msg service.
@@ -60,12 +60,12 @@ type MsgClient interface {
 	Withdraw(ctx context.Context, in *MsgWithdraw, opts ...grpc.CallOption) (*MsgWithdrawResponse, error)
 	// UpdateParams updates the module parameters.
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
-	// SetLeaseItemCustomDomain sets or clears the custom_domain on a specific
+	// SetItemCustomDomain sets or clears the custom_domain on a specific
 	// LeaseItem, identified by service_name. Authorised senders: the lease's
 	// tenant, the module authority, or any address in params.allowed_list. The
 	// lease must be in PENDING or ACTIVE state; an empty custom_domain clears
 	// the field and frees the index entry.
-	SetLeaseItemCustomDomain(ctx context.Context, in *MsgSetLeaseItemCustomDomain, opts ...grpc.CallOption) (*MsgSetLeaseItemCustomDomainResponse, error)
+	SetItemCustomDomain(ctx context.Context, in *MsgSetItemCustomDomain, opts ...grpc.CallOption) (*MsgSetItemCustomDomainResponse, error)
 }
 
 type msgClient struct {
@@ -157,9 +157,9 @@ func (c *msgClient) UpdateParams(ctx context.Context, in *MsgUpdateParams, opts 
 	return out, nil
 }
 
-func (c *msgClient) SetLeaseItemCustomDomain(ctx context.Context, in *MsgSetLeaseItemCustomDomain, opts ...grpc.CallOption) (*MsgSetLeaseItemCustomDomainResponse, error) {
-	out := new(MsgSetLeaseItemCustomDomainResponse)
-	err := c.cc.Invoke(ctx, Msg_SetLeaseItemCustomDomain_FullMethodName, in, out, opts...)
+func (c *msgClient) SetItemCustomDomain(ctx context.Context, in *MsgSetItemCustomDomain, opts ...grpc.CallOption) (*MsgSetItemCustomDomainResponse, error) {
+	out := new(MsgSetItemCustomDomainResponse)
+	err := c.cc.Invoke(ctx, Msg_SetItemCustomDomain_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -195,12 +195,12 @@ type MsgServer interface {
 	Withdraw(context.Context, *MsgWithdraw) (*MsgWithdrawResponse, error)
 	// UpdateParams updates the module parameters.
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
-	// SetLeaseItemCustomDomain sets or clears the custom_domain on a specific
+	// SetItemCustomDomain sets or clears the custom_domain on a specific
 	// LeaseItem, identified by service_name. Authorised senders: the lease's
 	// tenant, the module authority, or any address in params.allowed_list. The
 	// lease must be in PENDING or ACTIVE state; an empty custom_domain clears
 	// the field and frees the index entry.
-	SetLeaseItemCustomDomain(context.Context, *MsgSetLeaseItemCustomDomain) (*MsgSetLeaseItemCustomDomainResponse, error)
+	SetItemCustomDomain(context.Context, *MsgSetItemCustomDomain) (*MsgSetItemCustomDomainResponse, error)
 	mustEmbedUnimplementedMsgServer()
 }
 
@@ -235,8 +235,8 @@ func (UnimplementedMsgServer) Withdraw(context.Context, *MsgWithdraw) (*MsgWithd
 func (UnimplementedMsgServer) UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateParams not implemented")
 }
-func (UnimplementedMsgServer) SetLeaseItemCustomDomain(context.Context, *MsgSetLeaseItemCustomDomain) (*MsgSetLeaseItemCustomDomainResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SetLeaseItemCustomDomain not implemented")
+func (UnimplementedMsgServer) SetItemCustomDomain(context.Context, *MsgSetItemCustomDomain) (*MsgSetItemCustomDomainResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetItemCustomDomain not implemented")
 }
 func (UnimplementedMsgServer) mustEmbedUnimplementedMsgServer() {}
 
@@ -413,20 +413,20 @@ func _Msg_UpdateParams_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Msg_SetLeaseItemCustomDomain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MsgSetLeaseItemCustomDomain)
+func _Msg_SetItemCustomDomain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgSetItemCustomDomain)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MsgServer).SetLeaseItemCustomDomain(ctx, in)
+		return srv.(MsgServer).SetItemCustomDomain(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Msg_SetLeaseItemCustomDomain_FullMethodName,
+		FullMethod: Msg_SetItemCustomDomain_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MsgServer).SetLeaseItemCustomDomain(ctx, req.(*MsgSetLeaseItemCustomDomain))
+		return srv.(MsgServer).SetItemCustomDomain(ctx, req.(*MsgSetItemCustomDomain))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -475,8 +475,8 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Msg_UpdateParams_Handler,
 		},
 		{
-			MethodName: "SetLeaseItemCustomDomain",
-			Handler:    _Msg_SetLeaseItemCustomDomain_Handler,
+			MethodName: "SetItemCustomDomain",
+			Handler:    _Msg_SetItemCustomDomain_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

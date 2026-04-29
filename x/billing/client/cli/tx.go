@@ -37,7 +37,7 @@ func NewTxCmd() *cobra.Command {
 		NewCloseLeaseCmd(),
 		NewWithdrawCmd(),
 		NewUpdateParamsCmd(),
-		NewSetLeaseItemCustomDomainCmd(),
+		NewSetItemCustomDomainCmd(),
 	)
 
 	return cmd
@@ -642,8 +642,8 @@ cancel-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000
 	return cmd
 }
 
-// NewSetLeaseItemCustomDomainCmd returns the set-item-custom-domain command.
-func NewSetLeaseItemCustomDomainCmd() *cobra.Command {
+// NewSetItemCustomDomainCmd returns the set-item-custom-domain command.
+func NewSetItemCustomDomainCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set-item-custom-domain [lease-uuid] [service-name] [domain]",
 		Short: "Set or clear the custom_domain on a specific lease item",
@@ -673,7 +673,7 @@ set-item-custom-domain 01902a9b-1234-7000-8000-000000000001 web "" --from tenant
 				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
 			}
 
-			msg := &types.MsgSetLeaseItemCustomDomain{
+			msg := &types.MsgSetItemCustomDomain{
 				Sender:       clientCtx.GetFromAddress().String(),
 				LeaseUuid:    leaseUUID,
 				ServiceName:  args[1],

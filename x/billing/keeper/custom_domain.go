@@ -51,7 +51,7 @@ func (k *Keeper) IsAuthorizedForTenant(ctx context.Context, sender, tenant strin
 //
 // The input is normalised (lower-cased and trimmed) so callers don't need to
 // remember to do it themselves — the index keys are always written in
-// canonical form by SetLeaseItemCustomDomain, and a non-canonical query string
+// canonical form by SetItemCustomDomain, and a non-canonical query string
 // would otherwise miss a real match.
 func (k *Keeper) GetLeaseByCustomDomain(ctx context.Context, domain string) (types.Lease, string, bool, error) {
 	domain = strings.ToLower(strings.TrimSpace(domain))
@@ -113,7 +113,7 @@ func findLeaseItemByServiceName(lease types.Lease, serviceName string) (int, err
 	}
 }
 
-// SetLeaseItemCustomDomain sets or clears the custom_domain on a specific
+// SetItemCustomDomain sets or clears the custom_domain on a specific
 // LeaseItem identified by serviceName. An empty domain clears the field.
 // Returns the role under which the call was authorised ("tenant" / "authority"
 // / "allowed") so the msg server can include it in the emitted event.
@@ -122,7 +122,7 @@ func findLeaseItemByServiceName(lease types.Lease, serviceName string) (int, err
 // input and writes the new field value. The pre-flight uniqueness check
 // surfaces a friendly ErrCustomDomainAlreadyClaimed before mutation; SetLease's
 // storage-level uniqueness enforcement is the defence-in-depth.
-func (k *Keeper) SetLeaseItemCustomDomain(ctx context.Context, sender, leaseUUID, serviceName, domain string) (string, error) {
+func (k *Keeper) SetItemCustomDomain(ctx context.Context, sender, leaseUUID, serviceName, domain string) (string, error) {
 	lease, err := k.GetLease(ctx, leaseUUID)
 	if err != nil {
 		return "", err

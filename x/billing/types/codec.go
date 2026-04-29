@@ -19,7 +19,7 @@ func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	legacy.RegisterAminoMsg(cdc, &MsgAcknowledgeLease{}, "lifted/billing/MsgAcknowledgeLease")
 	legacy.RegisterAminoMsg(cdc, &MsgRejectLease{}, "lifted/billing/MsgRejectLease")
 	legacy.RegisterAminoMsg(cdc, &MsgCancelLease{}, "lifted/billing/MsgCancelLease")
-	legacy.RegisterAminoMsg(cdc, &MsgSetLeaseItemCustomDomain{}, "lifted/billing/MsgSetItemCustomDomain")
+	legacy.RegisterAminoMsg(cdc, &MsgSetItemCustomDomain{}, "lifted/billing/MsgSetItemCustomDomain")
 }
 
 // RegisterInterfaces registers the module's interface types.
@@ -35,7 +35,7 @@ func RegisterInterfaces(registry types.InterfaceRegistry) {
 		&MsgAcknowledgeLease{},
 		&MsgRejectLease{},
 		&MsgCancelLease{},
-		&MsgSetLeaseItemCustomDomain{},
+		&MsgSetItemCustomDomain{},
 	)
 
 	msgservice.RegisterMsgServiceDesc(registry, &_Msg_serviceDesc)

@@ -18,7 +18,7 @@ var (
 	_ sdk.Msg = &MsgAcknowledgeLease{}
 	_ sdk.Msg = &MsgRejectLease{}
 	_ sdk.Msg = &MsgCancelLease{}
-	_ sdk.Msg = &MsgSetLeaseItemCustomDomain{}
+	_ sdk.Msg = &MsgSetItemCustomDomain{}
 )
 
 // IsValidDNSLabel checks whether name is a valid DNS label per RFC 1123:
@@ -377,12 +377,12 @@ func MatchesReservedSuffix(domain string, reserved []string) bool {
 	return false
 }
 
-// ValidateBasic performs basic validation for MsgSetLeaseItemCustomDomain.
+// ValidateBasic performs basic validation for MsgSetItemCustomDomain.
 // Note: msg.service_name is intentionally NOT required to be non-empty here —
 // the keeper resolves addressing against the lease's actual item shape (a
 // 1-item legacy lease has item.service_name = "" and so does the msg). When
 // service_name is non-empty, validate it as a DNS label.
-func (m *MsgSetLeaseItemCustomDomain) ValidateBasic() error {
+func (m *MsgSetItemCustomDomain) ValidateBasic() error {
 	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
 		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
 	}

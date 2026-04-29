@@ -51,7 +51,7 @@ var (
 	// CustomDomainIndexKey saves the unique reverse index from custom_domain to
 	// CustomDomainTarget{lease_uuid, service_name}. This enables both O(1) reverse
 	// lookup (Query/LeaseByCustomDomain) and uniqueness enforcement at
-	// SetLeaseItemCustomDomain. Entries are reconciled by reconcileCustomDomainIndex
+	// SetItemCustomDomain. Entries are reconciled by reconcileCustomDomainIndex
 	// inside SetLease, derived from each item's (state, custom_domain).
 	CustomDomainIndexKey = collections.NewPrefix(12)
 )

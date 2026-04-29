@@ -96,10 +96,10 @@ func (s *customDomainSetup) createMultiItemLegacyLease(t *testing.T) (string, sk
 
 // --- 1-item legacy lease (the default fixture) ---
 
-func TestSetLeaseItemCustomDomain_LegacyOneItem_HappyPath(t *testing.T) {
+func TestSetItemCustomDomain_LegacyOneItem_HappyPath(t *testing.T) {
 	s := setupCustomDomain(t)
 
-	role, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "app.example.com")
+	role, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "app.example.com")
 	require.NoError(t, err)
 	require.Equal(t, types.AttributeValueRoleTenant, role)
 
@@ -114,12 +114,12 @@ func TestSetLeaseItemCustomDomain_LegacyOneItem_HappyPath(t *testing.T) {
 	require.Equal(t, "", serviceName, "1-item legacy returns empty service_name in reverse lookup")
 }
 
-func TestSetLeaseItemCustomDomain_LegacyOneItem_NormalisesInput(t *testing.T) {
+func TestSetItemCustomDomain_LegacyOneItem_NormalisesInput(t *testing.T) {
 	s := setupCustomDomain(t)
 	// Keeper-level normalises whitespace + case (ValidateBasic at msg layer
 	// would reject uppercase outright; the keeper's normalisation is defence
 	// for direct callers like genesis).
-	role, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", " App.Example.COM ")
+	role, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", " App.Example.COM ")
 	require.NoError(t, err)
 	require.Equal(t, types.AttributeValueRoleTenant, role)
 
@@ -129,21 +129,21 @@ func TestSetLeaseItemCustomDomain_LegacyOneItem_NormalisesInput(t *testing.T) {
 	require.Equal(t, s.leaseUUID, got.Uuid)
 }
 
-func TestSetLeaseItemCustomDomain_LegacyOneItem_NonEmptyServiceName_NotFound(t *testing.T) {
+func TestSetItemCustomDomain_LegacyOneItem_NonEmptyServiceName_NotFound(t *testing.T) {
 	s := setupCustomDomain(t)
 	// 1-item legacy lease has item.service_name = ""; passing "web" doesn't match.
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "web", "x.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "web", "x.example.com")
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrLeaseItemNotFound)
 }
 
-func TestSetLeaseItemCustomDomain_ClearAllowsReclaim(t *testing.T) {
+func TestSetItemCustomDomain_ClearAllowsReclaim(t *testing.T) {
 	s := setupCustomDomain(t)
 
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "app.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "app.example.com")
 	require.NoError(t, err)
 
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "")
 	require.NoError(t, err)
 
 	lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
@@ -154,11 +154,11 @@ func TestSetLeaseItemCustomDomain_ClearAllowsReclaim(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, has)
 
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "app.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "app.example.com")
 	require.NoError(t, err)
 }
 
-func TestSetLeaseItemCustomDomain_AuthorisationMatrix(t *testing.T) {
+func TestSetItemCustomDomain_AuthorisationMatrix(t *testing.T) {
 	cases := []struct {
 		name     string
 		who      func(s *customDomainSetup) sdk.AccAddress
@@ -173,7 +173,7 @@ func TestSetLeaseItemCustomDomain_AuthorisationMatrix(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := setupCustomDomain(t)
-			role, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, tc.who(s).String(), s.leaseUUID, "", "x.example.com")
+			role, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, tc.who(s).String(), s.leaseUUID, "", "x.example.com")
 			if tc.wantErr {
 				require.Error(t, err)
 				require.ErrorIs(t, err, types.ErrUnauthorized)
@@ -185,7 +185,7 @@ func TestSetLeaseItemCustomDomain_AuthorisationMatrix(t *testing.T) {
 	}
 }
 
-func TestSetLeaseItemCustomDomain_ReservedSuffix(t *testing.T) {
+func TestSetItemCustomDomain_ReservedSuffix(t *testing.T) {
 	cases := []struct {
 		name    string
 		domain  string
@@ -203,7 +203,7 @@ func TestSetLeaseItemCustomDomain_ReservedSuffix(t *testing.T) {
 			params.ReservedDomainSuffixes = []string{".barney0.manifest0.net"}
 			require.NoError(t, s.f.App.BillingKeeper.SetParams(s.f.Ctx, params))
 
-			_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", tc.domain)
+			_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", tc.domain)
 			if tc.wantErr {
 				require.Error(t, err)
 				require.ErrorIs(t, err, types.ErrInvalidCustomDomain)
@@ -214,7 +214,7 @@ func TestSetLeaseItemCustomDomain_ReservedSuffix(t *testing.T) {
 	}
 }
 
-func TestSetLeaseItemCustomDomain_RejectedOnTerminalState(t *testing.T) {
+func TestSetItemCustomDomain_RejectedOnTerminalState(t *testing.T) {
 	s := setupCustomDomain(t)
 	_, err := s.msgServer.CloseLease(s.f.Ctx, &types.MsgCloseLease{
 		Sender:     s.tenant.String(),
@@ -222,25 +222,25 @@ func TestSetLeaseItemCustomDomain_RejectedOnTerminalState(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "x.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "x.example.com")
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrLeaseNotEditable)
 
 	// Even authority cannot bypass the state check.
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.f.Authority.String(), s.leaseUUID, "", "x.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.f.Authority.String(), s.leaseUUID, "", "x.example.com")
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrLeaseNotEditable)
 }
 
 // --- multi-item service-mode lease ---
 
-func TestSetLeaseItemCustomDomain_MultiItemServiceMode_PerItemDomains(t *testing.T) {
+func TestSetItemCustomDomain_MultiItemServiceMode_PerItemDomains(t *testing.T) {
 	s := setupCustomDomain(t)
 	leaseUUID := s.createMultiItemLease(t)
 
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "web.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "web.example.com")
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "db", "db.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "db", "db.example.com")
 	require.NoError(t, err)
 
 	got, serviceName, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, "web.example.com")
@@ -266,46 +266,46 @@ func TestSetLeaseItemCustomDomain_MultiItemServiceMode_PerItemDomains(t *testing
 	require.Equal(t, "db.example.com", domainsByService["db"])
 }
 
-func TestSetLeaseItemCustomDomain_MultiItemServiceMode_NonMatchingServiceName(t *testing.T) {
+func TestSetItemCustomDomain_MultiItemServiceMode_NonMatchingServiceName(t *testing.T) {
 	s := setupCustomDomain(t)
 	leaseUUID := s.createMultiItemLease(t)
 
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "missing", "x.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "missing", "x.example.com")
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrLeaseItemNotFound)
 
 	// Empty service_name must NOT match in service-mode multi-item lease (no
 	// items have empty service_name).
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "", "x.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "", "x.example.com")
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrLeaseItemNotFound)
 }
 
-func TestSetLeaseItemCustomDomain_MultiItemLegacy_AmbiguousLookup(t *testing.T) {
+func TestSetItemCustomDomain_MultiItemLegacy_AmbiguousLookup(t *testing.T) {
 	s := setupCustomDomain(t)
 	leaseUUID, _ := s.createMultiItemLegacyLease(t)
 
 	// Empty service_name matches both items → ambiguous, rejected.
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "", "x.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "", "x.example.com")
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrAmbiguousLeaseItem)
 }
 
-func TestSetLeaseItemCustomDomain_PreFlightUniqueness(t *testing.T) {
+func TestSetItemCustomDomain_PreFlightUniqueness(t *testing.T) {
 	s := setupCustomDomain(t)
 	leaseUUID := s.createMultiItemLease(t)
 
 	// Claim web → some.example.com.
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "some.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "some.example.com")
 	require.NoError(t, err)
 
 	t.Run("idempotent re-set on same item", func(t *testing.T) {
-		_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "some.example.com")
+		_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "some.example.com")
 		require.NoError(t, err)
 	})
 
 	t.Run("same lease different item → claimed by another item", func(t *testing.T) {
-		_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "db", "some.example.com")
+		_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "db", "some.example.com")
 		require.Error(t, err)
 		require.ErrorIs(t, err, types.ErrCustomDomainAlreadyClaimed)
 		require.Contains(t, err.Error(), `item "web" on this lease`, "error must identify the conflicting sibling item")
@@ -313,19 +313,19 @@ func TestSetLeaseItemCustomDomain_PreFlightUniqueness(t *testing.T) {
 
 	t.Run("different lease → claimed by other lease", func(t *testing.T) {
 		// Need another tenant with credit + a lease — use the default 1-item lease.
-		_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "some.example.com")
+		_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "some.example.com")
 		require.Error(t, err)
 		require.ErrorIs(t, err, types.ErrCustomDomainAlreadyClaimed)
 	})
 }
 
-func TestSetLeaseItemCustomDomain_RenameWithinItem(t *testing.T) {
+func TestSetItemCustomDomain_RenameWithinItem(t *testing.T) {
 	s := setupCustomDomain(t)
 	leaseUUID := s.createMultiItemLease(t)
 
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "old.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "old.example.com")
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "new.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "new.example.com")
 	require.NoError(t, err)
 
 	_, _, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, "old.example.com")
@@ -339,17 +339,17 @@ func TestSetLeaseItemCustomDomain_RenameWithinItem(t *testing.T) {
 	require.Equal(t, "web", serviceName)
 }
 
-func TestSetLeaseItemCustomDomain_ClearOneItemLeavesSiblingsIntact(t *testing.T) {
+func TestSetItemCustomDomain_ClearOneItemLeavesSiblingsIntact(t *testing.T) {
 	s := setupCustomDomain(t)
 	leaseUUID := s.createMultiItemLease(t)
 
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "web.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "web.example.com")
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "db", "db.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "db", "db.example.com")
 	require.NoError(t, err)
 
 	// Clear only web's domain.
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "")
 	require.NoError(t, err)
 
 	_, _, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, "web.example.com")
@@ -363,7 +363,7 @@ func TestSetLeaseItemCustomDomain_ClearOneItemLeavesSiblingsIntact(t *testing.T)
 	require.Equal(t, "db", serviceName)
 }
 
-func TestSetLeaseItemCustomDomain_AcknowledgePreservesMultiItemIndex(t *testing.T) {
+func TestSetItemCustomDomain_AcknowledgePreservesMultiItemIndex(t *testing.T) {
 	s := setupCustomDomain(t)
 
 	// Create a fresh PENDING multi-item lease (the helper acknowledges, so
@@ -377,9 +377,9 @@ func TestSetLeaseItemCustomDomain_AcknowledgePreservesMultiItemIndex(t *testing.
 	})
 	require.NoError(t, err)
 
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "web", "web.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "web", "web.example.com")
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "db", "db.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "db", "db.example.com")
 	require.NoError(t, err)
 
 	// Acknowledge → PENDING → ACTIVE flips through SetLease and reconcile.
@@ -397,13 +397,13 @@ func TestSetLeaseItemCustomDomain_AcknowledgePreservesMultiItemIndex(t *testing.
 	}
 }
 
-func TestSetLeaseItemCustomDomain_LifecycleCleanupWalksAllItems(t *testing.T) {
+func TestSetItemCustomDomain_LifecycleCleanupWalksAllItems(t *testing.T) {
 	s := setupCustomDomain(t)
 	leaseUUID := s.createMultiItemLease(t)
 
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "web.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "web.example.com")
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "db", "db.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "db", "db.example.com")
 	require.NoError(t, err)
 
 	_, err = s.msgServer.CloseLease(s.f.Ctx, &types.MsgCloseLease{
@@ -430,14 +430,14 @@ func TestSetLeaseItemCustomDomain_LifecycleCleanupWalksAllItems(t *testing.T) {
 	require.Equal(t, "db.example.com", domainsByService["db"])
 }
 
-func TestSetLeaseItemCustomDomain_LifecycleCleanup_Cancel(t *testing.T) {
+func TestSetItemCustomDomain_LifecycleCleanup_Cancel(t *testing.T) {
 	s := setupCustomDomain(t)
 	pendingResp, err := s.msgServer.CreateLease(s.f.Ctx, &types.MsgCreateLease{
 		Tenant: s.tenant.String(),
 		Items:  []types.LeaseItemInput{{SkuUuid: s.sku.Uuid, Quantity: 1}},
 	})
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "", "cancel.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "", "cancel.example.com")
 	require.NoError(t, err)
 
 	_, err = s.msgServer.CancelLease(s.f.Ctx, &types.MsgCancelLease{
@@ -451,14 +451,14 @@ func TestSetLeaseItemCustomDomain_LifecycleCleanup_Cancel(t *testing.T) {
 	require.False(t, has)
 }
 
-func TestSetLeaseItemCustomDomain_LifecycleCleanup_Reject(t *testing.T) {
+func TestSetItemCustomDomain_LifecycleCleanup_Reject(t *testing.T) {
 	s := setupCustomDomain(t)
 	pendingResp, err := s.msgServer.CreateLease(s.f.Ctx, &types.MsgCreateLease{
 		Tenant: s.tenant.String(),
 		Items:  []types.LeaseItemInput{{SkuUuid: s.sku.Uuid, Quantity: 1}},
 	})
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "", "reject.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "", "reject.example.com")
 	require.NoError(t, err)
 
 	_, err = s.msgServer.RejectLease(s.f.Ctx, &types.MsgRejectLease{
@@ -472,10 +472,10 @@ func TestSetLeaseItemCustomDomain_LifecycleCleanup_Reject(t *testing.T) {
 	require.False(t, has)
 }
 
-func TestSetLeaseItemCustomDomain_LifecycleCleanup_AutoCloseLease(t *testing.T) {
+func TestSetItemCustomDomain_LifecycleCleanup_AutoCloseLease(t *testing.T) {
 	s := setupCustomDomain(t)
 
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "auto.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "auto.example.com")
 	require.NoError(t, err)
 
 	s.f.Ctx = s.f.Ctx.WithBlockTime(s.f.Ctx.BlockTime().Add(200_000_000 * time.Second))
@@ -496,7 +496,7 @@ func TestSetLeaseItemCustomDomain_LifecycleCleanup_AutoCloseLease(t *testing.T) 
 	require.False(t, has, "index entry must be removed on auto-close")
 }
 
-func TestSetLeaseItemCustomDomain_LifecycleCleanup_EndBlockerExpiry(t *testing.T) {
+func TestSetItemCustomDomain_LifecycleCleanup_EndBlockerExpiry(t *testing.T) {
 	s := setupCustomDomain(t)
 
 	params, err := s.f.App.BillingKeeper.GetParams(s.f.Ctx)
@@ -509,7 +509,7 @@ func TestSetLeaseItemCustomDomain_LifecycleCleanup_EndBlockerExpiry(t *testing.T
 		Items:  []types.LeaseItemInput{{SkuUuid: s.sku.Uuid, Quantity: 1}},
 	})
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "", "expire.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "", "expire.example.com")
 	require.NoError(t, err)
 
 	s.f.Ctx = s.f.Ctx.WithBlockTime(s.f.Ctx.BlockTime().Add(61 * time.Second))
@@ -634,19 +634,19 @@ func TestMigrate1to2(t *testing.T) {
 
 // TestSetLease_StorageLevelUniquenessRejection exercises the storage-level
 // ErrCustomDomainAlreadyClaimed branch inside reconcileCustomDomainIndex via a
-// direct SetLease call (bypassing SetLeaseItemCustomDomain's pre-flight). This
+// direct SetLease call (bypassing SetItemCustomDomain's pre-flight). This
 // branch is otherwise reachable only through genesis import.
 func TestSetLease_StorageLevelUniquenessRejection(t *testing.T) {
 	s := setupCustomDomain(t)
 
 	// First lease (the fixture's 1-item legacy lease) claims a domain via the
 	// supported path.
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "shared.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "shared.example.com")
 	require.NoError(t, err)
 
 	// Build a second multi-item lease and try to set the same domain on its
 	// "web" item via direct SetLease. The pre-flight check in
-	// SetLeaseItemCustomDomain would catch this; we deliberately bypass it.
+	// SetItemCustomDomain would catch this; we deliberately bypass it.
 	secondUUID := s.createMultiItemLease(t)
 	leaseBeforeAttempt, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, secondUUID)
 	require.NoError(t, err)
@@ -678,7 +678,7 @@ func TestSetLease_StorageLevelUniqueness_SameLeaseCrossItem(t *testing.T) {
 	leaseUUID := s.createMultiItemLease(t)
 
 	// Set web → some.example.com via the supported path.
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "some.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "some.example.com")
 	require.NoError(t, err)
 
 	// Mutate the lease so db ALSO carries some.example.com (web still has it).
@@ -714,9 +714,9 @@ func TestSetLease_CrossSwap(t *testing.T) {
 	s := setupCustomDomain(t)
 	leaseUUID := s.createMultiItemLease(t)
 
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "a.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "a.example.com")
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "db", "b.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "db", "b.example.com")
 	require.NoError(t, err)
 
 	// Swap: web now carries b.example.com (db's old value), db carries
@@ -780,10 +780,10 @@ func attrValue(t *testing.T, ev sdk.Event, key string) string {
 	return ""
 }
 
-func TestSetLeaseItemCustomDomain_SetEvent_Attributes_Legacy(t *testing.T) {
+func TestSetItemCustomDomain_SetEvent_Attributes_Legacy(t *testing.T) {
 	s := setupCustomDomain(t)
 
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "evt.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "evt.example.com")
 	require.NoError(t, err)
 
 	ev := findEvent(t, s.f.Ctx, types.EventTypeLeaseCustomDomainSet)
@@ -794,11 +794,11 @@ func TestSetLeaseItemCustomDomain_SetEvent_Attributes_Legacy(t *testing.T) {
 	require.Equal(t, types.AttributeValueRoleTenant, attrValue(t, ev, types.AttributeKeySetBy))
 }
 
-func TestSetLeaseItemCustomDomain_SetEvent_Attributes_MultiItem(t *testing.T) {
+func TestSetItemCustomDomain_SetEvent_Attributes_MultiItem(t *testing.T) {
 	s := setupCustomDomain(t)
 	leaseUUID := s.createMultiItemLease(t)
 
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.f.Authority.String(), leaseUUID, "web", "evt.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.f.Authority.String(), leaseUUID, "web", "evt.example.com")
 	require.NoError(t, err)
 
 	ev := findEvent(t, s.f.Ctx, types.EventTypeLeaseCustomDomainSet)
@@ -808,13 +808,13 @@ func TestSetLeaseItemCustomDomain_SetEvent_Attributes_MultiItem(t *testing.T) {
 	require.Equal(t, types.AttributeValueRoleAuthority, attrValue(t, ev, types.AttributeKeySetBy), "authority sender attribution")
 }
 
-func TestSetLeaseItemCustomDomain_ClearEvent_Attributes(t *testing.T) {
+func TestSetItemCustomDomain_ClearEvent_Attributes(t *testing.T) {
 	s := setupCustomDomain(t)
 	leaseUUID := s.createMultiItemLease(t)
 
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "to-clear.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "to-clear.example.com")
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), leaseUUID, "web", "")
 	require.NoError(t, err)
 
 	ev := findEvent(t, s.f.Ctx, types.EventTypeLeaseCustomDomainCleared)
@@ -827,7 +827,7 @@ func TestSetLeaseItemCustomDomain_ClearEvent_Attributes(t *testing.T) {
 
 // --- multi-item lifecycle cleanup beyond Close ---
 
-func TestSetLeaseItemCustomDomain_LifecycleCleanup_MultiItem_Cancel(t *testing.T) {
+func TestSetItemCustomDomain_LifecycleCleanup_MultiItem_Cancel(t *testing.T) {
 	s := setupCustomDomain(t)
 
 	pendingResp, err := s.msgServer.CreateLease(s.f.Ctx, &types.MsgCreateLease{
@@ -839,9 +839,9 @@ func TestSetLeaseItemCustomDomain_LifecycleCleanup_MultiItem_Cancel(t *testing.T
 	})
 	require.NoError(t, err)
 
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "web", "cancel-web.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "web", "cancel-web.example.com")
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "db", "cancel-db.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "db", "cancel-db.example.com")
 	require.NoError(t, err)
 
 	_, err = s.msgServer.CancelLease(s.f.Ctx, &types.MsgCancelLease{
@@ -857,7 +857,7 @@ func TestSetLeaseItemCustomDomain_LifecycleCleanup_MultiItem_Cancel(t *testing.T
 	}
 }
 
-func TestSetLeaseItemCustomDomain_LifecycleCleanup_MultiItem_Reject(t *testing.T) {
+func TestSetItemCustomDomain_LifecycleCleanup_MultiItem_Reject(t *testing.T) {
 	s := setupCustomDomain(t)
 
 	pendingResp, err := s.msgServer.CreateLease(s.f.Ctx, &types.MsgCreateLease{
@@ -869,9 +869,9 @@ func TestSetLeaseItemCustomDomain_LifecycleCleanup_MultiItem_Reject(t *testing.T
 	})
 	require.NoError(t, err)
 
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "web", "reject-web.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "web", "reject-web.example.com")
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "db", "reject-db.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "db", "reject-db.example.com")
 	require.NoError(t, err)
 
 	_, err = s.msgServer.RejectLease(s.f.Ctx, &types.MsgRejectLease{
@@ -887,7 +887,7 @@ func TestSetLeaseItemCustomDomain_LifecycleCleanup_MultiItem_Reject(t *testing.T
 	}
 }
 
-func TestSetLeaseItemCustomDomain_LifecycleCleanup_MultiItem_EndBlockerExpiry(t *testing.T) {
+func TestSetItemCustomDomain_LifecycleCleanup_MultiItem_EndBlockerExpiry(t *testing.T) {
 	s := setupCustomDomain(t)
 
 	params, err := s.f.App.BillingKeeper.GetParams(s.f.Ctx)
@@ -904,9 +904,9 @@ func TestSetLeaseItemCustomDomain_LifecycleCleanup_MultiItem_EndBlockerExpiry(t 
 	})
 	require.NoError(t, err)
 
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "web", "expire-web.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "web", "expire-web.example.com")
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "db", "expire-db.example.com")
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), pendingResp.LeaseUuid, "db", "expire-db.example.com")
 	require.NoError(t, err)
 
 	s.f.Ctx = s.f.Ctx.WithBlockTime(s.f.Ctx.BlockTime().Add(61 * time.Second))
@@ -936,10 +936,10 @@ func countEvents(ctx sdk.Context, eventType string) int {
 	return n
 }
 
-// TestSetLeaseItemCustomDomain_IdempotentClear verifies that clearing a domain
+// TestSetItemCustomDomain_IdempotentClear verifies that clearing a domain
 // on an item whose CustomDomain is already empty is a true no-op: no SetLease
 // write, no Cleared event, no state mutation. Caller still receives the role.
-func TestSetLeaseItemCustomDomain_IdempotentClear(t *testing.T) {
+func TestSetItemCustomDomain_IdempotentClear(t *testing.T) {
 	s := setupCustomDomain(t)
 
 	leaseBefore, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
@@ -948,7 +948,7 @@ func TestSetLeaseItemCustomDomain_IdempotentClear(t *testing.T) {
 
 	clearedBefore := countEvents(s.f.Ctx, types.EventTypeLeaseCustomDomainCleared)
 
-	role, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "")
+	role, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "")
 	require.NoError(t, err)
 	require.Equal(t, types.AttributeValueRoleTenant, role, "role still returned for authorisation confirmation")
 
@@ -962,14 +962,14 @@ func TestSetLeaseItemCustomDomain_IdempotentClear(t *testing.T) {
 	require.Equal(t, leaseBefore, leaseAfter, "idempotent clear must not mutate the lease record")
 }
 
-// TestSetLeaseItemCustomDomain_IdempotentReSet verifies that re-setting the
+// TestSetItemCustomDomain_IdempotentReSet verifies that re-setting the
 // same domain on the same item is a true no-op: no SetLease write, no Set
 // event, no state mutation. Caller still receives the role.
-func TestSetLeaseItemCustomDomain_IdempotentReSet(t *testing.T) {
+func TestSetItemCustomDomain_IdempotentReSet(t *testing.T) {
 	s := setupCustomDomain(t)
 
 	// Initial set produces a Set event and a state change.
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "idem.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "idem.example.com")
 	require.NoError(t, err)
 
 	leaseBefore, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
@@ -977,7 +977,7 @@ func TestSetLeaseItemCustomDomain_IdempotentReSet(t *testing.T) {
 	setBefore := countEvents(s.f.Ctx, types.EventTypeLeaseCustomDomainSet)
 
 	// Re-set with the same domain: no-op.
-	role, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "idem.example.com")
+	role, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "idem.example.com")
 	require.NoError(t, err)
 	require.Equal(t, types.AttributeValueRoleTenant, role)
 
@@ -1001,7 +1001,7 @@ func TestSetLeaseItemCustomDomain_IdempotentReSet(t *testing.T) {
 // hooks, etc.) get consistent matching with the canonical-form index keys.
 func TestGetLeaseByCustomDomain_NormalisesInput(t *testing.T) {
 	s := setupCustomDomain(t)
-	_, err := s.f.App.BillingKeeper.SetLeaseItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "norm.example.com")
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "norm.example.com")
 	require.NoError(t, err)
 
 	cases := []string{

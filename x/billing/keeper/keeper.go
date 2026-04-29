@@ -470,7 +470,7 @@ func (k *Keeper) getPreviousLease(ctx context.Context, uuid string) (types.Lease
 // whose lease moved to terminal, and installs entries for items in editable
 // state that carry a non-empty custom_domain. Returns ErrCustomDomainAlreadyClaimed
 // if installing an entry would overwrite a claim by a different (lease, item)
-// — a defence-in-depth check above SetLeaseItemCustomDomain's pre-check.
+// — a defence-in-depth check above SetItemCustomDomain's pre-check.
 //
 // Items in lease.Items are immutable post-creation today, so the "item removed
 // in update" branch is theoretical but cheap to support.

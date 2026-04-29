@@ -46,14 +46,14 @@ func TestBillingCustomDomain(t *testing.T) {
 
 	t.Run("multi-item: per-item domains", func(t *testing.T) {
 		// Set domain on web.
-		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant1, multiLease, "web", "web.example.com")
+		res, err := helpers.BillingSetItemCustomDomain(ctx, tc.chain, tc.tenant1, multiLease, "web", "web.example.com")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "set web custom_domain should succeed: %s", txRes.RawLog)
 
 		// Set domain on db.
-		res, err = helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant1, multiLease, "db", "db.example.com")
+		res, err = helpers.BillingSetItemCustomDomain(ctx, tc.chain, tc.tenant1, multiLease, "db", "db.example.com")
 		require.NoError(t, err)
 		txRes, err = tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestBillingCustomDomain(t *testing.T) {
 	})
 
 	t.Run("1-item legacy: empty service_name addresses the only item", func(t *testing.T) {
-		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant2, legacyLease, "", "legacy.example.com")
+		res, err := helpers.BillingSetItemCustomDomain(ctx, tc.chain, tc.tenant2, legacyLease, "", "legacy.example.com")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -86,7 +86,7 @@ func TestBillingCustomDomain(t *testing.T) {
 
 	t.Run("cross-lease conflict", func(t *testing.T) {
 		// tenant2 tries to claim "web.example.com" on the legacy lease — already claimed by multi-item lease's web item.
-		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant2, legacyLease, "", "web.example.com")
+		res, err := helpers.BillingSetItemCustomDomain(ctx, tc.chain, tc.tenant2, legacyLease, "", "web.example.com")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestBillingCustomDomain(t *testing.T) {
 	t.Run("authority override on a different tenant's lease", func(t *testing.T) {
 		// Authority sets a domain on tenant1's multi-item lease, addressing the db item.
 		// Override via the new domain that nobody has claimed.
-		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.authority, multiLease, "db", "ops.example.com")
+		res, err := helpers.BillingSetItemCustomDomain(ctx, tc.chain, tc.authority, multiLease, "db", "ops.example.com")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -111,7 +111,7 @@ func TestBillingCustomDomain(t *testing.T) {
 
 	t.Run("clear domain leaves siblings intact", func(t *testing.T) {
 		// Clear the multi-item lease's web domain; db's "ops.example.com" must still resolve.
-		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant1, multiLease, "web", "")
+		res, err := helpers.BillingSetItemCustomDomain(ctx, tc.chain, tc.tenant1, multiLease, "web", "")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -135,7 +135,7 @@ func TestBillingCustomDomain(t *testing.T) {
 		require.NoError(t, err)
 
 		// Allowed-list sender re-claims web.example.com on tenant1's multi-item lease.
-		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.unauthorizedUser, multiLease, "web", "allowed.example.com")
+		res, err := helpers.BillingSetItemCustomDomain(ctx, tc.chain, tc.unauthorizedUser, multiLease, "web", "allowed.example.com")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -155,7 +155,7 @@ func TestBillingCustomDomain(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant1, multiLease, "db", "x.barney0.manifest0.net")
+		res, err := helpers.BillingSetItemCustomDomain(ctx, tc.chain, tc.tenant1, multiLease, "db", "x.barney0.manifest0.net")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
@@ -192,7 +192,7 @@ func TestBillingCustomDomain(t *testing.T) {
 		newLease, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant1, tc.providerWallet, multiItems)
 		require.NoError(t, err)
 
-		res, err := helpers.BillingSetLeaseItemCustomDomain(ctx, tc.chain, tc.tenant1, newLease, "web", "allowed.example.com")
+		res, err := helpers.BillingSetItemCustomDomain(ctx, tc.chain, tc.tenant1, newLease, "web", "allowed.example.com")
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)

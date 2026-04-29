@@ -157,7 +157,7 @@ func TestGenesisValidate_RejectsAmbiguousCustomDomain(t *testing.T) {
 // import refuses a custom_domain claim that falls under a reserved provider
 // suffix in the same Params.ReservedDomainSuffixes list. Without this check, a
 // hand-crafted genesis could land the chain in a state the msg layer would
-// reject (since SetLeaseItemCustomDomain enforces the same rule at runtime).
+// reject (since SetItemCustomDomain enforces the same rule at runtime).
 func TestGenesisValidate_RejectsReservedSuffixCustomDomain(t *testing.T) {
 	now := time.Now().UTC()
 	const leaseUUID = "01912345-6789-7abc-8def-eeeeeeeeeeee"
@@ -193,59 +193,59 @@ func TestGenesisValidate_RejectsReservedSuffixCustomDomain(t *testing.T) {
 	require.Contains(t, err.Error(), "reserved provider suffix")
 }
 
-func TestMsgSetLeaseItemCustomDomain_ValidateBasic(t *testing.T) {
+func TestMsgSetItemCustomDomain_ValidateBasic(t *testing.T) {
 	const validUUID = "01912345-6789-7abc-8def-0123456789ab"
 	_, _, addr := testdata.KeyTestPubAddr()
 	validAddr := addr.String()
 
 	cases := []struct {
 		name    string
-		msg     types.MsgSetLeaseItemCustomDomain
+		msg     types.MsgSetItemCustomDomain
 		wantErr bool
 	}{
 		{
 			name:    "valid_set_with_service_name",
-			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "web", CustomDomain: "app.example.com"},
+			msg:     types.MsgSetItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "web", CustomDomain: "app.example.com"},
 			wantErr: false,
 		},
 		{
 			name:    "valid_set_empty_service_name_for_legacy_lease",
-			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "", CustomDomain: "app.example.com"},
+			msg:     types.MsgSetItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "", CustomDomain: "app.example.com"},
 			wantErr: false,
 		},
 		{
 			name:    "valid_clear",
-			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "web", CustomDomain: ""},
+			msg:     types.MsgSetItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "web", CustomDomain: ""},
 			wantErr: false,
 		},
 		{
 			name:    "invalid_sender",
-			msg:     types.MsgSetLeaseItemCustomDomain{Sender: "not-bech32", LeaseUuid: validUUID, ServiceName: "web", CustomDomain: "x.com"},
+			msg:     types.MsgSetItemCustomDomain{Sender: "not-bech32", LeaseUuid: validUUID, ServiceName: "web", CustomDomain: "x.com"},
 			wantErr: true,
 		},
 		{
 			name:    "empty_uuid",
-			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: "", ServiceName: "web", CustomDomain: "x.com"},
+			msg:     types.MsgSetItemCustomDomain{Sender: validAddr, LeaseUuid: "", ServiceName: "web", CustomDomain: "x.com"},
 			wantErr: true,
 		},
 		{
 			name:    "bad_uuid",
-			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: "not-a-uuid", ServiceName: "web", CustomDomain: "x.com"},
+			msg:     types.MsgSetItemCustomDomain{Sender: validAddr, LeaseUuid: "not-a-uuid", ServiceName: "web", CustomDomain: "x.com"},
 			wantErr: true,
 		},
 		{
 			name:    "bad_service_name_uppercase",
-			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "Web", CustomDomain: "x.com"},
+			msg:     types.MsgSetItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "Web", CustomDomain: "x.com"},
 			wantErr: true,
 		},
 		{
 			name:    "bad_service_name_too_long",
-			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: strings.Repeat("a", 64), CustomDomain: "x.com"},
+			msg:     types.MsgSetItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: strings.Repeat("a", 64), CustomDomain: "x.com"},
 			wantErr: true,
 		},
 		{
 			name:    "bad_fqdn",
-			msg:     types.MsgSetLeaseItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "web", CustomDomain: "NoUpper.com"},
+			msg:     types.MsgSetItemCustomDomain{Sender: validAddr, LeaseUuid: validUUID, ServiceName: "web", CustomDomain: "NoUpper.com"},
 			wantErr: true,
 		},
 	}
