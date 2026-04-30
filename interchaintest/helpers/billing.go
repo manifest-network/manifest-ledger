@@ -17,10 +17,11 @@ import (
 // LeaseItemJSON is a JSON-compatible version of LeaseItem.
 // Quantity is a string in CLI JSON output.
 type LeaseItemJSON struct {
-	SkuUuid     string   `json:"sku_uuid,omitempty"`
-	Quantity    string   `json:"quantity,omitempty"`
-	LockedPrice sdk.Coin `json:"locked_price"`
-	ServiceName string   `json:"service_name,omitempty"`
+	SkuUuid      string   `json:"sku_uuid,omitempty"`
+	Quantity     string   `json:"quantity,omitempty"`
+	LockedPrice  sdk.Coin `json:"locked_price"`
+	ServiceName  string   `json:"service_name,omitempty"`
+	CustomDomain string   `json:"custom_domain,omitempty"`
 }
 
 // LeaseJSON is a JSON-compatible version of Lease.
@@ -168,6 +169,15 @@ func BillingCancelLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
+// BillingSetItemCustomDomain sets or clears the custom_domain on a
+// specific LeaseItem. For a 1-item legacy lease, pass "" for serviceName.
+// An empty domain clears the field; sender must be tenant, authority, or
+// in params.allowed_list.
+func BillingSetItemCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID, serviceName, domain string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "set-item-custom-domain", leaseUUID, serviceName, domain}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
 // BillingCreateAndAcknowledgeLease creates a new lease and immediately acknowledges it.
 // This is a convenience function for tests where an active lease is needed.
 // Returns the lease UUID and any error.
@@ -226,8 +236,24 @@ func BillingWithdrawByProvider(ctx context.Context, chain *cosmos.CosmosChain, u
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
-// BillingUpdateParams updates the billing module parameters.
+// BillingUpdateParams updates the billing module parameters using the v1
+// field set only. ReservedDomainSuffixes is left untouched: the CLI's
+// preserve-on-omit semantic keeps the existing on-chain value when the flag
+// is absent. Callers that want to set or clear ReservedDomainSuffixes should
+// use BillingUpdateParamsFull directly.
 func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, maxLeasesPerTenant uint64, maxItemsPerLease uint64, minLeaseDuration uint64, maxPendingLeasesPerTenant uint64, pendingTimeout uint64, allowedList []string, flags ...string) (sdk.TxResponse, error) {
+	return BillingUpdateParamsFull(ctx, chain, user, maxLeasesPerTenant, maxItemsPerLease, minLeaseDuration, maxPendingLeasesPerTenant, pendingTimeout, allowedList, nil, flags...)
+}
+
+// BillingUpdateParamsFull updates the billing module parameters including the
+// reserved_domain_suffixes list.
+//
+// Slice arguments use Go nil-vs-empty distinction to match the CLI's
+// preserve-on-omit semantic:
+//   - nil slice: omit the corresponding flag → CLI preserves the existing on-chain value.
+//   - non-nil slice (including length zero): pass the flag with the joined value
+//     → CLI sets the value (an empty []string{} explicitly clears).
+func BillingUpdateParamsFull(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, maxLeasesPerTenant uint64, maxItemsPerLease uint64, minLeaseDuration uint64, maxPendingLeasesPerTenant uint64, pendingTimeout uint64, allowedList []string, reservedDomainSuffixes []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{
 		"tx", "billing", "update-params",
 		strconv.FormatUint(maxLeasesPerTenant, 10),
@@ -236,8 +262,11 @@ func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ib
 		strconv.FormatUint(maxPendingLeasesPerTenant, 10),
 		strconv.FormatUint(pendingTimeout, 10),
 	}
-	if len(allowedList) > 0 {
+	if allowedList != nil {
 		cmd = append(cmd, "--allowed-list", strings.Join(allowedList, ","))
+	}
+	if reservedDomainSuffixes != nil {
+		cmd = append(cmd, "--reserved-domain-suffixes", strings.Join(reservedDomainSuffixes, ","))
 	}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
@@ -257,6 +286,13 @@ type LeaseResponseJSON struct {
 	Lease LeaseJSON `json:"lease"`
 }
 
+// LeaseByCustomDomainResponseJSON wraps the LeaseByCustomDomain query response,
+// which includes the service_name of the matching item alongside the lease.
+type LeaseByCustomDomainResponseJSON struct {
+	Lease       LeaseJSON `json:"lease"`
+	ServiceName string    `json:"service_name,omitempty"`
+}
+
 // BillingQueryParams queries the billing module parameters.
 func BillingQueryParams(ctx context.Context, chain *cosmos.CosmosChain) (*billingtypes.QueryParamsResponse, error) {
 	var res billingtypes.QueryParamsResponse
@@ -271,6 +307,17 @@ func BillingQueryParams(ctx context.Context, chain *cosmos.CosmosChain) (*billin
 func BillingQueryLease(ctx context.Context, chain *cosmos.CosmosChain, leaseUUID string) (*LeaseResponseJSON, error) {
 	var res LeaseResponseJSON
 	cmd := []string{"query", "billing", "lease", leaseUUID}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// BillingQueryLeaseByCustomDomain queries the lease and matching service_name
+// for a given custom_domain.
+func BillingQueryLeaseByCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, domain string) (*LeaseByCustomDomainResponseJSON, error) {
+	var res LeaseByCustomDomainResponseJSON
+	cmd := []string{"query", "billing", "lease-by-domain", domain}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}

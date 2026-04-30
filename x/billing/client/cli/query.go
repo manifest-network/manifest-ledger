@@ -58,6 +58,7 @@ func GetQueryCmd() *cobra.Command {
 		GetCreditEstimateCmd(),
 		GetWithdrawableAmountCmd(),
 		GetProviderWithdrawableCmd(),
+		GetLeaseByCustomDomainCmd(),
 	)
 
 	return cmd
@@ -555,5 +556,32 @@ Returns:
 
 	flags.AddQueryFlagsToCmd(cmd)
 
+	return cmd
+}
+
+// GetLeaseByCustomDomainCmd returns the command to look up a lease by its custom_domain.
+func GetLeaseByCustomDomainCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "lease-by-domain [domain]",
+		Short:   "Query the lease that has claimed a given custom_domain",
+		Example: `lease-by-domain app.example.com`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+			queryClient := types.NewQueryClient(clientCtx)
+			res, err := queryClient.LeaseByCustomDomain(cmd.Context(), &types.QueryLeaseByCustomDomainRequest{
+				CustomDomain: args[0],
+			})
+			if err != nil {
+				return err
+			}
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
 	return cmd
 }

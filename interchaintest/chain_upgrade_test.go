@@ -36,7 +36,7 @@ var (
 	// baseChain is the current version of the chain that will be upgraded from
 	baseChain = ibc.DockerImage{
 		Repository: "ghcr.io/manifest-network/manifest-ledger",
-		Version:    "2.0.3",
+		Version:    "2.1.0",
 		UIDGID:     "1025:1025",
 	}
 

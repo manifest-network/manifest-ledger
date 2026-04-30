@@ -47,6 +47,13 @@ var (
 	// This enables efficient time-based queries for leases in a specific state,
 	// particularly for EndBlocker pending lease expiration (O(e) expired instead of O(p) all pending).
 	LeaseByStateCreatedAtIndexKey = collections.NewPrefix(11)
+
+	// CustomDomainIndexKey saves the unique reverse index from custom_domain to
+	// CustomDomainTarget{lease_uuid, service_name}. This enables both O(1) reverse
+	// lookup (Query/LeaseByCustomDomain) and uniqueness enforcement at
+	// SetItemCustomDomain. Entries are reconciled by reconcileCustomDomainIndex
+	// inside SetLease, derived from each item's (state, custom_domain).
+	CustomDomainIndexKey = collections.NewPrefix(12)
 )
 
 const (
@@ -91,21 +98,23 @@ const (
 
 // Event types for the billing module.
 const (
-	EventTypeCreditFunded      = "credit_funded"
-	EventTypeLeaseCreated      = "lease_created"
-	EventTypeLeaseClosed       = "lease_closed"
-	EventTypeLeaseAutoClose    = "lease_auto_closed"
-	EventTypeLeaseAcknowledged = "lease_acknowledged"
-	EventTypeBatchAcknowledged = "batch_acknowledged"
-	EventTypeLeaseRejected     = "lease_rejected"
-	EventTypeBatchRejected     = "batch_rejected"
-	EventTypeBatchClosed       = "batch_closed"
-	EventTypeLeaseCancelled    = "lease_cancelled"
-	EventTypeBatchCancelled    = "batch_cancelled"
-	EventTypeLeaseExpired      = "lease_expired"
-	EventTypeProviderWithdraw  = "provider_withdraw"
-	EventTypeBatchWithdraw     = "batch_withdraw"
-	EventTypeParamsUpdated     = "params_updated"
+	EventTypeCreditFunded             = "credit_funded"
+	EventTypeLeaseCreated             = "lease_created"
+	EventTypeLeaseClosed              = "lease_closed"
+	EventTypeLeaseAutoClose           = "lease_auto_closed"
+	EventTypeLeaseAcknowledged        = "lease_acknowledged"
+	EventTypeBatchAcknowledged        = "batch_acknowledged"
+	EventTypeLeaseRejected            = "lease_rejected"
+	EventTypeBatchRejected            = "batch_rejected"
+	EventTypeBatchClosed              = "batch_closed"
+	EventTypeLeaseCancelled           = "lease_cancelled"
+	EventTypeBatchCancelled           = "batch_cancelled"
+	EventTypeLeaseExpired             = "lease_expired"
+	EventTypeProviderWithdraw         = "provider_withdraw"
+	EventTypeBatchWithdraw            = "batch_withdraw"
+	EventTypeParamsUpdated            = "params_updated"
+	EventTypeLeaseCustomDomainSet     = "lease_custom_domain_set"
+	EventTypeLeaseCustomDomainCleared = "lease_custom_domain_cleared"
 
 	// Attribute keys for events.
 	AttributeKeyTenant            = "tenant"
@@ -134,6 +143,9 @@ const (
 	AttributeKeyCancelledBy       = "cancelled_by"
 	AttributeKeyAutoClosed        = "auto_closed"
 	AttributeKeyMetaHash          = "meta_hash"
+	AttributeKeyCustomDomain      = "custom_domain"
+	AttributeKeySetBy             = "set_by"
+	AttributeKeyServiceName       = "service_name"
 )
 
 // Rejection reasons for lease cancellation/rejection.
@@ -146,4 +158,16 @@ const (
 const (
 	// ClosureReasonCreditExhausted is the reason set when a lease is auto-closed due to credit exhaustion.
 	ClosureReasonCreditExhausted = "credit exhausted"
+)
+
+// Authorisation role values emitted in the AttributeKeySetBy event attribute.
+// Matches the SDK convention of named string constants for closed-set values
+// (e.g. x/gov AttributeValueProposalDropped).
+const (
+	// AttributeValueRoleTenant means the sender was the lease tenant.
+	AttributeValueRoleTenant = "tenant"
+	// AttributeValueRoleAuthority means the sender was the module authority.
+	AttributeValueRoleAuthority = "authority"
+	// AttributeValueRoleAllowed means the sender was in params.allowed_list.
+	AttributeValueRoleAllowed = "allowed"
 )

@@ -31,6 +31,7 @@ const (
 	Query_CreditAccounts_FullMethodName       = "/liftedinit.billing.v1.Query/CreditAccounts"
 	Query_LeasesBySKU_FullMethodName          = "/liftedinit.billing.v1.Query/LeasesBySKU"
 	Query_CreditEstimate_FullMethodName       = "/liftedinit.billing.v1.Query/CreditEstimate"
+	Query_LeaseByCustomDomain_FullMethodName  = "/liftedinit.billing.v1.Query/LeaseByCustomDomain"
 )
 
 // QueryClient is the client API for Query service.
@@ -61,6 +62,9 @@ type QueryClient interface {
 	LeasesBySKU(ctx context.Context, in *QueryLeasesBySKURequest, opts ...grpc.CallOption) (*QueryLeasesBySKUResponse, error)
 	// CreditEstimate estimates remaining lease duration for a tenant.
 	CreditEstimate(ctx context.Context, in *QueryCreditEstimateRequest, opts ...grpc.CallOption) (*QueryCreditEstimateResponse, error)
+	// LeaseByCustomDomain returns the active or pending lease that has claimed
+	// the given custom_domain, if any.
+	LeaseByCustomDomain(ctx context.Context, in *QueryLeaseByCustomDomainRequest, opts ...grpc.CallOption) (*QueryLeaseByCustomDomainResponse, error)
 }
 
 type queryClient struct {
@@ -179,6 +183,15 @@ func (c *queryClient) CreditEstimate(ctx context.Context, in *QueryCreditEstimat
 	return out, nil
 }
 
+func (c *queryClient) LeaseByCustomDomain(ctx context.Context, in *QueryLeaseByCustomDomainRequest, opts ...grpc.CallOption) (*QueryLeaseByCustomDomainResponse, error) {
+	out := new(QueryLeaseByCustomDomainResponse)
+	err := c.cc.Invoke(ctx, Query_LeaseByCustomDomain_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServer is the server API for Query service.
 // All implementations must embed UnimplementedQueryServer
 // for forward compatibility
@@ -207,6 +220,9 @@ type QueryServer interface {
 	LeasesBySKU(context.Context, *QueryLeasesBySKURequest) (*QueryLeasesBySKUResponse, error)
 	// CreditEstimate estimates remaining lease duration for a tenant.
 	CreditEstimate(context.Context, *QueryCreditEstimateRequest) (*QueryCreditEstimateResponse, error)
+	// LeaseByCustomDomain returns the active or pending lease that has claimed
+	// the given custom_domain, if any.
+	LeaseByCustomDomain(context.Context, *QueryLeaseByCustomDomainRequest) (*QueryLeaseByCustomDomainResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }
 
@@ -249,6 +265,9 @@ func (UnimplementedQueryServer) LeasesBySKU(context.Context, *QueryLeasesBySKURe
 }
 func (UnimplementedQueryServer) CreditEstimate(context.Context, *QueryCreditEstimateRequest) (*QueryCreditEstimateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreditEstimate not implemented")
+}
+func (UnimplementedQueryServer) LeaseByCustomDomain(context.Context, *QueryLeaseByCustomDomainRequest) (*QueryLeaseByCustomDomainResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LeaseByCustomDomain not implemented")
 }
 func (UnimplementedQueryServer) mustEmbedUnimplementedQueryServer() {}
 
@@ -479,6 +498,24 @@ func _Query_CreditEstimate_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_LeaseByCustomDomain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryLeaseByCustomDomainRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).LeaseByCustomDomain(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_LeaseByCustomDomain_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).LeaseByCustomDomain(ctx, req.(*QueryLeaseByCustomDomainRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Query_ServiceDesc is the grpc.ServiceDesc for Query service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -533,6 +570,10 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreditEstimate",
 			Handler:    _Query_CreditEstimate_Handler,
+		},
+		{
+			MethodName: "LeaseByCustomDomain",
+			Handler:    _Query_LeaseByCustomDomain_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
