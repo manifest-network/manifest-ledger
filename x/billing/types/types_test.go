@@ -2020,6 +2020,31 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 			blockTime: now,
 			expectErr: false,
 		},
+		{
+			// Zero blockTime is the SDK default when an in-test InitChain
+			// call doesn't supply RequestInitChain.Time (e.g.
+			// `make sim-after-import`). Comparing real timestamps to the
+			// zero time is meaningless, so the validator skips the check.
+			name: "valid - zero blockTime skips future-timestamp check",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items: []types.LeaseItem{
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+						},
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     future,
+						LastSettledAt: future,
+					},
+				},
+			},
+			blockTime: time.Time{},
+			expectErr: false,
+		},
 	}
 
 	for _, tc := range tests {

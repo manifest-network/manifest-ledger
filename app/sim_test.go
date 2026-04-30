@@ -119,7 +119,7 @@ func BenchmarkSimulation(b *testing.B) {
 		bApp.BaseApp,
 		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
 		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
+		simtestutil.BuildSimulationOperations(bApp, bApp.AppCodec(), config, bApp.TxConfig()),
 		app.BlockedAddresses(),
 		config,
 		bApp.AppCodec(),
@@ -173,7 +173,7 @@ func TestFullAppSimulation(t *testing.T) {
 		bApp.BaseApp,
 		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
 		simulationtypes.RandomAccounts, // Replace with own random account function if using keys other than secp256k1
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
+		simtestutil.BuildSimulationOperations(bApp, bApp.AppCodec(), config, bApp.TxConfig()),
 		app.BlockedAddresses(),
 		config,
 		bApp.AppCodec(),
@@ -227,7 +227,7 @@ func TestAppImportExport(t *testing.T) {
 		bApp.BaseApp,
 		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
 		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
+		simtestutil.BuildSimulationOperations(bApp, bApp.AppCodec(), config, bApp.TxConfig()),
 		app.BlockedAddresses(),
 		config,
 		bApp.AppCodec(),
@@ -354,7 +354,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		bApp.BaseApp,
 		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
 		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
+		simtestutil.BuildSimulationOperations(bApp, bApp.AppCodec(), config, bApp.TxConfig()),
 		app.BlockedAddresses(),
 		config,
 		bApp.AppCodec(),
@@ -405,7 +405,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		newApp.BaseApp,
 		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
 		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(newApp, newApp.AppCodec(), config),
+		simtestutil.BuildSimulationOperations(newApp, newApp.AppCodec(), config, newApp.TxConfig()),
 		app.BlockedAddresses(),
 		config,
 		bApp.AppCodec(),
@@ -427,8 +427,6 @@ func TestAppStateDeterminism(t *testing.T) {
 	config := simcli.NewConfigFromFlags()
 	config.InitialBlockHeight = 1
 	config.ExportParamsPath = ""
-	config.OnOperation = true
-	config.AllInvariants = true
 	config.ChainID = SimAppChainID
 
 	numSeeds := 3
@@ -502,7 +500,7 @@ func TestAppStateDeterminism(t *testing.T) {
 					bApp.DefaultGenesis(),
 				),
 				simulationtypes.RandomAccounts,
-				simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
+				simtestutil.BuildSimulationOperations(bApp, bApp.AppCodec(), config, bApp.TxConfig()),
 				app.BlockedAddresses(),
 				config,
 				bApp.AppCodec(),

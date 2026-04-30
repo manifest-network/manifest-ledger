@@ -90,8 +90,6 @@ func TestPerformPayout(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
-
 		t.Run(c.name, func(t *testing.T) {
 			payoutMsg := &types.MsgPayout{
 				Authority:   c.sender,
@@ -107,7 +105,6 @@ func TestPerformPayout(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, p := range c.payouts {
-				p := p
 				addr := p.Address
 				coin := p.Coin
 
@@ -118,7 +115,6 @@ func TestPerformPayout(t *testing.T) {
 				require.EqualValues(t, coin.Amount, balance.Amount, "expected %s, got %s", coin.Amount, balance.Amount)
 			}
 		})
-
 	}
 }
 
@@ -186,7 +182,6 @@ func TestBurnCoins(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			// setup initial balances for the new account
 			if len(c.initial) > 0 {
