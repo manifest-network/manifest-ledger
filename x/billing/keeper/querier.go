@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -665,4 +666,27 @@ func paginateSKUIndex(
 	}
 
 	return leases, pageRes, nil
+}
+
+// LeaseByCustomDomain returns the lease and the service_name of the item that
+// has claimed the given custom_domain.
+func (q Querier) LeaseByCustomDomain(ctx context.Context, req *types.QueryLeaseByCustomDomainRequest) (*types.QueryLeaseByCustomDomainResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request cannot be nil")
+	}
+	// Normalise BEFORE the empty check so whitespace-only input is rejected
+	// with InvalidArgument instead of falling through to a misleading NotFound
+	// for the empty-string canonical form.
+	domain := strings.ToLower(strings.TrimSpace(req.CustomDomain))
+	if domain == "" {
+		return nil, status.Error(codes.InvalidArgument, "custom_domain cannot be empty")
+	}
+	lease, serviceName, has, err := q.k.GetLeaseByCustomDomain(ctx, domain)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if !has {
+		return nil, status.Errorf(codes.NotFound, "no lease with custom_domain %s", domain)
+	}
+	return &types.QueryLeaseByCustomDomainResponse{Lease: lease, ServiceName: serviceName}, nil
 }

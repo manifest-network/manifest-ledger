@@ -37,6 +37,7 @@ func NewTxCmd() *cobra.Command {
 		NewCloseLeaseCmd(),
 		NewWithdrawCmd(),
 		NewUpdateParamsCmd(),
+		NewSetItemCustomDomainCmd(),
 	)
 
 	return cmd
@@ -381,11 +382,24 @@ func NewUpdateParamsCmd() *cobra.Command {
 		Use:   "update-params [max-leases-per-tenant] [max-items-per-lease] [min-lease-duration] [max-pending-leases-per-tenant] [pending-timeout]",
 		Short: "Update billing module parameters (authority only)",
 		Long: `Update the billing module parameters. Only the module authority can execute this command.
-All parameters must be provided. Use --allowed-list to set addresses allowed to create leases for tenants.
+All numeric parameters must be provided.
+
+--allowed-list and --reserved-domain-suffixes are PRESERVE-on-omit: when the flag
+is not provided on the command line, the current on-chain value is queried and
+re-submitted unchanged so existing operator workflows (e.g. bumping a numeric
+param) cannot accidentally wipe seeded entries. Pass the flag with an empty
+value (e.g. --reserved-domain-suffixes="") to explicitly clear the list.
+
 min-lease-duration is in seconds (e.g., 3600 for 1 hour).
 pending-timeout is the duration in seconds that a lease can remain in PENDING state (60-86400).`,
-		Example: `update-params 100 20 3600 10 1800 --from authority
-update-params 100 20 3600 10 1800 --allowed-list manifest1abc...,manifest1xyz... --from authority`,
+		Example: `# Update only numeric params (allowed_list and reserved_domain_suffixes preserved):
+update-params 100 20 3600 10 1800 --from authority
+
+# Update numeric params and overwrite allowed_list:
+update-params 100 20 3600 10 1800 --allowed-list manifest1abc...,manifest1xyz... --from authority
+
+# Explicitly clear reserved_domain_suffixes:
+update-params 100 20 3600 10 1800 --reserved-domain-suffixes="" --from authority`,
 		Args: cobra.ExactArgs(5),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -418,10 +432,41 @@ update-params 100 20 3600 10 1800 --allowed-list manifest1abc...,manifest1xyz...
 				return fmt.Errorf("invalid pending_timeout: %w", err)
 			}
 
-			allowedListStr, _ := cmd.Flags().GetString("allowed-list")
-			var allowedList []string
-			if allowedListStr != "" {
-				allowedList = splitAndTrim(allowedListStr)
+			// MsgUpdateParams is replace-style: omitted list flags would silently
+			// wipe seeded values. Distinguish "flag absent" (preserve current) from
+			// "flag present with empty value" (explicit clear) via Flags.Changed().
+			// On absent, query the current on-chain value to round-trip.
+			var (
+				allowedList      []string
+				reservedSuffixes []string
+				preservedParams  *types.Params
+			)
+			needsPreservedParams := !cmd.Flags().Changed("allowed-list") || !cmd.Flags().Changed("reserved-domain-suffixes")
+			if needsPreservedParams {
+				queryClient := types.NewQueryClient(clientCtx)
+				res, err := queryClient.Params(cmd.Context(), &types.QueryParamsRequest{})
+				if err != nil {
+					return fmt.Errorf("query current params to preserve omitted list flags: %w", err)
+				}
+				preservedParams = &res.Params
+			}
+
+			if cmd.Flags().Changed("allowed-list") {
+				allowedListStr, _ := cmd.Flags().GetString("allowed-list")
+				if allowedListStr != "" {
+					allowedList = splitAndTrim(allowedListStr)
+				}
+			} else {
+				allowedList = preservedParams.AllowedList
+			}
+
+			if cmd.Flags().Changed("reserved-domain-suffixes") {
+				reservedSuffixesStr, _ := cmd.Flags().GetString("reserved-domain-suffixes")
+				if reservedSuffixesStr != "" {
+					reservedSuffixes = splitAndTrim(reservedSuffixesStr)
+				}
+			} else {
+				reservedSuffixes = preservedParams.ReservedDomainSuffixes
 			}
 
 			msg := &types.MsgUpdateParams{
@@ -433,6 +478,7 @@ update-params 100 20 3600 10 1800 --allowed-list manifest1abc...,manifest1xyz...
 					MinLeaseDuration:          minLeaseDuration,
 					MaxPendingLeasesPerTenant: maxPendingLeasesPerTenant,
 					PendingTimeout:            pendingTimeout,
+					ReservedDomainSuffixes:    reservedSuffixes,
 				},
 			}
 
@@ -440,7 +486,8 @@ update-params 100 20 3600 10 1800 --allowed-list manifest1abc...,manifest1xyz...
 		},
 	}
 
-	cmd.Flags().String("allowed-list", "", "Comma-separated list of addresses allowed to create leases for tenants")
+	cmd.Flags().String("allowed-list", "", "Comma-separated list of addresses allowed to create leases for tenants. Omit to preserve current; pass empty string to clear.")
+	cmd.Flags().String("reserved-domain-suffixes", "", "Comma-separated list of reserved domain suffixes (each must begin with '.'). Omit to preserve current; pass empty string to clear.")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd
@@ -592,5 +639,50 @@ cancel-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000
 
 	flags.AddTxFlagsToCmd(cmd)
 
+	return cmd
+}
+
+// NewSetItemCustomDomainCmd returns the set-item-custom-domain command.
+func NewSetItemCustomDomainCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "set-item-custom-domain [lease-uuid] [service-name] [domain]",
+		Short: "Set or clear the custom_domain on a specific lease item",
+		Long: `Set or clear the custom_domain on a specific LeaseItem identified by
+service_name. For a 1-item legacy lease (item.service_name unset), pass "" for
+[service-name]. Multi-item legacy leases cannot use custom_domain — recreate the
+lease in service-name mode. Pass "" for [domain] to clear the field. Authorised
+senders are the lease tenant, the module authority, or any address in
+params.allowed_list.`,
+		Example: `# 1-item lease, item has no service_name
+set-item-custom-domain 01902a9b-1234-7000-8000-000000000001 "" app.example.com --from tenant-key
+
+# multi-item lease, target the "web" item
+set-item-custom-domain 01902a9b-1234-7000-8000-000000000001 web app.example.com --from tenant-key
+
+# clear the domain on the "web" item
+set-item-custom-domain 01902a9b-1234-7000-8000-000000000001 web "" --from tenant-key`,
+		Args: cobra.ExactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			leaseUUID := args[0]
+			if !pkguuid.IsValidUUID(leaseUUID) {
+				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+			}
+
+			msg := &types.MsgSetItemCustomDomain{
+				Sender:       clientCtx.GetFromAddress().String(),
+				LeaseUuid:    leaseUUID,
+				ServiceName:  args[1],
+				CustomDomain: args[2],
+			}
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }

@@ -86,6 +86,14 @@ service Query {
     option (google.api.http).get =
         "/liftedinit/billing/v1/credit/{tenant}/estimate";
   }
+
+  // LeaseByCustomDomain returns the active or pending lease that has claimed
+  // the given custom_domain, if any.
+  rpc LeaseByCustomDomain(QueryLeaseByCustomDomainRequest)
+      returns (QueryLeaseByCustomDomainResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/lease/by-domain/{custom_domain}";
+  }
 }
 
 // QueryParamsRequest is the request type for the Query/Params RPC method.
@@ -375,4 +383,25 @@ message QueryCreditEstimateResponse {
   // active_lease_count is the number of active leases for this tenant.
   uint64 active_lease_count = 4
       [(gogoproto.jsontag) = "active_lease_count,omitempty,string"];
+}
+
+// QueryLeaseByCustomDomainRequest is the request type for the
+// Query/LeaseByCustomDomain RPC method.
+message QueryLeaseByCustomDomainRequest {
+  // custom_domain is the FQDN to look up.
+  string custom_domain = 1 [(gogoproto.jsontag) = "custom_domain,omitempty"];
+}
+
+// QueryLeaseByCustomDomainResponse is the response type for the
+// Query/LeaseByCustomDomain RPC method.
+message QueryLeaseByCustomDomainResponse {
+  // lease is the lease that owns the LeaseItem holding this custom_domain.
+  Lease lease = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "lease"
+  ];
+
+  // service_name identifies the specific LeaseItem within the lease.
+  // For a 1-item legacy lease, this is "".
+  string service_name = 2 [(gogoproto.jsontag) = "service_name,omitempty"];
 }

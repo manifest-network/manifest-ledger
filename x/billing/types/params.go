@@ -41,6 +41,10 @@ const MaxPendingLeasesPerTenantUpperBound = uint64(1_000)
 const MaxMinLeaseDuration = uint64(30 * 24 * 3600)
 
 // DefaultParams returns the default billing module parameters.
+// ReservedDomainSuffixes is intentionally empty — operators are expected to
+// seed provider wildcard zones via genesis JSON for new chains, or via
+// MsgUpdateParams shortly after a v1→v2 upgrade for existing chains. The
+// migration itself is a no-op (no hardcoded hostnames in the binary).
 func DefaultParams() Params {
 	return Params{
 		MaxLeasesPerTenant:        DefaultMaxLeasesPerTenant,
@@ -49,10 +53,14 @@ func DefaultParams() Params {
 		MinLeaseDuration:          DefaultMinLeaseDuration,
 		MaxPendingLeasesPerTenant: DefaultMaxPendingLeasesPerTenant,
 		PendingTimeout:            DefaultPendingTimeout,
+		ReservedDomainSuffixes:    nil,
 	}
 }
 
-// NewParams creates a new Params instance.
+// NewParams creates a new Params instance using the v1 field set only.
+// ReservedDomainSuffixes (introduced in v2) is left at its zero value (nil);
+// callers who need to populate it should mutate the returned struct directly.
+// Kept signature-stable to avoid touching the ~30 existing test callers.
 func NewParams(maxLeasesPerTenant uint64, allowedList []string, maxItemsPerLease uint64, minLeaseDuration uint64, maxPendingLeasesPerTenant uint64, pendingTimeout uint64) Params {
 	return Params{
 		MaxLeasesPerTenant:        maxLeasesPerTenant,
@@ -116,6 +124,22 @@ func (p *Params) Validate() error {
 			return ErrInvalidParams.Wrapf("duplicate address in allowed list: %s", addr)
 		}
 		seen[addr] = true
+	}
+
+	// Validate reserved domain suffixes: each entry must start with '.' and
+	// the substring after the dot must be a valid FQDN. Duplicates rejected.
+	seenSuffix := make(map[string]bool)
+	for _, s := range p.ReservedDomainSuffixes {
+		if len(s) < 2 || s[0] != '.' {
+			return ErrInvalidParams.Wrapf("reserved domain suffix must begin with '.': %q", s)
+		}
+		if err := IsValidFQDN(s[1:]); err != nil {
+			return ErrInvalidParams.Wrapf("invalid reserved domain suffix %q: %s", s, err)
+		}
+		if seenSuffix[s] {
+			return ErrInvalidParams.Wrapf("duplicate reserved domain suffix: %q", s)
+		}
+		seenSuffix[s] = true
 	}
 
 	return nil

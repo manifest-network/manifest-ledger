@@ -49,6 +49,14 @@ service Msg {
 
   // UpdateParams updates the module parameters.
   rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+
+  // SetItemCustomDomain sets or clears the custom_domain on a specific
+  // LeaseItem, identified by service_name. Authorised senders: the lease's
+  // tenant, the module authority, or any address in params.allowed_list. The
+  // lease must be in PENDING or ACTIVE state; an empty custom_domain clears
+  // the field and frees the index entry.
+  rpc SetItemCustomDomain(MsgSetItemCustomDomain)
+      returns (MsgSetItemCustomDomainResponse);
 }
 
 // LeaseItemInput is the input for creating a lease item.
@@ -383,3 +391,36 @@ message MsgCancelLeaseResponse {
   // cancelled_count is the number of leases that were cancelled.
   uint64 cancelled_count = 2 [(gogoproto.jsontag) = "cancelled_count,omitempty"];
 }
+
+// MsgSetItemCustomDomain sets or clears the custom_domain on a specific
+// LeaseItem, identified by its service_name (the lease's commit-time uniqueness
+// key). For a 1-item legacy lease, service_name is "". An empty custom_domain
+// clears the field and frees the index entry.
+message MsgSetItemCustomDomain {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (amino.name) = "lifted/billing/MsgSetItemCustomDomain";
+
+  // sender is the address signing the transaction. Must be the lease tenant,
+  // the module authority, or an address in params.allowed_list.
+  string sender = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "sender,omitempty"
+  ];
+
+  // lease_uuid is the UUID of the lease that owns the target item.
+  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+
+  // service_name addresses the target LeaseItem. The keeper finds the unique
+  // item where item.service_name == this value. For a 1-item legacy lease
+  // (item.service_name == ""), pass "". Multi-item legacy leases cannot use
+  // custom_domain because the lookup would be ambiguous.
+  string service_name = 3 [(gogoproto.jsontag) = "service_name,omitempty"];
+
+  // custom_domain is the FQDN to assign. An empty string clears the field
+  // and removes any existing reverse-index entry.
+  string custom_domain = 4 [(gogoproto.jsontag) = "custom_domain,omitempty"];
+}
+
+// MsgSetItemCustomDomainResponse is the response type for
+// MsgSetItemCustomDomain.
+message MsgSetItemCustomDomainResponse {}
