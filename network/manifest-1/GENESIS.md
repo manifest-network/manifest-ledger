@@ -87,8 +87,13 @@ CHAIN_ID='manifest-1'
 PROJECT_HOME="${HOME}/.manifest"
 KEYNAME_ADDR=$(manifestd keys show $KEYNAME -a)
 
-# Reset prior state and any leftover gentxs.
+# Reset prior state and any leftover gentxs / stale genesis. `comet
+# unsafe-reset-all` only clears the data directory; genesis.json lives
+# under config/ and survives, so on reruns we need to remove it
+# explicitly before `init` (otherwise init fails with
+# "genesis.json file already exists").
 manifestd comet unsafe-reset-all
+rm -f $HOME/.manifest/config/genesis.json
 rm -f $HOME/.manifest/config/gentx/*.json
 
 # Initialise a fresh config + genesis. --default-denom (umfx) controls the

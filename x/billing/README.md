@@ -107,7 +107,7 @@ HTTP-01. Domains are set or cleared after lease creation via
 - Each label is RFC 1123 (1-63 alphanumerics + hyphens, no leading/trailing
   hyphen).
 - The TLD label must contain at least one non-digit (rejects raw IPs).
-- No scheme (`://`), no `/ \t \s @ * ? #`, no leading or trailing dot.
+- No scheme (`://`), no leading or trailing dot, and none of the literal characters `/`, space, `\t` (tab), `@`, `*`, `?`, `#`.
 
 **Reserved suffixes** (`params.reserved_domain_suffixes`). Tenants cannot
 claim a domain that matches any reserved suffix. Each suffix entry must begin
