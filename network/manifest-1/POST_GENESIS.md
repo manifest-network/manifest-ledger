@@ -71,9 +71,11 @@ sudo mv manifestd /usr/local/bin
 ## Initialise & configure your node
 
 ```bash
-# --default-denom is the local fee/gas denom (umfx). The staking bond_denom (upoa)
-# is set in mainnet's genesis.json — do NOT pass --staking-bond-denom here, otherwise
-# `genesis validate` will mismatch the downloaded mainnet genesis.
+# --default-denom is the local fee/gas denom (umfx). The staking bond_denom
+# (upoa) comes baked into mainnet's genesis.json — Cosmos SDK v0.50's `init`
+# command doesn't expose a separate flag for it, so just `--default-denom`
+# is what you pass here. The freshly-init'd genesis.json gets replaced by
+# the canonical mainnet file in the next step anyway.
 manifestd init <moniker> --chain-id manifest-1 --default-denom umfx
 ```
 

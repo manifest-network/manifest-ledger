@@ -77,17 +77,24 @@ When the chain hits the upgrade height, cosmovisor stops the current process, sw
 
 ## Released versions
 
-Mainnet runs the latest non-pre-release tag from this repo. Each row below summarises the upgrade-impact pieces only — see the linked release notes for the full changelog.
+Mainnet's `genesis_time` is **2024-04-10**, predating the formal `v1.x.x` tag series — the chain ran on `v0.0.1-rc.*` builds through early 2025. Each row below summarises the upgrade-impact pieces only; the full release notes (the `Description` field of each tag) live at <https://github.com/manifest-network/manifest-ledger/releases>. Mainnet runs the latest non-pre-release tag.
 
 | Version | Released | Major changes | Operator action |
 |---------|----------|---------------|-----------------|
-| `v1.0.0` | 2025-02-21 | First stable mainnet release. Cosmos SDK 0.50.12. | Initial install. |
-| `v1.0.1` – `v1.0.14` | 2025-03 → 2026-01 | Patch releases: dependency bumps, pin fixes (e.g. `cosmossdk.io/x/tx`), CometBFT bumps. No state migrations. | Pre-stage tag, vote on upgrade proposal, swap binary. |
-| `v2.0.0` | 2026-02-27 | **Breaking — billing v2.** Adds `x/sku` and `x/billing` modules; introduces `x/wasm`-permissioned providers; price/lease/credit semantics. New keepers wired into the upgrade handler (see `app.AppKeepers`). Reads PoA admin from `manifest1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfmy9qj` per the seeded params. | **Required upgrade.** Pre-stage `v2.0.0`. Backup state before running. |
-| `v2.0.1` | 2026-03-24 | Go 1.25.8 bump. No state changes. | Standard binary swap. |
-| `v2.0.2` | 2026-04-08 | wasmd 0.54.2 → 0.54.3. No state changes. | Standard binary swap. |
-| `v2.0.3` | 2026-04-16 | Determinism-under-load fixes; genesis-validation fixes (#150). No state migration but fixes a class of consensus-divergence under load — **prioritise this upgrade**. | Standard binary swap; recommended ASAP after release. |
+| `v1.0.0` | 2025-02-21 | First formal `v1.x.x` tag. Security fix for ASA-2025-003. Cosmos SDK 0.50.12. **No change to chain handler logic** — the chain-code update is a libwasmvm requirement bump. Requires `libwasmvm` [v2.2.2](https://github.com/CosmWasm/wasmvm/releases/v2.2.2). | Coordinated upgrade from the prior RC binary. Update `libwasmvm` on the host alongside the binary swap. |
+| `v1.0.1` | 2025-03-03 | Security fix for ASA-2025-004. Requires `libwasmvm` v2.2.2. | Coordinated upgrade; bump `libwasmvm`. |
+| `v1.0.2` – `v1.0.3` | 2025-03 | Patch fixes / pin updates around `cosmossdk.io/x/tx`. | Standard binary swap. |
+| `v1.0.4` | 2025-04-02 | **Behavioural change — IBC Transfers disabled** at this release. (No store migration; transfer messages are rejected at the application layer.) | Coordinated upgrade. After the swap, IBC `MsgTransfer` will fail until a future release re-enables it. |
+| `v1.0.5` – `v1.0.6` | 2025-06 → 2025-08 | Dependency bumps. | Standard binary swap. |
+| `v1.0.7` | 2025-08-18 | GitHub-org rename (`liftedinit` → `manifest-network`), Go and dependency bumps. Requires `libwasmvm` v2.2.4. | Coordinated upgrade; **bump `libwasmvm` to v2.2.4** (older v2.2.2 will fail to load). |
+| `v1.0.8` – `v1.0.14` | 2025-08 → 2026-01 | Periodic dependency bumps (CometBFT, ibc-go, wasmd). Each release continues to require `libwasmvm` v2.2.4. No state migrations. | Coordinated binary swap per release. |
+| `v2.0.0` | 2026-02-27 | **Breaking — billing v2** (#144). Adds `x/sku` and `x/billing` modules with new keepers wired into the upgrade handler (`app.AppKeepers`); bumps Cosmos SDK 0.50.12 → 0.50.14, wasmd 0.54.0 → 0.54.2, CometBFT 0.38.17 → 0.38.21, ibc-go 8.4.0 → 8.7.0; switches the `cosmos-sdk` replace directive from `liftedinit/cosmos-sdk` to `manifest-network/cosmos-sdk`. | **Required upgrade.** Pre-stage `v2.0.0`. Backup state before running. Plan downtime — the new module stores need to initialise. |
+| `v2.0.1` | 2026-03-25 | Go 1.25.7 → 1.25.8 bump (#147). No state changes. | Standard binary swap. |
+| `v2.0.2` | 2026-04-08 | wasmd 0.54.2 → 0.54.3 (#148). No state changes. | Standard binary swap. |
+| `v2.0.3` | 2026-04-16 | Determinism-under-load fix and genesis-validation hardening (#150). No state migration but addresses a class of consensus divergence — **prioritise this upgrade**. | Standard binary swap; recommended ASAP after release. |
 | `v2.1.0` | 2026-04-30 | **Feature — per-item custom domains** (#152). Adds `MsgSetItemCustomDomain`, `LeaseItem.custom_domain`, `Params.reserved_domain_suffixes`, `Query/LeaseByCustomDomain`, and the `CustomDomainIndex` reverse-lookup. New error codes 29–33. Backward-compatible: existing leases keep `custom_domain == ""`. | Standard binary swap. After upgrade, authority should consider seeding `Params.reserved_domain_suffixes` for any provider wildcard zones via `update-params --reserved-domain-suffixes "..."`. |
+
+> **Upgrade-name discipline.** Every release's GitHub note records `Upgrade Handler Name: <tag>` exactly — `v1.0.0`, `v2.0.0`, `v2.1.0`, etc. When voting on an upgrade proposal, confirm `plan.name` (or `manifestd query upgrade plan`) matches the published `Upgrade Handler Name` byte-for-byte before staging the binary at `$DAEMON_HOME/cosmovisor/upgrades/<name>/bin/`.
 
 ### Where to learn about upcoming upgrades
 

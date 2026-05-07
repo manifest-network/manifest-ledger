@@ -94,9 +94,13 @@ rm $HOME/.manifest/config/gentx/*.json
 wget https://raw.githubusercontent.com/manifest-network/manifest-ledger/main/network/manifest-1/manifest-1_genesis.json -O $HOME/.manifest/config/genesis.json
 
 # Give yourself 1POASTAKE for the genesis Tx signed.
-# --default-denom (umfx) controls the local fee/gas denom; --staking-bond-denom (upoa)
-# is the staking denom that must match the genesis app_state.staking.params.bond_denom.
-manifestd init "$MONIKER" --chain-id $CHAIN_ID --default-denom umfx --staking-bond-denom upoa
+# --default-denom (umfx) controls the local fee/gas denom. Cosmos SDK v0.50's
+# `init` does NOT accept a --staking-bond-denom flag; the staking bond denom
+# is set on the genesis JSON itself, either by the canonical mainnet
+# `manifest-1_genesis.json` you wgot above, or — for a custom chain — by the
+# `set-genesis-params.sh` script's jq override on
+# `.app_state.staking.params.bond_denom`.
+manifestd init "$MONIKER" --chain-id $CHAIN_ID --default-denom umfx
 manifestd genesis add-genesis-account $KEYNAME_ADDR 1000000upoa
 
 # genesis transaction using all above variables
