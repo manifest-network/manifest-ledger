@@ -89,6 +89,54 @@ Leases follow a two-phase commit pattern:
 4. **REJECTED**: Provider rejected the pending lease, or tenant cancelled it
 5. **EXPIRED**: Pending lease timed out (exceeded `pending_timeout` parameter)
 
+### Custom Domains (per-item)
+
+Each `LeaseItem` can carry an optional `custom_domain` — an FQDN that the
+provider routes to that item's container with a TLS cert provisioned via
+HTTP-01. Domains are set or cleared after lease creation via
+`MsgSetItemCustomDomain` and addressed by `service_name` (use `""` for a
+1-item legacy lease).
+
+**Authorisation.** The lease tenant, the module authority, and any address in
+`params.allowed_list` may set or clear a domain. The lease must be in
+`PENDING` or `ACTIVE` state; closed/rejected/expired leases are immutable.
+
+**Validation rules** (`IsValidFQDN`):
+- 1 to **253** bytes (`MaxCustomDomainLength`); lowercase only.
+- ≥ 1 dot separator (at least 2 labels).
+- Each label is RFC 1123 (1-63 alphanumerics + hyphens, no leading/trailing
+  hyphen).
+- The TLD label must contain at least one non-digit (rejects raw IPs).
+- No scheme (`://`), no `/ \t \s @ * ? #`, no leading or trailing dot.
+
+**Reserved suffixes** (`params.reserved_domain_suffixes`). Tenants cannot
+claim a domain that matches any reserved suffix. Each suffix entry must begin
+with `.` (e.g. `.barney0.manifest0.net`); a domain matches when it ends with
+the suffix at a label boundary, or equals the suffix's apex
+(`barney0.manifest0.net`). The check is case-insensitive and fail-closed on
+malformed entries. Reserved suffixes are tunable via governance — providers
+that bring up new wildcard zones can be added without a chain upgrade.
+
+**Uniqueness.** A domain may be claimed by at most one PENDING/ACTIVE lease
+item at a time. The keeper maintains a `CustomDomainIndex` reverse-lookup
+(prefix `0x0C`, value `CustomDomainTarget{lease_uuid, service_name}`) so
+`QueryLeaseByCustomDomain` returns the routing target in O(1) without
+iterating items. Closing, rejecting, expiring, or auto-closing a lease frees
+the index entry. Re-setting the same domain on the same item is idempotent
+(no event, no state change).
+
+**Multi-item legacy leases cannot use custom_domain.** When a multi-item
+lease was created without `service_name`s (legacy mode), the addressing key
+is empty for all items and the lookup is ambiguous. Recreate the lease in
+service-name mode instead.
+
+**Events**:
+- `lease_custom_domain_set` — attributes: `lease_uuid`, `tenant`, `service_name`, `custom_domain`, `set_by`
+- `lease_custom_domain_cleared` — same attributes (`custom_domain` carries the previous value)
+
+`set_by` ∈ {`tenant`, `authority`, `allowed`} indicates the role under which
+the call was authorised.
+
 ### Price Locking
 
 When a lease is created, the current prices of all SKUs are locked in for the duration of the lease. Price changes to SKUs only affect newly created leases.
@@ -150,6 +198,7 @@ If a tenant's credit balance is insufficient to cover accrued charges, the billi
 | `0x09` | LeaseByTenantState | Compound index: tenant+state → lease UUIDs |
 | `0x0A` | LeaseBySKU | Many-to-many index: SKU UUID → lease UUIDs |
 | `0x0B` | LeaseByStateCreatedAt | Compound index: state+created_at → lease UUIDs |
+| `0x0C` | CustomDomainIndex | Reverse index: custom_domain → CustomDomainTarget (lease_uuid + service_name) |
 
 ### Params
 
@@ -162,7 +211,8 @@ Module parameters stored at key `0x00`:
 | min_lease_duration | uint64 | Minimum lease duration in seconds (default: 3600 = 1 hour) |
 | max_pending_leases_per_tenant | uint64 | Maximum pending leases per tenant (default: 10) |
 | pending_timeout | uint64 | Seconds before pending lease expires (default: 1800 = 30 minutes, min: 60, max: 86400) |
-| allowed_list | []string | List of addresses allowed to create leases on behalf of tenants |
+| allowed_list | []string | List of addresses allowed to create leases on behalf of tenants and to set lease custom_domains |
+| reserved_domain_suffixes | []string | DNS suffixes (each beginning with `.`) that tenants are forbidden from claiming via `set-item-custom-domain`. Used to gate provider wildcard zones. Tunable via governance. |
 
 **Validation Constraints:**
 - `max_leases_per_tenant`: Must be > 0 and ≤ 10,000
@@ -170,6 +220,7 @@ Module parameters stored at key `0x00`:
 - `min_lease_duration`: Must be > 0 and ≤ 2,592,000 (30 days)
 - `max_pending_leases_per_tenant`: Must be > 0 and ≤ 1,000
 - `pending_timeout`: Must be between 60 seconds (1 minute) and 86400 seconds (24 hours)
+- `reserved_domain_suffixes`: Each entry must begin with `.`, the substring after the dot must be a valid FQDN, no duplicates
 
 **Note:** There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`, enabling multi-denom billing.
 
@@ -186,6 +237,7 @@ These values are compile-time constants and cannot be changed via governance:
 | `MaxBatchLeaseSize` | 100 | Hard limit for any batch operation. For provider-wide withdraw: configurable via `--limit` up to this value. For specific lease operations: maximum UUIDs per call. |
 | `MaxRejectionReasonLength` | 256 | Maximum characters for lease rejection reason |
 | `MaxClosureReasonLength` | 256 | Maximum characters for lease closure reason |
+| `MaxCustomDomainLength` | 253 | Maximum bytes for `LeaseItem.custom_domain` (RFC 1035 max FQDN length) |
 | `MaxDurationSeconds` | 3,153,600,000 (100 years) | Maximum lease duration for accrual calculations (overflow protection). Defined in `keeper/accrual.go`. |
 | `CreditAccountAddressPrefix` | `billing/credit/` | Prefix used for deterministic credit address derivation |
 | `DefaultProviderWithdrawableQueryLimit` | 100 | Default limit for ProviderWithdrawable query |
@@ -239,6 +291,9 @@ Leases stored at key prefix `0x01`:
 | quantity | uint64 | Number of instances |
 | locked_price | Coin | Price locked at creation (per second rate, includes denom) |
 | service_name | string | Optional DNS-label for stack deployments (all-or-nothing per lease, unique within lease) |
+| custom_domain | string | Optional FQDN (≤253 bytes) routed to this item by the provider. Mutable via `MsgSetItemCustomDomain`. Globally unique while the lease is PENDING/ACTIVE; the keeper enforces uniqueness through the `CustomDomainIndex` reverse-index. |
+
+> **Note on `service_name` and `custom_domain`:** these two fields are compute-specific and live on `LeaseItem` today as a pragmatic shortcut. When a non-compute lease kind ships, both fields will be migrated to a future `x/deployment` module via a state migration (tracked: ENG-80).
 
 ### CreditAccount
 
@@ -339,6 +394,7 @@ The billing module supports the following transaction messages:
 | `MsgCancelLease` | Tenant cancels their own pending lease |
 | `MsgCloseLease` | Close an active lease |
 | `MsgWithdraw` | Withdraw accrued funds (specific leases or provider-wide) |
+| `MsgSetItemCustomDomain` | Set or clear `custom_domain` on a specific lease item (tenant / authority / `allowed_list`) |
 | `MsgUpdateParams` | Update module parameters (authority only) |
 
 For detailed message definitions, request/response formats, and CLI usage, see [API Reference](docs/API.md#cli-commands).
@@ -359,6 +415,7 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 | CreditAddress | Derive credit address for a tenant |
 | WithdrawableAmount | Get withdrawable amount for a lease |
 | ProviderWithdrawable | Get total withdrawable for a provider |
+| LeaseByCustomDomain | Look up the active or pending lease that has claimed a given custom_domain (and the `service_name` of the matching item) |
 
 **Events**: See [API Reference - Events](docs/API.md#events) for the complete list of events emitted by this module.
 
@@ -395,6 +452,7 @@ For detailed authorization matrix, see [API Reference - Authorization](docs/API.
 - **Cancel Lease**: Tenant (own pending leases only)
 - **Close Lease**: Tenant, Provider, or Authority
 - **Withdraw**: Provider or Authority
+- **Set Item Custom Domain**: Tenant (own leases), Authority, or any address in `params.allowed_list`
 
 ## Integration with SKU Module
 

@@ -1,11 +1,10 @@
 # Mainnet Genesis
 
-TODO:
+This document describes the genesis-ceremony flow for validators participating in the **initial** chain launch — i.e., signing a gentx that goes into the canonical `manifest-1_genesis.json` before the chain produces its first block. Mainnet has been live since 2024-04-10, so unless you are bootstrapping a new chain or testnet from this repository's `set-genesis-params.sh`, follow [POST_GENESIS.md](./POST_GENESIS.md) instead.
 
-- Update PoA Admin(s) from manifest10d07y265gmmuvt4z0w9aw880jnsr700jmq3jzm
-- Remove manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct once others are given genesis allocations
+> The frozen mainnet genesis file is checked in at [`manifest-1_genesis.json`](./manifest-1_genesis.json). Post-genesis joiners download that file directly — they do **not** run the gentx flow below.
 
-# Post Genesis Validators
+## Post Genesis Validators
 
 If you are a validator joining the network after the initial genesis launch, follow the [post genesis document here](./POST_GENESIS.md).
 
@@ -25,7 +24,7 @@ If you are a validator joining the network after the initial genesis launch, fol
 
 **Operating System**
 
-- Linux (x86_64) or Linux (amd64)
+- Linux (x86_64 with SSSE3) or Linux (arm64 with NEON). CosmWasm requires SSSE3 / NEON — older CPUs will not run the binary.
 
 ### Dependencies
 
@@ -89,21 +88,23 @@ PROJECT_HOME="${HOME}/.manifest"
 KEYNAME_ADDR=$(manifestd keys show $KEYNAME -a)
 
 # Remove old files if they exist and replace genesis.json
-manifestd tendermint unsafe-reset-all
+manifestd comet unsafe-reset-all
 rm $HOME/.manifest/config/genesis.json
 rm $HOME/.manifest/config/gentx/*.json
-wget https://raw.githubusercontent.com/liftedinit/manifest-ledger/main/network/manifest-1/genesis.json -O $HOME/.manifest/config/genesis.json
+wget https://raw.githubusercontent.com/manifest-network/manifest-ledger/main/network/manifest-1/manifest-1_genesis.json -O $HOME/.manifest/config/genesis.json
 
-# Give yourself 1POASTAKE for the genesis Tx signed
-manifestd init "$MONIKER" --chain-id $CHAIN_ID --staking-bond-denom upoa
-manifestd add-genesis-account $KEYNAME_ADDR 1000000upoa
+# Give yourself 1POASTAKE for the genesis Tx signed.
+# --default-denom (umfx) controls the local fee/gas denom; --staking-bond-denom (upoa)
+# is the staking denom that must match the genesis app_state.staking.params.bond_denom.
+manifestd init "$MONIKER" --chain-id $CHAIN_ID --default-denom umfx --staking-bond-denom upoa
+manifestd genesis add-genesis-account $KEYNAME_ADDR 1000000upoa
 
 # genesis transaction using all above variables
-manifestd gentx $KEYNAME 1000000upoa \
+manifestd genesis gentx $KEYNAME 1000000upoa \
     --home=$PROJECT_HOME \
     --chain-id=$CHAIN_ID \
     --moniker="$MONIKER" \
-     --commission-max-change-rate=$MAX_CHANGE \
+    --commission-max-change-rate=$MAX_CHANGE \
     --commission-max-rate=$MAX_RATE \
     --commission-rate=$COMMISSION_RATE \
     --security-contact=$SECURITY_CONTACT \
@@ -114,7 +115,7 @@ manifestd gentx $KEYNAME 1000000upoa \
 cat ${PROJECT_HOME}/config/gentx/gentx-*.json
 
 # get your peer
-echo $(manifestd tendermint show-node-id)@$(curl -s ifconfig.me):26656`
+echo $(manifestd comet show-node-id)@$(curl -s ifconfig.me):26656
 ```
 
 > Update minimum gas prices
@@ -126,7 +127,7 @@ sed -i 's/minimum-gas-prices = "0stake"/minimum-gas-prices = "0umfx"/g' ${HOME}/
 
 ## Collect Gentx
 
-After you create your gentx, you will need to submit it to the network. You can do this by creating a PR to the network repository with your gentx file, or by collecting all gentx files in the `~/.manifest/config/gentx` then running `manifestd genesis collect-gentxs` to collect all gentx files and create a new genesis file.
+After you create your gentx, you will need to submit it to the network. You can do this by creating a PR to the network repository with your gentx file, or by collecting all gentx files in `${HOME}/.manifest/config/gentx` then running `manifestd genesis collect-gentxs` to collect all gentx files and create a new genesis file.
 
 ## Start your node
 

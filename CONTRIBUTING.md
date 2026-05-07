@@ -13,11 +13,11 @@ All types of contributions are encouraged and valued. See the [Table of Contents
 
 > If you want to ask a question, we assume that you have read the available [Documentation](./README.md).
 
-Before you ask a question, it is best to search for existing [Issues](/issues) that might help you. In case you have found a suitable issue and still need clarification, you can write your question in this issue. It is also advisable to search the internet for answers first.
+Before you ask a question, it is best to search for existing [Issues](https://github.com/manifest-network/manifest-ledger/issues) that might help you. In case you have found a suitable issue and still need clarification, you can write your question in this issue. It is also advisable to search the internet for answers first.
 
 If you then still feel the need to ask a question and need clarification, we recommend the following:
 
-- Open an [Issue](/issues/new).
+- Open an [Issue](https://github.com/manifest-network/manifest-ledger/issues/new).
 - Select a template and stick to its guidelines.
 - Provide as much context as you can about what you're running into.
 - Provide project and platform versions (os, arch, go, etc.), depending on what seems relevant.
@@ -49,15 +49,15 @@ Please complete the following steps in advance to help us fix any potential bug 
 
 We use GitHub issues to track bugs and errors. If you run into an issue with the project:
 
-- Open an [Issue](/issues/new).
+- Open an [Issue](https://github.com/manifest-network/manifest-ledger/issues/new).
 - Explain the behavior you would expect and the actual behavior.
 - Please provide as much context as possible and describe the _reproduction steps_ that someone else can follow to recreate the issue on their own. This usually includes your code. For good bug reports you should isolate the problem and create a reduced test case.
 - Provide the information you collected in the previous section.
 
 ## I Want To Open A Pull Request
 
-Before opening a pull request, please make sure to read the [Contributing Guidelines](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+We use the [GitHub Flow](https://guides.github.com/introduction/flow/index.html) for our development process: fork the repository, create a branch for your changes, and open a pull request against `main` when you're ready.
 
-We are using the [GitHub Flow](https://guides.github.com/introduction/flow/index.html) for our development process. This means that you should fork this repository and create a branch for your changes. After you are done with your changes, open a pull request to the `main` branch of this repository.
+PRs created without filling in the PR template will be ignored and closed. Please follow the template as best as you can, removing any irrelevant sections and filling in the rest to the best of your ability.
 
-Any PR's created without the PR template will be ignored and closed. Please follow the template as best as you can, removing any irrelevant sections and filling in the rest to the best of your ability.
+Make sure your changes follow the project conventions captured in [`CLAUDE.md`](./CLAUDE.md) (build commands, linting, import order, Cosmos SDK patterns) — CI runs `make lint`, `make vet`, `make govulncheck`, and the unit/integration test suites, so verifying locally first will save a round-trip.

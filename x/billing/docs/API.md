@@ -391,6 +391,48 @@ echo "All withdrawals complete"
 
 ---
 
+#### set-item-custom-domain
+
+Set or clear the `custom_domain` on a specific lease item, addressed by `service_name`. Available since v2.1.0.
+
+```bash
+manifestd tx billing set-item-custom-domain [lease-uuid] [service-name] [domain] [flags]
+```
+
+**Arguments:**
+| Argument | Type | Description |
+|----------|------|-------------|
+| lease-uuid | string | UUID of the lease that owns the target item |
+| service-name | string | `service_name` of the target item; pass `""` for a 1-item legacy lease |
+| domain | string | FQDN to set, or `""` to clear |
+
+**Examples:**
+```bash
+# 1-item legacy lease (item.service_name == "")
+manifestd tx billing set-item-custom-domain 01902a9b-1234-7000-8000-000000000001 "" app.example.com --from tenant-key
+
+# multi-item lease, target the "web" item
+manifestd tx billing set-item-custom-domain 01902a9b-1234-7000-8000-000000000001 web app.example.com --from tenant-key
+
+# clear the domain on the "web" item
+manifestd tx billing set-item-custom-domain 01902a9b-1234-7000-8000-000000000001 web "" --from tenant-key
+```
+
+**Constraints:**
+- Sender must be the lease tenant, the module authority, or an address in `params.allowed_list`.
+- Lease must be in `PENDING` or `ACTIVE` state. Closed/rejected/expired leases are immutable.
+- Multi-item legacy leases (no `service_name`s) cannot set `custom_domain` — recreate in service-name mode.
+- Domain must pass `IsValidFQDN`: 1–253 bytes, lowercase, ≥ 1 dot separator, each label is RFC 1123 (1–63 alphanumerics + hyphens, no leading/trailing hyphen), TLD has at least one non-digit, no scheme/path/whitespace/`@`/`*`/`?`/`#`/leading or trailing dot.
+- Domain must not match any entry in `params.reserved_domain_suffixes` (case-insensitive, label-boundary suffix check; entries also match their apex).
+- Domain must be globally unique across all PENDING/ACTIVE leases. Re-setting the same domain on the same item is idempotent (no state change, no event).
+
+**Notes:**
+- Emits `lease_custom_domain_set` (with `set_by` ∈ `{tenant, authority, allowed}`) on a successful set, or `lease_custom_domain_cleared` on clear. No event is emitted for an idempotent re-set or a clear of an already-empty domain.
+- Domain is normalised on write: lowercased and trimmed.
+- Closing, rejecting, expiring, or auto-closing the lease frees the index entry automatically.
+
+---
+
 #### update-params
 
 Update module parameters (authority only).
@@ -411,19 +453,31 @@ manifestd tx billing update-params [max-leases-per-tenant] [max-items-per-lease]
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --allowed-list | string | Comma-separated allowed addresses (optional) |
+| --allowed-list | string | Comma-separated addresses with privileged authority for `create-lease-for-tenant` and `set-item-custom-domain`. **Preserve-on-omit**: omit the flag to round-trip the current on-chain value unchanged. Pass `--allowed-list=""` to explicitly clear. |
+| --reserved-domain-suffixes | string | Comma-separated DNS suffixes (each beginning with `.`) that tenants are forbidden from claiming via `set-item-custom-domain`. Same **preserve-on-omit** semantics as `--allowed-list`. |
 
-**Example:**
+**Examples:**
 ```bash
+# Update only numeric params; allowed_list and reserved_domain_suffixes are preserved unchanged.
 manifestd tx billing update-params \
-  100 \
-  20 \
-  3600 \
-  10 \
-  1800 \
+  100 20 3600 10 1800 \
+  --from authority
+
+# Update numeric params and overwrite both lists.
+manifestd tx billing update-params \
+  100 20 3600 10 1800 \
   --allowed-list "manifest1abc...,manifest1def..." \
+  --reserved-domain-suffixes ".barney0.manifest0.net,.lifted.app" \
+  --from authority
+
+# Explicitly clear reserved_domain_suffixes (numeric-only updates would preserve it).
+manifestd tx billing update-params \
+  100 20 3600 10 1800 \
+  --reserved-domain-suffixes="" \
   --from authority
 ```
+
+**Reserved-suffix validation:** each entry must begin with `.`, the substring after the dot must be a valid FQDN, and duplicates are rejected.
 
 ---
 
@@ -446,7 +500,8 @@ manifestd query billing params
     "min_lease_duration": "3600",
     "max_pending_leases_per_tenant": "10",
     "pending_timeout": "1800",
-    "allowed_list": []
+    "allowed_list": [],
+    "reserved_domain_suffixes": []
   }
 }
 ```
@@ -867,6 +922,45 @@ manifestd query billing credit-estimate manifest1abc...
 **Limitations:**
 - **Maximum 100 leases processed**: If a tenant has more than 100 active leases, only the first 100 are included in the calculation. The `active_lease_count` will show the actual count, but rates may be underestimated for tenants with >100 leases.
 - **Does not account for pending withdrawals**: The estimate uses current balance, not accounting for any unsettled accrued amounts from existing leases.
+
+---
+
+#### lease-by-domain
+
+Look up the active or pending lease that has claimed a given `custom_domain`, and the `service_name` of the matching item.
+
+```bash
+manifestd query billing lease-by-domain [custom-domain]
+```
+
+**Arguments:**
+| Argument | Type | Description |
+|----------|------|-------------|
+| custom-domain | string | FQDN to look up (case-insensitive; the chain stores the canonical lower-cased form) |
+
+**Example:**
+```bash
+manifestd query billing lease-by-domain app.example.com
+```
+
+**Response:**
+```json
+{
+  "lease": {
+    "uuid": "01902a9b-1234-7000-8000-000000000001",
+    "tenant": "manifest1abc...",
+    "provider_uuid": "01912345-6789-7abc-8def-fedcba987654",
+    "items": [ /* ... */ ],
+    "state": "LEASE_STATE_ACTIVE"
+  },
+  "service_name": "web"
+}
+```
+
+**Notes:**
+- Returns the lease and the `service_name` of the LeaseItem that owns the domain. For a 1-item legacy lease the `service_name` is `""`.
+- Returns gRPC `NotFound` (CLI: error) when no PENDING/ACTIVE item has claimed the domain.
+- Backed by the `CustomDomainIndex` reverse-lookup (O(1)); domains held by closed/rejected/expired leases are not indexed.
 - **Assumes constant rate**: The estimate assumes all current leases continue at their current rates. Actual duration may differ if leases are closed or new leases are created.
 
 ---
@@ -1139,6 +1233,44 @@ message MsgUpdateParamsResponse {}
 
 ---
 
+#### MsgSetItemCustomDomain
+
+Set or clear `custom_domain` on a specific lease item identified by `service_name`. Available since v2.1.0.
+
+**Authorisation.** `sender` must be the lease tenant, the module authority, or an address in `params.allowed_list`.
+
+**Request:**
+```protobuf
+message MsgSetItemCustomDomain {
+  string sender = 1;        // Tenant, authority, or allowed_list member
+  string lease_uuid = 2;    // Target lease (must be PENDING or ACTIVE)
+  string service_name = 3;  // Item addressing key; "" for a 1-item legacy lease
+  string custom_domain = 4; // FQDN to set, or "" to clear
+}
+```
+
+**Response:**
+```protobuf
+message MsgSetItemCustomDomainResponse {}
+```
+
+**Behaviour notes:**
+- Lease state must be `PENDING` or `ACTIVE` (`ErrLeaseNotEditable` otherwise).
+- Multi-item legacy leases (no `service_name`s) cannot use `custom_domain` (`ErrAmbiguousLeaseItem`).
+- Empty `custom_domain` clears the field and removes the `CustomDomainIndex` entry.
+- `custom_domain` is normalised on write (`strings.ToLower` + `TrimSpace`).
+- A non-empty domain is validated by `IsValidFQDN` and rejected if it matches any `params.reserved_domain_suffixes` entry.
+- Re-setting the same domain on the same `(lease_uuid, service_name)` is idempotent (no event, no state change).
+- Cross-lease and within-lease cross-item collisions are rejected with `ErrCustomDomainAlreadyClaimed`.
+
+**Emitted events:**
+- `lease_custom_domain_set` on a successful set.
+- `lease_custom_domain_cleared` on a successful clear (with the previous value in `custom_domain`).
+
+Both carry attributes `lease_uuid`, `tenant`, `service_name`, `custom_domain`, `set_by`. `set_by` ∈ `{tenant, authority, allowed}` records which authorisation path matched.
+
+---
+
 ### Query Service
 
 The Query service provides read-only access to state.
@@ -1158,6 +1290,7 @@ service Query {
   rpc CreditAddress(QueryCreditAddressRequest) returns (QueryCreditAddressResponse);
   rpc WithdrawableAmount(QueryWithdrawableAmountRequest) returns (QueryWithdrawableAmountResponse);
   rpc ProviderWithdrawable(QueryProviderWithdrawableRequest) returns (QueryProviderWithdrawableResponse);
+  rpc LeaseByCustomDomain(QueryLeaseByCustomDomainRequest) returns (QueryLeaseByCustomDomainResponse);
 }
 ```
 
@@ -1272,6 +1405,34 @@ message QueryCreditAddressResponse {
 
 ---
 
+#### QueryLeaseByCustomDomain
+
+Look up the PENDING/ACTIVE lease (and the `service_name` of the matching item) that owns a given `custom_domain`.
+
+**Endpoint:** `liftedinit.billing.v1.Query/LeaseByCustomDomain`
+
+**Request:**
+```protobuf
+message QueryLeaseByCustomDomainRequest {
+  string custom_domain = 1;
+}
+```
+
+**Response:**
+```protobuf
+message QueryLeaseByCustomDomainResponse {
+  Lease lease = 1;
+  string service_name = 2;  // "" for a 1-item legacy lease
+}
+```
+
+**Notes:**
+- The query lower-cases and trims `custom_domain` before lookup.
+- Backed by `CustomDomainIndex` (O(1)). Closing/rejecting/expiring/auto-closing the lease frees the index entry, so domains held by terminal leases are not returned.
+- Returns gRPC `NotFound` when no claim exists.
+
+---
+
 ## REST API
 
 REST endpoints are available via gRPC-gateway.
@@ -1298,6 +1459,7 @@ http://localhost:1317/liftedinit/billing/v1
 | GET | `/credit-address/{tenant}` | Derive credit address |
 | GET | `/lease/{lease_uuid}/withdrawable` | Get withdrawable amount |
 | GET | `/provider/{provider_uuid}/withdrawable` | Get provider total withdrawable |
+| GET | `/lease/by-domain/{custom_domain}` | Look up lease by custom domain (v2.1.0+) |
 
 ### Examples
 
@@ -1366,6 +1528,21 @@ message LeaseItem {
   uint64 quantity = 2;                         // Number of instances
   cosmos.base.v1beta1.Coin locked_price = 3;   // Per-second rate locked at creation
   string service_name = 4;                     // Optional RFC 1123 DNS label for stack deployments
+  string custom_domain = 5;                    // Optional FQDN routed to this item (v2.1.0+, max 253 bytes)
+}
+```
+
+**Field notes:**
+- `custom_domain`: Optional fully-qualified domain name routed to this item's container by the provider. Set or cleared via `MsgSetItemCustomDomain` (not via lease creation). Validated by `IsValidFQDN` (≤253 bytes, lowercase, ≥1 dot, RFC 1123 labels, non-numeric TLD) and rejected if it matches any `params.reserved_domain_suffixes` entry. Globally unique across PENDING/ACTIVE leases — enforced by the `CustomDomainIndex` reverse-lookup. Cleared automatically when the lease closes/rejects/expires.
+
+### CustomDomainTarget
+
+The value type stored in `CustomDomainIndex` (the reverse lookup keyed by domain). Returned indirectly by `QueryLeaseByCustomDomain`.
+
+```protobuf
+message CustomDomainTarget {
+  string lease_uuid = 1;
+  string service_name = 2;  // "" for a 1-item legacy lease
 }
 ```
 
@@ -1401,14 +1578,19 @@ message CreditAccount {
 
 ```protobuf
 message Params {
-  uint64 max_leases_per_tenant = 3;
-  repeated string allowed_list = 4;
-  uint64 max_items_per_lease = 5;
-  uint64 min_lease_duration = 6;
-  uint64 max_pending_leases_per_tenant = 7;
-  uint64 pending_timeout = 8;
+  uint64 max_leases_per_tenant = 1;
+  repeated string allowed_list = 2;
+  uint64 max_items_per_lease = 3;
+  uint64 min_lease_duration = 4;
+  uint64 max_pending_leases_per_tenant = 5;
+  uint64 pending_timeout = 6;
+  repeated string reserved_domain_suffixes = 7; // v2.1.0+
 }
 ```
+
+**Field notes:**
+- `allowed_list`: Addresses with privileged authority for `MsgCreateLeaseForTenant` and `MsgSetItemCustomDomain`, in addition to the module authority.
+- `reserved_domain_suffixes`: DNS suffixes (each must begin with `.`) that tenants are forbidden from claiming as a `LeaseItem.custom_domain`. Match is case-insensitive at a label boundary, plus the apex (e.g. `.foo.example` matches both `app.foo.example` and `foo.example`). Each entry's substring after the leading dot must itself be a valid FQDN. Tunable via `MsgUpdateParams`.
 
 ---
 
@@ -1433,6 +1615,10 @@ The billing module emits the following events for state changes:
 | `provider_withdraw` | lease_uuid, provider_uuid, payout_address | Provider withdrawal from single lease |
 | `batch_withdraw` | lease_count, provider_uuid, amount, payout_address, auto_closed | Batch summary when multiple leases withdrawn from |
 | `params_updated` | | Module parameters updated |
+| `lease_custom_domain_set` | lease_uuid, tenant, service_name, custom_domain, set_by | `LeaseItem.custom_domain` set or changed (v2.1.0+) |
+| `lease_custom_domain_cleared` | lease_uuid, tenant, service_name, custom_domain (previous value), set_by | `LeaseItem.custom_domain` cleared (v2.1.0+) |
+
+**Custom-domain `set_by` attribute:** records the role under which the call was authorised. One of `tenant`, `authority`, `allowed`. No event is emitted for an idempotent re-set or a clear of an already-empty domain.
 
 **Special Case - Withdrawal Auto-Close:** When a `MsgWithdraw` operation discovers the lease's credit is exhausted (balance = 0), it automatically closes the lease. In this case, the `provider_withdraw` event includes an additional `auto_closed: "true"` attribute and `amount: "0"` to indicate no funds were transferred. Note that the `payout_address` attribute is omitted in this case since no transfer occurred.
 
@@ -1504,6 +1690,11 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrInvalidClosureReason` | 26 | Closure reason too long (max 256 chars) |
 | `ErrInvalidMetaHash` | 27 | Meta hash exceeds maximum length (max 64 bytes) |
 | `ErrInvalidServiceName` | 28 | Invalid service name (must be RFC 1123 DNS label: 1-63 lowercase alphanumeric/hyphens, no leading/trailing hyphen) |
+| `ErrInvalidCustomDomain` | 29 | Invalid `LeaseItem.custom_domain` (failed `IsValidFQDN` checks, exceeded 253 bytes, or matched a reserved suffix) |
+| `ErrCustomDomainAlreadyClaimed` | 30 | Domain is already claimed by another (lease, item) pair, or by a different item on the same lease |
+| `ErrLeaseNotEditable` | 31 | Lease is not in PENDING or ACTIVE state — `custom_domain` cannot be edited on closed/rejected/expired leases |
+| `ErrLeaseItemNotFound` | 32 | No lease item matched the supplied `service_name` |
+| `ErrAmbiguousLeaseItem` | 33 | Lookup by `service_name` matched more than one item — happens for multi-item legacy leases (no `service_name`s); recreate the lease in service-name mode |
 
 **Note on Reserved Codes:** Error codes 7 and 20 are explicitly reserved to maintain stable error code assignments across module versions.
 
@@ -1512,7 +1703,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 - Error codes in logs and metrics remain comparable across versions
 - New errors get the next available number (29+) rather than reusing gaps
 
-**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code.
+**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code (currently 33).
 
 ---
 
@@ -1528,6 +1719,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | CancelLease | ✓ (own leases) | ✗ | ✗ | ✗ |
 | CloseLease | ✓ (own leases) | ✓ | ✓ | ✗ |
 | Withdraw | ✗ | ✓ | ✓ | ✗ |
+| SetItemCustomDomain | ✓ (own leases) | ✗ | ✓ | ✓ |
 | UpdateParams | ✗ | ✗ | ✓ | ✗ |
 
 **Notes:**

@@ -1,25 +1,17 @@
 # Security
 
-#TODO: add PGP KEY
-
-> **🚨IMPORTANT🚨**: If you find a security issue, please report it to our [security mailing list](mailto:security@manifest.network) _PLEASE DO NOT_ create a public issue.
+> **🚨 IMPORTANT 🚨** — if you find a security issue, report it privately to <security@manifest.network>. **Do not** open a public GitHub issue.
 
 ## Reporting
 
-Please report to our security mailing list at [security@manifest.network
-](mailto:security@manifest.network) and we shall respond to you within 72 hours.
+Send a report to [security@manifest.network](mailto:security@manifest.network). We aim to respond within 72 hours.
 
-###
-
-If you want to send us encrypted data, our GPG Public key is below. [Here](https://www.gnupg.org/gph/en/manual/x110.html) are instructions on how to do it.
-
-```
------BEGIN PGP PUBLIC KEY BLOCK-----
-
-
------END PGP PUBLIC KEY BLOCK----
-```
+If you need to send encrypted material, request our current GPG public key by email first — we issue keys per-disclosure rather than publishing a long-lived key here, so the contents and the channel match each report.
 
 ## Packages in scope
 
 - [x/manifest](/x/manifest)
+- [x/sku](/x/sku)
+- [x/billing](/x/billing)
+- [pkg/uuid](/pkg/uuid)
+- [app](/app)

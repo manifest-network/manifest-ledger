@@ -1,14 +1,14 @@
-# Post-Genesis
+# Post-Genesis: Joining manifest-1
 
-## Become a validator
+This guide walks a validator (or full node) through joining the live `manifest-1` chain after launch. For the genesis-ceremony flow, see [GENESIS.md](./GENESIS.md). For the upgrade runbook, see [UPGRADES.md](./UPGRADES.md).
 
-### Hardware Requirements
+## Hardware Requirements
 
 **Minimal**
 
 - 4 GB RAM
 - 100 GB SSD
-- 3.2 x4 GHz CPU
+- 3.2 GHz x4 CPU
 
 **Recommended**
 
@@ -18,7 +18,7 @@
 
 **Operating System**
 
-- Linux (x86_64) or Linux (amd64) Recommended Arch Linux
+- Linux (x86_64 with SSSE3) or Linux (arm64 with NEON). CosmWasm requires SSSE3 / NEON — older CPUs will not run the binary.
 
 ### Dependencies
 
@@ -27,7 +27,7 @@
 **Arch Linux:**
 
 ```
-pacman -S go git gcc make
+pacman -S go git gcc make jq
 ```
 
 **Ubuntu Linux:**
@@ -37,56 +37,131 @@ sudo snap install go --classic
 sudo apt-get install git gcc make jq
 ```
 
-### Install the manifest binary
+## Install the manifestd binary
+
+Pin to the version currently running on `manifest-1`. Mainnet's current version is published in the [GitHub releases](https://github.com/manifest-network/manifest-ledger/releases) — pick the latest non-pre-release tag.
 
 ```bash
-# Clone git repository
 git clone https://github.com/manifest-network/manifest-ledger.git
 cd manifest-ledger
-git checkout VERSION
+git checkout v2.1.0   # replace with the current mainnet tag
 
-make install # go install ./...
-# For ledger support `go install -tags ledger ./...`
+make install                       # go install ./...
+# For ledger support:
+# go install -tags ledger ./...
+
 manifestd config set client chain-id manifest-1
 ```
 
-OR
+OR download a published binary:
 
 ```bash
-wget <link to manifest precompile>
+# Pull the matching binary from GitHub releases:
+# https://github.com/manifest-network/manifest-ledger/releases/<tag>
 chmod +x manifestd
-mv manifestd /usr/local/bin
+sudo mv manifestd /usr/local/bin
 ```
 
-### Generate keys
+## Generate keys
 
-- `manifestd keys add [key_name]`
-- `manifestd keys add [key_name] --recover` to regenerate keys with your BIP39 mnemonic to add ledger key
-- `manifestd keys add [key_name] --ledger` to add a ledger key
+- `manifestd keys add [key_name]` — new key
+- `manifestd keys add [key_name] --recover` — restore from BIP39 mnemonic
+- `manifestd keys add [key_name] --ledger` — add a Ledger-backed key
 
-### Configure & start your node
-
-- #### Intialize
-  `manifestd init <moniker> --chain-id manifest-1 --default-denom upoa`
-- #### Genesis
-  `cp github.com/manifest-network/manifest-ledger/network/manifest-1/manifest-1_genesis.json ~/.manifestd/config/genesis.json`
-- #### Peers
-  `sed -i 's/seeds = ""/seeds = "SEED_ADDRESS"/g' ${HOME}/.manifest/config/config.toml`
-- #### Minimum Gas
-  `sed -i 's/minimum-gas-prices = "0stake"/minimum-gas-prices = "0umfx"/g' ${HOME}/.manifest/config/app.toml`
-- #### Start
-  **Create a systemd service file**
+## Initialise & configure your node
 
 ```bash
-cat <<EOF | sudo tee /etc/systemd/system/manifestd.service
+# --default-denom is the local fee/gas denom (umfx). The staking bond_denom (upoa)
+# is set in mainnet's genesis.json — do NOT pass --staking-bond-denom here, otherwise
+# `genesis validate` will mismatch the downloaded mainnet genesis.
+manifestd init <moniker> --chain-id manifest-1 --default-denom umfx
+```
+
+### Genesis
+
+Replace the freshly-generated `genesis.json` with the canonical mainnet file:
+
+```bash
+wget https://raw.githubusercontent.com/manifest-network/manifest-ledger/main/network/manifest-1/manifest-1_genesis.json \
+  -O ~/.manifest/config/genesis.json
+
+manifestd genesis validate ~/.manifest/config/genesis.json
+```
+
+### Minimum gas prices
+
+`manifest-1`'s gas/fee denom is `umfx`. Update `app.toml`:
+
+```bash
+sed -i 's/minimum-gas-prices = "0stake"/minimum-gas-prices = "0umfx"/g' \
+  ~/.manifest/config/app.toml
+```
+
+### Peers
+
+Add seeds and/or persistent peers in `~/.manifest/config/config.toml`. Authoritative sources for current peer values:
+
+- The [`cosmos/chain-registry` entry for `manifest`](https://github.com/cosmos/chain-registry/tree/master/manifest) (`peers.seeds`, `peers.persistent_peers`).
+- The Manifest Network Discord `#validators` channel.
+- The latest [GitHub release notes](https://github.com/manifest-network/manifest-ledger/releases) when peers change at an upgrade boundary.
+
+```bash
+# Example shape — replace SEED1@... with values pulled from one of the sources above:
+sed -i 's|seeds = ""|seeds = "SEED1@host1:26656,SEED2@host2:26656"|' \
+  ~/.manifest/config/config.toml
+```
+
+### State-sync (optional, fastest path)
+
+State-sync lets a fresh node skip block-by-block replay and snapshot directly to a recent height. The mainnet `app.toml` defaults disable this. Enable it like so (replace `RPC_SERVERS`, `TRUST_HEIGHT`, `TRUST_HASH` with values pulled from chain-registry / Discord / a trusted RPC operator):
+
+```bash
+SNAP_RPC1="https://rpc.example.org:443"
+SNAP_RPC2="https://rpc.example.com:443"
+
+# Trust height should be a recent block (typically `latest height - ~1000`).
+# Trust hash is the block hash at that height — query from a trusted RPC:
+#   curl -s "$SNAP_RPC1/block?height=<trust_height>" | jq -r '.result.block_id.hash'
+
+cat <<EOF >> ~/.manifest/config/config.toml
+# State-sync overrides
+EOF
+
+# Edit ~/.manifest/config/config.toml under [statesync]:
+# enable = true
+# rpc_servers = "$SNAP_RPC1,$SNAP_RPC2"
+# trust_height = <TRUST_HEIGHT>
+# trust_hash = "<TRUST_HASH>"
+# trust_period = "168h0m0s"
+```
+
+> **Heads-up:** wasm contract state cannot be state-synced today (CosmWasm limitation as of wasmd 0.54). If contracts are critical for your node's role, prefer a snapshot or full replay.
+
+### Snapshots (alternative to state-sync)
+
+Snapshot tarballs let you bypass replay without state-sync's wasm caveat. Authoritative snapshot URLs are published by the Manifest Network team and partners — see the chain-registry entry, Discord `#validators`, or release notes for current locations. The shape is:
+
+```bash
+# Example shape — replace URL with a published mainnet snapshot:
+wget -O - https://snapshots.example.org/manifest-1/manifest-1_latest.tar.lz4 \
+  | lz4 -d \
+  | tar -xv -C ~/.manifest
+```
+
+Always verify the publisher's checksum before extracting.
+
+## Run as a systemd service
+
+```bash
+sudo tee /etc/systemd/system/manifestd.service > /dev/null <<EOF
 [Unit]
 Description=Manifest Node
 After=network.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=${HOME}
+User=$(whoami)
+WorkingDirectory=$HOME
 Environment="POA_ADMIN_ADDRESS=manifest1wxjfftrc0emj5f7ldcvtpj05lxtz3t2npghwsf"
 ExecStart=/usr/local/bin/manifestd start
 Restart=on-failure
@@ -98,46 +173,51 @@ LimitMEMLOCK=209715200
 [Install]
 WantedBy=multi-user.target
 EOF
-```
 
-**Start your service**
-
-```bash
-sudo systemctl enable manifestd
 sudo systemctl daemon-reload
-sudo sytemctl start manifestd && journalctl -u manifestd -f -o cat --no-hostname
+sudo systemctl enable manifestd
+sudo systemctl start manifestd
+journalctl -u manifestd -f -o cat --no-hostname
 ```
 
-### Join the network
+> **Recommended:** run `manifestd` under [`cosmovisor`](https://docs.cosmos.network/main/build/tooling/cosmovisor) so chain upgrades happen automatically. See [UPGRADES.md](./UPGRADES.md) for the cosmovisor layout used on `manifest-1`.
 
-- #### Generate your validator file
+## Become a validator
 
-Use this command to generate your validator file and change all the entries to your own information. `amount` should remain the same unless the team specifies otherwise. 1 POA power is 1000000upoa.
+`manifest-1` runs **Proof of Authority** (`x/poa`). Submitting a `create-validator` puts you in the pending queue; the PoA admin (or admin group) must approve before you join the active set. Self-bonding is not required for PoA.
+
+### Generate your validator file
+
+`amount` should remain `1000000upoa` (= 1 POA power) unless the team specifies otherwise.
 
 ```bash
 cat <<EOF > validator.json
 {
-  "pubkey": {"@type":"/cosmos.crypto.ed25519.PubKey","key":"oWg2ISpLF405Jcm2vXV+2v4fnjodh6aafuIdeoW+rUw="},
+  "pubkey": $(manifestd comet show-validator),
   "amount": "1000000upoa",
-  "moniker": "validator's name",
-  "identity": "keybase-identity",
-  "website": "validator's (optional) website",
-  "security": "validator's (optional) security contact email",
-  "details": "validator's (optional) details",
+  "moniker": "<your validator name>",
+  "identity": "<keybase identity>",
+  "website": "<https://your.site>",
+  "security": "<security contact email>",
+  "details": "<short description>",
   "commission-rate": "0.1",
   "commission-max-rate": "0.2",
   "commission-max-change-rate": "0.01",
   "min-self-delegation": "1"
 }
 EOF
-
 ```
 
-You can find your pubkey information by running `manifestd tendermint show-validator`
+### Submit creation transaction
 
-- #### Submit creation transaction
-  `manifestd tx poa create-validator path/to/validator.json --from keyname`
+```bash
+manifestd tx poa create-validator path/to/validator.json --from <keyname>
+```
 
-**Following these instructions, your validator will be put into a queue for the chain admins to accept or reject.**. You can view this queue by running `manifestd q poa pending-validators`.
+Your request enters a pending queue:
 
-If accepted, you will become a validator on the network with the PoA admin's desired power for you.
+```bash
+manifestd query poa pending-validators
+```
+
+If the PoA admin accepts, you'll appear in the active validator set with the power they assigned. If rejected (`manifestd tx poa remove-pending`), resubmit after addressing whatever they flagged.

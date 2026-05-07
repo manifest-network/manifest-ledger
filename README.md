@@ -18,12 +18,16 @@
 
 ## Overview
 
-The Manifest Network, built on the Cosmos SDK, is a blockchain tailored for decentralized AI infrastructure access. Initially employing a Proof of Authority (PoA) model it ensures a secure and efficient launch phase, with a trusted validator set managing consensus.
+The Manifest Network, built on the Cosmos SDK, is a blockchain tailored for decentralized AI infrastructure access. Two on-chain primitives — `x/sku` and `x/billing` — let providers list billable resources (compute SKUs) and let tenants fund credit accounts and lease those SKUs at locked-in per-second prices. Settlement is lazy: charges accrue continuously but only move tokens when a provider withdraws or a lease is closed.
 
-While PoA offers immediate stability and control, the Manifest Network aspires for greater decentralization. The future roadmap includes evolving towards a Proof of Stake (PoS) network, utilizing the underlying CometBft consensus mechanism inherent in the Cosmos SDK.
+The chain runs Proof of Authority (`x/poa`) consensus, with plans to evolve toward Proof of Stake on CometBFT.
 
 ## Table of Contents
 
+- [Quickstart](#quickstart) — by role
+  - [I want to run a node / become a validator](#i-want-to-run-a-node--become-a-validator)
+  - [I'm a tenant — buying compute](#im-a-tenant--buying-compute)
+  - [I'm a provider — selling compute](#im-a-provider--selling-compute)
 - [System Requirements](#system-requirements)
 - [Installation](#install--run)
 - [Testing](#testing)
@@ -32,6 +36,106 @@ While PoA offers immediate stability and control, the Manifest Network aspires f
 - [Validators](./network/manifest-1/POST_GENESIS.md)
 - [Contributing](./CONTRIBUTING.md)
 - [Security/Bug Reporting](./SECURITY.md)
+- [JavaScript / TypeScript SDK](#javascript--typescript-sdk)
+- [Frontend / Integrator Cookbook](./docs/FRONTEND.md)
+
+## Quickstart
+
+The chain has four primary audiences. Pick the path that matches what you're trying to do.
+
+### I want to run a node / become a validator
+
+Follow [POST_GENESIS.md](./network/manifest-1/POST_GENESIS.md) end-to-end — install, peers, state-sync/snapshots, systemd, and the PoA `create-validator` flow. Once running, see [UPGRADES.md](./network/manifest-1/UPGRADES.md) for the upgrade runbook.
+
+### I'm a tenant — buying compute
+
+You'll fund a **credit account** with tokens, then create **leases** against published SKUs. Charges accrue per-second against your credit; the provider withdraws as the lease runs.
+
+```bash
+# 0. Point the CLI at manifest-1 and pick your key. <KEY> is anything in `manifestd keys list`.
+manifestd config set client chain-id manifest-1
+manifestd config set client node https://rpc.example.org:443     # see chain-registry / Discord
+
+# 1. Discover providers and active SKUs.
+manifestd query sku providers --active-only
+manifestd query sku skus --active-only
+# Or all SKUs from one provider:
+manifestd query sku skus-by-provider <PROVIDER_UUID>
+
+# 2. Fund your own credit account. Anyone can fund any tenant — most often you fund yourself.
+#    Match the denom to whatever the target SKU prices in (`base_price.denom`).
+manifestd tx billing fund-credit $(manifestd keys show <KEY> -a) 1000000upwr --from <KEY>
+
+# 3. Confirm the credit is reserved-aware (available_balances = balances - reserved_amounts).
+manifestd query billing credit-account $(manifestd keys show <KEY> -a)
+
+# 4. Create a lease. Format is sku_uuid:quantity[:service_name]; multiple items must share one provider.
+manifestd tx billing create-lease <SKU_UUID>:1 --from <KEY>
+# Stack deployment with named services:
+manifestd tx billing create-lease <SKU_UUID>:1:web <SKU_UUID>:1:db --from <KEY>
+
+# 5. Wait for the provider to acknowledge. Until then the lease is PENDING and can be cancelled.
+manifestd query billing leases-by-tenant $(manifestd keys show <KEY> -a) --state pending
+manifestd query billing lease <LEASE_UUID>
+
+# 6. (Optional, v2.1.0+) Attach a custom domain to a lease item once it's PENDING or ACTIVE.
+manifestd tx billing set-item-custom-domain <LEASE_UUID> web app.example.com --from <KEY>
+
+# 7. When you're done, close it. Final settlement transfers accrued charges to the provider.
+manifestd tx billing close-lease <LEASE_UUID> --reason "no longer needed" --from <KEY>
+```
+
+If you're building a wallet or dashboard rather than driving the CLI, use [`@manifest-network/manifestjs`](#javascript--typescript-sdk) — every message and query above has a generated TypeScript counterpart. The end-to-end cookbook lives at [`docs/FRONTEND.md`](./docs/FRONTEND.md).
+
+**Deeper reading:** [`x/billing/README.md`](./x/billing/README.md), [`x/billing/docs/API.md`](./x/billing/docs/API.md), [`x/billing/docs/INTEGRATION.md`](./x/billing/docs/INTEGRATION.md) (provider authentication / ADR-036 sign-in flow).
+
+### I'm a provider — selling compute
+
+Provider registration is **authority-controlled** on `manifest-1`: you cannot self-register. Coordinate with the authority (or a member of `params.allowed_list`) to provision your provider record and SKUs. Once you're set up, your day-to-day flow is acknowledging, withdrawing, and closing.
+
+**One-time setup (run by the authority on your behalf):**
+
+```bash
+# 1. Authority creates your provider record with your operator address and a payout address.
+manifestd tx sku create-provider <YOUR_OP_ADDR> <YOUR_PAYOUT_ADDR> \
+  --api-url https://api.your-provider.example \
+  --from authority
+
+# 2. Authority creates a SKU under your provider. unit: 1=hour, 2=day. Price is per unit.
+manifestd tx sku create-sku <PROVIDER_UUID> "GPU Instance — A100 40GB" 1 3600upwr --from authority
+```
+
+Note your `PROVIDER_UUID` and each `SKU_UUID` from the events / response — they're how tenants will address you.
+
+**Steady-state (you run these):**
+
+```bash
+# 3. Watch for pending leases against your provider. Filter by state, or subscribe to the
+#    chain's CometBFT websocket on `lease_created` events for push-style notifications.
+manifestd query billing leases-by-provider <PROVIDER_UUID> --state pending
+
+# 4. Acknowledge (transitions PENDING → ACTIVE; billing starts now). Reject if you can't fulfil.
+manifestd tx billing acknowledge-lease <LEASE_UUID> --from <PROVIDER_KEY>
+manifestd tx billing reject-lease    <LEASE_UUID> --reason "out of capacity" --from <PROVIDER_KEY>
+
+# 5. Provision off-chain. Tenants authenticate to your API per docs/INTEGRATION.md (ADR-036).
+
+# 6. Withdraw accrued credit. Two modes: specific lease(s), or paginated provider-wide.
+manifestd tx billing withdraw <LEASE_UUID> --from <PROVIDER_KEY>
+manifestd tx billing withdraw --provider <PROVIDER_UUID> --limit 100 --from <PROVIDER_KEY>
+# Provider-wide mode pages — repeat while `has_more: true` in the response.
+
+# 7. Check what's currently withdrawable without claiming it:
+manifestd query billing provider-withdrawable <PROVIDER_UUID>
+manifestd query billing withdrawable <LEASE_UUID>
+
+# 8. Close a lease when service ends (provider, tenant, or authority can close ACTIVE leases):
+manifestd tx billing close-lease <LEASE_UUID> --reason "service ended" --from <PROVIDER_KEY>
+```
+
+**Auto-close behaviour:** if a tenant's credit runs out, the next `withdraw` or `close-lease` against the lease performs the final settlement (against whatever balance remains) and auto-closes it. You don't need to poll.
+
+**Deeper reading:** [`x/sku/docs/PROVIDER_GUIDE.md`](./x/sku/docs/PROVIDER_GUIDE.md), [`x/sku/docs/SKU_GUIDE.md`](./x/sku/docs/SKU_GUIDE.md), [`x/billing/docs/INTEGRATION.md`](./x/billing/docs/INTEGRATION.md).
 
 ## System Requirements
 
@@ -182,6 +286,18 @@ To generate a coverage report for the modules run:
 make local-image
 make coverage
 ```
+
+## JavaScript / TypeScript SDK
+
+For frontend, wallet, dashboard, and explorer integrations, use [`@manifest-network/manifestjs`](https://github.com/manifest-network/manifestjs) — a generated TypeScript client covering all chain modules (`x/manifest`, `x/sku`, `x/billing`, `x/poa`, `x/tokenfactory`, `x/wasm`, IBC) plus the standard Cosmos SDK modules.
+
+```bash
+npm install @manifest-network/manifestjs
+```
+
+The package is regenerated from this repo's `proto/liftedinit/**/*.proto` definitions, so message names, field types, and signatures stay in lock-step with on-chain types. See the `manifestjs` repo for usage examples and the published types under `liftedinit.{manifest,sku,billing}.v1`.
+
+For end-to-end recipes — query client, signing client, Keplr/Leap integration, message composition, websocket subscriptions, and the type-URL / amino-name reference — read [`docs/FRONTEND.md`](./docs/FRONTEND.md).
 
 ## Helper
 
