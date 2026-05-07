@@ -60,4 +60,4 @@ We use the [GitHub Flow](https://guides.github.com/introduction/flow/index.html)
 
 PRs created without filling in the PR template will be ignored and closed. Please follow the template as best as you can, removing any irrelevant sections and filling in the rest to the best of your ability.
 
-Make sure your changes follow the project conventions captured in [`CLAUDE.md`](./CLAUDE.md) (build commands, linting, import order, Cosmos SDK patterns) — CI runs `make lint`, `make vet`, `make govulncheck`, and the unit/integration test suites, so verifying locally first will save a round-trip.
+Make sure your changes follow the project conventions captured in [`CLAUDE.md`](./CLAUDE.md) (build commands, linting, import order, Cosmos SDK patterns) — CI runs `make lint`, `make build`, the unit-test suite (`make test`), the e2e integration matrix (`make ictest-*`), and the simulation suite (`make sim-*`) — see [`.github/workflows/`](./.github/workflows/) for the canonical list. Verifying locally first will save a round-trip.
