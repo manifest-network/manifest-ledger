@@ -428,7 +428,7 @@ manifestd tx billing set-item-custom-domain 01902a9b-1234-7000-8000-000000000001
 
 **Notes:**
 - Emits `lease_custom_domain_set` (with `set_by` ∈ `{tenant, authority, allowed}`) on a successful set, or `lease_custom_domain_cleared` on clear. No event is emitted for an idempotent re-set or a clear of an already-empty domain.
-- Domain is normalised on write: lowercased and trimmed.
+- The transaction requires lowercase `custom_domain` — `MsgSetItemCustomDomain.ValidateBasic()` rejects mixed case before the keeper runs. Lower-case any user-supplied input client-side. The keeper does its own `strings.ToLower(strings.TrimSpace(...))` as defence-in-depth on the storage path, but you can't rely on it as a normalisation point for input.
 - Closing, rejecting, expiring, or auto-closing the lease frees the index entry automatically.
 
 ---

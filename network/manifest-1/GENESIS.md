@@ -87,20 +87,25 @@ CHAIN_ID='manifest-1'
 PROJECT_HOME="${HOME}/.manifest"
 KEYNAME_ADDR=$(manifestd keys show $KEYNAME -a)
 
-# Remove old files if they exist and replace genesis.json
+# Reset prior state and any leftover gentxs.
 manifestd comet unsafe-reset-all
-rm $HOME/.manifest/config/genesis.json
-rm $HOME/.manifest/config/gentx/*.json
+rm -f $HOME/.manifest/config/gentx/*.json
+
+# Initialise a fresh config + genesis. --default-denom (umfx) controls the
+# local fee/gas denom. Cosmos SDK v0.50's `init` does NOT accept a
+# --staking-bond-denom flag; the staking bond denom is set on the genesis
+# JSON itself, by the canonical mainnet `manifest-1_genesis.json` we
+# replace below or — for a custom chain — by `set-genesis-params.sh`'s
+# jq override on `.app_state.staking.params.bond_denom`.
+manifestd init "$MONIKER" --chain-id $CHAIN_ID --default-denom umfx
+
+# Replace the freshly-init'd genesis with the canonical mainnet template
+# BEFORE adding your account / running gentx — otherwise add-genesis-account
+# and gentx would target a genesis with the wrong network parameters.
+rm -f $HOME/.manifest/config/genesis.json
 wget https://raw.githubusercontent.com/manifest-network/manifest-ledger/main/network/manifest-1/manifest-1_genesis.json -O $HOME/.manifest/config/genesis.json
 
-# Give yourself 1POASTAKE for the genesis Tx signed.
-# --default-denom (umfx) controls the local fee/gas denom. Cosmos SDK v0.50's
-# `init` does NOT accept a --staking-bond-denom flag; the staking bond denom
-# is set on the genesis JSON itself, either by the canonical mainnet
-# `manifest-1_genesis.json` you wgot above, or — for a custom chain — by the
-# `set-genesis-params.sh` script's jq override on
-# `.app_state.staking.params.bond_denom`.
-manifestd init "$MONIKER" --chain-id $CHAIN_ID --default-denom umfx
+# Give yourself 1 POASTAKE so you can sign the genesis tx.
 manifestd genesis add-genesis-account $KEYNAME_ADDR 1000000upoa
 
 # genesis transaction using all above variables

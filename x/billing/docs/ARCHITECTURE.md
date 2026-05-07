@@ -541,7 +541,7 @@ The matching role is recorded in the emitted event's `set_by` attribute (`tenant
 
 A non-empty domain must pass `IsValidFQDN`:
 - length 1–253 bytes (`MaxCustomDomainLength`);
-- lowercase only (the keeper lower-cases & trims before validation, so callers may submit mixed case);
+- **lowercase only — the transaction is rejected at `MsgSetItemCustomDomain.ValidateBasic()` (which calls `IsValidFQDN` directly) before reaching the keeper. Callers must lower-case `custom_domain` client-side before signing.** The keeper additionally `strings.ToLower(strings.TrimSpace(...))`s the value as defence-in-depth on the storage path, but that normalisation never runs against mixed-case input in practice;
 - ≥ 1 dot separator (rejects bare hostnames);
 - each label is RFC 1123 (1–63 alphanumerics + hyphens, no leading/trailing hyphen);
 - the TLD label has at least one non-digit character (rejects raw IPv4);

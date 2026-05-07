@@ -208,7 +208,7 @@ const clear = liftedinit.billing.v1.MessageComposer.encoded.setItemCustomDomain(
 });
 ```
 
-The keeper lower-cases and trims `customDomain` before validation, so callers may submit mixed case. See [`x/billing/docs/API.md`](../x/billing/docs/API.md#set-item-custom-domain) for the full FQDN rules and reserved-suffix behaviour.
+**Lower-case `customDomain` client-side before signing** — `MsgSetItemCustomDomain.ValidateBasic()` rejects mixed case (it calls `IsValidFQDN` directly), so the tx fails before reaching the keeper. The keeper does its own `strings.ToLower(strings.TrimSpace(...))` as defence-in-depth, but you can't rely on it as a normalisation point for input. See [`x/billing/docs/API.md`](../x/billing/docs/API.md#set-item-custom-domain) for the full FQDN rules and reserved-suffix behaviour.
 
 ### Cancel a pending lease (`MsgCancelLease`)
 

@@ -112,8 +112,10 @@ message MsgBurnHeldBalanceResponse {}
 ```bash
 manifestd tx manifest burn-coins [coins,...] --from <admin-key>
 # Example (multi-denom burn):
-manifestd tx manifest burn-coins 50_000umfx,100othercoin --from authority
+manifestd tx manifest burn-coins 50000umfx,100othercoin --from authority
 ```
+
+> Unlike `payout`, `burn-coins` does **not** strip underscores from amounts — it parses the argument with `sdk.ParseCoinsNormalized` directly. Pass plain digits (e.g. `50000umfx`); `50_000umfx` would fail with `invalid decimal coin expression`.
 
 ## State
 
