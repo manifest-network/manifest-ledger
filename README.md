@@ -28,6 +28,7 @@ The chain runs Proof of Authority (`x/poa`) consensus, with plans to evolve towa
   - [I want to run a node / become a validator](#i-want-to-run-a-node--become-a-validator)
   - [I'm a tenant — buying compute](#im-a-tenant--buying-compute)
   - [I'm a provider — selling compute](#im-a-provider--selling-compute)
+  - [I'm a wallet / frontend integrator](#im-a-wallet--frontend-integrator)
 - [System Requirements](#system-requirements)
 - [Installation](#install--run)
 - [Testing](#testing)
@@ -136,6 +137,10 @@ manifestd tx billing close-lease <LEASE_UUID> --reason "service ended" --from <P
 **Auto-close behaviour:** if a tenant's credit runs out, the next `withdraw` or `close-lease` against the lease performs the final settlement (against whatever balance remains) and auto-closes it. You don't need to poll.
 
 **Deeper reading:** [`x/sku/docs/PROVIDER_GUIDE.md`](./x/sku/docs/PROVIDER_GUIDE.md), [`x/sku/docs/SKU_GUIDE.md`](./x/sku/docs/SKU_GUIDE.md), [`x/billing/docs/INTEGRATION.md`](./x/billing/docs/INTEGRATION.md).
+
+### I'm a wallet / frontend integrator
+
+Use [`@manifest-network/manifestjs`](#javascript--typescript-sdk) — a generated TypeScript client whose `liftedinit.{billing,sku,manifest}.v1` namespaces cover every message and query above (and stay in lock-step with this repo's protos). End-to-end recipes for Keplr/Leap signing, message composition, query patterns, websocket event subscriptions, and the type-URL / amino-name reference live in [`docs/FRONTEND.md`](./docs/FRONTEND.md).
 
 ## System Requirements
 

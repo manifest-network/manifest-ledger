@@ -148,16 +148,20 @@ manifestd query bank balances <authority-address>
 
 ## Errors
 
-Both message handlers return plain `fmt.Errorf` strings rather than registered `cosmossdk.io/errors`. Don't write client code that key-matches on numeric codes — match on substrings if you must distinguish failure modes:
+`x/manifest` does not register its own error codes (`errors.Register(ModuleName, …)` is not called anywhere in this module), so there are no `manifest`-typed numeric codes to match on. The handlers return errors in two layers:
 
-| Source | Substring | When |
-|---|---|---|
-| `msg_server.go` | `invalid authority; expected …, got …` | `msg.authority` ≠ `keeper.authority` |
-| `msg_server.go` | `invalid payout message:` / `invalid burn held message:` | `Validate()` failed |
-| `msgs.go::Validate` | `payouts cannot be empty` / `burn coins cannot be empty` | empty list |
-| `msgs.go::Validate` | `duplicate address: …` | `MsgPayout` has the same recipient twice |
-| `msgs.go::Validate` | `coin cannot be zero for address: …` | zero-amount payout pair |
-| `msg_server.go::BurnHeldBalance` | `not enough balance to burn …` | authority balance < `burn_coins` |
+1. **Outer wrapper** at the msg server (`x/manifest/keeper/msg_server.go`) — plain `fmt.Errorf` with stable prefix strings. The authority-mismatch check is a bare error; the validation and bank-keeper failures are wrapped with `%w` (preserving the underlying error chain). Substring-match the prefixes if you need to distinguish module-specific failure modes:
+
+   | Source | Substring | When |
+   |---|---|---|
+   | `msg_server.go` | `invalid authority; expected …, got …` | `msg.authority` ≠ `keeper.authority` |
+   | `msg_server.go` | `invalid payout message:` / `invalid burn held message:` | `Validate()` failed |
+   | `msgs.go::Validate` | `payouts cannot be empty` / `burn coins cannot be empty` | empty list |
+   | `msgs.go::Validate` | `duplicate address: …` | `MsgPayout` has the same recipient twice |
+   | `msgs.go::Validate` | `coin cannot be zero for address: …` | zero-amount payout pair |
+   | `msg_server.go::BurnHeldBalance` | `not enough balance to burn …` | authority balance < `burn_coins` |
+
+2. **Wrapped underlying errors** carry structured codes from upstream — `cosmossdk.io/errors`-typed errors from `Msg*.Validate()` (e.g. wrapping `sdk.AccAddressFromBech32`, coin validation), and SDK-typed errors from the bank keeper (e.g. `sdkerrors.ErrInsufficientFunds` underneath `not enough balance to burn …`). Use `errors.Is` / `errors.As` after unwrapping if you need to react to a specific upstream code rather than the wrapper string.
 
 ## Module-account permissions
 
