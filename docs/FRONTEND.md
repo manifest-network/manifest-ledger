@@ -55,7 +55,7 @@ const credit = await client.liftedinit.billing.v1.creditAccount({
 // credit.creditAccount.reservedAmounts — locked by PENDING/ACTIVE leases
 ```
 
-Prefer `createLCDQueryClient` if you need to hit the REST gateway instead of CometBFT RPC (e.g. browser sandboxes that can't open a WS):
+Prefer `createLCDClient` if you need to hit the REST gateway instead of CometBFT RPC (e.g. browser sandboxes that can't open a WS):
 
 ```ts
 import { createLCDClient } from "@manifest-network/manifestjs";

@@ -53,7 +53,7 @@
       - [Close Lease (close-lease)](#close-lease-close-lease)
       - [Withdraw (withdraw)](#withdraw-withdraw)
       - [Set Item Custom Domain (set-item-custom-domain)](#set-item-custom-domain-set-item-custom-domain)
-      - [Update Params (update-params)](#update-params-update-params-2)
+      - [Update Params (update-params)](#update-params-update-params-1)
 
 <!-- TOC -->
 
