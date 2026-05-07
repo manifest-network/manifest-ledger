@@ -80,7 +80,10 @@ manifestd query billing leases-by-tenant $(manifestd keys show <KEY> -a) --state
 manifestd query billing lease <LEASE_UUID>
 
 # 6. (Optional, v2.1.0+) Attach a custom domain to a lease item once it's PENDING or ACTIVE.
-manifestd tx billing set-item-custom-domain <LEASE_UUID> web app.example.com --from <KEY>
+#    The 2nd argument is the item's `service_name`. Use "" for a 1-item legacy lease
+#    (item.service_name == ""); use the actual service name for stack-mode leases.
+manifestd tx billing set-item-custom-domain <LEASE_UUID> "" app.example.com --from <KEY>          # 1-item legacy lease
+manifestd tx billing set-item-custom-domain <LEASE_UUID> web app.example.com --from <KEY>         # stack-mode, target the "web" item
 
 # 7. When you're done, close it. Final settlement transfers accrued charges to the provider.
 manifestd tx billing close-lease <LEASE_UUID> --reason "no longer needed" --from <KEY>
