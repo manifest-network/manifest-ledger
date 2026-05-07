@@ -135,7 +135,7 @@ It is reserved but never written or read. Future versions may either drop it or 
 
 ## Queries
 
-The module exposes **no queries**. `proto/liftedinit/manifest/v1/query.proto` is `service Query {}` with no methods, and no query CLI subcommand exists. To inspect minted/burned supply, query `x/bank` directly:
+The module exposes **no queries**. `proto/liftedinit/manifest/v1/query.proto` is `service Query {}` with no methods. The `manifestd query manifest` parent command is still registered (it shows up in `manifestd query --help` for module-CLI wiring consistency), but it has no subcommands attached. To inspect minted/burned supply, query `x/bank` directly:
 
 ```bash
 manifestd query bank total --denom umfx
