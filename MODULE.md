@@ -44,6 +44,16 @@
 - [Billing Module](#billing-module)
   - [Module Functionality](#module-functionality-5)
     - [Commands](#commands-5)
+      - [Fund Credit (fund-credit)](#fund-credit-fund-credit)
+      - [Create Lease (create-lease)](#create-lease-create-lease)
+      - [Create Lease For Tenant (create-lease-for-tenant)](#create-lease-for-tenant-create-lease-for-tenant)
+      - [Acknowledge Lease (acknowledge-lease)](#acknowledge-lease-acknowledge-lease)
+      - [Reject Lease (reject-lease)](#reject-lease-reject-lease)
+      - [Cancel Lease (cancel-lease)](#cancel-lease-cancel-lease)
+      - [Close Lease (close-lease)](#close-lease-close-lease)
+      - [Withdraw (withdraw)](#withdraw-withdraw)
+      - [Set Item Custom Domain (set-item-custom-domain)](#set-item-custom-domain-set-item-custom-domain)
+      - [Update Params (update-params)](#update-params-update-params-1)
 
 <!-- TOC -->
 
@@ -526,6 +536,25 @@ The Billing module implements a credit-based leasing system for AI infrastructur
 
   **Example:** `manifestd tx billing withdraw 01912345-6789-7abc-8def-0123456789ab --from provider`
 
+##### Set Item Custom Domain (set-item-custom-domain):
+
+Set or clear the custom domain on a specific lease item. Authorised senders are
+the lease tenant, the module authority, or any address in `params.allowed_list`.
+For a 1-item legacy lease (no `service_name` set), pass `""` for `service-name`.
+Multi-item legacy leases cannot use custom_domain — recreate the lease in
+service-name mode.
+
+- Syntax: `manifestd tx billing set-item-custom-domain [lease-uuid] [service-name] [domain] [flags]`
+
+  - Parameters:
+    - `lease-uuid`: UUID of the lease
+    - `service-name`: Service name on the targeted item (`""` for a 1-item legacy lease)
+    - `domain`: FQDN to set, or `""` to clear
+
+  **Example (1-item lease):** `manifestd tx billing set-item-custom-domain 01912345-6789-7abc-8def-0123456789ab "" app.example.com --from tenant`
+  **Example (multi-item):** `manifestd tx billing set-item-custom-domain 01912345-6789-7abc-8def-0123456789ab web app.example.com --from tenant`
+  **Example (clear):** `manifestd tx billing set-item-custom-domain 01912345-6789-7abc-8def-0123456789ab web "" --from tenant`
+
 ##### Update Params (update-params):
 
 - Syntax: `manifestd tx billing update-params [max-leases-per-tenant] [max-items-per-lease] [min-lease-duration] [max-pending-leases-per-tenant] [pending-timeout] [flags]`
@@ -537,6 +566,8 @@ The Billing module implements a credit-based leasing system for AI infrastructur
     - `max-pending-leases-per-tenant`: Maximum pending leases per tenant
     - `pending-timeout`: Pending lease timeout in seconds (60-86400)
   - Flags:
-    - `--allowed-list`: Comma-separated list of addresses allowed to create leases for tenants
+    - `--allowed-list`: Comma-separated list of addresses allowed to create leases for tenants. **Preserve-on-omit**: when the flag is not provided, the current on-chain value is queried and re-submitted unchanged. Pass an empty value (`--allowed-list=""`) to explicitly clear it.
+    - `--reserved-domain-suffixes`: Comma-separated list of reserved domain suffixes (each must begin with `.`). Used to gate `set-item-custom-domain`. Same **preserve-on-omit** semantics as `--allowed-list`.
 
-  **Example:** `manifestd tx billing update-params 100 20 3600 10 1800 --from authority`
+  **Example (numeric only, lists preserved):** `manifestd tx billing update-params 100 20 3600 10 1800 --from authority`
+  **Example (set reserved suffixes):** `manifestd tx billing update-params 100 20 3600 10 1800 --reserved-domain-suffixes ".manifest.network,.lifted.app" --from authority`
