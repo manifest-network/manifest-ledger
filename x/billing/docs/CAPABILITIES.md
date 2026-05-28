@@ -31,6 +31,7 @@ This document provides a comprehensive overview of the Billing module's capabili
 | **Multi-Denom Support** | Credit accounts can hold multiple token types |
 | **Batch Operations** | Provider-wide withdrawal, batch acknowledge/reject |
 | **Pending Timeout** | Unacknowledged leases expire automatically (EndBlocker) |
+| **Per-Item Custom Domains** | Tenants attach FQDNs to lease items post-creation; provider routes traffic and provisions HTTP-01 TLS. Globally unique while the lease is PENDING/ACTIVE; reserved suffixes block claims on provider wildcard zones. (v2.1.0+) |
 
 ---
 
@@ -114,6 +115,7 @@ When credit is exhausted:
 | `CreditAddress` | Derive credit address for a tenant |
 | `WithdrawableAmount` | Accrued amount for a specific lease |
 | `ProviderWithdrawable` | Total withdrawable across all provider's leases |
+| `LeaseByCustomDomain` | Look up the PENDING/ACTIVE lease + item that owns a given `custom_domain` (v2.1.0+) |
 
 ---
 

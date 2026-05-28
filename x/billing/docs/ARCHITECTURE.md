@@ -137,10 +137,15 @@ Individual line items within a lease:
 | `quantity` | `uint64` | Number of units (e.g., 5 instances) |
 | `locked_price` | `Coin` | Per-second price locked at lease creation (includes denom) |
 | `service_name` | `string` | Optional RFC 1123 DNS label for stack deployments (1-63 lowercase alphanumeric/hyphens) |
+| `custom_domain` | `string` | Optional FQDN (≤253 bytes) routed to this item by the provider — see [Custom Domains](#custom-domains-per-item) (v2.1.0+) |
 
 **Note**: The `locked_price` is pre-computed at lease creation as the per-second rate for billing calculations. This is derived from the SKU's base price and unit at the time of lease creation. The denomination is preserved from the SKU's `base_price`, enabling multi-denom billing.
 
 **Service Names**: When `service_name` is set, all items in the lease must have one (all-or-nothing). Uniqueness shifts from `sku_uuid` to `service_name`, allowing the same SKU to appear multiple times for different named services (e.g., "web" and "db" both using a docker-small SKU). This enables stack deployments where the off-chain orchestrator maps each service to its container.
+
+**Custom Domains**: `custom_domain` is mutable post-creation via `MsgSetItemCustomDomain` (`service_name` and the rest of the lease are immutable). Globally unique while the lease is PENDING/ACTIVE — enforced through the `CustomDomainIndex` reverse-index that maps `domain → CustomDomainTarget{lease_uuid, service_name}`. See [Custom Domains](#custom-domains-per-item) for the full flow.
+
+> **Compute-specific fields:** `service_name` and `custom_domain` are pragmatic shortcuts that live on `LeaseItem` today. They will migrate to a future `x/deployment` module once a non-compute lease kind ships (tracked: ENG-80).
 
 ### LeaseState Enum
 
@@ -198,6 +203,7 @@ graph LR
 | `LeasesByTenantState` | `(AccAddress, int32, string)` | `bool` | Compound tenant+state → leases index |
 | `LeasesBySKU` | `(string, string)` | `bool` | Many-to-many SKU → leases index |
 | `LeasesByStateCreatedAt` | `(int32, time.Time, string)` | `bool` | Compound state+created_at → leases index (time-ordered) |
+| `CustomDomainIndex` | `string` (lower-cased domain) | `CustomDomainTarget` | Reverse lookup `custom_domain → (lease_uuid, service_name)` for O(1) `QueryLeaseByCustomDomain`. Reconciled by `SetLease` whenever lease items change; freed on close/reject/expire/auto-close. |
 | `Params` | - | `Params` | Module parameters |
 
 ## Core Flows
@@ -508,6 +514,114 @@ sequenceDiagram
         end
     end
 ```
+
+## Custom Domains (per-item)
+
+> Available since v2.1.0 (PR #152). Implemented in `x/billing/keeper/custom_domain.go` and `x/billing/types/msgs.go` (`IsValidFQDN`, `MatchesReservedSuffix`).
+
+### Purpose
+
+Each `LeaseItem` can carry an optional `custom_domain` — an FQDN the provider routes to that item's container with a TLS cert provisioned via HTTP-01. Domains are claimed and released entirely on-chain: the provider runs `QueryLeaseByCustomDomain` against incoming HTTP host headers and trusts the returned `(lease_uuid, service_name)` as the routing target.
+
+### State
+
+- `CustomDomainIndex` (collection prefix `0x0C`): `string → CustomDomainTarget{lease_uuid, service_name}`. Keys are the canonical (lower-cased, trimmed) domain. Only PENDING/ACTIVE leases hold entries.
+- The same `custom_domain` string is also stored on `LeaseItem.custom_domain` so the lease record carries the claim independently of the index. `SetLease` reconciles both representations on every write.
+
+### Authorisation
+
+`MsgSetItemCustomDomain` is signed by `sender` and accepted when:
+1. `sender == lease.tenant`, **or**
+2. `sender == module authority`, **or**
+3. `sender ∈ params.allowed_list`.
+
+The matching role is recorded in the emitted event's `set_by` attribute (`tenant` / `authority` / `allowed`) so off-chain auditors can attribute changes.
+
+### Validation
+
+A non-empty domain must pass `IsValidFQDN`:
+- length 1–253 bytes (`MaxCustomDomainLength`);
+- **lowercase only — the transaction is rejected at `MsgSetItemCustomDomain.ValidateBasic()` (which calls `IsValidFQDN` directly) before reaching the keeper. Callers must lower-case `custom_domain` client-side before signing.** The keeper additionally `strings.ToLower(strings.TrimSpace(...))`s the value as defence-in-depth on the storage path, but that normalisation never runs against mixed-case input in practice;
+- ≥ 1 dot separator (rejects bare hostnames);
+- each label is RFC 1123 (1–63 alphanumerics + hyphens, no leading/trailing hyphen);
+- the TLD label has at least one non-digit character (rejects raw IPv4);
+- no scheme (`://`), no `/`, ` `, `\t`, `@`, `*`, `?`, `#`;
+- no leading or trailing dot.
+
+It must also pass `MatchesReservedSuffix(params.ReservedDomainSuffixes)` ⇒ `false`. Each reserved-suffix entry must begin with `.`; a domain matches when it ends with the suffix at a label boundary, or equals the suffix's apex (`.foo.example` matches both `app.foo.example` and `foo.example`). The check is case-insensitive and **fail-closed** on malformed entries (so a corrupted params slice can't accidentally permit reserved domains).
+
+### Lookup contract
+
+The keeper resolves the target item by `service_name`:
+
+| Lease shape | Caller passes | Match |
+|---|---|---|
+| 1-item legacy (item.service_name `""`) | `service_name == ""` | the single item |
+| Multi-item, service-name mode | `service_name == "web"` | the unique item with that name |
+| Multi-item legacy (no service_names) | any value | rejected with `ErrAmbiguousLeaseItem` — recreate in service-name mode |
+
+The lookup is wrapped in a defensive guard: even though `ValidateLeaseItems` and the genesis check prevent multi-item legacy leases from existing, the keeper rejects them at the lookup site rather than relying on construction-time invariants.
+
+### Set / clear flow (`MsgSetItemCustomDomain`)
+
+```mermaid
+sequenceDiagram
+    participant Sender
+    participant MsgServer
+    participant Keeper
+    participant Lease as Lease.Items[i]
+    participant Index as CustomDomainIndex
+
+    Sender->>MsgServer: MsgSetItemCustomDomain(lease_uuid, service_name, domain)
+    MsgServer->>Keeper: GetLease, IsAuthorizedForTenant
+    alt unauthorised
+        Keeper-->>Sender: ErrUnauthorized
+    end
+    alt lease state ∉ {PENDING, ACTIVE}
+        Keeper-->>Sender: ErrLeaseNotEditable
+    end
+    Keeper->>Lease: findLeaseItemByServiceName
+    alt 0 matches
+        Keeper-->>Sender: ErrLeaseItemNotFound
+    else >1 matches (legacy multi-item)
+        Keeper-->>Sender: ErrAmbiguousLeaseItem
+    end
+    alt domain == ""
+        Keeper->>Lease: clear custom_domain
+        Keeper->>Index: SetLease reconciles (drops old key)
+        Keeper-->>Sender: emit lease_custom_domain_cleared
+    else
+        Keeper->>Keeper: lower-case + trim, IsValidFQDN, MatchesReservedSuffix
+        Keeper->>Index: pre-flight Get(domain)
+        alt same (lease, item) already holds it
+            Keeper-->>Sender: idempotent no-op (no event)
+        else within-lease cross-item collision
+            Keeper-->>Sender: ErrCustomDomainAlreadyClaimed (in-lease)
+        else cross-lease collision
+            Keeper-->>Sender: ErrCustomDomainAlreadyClaimed (in-lease X)
+        else free
+            Keeper->>Lease: set custom_domain
+            Keeper->>Index: SetLease reconciles (writes new key)
+            Keeper-->>Sender: emit lease_custom_domain_set
+        end
+    end
+```
+
+The pre-flight uniqueness check is a UX layer: `SetLease`'s storage-level reconciliation is the defence-in-depth that prevents two simultaneous claims from racing through.
+
+### Index lifecycle
+
+`CustomDomainIndex` entries are created and freed exclusively through `SetLease`'s reconciliation pass. As a result:
+- closing a lease (`MsgCloseLease`, auto-close on credit exhaustion);
+- rejecting a lease (`MsgRejectLease`);
+- a tenant cancelling a pending lease (`MsgCancelLease`);
+- a pending lease expiring in EndBlocker;
+
+each free every `custom_domain` the lease held in a single SetLease call. Genesis import re-derives the index from `LeaseItem.custom_domain` values for PENDING/ACTIVE leases only.
+
+### Query
+
+`QueryLeaseByCustomDomain` is the only read path that uses the index. It lower-cases and trims the input domain before lookup so case-insensitive HTTP host headers work without per-caller normalisation. The response carries the full `Lease` plus the `service_name` of the matching item — for a 1-item legacy lease the `service_name` is `""`.
 
 ## Settlement Triggers
 

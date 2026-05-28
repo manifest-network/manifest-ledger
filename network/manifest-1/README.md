@@ -1,29 +1,38 @@
 # Manifest-1 Network Guide
 
-This guide will assist you in setting up a Manifest-1 network. There are three primary methods to join the network:
+This directory holds the operator-facing docs and the canonical mainnet genesis file for `manifest-1`. Pick the path that matches what you're trying to do:
 
-1. [Genesis](./GENESIS.md): For validators joining at the network's inception, please refer to the genesis document.
-2. [Post Genesis](./POST_GENESIS.md): For validators joining after the initial network launch, consult the post-genesis document.
-3. [Custom Genesis](#custom-genesis): To create your genesis file, follow the custom genesis guide.
+| If you want to… | Read |
+|---|---|
+| Join the **live** `manifest-1` chain as a validator or full node | [POST_GENESIS.md](./POST_GENESIS.md) |
+| Track or pre-stage an **upgrade** | [UPGRADES.md](./UPGRADES.md) |
+| Bootstrap a **new chain** from scratch (testnet, devnet, fork) | [GENESIS.md](./GENESIS.md) + [Custom Genesis](#custom-genesis) below |
 
-## [Genesis](./GENESIS.md)
+The frozen mainnet genesis is checked in as [`manifest-1_genesis.json`](./manifest-1_genesis.json). The other JSON file (`genesis.json`) is a `manifestd` `init` artefact, **not** a usable network genesis — ignore it.
 
-This section is tailored for validators intending to participate in the genesis ceremony. Prospective validators must download the genesis file and adhere to the provided steps to join the network. The genesis file originates from the [set-genesis-params.sh](./set-genesis-params.sh) script, which facilitates the generation of a bespoke genesis file. This file allows for the specification of network parameters, such as the Proof of Authority (PoA) token denomination.
+## Authoritative sources for live values
 
-## [Post Genesis](./POST_GENESIS.md)
+Some operator inputs change between releases and live outside this repo:
 
-This section addresses validators aiming to join the network post-initial launch. Such validators need to execute the outlined steps to generate their validator file and integrate into the network by submitting a join request to the PoA administrators.
+- **Seeds, persistent peers, RPC endpoints** — [`cosmos/chain-registry`](https://github.com/cosmos/chain-registry/tree/master/manifest), Manifest Network Discord `#validators`.
+- **Snapshots, state-sync RPC servers** — Discord `#validators`, release notes.
+- **Current binary version** — [GitHub releases](https://github.com/manifest-network/manifest-ledger/releases) (latest non-pre-release tag).
+- **Scheduled upgrade height** — `manifestd query upgrade plan` against any live RPC.
 
 ## Custom Genesis
 
-This section is for those who wish to construct their genesis file for the network, enabling the modification of PoA administrator details and other parameters. Utilizing the [set-genesis-params.sh](./set-genesis-params.sh) script, you can alter the PoA denomination, among other settings.
+For anyone bootstrapping a new chain from this repo (testnet, devnet, fork): use [`set-genesis-params.sh`](./set-genesis-params.sh) to generate a fresh genesis with custom PoA admin(s), denomination, and other parameters.
 
-In the script, you will encounter the following line:
+Key knobs in the script:
 
 ```bash
+# Staking denom (PoA bond denom). Distinct from the gas/fee denom.
 update_genesis '.app_state["staking"]["params"]["bond_denom"]="upoa"'
+
+# CosmWasm code-upload allowlist — set this to your chain's PoA admin(s):
+update_genesis '.app_state["wasm"]["params"]["code_upload_access"]["addresses"]=["<your-admin-addr>"]'
 ```
 
-Modifying the quoted values allows you to customize them as desired. After making the changes, execute the script, and your revised genesis file will be located at `$HOME/.manifest/config/genesis.json`.
+Run the script, then pick up at [GENESIS.md](./GENESIS.md) to complete the genesis-ceremony flow.
 
-Following these adjustments, proceed to the [Genesis](./GENESIS.md) document to finalize your node setup and participate in the genesis ceremony or launch your own.
+> The script's `add-genesis-account` block is commented out — you'll need to uncomment and fill it in for any chain that should ship with seeded balances.
