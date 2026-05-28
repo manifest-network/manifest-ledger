@@ -131,7 +131,7 @@ is empty for all items and the lookup is ambiguous. Recreate the lease in
 service-name mode instead.
 
 **Events**:
-- `lease_custom_domain_set` — attributes: `lease_uuid`, `tenant`, `service_name`, `custom_domain`, `set_by`
+- `lease_custom_domain_set` — attributes: `lease_uuid`, `tenant`, `provider_uuid`, `service_name`, `custom_domain`, `set_by`
 - `lease_custom_domain_cleared` — same attributes (`custom_domain` carries the previous value)
 
 `set_by` ∈ {`tenant`, `authority`, `allowed`} indicates the role under which

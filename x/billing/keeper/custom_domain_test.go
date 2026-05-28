@@ -789,6 +789,7 @@ func TestSetItemCustomDomain_SetEvent_Attributes_Legacy(t *testing.T) {
 	ev := findEvent(t, s.f.Ctx, types.EventTypeLeaseCustomDomainSet)
 	require.Equal(t, s.leaseUUID, attrValue(t, ev, types.AttributeKeyLeaseUUID))
 	require.Equal(t, s.tenant.String(), attrValue(t, ev, types.AttributeKeyTenant))
+	require.Equal(t, s.provider.Uuid, attrValue(t, ev, types.AttributeKeyProviderUUID))
 	require.Equal(t, "", attrValue(t, ev, types.AttributeKeyServiceName), "1-item legacy emits empty service_name")
 	require.Equal(t, "evt.example.com", attrValue(t, ev, types.AttributeKeyCustomDomain))
 	require.Equal(t, types.AttributeValueRoleTenant, attrValue(t, ev, types.AttributeKeySetBy))
@@ -803,6 +804,9 @@ func TestSetItemCustomDomain_SetEvent_Attributes_MultiItem(t *testing.T) {
 
 	ev := findEvent(t, s.f.Ctx, types.EventTypeLeaseCustomDomainSet)
 	require.Equal(t, leaseUUID, attrValue(t, ev, types.AttributeKeyLeaseUUID))
+	lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, lease.ProviderUuid, attrValue(t, ev, types.AttributeKeyProviderUUID))
 	require.Equal(t, "web", attrValue(t, ev, types.AttributeKeyServiceName))
 	require.Equal(t, "evt.example.com", attrValue(t, ev, types.AttributeKeyCustomDomain))
 	require.Equal(t, types.AttributeValueRoleAuthority, attrValue(t, ev, types.AttributeKeySetBy), "authority sender attribution")
@@ -819,6 +823,9 @@ func TestSetItemCustomDomain_ClearEvent_Attributes(t *testing.T) {
 
 	ev := findEvent(t, s.f.Ctx, types.EventTypeLeaseCustomDomainCleared)
 	require.Equal(t, leaseUUID, attrValue(t, ev, types.AttributeKeyLeaseUUID))
+	lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
+	require.NoError(t, err)
+	require.Equal(t, lease.ProviderUuid, attrValue(t, ev, types.AttributeKeyProviderUUID))
 	require.Equal(t, "web", attrValue(t, ev, types.AttributeKeyServiceName))
 	require.Equal(t, "to-clear.example.com", attrValue(t, ev, types.AttributeKeyCustomDomain),
 		"cleared event reports the previous domain for audit consumers")
