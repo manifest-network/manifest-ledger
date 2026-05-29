@@ -405,7 +405,8 @@ Common subscriptions for a provider control plane:
 | New pending leases for me | `lease_created.provider_uuid='<UUID>'` |
 | Tenants cancelling pending leases | `lease_cancelled.provider_uuid='<UUID>'` |
 | Auto-close on credit exhaustion | `lease_auto_closed.provider_uuid='<UUID>'` |
-| Domain set / cleared on my leases | `lease_custom_domain_set.provider_uuid='<UUID>'` (v2.1.1+) |
+| Domain set on my leases | `lease_custom_domain_set.provider_uuid='<UUID>'` (v2.1.1+) |
+| Domain cleared on my leases | `lease_custom_domain_cleared.provider_uuid='<UUID>'` (v2.1.1+) |
 
 The full event catalogue and attributes live in [`x/billing/docs/API.md#events`](../x/billing/docs/API.md#events).
 
