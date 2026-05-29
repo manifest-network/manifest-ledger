@@ -1615,8 +1615,8 @@ The billing module emits the following events for state changes:
 | `provider_withdraw` | lease_uuid, provider_uuid, payout_address | Provider withdrawal from single lease |
 | `batch_withdraw` | lease_count, provider_uuid, amount, payout_address, auto_closed | Batch summary when multiple leases withdrawn from |
 | `params_updated` | | Module parameters updated |
-| `lease_custom_domain_set` | lease_uuid, tenant, service_name, custom_domain, set_by | `LeaseItem.custom_domain` set or changed (v2.1.0+) |
-| `lease_custom_domain_cleared` | lease_uuid, tenant, service_name, custom_domain (previous value), set_by | `LeaseItem.custom_domain` cleared (v2.1.0+) |
+| `lease_custom_domain_set` | lease_uuid, tenant, provider_uuid, service_name, custom_domain, set_by | `LeaseItem.custom_domain` set or changed (v2.1.0+; `provider_uuid` added v2.1.1+) |
+| `lease_custom_domain_cleared` | lease_uuid, tenant, provider_uuid, service_name, custom_domain (previous value), set_by | `LeaseItem.custom_domain` cleared (v2.1.0+; `provider_uuid` added v2.1.1+) |
 
 **Custom-domain `set_by` attribute:** records the role under which the call was authorised. One of `tenant`, `authority`, `allowed`. No event is emitted for an idempotent re-set or a clear of an already-empty domain.
 
