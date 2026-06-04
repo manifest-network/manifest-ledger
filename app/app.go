@@ -8,10 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/spf13/cast"
 
 	abci "github.com/cometbft/cometbft/abci/types"
+	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/gogoproto/proto"
@@ -1032,7 +1034,15 @@ func (app *ManifestApp) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
 	// hard-halts the chain. A POA/x-staking edge case (e.g. unjailing a
 	// validator that has fully unbonded) can emit the same consensus key more
 	// than once, so collapse any duplicates here before returning to CometBFT.
+	//
+	// DIAGNOSTIC (debug build): log the raw set from ModuleManager.EndBlock
+	// (x/staking's ApplyAndReturnValidatorSetUpdates output) and the set we
+	// actually return (== res.ValidatorUpdates in baseapp FinalizeBlock), each
+	// keyed by CometBFT's consensus address, to localize where a duplicate
+	// consensus address enters relative to this guard.
+	logValidatorUpdateDiag(ctx, "pre-dedup", eb.ValidatorUpdates)
 	eb.ValidatorUpdates = dedupValidatorUpdates(ctx.Logger(), eb.ValidatorUpdates)
+	logValidatorUpdateDiag(ctx, "post-dedup-returned", eb.ValidatorUpdates)
 	return eb, nil
 }
 
@@ -1076,6 +1086,56 @@ func dedupValidatorUpdates(logger log.Logger, updates []abci.ValidatorUpdate) []
 		out = append(out, u)
 	}
 	return out
+}
+
+// logValidatorUpdateDiag is a temporary diagnostic (debug build only): it logs
+// the validator-update set keyed by the consensus address CometBFT identifies
+// validators by (PubKeyFromProto().Address()), so we can localize where a
+// duplicate consensus address enters relative to app.EndBlocker. It is
+// log-only and changes no behavior. One summary line per block; full per-entry
+// detail (incl. marshaled pubkey bytes, to confirm byte-identity) only when a
+// duplicate address is present.
+func logValidatorUpdateDiag(ctx sdk.Context, label string, updates []abci.ValidatorUpdate) {
+	logger := ctx.Logger()
+	seen := make(map[string]int, len(updates))
+	set := make([]string, 0, len(updates))
+	dup := false
+	for _, u := range updates {
+		addr := "undecodable"
+		if pk, err := cryptoenc.PubKeyFromProto(u.PubKey); err == nil {
+			addr = fmt.Sprintf("%X", pk.Address())
+		}
+		seen[addr]++
+		if seen[addr] > 1 {
+			dup = true
+		}
+		set = append(set, fmt.Sprintf("%s:%d", addr, u.Power))
+	}
+	logger.Error("VALUPDATE-DIAG",
+		"label", label,
+		"height", ctx.BlockHeight(),
+		"count", len(updates),
+		"dup_address", dup,
+		"set", strings.Join(set, ","),
+	)
+	if !dup {
+		return
+	}
+	for i, u := range updates {
+		addr := "undecodable"
+		if pk, err := cryptoenc.PubKeyFromProto(u.PubKey); err == nil {
+			addr = fmt.Sprintf("%X", pk.Address())
+		}
+		marshaled, _ := u.PubKey.Marshal()
+		logger.Error("VALUPDATE-DIAG-DUP-DETAIL",
+			"label", label,
+			"height", ctx.BlockHeight(),
+			"i", i,
+			"address", addr,
+			"pubkey_bytes", fmt.Sprintf("%X", marshaled),
+			"power", u.Power,
+		)
+	}
 }
 
 func (app *ManifestApp) Configurator() module.Configurator {
