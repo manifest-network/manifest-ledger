@@ -6,7 +6,7 @@ DOCKER := $(shell which docker)
 LEDGER_ENABLED ?= true
 BINDIR ?= $(GOPATH)/bin
 BUILD_DIR = ./build
-VERSION ?= v2.1.3
+VERSION ?= v2.1.4-debug.1
 GO ?= go
 GOROOT := $(shell $(GO) env GOROOT)
 export GOROOT
