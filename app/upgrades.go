@@ -16,6 +16,18 @@ var Upgrades []upgrades.Upgrade
 func (app *ManifestApp) RegisterUpgradeHandlers() {
 	Upgrades = append(Upgrades, next.NewUpgrade(app.Version()))
 
+	// Halt-recovery binary swap: the chain's last applied on-chain upgrade is
+	// "v2.1.1". x/upgrade's PreBlocker downgrade check (abci.go) refuses to boot
+	// any binary that lacks a handler for the last applied upgrade, even when the
+	// chain is recovered by swapping binaries rather than via a new governance
+	// upgrade. next.NewUpgrade is a noop handler that never executes without a
+	// matching plan; registering it only satisfies HasHandler("v2.1.1") so the
+	// node boots. Do NOT carry this into the v2.2.x line (different last-applied
+	// upgrade); the general fix is to register the last applied upgrade name.
+	if app.Version() != "v2.1.1" {
+		Upgrades = append(Upgrades, next.NewUpgrade("v2.1.1"))
+	}
+
 	keepers := upgrades.AppKeepers{
 		AccountKeeper: app.AccountKeeper,
 		BankKeeper:    app.BankKeeper,
