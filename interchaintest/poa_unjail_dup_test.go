@@ -107,8 +107,12 @@ func TestPOAUnjailDup(t *testing.T) {
 	cfg.Name = "poa-unjail-dup"
 	cfg.Images = []ibc.DockerImage{img}
 	cfg.ModifyGenesis = cosmos.ModifyGenesis(genesis)
-	// NOTE: do NOT call cfg.WithCodeCoverage(): coverage instrumentation only exists in
-	// manifest:local; the buggy ghcr image is not instrumented.
+	// Enable code coverage ONLY for the locally built (instrumented) manifest:local image, matching
+	// the sibling ictests. The external ghcr image used for the bug path is NOT coverage-instrumented,
+	// so coverage must stay off there; the cleanup copy below is gated on !isBuggyImage() the same way.
+	if !isBuggyImage() {
+		cfg.WithCodeCoverage()
+	}
 
 	chains, err := interchaintest.NewBuiltinChainFactory(zaptest.NewLogger(t), []*interchaintest.ChainSpec{
 		{
@@ -422,17 +426,19 @@ func victimConsAddr(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	infos, err := chain.SlashingQuerySigningInfos(ctx)
 	require.NoError(t, err)
 
-	// The jailed victim has a JailedUntil set in the (recent) past or future; a never-jailed
-	// validator keeps the zero time (year 1). With validators[0] healthy, exactly one signing
-	// info carries a non-zero JailedUntil: the victim's.
-	var candidate string
+	// The jailed victim has a non-zero JailedUntil; a never-jailed validator keeps the zero time
+	// (year 1). With validators[0] healthy, exactly one signing info should carry a non-zero
+	// JailedUntil — the victim's. Require exactly one, so that if a future change jails another
+	// validator in the same run we fail loudly instead of silently returning the wrong address.
+	var candidates []string
 	for _, info := range infos {
 		if info.JailedUntil.After(time.Unix(0, 0)) {
-			candidate = info.Address
+			candidates = append(candidates, info.Address)
 		}
 	}
-	require.NotEmpty(t, candidate, "could not resolve victim consensus address from signing infos")
-	return candidate
+	require.Lenf(t, candidates, 1,
+		"expected exactly one jailed signing info (the victim %s); got %d: %v", victim, len(candidates), candidates)
+	return candidates[0]
 }
 
 // waitForJailExpiry polls SlashingQuerySigningInfo until JailedUntil has elapsed, compared against
