@@ -163,7 +163,7 @@ func TestPOAUnjailDup(t *testing.T) {
 	queried, err := chain.StakingQueryValidators(vctx, stakingtypes.Bonded.String())
 	vcancel()
 	require.NoError(t, err)
-	require.Equal(t, numVals, len(queried))
+	require.Equal(t, vals, len(queried))
 
 	// The victim must NOT be chain.Validators[0]: ALL chain-level queries and RPC
 	// (chain.Height, StakingQueryValidator, SlashingQuerySigningInfo, WaitForBlocks) route
