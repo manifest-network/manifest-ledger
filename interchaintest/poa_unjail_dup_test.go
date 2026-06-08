@@ -155,11 +155,6 @@ func TestPOAUnjailDup(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, numVals, len(queried))
 
-	validators := make([]string, len(queried))
-	for i, v := range queried {
-		validators[i] = v.OperatorAddress
-	}
-
 	// The victim must NOT be chain.Validators[0]: ALL chain-level queries and RPC
 	// (chain.Height, StakingQueryValidator, SlashingQuerySigningInfo, WaitForBlocks) route
 	// through GetFullNode() -> GetNode() -> Validators[0]. With fullNodes=0 there is no separate
@@ -239,7 +234,7 @@ func TestPOAUnjailDup(t *testing.T) {
 		// every validator that applies the offending block panics, so scan all node logs.
 		dupConfirmed := false
 		for _, n := range chain.Validators {
-			if nodeLogContains(t, n, "duplicate entry") {
+			if nodeLogContains(t, ctx, n, "duplicate entry") {
 				dupConfirmed = true
 				t.Logf("confirmed CometBFT duplicate-entry panic in node %s logs", n.Name())
 				break
@@ -286,13 +281,17 @@ func assertVictimNotQuorumCritical(t *testing.T, ctx context.Context, chain *cos
 }
 
 // nodeLogContains reports whether the node container's logs contain needle. Best-effort via the
-// docker CLI (always present where these ictests run, and it honors DOCKER_HOST); a fetch error is
-// logged and treated as "not found". Works on exited/panicked containers too.
-func nodeLogContains(t *testing.T, node *cosmos.ChainNode, needle string) bool {
+// docker CLI (always present where these ictests run, and it honors DOCKER_HOST); works on
+// exited/panicked containers too. The call is bounded by a timeout: it runs exactly when the chain
+// is halted, so the anti-hang assertions must not themselves be able to hang on a wedged daemon. A
+// fetch error/timeout is logged and treated as "not found".
+func nodeLogContains(t *testing.T, ctx context.Context, node *cosmos.ChainNode, needle string) bool {
 	t.Helper()
-	out, err := exec.Command("docker", "logs", node.ContainerID()).CombinedOutput()
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(cctx, "docker", "logs", node.ContainerID()).CombinedOutput()
 	if err != nil {
-		t.Logf("could not read docker logs for %s: %v", node.Name(), err)
+		t.Logf("could not read docker logs for %s within timeout: %v", node.Name(), err)
 		return false
 	}
 	return strings.Contains(string(out), needle)
@@ -308,12 +307,26 @@ func waitForProgressOrHalt(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	t.Helper()
 	deadline := time.Now().Add(budget)
 	var advanced int64
+	// On a wedged-RPC halt each heightWithin read times out (returning 0) and leaves a goroutine
+	// blocked on the wedged call; bail out after a few consecutive timeouts so we neither wait the
+	// full budget nor accumulate goroutines. Any successful read resets the counter.
+	consecutiveTimeouts := 0
+	const maxConsecutiveTimeouts = 3
 	for time.Now().Before(deadline) {
 		h := heightWithin(t, ctx, chain, 8*time.Second)
-		if h > start {
-			advanced = h - start
-			if advanced >= want {
+		if h == 0 {
+			consecutiveTimeouts++
+			if consecutiveTimeouts >= maxConsecutiveTimeouts {
+				t.Logf("height read timed out %d times consecutively; treating the chain as halted", consecutiveTimeouts)
 				return advanced
+			}
+		} else {
+			consecutiveTimeouts = 0
+			if h > start {
+				advanced = h - start
+				if advanced >= want {
+					return advanced
+				}
 			}
 		}
 		select {
@@ -422,8 +435,9 @@ func victimConsAddr(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 	return candidate
 }
 
-// waitForJailExpiry polls SlashingQuerySigningInfo until JailedUntil is in the past relative to
-// the latest block time, so the self-unjail tx will be accepted.
+// waitForJailExpiry polls SlashingQuerySigningInfo until JailedUntil has elapsed, compared against
+// local wall-clock (which closely tracks block time on same-host docker), so the self-unjail tx is
+// accepted by the time it lands in a block.
 func waitForJailExpiry(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, consAddr string) {
 	t.Helper()
 
