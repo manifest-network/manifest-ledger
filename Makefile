@@ -120,6 +120,12 @@ ictest-manifest:
 ictest-poa:
 	cd interchaintest && go test -race -v -run TestPOA . -count=1
 
+ictest-poa-unjail-dup:
+	cd interchaintest && go test -timeout 25m -race -v -run TestPOAUnjailDup . -count=1
+
+ictest-poa-unjail-dup-bug:
+	cd interchaintest && UNJAIL_DUP_IMAGE=ghcr.io/manifest-network/manifest-ledger:2.1.1 go test -timeout 25m -race -v -run TestPOAUnjailDup . -count=1
+
 ictest-group-poa:
 	cd interchaintest && go test -timeout 25m -race -v -run TestGroupPOA . -count=1
 
@@ -156,7 +162,7 @@ ictest-billing-upgrade:
 ictest-billing-reservation:
 	cd interchaintest && go test -race -v -timeout 45m -run TestBillingReservation . -count=1
 
-.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku ictest-billing ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-upgrade ictest-billing-reservation
+.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-poa-unjail-dup ictest-poa-unjail-dup-bug ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku ictest-billing ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-upgrade ictest-billing-reservation
 
 ###############################################################################
 ###                                Build Image                              ###
