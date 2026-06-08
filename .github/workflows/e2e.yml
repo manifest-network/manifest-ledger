@@ -63,6 +63,7 @@ jobs:
         test:
           - "ictest-ibc"
           - "ictest-poa"
+          - "ictest-poa-unjail-dup"
           - "ictest-tokenfactory"
           - "ictest-manifest"
           - "ictest-group-poa"
