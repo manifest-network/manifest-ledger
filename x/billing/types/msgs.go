@@ -202,12 +202,20 @@ func (m *MsgWithdraw) ValidateBasic() error {
 
 	// Mode 1: Specific leases
 	if hasLeases {
+		if len(m.Key) > 0 {
+			return ErrInvalidRequest.Wrap("key (pagination cursor) is only valid in provider-wide mode")
+		}
 		return ValidateBatchLeaseUUIDs(m.LeaseUuids)
 	}
 
 	// Mode 2: Provider-wide
 	if !pkguuid.IsValidUUID(m.ProviderUuid) {
 		return ErrProviderNotFound.Wrapf("invalid provider_uuid format: %s", m.ProviderUuid)
+	}
+
+	// The cursor is opaque and not format-checked here; bound its length to reject oversized payloads.
+	if len(m.Key) > MaxWithdrawCursorLen {
+		return ErrInvalidRequest.Wrapf("key length %d exceeds maximum %d", len(m.Key), MaxWithdrawCursorLen)
 	}
 
 	// Enforce maximum limit to prevent DoS attacks
@@ -229,6 +237,10 @@ func (m *MsgUpdateParams) ValidateBasic() error {
 
 // MaxBatchLeaseSize is the maximum number of leases that can be processed in a single batch operation.
 const MaxBatchLeaseSize = 100
+
+// MaxWithdrawCursorLen bounds the opaque provider-wide withdrawal cursor
+// (a lease UUID is 36 bytes) as a cheap sanity/DoS guard.
+const MaxWithdrawCursorLen = 64
 
 // ValidateBatchLeaseUUIDs validates a slice of lease UUIDs for batch operations.
 // It checks for empty slice, max batch size, UUID format validity, and duplicates.
