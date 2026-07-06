@@ -11995,8 +11995,9 @@ type MsgWithdrawResponse struct {
 	// Always false when using lease_uuids mode.
 	HasMore bool `protobuf:"varint,4,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
 	// next_key is the opaque cursor to pass as MsgWithdraw.key to fetch the next
-	// page in provider-wide mode. Empty when there are no more leases
-	// (has_more == len(next_key) > 0). Always empty in lease_uuids mode.
+	// page in provider-wide mode. It is non-empty if and only if has_more is
+	// true; an empty next_key means there are no more leases. Always empty in
+	// lease_uuids mode.
 	NextKey []byte `protobuf:"bytes,5,opt,name=next_key,json=nextKey,proto3" json:"next_key,omitempty"`
 }
 
