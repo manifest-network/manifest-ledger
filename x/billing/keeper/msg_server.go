@@ -848,7 +848,10 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 	//
 	// The cursor (msg.Key) is the last lease UUID returned by the previous call's
 	// next_key. StartExclusive seeks past it at the store level (O(log n)) and is
-	// tolerant of that lease having been closed between transactions.
+	// tolerant of that lease having been closed between transactions. This relies
+	// on collections.PairRange.StartExclusive resolving to a strict lower bound
+	// (RangeKeyNext); TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease
+	// pins that behavior so a future collections bump cannot silently change it.
 	refKey := collections.Join(providerUUID, int32(types.LEASE_STATE_ACTIVE))
 	rng := collections.NewPrefixedPairRange[collections.Pair[string, int32], string](refKey)
 	if len(msg.Key) > 0 {
@@ -870,7 +873,9 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 		}
 		uuid, pkErr := iter.PrimaryKey()
 		if pkErr != nil {
-			iter.Close()
+			if closeErr := iter.Close(); closeErr != nil {
+				ms.k.Logger().Error("failed to close provider withdraw iterator", "error", closeErr)
+			}
 			return nil, pkErr
 		}
 		leaseUUIDs = append(leaseUUIDs, uuid)
@@ -950,16 +955,13 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 			}
 		}
 
-		// Determine settlement time based on lease state (normal path)
-		var settleTime time.Time
-		switch {
-		case lease.State == types.LEASE_STATE_ACTIVE:
-			settleTime = blockTime
-		case lease.ClosedAt != nil:
-			settleTime = *lease.ClosedAt
-		default:
-			continue // Skip
+		// Phase 1 collects only ACTIVE leases, and the auto-close branch above
+		// already `continue`s, so every lease reaching here is ACTIVE. Settle up
+		// to the current block time.
+		if lease.State != types.LEASE_STATE_ACTIVE {
+			continue
 		}
+		settleTime := blockTime
 
 		// Skip if no duration to settle
 		if !settleTime.After(lease.LastSettledAt) {
