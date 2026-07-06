@@ -611,7 +611,8 @@ type MsgWithdraw struct {
 	Limit uint64 `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty,string"`
 	// key is an opaque pagination cursor for provider-wide mode. Echo back the
 	// next_key returned by the previous MsgWithdrawResponse to continue paging;
-	// empty starts from the beginning. Ignored when lease_uuids is specified.
+	// empty starts from the beginning. Must not be set when lease_uuids is
+	// specified (rejected by ValidateBasic).
 	Key []byte `protobuf:"bytes,5,opt,name=key,proto3" json:"key,omitempty"`
 }
 

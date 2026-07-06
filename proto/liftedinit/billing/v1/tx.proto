@@ -254,7 +254,8 @@ message MsgWithdraw {
 
   // key is an opaque pagination cursor for provider-wide mode. Echo back the
   // next_key returned by the previous MsgWithdrawResponse to continue paging;
-  // empty starts from the beginning. Ignored when lease_uuids is specified.
+  // empty starts from the beginning. Must not be set when lease_uuids is
+  // specified (rejected by ValidateBasic).
   bytes key = 5 [(gogoproto.jsontag) = "key,omitempty"];
 }
 
