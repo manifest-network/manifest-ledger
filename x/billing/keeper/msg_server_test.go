@@ -5495,7 +5495,7 @@ func TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease(t *testing.T)
 	require.NoError(t, err)
 
 	// Resume from the now-closed cursor: the remaining 3 tail leases must be reached.
-	seen := 0
+	seen := uint64(0)
 	key := resp1.NextKey
 	pages := 0
 	for {
@@ -5506,7 +5506,7 @@ func TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease(t *testing.T)
 			Key:          key,
 		})
 		require.NoError(t, err)
-		seen += int(resp.WithdrawalCount)
+		seen += resp.WithdrawalCount
 		pages++
 		require.Less(t, pages, 100, "pagination must terminate")
 		if !resp.HasMore {
@@ -5514,5 +5514,5 @@ func TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease(t *testing.T)
 		}
 		key = resp.NextKey
 	}
-	require.Equal(t, 3, seen, "tail leases must be reached after the boundary lease was closed")
+	require.Equal(t, uint64(3), seen, "tail leases must be reached after the boundary lease was closed")
 }
