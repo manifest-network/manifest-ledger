@@ -5371,3 +5371,76 @@ func TestBatchMultiTenantDeterminism(t *testing.T) {
 		}
 	})
 }
+
+// TestMsgWithdraw_ProviderWideCursorDrainsAllLeases verifies that looping
+// provider-wide withdrawal with key <- next_key at a small limit settles every
+// active lease and terminates (the pre-cursor code re-scans the front forever).
+func TestMsgWithdraw_ProviderWideCursorDrainsAllLeases(t *testing.T) {
+	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 1 per second
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(1000000000))))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	params := types.DefaultParams()
+	params.MaxLeasesPerTenant = 200
+	params.MaxPendingLeasesPerTenant = 200
+	require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, params))
+
+	const totalLeases = 25
+	leaseUUIDs := make([]string, 0, totalLeases)
+	for i := 0; i < totalLeases; i++ {
+		leaseUUIDs = append(leaseUUIDs, f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr,
+			[]types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}}))
+	}
+
+	// Advance time so every lease has something to settle.
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+	var key []byte
+	pages := 0
+	totalSettled := uint64(0)
+	for {
+		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider.Uuid,
+			Limit:        7,
+			Key:          key,
+		})
+		require.NoError(t, err)
+		pages++
+		totalSettled += resp.WithdrawalCount
+		require.LessOrEqual(t, resp.WithdrawalCount, uint64(7))
+		require.Less(t, pages, 100, "pagination must terminate")
+		if !resp.HasMore {
+			require.Empty(t, resp.NextKey, "next_key must be empty on the final page")
+			break
+		}
+		require.NotEmpty(t, resp.NextKey, "next_key must be set while has_more is true")
+		key = resp.NextKey
+	}
+
+	// ceil(25 / 7) == 4 pages, every lease settled exactly once (no double-drain), and
+	// every lease settled to the current block time.
+	require.Equal(t, 4, pages, "should take 4 pages to drain 25 leases at limit 7")
+	require.Equal(t, uint64(totalLeases), totalSettled, "each lease settled exactly once across all pages")
+	for _, uuid := range leaseUUIDs {
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, uuid)
+		require.NoError(t, err)
+		require.Equal(t, f.Ctx.BlockTime(), lease.LastSettledAt,
+			"lease %s should be settled to current block time", uuid)
+	}
+}
