@@ -349,7 +349,7 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
 
 ##### Provider-Wide Withdraw Workflow
 
-When a provider has many active leases, use provider-wide mode with cursor pagination to withdraw from all. Each response returns an opaque `next_key`; pass it back as `--key` on the next call to advance. Calling again **without** `--key` restarts the scan from the first lease and never gets past `limit`.
+When a provider has many active leases, use provider-wide mode with cursor pagination to withdraw from all. Each response returns an opaque `next_key`; pass it back as `--key` on the next call to advance. Calling again **without** `--key` restarts the scan from the first lease and never gets past `limit`. `next_key` is a `bytes` value, so it appears base64-encoded in the JSON output — pass that string verbatim to `--key` (it is not a raw UUID).
 
 ```bash
 # Step 1: Initial withdrawal (processes up to 100 leases), no cursor

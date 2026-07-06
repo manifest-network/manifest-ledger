@@ -352,6 +352,8 @@ manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --from [key
 manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --key [next_key] --from [key]
 ```
 
+> `next_key` is base64-encoded in the JSON/CLI response (it is a `bytes` field). Pass it verbatim to `--key` — not a raw UUID.
+
 ## Batch Operation Failures
 
 ### Batch operation failed entirely

@@ -491,6 +491,8 @@ manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --from prov
 manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --key [next_key] --from provider-key
 ```
 
+> `next_key` is a `bytes` value, so it appears base64-encoded in the JSON/CLI response. Pass that string verbatim to `--key` — it is not a raw UUID.
+
 For detailed scalability analysis, time manipulation considerations, and future improvement plans, see [Architecture](docs/ARCHITECTURE.md#scalability-considerations).
 
 ## Genesis Validation

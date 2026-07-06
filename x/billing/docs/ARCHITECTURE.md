@@ -1041,6 +1041,8 @@ Maximum limit: 100 leases (hard cap)
 3. If `has_more == true`, provider repeats the call passing `--key <next_key>` to advance
 4. Leases are processed in ascending UUID order; the cursor (`StartExclusive`) resumes strictly after `next_key`, so each call advances instead of re-scanning the front
 
+`next_key` is a `bytes` cursor, so it is base64-encoded in JSON/CLI output; pass it verbatim to `--key` (not a raw UUID).
+
 **Gas considerations**: Each batch is a single transaction. Providers with thousands of leases may need multiple transactions spread across blocks.
 
 ### Time Manipulation Considerations
