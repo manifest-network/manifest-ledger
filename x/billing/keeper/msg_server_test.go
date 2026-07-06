@@ -4192,7 +4192,7 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		require.True(t, resp.TotalAmounts.IsZero())
 	})
 
-	t.Run("success: includes closed leases with unsettled amounts", func(t *testing.T) {
+	t.Run("success: closed leases are already settled and skipped", func(t *testing.T) {
 		// Create a new provider for isolation
 		provider3Addr := f.TestAccs[4]
 		provider3 := f.createTestProvider(t, provider3Addr.String(), provider3Addr.String())
@@ -4214,7 +4214,7 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// Provider-wide withdraw should handle closed leases gracefully
+		// Provider-wide withdraw skips CLOSED leases (already settled at close).
 		// (nothing more to withdraw since close already settled)
 		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
 			Sender:       provider3Addr.String(),
