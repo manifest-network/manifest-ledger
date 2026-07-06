@@ -5444,3 +5444,75 @@ func TestMsgWithdraw_ProviderWideCursorDrainsAllLeases(t *testing.T) {
 			"lease %s should be settled to current block time", uuid)
 	}
 }
+
+// TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease closes the exact
+// lease named by next_key between pages. StartExclusive must still resume at the
+// next-greater UUID rather than silently stopping.
+func TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease(t *testing.T) {
+	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(1000000000))))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	const totalLeases = 6
+	for i := 0; i < totalLeases; i++ {
+		f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr,
+			[]types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}})
+	}
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+	// Page 1 at limit 3 processes the 3 smallest UUIDs; next_key is the 3rd.
+	resp1, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
+		Limit:        3,
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), resp1.WithdrawalCount)
+	require.True(t, resp1.HasMore)
+	require.NotEmpty(t, resp1.NextKey)
+
+	// Close the boundary lease, removing it from the ACTIVE index.
+	boundaryUUID := string(resp1.NextKey)
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     tenant.String(),
+		LeaseUuids: []string{boundaryUUID},
+	})
+	require.NoError(t, err)
+
+	// Resume from the now-closed cursor: the remaining 3 tail leases must be reached.
+	seen := 0
+	key := resp1.NextKey
+	pages := 0
+	for {
+		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider.Uuid,
+			Limit:        3,
+			Key:          key,
+		})
+		require.NoError(t, err)
+		seen += int(resp.WithdrawalCount)
+		pages++
+		require.Less(t, pages, 100, "pagination must terminate")
+		if !resp.HasMore {
+			break
+		}
+		key = resp.NextKey
+	}
+	require.Equal(t, 3, seen, "tail leases must be reached after the boundary lease was closed")
+}
