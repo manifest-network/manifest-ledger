@@ -760,10 +760,7 @@ manifestd query billing provider-withdrawable [provider-uuid] --limit 500
 |----------|------|-------------|
 | provider-uuid | string | UUID of the provider |
 
-**Flags:**
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| --limit | uint64 | 100 | Maximum leases to process (max: 1000) |
+**Flags:** standard pagination flags (`--page-key`, `--limit`, `--offset`, `--count-total`, `--reverse`). Page size defaults to 100, capped at 1000. Iterates the provider's active leases.
 
 **Response:**
 ```json
@@ -775,9 +772,14 @@ manifestd query billing provider-withdrawable [provider-uuid] --limit 500
     }
   ],
   "lease_count": "10",
-  "has_more": false
+  "pagination": {
+    "next_key": null,
+    "total": "0"
+  }
 }
 ```
+
+When `pagination.next_key` is non-empty, `amounts` is a partial total: re-query passing it as `--page-key` and sum the per-page `amounts` until `next_key` is empty. This is the read-only complement to provider-wide `MsgWithdraw`.
 
 **Note:** This calculates the real-time total withdrawable amount across all active leases for the provider. It is a read-only query and does NOT trigger actual settlement. For providers with many leases, use the `--limit` flag and check `has_more` to process in batches.
 

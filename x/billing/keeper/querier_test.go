@@ -1094,53 +1094,85 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	_, err = querier.ProviderWithdrawable(f.Ctx, nil)
 	require.Error(t, err)
 
-	// Test pagination with limit parameter
+	// Test pagination with page limit
 	t.Run("pagination with limit", func(t *testing.T) {
-		// Query with limit=2 - should return partial results
+		// Query with limit=2 - should return partial results plus a cursor
 		resp, err := querier.ProviderWithdrawable(newCtx, &types.QueryProviderWithdrawableRequest{
 			ProviderUuid: provider.Uuid,
-			Limit:        2,
+			Pagination:   &query.PageRequest{Limit: 2},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.True(t, resp.HasMore) // More leases exist beyond limit
+		require.NotEmpty(t, resp.Pagination.NextKey) // More leases exist beyond the page
 		// Note: LeaseCount only counts leases with non-zero withdrawable that were processed
 	})
 
-	t.Run("no has_more when all leases processed", func(t *testing.T) {
+	t.Run("empty next_key when all leases processed", func(t *testing.T) {
 		// Query with high limit - should process all leases
 		resp, err := querier.ProviderWithdrawable(newCtx, &types.QueryProviderWithdrawableRequest{
 			ProviderUuid: provider.Uuid,
-			Limit:        100,
+			Pagination:   &query.PageRequest{Limit: 100},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.False(t, resp.HasMore) // All leases processed
+		require.Empty(t, resp.Pagination.NextKey) // All leases processed
 		require.Equal(t, uint64(3), resp.LeaseCount)
 	})
 
-	t.Run("default limit applied when limit=0", func(t *testing.T) {
-		// Query with limit=0 should use default (100)
+	t.Run("default limit applied when pagination omitted", func(t *testing.T) {
+		// nil pagination should use the default page size (100)
 		resp, err := querier.ProviderWithdrawable(newCtx, &types.QueryProviderWithdrawableRequest{
 			ProviderUuid: provider.Uuid,
-			Limit:        0,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.False(t, resp.HasMore) // Default limit (100) is more than 4 leases
+		require.Empty(t, resp.Pagination.NextKey) // Default limit (100) exceeds the 3 active leases
 		require.Equal(t, uint64(3), resp.LeaseCount)
 	})
 
 	t.Run("limit capped at maximum", func(t *testing.T) {
-		// Query with limit exceeding max should be capped
+		// Page limit exceeding the max should be capped, not rejected
 		resp, err := querier.ProviderWithdrawable(newCtx, &types.QueryProviderWithdrawableRequest{
 			ProviderUuid: provider.Uuid,
-			Limit:        10000, // Exceeds MaxProviderWithdrawableQueryLimit (1000)
+			Pagination:   &query.PageRequest{Limit: 10000}, // Exceeds MaxProviderWithdrawableQueryLimit (1000)
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		// Should still work, just capped at max
 		require.Equal(t, uint64(3), resp.LeaseCount)
+	})
+
+	t.Run("cursor drains all pages and sums to the single-page total", func(t *testing.T) {
+		// Full total and count in one page.
+		full, err := querier.ProviderWithdrawable(newCtx, &types.QueryProviderWithdrawableRequest{
+			ProviderUuid: provider.Uuid,
+			Pagination:   &query.PageRequest{Limit: 100},
+		})
+		require.NoError(t, err)
+		require.Empty(t, full.Pagination.NextKey)
+
+		// The same total, accumulated across pages of size 1 by threading next_key.
+		total := sdk.NewCoins()
+		var count uint64
+		var key []byte
+		pages := 0
+		for {
+			resp, err := querier.ProviderWithdrawable(newCtx, &types.QueryProviderWithdrawableRequest{
+				ProviderUuid: provider.Uuid,
+				Pagination:   &query.PageRequest{Limit: 1, Key: key},
+			})
+			require.NoError(t, err)
+			total = total.Add(resp.Amounts...)
+			count += resp.LeaseCount
+			pages++
+			require.Less(t, pages, 100, "pagination must terminate")
+			if len(resp.Pagination.NextKey) == 0 {
+				break
+			}
+			key = resp.Pagination.NextKey
+		}
+		require.Equal(t, full.Amounts, total, "paged total must equal the single-page total")
+		require.Equal(t, full.LeaseCount, count)
 	})
 }
 

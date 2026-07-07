@@ -332,9 +332,13 @@ func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdra
 	}, nil
 }
 
-// ProviderWithdrawable queries the total amounts available for a provider to withdraw.
-// This query uses streaming iteration with a configurable limit to prevent DoS attacks
-// on RPC nodes for providers with many leases.
+// ProviderWithdrawable queries the withdrawable amounts for a provider, paginated
+// over the provider's ACTIVE leases (the only state CalculateWithdrawableForLease
+// can return a non-zero amount for). It mirrors how LeasesByProvider paginates and
+// is symmetric with provider-wide MsgWithdraw: loop until pagination.next_key is
+// empty and sum the per-page amounts for the provider's full withdrawable total.
+// The page size defaults to DefaultProviderWithdrawableQueryLimit and is capped at
+// MaxProviderWithdrawableQueryLimit to bound query cost.
 func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProviderWithdrawableRequest) (*types.QueryProviderWithdrawableResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -344,45 +348,46 @@ func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProvi
 		return nil, status.Error(codes.InvalidArgument, "provider_uuid cannot be empty")
 	}
 
-	// Apply default limit if not specified, cap at maximum
-	limit := req.Limit
-	if limit == 0 {
-		limit = types.DefaultProviderWithdrawableQueryLimit
+	// Normalize pagination: default and cap the page limit to bound query cost,
+	// preserving any cursor/order the caller supplied.
+	pageReq := query.PageRequest{}
+	if req.Pagination != nil {
+		pageReq = *req.Pagination
 	}
-	if limit > types.MaxProviderWithdrawableQueryLimit {
-		limit = types.MaxProviderWithdrawableQueryLimit
+	if pageReq.Limit == 0 {
+		pageReq.Limit = types.DefaultProviderWithdrawableQueryLimit
+	}
+	if pageReq.Limit > types.MaxProviderWithdrawableQueryLimit {
+		pageReq.Limit = types.MaxProviderWithdrawableQueryLimit
 	}
 
-	// Use streaming iteration to avoid loading all leases into memory
+	// Iterate ACTIVE leases only via the compound (provider, state) index,
+	// reusing the same index-pagination helpers as LeasesByProvider.
+	key := collections.Join(req.ProviderUuid, int32(types.LEASE_STATE_ACTIVE))
+	iter, err := pagination.MatchExactWithOrder(ctx, q.k.Leases.Indexes.ProviderState, key, &pageReq)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	leases, pageRes, err := pagination.PaginateStringIndex(ctx, iter, q.k.Leases.Get, &pageReq, nil)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
 	totalWithdrawable := sdk.NewCoins()
 	var leaseCount uint64
-	var processedCount uint64
-	hasMore := false
-
-	err := q.k.IterateLeasesByProvider(ctx, req.ProviderUuid, func(lease types.Lease) (stop bool, iterErr error) {
-		// Check if we've reached the limit
-		if processedCount >= limit {
-			hasMore = true
-			return true, nil // Stop iteration
-		}
-		processedCount++
-
-		withdrawable := q.k.CalculateWithdrawableForLease(ctx, lease)
+	for i := range leases {
+		withdrawable := q.k.CalculateWithdrawableForLease(ctx, leases[i])
 		if !withdrawable.IsZero() {
 			totalWithdrawable = totalWithdrawable.Add(withdrawable...)
 			leaseCount++
 		}
-
-		return false, nil // Continue iteration
-	})
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &types.QueryProviderWithdrawableResponse{
 		Amounts:    totalWithdrawable,
 		LeaseCount: leaseCount,
-		HasMore:    hasMore,
+		Pagination: pageRes,
 	}, nil
 }
 
