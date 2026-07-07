@@ -15,10 +15,12 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/query"
 )
 
-// MatchExactWithOrder is like indexes.Multi.MatchExact but applies descending
-// iteration order when pageReq.Reverse is true.
-// It only controls iteration direction; limit, offset, and key-based cursor
-// pagination are handled by PaginateStringIndex (or similar) downstream.
+// MatchExactWithOrder builds an index iterator for refKey. It applies descending
+// order when pageReq.Reverse is set, and — when pageReq.Key is present — seeks the
+// iterator to the resume cursor with a store-level bound. That seek is O(log n)
+// and, unlike a front-scan, tolerant of the cursor row having been deleted between
+// page calls (it resumes from the nearest surviving key). limit, offset, and
+// count_total remain the responsibility of PaginateStringIndex downstream.
 func MatchExactWithOrder[RK, V any](
 	ctx context.Context,
 	idx *indexes.Multi[RK, string, V],
@@ -26,8 +28,25 @@ func MatchExactWithOrder[RK, V any](
 	pageReq *query.PageRequest,
 ) (indexes.MultiIterator[RK, string], error) {
 	rng := collections.NewPrefixedPairRange[RK, string](refKey)
-	if pageReq != nil && pageReq.Reverse {
-		rng = rng.Descending()
+	if pageReq != nil {
+		// Resume by seeking, inclusively, to the cursor key. collections.PairRange's
+		// Start* always binds the byte-order LOWER bound regardless of Descending(),
+		// so reverse resume must bound the UPPER end (EndInclusive, which uses
+		// RangeKeyNext) to land inclusively on the cursor and iterate strictly
+		// downward from it. Inclusive bounds (never Exclusive) preserve the
+		// first-unread + inclusive-resume next_key contract PaginateStringIndex
+		// produces, byte-for-byte.
+		if len(pageReq.Key) > 0 {
+			cursor := string(pageReq.Key)
+			if pageReq.Reverse {
+				rng = rng.EndInclusive(cursor)
+			} else {
+				rng = rng.StartInclusive(cursor)
+			}
+		}
+		if pageReq.Reverse {
+			rng = rng.Descending()
+		}
 	}
 	return idx.Iterate(ctx, rng)
 }
@@ -76,11 +95,10 @@ func PaginateStringIndex[V any](
 	var total uint64
 	var nextKey []byte
 
-	// Handle key-based pagination: skip items until we reach the start key
-	startKey := pageReq.Key
-	foundStart := len(startKey) == 0 // If no start key, we've already "found" it
-
-	// Handle offset-based pagination
+	// The iterator is already positioned at the resume point by MatchExactWithOrder
+	// (a store-level seek on pageReq.Key), so no front-scan is needed here. Offset
+	// applies only when no cursor key is set (matching prior behavior).
+	hasKey := len(pageReq.Key) > 0
 	offset := pageReq.Offset
 	var skipped uint64
 
@@ -88,15 +106,6 @@ func PaginateStringIndex[V any](
 		pk, err := iter.PrimaryKey()
 		if err != nil {
 			return nil, nil, err
-		}
-
-		// For key-based pagination, skip until we reach the start key
-		if !foundStart {
-			if string(startKey) == pk {
-				foundStart = true
-			} else {
-				continue
-			}
 		}
 
 		value, err := getter(ctx, pk)
@@ -123,7 +132,7 @@ func PaginateStringIndex[V any](
 		}
 
 		// Handle offset-based pagination (only applies if no key provided)
-		if len(startKey) == 0 && skipped < offset {
+		if !hasKey && skipped < offset {
 			skipped++
 			continue
 		}

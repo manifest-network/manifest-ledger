@@ -1,6 +1,7 @@
 package keeper_test
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 
@@ -758,6 +759,136 @@ func TestQuerierProviderByAddressReverse(t *testing.T) {
 	for i := range respFwd.Providers {
 		require.Equal(t, respFwd.Providers[i].Uuid, respRev.Providers[len(respRev.Providers)-1-i].Uuid)
 	}
+}
+
+// TestProviderByAddress_ActiveOnlyCursor exercises the one helper caller that
+// passes a non-nil filter (ActiveOnly) together with a key cursor, ascending and
+// reverse. It asserts the filter never leaks inactive providers and that the
+// cursor threads correctly across pages of filter-passing results.
+func TestProviderByAddress_ActiveOnlyCursor(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.SKUKeeper
+	q := keeper.NewQuerier(k)
+
+	addr := f.TestAccs[0]
+	payoutAddr := f.TestAccs[2]
+
+	// 5 providers at one address, alternating active so the filter must skip.
+	active := []bool{true, false, true, false, true}
+	var wantActive []string
+	for i := 1; i <= 5; i++ {
+		uuid := fmt.Sprintf("01912345-6789-7abc-8def-0123456789a%d", i)
+		require.NoError(t, k.SetProvider(f.Ctx, types.Provider{
+			Uuid:          uuid,
+			Address:       addr.String(),
+			PayoutAddress: payoutAddr.String(),
+			Active:        active[i-1],
+		}))
+		if active[i-1] {
+			wantActive = append(wantActive, uuid)
+		}
+	}
+
+	// Page through ActiveOnly at limit 1, threading next_key.
+	collect := func(reverse bool) []string {
+		var got []string
+		var key []byte
+		for pages := 0; pages < 20; pages++ {
+			resp, err := q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+				Address:    addr.String(),
+				ActiveOnly: true,
+				Pagination: &query.PageRequest{Limit: 1, Key: key, Reverse: reverse},
+			})
+			require.NoError(t, err)
+			require.LessOrEqual(t, len(resp.Providers), 1)
+			for _, p := range resp.Providers {
+				require.True(t, p.Active, "ActiveOnly must never return an inactive provider")
+				got = append(got, p.Uuid)
+			}
+			if len(resp.Pagination.NextKey) == 0 {
+				break
+			}
+			key = resp.Pagination.NextKey
+		}
+		return got
+	}
+
+	require.Equal(t, wantActive, collect(false), "ascending filtered cursor returns active providers in order")
+
+	wantRev := slices.Clone(wantActive)
+	slices.Reverse(wantRev)
+	require.Equal(t, wantRev, collect(true), "reverse filtered cursor returns active providers in reverse order")
+}
+
+// TestSKUsByProvider_ActiveCursorSurvivesDeactivatedBoundary is the sku-module
+// deletion-tolerance regression: it deactivates the exact SKU named by a page's
+// next_key (removing it from the (provider, active) index) and asserts the next
+// page still resumes from the surviving tail rather than returning empty. Under
+// the old scan-until-match cursor this test fails.
+func TestSKUsByProvider_ActiveCursorSurvivesDeactivatedBoundary(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.SKUKeeper
+	q := keeper.NewQuerier(k)
+
+	require.NoError(t, k.SetProvider(f.Ctx, types.Provider{
+		Uuid:          testProvider1UUID,
+		Address:       f.TestAccs[0].String(),
+		PayoutAddress: f.TestAccs[1].String(),
+		Active:        true,
+	}))
+
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+	uuids := make([]string, 0, 5)
+	for i := 1; i <= 5; i++ {
+		u := fmt.Sprintf("01912345-6789-7abc-8def-0123456789c%d", i)
+		require.NoError(t, k.SetSKU(f.Ctx, types.SKU{
+			Uuid:         u,
+			ProviderUuid: testProvider1UUID,
+			Name:         fmt.Sprintf("SKU %d", i),
+			Unit:         types.Unit_UNIT_PER_HOUR,
+			BasePrice:    basePrice,
+			Active:       true,
+		}))
+		uuids = append(uuids, u)
+	}
+
+	page1, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+		ProviderUuid: testProvider1UUID,
+		ActiveOnly:   true,
+		Pagination:   &query.PageRequest{Limit: 2},
+	})
+	require.NoError(t, err)
+	require.Len(t, page1.Skus, 2)
+	require.NotEmpty(t, page1.Pagination.NextKey)
+	boundary := string(page1.Pagination.NextKey)
+
+	// Deactivate the boundary SKU so it drops out of the (provider, active) index.
+	sku, err := k.GetSKU(f.Ctx, boundary)
+	require.NoError(t, err)
+	sku.Active = false
+	require.NoError(t, k.SetSKU(f.Ctx, sku))
+
+	seen := map[string]bool{}
+	key := page1.Pagination.NextKey
+	for i := 0; i < 10; i++ {
+		p, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: testProvider1UUID,
+			ActiveOnly:   true,
+			Pagination:   &query.PageRequest{Limit: 2, Key: key},
+		})
+		require.NoError(t, err)
+		for _, s := range p.Skus {
+			seen[s.Uuid] = true
+		}
+		if len(p.Pagination.NextKey) == 0 {
+			break
+		}
+		key = p.Pagination.NextKey
+	}
+
+	require.True(t, seen[uuids[3]], "tail SKU must be reached after the boundary SKU was deactivated")
+	require.True(t, seen[uuids[4]], "tail SKU must be reached after the boundary SKU was deactivated")
+	require.False(t, seen[boundary], "the deactivated boundary SKU is no longer active")
 }
 
 // TestQueryErrorCasesComprehensive tests additional error cases across SKU queries
