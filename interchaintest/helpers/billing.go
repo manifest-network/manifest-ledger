@@ -451,9 +451,20 @@ func BillingQueryWithdrawable(ctx context.Context, chain *cosmos.CosmosChain, le
 	return &res, nil
 }
 
+// ProviderWithdrawableResponseJSON wraps the provider-withdrawable query. It now
+// returns a pagination block whose uint64 `total` is emitted as a JSON string by
+// proto3 JSON; the SDK's query.PageResponse (no `,string` tag) cannot unmarshal
+// that via encoding/json, so we use PageResponseJSON here (same reason the leases
+// and credit-account paginated helpers do).
+type ProviderWithdrawableResponseJSON struct {
+	Amounts    sdk.Coins         `json:"amounts"`
+	LeaseCount uint64            `json:"lease_count,omitempty,string"`
+	Pagination *PageResponseJSON `json:"pagination,omitempty"`
+}
+
 // BillingQueryProviderWithdrawable queries the total withdrawable amount for a provider.
-func BillingQueryProviderWithdrawable(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string) (*billingtypes.QueryProviderWithdrawableResponse, error) {
-	var res billingtypes.QueryProviderWithdrawableResponse
+func BillingQueryProviderWithdrawable(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string) (*ProviderWithdrawableResponseJSON, error) {
+	var res ProviderWithdrawableResponseJSON
 	cmd := []string{"query", "billing", "provider-withdrawable", providerUUID}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err

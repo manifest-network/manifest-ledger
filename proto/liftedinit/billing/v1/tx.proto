@@ -251,6 +251,12 @@ message MsgWithdraw {
   // When 0, defaults to 50. Maximum allowed is 100.
   // Ignored when lease_uuids is specified.
   uint64 limit = 4 [(gogoproto.jsontag) = "limit,omitempty,string"];
+
+  // key is an opaque pagination cursor for provider-wide mode. Echo back the
+  // next_key returned by the previous MsgWithdrawResponse to continue paging;
+  // empty starts from the beginning. Must not be set when lease_uuids is
+  // specified (rejected by ValidateBasic).
+  bytes key = 5 [(gogoproto.jsontag) = "key,omitempty"];
 }
 
 // MsgWithdrawResponse is the response type for MsgWithdraw.
@@ -274,6 +280,12 @@ message MsgWithdrawResponse {
   // has_more indicates if there are more leases to process in provider-wide mode.
   // Always false when using lease_uuids mode.
   bool has_more = 4 [(gogoproto.jsontag) = "has_more,omitempty"];
+
+  // next_key is the opaque cursor to pass as MsgWithdraw.key to fetch the next
+  // page in provider-wide mode. It is non-empty if and only if has_more is
+  // true; an empty next_key means there are no more leases. Always empty in
+  // lease_uuids mode.
+  bytes next_key = 5 [(gogoproto.jsontag) = "next_key,omitempty"];
 }
 
 // MsgUpdateParams updates the module parameters.

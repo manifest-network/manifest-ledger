@@ -1036,10 +1036,12 @@ Maximum limit: 100 leases (hard cap)
 ```
 
 **Handling large provider portfolios:**
-1. Provider calls `withdraw --provider <uuid>` with desired `--limit`
-2. Response includes `has_more` boolean
-3. If `has_more == true`, provider repeats call
-4. Leases are processed in deterministic order (by UUID)
+1. Provider calls `withdraw --provider <uuid>` with desired `--limit` (no `--key` on the first call)
+2. Response includes `has_more` and an opaque `next_key` cursor
+3. If `has_more == true`, provider repeats the call passing `--key <next_key>` to advance
+4. Leases are processed in ascending UUID order; the cursor (`StartExclusive`) resumes strictly after `next_key`, so each call advances instead of re-scanning the front
+
+`next_key` is a `bytes` cursor, so it is base64-encoded in JSON/CLI output; pass it verbatim to `--key` (not a raw UUID).
 
 **Gas considerations**: Each batch is a single transaction. Providers with thousands of leases may need multiple transactions spread across blocks.
 

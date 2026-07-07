@@ -338,8 +338,8 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
   - `has_more` is always false in this mode
 - **Mode 2 (Provider-wide):**
   - Processes up to `limit` active leases
-  - Response includes `has_more` if more leases remain
-  - Call repeatedly until `has_more` is false
+  - Response includes `has_more` and an opaque `next_key` cursor if more leases remain
+  - Pass the returned `next_key` back as `--key` on the next call and repeat until `has_more` is false. Calling again *without* `--key` restarts from the first lease and never advances past `limit`.
   - See [Provider-Wide Withdraw Workflow](#provider-wide-withdraw-workflow) below for example
 - Settles accrued amount since last settlement for each lease
 - Transfers aggregated amounts to provider's payout address
@@ -349,29 +349,30 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
 
 ##### Provider-Wide Withdraw Workflow
 
-When a provider has many active leases, use provider-wide mode with pagination to withdraw from all:
+When a provider has many active leases, use provider-wide mode with cursor pagination to withdraw from all. Each response returns an opaque `next_key`; pass it back as `--key` on the next call to advance. Calling again **without** `--key` restarts the scan from the first lease and never gets past `limit`. `next_key` is a `bytes` value, so it appears base64-encoded in the JSON output — pass that string verbatim to `--key` (it is not a raw UUID).
 
 ```bash
-# Step 1: Initial withdrawal (processes up to 100 leases)
+# Step 1: Initial withdrawal (processes up to 100 leases), no cursor
 manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --limit 100 --from provider-key
 
-# Response example:
+# Response example (MsgWithdrawResponse):
 # {
 #   "total_amounts": [{"denom": "upwr", "amount": "5000000"}],
 #   "payout_address": "manifest1payout...",
 #   "withdrawal_count": "100",
-#   "has_more": true    <-- More leases remain
+#   "has_more": true,               <-- More leases remain
+#   "next_key": "MDE5MTIzNDU..."    <-- Opaque cursor for the next page
 # }
 
-# Step 2: Continue withdrawing until has_more is false
-manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --limit 100 --from provider-key
+# Step 2: Continue by passing next_key back as --key, until has_more is false
+manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --limit 100 --key MDE5MTIzNDU... --from provider-key
 
 # Response:
 # {
 #   "total_amounts": [{"denom": "upwr", "amount": "2500000"}],
 #   "payout_address": "manifest1payout...",
 #   "withdrawal_count": "50",
-#   "has_more": false   <-- All leases processed
+#   "has_more": false               <-- All leases processed (next_key empty)
 # }
 ```
 
@@ -380,10 +381,14 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
 #!/bin/bash
 PROVIDER_UUID="01912345-6789-7abc-8def-0123456789ab"
 HAS_MORE=true
+KEY=""
 
 while [ "$HAS_MORE" = "true" ]; do
-  RESULT=$(manifestd tx billing withdraw --provider $PROVIDER_UUID --limit 100 --from provider-key -o json -y)
+  KEY_ARG=""
+  [ -n "$KEY" ] && KEY_ARG="--key $KEY"
+  RESULT=$(manifestd tx billing withdraw --provider $PROVIDER_UUID --limit 100 $KEY_ARG --from provider-key -o json -y)
   HAS_MORE=$(echo $RESULT | jq -r '.has_more')
+  KEY=$(echo $RESULT | jq -r '.next_key // ""')   # pass this back as --key on the next call
   echo "Withdrew from $(echo $RESULT | jq -r '.withdrawal_count') leases, has_more=$HAS_MORE"
 done
 echo "All withdrawals complete"
@@ -755,10 +760,7 @@ manifestd query billing provider-withdrawable [provider-uuid] --limit 500
 |----------|------|-------------|
 | provider-uuid | string | UUID of the provider |
 
-**Flags:**
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| --limit | uint64 | 100 | Maximum leases to process (max: 1000) |
+**Flags:** standard pagination flags (`--page-key`, `--limit`, `--offset`, `--count-total`, `--reverse`). Page size defaults to 100, capped at 1000. Iterates the provider's active leases.
 
 **Response:**
 ```json
@@ -770,11 +772,16 @@ manifestd query billing provider-withdrawable [provider-uuid] --limit 500
     }
   ],
   "lease_count": "10",
-  "has_more": false
+  "pagination": {
+    "next_key": null,
+    "total": "0"
+  }
 }
 ```
 
-**Note:** This calculates the real-time total withdrawable amount across all active leases for the provider. It is a read-only query and does NOT trigger actual settlement. For providers with many leases, use the `--limit` flag and check `has_more` to process in batches.
+When `pagination.next_key` is non-empty, `amounts` is a partial total: re-query passing it as `--page-key` and sum the per-page `amounts` until `next_key` is empty. This is the read-only complement to provider-wide `MsgWithdraw`.
+
+**Note:** This calculates the real-time total withdrawable amount across all active leases for the provider. It is a read-only query and does NOT trigger actual settlement. For providers with many leases, paginate as shown above (thread `pagination.next_key` via `--page-key`) to process in batches.
 
 ---
 

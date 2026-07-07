@@ -843,41 +843,51 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 	// the indexed map updates its indexes. Modifying indexes while iterating over them
 	// can cause undefined behavior. This matches the pattern used in EndBlocker.
 	//
-	// Only collect ACTIVE and CLOSED leases — PENDING/REJECTED/EXPIRED have nothing to settle.
-
-	// Phase 1: Collect lease UUIDs to process (ACTIVE first, then CLOSED)
-	var leaseUUIDs []string
-	hasMore := false
-
-	collectLeases := func(state types.LeaseState) error {
-		key := collections.Join(providerUUID, int32(state))
-		iter, iterErr := ms.k.Leases.Indexes.ProviderState.MatchExact(ctx, key)
-		if iterErr != nil {
-			return iterErr
-		}
-		defer iter.Close()
-
-		for ; iter.Valid(); iter.Next() {
-			if uint64(len(leaseUUIDs)) >= limit {
-				hasMore = true
-				return nil
-			}
-			uuid, pkErr := iter.PrimaryKey()
-			if pkErr != nil {
-				return pkErr
-			}
-			leaseUUIDs = append(leaseUUIDs, uuid)
-		}
-		return nil
+	// Collect only ACTIVE leases. CLOSED leases are already fully settled at close
+	// (LastSettledAt == ClosedAt), so collecting them only burns cap slots + gas.
+	//
+	// The cursor (msg.Key) is the last lease UUID returned by the previous call's
+	// next_key. StartExclusive seeks past it at the store level (O(log n)) and is
+	// tolerant of that lease having been closed between transactions. This relies
+	// on collections.PairRange.StartExclusive resolving to a strict lower bound
+	// (RangeKeyNext); TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease
+	// pins that behavior so a future collections bump cannot silently change it.
+	refKey := collections.Join(providerUUID, int32(types.LEASE_STATE_ACTIVE))
+	rng := collections.NewPrefixedPairRange[collections.Pair[string, int32], string](refKey)
+	if len(msg.Key) > 0 {
+		rng = rng.StartExclusive(string(msg.Key))
 	}
 
-	if err = collectLeases(types.LEASE_STATE_ACTIVE); err != nil {
+	iter, err := ms.k.Leases.Indexes.ProviderState.Iterate(ctx, rng)
+	if err != nil {
 		return nil, err
 	}
-	if !hasMore {
-		if err = collectLeases(types.LEASE_STATE_CLOSED); err != nil {
-			return nil, err
+
+	// Phase 1: Collect up to `limit` ACTIVE lease UUIDs; a (limit+1)th means has_more.
+	var leaseUUIDs []string
+	hasMore := false
+	for ; iter.Valid(); iter.Next() {
+		if uint64(len(leaseUUIDs)) >= limit {
+			hasMore = true
+			break
 		}
+		uuid, pkErr := iter.PrimaryKey()
+		if pkErr != nil {
+			if closeErr := iter.Close(); closeErr != nil {
+				ms.k.Logger().Error("failed to close provider withdraw iterator", "error", closeErr)
+			}
+			return nil, pkErr
+		}
+		leaseUUIDs = append(leaseUUIDs, uuid)
+	}
+	if closeErr := iter.Close(); closeErr != nil {
+		ms.k.Logger().Error("failed to close provider withdraw iterator", "error", closeErr)
+	}
+
+	// next_key is the last collected UUID; the next call resumes StartExclusive after it.
+	var nextKey []byte
+	if hasMore {
+		nextKey = []byte(leaseUUIDs[len(leaseUUIDs)-1])
 	}
 
 	// Phase 2: Process collected leases (iterator is closed, safe to modify state)
@@ -945,16 +955,13 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 			}
 		}
 
-		// Determine settlement time based on lease state (normal path)
-		var settleTime time.Time
-		switch {
-		case lease.State == types.LEASE_STATE_ACTIVE:
-			settleTime = blockTime
-		case lease.ClosedAt != nil:
-			settleTime = *lease.ClosedAt
-		default:
-			continue // Skip
+		// Phase 1 collects only ACTIVE leases, and the auto-close branch above
+		// already `continue`s, so every lease reaching here is ACTIVE. Settle up
+		// to the current block time.
+		if lease.State != types.LEASE_STATE_ACTIVE {
+			continue
 		}
+		settleTime := blockTime
 
 		// Skip if no duration to settle
 		if !settleTime.After(lease.LastSettledAt) {
@@ -1011,6 +1018,7 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 		PayoutAddress:   provider.GetPayoutAddress(),
 		WithdrawalCount: withdrawalCount,
 		HasMore:         hasMore,
+		NextKey:         nextKey,
 	}, nil
 }
 
