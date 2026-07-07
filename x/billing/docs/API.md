@@ -781,7 +781,7 @@ manifestd query billing provider-withdrawable [provider-uuid] --limit 500
 
 When `pagination.next_key` is non-empty, `amounts` is a partial total: re-query passing it as `--page-key` and sum the per-page `amounts` until `next_key` is empty. This is the read-only complement to provider-wide `MsgWithdraw`.
 
-**Note:** This calculates the real-time total withdrawable amount across all active leases for the provider. It is a read-only query and does NOT trigger actual settlement. For providers with many leases, use the `--limit` flag and check `has_more` to process in batches.
+**Note:** This calculates the real-time total withdrawable amount across all active leases for the provider. It is a read-only query and does NOT trigger actual settlement. For providers with many leases, paginate as shown above (thread `pagination.next_key` via `--page-key`) to process in batches.
 
 ---
 
