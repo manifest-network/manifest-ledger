@@ -426,10 +426,25 @@ func (q Querier) LeasesBySKU(ctx context.Context, req *types.QueryLeasesBySKUReq
 		return nil, status.Error(codes.InvalidArgument, "sku_uuid cannot be empty")
 	}
 
-	// Use the SKU index to iterate only over leases containing this SKU
+	// Use the SKU index to iterate only over leases containing this SKU.
 	rng := collections.NewPrefixedPairRange[string, string](req.SkuUuid)
-	if req.Pagination != nil && req.Pagination.Reverse {
-		rng = rng.Descending()
+	if req.Pagination != nil {
+		// Resume by a store-level seek on the cursor (deletion-tolerant, O(log n)),
+		// mirroring pkg/pagination.MatchExactWithOrder. collections.PairRange's Start*
+		// binds the byte-order lower bound regardless of Descending(), so reverse
+		// resume must bound the upper end (EndInclusive) to land inclusively on the
+		// cursor and iterate downward. Inclusive bounds keep next_key wire-compatible.
+		if len(req.Pagination.Key) > 0 {
+			cursor := string(req.Pagination.Key)
+			if req.Pagination.Reverse {
+				rng = rng.EndInclusive(cursor)
+			} else {
+				rng = rng.StartInclusive(cursor)
+			}
+		}
+		if req.Pagination.Reverse {
+			rng = rng.Descending()
+		}
 	}
 	iter, err := q.k.LeaseBySKUIndex.Iterate(ctx, rng)
 	if err != nil {
@@ -607,8 +622,9 @@ func paginateSKUIndex(
 	var skipped uint64
 	var nextKey []byte
 
-	// For key-based pagination, skip until we reach the start key
-	foundStart := len(startKey) == 0
+	// The iterator is already positioned at the resume point by LeasesBySKU's
+	// store-level seek on pageReq.Key, so no front-scan is needed here.
+	hasKey := len(startKey) > 0
 
 	for ; iter.Valid(); iter.Next() {
 		key, err := iter.Key()
@@ -616,15 +632,6 @@ func paginateSKUIndex(
 			return nil, nil, err
 		}
 		leaseUUID := key.K2()
-
-		// Key-based pagination: skip entries until we find the cursor key
-		if !foundStart {
-			if string(startKey) == leaseUUID {
-				foundStart = true
-			} else {
-				continue
-			}
-		}
 
 		lease, err := getLease(ctx, leaseUUID)
 		if err != nil {
@@ -645,7 +652,7 @@ func paginateSKUIndex(
 		}
 
 		// Handle offset-based pagination (only when no key provided)
-		if len(startKey) == 0 && skipped < offset {
+		if !hasKey && skipped < offset {
 			skipped++
 			continue
 		}

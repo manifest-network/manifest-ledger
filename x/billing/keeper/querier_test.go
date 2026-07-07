@@ -1176,6 +1176,79 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	})
 }
 
+// TestLeasesByProvider_ActiveCursorSurvivesClosedBoundary is the read-side analogue
+// of TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease: it closes the
+// exact lease named by a page's next_key (removing it from the (provider, ACTIVE)
+// index) and asserts the next page still resumes from the surviving tail rather than
+// silently returning empty. Under the old scan-until-match cursor this test fails.
+func TestLeasesByProvider_ActiveCursorSurvivesClosedBoundary(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	uuids := make([]string, 0, 5)
+	for i := 1; i <= 5; i++ {
+		u := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+			Uuid:          u,
+			Tenant:        tenant.String(),
+			ProviderUuid:  provider.Uuid,
+			Items:         []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))}},
+			State:         types.LEASE_STATE_ACTIVE,
+			CreatedAt:     f.Ctx.BlockTime(),
+			LastSettledAt: f.Ctx.BlockTime(),
+		}))
+		uuids = append(uuids, u)
+	}
+
+	// Page 1 (limit 2): returns the two smallest; next_key points at the 3rd (still ACTIVE).
+	p1, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+		ProviderUuid: provider.Uuid,
+		StateFilter:  types.LEASE_STATE_ACTIVE,
+		Pagination:   &query.PageRequest{Limit: 2},
+	})
+	require.NoError(t, err)
+	require.Len(t, p1.Leases, 2)
+	require.NotEmpty(t, p1.Pagination.NextKey)
+	boundary := string(p1.Pagination.NextKey)
+
+	// Close the boundary lease so it drops out of the (provider, ACTIVE) index.
+	lease, err := k.GetLease(f.Ctx, boundary)
+	require.NoError(t, err)
+	closedAt := f.Ctx.BlockTime()
+	lease.State = types.LEASE_STATE_CLOSED
+	lease.ClosedAt = &closedAt
+	require.NoError(t, k.SetLease(f.Ctx, lease))
+
+	// Resume from the now-closed cursor: must reach the surviving tail, not return empty.
+	seen := map[string]bool{}
+	key := p1.Pagination.NextKey
+	for i := 0; i < 10; i++ {
+		p, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+			ProviderUuid: provider.Uuid,
+			StateFilter:  types.LEASE_STATE_ACTIVE,
+			Pagination:   &query.PageRequest{Limit: 2, Key: key},
+		})
+		require.NoError(t, err)
+		for _, l := range p.Leases {
+			seen[l.Uuid] = true
+		}
+		if len(p.Pagination.NextKey) == 0 {
+			break
+		}
+		key = p.Pagination.NextKey
+	}
+
+	require.True(t, seen[uuids[3]], "tail lease must be reached after the boundary lease was closed")
+	require.True(t, seen[uuids[4]], "tail lease must be reached after the boundary lease was closed")
+	require.False(t, seen[boundary], "the closed boundary lease is no longer ACTIVE")
+}
+
 func TestQueryCreditAccounts(t *testing.T) {
 	f := initFixture(t)
 
