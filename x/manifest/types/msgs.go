@@ -53,7 +53,6 @@ func (msg *MsgPayout) Validate() error {
 	dupCheck := make([]string, 0, len(msg.PayoutPairs))
 
 	for _, p := range msg.PayoutPairs {
-		p := p
 
 		addr := p.Address
 		coin := p.Coin
@@ -71,7 +70,6 @@ func (msg *MsgPayout) Validate() error {
 		}
 
 		for _, d := range dupCheck {
-			d := d
 			if d == addr {
 				return fmt.Errorf("duplicate address: %s", addr)
 			}

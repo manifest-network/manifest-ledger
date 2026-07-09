@@ -42,8 +42,72 @@ const (
 // SKUKeeper defines the expected SKU keeper interface for simulation.
 type SKUKeeper interface {
 	GetAllSKUs(ctx context.Context) ([]skutypes.SKU, error)
+	GetSKU(ctx context.Context, uuid string) (skutypes.SKU, error)
 	GetProvider(ctx context.Context, uuid string) (skutypes.Provider, error)
 	GetAllProviders(ctx context.Context) ([]skutypes.Provider, error)
+}
+
+// computeSimLeaseReservation mirrors x/billing/keeper/msg_server.go's
+// pre-flight credit calculation: per-item per-second price × quantity,
+// summed per denom, then expanded to a reservation against
+// MinLeaseDuration. Used by SimulateMsgCreateLease[ForTenant] to skip
+// (NoOpMsg) instead of panicking the sim when a randomly-built lease
+// exceeds the tenant's available credit.
+func computeSimLeaseReservation(
+	ctx context.Context,
+	items []types.LeaseItemInput,
+	sk SKUKeeper,
+	minLeaseDuration uint64,
+) (sdk.Coins, error) {
+	totalRatesPerSecond := sdk.NewCoins()
+	for _, item := range items {
+		sku, err := sk.GetSKU(ctx, item.SkuUuid)
+		if err != nil {
+			return nil, err
+		}
+		perSecond, err := keeper.ConvertBasePriceToPerSecond(sku.BasePrice, sku.Unit)
+		if err != nil {
+			return nil, err
+		}
+		itemRate := sdk.NewCoin(perSecond.Denom, perSecond.Amount.Mul(sdkmath.NewIntFromUint64(item.Quantity)))
+		totalRatesPerSecond = totalRatesPerSecond.Add(itemRate)
+	}
+	return types.CalculateLeaseReservationFromRates(totalRatesPerSecond, minLeaseDuration), nil
+}
+
+// hasSufficientAvailableCredit checks that a tenant's available credit
+// (balance - already reserved) covers the given reservation in every
+// denom. Mirrors only the credit-availability portion of the keeper's
+// MsgCreateLease pre-flight; the keeper's separate MaxLeasesPerTenant
+// and MaxPendingLeasesPerTenant caps are checked by the calling
+// SimulateMsg* function.
+func hasSufficientAvailableCredit(
+	ctx context.Context,
+	k keeper.Keeper,
+	tenant string,
+	reservation sdk.Coins,
+) (bool, error) {
+	ca, err := k.GetCreditAccount(ctx, tenant)
+	if err != nil {
+		return false, err
+	}
+	balances := sdk.NewCoins()
+	for _, res := range reservation {
+		bal, err := k.GetCreditBalance(ctx, tenant, res.Denom)
+		if err != nil {
+			return false, err
+		}
+		if !bal.Amount.IsZero() {
+			balances = balances.Add(bal)
+		}
+	}
+	available := types.GetAvailableCredit(balances, ca.ReservedAmounts)
+	for _, res := range reservation {
+		if available.AmountOf(res.Denom).LT(res.Amount) {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // WeightedOperations returns the all the billing module operations with their respective weights.
@@ -311,6 +375,21 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 
 		items := buildSimLeaseItems(r, providerSKUs[:numItems])
 
+		// Pre-flight credit availability so a randomly-priced lease that
+		// exceeds the tenant's free credit produces a NoOpMsg instead of
+		// halting the sim with "insufficient credit balance".
+		reservation, err := computeSimLeaseReservation(ctx, items, sk, params.MinLeaseDuration)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, fmt.Sprintf("failed to compute lease reservation: %v", err)), nil, nil
+		}
+		ok, err := hasSufficientAvailableCredit(ctx, k, tenant.Address.String(), reservation)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, fmt.Sprintf("failed to check available credit: %v", err)), nil, nil
+		}
+		if !ok {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "insufficient available credit for selected lease items"), nil, nil
+		}
+
 		msg := &types.MsgCreateLease{
 			Tenant: tenant.Address.String(),
 			Items:  items,
@@ -395,6 +474,21 @@ func SimulateMsgCreateLeaseForTenant(txGen client.TxConfig, k keeper.Keeper, sk 
 		})
 
 		items := buildSimLeaseItems(r, providerSKUs[:numItems])
+
+		// Pre-flight credit availability against the tenant's account
+		// (the authority pays nothing, but the lease still reserves
+		// credit on the tenant). Same rationale as SimulateMsgCreateLease.
+		reservation, err := computeSimLeaseReservation(ctx, items, sk, params.MinLeaseDuration)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, fmt.Sprintf("failed to compute lease reservation: %v", err)), nil, nil
+		}
+		ok, err := hasSufficientAvailableCredit(ctx, k, tenant.Address.String(), reservation)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, fmt.Sprintf("failed to check available credit: %v", err)), nil, nil
+		}
+		if !ok {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "insufficient available credit for selected lease items"), nil, nil
+		}
 
 		// Use the module authority as sender
 		// In simulation, we use the authority address from params

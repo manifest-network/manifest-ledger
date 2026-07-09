@@ -93,8 +93,6 @@ func TestPayout(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
-
 		t.Run(c.name, func(t *testing.T) {
 			err := k.Payout(f.Ctx, c.payouts)
 
@@ -107,7 +105,6 @@ func TestPayout(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, p := range c.payouts {
-				p := p
 				addr := p.Address
 				coin := p.Coin
 

@@ -11,17 +11,32 @@ import (
 	"github.com/manifest-network/manifest-ledger/app/upgrades"
 )
 
-// NewUpgrade creates a noop upgrade handler for the next version.
-// The x/sku and x/billing modules were already added in v2.0.0.
+// NewUpgrade creates the upgrade handler for the next version.
+// v3.0.0 migrates the chain from Cosmos SDK v0.50 to v0.53 and from ibc-go v8
+// to v10. ibc-go v10 removes the capability module and the 29-fee middleware,
+// so their KV stores are deleted.
+//
+// Module-version transitions are handled by each module's registered
+// migrator: upstream migrators cover the v0.50→v0.53 schema changes (notably
+// ibc-go core 6→8 and transfer 5→6), and x/billing 1→2 covers the
+// custom_domain feature merged in v2.1.0 (the migrator is a no-op — the new
+// fields are proto3 zero-value forward-compatible). Any future
+// custom-module schema change must register its own migrator before this
+// handler is invoked, otherwise RunMigrations silently no-ops.
 func NewUpgrade(name string) upgrades.Upgrade {
 	return upgrades.Upgrade{
 		UpgradeName:          name,
 		CreateUpgradeHandler: CreateUpgradeHandler,
-		StoreUpgrades:        storetypes.StoreUpgrades{},
+		StoreUpgrades: storetypes.StoreUpgrades{
+			Deleted: []string{
+				"capability", // capabilitytypes.StoreKey (removed in ibc-go v10)
+				"feeibc",     // ibcfeetypes.StoreKey (29-fee removed in ibc-go v10)
+			},
+		},
 	}
 }
 
-// CreateUpgradeHandler returns a noop upgrade handler that only runs module migrations.
+// CreateUpgradeHandler returns an upgrade handler that runs module migrations.
 func CreateUpgradeHandler(
 	mm *module.Manager,
 	configurator module.Configurator,

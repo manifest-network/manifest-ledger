@@ -109,7 +109,7 @@ func BenchmarkSimulation(b *testing.B) {
 	err = setPOAAdmin(config)
 	require.NoError(b, err)
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), baseapp.SetIAVLSyncPruning(true))
 	require.Equal(b, app.AppName, bApp.Name())
 
 	// run randomized simulation
@@ -119,7 +119,7 @@ func BenchmarkSimulation(b *testing.B) {
 		bApp.BaseApp,
 		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
 		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
+		simtestutil.BuildSimulationOperations(bApp, bApp.AppCodec(), config, bApp.TxConfig()),
 		app.BlockedAddresses(),
 		config,
 		bApp.AppCodec(),
@@ -163,7 +163,7 @@ func TestFullAppSimulation(t *testing.T) {
 	err = setPOAAdmin(config)
 	require.NoError(t, err)
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), baseapp.SetIAVLSyncPruning(true))
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// run randomized simulation
@@ -173,7 +173,7 @@ func TestFullAppSimulation(t *testing.T) {
 		bApp.BaseApp,
 		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
 		simulationtypes.RandomAccounts, // Replace with own random account function if using keys other than secp256k1
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
+		simtestutil.BuildSimulationOperations(bApp, bApp.AppCodec(), config, bApp.TxConfig()),
 		app.BlockedAddresses(),
 		config,
 		bApp.AppCodec(),
@@ -217,7 +217,7 @@ func TestAppImportExport(t *testing.T) {
 	appOptions[flags.FlagHome] = t.TempDir()
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), baseapp.SetIAVLSyncPruning(true))
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// Run randomized simulation
@@ -227,7 +227,7 @@ func TestAppImportExport(t *testing.T) {
 		bApp.BaseApp,
 		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
 		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
+		simtestutil.BuildSimulationOperations(bApp, bApp.AppCodec(), config, bApp.TxConfig()),
 		app.BlockedAddresses(),
 		config,
 		bApp.AppCodec(),
@@ -258,7 +258,7 @@ func TestAppImportExport(t *testing.T) {
 	}()
 
 	appOptions[flags.FlagHome] = t.TempDir()
-	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), baseapp.SetIAVLSyncPruning(true))
 	require.Equal(t, app.AppName, newApp.Name())
 
 	var genesisState app.GenesisState
@@ -344,7 +344,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	appOptions[flags.FlagHome] = t.TempDir()
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), baseapp.SetIAVLSyncPruning(true))
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// Run randomized simulation
@@ -354,7 +354,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		bApp.BaseApp,
 		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
 		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
+		simtestutil.BuildSimulationOperations(bApp, bApp.AppCodec(), config, bApp.TxConfig()),
 		app.BlockedAddresses(),
 		config,
 		bApp.AppCodec(),
@@ -390,7 +390,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	}()
 
 	appOptions[flags.FlagHome] = t.TempDir()
-	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), baseapp.SetIAVLSyncPruning(true))
 	require.Equal(t, app.AppName, newApp.Name())
 
 	_, err = newApp.InitChain(&abci.RequestInitChain{
@@ -405,7 +405,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		newApp.BaseApp,
 		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
 		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(newApp, newApp.AppCodec(), config),
+		simtestutil.BuildSimulationOperations(newApp, newApp.AppCodec(), config, newApp.TxConfig()),
 		app.BlockedAddresses(),
 		config,
 		bApp.AppCodec(),
@@ -427,8 +427,6 @@ func TestAppStateDeterminism(t *testing.T) {
 	config := simcli.NewConfigFromFlags()
 	config.InitialBlockHeight = 1
 	config.ExportParamsPath = ""
-	config.OnOperation = true
-	config.AllInvariants = true
 	config.ChainID = SimAppChainID
 
 	numSeeds := 3
@@ -485,6 +483,17 @@ func TestAppStateDeterminism(t *testing.T) {
 				appOptions,
 				interBlockCacheOpt(),
 				baseapp.SetChainID(SimAppChainID),
+				// Use synchronous IAVL pruning in the determinism test. With async
+				// pruning (the default) each IAVL store spawns a nodeDB.startPruning
+				// background goroutine that only exits when the store is closed. This
+				// test builds a fresh app (~26 stores) on every one of its
+				// numSeeds*numTimesToRunPerSeed iterations and never closes them, so
+				// those goroutines — and the entire app/MemDB they pin — leak,
+				// accumulating ~one app's heap per iteration (multiple GB on heavy
+				// seeds) until CI OOM-kills the run. Sync pruning starts no goroutine,
+				// so each iteration's app becomes collectable and peak memory stays
+				// bounded to a single run instead of the whole loop.
+				baseapp.SetIAVLSyncPruning(true),
 			)
 
 			fmt.Printf(
@@ -502,7 +511,7 @@ func TestAppStateDeterminism(t *testing.T) {
 					bApp.DefaultGenesis(),
 				),
 				simulationtypes.RandomAccounts,
-				simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
+				simtestutil.BuildSimulationOperations(bApp, bApp.AppCodec(), config, bApp.TxConfig()),
 				app.BlockedAddresses(),
 				config,
 				bApp.AppCodec(),

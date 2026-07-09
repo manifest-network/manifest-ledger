@@ -20,7 +20,7 @@ linters:
     - ineffassign
     - misspell
     - nakedret
-    - exportloopref
+    - copyloopvar
     - staticcheck
     - stylecheck
     - typecheck
@@ -51,3 +51,37 @@ linters-settings:
 
 issues:
   max-issues-per-linter: 0
+  exclude-rules:
+    # x/params keeper is deprecated upstream but still required in v0.53 for legacy
+    # subspace migration support. Removal awaits SDK v0.54.
+    - linters: [staticcheck]
+      text: "SA1019: paramskeeper\\."
+    - linters: [staticcheck]
+      text: "SA1019: params\\.NewAppModule"
+    # x/crisis is deprecated module-wide; full removal is tracked separately as a
+    # state-affecting change (requires upgrade-handler store deletion). The
+    # InvariantRegistry suppression below also covers the no-op
+    # RegisterInvariants(_ sdk.InvariantRegistry) stubs in our own modules
+    # (x/manifest, x/sku, x/billing) that satisfy the legacy module.AppModule
+    # interface; those keep flagging SA1019 until those modules migrate to
+    # appmodule.AppModule.
+    - linters: [staticcheck]
+      text: "SA1019: crisiskeeper\\."
+    - linters: [staticcheck]
+      text: "SA1019: crisis\\."
+    - linters: [staticcheck]
+      text: "SA1019: app\\.ModuleManager\\.RegisterInvariants"
+    - linters: [staticcheck]
+      text: "SA1019: sdk\\.InvariantRegistry"
+    # module.AppModule interface is deprecated in favor of appmodule.AppModule;
+    # the migration is a separate refactor across all custom modules.
+    - linters: [staticcheck]
+      text: "SA1019: module\\.AppModule"
+    # cosmossdk.io/collections@v1.3.1 ships no time KeyCodec; sdk.TimeKey is the
+    # only option in v0.53. Migrate when collections adds a replacement.
+    - linters: [staticcheck]
+      text: "SA1019: sdk\\.TimeKey"
+    # simcli.FlagEnabledValue / simcli.FlagPeriodValue: full sim refactor to the
+    # v0.53 simsx.Run pattern is out of scope here.
+    - linters: [staticcheck]
+      text: "SA1019: simcli\\.(FlagEnabledValue|FlagPeriodValue)"
