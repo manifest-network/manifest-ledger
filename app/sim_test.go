@@ -109,7 +109,7 @@ func BenchmarkSimulation(b *testing.B) {
 	err = setPOAAdmin(config)
 	require.NoError(b, err)
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), baseapp.SetIAVLSyncPruning(true))
 	require.Equal(b, app.AppName, bApp.Name())
 
 	// run randomized simulation
@@ -163,7 +163,7 @@ func TestFullAppSimulation(t *testing.T) {
 	err = setPOAAdmin(config)
 	require.NoError(t, err)
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), baseapp.SetIAVLSyncPruning(true))
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// run randomized simulation
@@ -217,7 +217,7 @@ func TestAppImportExport(t *testing.T) {
 	appOptions[flags.FlagHome] = t.TempDir()
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), baseapp.SetIAVLSyncPruning(true))
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// Run randomized simulation
@@ -258,7 +258,7 @@ func TestAppImportExport(t *testing.T) {
 	}()
 
 	appOptions[flags.FlagHome] = t.TempDir()
-	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), baseapp.SetIAVLSyncPruning(true))
 	require.Equal(t, app.AppName, newApp.Name())
 
 	var genesisState app.GenesisState
@@ -344,7 +344,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	appOptions[flags.FlagHome] = t.TempDir()
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), baseapp.SetIAVLSyncPruning(true))
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// Run randomized simulation
@@ -390,7 +390,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	}()
 
 	appOptions[flags.FlagHome] = t.TempDir()
-	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), baseapp.SetIAVLSyncPruning(true))
 	require.Equal(t, app.AppName, newApp.Name())
 
 	_, err = newApp.InitChain(&abci.RequestInitChain{
@@ -483,6 +483,17 @@ func TestAppStateDeterminism(t *testing.T) {
 				appOptions,
 				interBlockCacheOpt(),
 				baseapp.SetChainID(SimAppChainID),
+				// Use synchronous IAVL pruning in the determinism test. With async
+				// pruning (the default) each IAVL store spawns a nodeDB.startPruning
+				// background goroutine that only exits when the store is closed. This
+				// test builds a fresh app (~26 stores) on every one of its
+				// numSeeds*numTimesToRunPerSeed iterations and never closes them, so
+				// those goroutines — and the entire app/MemDB they pin — leak,
+				// accumulating ~one app's heap per iteration (multiple GB on heavy
+				// seeds) until CI OOM-kills the run. Sync pruning starts no goroutine,
+				// so each iteration's app becomes collectable and peak memory stays
+				// bounded to a single run instead of the whole loop.
+				baseapp.SetIAVLSyncPruning(true),
 			)
 
 			fmt.Printf(
