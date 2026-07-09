@@ -971,7 +971,60 @@ func (app *ManifestApp) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 
 // EndBlocker application updates every end block
 func (app *ManifestApp) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
-	return app.ModuleManager.EndBlock(ctx)
+	eb, err := app.ModuleManager.EndBlock(ctx)
+	if err != nil {
+		return eb, err
+	}
+	// Guard against duplicate ABCI validator updates. CometBFT rejects a
+	// validator-update set that lists the same consensus key more than once
+	// — per the ABCI spec, "block execution will fail irrecoverably" — which
+	// hard-halts the chain. A POA/x-staking edge case (e.g. unjailing a
+	// validator that has fully unbonded) can emit the same consensus key more
+	// than once, so collapse any duplicates here before returning to CometBFT.
+	eb.ValidatorUpdates = dedupValidatorUpdates(ctx.Logger(), eb.ValidatorUpdates)
+	return eb, nil
+}
+
+// dedupValidatorUpdates collapses duplicate validator updates so that each
+// consensus public key appears at most once, preserving first-seen order and
+// keeping the last value supplied for that key. Keeping the last value is the
+// application's intended-state choice: x/staking appends zero-power removals
+// after non-zero power updates, so the last entry for a key reflects the
+// intended final state. This is not a CometBFT behavior — CometBFT rejects a
+// duplicate consensus key outright rather than merging, which is why a
+// duplicate halts the chain. Collapsed or dropped entries are logged so that
+// recurrences of the underlying state-machine bug remain observable.
+func dedupValidatorUpdates(logger log.Logger, updates []abci.ValidatorUpdate) []abci.ValidatorUpdate {
+	if len(updates) < 2 {
+		return updates
+	}
+	pos := make(map[string]int, len(updates))
+	out := make([]abci.ValidatorUpdate, 0, len(updates))
+	for _, u := range updates {
+		key, err := u.PubKey.Marshal()
+		if err != nil {
+			// PubKey.Marshal does not error for the fixed proto key types
+			// CometBFT uses, so this is unreachable in practice. If it ever
+			// did, drop the entry rather than re-emit it: re-emitting could
+			// recreate the duplicate this guard exists to prevent, and we must
+			// never panic in EndBlock.
+			logger.Error("dropping validator update with unmarshalable pubkey", "power", u.Power)
+			continue
+		}
+		k := string(key)
+		if i, ok := pos[k]; ok {
+			logger.Error(
+				"collapsed duplicate validator update",
+				"pubkey", fmt.Sprintf("%X", key),
+				"power", u.Power,
+			)
+			out[i].Power = u.Power
+			continue
+		}
+		pos[k] = len(out)
+		out = append(out, u)
+	}
+	return out
 }
 
 func (app *ManifestApp) Configurator() module.Configurator {

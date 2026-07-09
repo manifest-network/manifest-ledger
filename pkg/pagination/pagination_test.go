@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"cosmossdk.io/collections"
+	"cosmossdk.io/collections/colltest"
+	"cosmossdk.io/collections/indexes"
 
 	"github.com/cosmos/cosmos-sdk/types/query"
 )
@@ -102,11 +104,12 @@ func TestPaginateStringIndex_ExplicitLimit(t *testing.T) {
 }
 
 func TestPaginateStringIndex_KeyBasedCursor(t *testing.T) {
-	keys := []string{"a", "b", "c", "d", "e"}
-	data := map[string]string{"a": "1", "b": "2", "c": "3", "d": "4", "e": "5"}
-
-	// Start from key "c" (simulating second page with NextKey from previous call)
-	iter := newMockIterator(keys)
+	// MatchExactWithOrder now seeks the iterator to the cursor, so PaginateStringIndex
+	// receives an ALREADY-POSITIONED iterator (here, one that starts at "c"). The Key
+	// field only signals "a cursor is in play" (which disables offset); it no longer
+	// drives a front-scan inside this function.
+	iter := newMockIterator([]string{"c", "d", "e"})
+	data := map[string]string{"c": "3", "d": "4", "e": "5"}
 	values, pageResp, err := PaginateStringIndex(
 		context.Background(),
 		iter,
@@ -122,11 +125,10 @@ func TestPaginateStringIndex_KeyBasedCursor(t *testing.T) {
 }
 
 func TestPaginateStringIndex_KeyBasedCursorLastPage(t *testing.T) {
-	keys := []string{"a", "b", "c", "d", "e"}
-	data := map[string]string{"a": "1", "b": "2", "c": "3", "d": "4", "e": "5"}
-
-	// Start from key "d", limit 5 (more than remaining)
-	iter := newMockIterator(keys)
+	// Pre-positioned iterator starting at "d" (as MatchExactWithOrder would seek it),
+	// limit 5 (more than remaining) -> last page, empty NextKey.
+	iter := newMockIterator([]string{"d", "e"})
+	data := map[string]string{"d": "4", "e": "5"}
 	values, pageResp, err := PaginateStringIndex(
 		context.Background(),
 		iter,
@@ -317,12 +319,14 @@ func TestPaginateStringIndex_OffsetBeyondResults(t *testing.T) {
 	require.Empty(t, pageResp.NextKey)
 }
 
-func TestPaginateStringIndex_KeyNotFound(t *testing.T) {
-	// When the start key doesn't exist in the iterator, no results are returned
-	keys := []string{"a", "b", "c"}
+func TestPaginateStringIndex_KeyNotUsedForPositioning(t *testing.T) {
+	// PaginateStringIndex no longer front-scans for the cursor key — MatchExactWithOrder
+	// seeks the iterator instead (a store-level, deletion-tolerant seek). Here the Key
+	// does not match any yielded item; it is simply not used for positioning, so the
+	// pre-positioned iterator's items are all returned. (Deletion-tolerance itself is
+	// covered by the real-store keeper tests, since a mock iterator cannot seek.)
+	iter := newMockIterator([]string{"a", "b", "c"})
 	data := map[string]string{"a": "1", "b": "2", "c": "3"}
-
-	iter := newMockIterator(keys)
 	values, pageResp, err := PaginateStringIndex(
 		context.Background(),
 		iter,
@@ -332,7 +336,7 @@ func TestPaginateStringIndex_KeyNotFound(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.Empty(t, values, "no results when key is not found in iterator")
+	require.Equal(t, []string{"1", "2", "3"}, values, "Key is not a positioning input to PaginateStringIndex anymore")
 	require.Empty(t, pageResp.NextKey)
 }
 
@@ -412,4 +416,103 @@ func TestPaginateStringIndex_MultipleInconsistentEntries(t *testing.T) {
 	require.Len(t, values, 2)
 	require.Equal(t, []string{"1", "2"}, values)
 	require.Empty(t, pageResp.NextKey)
+}
+
+// --- Real in-memory collections index, to exercise MatchExactWithOrder's
+// --- store-level seek (which a mock iterator cannot express). ---
+
+type probeIndexes struct {
+	byGroup *indexes.Multi[int32, string, uint64]
+}
+
+func (i probeIndexes) IndexesList() []collections.Index[string, uint64] {
+	return []collections.Index[string, uint64]{i.byGroup}
+}
+
+func newProbeMap(t *testing.T) (*collections.IndexedMap[string, uint64, probeIndexes], context.Context) {
+	t.Helper()
+	sk, ctx := colltest.MockStore()
+	sb := collections.NewSchemaBuilder(sk)
+	im := collections.NewIndexedMap(
+		sb,
+		collections.NewPrefix(0), "probe",
+		collections.StringKey, collections.Uint64Value,
+		probeIndexes{
+			byGroup: indexes.NewMulti(
+				sb, collections.NewPrefix(1), "probe_by_group",
+				collections.Int32Key, collections.StringKey,
+				func(_ string, group uint64) (int32, error) { return int32(group), nil }, //nolint:gosec // test value fits int32
+			),
+		},
+	)
+	_, err := sb.Build()
+	require.NoError(t, err)
+	return im, ctx
+}
+
+// collectGroup pages the (group) index at pageReq via MatchExactWithOrder +
+// PaginateStringIndex, returning the primary keys collected on this page.
+func collectGroup(ctx context.Context, t *testing.T, im *collections.IndexedMap[string, uint64, probeIndexes], group int32, pageReq *query.PageRequest) ([]string, *query.PageResponse) {
+	t.Helper()
+	iter, err := MatchExactWithOrder(ctx, im.Indexes.byGroup, group, pageReq)
+	require.NoError(t, err)
+	keys, pageRes, err := PaginateStringIndex(ctx, iter,
+		func(_ context.Context, pk string) (string, error) { return pk, nil }, // value == primary key
+		pageReq, nil)
+	require.NoError(t, err)
+	return keys, pageRes
+}
+
+func TestMatchExactWithOrder_StoreSeek(t *testing.T) {
+	im, ctx := newProbeMap(t)
+	const g = int32(7)
+	for _, k := range []string{"k01", "k02", "k03", "k04", "k05"} {
+		require.NoError(t, im.Set(ctx, k, uint64(g)))
+	}
+	// A different group to prove the seek stays within the refKey prefix.
+	require.NoError(t, im.Set(ctx, "z99", uint64(9)))
+
+	t.Run("ascending resume is inclusive of the cursor", func(t *testing.T) {
+		keys, _ := collectGroup(ctx, t, im, g, &query.PageRequest{Key: []byte("k02"), Limit: 10})
+		require.Equal(t, []string{"k02", "k03", "k04", "k05"}, keys)
+	})
+
+	t.Run("reverse resume is inclusive of the cursor and descends", func(t *testing.T) {
+		keys, _ := collectGroup(ctx, t, im, g, &query.PageRequest{Key: []byte("k04"), Reverse: true, Limit: 10})
+		require.Equal(t, []string{"k04", "k03", "k02", "k01"}, keys)
+	})
+
+	t.Run("ascending is deletion-tolerant when the cursor row is gone", func(t *testing.T) {
+		require.NoError(t, im.Remove(ctx, "k02"))
+		keys, _ := collectGroup(ctx, t, im, g, &query.PageRequest{Key: []byte("k02"), Limit: 10})
+		require.Equal(t, []string{"k03", "k04", "k05"}, keys, "must resume from nearest surviving key, not return empty")
+		require.NoError(t, im.Set(ctx, "k02", uint64(g)))
+	})
+
+	t.Run("reverse is deletion-tolerant when the cursor row is gone", func(t *testing.T) {
+		require.NoError(t, im.Remove(ctx, "k04"))
+		keys, _ := collectGroup(ctx, t, im, g, &query.PageRequest{Key: []byte("k04"), Reverse: true, Limit: 10})
+		require.Equal(t, []string{"k03", "k02", "k01"}, keys)
+		require.NoError(t, im.Set(ctx, "k04", uint64(g)))
+	})
+
+	t.Run("seek stays within the refKey prefix", func(t *testing.T) {
+		keys, pageRes := collectGroup(ctx, t, im, g, &query.PageRequest{Key: []byte("k05"), Limit: 10})
+		require.Equal(t, []string{"k05"}, keys) // does not cross into group 9's z99
+		require.Empty(t, pageRes.NextKey)
+	})
+}
+
+func TestMatchExactWithOrder_PrefixCollisionReverse(t *testing.T) {
+	// Reverse resume from a cursor that is a byte-prefix of another key in the same
+	// group must NOT include the longer key. This pins EndInclusive's RangeKeyNext
+	// (tight, append-0x00) upper bound; a looser PrefixEndBytes (increment-last-byte)
+	// bound would wrongly pull "abcd" into a reverse page resumed from "ab".
+	im, ctx := newProbeMap(t)
+	const g = int32(3)
+	require.NoError(t, im.Set(ctx, "ab", uint64(g)))
+	require.NoError(t, im.Set(ctx, "abcd", uint64(g)))
+
+	keys, _ := collectGroup(ctx, t, im, g, &query.PageRequest{Key: []byte("ab"), Reverse: true, Limit: 10})
+	require.Equal(t, []string{"ab"}, keys, "reverse from 'ab' must yield only 'ab', not 'abcd'")
 }

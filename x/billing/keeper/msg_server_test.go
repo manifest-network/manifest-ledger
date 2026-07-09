@@ -4192,7 +4192,7 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		require.True(t, resp.TotalAmounts.IsZero())
 	})
 
-	t.Run("success: includes closed leases with unsettled amounts", func(t *testing.T) {
+	t.Run("success: closed leases are already settled and skipped", func(t *testing.T) {
 		// Create a new provider for isolation
 		provider3Addr := f.TestAccs[4]
 		provider3 := f.createTestProvider(t, provider3Addr.String(), provider3Addr.String())
@@ -4214,7 +4214,7 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// Provider-wide withdraw should handle closed leases gracefully
+		// Provider-wide withdraw skips CLOSED leases (already settled at close).
 		// (nothing more to withdraw since close already settled)
 		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
 			Sender:       provider3Addr.String(),
@@ -5370,4 +5370,252 @@ func TestBatchMultiTenantDeterminism(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestMsgWithdraw_ProviderWideCursorDrainsAllLeases verifies that looping
+// provider-wide withdrawal with key <- next_key at a small limit settles every
+// active lease and terminates (the pre-cursor code re-scans the front forever).
+func TestMsgWithdraw_ProviderWideCursorDrainsAllLeases(t *testing.T) {
+	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 1 per second
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(1000000000))))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	params := types.DefaultParams()
+	params.MaxLeasesPerTenant = 200
+	params.MaxPendingLeasesPerTenant = 200
+	require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, params))
+
+	const totalLeases = 25
+	leaseUUIDs := make([]string, 0, totalLeases)
+	for i := 0; i < totalLeases; i++ {
+		leaseUUIDs = append(leaseUUIDs, f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr,
+			[]types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}}))
+	}
+
+	// Advance time so every lease has something to settle.
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+	var key []byte
+	pages := 0
+	totalSettled := uint64(0)
+	for {
+		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider.Uuid,
+			Limit:        7,
+			Key:          key,
+		})
+		require.NoError(t, err)
+		pages++
+		totalSettled += resp.WithdrawalCount
+		require.LessOrEqual(t, resp.WithdrawalCount, uint64(7))
+		require.Less(t, pages, 100, "pagination must terminate")
+		if !resp.HasMore {
+			require.Empty(t, resp.NextKey, "next_key must be empty on the final page")
+			break
+		}
+		require.NotEmpty(t, resp.NextKey, "next_key must be set while has_more is true")
+		key = resp.NextKey
+	}
+
+	// ceil(25 / 7) == 4 pages, every lease settled exactly once (no double-drain), and
+	// every lease settled to the current block time.
+	require.Equal(t, 4, pages, "should take 4 pages to drain 25 leases at limit 7")
+	require.Equal(t, uint64(totalLeases), totalSettled, "each lease settled exactly once across all pages")
+	for _, uuid := range leaseUUIDs {
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, uuid)
+		require.NoError(t, err)
+		require.Equal(t, f.Ctx.BlockTime(), lease.LastSettledAt,
+			"lease %s should be settled to current block time", uuid)
+	}
+}
+
+// TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease closes the exact
+// lease named by next_key between pages. StartExclusive must still resume at the
+// next-greater UUID rather than silently stopping.
+func TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease(t *testing.T) {
+	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(1000000000))))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	const totalLeases = 6
+	for i := 0; i < totalLeases; i++ {
+		f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr,
+			[]types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}})
+	}
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+	// Page 1 at limit 3 processes the 3 smallest UUIDs; next_key is the 3rd.
+	resp1, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
+		Limit:        3,
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), resp1.WithdrawalCount)
+	require.True(t, resp1.HasMore)
+	require.NotEmpty(t, resp1.NextKey)
+
+	// Close the boundary lease, removing it from the ACTIVE index.
+	boundaryUUID := string(resp1.NextKey)
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     tenant.String(),
+		LeaseUuids: []string{boundaryUUID},
+	})
+	require.NoError(t, err)
+
+	// Resume from the now-closed cursor: the remaining 3 tail leases must be reached.
+	seen := uint64(0)
+	key := resp1.NextKey
+	pages := 0
+	for {
+		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider.Uuid,
+			Limit:        3,
+			Key:          key,
+		})
+		require.NoError(t, err)
+		seen += resp.WithdrawalCount
+		pages++
+		require.Less(t, pages, 100, "pagination must terminate")
+		if !resp.HasMore {
+			break
+		}
+		key = resp.NextKey
+	}
+	require.Equal(t, uint64(3), seen, "tail leases must be reached after the boundary lease was closed")
+}
+
+// TestMsgWithdraw_ProviderWideCursorMidCycleAckDeferredOneCycle verifies the
+// documented liveness property: a lease acknowledged (PENDING->ACTIVE) with a
+// UUID *behind* an in-flight cursor is not settled in the current cycle (the
+// cursor already passed its index slot), but is picked up on the next full
+// cycle (key=""). It is deferred by one cycle, never skipped forever or
+// double-settled.
+func TestMsgWithdraw_ProviderWideCursorMidCycleAckDeferredOneCycle(t *testing.T) {
+	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 1 per second
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(1000000000))))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	// Create the "early" lease FIRST so it gets the smallest (UUIDv7, sequence-
+	// ordered) UUID, but leave it PENDING so it is not yet in the ACTIVE index.
+	earlyCreate, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	earlyUUID := earlyCreate.LeaseUuid
+
+	// Four acknowledged (ACTIVE) leases, all with larger UUIDs than earlyUUID.
+	active := make([]string, 0, 4)
+	for i := 0; i < 4; i++ {
+		active = append(active, f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr,
+			[]types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}}))
+	}
+
+	// T1: advance so the ACTIVE leases have something to settle.
+	t1 := f.Ctx.BlockTime().Add(100 * time.Second)
+	f.Ctx = f.Ctx.WithBlockTime(t1)
+
+	// Page 1 (limit 2, no cursor): settles the two smallest ACTIVE UUIDs; the
+	// cursor (next_key) lands on the 2nd-smallest ACTIVE lease.
+	resp1, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender: providerAddr.String(), ProviderUuid: provider.Uuid, Limit: 2,
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), resp1.WithdrawalCount)
+	require.True(t, resp1.HasMore)
+	require.NotEmpty(t, resp1.NextKey)
+
+	// Acknowledge the early lease now: it becomes ACTIVE with LastSettledAt == t1
+	// and a UUID smaller than the cursor, i.e. behind the in-flight cursor.
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender: providerAddr.String(), LeaseUuids: []string{earlyUUID},
+	})
+	require.NoError(t, err)
+	earlyLease, err := f.App.BillingKeeper.GetLease(f.Ctx, earlyUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, earlyLease.State)
+	require.Equal(t, t1, earlyLease.LastSettledAt)
+
+	// Finish the current cycle from the cursor. StartExclusive skips everything
+	// <= cursor, so the early lease (behind the cursor) is NOT settled this cycle.
+	key := resp1.NextKey
+	for {
+		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender: providerAddr.String(), ProviderUuid: provider.Uuid, Limit: 2, Key: key,
+		})
+		require.NoError(t, err)
+		if !resp.HasMore {
+			break
+		}
+		key = resp.NextKey
+	}
+	earlyLease, err = f.App.BillingKeeper.GetLease(f.Ctx, earlyUUID)
+	require.NoError(t, err)
+	require.Equal(t, t1, earlyLease.LastSettledAt,
+		"early lease must NOT be settled in the cycle whose cursor already passed its slot")
+
+	// T2: advance again, then run a fresh cycle from the front (key="").
+	t2 := f.Ctx.BlockTime().Add(100 * time.Second)
+	f.Ctx = f.Ctx.WithBlockTime(t2)
+	resp2, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender: providerAddr.String(), ProviderUuid: provider.Uuid, Limit: 100,
+	})
+	require.NoError(t, err)
+	require.False(t, resp2.HasMore)
+
+	// The early lease is settled on the following cycle (deferred, not skipped),
+	// and every lease ends settled to the same t2 (no duplication).
+	for _, uuid := range append([]string{earlyUUID}, active...) {
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, uuid)
+		require.NoError(t, err)
+		require.Equal(t, t2, lease.LastSettledAt, "lease %s should be settled to t2 on the following cycle", uuid)
+	}
 }

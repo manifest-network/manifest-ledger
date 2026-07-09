@@ -255,11 +255,11 @@ Several messages support batch processing of multiple leases in a single transac
 | `MsgCancelLease` | 100 | All leases must be PENDING, same tenant. Atomic. |
 | `MsgCloseLease` | 100 | All leases must be ACTIVE, authorized for sender. Atomic. |
 | `MsgWithdraw` (specific) | 100 | All leases must be ACTIVE, same provider. Atomic. |
-| `MsgWithdraw` (provider-wide) | 50 (default), 100 (max) | Paginated, use `has_more` to continue. |
+| `MsgWithdraw` (provider-wide) | 50 (default), 100 (max) | Paginated; pass `next_key` back as `--key` until `has_more` is false. |
 
 **Atomic Batch Operations:** When providing specific lease UUIDs, the operation is atomic—all leases succeed or all fail. If any lease fails validation (wrong state, unauthorized, etc.), the entire transaction is rejected.
 
-**Provider-Wide Withdraw:** Unlike specific-lease operations, provider-wide withdraw is paginated. It processes up to `--limit` leases (default 50, max 100) and returns `has_more: true` if more remain. Call repeatedly until `has_more: false`.
+**Provider-Wide Withdraw:** Unlike specific-lease operations, provider-wide withdraw is paginated. It processes up to `--limit` leases (default 50, max 100) and returns `has_more: true` plus an opaque `next_key` cursor if more remain. Pass `next_key` back as `--key` on the next call and repeat until `has_more: false`; calling again without `--key` restarts from the first lease.
 
 ### Lease
 
@@ -484,10 +484,14 @@ When a provider or SKU is deactivated:
 
 ### Provider-Wide Withdraw Pagination
 
-Provider-wide withdraw mode (`--provider` flag) processes up to 50 leases per call by default (max 100). Use the `--limit` parameter to increase and check `has_more` in the response to process all leases:
+Provider-wide withdraw mode (`--provider` flag) processes up to 50 leases per call by default (max 100). Use `--limit` to increase, and pass the response's `next_key` back as `--key` to page through all leases until `has_more` is false:
 ```bash
 manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --from provider-key
+# then, using next_key from the previous response:
+manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --key [next_key] --from provider-key
 ```
+
+> `next_key` is a `bytes` value, so it appears base64-encoded in the JSON/CLI response. Pass that string verbatim to `--key` — it is not a raw UUID.
 
 For detailed scalability analysis, time manipulation considerations, and future improvement plans, see [Architecture](docs/ARCHITECTURE.md#scalability-considerations).
 

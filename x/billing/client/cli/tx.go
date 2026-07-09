@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"strconv"
@@ -301,9 +302,10 @@ Two modes are supported:
 In specific lease mode, all leases must belong to the same provider and
 withdrawals are processed atomically - either all succeed or all fail.
 
-In provider-wide mode, leases are processed with pagination. Use --limit to
-control batch size (default %d, max %d). When has_more is true in the response,
-call withdraw again to process remaining leases.`, types.MaxBatchLeaseSize,
+In provider-wide mode, leases are processed with cursor pagination. Use --limit
+to control batch size (default %d, max %d). When has_more is true in the
+response, pass the response's next_key (base64) via --key to fetch the next
+page, and repeat until has_more is false.`, types.MaxBatchLeaseSize,
 			types.DefaultProviderWithdrawLimit, types.MaxBatchLeaseSize),
 		Example: `# Withdraw from specific leases
 withdraw 01902a9b-1234-7000-8000-000000000001 --from provider-key
@@ -311,7 +313,10 @@ withdraw 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-0000000000
 
 # Withdraw from all provider's leases (paginated)
 withdraw --provider 01902a9b-1234-7000-8000-000000000001 --from provider-key
-withdraw --provider 01902a9b-1234-7000-8000-000000000001 --limit 100 --from provider-key`,
+withdraw --provider 01902a9b-1234-7000-8000-000000000001 --limit 100 --from provider-key
+
+# Continue paging using the next_key from the previous response
+withdraw --provider 01902a9b-1234-7000-8000-000000000001 --key <base64-next-key> --from provider-key`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -360,10 +365,23 @@ withdraw --provider 01902a9b-1234-7000-8000-000000000001 --limit 100 --from prov
 				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
 			}
 
+			keyStr, err := cmd.Flags().GetString("key")
+			if err != nil {
+				return err
+			}
+			var key []byte
+			if keyStr != "" {
+				key, err = base64.StdEncoding.DecodeString(keyStr)
+				if err != nil {
+					return fmt.Errorf("invalid --key: must be the base64-encoded next_key from a prior response: %w", err)
+				}
+			}
+
 			msg := &types.MsgWithdraw{
 				Sender:       clientCtx.GetFromAddress().String(),
 				ProviderUuid: providerUUID,
 				Limit:        limit,
+				Key:          key,
 			}
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
@@ -371,6 +389,7 @@ withdraw --provider 01902a9b-1234-7000-8000-000000000001 --limit 100 --from prov
 
 	cmd.Flags().String("provider", "", "Provider UUID for paginated withdrawal from all leases")
 	cmd.Flags().Uint64("limit", 0, fmt.Sprintf("Maximum leases to process in provider mode (0 = default %d, max %d)", types.DefaultProviderWithdrawLimit, types.MaxBatchLeaseSize))
+	cmd.Flags().String("key", "", "Base64 pagination cursor (next_key from the previous provider-wide withdraw response) to continue paging")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd

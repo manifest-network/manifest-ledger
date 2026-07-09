@@ -838,6 +838,44 @@ func TestMsgWithdraw_ValidateBasic(t *testing.T) {
 			expectErr: true,
 			errMsg:    "invalid provider_uuid format",
 		},
+		{
+			name: "provider mode with cursor key is valid",
+			msg: types.MsgWithdraw{
+				Sender:       sender,
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Key:          []byte("01912345-6789-7abc-8def-0123456789ac"),
+			},
+			expectErr: false,
+		},
+		{
+			name: "provider mode with cursor key at max length",
+			msg: types.MsgWithdraw{
+				Sender:       sender,
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Key:          make([]byte, types.MaxWithdrawCursorLen),
+			},
+			expectErr: false,
+		},
+		{
+			name: "provider mode with oversized cursor key",
+			msg: types.MsgWithdraw{
+				Sender:       sender,
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Key:          make([]byte, types.MaxWithdrawCursorLen+1),
+			},
+			expectErr: true,
+			errMsg:    "key length",
+		},
+		{
+			name: "lease mode with cursor key rejected",
+			msg: types.MsgWithdraw{
+				Sender:     sender,
+				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
+				Key:        []byte("01912345-6789-7abc-8def-0123456789ac"),
+			},
+			expectErr: true,
+			errMsg:    "only valid in provider-wide mode",
+		},
 	}
 
 	for _, tc := range tests {

@@ -380,12 +380,12 @@ func GetWithdrawableAmountCmd() *cobra.Command {
 func GetProviderWithdrawableCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "provider-withdrawable [provider-uuid]",
-		Short: "Query the total withdrawable amount for a provider across all leases",
-		Long: `Query the total withdrawable amount for a provider across all leases.
+		Short: "Query the total withdrawable amount for a provider across its active leases",
+		Long: `Query the withdrawable amount for a provider across its active leases.
 
-This query uses pagination to prevent timeouts for providers with many leases.
-Use --limit to control how many leases to process (default: 100, max: 1000).
-Check the has_more field in the response to see if more leases exist.`,
+Results are paginated over the provider's active leases (page size default 100,
+max 1000). When the response's pagination.next_key is non-empty, pass it as
+--page-key on the next call and sum the per-page amounts until next_key is empty.`,
 		Example: `provider-withdrawable 01902a9b-1234-7000-8000-000000000001
 provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 500`,
 		Args: cobra.ExactArgs(1),
@@ -400,7 +400,7 @@ provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 500`,
 				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
 			}
 
-			limit, err := cmd.Flags().GetUint64("limit")
+			pageReq, err := client.ReadPageRequest(cmd.Flags())
 			if err != nil {
 				return err
 			}
@@ -409,7 +409,7 @@ provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 500`,
 
 			res, err := queryClient.ProviderWithdrawable(cmd.Context(), &types.QueryProviderWithdrawableRequest{
 				ProviderUuid: providerUUID,
-				Limit:        limit,
+				Pagination:   pageReq,
 			})
 			if err != nil {
 				return err
@@ -419,7 +419,7 @@ provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 500`,
 		},
 	}
 
-	cmd.Flags().Uint64("limit", 0, "Maximum leases to process; 0 means server default of 100 (max: 1000)")
+	flags.AddPaginationFlagsToCmd(cmd, "provider-withdrawable")
 	flags.AddQueryFlagsToCmd(cmd)
 
 	return cmd

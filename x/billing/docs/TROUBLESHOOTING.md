@@ -343,14 +343,16 @@ manifestd tx billing withdraw --provider [provider-uuid] --from [key]
 
 **Cause**: There are more leases to process than the limit allows.
 
-**Solution**: Continue calling provider-wide withdraw until has_more is false:
+**Solution**: Keep calling provider-wide withdraw, passing the response's `next_key` back as `--key`, until `has_more` is false. Calling again without `--key` restarts from the first lease and never advances past the limit:
 ```bash
-# Process 50 leases at a time (default)
-manifestd tx billing withdraw --provider [provider-uuid] --from [key]
-
-# Or specify a larger limit (max 100)
+# First call (no cursor), larger limit (max 100)
 manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --from [key]
+
+# Subsequent calls: pass next_key from the previous response as --key
+manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --key [next_key] --from [key]
 ```
+
+> `next_key` is base64-encoded in the JSON/CLI response (it is a `bytes` field). Pass it verbatim to `--key` — not a raw UUID.
 
 ## Batch Operation Failures
 

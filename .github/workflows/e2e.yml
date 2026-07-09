@@ -4,11 +4,13 @@ on:
   push:
     branches:
       - main
+      - release/**
     tags:
       - "**"
   pull_request:
     branches:
       - main
+      - release/**
     types: [opened, reopened, synchronize]
 
 permissions:
@@ -63,6 +65,7 @@ jobs:
         test:
           - "ictest-ibc"
           - "ictest-poa"
+          - "ictest-poa-unjail-dup"
           - "ictest-tokenfactory"
           - "ictest-manifest"
           - "ictest-group-poa"
