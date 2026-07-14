@@ -30,7 +30,7 @@ var (
 	// baseChain is the current version of the chain that will be upgraded from
 	baseChain = ibc.DockerImage{
 		Repository: "ghcr.io/manifest-network/manifest-ledger",
-		Version:    "2.2.1",
+		Version:    "2.3.0",
 		UIDGID:     "1025:1025",
 	}
 
@@ -126,7 +126,7 @@ func TestBasicManifestUpgrade(t *testing.T) {
 	haltHeight := height + haltHeightDelta
 
 	// The upgrade name must match app.Version() in the new binary
-	upgradeName := "v2.3.0"
+	upgradeName := "v2.3.1"
 
 	t.Logf("Upgrade name: %s", upgradeName)
 	t.Logf("Current height: %d, halt height: %d", height, haltHeight)
