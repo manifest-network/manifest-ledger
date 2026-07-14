@@ -311,6 +311,12 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 
 		items := buildSimLeaseItems(r, providerSKUs[:numItems])
 
+		// Skip if the tenant cannot afford the lease; delivering it would fail with
+		// ErrInsufficientCredit and abort the simulation instead of being a valid NoOp.
+		if !tenantCanAffordLease(ctx, k, tenant.Address.String(), items, providerSKUs[:numItems], params.MinLeaseDuration) {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant cannot afford lease"), nil, nil
+		}
+
 		msg := &types.MsgCreateLease{
 			Tenant: tenant.Address.String(),
 			Items:  items,
@@ -395,6 +401,11 @@ func SimulateMsgCreateLeaseForTenant(txGen client.TxConfig, k keeper.Keeper, sk 
 		})
 
 		items := buildSimLeaseItems(r, providerSKUs[:numItems])
+
+		// Skip if the tenant cannot afford the lease (see SimulateMsgCreateLease).
+		if !tenantCanAffordLease(ctx, k, tenant.Address.String(), items, providerSKUs[:numItems], params.MinLeaseDuration) {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant cannot afford lease"), nil, nil
+		}
 
 		// Use the module authority as sender
 		// In simulation, we use the authority address from params
@@ -879,4 +890,57 @@ func buildSimLeaseItems(r *rand.Rand, skus []skutypes.SKU) []types.LeaseItemInpu
 		}
 	}
 	return items
+}
+
+// tenantCanAffordLease reports whether the tenant has enough AVAILABLE credit (balance minus
+// already-reserved amounts) to cover the reservation for the given lease items over
+// minLeaseDuration. It mirrors the credit check in the CreateLease message handler
+// (msg_server.go), so simulated leases that would be rejected with ErrInsufficientCredit are
+// skipped as a NoOp instead of aborting the whole simulation with a delivery error.
+func tenantCanAffordLease(ctx sdk.Context, k keeper.Keeper, tenant string, items []types.LeaseItemInput, skus []skutypes.SKU, minLeaseDuration uint64) bool {
+	skuByUUID := make(map[string]skutypes.SKU, len(skus))
+	for _, s := range skus {
+		skuByUUID[s.Uuid] = s
+	}
+
+	totalRatesPerSecond := sdk.NewCoins()
+	for _, item := range items {
+		s, ok := skuByUUID[item.SkuUuid]
+		if !ok {
+			return false
+		}
+		ratePerSecond, err := keeper.ConvertBasePriceToPerSecond(s.BasePrice, s.Unit)
+		if err != nil {
+			return false
+		}
+		totalRatesPerSecond = totalRatesPerSecond.Add(
+			sdk.NewCoin(ratePerSecond.Denom, ratePerSecond.Amount.Mul(sdkmath.NewIntFromUint64(item.Quantity))),
+		)
+	}
+
+	reservation := types.CalculateLeaseReservationFromRates(totalRatesPerSecond, minLeaseDuration)
+	if reservation.IsZero() {
+		return true
+	}
+
+	creditAccount, err := k.GetCreditAccount(ctx, tenant)
+	if err != nil {
+		return false
+	}
+	balances := sdk.NewCoins()
+	for _, res := range reservation {
+		bal, err := k.GetCreditBalance(ctx, tenant, res.Denom)
+		if err != nil {
+			return false
+		}
+		balances = balances.Add(bal)
+	}
+
+	available := types.GetAvailableCredit(balances, creditAccount.ReservedAmounts)
+	for _, res := range reservation {
+		if available.AmountOf(res.Denom).LT(res.Amount) {
+			return false
+		}
+	}
+	return true
 }
