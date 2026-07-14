@@ -69,10 +69,12 @@ jobs:
           - "ictest-tokenfactory"
           - "ictest-manifest"
           - "ictest-group-poa"
+          - "ictest-group"
           - "ictest-cosmwasm"
           - "ictest-chain-upgrade"
           - "ictest-sku"
           - "ictest-billing"
+          - "ictest-billing-extra"
           - "ictest-billing-upgrade"
       fail-fast: false
 

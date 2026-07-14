@@ -444,3 +444,95 @@ func testWithdrawableQueriesIndependent(t *testing.T, ctx context.Context, tc *b
 		t.Logf("Total withdrawable for provider: %s (leases: %d)", res.Amounts, res.LeaseCount)
 	})
 }
+
+// TestBillingCreditEstimateOvershoot is an end-to-end test for ENG-527. It drives a tenant into
+// the pending->active acknowledge overshoot — active lease count exceeding max_leases_per_tenant,
+// reachable because AcknowledgeLease moves pending->active without re-gating the active limit — and
+// verifies that CreditEstimate sums the burn rate over ALL active leases rather than truncating at
+// max_leases_per_tenant. The query iteration cap is derived from
+// max_leases_per_tenant + max_pending_leases_per_tenant (the maximum reachable active count).
+func TestBillingCreditEstimateOvershoot(t *testing.T) {
+	ctx, tc, cleanup := setupBillingTest(t, "billing-estimate-overshoot")
+	t.Cleanup(cleanup)
+
+	// Lower the lease limits so the overshoot is reachable with a handful of txs:
+	// max_leases_per_tenant=2, max_pending_leases_per_tenant=2 => reachable active =
+	// (2-1)+2 = 3, strictly greater than max_leases_per_tenant.
+	current, err := helpers.BillingQueryParams(ctx, tc.chain)
+	require.NoError(t, err)
+	paramRes, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
+		2, // max_leases_per_tenant
+		current.Params.MaxItemsPerLease,
+		current.Params.MinLeaseDuration,
+		2, // max_pending_leases_per_tenant
+		current.Params.PendingTimeout,
+		nil, // preserve allowed_list
+	)
+	require.NoError(t, err)
+	paramTx, err := tc.chain.GetTransaction(paramRes.TxHash)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), paramTx.Code, "params update should succeed: %s", paramTx.RawLog)
+	require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
+
+	// Fresh tenant with a well-funded credit account.
+	users := interchaintest.GetAndFundTestUsers(t, ctx, "overshoot-tenant", DefaultGenesisAmt, tc.chain)
+	tenant := users[0]
+	err = tc.chain.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+		Address: tenant.FormattedAddress(),
+		Denom:   tc.pwrDenom,
+		Amount:  sdkmath.NewInt(100_000_000),
+	})
+	require.NoError(t, err)
+	fundRes, err := helpers.BillingFundCredit(ctx, tc.chain, tenant, tenant.FormattedAddress(),
+		fmt.Sprintf("100000000%s", tc.pwrDenom))
+	require.NoError(t, err)
+	fundTx, err := tc.chain.GetTransaction(fundRes.TxHash)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), fundTx.Code, "fund credit should succeed: %s", fundTx.RawLog)
+	require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
+
+	items := []string{fmt.Sprintf("%s:1", tc.skuUUID)}
+
+	// createLease creates a single PENDING lease and returns its UUID.
+	createLease := func() string {
+		res, err := helpers.BillingCreateLease(ctx, tc.chain, tenant, items)
+		require.NoError(t, err)
+		require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
+		uuid, err := helpers.GetLeaseIDFromTxHash(ctx, tc.chain, res.TxHash)
+		require.NoError(t, err)
+		require.NotEmpty(t, uuid)
+		return uuid
+	}
+	ack := func(uuids ...string) {
+		res, err := helpers.BillingAcknowledgeLeases(ctx, tc.chain, tc.providerWallet, uuids)
+		require.NoError(t, err)
+		ackTx, err := tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), ackTx.Code, "acknowledge should succeed: %s", ackTx.RawLog)
+		require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
+	}
+
+	// Reach active = max_leases_per_tenant-1 = 1, then overshoot to 3.
+	l1 := createLease() // pending 1 (active 0 < 2)
+	ack(l1)             // active 1
+
+	// Baseline burn rate for a single active lease.
+	baseline, err := helpers.BillingQueryCreditEstimate(ctx, tc.chain, tenant.FormattedAddress())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), baseline.ActiveLeaseCount)
+	baseAmt := baseline.TotalRatePerSecond.AmountOf(tc.pwrDenom)
+	require.True(t, baseAmt.IsPositive(), "single-lease baseline rate must be positive in the funded denom")
+
+	l2 := createLease() // pending 1 (active 1 < 2)
+	l3 := createLease() // pending 2 (active 1 < 2, pending 2 <= 2)
+	ack(l2, l3)         // active 3 -> overshoot past max_leases_per_tenant (2)
+
+	res, err := helpers.BillingQueryCreditEstimate(ctx, tc.chain, tenant.FormattedAddress())
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), res.ActiveLeaseCount,
+		"CreditEstimate must count all active leases in the overshoot state")
+	require.Equal(t, baseAmt.MulRaw(3), res.TotalRatePerSecond.AmountOf(tc.pwrDenom),
+		"burn rate must sum all 3 active leases (3x baseline), not truncate at max_leases_per_tenant")
+	t.Logf("Overshoot verified: active_leases=%d (max_leases_per_tenant=2), rate/sec=%s",
+		res.ActiveLeaseCount, res.TotalRatePerSecond)
+}

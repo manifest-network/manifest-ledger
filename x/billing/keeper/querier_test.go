@@ -1612,6 +1612,382 @@ func TestQueryCreditEstimate(t *testing.T) {
 	})
 }
 
+// TestQueryCreditEstimate_ParamDerivedActiveCap verifies the CreditEstimate burn-rate
+// sum tracks the max_leases_per_tenant param instead of the legacy hardcoded cap of 100.
+// With the param raised to 200, a tenant with >100 active leases must have every lease's
+// rate summed; truncating at 100 underestimates burn (overestimates remaining runway).
+func TestQueryCreditEstimate_ParamDerivedActiveCap(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+
+	// Raise the active-lease param above the legacy hardcoded cap of 100.
+	params, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	params.MaxLeasesPerTenant = 200
+	require.NoError(t, k.SetParams(f.Ctx, params))
+
+	creditAddr := types.DeriveCreditAddress(tenant)
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	// Fund generously so the estimate is rate-bound, not balance-bound.
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000_000))))
+
+	// Create 150 active leases, each 1 unit/sec. The legacy code caps iteration at 100,
+	// under-summing the burn rate; the param-derived cap (max_leases_per_tenant +
+	// max_pending_leases_per_tenant = 210) sums all 150.
+	const numLeases = 150
+	for i := range numLeases {
+		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+			Uuid:         fmt.Sprintf("01912345-6789-7abc-8def-active%06d", i),
+			Tenant:       tenant.String(),
+			ProviderUuid: testProviderUUID,
+			Items: []types.LeaseItem{
+				{
+					SkuUuid:     "01912345-6789-7abc-8def-sku000000001",
+					Quantity:    1,
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1)),
+				},
+			},
+			State:         types.LEASE_STATE_ACTIVE,
+			CreatedAt:     f.Ctx.BlockTime(),
+			LastSettledAt: f.Ctx.BlockTime(),
+		}))
+	}
+
+	resp, err := querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
+		Tenant: tenant.String(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(numLeases), resp.TotalRatePerSecond.AmountOf(testDenom),
+		"burn rate must sum all active leases, not truncate at the legacy 100 cap")
+	require.Equal(t, uint64(numLeases), resp.ActiveLeaseCount)
+}
+
+// TestQueryCreditAccount_IncludesActiveDenomBeyondLegacyCap verifies that a denom used
+// only by an active lease past position #100 still appears in the CreditAccount balances.
+// getRelevantDenomsForTenant must cap the active iteration by the param-derived reachable
+// ceiling (max_leases_per_tenant + max_pending_leases_per_tenant), not the legacy hardcoded
+// 100, or the tail denom's balance is silently omitted.
+func TestQueryCreditAccount_IncludesActiveDenomBeyondLegacyCap(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+
+	params, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	params.MaxLeasesPerTenant = 200
+	require.NoError(t, k.SetParams(f.Ctx, params))
+
+	creditAddr := types.DeriveCreditAddress(tenant)
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	const tailDenom = "tailactivedenom"
+	f.fundAccount(t, creditAddr, sdk.NewCoins(
+		sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000)),
+		sdk.NewCoin(tailDenom, sdkmath.NewInt(777)),
+	))
+
+	// 120 active leases; only the last (position 120, by ascending UUID) uses tailDenom. The
+	// TenantState MatchExact index iterates ascending by primary key (UUID), so the zero-padded
+	// UUIDs place the tail lease last — past the legacy cap of 100 but within the raised param cap.
+	const numLeases = 120
+	for i := range numLeases {
+		denom := testDenom
+		if i == numLeases-1 {
+			denom = tailDenom
+		}
+		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+			Uuid:         fmt.Sprintf("01912345-6789-7abc-8def-active%06d", i),
+			Tenant:       tenant.String(),
+			ProviderUuid: testProviderUUID,
+			Items: []types.LeaseItem{
+				{
+					SkuUuid:     "01912345-6789-7abc-8def-sku000000001",
+					Quantity:    1,
+					LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1)),
+				},
+			},
+			State:         types.LEASE_STATE_ACTIVE,
+			CreatedAt:     f.Ctx.BlockTime(),
+			LastSettledAt: f.Ctx.BlockTime(),
+		}))
+	}
+
+	resp, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+		Tenant: tenant.String(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(777), resp.Balances.AmountOf(tailDenom),
+		"denom used only by an active lease past the legacy 100 cap must appear in balances")
+}
+
+// TestQueryCreditAccount_IncludesPendingDenomBeyondLegacyCap is the pending-state analogue:
+// the pending iteration in getRelevantDenomsForTenant must cap by max_pending_leases_per_tenant,
+// so a denom used only by a pending lease past position #100 still appears in balances.
+func TestQueryCreditAccount_IncludesPendingDenomBeyondLegacyCap(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+
+	params, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	params.MaxPendingLeasesPerTenant = 200
+	require.NoError(t, k.SetParams(f.Ctx, params))
+
+	creditAddr := types.DeriveCreditAddress(tenant)
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	const tailDenom = "tailpendingdenom"
+	f.fundAccount(t, creditAddr, sdk.NewCoins(
+		sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000)),
+		sdk.NewCoin(tailDenom, sdkmath.NewInt(555)),
+	))
+
+	// 120 pending leases; only the last (position 120, by ascending UUID) uses tailDenom. The
+	// TenantState MatchExact index iterates ascending by primary key (UUID), so the zero-padded
+	// UUIDs place the tail lease last — past the legacy cap of 100 but within the raised param cap.
+	const numLeases = 120
+	for i := range numLeases {
+		denom := testDenom
+		if i == numLeases-1 {
+			denom = tailDenom
+		}
+		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+			Uuid:         fmt.Sprintf("01912345-6789-7abc-8def-pending%05d", i),
+			Tenant:       tenant.String(),
+			ProviderUuid: testProviderUUID,
+			Items: []types.LeaseItem{
+				{
+					SkuUuid:     "01912345-6789-7abc-8def-sku000000001",
+					Quantity:    1,
+					LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1)),
+				},
+			},
+			State:         types.LEASE_STATE_PENDING,
+			CreatedAt:     f.Ctx.BlockTime(),
+			LastSettledAt: f.Ctx.BlockTime(),
+		}))
+	}
+
+	resp, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+		Tenant: tenant.String(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(555), resp.Balances.AmountOf(tailDenom),
+		"denom used only by a pending lease past the legacy 100 cap must appear in balances")
+}
+
+// TestQueryCreditEstimate_ActiveCapBoundsIteration verifies the active-lease cap both (a) never
+// truncates a legitimately-reachable state and (b) still bounds iteration for a tenant with more
+// leases than the cap. With max_leases_per_tenant=5 and max_pending_leases_per_tenant=3 the cap is
+// min(5+3, upperBoundSum) = 8. A tenant can legitimately reach 7 active leases (the acknowledge
+// overshoot), so 7 and 8 leases must be summed in full; 9 and 12 must be bounded to 8. The
+// over-cap rows guard against a regression that drops the bound entirely.
+func TestQueryCreditEstimate_ActiveCapBoundsIteration(t *testing.T) {
+	const (
+		maxLeases  = 5
+		maxPending = 3
+		capLimit   = maxLeases + maxPending // 8
+	)
+
+	cases := []struct {
+		name       string
+		numLeases  int
+		expectRate uint64
+	}{
+		{"below cap (overshoot band)", 7, 7},
+		{"exactly at cap", capLimit, capLimit},
+		{"one over cap", capLimit + 1, capLimit},
+		{"well over cap", 12, capLimit},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := initFixture(t)
+			k := f.App.BillingKeeper
+			querier := keeper.NewQuerier(k)
+			tenant := f.TestAccs[0]
+
+			params, err := k.GetParams(f.Ctx)
+			require.NoError(t, err)
+			params.MaxLeasesPerTenant = maxLeases
+			params.MaxPendingLeasesPerTenant = maxPending
+			require.NoError(t, k.SetParams(f.Ctx, params))
+
+			creditAddr := types.DeriveCreditAddress(tenant)
+			require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+				Tenant:        tenant.String(),
+				CreditAddress: creditAddr.String(),
+			}))
+			f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000_000))))
+
+			for i := range tc.numLeases {
+				require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+					Uuid:         fmt.Sprintf("01912345-6789-7abc-8def-bound%07d", i),
+					Tenant:       tenant.String(),
+					ProviderUuid: testProviderUUID,
+					Items: []types.LeaseItem{{
+						SkuUuid:     "01912345-6789-7abc-8def-sku000000001",
+						Quantity:    1,
+						LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1)),
+					}},
+					State:         types.LEASE_STATE_ACTIVE,
+					CreatedAt:     f.Ctx.BlockTime(),
+					LastSettledAt: f.Ctx.BlockTime(),
+				}))
+			}
+
+			resp, err := querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{Tenant: tenant.String()})
+			require.NoError(t, err)
+			require.Equal(t, sdkmath.NewIntFromUint64(tc.expectRate), resp.TotalRatePerSecond.AmountOf(testDenom),
+				"active-lease rate sum must equal min(numLeases, cap)")
+			require.Equal(t, tc.expectRate, resp.ActiveLeaseCount,
+				"ActiveLeaseCount must equal the number of leases summed (no off-by-one at the cap boundary)")
+		})
+	}
+}
+
+// TestQueryCreditEstimate_CoversAcknowledgeOvershoot drives real CreateLease/AcknowledgeLease
+// messages to reach the pending->active acknowledge overshoot (active count exceeds
+// max_leases_per_tenant), then verifies CreditEstimate counts and sums ALL active leases. This is
+// the end-to-end guard for the reachable-ceiling cap: a max_leases_per_tenant-only cap would
+// truncate the overshooting leases from the burn-rate sum.
+func TestQueryCreditEstimate_CoversAcknowledgeOvershoot(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+
+	// Low limits so the overshoot is reachable with a handful of messages:
+	// reachable active = MaxLeasesPerTenant-1 + MaxPendingLeasesPerTenant = 4 + 3 = 7 > MaxLeasesPerTenant(5).
+	params, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	params.MaxLeasesPerTenant = 5
+	params.MaxPendingLeasesPerTenant = 3
+	require.NoError(t, k.SetParams(f.Ctx, params))
+
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 umfx/hour = 1 umfx/second per unit
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin("umfx", sdkmath.NewInt(1_000_000_000))))
+
+	// createAndAck creates n pending leases (respecting the pending gate, n <= MaxPendingLeasesPerTenant)
+	// and acknowledges them, moving the active count up by n.
+	createAndAck := func(n int) {
+		uuids := make([]string, 0, n)
+		for range n {
+			resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+				Tenant: tenant.String(),
+				Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+			})
+			require.NoError(t, err)
+			uuids = append(uuids, resp.LeaseUuid)
+		}
+		_, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: uuids,
+		})
+		require.NoError(t, err)
+	}
+
+	createAndAck(3) // active 3
+	createAndAck(1) // active 4 = MaxLeasesPerTenant-1
+	createAndAck(3) // active 7 -> overshoot past MaxLeasesPerTenant(5)
+
+	ca, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), ca.ActiveLeaseCount, "sanity: overshoot state reached via real handlers")
+
+	resp, err := querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{Tenant: tenant.String()})
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), resp.ActiveLeaseCount, "all overshoot active leases must be counted")
+	require.Equal(t, sdkmath.NewInt(7), resp.TotalRatePerSecond.AmountOf("umfx"),
+		"burn rate must sum all 7 active leases (1 umfx/sec each), not truncate at max_leases_per_tenant")
+}
+
+// TestQueryCreditAccount_ActiveDenomCapBounds verifies the denom-collection cap bounds iteration:
+// a denom used only by an active lease PAST the cap is excluded from the balances response. With
+// max_leases_per_tenant=5 and max_pending_leases_per_tenant=3 the active cap is 8, so a tail denom
+// on the 10th active lease (by ascending UUID) must not appear, while denoms within the cap do.
+func TestQueryCreditAccount_ActiveDenomCapBounds(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+	tenant := f.TestAccs[0]
+
+	params, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	params.MaxLeasesPerTenant = 5
+	params.MaxPendingLeasesPerTenant = 3
+	require.NoError(t, k.SetParams(f.Ctx, params))
+
+	creditAddr := types.DeriveCreditAddress(tenant)
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	const tailDenom = "beyondcapdenom"
+	f.fundAccount(t, creditAddr, sdk.NewCoins(
+		sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000)),
+		sdk.NewCoin(tailDenom, sdkmath.NewInt(999)),
+	))
+
+	// 10 active leases (> cap of 8); tailDenom only on the last (position 10, ascending UUID).
+	const numLeases = 10
+	for i := range numLeases {
+		denom := testDenom
+		if i == numLeases-1 {
+			denom = tailDenom
+		}
+		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+			Uuid:         fmt.Sprintf("01912345-6789-7abc-8def-capbnd%06d", i),
+			Tenant:       tenant.String(),
+			ProviderUuid: testProviderUUID,
+			Items: []types.LeaseItem{{
+				SkuUuid:     "01912345-6789-7abc-8def-sku000000001",
+				Quantity:    1,
+				LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1)),
+			}},
+			State:         types.LEASE_STATE_ACTIVE,
+			CreatedAt:     f.Ctx.BlockTime(),
+			LastSettledAt: f.Ctx.BlockTime(),
+		}))
+	}
+
+	resp, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{Tenant: tenant.String()})
+	require.NoError(t, err)
+	require.True(t, resp.Balances.AmountOf(tailDenom).IsZero(),
+		"denom on a lease beyond the active cap must be excluded (iteration is bounded)")
+	require.Equal(t, sdkmath.NewInt(1_000_000), resp.Balances.AmountOf(testDenom),
+		"denoms within the cap must still be present")
+}
+
 // TestQueryErrorCasesComprehensive tests additional error cases across queries
 // including invalid UUID formats, non-existent resources, and malformed requests.
 func TestQueryErrorCasesComprehensive(t *testing.T) {

@@ -242,7 +242,8 @@ These values are compile-time constants and cannot be changed via governance:
 | `CreditAccountAddressPrefix` | `billing/credit/` | Prefix used for deterministic credit address derivation |
 | `DefaultProviderWithdrawableQueryLimit` | 100 | Default limit for ProviderWithdrawable query |
 | `MaxProviderWithdrawableQueryLimit` | 1000 | Maximum limit for ProviderWithdrawable query |
-| `MaxCreditEstimateLeases` | 100 | Maximum active leases processed in CreditEstimate query |
+
+> **CreditEstimate / CreditAccount query iteration** is not a fixed constant — it tracks the lease params. The active-lease iteration is bounded by `max_leases_per_tenant + max_pending_leases_per_tenant`, a safe upper bound on the reachable active count: because `AcknowledgeLease` moves pending→active without re-gating the active limit, a tenant can reach `max_leases_per_tenant - 1 + max_pending_leases_per_tenant` active leases, and the cap adds a one-lease margin on top. The pending-lease iteration is bounded by `max_pending_leases_per_tenant`. Each is clamped to the params' upper bounds (10,000 / 1,000) as a hard safety ceiling, so the caps never truncate a legal state yet stay bounded against DoS.
 
 ### Batch Operations
 

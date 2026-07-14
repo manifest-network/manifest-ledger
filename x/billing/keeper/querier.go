@@ -495,9 +495,17 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
+	// Bound the active-lease iteration by the param-derived active-lease cap (clamped to the
+	// params' upper bounds as a hard safety ceiling). This keeps the burn-rate estimate correct
+	// for any legal state while remaining bounded against DoS on tenants with many leases.
+	params, err := q.k.GetParams(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	maxActiveLeases := activeLeaseIterationCap(params)
+
 	// Calculate total rate per second across all active leases.
 	// Also collect relevant denoms for per-denom balance queries (DoS mitigation).
-	// Limited to MaxCreditEstimateLeases to prevent DoS on tenants with many leases.
 	totalRatePerSecond := sdk.NewCoins()
 	var activeLeaseCount uint64
 	denomSet := make(map[string]struct{})
@@ -512,12 +520,13 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 	defer iter.Close()
 
 	for ; iter.Valid(); iter.Next() {
-		activeLeaseCount++
-
-		// Limit active leases processed (should match max_leases_per_tenant param)
-		if activeLeaseCount > types.MaxCreditEstimateLeases {
+		// Bounded by the param-derived cap (see maxActiveLeases above). Check before the
+		// increment (mirroring getRelevantDenomsForTenant) so ActiveLeaseCount and the
+		// summed set never diverge if the cap is ever reached.
+		if activeLeaseCount >= maxActiveLeases {
 			break
 		}
+		activeLeaseCount++
 
 		leaseUUID, err := iter.PrimaryKey()
 		if err != nil {
