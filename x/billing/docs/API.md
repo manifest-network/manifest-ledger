@@ -927,7 +927,7 @@ manifestd query billing credit-estimate manifest1abc...
 - With multi-denom support, the estimate returns the minimum duration across all denominations (the limiting factor)
 
 **Limitations:**
-- **Maximum 100 leases processed**: If a tenant has more than 100 active leases, only the first 100 are included in the calculation. The `active_lease_count` will show the actual count, but rates may be underestimated for tenants with >100 leases.
+- **Bounded lease iteration**: The active-lease iteration is bounded by `max_leases_per_tenant + max_pending_leases_per_tenant` — a safe upper bound on the reachable active-lease count, clamped to the params' upper bounds (10,000 / 1,000) as a hard DoS ceiling. This covers every legitimately-reachable state, so `total_rate_per_second` and `active_lease_count` reflect all of a tenant's active leases and are not truncated at a fixed 100.
 - **Does not account for pending withdrawals**: The estimate uses current balance, not accounting for any unsettled accrued amounts from existing leases.
 
 ---
