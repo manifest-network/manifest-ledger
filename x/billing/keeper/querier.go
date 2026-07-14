@@ -521,12 +521,13 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 	defer iter.Close()
 
 	for ; iter.Valid(); iter.Next() {
-		activeLeaseCount++
-
-		// Bounded by the param-derived cap (see maxActiveLeases above).
-		if activeLeaseCount > maxActiveLeases {
+		// Bounded by the param-derived cap (see maxActiveLeases above). Check before the
+		// increment (mirroring getRelevantDenomsForTenant) so ActiveLeaseCount and the
+		// summed set never diverge if the cap is ever reached.
+		if activeLeaseCount >= maxActiveLeases {
 			break
 		}
+		activeLeaseCount++
 
 		leaseUUID, err := iter.PrimaryKey()
 		if err != nil {

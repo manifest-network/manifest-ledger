@@ -1639,7 +1639,8 @@ func TestQueryCreditEstimate_ParamDerivedActiveCap(t *testing.T) {
 	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000_000))))
 
 	// Create 150 active leases, each 1 unit/sec. The legacy code caps iteration at 100,
-	// under-summing the burn rate; the param-derived cap (200) sums all 150.
+	// under-summing the burn rate; the param-derived cap (max_leases_per_tenant +
+	// max_pending_leases_per_tenant = 210) sums all 150.
 	const numLeases = 150
 	for i := range numLeases {
 		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
@@ -1670,8 +1671,9 @@ func TestQueryCreditEstimate_ParamDerivedActiveCap(t *testing.T) {
 
 // TestQueryCreditAccount_IncludesActiveDenomBeyondLegacyCap verifies that a denom used
 // only by an active lease past position #100 still appears in the CreditAccount balances.
-// getRelevantDenomsForTenant must cap the active iteration by max_leases_per_tenant, not
-// the legacy hardcoded 100, or the tail denom's balance is silently omitted.
+// getRelevantDenomsForTenant must cap the active iteration by the param-derived reachable
+// ceiling (max_leases_per_tenant + max_pending_leases_per_tenant), not the legacy hardcoded
+// 100, or the tail denom's balance is silently omitted.
 func TestQueryCreditAccount_IncludesActiveDenomBeyondLegacyCap(t *testing.T) {
 	f := initFixture(t)
 	k := f.App.BillingKeeper
@@ -1807,7 +1809,7 @@ func TestQueryCreditEstimate_ActiveCapBoundsIteration(t *testing.T) {
 	cases := []struct {
 		name       string
 		numLeases  int
-		expectRate int64
+		expectRate uint64
 	}{
 		{"below cap (overshoot band)", 7, 7},
 		{"exactly at cap", capLimit, capLimit},
@@ -1853,8 +1855,10 @@ func TestQueryCreditEstimate_ActiveCapBoundsIteration(t *testing.T) {
 
 			resp, err := querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{Tenant: tenant.String()})
 			require.NoError(t, err)
-			require.Equal(t, sdkmath.NewInt(tc.expectRate), resp.TotalRatePerSecond.AmountOf(testDenom),
+			require.Equal(t, sdkmath.NewIntFromUint64(tc.expectRate), resp.TotalRatePerSecond.AmountOf(testDenom),
 				"active-lease rate sum must equal min(numLeases, cap)")
+			require.Equal(t, tc.expectRate, resp.ActiveLeaseCount,
+				"ActiveLeaseCount must equal the number of leases summed (no off-by-one at the cap boundary)")
 		})
 	}
 }
