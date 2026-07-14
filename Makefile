@@ -142,7 +142,7 @@ ictest-sku:
 	cd interchaintest && go test -race -v -run TestSKU . -count=1
 
 ictest-billing:
-	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(Lease|Credit|Advanced|State|Reservation)$$" . -count=1
+	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(Lease|Credit|CreditEstimateOvershoot|CustomDomain|Advanced|State|Reservation)$$" . -count=1
 
 ictest-billing-lease:
 	cd interchaintest && go test -race -v -timeout 45m -run TestBillingLease . -count=1
