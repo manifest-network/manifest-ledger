@@ -69,6 +69,7 @@ jobs:
           - "ictest-tokenfactory"
           - "ictest-manifest"
           - "ictest-group-poa"
+          - "ictest-group"
           - "ictest-cosmwasm"
           - "ictest-chain-upgrade"
           - "ictest-sku"
