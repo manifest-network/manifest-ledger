@@ -795,6 +795,21 @@ func (k *Keeper) getCreditBalancesForDenoms(ctx context.Context, tenant string, 
 	return coins, nil
 }
 
+// maxReachableActiveLeases returns an upper bound on the number of ACTIVE leases a single tenant
+// can hold. CreateLease gates on the active count (msg_server.go), but AcknowledgeLease moves
+// pending->active without re-checking that gate, so the active count can overshoot
+// max_leases_per_tenant by up to max_pending_leases_per_tenant (reaching
+// max_leases_per_tenant-1 + max_pending_leases_per_tenant). Query iterations over a tenant's
+// active leases must use this bound — not max_leases_per_tenant alone — or they truncate a
+// legitimately-reachable state. The sum is clamped to the params' upper bounds so it stays
+// bounded against DoS even for a maximally-large (but still valid) param configuration.
+func maxReachableActiveLeases(params types.Params) uint64 {
+	return min(
+		params.MaxLeasesPerTenant+params.MaxPendingLeasesPerTenant,
+		types.MaxLeasesPerTenantUpperBound+types.MaxPendingLeasesPerTenantUpperBound,
+	)
+}
+
 // getRelevantDenomsForTenant collects the unique denoms from a tenant's active and pending leases
 // plus any denoms in the reserved amounts. This avoids GetAllBalances which loads dust from spam.
 // Uses streaming iteration with a cap to avoid loading all leases into memory.
@@ -819,18 +834,34 @@ func (k *Keeper) getRelevantDenomsForTenant(ctx context.Context, tenant string, 
 		return nil, err
 	}
 
+	// Each state's iteration is bounded by its governing param (clamped to the param's upper
+	// bound as a hard safety ceiling): active leases by the maximum reachable active count
+	// (maxReachableActiveLeases, which accounts for the pending->active acknowledge overshoot),
+	// pending leases by max_pending_leases_per_tenant. This keeps the denom set complete for any
+	// legal state while remaining bounded against DoS.
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return nil, err
+	}
+	activeCap := maxReachableActiveLeases(params)
+	pendingCap := min(params.MaxPendingLeasesPerTenant, types.MaxPendingLeasesPerTenantUpperBound)
+
 	// Include denoms from active and pending leases via streaming iteration.
-	// Cap to MaxCreditEstimateLeases per state to bound query cost.
 	for _, state := range []types.LeaseState{types.LEASE_STATE_ACTIVE, types.LEASE_STATE_PENDING} {
+		maxLeases := activeCap
+		if state == types.LEASE_STATE_PENDING {
+			maxLeases = pendingCap
+		}
+
 		key := collections.Join(tenantAddr, int32(state))
 		iter, err := k.Leases.Indexes.TenantState.MatchExact(ctx, key)
 		if err != nil {
 			return nil, err
 		}
 
-		var count int
+		var count uint64
 		for ; iter.Valid(); iter.Next() {
-			if count >= int(types.MaxCreditEstimateLeases) {
+			if count >= maxLeases {
 				break
 			}
 			count++
