@@ -4,7 +4,7 @@ This guide covers how tenants authenticate to provider off-chain APIs after leas
 
 ## Provider Off-Chain API Integration
 
-Providers expose a REST API for tenants to retrieve connection details after lease acknowledgement. The API endpoint URL is stored on-chain in the `Provider.api_url` field. This field is optional and may be empty (a provider that never set one returns `null`); tenants and clients must handle the absent case, in which the provider has no off-chain API registered.
+Providers expose a REST API for tenants to retrieve connection details after lease acknowledgement. The API endpoint URL is stored on-chain in the `Provider.api_url` field. This field is optional: it is a proto3 `string` with `omitempty`, so a provider that never set one leaves it as the empty string, omitted from JSON output (a `jq -r '.provider.api_url'` prints `null` for the missing key — it is never a literal JSON `null` value). Tenants and clients must handle this absent case, in which the provider has no off-chain API registered.
 
 ### Tenant Flow
 

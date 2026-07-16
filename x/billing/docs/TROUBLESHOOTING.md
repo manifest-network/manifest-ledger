@@ -281,12 +281,12 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 **Cause**: A provider-wide withdraw processes each lease in its own cached context; if a single lease fails, it is logged and skipped so the rest of the batch still succeeds. Two things determine what appears in the results:
 
 1. **Only ACTIVE leases are considered.** Provider-wide withdraw iterates the provider's ACTIVE leases only — CLOSED leases are already fully settled at close and never appear.
-2. **Per-lease errors are skipped, not fatal.** A lease is skipped when its settlement or store operation errors — for example a bank transfer failure, a missing or invalid provider payout address, a `last_settled_at` that is after the block time, or a zero withdrawable amount.
+2. **Leases are skipped for two different reasons.** A *normal* skip happens when the lease has nothing to settle — no elapsed time since the last settlement, or a zero withdrawable amount — and is silent and expected. An *error* skip happens when the lease's settlement or store operation fails — a bank transfer failure, a missing or invalid provider payout address, or a `last_settled_at` that is after the block time — in which case that lease's changes are discarded.
 
 **What happens**:
-1. The failing lease is skipped during the batch operation
-2. Other leases in the batch are processed normally
-3. No error is returned for the skipped lease (it is logged)
+1. The skipped lease is left unchanged; other leases in the batch are processed normally
+2. The overall transaction still succeeds
+3. No error is returned for a skipped lease — error skips are logged, normal (nothing-to-settle) skips are silent
 
 > **Arithmetic overflow does NOT skip the lease.** If a lease's accrued charge overflows (settlement duration beyond ~100 years, `MaxDurationSeconds`), the silent settlement path instead transfers the tenant's **entire remaining credit** in that lease's denoms to the provider and force-closes the lease. The funds are **not** preserved. Overflow is effectively unreachable in normal operation but can arise from a genesis import with an ancient `last_settled_at`.
 

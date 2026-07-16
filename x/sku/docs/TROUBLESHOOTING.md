@@ -111,8 +111,11 @@ This is checked *before* the divisibility check.
 manifestd tx sku create-sku [provider-uuid] "Too Cheap" 1 1000upwr --from authority
 ```
 
-**Solution**: Raise the price to at least the divisor, or switch to
-`UNIT_PER_DAY` so the smaller divisor keeps the per-second rate non-zero.
+**Solution**: Raise the base price to at least the unit's divisor (≥ 3600 for
+`UNIT_PER_HOUR`, ≥ 86400 for `UNIT_PER_DAY`) and keep it evenly divisible. A
+coarser unit has a *larger* divisor, so `UNIT_PER_DAY` (86400) makes the
+zero-rate failure **more** likely, not less — prefer the finer `UNIT_PER_HOUR`
+or simply raise the price.
 
 ---
 
