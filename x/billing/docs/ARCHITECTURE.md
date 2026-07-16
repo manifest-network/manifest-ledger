@@ -74,6 +74,7 @@ erDiagram
         uint64 quantity
         Coin locked_price
         string service_name
+        string custom_domain
     }
     
     PROVIDER {
@@ -184,10 +185,11 @@ graph LR
 
     subgraph "Reverse Lookup"
         CreditReverse[CreditAccountReverse<br/>Map: credit_addr → tenant_addr]
+        CustomDomainIdx[CustomDomainIndex<br/>Map: custom_domain → lease_uuid, prefix 0x0C]
     end
 
     subgraph "Sequences"
-        UUIDSeq[UUIDSequence<br/>uint64 per block]
+        LeaseSeq[LeaseSequence<br/>uint64, globally monotonic never reset]
     end
 ```
 
@@ -204,6 +206,7 @@ graph LR
 | `LeasesBySKU` | `(string, string)` | `bool` | Many-to-many SKU → leases index |
 | `LeasesByStateCreatedAt` | `(int32, time.Time, string)` | `bool` | Compound state+created_at → leases index (time-ordered) |
 | `CustomDomainIndex` | `string` (lower-cased domain) | `CustomDomainTarget` | Reverse lookup `custom_domain → (lease_uuid, service_name)` for O(1) `QueryLeaseByCustomDomain`. Reconciled by `SetLease` whenever lease items change; freed on close/reject/expire/auto-close. |
+| `LeaseSequence` | - | `uint64` | Monotonic counter feeding deterministic lease UUIDv7 generation |
 | `Params` | - | `Params` | Module parameters |
 
 ## Core Flows
@@ -270,46 +273,51 @@ sequenceDiagram
     
     User->>MsgServer: MsgCreateLease
     MsgServer->>MsgServer: ValidateBasic()
-    MsgServer->>Keeper: GetCreditAccount()
     
-    alt No Credit Account
-        Keeper-->>MsgServer: Error
-        MsgServer-->>User: Error
-    else Has Credit Account
-        Keeper-->>MsgServer: CreditAccount
+    alt len(items) > max_items_per_lease
+        MsgServer-->>User: Error: too many lease items
+    else Item Count OK
+        MsgServer->>Keeper: GetCreditAccount()
         
-        alt Exceeds max_pending_leases_per_tenant
-            MsgServer-->>User: Error: too many pending leases
-        else Under Pending Limit
-            MsgServer->>Keeper: GetCreditBalance()
+        alt No Credit Account
+            Keeper-->>MsgServer: Error
+            MsgServer-->>User: Error
+        else Has Credit Account
+            Keeper-->>MsgServer: CreditAccount
+            Note over MsgServer: counts read O(1) off CreditAccount<br/>(ActiveLeaseCount / PendingLeaseCount), not a scan
             
-            alt Balance < MinLeaseDuration Cost
-                MsgServer-->>User: Error: insufficient credit
-            else Sufficient Credit
-                MsgServer->>Keeper: CountActiveLeases()
-                
-                alt At Max Leases
-                    MsgServer-->>User: Error: max leases
-                else Under Limit
-                    loop For Each Item
-                        MsgServer->>SKU: GetSKU()
-                        alt SKU Invalid/Inactive
-                            SKU-->>MsgServer: Error
-                            MsgServer-->>User: Error
-                        else SKU OK
-                            SKU-->>MsgServer: SKU
-                            MsgServer->>MsgServer: Validate same provider
-                            MsgServer->>MsgServer: Build LeaseItem with locked_price
-                        end
+            alt ActiveLeaseCount >= max_leases_per_tenant
+                MsgServer-->>User: Error: max leases
+            else PendingLeaseCount >= max_pending_leases_per_tenant
+                MsgServer-->>User: Error: too many pending leases
+            else Under Limits
+                loop For Each Item
+                    MsgServer->>SKU: GetSKU()
+                    alt SKU Invalid/Inactive
+                        SKU-->>MsgServer: Error
+                        MsgServer-->>User: Error
+                    else SKU OK
+                        SKU-->>MsgServer: SKU
+                        MsgServer->>MsgServer: Validate same provider
+                        MsgServer->>MsgServer: Build LeaseItem with locked_price
                     end
-                    
-                    MsgServer->>Keeper: GenerateUUIDv7()
-                    MsgServer->>Store: Save Lease (state=PENDING)
-                    MsgServer->>Store: Update Indexes
-                    MsgServer->>Store: Add to PendingLeases index
-                    MsgServer->>Store: Increment pending_lease_count
-                    MsgServer->>MsgServer: Emit LeaseCreated Event
-                    MsgServer-->>User: Success + Lease UUID
+                end
+                
+                MsgServer->>SKU: GetProvider()
+                alt Provider Inactive
+                    MsgServer-->>User: Error: provider not active
+                else Provider Active
+                    Note over MsgServer: reservation = total_rate × min_lease_duration
+                    alt Available Credit < Reservation
+                        MsgServer-->>User: Error: insufficient credit
+                    else Sufficient Credit
+                        MsgServer->>Keeper: GenerateUUIDv7()
+                        MsgServer->>Store: Save Lease (state=PENDING)
+                        MsgServer->>Store: Update Indexes
+                        MsgServer->>Store: Increment pending_lease_count
+                        MsgServer->>MsgServer: Emit LeaseCreated Event
+                        MsgServer-->>User: Success + Lease UUID
+                    end
                 end
             end
         end
@@ -339,7 +347,7 @@ sequenceDiagram
             MsgServer->>SKU: GetProvider(lease.provider_uuid)
             SKU-->>MsgServer: Provider
             
-            alt Sender != Provider.Address
+            alt Sender != Provider.Address && Sender != authority
                 MsgServer-->>Provider: Error: unauthorized
             else Authorized
                 MsgServer->>Store: Set state = ACTIVE
@@ -378,7 +386,7 @@ sequenceDiagram
             MsgServer->>SKU: GetProvider(lease.provider_uuid)
             SKU-->>MsgServer: Provider
             
-            alt Sender != Provider.Address
+            alt Sender != Provider.Address && Sender != authority
                 MsgServer-->>Provider: Error: unauthorized
             else Authorized
                 MsgServer->>Store: Set state = REJECTED
@@ -406,36 +414,32 @@ sequenceDiagram
     
     Trigger->>Keeper: settleLease()
     Keeper->>Store: Get Lease
+    Keeper->>Keeper: Calculate Duration = settleTime − last_settled_at
+    Note over Keeper: State is not consulted (PerformSettlement is state-agnostic)
     
-    alt Lease Not ACTIVE
-        Keeper-->>Trigger: Skip (nothing to settle)
-    else Lease ACTIVE
-        Keeper->>Keeper: Get Current Time
-        Keeper->>Keeper: Calculate Duration Since last_settled_at
-        
-        alt Duration <= 0
-            Keeper-->>Trigger: Zero amount (nothing accrued)
-        else Duration > 0
-            loop For Each Item
-                Keeper->>Keeper: Calculate Accrual
-                Note over Keeper: accrual = duration_seconds × locked_price × quantity
-            end
-            
-            Keeper->>Keeper: Group by denom
-            Keeper->>Bank: Get Credit Balance per denom
-            
-            alt Accrued > Balance for any denom
-                Keeper->>Keeper: Cap Transfer to Balance
-            end
-            
-            alt Transfer Amount > 0
-                Keeper->>Bank: Transfer each denom to Provider Payout Address
-            end
-            
-            Keeper->>Store: Update last_settled_at
-            Keeper-->>Trigger: Settlement Amounts
+    alt Duration <= 0
+        Keeper-->>Trigger: Zero amounts (nothing accrued)
+    else Duration > 0
+        loop For Each Item
+            Keeper->>Keeper: Calculate Accrual
+            Note over Keeper: accrual = duration_seconds × locked_price × quantity
         end
+        
+        Keeper->>Keeper: Group by denom
+        Keeper->>Bank: Get Credit Balance per denom
+        
+        alt Accrued > Balance for any denom
+            Keeper->>Keeper: Cap Transfer to Balance
+        end
+        
+        alt Transfer Amount > 0
+            Keeper->>Bank: Transfer each denom to Provider Payout Address
+        end
+        
+        Keeper-->>Trigger: Settlement Amounts
     end
+    
+    Note over Keeper,Store: PerformSettlement / PerformSettlementSilent leave last_settled_at untouched;<br/>the caller (e.g. settleLease) persists last_settled_at = settleTime
 ```
 
 ### Close Lease with Settlement
@@ -464,12 +468,17 @@ sequenceDiagram
             alt Not Authorized
                 MsgServer-->>Sender: Error: unauthorized
             else Authorized
-                MsgServer->>Keeper: settleAndCloseLease()
-                Keeper->>Keeper: Calculate Final Settlement
+                alt ShouldAutoCloseLease (credit exhausted)
+                    Keeper->>Keeper: PerformSettlementSilent()
+                    Note over Keeper: closure_reason = "credit exhausted"<br/>closed_by = "credit_exhaustion" (msg.Reason ignored)
+                else Normal close
+                    Keeper->>Keeper: settleLease()
+                    Note over Keeper: closure_reason = msg.Reason
+                end
                 Keeper->>Bank: Transfer Settlement to Provider (per denom)
-                Keeper->>Store: Update Lease State to CLOSED
-                Keeper->>Store: Set closed_at
-                Keeper->>Store: Decrement active_lease_count
+                Keeper->>Store: SetLease (state = CLOSED, set closed_at)
+                Keeper->>Store: DecrementActiveLeaseCount
+                Keeper->>Store: ReleaseLeaseReservation
                 Keeper-->>MsgServer: Settlement Amounts
                 MsgServer->>MsgServer: Emit Events
                 MsgServer-->>Sender: Success
@@ -493,24 +502,28 @@ sequenceDiagram
     MsgServer->>Keeper: GetLease()
     Keeper-->>MsgServer: Lease
     
-    alt Lease Not ACTIVE
-        MsgServer-->>Provider: Error: not active
-    else Lease ACTIVE
-        MsgServer->>SKU: Get Provider for Lease
-        SKU-->>MsgServer: Provider
-        
-        alt Sender Not Provider/Authority
-            MsgServer-->>Provider: Error: unauthorized
-        else Authorized
-            MsgServer->>Keeper: settleLease()
-            Note over Keeper: Calculate and transfer accrued amount
-            
-            alt Nothing Settled
-                MsgServer-->>Provider: Error: no withdrawable amount
-            else Has Settlement
-                MsgServer->>MsgServer: Emit Event
-                MsgServer-->>Provider: Success + Amounts
+    MsgServer->>SKU: Get Provider for Lease
+    SKU-->>MsgServer: Provider
+    
+    alt Sender Not Provider/Authority
+        MsgServer-->>Provider: Error: unauthorized
+    else Authorized
+        loop For Each Target Lease (any state)
+            alt Lease ACTIVE and credit exhausted
+                MsgServer->>Keeper: ShouldAutoCloseLease + AutoCloseLease
+                Note over Keeper: settle to close time, auto-close lease
+            else Settle by state
+                Note over Keeper: ACTIVE → settle to blockTime<br/>closed_at != nil → settle to closed_at<br/>otherwise → settle to last_settled_at (zero duration)
+                MsgServer->>Keeper: PerformSettlement()
+                Note over Keeper: Skip lease if zero accrued
             end
+        end
+        
+        alt No lease withdrew or auto-closed
+            MsgServer-->>Provider: Error: no withdrawable amount
+        else Has Settlement
+            MsgServer->>MsgServer: Emit Event
+            MsgServer-->>Provider: Success + Amounts
         end
     end
 ```
@@ -658,10 +671,12 @@ writeFn()
 
 **Behavior**:
 - Each lease's settlement is atomic (all-or-nothing)
-- If settlement fails for one lease (e.g., overflow), only that lease is skipped
+- If settlement fails for one lease (e.g., a bank transfer error, a missing or invalid provider payout address, or a `last_settled_at` that is after the block time), only that lease is skipped
 - Other leases in the batch are processed normally
 - Failed leases don't affect the success of the overall operation
 - Provider can retry failed leases individually using specific lease UUIDs
+
+> **Accrual overflow is NOT a skip.** If a lease's accrued charge overflows — the settlement duration exceeds `MaxDurationSeconds` (~100 years, `keeper/accrual.go`) — the silent settlement path (`PerformSettlementSilent`) does *not* skip and does *not* preserve the funds. It sets the accrued amount to the tenant's entire remaining credit in that lease's denoms and transfers it to the provider (`keeper/settlement.go`), and `ShouldAutoCloseLease` force-closes the lease. This is deliberate — zeroing it out would grant free service to the tenant. Overflow is effectively unreachable in normal operation (a lease would have to go ~100 years without settlement) but can arise from a genesis import with an ancient `last_settled_at`.
 
 This pattern ensures that partial failures don't corrupt state while still providing best-effort batch processing.
 
@@ -697,29 +712,50 @@ Leases that remain in `PENDING` state beyond the `pending_timeout` (default 30 m
 func (k Keeper) EndBlocker(ctx context.Context) error {
     sdkCtx := sdk.UnwrapSDKContext(ctx)
     now := sdkCtx.BlockTime()
-    params := k.GetParams(ctx)
+    params, err := k.GetParams(ctx)
+    if err != nil {
+        return err
+    }
     pendingTimeout := time.Duration(params.PendingTimeout) * time.Second
 
     // Two-pass approach to avoid iterator invalidation
     // Pass 1: Collect UUIDs of expired pending leases
-    iter := k.Leases.Indexes.State.MatchExact(ctx, LEASE_STATE_PENDING)
+    iter, err := k.Leases.Indexes.State.MatchExact(ctx, int32(types.LEASE_STATE_PENDING))
+    if err != nil {
+        return err
+    }
     var expiredUUIDs []string
 
     for ; iter.Valid(); iter.Next() {
-        if len(expiredUUIDs) >= MaxPendingLeaseExpirationsPerBlock {
+        if len(expiredUUIDs) >= types.MaxPendingLeaseExpirationsPerBlock {
             break // Rate limit: max 100 per block
         }
-        lease := iter.Value()
+        leaseUUID, err := iter.PrimaryKey()
+        if err != nil {
+            // per-lease errors are logged and skipped, never fatal
+            continue
+        }
+        lease, err := k.Leases.Get(ctx, leaseUUID)
+        if err != nil {
+            continue
+        }
         expirationTime := lease.CreatedAt.Add(pendingTimeout)
         if now.After(expirationTime) {
-            expiredUUIDs = append(expiredUUIDs, lease.Uuid)
+            expiredUUIDs = append(expiredUUIDs, leaseUUID)
         }
     }
     iter.Close()
 
-    // Pass 2: Expire collected leases (safe to modify state)
-    for _, uuid := range expiredUUIDs {
-        k.ExpirePendingLease(ctx, uuid)
+    // Pass 2: Expire collected leases (safe to modify state).
+    // Each lease is re-fetched; per-lease errors are logged and skipped, never fatal.
+    for _, leaseUUID := range expiredUUIDs {
+        lease, err := k.Leases.Get(ctx, leaseUUID)
+        if err != nil {
+            continue
+        }
+        if err := k.ExpirePendingLease(ctx, &lease); err != nil {
+            continue
+        }
     }
 
     return nil
@@ -742,8 +778,9 @@ When a lease expires:
 - State changes from `PENDING` → `EXPIRED`
 - `expired_at` timestamp is set
 - `pending_lease_count` is decremented
+- The lease's reservation is released from `CreditAccount.reserved_amounts` (via `ReleaseLeaseReservation`), freeing the credit for new leases
 - Credit remains in tenant's account (was never billed since lease never activated)
-- `LeaseExpired` event is emitted
+- The whole expiration is `CacheContext`-atomic; the `lease_expired` event is emitted on the parent context after commit
 
 ## Credit Account Multi-Denom Support
 
@@ -797,8 +834,10 @@ The `locked_price` stored in `LeaseItem` is already the per-second rate, calcula
 
 ```go
 // During lease creation
-lockedPricePerSecond = skutypes.CalculatePricePerSecond(sku.BasePrice, sku.Unit)
+lockedPricePerSecond, err := ConvertBasePriceToPerSecond(sku.BasePrice, sku.Unit)
 ```
+
+`ConvertBasePriceToPerSecond` (`x/billing/keeper/accrual.go`) wraps `skutypes.CalculatePricePerSecond`, re-attaching the SKU's `base_price` denom so the result is an `sdk.Coin` suitable for `LeaseItem.locked_price`. It returns an error on unknown unit, a zero per-second rate, or inexact division; at lease creation this surfaces as `ErrSKUNotFound.Wrapf("invalid SKU pricing: %s", err)`.
 
 ### Accrual Formula
 
@@ -871,7 +910,7 @@ This returns `sdk.Coins` to support multi-denom leases where different SKUs may 
 5. **Min lease duration** - Prevents immediate exhaustion
 6. **Lazy settlement** - No per-block overhead for accrual calculation
 7. **EndBlocker rate limiting** - Max 100 pending lease expirations per block
-8. **Indexed lookups** - O(1) credit account detection
+8. **Indexed lookups** - `CreditAddressIndex` (prefix 6) is a maintained reverse index (`credit_address → tenant`) written by `SetCreditAccount`. It is not read anywhere in the current tree, but enables O(1) credit-account detection for future or off-chain consumers
 9. **Same provider requirement** - Simplifies acknowledgement flow
 
 ## Performance Characteristics
@@ -887,7 +926,6 @@ This returns `sdk.Coins` to support multi-denom leases where different SKUs may 
 | Withdraw (specific) | O(m) | m = items in lease |
 | Withdraw (provider) | O(k×m) | k = leases (max 100), m = avg items |
 | GetCreditBalance | O(1) | Bank query |
-| isCreditAccount | O(1) | Reverse lookup map |
 | GetLeasesByTenant | O(n) | n = tenant's leases |
 | GetLeasesByTenant (with state filter) | O(k) | k = matching leases (compound index) |
 | GetLeasesByProvider | O(n) | n = provider's leases |
@@ -1022,7 +1060,7 @@ When a provider or SKU is deactivated:
 
 *SKUs must be individually reactivated via `update-sku` after provider reactivation.
 
-**Cascade behavior**: When `DeactivateProvider` is called, the SKU module automatically deactivates all SKUs under that provider in the same transaction. This ensures consistency - an inactive provider has no active SKUs.
+**Cascade behavior**: `DeactivateProvider` deactivates the provider immediately and then deactivates its active SKUs in pages of `limit` (default 50, max 100). If the response's `has_more` is `true`, active SKUs remain and the caller must re-invoke `DeactivateProvider` with the same UUID until `has_more == false`. Until the cascade completes, an inactive provider may transiently still have active SKUs.
 
 **Implementation note**: The billing module queries SKU/provider status at lease creation time. Existing leases store `provider_uuid` and `locked_price`, making them independent of subsequent provider/SKU state changes. Tenants can close their leases at any time, even after provider/SKU deactivation.
 

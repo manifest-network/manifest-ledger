@@ -38,9 +38,6 @@ This document provides a comprehensive overview of the Billing module's capabili
 ## Lease Lifecycle
 
 ```
-    ┌─────────────────────────────────────────────────────────┐
-    │                                                         │
-    ▼                                                         │
 ┌─────────┐    acknowledge    ┌─────────┐    close/exhaust   ┌─────────┐
 │ PENDING │ ───────────────► │ ACTIVE  │ ─────────────────► │ CLOSED  │
 └─────────┘                   └─────────┘                    └─────────┘
@@ -90,7 +87,7 @@ This design enables:
 When credit is exhausted:
 1. Transfer available balance to provider (partial payment)
 2. Auto-close the lease
-3. Emit `lease_auto_closed` event with reason `credit_exhausted`
+3. Emit an auto-close event whose type depends on the path: `lease_auto_closed` (reason=`credit_exhausted`) from provider-wide withdraw; `lease_closed` with `closed_by=credit_exhaustion` from CloseLease; `provider_withdraw` with `auto_closed=true` from specific-lease withdraw
 
 ### Overflow Protection
 
@@ -114,7 +111,7 @@ When credit is exhausted:
 | `CreditEstimate` | Estimated remaining duration based on active leases |
 | `CreditAddress` | Derive credit address for a tenant |
 | `WithdrawableAmount` | Accrued amount for a specific lease |
-| `ProviderWithdrawable` | Total withdrawable across all provider's leases |
+| `ProviderWithdrawable` | Withdrawable amount across the provider's ACTIVE leases, one page at a time — sum `amounts` across pages until `pagination.next_key` is empty for the provider total |
 | `LeaseByCustomDomain` | Look up the PENDING/ACTIVE lease + item that owns a given `custom_domain` (v2.1.0+) |
 
 ---
@@ -189,10 +186,7 @@ For the complete authorization matrix, see [API Reference - Authorization](API.m
 
 | Improvement | Description | Benefit |
 |-------------|-------------|---------|
-| **Extract Auto-Close Helper** | DRY up duplicated logic in withdraw functions | Maintainability |
-| **Stateful Pagination for Provider Withdraw** | Cursor-based iteration | Handle 1000s of leases efficiently |
 | **Event Indexing** | Structured event data for indexers | Better off-chain analytics |
-| **Simulation Tests** | Fuzz testing for billing math | Confidence in edge cases |
 | **Gas Optimization** | Batch state writes | Lower transaction costs |
 
 ### Integration Improvements

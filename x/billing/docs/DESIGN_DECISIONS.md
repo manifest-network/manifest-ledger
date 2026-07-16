@@ -285,12 +285,12 @@ Item 2: SKU 2 (priced in 'umfx') - locked_price: 500umfx/second
 
 ## Decision 13: Maximum Limits as DoS Protection
 
-**Decision:** Impose configurable limits on leases per tenant, items per lease, and withdrawal batch size.
+**Decision:** Impose configurable limits on leases per tenant and items per lease, plus hard-coded (non-governable) batch/cursor limits.
 
 **Alternatives Considered:**
 1. No limits (rely on gas)
 2. Hard-coded limits
-3. Configurable parameter limits (chosen)
+3. Configurable parameter limits for the per-tenant/per-lease bounds (chosen), with compile-time constants for batch/cursor sizes
 
 **Rationale:**
 - **DoS Prevention:** Bounds computation
@@ -310,7 +310,11 @@ Item 2: SKU 2 (priced in 'umfx') - locked_price: 500umfx/second
 | `max_items_per_lease` | 20 | 100 |
 | `min_lease_duration` | 3600s | 2,592,000s (30 days) |
 | `max_pending_leases_per_tenant` | 10 | 1,000 |
-| Provider withdraw batch | 50 | 100 |
+| `pending_timeout` | 1800s | 60s – 86,400s (min–max) |
+
+`pending_timeout` is the only param with a lower bound: 0 is rejected by the minimum check (`MinPendingTimeout` = 60s), not a separate zero check.
+
+The provider withdraw batch limits are **not** governance parameters — they are compile-time constants (`DefaultProviderWithdrawLimit` = 50, `MaxBatchLeaseSize` = 100) and require a binary release to change, not a param update.
 
 ## Decision 14: Minimum Lease Duration
 
@@ -334,11 +338,18 @@ Item 2: SKU 2 (priced in 'umfx') - locked_price: 500umfx/second
 
 **Implementation:**
 ```go
-minRequired = totalRatePerSecond * minLeaseDuration
-if creditBalance < minRequired {
-    return ErrInsufficientCredit
-}
+reservation = totalRatePerSecond * minLeaseDuration              // sdk.Coins, per denom
+availableCredit = creditBalance - creditAccount.reserved_amounts // per denom
+for each denom in reservation:
+    if availableCredit[denom] < reservation[denom] {
+        return ErrInsufficientCredit
+    }
 ```
+
+The check is against *available* credit (balance minus existing reservations), evaluated
+per-denom, not against the raw balance as a single scalar. On success the reservation is
+added to `CreditAccount.ReservedAmounts` and `min_lease_duration_at_creation` is snapshotted
+on the lease so the reservation can be released consistently later.
 
 ## Decision 15: UUIDv7 for Identifiers
 
@@ -411,7 +422,7 @@ if creditBalance < minRequired {
 
 **Trade-offs:**
 - EndBlocker overhead (mitigated by rate limiting)
-- Need efficient time-ordered index
+- Scans the PENDING state index in index order (not `created_at` order) with per-lease time filtering. The StateCreatedAt index (prefix 11) exists but is unusable because collections' `PairRange` cannot do partial-prefix ranges on `Pair[int32, time.Time]`. Consequence: with >100 pending leases, the first 100 index entries are examined regardless of age, so older expired leases may wait for a later block.
 - Max pending leases per tenant limit needed
 
 ## Decision 18: Tenant Cancellation of Pending Leases
@@ -431,9 +442,27 @@ if creditBalance < minRequired {
 - Additional message type (CancelLease)
 - Provider may have started provisioning (off-chain race)
 
+## Decision 19: Compute-Specific Lease Item Fields (service_name / custom_domain)
+
+**Decision:** Carry the compute-specific `service_name` and `custom_domain` fields directly on the generic `LeaseItem` rather than in a dedicated deployment module.
+
+**Alternatives Considered:**
+1. Wait for a dedicated `x/deployment` module before shipping these fields
+2. Generic key/value metadata bag on the lease item
+3. Compute-specific fields on `LeaseItem` as a pragmatic shortcut (chosen)
+
+**Rationale:**
+- **Pragmatic Shortcut:** `service_name` (field 4) and `custom_domain` (field 5) are marked COMPUTE-SPECIFIC in the proto and conceptually belong in a future `x/deployment` module; they live on the generic lease item today to ship the feature without a new module. Migration path tracked as ENG-80.
+- **Dual-Mode Uniqueness:** In legacy mode uniqueness is enforced on `sku_uuid` (each SKU unique per lease); in service-name mode all items must set `service_name` and uniqueness shifts to `service_name`, allowing the same SKU to appear multiple times (e.g., `web` and `db` both on `docker-small`).
+- **Reverse Lookup:** `custom_domain` drives the `CustomDomainIndex` (prefix 12) for O(1) reverse lookup and uniqueness enforcement.
+
+**Trade-offs:**
+- **Multi-Item Legacy Leases Cannot Host a Custom Domain:** A multi-item lease created in legacy mode (no `service_name`) has no unambiguous way to address an item, so it is rejected from setting a `custom_domain` (`ErrAmbiguousLeaseItem`).
+- **`reserved_domain_suffixes` Ships Empty:** `Params.ReservedDomainSuffixes` defaults to `nil` on purpose and `Migrate1to2` is a no-op. Once a hostname is baked into a release tag it cannot be unshipped from chains that already ran the upgrade, so operators seed provider wildcard zones via genesis or post-upgrade `MsgUpdateParams` instead. (ENG-82 tracks provider-declared zones in `x/sku`.)
+
 ## Future Considerations
 
-### Potential Enhancements for v2
+### Potential Future Enhancements
 
 1. **Lease Pruning:** Archive old leases to reduce state size
 2. **Tiered Pricing:** Volume discounts based on usage

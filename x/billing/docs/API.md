@@ -313,6 +313,7 @@ manifestd tx billing withdraw --provider [provider-uuid] [flags]
 |------|------|---------|-------------|
 | --provider | string | - | Provider UUID for provider-wide withdrawal |
 | --limit | uint64 | 50 | Maximum leases to process in provider mode (max 100) |
+| --key | string | "" | Base64 `next_key` from the previous provider-wide withdraw response; continues paging. Rejected in specific-leases mode. |
 
 **Examples:**
 ```bash
@@ -340,6 +341,7 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
   - Processes up to `limit` active leases
   - Response includes `has_more` and an opaque `next_key` cursor if more leases remain
   - Pass the returned `next_key` back as `--key` on the next call and repeat until `has_more` is false. Calling again *without* `--key` restarts from the first lease and never advances past `limit`.
+  - `--key` is only valid in provider-wide mode (setting it alongside lease UUIDs is rejected) and the decoded cursor may not exceed 64 bytes (`MaxWithdrawCursorLen`).
   - See [Provider-Wide Withdraw Workflow](#provider-wide-withdraw-workflow) below for example
 - Settles accrued amount since last settlement for each lease
 - Transfers aggregated amounts to provider's payout address
@@ -746,7 +748,7 @@ manifestd query billing withdrawable [lease-uuid]
 
 #### provider-withdrawable
 
-Query total withdrawable for a provider across all leases. **This query calculates real-time accrued amounts.**
+Query withdrawable amounts for a provider across the provider's ACTIVE leases, one page at a time. **This query calculates real-time accrued amounts.**
 
 ```bash
 manifestd query billing provider-withdrawable [provider-uuid]
@@ -929,6 +931,7 @@ manifestd query billing credit-estimate manifest1abc...
 **Limitations:**
 - **Bounded lease iteration**: The active-lease iteration is bounded by `max_leases_per_tenant + max_pending_leases_per_tenant` — a safe upper bound on the reachable active-lease count, clamped to the params' upper bounds (10,000 / 1,000) as a hard DoS ceiling. This covers every legitimately-reachable state, so `total_rate_per_second` and `active_lease_count` reflect all of a tenant's active leases and are not truncated at a fixed 100.
 - **Does not account for pending withdrawals**: The estimate uses current balance, not accounting for any unsettled accrued amounts from existing leases.
+- **Assumes constant rate**: The estimate assumes all current leases continue at their current rates. Actual duration may differ if leases are closed or new leases are created.
 
 ---
 
@@ -968,7 +971,6 @@ manifestd query billing lease-by-domain app.example.com
 - Returns the lease and the `service_name` of the LeaseItem that owns the domain. For a 1-item legacy lease the `service_name` is `""`.
 - Returns gRPC `NotFound` (CLI: error) when no PENDING/ACTIVE item has claimed the domain.
 - Backed by the `CustomDomainIndex` reverse-lookup (O(1)); domains held by closed/rejected/expired leases are not indexed.
-- **Assumes constant rate**: The estimate assumes all current leases continue at their current rates. Actual duration may differ if leases are closed or new leases are created.
 
 ---
 
@@ -990,6 +992,7 @@ service Msg {
   rpc CloseLease(MsgCloseLease) returns (MsgCloseLeaseResponse);
   rpc Withdraw(MsgWithdraw) returns (MsgWithdrawResponse);
   rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+  rpc SetItemCustomDomain(MsgSetItemCustomDomain) returns (MsgSetItemCustomDomainResponse);
 }
 ```
 
@@ -1204,6 +1207,7 @@ message MsgWithdraw {
   repeated string lease_uuids = 2; // Mode 1: specific lease UUIDs (1-100)
   string provider_uuid = 3;        // Mode 2: provider UUID for provider-wide withdrawal
   uint64 limit = 4;                // Max leases in provider mode (default 50, max 100)
+  bytes key = 5;                   // Mode 2: opaque cursor from the previous response's next_key; base64 in JSON. Must be empty in mode 1.
 }
 ```
 
@@ -1216,6 +1220,7 @@ message MsgWithdrawResponse {
   string payout_address = 2;        // Destination address
   uint64 withdrawal_count = 3;      // Number of leases processed
   bool has_more = 4;                // More leases remain (only true in provider-wide mode)
+  bytes next_key = 5;               // Opaque cursor; pass as MsgWithdraw.key for the next page. Non-empty iff has_more is true; always empty in lease_uuids mode.
 }
 ```
 
@@ -1274,7 +1279,7 @@ message MsgSetItemCustomDomainResponse {}
 - `lease_custom_domain_set` on a successful set.
 - `lease_custom_domain_cleared` on a successful clear (with the previous value in `custom_domain`).
 
-Both carry attributes `lease_uuid`, `tenant`, `service_name`, `custom_domain`, `set_by`. `set_by` ∈ `{tenant, authority, allowed}` records which authorisation path matched.
+Both carry attributes `lease_uuid`, `tenant`, `provider_uuid` (v2.2.0+), `service_name`, `custom_domain`, `set_by`. `set_by` ∈ `{tenant, authority, allowed}` records which authorisation path matched.
 
 ---
 
@@ -1599,6 +1604,15 @@ message Params {
 - `allowed_list`: Addresses with privileged authority for `MsgCreateLeaseForTenant` and `MsgSetItemCustomDomain`, in addition to the module authority.
 - `reserved_domain_suffixes`: DNS suffixes (each must begin with `.`) that tenants are forbidden from claiming as a `LeaseItem.custom_domain`. Match is case-insensitive at a label boundary, plus the apex (e.g. `.foo.example` matches both `app.foo.example` and `foo.example`). Each entry's substring after the leading dot must itself be a valid FQDN. Tunable via `MsgUpdateParams`.
 
+**Defaults and validation bounds (numeric params):**
+| Param | Default | Valid range |
+|-------|---------|-------------|
+| `max_leases_per_tenant` | 100 | 1 – 10,000 (`MaxLeasesPerTenantUpperBound`) |
+| `max_items_per_lease` | 20 | 1 – 100 (`MaxItemsPerLeaseHardLimit`) |
+| `min_lease_duration` | 3600 | 1 – 2,592,000 seconds / 30 days (`MaxMinLeaseDuration`) |
+| `max_pending_leases_per_tenant` | 10 | 1 – 1,000 (`MaxPendingLeasesPerTenantUpperBound`) |
+| `pending_timeout` | 1800 | 60 (`MinPendingTimeout`) – 86,400 (`MaxPendingTimeout`) seconds |
+
 ---
 
 ## Events
@@ -1616,16 +1630,22 @@ The billing module emits the following events for state changes:
 | `lease_cancelled` | lease_uuid, tenant, provider_uuid, cancelled_by | Tenant cancelled pending lease |
 | `batch_cancelled` | lease_count, tenant, cancelled_by | Batch summary when multiple leases cancelled |
 | `lease_expired` | lease_uuid, tenant, provider_uuid, reason | Pending lease expired |
-| `lease_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, closed_by, duration_seconds, active_lease_count, closure_reason (optional) | Lease closed manually |
+| `lease_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, closed_by, duration_seconds, active_lease_count, closure_reason (optional) | Lease closed (manually, or auto-closed on credit exhaustion) |
 | `batch_closed` | lease_count, closed_by, settled_amounts | Batch summary when multiple leases closed |
 | `lease_auto_closed` | lease_uuid, tenant, provider_uuid, reason | Lease auto-closed due to credit exhaustion |
-| `provider_withdraw` | lease_uuid, provider_uuid, payout_address | Provider withdrawal from single lease |
+| `provider_withdraw` | lease_uuid, amount, provider_uuid, payout_address | Provider withdrawal from single lease |
 | `batch_withdraw` | lease_count, provider_uuid, amount, payout_address, auto_closed | Batch summary when multiple leases withdrawn from |
 | `params_updated` | | Module parameters updated |
 | `lease_custom_domain_set` | lease_uuid, tenant, provider_uuid, service_name, custom_domain, set_by | `LeaseItem.custom_domain` set or changed (v2.1.0+; `provider_uuid` added v2.2.0+) |
 | `lease_custom_domain_cleared` | lease_uuid, tenant, provider_uuid, service_name, custom_domain (previous value), set_by | `LeaseItem.custom_domain` cleared (v2.1.0+; `provider_uuid` added v2.2.0+) |
 
 **Custom-domain `set_by` attribute:** records the role under which the call was authorised. One of `tenant`, `authority`, `allowed`. No event is emitted for an idempotent re-set or a clear of an already-empty domain.
+
+**`lease_closed` `closed_by` attribute:** records who closed the lease. One of `tenant`, `authority`, `provider`, or `credit_exhaustion`. `credit_exhaustion` is the auto-close sentinel set when lazy settlement finds the credit exhausted.
+
+**`batch_withdraw` `auto_closed` attribute:** emitted **only** in provider-wide mode, where it is an integer **count** of leases auto-closed during the batch (not a boolean). The specific-lease-UUID `batch_withdraw` path emits no `auto_closed` attribute.
+
+**Credit-exhaustion auto-close emits three events by path:** the same logical outcome surfaces as `lease_closed` (`closed_by=credit_exhaustion`) from the close path, `provider_withdraw` (`auto_closed="true"`) from specific-lease `MsgWithdraw`, and `lease_auto_closed` (`reason=credit_exhausted`) from provider-wide `MsgWithdraw`.
 
 **Special Case - Withdrawal Auto-Close:** When a `MsgWithdraw` operation discovers the lease's credit is exhausted (balance = 0), it automatically closes the lease. In this case, the `provider_withdraw` event includes an additional `auto_closed: "true"` attribute and `amount: "0"` to indicate no funds were transferred. Note that the `payout_address` attribute is omitted in this case since no transfer occurred.
 
@@ -1634,10 +1654,8 @@ The billing module emits the following events for state changes:
 Certain event attributes (like `rejection_reason` and `closure_reason`) are sanitized before being emitted to prevent log injection attacks. The original value is stored in state unchanged, but the sanitized version appears in events. This protects against malicious input containing control characters or log format strings.
 
 **Sanitization Rules:**
-- Control characters (ASCII 0-31, 127) are removed
-- Newlines (`\n`, `\r`) are replaced with spaces
-- Log format specifiers (e.g., `%s`, `%d`) are escaped
-- Maximum length enforced (256 characters for reasons)
+- Every rune that is not `unicode.IsGraphic` (control characters, including `\n` and `\r`) is removed outright — nothing is substituted in its place
+- No escaping or truncation is performed; reasons longer than 256 chars are rejected at ValidateBasic rather than truncated here
 
 **Example:**
 ```
@@ -1648,7 +1666,7 @@ reason: "Invalid config\nSee logs for details"
 rejection_reason: "Invalid config\nSee logs for details"
 
 # Emitted in event (sanitized):
-rejection_reason: "Invalid config See logs for details"
+rejection_reason: "Invalid configSee logs for details"
 ```
 
 ### Querying Events
@@ -1685,7 +1703,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrMixedProviders` | 14 | SKUs from different providers in one lease |
 | `ErrNoWithdrawableAmount` | 15 | Nothing to withdraw |
 | `ErrEmptyLeaseItems` | 16 | Lease has no items |
-| `ErrInvalidQuantity` | 17 | Item quantity is zero |
+| `ErrInvalidQuantity` | 17 | Item quantity is zero, or exceeds `MaxQuantityPerItem` (1,000,000,000) |
 | `ErrDuplicateSKU` | 18 | Same SKU appears multiple times |
 | `ErrInvalidCreditOperation` | 19 | Credit operation failed |
 | `ErrReserved20` | 20 | Reserved for future use |
@@ -1693,7 +1711,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrLeaseNotPending` | 22 | Lease is not in PENDING state |
 | `ErrMaxPendingLeasesReached` | 23 | Tenant at max pending leases |
 | `ErrInvalidRejectionReason` | 24 | Rejection reason too long (max 256 chars) |
-| `ErrInvalidRequest` | 25 | Invalid request (e.g., conflicting fields in MsgWithdraw) |
+| `ErrInvalidRequest` | 25 | Invalid request (e.g., conflicting fields in MsgWithdraw; setting `key` alongside `lease_uuids`; or a `key` longer than `MaxWithdrawCursorLen` = 64 bytes in provider-wide mode) |
 | `ErrInvalidClosureReason` | 26 | Closure reason too long (max 256 chars) |
 | `ErrInvalidMetaHash` | 27 | Meta hash exceeds maximum length (max 64 bytes) |
 | `ErrInvalidServiceName` | 28 | Invalid service name (must be RFC 1123 DNS label: 1-63 lowercase alphanumeric/hyphens, no leading/trailing hyphen) |
@@ -1708,7 +1726,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 **Why reserve codes?** During development, some error types were removed or consolidated (e.g., separate errors that were merged into a single error). Rather than renumbering all subsequent codes (which would break client error handling that relies on specific codes), the removed codes are marked as reserved. This ensures:
 - Existing client code that handles specific error codes continues to work after upgrades
 - Error codes in logs and metrics remain comparable across versions
-- New errors get the next available number (29+) rather than reusing gaps
+- New errors get the next number after the highest assigned code rather than reusing gaps
 
 **For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code (currently 33).
 

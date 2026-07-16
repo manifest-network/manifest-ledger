@@ -4,12 +4,12 @@ This guide covers how tenants authenticate to provider off-chain APIs after leas
 
 ## Provider Off-Chain API Integration
 
-Providers expose a REST API for tenants to retrieve connection details after lease acknowledgement. The API endpoint URL is stored on-chain in the `Provider.api_url` field.
+Providers expose a REST API for tenants to retrieve connection details after lease acknowledgement. The API endpoint URL is stored on-chain in the `Provider.api_url` field. This field is optional and may be empty (a provider that never set one returns `null`); tenants and clients must handle the absent case, in which the provider has no off-chain API registered.
 
 ### Tenant Flow
 
 1. Tenant queries lease to get `provider_uuid`
-2. Tenant queries provider to get `api_url`
+2. Tenant queries provider to get `api_url` (may be empty if the provider registered no off-chain API)
 3. Tenant calls provider's API with signature-based authentication
 
 ### Authentication
@@ -135,6 +135,7 @@ For Go-based providers, use the `@keplr-wallet/cosmos` package's verification lo
   "endpoints": [
     {
       "sku_uuid": "01912345-6789-7abc-8def-0123456789ab",
+      "service_name": "web",
       "type": "ssh",
       "host": "192.168.1.100",
       "port": 22,
@@ -148,6 +149,8 @@ For Go-based providers, use the `@keplr-wallet/cosmos` package's verification lo
   "provisioned_at": "2024-12-16T19:30:00Z"
 }
 ```
+
+When a lease is created in service-name mode (`sku-uuid:quantity:service_name`), the same `sku_uuid` may appear across multiple items, so `service_name` — not `sku_uuid` — is the unique key for a lease's endpoints. Legacy single-item leases (`sku-uuid:quantity`) omit `service_name` and are keyed by `sku_uuid`.
 
 ### Security Considerations
 
@@ -187,6 +190,8 @@ For providers with fixed SKUs (pre-configured resources), tenants create leases 
 ```
 
 **Important**: Upload deployment data BEFORE the provider acknowledges. This allows the provider to validate the manifest and provision resources before committing to the lease.
+
+**Pending timeout**: The entire upload → validate → provision → acknowledge sequence must complete within `params.pending_timeout` (default 1800s = 30 minutes; configurable 60..86400 seconds via `MsgUpdateParams`). If the provider does not acknowledge before the lease's `created_at + pending_timeout`, the EndBlocker transitions the lease to `LEASE_STATE_EXPIRED` and releases the tenant's credit reservation. The tenant must then create a new lease (and re-upload the deployment data); any payload already uploaded to the provider is orphaned.
 
 ### On-Chain Storage
 
