@@ -19,7 +19,7 @@ A Provider represents an entity that offers services. Each Provider contains:
 - **Meta Hash**: A hash of off-chain metadata for extended information
 - **Active**: Whether the provider is currently active
 
-Providers can be deactivated (soft delete), which prevents creating new SKUs for that provider but allows existing SKUs and leases to continue operating.
+Providers can be deactivated (soft delete). Deactivation cascades to deactivate all of the provider's SKUs and blocks new SKUs and new leases; existing leases continue operating at their locked-in prices.
 
 ### SKU
 
@@ -76,9 +76,9 @@ Provider and SKU operations (create, update, deactivate) can be performed by:
 
 Only the module authority can update the parameters (including the allowed list).
 
-**Management Address Permissions:** The Provider's `Address` field (management address) grants authorization for **billing operations only** (acknowledge/reject leases, withdraw earnings). It does **not** grant permission to modify provider or SKU records—those operations require authority or `allowed_list` membership.
+**Management Address Permissions:** The Provider's `Address` field (management address) grants authorization for **billing operations only** (acknowledge/reject leases, close leases, withdraw earnings). It does **not** grant permission to modify provider or SKU records—those operations require authority or `allowed_list` membership.
 
-**Transferability:** Providers and SKUs can be transferred to a new management address via `UpdateProvider` or `UpdateSKU`, but only by the authority or `allowed_list` members—not by the current management address holder. Upon transfer, the new address gains billing operation rights.
+**Transferability:** A Provider's management address can be changed via `UpdateProvider`, but only by the authority or `allowed_list` members—not by the current management address holder. Upon transfer, the new address gains billing operation rights. SKUs have no management address and cannot be re-parented—`UpdateSKU` rejects a `provider_uuid` that differs from the stored one (`ErrInvalidSKU` "provider_uuid mismatch").
 
 ### Validation Constants
 
@@ -87,6 +87,8 @@ Only the module authority can update the parameters (including the allowed list)
 | `MaxSKUNameLength` | 256 | Maximum length of SKU name in characters |
 | `MaxAPIURLLength` | 2048 | Maximum length of provider API URL in characters |
 | `MaxMetaHashLength` | 64 | Maximum length of meta_hash field in bytes (accommodates SHA-512) |
+| `DefaultDeactivateSKULimit` | 50 | SKUs deactivated per `DeactivateProvider` call when `limit` is unset (0) |
+| `MaxDeactivateSKULimit` | 100 | Maximum SKUs deactivatable in a single `DeactivateProvider` call |
 
 **API URL Requirements:**
 - Must use HTTPS scheme (http:// is rejected)
@@ -110,7 +112,7 @@ Only the module authority can update the parameters (including the allowed list)
 
 - SKUs can only be created for active Providers
 - SKU base price must be exactly divisible by the billing unit's seconds (no rounding)
-- Deactivating a Provider **cascades to deactivate all its SKUs** (one-way cascade)
+- Deactivating a Provider **cascades to deactivate all its SKUs** (one-way cascade). The cascade is paginated: one call deactivates at most `limit` SKUs (default `DefaultDeactivateSKULimit` = 50, max `MaxDeactivateSKULimit` = 100), the provider is marked inactive on the first call only, and the caller must repeat `deactivate-provider` while the response's `has_more` is true. A provider with more SKUs than `limit` is only partially cascaded by a single call, transiently leaving active SKUs under an inactive provider.
 - Deactivating a SKU is a soft delete - the SKU remains queryable but cannot be used for new leases
 - Provider and SKU UUIDs are generated deterministically using UUIDv7 format and never reused
 
@@ -210,8 +212,12 @@ message GenesisState {
   Params params = 1;
   repeated Provider providers = 2;
   repeated SKU skus = 3;
+  uint64 provider_sequence = 4;
+  uint64 sku_sequence = 5;
 }
 ```
+
+`provider_sequence` and `sku_sequence` are the deterministic-UUID sequence counters. They are exported via `Sequence.Peek()` and must be **>= the number of exported providers/skus** respectively, otherwise genesis validation fails and the chain will not start.
 
 Example genesis configuration:
 
@@ -244,7 +250,9 @@ Example genesis configuration:
         "meta_hash": "",
         "active": true
       }
-    ]
+    ],
+    "provider_sequence": "1",
+    "sku_sequence": "1"
   }
 }
 ```
@@ -254,6 +262,7 @@ Example genesis configuration:
 - Each SKU must reference an existing provider UUID from the same genesis state
 - Provider API URLs are validated if provided (must be HTTPS, no credentials)
 - No duplicate provider or SKU UUIDs allowed
+- `provider_sequence` must be >= `len(providers)` and `sku_sequence` >= `len(skus)` (omitted counters default to 0, which fails validation when any provider/sku is listed)
 
 ## Client
 
@@ -276,6 +285,7 @@ manifestd query sku skus-by-provider [provider-uuid]
 - [Provider Setup Guide](docs/PROVIDER_GUIDE.md) - Step-by-step guide to creating providers
 - [SKU Setup Guide](docs/SKU_GUIDE.md) - Step-by-step guide to creating SKUs
 - [API Reference](docs/API.md) - Complete CLI and gRPC/REST API reference
+- [Frontend & Signing Guide](../../docs/FRONTEND.md) - Building frontends and signing transactions
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common errors and solutions
 
 ### Developer Documentation

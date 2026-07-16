@@ -146,9 +146,9 @@ manifestd tx sku create-sku 01912345-6789-7abc-8def-0123456789ab "Compute Instan
 
 The base price must be exactly divisible by the billing unit's seconds. See [Pricing and Exact Divisibility](../README.md#pricing-and-exact-divisibility) for requirements and examples.
 
-**Error Messages:**
-- If price is not divisible: `invalid sku: price X is not evenly divisible by unit seconds Y`
-- If price results in zero per-second rate: `invalid sku: price per second would be zero`
+**Error Messages** (produced under `ErrInvalidSKU`, wrapped as `invalid create sku message: invalid price/unit combination: ...`; the unit renders as its enum name, e.g. `UNIT_PER_HOUR`):
+- If price is not evenly divisible: `base price <price> is not evenly divisible by <UNIT_NAME> (remainder: <r>); price must be exactly divisible to avoid rounding errors`
+- If price results in a zero per-second rate: `base price <price> with unit <UNIT_NAME> results in zero per-second rate; increase price or change unit`
 
 ---
 
@@ -233,6 +233,8 @@ manifestd tx sku update-params \
 ---
 
 ### Query Commands
+
+**Pagination note:** For the index-backed queries below (`provider-by-address`, `providers`, `skus`, `skus-by-provider`), cursor resume is deletion-tolerant — a `--page-key` whose row was removed between calls resumes from the next surviving entry rather than returning an empty page — and `--reverse` may be combined with `--page-key`. The `next_key` value is unchanged on the wire, so existing paging clients need no change.
 
 #### params
 
@@ -1009,4 +1011,6 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 - [SKU Setup Guide](SKU_GUIDE.md) - Step-by-step guide to creating SKUs
 - [Architecture](ARCHITECTURE.md) - Internal architecture and data models
 - [Design Decisions](DESIGN_DECISIONS.md) - Key design decisions and rationale
+- [Capabilities](CAPABILITIES.md) - Module capability overview
+- [Troubleshooting](TROUBLESHOOTING.md) - Common errors and resolutions
 - [Billing Module](../../billing/README.md) - Understanding the billing system

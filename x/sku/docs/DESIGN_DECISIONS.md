@@ -93,7 +93,7 @@ This separation exists because:
 
 ## Decision 4: Authority-Only Access with AllowedList
 
-**Decision:** All write operations require either POA authority or user inclusion in the `allowed_list` parameter.
+**Decision:** All provider/SKU write operations (Create/Update/Deactivate for both Provider and SKU) require either POA authority or `allowed_list` membership. `MsgUpdateParams` is the exception—it is authority-only, so allow-listed addresses cannot modify the allowed list itself.
 
 **Alternatives Considered:**
 1. Provider self-registration
@@ -115,18 +115,20 @@ This separation exists because:
 
 The Provider's `Address` field (management address) grants **limited** authorization for billing operations, but **not** for SKU module operations:
 
-| Operation | Management Address | Authority/AllowedList |
-|-----------|-------------------|----------------------|
-| Acknowledge leases | ✓ | ✓ |
-| Reject leases | ✓ | ✓ |
-| Withdraw earnings | ✓ | ✓ |
-| Close leases (as provider) | ✓ | ✓ |
-| Create/Update/Deactivate Provider | ✗ | ✓ |
-| Create/Update/Deactivate SKU | ✗ | ✓ |
-| Transfer Provider to new address | ✗ | ✓ |
+| Operation | Management Address | Authority | AllowedList |
+|-----------|-------------------|-----------|-------------|
+| Acknowledge leases | ✓ | ✓ | ✗ |
+| Reject leases | ✓ | ✓ | ✗ |
+| Withdraw earnings | ✓ | ✓ | ✗ |
+| Close leases (as provider) | ✓ | ✓ | ✗ |
+| Create/Update/Deactivate Provider | ✗ | ✓ | ✓ |
+| Create/Update/Deactivate SKU | ✗ | ✓ | ✓ |
+| Transfer Provider to new address | ✗ | ✓ | ✓ |
+
+> **Note:** x/sku's `allowed_list` confers no rights in x/billing at all. The billing operations above (acknowledge, reject, withdraw, close) are gated only on the provider's management address or the module authority. x/billing has its own separate `allowed_list`, which grants only `CreateLeaseForTenant` and `SetItemCustomDomain`—not the operations in this table.
 
 **Transferability:**
-- Providers and SKUs **are transferable** via `UpdateProvider` and `UpdateSKU`
+- Provider management and payout addresses **are transferable** via `UpdateProvider`. SKUs are not transferable—`UpdateSKU` rejects any change to `provider_uuid` with `ErrInvalidSKU` ("provider_uuid mismatch"); a SKU's owner changes only implicitly when its provider's address changes.
 - Transfer requires authority or `allowed_list` membership
 - The current management address holder **cannot** transfer to another address themselves
 - To transfer a provider: an authorized party calls `UpdateProvider` with the new `Address`
@@ -154,10 +156,7 @@ This model separates operational control (billing) from administrative control (
 - Must use specific price values (multiples of 3600 for hourly, 86400 for daily)
 - Harder to express "nice" prices
 
-**Implementation:** The billing module calculates per-second rate as:
-```go
-ratePerSecond = basePrice.Amount / unit.Seconds()
-```
+**Implementation:** The rate is computed by `skutypes.CalculatePricePerSecond(basePrice, unit)` (x/sku/types/unit.go), which divides `basePrice.Amount` by 3600 (`UNIT_PER_HOUR`) or 86400 (`UNIT_PER_DAY`) and fails if the result is zero or the division leaves a remainder. x/billing wraps it as `ConvertBasePriceToPerSecond` at lease creation.
 
 ## Decision 6: Unit Enum vs Seconds Storage
 

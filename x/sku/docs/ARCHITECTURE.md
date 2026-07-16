@@ -11,16 +11,14 @@ The SKU (Stock Keeping Unit) module provides on-chain management of service offe
 ```mermaid
 graph TD
     SKU[x/sku Module]
-    POA[x/poa Module]
     Billing[x/billing Module]
-    
-    SKU -->|authority validation| POA
+
     Billing -->|SKU lookups| SKU
     Billing -->|Provider lookups| SKU
 ```
 
 The SKU module:
-- **Depends on**: `x/poa` for authority validation
+- **Authority**: holds the PoA admin address as its `authority` string (injected in `app.go` via `helpers.GetPoAAdmin()`); it makes no calls into `x/poa`. Authorization is a string compare against that address plus `Params.AllowedList`.
 - **Depended on by**: `x/billing` for SKU and Provider information
 
 ## Data Model
@@ -97,7 +95,7 @@ The SKU module supports configurable parameters to control access and behavior:
 - All addresses in `AllowedList` must be valid bech32 addresses.
 - No duplicate addresses are allowed.
 
-Parameters can be updated via governance or authorized messages, and changes are emitted as `params_updated` events.
+Parameters can be updated only via `MsgUpdateParams` from the POA authority (allow-listed addresses cannot modify params), and changes are emitted as `params_updated` events.
 
 ## Storage Layout
 
@@ -173,17 +171,15 @@ sequenceDiagram
     participant User
     participant MsgServer
     participant Keeper
-    participant POA
     participant Store
-    
+
     User->>MsgServer: MsgCreateProvider
-    MsgServer->>MsgServer: ValidateBasic()
-    MsgServer->>POA: Check Authority
-    alt Not Authority
-        POA-->>MsgServer: Unauthorized
-        MsgServer-->>User: Error
-    else Is Authority
-        POA-->>MsgServer: OK
+    MsgServer->>MsgServer: isAuthorizedSender() (GetAuthority string compare + AllowedList params lookup)
+    alt Not authority AND not in AllowedList
+        MsgServer-->>User: Unauthorized
+    else Authorized
+        MsgServer->>MsgServer: Validate()
+        Note over MsgServer: Unauthorized senders never reach validation
         MsgServer->>Keeper: CreateProvider()
         Keeper->>Store: Get Next ID
         Store-->>Keeper: ID
@@ -201,18 +197,15 @@ sequenceDiagram
     participant User
     participant MsgServer
     participant Keeper
-    participant POA
     participant Store
-    
+
     User->>MsgServer: MsgCreateSKU
-    MsgServer->>MsgServer: ValidateBasic()
-    Note over MsgServer: Validates price divisibility
-    MsgServer->>POA: Check Authority
-    alt Not Authority
-        POA-->>MsgServer: Unauthorized
-        MsgServer-->>User: Error
-    else Is Authority
-        POA-->>MsgServer: OK
+    MsgServer->>MsgServer: isAuthorizedSender() (GetAuthority string compare + AllowedList params lookup)
+    alt Not authority AND not in AllowedList
+        MsgServer-->>User: Unauthorized
+    else Authorized
+        MsgServer->>MsgServer: Validate()
+        Note over MsgServer: Validates price divisibility; unauthorized senders never reach validation
         MsgServer->>Keeper: GetProvider()
         alt Provider Not Found or Inactive
             Keeper-->>MsgServer: Error
@@ -237,31 +230,44 @@ sequenceDiagram
     participant User
     participant MsgServer
     participant Keeper
-    participant POA
     participant Store
-    
+
     User->>MsgServer: MsgUpdateSKU
-    MsgServer->>MsgServer: ValidateBasic()
-    MsgServer->>POA: Check Authority
-    MsgServer->>Keeper: GetSKU()
-    alt SKU Not Found
-        Keeper-->>MsgServer: Error
-        MsgServer-->>User: Error
-    else SKU Found
-        Keeper-->>MsgServer: Existing SKU
-        alt Provider Changed
-            MsgServer->>Keeper: GetProvider(new)
-            alt Provider Invalid
+    MsgServer->>MsgServer: isAuthorizedSender() (GetAuthority string compare + AllowedList params lookup)
+    alt Not authority AND not in AllowedList
+        MsgServer-->>User: Unauthorized
+    else Authorized
+        MsgServer->>MsgServer: Validate()
+        Note over MsgServer: Unauthorized senders never reach validation
+        MsgServer->>Keeper: GetSKU()
+        alt SKU Not Found
+            Keeper-->>MsgServer: Error
+            MsgServer-->>User: Error
+        else SKU Found
+            Keeper-->>MsgServer: Existing SKU
+            alt provider_uuid != existingSKU.provider_uuid
+                MsgServer-->>User: ErrInvalidSKU (provider_uuid mismatch)
+            end
+            MsgServer->>Keeper: GetProvider(existingSKU.provider_uuid)
+            alt Provider Not Found
                 Keeper-->>MsgServer: Error
                 MsgServer-->>User: Error
             end
-            MsgServer->>Store: Remove Old Index
-            MsgServer->>Store: Add New Index
+            alt active -> inactive
+                MsgServer-->>User: ErrInvalidSKU (use DeactivateSKU instead)
+            end
+            alt reactivation while provider inactive
+                MsgServer-->>User: ErrInvalidProvider
+            end
+            MsgServer->>Keeper: SetSKU()
+            Keeper->>Store: Save SKU
+            Note over MsgServer: IndexedMap maintains indexes implicitly
+            alt inactive -> active
+                MsgServer->>MsgServer: Emit sku_activated
+            end
+            MsgServer->>MsgServer: Emit sku_updated
+            MsgServer-->>User: Success
         end
-        MsgServer->>Keeper: UpdateSKU()
-        Keeper->>Store: Save SKU
-        MsgServer->>MsgServer: Emit Event
-        MsgServer-->>User: Success
     end
 ```
 
@@ -271,26 +277,47 @@ sequenceDiagram
 
 SKU prices must be evenly divisible by their unit's seconds to ensure exact per-second rate calculations. See [Pricing and Exact Divisibility](../README.md#pricing-and-exact-divisibility) for the user-facing explanation.
 
-**Implementation:**
+**Implementation** (`x/sku/types/unit.go`):
 ```go
-func ValidatePriceDivisibility(unit Unit, price sdk.Coin) error {
-    seconds := unit.Seconds()
-    if seconds == 0 {
-        return ErrInvalidUnit
+func ValidatePriceAndUnit(basePrice sdk.Coin, unit Unit) error {
+    divisor, ok := divisorForUnit(unit)
+    if !ok {
+        return fmt.Errorf("invalid unit: %s", unit)
     }
-    remainder := price.Amount.Mod(math.NewInt(seconds))
+
+    perSecond := basePrice.Amount.Quo(divisor)
+
+    // Check if per-second rate is zero (would result in free usage)
+    if perSecond.IsZero() {
+        return &PriceValidationError{
+            BasePrice: basePrice,
+            Unit:      unit,
+            IsZero:    true,
+        }
+    }
+
+    // Check if division is exact (no remainder)
+    remainder := basePrice.Amount.Mod(divisor)
     if !remainder.IsZero() {
-        return ErrPriceNotDivisible
+        return &PriceValidationError{
+            BasePrice: basePrice,
+            Unit:      unit,
+            IsZero:    false,
+            Remainder: remainder,
+        }
     }
+
     return nil
 }
 ```
+
+The divisor comes from the unexported `divisorForUnit(unit)` (3600 for `UNIT_PER_HOUR`, 86400 for `UNIT_PER_DAY`). On failure the function returns a `*PriceValidationError` with two modes: `IsZero=true` ("results in zero per-second rate") when the price truncates to a zero rate, and `IsZero=false` ("not evenly divisible ... remainder: %s") when division leaves a remainder.
 
 ### Provider State Validation
 
 - Cannot create SKU for non-existent provider
 - Cannot create SKU for inactive provider
-- Can update SKU to reference different active provider
+- A SKU cannot be re-parented — `MsgUpdateSKU.provider_uuid` must equal the SKU's existing `provider_uuid`, else `ErrInvalidSKU: provider_uuid mismatch`
 - Deactivating provider cascades to deactivate all its SKUs (paginated for gas safety)
 
 ## Events and Error Codes
@@ -301,10 +328,12 @@ For the complete reference of events and error codes, see [API Reference](API.md
 
 ### Authorization Model
 
-All write operations require either POA authority or user inclusion in the `AllowedList`:
+Most write operations require either POA authority or user inclusion in the `AllowedList`:
 - Only the POA admin group or users in the `AllowedList` can create/update providers
 - Only the POA admin group or users in the `AllowedList` can create/update SKUs
 - No other user-level SKU management is permitted
+
+**Exception:** `MsgUpdateParams` is authority-only — allow-listed addresses cannot modify params (they cannot add themselves or others to the `AllowedList`). Only the six provider/SKU write handlers accept allow-listed senders.
 
 The `AllowedList` is a configurable list of user addresses permitted to perform write operations alongside the POA authority.
 
@@ -351,8 +380,10 @@ The following optimizations have been identified but deferred due to marginal be
 
 ### Unit Tests
 - Message validation (`msgs_test.go`)
-- Type methods (`types_test.go`)
-- Keeper operations (`keeper_test.go`)
+- Unit/pricing logic (`unit_test.go`)
+- Params validation (`params_test.go`)
+- Genesis validation (`genesis_test.go`)
+- Keeper operations (`keeper_test.go`, `msg_server_test.go`, `querier_test.go`)
 
 ### Integration Tests
 - Genesis import/export
@@ -370,3 +401,13 @@ The following optimizations have been identified but deferred due to marginal be
 - Random provider creation
 - Random SKU creation/updates
 - Weight-based operation distribution
+
+## Related Documentation
+
+- [SKU Module README](../README.md) - Module overview
+- [API Reference](API.md) - Messages, queries, events, and error codes
+- [Design Decisions](DESIGN_DECISIONS.md) - Key design decisions and rationale
+- [Provider Setup Guide](PROVIDER_GUIDE.md) - Step-by-step guide to creating providers
+- [SKU Setup Guide](SKU_GUIDE.md) - Step-by-step guide to creating SKUs
+- [Troubleshooting](TROUBLESHOOTING.md) - Common issues and resolutions
+- [Billing Module](../../billing/docs/ARCHITECTURE.md) - Downstream consumer of SKU/Provider data

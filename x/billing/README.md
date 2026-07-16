@@ -167,7 +167,17 @@ If a tenant's credit balance is insufficient to cover accrued charges, the billi
 2. If accrued amount >= credit balance:
    - Performs final settlement (transfers available balance to provider)
    - Closes the lease automatically
-   - Emits a `lease_auto_closed` event with `reason: credit_exhausted`
+   - Emits an event whose type depends on the trigger path (see below)
+
+**Auto-close emits a different event on each path** — there is no single event that covers them all:
+
+| Trigger | Event | Distinguishing attribute |
+|---|---|---|
+| `MsgCloseLease` | `lease_closed` | `closed_by = credit_exhaustion` |
+| `MsgWithdraw` (specific lease UUIDs) | `provider_withdraw` | `auto_closed = true` (with `amount = 0`) |
+| `MsgWithdraw` (provider-wide) | `lease_auto_closed` | `reason = credit_exhausted` |
+
+A consumer that subscribes only to `lease_auto_closed` will miss credit-exhaustion closures triggered via `MsgCloseLease` or specific-lease `MsgWithdraw`.
 
 **Design rationale:**
 - **O(1) per lease check**: Instead of O(n) scanning all leases in EndBlock
@@ -238,10 +248,11 @@ These values are compile-time constants and cannot be changed via governance:
 | `MaxRejectionReasonLength` | 256 | Maximum characters for lease rejection reason |
 | `MaxClosureReasonLength` | 256 | Maximum characters for lease closure reason |
 | `MaxCustomDomainLength` | 253 | Maximum bytes for `LeaseItem.custom_domain` (RFC 1035 max FQDN length) |
+| `MaxWithdrawCursorLen` | 64 | Maximum bytes of the opaque `--key` cursor for provider-wide withdraw (a lease UUID is 36 bytes). Defined in `types/msgs.go`. |
 | `MaxDurationSeconds` | 3,153,600,000 (100 years) | Maximum lease duration for accrual calculations (overflow protection). Defined in `keeper/accrual.go`. |
 | `CreditAccountAddressPrefix` | `billing/credit/` | Prefix used for deterministic credit address derivation |
-| `DefaultProviderWithdrawableQueryLimit` | 100 | Default limit for ProviderWithdrawable query |
-| `MaxProviderWithdrawableQueryLimit` | 1000 | Maximum limit for ProviderWithdrawable query |
+| `DefaultProviderWithdrawableQueryLimit` | 100 | Default page size for the ProviderWithdrawable query (`pagination.limit`). The request's old top-level `limit` field was removed; proto field 2 is reserved. |
+| `MaxProviderWithdrawableQueryLimit` | 1000 | Maximum page size for the ProviderWithdrawable query (`pagination.limit` is clamped to this) |
 
 > **CreditEstimate / CreditAccount query iteration** is not a fixed constant — it tracks the lease params. The active-lease iteration is bounded by `max_leases_per_tenant + max_pending_leases_per_tenant`, a safe upper bound on the reachable active count: because `AcknowledgeLease` moves pending→active without re-gating the active limit, a tenant can reach `max_leases_per_tenant - 1 + max_pending_leases_per_tenant` active leases, and the cap adds a one-lease margin on top. The pending-lease iteration is bounded by `max_pending_leases_per_tenant`. Each is clamped to the params' upper bounds (10,000 / 1,000) as a hard safety ceiling, so the caps never truncate a legal state yet stay bounded against DoS.
 
@@ -260,7 +271,7 @@ Several messages support batch processing of multiple leases in a single transac
 
 **Atomic Batch Operations:** When providing specific lease UUIDs, the operation is atomic—all leases succeed or all fail. If any lease fails validation (wrong state, unauthorized, etc.), the entire transaction is rejected.
 
-**Provider-Wide Withdraw:** Unlike specific-lease operations, provider-wide withdraw is paginated. It processes up to `--limit` leases (default 50, max 100) and returns `has_more: true` plus an opaque `next_key` cursor if more remain. Pass `next_key` back as `--key` on the next call and repeat until `has_more: false`; calling again without `--key` restarts from the first lease.
+**Provider-Wide Withdraw:** Unlike specific-lease operations, provider-wide withdraw is paginated. It processes up to `--limit` leases (default 50, max 100) and returns `has_more: true` plus an opaque `next_key` cursor if more remain. Pass `next_key` back as `--key` on the next call and repeat until `has_more: false`; calling again without `--key` restarts from the first lease. Only ACTIVE leases are considered — CLOSED leases are already fully settled at close and are skipped, so every page is dense with ACTIVE leases. Leases are processed in ascending UUID order; `next_key` is the last lease UUID of the page and the next call resumes strictly after it.
 
 ### Lease
 
@@ -322,13 +333,13 @@ sender → credit_address
 
 ### Create Lease (PENDING)
 
-1. Verify tenant has a credit account
-2. Verify tenant has sufficient credit to cover minimum lease duration (credit >= rate * min_lease_duration)
-3. Verify all SKUs exist, are active, and belong to same provider
-4. Verify tenant hasn't exceeded max active or pending leases
-5. Lock current SKU prices
-6. Create lease in PENDING state
-7. Increment pending_lease_count
+1. Verify item count ≤ `max_items_per_lease`
+2. Verify tenant has a credit account
+3. Verify tenant hasn't exceeded max active or pending leases
+4. Verify all SKUs exist, are active, and belong to the same provider (locking per-second prices)
+5. Verify the provider exists and is active
+6. Verify `AvailableCredit >= rate × min_lease_duration` per denom and add the reservation
+7. Create lease in PENDING state and increment pending_lease_count
 
 ### Acknowledge Lease (PENDING → ACTIVE)
 
@@ -415,7 +426,7 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 | CreditEstimate | Estimate remaining credit duration |
 | CreditAddress | Derive credit address for a tenant |
 | WithdrawableAmount | Get withdrawable amount for a lease |
-| ProviderWithdrawable | Get total withdrawable for a provider |
+| ProviderWithdrawable | Withdrawable amount across the provider's ACTIVE leases, one page at a time — sum `amounts` across pages until `pagination.next_key` is empty. `lease_count` counts only non-zero-withdrawable leases in the current page. |
 | LeaseByCustomDomain | Look up the active or pending lease that has claimed a given custom_domain (and the `service_name` of the matching item) |
 
 **Events**: See [API Reference - Events](docs/API.md#events) for the complete list of events emitted by this module.
@@ -528,7 +539,7 @@ invalid credit operation: tenant manifest1def... has lease reservations totaling
 - **Lease UUIDs**: All leases must have valid UUIDv7 format, no duplicates
 - **Tenant/Provider addresses**: All addresses must be valid bech32 format
 - **Credit address derivation**: Credit addresses must match deterministic derivation from tenant address
-- **Lease state consistency**: Timestamps must be consistent with lease state (e.g., `acknowledged_at` only for ACTIVE leases)
+- **Lease state consistency**: CLOSED leases must have a non-nil, non-zero `closed_at`. At InitGenesis, `created_at`, `last_settled_at`, and `closed_at` must not be after the block time.
 - **Parameter validation**: All params must pass validation constraints
 
 ## Additional Documentation
@@ -540,6 +551,7 @@ invalid credit operation: tenant manifest1def... has lease reservations totaling
 - [Integration Guide](docs/INTEGRATION.md) - Tenant authentication to provider APIs (ADR-036)
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common errors and solutions
 - [API Reference](docs/API.md) - Complete CLI and gRPC/REST API reference
+- [Frontend / Integrator Cookbook](../../docs/FRONTEND.md) - Client-side signing recipes and the type-URL / amino-name reference table
 
 ### Developer Documentation
 - [Architecture](docs/ARCHITECTURE.md) - Internal architecture, data models, and flow diagrams

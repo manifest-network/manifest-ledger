@@ -106,7 +106,7 @@ manifestd tx sku create-sku \
   "Storage Basic" \
   2 \
   86400upwr \
-  --meta-hash e5f6g7h8 \
+  --meta-hash e5f6a7b8 \
   --from mykey \
   --chain-id manifest-1 \
   --fees 5000upwr
@@ -124,7 +124,9 @@ manifestd tx sku create-sku \
       "attributes": [
         {"key": "sku_uuid", "value": "01912345-6789-7abc-8def-0123456789cd"},
         {"key": "provider_uuid", "value": "01912345-6789-7abc-8def-0123456789ab"},
-        {"key": "name", "value": "Compute Small"}
+        {"key": "name", "value": "Compute Small"},
+        {"key": "base_price", "value": "3600upwr"},
+        {"key": "created_by", "value": "manifest1..."}
       ]
     }
   ]
@@ -153,7 +155,7 @@ Response:
       "denom": "upwr",
       "amount": "3600"
     },
-    "meta_hash": "oLLD1A==",
+    "meta_hash": "obLD1A==",
     "active": true
   }
 }
@@ -186,6 +188,10 @@ manifestd tx sku update-sku \
   --chain-id manifest-1
 ```
 
+> **Important:** `update-sku` is a FULL OVERWRITE - it replaces every field from the request. Omitting `--meta-hash` sends an empty hash and silently CLEARS the stored `meta_hash`, so re-pass the current `--meta-hash` on every update that should keep it.
+>
+> The `<active>` argument cannot be used to deactivate a currently-active SKU: passing `false` for an active SKU is rejected ("cannot deactivate SKU via UpdateSKU; use DeactivateSKU instead") - use `deactivate-sku` instead. (An already-inactive SKU accepts `false` and simply stays inactive.) Reactivating an inactive SKU (`active=true`) additionally requires the provider to be active.
+
 ### Example: Update Price
 
 ```bash
@@ -196,6 +202,7 @@ manifestd tx sku update-sku \
   1 \
   7200upwr \
   true \
+  --meta-hash a1b2c3d4 \
   --from mykey \
   --chain-id manifest-1
 ```
@@ -219,7 +226,7 @@ manifestd tx sku deactivate-sku 01912345-6789-7abc-8def-0123456789cd \
 > - Can be reactivated later via `update-sku` with `active=true`
 > - The provider must also be active for the SKU to be usable in new leases
 >
-> **Note:** Deactivating a **provider** automatically cascades to deactivate ALL its SKUs. See [Provider Guide](PROVIDER_GUIDE.md#step-6-deactivate-provider-if-needed) for details.
+> **Note:** Deactivating a **provider** cascades to deactivate its SKUs, but the cascade is paginated. Each `deactivate-provider` call deactivates up to `--limit` SKUs (default 50, max 100) and returns `has_more`; repeat the call while `has_more: true` to deactivate the remaining SKUs. See [Provider Guide](PROVIDER_GUIDE.md#step-6-deactivate-provider-if-needed) for details.
 
 ## Creating Multiple SKUs
 

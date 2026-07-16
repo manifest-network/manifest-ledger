@@ -48,6 +48,10 @@ manifestd tx billing update-params \
 | `min_lease_duration` | Min seconds credit must cover | 3600 |
 | `max_pending_leases_per_tenant` | Max pending leases per tenant | 10 |
 | `pending_timeout` | Seconds before pending lease expires | 1800 |
+| `allowed_list` | Addresses allowed to create leases for tenants | `[]` |
+| `reserved_domain_suffixes` | DNS suffixes tenants may not claim as a `custom_domain`; each must begin with `.` | empty |
+
+**Note:** `--allowed-list` and `--reserved-domain-suffixes` are preserve-on-omit: when the flag is absent the CLI round-trips the current on-chain value, so the bare `update-params 100 20 3600 10 1800` above will not wipe them. Pass the flag with an empty value (e.g. `--reserved-domain-suffixes=""`) to explicitly clear the list.
 
 **Note:** There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`, enabling multi-denom billing.
 
@@ -133,8 +137,12 @@ Use `MsgCreateLeaseForTenant` to create leases on behalf of users:
 
 ```bash
 # Create a lease for a tenant
-# Format: sku-uuid:quantity
+# Format: sku-uuid:quantity[:service_name]
 manifestd tx billing create-lease-for-tenant [tenant-address] [sku-uuid:quantity...] --from [authority-key]
+
+# Optionally append :service_name (an RFC 1123 DNS label) for stack deployments. It is
+# all-or-nothing across the lease's items; in service-name mode the same SKU may appear
+# multiple times, and custom_domain can later be set per item via set-item-custom-domain.
 
 # Example: Create lease with 2 units of SKU 1 and 1 unit of SKU 2
 manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-6789-7abc-8def-0123456789ab:2 01912345-6789-7abc-8def-0123456789ac:1 --from authority
@@ -204,9 +212,13 @@ for migration in "${MIGRATIONS[@]}"; do
   RESULT=$(manifestd tx billing create-lease-for-tenant "$tenant" $items \
     --from "$AUTHORITY_KEY" -y --gas auto --gas-adjustment 1.5 --output json)
   
-  LEASE_UUID=$(echo "$RESULT" | jq -r '.logs[0].events[] | select(.type=="lease_created") | .attributes[] | select(.key=="lease_uuid") | .value')
+  # In sync broadcast mode the tx response carries only code/txhash/raw_log and no
+  # events, so capture the txhash, wait a block, then query the tx for its events.
+  TXHASH=$(echo "$RESULT" | jq -r '.txhash')
   
   sleep 6  # Wait for block
+  
+  LEASE_UUID=$(manifestd query tx "$TXHASH" --output json | jq -r '.events[] | select(.type=="lease_created") | .attributes[] | select(.key=="lease_uuid") | .value')
   
   # Acknowledge lease (transitions to ACTIVE, billing starts)
   echo "  Acknowledging lease $LEASE_UUID..."
@@ -265,8 +277,8 @@ manifestd query tx [txhash] --output json | jq '.events'
 
 Key events:
 - `lease_created` - Contains `lease_uuid`, `tenant`, `provider_uuid`
-- `lease_acknowledged` - Contains `lease_uuid`, `provider_uuid`, `acknowledged_at`
-- `lease_rejected` - Contains `lease_uuid`, `provider_uuid`, `reason`
+- `lease_acknowledged` - Contains `lease_uuid`, `tenant`, `provider_uuid`, `acknowledged_by` (the ack timestamp comes from the `acknowledged_at` field of `MsgAcknowledgeLeaseResponse`, not the event)
+- `lease_rejected` - Contains `lease_uuid`, `tenant`, `provider_uuid`, `rejected_by`, `rejection_reason`
 - `lease_closed` - Contains `lease_uuid`, `tenant`, `settled_amounts`
 - `credit_funded` - Contains `tenant`, `amount`, `credit_address`
 
@@ -328,7 +340,7 @@ This happens if you try to create a lease before funding. The credit account is 
 manifestd tx billing fund-credit [tenant] [amount] --from authority
 ```
 
-### "SKU not found" or "SKU is not active"
+### "sku not found" or "sku not active"
 
 Ensure the SKU exists and is active:
 
@@ -360,7 +372,7 @@ manifestd query billing params
 
 To add your address to the allow list, the authority must update params.
 
-### "provider is not active"
+### "provider not active"
 
 The provider associated with the SKU has been deactivated. Contact the authority to reactivate, or use SKUs from an active provider.
 
@@ -382,7 +394,6 @@ Validates without blockchain context:
 - Lease UUIDs are valid and unique
 - Credit account addresses are correctly derived
 - Required fields are present
-- SKU-provider relationships are consistent
 
 ### Phase 2: Time-Based Validation (`ValidateWithBlockTime`)
 
@@ -392,10 +403,9 @@ Validates timestamps against block time during `InitGenesis`:
 |-------|------------|
 | `last_settled_at` | Must not be in the future |
 | `created_at` | Must not be in the future |
-| `closed_at` | Must not be in the future (for CLOSED leases) |
-| `rejected_at` | Must not be in the future (for REJECTED leases) |
-| `expired_at` | Must not be in the future (for EXPIRED leases) |
-| `acknowledged_at` | Must not be in the future (for ACTIVE leases) |
+| `closed_at` | Must not be in the future (for CLOSED leases with a non-nil `closed_at`) |
+
+**Note:** `rejected_at`, `expired_at`, and `acknowledged_at` are NOT time-validated at genesis, so a future-dated value in those fields will import silently.
 
 **Error Example:**
 ```
@@ -403,6 +413,15 @@ lease abc123 has last_settled_at (2025-01-08T00:00:00Z) in the future relative t
 ```
 
 **Resolution:** Ensure all timestamps in genesis state are at or before the genesis block time.
+
+### Phase 3: Cross-Module Validation (`InitGenesis`)
+
+During `InitGenesis`, the module additionally performs cross-module checks against the SKU module:
+- The lease's provider must exist (`skuKeeper.GetProvider`)
+- Every item's SKU must exist (`skuKeeper.GetSKU`)
+- Each SKU's `provider_uuid` must match the lease's `provider_uuid`
+
+These checks require the SKU module to be initialized first, which the genesis order (`sku -> billing`) guarantees.
 
 ## Related Documentation
 

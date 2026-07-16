@@ -17,7 +17,7 @@ The credit account is created automatically when first funded.
 
 ### "insufficient credit balance"
 
-**Cause**: The credit account doesn't have enough balance in one or more denominations to cover the `min_lease_duration` requirement for the lease.
+**Cause**: The check is against *available* credit (available = balance − reserved_amounts), where reserved_amounts is the sum of reservations held by the tenant's existing PENDING and ACTIVE leases — not the raw balance. A tenant whose balance covers the `min_lease_duration` requirement can still hit this error if existing leases have that credit reserved. The full error text includes both balance and reserved, e.g. `insufficient available credit for denom <denom>: need <x>, have <y> available (balance: <b>, reserved: <r>)`. Check the `available_balances` field of `query billing credit-account` rather than the raw balance.
 
 **Solution**: 
 1. Check current balances:
@@ -157,7 +157,7 @@ manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1 --from 
 
 ## Lease Acknowledgement Issues
 
-### "lease not pending"
+### "lease not in pending state"
 
 **Cause**: Attempting to acknowledge, reject, or cancel a lease that is not in PENDING state.
 
@@ -170,7 +170,7 @@ Only PENDING leases can be acknowledged/rejected by providers or cancelled by te
 
 ### "unauthorized" (for acknowledge/reject)
 
-**Cause**: The sender is not the provider who owns the SKUs in the lease.
+**Cause**: The sender is neither the provider's management address for the SKUs in the lease nor the module authority. (Note: `allowed_list` does NOT grant acknowledge/reject — it only covers `CreateLeaseForTenant` and `SetItemCustomDomain`.)
 
 **Solution**: Use the correct provider key:
 ```bash
@@ -256,17 +256,6 @@ manifestd query billing lease [lease-uuid]
 3. For ACTIVE leases, wait for more time to pass for charges to accrue
 4. For closed leases, you cannot withdraw (settlement happened during close)
 
-### "lease not active"
-
-**Cause**: Attempting to withdraw from a lease that's not ACTIVE. PENDING leases don't accrue charges.
-
-**Solution**: 
-- For PENDING leases: Acknowledge the lease first
-- For CLOSED leases: Settlement happened during closure, nothing left to withdraw
-```bash
-manifestd query billing lease [lease-uuid]
-```
-
 ### "unauthorized"
 
 **Cause**: Only the provider (or authority) can withdraw from a lease.
@@ -289,25 +278,24 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 
 ### Lease not included in provider-wide withdraw results
 
-**Cause**: During provider-wide withdraw batch operations, individual lease settlements that encounter arithmetic overflow (extremely long-running leases with high rates) are silently skipped to prevent the entire batch from failing.
+**Cause**: A provider-wide withdraw processes each lease in its own cached context; if a single lease fails, it is logged and skipped so the rest of the batch still succeeds. Two things determine what appears in the results:
+
+1. **Only ACTIVE leases are considered.** Provider-wide withdraw iterates the provider's ACTIVE leases only — CLOSED leases are already fully settled at close and never appear.
+2. **Leases are skipped for two different reasons.** A *normal* skip happens when the lease has nothing to settle — no elapsed time since the last settlement, or a zero withdrawable amount — and is silent and expected. An *error* skip happens when the lease's settlement or store operation fails — a bank transfer failure, a missing or invalid provider payout address, or a `last_settled_at` that is after the block time — in which case that lease's changes are discarded.
 
 **What happens**:
-1. The lease is skipped during the batch operation
-2. Other leases in the batch are processed normally
-3. No error is returned for the skipped lease
-4. The skipped lease's funds remain available
+1. The skipped lease is left unchanged; other leases in the batch are processed normally
+2. The overall transaction still succeeds
+3. No error is returned for a skipped lease — error skips are logged, normal (nothing-to-settle) skips are silent
+
+> **Arithmetic overflow does NOT skip the lease.** If a lease's accrued charge overflows (settlement duration beyond ~100 years, `MaxDurationSeconds`), the silent settlement path instead transfers the tenant's **entire remaining credit** in that lease's denoms to the provider and force-closes the lease. The funds are **not** preserved. Overflow is effectively unreachable in normal operation but can arise from a genesis import with an ancient `last_settled_at`.
 
 **Solution**:
 1. Use specific lease withdrawal for the problematic lease to see the actual error:
    ```bash
    manifestd tx billing withdraw [lease-uuid] --from provider
    ```
-2. If overflow is the issue, close the lease and create a new one:
-   ```bash
-   manifestd tx billing close-lease [lease-uuid] --from provider
-   ```
-
-**Note**: This scenario only occurs with extremely long-running leases (years) with high per-second rates. Normal usage will not encounter this issue.
+2. Verify the provider's payout address is set and valid (`manifestd query sku provider [provider-uuid]`), then retry.
 
 ---
 
@@ -338,6 +326,18 @@ manifestd tx billing withdraw [lease-uuid] --from [key]
 # Mode 2: Provider-wide
 manifestd tx billing withdraw --provider [provider-uuid] --from [key]
 ```
+
+### "key (pagination cursor) is only valid in provider-wide mode"
+
+**Cause**: `--key` was passed together with positional lease UUIDs. The cursor is only meaningful in provider-wide mode.
+
+**Solution**: Drop `--key`, or drop the lease UUIDs and use provider-wide mode.
+
+### "key length N exceeds maximum 64"
+
+**Cause**: The `--key` value is not a `next_key` from a prior response. The cursor is a lease UUID (36 bytes) and is bounded by `MaxWithdrawCursorLen` (64).
+
+**Solution**: Pass the base64 `next_key` from the previous response verbatim.
 
 ### Response shows "has_more: true"
 
@@ -391,9 +391,9 @@ manifestd query billing lease uuid3  # PENDING - ok
 manifestd tx billing acknowledge-lease uuid1 uuid3 --from provider  # SUCCESS
 ```
 
-### "too many lease items in batch"
+### "too many leases: N exceeds maximum 100"
 
-**Cause**: Exceeding `MaxBatchLeaseSize` (100 leases) in a single batch operation.
+**Cause**: Exceeding `MaxBatchLeaseSize` (100 leases) in a single batch operation. This is returned as `ErrInvalidLease` by `ValidateBatchLeaseUUIDs`.
 
 **Solution**: Split into multiple smaller batches:
 ```bash
@@ -417,7 +417,7 @@ manifestd query tx [txhash] --output json | jq '.events[] | select(.type | start
 
 **Event pattern:**
 - Individual operations: `lease_acknowledged`, `lease_rejected`, etc. (one per lease)
-- Batch summary: `batch_acknowledged`, `batch_rejected`, etc. (one per transaction)
+- Batch summary: `batch_acknowledged`, `batch_rejected`, etc. (one per transaction, emitted only when the batch contains more than one lease — a single-lease call emits only the individual event). Exception: provider-wide withdraw always emits `batch_withdraw`, even when nothing was withdrawn.
 
 ---
 
@@ -452,7 +452,7 @@ Pending leases expire automatically if providers don't acknowledge them within `
 2. Checks pending leases against `created_at + pending_timeout`
 3. Expired leases transition to EXPIRED state
 4. Credit is unlocked (was never billed since lease was never active)
-5. `LeaseExpired` event is emitted
+5. `lease_expired` event is emitted (attributes: lease_uuid, tenant, provider_uuid, reason="pending_timeout")
 
 **Rate limiting**: Max 100 expirations per block to prevent DoS.
 
@@ -472,7 +472,7 @@ Pending leases expire automatically if providers don't acknowledge them within `
 
 ### Understanding Auto-Close
 
-Auto-close is triggered when an ACTIVE lease's credit is exhausted (balance = 0). It happens during write operations only:
+Auto-close is triggered when an ACTIVE lease's projected accrual meets or exceeds the credit balance for any denom the lease bills in (accrued >= balance) — the balance does not have to reach exactly zero. When no time has elapsed since the last settlement, a zero balance in any lease denom triggers it. It happens during write operations only:
 - `Withdraw` - If credit exhausted after settlement
 - `CloseLease` - If credit was already exhausted
 
@@ -497,8 +497,10 @@ manifestd query billing lease [lease-uuid]
 manifestd query tx [txhash] --output json | jq '.events'
 ```
 
-Events to look for:
-- `lease_closed`
+Events to look for (the event depends on which write path triggered the auto-close):
+- `lease_closed` with `closed_by="credit_exhaustion"` (auto-close via `CloseLease`)
+- `provider_withdraw` with `auto_closed="true"` (auto-close via specific-lease `Withdraw`)
+- `lease_auto_closed` with `reason="credit_exhausted"` (auto-close via provider-wide `Withdraw`)
 
 **Resolution**: 
 1. Fund the credit account again
@@ -517,9 +519,14 @@ Events to look for:
   # Get real-time withdrawable for a specific lease
   manifestd query billing withdrawable [lease-uuid]
   
-  # Get real-time total withdrawable for a provider
+  # Get real-time withdrawable for a provider's ACTIVE leases, one page at a time
   manifestd query billing provider-withdrawable [provider-uuid]
   ```
+  A single `provider-withdrawable` response is a partial, per-page total over the
+  provider's ACTIVE leases (page size default 100, max 1000). Loop, passing
+  `pagination.next_key` back as `--page-key`, and sum the per-page `amounts` until
+  `next_key` is empty. This query no longer has a `has_more` field — branch on
+  `len(pagination.next_key) > 0`.
 
 ## Parameter Issues
 
@@ -528,11 +535,12 @@ Events to look for:
 **Cause**: Invalid parameter values in UpdateParams.
 
 **Common issues**:
-- `min_lease_duration` must be > 0
-- `max_leases_per_tenant` must be > 0
+- `min_lease_duration` must be > 0 and ≤ 2592000 (30 days)
+- `max_leases_per_tenant` must be > 0 and ≤ 10000
 - `max_items_per_lease` must be > 0 and ≤ 100
-- `max_pending_leases_per_tenant` must be > 0
+- `max_pending_leases_per_tenant` must be > 0 and ≤ 1000
 - `pending_timeout` must be between 60 (1 min) and 86400 (24 hours)
+- `reserved_domain_suffixes`: each entry must start with '.', the part after the dot must be a valid FQDN, and duplicates are rejected
 
 **Solution**: Check current params and ensure new values are valid:
 ```bash
@@ -556,9 +564,9 @@ manifestd tx billing update-params ... --from authority
 
 **Solution**: Increase gas limit:
 ```bash
-manifestd tx billing create-lease 1:10 --from tenant --gas 500000
+manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:10 --from tenant --gas 500000
 # Or use auto
-manifestd tx billing create-lease 1:10 --from tenant --gas auto --gas-adjustment 1.5
+manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:10 --from tenant --gas auto --gas-adjustment 1.5
 ```
 
 ### Transaction pending/not included

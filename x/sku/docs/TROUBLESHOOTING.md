@@ -62,7 +62,9 @@ This guide covers common errors and issues users may encounter when using the SK
    ```
 3. Use a valid SKU UUID.
 
-### "invalid sku" (when used in billing)
+### "sku not active" (when used in billing)
+
+**Error**: `sku not active: sku_uuid {uuid} is not active` (codespace `billing`, code 11)
 
 **Cause**: The SKU exists but is not active. Inactive SKUs cannot be used for new leases.
 
@@ -96,6 +98,24 @@ manifestd tx sku create-sku [provider-uuid] "Compute Medium" 1 7200upwr --from a
 # This will fail with "invalid sku" error
 manifestd tx sku create-sku [provider-uuid] "Bad SKU" 1 3601upwr --from authority
 ```
+
+**Second failure mode (price too small)**: If the base price is smaller than the
+unit's divisor (< 3600 for UNIT_PER_HOUR, < 86400 for UNIT_PER_DAY), the
+per-second rate truncates to zero and the transaction fails with a different
+message: `base price {price} with unit {unit} results in zero per-second rate; increase price or change unit`.
+This is checked *before* the divisibility check.
+
+```bash
+# Invalid: 1000 / 3600 truncates to 0 per second
+# This will fail with the "zero per-second rate" message
+manifestd tx sku create-sku [provider-uuid] "Too Cheap" 1 1000upwr --from authority
+```
+
+**Solution**: Raise the base price to at least the unit's divisor (≥ 3600 for
+`UNIT_PER_HOUR`, ≥ 86400 for `UNIT_PER_DAY`) and keep it evenly divisible. A
+coarser unit has a *larger* divisor, so `UNIT_PER_DAY` (86400) makes the
+zero-rate failure **more** likely, not less — prefer the finer `UNIT_PER_HOUR`
+or simply raise the price.
 
 ---
 
@@ -152,7 +172,9 @@ manifestd tx sku create-provider manifest1... manifest1... --api-url https://api
 
 ## Parameter Issues
 
-### "invalid params" (duplicate addresses)
+### "invalid module configuration" (duplicate addresses)
+
+**Error**: `invalid module configuration: invalid params: invalid module configuration: duplicate address in allowed list: {addr}`
 
 **Cause**: The `allowed_list` contains duplicate addresses.
 
@@ -180,11 +202,15 @@ manifestd tx sku update-params --allowed-list "manifest1abc..." --from authority
 
 ### Deactivating an already inactive provider/SKU
 
-**Behavior**: Attempting to deactivate an already inactive provider or SKU returns an error.
+**Behavior**: The two cases differ:
+- **SKU**: Deactivating an already inactive SKU always returns an error.
+- **Provider**: Deactivating an already inactive provider returns an error **only if all of its SKUs are also inactive**. If the provider still has active SKUs, the call is treated as a continuation of the paginated SKU cascade and succeeds (see note below).
 
 **Error Messages:**
-- Provider: `invalid provider: provider {uuid} is already inactive`
+- Provider (only when all SKUs are already inactive): `invalid provider: provider {uuid} and all its SKUs are already inactive`
 - SKU: `invalid sku: sku {uuid} is already inactive`
+
+**Note**: `DeactivateProvider` deactivates a provider's SKUs in pages (`DefaultDeactivateSKULimit` = 50, `MaxDeactivateSKULimit` = 100). When the response reports `has_more` = true, the provider is already inactive but SKUs remain; you must **re-invoke** `DeactivateProvider` while `has_more` is true. Re-invocation on an already-inactive provider is the normal, expected flow and is **not** an error condition.
 
 **Solution**: Check the provider/SKU status before deactivation:
 ```bash
@@ -213,15 +239,19 @@ manifestd query sku sku [sku-uuid]
 
 ---
 
-## Query Issues
+## UUID Format Issues
 
-### "invalid uuid format"
+### "invalid UUIDv7 format"
 
-**Cause**: The UUID is not in valid UUIDv7 format.
+**Error**: `invalid UUIDv7 format: {uuid}` (typically surfaced wrapped, e.g. `invalid provider: invalid uuid: invalid UUIDv7 format: ...`)
 
-**Solution**: Ensure you're using a valid UUID (format: `xxxxxxxx-xxxx-7xxx-xxxx-xxxxxxxxxxxx`):
+**Cause**: The UUID is not in valid UUIDv7 format. This error is raised only by **transactions** (update/deactivate provider or SKU, and create-sku's `provider_uuid`) during message validation — **not** by queries. Queries do not validate UUID format: a malformed UUID passed to `query sku provider` / `query sku sku` is looked up as-is and returns `provider not found` / `sku not found` instead.
+
+**Format constraints** (see the UUIDv7 regex): lowercase hex digits only, the version nibble must be `7`, and the variant nibble must be one of `8`, `9`, `a`, or `b`. Uppercase UUIDs are rejected.
+
+**Solution**: Ensure you're using a valid UUID (format: `xxxxxxxx-xxxx-7xxx-yxxx-xxxxxxxxxxxx`, where `y` is `8`/`9`/`a`/`b`):
 ```bash
-manifestd query sku provider 01912345-6789-7abc-8def-0123456789ab
+manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab --from authority
 ```
 
 ---

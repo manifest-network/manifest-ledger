@@ -66,7 +66,7 @@ Akash is a decentralized cloud compute marketplace with on-chain order matching 
 | Consideration | Current State | Future Improvement |
 |---------------|---------------|-------------------|
 | **Soft deletes** | Closed leases remain in state forever | Consider archival/pruning after X days |
-| **Index overhead** | 5+ indexes per lease (tenant, provider, state, SKU, time) | Monitor storage costs at scale |
+| **Index overhead** | 8 indexes per lease (tenant, provider, state, provider+state, tenant+state, SKU, state+created_at, custom_domain) | Monitor storage costs at scale |
 | **Provider/SKU accumulation** | Inactive entities never removed | Acceptable - provides audit trail |
 
 ### Estimated State Sizes
@@ -150,7 +150,7 @@ This section provides a detailed technical comparison of the internal architectu
 | **Module Coupling** | High - tight dependencies between deployment/market/escrow | Lower - cleaner separation between sku/billing |
 | **Escrow Approach** | Dedicated `x/escrow` module with separate account types | Integrated into `x/billing` using derived credit addresses (bank module) |
 | **Provider Registration** | Separate `x/provider` + `x/audit` for attestations | Combined in `x/sku` (Provider + SKU entities) |
-| **Lines of Code** | ~15,000+ across escrow/market/deployment | ~3,500 in billing module |
+| **Lines of Code** | ~15,000+ across escrow/market/deployment | ~8,000 hand-written Go in billing module (keeper ~4.2K, types ~1.4K, CLI ~1.3K, simulation ~1.0K; excludes tests and generated .pb.go) |
 
 ### Leasing System
 
@@ -261,25 +261,32 @@ Manifest handles side effects inline where they occur. For example, in `CloseLea
 
 ```go
 // In msg_server.go - CloseLease
-// 1. Settlement
-result, err := ms.k.PerformSettlement(cacheCtx, &lease, closeTime)
+// 1. Settlement (branch depends on whether credit is exhausted)
+shouldAutoClose, autoCloseTime, err := ms.k.ShouldAutoCloseLease(cacheCtx, &leases[i])
+if shouldAutoClose {
+    // Credit exhausted: settle in silent mode (doesn't fail on overflow)
+    result, err := ms.k.PerformSettlementSilent(cacheCtx, &leases[i], autoCloseTime)
+    settledAmounts = result.TransferAmounts
+} else {
+    // Normal close: settle accrued charges up to block time
+    settledAmounts, err = ms.settleLease(cacheCtx, &leases[i], closeTime)
+}
 
 // 2. State update
-lease.State = types.LEASE_STATE_CLOSED
-lease.ClosedAt = &closeTime
+leases[i].State = types.LEASE_STATE_CLOSED
+leases[i].ClosedAt = &closeTime
 
 // 3. Persist lease
-if err := ms.k.SetLease(cacheCtx, lease); err != nil { ... }
+if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil { ... }
 
 // 4. Update credit account counts
-ms.k.DecrementActiveLeaseCount(&creditAccount, lease.Uuid)
+ms.k.DecrementActiveLeaseCount(&creditAccount, leases[i].Uuid)
 
 // 5. Release reservation
-reservationAmount := types.CalculateLeaseReservation(lease.Items, params.MinLeaseDuration)
-creditAccount.ReservedAmounts = types.SubtractReservation(
-    creditAccount.ReservedAmounts,
-    reservationAmount,
-)
+// GetLeaseReservationAmount prefers lease.MinLeaseDurationAtCreation (when
+// non-zero) over the current param, so leases created under a different
+// min_lease_duration release the correct amount.
+ms.k.ReleaseLeaseReservation(&creditAccount, &leases[i], params.MinLeaseDuration)
 
 // 6. Save credit account
 if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil { ... }
