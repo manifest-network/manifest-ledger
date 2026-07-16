@@ -4050,6 +4050,147 @@ func TestEndBlockerIteratorDoesNotLoadAll(t *testing.T) {
 	})
 }
 
+// newExpiryFixture sets up a fixture with a provider, an SKU, and a funded tenant
+// (TestAccs[0]) credit account, plus the given pending timeout, for EndBlocker
+// pending-lease expiration tests. It returns the fixture along with the provider
+// UUID, SKU UUID, denom, and the fixture's base block time.
+func newExpiryFixture(t *testing.T, pendingTimeoutSecs uint64) (*testFixture, string, string, string, time.Time) {
+	t.Helper()
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+
+	params := types.DefaultParams()
+	params.PendingTimeout = pendingTimeoutSecs
+	params.MaxPendingLeasesPerTenant = 500
+	require.NoError(t, k.SetParams(f.Ctx, params))
+
+	provider := f.createTestProvider(t, f.TestAccs[1].String(), f.TestAccs[2].String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	tenant := f.TestAccs[0]
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000_000_000))))
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	return f, provider.Uuid, sku.Uuid, testDenom, f.Ctx.BlockTime()
+}
+
+// setPendingLease writes a PENDING lease with an explicit UUID and created_at
+// directly to state (bypassing message validation) so expiration tests can
+// control the (state, created_at) index key precisely.
+func (f *testFixture) setPendingLease(t *testing.T, uuid, providerUUID, skuUUID, denom string, createdAt time.Time) {
+	t.Helper()
+	lease := types.Lease{
+		Uuid:          uuid,
+		Tenant:        f.TestAccs[0].String(),
+		ProviderUuid:  providerUUID,
+		Items:         []types.LeaseItem{{SkuUuid: skuUUID, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
+		State:         types.LEASE_STATE_PENDING,
+		CreatedAt:     createdAt,
+		LastSettledAt: createdAt,
+	}
+	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+}
+
+// TestEndBlocker_ExpiresByCreatedAtNotUUIDOrder verifies that the range-bounded
+// EndBlocker scan selects leases to expire by created_at, not by UUID string
+// order. The StateCreatedAt index is keyed ((state, created_at), uuid); the fix
+// ranges over created_at, so a lexicographically-small UUID with a large
+// created_at must not be expired ahead of an older lease with a larger UUID.
+func TestEndBlocker_ExpiresByCreatedAtNotUUIDOrder(t *testing.T) {
+	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t, 60)
+	k := f.App.BillingKeeper
+
+	// UUID string order deliberately DISAGREES with created_at order:
+	// "aaa-young" (created later) sorts before "zzz-old" (created earlier).
+	f.setPendingLease(t, "zzz-old", providerUUID, skuUUID, denom, baseTime)
+	f.setPendingLease(t, "aaa-young", providerUUID, skuUUID, denom, baseTime.Add(90*time.Second))
+
+	// At baseTime+61s the old lease is past its 60s timeout; the young one (created
+	// at +90s) is not.
+	ctx := f.Ctx.WithBlockTime(baseTime.Add(61 * time.Second))
+	require.NoError(t, k.EndBlocker(ctx))
+
+	oldLease, err := k.GetLease(ctx, "zzz-old")
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_EXPIRED, oldLease.State,
+		"older lease must expire regardless of UUID string order")
+
+	youngLease, err := k.GetLease(ctx, "aaa-young")
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_PENDING, youngLease.State,
+		"younger lease must remain pending even though its UUID sorts first")
+}
+
+// TestEndBlocker_CutoffBoundaryIsStrict verifies that expiry is strict: a lease
+// whose created_at equals exactly (blockTime - pendingTimeout) is NOT expired,
+// while one nanosecond past the cutoff is. This locks the EndExclusive upper
+// bound of the range and the blockTime.After(...) check.
+func TestEndBlocker_CutoffBoundaryIsStrict(t *testing.T) {
+	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t, 60)
+	k := f.App.BillingKeeper
+
+	f.setPendingLease(t, "boundary-lease", providerUUID, skuUUID, denom, baseTime)
+
+	// Exactly at created_at + timeout: not expired (created_at == cutoff).
+	atCutoff := f.Ctx.WithBlockTime(baseTime.Add(60 * time.Second))
+	require.NoError(t, k.EndBlocker(atCutoff))
+	lease, err := k.GetLease(atCutoff, "boundary-lease")
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_PENDING, lease.State,
+		"lease exactly at the timeout must not expire")
+
+	// One nanosecond past the cutoff: expired.
+	pastCutoff := f.Ctx.WithBlockTime(baseTime.Add(60*time.Second + time.Nanosecond))
+	require.NoError(t, k.EndBlocker(pastCutoff))
+	lease, err = k.GetLease(pastCutoff, "boundary-lease")
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_EXPIRED, lease.State,
+		"lease one nanosecond past the timeout must expire")
+}
+
+// TestEndBlocker_YoungBacklogDoesNotBlockExpiry is the motivating scenario: a
+// large backlog of not-yet-expired (young) pending leases must neither be scanned
+// into the expiration set nor prevent the few expirable (old) leases from being
+// expired. UUIDs are arranged so the young leases sort before the old ones, to
+// prove the range bounds — not iteration luck — drive the result.
+func TestEndBlocker_YoungBacklogDoesNotBlockExpiry(t *testing.T) {
+	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t, 60)
+	k := f.App.BillingKeeper
+
+	oldUUIDs := make([]string, 5)
+	for i := range oldUUIDs {
+		oldUUIDs[i] = fmt.Sprintf("zzz-old-%02d", i)
+		f.setPendingLease(t, oldUUIDs[i], providerUUID, skuUUID, denom, baseTime)
+	}
+	youngUUIDs := make([]string, 300)
+	for i := range youngUUIDs {
+		youngUUIDs[i] = fmt.Sprintf("aaa-young-%03d", i)
+		f.setPendingLease(t, youngUUIDs[i], providerUUID, skuUUID, denom, baseTime.Add(120*time.Second))
+	}
+
+	ctx := f.Ctx.WithBlockTime(baseTime.Add(61 * time.Second))
+	require.NoError(t, k.EndBlocker(ctx))
+
+	for _, u := range oldUUIDs {
+		lease, err := k.GetLease(ctx, u)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_EXPIRED, lease.State, "old lease %s must expire", u)
+	}
+	for _, u := range youngUUIDs {
+		lease, err := k.GetLease(ctx, u)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_PENDING, lease.State, "young lease %s must remain pending", u)
+	}
+	stillPending, err := k.GetPendingLeases(ctx)
+	require.NoError(t, err)
+	require.Len(t, stillPending, 300, "only the 5 old leases should expire; the 300 young leases remain")
+}
+
 // TestMsgWithdraw_ProviderWideMode tests the provider-wide withdrawal mode using --provider flag.
 func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 	f := initFixture(t)
