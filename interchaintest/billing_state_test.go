@@ -257,6 +257,57 @@ func testPendingLeaseExpirationIndependent(t *testing.T, ctx context.Context, tc
 		t.Logf("Credit balance after expiration: %s", balance.String())
 	})
 
+	// Regression coverage for the range-bounded EndBlocker scan (ENG-540): when the
+	// PENDING set holds both past-timeout (old) and not-yet-due (young) leases, a single
+	// EndBlocker pass must expire only the old ones and leave the young ones PENDING. The
+	// happy-path subtest above only exercises the all-expired case; this one exercises the
+	// mixed case, which is the whole point of the bounded scan (young leases are excluded
+	// by the created_at range, not merely by the per-lease timeout check).
+	t.Run("success: EndBlocker expires only past-timeout leases, not younger pending leases", func(t *testing.T) {
+		// Pending timeout is still 60s here (restored by the cleanup subtest below).
+		mkLeases := func(label string, n int) []string {
+			ids := make([]string, 0, n)
+			for i := 0; i < n; i++ {
+				items := []string{fmt.Sprintf("%s:1", tc.skuUUID)}
+				res, err := helpers.BillingCreateLease(ctx, tc.chain, expireTenant, items)
+				require.NoError(t, err, "failed to create %s lease %d", label, i)
+				txRes, err := tc.chain.GetTransaction(res.TxHash)
+				require.NoError(t, err)
+				require.Equal(t, uint32(0), txRes.Code, "%s lease %d create should succeed: %s", label, i, txRes.RawLog)
+				id, err := helpers.GetLeaseIDFromTxHash(ctx, tc.chain, res.TxHash)
+				require.NoError(t, err)
+				ids = append(ids, id)
+			}
+			return ids
+		}
+
+		// Create the OLD batch, wait most of the way through the 60s timeout, then create
+		// the YOUNG batch and assert shortly after. With ~1s blocks the old leases are
+		// ~105 blocks old (well past 60s) while the young leases are only ~15 blocks old
+		// (well within 60s). The wide gap keeps the assertion robust to block-time drift
+		// (it holds for any block time roughly in the 0.6s-3s range).
+		oldLeases := mkLeases("old", 2)
+		require.NoError(t, testutil.WaitForBlocks(ctx, 90, tc.chain))
+		youngLeases := mkLeases("young", 2)
+		require.NoError(t, testutil.WaitForBlocks(ctx, 15, tc.chain))
+
+		// The EndBlocker must have expired the old (past-timeout) leases...
+		for _, id := range oldLeases {
+			lease, err := helpers.BillingQueryLease(ctx, tc.chain, id)
+			require.NoError(t, err)
+			require.Equal(t, billingtypes.LEASE_STATE_EXPIRED, lease.Lease.GetState(),
+				"past-timeout lease %s should be expired", id)
+		}
+		// ...while leaving the younger, not-yet-due leases PENDING (excluded by the range).
+		for _, id := range youngLeases {
+			lease, err := helpers.BillingQueryLease(ctx, tc.chain, id)
+			require.NoError(t, err)
+			require.Equal(t, billingtypes.LEASE_STATE_PENDING, lease.Lease.GetState(),
+				"not-yet-due lease %s should still be pending", id)
+		}
+		t.Log("EndBlocker expired only the past-timeout leases; younger pending leases were correctly excluded")
+	})
+
 	t.Run("cleanup: restore original pending timeout", func(t *testing.T) {
 		res, err := helpers.BillingUpdateParams(
 			ctx, tc.chain, tc.authority,
