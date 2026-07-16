@@ -257,13 +257,18 @@ func testPendingLeaseExpirationIndependent(t *testing.T, ctx context.Context, tc
 		t.Logf("Credit balance after expiration: %s", balance.String())
 	})
 
-	// Regression coverage for the range-bounded EndBlocker scan (ENG-540): when the
-	// PENDING set holds both past-timeout (old) and not-yet-due (young) leases, a single
-	// EndBlocker pass must expire only the old ones and leave the young ones PENDING. The
-	// happy-path subtest above only exercises the all-expired case; this one exercises the
-	// mixed case, which is the whole point of the bounded scan (young leases are excluded
-	// by the created_at range, not merely by the per-lease timeout check).
-	t.Run("success: EndBlocker expires only past-timeout leases, not younger pending leases", func(t *testing.T) {
+	// Regression coverage for the range-bounded EndBlocker scan (ENG-540): on a real chain
+	// the EndBlocker must expire past-timeout leases (created_at below the cutoff) while
+	// leaving not-yet-due leases (created_at at/above the cutoff) PENDING. The happy-path
+	// subtest above only exercises the all-expired case.
+	//
+	// The timing is deliberately insensitive to block time: we first wait until the OLD
+	// batch is fully expired, then create the YOUNG batch and assert after only a couple of
+	// blocks, so the young leases are just a few seconds old regardless of block time
+	// (interchaintest forces timeout_commit=2s, i.e. ~2s/block; the timeout is 60s). The
+	// strict "both states present in a single scan" case is covered deterministically by
+	// the unit test TestEndBlocker_YoungBacklogDoesNotBlockExpiry.
+	t.Run("success: EndBlocker expires past-timeout leases but not younger pending leases", func(t *testing.T) {
 		// Pending timeout is still 60s here (restored by the cleanup subtest below).
 		mkLeases := func(label string, n int) []string {
 			ids := make([]string, 0, n)
@@ -281,31 +286,31 @@ func testPendingLeaseExpirationIndependent(t *testing.T, ctx context.Context, tc
 			return ids
 		}
 
-		// Create the OLD batch, wait most of the way through the 60s timeout, then create
-		// the YOUNG batch and assert shortly after. With ~1s blocks the old leases are
-		// ~105 blocks old (well past 60s) while the young leases are only ~15 blocks old
-		// (well within 60s). The wide gap keeps the assertion robust to block-time drift
-		// (it holds for any block time roughly in the 0.6s-3s range).
+		// Phase 1: create the OLD batch and wait well past the 60s timeout, then confirm the
+		// EndBlocker expired them. 45 blocks is ~90s at the ~2s block time (and stays >60s
+		// for any block interval down to ~1.4s); waiting more blocks would only be safer.
 		oldLeases := mkLeases("old", 2)
-		require.NoError(t, testutil.WaitForBlocks(ctx, 90, tc.chain))
-		youngLeases := mkLeases("young", 2)
-		require.NoError(t, testutil.WaitForBlocks(ctx, 15, tc.chain))
-
-		// The EndBlocker must have expired the old (past-timeout) leases...
+		require.NoError(t, testutil.WaitForBlocks(ctx, 45, tc.chain))
 		for _, id := range oldLeases {
 			lease, err := helpers.BillingQueryLease(ctx, tc.chain, id)
 			require.NoError(t, err)
 			require.Equal(t, billingtypes.LEASE_STATE_EXPIRED, lease.Lease.GetState(),
 				"past-timeout lease %s should be expired", id)
 		}
-		// ...while leaving the younger, not-yet-due leases PENDING (excluded by the range).
+
+		// Phase 2: create the YOUNG batch and assert after just a couple of blocks. Their
+		// created_at is at/above the expiry cutoff, so the range scan must exclude them.
+		// Only ~2 blocks (~4s) elapse before the check — far below the 60s timeout for any
+		// realistic block time, which is what keeps this assertion robust.
+		youngLeases := mkLeases("young", 2)
+		require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
 		for _, id := range youngLeases {
 			lease, err := helpers.BillingQueryLease(ctx, tc.chain, id)
 			require.NoError(t, err)
 			require.Equal(t, billingtypes.LEASE_STATE_PENDING, lease.Lease.GetState(),
 				"not-yet-due lease %s should still be pending", id)
 		}
-		t.Log("EndBlocker expired only the past-timeout leases; younger pending leases were correctly excluded")
+		t.Log("EndBlocker expired the past-timeout leases while excluding the younger pending leases")
 	})
 
 	t.Run("cleanup: restore original pending timeout", func(t *testing.T) {
