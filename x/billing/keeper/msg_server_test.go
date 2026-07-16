@@ -4106,12 +4106,14 @@ func TestEndBlocker_ExpiresByCreatedAtNotUUIDOrder(t *testing.T) {
 	k := f.App.BillingKeeper
 
 	// UUID string order deliberately DISAGREES with created_at order:
-	// "aaa-young" (created later) sorts before "zzz-old" (created earlier).
+	// "aaa-young" (created later) sorts before "zzz-old" (created earlier). Both
+	// created_at values stay <= the EndBlocker block time (baseTime+61s) — as they
+	// always are in production — while the young one stays above the expiry cutoff.
 	f.setPendingLease(t, "zzz-old", providerUUID, skuUUID, denom, baseTime)
-	f.setPendingLease(t, "aaa-young", providerUUID, skuUUID, denom, baseTime.Add(90*time.Second))
+	f.setPendingLease(t, "aaa-young", providerUUID, skuUUID, denom, baseTime.Add(30*time.Second))
 
-	// At baseTime+61s the old lease is past its 60s timeout; the young one (created
-	// at +90s) is not.
+	// At baseTime+61s the old lease (created at baseTime) is past its 60s timeout;
+	// the young one (created at +30s, cutoff is +1s) is not.
 	ctx := f.Ctx.WithBlockTime(baseTime.Add(61 * time.Second))
 	require.NoError(t, k.EndBlocker(ctx))
 
@@ -4167,10 +4169,13 @@ func TestEndBlocker_YoungBacklogDoesNotBlockExpiry(t *testing.T) {
 		oldUUIDs[i] = fmt.Sprintf("zzz-old-%02d", i)
 		f.setPendingLease(t, oldUUIDs[i], providerUUID, skuUUID, denom, baseTime)
 	}
+	// Young leases: created_at stays <= the EndBlocker block time (baseTime+61s, as
+	// in production) but above the expiry cutoff (baseTime+1s), so they are not
+	// expirable and must be excluded from the scan.
 	youngUUIDs := make([]string, 300)
 	for i := range youngUUIDs {
 		youngUUIDs[i] = fmt.Sprintf("aaa-young-%03d", i)
-		f.setPendingLease(t, youngUUIDs[i], providerUUID, skuUUID, denom, baseTime.Add(120*time.Second))
+		f.setPendingLease(t, youngUUIDs[i], providerUUID, skuUUID, denom, baseTime.Add(30*time.Second))
 	}
 
 	ctx := f.Ctx.WithBlockTime(baseTime.Add(61 * time.Second))
