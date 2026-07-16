@@ -123,7 +123,8 @@ manifestd tx sku create-provider \
       "attributes": [
         {"key": "provider_uuid", "value": "01912345-6789-7abc-8def-0123456789ab"},
         {"key": "address", "value": "manifest1provideraddr..."},
-        {"key": "payout_address", "value": "manifest1payoutaddr..."}
+        {"key": "payout_address", "value": "manifest1payoutaddr..."},
+        {"key": "created_by", "value": "manifest1authority..."}
       ]
     }
   ]
@@ -149,11 +150,13 @@ Response:
     "address": "manifest1provideraddr...",
     "payout_address": "manifest1payoutaddr...",
     "api_url": "https://api.myprovider.com",
-    "meta_hash": "oLLD1OX2",
+    "meta_hash": "obLD1OX2",
     "active": true
   }
 }
 ```
+
+> **Note:** `meta_hash` is a `bytes` field, so it is returned base64-encoded in JSON output even though it is supplied as hex on the CLI (`a1b2c3d4e5f6` becomes `obLD1OX2`).
 
 List all providers:
 ```bash
@@ -181,6 +184,10 @@ manifestd tx sku update-provider \
   --chain-id manifest-1
 ```
 
+> **Important:** `update-provider` is a full overwrite, not a partial update. Every field — `address`, `payout_address`, `meta_hash`, and `active` — must be re-supplied. Omitting `--meta-hash` clears the existing meta_hash; only `--api-url` is preserved when left empty.
+>
+> The `<active>` argument accepts `true` only — it keeps the provider active or reactivates an inactive one. Passing `false` on an active provider fails with `cannot deactivate provider via UpdateProvider; use DeactivateProvider instead`; use `deactivate-provider` (Step 6) instead, which cascades to SKUs.
+
 ### Example: Change Payout Address
 
 ```bash
@@ -190,6 +197,7 @@ manifestd tx sku update-provider \
   manifest1newpayoutaddr111222333 \
   true \
   --api-url https://api.myprovider.com \
+  --meta-hash a1b2c3d4e5f6 \
   --from mykey \
   --chain-id manifest-1
 ```
@@ -200,12 +208,13 @@ To deactivate a provider (soft delete):
 
 ```bash
 manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab \
+  --limit 50 \
   --from mykey \
   --chain-id manifest-1
 ```
 
 > **Important:** Deactivating a provider:
-> - **Cascades to deactivate ALL SKUs** under this provider automatically
+> - **Cascades to deactivate the provider's SKUs, up to `--limit` per call** (default 50, max 100). If `has_more` is `true` in the response, run the command again with the same UUID to continue; the provider itself is deactivated on the first call only.
 > - Prevents creation of new SKUs for this provider
 > - Does NOT affect existing leases (billing continues at locked prices)
 > - The provider can still receive withdrawals from active leases
@@ -244,7 +253,7 @@ Once your provider is created, you can:
 
 **Solution:**
 - Ensure addresses start with `manifest1`
-- Verify the address is the correct length (typically 43 characters for bech32)
+- Verify the address is the correct length (typically 47 characters for a `manifest`-prefixed account address)
 
 ## Provider Lifecycle
 
@@ -263,8 +272,9 @@ Once your provider is created, you can:
 │                  new SKUs           new SKUs                    │
 │                       │                  │                      │
 │                       v                  v                      │
-│                  SKUs active       ALL SKUs cascade             │
-│                                    to INACTIVE                  │
+│                  SKUs active       SKUs cascade to INACTIVE     │
+│                                    (paginated; repeat while     │
+│                                     has_more)                   │
 │                       │                  │                      │
 │                       v                  v                      │
 │                  Existing leases   Existing leases              │
