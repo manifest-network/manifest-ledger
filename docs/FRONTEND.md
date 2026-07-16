@@ -23,7 +23,7 @@ npm install @manifest-network/manifestjs
 npm install @cosmjs/proto-signing @cosmjs/stargate @cosmjs/tendermint-rpc
 ```
 
-manifestjs is a pure-codegen package — its semver tracks the proto surface, not chain releases. As of writing, mainnet runs `v2.1.0` of the chain and the matching client is `@manifest-network/manifestjs@^2.4`.
+manifestjs is a pure-codegen package — its semver tracks the proto surface, not chain releases. As of writing, mainnet runs `v2.3.1` of the chain; pin the `@manifest-network/manifestjs` range whose proto surface matches (see the [releases page](https://github.com/liftedinit/manifest-ledger/releases)).
 
 ## Query client (read path)
 
@@ -265,18 +265,22 @@ const withdraw = liftedinit.billing.v1.MessageComposer.encoded.withdraw({
   limit: 0n,
 });
 
-// Mode 2 — provider-wide (paginated):
+// Mode 2 — provider-wide (paginated). You MUST echo the cursor each round,
+// or the loop restarts from the first ACTIVE lease and never terminates.
 async function withdrawAll(providerUuid: string) {
+  let key = new Uint8Array();                   // empty = start from the beginning
   while (true) {
     const msg = liftedinit.billing.v1.MessageComposer.encoded.withdraw({
       sender: providerKey,
       leaseUuids: [],
       providerUuid,
       limit: 100n,                             // max 100; 0 = default 50
+      key,                                     // opaque cursor from the previous response
     });
     const res = await signingClient.signAndBroadcast(providerKey, [msg], "auto");
     const decoded = liftedinit.billing.v1.MsgWithdrawResponse.decode(res.msgResponses[0].value);
     if (!decoded.hasMore) return;              // stop when chain says no more
+    key = decoded.nextKey;                     // advance past the last processed lease
   }
 }
 ```
@@ -285,11 +289,22 @@ Read-only "what would I withdraw" estimates:
 
 ```ts
 const perLease = await client.liftedinit.billing.v1.withdrawableAmount({ leaseUuid });
-const provider = await client.liftedinit.billing.v1.providerWithdrawable({
-  providerUuid,
-  limit: 100n,
-});
-// provider.amounts (per-denom totals), provider.leaseCount, provider.hasMore
+
+// Provider-wide is paginated over the provider's ACTIVE leases; each response is
+// one PAGE, so sum across pages until the cursor is empty for the true total.
+let pageKey = new Uint8Array();
+const totals: Record<string, bigint> = {};
+do {
+  const page = await client.liftedinit.billing.v1.providerWithdrawable({
+    providerUuid,
+    pagination: { key: pageKey, limit: 100n },   // page size defaults to 100, capped at 1000
+  });
+  for (const c of page.amounts) totals[c.denom] = (totals[c.denom] ?? 0n) + BigInt(c.amount);
+  pageKey = page.pagination?.nextKey ?? new Uint8Array();
+} while (pageKey.length > 0);
+// `totals` = full per-denom withdrawable across ACTIVE leases.
+// page.amounts is this page's subtotal; page.leaseCount counts only leases with a
+// non-zero withdrawable amount in that page. (`limit`/`has_more` were removed in v2.2.0.)
 ```
 
 ### Tenant authentication to your provider API
@@ -299,8 +314,14 @@ After a lease goes ACTIVE, tenants prove ownership using ADR-036 arbitrary-messa
 ```ts
 const message = `manifest lease access ${leaseUuid} ${Math.floor(Date.now() / 1000)}`;
 const sig = await window.keplr.signArbitrary("manifest-1", tenant, message);
-// POST { tenant, lease_uuid, timestamp, pub_key: sig.pub_key, signature: sig.signature }
-//   to {provider.api_url}/v1/leases/{lease_uuid}/connection
+// Base64-encode the payload and send it as a Bearer token on a GET (not a POST body):
+const authToken = btoa(JSON.stringify({
+  tenant, lease_uuid: leaseUuid, timestamp: Math.floor(Date.now() / 1000),
+  pub_key: sig.pub_key, signature: sig.signature,
+}));
+await fetch(`${provider.api_url}/v1/leases/${leaseUuid}/connection`, {
+  headers: { Authorization: `Bearer ${authToken}` },   // GET
+});
 ```
 
 Use the same recipe with Leap (`window.leap.signArbitrary(...)`) — the API is identical. Web3Auth-derived signers reach this through `OfflineAminoSigner.signAmino`.
@@ -404,9 +425,13 @@ Common subscriptions for a provider control plane:
 |---|---|
 | New pending leases for me | `lease_created.provider_uuid='<UUID>'` |
 | Tenants cancelling pending leases | `lease_cancelled.provider_uuid='<UUID>'` |
-| Auto-close on credit exhaustion | `lease_auto_closed.provider_uuid='<UUID>'` |
+| Auto-close via provider-wide withdraw | `lease_auto_closed.provider_uuid='<UUID>'` |
+| Auto-close via `CloseLease` | `lease_closed.provider_uuid='<UUID>'`, then keep rows where `closed_by='credit_exhaustion'` |
+| Auto-close via specific-lease withdraw | `provider_withdraw.provider_uuid='<UUID>'`, then keep rows where `auto_closed='true'` |
 | Domain set on my leases | `lease_custom_domain_set.provider_uuid='<UUID>'` (v2.2.0+) |
 | Domain cleared on my leases | `lease_custom_domain_cleared.provider_uuid='<UUID>'` (v2.2.0+) |
+
+> **Credit exhaustion emits different events by path.** `lease_auto_closed` fires **only** from provider-wide withdraw. A close triggered by `MsgCloseLease` emits `lease_closed` with `closed_by='credit_exhaustion'`, and one triggered by a specific-lease `MsgWithdraw` emits `provider_withdraw` with `auto_closed='true'`. To catch *every* credit-exhaustion closure, watch all three.
 
 The full event catalogue and attributes live in [`x/billing/docs/API.md#events`](../x/billing/docs/API.md#events).
 
