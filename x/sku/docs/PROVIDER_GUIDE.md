@@ -186,7 +186,7 @@ manifestd tx sku update-provider \
 
 > **Important:** `update-provider` is a full overwrite, not a partial update. Every field — `address`, `payout_address`, `meta_hash`, and `active` — must be re-supplied. Omitting `--meta-hash` clears the existing meta_hash; only `--api-url` is preserved when left empty.
 >
-> The `<active>` argument accepts `true` only — it keeps the provider active or reactivates an inactive one. Passing `false` on an active provider fails with `cannot deactivate provider via UpdateProvider; use DeactivateProvider instead`; use `deactivate-provider` (Step 6) instead, which cascades to SKUs.
+> The `<active>` argument cannot be used to deactivate a currently-active provider: passing `false` on an active provider fails with `cannot deactivate provider via UpdateProvider; use DeactivateProvider instead` — use `deactivate-provider` (Step 6) instead, which cascades to SKUs. Pass `true` to keep the provider active or to reactivate an inactive one. (An already-inactive provider also accepts `false`, leaving it inactive.)
 
 ### Example: Change Payout Address
 

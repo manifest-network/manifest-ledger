@@ -190,7 +190,7 @@ manifestd tx sku update-sku \
 
 > **Important:** `update-sku` is a FULL OVERWRITE - it replaces every field from the request. Omitting `--meta-hash` sends an empty hash and silently CLEARS the stored `meta_hash`, so re-pass the current `--meta-hash` on every update that should keep it.
 >
-> The `<active>` argument must be `true`. Passing `false` for an active SKU is rejected ("cannot deactivate SKU via UpdateSKU; use DeactivateSKU instead") - use `deactivate-sku` instead. Reactivating an inactive SKU (`active=true`) additionally requires the provider to be active.
+> The `<active>` argument cannot be used to deactivate a currently-active SKU: passing `false` for an active SKU is rejected ("cannot deactivate SKU via UpdateSKU; use DeactivateSKU instead") - use `deactivate-sku` instead. (An already-inactive SKU accepts `false` and simply stays inactive.) Reactivating an inactive SKU (`active=true`) additionally requires the provider to be active.
 
 ### Example: Update Price
 
