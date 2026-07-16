@@ -265,9 +265,14 @@ func testPendingLeaseExpirationIndependent(t *testing.T, ctx context.Context, tc
 	// The timing is deliberately insensitive to block time: we first wait until the OLD
 	// batch is fully expired, then create the YOUNG batch and assert after only a couple of
 	// blocks, so the young leases are just a few seconds old regardless of block time
-	// (interchaintest forces timeout_commit=2s, i.e. ~2s/block; the timeout is 60s). The
-	// strict "both states present in a single scan" case is covered deterministically by
-	// the unit test TestEndBlocker_YoungBacklogDoesNotBlockExpiry.
+	// (interchaintest forces timeout_commit=2s, i.e. ~2s/block; the timeout is 60s).
+	//
+	// Scope: this guards expiry *correctness* (the right leases change state on a real
+	// chain). The O(expired) bounding is a performance property that lease state cannot
+	// reveal — a full-index scan would yield identical states via the per-lease check — so
+	// it is guarded at the unit level (TestEndBlocker_YoungBacklogDoesNotBlockExpiry
+	// exercises the mixed old+young set in a single pass; the range bound itself is pinned
+	// by a mutation test).
 	t.Run("success: EndBlocker expires past-timeout leases but not younger pending leases", func(t *testing.T) {
 		// Pending timeout is still 60s here (restored by the cleanup subtest below).
 		mkLeases := func(label string, n int) []string {

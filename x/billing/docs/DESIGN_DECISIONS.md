@@ -422,7 +422,7 @@ on the lease so the reservation can be released consistently later.
 
 **Trade-offs:**
 - EndBlocker overhead (mitigated by rate limiting)
-- Scans the PENDING state index in index order (not `created_at` order) with per-lease time filtering. The StateCreatedAt index (prefix 11) exists but is unusable because collections' `PairRange` cannot do partial-prefix ranges on `Pair[int32, time.Time]`. Consequence: with >100 pending leases, the first 100 index entries are examined regardless of age, so older expired leases may wait for a later block.
+- Range-queries the StateCreatedAt index (prefix 11) for `created_at` past the timeout cutoff, so each block visits only expirable pending leases rather than the full pending set (O(expired) instead of O(total pending)). A manual `collections.Range` over the compound `((state, created_at), uuid)` key is used because collections' `PairRange` helper cannot do partial-prefix ranges on the `Pair[int32, time.Time]` reference key; `sdk.TimeKey`'s sortable encoding makes the byte range match the `created_at` range. Consequence: with >100 expirable leases, the oldest 100 are expired first and the remainder wait for later blocks (rate limit).
 - Max pending leases per tenant limit needed
 
 ## Decision 18: Tenant Cancellation of Pending Leases

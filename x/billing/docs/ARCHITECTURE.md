@@ -200,11 +200,11 @@ graph LR
 | `Leases` | `string` (UUID) | `Lease` | Primary lease storage |
 | `LeasesByTenant` | `(AccAddress, string)` | `bool` | Tenant → leases index |
 | `LeasesByProvider` | `(string, string)` | `bool` | Provider UUID → leases index |
-| `LeasesByState` | `(int32, string)` | `bool` | State → leases index (for EndBlocker pending expiration) |
+| `LeasesByState` | `(int32, string)` | `bool` | State → leases index (state-filtered lease queries) |
 | `LeasesByProviderState` | `(string, int32, string)` | `bool` | Compound provider+state → leases index |
 | `LeasesByTenantState` | `(AccAddress, int32, string)` | `bool` | Compound tenant+state → leases index |
 | `LeasesBySKU` | `(string, string)` | `bool` | Many-to-many SKU → leases index |
-| `LeasesByStateCreatedAt` | `(int32, time.Time, string)` | `bool` | Compound state+created_at → leases index (time-ordered) |
+| `LeasesByStateCreatedAt` | `(int32, time.Time, string)` | `bool` | Compound state+created_at → leases index (time-ordered; range-queried by EndBlocker to scan only expirable pending leases) |
 | `CustomDomainIndex` | `string` (lower-cased domain) | `CustomDomainTarget` | Reverse lookup `custom_domain → (lease_uuid, service_name)` for O(1) `QueryLeaseByCustomDomain`. Reconciled by `SetLease` whenever lease items change; freed on close/reject/expire/auto-close. |
 | `LeaseSequence` | - | `uint64` | Monotonic counter feeding deterministic lease UUIDv7 generation |
 | `Params` | - | `Params` | Module parameters |
@@ -718,9 +718,18 @@ func (k Keeper) EndBlocker(ctx context.Context) error {
     }
     pendingTimeout := time.Duration(params.PendingTimeout) * time.Second
 
-    // Two-pass approach to avoid iterator invalidation
-    // Pass 1: Collect UUIDs of expired pending leases
-    iter, err := k.Leases.Indexes.State.MatchExact(ctx, int32(types.LEASE_STATE_PENDING))
+    // Two-pass approach to avoid iterator invalidation.
+    // Pass 1: collect UUIDs of expired pending leases by range-querying the
+    // StateCreatedAt index (keyed ((state, created_at), uuid)) for
+    // created_at < now - pendingTimeout, so only expirable leases are visited
+    // (O(expired) instead of O(total pending)). The upper bound is exclusive at
+    // the cutoff because expiry is strict (created_at < cutoff).
+    cutoff := now.Add(-pendingTimeout)
+    pendingState := int32(types.LEASE_STATE_PENDING)
+    scanRange := new(collections.Range[collections.Pair[collections.Pair[int32, time.Time], string]]).
+        StartInclusive(collections.Join(collections.Join(pendingState, time.Time{}), "")).
+        EndExclusive(collections.Join(collections.Join(pendingState, cutoff), ""))
+    iter, err := k.Leases.Indexes.StateCreatedAt.Iterate(ctx, scanRange)
     if err != nil {
         return err
     }
@@ -739,6 +748,7 @@ func (k Keeper) EndBlocker(ctx context.Context) error {
         if err != nil {
             continue
         }
+        // Defense-in-depth: the range already guarantees created_at < cutoff.
         expirationTime := lease.CreatedAt.Add(pendingTimeout)
         if now.After(expirationTime) {
             expiredUUIDs = append(expiredUUIDs, leaseUUID)
@@ -769,7 +779,7 @@ To prevent DoS attacks where an attacker creates many pending leases to overload
 1. **Max 100 expirations per block** - Ensures bounded computation
 2. **Max pending leases per tenant** (default 10) - Limits spam from individual accounts
 3. **Remaining leases expire in subsequent blocks** - No lease is left indefinitely
-4. **State-based index** - Efficient iteration over PENDING leases only
+4. **Time-bounded index scan** - The StateCreatedAt index is range-queried for `created_at` past the cutoff, so EndBlocker visits only expirable leases, not all pending ones
 5. **Two-pass approach** - Avoids iterator invalidation during state modification
 
 #### Lease State on Expiration
@@ -933,7 +943,7 @@ This returns `sdk.Coins` to support multi-denom leases where different SKUs may 
 | GetPendingLeasesByProvider | O(k) | k = pending leases (compound index) |
 | GetLeasesBySKU | O(k) | k = leases containing the SKU (SKU index) |
 | CreditEstimate | O(k) | k = active leases for tenant (compound index) |
-| EndBlocker | O(p) | p = pending leases (max 100/block) |
+| EndBlocker | O(e) | e = expirable pending leases (created_at past cutoff), capped at 100/block via time-bounded StateCreatedAt scan |
 
 ### Future Improvements
 
@@ -941,7 +951,6 @@ The following optimizations have been identified but deferred:
 
 | Index/Feature | Current | Potential | Notes |
 |---------------|---------|-----------|-------|
-| `StateCreatedAt` for EndBlocker | O(p) all pending | O(e) expired only | The `LeaseByStateCreatedAt` index (prefix 0x0B) exists and maintains time-ordering. Once Cosmos SDK collections support efficient prefix range queries on Multi-indexes, EndBlocker can iterate only expired leases instead of all pending. Currently rate-limited to 100/block which mitigates the O(p) concern. |
 | `LeasesBySKU` + State filter | O(k) + post-filter | O(m) direct | Cannot create compound (SKU, State) index due to many-to-many design (leases contain multiple SKUs). Current post-filtering is acceptable since SKU-specific queries are infrequent. |
 
 ## Genesis Validation
