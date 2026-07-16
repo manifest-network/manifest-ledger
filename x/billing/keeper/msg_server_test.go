@@ -4084,16 +4084,30 @@ func newExpiryFixture(t *testing.T, pendingTimeoutSecs uint64) (*testFixture, st
 // control the (state, created_at) index key precisely.
 func (f *testFixture) setPendingLease(t *testing.T, uuid, providerUUID, skuUUID, denom string, createdAt time.Time) {
 	t.Helper()
+	params, err := f.App.BillingKeeper.GetParams(f.Ctx)
+	require.NoError(t, err)
+
 	lease := types.Lease{
-		Uuid:          uuid,
-		Tenant:        f.TestAccs[0].String(),
-		ProviderUuid:  providerUUID,
-		Items:         []types.LeaseItem{{SkuUuid: skuUUID, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
-		State:         types.LEASE_STATE_PENDING,
-		CreatedAt:     createdAt,
-		LastSettledAt: createdAt,
+		Uuid:                       uuid,
+		Tenant:                     f.TestAccs[0].String(),
+		ProviderUuid:               providerUUID,
+		Items:                      []types.LeaseItem{{SkuUuid: skuUUID, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
+		State:                      types.LEASE_STATE_PENDING,
+		CreatedAt:                  createdAt,
+		LastSettledAt:              createdAt,
+		MinLeaseDurationAtCreation: params.MinLeaseDuration,
 	}
 	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+
+	// Mirror CreateLease's credit-account side effects so EndBlocker expiry finds a
+	// consistent account: bump the pending count and reserve credit using the same
+	// amount ExpirePendingLease will release. Without this, expiry logs
+	// "data inconsistency" warnings (pending count already zero / reservation underflow).
+	ca, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, lease.Tenant)
+	require.NoError(t, err)
+	ca.PendingLeaseCount++
+	ca.ReservedAmounts = types.AddReservation(ca.ReservedAmounts, types.GetLeaseReservationAmount(&lease, params.MinLeaseDuration))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, ca))
 }
 
 // TestEndBlocker_ExpiresByCreatedAtNotUUIDOrder verifies that the range-bounded

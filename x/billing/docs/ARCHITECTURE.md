@@ -779,7 +779,7 @@ To prevent DoS attacks where an attacker creates many pending leases to overload
 1. **Max 100 expirations per block** - Ensures bounded computation
 2. **Max pending leases per tenant** (default 10) - Limits spam from individual accounts
 3. **Remaining leases expire in subsequent blocks** - No lease is left indefinitely
-4. **Time-bounded index scan** - The StateCreatedAt index is range-queried for `created_at` past the cutoff, so EndBlocker visits only expirable leases, not all pending ones
+4. **Time-bounded index scan** - The StateCreatedAt index is range-queried for `created_at` before the cutoff (`created_at < blockTime - pending_timeout`), so EndBlocker visits only expirable leases, not all pending ones
 5. **Two-pass approach** - Avoids iterator invalidation during state modification
 
 #### Lease State on Expiration
@@ -943,7 +943,7 @@ This returns `sdk.Coins` to support multi-denom leases where different SKUs may 
 | GetPendingLeasesByProvider | O(k) | k = pending leases (compound index) |
 | GetLeasesBySKU | O(k) | k = leases containing the SKU (SKU index) |
 | CreditEstimate | O(k) | k = active leases for tenant (compound index) |
-| EndBlocker | O(e) | e = expirable pending leases (created_at past cutoff), capped at 100/block via time-bounded StateCreatedAt scan |
+| EndBlocker | O(e) | e = expirable pending leases (created_at before cutoff, i.e. older than blockTime − pending_timeout), capped at 100/block via time-bounded StateCreatedAt scan |
 
 ### Future Improvements
 
