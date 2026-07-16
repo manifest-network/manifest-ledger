@@ -1382,19 +1382,41 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 
 	// Collect pending lease UUIDs that need expiration first, then process them.
 	// This two-pass approach avoids iterator invalidation: when ExpirePendingLease
-	// changes a lease's state from PENDING to EXPIRED, the State index is modified.
-	// Modifying an index while iterating over it can cause undefined behavior.
+	// changes a lease's state from PENDING to EXPIRED, the index is modified, and
+	// mutating an index while iterating over it can cause undefined behavior.
 	//
-	// NOTE: The StateCreatedAt compound index exists for potential time-bounded
-	// range queries, but the Collections PairRange API doesn't support partial-prefix
-	// range queries on compound reference keys (Pair[int32, time.Time]). The State
-	// index with per-lease time filtering is sufficient given the rate limit.
-	iter, err := k.Leases.Indexes.State.MatchExact(ctx, int32(types.LEASE_STATE_PENDING))
+	// A pending lease is expired once blockTime is strictly after
+	// created_at + pendingTimeout, i.e. created_at < blockTime - pendingTimeout.
+	// Range-query the StateCreatedAt index — keyed ((state, created_at), uuid) — so
+	// the first pass visits only leases that can actually expire, keeping the work
+	// O(expired) instead of O(total pending). Without this bound a large backlog of
+	// not-yet-expired pending leases is walked and proto-decoded every block even
+	// though none of them can expire.
+	//
+	// Note: the Collections pair-range helper (NewPrefixedPairRange) cannot express
+	// this — it fixes the entire reference key, so it can only pin an exact
+	// created_at, never range over it. A manual collections.Range over the composite
+	// key does work: sdk.TimeKey (SortableTimeFormat) encodes time in an
+	// order-preserving, fixed-width form, so the byte range matches the created_at
+	// range. The upper bound is exclusive at created_at == cutoff because expiry is
+	// strict (created_at < cutoff); a lease created exactly at the cutoff is not yet
+	// expired.
+	expiredCutoff := blockTime.Add(-pendingTimeout)
+	pendingState := int32(types.LEASE_STATE_PENDING)
+	scanRange := new(collections.Range[collections.Pair[collections.Pair[int32, time.Time], string]]).
+		StartInclusive(collections.Join(collections.Join(pendingState, time.Time{}), "")).
+		EndExclusive(collections.Join(collections.Join(pendingState, expiredCutoff), ""))
+
+	iter, err := k.Leases.Indexes.StateCreatedAt.Iterate(ctx, scanRange)
 	if err != nil {
 		return err
 	}
 
-	// First pass: collect UUIDs of leases that have exceeded pending timeout
+	// First pass: collect UUIDs of the (already time-bounded) pending leases,
+	// oldest first. The range restricts iteration to created_at < cutoff, so every
+	// visited lease is expirable; the explicit per-lease timeout check below is kept
+	// as defense-in-depth (it must always hold) so a not-yet-expired lease can never
+	// be expired even if the range bounds were ever mis-encoded.
 	var expiredUUIDs []string
 	for ; iter.Valid(); iter.Next() {
 		// Rate limit: stop collecting after max expirations to process
@@ -1419,7 +1441,8 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 			continue
 		}
 
-		// Check if lease has exceeded pending timeout
+		// Check if lease has exceeded pending timeout (defense-in-depth; the range
+		// bound already guarantees this).
 		expirationTime := lease.CreatedAt.Add(pendingTimeout)
 		if blockTime.After(expirationTime) {
 			expiredUUIDs = append(expiredUUIDs, leaseUUID)
