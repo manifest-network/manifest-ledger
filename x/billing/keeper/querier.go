@@ -267,11 +267,14 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	} else {
-		// Fallback for pre-lease accounts (funded but no active/pending leases or reservations).
-		// Uses GetAllBalances since we have no denom hints. This path is only reachable in the
-		// narrow window between FundCredit and lease creation; once a lease exists, the primary
-		// path above handles all queries. The node-side cost is O(n) where n is the number of
-		// denoms on the credit address, but exploiting this requires spending gas to send dust.
+		// Fallback for tenants with no denom hints: reached whenever the credit account
+		// currently has no active/pending leases and no reservations. getRelevantDenomsForTenant
+		// derives denoms only from ReservedAmounts plus ACTIVE/PENDING leases, and reservations
+		// are released when a lease closes, so this covers any inter-lease steady state (a funded
+		// account between leases), not just the window between FundCredit and the first lease.
+		// Uses GetAllBalances since we have no denom hints. The node-side cost is O(n) where n is
+		// the number of denoms on the credit address, but exploiting this requires spending gas to
+		// send dust; revisit this scan if the fallback ever becomes hot.
 		creditAddr, addrErr := types.DeriveCreditAddressFromBech32(req.Tenant)
 		if addrErr != nil {
 			return nil, status.Error(codes.Internal, addrErr.Error())
