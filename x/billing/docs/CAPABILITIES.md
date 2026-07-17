@@ -87,7 +87,7 @@ This design enables:
 When credit is exhausted:
 1. Transfer available balance to provider (partial payment)
 2. Auto-close the lease
-3. Emit an auto-close event whose type depends on the path: `lease_auto_closed` (reason=`credit_exhausted`) from provider-wide withdraw; `lease_closed` with `closed_by=credit_exhaustion` from CloseLease (only when the close settles short of accrued charges — a fully-paid CloseLease keeps the caller's reason/role); `provider_withdraw` with `auto_closed=true` from specific-lease withdraw
+3. Emit an auto-close event whose type depends on the path: `lease_auto_closed` (reason=`credit_exhausted`) from provider-wide withdraw; `lease_closed` with `closed_by=credit_exhaustion` from CloseLease on a genuine exhaustion (shortfall, accrual overflow, or a zero-balance close) — a fully-paid CloseLease keeps the caller's reason/role; `provider_withdraw` with `auto_closed=true` from specific-lease withdraw
 
 ### Overflow Protection
 

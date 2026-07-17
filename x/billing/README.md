@@ -173,7 +173,7 @@ If a tenant's credit balance is insufficient to cover accrued charges, the billi
 
 | Trigger | Event | Distinguishing attribute |
 |---|---|---|
-| `MsgCloseLease` | `lease_closed` | `closed_by = credit_exhaustion` — only when the settlement genuinely falls short; a fully-paid close keeps the caller's `reason`/role |
+| `MsgCloseLease` | `lease_closed` | `closed_by = credit_exhaustion` on a genuine exhaustion (shortfall, accrual overflow, or a zero-balance close); a fully-paid close keeps the caller's `reason`/role |
 | `MsgWithdraw` (specific lease UUIDs) | `provider_withdraw` | `auto_closed = true` (with `amount = 0`) |
 | `MsgWithdraw` (provider-wide) | `lease_auto_closed` | `reason = credit_exhausted` |
 
