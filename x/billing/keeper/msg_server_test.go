@@ -1520,10 +1520,10 @@ func TestMsgCloseLease_PartialSettlement(t *testing.T) {
 }
 
 // TestMsgCloseLease_CreditExhaustionLabelling verifies that a voluntary close is
-// only recorded as credit_exhausted on a genuine shortfall (accrued > balance).
-// When the tenant's credit exactly covers the accrued charges (accrued == balance,
-// the ShouldAutoCloseLease GTE boundary) the caller's reason and role must be
-// preserved. Regression for ENG-577.
+// only recorded as credit_exhausted on a genuine shortfall. When the tenant's
+// credit exactly covers the accrued charges — the accrued == balance case that
+// ShouldAutoCloseLease's GTE boundary also treats as exhaustion — the caller's
+// reason and role must be preserved. Regression for ENG-577.
 func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 	f := initFixture(t)
 	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
@@ -1661,6 +1661,38 @@ func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 			require.Equal(t, reason, lease.ClosureReason,
 				"lease %s: batch drawdown must not relabel a fully-paid close", id)
 		}
+	})
+
+	t.Run("overflow: an unsettled-for-a-century lease is still credit_exhausted", func(t *testing.T) {
+		// tenant0's earlier lease is already closed; reuse and re-fund it.
+		tenant := f.TestAccs[0]
+		fundTenant(t, tenant, 5000)
+
+		leaseID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		})
+
+		// Force the lease to look >100 years unsettled so accrual overflows.
+		// PerformSettlementSilent then clamps the accrued amount to the remaining
+		// balance and transfers it all (so the unpaid remainder reads zero) — the
+		// close must still be recorded as credit exhaustion, not the caller reason.
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+		require.NoError(t, err)
+		lease.LastSettledAt = f.Ctx.BlockTime().Add(-time.Duration(keeper.MaxDurationSeconds+10) * time.Second)
+		require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+
+		_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+			Sender:     tenant.String(),
+			LeaseUuids: []string{leaseID},
+			Reason:     "should-be-credit-exhausted",
+		})
+		require.NoError(t, err)
+
+		closed, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_CLOSED, closed.State)
+		require.Equal(t, types.ClosureReasonCreditExhausted, closed.ClosureReason,
+			"an overflow-driven close (accrued beyond representable range) is genuine exhaustion")
 	})
 }
 

@@ -529,9 +529,18 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			// shared credit balance so a later, fully-paid lease trips the boundary
 			// with nothing left unpaid. That is a full payment, not credit
 			// exhaustion. Only relabel the close as credit-exhausted when the
-			// settlement genuinely fell short (accrued > transferred); otherwise
-			// honour the caller-supplied reason and role (ENG-577).
-			if unpaid := result.AccruedAmounts.Sub(result.TransferAmounts...); !unpaid.IsZero() {
+			// settlement genuinely fell short; otherwise honour the caller-supplied
+			// reason and role (ENG-577).
+			//
+			// Two distinct shortfalls count as exhaustion: (1) accrual overflow,
+			// where PerformSettlementSilent clamps AccruedAmounts to the remaining
+			// balance and transfers it all — so `unpaid` reads zero and must be
+			// detected via the same duration threshold the accrual layer uses; and
+			// (2) an ordinary partial settlement where the transfer fell short of
+			// the accrued amount.
+			overflowed := int64(duration/time.Second) > MaxDurationSeconds
+			unpaid := result.AccruedAmounts.Sub(result.TransferAmounts...)
+			if overflowed || !unpaid.IsZero() {
 				leases[i].ClosureReason = types.ClosureReasonCreditExhausted
 				leaseClosedBy = "credit_exhaustion"
 			} else {
