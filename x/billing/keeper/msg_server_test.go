@@ -1694,6 +1694,39 @@ func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 		require.Equal(t, types.ClosureReasonCreditExhausted, closed.ClosureReason,
 			"an overflow-driven close (accrued beyond representable range) is genuine exhaustion")
 	})
+
+	t.Run("zero balance with zero elapsed time is still credit_exhausted", func(t *testing.T) {
+		// tenant3's earlier lease is already closed; reuse and re-fund it.
+		tenant := f.TestAccs[3]
+		fundTenant(t, tenant, 100)
+		creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+		require.NoError(t, err)
+
+		leaseID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		})
+
+		// Drain the credit balance to zero WITHOUT advancing block time, so the
+		// close sees duration == 0 and a zero balance. ShouldAutoCloseLease flags
+		// this via its zero-balance branch, but PerformSettlementSilent accrues and
+		// transfers nothing (duration == 0), so there is no unpaid remainder — the
+		// close must still be recorded as genuine credit exhaustion, not the reason.
+		bal := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom)
+		require.NoError(t, f.App.BankKeeper.SendCoins(f.Ctx, creditAddr, payoutAddr, sdk.NewCoins(bal)))
+
+		_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+			Sender:     tenant.String(),
+			LeaseUuids: []string{leaseID},
+			Reason:     "should-be-credit-exhausted",
+		})
+		require.NoError(t, err)
+
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+		require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason,
+			"a zero-balance lease closed with no time elapsed is genuine exhaustion")
+	})
 }
 
 // TestMsgCloseLease_ProviderClose tests that provider can close a lease.
