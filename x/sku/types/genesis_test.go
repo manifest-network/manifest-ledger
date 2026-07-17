@@ -206,6 +206,109 @@ func TestGenesisState_Validate(t *testing.T) {
 			},
 			expectErr: false,
 		},
+		{
+			name: "invalid: provider meta_hash exceeds max length",
+			genesis: &GenesisState{
+				Params: DefaultParams(),
+				Providers: []Provider{
+					{
+						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
+						Address:       providerAddr,
+						PayoutAddress: payoutAddr,
+						MetaHash:      make([]byte, MaxMetaHashLength+1),
+						Active:        true,
+					},
+				},
+				Skus:             []SKU{},
+				ProviderSequence: 1,
+			},
+			expectErr: true,
+			errMsg:    "meta_hash exceeds maximum length",
+		},
+		{
+			name: "valid: provider meta_hash at max length",
+			genesis: &GenesisState{
+				Params: DefaultParams(),
+				Providers: []Provider{
+					{
+						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
+						Address:       providerAddr,
+						PayoutAddress: payoutAddr,
+						MetaHash:      make([]byte, MaxMetaHashLength),
+						Active:        true,
+					},
+				},
+				Skus:             []SKU{},
+				ProviderSequence: 1,
+			},
+			expectErr: false,
+		},
+		{
+			name: "invalid: SKU meta_hash exceeds max length",
+			genesis: &GenesisState{
+				Params:    DefaultParams(),
+				Providers: []Provider{validProvider},
+				Skus: []SKU{
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ac",
+						ProviderUuid: validProvider.Uuid,
+						Name:         "Test SKU",
+						Unit:         Unit_UNIT_PER_HOUR,
+						BasePrice:    sdk.NewCoin("umfx", math.NewInt(3600)),
+						MetaHash:     make([]byte, MaxMetaHashLength+1),
+						Active:       true,
+					},
+				},
+				ProviderSequence: 1,
+				SkuSequence:      1,
+			},
+			expectErr: true,
+			errMsg:    "meta_hash exceeds maximum length",
+		},
+		{
+			name: "valid: SKU meta_hash at max length",
+			genesis: &GenesisState{
+				Params:    DefaultParams(),
+				Providers: []Provider{validProvider},
+				Skus: []SKU{
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ac",
+						ProviderUuid: validProvider.Uuid,
+						Name:         "Test SKU",
+						Unit:         Unit_UNIT_PER_HOUR,
+						BasePrice:    sdk.NewCoin("umfx", math.NewInt(3600)),
+						MetaHash:     make([]byte, MaxMetaHashLength),
+						Active:       true,
+					},
+				},
+				ProviderSequence: 1,
+				SkuSequence:      1,
+			},
+			expectErr: false,
+		},
+		{
+			name: "invalid: second SKU meta_hash exceeds max length",
+			genesis: &GenesisState{
+				Params:    DefaultParams(),
+				Providers: []Provider{validProvider},
+				Skus: []SKU{
+					validSKU,
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ad",
+						ProviderUuid: validProvider.Uuid,
+						Name:         "Second SKU",
+						Unit:         Unit_UNIT_PER_HOUR,
+						BasePrice:    sdk.NewCoin("umfx", math.NewInt(3600)),
+						MetaHash:     make([]byte, MaxMetaHashLength+1),
+						Active:       true,
+					},
+				},
+				ProviderSequence: 1,
+				SkuSequence:      2,
+			},
+			expectErr: true,
+			errMsg:    "meta_hash exceeds maximum length",
+		},
 	}
 
 	for _, tc := range tests {

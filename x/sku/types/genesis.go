@@ -66,6 +66,10 @@ func (gs *GenesisState) Validate() error {
 				return ErrInvalidProvider.Wrapf("provider %s has invalid api_url: %s", provider.Uuid, err)
 			}
 		}
+
+		if len(provider.MetaHash) > MaxMetaHashLength {
+			return ErrInvalidProvider.Wrapf("provider %s meta_hash exceeds maximum length of %d bytes", provider.Uuid, MaxMetaHashLength)
+		}
 	}
 
 	// Validate SKUs
@@ -108,6 +112,10 @@ func (gs *GenesisState) Validate() error {
 		// Validate that price and unit combination produces a valid per-second rate
 		if err := ValidatePriceAndUnit(sku.BasePrice, sku.Unit); err != nil {
 			return ErrInvalidSKU.Wrapf("sku %s has invalid price/unit combination: %s", sku.Uuid, err)
+		}
+
+		if len(sku.MetaHash) > MaxMetaHashLength {
+			return ErrInvalidSKU.Wrapf("sku %s meta_hash exceeds maximum length of %d bytes", sku.Uuid, MaxMetaHashLength)
 		}
 	}
 
