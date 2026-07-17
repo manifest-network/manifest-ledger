@@ -522,9 +522,21 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			leases[i].State = types.LEASE_STATE_CLOSED
 			leases[i].ClosedAt = &closeTime
 			leases[i].LastSettledAt = closeTime
-			leases[i].ClosureReason = types.ClosureReasonCreditExhausted
 
-			leaseClosedBy = "credit_exhaustion"
+			// ShouldAutoCloseLease uses a GTE boundary (accrued >= balance), so it
+			// also fires when the tenant's credit EXACTLY covers the accrued
+			// charges — and in a batch an earlier lease's settlement can drain the
+			// shared credit balance so a later, fully-paid lease trips the boundary
+			// with nothing left unpaid. That is a full payment, not credit
+			// exhaustion. Only relabel the close as credit-exhausted when the
+			// settlement genuinely fell short (accrued > transferred); otherwise
+			// honour the caller-supplied reason and role (ENG-577).
+			if unpaid := result.AccruedAmounts.Sub(result.TransferAmounts...); !unpaid.IsZero() {
+				leases[i].ClosureReason = types.ClosureReasonCreditExhausted
+				leaseClosedBy = "credit_exhaustion"
+			} else {
+				leases[i].ClosureReason = msg.Reason
+			}
 		} else {
 			// Normal close - use block time
 			closeTime = blockTime

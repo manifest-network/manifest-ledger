@@ -1519,6 +1519,151 @@ func TestMsgCloseLease_PartialSettlement(t *testing.T) {
 	require.True(t, creditBalance.Amount.IsZero())
 }
 
+// TestMsgCloseLease_CreditExhaustionLabelling verifies that a voluntary close is
+// only recorded as credit_exhausted on a genuine shortfall (accrued > balance).
+// When the tenant's credit exactly covers the accrued charges (accrued == balance,
+// the ShouldAutoCloseLease GTE boundary) the caller's reason and role must be
+// preserved. Regression for ENG-577.
+func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
+	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	denom := testDenom
+
+	// Short min duration so a small credit balance can back a lease.
+	params := types.DefaultParams()
+	params.MinLeaseDuration = 10
+	require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, params))
+
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600/hour = 1 umfx/second
+
+	// fundTenant funds a tenant's credit account with exactly `amount` units.
+	fundTenant := func(t *testing.T, tenant sdk.AccAddress, amount int64) {
+		t.Helper()
+		creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+		require.NoError(t, err)
+		f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(amount))))
+		require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+			Tenant:        tenant.String(),
+			CreditAddress: creditAddr.String(),
+		}))
+	}
+
+	// closedEventBy returns the closed_by attribute of the lease_closed event for leaseID.
+	closedEventBy := func(leaseID string) string {
+		for _, ev := range f.Ctx.EventManager().Events() {
+			if ev.Type != types.EventTypeLeaseClosed {
+				continue
+			}
+			var uuid, by string
+			for _, a := range ev.Attributes {
+				switch a.Key {
+				case types.AttributeKeyLeaseUUID:
+					uuid = a.Value
+				case types.AttributeKeyClosedBy:
+					by = a.Value
+				}
+			}
+			if uuid == leaseID {
+				return by
+			}
+		}
+		return ""
+	}
+
+	t.Run("exact balance keeps caller reason (accrued == balance)", func(t *testing.T) {
+		tenant := f.TestAccs[0]
+		fundTenant(t, tenant, 100) // rate 1/s -> exactly 100s of runway
+
+		leaseID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		})
+
+		// Advance exactly 100s: accrued (100) == balance (100).
+		f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+		const reason = "migrating-to-new-provider"
+		_, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+			Sender:     tenant.String(),
+			LeaseUuids: []string{leaseID},
+			Reason:     reason,
+		})
+		require.NoError(t, err)
+
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+		require.Equal(t, reason, lease.ClosureReason,
+			"a fully-paid voluntary close must keep the caller's reason, not credit_exhausted")
+		require.Equal(t, types.AttributeValueRoleTenant, closedEventBy(leaseID),
+			"closed_by must be the caller role, not credit_exhaustion")
+
+		// Full payment: provider received all 100 units.
+		require.Equal(t, sdkmath.NewInt(100), f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom).Amount)
+	})
+
+	t.Run("genuine shortfall is recorded as credit_exhausted (accrued > balance)", func(t *testing.T) {
+		tenant := f.TestAccs[3]
+		fundTenant(t, tenant, 30) // only 30 units of runway
+
+		leaseID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		})
+
+		// Advance 100s: accrued (100) > balance (30) -> genuine exhaustion.
+		f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+		_, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+			Sender:     tenant.String(),
+			LeaseUuids: []string{leaseID},
+			Reason:     "should-be-overridden",
+		})
+		require.NoError(t, err)
+
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+		require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason,
+			"an under-funded close is a genuine credit exhaustion")
+	})
+
+	t.Run("batch: earlier lease drawdown does not mislabel a fully-paid later lease", func(t *testing.T) {
+		tenant := f.TestAccs[4]
+		fundTenant(t, tenant, 200) // exactly enough for two 1/s leases over 100s
+
+		leaseA := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		})
+		leaseB := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		})
+
+		f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+		const reason = "planned-teardown"
+		_, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+			Sender:     tenant.String(),
+			LeaseUuids: []string{leaseA, leaseB},
+			Reason:     reason,
+		})
+		require.NoError(t, err)
+
+		// Both leases are fully paid (200 credit == 200 accrued total). Closing A
+		// first drains the shared balance so B settles at exactly zero remaining,
+		// which must NOT be relabelled as credit exhaustion.
+		for _, id := range []string{leaseA, leaseB} {
+			lease, err := f.App.BillingKeeper.GetLease(f.Ctx, id)
+			require.NoError(t, err)
+			require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+			require.Equal(t, reason, lease.ClosureReason,
+				"lease %s: batch drawdown must not relabel a fully-paid close", id)
+		}
+	})
+}
+
 // TestMsgCloseLease_ProviderClose tests that provider can close a lease.
 func TestMsgCloseLease_ProviderClose(t *testing.T) {
 	f := initFixture(t)
