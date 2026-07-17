@@ -498,7 +498,7 @@ manifestd query tx [txhash] --output json | jq '.events'
 ```
 
 Events to look for (the event depends on which write path triggered the auto-close):
-- `lease_closed` with `closed_by="credit_exhaustion"` (auto-close via `CloseLease`)
+- `lease_closed` with `closed_by="credit_exhaustion"` (auto-close via `CloseLease`; a fully-paid `CloseLease` instead keeps the caller-supplied `closure_reason`/role)
 - `provider_withdraw` with `auto_closed="true"` (auto-close via specific-lease `Withdraw`)
 - `lease_auto_closed` with `reason="credit_exhausted"` (auto-close via provider-wide `Withdraw`)
 

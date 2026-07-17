@@ -470,7 +470,7 @@ sequenceDiagram
             else Authorized
                 alt ShouldAutoCloseLease (credit exhausted)
                     Keeper->>Keeper: PerformSettlementSilent()
-                    Note over Keeper: closure_reason = "credit exhausted"<br/>closed_by = "credit_exhaustion" (msg.Reason ignored)
+                    Note over Keeper: closure_reason = "credit exhausted", closed_by = "credit_exhaustion"<br/>only on a genuine shortfall (overflow, partial settlement, or zero balance);<br/>a full payment preserves msg.Reason and the caller role
                 else Normal close
                     Keeper->>Keeper: settleLease()
                     Note over Keeper: closure_reason = msg.Reason
