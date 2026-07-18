@@ -522,9 +522,33 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			leases[i].State = types.LEASE_STATE_CLOSED
 			leases[i].ClosedAt = &closeTime
 			leases[i].LastSettledAt = closeTime
-			leases[i].ClosureReason = types.ClosureReasonCreditExhausted
 
-			leaseClosedBy = "credit_exhaustion"
+			// ShouldAutoCloseLease uses a GTE boundary (accrued >= balance), so it
+			// also fires when the tenant's credit EXACTLY covers the accrued
+			// charges — and in a batch an earlier lease's settlement can drain the
+			// shared credit balance so a later, fully-paid lease trips the boundary
+			// with nothing left unpaid. That is a full payment (the credit did its
+			// job), not exhaustion, so the caller-supplied reason and role are
+			// preserved (ENG-577).
+			//
+			// Keep the caller's reason ONLY when a positive accrued charge was
+			// settled in full. Everything else ShouldAutoCloseLease flags is genuine
+			// exhaustion and keeps the credit_exhausted label:
+			//   - overflow: PerformSettlementSilent clamps AccruedAmounts to the
+			//     remaining balance and transfers it all, so `unpaid` reads zero;
+			//     detect it via the same duration threshold the accrual layer uses.
+			//   - partial settlement: the transfer fell short of the accrued amount.
+			//   - zero-balance / zero-duration: a required denom balance is already
+			//     zero with nothing accrued this instant (AccruedAmounts empty) — the
+			//     credit is exhausted even though there is no unpaid remainder.
+			overflowed := int64(duration/time.Second) > MaxDurationSeconds
+			unpaid := result.AccruedAmounts.Sub(result.TransferAmounts...)
+			if overflowed || !unpaid.IsZero() || result.AccruedAmounts.IsZero() {
+				leases[i].ClosureReason = types.ClosureReasonCreditExhausted
+				leaseClosedBy = "credit_exhaustion"
+			} else {
+				leases[i].ClosureReason = msg.Reason
+			}
 		} else {
 			// Normal close - use block time
 			closeTime = blockTime
