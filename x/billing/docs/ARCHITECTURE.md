@@ -125,8 +125,11 @@ Leases represent resource rentals with full lifecycle tracking:
 | `last_settled_at` | `Timestamp` | Last settlement time for the entire lease |
 | `rejection_reason` | `string` | Provider's rejection explanation (max 256 chars) |
 | `closure_reason` | `string` | Explanation for why the lease was closed (max 256 chars) |
-| `meta_hash` | `bytes` | Optional hash/reference to off-chain deployment data (max 64 bytes, immutable) |
+| `meta_hash` | `bytes` | Optional hash/reference to the **committed** off-chain deployment data (max 64 bytes). Set at creation; afterwards advanced only by `MsgAcknowledgeLeaseUpdate` |
 | `min_lease_duration_at_creation` | `uint64` | The `min_lease_duration` parameter value at lease creation time, for consistent reservation calculation |
+| `pending_meta_hash` | `bytes` | Requested next manifest hash awaiting the provider's decision (max 64 bytes). Only ever set while ACTIVE |
+| `pending_meta_hash_at` | `Timestamp` | When the pending update was requested; never expired by the chain |
+| `meta_hash_revision` | `uint64` | Monotonic count of acknowledged manifest versions; `0` is the creation-time hash |
 
 ### LeaseItem
 
@@ -145,6 +148,8 @@ Individual line items within a lease:
 **Service Names**: When `service_name` is set, all items in the lease must have one (all-or-nothing). Uniqueness shifts from `sku_uuid` to `service_name`, allowing the same SKU to appear multiple times for different named services (e.g., "web" and "db" both using a docker-small SKU). This enables stack deployments where the off-chain orchestrator maps each service to its container.
 
 **Custom Domains**: `custom_domain` is mutable post-creation via `MsgSetItemCustomDomain` (`service_name` and the rest of the lease are immutable). Globally unique while the lease is PENDING/ACTIVE — enforced through the `CustomDomainIndex` reverse-index that maps `domain → CustomDomainTarget{lease_uuid, service_name}`. See [Custom Domains](#custom-domains-per-item) for the full flow.
+
+**Deployment manifest**: `meta_hash` is mutable post-creation, but only through the two-step lease-update handshake (`MsgUpdateLease` then `MsgAcknowledgeLeaseUpdate`) — never by a direct write. See [Deployment Updates](#deployment-updates-the-meta_hash-handshake).
 
 > **Compute-specific fields:** `service_name` and `custom_domain` are pragmatic shortcuts that live on `LeaseItem` today. They will migrate to a future `x/deployment` module once a non-compute lease kind ships (tracked: ENG-80).
 
@@ -635,6 +640,91 @@ each free every `custom_domain` the lease held in a single SetLease call. Genesi
 ### Query
 
 `QueryLeaseByCustomDomain` is the only read path that uses the index. It lower-cases and trims the input domain before lookup so case-insensitive HTTP host headers work without per-caller normalisation. The response carries the full `Lease` plus the `service_name` of the matching item — for a 1-item legacy lease the `service_name` is `""`.
+
+## Deployment Updates (the `meta_hash` handshake)
+
+### Purpose
+
+`meta_hash` is the tenant's on-chain SHA-256 commitment to an off-chain deployment manifest, and the reference an off-chain provider validates a payload against — at upload time and again on every reprovision. Lease creation commits the first manifest. This handshake commits every subsequent version, so `SHA-256(stored payload) == lease.meta_hash` keeps holding after an update rather than only before the first one.
+
+### The atomicity problem it solves
+
+On an already-ACTIVE lease the on-chain hash and the off-chain payload cannot be changed atomically. A single "overwrite the hash" message would create a window where the chain names a manifest the provider does not have: if the upload then failed, the provider would still hold the previous payload, a reprovision would compare it against the new hash, and the lease would be unable to reprovision at all.
+
+The handshake removes the window by ordering the two writes so the on-chain commitment is always the *trailing* one:
+
+```
+tenant   MsgUpdateLease(h1)           lease.pending_meta_hash = h1
+                                      lease.meta_hash         = h0   ← unchanged
+tenant   uploads payload(h1)
+provider validates SHA-256(payload) == pending_meta_hash
+provider persists + applies payload(h1)
+provider MsgAcknowledgeLeaseUpdate(h1)
+                                      lease.meta_hash         = h1
+                                      lease.pending_meta_hash = (cleared)
+                                      lease.meta_hash_revision++
+```
+
+At every intermediate point `lease.meta_hash` still names a payload the provider actually holds, so a reboot mid-update reprovisions the previous deployment successfully. A failed or abandoned update costs nothing.
+
+### State
+
+Three fields on `Lease`:
+
+| Field | Number | Meaning |
+|-------|--------|---------|
+| `pending_meta_hash` | 16 | requested next manifest, awaiting the provider's decision |
+| `pending_meta_hash_at` | 17 | when it was requested |
+| `meta_hash_revision` | 18 | monotonic count of acknowledged versions; `0` = the creation-time hash |
+
+### Why not a new `LeaseState`
+
+A lease with a pending update is still active: it is billing, and its deployment is running. Only the manifest commitment has a request in flight. Folding that into `LeaseState` would force every `state == ACTIVE` predicate in the module — accrual, settlement, `Withdraw`, `CloseLease`, `AutoCloseLease`, `ActiveLeaseCount` and `max_leases_per_tenant`, `reconcileCustomDomainIndex`, the EndBlocker, genesis validation — to be widened, and a single miss would silently stop billing a lease or let it escape the active-lease cap. Two orthogonal concerns in one enum also multiply: the next sub-workflow would need a value per combination.
+
+Provider discovery is served instead by `PendingUpdateIndex`, a `KeySet` of `(provider_uuid, lease_uuid)` at prefix `0x0D`. It is reconciled inside `SetLease` by `reconcilePendingUpdateIndex` — an entry exists iff the lease is ACTIVE and `pending_meta_hash` is non-empty. Because reconciliation is central, every path that changes a lease maintains it for free, and genesis import rebuilds it (`InitGenesis` routes through `SetLease`), so the index needs no genesis representation.
+
+### Authorisation
+
+| Message | Accepted senders |
+|---------|------------------|
+| `MsgUpdateLease` | lease tenant, module authority, `params.allowed_list` |
+| `MsgCancelLeaseUpdate` | lease tenant, module authority, `params.allowed_list` |
+| `MsgAcknowledgeLeaseUpdate` | lease's provider, module authority |
+| `MsgRejectLeaseUpdate` | lease's provider, module authority |
+
+The tenant-side verbs reuse `Keeper.IsAuthorizedForTenant`; the provider-side verbs reuse `Keeper.ValidateProviderAuthorization`. `allowed_list` deliberately does not grant the provider-side verbs — standing in for a provider is a different power from acting for a tenant.
+
+All four require `LEASE_STATE_ACTIVE`. PENDING is excluded on purpose: that lease still has its create-time handshake, and letting the tenant change the hash between the provider's payload validation and its `MsgAcknowledgeLease` would race the acknowledgement. A tenant who committed a wrong hash pre-acknowledgement cancels the lease and creates a new one.
+
+### Supersession guard
+
+`MsgUpdateLease` overwrites an unacknowledged request rather than erroring, so a tenant is never blocked by a provider that has gone quiet. Acknowledge and reject therefore both require a `meta_hash` argument equal to the lease's current `pending_meta_hash`, failing with `ErrLeaseUpdateMismatch` otherwise. Without it, a provider that validated `h1` could commit the tenant's newer `h2` — a manifest it has never seen. Cancel takes no hash: the tenant authored the request and always means the current one.
+
+Re-requesting the byte-identical hash is a no-op: no write, no event, and specifically no refresh of `pending_meta_hash_at`, which would otherwise let a tenant reset the provider's staleness clock for free.
+
+### No expiry sweep
+
+An unacknowledged request is inert — it never affects `meta_hash`, so nothing degrades if it sits there. The chain therefore does not expire pending updates, which keeps the EndBlocker free of a second per-block scan (see [Pending Lease Expiration](#pending-lease-expiration) for the one scan that does exist and why it is bounded). Staleness is a provider-side policy over `pending_meta_hash_at`.
+
+### Lifecycle cleanup
+
+`clearPendingLeaseUpdate` runs on the module's two ACTIVE → CLOSED transitions — `CloseLease` and `AutoCloseLease` — so a terminal lease never carries a live request and the genesis invariant "pending ⟹ ACTIVE" holds. `AcknowledgeLease`, `RejectLease`, `CancelLease` and `ExpirePendingLease` all act on PENDING leases, which cannot hold a request under the ACTIVE-only gate. `Withdraw` leaves the lease ACTIVE and must not clear.
+
+### Audit trail
+
+History lives in events plus `meta_hash_revision`, not in on-chain state: a block's event stream is already a Merkle-committed, tamper-evident log, so duplicating a revision list into module state would buy nothing and grow per-lease state without bound. Rolling back to an earlier manifest still increments the revision, so a rollback is a visible new event rather than a silent rewind.
+
+Events: `lease_update_requested`, `lease_update_acknowledged`, `lease_update_rejected`, `lease_update_cancelled`. Hash attributes are hex-encoded.
+
+### Trust boundary
+
+The handshake proves that the tenant committed version N and that the provider *claimed* to apply it. It does not prove the provider runs what it acknowledged — the same boundary `MsgAcknowledgeLease` already has at lease creation. A provider can also stall indefinitely; the tenant observes an ageing `pending_meta_hash_at` and can cancel or close.
+
+Separation of duties holds only between distinct principals. Two cases collapse it, both by design rather than oversight: the module authority is accepted on all four verbs, so it can request and acknowledge in a single transaction; and a provider address that governance has also placed in `params.allowed_list` gains the tenant-side verbs for every lease it serves. Neither is a new power — the authority can already close leases and rewrite params, and `allowed_list` membership is a governance decision — and both are attributable after the fact, since `requested_by` records the authorisation role and `acknowledged_by` the sender address. If a deployment needs this *prevented* rather than merely auditable, the minimal change is to record the requesting address on the lease and reject an acknowledgement whose sender matches it.
+
+### Query
+
+`QueryPendingLeaseUpdates{provider_uuid}` paginates a `PendingUpdateIndex` prefix walk, so a provider catching up after downtime pays O(pending) instead of scanning every lease it owns. It needs no state filter — the index only ever holds ACTIVE leases with a request outstanding.
 
 ## Settlement Triggers
 

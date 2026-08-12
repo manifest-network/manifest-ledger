@@ -94,6 +94,16 @@ service Query {
     option (google.api.http).get =
         "/liftedinit/billing/v1/lease/by-domain/{custom_domain}";
   }
+
+  // PendingLeaseUpdates returns the provider's ACTIVE leases that carry a
+  // pending_meta_hash awaiting acknowledgement or rejection. This is how a
+  // provider catches up on update requests it missed, without scanning every
+  // lease it owns.
+  rpc PendingLeaseUpdates(QueryPendingLeaseUpdatesRequest)
+      returns (QueryPendingLeaseUpdatesResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/leases/provider/{provider_uuid}/pending-updates";
+  }
 }
 
 // QueryParamsRequest is the request type for the Query/Params RPC method.
@@ -412,4 +422,27 @@ message QueryLeaseByCustomDomainResponse {
   // service_name identifies the specific LeaseItem within the lease.
   // For a 1-item legacy lease, this is "".
   string service_name = 2 [(gogoproto.jsontag) = "service_name,omitempty"];
+}
+
+// QueryPendingLeaseUpdatesRequest is the request type for the
+// Query/PendingLeaseUpdates RPC method.
+message QueryPendingLeaseUpdatesRequest {
+  // provider_uuid is the provider UUID whose pending updates to list.
+  string provider_uuid = 1 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+}
+
+// QueryPendingLeaseUpdatesResponse is the response type for the
+// Query/PendingLeaseUpdates RPC method.
+message QueryPendingLeaseUpdatesResponse {
+  // leases is the list of ACTIVE leases with a pending_meta_hash set.
+  repeated Lease leases = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "leases"
+  ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
 }

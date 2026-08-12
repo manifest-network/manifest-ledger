@@ -19,6 +19,10 @@ var (
 	_ sdk.Msg = &MsgRejectLease{}
 	_ sdk.Msg = &MsgCancelLease{}
 	_ sdk.Msg = &MsgSetItemCustomDomain{}
+	_ sdk.Msg = &MsgUpdateLease{}
+	_ sdk.Msg = &MsgAcknowledgeLeaseUpdate{}
+	_ sdk.Msg = &MsgRejectLeaseUpdate{}
+	_ sdk.Msg = &MsgCancelLeaseUpdate{}
 )
 
 // IsValidDNSLabel checks whether name is a valid DNS label per RFC 1123:
@@ -411,4 +415,69 @@ func (m *MsgSetItemCustomDomain) ValidateBasic() error {
 		return nil
 	}
 	return IsValidFQDN(m.CustomDomain)
+}
+
+// validateLeaseUpdateAddressing performs the checks the four lease-update
+// messages share: a well-formed bech32 sender and a well-formed lease UUID.
+func validateLeaseUpdateAddressing(sender, leaseUUID string) error {
+	if _, err := sdk.AccAddressFromBech32(sender); err != nil {
+		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
+	}
+	if leaseUUID == "" {
+		return ErrInvalidLease.Wrap("lease_uuid cannot be empty")
+	}
+	if !pkguuid.IsValidUUID(leaseUUID) {
+		return ErrInvalidLease.Wrapf("invalid lease_uuid format: %s", leaseUUID)
+	}
+	return nil
+}
+
+// validateLeaseUpdateMetaHash bounds a lease-update meta_hash. Unlike lease
+// creation, where the field is optional, every lease-update message names a
+// specific manifest version and so requires a non-empty hash.
+func validateLeaseUpdateMetaHash(metaHash []byte) error {
+	if len(metaHash) == 0 {
+		return ErrInvalidMetaHash.Wrap("meta_hash cannot be empty")
+	}
+	if len(metaHash) > MaxMetaHashLength {
+		return ErrInvalidMetaHash.Wrapf("meta_hash exceeds maximum length of %d bytes", MaxMetaHashLength)
+	}
+	return nil
+}
+
+// ValidateBasic performs basic validation for MsgUpdateLease.
+func (m *MsgUpdateLease) ValidateBasic() error {
+	if err := validateLeaseUpdateAddressing(m.Sender, m.LeaseUuid); err != nil {
+		return err
+	}
+	return validateLeaseUpdateMetaHash(m.MetaHash)
+}
+
+// ValidateBasic performs basic validation for MsgAcknowledgeLeaseUpdate.
+func (m *MsgAcknowledgeLeaseUpdate) ValidateBasic() error {
+	if err := validateLeaseUpdateAddressing(m.Sender, m.LeaseUuid); err != nil {
+		return err
+	}
+	return validateLeaseUpdateMetaHash(m.MetaHash)
+}
+
+// ValidateBasic performs basic validation for MsgRejectLeaseUpdate.
+func (m *MsgRejectLeaseUpdate) ValidateBasic() error {
+	if err := validateLeaseUpdateAddressing(m.Sender, m.LeaseUuid); err != nil {
+		return err
+	}
+	if err := validateLeaseUpdateMetaHash(m.MetaHash); err != nil {
+		return err
+	}
+	if len(m.Reason) > MaxRejectionReasonLength {
+		return ErrInvalidRejectionReason.Wrapf("reason exceeds maximum length of %d characters", MaxRejectionReasonLength)
+	}
+	return nil
+}
+
+// ValidateBasic performs basic validation for MsgCancelLeaseUpdate.
+// It carries no meta_hash: the tenant authored the request and always means
+// the one currently pending.
+func (m *MsgCancelLeaseUpdate) ValidateBasic() error {
+	return validateLeaseUpdateAddressing(m.Sender, m.LeaseUuid)
 }

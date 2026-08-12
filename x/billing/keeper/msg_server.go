@@ -568,8 +568,13 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			leases[i].ClosureReason = msg.Reason
 		}
 
-		// SetLease reconciles the custom_domain reverse index from the lease's
-		// new (terminal) state.
+		// A closed lease will never be updated again, so drop any request the
+		// provider had not acted on. Covers both branches above, which are the
+		// module's only ACTIVE → CLOSED transition outside AutoCloseLease.
+		clearPendingLeaseUpdate(&leases[i])
+
+		// SetLease reconciles the custom_domain reverse index and the
+		// pending-update index from the lease's new (terminal) state.
 		if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil {
 			return nil, types.ErrInvalidLease.Wrapf("failed to update lease %s: %s", leases[i].Uuid, err)
 		}
@@ -1080,6 +1085,57 @@ func (ms msgServer) SetItemCustomDomain(ctx context.Context, msg *types.MsgSetIt
 	return &types.MsgSetItemCustomDomainResponse{}, nil
 }
 
+// UpdateLease requests a new deployment manifest for an ACTIVE lease. The
+// committed meta_hash only advances once the provider acknowledges.
+func (ms msgServer) UpdateLease(ctx context.Context, msg *types.MsgUpdateLease) (*types.MsgUpdateLeaseResponse, error) {
+	if err := msg.ValidateBasic(); err != nil {
+		return nil, err
+	}
+	_, requestedAt, err := ms.k.RequestLeaseUpdate(ctx, msg.Sender, msg.LeaseUuid, msg.MetaHash)
+	if err != nil {
+		return nil, err
+	}
+	return &types.MsgUpdateLeaseResponse{RequestedAt: requestedAt}, nil
+}
+
+// AcknowledgeLeaseUpdate promotes a lease's pending update to its committed
+// meta_hash.
+func (ms msgServer) AcknowledgeLeaseUpdate(ctx context.Context, msg *types.MsgAcknowledgeLeaseUpdate) (*types.MsgAcknowledgeLeaseUpdateResponse, error) {
+	if err := msg.ValidateBasic(); err != nil {
+		return nil, err
+	}
+	revision, err := ms.k.AcknowledgeLeaseUpdate(ctx, msg.Sender, msg.LeaseUuid, msg.MetaHash)
+	if err != nil {
+		return nil, err
+	}
+	return &types.MsgAcknowledgeLeaseUpdateResponse{
+		AcknowledgedAt:   sdk.UnwrapSDKContext(ctx).BlockTime(),
+		MetaHashRevision: revision,
+	}, nil
+}
+
+// RejectLeaseUpdate discards a pending update the provider will not apply.
+func (ms msgServer) RejectLeaseUpdate(ctx context.Context, msg *types.MsgRejectLeaseUpdate) (*types.MsgRejectLeaseUpdateResponse, error) {
+	if err := msg.ValidateBasic(); err != nil {
+		return nil, err
+	}
+	if err := ms.k.RejectLeaseUpdate(ctx, msg.Sender, msg.LeaseUuid, msg.MetaHash, msg.Reason); err != nil {
+		return nil, err
+	}
+	return &types.MsgRejectLeaseUpdateResponse{RejectedAt: sdk.UnwrapSDKContext(ctx).BlockTime()}, nil
+}
+
+// CancelLeaseUpdate withdraws a pending update the tenant no longer wants.
+func (ms msgServer) CancelLeaseUpdate(ctx context.Context, msg *types.MsgCancelLeaseUpdate) (*types.MsgCancelLeaseUpdateResponse, error) {
+	if err := msg.ValidateBasic(); err != nil {
+		return nil, err
+	}
+	if _, err := ms.k.CancelLeaseUpdate(ctx, msg.Sender, msg.LeaseUuid); err != nil {
+		return nil, err
+	}
+	return &types.MsgCancelLeaseUpdateResponse{CancelledAt: sdk.UnwrapSDKContext(ctx).BlockTime()}, nil
+}
+
 // settleLease calculates and transfers accrued charges from tenant's credit account
 // to the provider's payout address. Returns the amounts settled (one per denom).
 func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleTime time.Time) (sdk.Coins, error) {
@@ -1155,22 +1211,11 @@ func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []
 
 // validateProviderAuthorization verifies the sender is authorized for provider operations.
 // Returns the provider if authorized, or an error if not.
+//
+// Thin wrapper over Keeper.ValidateProviderAuthorization, kept so the existing
+// msgServer call sites read unchanged.
 func (ms msgServer) validateProviderAuthorization(ctx context.Context, sender, providerUUID, operation string) (skutypes.Provider, error) {
-	provider, err := ms.k.skuKeeper.GetProvider(ctx, providerUUID)
-	if err != nil {
-		return skutypes.Provider{}, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
-	}
-
-	if sender != provider.Address && sender != ms.k.GetAuthority() {
-		return skutypes.Provider{}, types.ErrUnauthorized.Wrapf(
-			"sender %s is not authorized to %s leases for provider %s",
-			sender,
-			operation,
-			providerUUID,
-		)
-	}
-
-	return provider, nil
+	return ms.k.ValidateProviderAuthorization(ctx, sender, providerUUID, operation)
 }
 
 // AcknowledgeLease allows a provider to acknowledge one or more PENDING leases.
