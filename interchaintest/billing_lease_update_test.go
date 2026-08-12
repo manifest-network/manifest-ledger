@@ -88,7 +88,9 @@ func TestBillingLeaseUpdate(t *testing.T) {
 			"committed hash must not move until the provider acknowledges")
 		require.Equal(t, mustDecodeHex(t, hashV1Hex), got.Lease.PendingMetaHash)
 		require.NotNil(t, got.Lease.PendingMetaHashAt)
-		require.Empty(t, got.Lease.MetaHashRevision, "still revision 0")
+		// The CLI marshals with EmitDefaults, so a zero revision comes back as
+		// the string "0" rather than being omitted.
+		require.Equal(t, "0", got.Lease.MetaHashRevision, "a request is not a new revision")
 
 		// The provider can discover the request without scanning its leases.
 		pending, err := helpers.BillingQueryPendingLeaseUpdates(ctx, tc.chain, tc.providerUUID)
