@@ -1,6 +1,8 @@
 package types
 
 import (
+	"maps"
+	"slices"
 	"time"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -254,8 +256,11 @@ func (gs *GenesisState) Validate() error {
 		}
 	}
 
-	// Check for tenants with leases but no credit account
-	for tenant, expected := range expectedReservations {
+	// Check for tenants with leases but no credit account. Iterate sorted keys
+	// so that a genesis with several offending tenants always names the same
+	// one in the error, rather than an arbitrary one per run.
+	for _, tenant := range slices.Sorted(maps.Keys(expectedReservations)) {
+		expected := expectedReservations[tenant]
 		if !expected.IsZero() && !seenTenants[tenant] {
 			return ErrInvalidCreditOperation.Wrapf(
 				"tenant %s has lease reservations totaling %s but no credit account",

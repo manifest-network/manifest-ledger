@@ -9,12 +9,20 @@ import (
 	"google.golang.org/grpc/status"
 
 	sdkmath "cosmossdk.io/math"
+	storetypes "cosmossdk.io/store/types"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
+)
+
+// Service names carried by the multi-item fixtures below. Declared as constants
+// because they are also compared and switched on, not just passed as arguments.
+const (
+	serviceWeb = "web"
+	serviceDB  = "db"
 )
 
 // customDomainSetup spins up a fixture with one tenant + provider, an active
@@ -653,7 +661,7 @@ func TestSetLease_StorageLevelUniquenessRejection(t *testing.T) {
 	mutated := leaseBeforeAttempt
 	mutated.Items = append([]types.LeaseItem(nil), leaseBeforeAttempt.Items...)
 	for i := range mutated.Items {
-		if mutated.Items[i].ServiceName == "web" {
+		if mutated.Items[i].ServiceName == serviceWeb {
 			mutated.Items[i].CustomDomain = "shared.example.com"
 		}
 	}
@@ -689,7 +697,7 @@ func TestSetLease_StorageLevelUniqueness_SameLeaseCrossItem(t *testing.T) {
 	mutated := leaseBeforeAttempt
 	mutated.Items = append([]types.LeaseItem(nil), leaseBeforeAttempt.Items...)
 	for i := range mutated.Items {
-		if mutated.Items[i].ServiceName == "db" {
+		if mutated.Items[i].ServiceName == serviceDB {
 			mutated.Items[i].CustomDomain = "some.example.com"
 		}
 	}
@@ -703,6 +711,111 @@ func TestSetLease_StorageLevelUniqueness_SameLeaseCrossItem(t *testing.T) {
 	leaseAfterAttempt, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
 	require.NoError(t, err)
 	require.Equal(t, leaseBeforeAttempt, leaseAfterAttempt, "rejected SetLease must not mutate the lease record")
+}
+
+// leaseClaimingDomains builds a fresh multi-item lease and returns it with the
+// given domains pinned onto its db and web items, WITHOUT writing it. Passing
+// the result to SetLease directly bypasses the pre-flight uniqueness check in
+// SetItemCustomDomain, which is what lets these tests reach the storage-level
+// check inside reconcileCustomDomainIndex.
+func (s *customDomainSetup) leaseClaimingDomains(t *testing.T, dbDomain, webDomain string) types.Lease {
+	t.Helper()
+	lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.createMultiItemLease(t))
+	require.NoError(t, err)
+	for i := range lease.Items {
+		switch lease.Items[i].ServiceName {
+		case serviceDB:
+			lease.Items[i].CustomDomain = dbDomain
+		case serviceWeb:
+			lease.Items[i].CustomDomain = webDomain
+		}
+	}
+	return lease
+}
+
+// replayRejectedSetLease calls SetLease n times on a lease expected to be
+// rejected, metering each attempt separately, and returns the distinct
+// GasConsumed readings and distinct error strings observed.
+//
+// Go randomises map iteration order per range statement, so replaying the same
+// write in one process is what surfaces order-dependence. SetLease is atomic —
+// a rejected attempt discards its cache context — so every attempt starts from
+// identical state and the readings are directly comparable. Gas, however, is
+// metered on the parent context and is NOT rolled back, which is exactly why
+// order-dependent gas on a failing tx is consensus-critical.
+func replayRejectedSetLease(t *testing.T, s *customDomainSetup, lease types.Lease, n int) (map[uint64]int, map[string]int) {
+	t.Helper()
+	gasSeen := map[uint64]int{}
+	errSeen := map[string]int{}
+	for range n {
+		meter := storetypes.NewGasMeter(500_000_000)
+		err := s.f.App.BillingKeeper.SetLease(s.f.Ctx.WithGasMeter(meter), lease)
+		require.ErrorIs(t, err, types.ErrCustomDomainAlreadyClaimed)
+		gasSeen[meter.GasConsumed()]++
+		errSeen[err.Error()]++
+	}
+	return gasSeen, errSeen
+}
+
+// TestSetLease_FreeAndConflictingDomain_DeterministicGas is the direct ENG-645
+// regression. A single SetLease carries one free domain and one already-claimed
+// domain. Ranging over the map, the install loop either did Get→Set→Get before
+// returning (free domain visited first) or just Get (conflict visited first) —
+// the same rejected tx charging different gas on different validators. Since
+// CometBFT hashes GasUsed into LastResultsHash, that is an apphash divergence.
+// Sorted iteration fixes the order, so GasConsumed must be single-valued.
+func TestSetLease_FreeAndConflictingDomain_DeterministicGas(t *testing.T) {
+	s := setupCustomDomain(t)
+
+	// The holder parks web's domain only; db's stays unclaimed.
+	holderUUID := s.createMultiItemLease(t)
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), holderUUID, serviceWeb, "w.example.com")
+	require.NoError(t, err)
+
+	victim := s.leaseClaimingDomains(t, "free.example.com", "w.example.com")
+
+	gasSeen, errSeen := replayRejectedSetLease(t, s, victim, 100)
+	require.Len(t, gasSeen, 1, "GasUsed on a rejected write must not depend on map iteration order, saw %v", gasSeen)
+	require.Len(t, errSeen, 1, "the reported conflict must be stable, saw %v", errSeen)
+
+	// Sorted order visits db (free) before web (conflicting), so the reported
+	// conflict is always web's domain.
+	for msg := range errSeen {
+		require.Contains(t, msg, "w.example.com")
+	}
+
+	// The free domain must never survive a rejected write.
+	_, _, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, "free.example.com")
+	require.NoError(t, err)
+	require.False(t, has, "rejected SetLease must not leak the free domain into the index")
+}
+
+// TestSetLease_ConflictingDomains_DeterministicRejection covers the two-conflict
+// case, where both loops trip on their first entry so the op COUNT is the same
+// either way. Gas still diverged pre-fix, because a read is charged per byte and
+// the two index values differ in length (service_name "db" vs "web"), and the
+// reported conflict flipped between the two domains. Sorted iteration pins both:
+// the lowest-sorted service ("db") is always the one reported.
+func TestSetLease_ConflictingDomains_DeterministicRejection(t *testing.T) {
+	s := setupCustomDomain(t)
+
+	// A holder lease parks both domains via the supported path.
+	holderUUID := s.createMultiItemLease(t)
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), holderUUID, serviceDB, "d.example.com")
+	require.NoError(t, err)
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), holderUUID, serviceWeb, "w.example.com")
+	require.NoError(t, err)
+
+	victim := s.leaseClaimingDomains(t, "d.example.com", "w.example.com")
+
+	gasSeen, errSeen := replayRejectedSetLease(t, s, victim, 100)
+	require.Len(t, gasSeen, 1, "GasUsed on a rejected write must not depend on map iteration order, saw %v", gasSeen)
+	require.Len(t, errSeen, 1, "the reported conflict must be stable, saw %v", errSeen)
+
+	for msg := range errSeen {
+		require.Contains(t, msg, "d.example.com", "reconcile must always trip on the lowest-sorted service (db)")
+		require.NotContains(t, msg, "w.example.com", "web must never be the reported conflict")
+	}
 }
 
 // TestSetLease_CrossSwap covers a single SetLease call that swaps domains
@@ -725,9 +838,9 @@ func TestSetLease_CrossSwap(t *testing.T) {
 	require.NoError(t, err)
 	for i := range lease.Items {
 		switch lease.Items[i].ServiceName {
-		case "web":
+		case serviceWeb:
 			lease.Items[i].CustomDomain = "b.example.com"
-		case "db":
+		case serviceDB:
 			lease.Items[i].CustomDomain = "c.example.com"
 		}
 	}

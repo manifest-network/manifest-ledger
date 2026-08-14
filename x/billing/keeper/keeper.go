@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"cosmossdk.io/collections"
@@ -573,6 +575,14 @@ func (k *Keeper) getPreviousLease(ctx context.Context, uuid string) (types.Lease
 //
 // Items in lease.Items are immutable post-creation today, so the "item removed
 // in update" branch is theoretical but cheap to support.
+//
+// Both loops below iterate service names in sorted order rather than ranging
+// over the maps directly. SetLease runs in the consensus path, and the install
+// loop can perform some store operations and then return an error partway
+// through; Go randomises map iteration order per run, so ranging over the map
+// would make the number of store ops executed before that return — and hence
+// GasUsed, which CometBFT hashes into LastResultsHash — differ between
+// validators. Same reason msg_server.go carries an explicit tenantOrder slice.
 func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Lease, hadPrev bool, lease types.Lease) error {
 	editable := lease.State == types.LEASE_STATE_PENDING || lease.State == types.LEASE_STATE_ACTIVE
 
@@ -605,7 +615,8 @@ func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Leas
 	// has since legitimately claimed. Removing only when the index still
 	// targets (this lease, this service) closes that hole without sacrificing
 	// the audit-trail field on the closed lease record.
-	for s, prevDomain := range prevByService {
+	for _, s := range slices.Sorted(maps.Keys(prevByService)) {
+		prevDomain := prevByService[s]
 		if editable && newByService[s] == prevDomain {
 			continue
 		}
@@ -634,7 +645,8 @@ func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Leas
 
 	// Install / verify entries for current items. Storage-level uniqueness
 	// rejects overwriting a different (lease, service) pair.
-	for s, newDomain := range newByService {
+	for _, s := range slices.Sorted(maps.Keys(newByService)) {
+		newDomain := newByService[s]
 		existing, err := k.CustomDomainIndex.Get(ctx, newDomain)
 		switch {
 		case err == nil:
