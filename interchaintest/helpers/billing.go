@@ -42,6 +42,13 @@ type LeaseJSON struct {
 	ExpiredAt       *time.Time      `json:"expired_at,omitempty"`
 	ClosureReason   string          `json:"closure_reason,omitempty"`
 	MetaHash        []byte          `json:"meta_hash,omitempty"`
+
+	// Lease-update fields. MetaHashRevision is a uint64 emitted as a JSON
+	// string by the CLI (the field carries a `,string` jsontag), so it is
+	// decoded as a string here rather than a number.
+	PendingMetaHash   []byte     `json:"pending_meta_hash,omitempty"`
+	PendingMetaHashAt *time.Time `json:"pending_meta_hash_at,omitempty"`
+	MetaHashRevision  string     `json:"meta_hash_revision,omitempty"`
 }
 
 // GetState returns the LeaseState enum value from the string state.
@@ -176,6 +183,48 @@ func BillingCancelLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 func BillingSetItemCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID, serviceName, domain string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{"tx", "billing", "set-item-custom-domain", leaseUUID, serviceName, domain}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
+// BillingUpdateLease requests a new deployment manifest for an ACTIVE lease.
+// metaHash is hex-encoded. The lease's committed meta_hash is unchanged until
+// the provider acknowledges.
+func BillingUpdateLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID, metaHash string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "update-lease", leaseUUID, metaHash}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
+// BillingAcknowledgeLeaseUpdate promotes a lease's pending update to its
+// committed meta_hash. metaHash is hex-encoded and must match the pending one.
+func BillingAcknowledgeLeaseUpdate(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID, metaHash string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "acknowledge-lease-update", leaseUUID, metaHash}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
+// BillingRejectLeaseUpdate discards a pending lease update. metaHash is
+// hex-encoded and must match the pending one.
+func BillingRejectLeaseUpdate(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID, metaHash, reason string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "reject-lease-update", leaseUUID, metaHash}
+	if reason != "" {
+		cmd = append(cmd, "--reason", reason)
+	}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
+// BillingCancelLeaseUpdate withdraws a pending lease update (tenant side).
+func BillingCancelLeaseUpdate(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID string, flags ...string) (sdk.TxResponse, error) {
+	cmd := []string{"tx", "billing", "cancel-lease-update", leaseUUID}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
+// BillingQueryPendingLeaseUpdates queries a provider's leases awaiting a
+// decision on a requested manifest update.
+func BillingQueryPendingLeaseUpdates(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string) (*LeasesResponseJSON, error) {
+	var res LeasesResponseJSON
+	cmd := []string{"query", "billing", "pending-lease-updates", providerUUID}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
 }
 
 // BillingCreateAndAcknowledgeLease creates a new lease and immediately acknowledges it.

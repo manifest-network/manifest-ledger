@@ -54,6 +54,14 @@ var (
 	// SetItemCustomDomain. Entries are reconciled by reconcileCustomDomainIndex
 	// inside SetLease, derived from each item's (state, custom_domain).
 	CustomDomainIndexKey = collections.NewPrefix(12)
+
+	// PendingLeaseUpdateIndexKey saves the (provider_uuid, lease_uuid) set of
+	// leases carrying a pending_meta_hash awaiting the provider's decision.
+	// This gives providers an O(pending) "what needs my attention" walk
+	// (Query/PendingLeaseUpdates) without scanning every lease they own.
+	// Entries are reconciled by reconcilePendingUpdateIndex inside SetLease,
+	// derived from (state, pending_meta_hash), so the set is never stale.
+	PendingLeaseUpdateIndexKey = collections.NewPrefix(13)
 )
 
 const (
@@ -111,6 +119,10 @@ const (
 	EventTypeParamsUpdated            = "params_updated"
 	EventTypeLeaseCustomDomainSet     = "lease_custom_domain_set"
 	EventTypeLeaseCustomDomainCleared = "lease_custom_domain_cleared"
+	EventTypeLeaseUpdateRequested     = "lease_update_requested"
+	EventTypeLeaseUpdateAcknowledged  = "lease_update_acknowledged"
+	EventTypeLeaseUpdateRejected      = "lease_update_rejected"
+	EventTypeLeaseUpdateCancelled     = "lease_update_cancelled"
 
 	// Attribute keys for events.
 	AttributeKeyTenant            = "tenant"
@@ -142,6 +154,21 @@ const (
 	AttributeKeyCustomDomain      = "custom_domain"
 	AttributeKeySetBy             = "set_by"
 	AttributeKeyServiceName       = "service_name"
+
+	// Lease-update attributes. Hash values are hex-encoded so they survive the
+	// string-only event attribute format.
+	AttributeKeyPendingMetaHash = "pending_meta_hash"
+	// AttributeKeyPreviousMetaHash carries the previously committed meta_hash on
+	// an acknowledgement. Always emitted, empty when the lease had no prior
+	// commitment.
+	AttributeKeyPreviousMetaHash = "previous_meta_hash"
+	// AttributeKeySupersededMetaHash carries the pending hash an update request
+	// replaced. Emitted only when there was one, so its presence alone marks a
+	// supersession — a distinct fact from "the lease had no prior commitment",
+	// which is why it does not share previous_meta_hash's key.
+	AttributeKeySupersededMetaHash = "superseded_meta_hash"
+	AttributeKeyMetaHashRevision   = "meta_hash_revision"
+	AttributeKeyRequestedBy        = "requested_by"
 )
 
 // Rejection reasons for lease cancellation/rejection.

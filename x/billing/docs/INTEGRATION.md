@@ -199,7 +199,11 @@ Only the hash is stored on-chain:
 - **Field**: `lease.meta_hash`
 - **Max size**: 64 bytes (accommodates SHA-256 and SHA-512)
 - **Format**: Raw bytes
-- **Immutable**: Set once at creation, cannot be updated
+- **Mutability**: set at lease creation (revision 0) and thereafter advanced
+  only by the lease-update handshake described in
+  [Deployment Data Update](#deployment-data-update---optional). It always names
+  the manifest version the provider has committed to, so it stays the correct
+  reference for a reprovision integrity check.
 
 ### Message Format for Signing
 
@@ -315,6 +319,163 @@ await fetch(`${providerApiUrl}/v1/leases/${leaseUuid}/data`, {
   body: manifest
 });
 ```
+
+## Deployment Data Update - Optional
+
+The create-time handshake above commits the tenant's *first* manifest on-chain.
+Updating a running deployment goes through a second handshake so that every
+manifest version — not just the first — carries its own verifiable on-chain
+commitment.
+
+The problem it solves: on an already-ACTIVE lease the on-chain hash and the
+off-chain payload cannot be changed atomically. If the chain moved to the new
+hash immediately and the upload then failed, the provider would still hold the
+*old* payload while the chain named the *new* hash, and a reprovision would
+reject the only payload the provider has. So the committed `meta_hash` advances
+only at the very end, after the provider has the new payload and has applied it.
+
+### Chain fields
+
+| Field | Meaning |
+|-------|---------|
+| `lease.meta_hash` | the committed manifest — what a reprovision compares against |
+| `lease.pending_meta_hash` | the tenant's requested next manifest, not yet applied |
+| `lease.pending_meta_hash_at` | when it was requested (never expired by the chain) |
+| `lease.meta_hash_revision` | monotonic counter; `0` is the creation-time hash |
+
+### Messages
+
+| Message | Signer | Effect |
+|---------|--------|--------|
+| `MsgUpdateLease{sender, lease_uuid, meta_hash}` | tenant / authority / `allowed_list` | sets `pending_meta_hash`; supersedes an unacknowledged request |
+| `MsgAcknowledgeLeaseUpdate{sender, lease_uuid, meta_hash}` | provider / authority | `meta_hash = pending_meta_hash`, clears pending, `meta_hash_revision++` |
+| `MsgRejectLeaseUpdate{sender, lease_uuid, meta_hash, reason}` | provider / authority | clears pending, leaves `meta_hash` untouched |
+| `MsgCancelLeaseUpdate{sender, lease_uuid}` | tenant / authority / `allowed_list` | clears pending |
+
+All four require the lease to be **ACTIVE**. A PENDING lease still has its
+create-time handshake, so changing the hash there would race the provider's
+`MsgAcknowledgeLease`; a tenant who committed a wrong hash before
+acknowledgement uses `MsgCancelLease` and creates a new lease.
+
+`meta_hash` is required on acknowledge and reject and must equal the lease's
+current `pending_meta_hash`. That guard is what stops a provider from committing
+a request it never evaluated — one the tenant submitted after the provider read
+the lease. It is deliberately absent on cancel: the tenant authored the request
+and always means the one currently pending.
+
+Note that `allowed_list` grants the tenant-side verbs only. Standing in for a
+provider is a separate power and this feature does not widen it.
+
+### Workflow
+
+```
+1. Tenant prepares the new manifest and computes new_hash = SHA-256(manifest)
+2. Tenant submits MsgUpdateLease{lease_uuid, new_hash}
+     → lease.pending_meta_hash = new_hash; lease.meta_hash UNCHANGED
+3. Tenant POSTs the manifest to the provider (auth below)
+4. Provider validates SHA-256(received) == lease.pending_meta_hash
+5. Provider persists the payload and applies the new deployment
+6. Provider submits MsgAcknowledgeLeaseUpdate{lease_uuid, new_hash}
+     → lease.meta_hash = new_hash; revision++
+7. Reprovision now verifies SHA-256(stored) == lease.meta_hash
+```
+
+Steps 2-5 are the window. Throughout it, `lease.meta_hash` still names the
+payload the provider is already serving, so a reboot mid-update reprovisions the
+previous deployment successfully rather than failing closed.
+
+### Which field to validate against
+
+| Situation | Validate the payload against |
+|-----------|------------------------------|
+| create-time upload (`POST .../data`, lease PENDING) | `lease.meta_hash` |
+| update upload (`POST .../update`, lease ACTIVE) | `lease.pending_meta_hash` |
+| reprovision / reboot | `lease.meta_hash` |
+
+| Chain state | Update upload should |
+|-------------|----------------------|
+| `pending_meta_hash` empty | reject — no update was requested on-chain (`409`) |
+| `pending_meta_hash` set, matches the body's hash | accept |
+| `pending_meta_hash` set, does not match | reject (`409`) — the tenant superseded the request, or the body is wrong |
+
+### Message Format for Signing
+
+The update upload uses a distinct signing string. Reusing
+`manifest lease data ...` would be ambiguous now that a lease can have two
+hashes, and binding the token to the revision stops a token signed for revision
+N being replayed into a later window:
+
+```
+manifest lease update {lease_uuid} {pending_meta_hash_hex} {meta_hash_revision} {unix_timestamp}
+```
+
+The bearer token is otherwise identical to the create-time one, with
+`meta_hash` carrying the *pending* hash and an added `meta_hash_revision`.
+
+### API Endpoint
+
+```
+POST {provider.api_url}/v1/leases/{lease_uuid}/update
+Authorization: Bearer <base64_encoded_auth_token>
+Content-Type: application/octet-stream
+
+<raw payload bytes>
+```
+
+### Provider Obligations
+
+- **Discovery**: poll `Query/PendingLeaseUpdates{provider_uuid}` to pick up
+  requests missed during downtime, rather than scanning every lease you own.
+- **Ordering**: apply, *then* acknowledge — never the reverse. Acknowledging
+  first would move the committed hash to a manifest that is not actually
+  running, and a reprovision in that window would fail.
+- **Payload storage**: content-address the store so the previously committed
+  payload stays servable through the window. Prune it only once the
+  acknowledgement has landed on-chain.
+- **Retries**: if the acknowledgement tx fails with `ErrLeaseUpdateMismatch`,
+  the tenant superseded the request — abandon this attempt and process the new
+  one. If it fails with `ErrLeaseNotActive`, the lease closed; stop.
+- **Refusal**: use `MsgRejectLeaseUpdate` with a reason for anything you will
+  not apply. Silently never acknowledging leaves the tenant unable to tell
+  refusal from delay.
+- **Staleness**: the chain never expires a pending request, because an
+  unacknowledged request is inert and sweeping for them would add per-block work.
+  Providers own that judgement: define a maximum age over
+  `pending_meta_hash_at` beyond which you reject rather than apply a request the
+  tenant has likely abandoned.
+- **Rate limiting**: on-chain state cannot grow from repeated requests — each one
+  overwrites the last, and re-requesting an identical hash is a no-op — so the
+  chain imposes no cooldown beyond the gas each transaction costs. The churn
+  lands on you instead: a tenant can supersede a request while you are mid-apply,
+  and each supersession invalidates the work in flight. Rate-limit re-applies per
+  lease, and treat `ErrLeaseUpdateMismatch` as the signal to abandon the current
+  attempt rather than to retry it.
+
+### Reprovision
+
+```
+payload = store.get(lease_uuid)
+if SHA-256(payload) == lease.meta_hash:
+    provision(payload)                 # normal path
+else:
+    # Payload predates the on-chain update handshake, or the store is corrupt.
+    # Fall back to the local integrity reference if one was recorded, and
+    # surface the mismatch either way — it is not a normal condition.
+    fail_or_legacy_fallback()
+```
+
+### Trust Properties
+
+Be precise about what this does and does not prove:
+
+- It **does** give every manifest version a tamper-evident on-chain
+  commitment, and it **does** make an acknowledgement a non-repudiable record
+  that the provider accepted version N.
+- It does **not** prove the provider actually runs what it acknowledged — the
+  chain records the provider's claim, exactly as `MsgAcknowledgeLease` does at
+  lease creation.
+- A provider can also stall indefinitely. The tenant sees this as an ageing
+  `pending_meta_hash_at` and can cancel, or close the lease.
 
 ## Related Documentation
 

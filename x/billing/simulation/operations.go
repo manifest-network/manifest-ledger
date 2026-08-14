@@ -29,6 +29,11 @@ const (
 	OpWeightMsgCloseLease           = "op_weight_msg_billing_close_lease"             //nolint:gosec
 	OpWeightMsgWithdraw             = "op_weight_msg_billing_withdraw"                //nolint:gosec
 
+	OpWeightMsgUpdateLease            = "op_weight_msg_billing_update_lease"             //nolint:gosec
+	OpWeightMsgAcknowledgeLeaseUpdate = "op_weight_msg_billing_acknowledge_lease_update" //nolint:gosec
+	OpWeightMsgRejectLeaseUpdate      = "op_weight_msg_billing_reject_lease_update"      //nolint:gosec
+	OpWeightMsgCancelLeaseUpdate      = "op_weight_msg_billing_cancel_lease_update"      //nolint:gosec
+
 	DefaultWeightMsgFundCredit           = 50
 	DefaultWeightMsgCreateLease          = 40
 	DefaultWeightMsgCreateLeaseForTenant = 10 // Lower weight since it's authority-only
@@ -37,6 +42,32 @@ const (
 	DefaultWeightMsgCancelLease          = 10 // Lower weight for cancellations
 	DefaultWeightMsgCloseLease           = 20
 	DefaultWeightMsgWithdraw             = 30
+
+	// Lease-update handshake. These weights are tuned, not arbitrary — please
+	// measure before lowering them.
+	//
+	// UpdateLease is the only operation that gives a simulated lease a
+	// pending_meta_hash, and the other three can only act on a lease that
+	// already has one. Genesis starts with no leases, so if UpdateLease rarely
+	// succeeds, the pending state barely exists and the acknowledge/reject/
+	// cancel handlers — plus the PendingUpdateIndex and the SetLease
+	// normalisation — are never reached, while the simulation still passes.
+	//
+	// Measured over 100 blocks (successful deliveries per operation):
+	//
+	//	weight 25/20/10/10 → update 4,  ack 0, reject 0, cancel 0  ← useless
+	//	weight 60/40/15/15 → update 36, ack 10, reject 5, cancel 1 (seed 42)
+	//	                     update 19, ack 3,  reject 3, cancel 1 (seed 7)
+	//	                     update 8,  ack 1,  reject 1, cancel 0 (seed 1234)
+	//
+	// Update and acknowledge — the paths that actually move meta_hash — fire on
+	// every seed tried. Cancel is thin on some seeds; raising the weights
+	// further would crowd out the rest of the module for a handler that is
+	// reject-minus-the-hash-guard, so it is left as is.
+	DefaultWeightMsgUpdateLease            = 60
+	DefaultWeightMsgAcknowledgeLeaseUpdate = 40
+	DefaultWeightMsgRejectLeaseUpdate      = 15
+	DefaultWeightMsgCancelLeaseUpdate      = 15
 )
 
 // SKUKeeper defines the expected SKU keeper interface for simulation.
@@ -96,6 +127,26 @@ func WeightedOperations(
 		weightMsgWithdraw = DefaultWeightMsgWithdraw
 	})
 
+	var weightMsgUpdateLease int
+	appParams.GetOrGenerate(OpWeightMsgUpdateLease, &weightMsgUpdateLease, nil, func(_ *rand.Rand) {
+		weightMsgUpdateLease = DefaultWeightMsgUpdateLease
+	})
+
+	var weightMsgAcknowledgeLeaseUpdate int
+	appParams.GetOrGenerate(OpWeightMsgAcknowledgeLeaseUpdate, &weightMsgAcknowledgeLeaseUpdate, nil, func(_ *rand.Rand) {
+		weightMsgAcknowledgeLeaseUpdate = DefaultWeightMsgAcknowledgeLeaseUpdate
+	})
+
+	var weightMsgRejectLeaseUpdate int
+	appParams.GetOrGenerate(OpWeightMsgRejectLeaseUpdate, &weightMsgRejectLeaseUpdate, nil, func(_ *rand.Rand) {
+		weightMsgRejectLeaseUpdate = DefaultWeightMsgRejectLeaseUpdate
+	})
+
+	var weightMsgCancelLeaseUpdate int
+	appParams.GetOrGenerate(OpWeightMsgCancelLeaseUpdate, &weightMsgCancelLeaseUpdate, nil, func(_ *rand.Rand) {
+		weightMsgCancelLeaseUpdate = DefaultWeightMsgCancelLeaseUpdate
+	})
+
 	operations = append(operations, simulation.NewWeightedOperation(
 		weightMsgFundCredit,
 		SimulateMsgFundCredit(txGen, k, sk),
@@ -134,6 +185,26 @@ func WeightedOperations(
 	operations = append(operations, simulation.NewWeightedOperation(
 		weightMsgWithdraw,
 		SimulateMsgWithdraw(txGen, k, sk),
+	))
+
+	operations = append(operations, simulation.NewWeightedOperation(
+		weightMsgUpdateLease,
+		SimulateMsgUpdateLease(txGen, k),
+	))
+
+	operations = append(operations, simulation.NewWeightedOperation(
+		weightMsgAcknowledgeLeaseUpdate,
+		SimulateMsgAcknowledgeLeaseUpdate(txGen, k, sk),
+	))
+
+	operations = append(operations, simulation.NewWeightedOperation(
+		weightMsgRejectLeaseUpdate,
+		SimulateMsgRejectLeaseUpdate(txGen, k, sk),
+	))
+
+	operations = append(operations, simulation.NewWeightedOperation(
+		weightMsgCancelLeaseUpdate,
+		SimulateMsgCancelLeaseUpdate(txGen, k),
 	))
 
 	return operations
@@ -943,4 +1014,194 @@ func tenantCanAffordLease(ctx sdk.Context, k keeper.Keeper, tenant string, items
 		}
 	}
 	return true
+}
+
+// selectLeaseWithPendingUpdate picks a random ACTIVE lease carrying a pending
+// manifest update, plus the account that may act on it. accountFor resolves the
+// authorised signer from the lease (the tenant for tenant-side verbs, the
+// provider address for provider-side ones); returning false means the signer is
+// not a simulation account and the lease is skipped.
+//
+// Returns ok=false with a reason when nothing suitable exists, which every
+// caller turns into a NoOpMsg.
+func selectLeaseWithPendingUpdate(
+	r *rand.Rand,
+	ctx sdk.Context,
+	k keeper.Keeper,
+	accountFor func(types.Lease) (simtypes.Account, bool),
+) (types.Lease, simtypes.Account, string, bool) {
+	allLeases, err := k.GetAllLeases(ctx)
+	if err != nil || len(allLeases) == 0 {
+		return types.Lease{}, simtypes.Account{}, "no leases found", false
+	}
+
+	var candidates []types.Lease
+	for _, lease := range allLeases {
+		if lease.State == types.LEASE_STATE_ACTIVE && len(lease.PendingMetaHash) > 0 {
+			candidates = append(candidates, lease)
+		}
+	}
+	if len(candidates) == 0 {
+		return types.Lease{}, simtypes.Account{}, "no leases with a pending update", false
+	}
+
+	// Try candidates in random order: a lease whose signer is not a simulation
+	// account would otherwise starve the operation even when other leases are
+	// actionable.
+	for _, i := range r.Perm(len(candidates)) {
+		lease := candidates[i]
+		if acc, ok := accountFor(lease); ok {
+			return lease, acc, "", true
+		}
+	}
+
+	return types.Lease{}, simtypes.Account{}, "no pending update with a known signer", false
+}
+
+// findSimAccount returns the simulation account matching a bech32 address.
+func findSimAccount(accs []simtypes.Account, address string) (simtypes.Account, bool) {
+	for _, acc := range accs {
+		if acc.Address.String() == address {
+			return acc, true
+		}
+	}
+	return simtypes.Account{}, false
+}
+
+// SimulateMsgUpdateLease requests a new deployment manifest hash on an ACTIVE
+// lease. This is the only operation that puts a lease into the pending-update
+// state, so without it the PendingUpdateIndex, the SetLease normalisation and
+// the other three lease-update handlers are all unreachable under simulation.
+func SimulateMsgUpdateLease(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
+	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
+	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
+		msgType := sdk.MsgTypeURL(&types.MsgUpdateLease{})
+
+		allLeases, err := k.GetAllLeases(ctx)
+		if err != nil || len(allLeases) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no leases found"), nil, nil
+		}
+
+		var activeLeases []types.Lease
+		for _, lease := range allLeases {
+			if lease.State == types.LEASE_STATE_ACTIVE {
+				activeLeases = append(activeLeases, lease)
+			}
+		}
+		if len(activeLeases) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no active leases found"), nil, nil
+		}
+
+		var (
+			lease  types.Lease
+			sender simtypes.Account
+			found  bool
+		)
+		for _, i := range r.Perm(len(activeLeases)) {
+			if acc, ok := findSimAccount(accs, activeLeases[i].Tenant); ok {
+				lease, sender, found = activeLeases[i], acc, true
+				break
+			}
+		}
+		if !found {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant account not found in simulation"), nil, nil
+		}
+
+		// A random 32-byte hash, standing in for SHA-256 of a manifest. Drawn
+		// fresh each time so re-requests genuinely supersede rather than
+		// hitting the identical-hash no-op path.
+		metaHash := make([]byte, 32)
+		if _, err := r.Read(metaHash); err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to generate meta_hash"), nil, nil
+		}
+
+		msg := &types.MsgUpdateLease{
+			Sender:    sender.Address.String(),
+			LeaseUuid: lease.Uuid,
+			MetaHash:  metaHash,
+		}
+
+		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)
+	}
+}
+
+// SimulateMsgAcknowledgeLeaseUpdate promotes a lease's pending update to its
+// committed meta_hash, signed by the lease's provider.
+func SimulateMsgAcknowledgeLeaseUpdate(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper) simtypes.Operation {
+	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
+	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
+		msgType := sdk.MsgTypeURL(&types.MsgAcknowledgeLeaseUpdate{})
+
+		lease, sender, reason, ok := selectLeaseWithPendingUpdate(r, ctx, k, func(l types.Lease) (simtypes.Account, bool) {
+			provider, err := sk.GetProvider(ctx, l.ProviderUuid)
+			if err != nil {
+				return simtypes.Account{}, false
+			}
+			return findSimAccount(accs, provider.Address)
+		})
+		if !ok {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, reason), nil, nil
+		}
+
+		// The hash must match the lease's current pending value; anything else
+		// is rejected by the supersession guard.
+		msg := &types.MsgAcknowledgeLeaseUpdate{
+			Sender:    sender.Address.String(),
+			LeaseUuid: lease.Uuid,
+			MetaHash:  lease.PendingMetaHash,
+		}
+
+		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)
+	}
+}
+
+// SimulateMsgRejectLeaseUpdate discards a pending update, signed by the lease's
+// provider. The committed meta_hash is left untouched.
+func SimulateMsgRejectLeaseUpdate(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper) simtypes.Operation {
+	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
+	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
+		msgType := sdk.MsgTypeURL(&types.MsgRejectLeaseUpdate{})
+
+		lease, sender, reason, ok := selectLeaseWithPendingUpdate(r, ctx, k, func(l types.Lease) (simtypes.Account, bool) {
+			provider, err := sk.GetProvider(ctx, l.ProviderUuid)
+			if err != nil {
+				return simtypes.Account{}, false
+			}
+			return findSimAccount(accs, provider.Address)
+		})
+		if !ok {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, reason), nil, nil
+		}
+
+		msg := &types.MsgRejectLeaseUpdate{
+			Sender:    sender.Address.String(),
+			LeaseUuid: lease.Uuid,
+			MetaHash:  lease.PendingMetaHash,
+			Reason:    simtypes.RandStringOfLength(r, r.Intn(64)),
+		}
+
+		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)
+	}
+}
+
+// SimulateMsgCancelLeaseUpdate withdraws a pending update, signed by the tenant.
+func SimulateMsgCancelLeaseUpdate(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
+	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
+	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
+		msgType := sdk.MsgTypeURL(&types.MsgCancelLeaseUpdate{})
+
+		lease, sender, reason, ok := selectLeaseWithPendingUpdate(r, ctx, k, func(l types.Lease) (simtypes.Account, bool) {
+			return findSimAccount(accs, l.Tenant)
+		})
+		if !ok {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, reason), nil, nil
+		}
+
+		msg := &types.MsgCancelLeaseUpdate{
+			Sender:    sender.Address.String(),
+			LeaseUuid: lease.Uuid,
+		}
+
+		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)
+	}
 }

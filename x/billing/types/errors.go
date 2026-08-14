@@ -36,6 +36,8 @@ var (
 	ErrLeaseNotEditable           = errors.Register(ModuleName, 31, "lease state does not allow custom_domain edit")
 	ErrLeaseItemNotFound          = errors.Register(ModuleName, 32, "lease item not found")
 	ErrAmbiguousLeaseItem         = errors.Register(ModuleName, 33, "lease item lookup is ambiguous")
+	ErrNoPendingLeaseUpdate       = errors.Register(ModuleName, 34, "lease has no pending update")
+	ErrLeaseUpdateMismatch        = errors.Register(ModuleName, 35, "meta_hash does not match the lease's pending update")
 )
 
 // MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.

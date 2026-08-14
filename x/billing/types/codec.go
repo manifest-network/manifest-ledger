@@ -20,6 +20,13 @@ func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	legacy.RegisterAminoMsg(cdc, &MsgRejectLease{}, "lifted/billing/MsgRejectLease")
 	legacy.RegisterAminoMsg(cdc, &MsgCancelLease{}, "lifted/billing/MsgCancelLease")
 	legacy.RegisterAminoMsg(cdc, &MsgSetItemCustomDomain{}, "lifted/billing/MsgSetItemCustomDomain")
+	legacy.RegisterAminoMsg(cdc, &MsgUpdateLease{}, "lifted/billing/MsgUpdateLease")
+	// Abbreviated verb: amino caps msg names at 39 characters for Ledger nano
+	// signing and the unabbreviated name is 40. Must stay in sync with the
+	// amino.name option on MsgAcknowledgeLeaseUpdate in tx.proto.
+	legacy.RegisterAminoMsg(cdc, &MsgAcknowledgeLeaseUpdate{}, "lifted/billing/MsgAckLeaseUpdate")
+	legacy.RegisterAminoMsg(cdc, &MsgRejectLeaseUpdate{}, "lifted/billing/MsgRejectLeaseUpdate")
+	legacy.RegisterAminoMsg(cdc, &MsgCancelLeaseUpdate{}, "lifted/billing/MsgCancelLeaseUpdate")
 }
 
 // RegisterInterfaces registers the module's interface types.
@@ -36,6 +43,10 @@ func RegisterInterfaces(registry types.InterfaceRegistry) {
 		&MsgRejectLease{},
 		&MsgCancelLease{},
 		&MsgSetItemCustomDomain{},
+		&MsgUpdateLease{},
+		&MsgAcknowledgeLeaseUpdate{},
+		&MsgRejectLeaseUpdate{},
+		&MsgCancelLeaseUpdate{},
 	)
 
 	msgservice.RegisterMsgServiceDesc(registry, &_Msg_serviceDesc)
