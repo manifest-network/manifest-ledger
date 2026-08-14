@@ -705,6 +705,52 @@ func TestSetLease_StorageLevelUniqueness_SameLeaseCrossItem(t *testing.T) {
 	require.Equal(t, leaseBeforeAttempt, leaseAfterAttempt, "rejected SetLease must not mutate the lease record")
 }
 
+// TestSetLease_ConflictingDomains_DeterministicRejection pins the sorted-order
+// iteration in reconcileCustomDomainIndex. When one SetLease carries more than
+// one conflicting domain, the install loop performs a variable number of store
+// operations before it returns — so if it ranged over the map directly, the
+// ops charged (and therefore GasUsed, which CometBFT hashes into
+// LastResultsHash) would depend on Go's randomised map iteration order and
+// validators would diverge. Sorted iteration makes the loop always trip on the
+// lowest-sorted service name ("db" before "web"); asserting that stable error
+// is the practical proxy for "every node charged the same ops".
+func TestSetLease_ConflictingDomains_DeterministicRejection(t *testing.T) {
+	s := setupCustomDomain(t)
+
+	// A holder lease parks both domains via the supported path.
+	holderUUID := s.createMultiItemLease(t)
+	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), holderUUID, "db", "d.example.com")
+	require.NoError(t, err)
+	_, err = s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), holderUUID, "web", "w.example.com")
+	require.NoError(t, err)
+
+	// A second lease claims BOTH of them in a single write, bypassing the
+	// pre-flight check in SetItemCustomDomain.
+	victimUUID := s.createMultiItemLease(t)
+	victim, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, victimUUID)
+	require.NoError(t, err)
+	for i := range victim.Items {
+		switch victim.Items[i].ServiceName {
+		case "db":
+			victim.Items[i].CustomDomain = "d.example.com"
+		case "web":
+			victim.Items[i].CustomDomain = "w.example.com"
+		}
+	}
+
+	// Go randomises iteration order per range statement, so repeating the
+	// rejected write within one process is what exercises the hazard. SetLease
+	// is atomic, so each failed attempt leaves the state untouched.
+	for i := range 50 {
+		err := s.f.App.BillingKeeper.SetLease(s.f.Ctx, victim)
+		require.ErrorIs(t, err, types.ErrCustomDomainAlreadyClaimed)
+		require.Contains(t, err.Error(), "d.example.com",
+			"reconcile must always trip on the lowest-sorted service (db), attempt %d", i)
+		require.NotContains(t, err.Error(), "w.example.com",
+			"web must never be the reported conflict, attempt %d", i)
+	}
+}
+
 // TestSetLease_CrossSwap covers a single SetLease call that swaps domains
 // between two items: web's previous value moves to db, and web takes a new
 // value. The reconcile must release web's old entry before installing it on
