@@ -1896,6 +1896,55 @@ func TestGenesisState_Validate(t *testing.T) {
 	}
 }
 
+// TestGenesisState_Validate_MultipleMissingCreditAccounts pins the sorted
+// iteration over expectedReservations. With more than one offending tenant,
+// ranging over the map named an arbitrary one per run; Validate must always
+// report the lexicographically lowest address so the failure is reproducible.
+func TestGenesisState_Validate_MultipleMissingCreditAccounts(t *testing.T) {
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+	_, _, tenant2Addr := testdata.KeyTestPubAddr()
+	tenant := tenantAddr.String()
+	tenant2 := tenant2Addr.String()
+
+	now := time.Now().UTC()
+	lease := func(uuid, owner string) types.Lease {
+		return types.Lease{
+			Uuid:         uuid,
+			Tenant:       owner,
+			ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+			Items: []types.LeaseItem{
+				{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+			},
+			State:         types.LEASE_STATE_ACTIVE,
+			CreatedAt:     now,
+			LastSettledAt: now,
+		}
+	}
+
+	// Both tenants hold reservations and neither has a credit account.
+	gs := &types.GenesisState{
+		Params: types.DefaultParams(),
+		Leases: []types.Lease{
+			lease("01912345-6789-7abc-8def-0123456789ab", tenant),
+			lease("01912345-6789-7abc-8def-0123456789ae", tenant2),
+		},
+		LeaseSequence: 2,
+	}
+
+	lowest := min(tenant, tenant2)
+	highest := max(tenant, tenant2)
+
+	// Repeat: map iteration order is randomised per range statement, so a single
+	// run would have caught the unsorted version only half the time.
+	for range 50 {
+		err := gs.Validate()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "no credit account")
+		require.Contains(t, err.Error(), lowest, "must report the lexicographically lowest offending tenant")
+		require.NotContains(t, err.Error(), highest)
+	}
+}
+
 // ============================================================================
 // Genesis ValidateWithBlockTime Tests
 // ============================================================================
