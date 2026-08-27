@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"time"
 
 	sdkmath "cosmossdk.io/math"
 
@@ -463,16 +462,28 @@ func SimulateMsgAcknowledgeLease(txGen client.TxConfig, k keeper.Keeper, sk SKUK
 		// Filter to pending leases that still satisfy the activation gates. Delivering
 		// an acknowledgement for an overdue lease or a tenant already at the active
 		// cap would be an expected module rejection, not a useful simulation action.
-		// #nosec G115 -- PendingTimeout is validated in params to be within safe bounds (60-86400 seconds)
-		pendingTimeout := time.Duration(params.PendingTimeout) * time.Second
 		var pendingLeases []types.Lease
+		activeCountsByTenant := make(map[string]uint64)
+		invalidTenants := make(map[string]struct{})
 		for _, lease := range allLeases {
-			if lease.State != types.LEASE_STATE_PENDING || ctx.BlockTime().After(lease.CreatedAt.Add(pendingTimeout)) {
+			if lease.State != types.LEASE_STATE_PENDING || params.PendingLeaseDeadlineExceeded(ctx.BlockTime(), lease.CreatedAt) {
 				continue
 			}
 
-			creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
-			if err != nil || creditAccount.ActiveLeaseCount >= params.MaxLeasesPerTenant {
+			if _, invalid := invalidTenants[lease.Tenant]; invalid {
+				continue
+			}
+			activeCount, found := activeCountsByTenant[lease.Tenant]
+			if !found {
+				creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
+				if err != nil {
+					invalidTenants[lease.Tenant] = struct{}{}
+					continue
+				}
+				activeCount = creditAccount.ActiveLeaseCount
+				activeCountsByTenant[lease.Tenant] = activeCount
+			}
+			if activeCount >= params.MaxLeasesPerTenant {
 				continue
 			}
 

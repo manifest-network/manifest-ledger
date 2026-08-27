@@ -178,7 +178,7 @@ PENDING because the rate-limited EndBlocker has not expired it yet. The exact cu
 can cancel it while it remains PENDING, or either party can wait for EndBlock expiration and then
 the tenant can create a replacement lease.
 
-### "maximum leases per tenant reached" (during acknowledgement)
+### "lease acknowledgement active cap exceeded"
 
 **Cause**: Applying the complete acknowledgement batch would make at least one tenant's active
 lease count exceed `max_leases_per_tenant`. The cap is evaluated independently per tenant.

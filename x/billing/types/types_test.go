@@ -67,6 +67,19 @@ func TestParams_NewParams(t *testing.T) {
 	require.Equal(t, minLeaseDuration, params.MinLeaseDuration)
 }
 
+func TestParams_PendingLeaseDeadline(t *testing.T) {
+	params := types.DefaultParams()
+	params.PendingTimeout = 60
+	createdAt := time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC)
+	deadline := createdAt.Add(60 * time.Second)
+
+	require.Equal(t, 60*time.Second, params.PendingTimeoutDuration())
+	require.Equal(t, deadline, params.PendingLeaseDeadline(createdAt))
+	require.False(t, params.PendingLeaseDeadlineExceeded(deadline.Add(-time.Nanosecond), createdAt))
+	require.False(t, params.PendingLeaseDeadlineExceeded(deadline, createdAt))
+	require.True(t, params.PendingLeaseDeadlineExceeded(deadline.Add(time.Nanosecond), createdAt))
+}
+
 func TestParams_Validate(t *testing.T) {
 	tests := []struct {
 		name      string

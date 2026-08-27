@@ -254,7 +254,7 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 
 	// Collect relevant denoms from the tenant's leases and reserved amounts.
 	// Uses per-denom GetBalance to avoid loading dust from unrelated token sends (DoS mitigation).
-	relevantDenoms, err := q.k.getRelevantDenomsForTenant(ctx, req.Tenant, ca.ReservedAmounts)
+	relevantDenoms, err := q.k.getRelevantDenomsForTenant(ctx, ca)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -493,20 +493,17 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		return nil, status.Error(codes.InvalidArgument, "invalid tenant address")
 	}
 
-	// Verify credit account exists
-	if _, err := q.k.GetCreditAccount(ctx, req.Tenant); err != nil {
+	// Verify the credit account exists and retain its aggregate count. The stored
+	// count remains authoritative when governance lowers the current lease limit.
+	creditAccount, err := q.k.GetCreditAccount(ctx, req.Tenant)
+	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	// Bound active-lease iteration by the compatibility cap (clamped to the params' upper
-	// bounds as a hard safety ceiling). This leaves room for the compatible historical
-	// acknowledgement-overshoot band while remaining bounded against DoS on tenants with
-	// many leases.
-	params, err := q.k.GetParams(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	maxActiveLeases := activeLeaseIterationCap(params)
+	// Bound iteration by the stored count rather than current params so pre-existing
+	// active leases remain visible after a limit reduction. Retain a fixed hard ceiling
+	// for corrupt or adversarial imported state.
+	maxActiveLeases := min(creditAccount.ActiveLeaseCount, maxActiveLeaseQueryIterations)
 
 	// Calculate total rate per second across all active leases.
 	// Also collect relevant denoms for per-denom balance queries (DoS mitigation).
@@ -524,7 +521,7 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 	defer iter.Close()
 
 	for ; iter.Valid(); iter.Next() {
-		// Bounded by the param-derived cap (see maxActiveLeases above). Check before the
+		// Bounded by the aggregate-derived cap (see maxActiveLeases above). Check before the
 		// increment (mirroring getRelevantDenomsForTenant) so ActiveLeaseCount and the
 		// summed set never diverge if the cap is ever reached.
 		if activeLeaseCount >= maxActiveLeases {

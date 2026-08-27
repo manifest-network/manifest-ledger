@@ -807,24 +807,16 @@ func (k *Keeper) getCreditBalancesForDenoms(ctx context.Context, tenant string, 
 	return coins, nil
 }
 
-// activeLeaseIterationCap returns the compatibility bound for iterating a single tenant's ACTIVE
-// leases in queries. AcknowledgeLease now enforces max_leases_per_tenant against the post-batch
-// count, but state produced before that gate existed can contain an acknowledgement overshoot.
-// Retaining max_leases_per_tenant + max_pending_leases_per_tenant preserves that historical
-// overshoot band while current limits remain compatible. It does not promise completeness for
-// arbitrary imported state or state above subsequently lowered limits. The sum is clamped to the
-// params' upper bounds so queries remain bounded against DoS for any valid config.
-func activeLeaseIterationCap(params types.Params) uint64 {
-	return min(
-		params.MaxLeasesPerTenant+params.MaxPendingLeasesPerTenant,
-		types.MaxLeasesPerTenantUpperBound+types.MaxPendingLeasesPerTenantUpperBound,
-	)
-}
+// maxActiveLeaseQueryIterations is the fixed DoS ceiling for per-tenant ACTIVE
+// lease scans. It covers the maximum active count historically reachable through
+// the message handlers, including the former pending-to-active overshoot band.
+const maxActiveLeaseQueryIterations = types.MaxLeasesPerTenantUpperBound + types.MaxPendingLeasesPerTenantUpperBound
 
 // getRelevantDenomsForTenant collects the unique denoms from a tenant's active and pending leases
 // plus any denoms in the reserved amounts. This avoids GetAllBalances which loads dust from spam.
-// Uses streaming iteration with a cap to avoid loading all leases into memory.
-func (k *Keeper) getRelevantDenomsForTenant(ctx context.Context, tenant string, reservedAmounts sdk.Coins) ([]string, error) {
+// Uses the stored aggregate counts, clamped to fixed hard ceilings, so governance
+// parameter reductions do not silently truncate pre-existing leases.
+func (k *Keeper) getRelevantDenomsForTenant(ctx context.Context, creditAccount types.CreditAccount) ([]string, error) {
 	denomSet := make(map[string]struct{})
 	denoms := make([]string, 0, 4)
 
@@ -836,26 +828,19 @@ func (k *Keeper) getRelevantDenomsForTenant(ctx context.Context, tenant string, 
 	}
 
 	// Include denoms from reserved amounts
-	for _, coin := range reservedAmounts {
+	for _, coin := range creditAccount.ReservedAmounts {
 		addDenom(coin.Denom)
 	}
 
-	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
+	tenantAddr, err := sdk.AccAddressFromBech32(creditAccount.Tenant)
 	if err != nil {
 		return nil, err
 	}
 
-	// Each state's iteration is bounded by its governing param (clamped to the param's upper
-	// bound as a hard safety ceiling): active leases by the compatibility cap for legacy
-	// acknowledgement overshoot state, pending leases by max_pending_leases_per_tenant.
-	// This covers currently reachable state plus the compatible historical overshoot band while
-	// remaining bounded; arbitrary imported or post-limit-reduction state can exceed the cap.
-	params, err := k.GetParams(ctx)
-	if err != nil {
-		return nil, err
-	}
-	activeCap := activeLeaseIterationCap(params)
-	pendingCap := min(params.MaxPendingLeasesPerTenant, types.MaxPendingLeasesPerTenantUpperBound)
+	// Stored counts are maintained with the indexes by every lifecycle transition.
+	// Fixed ceilings retain a bounded cost even for corrupt or adversarial imported state.
+	activeCap := min(creditAccount.ActiveLeaseCount, maxActiveLeaseQueryIterations)
+	pendingCap := min(creditAccount.PendingLeaseCount, types.MaxPendingLeasesPerTenantUpperBound)
 
 	// Include denoms from active and pending leases via streaming iteration.
 	for _, state := range []types.LeaseState{types.LEASE_STATE_ACTIVE, types.LEASE_STATE_PENDING} {
@@ -1386,9 +1371,8 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 		return err
 	}
 
-	// Get pending timeout duration
-	// #nosec G115 -- PendingTimeout is validated in params to be within safe bounds (60-86400 seconds)
-	pendingTimeout := time.Duration(params.PendingTimeout) * time.Second
+	// Get pending timeout duration.
+	pendingTimeout := params.PendingTimeoutDuration()
 
 	// Collect pending lease UUIDs that need expiration first, then process them.
 	// This two-pass approach avoids iterator invalidation: when ExpirePendingLease
@@ -1453,7 +1437,7 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 
 		// Check if lease has exceeded pending timeout (defense-in-depth; the range
 		// bound already guarantees this).
-		if pendingLeaseDeadlineExceeded(blockTime, lease.CreatedAt, pendingTimeout) {
+		if params.PendingLeaseDeadlineExceeded(blockTime, lease.CreatedAt) {
 			expiredUUIDs = append(expiredUUIDs, leaseUUID)
 		}
 	}

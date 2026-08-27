@@ -254,7 +254,7 @@ These values are compile-time constants and cannot be changed via governance:
 | `DefaultProviderWithdrawableQueryLimit` | 100 | Default page size for the ProviderWithdrawable query (`pagination.limit`). The request's old top-level `limit` field was removed; proto field 2 is reserved. |
 | `MaxProviderWithdrawableQueryLimit` | 1000 | Maximum page size for the ProviderWithdrawable query (`pagination.limit` is clamped to this) |
 
-> **CreditEstimate / CreditAccount query iteration** is not a fixed constant — it tracks the lease params. New acknowledgements enforce `max_leases_per_tenant`, but state created before that gate existed can contain a pending→active overshoot. Active iteration therefore retains the compatibility bound `max_leases_per_tenant + max_pending_leases_per_tenant`, preserving that historical band while current limits remain compatible. Arbitrary imported state or state above subsequently lowered limits can still be truncated. Pending iteration is bounded by `max_pending_leases_per_tenant`; the resulting hard ceilings are 11,000 active iterations and 1,000 pending iterations as a DoS safeguard.
+> **CreditEstimate / CreditAccount query iteration** follows the lease counts stored on the tenant's credit account rather than the current governance limits. This keeps pre-existing leases visible after limits are lowered and covers historical acknowledgement overshoot state. The stored counts are still clamped to fixed DoS ceilings of 11,000 active iterations and 1,000 pending iterations; corrupt or adversarial imported state above those ceilings is truncated.
 
 ### Batch Operations
 

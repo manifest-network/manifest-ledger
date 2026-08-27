@@ -1173,25 +1173,16 @@ func (ms msgServer) validateProviderAuthorization(ctx context.Context, sender, p
 	return provider, nil
 }
 
-// pendingLeaseDeadlineExceeded is the single strict-boundary predicate shared by
-// acknowledgement and EndBlock expiration. A lease remains eligible exactly at
-// createdAt + pendingTimeout and becomes overdue only after that instant.
-func pendingLeaseDeadlineExceeded(blockTime, createdAt time.Time, pendingTimeout time.Duration) bool {
-	return blockTime.After(createdAt.Add(pendingTimeout))
-}
-
 // validateLeaseActivationGates revalidates the time and tenant-cap constraints that
 // must hold when PENDING leases become ACTIVE. It performs no writes so the entire
 // acknowledgement batch fails before any state or event changes are attempted.
 func validateLeaseActivationGates(blockTime time.Time, params types.Params, validated *pendingLeaseBatchResult) error {
-	// #nosec G115 -- PendingTimeout is validated in params to be within safe bounds (60-86400 seconds)
-	pendingTimeout := time.Duration(params.PendingTimeout) * time.Second
 	activationsByTenant := make(map[string]uint64, len(validated.creditAccounts))
 
 	for i := range validated.leases {
 		lease := &validated.leases[i]
-		deadline := lease.CreatedAt.Add(pendingTimeout)
-		if pendingLeaseDeadlineExceeded(blockTime, lease.CreatedAt, pendingTimeout) {
+		if params.PendingLeaseDeadlineExceeded(blockTime, lease.CreatedAt) {
+			deadline := params.PendingLeaseDeadline(lease.CreatedAt)
 			return types.ErrLeaseAcknowledgementDeadlineExceeded.Wrapf(
 				"lease %s deadline %s passed at block time %s",
 				lease.Uuid,
@@ -1211,7 +1202,7 @@ func validateLeaseActivationGates(blockTime time.Time, params types.Params, vali
 		activations := activationsByTenant[tenant]
 		if creditAccount.ActiveLeaseCount > params.MaxLeasesPerTenant ||
 			activations > params.MaxLeasesPerTenant-creditAccount.ActiveLeaseCount {
-			return types.ErrMaxLeasesReached.Wrapf(
+			return types.ErrLeaseAcknowledgementActiveCapExceeded.Wrapf(
 				"tenant %s has %d active leases and cannot activate %d more, max is %d",
 				tenant,
 				creditAccount.ActiveLeaseCount,

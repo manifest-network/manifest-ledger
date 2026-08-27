@@ -531,7 +531,7 @@ func TestBillingAcknowledgeActiveCap(t *testing.T) {
 	ackTx, err := tc.chain.GetTransaction(ackRes.TxHash)
 	require.NoError(t, err)
 	require.NotEqual(t, uint32(0), ackTx.Code, "post-batch active-cap overshoot must fail")
-	require.Contains(t, ackTx.RawLog, "maximum leases per tenant reached")
+	require.Contains(t, ackTx.RawLog, "lease acknowledgement active cap exceeded")
 	require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
 
 	afterAck, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, tenant.FormattedAddress())

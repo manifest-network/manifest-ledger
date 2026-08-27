@@ -355,7 +355,7 @@ sequenceDiagram
             MsgServer->>MsgServer: Aggregate and check every tenant's post-batch active count
 
             alt Any activation gate fails
-                MsgServer-->>Provider: Error: deadline exceeded or maximum active leases reached
+                MsgServer-->>Provider: Error: deadline exceeded or acknowledgement active cap exceeded
             else All batch-wide gates pass
                 MsgServer->>Store: Apply every lease and account update in CacheContext
                 Store-->>MsgServer: All cached writes succeed

@@ -2,6 +2,7 @@ package types
 
 import (
 	"slices"
+	"time"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -148,4 +149,22 @@ func (p *Params) Validate() error {
 // IsAllowed checks if an address is in the allowed list.
 func (p Params) IsAllowed(addr string) bool {
 	return slices.Contains(p.AllowedList, addr)
+}
+
+// PendingTimeoutDuration returns the validated pending timeout as a duration.
+func (p Params) PendingTimeoutDuration() time.Duration {
+	// #nosec G115 -- PendingTimeout is validated to be within 60-86400 seconds.
+	return time.Duration(p.PendingTimeout) * time.Second
+}
+
+// PendingLeaseDeadline returns the last block time at which a pending lease may
+// still be acknowledged. The current PendingTimeout parameter is authoritative.
+func (p Params) PendingLeaseDeadline(createdAt time.Time) time.Time {
+	return createdAt.Add(p.PendingTimeoutDuration())
+}
+
+// PendingLeaseDeadlineExceeded reports whether the hard acknowledgement deadline
+// has passed. The boundary is strict: acknowledgement remains valid at the deadline.
+func (p Params) PendingLeaseDeadlineExceeded(blockTime, createdAt time.Time) bool {
+	return blockTime.After(p.PendingLeaseDeadline(createdAt))
 }

@@ -3010,6 +3010,12 @@ func TestMsgAcknowledgeLeasePendingTimeoutBoundary(t *testing.T) {
 				params.PendingTimeout = 60
 			})
 			leaseUUID := s.createPendingLease(t, s.tenants[0])
+			var endBlockBoundaryUUID string
+			if tc.elapsed == 60*time.Second {
+				// Leave a second lease unacknowledged so this same case also proves
+				// EndBlock preserves PENDING state at the exact acknowledgement cutoff.
+				endBlockBoundaryUUID = s.createPendingLease(t, s.tenants[0])
+			}
 
 			beforeLease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
 			require.NoError(t, err)
@@ -3038,10 +3044,25 @@ func TestMsgAcknowledgeLeasePendingTimeoutBoundary(t *testing.T) {
 				account, err := s.f.App.BillingKeeper.GetCreditAccount(ackCtx, s.tenants[0].String())
 				require.NoError(t, err)
 				require.Equal(t, uint64(1), account.ActiveLeaseCount)
-				require.Zero(t, account.PendingLeaseCount)
+				expectedPending := uint64(0)
+				if endBlockBoundaryUUID != "" {
+					expectedPending = 1
+				}
+				require.Equal(t, expectedPending, account.PendingLeaseCount)
 				require.Equal(t, beforeAccount.ReservedAmounts, account.ReservedAmounts,
 					"acknowledgement must preserve the lease reservation")
 				require.Len(t, ackCtx.EventManager().Events(), 1)
+
+				if endBlockBoundaryUUID != "" {
+					require.NoError(t, s.f.App.BillingKeeper.EndBlocker(ackCtx))
+					boundaryLease, err := s.f.App.BillingKeeper.GetLease(ackCtx, endBlockBoundaryUUID)
+					require.NoError(t, err)
+					require.Equal(t, types.LEASE_STATE_PENDING, boundaryLease.State)
+					boundaryAccount, err := s.f.App.BillingKeeper.GetCreditAccount(ackCtx, s.tenants[0].String())
+					require.NoError(t, err)
+					require.Equal(t, account, boundaryAccount,
+						"EndBlock at the exact cutoff must not change counts or reservations")
+				}
 				return
 			}
 
@@ -3171,7 +3192,7 @@ func TestMsgAcknowledgeLeaseActiveCap(t *testing.T) {
 			LeaseUuids: pendingUUIDs,
 		})
 		require.Nil(t, resp)
-		require.ErrorIs(t, err, types.ErrMaxLeasesReached)
+		require.ErrorIs(t, err, types.ErrLeaseAcknowledgementActiveCapExceeded)
 
 		afterAccount, err := s.f.App.BillingKeeper.GetCreditAccount(ackCtx, s.tenants[0].String())
 		require.NoError(t, err)
@@ -3181,6 +3202,45 @@ func TestMsgAcknowledgeLeaseActiveCap(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, beforeLeases[i], lease)
 		}
+		require.Empty(t, ackCtx.EventManager().Events())
+	})
+
+	t.Run("account already above a lowered cap is rejected without underflow", func(t *testing.T) {
+		s := newAcknowledgementTestSetup(t, 1, func(params *types.Params) {
+			params.MaxLeasesPerTenant = 4
+			params.MaxPendingLeasesPerTenant = 2
+		})
+		for range 3 {
+			s.f.createAndAcknowledgeLease(t, s.msgServer, s.tenants[0], s.providerAddr,
+				[]types.LeaseItemInput{{SkuUuid: s.skuUUID, Quantity: 1}})
+		}
+		pendingUUID := s.createPendingLease(t, s.tenants[0])
+
+		params, err := s.f.App.BillingKeeper.GetParams(s.f.Ctx)
+		require.NoError(t, err)
+		params.MaxLeasesPerTenant = 2
+		require.NoError(t, s.f.App.BillingKeeper.SetParams(s.f.Ctx, params))
+
+		beforeAccount, err := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.tenants[0].String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(3), beforeAccount.ActiveLeaseCount)
+		beforeLease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, pendingUUID)
+		require.NoError(t, err)
+
+		ackCtx := s.f.Ctx.WithEventManager(sdk.NewEventManager())
+		resp, err := s.msgServer.AcknowledgeLease(ackCtx, &types.MsgAcknowledgeLease{
+			Sender:     s.providerAddr.String(),
+			LeaseUuids: []string{pendingUUID},
+		})
+		require.Nil(t, resp)
+		require.ErrorIs(t, err, types.ErrLeaseAcknowledgementActiveCapExceeded)
+
+		afterAccount, err := s.f.App.BillingKeeper.GetCreditAccount(ackCtx, s.tenants[0].String())
+		require.NoError(t, err)
+		require.Equal(t, beforeAccount, afterAccount)
+		afterLease, err := s.f.App.BillingKeeper.GetLease(ackCtx, pendingUUID)
+		require.NoError(t, err)
+		require.Equal(t, beforeLease, afterLease)
 		require.Empty(t, ackCtx.EventManager().Events())
 	})
 
@@ -3241,7 +3301,7 @@ func TestMsgAcknowledgeLeaseActiveCap(t *testing.T) {
 			LeaseUuids: leaseUUIDs,
 		})
 		require.Nil(t, resp)
-		require.ErrorIs(t, err, types.ErrMaxLeasesReached)
+		require.ErrorIs(t, err, types.ErrLeaseAcknowledgementActiveCapExceeded)
 
 		for i, tenant := range s.tenants {
 			account, err := s.f.App.BillingKeeper.GetCreditAccount(ackCtx, tenant.String())

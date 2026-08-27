@@ -932,7 +932,7 @@ manifestd query billing credit-estimate manifest1abc...
 - With multi-denom support, the estimate returns the minimum duration across all denominations (the limiting factor)
 
 **Limitations:**
-- **Bounded lease iteration**: New acknowledgements enforce `max_leases_per_tenant`, but pre-gate state can contain pending→active overshoot leases. Active iteration retains the compatibility bound `max_leases_per_tenant + max_pending_leases_per_tenant`, with a hard ceiling of 11,000 iterations. This preserves the historical overshoot band while current limits remain compatible; arbitrary imported state or state above subsequently lowered limits can still be truncated by the DoS ceiling.
+- **Bounded lease iteration**: Active iteration uses the credit account's stored `active_lease_count`, not the current governance limit, so parameter reductions and pre-gate acknowledgement overshoot state remain fully represented. The count is clamped to a fixed hard ceiling of 11,000 iterations; corrupt or adversarial imported state above that ceiling is truncated.
 - **Does not account for pending withdrawals**: The estimate uses current balance, not accounting for any unsettled accrued amounts from existing leases.
 - **Assumes constant rate**: The estimate assumes all current leases continue at their current rates. Actual duration may differ if leases are closed or new leases are created.
 
@@ -1699,7 +1699,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrLeaseNotFound` | 2 | Lease doesn't exist |
 | `ErrLeaseNotActive` | 3 | Lease is not in ACTIVE state |
 | `ErrInsufficientCredit` | 4 | Not enough credit balance |
-| `ErrMaxLeasesReached` | 5 | Lease creation or acknowledgement would exceed the tenant's active cap |
+| `ErrMaxLeasesReached` | 5 | Lease creation is blocked because the tenant is already at its active cap |
 | `ErrUnauthorized` | 6 | Sender not authorized |
 | `ErrReserved7` | 7 | Reserved for future use |
 | `ErrCreditAccountNotFound` | 8 | Credit account doesn't exist |
@@ -1729,6 +1729,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrLeaseItemNotFound` | 32 | No lease item matched the supplied `service_name` |
 | `ErrAmbiguousLeaseItem` | 33 | Lookup by `service_name` matched more than one item — happens for multi-item legacy leases (no `service_name`s); recreate the lease in service-name mode |
 | `ErrLeaseAcknowledgementDeadlineExceeded` | 34 | Acknowledgement block time is strictly after a lease's hard pending deadline |
+| `ErrLeaseAcknowledgementActiveCapExceeded` | 35 | Acknowledgement would exceed a tenant's post-batch active cap |
 
 **Note on Reserved Codes:** Error codes 7 and 20 are explicitly reserved to maintain stable error code assignments across module versions.
 
@@ -1737,7 +1738,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 - Error codes in logs and metrics remain comparable across versions
 - New errors get the next number after the highest assigned code rather than reusing gaps
 
-**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code (currently 34).
+**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code (currently 35).
 
 ---
 
