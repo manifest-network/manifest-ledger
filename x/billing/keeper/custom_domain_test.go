@@ -580,6 +580,68 @@ func TestInitGenesis_RebuildsCustomDomainIndex(t *testing.T) {
 	require.Equal(t, "web", serviceName)
 }
 
+// TestInitGenesis_RebuildsExistingDomainMatchingNewReservedSuffix verifies that
+// an exported domain claim remains importable after governance reserves its
+// suffix. Reserved suffixes gate new claims; they do not retroactively remove
+// existing domains.
+func TestInitGenesis_RebuildsExistingDomainMatchingNewReservedSuffix(t *testing.T) {
+	f := initFixture(t)
+	provider := f.createTestProvider(t, f.TestAccs[1].String(), f.TestAccs[2].String())
+	sku := f.createTestSKU(t, provider.Uuid, 100)
+	tenant := f.TestAccs[0]
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))))
+
+	const domain = "web.legacy.example"
+	params := types.DefaultParams()
+	params.ReservedDomainSuffixes = []string{".legacy.example"}
+	now := f.Ctx.BlockTime()
+	lease := types.Lease{
+		Uuid:         "01912345-6789-7abc-8def-aaaaaaaaaaa2",
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid:      sku.Uuid,
+			Quantity:     1,
+			LockedPrice:  sdk.NewCoin(testDenom, sdkmath.NewInt(1)),
+			ServiceName:  "web",
+			CustomDomain: domain,
+		}},
+		State:                      types.LEASE_STATE_PENDING,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: params.MinLeaseDuration,
+	}
+	reservation := types.CalculateLeaseReservation(lease.Items, lease.MinLeaseDurationAtCreation)
+	genesisState := &types.GenesisState{
+		Params: params,
+		Leases: []types.Lease{lease},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:            tenant.String(),
+			CreditAddress:     creditAddr.String(),
+			PendingLeaseCount: 1,
+			ReservedAmounts:   reservation,
+		}},
+		LeaseSequence: 1,
+	}
+
+	// Full validation applies the current claim-time suffix policy and rejects
+	// the export even though this domain was valid when originally claimed.
+	require.ErrorIs(t, genesisState.Validate(), types.ErrInvalidCustomDomain)
+	require.NoError(t, genesisState.ValidateForImport())
+	require.NoError(t, genesisState.ValidateWithBlockTime(now))
+
+	require.NoError(t, f.App.BillingKeeper.InitGenesis(f.Ctx, genesisState))
+
+	got, serviceName, has, err := f.App.BillingKeeper.GetLeaseByCustomDomain(f.Ctx, domain)
+	require.NoError(t, err)
+	require.True(t, has)
+	require.Equal(t, lease.Uuid, got.Uuid)
+	require.Equal(t, "web", serviceName)
+}
+
 func TestInitGenesis_DuplicateCustomDomainFails(t *testing.T) {
 	f := initFixture(t)
 	provider := f.createTestProvider(t, f.TestAccs[1].String(), f.TestAccs[2].String())

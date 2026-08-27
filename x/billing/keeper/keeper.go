@@ -293,10 +293,10 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// Validate all state-only invariants before writing anything. InitGenesis can
-	// be invoked without the validate-genesis CLI path, and query iteration relies
-	// on the stored lease counts matching the imported lease set.
-	if err := gs.Validate(); err != nil {
+	// Validate structural and accounting invariants before any writes. Import
+	// validation preserves historical state without replaying claim-time domain
+	// policy or unverifiable legacy reservation calculations.
+	if err := gs.ValidateForImport(); err != nil {
 		return err
 	}
 

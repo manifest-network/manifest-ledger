@@ -388,6 +388,10 @@ func TestAdversarial_GenesisValidationRejectsMismatchedReservations(t *testing.T
 	err = gs.Validate()
 	require.Error(t, err, "genesis with mismatched reservations should be rejected")
 	require.Contains(t, err.Error(), "reserved_amounts")
+
+	err = gs.ValidateForImport()
+	require.Error(t, err, "import with a verifiable reservation mismatch should be rejected")
+	require.Contains(t, err.Error(), "reserved_amounts")
 }
 
 // TestAdversarial_GenesisValidationRejectsMismatchedCounts tests that genesis

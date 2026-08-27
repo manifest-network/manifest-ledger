@@ -1958,6 +1958,72 @@ func TestGenesisState_Validate_MultipleMissingCreditAccounts(t *testing.T) {
 	}
 }
 
+func TestGenesisState_ValidateCreditAccountLeaseCounts_MissingAccountUsesLeaseOrder(t *testing.T) {
+	gs := &types.GenesisState{
+		Leases: []types.Lease{
+			{Tenant: "tenant-first", State: types.LEASE_STATE_ACTIVE},
+			{Tenant: "tenant-second", State: types.LEASE_STATE_PENDING},
+		},
+	}
+
+	for range 50 {
+		err := gs.ValidateCreditAccountLeaseCounts()
+		require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+		require.Contains(t, err.Error(), "tenant-first has 1 active and 0 pending leases but no credit account")
+		require.NotContains(t, err.Error(), "tenant-second")
+	}
+}
+
+func TestGenesisState_ValidateForImport_RequiresKnownReservationPortion(t *testing.T) {
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+	tenant := tenantAddr.String()
+	creditAddr := types.DeriveCreditAddress(tenantAddr)
+	params := types.DefaultParams()
+	now := time.Now().UTC()
+
+	lease := func(uuid string, duration uint64) types.Lease {
+		return types.Lease{
+			Uuid:         uuid,
+			Tenant:       tenant,
+			ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+			Items: []types.LeaseItem{{
+				SkuUuid:     "01912345-6789-7abc-8def-0123456789ad",
+				Quantity:    1,
+				LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)),
+			}},
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  now,
+			LastSettledAt:              now,
+			MinLeaseDurationAtCreation: duration,
+		}
+	}
+
+	legacyLease := lease("01912345-6789-7abc-8def-0123456789ab", 0)
+	modernLease := lease("01912345-6789-7abc-8def-0123456789ae", params.MinLeaseDuration)
+	knownReservation := types.CalculateLeaseReservation(
+		modernLease.Items,
+		modernLease.MinLeaseDurationAtCreation,
+	)
+	gs := &types.GenesisState{
+		Params: params,
+		Leases: []types.Lease{legacyLease, modernLease},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:           tenant,
+			CreditAddress:    creditAddr.String(),
+			ActiveLeaseCount: 2,
+			ReservedAmounts: sdk.NewCoins(sdk.NewCoin(
+				testDenom,
+				knownReservation.AmountOf(testDenom).SubRaw(1),
+			)),
+		}},
+		LeaseSequence: 2,
+	}
+
+	err := gs.ValidateForImport()
+	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+	require.Contains(t, err.Error(), "below known non-legacy lease reservations")
+}
+
 // ============================================================================
 // Genesis ValidateWithBlockTime Tests
 // ============================================================================

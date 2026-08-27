@@ -29,8 +29,29 @@ func NewGenesisState(params Params, leases []Lease, creditAccounts []CreditAccou
 	}
 }
 
-// Validate performs basic genesis state validation.
+type genesisValidationOptions struct {
+	allowExistingReservedDomains  bool
+	allowLegacyReservationAmounts bool
+}
+
+// Validate performs strict genesis state validation for newly supplied state.
 func (gs *GenesisState) Validate() error {
+	return gs.validate(genesisValidationOptions{})
+}
+
+// ValidateForImport validates all structural and accounting invariants required
+// before writing exported state. It does not replay policies that cannot be
+// verified from historical state: a domain may predate its reserved suffix, and
+// a legacy lease with no stored creation duration may have been reserved under
+// an earlier minimum duration.
+func (gs *GenesisState) ValidateForImport() error {
+	return gs.validate(genesisValidationOptions{
+		allowExistingReservedDomains:  true,
+		allowLegacyReservationAmounts: true,
+	})
+}
+
+func (gs *GenesisState) validate(options genesisValidationOptions) error {
 	if err := gs.Params.Validate(); err != nil {
 		return ErrInvalidParams.Wrapf("invalid params: %s", err)
 	}
@@ -117,11 +138,10 @@ func (gs *GenesisState) Validate() error {
 		}
 
 		// Defensive: any item carrying a custom_domain must (1) be a valid FQDN,
-		// (2) not match a reserved provider suffix from gs.Params, and (3) be
-		// uniquely addressable by its service_name (specifically: a multi-item
-		// legacy lease cannot host custom_domains because the lookup would be
-		// ambiguous). Reject malformed genesis up front so the chain cannot
-		// start in a state the msg layer would refuse.
+		// (2) not match a reserved provider suffix for newly supplied state, and
+		// (3) be uniquely addressable by its service_name (specifically: a
+		// multi-item legacy lease cannot host custom_domains because the lookup
+		// would be ambiguous). Imported claims may predate a suffix reservation.
 		for i, item := range lease.Items {
 			if item.CustomDomain == "" {
 				continue
@@ -129,7 +149,7 @@ func (gs *GenesisState) Validate() error {
 			if err := IsValidFQDN(item.CustomDomain); err != nil {
 				return ErrInvalidCustomDomain.Wrapf("lease %s item %d: %s", lease.Uuid, i, err)
 			}
-			if MatchesReservedSuffix(item.CustomDomain, gs.Params.ReservedDomainSuffixes) {
+			if !options.allowExistingReservedDomains && MatchesReservedSuffix(item.CustomDomain, gs.Params.ReservedDomainSuffixes) {
 				return ErrInvalidCustomDomain.Wrapf(
 					"lease %s item %d custom_domain %q matches a reserved provider suffix in gs.Params.ReservedDomainSuffixes",
 					lease.Uuid, i, item.CustomDomain,
@@ -209,19 +229,56 @@ func (gs *GenesisState) Validate() error {
 		// Balance is tracked in bank module, no validation needed here
 	}
 
-	// Cross-validate: reserved_amounts must match sum of lease reservations per tenant
-	// Only PENDING and ACTIVE leases have reservations
+	// Cross-validate: reserved_amounts must match sum of lease reservations per tenant.
+	// Only PENDING and ACTIVE leases have reservations. An imported tenant with a
+	// legacy lease cannot be checked exactly because its creation-time minimum
+	// duration was never stored and may differ from the current parameter.
 	expectedReservations := CalculateExpectedReservationsByTenant(gs.Leases, gs.Params.MinLeaseDuration)
+	legacyReservationTenants := make(map[string]bool)
+	knownReservations := make(map[string]sdk.Coins)
+	if options.allowLegacyReservationAmounts {
+		for i := range gs.Leases {
+			lease := &gs.Leases[i]
+			if lease.State != LEASE_STATE_PENDING && lease.State != LEASE_STATE_ACTIVE {
+				continue
+			}
+			if lease.MinLeaseDurationAtCreation == 0 {
+				legacyReservationTenants[lease.Tenant] = true
+				continue
+			}
+
+			reservation := GetLeaseReservationAmount(lease, gs.Params.MinLeaseDuration)
+			if existing, ok := knownReservations[lease.Tenant]; ok {
+				knownReservations[lease.Tenant] = existing.Add(reservation...)
+			} else {
+				knownReservations[lease.Tenant] = reservation
+			}
+		}
+	}
 
 	// Check each credit account's reserved_amounts matches expected
 	for _, ca := range gs.CreditAccounts {
+		actualNormalized := sdk.NewCoins(ca.ReservedAmounts...)
+		if legacyReservationTenants[ca.Tenant] {
+			known := knownReservations[ca.Tenant]
+			if known == nil {
+				known = sdk.NewCoins()
+			}
+			if !actualNormalized.IsAllGTE(known) {
+				return ErrInvalidCreditOperation.Wrapf(
+					"credit account for %s has reserved_amounts %s below known non-legacy lease reservations %s",
+					ca.Tenant, actualNormalized.String(), known.String(),
+				)
+			}
+			continue
+		}
+
 		expected := expectedReservations[ca.Tenant]
 		if expected == nil {
 			expected = sdk.NewCoins()
 		}
 
 		// Normalize both for comparison (removes zero coins)
-		actualNormalized := sdk.NewCoins(ca.ReservedAmounts...)
 		expectedNormalized := sdk.NewCoins(expected...)
 
 		if !actualNormalized.Equal(expectedNormalized) {
@@ -245,19 +302,50 @@ func (gs *GenesisState) Validate() error {
 		}
 	}
 
-	// Cross-validate: active_lease_count and pending_lease_count must match actual lease counts per tenant
+	if err := gs.ValidateCreditAccountLeaseCounts(); err != nil {
+		return err
+	}
+
+	// Validate lease_sequence: must be >= number of leases to prevent UUID
+	// collisions after genesis import. Each CreateLease call advances the
+	// sequence, so a valid export always has sequence >= len(leases).
+	if uint64(len(gs.Leases)) > gs.LeaseSequence {
+		return ErrInvalidLease.Wrapf(
+			"lease_sequence %d is less than number of leases %d",
+			gs.LeaseSequence, len(gs.Leases),
+		)
+	}
+
+	return nil
+}
+
+// ValidateCreditAccountLeaseCounts verifies that the stored credit-account
+// aggregates match the imported lease set. Query iteration and message-handler
+// accounting rely on these counts, so InitGenesis enforces this invariant even
+// when the caller did not run the validate-genesis CLI path.
+func (gs *GenesisState) ValidateCreditAccountLeaseCounts() error {
 	activeCounts := make(map[string]uint64)
 	pendingCounts := make(map[string]uint64)
+	leaseTenantOrder := make([]string, 0)
+	seenLeaseTenants := make(map[string]bool)
 	for _, lease := range gs.Leases {
 		switch lease.State {
 		case LEASE_STATE_ACTIVE:
 			activeCounts[lease.Tenant]++
 		case LEASE_STATE_PENDING:
 			pendingCounts[lease.Tenant]++
+		default:
+			continue
+		}
+		if !seenLeaseTenants[lease.Tenant] {
+			seenLeaseTenants[lease.Tenant] = true
+			leaseTenantOrder = append(leaseTenantOrder, lease.Tenant)
 		}
 	}
 
+	creditAccountTenants := make(map[string]bool, len(gs.CreditAccounts))
 	for _, ca := range gs.CreditAccounts {
+		creditAccountTenants[ca.Tenant] = true
 		expectedActive := activeCounts[ca.Tenant]
 		if ca.ActiveLeaseCount != expectedActive {
 			return ErrInvalidCreditOperation.Wrapf(
@@ -275,14 +363,13 @@ func (gs *GenesisState) Validate() error {
 		}
 	}
 
-	// Validate lease_sequence: must be >= number of leases to prevent UUID
-	// collisions after genesis import. Each CreateLease call advances the
-	// sequence, so a valid export always has sequence >= len(leases).
-	if uint64(len(gs.Leases)) > gs.LeaseSequence {
-		return ErrInvalidLease.Wrapf(
-			"lease_sequence %d is less than number of leases %d",
-			gs.LeaseSequence, len(gs.Leases),
-		)
+	for _, tenant := range leaseTenantOrder {
+		if !creditAccountTenants[tenant] {
+			return ErrInvalidCreditOperation.Wrapf(
+				"tenant %s has %d active and %d pending leases but no credit account",
+				tenant, activeCounts[tenant], pendingCounts[tenant],
+			)
+		}
 	}
 
 	return nil
