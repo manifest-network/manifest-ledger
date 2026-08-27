@@ -293,6 +293,13 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
+	// Validate all state-only invariants before writing anything. InitGenesis can
+	// be invoked without the validate-genesis CLI path, and query iteration relies
+	// on the stored lease counts matching the imported lease set.
+	if err := gs.Validate(); err != nil {
+		return err
+	}
+
 	// Validate timestamps against block time
 	// This ensures LastSettledAt is not in the future (important for chain restarts)
 	if err := gs.ValidateWithBlockTime(blockTime); err != nil {

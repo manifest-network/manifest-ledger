@@ -98,7 +98,7 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 	// Get the new balance from the bank module for the funded denom (after commit)
 	newBalance := ms.k.bankKeeper.GetBalance(ctx, creditAddr, msg.Amount.Denom)
 
-	// Emit event on original context (events are not cached)
+	// Emit the funding event after commit so it includes the final balance.
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeCreditFunded,
@@ -1363,7 +1363,7 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 	// This ensures that if any operation fails, all changes are rolled back.
 	cacheCtx, writeCache := sdkCtx.CacheContext()
 
-	// Track events to emit after successful commit (events are not cached)
+	// Track rejection events to emit after successful commit.
 	type leaseEvent struct {
 		uuid         string
 		tenant       string

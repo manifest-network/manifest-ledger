@@ -561,8 +561,14 @@ func TestInitGenesis_RebuildsCustomDomainIndex(t *testing.T) {
 			MinLeaseDurationAtCreation: 3600,
 		}},
 		CreditAccounts: []types.CreditAccount{
-			{Tenant: tenant.String(), CreditAddress: creditAddr.String(), PendingLeaseCount: 1},
+			{
+				Tenant:            tenant.String(),
+				CreditAddress:     creditAddr.String(),
+				PendingLeaseCount: 1,
+				ReservedAmounts:   sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(7_200))),
+			},
 		},
+		LeaseSequence: 1,
 	}
 
 	require.NoError(t, f.App.BillingKeeper.InitGenesis(f.Ctx, gs))
@@ -606,8 +612,14 @@ func TestInitGenesis_DuplicateCustomDomainFails(t *testing.T) {
 			mkLease("01912345-6789-7abc-8def-bbbbbbbbbbb2"),
 		},
 		CreditAccounts: []types.CreditAccount{
-			{Tenant: tenant.String(), CreditAddress: creditAddr.String(), PendingLeaseCount: 2},
+			{
+				Tenant:            tenant.String(),
+				CreditAddress:     creditAddr.String(),
+				PendingLeaseCount: 2,
+				ReservedAmounts:   sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(7_200))),
+			},
 		},
+		LeaseSequence: 2,
 	}
 
 	err = f.App.BillingKeeper.InitGenesis(f.Ctx, gs)

@@ -176,10 +176,15 @@ func TestInitGenesis(t *testing.T) {
 		},
 		CreditAccounts: []types.CreditAccount{
 			{
-				Tenant:        tenant.String(),
-				CreditAddress: creditAddr.String(),
+				Tenant:           tenant.String(),
+				CreditAddress:    creditAddr.String(),
+				ActiveLeaseCount: 1,
+				ReservedAmounts: sdk.NewCoins(
+					sdk.NewCoin(testDenom, sdkmath.NewInt(720_000)),
+				),
 			},
 		},
+		LeaseSequence: 1,
 	}
 
 	err = k.InitGenesis(f.Ctx, genesisState)
@@ -196,6 +201,69 @@ func TestInitGenesis(t *testing.T) {
 	ca, err := k.GetCreditAccount(f.Ctx, tenant.String())
 	require.NoError(t, err)
 	require.Equal(t, creditAddr.String(), ca.CreditAddress)
+	require.Equal(t, uint64(1), ca.ActiveLeaseCount)
+}
+
+func TestInitGenesis_RejectsUnderreportedActiveLeaseCountBeforeWrites(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+	tenant := f.TestAccs[0]
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+
+	paramsBefore, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	genesisParams := paramsBefore
+	genesisParams.MaxLeasesPerTenant++ // Distinguish a rejected genesis write from existing params.
+
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid:     sku.Uuid,
+			Quantity:    1,
+			LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+		}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		LastSettledAt:              f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: genesisParams.MinLeaseDuration,
+	}
+	genesisState := &types.GenesisState{
+		Params: genesisParams,
+		Leases: []types.Lease{lease},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:           tenant.String(),
+			CreditAddress:    creditAddr.String(),
+			ActiveLeaseCount: 0, // Invalid: the genesis contains one ACTIVE lease.
+			ReservedAmounts: types.CalculateLeaseReservation(
+				lease.Items,
+				lease.MinLeaseDurationAtCreation,
+			),
+		}},
+		LeaseSequence: 1,
+	}
+
+	// The old InitGenesis check accepted this state because every timestamp is valid.
+	require.NoError(t, genesisState.ValidateWithBlockTime(f.Ctx.BlockTime()))
+
+	err = k.InitGenesis(f.Ctx, genesisState)
+	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+	require.Contains(t, err.Error(), "active_lease_count 0 but has 1 active leases")
+
+	// Validation must fail before any billing state is written.
+	paramsAfter, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, paramsBefore, paramsAfter)
+	_, err = k.GetLease(f.Ctx, lease.Uuid)
+	require.ErrorIs(t, err, types.ErrLeaseNotFound)
+	_, err = k.GetCreditAccount(f.Ctx, tenant.String())
+	require.ErrorIs(t, err, types.ErrCreditAccountNotFound)
 }
 
 func TestInitGenesis_InvalidProviderReference(t *testing.T) {
@@ -214,10 +282,10 @@ func TestInitGenesis_InvalidProviderReference(t *testing.T) {
 			{
 				Uuid:         "01912345-6789-7abc-8def-0123456789ab",
 				Tenant:       tenant.String(),
-				ProviderUuid: "01912345-6789-7abc-8def-nonexistent1", // Does not exist
+				ProviderUuid: testProviderUUID, // Syntactically valid, but does not exist.
 				Items: []types.LeaseItem{
 					{
-						SkuUuid:     "01912345-6789-7abc-8def-000000000001",
+						SkuUuid:     testSKUUUID,
 						Quantity:    1,
 						LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 					},
@@ -229,10 +297,15 @@ func TestInitGenesis_InvalidProviderReference(t *testing.T) {
 		},
 		CreditAccounts: []types.CreditAccount{
 			{
-				Tenant:        tenant.String(),
-				CreditAddress: creditAddr.String(),
+				Tenant:           tenant.String(),
+				CreditAddress:    creditAddr.String(),
+				ActiveLeaseCount: 1,
+				ReservedAmounts: sdk.NewCoins(
+					sdk.NewCoin(testDenom, sdkmath.NewInt(360_000)),
+				),
 			},
 		},
+		LeaseSequence: 1,
 	}
 
 	err = k.InitGenesis(f.Ctx, genesisState)
@@ -263,7 +336,7 @@ func TestInitGenesis_InvalidSKUReference(t *testing.T) {
 				ProviderUuid: provider.Uuid, // Valid provider
 				Items: []types.LeaseItem{
 					{
-						SkuUuid:     "01912345-6789-7abc-8def-nonexistent2", // Does not exist
+						SkuUuid:     testSKUUUID, // Syntactically valid, but does not exist.
 						Quantity:    1,
 						LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 					},
@@ -275,10 +348,15 @@ func TestInitGenesis_InvalidSKUReference(t *testing.T) {
 		},
 		CreditAccounts: []types.CreditAccount{
 			{
-				Tenant:        tenant.String(),
-				CreditAddress: creditAddr.String(),
+				Tenant:           tenant.String(),
+				CreditAddress:    creditAddr.String(),
+				ActiveLeaseCount: 1,
+				ReservedAmounts: sdk.NewCoins(
+					sdk.NewCoin(testDenom, sdkmath.NewInt(360_000)),
+				),
 			},
 		},
+		LeaseSequence: 1,
 	}
 
 	err = k.InitGenesis(f.Ctx, genesisState)
@@ -327,10 +405,15 @@ func TestInitGenesis_SKUProviderMismatch(t *testing.T) {
 		},
 		CreditAccounts: []types.CreditAccount{
 			{
-				Tenant:        tenant.String(),
-				CreditAddress: creditAddr.String(),
+				Tenant:           tenant.String(),
+				CreditAddress:    creditAddr.String(),
+				ActiveLeaseCount: 1,
+				ReservedAmounts: sdk.NewCoins(
+					sdk.NewCoin(testDenom, sdkmath.NewInt(360_000)),
+				),
 			},
 		},
+		LeaseSequence: 1,
 	}
 
 	err = k.InitGenesis(f.Ctx, genesisState)
