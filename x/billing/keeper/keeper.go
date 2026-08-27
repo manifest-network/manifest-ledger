@@ -807,15 +807,13 @@ func (k *Keeper) getCreditBalancesForDenoms(ctx context.Context, tenant string, 
 	return coins, nil
 }
 
-// activeLeaseIterationCap returns the upper bound to use when iterating a single tenant's ACTIVE
-// leases in queries. CreateLease gates on the active count (msg_server.go), but AcknowledgeLease
-// moves pending->active without re-checking that gate, so the active count can overshoot
-// max_leases_per_tenant: the tight reachable maximum through the handlers is
-// max_leases_per_tenant-1 + max_pending_leases_per_tenant. This deliberately returns
-// max_leases_per_tenant + max_pending_leases_per_tenant -- that tight maximum plus a one-lease
-// margin -- so the iteration never truncates a legitimately-reachable state even if the gating
-// logic later shifts by a lease. Callers must use this bound, not max_leases_per_tenant alone. The
-// sum is clamped to the params' upper bounds so it stays bounded against DoS for any valid config.
+// activeLeaseIterationCap returns the compatibility bound for iterating a single tenant's ACTIVE
+// leases in queries. AcknowledgeLease now enforces max_leases_per_tenant against the post-batch
+// count, but state produced before that gate existed can contain an acknowledgement overshoot.
+// Retaining max_leases_per_tenant + max_pending_leases_per_tenant preserves that historical
+// overshoot band while current limits remain compatible. It does not promise completeness for
+// arbitrary imported state or state above subsequently lowered limits. The sum is clamped to the
+// params' upper bounds so queries remain bounded against DoS for any valid config.
 func activeLeaseIterationCap(params types.Params) uint64 {
 	return min(
 		params.MaxLeasesPerTenant+params.MaxPendingLeasesPerTenant,
@@ -848,10 +846,10 @@ func (k *Keeper) getRelevantDenomsForTenant(ctx context.Context, tenant string, 
 	}
 
 	// Each state's iteration is bounded by its governing param (clamped to the param's upper
-	// bound as a hard safety ceiling): active leases by the param-derived active-lease cap
-	// (activeLeaseIterationCap, which covers the pending->active acknowledge overshoot), pending
-	// leases by max_pending_leases_per_tenant. This keeps the denom set complete for any legal
-	// state while remaining bounded against DoS.
+	// bound as a hard safety ceiling): active leases by the compatibility cap for legacy
+	// acknowledgement overshoot state, pending leases by max_pending_leases_per_tenant.
+	// This covers currently reachable state plus the compatible historical overshoot band while
+	// remaining bounded; arbitrary imported or post-limit-reduction state can exceed the cap.
 	params, err := k.GetParams(ctx)
 	if err != nil {
 		return nil, err
@@ -1455,8 +1453,7 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 
 		// Check if lease has exceeded pending timeout (defense-in-depth; the range
 		// bound already guarantees this).
-		expirationTime := lease.CreatedAt.Add(pendingTimeout)
-		if blockTime.After(expirationTime) {
+		if pendingLeaseDeadlineExceeded(blockTime, lease.CreatedAt, pendingTimeout) {
 			expiredUUIDs = append(expiredUUIDs, leaseUUID)
 		}
 	}

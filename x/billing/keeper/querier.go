@@ -498,9 +498,10 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	// Bound the active-lease iteration by the param-derived active-lease cap (clamped to the
-	// params' upper bounds as a hard safety ceiling). This keeps the burn-rate estimate correct
-	// for any legal state while remaining bounded against DoS on tenants with many leases.
+	// Bound active-lease iteration by the compatibility cap (clamped to the params' upper
+	// bounds as a hard safety ceiling). This leaves room for the compatible historical
+	// acknowledgement-overshoot band while remaining bounded against DoS on tenants with
+	// many leases.
 	params, err := q.k.GetParams(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())

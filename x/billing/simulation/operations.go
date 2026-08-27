@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"time"
 
 	sdkmath "cosmossdk.io/math"
 
@@ -454,16 +455,32 @@ func SimulateMsgAcknowledgeLease(txGen client.TxConfig, k keeper.Keeper, sk SKUK
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no leases found"), nil, nil
 		}
 
-		// Filter to pending leases
+		params, err := k.GetParams(ctx)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
+		}
+
+		// Filter to pending leases that still satisfy the activation gates. Delivering
+		// an acknowledgement for an overdue lease or a tenant already at the active
+		// cap would be an expected module rejection, not a useful simulation action.
+		// #nosec G115 -- PendingTimeout is validated in params to be within safe bounds (60-86400 seconds)
+		pendingTimeout := time.Duration(params.PendingTimeout) * time.Second
 		var pendingLeases []types.Lease
 		for _, lease := range allLeases {
-			if lease.State == types.LEASE_STATE_PENDING {
-				pendingLeases = append(pendingLeases, lease)
+			if lease.State != types.LEASE_STATE_PENDING || ctx.BlockTime().After(lease.CreatedAt.Add(pendingTimeout)) {
+				continue
 			}
+
+			creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
+			if err != nil || creditAccount.ActiveLeaseCount >= params.MaxLeasesPerTenant {
+				continue
+			}
+
+			pendingLeases = append(pendingLeases, lease)
 		}
 
 		if len(pendingLeases) == 0 {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "no pending leases found"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no acknowledgeable pending leases found"), nil, nil
 		}
 
 		// Pick a random pending lease

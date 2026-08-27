@@ -216,11 +216,11 @@ Module parameters stored at key `0x00`:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| max_leases_per_tenant | uint64 | Maximum active leases per tenant (must be > 0) |
+| max_leases_per_tenant | uint64 | Maximum active leases per tenant; rechecked against each tenant's post-acknowledgement batch count (must be > 0) |
 | max_items_per_lease | uint64 | Maximum items per lease (default: 20, hard limit: 100) |
 | min_lease_duration | uint64 | Minimum lease duration in seconds (default: 3600 = 1 hour) |
 | max_pending_leases_per_tenant | uint64 | Maximum pending leases per tenant (default: 10) |
-| pending_timeout | uint64 | Seconds before pending lease expires (default: 1800 = 30 minutes, min: 60, max: 86400) |
+| pending_timeout | uint64 | Hard acknowledgement window after `created_at`; exact cutoff is allowed, later block times are rejected (default: 1800 = 30 minutes, min: 60, max: 86400) |
 | allowed_list | []string | List of addresses allowed to create leases on behalf of tenants and to set lease custom_domains |
 | reserved_domain_suffixes | []string | DNS suffixes (each beginning with `.`) that tenants are forbidden from claiming via `set-item-custom-domain`. Used to gate provider wildcard zones. Tunable via governance. |
 
@@ -254,7 +254,7 @@ These values are compile-time constants and cannot be changed via governance:
 | `DefaultProviderWithdrawableQueryLimit` | 100 | Default page size for the ProviderWithdrawable query (`pagination.limit`). The request's old top-level `limit` field was removed; proto field 2 is reserved. |
 | `MaxProviderWithdrawableQueryLimit` | 1000 | Maximum page size for the ProviderWithdrawable query (`pagination.limit` is clamped to this) |
 
-> **CreditEstimate / CreditAccount query iteration** is not a fixed constant — it tracks the lease params. The active-lease iteration is bounded by `max_leases_per_tenant + max_pending_leases_per_tenant`, a safe upper bound on the reachable active count: because `AcknowledgeLease` moves pending→active without re-gating the active limit, a tenant can reach `max_leases_per_tenant - 1 + max_pending_leases_per_tenant` active leases, and the cap adds a one-lease margin on top. The pending-lease iteration is bounded by `max_pending_leases_per_tenant`. Each is clamped to the params' upper bounds (10,000 / 1,000) as a hard safety ceiling, so the caps never truncate a legal state yet stay bounded against DoS.
+> **CreditEstimate / CreditAccount query iteration** is not a fixed constant — it tracks the lease params. New acknowledgements enforce `max_leases_per_tenant`, but state created before that gate existed can contain a pending→active overshoot. Active iteration therefore retains the compatibility bound `max_leases_per_tenant + max_pending_leases_per_tenant`, preserving that historical band while current limits remain compatible. Arbitrary imported state or state above subsequently lowered limits can still be truncated. Pending iteration is bounded by `max_pending_leases_per_tenant`; the resulting hard ceilings are 11,000 active iterations and 1,000 pending iterations as a DoS safeguard.
 
 ### Batch Operations
 
@@ -262,7 +262,7 @@ Several messages support batch processing of multiple leases in a single transac
 
 | Message | Max Leases | Behavior |
 |---------|------------|----------|
-| `MsgAcknowledgeLease` | 100 | All leases must be PENDING, same provider. Atomic. |
+| `MsgAcknowledgeLease` | 100 | All leases must be PENDING, same provider, within the hard timeout, and within each tenant's post-batch active cap. Atomic. |
 | `MsgRejectLease` | 100 | All leases must be PENDING, same provider. Atomic. |
 | `MsgCancelLease` | 100 | All leases must be PENDING, same tenant. Atomic. |
 | `MsgCloseLease` | 100 | All leases must be ACTIVE, authorized for sender. Atomic. |
@@ -344,9 +344,14 @@ sender → credit_address
 ### Acknowledge Lease (PENDING → ACTIVE)
 
 1. Provider verifies they own the SKUs in the lease
-2. Set lease state to ACTIVE
-3. Set acknowledged_at to current block time (billing starts)
-4. Decrement pending_lease_count, increment active_lease_count
+2. Revalidate every lease against the hard deadline: `now <= created_at + current pending_timeout`
+3. Aggregate the entire batch per tenant and verify every post-batch active count is ≤ `max_leases_per_tenant`
+4. After all gates pass, atomically set every lease to ACTIVE
+5. Set acknowledged_at and last_settled_at to current block time (billing starts)
+6. Decrement pending_lease_count and increment active_lease_count
+
+An overdue lease can remain stored as PENDING until the rate-limited EndBlocker reaches it, but it
+cannot be acknowledged. Providers may still reject it, and tenants may still cancel it.
 
 ### Reject Lease (PENDING → REJECTED)
 
@@ -376,6 +381,10 @@ The EndBlocker automatically expires pending leases that exceed the `pending_tim
    - Release credit reservation (rate × min_lease_duration)
 
 **Rate Limiting:** To prevent DoS attacks, the EndBlocker processes a maximum of **100 lease expirations per block** (`MaxPendingLeaseExpirationsPerBlock`). If more than 100 leases need to expire, the remaining leases are processed in subsequent blocks. This uses a two-pass approach to avoid iterator invalidation during state modification.
+
+`pending_timeout` is a hard acknowledgement deadline independently of this cleanup schedule.
+Acknowledgement succeeds exactly at the cutoff and fails strictly after it, including before
+EndBlock in the same block and while an overdue lease is waiting behind the expiration rate limit.
 
 ### Close Lease (ACTIVE → CLOSED)
 

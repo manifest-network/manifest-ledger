@@ -336,28 +336,32 @@ sequenceDiagram
     
     Provider->>MsgServer: MsgAcknowledgeLease
     MsgServer->>MsgServer: ValidateBasic()
-    MsgServer->>Keeper: GetLease()
-    
-    alt Lease Not Found
-        Keeper-->>MsgServer: Error: not found
-    else Lease Found
-        alt State != PENDING
-            MsgServer-->>Provider: Error: not pending
-        else State == PENDING
-            MsgServer->>SKU: GetProvider(lease.provider_uuid)
-            SKU-->>MsgServer: Provider
-            
-            alt Sender != Provider.Address && Sender != authority
-                MsgServer-->>Provider: Error: unauthorized
-            else Authorized
-                MsgServer->>Store: Set state = ACTIVE
-                MsgServer->>Store: Set acknowledged_at = now
-                MsgServer->>Store: Set last_settled_at = now
-                MsgServer->>Store: Remove from PendingLeases index
-                MsgServer->>Store: Decrement pending_lease_count
-                MsgServer->>Store: Increment active_lease_count
-                MsgServer->>MsgServer: Emit LeaseAcknowledged Event
-                MsgServer-->>Provider: Success + acknowledged_at
+    MsgServer->>Keeper: Load every requested lease and distinct tenant credit account (read-only)
+    Keeper-->>MsgServer: Batch data or not-found error
+    MsgServer->>MsgServer: Check every loaded lease is PENDING and has the same provider
+
+    alt Any common batch validation fails
+        MsgServer-->>Provider: Error: not found, not pending, or mixed providers
+    else Common batch validation passes
+        MsgServer->>SKU: GetProvider(batch.provider_uuid)
+        SKU-->>MsgServer: Provider
+
+        alt Sender != Provider.Address && Sender != authority
+            MsgServer-->>Provider: Error: unauthorized
+        else Authorized
+            MsgServer->>Keeper: GetParams()
+            Keeper-->>MsgServer: Current params
+            MsgServer->>MsgServer: Check every hard deadline
+            MsgServer->>MsgServer: Aggregate and check every tenant's post-batch active count
+
+            alt Any activation gate fails
+                MsgServer-->>Provider: Error: deadline exceeded or maximum active leases reached
+            else All batch-wide gates pass
+                MsgServer->>Store: Apply every lease and account update in CacheContext
+                Store-->>MsgServer: All cached writes succeed
+                MsgServer->>Store: Commit cached batch once
+                MsgServer->>MsgServer: Emit per-lease and batch events after commit
+                MsgServer-->>Provider: Success + acknowledged_at + count
             end
         end
     end
@@ -708,6 +712,11 @@ The billing module implements an EndBlocker to handle automatic expiration of pe
 
 Leases that remain in `PENDING` state beyond the `pending_timeout` (default 30 minutes) are automatically expired:
 
+The same strict predicate is enforced synchronously by `AcknowledgeLease`: acknowledgement is
+valid exactly at `created_at + current pending_timeout` and rejected when block time is strictly
+later. EndBlock cleanup is rate-limited, so an overdue lease can remain stored as PENDING for later
+blocks, but it is already unacknowledgeable; provider rejection and tenant cancellation remain valid.
+
 ```go
 func (k Keeper) EndBlocker(ctx context.Context) error {
     sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -929,7 +938,7 @@ This returns `sdk.Coins` to support multi-denom leases where different SKUs may 
 |-----------|------------|-------|
 | FundCredit | O(1) | Bank transfer + storage write |
 | CreateLease | O(m) | m = items in lease |
-| AcknowledgeLease | O(1) | State change + index updates |
+| AcknowledgeLease | O(b + t) | Validate/update batch leases (`b`) and per-tenant post-batch caps (`t`) |
 | RejectLease | O(1) | State change + index updates |
 | CancelLease | O(1) | State change + index updates |
 | CloseLease | O(m) | m = items in lease |

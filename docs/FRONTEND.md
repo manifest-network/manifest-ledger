@@ -252,6 +252,10 @@ const reject = liftedinit.billing.v1.MessageComposer.encoded.rejectLease({
 });
 ```
 
+Acknowledgement revalidates every lease against the hard pending deadline and each tenant's
+post-batch active cap. It succeeds exactly at `createdAt + current pendingTimeout`, fails strictly
+afterward even if the lease still queries as PENDING, and applies no part of a failing batch.
+
 ### Withdraw (`MsgWithdraw`)
 
 Two mutually-exclusive modes. Specific-leases mode is atomic across the batch; provider-wide mode is paginated.

@@ -12131,7 +12131,10 @@ func (*MsgUpdateParamsResponse) Descriptor() ([]byte, []int) {
 
 // MsgAcknowledgeLease allows a provider to acknowledge one or more PENDING leases.
 // All leases must belong to the same provider and be in PENDING state.
-// This is an atomic operation: all leases succeed or all fail.
+// Every lease must be at or before created_at + the current pending_timeout; block times strictly
+// after that hard deadline are rejected even before EndBlock cleanup. Each tenant's active count
+// after the full batch must be at most max_leases_per_tenant.
+// This is an atomic operation: all gates are validated before any lease, account, or event changes.
 type MsgAcknowledgeLease struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

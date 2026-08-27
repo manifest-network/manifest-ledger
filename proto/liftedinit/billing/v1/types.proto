@@ -15,7 +15,8 @@ message Params {
   option (gogoproto.equal) = true;
 
   // max_leases_per_tenant is the maximum number of active leases a tenant can have.
-  // Must be greater than zero.
+  // Lease creation and acknowledgement both enforce this limit; acknowledgement evaluates
+  // each tenant's active count after applying the entire batch. Must be greater than zero.
   uint64 max_leases_per_tenant = 1
       [(gogoproto.jsontag) = "max_leases_per_tenant,omitempty,string"];
 
@@ -43,8 +44,10 @@ message Params {
   uint64 max_pending_leases_per_tenant = 5
       [(gogoproto.jsontag) = "max_pending_leases_per_tenant,omitempty,string"];
 
-  // pending_timeout is the duration in seconds that a lease can remain in PENDING state
-  // before it expires. Applies globally to all providers. Default is 1800 (30 minutes).
+  // pending_timeout is the current duration in seconds that defines a PENDING lease's hard
+  // acknowledgement deadline at created_at + pending_timeout. Acknowledgement is allowed exactly
+  // at that deadline and rejected when block time is strictly later, even if EndBlock has not yet
+  // marked the lease EXPIRED. Applies globally to all providers. Default is 1800 (30 minutes).
   // Must be between 60 (1 minute) and 86400 (24 hours).
   uint64 pending_timeout = 6
       [(gogoproto.jsontag) = "pending_timeout,omitempty,string"];

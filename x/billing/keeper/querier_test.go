@@ -1793,12 +1793,11 @@ func TestQueryCreditAccount_IncludesPendingDenomBeyondLegacyCap(t *testing.T) {
 		"denom used only by a pending lease past the legacy 100 cap must appear in balances")
 }
 
-// TestQueryCreditEstimate_ActiveCapBoundsIteration verifies the active-lease cap both (a) never
-// truncates a legitimately-reachable state and (b) still bounds iteration for a tenant with more
-// leases than the cap. With max_leases_per_tenant=5 and max_pending_leases_per_tenant=3 the cap is
-// min(5+3, upperBoundSum) = 8. A tenant can legitimately reach 7 active leases (the acknowledge
-// overshoot), so 7 and 8 leases must be summed in full; 9 and 12 must be bounded to 8. The
-// over-cap rows guard against a regression that drops the bound entirely.
+// TestQueryCreditEstimate_ActiveCapBoundsIteration verifies the legacy-state compatibility cap.
+// New acknowledgements cannot exceed max_leases_per_tenant, but pre-gate chain state can contain
+// an acknowledgement overshoot. With max_leases_per_tenant=5 and
+// max_pending_leases_per_tenant=3, the compatibility cap is min(5+3, upperBoundSum) = 8: legacy
+// rows through 8 remain visible, while 9 and 12 are bounded to 8 as a DoS safeguard.
 func TestQueryCreditEstimate_ActiveCapBoundsIteration(t *testing.T) {
 	const (
 		maxLeases  = 5
@@ -1811,7 +1810,7 @@ func TestQueryCreditEstimate_ActiveCapBoundsIteration(t *testing.T) {
 		numLeases  int
 		expectRate uint64
 	}{
-		{"below cap (overshoot band)", 7, 7},
+		{"legacy overshoot band", 7, 7},
 		{"exactly at cap", capLimit, capLimit},
 		{"one over cap", capLimit + 1, capLimit},
 		{"well over cap", 12, capLimit},
@@ -1863,12 +1862,9 @@ func TestQueryCreditEstimate_ActiveCapBoundsIteration(t *testing.T) {
 	}
 }
 
-// TestQueryCreditEstimate_CoversAcknowledgeOvershoot drives real CreateLease/AcknowledgeLease
-// messages to reach the pending->active acknowledge overshoot (active count exceeds
-// max_leases_per_tenant), then verifies CreditEstimate counts and sums ALL active leases. This is
-// the end-to-end guard for the reachable-ceiling cap: a max_leases_per_tenant-only cap would
-// truncate the overshooting leases from the burn-rate sum.
-func TestQueryCreditEstimate_CoversAcknowledgeOvershoot(t *testing.T) {
+// TestQueryCreditEstimate_RejectsAcknowledgeOvershoot verifies that real message handlers can no
+// longer enter the legacy overshoot band and that a failed batch leaves CreditEstimate unchanged.
+func TestQueryCreditEstimate_RejectsAcknowledgeOvershoot(t *testing.T) {
 	f := initFixture(t)
 	k := f.App.BillingKeeper
 	msgServer := keeper.NewMsgServerImpl(k)
@@ -1877,8 +1873,7 @@ func TestQueryCreditEstimate_CoversAcknowledgeOvershoot(t *testing.T) {
 	tenant := f.TestAccs[0]
 	providerAddr := f.TestAccs[1]
 
-	// Low limits so the overshoot is reachable with a handful of messages:
-	// reachable active = MaxLeasesPerTenant-1 + MaxPendingLeasesPerTenant = 4 + 3 = 7 > MaxLeasesPerTenant(5).
+	// Low limits make a post-batch overshoot attempt reachable with a handful of messages.
 	params, err := k.GetParams(f.Ctx)
 	require.NoError(t, err)
 	params.MaxLeasesPerTenant = 5
@@ -1896,8 +1891,7 @@ func TestQueryCreditEstimate_CoversAcknowledgeOvershoot(t *testing.T) {
 	}))
 	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin("umfx", sdkmath.NewInt(1_000_000_000))))
 
-	// createAndAck creates n pending leases (respecting the pending gate, n <= MaxPendingLeasesPerTenant)
-	// and acknowledges them, moving the active count up by n.
+	// createAndAck creates n pending leases and acknowledges them within the active cap.
 	createAndAck := func(n int) {
 		uuids := make([]string, 0, n)
 		for range n {
@@ -1917,23 +1911,49 @@ func TestQueryCreditEstimate_CoversAcknowledgeOvershoot(t *testing.T) {
 
 	createAndAck(3) // active 3
 	createAndAck(1) // active 4 = MaxLeasesPerTenant-1
-	createAndAck(3) // active 7 -> overshoot past MaxLeasesPerTenant(5)
 
-	ca, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	overshootUUIDs := make([]string, 0, 3)
+	for range 3 {
+		resp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, err)
+		overshootUUIDs = append(overshootUUIDs, resp.LeaseUuid)
+	}
+
+	beforeAccount, err := k.GetCreditAccount(f.Ctx, tenant.String())
 	require.NoError(t, err)
-	require.Equal(t, uint64(7), ca.ActiveLeaseCount, "sanity: overshoot state reached via real handlers")
+	require.Equal(t, uint64(4), beforeAccount.ActiveLeaseCount)
+	require.Equal(t, uint64(3), beforeAccount.PendingLeaseCount)
+
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender:     providerAddr.String(),
+		LeaseUuids: overshootUUIDs,
+	})
+	require.ErrorIs(t, err, types.ErrMaxLeasesReached)
+
+	afterAccount, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, beforeAccount, afterAccount)
+	for _, leaseUUID := range overshootUUIDs {
+		lease, err := k.GetLease(f.Ctx, leaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
+		require.Nil(t, lease.AcknowledgedAt)
+	}
 
 	resp, err := querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{Tenant: tenant.String()})
 	require.NoError(t, err)
-	require.Equal(t, uint64(7), resp.ActiveLeaseCount, "all overshoot active leases must be counted")
-	require.Equal(t, sdkmath.NewInt(7), resp.TotalRatePerSecond.AmountOf("umfx"),
-		"burn rate must sum all 7 active leases (1 umfx/sec each), not truncate at max_leases_per_tenant")
+	require.Equal(t, uint64(4), resp.ActiveLeaseCount)
+	require.Equal(t, sdkmath.NewInt(4), resp.TotalRatePerSecond.AmountOf("umfx"),
+		"failed acknowledgement must not change the active burn rate")
 }
 
 // TestQueryCreditAccount_ActiveDenomCapBounds verifies the denom-collection cap bounds iteration:
-// a denom used only by an active lease PAST the cap is excluded from the balances response. With
-// max_leases_per_tenant=5 and max_pending_leases_per_tenant=3 the active cap is 8, so a tail denom
-// on the 10th active lease (by ascending UUID) must not appear, while denoms within the cap do.
+// a denom used only by an active lease PAST the legacy compatibility cap is excluded from the
+// balances response. With max_leases_per_tenant=5 and max_pending_leases_per_tenant=3 the cap is 8,
+// so a tail denom on the 10th active lease must not appear, while denoms within the cap do.
 func TestQueryCreditAccount_ActiveDenomCapBounds(t *testing.T) {
 	f := initFixture(t)
 	k := f.App.BillingKeeper

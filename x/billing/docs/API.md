@@ -138,7 +138,8 @@ manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-6789-7abc-
 
 #### acknowledge-lease
 
-Acknowledge one or more PENDING leases atomically (provider only). Transitions leases to ACTIVE and starts billing.
+Acknowledge one or more PENDING leases atomically (provider or module authority). After revalidating activation
+gates, transitions leases to ACTIVE and starts billing.
 
 ```bash
 manifestd tx billing acknowledge-lease [lease-uuid]... [flags]
@@ -163,8 +164,10 @@ manifestd tx billing acknowledge-lease uuid1 uuid2 uuid3 --from provider-key
 **Notes:**
 - Only PENDING leases can be acknowledged
 - All leases must belong to the same provider
+- Block time must be at or before each lease's `created_at + current pending_timeout`; the exact cutoff is valid
+- Each tenant's active count after applying the whole batch must be ≤ `max_leases_per_tenant`
 - Maximum 100 leases per transaction
-- Atomic operation: all succeed or all fail
+- Atomic operation: all timeout and per-tenant cap gates pass before any lease, count, timestamp, reservation, or event changes
 - Billing starts from the acknowledgement timestamp
 - Emits `lease_acknowledged` event for each lease
 - Emits `batch_acknowledged` event when multiple leases are processed (includes lease_count, provider_uuid, acknowledged_by)
@@ -929,7 +932,7 @@ manifestd query billing credit-estimate manifest1abc...
 - With multi-denom support, the estimate returns the minimum duration across all denominations (the limiting factor)
 
 **Limitations:**
-- **Bounded lease iteration**: The active-lease iteration is bounded by `max_leases_per_tenant + max_pending_leases_per_tenant` — a safe upper bound on the reachable active-lease count, clamped to the params' upper bounds (10,000 / 1,000) as a hard DoS ceiling. This covers every legitimately-reachable state, so `total_rate_per_second` and `active_lease_count` reflect all of a tenant's active leases and are not truncated at a fixed 100.
+- **Bounded lease iteration**: New acknowledgements enforce `max_leases_per_tenant`, but pre-gate state can contain pending→active overshoot leases. Active iteration retains the compatibility bound `max_leases_per_tenant + max_pending_leases_per_tenant`, with a hard ceiling of 11,000 iterations. This preserves the historical overshoot band while current limits remain compatible; arbitrary imported state or state above subsequently lowered limits can still be truncated by the DoS ceiling.
 - **Does not account for pending withdrawals**: The estimate uses current balance, not accounting for any unsettled accrued amounts from existing leases.
 - **Assumes constant rate**: The estimate assumes all current leases continue at their current rates. Actual duration may differ if leases are closed or new leases are created.
 
@@ -1075,7 +1078,8 @@ message MsgCreateLeaseForTenantResponse {
 #### MsgAcknowledgeLease
 
 Provider acknowledges one or more PENDING leases atomically, transitioning them to ACTIVE.
-All leases must belong to the same provider and be in PENDING state.
+All leases must belong to the same provider, be in PENDING state, be no later than their hard
+pending deadline, and fit within each tenant's post-batch active cap.
 
 **Request:**
 ```protobuf
@@ -1096,8 +1100,10 @@ message MsgAcknowledgeLeaseResponse {
 **Constraints:**
 - All leases must belong to the same provider
 - All leases must be in PENDING state
+- Block time must be ≤ `created_at + current pending_timeout` for every lease; strictly later acknowledgements fail even if EndBlock has not yet expired the lease
+- Each tenant's active count after the entire batch must be ≤ `max_leases_per_tenant`
 - Maximum 100 leases per call
-- Atomic: all succeed or all fail
+- Atomic: all activation gates pass before any state, aggregate, timestamp, reservation, or event changes
 
 **CLI:**
 ```bash
@@ -1601,6 +1607,8 @@ message Params {
 ```
 
 **Field notes:**
+- `max_leases_per_tenant`: Revalidated when PENDING leases are acknowledged, using each tenant's active count after the complete batch.
+- `pending_timeout`: Defines a hard acknowledgement deadline at `created_at + current pending_timeout`. The exact cutoff is valid; a strictly later block time is rejected even before rate-limited EndBlock cleanup.
 - `allowed_list`: Addresses with privileged authority for `MsgCreateLeaseForTenant` and `MsgSetItemCustomDomain`, in addition to the module authority.
 - `reserved_domain_suffixes`: DNS suffixes (each must begin with `.`) that tenants are forbidden from claiming as a `LeaseItem.custom_domain`. Match is case-insensitive at a label boundary, plus the apex (e.g. `.foo.example` matches both `app.foo.example` and `foo.example`). Each entry's substring after the leading dot must itself be a valid FQDN. Tunable via `MsgUpdateParams`.
 
@@ -1691,7 +1699,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrLeaseNotFound` | 2 | Lease doesn't exist |
 | `ErrLeaseNotActive` | 3 | Lease is not in ACTIVE state |
 | `ErrInsufficientCredit` | 4 | Not enough credit balance |
-| `ErrMaxLeasesReached` | 5 | Tenant at max active leases |
+| `ErrMaxLeasesReached` | 5 | Lease creation or acknowledgement would exceed the tenant's active cap |
 | `ErrUnauthorized` | 6 | Sender not authorized |
 | `ErrReserved7` | 7 | Reserved for future use |
 | `ErrCreditAccountNotFound` | 8 | Credit account doesn't exist |
@@ -1720,6 +1728,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrLeaseNotEditable` | 31 | Lease is not in PENDING or ACTIVE state — `custom_domain` cannot be edited on closed/rejected/expired leases |
 | `ErrLeaseItemNotFound` | 32 | No lease item matched the supplied `service_name` |
 | `ErrAmbiguousLeaseItem` | 33 | Lookup by `service_name` matched more than one item — happens for multi-item legacy leases (no `service_name`s); recreate the lease in service-name mode |
+| `ErrLeaseAcknowledgementDeadlineExceeded` | 34 | Acknowledgement block time is strictly after a lease's hard pending deadline |
 
 **Note on Reserved Codes:** Error codes 7 and 20 are explicitly reserved to maintain stable error code assignments across module versions.
 
@@ -1728,7 +1737,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 - Error codes in logs and metrics remain comparable across versions
 - New errors get the next number after the highest assigned code rather than reusing gaps
 
-**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code (currently 33).
+**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code (currently 34).
 
 ---
 

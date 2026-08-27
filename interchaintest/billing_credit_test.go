@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
 // setupCreditAccounts funds credit accounts for tenant1 and tenant2.
@@ -445,19 +446,14 @@ func testWithdrawableQueriesIndependent(t *testing.T, ctx context.Context, tc *b
 	})
 }
 
-// TestBillingCreditEstimateOvershoot is an end-to-end test for ENG-527. It drives a tenant into
-// the pending->active acknowledge overshoot — active lease count exceeding max_leases_per_tenant,
-// reachable because AcknowledgeLease moves pending->active without re-gating the active limit — and
-// verifies that CreditEstimate sums the burn rate over ALL active leases rather than truncating at
-// max_leases_per_tenant. The query iteration cap is derived from
-// max_leases_per_tenant + max_pending_leases_per_tenant (the maximum reachable active count).
-func TestBillingCreditEstimateOvershoot(t *testing.T) {
-	ctx, tc, cleanup := setupBillingTest(t, "billing-estimate-overshoot")
+// TestBillingAcknowledgeActiveCap is an end-to-end regression for ENG-859. It verifies that a
+// same-tenant acknowledgement batch cannot push the active count above max_leases_per_tenant and
+// that the failed batch leaves both pending leases and the credit estimate unchanged.
+func TestBillingAcknowledgeActiveCap(t *testing.T) {
+	ctx, tc, cleanup := setupBillingTest(t, "billing-ack-active-cap")
 	t.Cleanup(cleanup)
 
-	// Lower the lease limits so the overshoot is reachable with a handful of txs:
-	// max_leases_per_tenant=2, max_pending_leases_per_tenant=2 => reachable active =
-	// (2-1)+2 = 3, strictly greater than max_leases_per_tenant.
+	// Lower the lease limits so a post-batch overshoot can be attempted with a handful of txs.
 	current, err := helpers.BillingQueryParams(ctx, tc.chain)
 	require.NoError(t, err)
 	paramRes, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
@@ -475,7 +471,7 @@ func TestBillingCreditEstimateOvershoot(t *testing.T) {
 	require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
 
 	// Fresh tenant with a well-funded credit account.
-	users := interchaintest.GetAndFundTestUsers(t, ctx, "overshoot-tenant", DefaultGenesisAmt, tc.chain)
+	users := interchaintest.GetAndFundTestUsers(t, ctx, "active-cap-tenant", DefaultGenesisAmt, tc.chain)
 	tenant := users[0]
 	err = tc.chain.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tenant.FormattedAddress(),
@@ -512,7 +508,7 @@ func TestBillingCreditEstimateOvershoot(t *testing.T) {
 		require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
 	}
 
-	// Reach active = max_leases_per_tenant-1 = 1, then overshoot to 3.
+	// Reach active = max_leases_per_tenant-1 = 1, then prepare two pending leases.
 	l1 := createLease() // pending 1 (active 0 < 2)
 	ack(l1)             // active 1
 
@@ -525,14 +521,38 @@ func TestBillingCreditEstimateOvershoot(t *testing.T) {
 
 	l2 := createLease() // pending 1 (active 1 < 2)
 	l3 := createLease() // pending 2 (active 1 < 2, pending 2 <= 2)
-	ack(l2, l3)         // active 3 -> overshoot past max_leases_per_tenant (2)
+	beforeAck, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, tenant.FormattedAddress())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), beforeAck.CreditAccount.ActiveLeaseCount)
+	require.Equal(t, uint64(2), beforeAck.CreditAccount.PendingLeaseCount)
+
+	ackRes, err := helpers.BillingAcknowledgeLeases(ctx, tc.chain, tc.providerWallet, []string{l2, l3})
+	require.NoError(t, err)
+	ackTx, err := tc.chain.GetTransaction(ackRes.TxHash)
+	require.NoError(t, err)
+	require.NotEqual(t, uint32(0), ackTx.Code, "post-batch active-cap overshoot must fail")
+	require.Contains(t, ackTx.RawLog, "maximum leases per tenant reached")
+	require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
+
+	afterAck, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, tenant.FormattedAddress())
+	require.NoError(t, err)
+	require.Equal(t, beforeAck.CreditAccount.ActiveLeaseCount, afterAck.CreditAccount.ActiveLeaseCount)
+	require.Equal(t, beforeAck.CreditAccount.PendingLeaseCount, afterAck.CreditAccount.PendingLeaseCount)
+	require.True(t, beforeAck.CreditAccount.ReservedAmounts.Equal(afterAck.CreditAccount.ReservedAmounts),
+		"failed acknowledgement must preserve reservations")
+
+	for _, leaseUUID := range []string{l2, l3} {
+		leaseRes, err := helpers.BillingQueryLease(ctx, tc.chain, leaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, billingtypes.LEASE_STATE_PENDING, leaseRes.Lease.GetState())
+		require.Nil(t, leaseRes.Lease.AcknowledgedAt)
+	}
 
 	res, err := helpers.BillingQueryCreditEstimate(ctx, tc.chain, tenant.FormattedAddress())
 	require.NoError(t, err)
-	require.Equal(t, uint64(3), res.ActiveLeaseCount,
-		"CreditEstimate must count all active leases in the overshoot state")
-	require.Equal(t, baseAmt.MulRaw(3), res.TotalRatePerSecond.AmountOf(tc.pwrDenom),
-		"burn rate must sum all 3 active leases (3x baseline), not truncate at max_leases_per_tenant")
-	t.Logf("Overshoot verified: active_leases=%d (max_leases_per_tenant=2), rate/sec=%s",
+	require.Equal(t, uint64(1), res.ActiveLeaseCount)
+	require.Equal(t, baseAmt, res.TotalRatePerSecond.AmountOf(tc.pwrDenom),
+		"failed acknowledgement must not change the active burn rate")
+	t.Logf("Active-cap gate verified: active_leases=%d (max_leases_per_tenant=2), rate/sec=%s",
 		res.ActiveLeaseCount, res.TotalRatePerSecond)
 }

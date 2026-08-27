@@ -479,7 +479,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	cacheCtx, writeCache := sdkCtx.CacheContext()
 	totalSettledAmounts := sdk.NewCoins()
 
-	// Track events to emit after successful commit (events are not cached)
+	// Track close events to emit after successful commit.
 	type leaseEvent struct {
 		uuid           string
 		tenant         string
@@ -1173,8 +1173,60 @@ func (ms msgServer) validateProviderAuthorization(ctx context.Context, sender, p
 	return provider, nil
 }
 
+// pendingLeaseDeadlineExceeded is the single strict-boundary predicate shared by
+// acknowledgement and EndBlock expiration. A lease remains eligible exactly at
+// createdAt + pendingTimeout and becomes overdue only after that instant.
+func pendingLeaseDeadlineExceeded(blockTime, createdAt time.Time, pendingTimeout time.Duration) bool {
+	return blockTime.After(createdAt.Add(pendingTimeout))
+}
+
+// validateLeaseActivationGates revalidates the time and tenant-cap constraints that
+// must hold when PENDING leases become ACTIVE. It performs no writes so the entire
+// acknowledgement batch fails before any state or event changes are attempted.
+func validateLeaseActivationGates(blockTime time.Time, params types.Params, validated *pendingLeaseBatchResult) error {
+	// #nosec G115 -- PendingTimeout is validated in params to be within safe bounds (60-86400 seconds)
+	pendingTimeout := time.Duration(params.PendingTimeout) * time.Second
+	activationsByTenant := make(map[string]uint64, len(validated.creditAccounts))
+
+	for i := range validated.leases {
+		lease := &validated.leases[i]
+		deadline := lease.CreatedAt.Add(pendingTimeout)
+		if pendingLeaseDeadlineExceeded(blockTime, lease.CreatedAt, pendingTimeout) {
+			return types.ErrLeaseAcknowledgementDeadlineExceeded.Wrapf(
+				"lease %s deadline %s passed at block time %s",
+				lease.Uuid,
+				deadline.UTC().Format(time.RFC3339Nano),
+				blockTime.UTC().Format(time.RFC3339Nano),
+			)
+		}
+
+		activationsByTenant[lease.Tenant]++
+	}
+
+	// Iterate in the validated batch's deterministic tenant order. The first
+	// condition protects the subtraction in the second condition from underflow
+	// if imported or legacy state already exceeds the configured active cap.
+	for _, tenant := range validated.tenantOrder {
+		creditAccount := validated.creditAccounts[tenant]
+		activations := activationsByTenant[tenant]
+		if creditAccount.ActiveLeaseCount > params.MaxLeasesPerTenant ||
+			activations > params.MaxLeasesPerTenant-creditAccount.ActiveLeaseCount {
+			return types.ErrMaxLeasesReached.Wrapf(
+				"tenant %s has %d active leases and cannot activate %d more, max is %d",
+				tenant,
+				creditAccount.ActiveLeaseCount,
+				activations,
+				params.MaxLeasesPerTenant,
+			)
+		}
+	}
+
+	return nil
+}
+
 // AcknowledgeLease allows a provider to acknowledge one or more PENDING leases.
-// This transitions the leases to ACTIVE state and starts billing.
+// This transitions the leases to ACTIVE state and starts billing after revalidating
+// the hard pending deadline and each tenant's post-batch active lease count.
 // All leases must belong to the same provider. This is an atomic operation:
 // all leases succeed or all fail.
 func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowledgeLease) (*types.MsgAcknowledgeLeaseResponse, error) {
@@ -1195,6 +1247,15 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 		return nil, err
 	}
 
+	params, err := ms.k.GetParams(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateLeaseActivationGates(blockTime, params, validated); err != nil {
+		return nil, err
+	}
+
 	leases := validated.leases
 	creditAccounts := validated.creditAccounts
 
@@ -1202,7 +1263,7 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 	// This ensures that if any operation fails, all changes are rolled back.
 	cacheCtx, writeCache := sdkCtx.CacheContext()
 
-	// Track events to emit after successful commit (events are not cached)
+	// Track acknowledgement events to emit after successful commit.
 	type leaseEvent struct {
 		uuid         string
 		tenant       string

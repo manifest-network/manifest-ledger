@@ -532,10 +532,12 @@ func splitAndTrim(s string) []string {
 func NewAcknowledgeLeaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "acknowledge-lease [lease-uuid]...",
-		Short: "Acknowledge one or more pending leases (provider only)",
+		Short: "Acknowledge one or more pending leases (provider or module authority)",
 		Long: `Acknowledge one or more pending leases to transition them to active state.
 Only the provider of the leases or the module authority can acknowledge.
 All leases must belong to the same provider and be in PENDING state.
+Every lease must be at or before its pending-timeout deadline, and each tenant's
+post-batch active lease count must remain within max_leases_per_tenant.
 This is an atomic operation: all leases succeed or all fail.
 Billing starts from the acknowledgement time.`,
 		Example: `# Acknowledge a single lease

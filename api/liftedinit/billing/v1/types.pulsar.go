@@ -4279,7 +4279,8 @@ type Params struct {
 	unknownFields protoimpl.UnknownFields
 
 	// max_leases_per_tenant is the maximum number of active leases a tenant can have.
-	// Must be greater than zero.
+	// Lease creation and acknowledgement both enforce this limit; acknowledgement evaluates
+	// each tenant's active count after applying the entire batch. Must be greater than zero.
 	MaxLeasesPerTenant uint64 `protobuf:"varint,1,opt,name=max_leases_per_tenant,json=maxLeasesPerTenant,proto3" json:"max_leases_per_tenant,omitempty"`
 	// allowed_list is the list of addresses allowed to create leases on behalf of tenants
 	// in addition to the module authority.
@@ -4295,8 +4296,10 @@ type Params struct {
 	// Prevents spam attacks where tenants create many leases that providers must process.
 	// Default is 10.
 	MaxPendingLeasesPerTenant uint64 `protobuf:"varint,5,opt,name=max_pending_leases_per_tenant,json=maxPendingLeasesPerTenant,proto3" json:"max_pending_leases_per_tenant,omitempty"`
-	// pending_timeout is the duration in seconds that a lease can remain in PENDING state
-	// before it expires. Applies globally to all providers. Default is 1800 (30 minutes).
+	// pending_timeout is the current duration in seconds that defines a PENDING lease's hard
+	// acknowledgement deadline at created_at + pending_timeout. Acknowledgement is allowed exactly
+	// at that deadline and rejected when block time is strictly later, even if EndBlock has not yet
+	// marked the lease EXPIRED. Applies globally to all providers. Default is 1800 (30 minutes).
 	// Must be between 60 (1 minute) and 86400 (24 hours).
 	PendingTimeout uint64 `protobuf:"varint,6,opt,name=pending_timeout,json=pendingTimeout,proto3" json:"pending_timeout,omitempty"`
 	// reserved_domain_suffixes is the list of DNS suffixes (each beginning with `.`)

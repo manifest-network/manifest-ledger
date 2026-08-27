@@ -147,7 +147,7 @@ ictest-billing:
 # Extra billing e2e tests kept out of the main ictest-billing batch so it stays under the 45m
 # timeout. Runs as its own parallel CI job.
 ictest-billing-extra:
-	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(CreditEstimateOvershoot|CustomDomain)$$" . -count=1
+	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(AcknowledgeActiveCap|CustomDomain)$$" . -count=1
 
 ictest-billing-lease:
 	cd interchaintest && go test -race -v -timeout 45m -run TestBillingLease . -count=1

@@ -864,7 +864,10 @@ var xxx_messageInfo_MsgUpdateParamsResponse proto.InternalMessageInfo
 
 // MsgAcknowledgeLease allows a provider to acknowledge one or more PENDING leases.
 // All leases must belong to the same provider and be in PENDING state.
-// This is an atomic operation: all leases succeed or all fail.
+// Every lease must be at or before created_at + the current pending_timeout; block times strictly
+// after that hard deadline are rejected even before EndBlock cleanup. Each tenant's active count
+// after the full batch must be at most max_leases_per_tenant.
+// This is an atomic operation: all gates are validated before any lease, account, or event changes.
 type MsgAcknowledgeLease struct {
 	// sender is the provider's address or authority.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
@@ -1485,8 +1488,9 @@ type MsgClient interface {
 	// This is used for migrating off-chain leases to on-chain.
 	// The lease starts in PENDING state awaiting provider acknowledgement.
 	CreateLeaseForTenant(ctx context.Context, in *MsgCreateLeaseForTenant, opts ...grpc.CallOption) (*MsgCreateLeaseForTenantResponse, error)
-	// AcknowledgeLease allows a provider to acknowledge a PENDING lease.
-	// This transitions the lease to ACTIVE state and starts billing.
+	// AcknowledgeLease allows a provider to acknowledge PENDING leases.
+	// Before atomically transitioning them to ACTIVE, it revalidates the hard pending deadline
+	// and each tenant's post-batch active-lease cap. Billing starts at acknowledgement.
 	AcknowledgeLease(ctx context.Context, in *MsgAcknowledgeLease, opts ...grpc.CallOption) (*MsgAcknowledgeLeaseResponse, error)
 	// RejectLease allows a provider to reject a PENDING lease.
 	// This transitions the lease to REJECTED state and unlocks tenant credit.
@@ -1618,8 +1622,9 @@ type MsgServer interface {
 	// This is used for migrating off-chain leases to on-chain.
 	// The lease starts in PENDING state awaiting provider acknowledgement.
 	CreateLeaseForTenant(context.Context, *MsgCreateLeaseForTenant) (*MsgCreateLeaseForTenantResponse, error)
-	// AcknowledgeLease allows a provider to acknowledge a PENDING lease.
-	// This transitions the lease to ACTIVE state and starts billing.
+	// AcknowledgeLease allows a provider to acknowledge PENDING leases.
+	// Before atomically transitioning them to ACTIVE, it revalidates the hard pending deadline
+	// and each tenant's post-batch active-lease cap. Billing starts at acknowledgement.
 	AcknowledgeLease(context.Context, *MsgAcknowledgeLease) (*MsgAcknowledgeLeaseResponse, error)
 	// RejectLease allows a provider to reject a PENDING lease.
 	// This transitions the lease to REJECTED state and unlocks tenant credit.

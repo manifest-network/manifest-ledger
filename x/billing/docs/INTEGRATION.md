@@ -191,7 +191,7 @@ For providers with fixed SKUs (pre-configured resources), tenants create leases 
 
 **Important**: Upload deployment data BEFORE the provider acknowledges. This allows the provider to validate the manifest and provision resources before committing to the lease.
 
-**Pending timeout**: The entire upload → validate → provision → acknowledge sequence must complete within `params.pending_timeout` (default 1800s = 30 minutes; configurable 60..86400 seconds via `MsgUpdateParams`). If the provider does not acknowledge before the lease's `created_at + pending_timeout`, the EndBlocker transitions the lease to `LEASE_STATE_EXPIRED` and releases the tenant's credit reservation. The tenant must then create a new lease (and re-upload the deployment data); any payload already uploaded to the provider is orphaned.
+**Pending timeout**: The entire upload → validate → provision → acknowledge sequence must complete no later than `lease.created_at + the current params.pending_timeout` (default 1800s = 30 minutes; configurable 60..86400 seconds via `MsgUpdateParams`). Acknowledgement is valid exactly at that cutoff and rejected at strictly later block times, even if rate-limited EndBlock cleanup has not yet changed the lease from PENDING to EXPIRED. EndBlock eventually releases the tenant's credit reservation; the tenant must then create a new lease (and re-upload the deployment data), and any payload already uploaded to the provider is orphaned.
 
 ### On-Chain Storage
 

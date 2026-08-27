@@ -44,8 +44,9 @@ type MsgClient interface {
 	// This is used for migrating off-chain leases to on-chain.
 	// The lease starts in PENDING state awaiting provider acknowledgement.
 	CreateLeaseForTenant(ctx context.Context, in *MsgCreateLeaseForTenant, opts ...grpc.CallOption) (*MsgCreateLeaseForTenantResponse, error)
-	// AcknowledgeLease allows a provider to acknowledge a PENDING lease.
-	// This transitions the lease to ACTIVE state and starts billing.
+	// AcknowledgeLease allows a provider to acknowledge PENDING leases.
+	// Before atomically transitioning them to ACTIVE, it revalidates the hard pending deadline
+	// and each tenant's post-batch active-lease cap. Billing starts at acknowledgement.
 	AcknowledgeLease(ctx context.Context, in *MsgAcknowledgeLease, opts ...grpc.CallOption) (*MsgAcknowledgeLeaseResponse, error)
 	// RejectLease allows a provider to reject a PENDING lease.
 	// This transitions the lease to REJECTED state and unlocks tenant credit.
@@ -179,8 +180,9 @@ type MsgServer interface {
 	// This is used for migrating off-chain leases to on-chain.
 	// The lease starts in PENDING state awaiting provider acknowledgement.
 	CreateLeaseForTenant(context.Context, *MsgCreateLeaseForTenant) (*MsgCreateLeaseForTenantResponse, error)
-	// AcknowledgeLease allows a provider to acknowledge a PENDING lease.
-	// This transitions the lease to ACTIVE state and starts billing.
+	// AcknowledgeLease allows a provider to acknowledge PENDING leases.
+	// Before atomically transitioning them to ACTIVE, it revalidates the hard pending deadline
+	// and each tenant's post-batch active-lease cap. Billing starts at acknowledgement.
 	AcknowledgeLease(context.Context, *MsgAcknowledgeLease) (*MsgAcknowledgeLeaseResponse, error)
 	// RejectLease allows a provider to reject a PENDING lease.
 	// This transitions the lease to REJECTED state and unlocks tenant credit.

@@ -455,7 +455,7 @@ The Billing module implements a credit-based leasing system for AI infrastructur
 
 #### Lease Lifecycle:
 
-- Two-phase commit: tenant creates (PENDING), provider acknowledges (ACTIVE)
+- Two-phase commit: tenant creates (PENDING), provider acknowledges (ACTIVE) only while the hard pending deadline and post-batch tenant active cap still pass
 - Price locking at lease creation for predictable billing
 - Lazy settlement (on-touch) for scalability
 - Auto-close when credit is exhausted
@@ -502,6 +502,8 @@ The Billing module implements a credit-based leasing system for AI infrastructur
 ##### Acknowledge Lease (acknowledge-lease):
 
 - Syntax: `manifestd tx billing acknowledge-lease [lease-uuid...] [flags]`
+
+  - Revalidates the current `pending_timeout` as a hard deadline (exact cutoff allowed) and each tenant's `max_leases_per_tenant` against the full batch. Any failure leaves the whole batch unchanged.
 
   **Example:** `manifestd tx billing acknowledge-lease 01912345-6789-7abc-8def-0123456789ab --from provider`
 

@@ -38,6 +38,10 @@ var (
 	ErrAmbiguousLeaseItem         = errors.Register(ModuleName, 33, "lease item lookup is ambiguous")
 )
 
+// ErrLeaseAcknowledgementDeadlineExceeded identifies acknowledgements attempted
+// strictly after a pending lease's hard deadline.
+var ErrLeaseAcknowledgementDeadlineExceeded = errors.Register(ModuleName, 34, "lease acknowledgement deadline exceeded")
+
 // MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.
 // This is a hard limit enforced at the message validation level to prevent
 // denial-of-service attacks. The configurable max_items_per_lease param

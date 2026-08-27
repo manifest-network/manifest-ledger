@@ -168,6 +168,24 @@ manifestd query billing lease [lease-uuid]
 
 Only PENDING leases can be acknowledged/rejected by providers or cancelled by tenants.
 
+### "lease acknowledgement deadline exceeded"
+
+**Cause**: The acknowledgement block time is strictly after
+`lease.created_at + current pending_timeout`. This is a hard gate even when the lease still appears
+PENDING because the rate-limited EndBlocker has not expired it yet. The exact cutoff remains valid.
+
+**Solution**: Do not retry acknowledgement. The provider can reject the overdue lease, the tenant
+can cancel it while it remains PENDING, or either party can wait for EndBlock expiration and then
+the tenant can create a replacement lease.
+
+### "maximum leases per tenant reached" (during acknowledgement)
+
+**Cause**: Applying the complete acknowledgement batch would make at least one tenant's active
+lease count exceed `max_leases_per_tenant`. The cap is evaluated independently per tenant.
+
+**Solution**: Close active leases for the capped tenant before acknowledging more. Splitting a
+batch does not bypass the cap; only a batch whose resulting count is within the limit can succeed.
+
 ### "unauthorized" (for acknowledge/reject)
 
 **Cause**: The sender is neither the provider's management address for the SKUs in the lease nor the module authority. (Note: `allowed_list` does NOT grant acknowledge/reject — it only covers `CreateLeaseForTenant` and `SetItemCustomDomain`.)
@@ -191,9 +209,10 @@ manifestd tx billing reject-lease [lease-uuid] --reason "Service unavailable" --
 
 **What happens**:
 1. Lease remains in PENDING state
-2. After `pending_timeout` (default 30 minutes), the EndBlocker expires the lease
-3. Lease state changes to EXPIRED
-4. Credit is unlocked and remains in tenant's account
+2. At `created_at + pending_timeout` the exact-cutoff acknowledgement is still valid
+3. Strictly after that hard deadline, acknowledgement is rejected
+4. The rate-limited EndBlocker eventually changes the lease to EXPIRED
+5. Credit is unlocked and remains in tenant's account
 
 **What tenant can do**:
 - Wait for automatic expiration
@@ -365,6 +384,8 @@ manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --key [next
 - Authorization failure on one lease (e.g., not the provider for that lease)
 - One lease doesn't exist
 - Leases belong to different providers (for operations requiring same-provider)
+- An acknowledgement lease is strictly past its hard pending deadline
+- An acknowledgement batch would exceed any tenant's post-batch active cap
 
 **Solution:**
 1. Check each lease individually to identify the problem:
@@ -445,7 +466,9 @@ manifestd query billing credit-account manifest1abc...
 
 ### Understanding Pending Expiration
 
-Pending leases expire automatically if providers don't acknowledge them within `pending_timeout` (default 30 minutes).
+Pending leases expire automatically if providers do not acknowledge them by the hard
+`created_at + current pending_timeout` deadline (default 30 minutes). The exact cutoff is valid;
+strictly later block times are not.
 
 **How it works**:
 1. EndBlocker runs each block
@@ -455,6 +478,8 @@ Pending leases expire automatically if providers don't acknowledge them within `
 5. `lease_expired` event is emitted (attributes: lease_uuid, tenant, provider_uuid, reason="pending_timeout")
 
 **Rate limiting**: Max 100 expirations per block to prevent DoS.
+An overdue lease waiting behind this limit can still appear PENDING, but acknowledgement already
+fails synchronously; rejection and cancellation remain available.
 
 ### Lease expired while waiting for provider
 

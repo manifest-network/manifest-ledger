@@ -396,7 +396,8 @@ on the lease so the reservation can be released consistently later.
 
 **Implementation:**
 - Create → PENDING (credit locked)
-- AcknowledgeLease → ACTIVE (billing starts)
+- AcknowledgeLease revalidates every lease's hard timeout and every tenant's post-batch active cap before any writes
+- AcknowledgeLease → ACTIVE (billing starts) only when `blockTime <= created_at + current pending_timeout`
 - RejectLease → REJECTED (credit unlocked)
 - EndBlocker expiration → EXPIRED (credit unlocked)
 
@@ -407,7 +408,8 @@ on the lease so the reservation can be released consistently later.
 
 ## Decision 17: EndBlocker for Pending Expiration
 
-**Decision:** Use EndBlocker to automatically expire PENDING leases that exceed timeout.
+**Decision:** `created_at + current pending_timeout` is a hard provider-acknowledgement deadline;
+use EndBlocker to automatically expire PENDING leases after that deadline.
 
 **Alternatives Considered:**
 1. No automatic expiration (manual only)
@@ -422,6 +424,7 @@ on the lease so the reservation can be released consistently later.
 
 **Trade-offs:**
 - EndBlocker overhead (mitigated by rate limiting)
+- Cleanup can lag behind the hard deadline, but overdue PENDING leases cannot be acknowledged while waiting; they can still be rejected or cancelled
 - Range-queries the StateCreatedAt index (prefix 11) for `created_at` before the timeout cutoff (`created_at < blockTime - pending_timeout`), so each block visits only expirable pending leases rather than the full pending set (O(expired) instead of O(total pending)). A manual `collections.Range` over the compound `((state, created_at), uuid)` key is used because collections' `PairRange` helper cannot do partial-prefix ranges on the `Pair[int32, time.Time]` reference key; `sdk.TimeKey`'s sortable encoding makes the byte range match the `created_at` range. Consequence: with >100 expirable leases, the oldest 100 are expired first and the remainder wait for later blocks (rate limit).
 - Max pending leases per tenant limit needed
 

@@ -66,6 +66,65 @@ func (f *testFixture) createAndAcknowledgeLease(
 	return createResp.LeaseUuid
 }
 
+type acknowledgementTestSetup struct {
+	f            *testFixture
+	msgServer    types.MsgServer
+	tenants      []sdk.AccAddress
+	providerAddr sdk.AccAddress
+	skuUUID      string
+}
+
+func newAcknowledgementTestSetup(
+	t *testing.T,
+	tenantCount int,
+	configureParams func(*types.Params),
+) *acknowledgementTestSetup {
+	t.Helper()
+
+	f := initFixture(t)
+	params, err := f.App.BillingKeeper.GetParams(f.Ctx)
+	require.NoError(t, err)
+	configureParams(&params)
+	require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, params))
+
+	providerAddr := f.TestAccs[tenantCount]
+	payoutAddr := f.TestAccs[tenantCount+1]
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	tenants := f.TestAccs[:tenantCount]
+	for _, tenant := range tenants {
+		creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+		require.NoError(t, err)
+		f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000_000))))
+		require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+			Tenant:        tenant.String(),
+			CreditAddress: creditAddr.String(),
+		}))
+	}
+
+	return &acknowledgementTestSetup{
+		f:            f,
+		msgServer:    keeper.NewMsgServerImpl(f.App.BillingKeeper),
+		tenants:      tenants,
+		providerAddr: providerAddr,
+		skuUUID:      sku.Uuid,
+	}
+}
+
+func (s *acknowledgementTestSetup) createPendingLease(t *testing.T, tenant sdk.AccAddress) string {
+	t.Helper()
+
+	resp, err := s.msgServer.CreateLease(s.f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: s.skuUUID, Quantity: 1}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	return resp.LeaseUuid
+}
+
 func TestMsgFundCredit(t *testing.T) {
 	f := initFixture(t)
 
@@ -2919,6 +2978,282 @@ func TestMsgAcknowledgeLeaseBatch(t *testing.T) {
 		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, orphanLeaseUUID)
 		require.NoError(t, err)
 		require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
+	})
+}
+
+// TestMsgAcknowledgeLeasePendingTimeoutBoundary verifies that PendingTimeout is
+// a hard acknowledgement deadline with the same strict boundary as EndBlocker.
+func TestMsgAcknowledgeLeasePendingTimeoutBoundary(t *testing.T) {
+	tests := []struct {
+		name        string
+		elapsed     time.Duration
+		expectError bool
+	}{
+		{
+			name:    "just before cutoff",
+			elapsed: 60*time.Second - time.Nanosecond,
+		},
+		{
+			name:    "exactly at cutoff",
+			elapsed: 60 * time.Second,
+		},
+		{
+			name:        "just after cutoff before EndBlock",
+			elapsed:     60*time.Second + time.Nanosecond,
+			expectError: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newAcknowledgementTestSetup(t, 1, func(params *types.Params) {
+				params.PendingTimeout = 60
+			})
+			leaseUUID := s.createPendingLease(t, s.tenants[0])
+
+			beforeLease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
+			require.NoError(t, err)
+			beforeAccount, err := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.tenants[0].String())
+			require.NoError(t, err)
+
+			ackTime := beforeLease.CreatedAt.Add(tc.elapsed)
+			ackCtx := s.f.Ctx.WithBlockTime(ackTime).WithEventManager(sdk.NewEventManager())
+			resp, err := s.msgServer.AcknowledgeLease(ackCtx, &types.MsgAcknowledgeLease{
+				Sender:     s.providerAddr.String(),
+				LeaseUuids: []string{leaseUUID},
+			})
+
+			if !tc.expectError {
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				require.Equal(t, ackTime, resp.AcknowledgedAt)
+
+				lease, err := s.f.App.BillingKeeper.GetLease(ackCtx, leaseUUID)
+				require.NoError(t, err)
+				require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+				require.NotNil(t, lease.AcknowledgedAt)
+				require.Equal(t, ackTime, *lease.AcknowledgedAt)
+				require.Equal(t, ackTime, lease.LastSettledAt)
+
+				account, err := s.f.App.BillingKeeper.GetCreditAccount(ackCtx, s.tenants[0].String())
+				require.NoError(t, err)
+				require.Equal(t, uint64(1), account.ActiveLeaseCount)
+				require.Zero(t, account.PendingLeaseCount)
+				require.Equal(t, beforeAccount.ReservedAmounts, account.ReservedAmounts,
+					"acknowledgement must preserve the lease reservation")
+				require.Len(t, ackCtx.EventManager().Events(), 1)
+				return
+			}
+
+			require.Nil(t, resp)
+			require.ErrorIs(t, err, types.ErrLeaseAcknowledgementDeadlineExceeded)
+
+			// The acknowledgement runs before EndBlock for this block. A failed hard-deadline
+			// check must leave every field, aggregate, reservation, and event untouched.
+			afterLease, getErr := s.f.App.BillingKeeper.GetLease(ackCtx, leaseUUID)
+			require.NoError(t, getErr)
+			require.Equal(t, beforeLease, afterLease)
+			afterAccount, getErr := s.f.App.BillingKeeper.GetCreditAccount(ackCtx, s.tenants[0].String())
+			require.NoError(t, getErr)
+			require.Equal(t, beforeAccount, afterAccount)
+			require.Empty(t, ackCtx.EventManager().Events())
+
+			// EndBlock observes the identical strict boundary and expires the lease later
+			// in the same block, proving acknowledgement cannot win the pre-EndBlock race.
+			require.NoError(t, s.f.App.BillingKeeper.EndBlocker(ackCtx))
+			expiredLease, getErr := s.f.App.BillingKeeper.GetLease(ackCtx, leaseUUID)
+			require.NoError(t, getErr)
+			require.Equal(t, types.LEASE_STATE_EXPIRED, expiredLease.State)
+			expiredAccount, getErr := s.f.App.BillingKeeper.GetCreditAccount(ackCtx, s.tenants[0].String())
+			require.NoError(t, getErr)
+			require.Zero(t, expiredAccount.ActiveLeaseCount)
+			require.Zero(t, expiredAccount.PendingLeaseCount)
+			require.True(t, expiredAccount.ReservedAmounts.IsZero(),
+				"EndBlock expiration must release the pending lease reservation")
+		})
+	}
+}
+
+// TestMsgAcknowledgeLeaseTimeoutBatchAtomicity verifies that an overdue lease
+// late in the batch prevents an otherwise-eligible lease from being activated.
+func TestMsgAcknowledgeLeaseTimeoutBatchAtomicity(t *testing.T) {
+	s := newAcknowledgementTestSetup(t, 1, func(params *types.Params) {
+		params.PendingTimeout = 60
+		params.MaxPendingLeasesPerTenant = 2
+	})
+	baseTime := s.f.Ctx.BlockTime()
+	overdueUUID := s.createPendingLease(t, s.tenants[0])
+
+	// The second lease is younger and still eligible at the acknowledgement time.
+	s.f.Ctx = s.f.Ctx.WithBlockTime(baseTime.Add(30 * time.Second))
+	eligibleUUID := s.createPendingLease(t, s.tenants[0])
+	leaseUUIDs := []string{eligibleUUID, overdueUUID}
+
+	beforeAccount, err := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.tenants[0].String())
+	require.NoError(t, err)
+	beforeLeases := make([]types.Lease, 0, len(leaseUUIDs))
+	for _, leaseUUID := range leaseUUIDs {
+		lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
+		require.NoError(t, err)
+		beforeLeases = append(beforeLeases, lease)
+	}
+
+	ackCtx := s.f.Ctx.WithBlockTime(baseTime.Add(60*time.Second + time.Nanosecond)).
+		WithEventManager(sdk.NewEventManager())
+	resp, err := s.msgServer.AcknowledgeLease(ackCtx, &types.MsgAcknowledgeLease{
+		Sender:     s.providerAddr.String(),
+		LeaseUuids: leaseUUIDs,
+	})
+	require.Nil(t, resp)
+	require.ErrorIs(t, err, types.ErrLeaseAcknowledgementDeadlineExceeded)
+
+	afterAccount, err := s.f.App.BillingKeeper.GetCreditAccount(ackCtx, s.tenants[0].String())
+	require.NoError(t, err)
+	require.Equal(t, beforeAccount, afterAccount)
+	for i, leaseUUID := range leaseUUIDs {
+		lease, err := s.f.App.BillingKeeper.GetLease(ackCtx, leaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, beforeLeases[i], lease)
+	}
+	require.Empty(t, ackCtx.EventManager().Events())
+}
+
+// TestMsgAcknowledgeLeaseActiveCap verifies that the active-lease limit is
+// evaluated against each tenant's post-batch count before any writes occur.
+func TestMsgAcknowledgeLeaseActiveCap(t *testing.T) {
+	t.Run("same-tenant batch succeeds at active cap boundary", func(t *testing.T) {
+		s := newAcknowledgementTestSetup(t, 1, func(params *types.Params) {
+			params.MaxLeasesPerTenant = 2
+			params.MaxPendingLeasesPerTenant = 3
+		})
+		pendingUUIDs := []string{
+			s.createPendingLease(t, s.tenants[0]),
+			s.createPendingLease(t, s.tenants[0]),
+		}
+
+		resp, err := s.msgServer.AcknowledgeLease(s.f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     s.providerAddr.String(),
+			LeaseUuids: pendingUUIDs,
+		})
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), resp.AcknowledgedCount)
+
+		account, err := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.tenants[0].String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), account.ActiveLeaseCount)
+		require.Zero(t, account.PendingLeaseCount)
+	})
+
+	t.Run("batch overshoot is atomic", func(t *testing.T) {
+		s := newAcknowledgementTestSetup(t, 1, func(params *types.Params) {
+			params.MaxLeasesPerTenant = 2
+			params.MaxPendingLeasesPerTenant = 3
+		})
+		s.f.createAndAcknowledgeLease(t, s.msgServer, s.tenants[0], s.providerAddr,
+			[]types.LeaseItemInput{{SkuUuid: s.skuUUID, Quantity: 1}})
+		pendingUUIDs := []string{
+			s.createPendingLease(t, s.tenants[0]),
+			s.createPendingLease(t, s.tenants[0]),
+		}
+
+		beforeAccount, err := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.tenants[0].String())
+		require.NoError(t, err)
+		beforeLeases := make([]types.Lease, 0, len(pendingUUIDs))
+		for _, leaseUUID := range pendingUUIDs {
+			lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
+			require.NoError(t, err)
+			beforeLeases = append(beforeLeases, lease)
+		}
+
+		ackCtx := s.f.Ctx.WithEventManager(sdk.NewEventManager())
+		resp, err := s.msgServer.AcknowledgeLease(ackCtx, &types.MsgAcknowledgeLease{
+			Sender:     s.providerAddr.String(),
+			LeaseUuids: pendingUUIDs,
+		})
+		require.Nil(t, resp)
+		require.ErrorIs(t, err, types.ErrMaxLeasesReached)
+
+		afterAccount, err := s.f.App.BillingKeeper.GetCreditAccount(ackCtx, s.tenants[0].String())
+		require.NoError(t, err)
+		require.Equal(t, beforeAccount, afterAccount)
+		for i, leaseUUID := range pendingUUIDs {
+			lease, err := s.f.App.BillingKeeper.GetLease(ackCtx, leaseUUID)
+			require.NoError(t, err)
+			require.Equal(t, beforeLeases[i], lease)
+		}
+		require.Empty(t, ackCtx.EventManager().Events())
+	})
+
+	t.Run("mixed tenants are capped independently", func(t *testing.T) {
+		s := newAcknowledgementTestSetup(t, 2, func(params *types.Params) {
+			params.MaxLeasesPerTenant = 1
+			params.MaxPendingLeasesPerTenant = 2
+		})
+		leaseUUIDs := []string{
+			s.createPendingLease(t, s.tenants[0]),
+			s.createPendingLease(t, s.tenants[1]),
+		}
+
+		resp, err := s.msgServer.AcknowledgeLease(s.f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     s.providerAddr.String(),
+			LeaseUuids: leaseUUIDs,
+		})
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), resp.AcknowledgedCount)
+
+		for _, tenant := range s.tenants {
+			account, err := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, tenant.String())
+			require.NoError(t, err)
+			require.Equal(t, uint64(1), account.ActiveLeaseCount)
+			require.Zero(t, account.PendingLeaseCount)
+		}
+	})
+
+	t.Run("one tenant cap failure rolls back a mixed-tenant batch", func(t *testing.T) {
+		s := newAcknowledgementTestSetup(t, 2, func(params *types.Params) {
+			params.MaxLeasesPerTenant = 2
+			params.MaxPendingLeasesPerTenant = 3
+		})
+		s.f.createAndAcknowledgeLease(t, s.msgServer, s.tenants[0], s.providerAddr,
+			[]types.LeaseItemInput{{SkuUuid: s.skuUUID, Quantity: 1}})
+		leaseUUIDs := []string{
+			s.createPendingLease(t, s.tenants[1]),
+			s.createPendingLease(t, s.tenants[0]),
+			s.createPendingLease(t, s.tenants[0]),
+		}
+
+		beforeAccounts := make([]types.CreditAccount, 0, len(s.tenants))
+		for _, tenant := range s.tenants {
+			account, err := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, tenant.String())
+			require.NoError(t, err)
+			beforeAccounts = append(beforeAccounts, account)
+		}
+		beforeLeases := make([]types.Lease, 0, len(leaseUUIDs))
+		for _, leaseUUID := range leaseUUIDs {
+			lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
+			require.NoError(t, err)
+			beforeLeases = append(beforeLeases, lease)
+		}
+
+		ackCtx := s.f.Ctx.WithEventManager(sdk.NewEventManager())
+		resp, err := s.msgServer.AcknowledgeLease(ackCtx, &types.MsgAcknowledgeLease{
+			Sender:     s.providerAddr.String(),
+			LeaseUuids: leaseUUIDs,
+		})
+		require.Nil(t, resp)
+		require.ErrorIs(t, err, types.ErrMaxLeasesReached)
+
+		for i, tenant := range s.tenants {
+			account, err := s.f.App.BillingKeeper.GetCreditAccount(ackCtx, tenant.String())
+			require.NoError(t, err)
+			require.Equal(t, beforeAccounts[i], account)
+		}
+		for i, leaseUUID := range leaseUUIDs {
+			lease, err := s.f.App.BillingKeeper.GetLease(ackCtx, leaseUUID)
+			require.NoError(t, err)
+			require.Equal(t, beforeLeases[i], lease)
+		}
+		require.Empty(t, ackCtx.EventManager().Events())
 	})
 }
 
