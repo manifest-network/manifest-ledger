@@ -153,12 +153,12 @@ func TestGenesisValidate_RejectsAmbiguousCustomDomain(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrAmbiguousLeaseItem)
 }
 
-// TestGenesisValidate_RejectsReservedSuffixCustomDomain verifies that genesis
-// import refuses a custom_domain claim that falls under a reserved provider
-// suffix in the same Params.ReservedDomainSuffixes list. Without this check, a
-// hand-crafted genesis could land the chain in a state the msg layer would
-// reject (since SetItemCustomDomain enforces the same rule at runtime).
-func TestGenesisValidate_RejectsReservedSuffixCustomDomain(t *testing.T) {
+// TestGenesisValidateStrict_RejectsReservedSuffixCustomDomain verifies that
+// strict authoring validation refuses a custom_domain claim that falls under a
+// reserved provider suffix in the same Params.ReservedDomainSuffixes list.
+// Without this check, newly authored state could contain a claim the msg layer
+// would reject at runtime.
+func TestGenesisValidateStrict_RejectsReservedSuffixCustomDomain(t *testing.T) {
 	now := time.Now().UTC()
 	const leaseUUID = "01912345-6789-7abc-8def-eeeeeeeeeeee"
 	const skuUUID = "01912345-6789-7abc-8def-ffffffffffff"
@@ -187,7 +187,7 @@ func TestGenesisValidate_RejectsReservedSuffixCustomDomain(t *testing.T) {
 			LastSettledAt: now,
 		}},
 	}
-	err := gs.Validate()
+	err := gs.ValidateStrict()
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrInvalidCustomDomain)
 	require.Contains(t, err.Error(), "reserved provider suffix")

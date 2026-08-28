@@ -1116,7 +1116,7 @@ func TestGenesisState_NewGenesisState(t *testing.T) {
 	require.Equal(t, uint64(5), gs.LeaseSequence)
 }
 
-func TestGenesisState_Validate(t *testing.T) {
+func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 	_, _, tenantAddr := testdata.KeyTestPubAddr()
 	_, _, tenant2Addr := testdata.KeyTestPubAddr()
 	tenant := tenantAddr.String()
@@ -1129,9 +1129,10 @@ func TestGenesisState_Validate(t *testing.T) {
 	creditAddr2 := types.DeriveCreditAddress(tenant2Addr)
 
 	validLease := types.Lease{
-		Uuid:         "01912345-6789-7abc-8def-0123456789ab",
-		Tenant:       tenant,
-		ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+		Uuid:                       "01912345-6789-7abc-8def-0123456789ab",
+		Tenant:                     tenant,
+		ProviderUuid:               "01912345-6789-7abc-8def-0123456789ac",
+		MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
 		Items: []types.LeaseItem{
 			{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 		},
@@ -1627,13 +1628,14 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
-						Tenant:        tenant,
-						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
-						Items:         []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
-						State:         types.LEASE_STATE_PENDING, // Pending - needs reservation
-						CreatedAt:     now,
-						LastSettledAt: now,
+						Uuid:                       "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:                     tenant,
+						ProviderUuid:               "01912345-6789-7abc-8def-0123456789ac",
+						Items:                      []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
+						State:                      types.LEASE_STATE_PENDING, // Pending - needs reservation
+						CreatedAt:                  now,
+						LastSettledAt:              now,
+						MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
 					},
 				},
 				CreditAccounts: []types.CreditAccount{
@@ -1896,14 +1898,26 @@ func TestGenesisState_Validate(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := tc.genesis.Validate()
-			if tc.expectErr {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tc.errMsg)
-			} else {
-				require.NoError(t, err)
+	validators := []struct {
+		name     string
+		validate func(*types.GenesisState) error
+	}{
+		{name: "default", validate: (*types.GenesisState).Validate},
+		{name: "strict", validate: (*types.GenesisState).ValidateStrict},
+	}
+
+	for _, validator := range validators {
+		t.Run(validator.name, func(t *testing.T) {
+			for _, tc := range tests {
+				t.Run(tc.name, func(t *testing.T) {
+					err := validator.validate(tc.genesis)
+					if tc.expectErr {
+						require.Error(t, err)
+						require.Contains(t, err.Error(), tc.errMsg)
+					} else {
+						require.NoError(t, err)
+					}
+				})
 			}
 		})
 	}
@@ -1974,7 +1988,7 @@ func TestGenesisState_ValidateCreditAccountLeaseCounts_MissingAccountUsesLeaseOr
 	}
 }
 
-func TestGenesisState_ValidateForImport_RequiresKnownReservationPortion(t *testing.T) {
+func TestGenesisState_Validate_RequiresKnownReservationPortion(t *testing.T) {
 	_, _, tenantAddr := testdata.KeyTestPubAddr()
 	tenant := tenantAddr.String()
 	creditAddr := types.DeriveCreditAddress(tenantAddr)
@@ -2019,12 +2033,12 @@ func TestGenesisState_ValidateForImport_RequiresKnownReservationPortion(t *testi
 		LeaseSequence: 2,
 	}
 
-	err := gs.ValidateForImport()
+	err := gs.Validate()
 	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
 	require.Contains(t, err.Error(), "below known non-legacy lease reservations")
 }
 
-func TestGenesisState_ValidateForImport_AcceptsMixedHistoricalReservations(t *testing.T) {
+func TestGenesisState_Validate_AcceptsMixedHistoricalReservations(t *testing.T) {
 	_, _, tenantAddr := testdata.KeyTestPubAddr()
 	tenant := tenantAddr.String()
 	now := time.Unix(1, 0).UTC()
@@ -2078,8 +2092,8 @@ func TestGenesisState_ValidateForImport_AcceptsMixedHistoricalReservations(t *te
 		LeaseSequence: 4,
 	}
 
-	require.ErrorIs(t, gs.Validate(), types.ErrInvalidCreditOperation)
-	require.NoError(t, gs.ValidateForImport())
+	require.ErrorIs(t, gs.ValidateStrict(), types.ErrInvalidCreditOperation)
+	require.NoError(t, gs.Validate())
 }
 
 // ============================================================================

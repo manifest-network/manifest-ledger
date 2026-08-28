@@ -34,21 +34,24 @@ type genesisValidationOptions struct {
 	allowLegacyReservationAmounts bool
 }
 
-// Validate performs strict genesis state validation for newly supplied state.
+// Validate validates all structural and accounting invariants required before
+// writing genesis state. It accepts historical state that InitGenesis can
+// safely import without replaying policies that cannot be reconstructed from
+// that state: a domain may predate its reserved suffix, and a legacy lease with
+// no stored creation duration may have been reserved under an earlier minimum
+// duration.
 func (gs *GenesisState) Validate() error {
-	return gs.validate(genesisValidationOptions{})
-}
-
-// ValidateForImport validates all structural and accounting invariants required
-// before writing exported state. It does not replay policies that cannot be
-// verified from historical state: a domain may predate its reserved suffix, and
-// a legacy lease with no stored creation duration may have been reserved under
-// an earlier minimum duration.
-func (gs *GenesisState) ValidateForImport() error {
 	return gs.validate(genesisValidationOptions{
 		allowExistingReservedDomains:  true,
 		allowLegacyReservationAmounts: true,
 	})
+}
+
+// ValidateStrict additionally applies present-day authoring policies that are
+// not safe to replay against historical exports. Use it to lint newly authored
+// state, not as an import precondition.
+func (gs *GenesisState) ValidateStrict() error {
+	return gs.validate(genesisValidationOptions{})
 }
 
 func (gs *GenesisState) validate(options genesisValidationOptions) error {

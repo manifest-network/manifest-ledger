@@ -296,7 +296,7 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 	// Validate structural and accounting invariants before any writes. Import
 	// validation preserves historical state without replaying claim-time domain
 	// policy or unverifiable legacy reservation calculations.
-	if err := gs.ValidateForImport(); err != nil {
+	if err := gs.Validate(); err != nil {
 		return err
 	}
 

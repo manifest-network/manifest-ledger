@@ -627,10 +627,10 @@ func TestInitGenesis_RebuildsExistingDomainMatchingNewReservedSuffix(t *testing.
 		LeaseSequence: 1,
 	}
 
-	// Full validation applies the current claim-time suffix policy and rejects
+	// Strict validation applies the current claim-time suffix policy and rejects
 	// the export even though this domain was valid when originally claimed.
-	require.ErrorIs(t, genesisState.Validate(), types.ErrInvalidCustomDomain)
-	require.NoError(t, genesisState.ValidateForImport())
+	require.ErrorIs(t, genesisState.ValidateStrict(), types.ErrInvalidCustomDomain)
+	require.NoError(t, genesisState.Validate())
 	require.NoError(t, genesisState.ValidateWithBlockTime(now))
 
 	require.NoError(t, f.App.BillingKeeper.InitGenesis(f.Ctx, genesisState))

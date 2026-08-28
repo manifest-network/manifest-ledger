@@ -251,10 +251,10 @@ func TestInitGenesis_AllowsLegacyReservationFromHistoricalMinDuration(t *testing
 		LeaseSequence: 1,
 	}
 
-	// Full validation recomputes the legacy reservation using the current 7200s
+	// Strict validation recomputes the legacy reservation using the current 7200s
 	// parameter and therefore rejects this otherwise self-consistent export.
-	require.ErrorIs(t, genesisState.Validate(), types.ErrInvalidCreditOperation)
-	require.NoError(t, genesisState.ValidateForImport())
+	require.ErrorIs(t, genesisState.ValidateStrict(), types.ErrInvalidCreditOperation)
+	require.NoError(t, genesisState.Validate())
 	require.NoError(t, genesisState.ValidateWithBlockTime(f.Ctx.BlockTime()))
 
 	require.NoError(t, k.InitGenesis(f.Ctx, genesisState))
@@ -2089,7 +2089,7 @@ func TestGenesisExportImportWithReservations(t *testing.T) {
 
 	// Validate the exported genesis with the same contract used by InitGenesis
 	// and the validate-genesis CLI.
-	err = exportedGenesis.ValidateForImport()
+	err = exportedGenesis.Validate()
 	require.NoError(t, err, "exported genesis should be valid")
 
 	// Create a fresh fixture for import

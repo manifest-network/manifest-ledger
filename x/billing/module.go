@@ -94,7 +94,7 @@ func (AppModuleBasic) ValidateGenesis(marshaler codec.JSONCodec, _ client.TxEnco
 	if err := marshaler.UnmarshalJSON(message, &data); err != nil {
 		return fmt.Errorf("failed to unmarshal %s genesis state: %w", types.ModuleName, err)
 	}
-	return data.ValidateForImport()
+	return data.Validate()
 }
 
 // RegisterRESTRoutes registers the REST routes for the module.

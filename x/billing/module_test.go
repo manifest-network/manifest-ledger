@@ -65,7 +65,8 @@ func TestAppModuleBasicValidateGenesisAcceptsHistoricalExports(t *testing.T) {
 		gs.Params.MinLeaseDuration = 2 * types.DefaultMinLeaseDuration
 		gs.Leases[0].MinLeaseDurationAtCreation = 0
 
-		require.ErrorIs(t, gs.Validate(), types.ErrInvalidCreditOperation)
+		require.ErrorIs(t, gs.ValidateStrict(), types.ErrInvalidCreditOperation)
+		require.NoError(t, gs.Validate())
 		require.NoError(t, validateGenesis(t, gs))
 	})
 
@@ -74,7 +75,8 @@ func TestAppModuleBasicValidateGenesisAcceptsHistoricalExports(t *testing.T) {
 		gs.Params.ReservedDomainSuffixes = []string{".manifest0.net"}
 		gs.Leases[0].Items[0].CustomDomain = "app.manifest0.net"
 
-		require.ErrorIs(t, gs.Validate(), types.ErrInvalidCustomDomain)
+		require.ErrorIs(t, gs.ValidateStrict(), types.ErrInvalidCustomDomain)
+		require.NoError(t, gs.Validate())
 		require.NoError(t, validateGenesis(t, gs))
 	})
 }
