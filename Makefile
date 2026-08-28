@@ -139,7 +139,7 @@ ictest-group:
 	cd interchaintest && go test -race -v -run TestGroupMetadataLimits . -count=1
 
 ictest-sku:
-	cd interchaintest && go test -race -v -run TestSKU . -count=1
+	cd interchaintest && go test -timeout 20m -race -v -run TestSKU . -count=1
 
 ictest-billing:
 	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(Lease|Credit|Advanced|State|Reservation)$$" . -count=1
