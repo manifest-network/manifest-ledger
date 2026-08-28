@@ -42,7 +42,12 @@ package types
 // as an explicit fallback for a legacy lease. Lifecycle release never guesses
 // that unknown historical amount: it defers release while another live legacy
 // lease remains, then reconciles the aggregate to the exact non-legacy floor
-// when the last live legacy lease terminates.
+// when the last live legacy lease terminates. Imported state exceeding the
+// fixed per-tenant scan ceiling instead preserves the aggregate conservatively,
+// without assuming a later retry, rather than blocking the lifecycle transition
+// or performing an unbounded scan. The v2→v3 migration reconstructs cached
+// counts and repairs reservations to the exact known floor while preserving any
+// unprovable live-legacy excess.
 
 import (
 	"crypto/sha256"

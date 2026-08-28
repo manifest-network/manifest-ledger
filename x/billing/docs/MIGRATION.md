@@ -13,12 +13,25 @@ The migration process involves:
 
 ### Module consensus v2→v3
 
-The v3 billing migration changes only disk encoding. Public protobufs continue
-to use Bech32 strings, while stored Params allowed-list entries, Lease tenants,
-and CreditAccount tenant/credit identities are rewritten as raw SDK address
-bytes. The migration reads bounded pages in ascending collection-key order,
-closes each iterator before writing, and leaves the already-byte-addressed keys
-and indexes unchanged. Re-running it produces the same bytes.
+The v3 billing migration rewrites disk encoding and repairs two historical
+credit-account aggregates. Public protobufs continue to use Bech32 strings,
+while stored Params allowed-list entries, Lease tenants, and CreditAccount
+tenant/credit identities are rewritten as raw SDK address bytes. A separate
+ascending credit-account pass uses the byte-addressed tenant index to
+reconstruct active and pending lease counts and calculate the exact reservation
+floor for live non-legacy leases from each lease's stored creation duration.
+Equivalent allowed-list Bech32 spellings are collapsed by decoded address
+identity while preserving first-seen list order.
+Fully verifiable accounts, including accounts with only terminal legacy lease
+history, are reconciled exactly to that floor. For an account with a live
+legacy lease, each reservation denomination becomes the maximum of its stored
+value and the provable floor, so unknown live-legacy excess is preserved and no
+legacy amount is guessed. This changes only billing metadata; it does not mint,
+burn, or transfer bank balances.
+
+Value rewrites use bounded pages and close each iterator before writing. The
+already-byte-addressed keys and indexes remain unchanged. Re-running the
+migration produces the same bytes.
 
 ## Prerequisites
 
@@ -417,6 +430,10 @@ reservation to cover every live non-legacy lease for that tenant, but does not
 guess the legacy portion. Current lifecycle release likewise avoids that guess:
 it retains the shared unknown aggregate while another live legacy lease remains
 and reconciles it to the exact non-legacy floor when the last one terminates.
+If imported/adversarial state exceeds the fixed per-tenant scan ceiling, the
+aggregate is instead preserved conservatively, without assuming a later retry,
+so the lifecycle transition can still make forward progress without an
+unbounded consensus scan.
 Existing custom-domain claims are likewise not rechecked against the current
 reserved-suffix list because a claim may predate a later reservation. For newly
 authored state, `ValidateStrict()` opts into both present-day policy checks.

@@ -43,8 +43,14 @@ func (m Migrator) Migrate1to2(_ sdk.Context) error {
 }
 
 // Migrate2to3 rewrites billing values so account identities are persisted as
-// raw bytes instead of Bech32 strings. Collection keys and secondary indexes
-// were already byte-addressed and are deliberately left untouched.
+// raw bytes instead of Bech32 strings. It also raises any historically
+// under-backed credit-account reservation to the exact floor provable from
+// live non-legacy leases. Fully verifiable accounts are reconciled exactly;
+// accounts with live legacy leases preserve any unknown excess and are raised
+// only where they fall below the known floor. Cached live-lease counts are
+// rebuilt by decoded address identity. Collection keys and secondary indexes
+// were already byte-addressed and are deliberately left untouched. Equivalent
+// allowed-list Bech32 spellings are collapsed in first-seen slice order.
 //
 // Pages are read in key order and closed before writes begin, satisfying the KV
 // iterator contract without relying on cache-store behavior. The migration is
@@ -53,6 +59,10 @@ func (m Migrator) Migrate2to3(ctx sdk.Context) error {
 	params, err := m.keeper.Params.Get(ctx)
 	if err != nil {
 		return fmt.Errorf("read billing params: %w", err)
+	}
+	params.AllowedList, err = canonicalUniqueAddresses(params.AllowedList)
+	if err != nil {
+		return fmt.Errorf("repair billing params allowed list: %w", err)
 	}
 	if err := m.keeper.Params.Set(ctx, params); err != nil {
 		return fmt.Errorf("rewrite billing params: %w", err)
@@ -131,6 +141,13 @@ type creditAccountMigrationEntry struct {
 	value types.CreditAccount
 }
 
+type creditAccountMigrationRepair struct {
+	knownReservationFloor sdk.Coins
+	activeLeaseCount      uint64
+	pendingLeaseCount     uint64
+	hasLiveLegacy         bool
+}
+
 func (m Migrator) rewriteCreditAccountValues(ctx sdk.Context) error {
 	var (
 		lastKey  sdk.AccAddress
@@ -176,6 +193,37 @@ func (m Migrator) rewriteCreditAccountValues(ctx sdk.Context) error {
 		}
 
 		for _, entry := range entries {
+			repair, err := m.calculateCreditAccountMigrationRepair(ctx, entry.key)
+			if err != nil {
+				return err
+			}
+			originalReservations := entry.value.ReservedAmounts
+			if repair.hasLiveLegacy {
+				entry.value.ReservedAmounts = entry.value.ReservedAmounts.Max(repair.knownReservationFloor)
+			} else {
+				entry.value.ReservedAmounts = repair.knownReservationFloor
+			}
+			if !entry.value.ReservedAmounts.Equal(originalReservations) {
+				m.keeper.logger.Warn("repaired billing credit reservation during v2 to v3 migration",
+					"tenant", entry.key.String(),
+					"previous_reserved", originalReservations.String(),
+					"repaired_reserved", entry.value.ReservedAmounts.String(),
+					"known_reservation_floor", repair.knownReservationFloor.String(),
+				)
+			}
+			if entry.value.ActiveLeaseCount != repair.activeLeaseCount ||
+				entry.value.PendingLeaseCount != repair.pendingLeaseCount {
+				m.keeper.logger.Warn("repaired billing credit-account lease counts during v2 to v3 migration",
+					"tenant", entry.key.String(),
+					"previous_active", entry.value.ActiveLeaseCount,
+					"repaired_active", repair.activeLeaseCount,
+					"previous_pending", entry.value.PendingLeaseCount,
+					"repaired_pending", repair.pendingLeaseCount,
+				)
+			}
+			entry.value.ActiveLeaseCount = repair.activeLeaseCount
+			entry.value.PendingLeaseCount = repair.pendingLeaseCount
+
 			encoded, err := m.keeper.CreditAccounts.ValueCodec().Encode(entry.value)
 			if err != nil {
 				return fmt.Errorf("encode billing credit account %q: %w", entry.key.String(), err)
@@ -195,4 +243,86 @@ func (m Migrator) rewriteCreditAccountValues(ctx sdk.Context) error {
 		lastKey = append(lastKey[:0], entries[len(entries)-1].key...)
 		hasStart = true
 	}
+}
+
+// calculateCreditAccountMigrationRepair reconstructs derived account fields
+// from the existing byte-addressed tenant index. The index scan is ordered by
+// lease primary key and does not depend on a Bech32 string representation.
+func (m Migrator) calculateCreditAccountMigrationRepair(
+	ctx sdk.Context,
+	tenant sdk.AccAddress,
+) (creditAccountMigrationRepair, error) {
+	repair := creditAccountMigrationRepair{
+		knownReservationFloor: sdk.NewCoins(),
+	}
+
+	iterator, err := m.keeper.Leases.Indexes.Tenant.MatchExact(ctx, tenant)
+	if err != nil {
+		return repair, fmt.Errorf("iterate billing leases for tenant %q: %w", tenant.String(), err)
+	}
+
+	for ; iterator.Valid(); iterator.Next() {
+		leaseUUID, err := iterator.PrimaryKey()
+		if err != nil {
+			_ = iterator.Close()
+			return repair, fmt.Errorf("decode billing tenant-index entry for %q: %w", tenant.String(), err)
+		}
+		lease, err := m.keeper.Leases.Get(ctx, leaseUUID)
+		if err != nil {
+			_ = iterator.Close()
+			return repair, fmt.Errorf("read billing lease %q for account repair: %w", leaseUUID, err)
+		}
+		leaseTenant, err := sdk.AccAddressFromBech32(lease.Tenant)
+		if err != nil {
+			_ = iterator.Close()
+			return repair, fmt.Errorf("decode billing lease %q tenant %q: %w", leaseUUID, lease.Tenant, err)
+		}
+		if !tenant.Equals(leaseTenant) {
+			_ = iterator.Close()
+			return repair, fmt.Errorf("billing lease %q tenant does not match tenant index", leaseUUID)
+		}
+
+		switch lease.State {
+		case types.LEASE_STATE_ACTIVE:
+			repair.activeLeaseCount++
+		case types.LEASE_STATE_PENDING:
+			repair.pendingLeaseCount++
+		default:
+			continue
+		}
+
+		if lease.MinLeaseDurationAtCreation == 0 {
+			repair.hasLiveLegacy = true
+			continue
+		}
+		repair.knownReservationFloor = repair.knownReservationFloor.Add(
+			types.CalculateLeaseReservation(lease.Items, lease.MinLeaseDurationAtCreation)...,
+		)
+	}
+
+	if err := iterator.Close(); err != nil {
+		return repair, fmt.Errorf("close billing tenant-index iterator for %q: %w", tenant.String(), err)
+	}
+	return repair, nil
+}
+
+// canonicalUniqueAddresses canonicalizes SDK account addresses and removes
+// equivalent Bech32 spellings while preserving their first-seen slice order.
+// The map is used only for membership lookup; it is never iterated.
+func canonicalUniqueAddresses(addresses []string) ([]string, error) {
+	canonical := make([]string, 0, len(addresses))
+	seen := make(map[string]struct{}, len(addresses))
+	for _, address := range addresses {
+		decoded, err := sdk.AccAddressFromBech32(address)
+		if err != nil {
+			return nil, fmt.Errorf("decode account address %q: %w", address, err)
+		}
+		identity := string(decoded.Bytes())
+		if _, exists := seen[identity]; exists {
+			continue
+		}
+		seen[identity] = struct{}{}
+		canonical = append(canonical, decoded.String())
+	}
+	return canonical, nil
 }

@@ -198,6 +198,15 @@ all account identities inside Params, Lease, and CreditAccount values are
 persisted as raw address bytes. Address-bearing keys and secondary indexes use
 the SDK's `AccAddressKey` byte codec as well. The v2→v3 module migration rewrites
 every legacy value in deterministic key order; it does not rebuild indexes.
+A separate ascending credit-account pass uses the byte-addressed tenant index
+to reconstruct cached active/pending counts and reconcile fully verifiable
+reservations to the exact live floor.
+Equivalent allowed-list Bech32 spellings are collapsed by decoded address
+identity while preserving first-seen list order.
+For tenants with live legacy leases, it raises only deficient denominations to
+the known non-legacy floor and preserves unknown excess. When no live legacy
+lease remains, the reservation is fully reconstructible and is reconciled
+exactly. Bank balances are not changed.
 
 ### Storage Key Prefixes
 
@@ -548,7 +557,11 @@ requires `ReservedAmounts` to be valid and at least cover the complete sum for
 all non-legacy PENDING and ACTIVE leases. Current lifecycle handling never
 guesses a legacy release from present-day params: it preserves the shared
 unknown aggregate while another live legacy lease remains, then reconciles to
-the exact non-legacy floor when the last one terminates. `ValidateStrict()` is
+the exact non-legacy floor when the last one terminates. Exceeding the fixed
+per-tenant scan ceiling instead preserves the aggregate rather than failing the
+lifecycle transition or performing an unbounded scan; no later retry is
+assumed.
+`ValidateStrict()` is
 available for newly authored state and instead applies the current minimum
 duration to live legacy leases before requiring exact equality.
 

@@ -1130,7 +1130,10 @@ func (k *Keeper) DecrementPendingLeaseCount(ca *types.CreditAccount, leaseUUID s
 
 // knownLiveReservationFloor returns the exact reservation total for a tenant's
 // remaining PENDING and ACTIVE leases whose creation-time minimum duration is
-// stored, together with whether another live legacy lease remains.
+// stored, together with whether the existing aggregate must be preserved. The
+// aggregate is preserved when another live legacy lease remains or when the
+// fixed scan ceiling is exceeded; both cases avoid guessing or performing an
+// unbounded consensus scan.
 func (k *Keeper) knownLiveReservationFloor(ctx context.Context, tenant, excludedLeaseUUID string) (sdk.Coins, bool, error) {
 	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
 	if err != nil {
@@ -1165,11 +1168,15 @@ func (k *Keeper) knownLiveReservationFloor(ctx context.Context, tenant, excluded
 			}
 
 			if scanned >= stateLimit.limit {
-				_ = iter.Close()
-				return nil, false, types.ErrInvalidCreditOperation.Wrapf(
-					"tenant %s has more than %d %s leases while calculating reservation floor",
-					tenant, stateLimit.limit, stateLimit.state.String(),
+				if err := iter.Close(); err != nil {
+					return nil, false, err
+				}
+				k.logger.Warn("preserving legacy reservation above live-lease scan ceiling",
+					"tenant", tenant,
+					"state", stateLimit.state.String(),
+					"scan_ceiling", stateLimit.limit,
 				)
+				return sdk.NewCoins(), true, nil
 			}
 			scanned++
 
@@ -1207,17 +1214,19 @@ func (k *Keeper) knownLiveReservationFloor(ctx context.Context, tenant, excluded
 // exact floor required by all remaining non-legacy leases.
 func (k *Keeper) ReleaseLeaseReservation(ctx context.Context, ca *types.CreditAccount, lease *types.Lease) error {
 	if lease.MinLeaseDurationAtCreation == 0 {
-		reservationFloor, hasLiveLegacy, err := k.knownLiveReservationFloor(ctx, lease.Tenant, lease.Uuid)
+		reservationFloor, preserveAggregate, err := k.knownLiveReservationFloor(ctx, lease.Tenant, lease.Uuid)
 		if err != nil {
 			return fmt.Errorf("calculate live reservation floor for legacy lease %s: %w", lease.Uuid, err)
 		}
-		if hasLiveLegacy {
+		if preserveAggregate {
 			return nil
 		}
 		if !ca.ReservedAmounts.IsAllGTE(reservationFloor) {
-			return types.ErrInvalidCreditOperation.Wrapf(
-				"credit account for %s has reserved amounts %s below live reservation floor %s",
-				ca.Tenant, ca.ReservedAmounts.String(), reservationFloor.String(),
+			k.logger.Warn("repairing credit reservation below live non-legacy floor",
+				"tenant", ca.Tenant,
+				"lease_uuid", lease.Uuid,
+				"current_reserved", ca.ReservedAmounts.String(),
+				"reservation_floor", reservationFloor.String(),
 			)
 		}
 

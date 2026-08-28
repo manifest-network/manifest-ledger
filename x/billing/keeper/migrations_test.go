@@ -34,7 +34,7 @@ func TestMigratorMigrate2to3RewritesLegacyAddressStrings(t *testing.T) {
 	upperCredit := strings.ToUpper(credit.String())
 
 	params := types.DefaultParams()
-	params.AllowedList = []string{upperAllowed}
+	params.AllowedList = []string{allowed.String(), upperAllowed}
 	lease := types.Lease{
 		Uuid:         testLeaseUUID1,
 		Tenant:       upperTenant,
@@ -49,11 +49,12 @@ func TestMigratorMigrate2to3RewritesLegacyAddressStrings(t *testing.T) {
 		LastSettledAt:              f.Ctx.BlockTime(),
 		MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
 	}
+	knownReservationFloor := types.CalculateLeaseReservation(lease.Items, lease.MinLeaseDurationAtCreation)
 	account := types.CreditAccount{
 		Tenant:           upperTenant,
 		CreditAddress:    upperCredit,
 		ActiveLeaseCount: 1,
-		ReservedAmounts:  types.CalculateLeaseReservation(lease.Items, lease.MinLeaseDurationAtCreation),
+		ReservedAmounts:  knownReservationFloor.Add(knownReservationFloor...),
 	}
 
 	// Seed the indexes through the current keeper, then replace only the three
@@ -107,6 +108,9 @@ func TestMigratorMigrate2to3RewritesLegacyAddressStrings(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, tenant.String(), gotAccount.Tenant)
 	require.Equal(t, credit.String(), gotAccount.CreditAddress)
+	require.True(t, knownReservationFloor.Equal(gotAccount.ReservedAmounts),
+		"fully verifiable reservations must be reconciled exactly",
+	)
 
 	indexedAfter, err := f.App.BillingKeeper.GetLeasesByTenantAndState(f.Ctx, tenant.String(), types.LEASE_STATE_ACTIVE)
 	require.NoError(t, err)
@@ -121,6 +125,228 @@ func TestMigratorMigrate2to3RewritesLegacyAddressStrings(t *testing.T) {
 	require.Equal(t, paramsSnapshot, store.Get(types.ParamsKey.Bytes()))
 	require.Equal(t, leaseSnapshot, store.Get(leaseKey))
 	require.Equal(t, accountSnapshot, store.Get(accountKey))
+}
+
+func TestMigratorMigrate2to3RepairsReservationFloorAndLeaseCounts(t *testing.T) {
+	tests := []struct {
+		name        string
+		legacyState types.LeaseState
+	}{
+		{name: "live legacy lease", legacyState: types.LEASE_STATE_PENDING},
+		{name: "terminal legacy lease", legacyState: types.LEASE_STATE_CLOSED},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := initFixture(t)
+			tenant := f.TestAccs[0]
+			upperTenant := strings.ToUpper(tenant.String())
+			creditAddress := types.DeriveCreditAddress(tenant)
+			f.fundAccount(t, creditAddress, sdk.NewCoins(
+				sdk.NewCoin(testDenom, math.NewInt(1_000_000)),
+			))
+			createdAt := f.Ctx.BlockTime()
+			items := []types.LeaseItem{{
+				SkuUuid:     testSKUUUID,
+				Quantity:    1,
+				LockedPrice: sdk.NewCoin(testDenom, math.OneInt()),
+			}}
+			legacyItems := []types.LeaseItem{{
+				SkuUuid:     "01912345-6789-7abc-8def-0123456789af",
+				Quantity:    1,
+				LockedPrice: sdk.NewCoin("uother", math.OneInt()),
+			}}
+			modernLease := types.Lease{
+				Uuid:                       testLeaseUUID1,
+				Tenant:                     tenant.String(),
+				ProviderUuid:               testProviderUUID,
+				Items:                      items,
+				State:                      types.LEASE_STATE_ACTIVE,
+				CreatedAt:                  createdAt,
+				LastSettledAt:              createdAt,
+				MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
+			}
+			legacyLease := types.Lease{
+				Uuid:                       testLeaseUUID2,
+				Tenant:                     upperTenant,
+				ProviderUuid:               testProviderUUID,
+				Items:                      legacyItems,
+				State:                      tc.legacyState,
+				CreatedAt:                  createdAt,
+				LastSettledAt:              createdAt,
+				MinLeaseDurationAtCreation: 0,
+			}
+			if tc.legacyState == types.LEASE_STATE_CLOSED {
+				legacyLease.ClosedAt = &createdAt
+				legacyLease.ClosureReason = "tenant requested"
+			}
+
+			knownFloor := types.CalculateLeaseReservation(
+				modernLease.Items,
+				modernLease.MinLeaseDurationAtCreation,
+			)
+			legacyResidual := sdk.NewCoin("uother", math.NewInt(1800))
+			underBacked := sdk.NewCoins(
+				sdk.NewCoin(testDenom, math.NewInt(1800)),
+				legacyResidual,
+			)
+			account := types.CreditAccount{
+				Tenant:          upperTenant,
+				CreditAddress:   strings.ToUpper(creditAddress.String()),
+				ReservedAmounts: underBacked,
+			}
+
+			// Seed valid byte-addressed indexes, then replace the primary values
+			// with exact v2 encodings to model the pre-upgrade store.
+			require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, modernLease))
+			require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, legacyLease))
+			require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, account))
+			require.NoError(t, f.App.BillingKeeper.LeaseSequence.Set(f.Ctx, 2))
+
+			store := f.Ctx.KVStore(f.App.GetKey(types.StoreKey))
+			legacyLeaseCodec := sdkcodec.CollValue[types.Lease](f.EncodingCfg.Codec)
+			for _, lease := range []types.Lease{modernLease, legacyLease} {
+				encoded, err := legacyLeaseCodec.Encode(lease)
+				require.NoError(t, err)
+				key, err := collections.EncodeKeyWithPrefix(
+					types.LeaseKey.Bytes(),
+					collections.StringKey,
+					lease.Uuid,
+				)
+				require.NoError(t, err)
+				store.Set(key, encoded)
+			}
+			legacyAccountCodec := sdkcodec.CollValue[types.CreditAccount](f.EncodingCfg.Codec)
+			legacyAccount, err := legacyAccountCodec.Encode(account)
+			require.NoError(t, err)
+			accountKey, err := collections.EncodeKeyWithPrefix(
+				types.CreditAccountKey.Bytes(),
+				sdk.AccAddressKey,
+				tenant,
+			)
+			require.NoError(t, err)
+			store.Set(accountKey, legacyAccount)
+			balanceBeforeMigration := f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress)
+
+			preMigrationGenesis := f.App.BillingKeeper.ExportGenesis(f.Ctx)
+			require.ErrorContains(t, preMigrationGenesis.Validate(), "below known non-legacy lease reservations")
+
+			require.NoError(t, keeper.NewMigrator(f.App.BillingKeeper).Migrate2to3(f.Ctx))
+			require.Equal(t, balanceBeforeMigration, f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress),
+				"reservation repair must not move bank balances",
+			)
+
+			repairedAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+			require.NoError(t, err)
+			expectedAfterMigration := knownFloor
+			if tc.legacyState == types.LEASE_STATE_PENDING {
+				expectedAfterMigration = knownFloor.Add(legacyResidual)
+			}
+			require.True(t, expectedAfterMigration.Equal(repairedAccount.ReservedAmounts),
+				"migration must preserve only unknown live-legacy excess",
+			)
+			require.Equal(t, uint64(1), repairedAccount.ActiveLeaseCount)
+			expectedPendingCount := uint64(0)
+			if tc.legacyState == types.LEASE_STATE_PENDING {
+				expectedPendingCount = 1
+			}
+			require.Equal(t, expectedPendingCount, repairedAccount.PendingLeaseCount,
+				"migration must reconstruct byte-identity lease counts rather than preserve alias-corrupted counters",
+			)
+
+			// Re-running the migration after the repair is byte-for-byte stable.
+			repairedRawAccount := bytes.Clone(store.Get(accountKey))
+			require.NoError(t, keeper.NewMigrator(f.App.BillingKeeper).Migrate2to3(f.Ctx))
+			require.Equal(t, repairedRawAccount, store.Get(accountKey))
+
+			if tc.legacyState == types.LEASE_STATE_PENDING {
+				migratedLegacy, err := f.App.BillingKeeper.GetLease(f.Ctx, legacyLease.Uuid)
+				require.NoError(t, err)
+				require.NoError(t, f.App.BillingKeeper.ExpirePendingLease(f.Ctx, &migratedLegacy))
+
+				repairedAccount, err = f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+				require.NoError(t, err)
+				require.True(t, knownFloor.Equal(repairedAccount.ReservedAmounts),
+					"the last legacy transition must reconcile to the exact modern floor",
+				)
+			}
+
+			exported := f.App.BillingKeeper.ExportGenesis(f.Ctx)
+			require.NoError(t, exported.Validate())
+		})
+	}
+}
+
+func TestMigratorMigrate2to3RepairsBech32AliasLeaseCount(t *testing.T) {
+	f := initFixture(t)
+	tenant := f.TestAccs[0]
+	upperTenant := strings.ToUpper(tenant.String())
+	createdAt := f.Ctx.BlockTime()
+	items := []types.LeaseItem{{
+		SkuUuid:     testSKUUUID,
+		Quantity:    1,
+		LockedPrice: sdk.NewCoin(testDenom, math.OneInt()),
+	}}
+	leases := []types.Lease{
+		{
+			Uuid:                       testLeaseUUID1,
+			Tenant:                     tenant.String(),
+			ProviderUuid:               testProviderUUID,
+			Items:                      items,
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  createdAt,
+			LastSettledAt:              createdAt,
+			MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
+		},
+		{
+			Uuid:                       testLeaseUUID2,
+			Tenant:                     upperTenant,
+			ProviderUuid:               testProviderUUID,
+			Items:                      items,
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  createdAt,
+			LastSettledAt:              createdAt,
+			MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
+		},
+	}
+	perLeaseReservation := types.CalculateLeaseReservation(items, types.DefaultMinLeaseDuration)
+	account := types.CreditAccount{
+		Tenant:           upperTenant,
+		CreditAddress:    strings.ToUpper(types.DeriveCreditAddress(tenant).String()),
+		ActiveLeaseCount: 1,
+		ReservedAmounts:  perLeaseReservation.Add(perLeaseReservation...),
+	}
+
+	for _, lease := range leases {
+		require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+	}
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, account))
+	require.NoError(t, f.App.BillingKeeper.LeaseSequence.Set(f.Ctx, uint64(len(leases))))
+
+	store := f.Ctx.KVStore(f.App.GetKey(types.StoreKey))
+	legacyLeaseCodec := sdkcodec.CollValue[types.Lease](f.EncodingCfg.Codec)
+	for _, lease := range leases {
+		encoded, err := legacyLeaseCodec.Encode(lease)
+		require.NoError(t, err)
+		key, err := collections.EncodeKeyWithPrefix(types.LeaseKey.Bytes(), collections.StringKey, lease.Uuid)
+		require.NoError(t, err)
+		store.Set(key, encoded)
+	}
+	legacyAccount, err := sdkcodec.CollValue[types.CreditAccount](f.EncodingCfg.Codec).Encode(account)
+	require.NoError(t, err)
+	accountKey, err := collections.EncodeKeyWithPrefix(types.CreditAccountKey.Bytes(), sdk.AccAddressKey, tenant)
+	require.NoError(t, err)
+	store.Set(accountKey, legacyAccount)
+
+	require.ErrorContains(t, f.App.BillingKeeper.ExportGenesis(f.Ctx).Validate(), "has 2 active leases")
+	require.NoError(t, keeper.NewMigrator(f.App.BillingKeeper).Migrate2to3(f.Ctx))
+
+	repaired, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), repaired.ActiveLeaseCount)
+	require.Zero(t, repaired.PendingLeaseCount)
+	require.True(t, account.ReservedAmounts.Equal(repaired.ReservedAmounts))
+	require.NoError(t, f.App.BillingKeeper.ExportGenesis(f.Ctx).Validate())
 }
 
 func TestMigratorMigrate2to3ProcessesMultipleOrderedPages(t *testing.T) {
