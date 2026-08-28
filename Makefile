@@ -133,7 +133,7 @@ ictest-cosmwasm:
 	cd interchaintest && go test -race -v -run TestCosmWasm . -count=1
 
 ictest-chain-upgrade:
-	cd interchaintest && go test -race -v -run TestBasicManifestUpgrade . -count=1
+	cd interchaintest && go test -timeout 20m -race -v -run TestBasicManifestUpgrade . -count=1
 
 ictest-group:
 	cd interchaintest && go test -race -v -run TestGroupMetadataLimits . -count=1

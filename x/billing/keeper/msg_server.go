@@ -45,11 +45,15 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 		return nil, err
 	}
 
-	// Derive credit address for the tenant
-	creditAddr, err := types.DeriveCreditAddressFromBech32(msg.Tenant)
+	// Parse transaction addresses once so state and events use the SDK's
+	// canonical Bech32 spelling even when the wire message uses an equivalent
+	// all-uppercase representation.
+	tenantAddr, err := sdk.AccAddressFromBech32(msg.Tenant)
 	if err != nil {
 		return nil, err
 	}
+	tenant := tenantAddr.String()
+	creditAddr := types.DeriveCreditAddress(tenantAddr)
 
 	// Parse sender address
 	senderAddr, err := sdk.AccAddressFromBech32(msg.Sender)
@@ -68,14 +72,14 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 	}
 
 	// Get or create credit account
-	creditAccount, err := ms.k.GetCreditAccount(cacheCtx, msg.Tenant)
+	creditAccount, err := ms.k.GetCreditAccount(cacheCtx, tenant)
 	if err != nil {
 		if !errors.Is(err, types.ErrCreditAccountNotFound) {
 			return nil, types.ErrInvalidCreditOperation.Wrapf("failed to get credit account: %s", err)
 		}
 		// Credit account doesn't exist, create it
 		creditAccount = types.CreditAccount{
-			Tenant:            msg.Tenant,
+			Tenant:            tenant,
 			CreditAddress:     creditAddr.String(),
 			ActiveLeaseCount:  0,
 			PendingLeaseCount: 0,
@@ -102,9 +106,9 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			types.EventTypeCreditFunded,
-			sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
+			sdk.NewAttribute(types.AttributeKeyTenant, tenant),
 			sdk.NewAttribute(types.AttributeKeyCreditAddress, creditAddr.String()),
-			sdk.NewAttribute(types.AttributeKeySender, msg.Sender),
+			sdk.NewAttribute(types.AttributeKeySender, senderAddr.String()),
 			sdk.NewAttribute(types.AttributeKeyAmount, msg.Amount.String()),
 			sdk.NewAttribute(types.AttributeKeyNewBalance, newBalance.String()),
 		),
@@ -119,6 +123,7 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 // leaseCreationResult holds the result of lease creation for use by the public methods.
 type leaseCreationResult struct {
 	leaseUUID     string
+	tenant        string
 	providerUUID  string
 	itemCount     int
 	totalRates    sdk.Coins // total rate per second by denom
@@ -131,6 +136,11 @@ type leaseCreationResult struct {
 func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, items []types.LeaseItemInput, metaHash []byte) (*leaseCreationResult, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
+	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
+	if err != nil {
+		return nil, err
+	}
+	tenant = tenantAddr.String()
 
 	params, err := ms.k.GetParams(ctx)
 	if err != nil {
@@ -292,6 +302,7 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 
 	return &leaseCreationResult{
 		leaseUUID:     leaseUUID,
+		tenant:        tenant,
 		providerUUID:  providerUUID,
 		itemCount:     len(leaseItems),
 		totalRates:    totalRatesPerSecond,
@@ -301,10 +312,10 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 }
 
 // emitLeaseCreatedEvent emits a lease_created event with the given parameters.
-func emitLeaseCreatedEvent(ctx sdk.Context, result *leaseCreationResult, tenant, createdBy string) {
+func emitLeaseCreatedEvent(ctx sdk.Context, result *leaseCreationResult, createdBy string) {
 	eventAttrs := []sdk.Attribute{
 		sdk.NewAttribute(types.AttributeKeyLeaseUUID, result.leaseUUID),
-		sdk.NewAttribute(types.AttributeKeyTenant, tenant),
+		sdk.NewAttribute(types.AttributeKeyTenant, result.tenant),
 		sdk.NewAttribute(types.AttributeKeyProviderUUID, result.providerUUID),
 		sdk.NewAttribute(types.AttributeKeyItemCount, strconv.Itoa(result.itemCount)),
 		sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRates.String()),
@@ -328,7 +339,7 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 		return nil, err
 	}
 
-	emitLeaseCreatedEvent(sdk.UnwrapSDKContext(ctx), result, msg.Tenant, "tenant")
+	emitLeaseCreatedEvent(sdk.UnwrapSDKContext(ctx), result, "tenant")
 
 	return &types.MsgCreateLeaseResponse{
 		LeaseUuid: result.leaseUUID,
@@ -356,7 +367,7 @@ func (ms msgServer) CreateLeaseForTenant(ctx context.Context, msg *types.MsgCrea
 		return nil, err
 	}
 
-	emitLeaseCreatedEvent(sdk.UnwrapSDKContext(ctx), result, msg.Tenant, "authority")
+	emitLeaseCreatedEvent(sdk.UnwrapSDKContext(ctx), result, "authority")
 
 	return &types.MsgCreateLeaseForTenantResponse{
 		LeaseUuid: result.leaseUUID,
@@ -374,11 +385,6 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// Get params for reservation calculation
-	params, err := ms.k.GetParams(ctx)
-	if err != nil {
-		return nil, err
-	}
 	senderAddr, err := sdk.AccAddressFromBech32(msg.Sender)
 	if err != nil {
 		return nil, err
@@ -409,8 +415,8 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		}
 
 		// Address text is not an identity: equivalent Bech32 values can use
-		// different casing. Use the SDK's canonical spelling for every map key
-		// while preserving the lease's stored spelling for events.
+		// different casing. Use the SDK's canonical spelling for map keys and
+		// emitted identities.
 		tenantAddr, err := sdk.AccAddressFromBech32(lease.Tenant)
 		if err != nil {
 			return nil, types.ErrInvalidLease.Wrapf("lease %s has invalid tenant address: %s", uuid, err)
@@ -601,7 +607,9 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		ms.k.DecrementActiveLeaseCount(&creditAccount, leases[i].Uuid)
 
 		// Release reservation for this lease
-		ms.k.ReleaseLeaseReservation(&creditAccount, &leases[i], params.MinLeaseDuration)
+		if err := ms.k.ReleaseLeaseReservation(cacheCtx, &creditAccount, &leases[i]); err != nil {
+			return nil, err
+		}
 
 		creditAccounts[tenantKeys[i]] = creditAccount
 
@@ -612,7 +620,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		// (creditAccount already has the updated ActiveLeaseCount from above)
 		leaseEvents = append(leaseEvents, leaseEvent{
 			uuid:           leases[i].Uuid,
-			tenant:         leases[i].Tenant,
+			tenant:         tenantKeys[i],
 			providerUUID:   leases[i].ProviderUuid,
 			settledAmounts: settledAmounts,
 			closedBy:       leaseClosedBy,
@@ -692,16 +700,11 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// Get params for reservation calculation (needed for auto-close)
-	params, err := ms.k.GetParams(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	// Phase 1: Validate ALL leases first (fail-fast on any error)
 	leases := make([]types.Lease, 0, len(msg.LeaseUuids))
 	var provider skutypes.Provider
 	var providerUUID string
+	var err error
 
 	for i, leaseUUID := range msg.LeaseUuids {
 		// Get lease
@@ -713,7 +716,7 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 		// Verify all leases belong to the same provider
 		if i == 0 {
 			providerUUID = lease.ProviderUuid
-			provider, err = ms.validateProviderAuthorization(ctx, msg.Sender, providerUUID, "withdraw from")
+			provider, _, err = ms.validateProviderAuthorization(ctx, msg.Sender, providerUUID, "withdraw from")
 			if err != nil {
 				return nil, err
 			}
@@ -728,6 +731,11 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 
 		leases = append(leases, lease)
 	}
+	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
+	if err != nil {
+		return nil, types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
+	}
+	payoutAddress := payoutAddr.String()
 
 	// Phase 2: Apply all changes atomically using CacheContext
 	cacheCtx, writeCache := sdkCtx.CacheContext()
@@ -747,7 +755,7 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 				return nil, err
 			}
 			if shouldAutoClose {
-				result, err := ms.k.AutoCloseLease(cacheCtx, lease, closeTime, params.MinLeaseDuration)
+				result, err := ms.k.AutoCloseLease(cacheCtx, lease, closeTime)
 				if err != nil {
 					return nil, err
 				}
@@ -832,7 +840,7 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 					sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
 					sdk.NewAttribute(types.AttributeKeyAmount, amounts.String()),
 					sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
-					sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.PayoutAddress),
+					sdk.NewAttribute(types.AttributeKeyPayoutAddress, payoutAddress),
 				),
 			)
 		}
@@ -846,14 +854,14 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 				sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(withdrawalCount, 10)),
 				sdk.NewAttribute(types.AttributeKeyProviderUUID, providerUUID),
 				sdk.NewAttribute(types.AttributeKeyAmount, totalAmounts.String()),
-				sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.PayoutAddress),
+				sdk.NewAttribute(types.AttributeKeyPayoutAddress, payoutAddress),
 			),
 		)
 	}
 
 	return &types.MsgWithdrawResponse{
 		TotalAmounts:    totalAmounts,
-		PayoutAddress:   provider.PayoutAddress,
+		PayoutAddress:   payoutAddress,
 		WithdrawalCount: withdrawalCount,
 		HasMore:         false, // Never has more in specific lease mode
 	}, nil
@@ -865,18 +873,17 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// Get params for reservation calculation (needed for auto-close)
-	params, err := ms.k.GetParams(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	// Get provider and verify authorization
 	providerUUID := msg.ProviderUuid
-	provider, err := ms.validateProviderAuthorization(ctx, msg.Sender, providerUUID, "withdraw from")
+	provider, _, err := ms.validateProviderAuthorization(ctx, msg.Sender, providerUUID, "withdraw from")
 	if err != nil {
 		return nil, err
 	}
+	payoutAddr, err := sdk.AccAddressFromBech32(provider.GetPayoutAddress())
+	if err != nil {
+		return nil, types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
+	}
+	payoutAddress := payoutAddr.String()
 
 	// Apply default limit if not specified (limit=0 means use default, not unlimited)
 	limit := msg.Limit
@@ -968,7 +975,7 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 			}
 
 			if shouldAutoClose {
-				result, acErr := ms.k.AutoCloseLease(cacheCtx, &lease, closeTime, params.MinLeaseDuration)
+				result, acErr := ms.k.AutoCloseLease(cacheCtx, &lease, closeTime)
 				if acErr != nil {
 					ms.k.Logger().Error("failed to auto-close lease",
 						"lease_id", lease.Uuid,
@@ -1054,14 +1061,14 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, providerUUID),
 			sdk.NewAttribute(types.AttributeKeyAmount, totalAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(withdrawalCount, 10)),
-			sdk.NewAttribute(types.AttributeKeyPayoutAddress, provider.GetPayoutAddress()),
+			sdk.NewAttribute(types.AttributeKeyPayoutAddress, payoutAddress),
 			sdk.NewAttribute(types.AttributeKeyAutoClosed, strconv.FormatUint(autoClosedCount, 10)),
 		),
 	)
 
 	return &types.MsgWithdrawResponse{
 		TotalAmounts:    totalAmounts,
-		PayoutAddress:   provider.GetPayoutAddress(),
+		PayoutAddress:   payoutAddress,
 		WithdrawalCount: withdrawalCount,
 		HasMore:         hasMore,
 		NextKey:         nextKey,
@@ -1194,28 +1201,29 @@ func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []
 }
 
 // validateProviderAuthorization verifies the sender is authorized for provider operations.
-// Returns the provider if authorized, or an error if not.
-func (ms msgServer) validateProviderAuthorization(ctx context.Context, sender, providerUUID, operation string) (skutypes.Provider, error) {
+// It returns both the provider and the sender's canonical SDK Bech32 spelling
+// for use in address-valued event attributes.
+func (ms msgServer) validateProviderAuthorization(ctx context.Context, sender, providerUUID, operation string) (skutypes.Provider, string, error) {
 	provider, err := ms.k.skuKeeper.GetProvider(ctx, providerUUID)
 	if err != nil {
-		return skutypes.Provider{}, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
+		return skutypes.Provider{}, "", types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
 	}
 
 	senderAddr, err := sdk.AccAddressFromBech32(sender)
 	if err != nil {
-		return skutypes.Provider{}, err
+		return skutypes.Provider{}, "", err
 	}
 	providerAddr, err := sdk.AccAddressFromBech32(provider.Address)
 	if err != nil {
-		return skutypes.Provider{}, err
+		return skutypes.Provider{}, "", err
 	}
 	authorityAddr, err := sdk.AccAddressFromBech32(ms.k.GetAuthority())
 	if err != nil {
-		return skutypes.Provider{}, err
+		return skutypes.Provider{}, "", err
 	}
 
 	if !senderAddr.Equals(providerAddr) && !senderAddr.Equals(authorityAddr) {
-		return skutypes.Provider{}, types.ErrUnauthorized.Wrapf(
+		return skutypes.Provider{}, "", types.ErrUnauthorized.Wrapf(
 			"sender %s is not authorized to %s leases for provider %s",
 			sender,
 			operation,
@@ -1223,7 +1231,7 @@ func (ms msgServer) validateProviderAuthorization(ctx context.Context, sender, p
 		)
 	}
 
-	return provider, nil
+	return provider, senderAddr.String(), nil
 }
 
 // validateLeaseActivationGates revalidates the time and tenant-cap constraints that
@@ -1287,7 +1295,8 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 		return nil, err
 	}
 
-	if _, err := ms.validateProviderAuthorization(ctx, msg.Sender, validated.providerUUID, "acknowledge"); err != nil {
+	_, acknowledgedBy, err := ms.validateProviderAuthorization(ctx, msg.Sender, validated.providerUUID, "acknowledge")
+	if err != nil {
 		return nil, err
 	}
 
@@ -1335,7 +1344,7 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 		// Queue event for emission after successful commit
 		leaseEvents = append(leaseEvents, leaseEvent{
 			uuid:         leases[i].Uuid,
-			tenant:       leases[i].Tenant,
+			tenant:       validated.tenantKeys[i],
 			providerUUID: leases[i].ProviderUuid,
 		})
 	}
@@ -1359,7 +1368,7 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 				sdk.NewAttribute(types.AttributeKeyLeaseUUID, ev.uuid),
 				sdk.NewAttribute(types.AttributeKeyTenant, ev.tenant),
 				sdk.NewAttribute(types.AttributeKeyProviderUUID, ev.providerUUID),
-				sdk.NewAttribute(types.AttributeKeyAcknowledgedBy, msg.Sender),
+				sdk.NewAttribute(types.AttributeKeyAcknowledgedBy, acknowledgedBy),
 			),
 		)
 	}
@@ -1371,7 +1380,7 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 				types.EventTypeBatchAcknowledged,
 				sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(uint64(len(leases)), 10)),
 				sdk.NewAttribute(types.AttributeKeyProviderUUID, validated.providerUUID),
-				sdk.NewAttribute(types.AttributeKeyAcknowledgedBy, msg.Sender),
+				sdk.NewAttribute(types.AttributeKeyAcknowledgedBy, acknowledgedBy),
 			),
 		)
 	}
@@ -1393,19 +1402,14 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// Get params for reservation calculation
-	params, err := ms.k.GetParams(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	// Phase 1: Validate all leases and authorization (fail-fast)
 	validated, err := ms.validatePendingLeaseBatch(ctx, msg.LeaseUuids)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := ms.validateProviderAuthorization(ctx, msg.Sender, validated.providerUUID, "reject"); err != nil {
+	_, rejectedBy, err := ms.validateProviderAuthorization(ctx, msg.Sender, validated.providerUUID, "reject")
+	if err != nil {
 		return nil, err
 	}
 
@@ -1440,14 +1444,16 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 		ms.k.DecrementPendingLeaseCount(&creditAccount, leases[i].Uuid)
 
 		// Release reservation for this lease (PENDING leases have reservations)
-		ms.k.ReleaseLeaseReservation(&creditAccount, &leases[i], params.MinLeaseDuration)
+		if err := ms.k.ReleaseLeaseReservation(cacheCtx, &creditAccount, &leases[i]); err != nil {
+			return nil, err
+		}
 
 		creditAccounts[validated.tenantKeys[i]] = creditAccount // Update map with new counts
 
 		// Queue event for emission after successful commit
 		leaseEvents = append(leaseEvents, leaseEvent{
 			uuid:         leases[i].Uuid,
-			tenant:       leases[i].Tenant,
+			tenant:       validated.tenantKeys[i],
 			providerUUID: leases[i].ProviderUuid,
 		})
 	}
@@ -1472,7 +1478,7 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 				sdk.NewAttribute(types.AttributeKeyLeaseUUID, ev.uuid),
 				sdk.NewAttribute(types.AttributeKeyTenant, ev.tenant),
 				sdk.NewAttribute(types.AttributeKeyProviderUUID, ev.providerUUID),
-				sdk.NewAttribute(types.AttributeKeyRejectedBy, msg.Sender),
+				sdk.NewAttribute(types.AttributeKeyRejectedBy, rejectedBy),
 				sdk.NewAttribute(types.AttributeKeyRejectionReason, sanitize.EventAttribute(msg.Reason)),
 			),
 		)
@@ -1485,7 +1491,7 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 				types.EventTypeBatchRejected,
 				sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(uint64(len(leases)), 10)),
 				sdk.NewAttribute(types.AttributeKeyProviderUUID, validated.providerUUID),
-				sdk.NewAttribute(types.AttributeKeyRejectedBy, msg.Sender),
+				sdk.NewAttribute(types.AttributeKeyRejectedBy, rejectedBy),
 			),
 		)
 	}
@@ -1507,11 +1513,6 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// Get params for reservation calculation
-	params, err := ms.k.GetParams(ctx)
-	if err != nil {
-		return nil, err
-	}
 	tenantAddr, err := sdk.AccAddressFromBech32(msg.Tenant)
 	if err != nil {
 		return nil, err
@@ -1577,7 +1578,9 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 		ms.k.DecrementPendingLeaseCount(&creditAccount, leases[i].Uuid)
 
 		// Release reservation for this lease (PENDING leases have reservations)
-		ms.k.ReleaseLeaseReservation(&creditAccount, &leases[i], params.MinLeaseDuration)
+		if err := ms.k.ReleaseLeaseReservation(cacheCtx, &creditAccount, &leases[i]); err != nil {
+			return nil, err
+		}
 	}
 
 	// Save credit account with updated pending count and released reservations
@@ -1594,9 +1597,9 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 			sdk.NewEvent(
 				types.EventTypeLeaseCancelled,
 				sdk.NewAttribute(types.AttributeKeyLeaseUUID, leases[i].Uuid),
-				sdk.NewAttribute(types.AttributeKeyTenant, leases[i].Tenant),
+				sdk.NewAttribute(types.AttributeKeyTenant, tenantKey),
 				sdk.NewAttribute(types.AttributeKeyProviderUUID, leases[i].ProviderUuid),
-				sdk.NewAttribute(types.AttributeKeyCancelledBy, msg.Tenant),
+				sdk.NewAttribute(types.AttributeKeyCancelledBy, tenantKey),
 			),
 		)
 	}
@@ -1607,8 +1610,8 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 			sdk.NewEvent(
 				types.EventTypeBatchCancelled,
 				sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(uint64(len(leases)), 10)),
-				sdk.NewAttribute(types.AttributeKeyTenant, msg.Tenant),
-				sdk.NewAttribute(types.AttributeKeyCancelledBy, msg.Tenant),
+				sdk.NewAttribute(types.AttributeKeyTenant, tenantKey),
+				sdk.NewAttribute(types.AttributeKeyCancelledBy, tenantKey),
 			),
 		)
 	}

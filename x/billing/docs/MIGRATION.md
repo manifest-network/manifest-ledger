@@ -414,10 +414,12 @@ cannot be reconstructed after parameter changes. This applies even when the
 lease is terminal, because historical release logic could leave a residual
 after using a later parameter value. Validation still requires the stored
 reservation to cover every live non-legacy lease for that tenant, but does not
-guess the legacy portion. Existing custom-domain claims are likewise not
-rechecked against the current reserved-suffix list because a claim may predate
-a later reservation. For newly authored state, `ValidateStrict()` opts into
-both present-day policy checks.
+guess the legacy portion. Current lifecycle release likewise avoids that guess:
+it retains the shared unknown aggregate while another live legacy lease remains
+and reconciles it to the exact non-legacy floor when the last one terminates.
+Existing custom-domain claims are likewise not rechecked against the current
+reserved-suffix list because a claim may predate a later reservation. For newly
+authored state, `ValidateStrict()` opts into both present-day policy checks.
 
 ### Phase 2: Time-Based Validation (`ValidateWithBlockTime`)
 

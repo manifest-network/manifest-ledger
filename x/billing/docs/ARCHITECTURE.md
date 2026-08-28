@@ -797,7 +797,7 @@ When a lease expires:
 - State changes from `PENDING` → `EXPIRED`
 - `expired_at` timestamp is set
 - `pending_lease_count` is decremented
-- The lease's reservation is released from `CreditAccount.reserved_amounts` (via `ReleaseLeaseReservation`), freeing the credit for new leases
+- The lease's reservation is released from `CreditAccount.reserved_amounts` (via `ReleaseLeaseReservation`), freeing the credit for new leases. For legacy leases without a stored creation-time duration, release is deferred while another live legacy lease remains; the last transition reconciles the aggregate to the exact reservation floor for all live non-legacy leases.
 - Credit remains in tenant's account (was never billed since lease never activated)
 - The whole expiration is `CacheContext`-atomic; the `lease_expired` event is emitted on the parent context after commit
 

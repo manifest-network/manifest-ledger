@@ -25,7 +25,8 @@ package types
 //
 //   - ADDED: When a lease is created (enters PENDING state)
 //   - MAINTAINED: When a lease is acknowledged (transitions to ACTIVE state)
-//   - RELEASED: When a lease transitions to CLOSED, REJECTED, or EXPIRED
+//   - RELEASED: When a non-legacy lease transitions to CLOSED, REJECTED, or EXPIRED
+//   - DEFERRED: Legacy release waits until the last live legacy lease terminates
 //
 // # Available Credit Calculation
 //
@@ -37,8 +38,11 @@ package types
 //
 // New leases store MinLeaseDurationAtCreation to ensure consistent reservation
 // calculation regardless of subsequent governance changes to MinLeaseDuration.
-// Legacy leases use the current parameter as a fallback when an operation needs
-// a per-lease amount.
+// Strict validation and debugging calculations may use the current parameter
+// as an explicit fallback for a legacy lease. Lifecycle release never guesses
+// that unknown historical amount: it defers release while another live legacy
+// lease remains, then reconciles the aggregate to the exact non-legacy floor
+// when the last live legacy lease terminates.
 
 import (
 	"crypto/sha256"

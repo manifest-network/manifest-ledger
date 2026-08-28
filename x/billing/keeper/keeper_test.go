@@ -282,7 +282,7 @@ func TestInitGenesis_AllowsLegacyReservationFromHistoricalMinDuration(t *testing
 	require.True(t, historicalReservation.Equal(importedAccount.ReservedAmounts))
 }
 
-func TestExportGenesis_AllowsResidualAfterTerminalLegacyLease(t *testing.T) {
+func TestExportGenesis_ReconcilesLastTerminalLegacyLease(t *testing.T) {
 	f := initFixture(t)
 	k := f.App.BillingKeeper
 	msgServer := keeper.NewMsgServerImpl(k)
@@ -333,11 +333,9 @@ func TestExportGenesis_AllowsResidualAfterTerminalLegacyLease(t *testing.T) {
 
 	exported := k.ExportGenesis(f.Ctx)
 	require.Len(t, exported.CreditAccounts, 1)
-	currentFallback := types.CalculateLeaseReservation(lease.Items, params.MinLeaseDuration)
-	wantResidual := types.SubtractReservation(historicalReservation, currentFallback)
-	require.True(t, wantResidual.Equal(exported.CreditAccounts[0].ReservedAmounts))
+	require.True(t, exported.CreditAccounts[0].ReservedAmounts.IsZero())
 	require.NoError(t, exported.Validate())
-	require.ErrorIs(t, exported.ValidateStrict(), types.ErrInvalidCreditOperation)
+	require.NoError(t, exported.ValidateStrict())
 }
 
 func TestInitGenesis_RejectsStructuralInconsistencyBeforeWrites(t *testing.T) {

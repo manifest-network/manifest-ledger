@@ -28,20 +28,21 @@ type LeaseItemJSON struct {
 // State is output as a string by the CLI (e.g., "LEASE_STATE_ACTIVE"),
 // not as the numeric enum value that the proto type expects.
 type LeaseJSON struct {
-	Uuid            string          `json:"uuid,omitempty"`
-	Tenant          string          `json:"tenant,omitempty"`
-	ProviderUuid    string          `json:"provider_uuid,omitempty"`
-	Items           []LeaseItemJSON `json:"items"`
-	State           string          `json:"state,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
-	ClosedAt        *time.Time      `json:"closed_at,omitempty"`
-	LastSettledAt   time.Time       `json:"last_settled_at"`
-	AcknowledgedAt  *time.Time      `json:"acknowledged_at,omitempty"`
-	RejectedAt      *time.Time      `json:"rejected_at,omitempty"`
-	RejectionReason string          `json:"rejection_reason,omitempty"`
-	ExpiredAt       *time.Time      `json:"expired_at,omitempty"`
-	ClosureReason   string          `json:"closure_reason,omitempty"`
-	MetaHash        []byte          `json:"meta_hash,omitempty"`
+	Uuid                       string          `json:"uuid,omitempty"`
+	Tenant                     string          `json:"tenant,omitempty"`
+	ProviderUuid               string          `json:"provider_uuid,omitempty"`
+	Items                      []LeaseItemJSON `json:"items"`
+	State                      string          `json:"state,omitempty"`
+	CreatedAt                  time.Time       `json:"created_at"`
+	ClosedAt                   *time.Time      `json:"closed_at,omitempty"`
+	LastSettledAt              time.Time       `json:"last_settled_at"`
+	AcknowledgedAt             *time.Time      `json:"acknowledged_at,omitempty"`
+	RejectedAt                 *time.Time      `json:"rejected_at,omitempty"`
+	RejectionReason            string          `json:"rejection_reason,omitempty"`
+	ExpiredAt                  *time.Time      `json:"expired_at,omitempty"`
+	ClosureReason              string          `json:"closure_reason,omitempty"`
+	MetaHash                   []byte          `json:"meta_hash,omitempty"`
+	MinLeaseDurationAtCreation string          `json:"min_lease_duration_at_creation,omitempty"`
 }
 
 // GetState returns the LeaseState enum value from the string state.

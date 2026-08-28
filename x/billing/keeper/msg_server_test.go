@@ -304,30 +304,18 @@ func TestMsgFundCreditEvents(t *testing.T) {
 
 	// Fund credit account
 	_, err := msgServer.FundCredit(f.Ctx, &types.MsgFundCredit{
-		Sender: sender.String(),
-		Tenant: tenant.String(),
+		Sender: strings.ToUpper(sender.String()),
+		Tenant: strings.ToUpper(tenant.String()),
 		Amount: sdk.NewCoin(denom, sdkmath.NewInt(5000000)),
 	})
 	require.NoError(t, err)
 
-	// Check events
-	events := f.Ctx.EventManager().Events()
-	foundCreditFundedEvent := false
-	for _, event := range events {
-		if event.Type == types.EventTypeCreditFunded {
-			foundCreditFundedEvent = true
-			// Verify event attributes
-			for _, attr := range event.Attributes {
-				switch attr.Key {
-				case types.AttributeKeyTenant:
-					require.Equal(t, tenant.String(), attr.Value)
-				case types.AttributeKeyAmount:
-					require.Contains(t, attr.Value, denom)
-				}
-			}
-		}
-	}
-	require.True(t, foundCreditFundedEvent, "credit_funded event should be emitted")
+	// Equivalent uppercase wire spellings must not leak into address-valued
+	// attributes: indexers should see one stable identity for each account.
+	event := findEvent(t, f.Ctx, types.EventTypeCreditFunded)
+	require.Equal(t, tenant.String(), attrValue(t, event, types.AttributeKeyTenant))
+	require.Equal(t, sender.String(), attrValue(t, event, types.AttributeKeySender))
+	require.Contains(t, attrValue(t, event, types.AttributeKeyAmount), denom)
 }
 
 func TestMsgUpdateParams(t *testing.T) {
@@ -356,6 +344,14 @@ func TestMsgUpdateParams(t *testing.T) {
 					10,
 					1800,
 				),
+			},
+			expectErr: false,
+		},
+		{
+			name: "success: all-uppercase authority alias",
+			msg: &types.MsgUpdateParams{
+				Authority: strings.ToUpper(authority.String()),
+				Params:    types.DefaultParams(),
 			},
 			expectErr: false,
 		},
@@ -4142,6 +4138,138 @@ func TestLeaseLifecycleEvents(t *testing.T) {
 		}
 	}
 	require.True(t, foundRejectEvent, "lease_rejected event should be emitted")
+}
+
+// TestAddressEventAttributesUseCanonicalBech32 verifies that valid uppercase
+// wire and persisted SKU spellings never split a single account identity across
+// billing events. Public messages remain string-based; event values use the
+// canonical spelling returned by the SDK address parser.
+func TestAddressEventAttributesUseCanonicalBech32(t *testing.T) {
+	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	payoutAddr := f.TestAccs[2]
+	uppercaseTenant := strings.ToUpper(tenant.String())
+	uppercaseProvider := strings.ToUpper(providerAddr.String())
+
+	// x/sku historically persists its public string value unchanged. Seed both
+	// provider addresses in uppercase to distinguish SDK identity handling from
+	// the raw string comparisons and event values this regression replaces.
+	provider := f.createTestProvider(
+		t,
+		uppercaseProvider,
+		strings.ToUpper(payoutAddr.String()),
+	)
+	storedProvider, err := f.App.SKUKeeper.GetProvider(f.Ctx, provider.Uuid)
+	require.NoError(t, err)
+	require.Equal(t, uppercaseProvider, storedProvider.Address)
+	require.Equal(t, strings.ToUpper(payoutAddr.String()), storedProvider.PayoutAddress)
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	creditAddr := types.DeriveCreditAddress(tenant)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(100_000_000))))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	createPendingLease := func() string {
+		t.Helper()
+		f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+		resp, createErr := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: uppercaseTenant,
+			Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+		})
+		require.NoError(t, createErr)
+		createdEvent := findEvent(t, f.Ctx, types.EventTypeLeaseCreated)
+		require.Equal(t, tenant.String(), attrValue(t, createdEvent, types.AttributeKeyTenant))
+		return resp.LeaseUuid
+	}
+
+	providerLeaseUUID := createPendingLease()
+	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		// Intentionally differs from the provider's stored uppercase spelling:
+		// a raw string authorization check would reject this valid signer.
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{providerLeaseUUID},
+	})
+	require.NoError(t, err)
+	acknowledgedEvent := findEvent(t, f.Ctx, types.EventTypeLeaseAcknowledged)
+	require.Equal(t, tenant.String(), attrValue(t, acknowledgedEvent, types.AttributeKeyTenant))
+	require.Equal(t, providerAddr.String(), attrValue(t, acknowledgedEvent, types.AttributeKeyAcknowledgedBy))
+
+	// Withdrawal attributes and the response canonicalize the SKU module's
+	// uppercase payout spelling through the SDK as well.
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(10 * time.Second)).
+		WithEventManager(sdk.NewEventManager())
+	withdrawResp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:     uppercaseProvider,
+		LeaseUuids: []string{providerLeaseUUID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, payoutAddr.String(), withdrawResp.PayoutAddress)
+	withdrawEvent := findEvent(t, f.Ctx, types.EventTypeProviderWithdraw)
+	require.Equal(t, payoutAddr.String(), attrValue(t, withdrawEvent, types.AttributeKeyPayoutAddress))
+
+	rejectedLeaseUUID := createPendingLease()
+	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+	_, err = msgServer.RejectLease(f.Ctx, &types.MsgRejectLease{
+		// Pin byte-identity authorization on rejection independently as well.
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{rejectedLeaseUUID},
+		Reason:     "canonical address event regression",
+	})
+	require.NoError(t, err)
+	rejectedEvent := findEvent(t, f.Ctx, types.EventTypeLeaseRejected)
+	require.Equal(t, tenant.String(), attrValue(t, rejectedEvent, types.AttributeKeyTenant))
+	require.Equal(t, providerAddr.String(), attrValue(t, rejectedEvent, types.AttributeKeyRejectedBy))
+
+	cancelledLeaseUUID := createPendingLease()
+	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+	_, err = msgServer.CancelLease(f.Ctx, &types.MsgCancelLease{
+		Tenant:     uppercaseTenant,
+		LeaseUuids: []string{cancelledLeaseUUID},
+	})
+	require.NoError(t, err)
+	cancelledEvent := findEvent(t, f.Ctx, types.EventTypeLeaseCancelled)
+	require.Equal(t, tenant.String(), attrValue(t, cancelledEvent, types.AttributeKeyTenant))
+	require.Equal(t, tenant.String(), attrValue(t, cancelledEvent, types.AttributeKeyCancelledBy))
+
+	authorityLeaseUUID := createPendingLease()
+	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+		Sender:     strings.ToUpper(f.Authority.String()),
+		LeaseUuids: []string{authorityLeaseUUID},
+	})
+	require.NoError(t, err)
+	authorityEvent := findEvent(t, f.Ctx, types.EventTypeLeaseAcknowledged)
+	require.Equal(t, f.Authority.String(), attrValue(t, authorityEvent, types.AttributeKeyAcknowledgedBy))
+
+	// Exercise the specific-lease batch summary and provider-wide summary sites,
+	// which both source payout_address from the same persisted SKU value.
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(10 * time.Second)).
+		WithEventManager(sdk.NewEventManager())
+	batchWithdrawResp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:     uppercaseProvider,
+		LeaseUuids: []string{providerLeaseUUID, authorityLeaseUUID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, payoutAddr.String(), batchWithdrawResp.PayoutAddress)
+	batchWithdrawEvent := findEvent(t, f.Ctx, types.EventTypeBatchWithdraw)
+	require.Equal(t, payoutAddr.String(), attrValue(t, batchWithdrawEvent, types.AttributeKeyPayoutAddress))
+
+	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+	providerWithdrawResp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:       uppercaseProvider,
+		ProviderUuid: provider.Uuid,
+	})
+	require.NoError(t, err)
+	require.Equal(t, payoutAddr.String(), providerWithdrawResp.PayoutAddress)
+	providerWithdrawEvent := findEvent(t, f.Ctx, types.EventTypeBatchWithdraw)
+	require.Equal(t, payoutAddr.String(), attrValue(t, providerWithdrawEvent, types.AttributeKeyPayoutAddress))
 }
 
 // TestMsgCreateLease_AllSKUsSameProvider tests that all SKUs in a lease must be from the same provider.

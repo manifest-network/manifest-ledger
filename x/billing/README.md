@@ -545,9 +545,12 @@ This remains true after the legacy lease becomes terminal: older release logic
 used the then-current parameter and could leave a residual from the original
 reservation. For any tenant with such legacy history, import validation
 requires `ReservedAmounts` to be valid and at least cover the complete sum for
-all non-legacy PENDING and ACTIVE leases. `ValidateStrict()` is available for
-newly authored state and instead applies the current minimum duration to live
-legacy leases before requiring exact equality.
+all non-legacy PENDING and ACTIVE leases. Current lifecycle handling never
+guesses a legacy release from present-day params: it preserves the shared
+unknown aggregate while another live legacy lease remains, then reconciles to
+the exact non-legacy floor when the last one terminates. `ValidateStrict()` is
+available for newly authored state and instead applies the current minimum
+duration to live legacy leases before requiring exact equality.
 
 **Validation Steps:**
 1. Compute expected reservations by iterating all leases and summing reservation amounts for PENDING/ACTIVE leases per tenant

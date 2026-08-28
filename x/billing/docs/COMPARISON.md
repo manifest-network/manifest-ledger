@@ -283,10 +283,11 @@ if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil { ... }
 ms.k.DecrementActiveLeaseCount(&creditAccount, leases[i].Uuid)
 
 // 5. Release reservation
-// GetLeaseReservationAmount prefers lease.MinLeaseDurationAtCreation (when
-// non-zero) over the current param, so leases created under a different
-// min_lease_duration release the correct amount.
-ms.k.ReleaseLeaseReservation(&creditAccount, &leases[i], params.MinLeaseDuration)
+// Non-legacy leases release their exact creation-time reservation. Legacy
+// leases never guess from current params: their shared aggregate is retained
+// until the last live legacy lease terminates, then reconciled to the exact
+// remaining non-legacy floor.
+if err := ms.k.ReleaseLeaseReservation(cacheCtx, &creditAccount, &leases[i]); err != nil { ... }
 
 // 6. Save credit account
 if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil { ... }

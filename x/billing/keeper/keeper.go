@@ -1068,7 +1068,7 @@ type AutoCloseLeaseResult struct {
 // It settles the lease, updates its state to CLOSED, decrements the active lease count,
 // and releases the reservation. All changes are applied to the provided context.
 // The caller is responsible for CacheContext management and event emission.
-func (k *Keeper) AutoCloseLease(ctx context.Context, lease *types.Lease, closeTime time.Time, minLeaseDuration uint64) (*AutoCloseLeaseResult, error) {
+func (k *Keeper) AutoCloseLease(ctx context.Context, lease *types.Lease, closeTime time.Time) (*AutoCloseLeaseResult, error) {
 	result, err := k.PerformSettlementSilent(ctx, lease, closeTime)
 	if err != nil {
 		return nil, err
@@ -1089,7 +1089,9 @@ func (k *Keeper) AutoCloseLease(ctx context.Context, lease *types.Lease, closeTi
 	}
 
 	k.DecrementActiveLeaseCount(&creditAccount, lease.Uuid)
-	k.ReleaseLeaseReservation(&creditAccount, lease, minLeaseDuration)
+	if err := k.ReleaseLeaseReservation(ctx, &creditAccount, lease); err != nil {
+		return nil, err
+	}
 
 	if err := k.SetCreditAccount(ctx, creditAccount); err != nil {
 		return nil, err
@@ -1126,12 +1128,107 @@ func (k *Keeper) DecrementPendingLeaseCount(ca *types.CreditAccount, leaseUUID s
 	}
 }
 
-// ReleaseLeaseReservation releases the reservation for a lease from a credit account.
-// It checks for potential underflow (releasing more than reserved) and logs a warning
-// if detected, which indicates a data inconsistency. The release proceeds regardless
-// to maintain forward progress (SubtractReservation clamps to zero).
-func (k *Keeper) ReleaseLeaseReservation(ca *types.CreditAccount, lease *types.Lease, minLeaseDuration uint64) {
-	reservationAmount := types.GetLeaseReservationAmount(lease, minLeaseDuration)
+// knownLiveReservationFloor returns the exact reservation total for a tenant's
+// remaining PENDING and ACTIVE leases whose creation-time minimum duration is
+// stored, together with whether another live legacy lease remains.
+func (k *Keeper) knownLiveReservationFloor(ctx context.Context, tenant, excludedLeaseUUID string) (sdk.Coins, bool, error) {
+	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
+	if err != nil {
+		return nil, false, err
+	}
+
+	stateLimits := [...]struct {
+		state types.LeaseState
+		limit uint64
+	}{
+		{state: types.LEASE_STATE_PENDING, limit: types.MaxPendingLeasesPerTenantUpperBound},
+		{state: types.LEASE_STATE_ACTIVE, limit: maxActiveLeaseQueryIterations},
+	}
+
+	floor := sdk.NewCoins()
+	for _, stateLimit := range stateLimits {
+		key := collections.Join(tenantAddr, int32(stateLimit.state))
+		iter, err := k.Leases.Indexes.TenantState.MatchExact(ctx, key)
+		if err != nil {
+			return nil, false, err
+		}
+
+		var scanned uint64
+		for ; iter.Valid(); iter.Next() {
+			leaseUUID, err := iter.PrimaryKey()
+			if err != nil {
+				_ = iter.Close()
+				return nil, false, err
+			}
+			if leaseUUID == excludedLeaseUUID {
+				continue
+			}
+
+			if scanned >= stateLimit.limit {
+				_ = iter.Close()
+				return nil, false, types.ErrInvalidCreditOperation.Wrapf(
+					"tenant %s has more than %d %s leases while calculating reservation floor",
+					tenant, stateLimit.limit, stateLimit.state.String(),
+				)
+			}
+			scanned++
+
+			liveLease, err := k.Leases.Get(ctx, leaseUUID)
+			if err != nil {
+				_ = iter.Close()
+				return nil, false, err
+			}
+			if liveLease.MinLeaseDurationAtCreation == 0 {
+				if err := iter.Close(); err != nil {
+					return nil, false, err
+				}
+				return sdk.NewCoins(), true, nil
+			}
+
+			reservation := types.CalculateLeaseReservation(
+				liveLease.Items,
+				liveLease.MinLeaseDurationAtCreation,
+			)
+			floor = floor.Add(reservation...)
+		}
+
+		if err := iter.Close(); err != nil {
+			return nil, false, err
+		}
+	}
+
+	return floor, false, nil
+}
+
+// ReleaseLeaseReservation releases the reservation for a lease from a credit
+// account. It never guesses a legacy lease's unknown historical reservation:
+// while another live legacy lease remains, the shared unknown aggregate is
+// preserved; when the last one terminates, the aggregate is reconciled to the
+// exact floor required by all remaining non-legacy leases.
+func (k *Keeper) ReleaseLeaseReservation(ctx context.Context, ca *types.CreditAccount, lease *types.Lease) error {
+	if lease.MinLeaseDurationAtCreation == 0 {
+		reservationFloor, hasLiveLegacy, err := k.knownLiveReservationFloor(ctx, lease.Tenant, lease.Uuid)
+		if err != nil {
+			return fmt.Errorf("calculate live reservation floor for legacy lease %s: %w", lease.Uuid, err)
+		}
+		if hasLiveLegacy {
+			return nil
+		}
+		if !ca.ReservedAmounts.IsAllGTE(reservationFloor) {
+			return types.ErrInvalidCreditOperation.Wrapf(
+				"credit account for %s has reserved amounts %s below live reservation floor %s",
+				ca.Tenant, ca.ReservedAmounts.String(), reservationFloor.String(),
+			)
+		}
+
+		ca.ReservedAmounts = reservationFloor
+		return nil
+	}
+
+	reservationAmount := types.CalculateLeaseReservation(
+		lease.Items,
+		lease.MinLeaseDurationAtCreation,
+	)
 
 	// Check for underflow before release (for observability)
 	underflows := types.CheckReservationRelease(ca.ReservedAmounts, reservationAmount)
@@ -1145,8 +1242,9 @@ func (k *Keeper) ReleaseLeaseReservation(ca *types.CreditAccount, lease *types.L
 		)
 	}
 
-	// Subtract reservation (clamps negative values to zero)
 	ca.ReservedAmounts = types.SubtractReservation(ca.ReservedAmounts, reservationAmount)
+
+	return nil
 }
 
 // CountPendingLeasesByTenant counts the number of pending leases for a tenant.
@@ -1312,12 +1410,6 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 		return types.ErrLeaseNotPending.Wrapf("lease %s is not pending", lease.Uuid)
 	}
 
-	// Get params for reservation calculation
-	params, err := k.GetParams(ctx)
-	if err != nil {
-		return err
-	}
-
 	// Use CacheContext for atomic state changes
 	cacheCtx, write := sdkCtx.CacheContext()
 
@@ -1345,7 +1437,9 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 	k.DecrementPendingLeaseCount(&creditAccount, lease.Uuid)
 
 	// Release reservation for this lease (PENDING leases have reservations)
-	k.ReleaseLeaseReservation(&creditAccount, lease, params.MinLeaseDuration)
+	if err := k.ReleaseLeaseReservation(cacheCtx, &creditAccount, lease); err != nil {
+		return err
+	}
 
 	if err := k.SetCreditAccount(cacheCtx, creditAccount); err != nil {
 		return err

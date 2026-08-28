@@ -494,9 +494,7 @@ func TestSetItemCustomDomain_LifecycleCleanup_AutoCloseLease(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, shouldClose)
 
-	params, err := s.f.App.BillingKeeper.GetParams(s.f.Ctx)
-	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.AutoCloseLease(s.f.Ctx, &lease, closeTime, params.MinLeaseDuration)
+	_, err = s.f.App.BillingKeeper.AutoCloseLease(s.f.Ctx, &lease, closeTime)
 	require.NoError(t, err)
 
 	_, _, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, "auto.example.com")
