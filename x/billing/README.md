@@ -198,9 +198,10 @@ all account identities inside Params, Lease, and CreditAccount values are
 persisted as raw address bytes. Address-bearing keys and secondary indexes use
 the SDK's `AccAddressKey` byte codec as well. The v2→v3 module migration rewrites
 every legacy value in deterministic key order; it does not rebuild indexes.
-A separate ascending credit-account pass uses the byte-addressed tenant index
-to reconstruct cached active/pending counts and reconcile fully verifiable
-reservations to the exact live floor.
+A separate ascending credit-account pass uses the byte-addressed tenant/state
+index in fixed PENDING→ACTIVE order to reconstruct cached counts and reconcile
+fully verifiable reservations to the exact live floor without decoding
+terminal lease history.
 Equivalent allowed-list Bech32 spellings are collapsed by decoded address
 identity while preserving first-seen list order.
 For tenants with live legacy leases, it raises only deficient denominations to

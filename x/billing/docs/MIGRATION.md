@@ -17,9 +17,10 @@ The v3 billing migration rewrites disk encoding and repairs two historical
 credit-account aggregates. Public protobufs continue to use Bech32 strings,
 while stored Params allowed-list entries, Lease tenants, and CreditAccount
 tenant/credit identities are rewritten as raw SDK address bytes. A separate
-ascending credit-account pass uses the byte-addressed tenant index to
-reconstruct active and pending lease counts and calculate the exact reservation
-floor for live non-legacy leases from each lease's stored creation duration.
+ascending credit-account pass uses the byte-addressed tenant/state index in
+fixed PENDING→ACTIVE order to reconstruct live lease counts and calculate the
+exact reservation floor from each live non-legacy lease's stored creation
+duration, without decoding terminal lease history.
 Equivalent allowed-list Bech32 spellings are collapsed by decoded address
 identity while preserving first-seen list order.
 Fully verifiable accounts, including accounts with only terminal legacy lease

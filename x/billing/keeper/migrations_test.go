@@ -166,6 +166,16 @@ func TestMigratorMigrate2to3RepairsReservationFloorAndLeaseCounts(t *testing.T) 
 				LastSettledAt:              createdAt,
 				MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
 			}
+			modernPendingLease := types.Lease{
+				Uuid:                       "01912345-6789-7abc-8def-0123456789b0",
+				Tenant:                     upperTenant,
+				ProviderUuid:               testProviderUUID,
+				Items:                      items,
+				State:                      types.LEASE_STATE_PENDING,
+				CreatedAt:                  createdAt,
+				LastSettledAt:              createdAt,
+				MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
+			}
 			legacyLease := types.Lease{
 				Uuid:                       testLeaseUUID2,
 				Tenant:                     upperTenant,
@@ -185,6 +195,10 @@ func TestMigratorMigrate2to3RepairsReservationFloorAndLeaseCounts(t *testing.T) 
 				modernLease.Items,
 				modernLease.MinLeaseDurationAtCreation,
 			)
+			knownFloor = knownFloor.Add(types.CalculateLeaseReservation(
+				modernPendingLease.Items,
+				modernPendingLease.MinLeaseDurationAtCreation,
+			)...)
 			legacyResidual := sdk.NewCoin("uother", math.NewInt(1800))
 			underBacked := sdk.NewCoins(
 				sdk.NewCoin(testDenom, math.NewInt(1800)),
@@ -199,13 +213,14 @@ func TestMigratorMigrate2to3RepairsReservationFloorAndLeaseCounts(t *testing.T) 
 			// Seed valid byte-addressed indexes, then replace the primary values
 			// with exact v2 encodings to model the pre-upgrade store.
 			require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, modernLease))
+			require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, modernPendingLease))
 			require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, legacyLease))
 			require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, account))
-			require.NoError(t, f.App.BillingKeeper.LeaseSequence.Set(f.Ctx, 2))
+			require.NoError(t, f.App.BillingKeeper.LeaseSequence.Set(f.Ctx, 3))
 
 			store := f.Ctx.KVStore(f.App.GetKey(types.StoreKey))
 			legacyLeaseCodec := sdkcodec.CollValue[types.Lease](f.EncodingCfg.Codec)
-			for _, lease := range []types.Lease{modernLease, legacyLease} {
+			for _, lease := range []types.Lease{modernLease, modernPendingLease, legacyLease} {
 				encoded, err := legacyLeaseCodec.Encode(lease)
 				require.NoError(t, err)
 				key, err := collections.EncodeKeyWithPrefix(
@@ -246,9 +261,9 @@ func TestMigratorMigrate2to3RepairsReservationFloorAndLeaseCounts(t *testing.T) 
 				"migration must preserve only unknown live-legacy excess",
 			)
 			require.Equal(t, uint64(1), repairedAccount.ActiveLeaseCount)
-			expectedPendingCount := uint64(0)
+			expectedPendingCount := uint64(1)
 			if tc.legacyState == types.LEASE_STATE_PENDING {
-				expectedPendingCount = 1
+				expectedPendingCount++
 			}
 			require.Equal(t, expectedPendingCount, repairedAccount.PendingLeaseCount,
 				"migration must reconstruct byte-identity lease counts rather than preserve alias-corrupted counters",

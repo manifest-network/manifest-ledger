@@ -246,8 +246,9 @@ func (m Migrator) rewriteCreditAccountValues(ctx sdk.Context) error {
 }
 
 // calculateCreditAccountMigrationRepair reconstructs derived account fields
-// from the existing byte-addressed tenant index. The index scan is ordered by
-// lease primary key and does not depend on a Bech32 string representation.
+// from the existing byte-addressed tenant-state index. PENDING and ACTIVE are
+// scanned in fixed order, and each index scan is ordered by lease primary key.
+// Terminal leases cannot affect the repair and are deliberately not decoded.
 func (m Migrator) calculateCreditAccountMigrationRepair(
 	ctx sdk.Context,
 	tenant sdk.AccAddress,
@@ -256,52 +257,69 @@ func (m Migrator) calculateCreditAccountMigrationRepair(
 		knownReservationFloor: sdk.NewCoins(),
 	}
 
-	iterator, err := m.keeper.Leases.Indexes.Tenant.MatchExact(ctx, tenant)
-	if err != nil {
-		return repair, fmt.Errorf("iterate billing leases for tenant %q: %w", tenant.String(), err)
+	liveStates := [...]types.LeaseState{
+		types.LEASE_STATE_PENDING,
+		types.LEASE_STATE_ACTIVE,
 	}
-
-	for ; iterator.Valid(); iterator.Next() {
-		leaseUUID, err := iterator.PrimaryKey()
+	for _, state := range liveStates {
+		key := collections.Join(tenant, int32(state))
+		iterator, err := m.keeper.Leases.Indexes.TenantState.MatchExact(ctx, key)
 		if err != nil {
-			_ = iterator.Close()
-			return repair, fmt.Errorf("decode billing tenant-index entry for %q: %w", tenant.String(), err)
-		}
-		lease, err := m.keeper.Leases.Get(ctx, leaseUUID)
-		if err != nil {
-			_ = iterator.Close()
-			return repair, fmt.Errorf("read billing lease %q for account repair: %w", leaseUUID, err)
-		}
-		leaseTenant, err := sdk.AccAddressFromBech32(lease.Tenant)
-		if err != nil {
-			_ = iterator.Close()
-			return repair, fmt.Errorf("decode billing lease %q tenant %q: %w", leaseUUID, lease.Tenant, err)
-		}
-		if !tenant.Equals(leaseTenant) {
-			_ = iterator.Close()
-			return repair, fmt.Errorf("billing lease %q tenant does not match tenant index", leaseUUID)
+			return repair, fmt.Errorf(
+				"iterate %s billing leases for tenant %q: %w",
+				state.String(), tenant.String(), err,
+			)
 		}
 
-		switch lease.State {
-		case types.LEASE_STATE_ACTIVE:
-			repair.activeLeaseCount++
-		case types.LEASE_STATE_PENDING:
-			repair.pendingLeaseCount++
-		default:
-			continue
+		for ; iterator.Valid(); iterator.Next() {
+			leaseUUID, err := iterator.PrimaryKey()
+			if err != nil {
+				_ = iterator.Close()
+				return repair, fmt.Errorf(
+					"decode %s billing tenant-state index entry for %q: %w",
+					state.String(), tenant.String(), err,
+				)
+			}
+			lease, err := m.keeper.Leases.Get(ctx, leaseUUID)
+			if err != nil {
+				_ = iterator.Close()
+				return repair, fmt.Errorf("read billing lease %q for account repair: %w", leaseUUID, err)
+			}
+			leaseTenant, err := sdk.AccAddressFromBech32(lease.Tenant)
+			if err != nil {
+				_ = iterator.Close()
+				return repair, fmt.Errorf("decode billing lease %q tenant %q: %w", leaseUUID, lease.Tenant, err)
+			}
+			if !tenant.Equals(leaseTenant) || lease.State != state {
+				_ = iterator.Close()
+				return repair, fmt.Errorf(
+					"billing lease %q does not match its %s tenant-state index entry",
+					leaseUUID, state.String(),
+				)
+			}
+
+			switch state {
+			case types.LEASE_STATE_PENDING:
+				repair.pendingLeaseCount++
+			case types.LEASE_STATE_ACTIVE:
+				repair.activeLeaseCount++
+			}
+
+			if lease.MinLeaseDurationAtCreation == 0 {
+				repair.hasLiveLegacy = true
+				continue
+			}
+			repair.knownReservationFloor = repair.knownReservationFloor.Add(
+				types.CalculateLeaseReservation(lease.Items, lease.MinLeaseDurationAtCreation)...,
+			)
 		}
 
-		if lease.MinLeaseDurationAtCreation == 0 {
-			repair.hasLiveLegacy = true
-			continue
+		if err := iterator.Close(); err != nil {
+			return repair, fmt.Errorf(
+				"close %s billing tenant-state iterator for %q: %w",
+				state.String(), tenant.String(), err,
+			)
 		}
-		repair.knownReservationFloor = repair.knownReservationFloor.Add(
-			types.CalculateLeaseReservation(lease.Items, lease.MinLeaseDurationAtCreation)...,
-		)
-	}
-
-	if err := iterator.Close(); err != nil {
-		return repair, fmt.Errorf("close billing tenant-index iterator for %q: %w", tenant.String(), err)
 	}
 	return repair, nil
 }
