@@ -17,7 +17,15 @@ import (
 // rights — i.e. is the module authority or appears in params.AllowedList.
 // Returns ("", nil) when the sender has no admin privileges.
 func (k *Keeper) HasAdminPrivileges(ctx context.Context, sender string) (string, error) {
-	if sender == k.GetAuthority() {
+	senderAddress, err := sdk.AccAddressFromBech32(sender)
+	if err != nil {
+		return "", fmt.Errorf("invalid sender address: %w", err)
+	}
+	authorityAddress, err := sdk.AccAddressFromBech32(k.GetAuthority())
+	if err != nil {
+		return "", fmt.Errorf("invalid billing authority address: %w", err)
+	}
+	if senderAddress.Equals(authorityAddress) {
 		return types.AttributeValueRoleAuthority, nil
 	}
 	params, err := k.GetParams(ctx)
@@ -39,7 +47,15 @@ func (k *Keeper) IsAuthorizedForTenant(ctx context.Context, sender, tenant strin
 	if tenant == "" {
 		return "", fmt.Errorf("IsAuthorizedForTenant requires non-empty tenant; use HasAdminPrivileges for tenant-agnostic checks")
 	}
-	if sender == tenant {
+	senderAddress, err := sdk.AccAddressFromBech32(sender)
+	if err != nil {
+		return "", fmt.Errorf("invalid sender address: %w", err)
+	}
+	tenantAddress, err := sdk.AccAddressFromBech32(tenant)
+	if err != nil {
+		return "", fmt.Errorf("invalid tenant address: %w", err)
+	}
+	if senderAddress.Equals(tenantAddress) {
 		return types.AttributeValueRoleTenant, nil
 	}
 	return k.HasAdminPrivileges(ctx, sender)

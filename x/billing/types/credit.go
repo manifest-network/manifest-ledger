@@ -16,9 +16,10 @@ package types
 //
 // A legacy lease may have a zero MinLeaseDurationAtCreation because that field
 // was not persisted when the reservation was made. Its historical contribution
-// cannot be reconstructed after parameter changes. Genesis imports therefore
-// require the stored aggregate to cover every verifiable non-legacy lease
-// rather than guessing an exact legacy amount.
+// cannot be reconstructed after parameter changes, and a terminal transition
+// may have left a residual after using a later parameter value. Genesis imports
+// therefore require the stored aggregate to cover every verifiable non-legacy
+// lease rather than guessing an exact legacy amount.
 //
 // # Reservation Lifecycle
 //

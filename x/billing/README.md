@@ -192,6 +192,13 @@ A consumer that subscribes only to `lease_auto_closed` will miss credit-exhausti
 
 ## State
 
+Billing API, transaction, query, and genesis protobufs expose account addresses
+as Bech32 strings. Consensus version 3 uses separate disk-only value codecs:
+all account identities inside Params, Lease, and CreditAccount values are
+persisted as raw address bytes. Address-bearing keys and secondary indexes use
+the SDK's `AccAddressKey` byte codec as well. The v2→v3 module migration rewrites
+every legacy value in deterministic key order; it does not rebuild indexes.
+
 ### Storage Key Prefixes
 
 | Prefix | Key Type | Description |
@@ -533,12 +540,14 @@ CreditAccount.ReservedAmounts == SUM(GetLeaseReservationAmount(lease, params.Min
 
 An imported tenant may also have a legacy lease whose
 `MinLeaseDurationAtCreation` is zero. Its historical minimum duration cannot be
-reconstructed after governance changes, so exact equality is not provable. In
-that case, import validation requires `ReservedAmounts` to be valid and at
-least cover the complete sum for all non-legacy PENDING and ACTIVE leases of
-the tenant. `ValidateStrict()` is available for newly authored state and
-instead applies the current minimum duration to legacy leases before requiring
-exact equality.
+reconstructed after governance changes, so exact equality is not provable.
+This remains true after the legacy lease becomes terminal: older release logic
+used the then-current parameter and could leave a residual from the original
+reservation. For any tenant with such legacy history, import validation
+requires `ReservedAmounts` to be valid and at least cover the complete sum for
+all non-legacy PENDING and ACTIVE leases. `ValidateStrict()` is available for
+newly authored state and instead applies the current minimum duration to live
+legacy leases before requiring exact equality.
 
 **Validation Steps:**
 1. Compute expected reservations by iterating all leases and summing reservation amounts for PENDING/ACTIVE leases per tenant

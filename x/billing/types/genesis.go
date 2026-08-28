@@ -63,7 +63,9 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 
 	// Validate leases
 	seenLeaseUUIDs := make(map[string]bool)
-	for _, lease := range gs.Leases {
+	leaseTenantKeys := make([]string, len(gs.Leases))
+	for leaseIndex := range gs.Leases {
+		lease := gs.Leases[leaseIndex]
 		if lease.Uuid == "" {
 			return ErrInvalidLease.Wrap("lease has empty uuid")
 		}
@@ -81,9 +83,11 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 			return ErrInvalidLease.Wrapf("lease %s has empty tenant", lease.Uuid)
 		}
 
-		if _, err := sdk.AccAddressFromBech32(lease.Tenant); err != nil {
+		tenantAddr, err := sdk.AccAddressFromBech32(lease.Tenant)
+		if err != nil {
 			return ErrInvalidLease.Wrapf("lease %s has invalid tenant address: %s", lease.Uuid, err)
 		}
+		leaseTenantKeys[leaseIndex] = tenantAddr.String()
 
 		if lease.ProviderUuid == "" {
 			return ErrInvalidLease.Wrapf("lease %s has empty provider_uuid", lease.Uuid)
@@ -196,32 +200,37 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 
 	// Validate credit accounts
 	seenTenants := make(map[string]bool)
-	for _, ca := range gs.CreditAccounts {
+	creditAccountTenantKeys := make([]string, len(gs.CreditAccounts))
+	for creditAccountIndex := range gs.CreditAccounts {
+		ca := gs.CreditAccounts[creditAccountIndex]
 		if ca.Tenant == "" {
 			return ErrInvalidCreditOperation.Wrap("credit account has empty tenant")
 		}
 
-		if seenTenants[ca.Tenant] {
-			return ErrInvalidCreditOperation.Wrapf("duplicate credit account for tenant: %s", ca.Tenant)
-		}
-		seenTenants[ca.Tenant] = true
-
-		if _, err := sdk.AccAddressFromBech32(ca.Tenant); err != nil {
+		tenantAddr, err := sdk.AccAddressFromBech32(ca.Tenant)
+		if err != nil {
 			return ErrInvalidCreditOperation.Wrapf("credit account has invalid tenant address: %s", err)
 		}
+		tenantKey := tenantAddr.String()
+		creditAccountTenantKeys[creditAccountIndex] = tenantKey
+
+		if seenTenants[tenantKey] {
+			return ErrInvalidCreditOperation.Wrapf("duplicate credit account for tenant: %s", tenantKey)
+		}
+		seenTenants[tenantKey] = true
 
 		if ca.CreditAddress == "" {
 			return ErrInvalidCreditOperation.Wrapf("credit account for %s has empty credit_address", ca.Tenant)
 		}
 
-		if _, err := sdk.AccAddressFromBech32(ca.CreditAddress); err != nil {
+		creditAddr, err := sdk.AccAddressFromBech32(ca.CreditAddress)
+		if err != nil {
 			return ErrInvalidCreditOperation.Wrapf("credit account for %s has invalid credit_address: %s", ca.Tenant, err)
 		}
 
 		// Verify credit address matches the deterministically derived address from tenant
-		tenantAddr, _ := sdk.AccAddressFromBech32(ca.Tenant) // Already validated above
 		expectedCreditAddr := DeriveCreditAddress(tenantAddr)
-		if ca.CreditAddress != expectedCreditAddr.String() {
+		if !creditAddr.Equals(expectedCreditAddr) {
 			return ErrInvalidCreditOperation.Wrapf("credit account for %s has mismatched credit_address: got %s, expected %s",
 				ca.Tenant, ca.CreditAddress, expectedCreditAddr.String())
 		}
@@ -235,37 +244,49 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 	}
 
 	// Cross-validate reserved_amounts against reconstructible lease reservations.
-	// Only PENDING and ACTIVE leases have reservations. An imported tenant with a
-	// legacy lease cannot be checked exactly because its creation-time minimum
-	// duration was never stored and may differ from the current parameter.
-	expectedReservations := CalculateExpectedReservationsByTenant(gs.Leases, gs.Params.MinLeaseDuration)
+	// Only PENDING and ACTIVE leases require reservations. A tenant with legacy
+	// lease history cannot be checked exactly because its creation-time minimum
+	// was never stored; a terminal transition under a later parameter may also
+	// have left an unreconstructible residual.
+	expectedReservations := make(map[string]sdk.Coins)
 	legacyReservationTenants := make(map[string]bool)
 	knownReservations := make(map[string]sdk.Coins)
-	if !options.enforceExactLegacyReservations {
-		for i := range gs.Leases {
-			lease := &gs.Leases[i]
-			if lease.State != LEASE_STATE_PENDING && lease.State != LEASE_STATE_ACTIVE {
-				continue
-			}
-			if lease.MinLeaseDurationAtCreation == 0 {
-				legacyReservationTenants[lease.Tenant] = true
-				continue
-			}
+	for i := range gs.Leases {
+		lease := &gs.Leases[i]
+		tenantKey := leaseTenantKeys[i]
+		if !options.enforceExactLegacyReservations && lease.MinLeaseDurationAtCreation == 0 {
+			// A terminal legacy lease is evidence that a historical release may
+			// have left an unreconstructible residual after a parameter change.
+			legacyReservationTenants[tenantKey] = true
+		}
 
-			reservation := GetLeaseReservationAmount(lease, gs.Params.MinLeaseDuration)
-			if existing, ok := knownReservations[lease.Tenant]; ok {
-				knownReservations[lease.Tenant] = existing.Add(reservation...)
+		if lease.State != LEASE_STATE_PENDING && lease.State != LEASE_STATE_ACTIVE {
+			continue
+		}
+
+		reservation := GetLeaseReservationAmount(lease, gs.Params.MinLeaseDuration)
+		if existing, ok := expectedReservations[tenantKey]; ok {
+			expectedReservations[tenantKey] = existing.Add(reservation...)
+		} else {
+			expectedReservations[tenantKey] = reservation
+		}
+
+		if !options.enforceExactLegacyReservations && lease.MinLeaseDurationAtCreation != 0 {
+			if existing, ok := knownReservations[tenantKey]; ok {
+				knownReservations[tenantKey] = existing.Add(reservation...)
 			} else {
-				knownReservations[lease.Tenant] = reservation
+				knownReservations[tenantKey] = reservation
 			}
 		}
 	}
 
 	// Check each credit account's reserved_amounts matches expected
-	for _, ca := range gs.CreditAccounts {
+	for i := range gs.CreditAccounts {
+		ca := gs.CreditAccounts[i]
+		tenantKey := creditAccountTenantKeys[i]
 		actualNormalized := sdk.NewCoins(ca.ReservedAmounts...)
-		if legacyReservationTenants[ca.Tenant] {
-			known := knownReservations[ca.Tenant]
+		if legacyReservationTenants[tenantKey] {
+			known := knownReservations[tenantKey]
 			if known == nil {
 				known = sdk.NewCoins()
 			}
@@ -278,7 +299,7 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 			continue
 		}
 
-		expected := expectedReservations[ca.Tenant]
+		expected := expectedReservations[tenantKey]
 		if expected == nil {
 			expected = sdk.NewCoins()
 		}
@@ -333,25 +354,38 @@ func (gs *GenesisState) ValidateCreditAccountLeaseCounts() error {
 	pendingCounts := make(map[string]uint64)
 	leaseTenantOrder := make([]string, 0)
 	seenLeaseTenants := make(map[string]bool)
-	for _, lease := range gs.Leases {
+	for i := range gs.Leases {
+		lease := &gs.Leases[i]
+		tenantAddr, err := sdk.AccAddressFromBech32(lease.Tenant)
+		if err != nil {
+			return ErrInvalidLease.Wrapf("lease %s has invalid tenant address: %s", lease.Uuid, err)
+		}
+		tenantKey := tenantAddr.String()
+
 		switch lease.State {
 		case LEASE_STATE_ACTIVE:
-			activeCounts[lease.Tenant]++
+			activeCounts[tenantKey]++
 		case LEASE_STATE_PENDING:
-			pendingCounts[lease.Tenant]++
+			pendingCounts[tenantKey]++
 		default:
 			continue
 		}
-		if !seenLeaseTenants[lease.Tenant] {
-			seenLeaseTenants[lease.Tenant] = true
-			leaseTenantOrder = append(leaseTenantOrder, lease.Tenant)
+		if !seenLeaseTenants[tenantKey] {
+			seenLeaseTenants[tenantKey] = true
+			leaseTenantOrder = append(leaseTenantOrder, tenantKey)
 		}
 	}
 
 	creditAccountTenants := make(map[string]bool, len(gs.CreditAccounts))
-	for _, ca := range gs.CreditAccounts {
-		creditAccountTenants[ca.Tenant] = true
-		expectedActive := activeCounts[ca.Tenant]
+	for i := range gs.CreditAccounts {
+		ca := &gs.CreditAccounts[i]
+		tenantAddr, err := sdk.AccAddressFromBech32(ca.Tenant)
+		if err != nil {
+			return ErrInvalidCreditOperation.Wrapf("credit account has invalid tenant address: %s", err)
+		}
+		tenantKey := tenantAddr.String()
+		creditAccountTenants[tenantKey] = true
+		expectedActive := activeCounts[tenantKey]
 		if ca.ActiveLeaseCount != expectedActive {
 			return ErrInvalidCreditOperation.Wrapf(
 				"credit account for %s has active_lease_count %d but has %d active leases",
@@ -359,7 +393,7 @@ func (gs *GenesisState) ValidateCreditAccountLeaseCounts() error {
 			)
 		}
 
-		expectedPending := pendingCounts[ca.Tenant]
+		expectedPending := pendingCounts[tenantKey]
 		if ca.PendingLeaseCount != expectedPending {
 			return ErrInvalidCreditOperation.Wrapf(
 				"credit account for %s has pending_lease_count %d but has %d pending leases",

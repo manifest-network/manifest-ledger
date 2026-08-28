@@ -127,8 +127,9 @@ type SKUKeeper interface {
 
 // Keeper of the billing store.
 type Keeper struct {
-	cdc    codec.BinaryCodec
-	logger log.Logger
+	cdc          codec.BinaryCodec
+	storeService storetypes.KVStoreService
+	logger       log.Logger
 
 	// state management
 	Schema         collections.Schema
@@ -175,22 +176,23 @@ func NewKeeper(
 	sb := collections.NewSchemaBuilder(storeService)
 
 	k := Keeper{
-		cdc:       cdc,
-		logger:    logger,
-		authority: authority,
+		cdc:          cdc,
+		storeService: storeService,
+		logger:       logger,
+		authority:    authority,
 
 		Params: collections.NewItem(
 			sb,
 			types.ParamsKey,
 			"params",
-			codec.CollValue[types.Params](cdc),
+			newParamsValueCodec(cdc),
 		),
 		Leases: collections.NewIndexedMap(
 			sb,
 			types.LeaseKey,
 			"leases",
 			collections.StringKey,
-			codec.CollValue[types.Lease](cdc),
+			newLeaseValueCodec(cdc),
 			NewLeaseIndexes(sb),
 		),
 		LeaseSequence: collections.NewSequence(
@@ -203,7 +205,7 @@ func NewKeeper(
 			types.CreditAccountKey,
 			"credit_accounts",
 			sdk.AccAddressKey, // Use SDK's AccAddressKey for type safety and efficiency
-			codec.CollValue[types.CreditAccount](cdc),
+			newCreditAccountValueCodec(cdc),
 		),
 		CreditAddressIndex: collections.NewMap(
 			sb,
@@ -432,6 +434,12 @@ func (k *Keeper) GetLease(ctx context.Context, uuid string) (types.Lease, error)
 // rolls back the partial writes, so callers do not need their own
 // CacheContext to keep state consistent.
 func (k *Keeper) SetLease(ctx context.Context, lease types.Lease) error {
+	tenantAddr, err := sdk.AccAddressFromBech32(lease.Tenant)
+	if err != nil {
+		return err
+	}
+	lease.Tenant = tenantAddr.String()
+
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	cacheCtx, write := sdkCtx.CacheContext()
 
@@ -719,6 +727,7 @@ func (k *Keeper) SetCreditAccount(ctx context.Context, ca types.CreditAccount) e
 	if err != nil {
 		return err
 	}
+	ca.Tenant = tenantAddr.String()
 
 	// Store the credit account keyed by tenant AccAddress
 	if err := k.CreditAccounts.Set(ctx, tenantAddr, ca); err != nil {

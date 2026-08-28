@@ -1,7 +1,6 @@
 package types
 
 import (
-	"slices"
 	"time"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -116,15 +115,17 @@ func (p *Params) Validate() error {
 	}
 
 	// Validate allowed list addresses
-	seen := make(map[string]bool)
+	seen := make(map[string]struct{}, len(p.AllowedList))
 	for _, addr := range p.AllowedList {
-		if _, err := sdk.AccAddressFromBech32(addr); err != nil {
+		decoded, err := sdk.AccAddressFromBech32(addr)
+		if err != nil {
 			return ErrInvalidParams.Wrapf("invalid address in allowed list: %s", addr)
 		}
-		if seen[addr] {
+		identity := string(decoded.Bytes())
+		if _, exists := seen[identity]; exists {
 			return ErrInvalidParams.Wrapf("duplicate address in allowed list: %s", addr)
 		}
-		seen[addr] = true
+		seen[identity] = struct{}{}
 	}
 
 	// Validate reserved domain suffixes: each entry must start with '.' and
@@ -148,7 +149,17 @@ func (p *Params) Validate() error {
 
 // IsAllowed checks if an address is in the allowed list.
 func (p Params) IsAllowed(addr string) bool {
-	return slices.Contains(p.AllowedList, addr)
+	candidate, err := sdk.AccAddressFromBech32(addr)
+	if err != nil {
+		return false
+	}
+	for _, allowed := range p.AllowedList {
+		allowedAddress, err := sdk.AccAddressFromBech32(allowed)
+		if err == nil && candidate.Equals(allowedAddress) {
+			return true
+		}
+	}
+	return false
 }
 
 // PendingTimeoutDuration returns the validated pending timeout as a duration.

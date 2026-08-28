@@ -21,9 +21,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"cosmossdk.io/collections"
 	sdkmath "cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
+	sdkcodec "github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
@@ -85,6 +87,18 @@ func initFixture(t *testing.T) *testFixture {
 	s.App.BillingKeeper.SetAuthority(authority.String())
 
 	return &s
+}
+
+// overwriteLeaseWithLegacyEncoding replaces only the primary lease value with
+// the v2 CollValue representation. Existing byte-addressed indexes remain in
+// place, accurately modeling an upgraded store before Migrate2to3 rewrites it.
+func overwriteLeaseWithLegacyEncoding(t *testing.T, f *testFixture, lease types.Lease) {
+	t.Helper()
+	encoded, err := sdkcodec.CollValue[types.Lease](f.EncodingCfg.Codec).Encode(lease)
+	require.NoError(t, err)
+	key, err := collections.EncodeKeyWithPrefix(types.LeaseKey.Bytes(), collections.StringKey, lease.Uuid)
+	require.NoError(t, err)
+	f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Set(key, encoded)
 }
 
 // fundAccount sends tokens to an account using the bank module.
@@ -266,6 +280,64 @@ func TestInitGenesis_AllowsLegacyReservationFromHistoricalMinDuration(t *testing
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), importedAccount.ActiveLeaseCount)
 	require.True(t, historicalReservation.Equal(importedAccount.ReservedAmounts))
+}
+
+func TestExportGenesis_AllowsResidualAfterTerminalLegacyLease(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+	tenant := f.TestAccs[0]
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))))
+
+	params := types.DefaultParams()
+	const historicalMinLeaseDuration = uint64(7200)
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid:     sku.Uuid,
+			Quantity:    1,
+			LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1)),
+		}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		LastSettledAt:              f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 0,
+	}
+	historicalReservation := types.CalculateLeaseReservation(lease.Items, historicalMinLeaseDuration)
+	genesisState := &types.GenesisState{
+		Params: params,
+		Leases: []types.Lease{lease},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:           tenant.String(),
+			CreditAddress:    creditAddr.String(),
+			ActiveLeaseCount: 1,
+			ReservedAmounts:  historicalReservation,
+		}},
+		LeaseSequence: 1,
+	}
+	require.NoError(t, k.InitGenesis(f.Ctx, genesisState))
+
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     f.Authority.String(),
+		LeaseUuids: []string{lease.Uuid},
+	})
+	require.NoError(t, err)
+
+	exported := k.ExportGenesis(f.Ctx)
+	require.Len(t, exported.CreditAccounts, 1)
+	currentFallback := types.CalculateLeaseReservation(lease.Items, params.MinLeaseDuration)
+	wantResidual := types.SubtractReservation(historicalReservation, currentFallback)
+	require.True(t, wantResidual.Equal(exported.CreditAccounts[0].ReservedAmounts))
+	require.NoError(t, exported.Validate())
+	require.ErrorIs(t, exported.ValidateStrict(), types.ErrInvalidCreditOperation)
 }
 
 func TestInitGenesis_RejectsStructuralInconsistencyBeforeWrites(t *testing.T) {

@@ -22,6 +22,10 @@ const (
 	testDenom        = "umfx"
 )
 
+func TestConsensusVersion(t *testing.T) {
+	require.Equal(t, uint64(3), billingmodule.AppModule{}.ConsensusVersion())
+}
+
 func validGenesis(minLeaseDuration uint64) *types.GenesisState {
 	tenantAddr := sdk.AccAddress([]byte("billing-test-tenant"))
 	items := []types.LeaseItem{{

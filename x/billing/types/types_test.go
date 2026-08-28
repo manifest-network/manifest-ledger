@@ -11,6 +11,7 @@ package types_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -191,6 +192,15 @@ func TestParams_Validate_DuplicateAllowedList(t *testing.T) {
 	require.Contains(t, err.Error(), "duplicate address in allowed list")
 }
 
+func TestParams_Validate_DuplicateAllowedListCanonicalIdentity(t *testing.T) {
+	_, _, addr := testdata.KeyTestPubAddr()
+
+	params := types.NewParams(10, []string{addr.String(), strings.ToUpper(addr.String())}, 20, 3600, 10, 1800)
+	err := params.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate address in allowed list")
+}
+
 func TestParams_Validate_ValidAllowedList(t *testing.T) {
 	// Generate valid addresses for testing
 	_, _, addr1 := testdata.KeyTestPubAddr()
@@ -209,6 +219,7 @@ func TestParams_IsAllowed(t *testing.T) {
 	params := types.NewParams(10, []string{addr1.String(), addr2.String()}, 20, 3600, 10, 1800)
 
 	require.True(t, params.IsAllowed(addr1.String()))
+	require.True(t, params.IsAllowed(strings.ToUpper(addr1.String())))
 	require.True(t, params.IsAllowed(addr2.String()))
 	require.False(t, params.IsAllowed(notAllowed.String()))
 	require.False(t, params.IsAllowed(""))
@@ -1973,19 +1984,79 @@ func TestGenesisState_Validate_MultipleMissingCreditAccounts(t *testing.T) {
 }
 
 func TestGenesisState_ValidateCreditAccountLeaseCounts_MissingAccountUsesLeaseOrder(t *testing.T) {
+	_, _, firstTenantAddr := testdata.KeyTestPubAddr()
+	_, _, secondTenantAddr := testdata.KeyTestPubAddr()
+	firstTenant := firstTenantAddr.String()
+	secondTenant := secondTenantAddr.String()
 	gs := &types.GenesisState{
 		Leases: []types.Lease{
-			{Tenant: "tenant-first", State: types.LEASE_STATE_ACTIVE},
-			{Tenant: "tenant-second", State: types.LEASE_STATE_PENDING},
+			{Tenant: firstTenant, State: types.LEASE_STATE_ACTIVE},
+			{Tenant: secondTenant, State: types.LEASE_STATE_PENDING},
 		},
 	}
 
 	for range 50 {
 		err := gs.ValidateCreditAccountLeaseCounts()
 		require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
-		require.Contains(t, err.Error(), "tenant-first has 1 active and 0 pending leases but no credit account")
-		require.NotContains(t, err.Error(), "tenant-second")
+		require.Contains(t, err.Error(), firstTenant+" has 1 active and 0 pending leases but no credit account")
+		require.NotContains(t, err.Error(), secondTenant)
 	}
+}
+
+func TestGenesisState_Validate_UsesCanonicalTenantIdentity(t *testing.T) {
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+	tenant := tenantAddr.String()
+	tenantAlias := strings.ToUpper(tenant)
+	creditAddress := types.DeriveCreditAddress(tenantAddr).String()
+	params := types.DefaultParams()
+	now := time.Unix(1, 0).UTC()
+
+	lease := func(uuid, owner string) types.Lease {
+		return types.Lease{
+			Uuid:         uuid,
+			Tenant:       owner,
+			ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+			Items: []types.LeaseItem{{
+				SkuUuid:     "01912345-6789-7abc-8def-0123456789ad",
+				Quantity:    1,
+				LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)),
+			}},
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  now,
+			LastSettledAt:              now,
+			MinLeaseDurationAtCreation: params.MinLeaseDuration,
+		}
+	}
+
+	firstLease := lease("01912345-6789-7abc-8def-0123456789ab", tenant)
+	secondLease := lease("01912345-6789-7abc-8def-0123456789ae", tenantAlias)
+	reservation := types.GetLeaseReservationAmount(&firstLease, params.MinLeaseDuration)
+	gs := &types.GenesisState{
+		Params: params,
+		Leases: []types.Lease{firstLease, secondLease},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:           tenant,
+			CreditAddress:    strings.ToUpper(creditAddress),
+			ActiveLeaseCount: 2,
+			ReservedAmounts:  reservation.Add(reservation...),
+		}},
+		LeaseSequence: 2,
+	}
+
+	require.NoError(t, gs.Validate())
+	require.NoError(t, gs.ValidateStrict())
+
+	gs.Leases = nil
+	gs.LeaseSequence = 0
+	gs.CreditAccounts = append(gs.CreditAccounts, types.CreditAccount{
+		Tenant:        tenantAlias,
+		CreditAddress: creditAddress,
+	})
+	gs.CreditAccounts[0].ActiveLeaseCount = 0
+	gs.CreditAccounts[0].ReservedAmounts = nil
+	err := gs.Validate()
+	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+	require.Contains(t, err.Error(), "duplicate credit account for tenant")
 }
 
 func TestGenesisState_Validate_RequiresKnownReservationPortion(t *testing.T) {
@@ -2094,6 +2165,50 @@ func TestGenesisState_Validate_AcceptsMixedHistoricalReservations(t *testing.T) 
 
 	require.ErrorIs(t, gs.ValidateStrict(), types.ErrInvalidCreditOperation)
 	require.NoError(t, gs.Validate())
+}
+
+func TestGenesisState_Validate_AcceptsTerminalLegacyReservationResidual(t *testing.T) {
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+	tenant := tenantAddr.String()
+	now := time.Unix(1, 0).UTC()
+	closedAt := now.Add(time.Minute)
+	params := types.DefaultParams()
+
+	legacyLease := types.Lease{
+		Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+		Tenant:       tenant,
+		ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+		Items: []types.LeaseItem{{
+			SkuUuid:     "01912345-6789-7abc-8def-0123456789ad",
+			Quantity:    1,
+			LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)),
+		}},
+		State:         types.LEASE_STATE_CLOSED,
+		CreatedAt:     now,
+		LastSettledAt: now,
+		ClosedAt:      &closedAt,
+		// Zero identifies a lease created before the duration was stored.
+		MinLeaseDurationAtCreation: 0,
+	}
+	historicalReservation := types.CalculateLeaseReservation(
+		legacyLease.Items,
+		params.MinLeaseDuration*2,
+	)
+	gs := &types.GenesisState{
+		Params: params,
+		Leases: []types.Lease{legacyLease},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:          tenant,
+			CreditAddress:   types.DeriveCreditAddress(tenantAddr).String(),
+			ReservedAmounts: historicalReservation,
+		}},
+		LeaseSequence: 1,
+	}
+
+	// Historical release used the later, lower parameter and legitimately left
+	// a residual that cannot be reconstructed from the exported lease record.
+	require.NoError(t, gs.Validate())
+	require.ErrorIs(t, gs.ValidateStrict(), types.ErrInvalidCreditOperation)
 }
 
 // ============================================================================

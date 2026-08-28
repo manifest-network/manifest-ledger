@@ -11,6 +11,15 @@ The migration process involves:
 4. Funding tenant credit accounts
 5. Creating leases on behalf of tenants using `MsgCreateLeaseForTenant`
 
+### Module consensus v2→v3
+
+The v3 billing migration changes only disk encoding. Public protobufs continue
+to use Bech32 strings, while stored Params allowed-list entries, Lease tenants,
+and CreditAccount tenant/credit identities are rewritten as raw SDK address
+bytes. The migration reads bounded pages in ascending collection-key order,
+closes each iterator before writing, and leaves the already-byte-addressed keys
+and indexes unchanged. Re-running it produces the same bytes.
+
 ## Prerequisites
 
 - You must be the **module authority** (POA admin group address) OR
@@ -399,14 +408,16 @@ Validates without blockchain context:
 - Credit reservations exactly match fully verifiable tenants and cover the known portion for tenants with legacy leases
 
 The `validate-genesis` CLI and `InitGenesis` use the same import-safe
-`GenesisState.Validate()` contract. For a tenant holding a legacy PENDING or
-ACTIVE lease with no stored `MinLeaseDurationAtCreation`, the historical
-reservation cannot be reconstructed after parameter changes. Validation still
-requires the stored reservation to cover every non-legacy lease for that
-tenant, but does not guess the legacy portion. Existing custom-domain claims
-are likewise not rechecked against the current reserved-suffix list because a
-claim may predate a later reservation. For newly authored state,
-`ValidateStrict()` opts into both present-day policy checks.
+`GenesisState.Validate()` contract. For a tenant with a legacy lease record
+that has no stored `MinLeaseDurationAtCreation`, the historical reservation
+cannot be reconstructed after parameter changes. This applies even when the
+lease is terminal, because historical release logic could leave a residual
+after using a later parameter value. Validation still requires the stored
+reservation to cover every live non-legacy lease for that tenant, but does not
+guess the legacy portion. Existing custom-domain claims are likewise not
+rechecked against the current reserved-suffix list because a claim may predate
+a later reservation. For newly authored state, `ValidateStrict()` opts into
+both present-day policy checks.
 
 ### Phase 2: Time-Based Validation (`ValidateWithBlockTime`)
 

@@ -17,6 +17,7 @@ package keeper_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -3142,6 +3143,65 @@ func TestMsgAcknowledgeLeaseTimeoutBatchAtomicity(t *testing.T) {
 // TestMsgAcknowledgeLeaseActiveCap verifies that the active-lease limit is
 // evaluated against each tenant's post-batch count before any writes occur.
 func TestMsgAcknowledgeLeaseActiveCap(t *testing.T) {
+	t.Run("equivalent Bech32 spellings share one tenant cap", func(t *testing.T) {
+		for _, tc := range []struct {
+			name      string
+			maxActive uint64
+			wantErr   bool
+		}{
+			{name: "reject overshoot", maxActive: 1, wantErr: true},
+			{name: "apply both counts once", maxActive: 2},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				s := newAcknowledgementTestSetup(t, 1, func(params *types.Params) {
+					params.MaxLeasesPerTenant = tc.maxActive
+					params.MaxPendingLeasesPerTenant = 2
+				})
+				pendingUUIDs := []string{
+					s.createPendingLease(t, s.tenants[0]),
+					s.createPendingLease(t, s.tenants[0]),
+				}
+
+				// Simulate a historical v2 value written with an all-uppercase
+				// Bech32 spelling. Its indexes were already SDK address bytes.
+				aliasedLease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, pendingUUIDs[1])
+				require.NoError(t, err)
+				aliasedLease.Tenant = strings.ToUpper(aliasedLease.Tenant)
+				overwriteLeaseWithLegacyEncoding(t, s.f, aliasedLease)
+
+				ackCtx := s.f.Ctx.WithEventManager(sdk.NewEventManager())
+				resp, err := s.msgServer.AcknowledgeLease(ackCtx, &types.MsgAcknowledgeLease{
+					Sender:     s.providerAddr.String(),
+					LeaseUuids: pendingUUIDs,
+				})
+
+				account, accountErr := s.f.App.BillingKeeper.GetCreditAccount(ackCtx, s.tenants[0].String())
+				require.NoError(t, accountErr)
+				if tc.wantErr {
+					require.Nil(t, resp)
+					require.ErrorIs(t, err, types.ErrLeaseAcknowledgementActiveCapExceeded)
+					require.Zero(t, account.ActiveLeaseCount)
+					require.Equal(t, uint64(2), account.PendingLeaseCount)
+					require.Empty(t, ackCtx.EventManager().Events())
+					for _, leaseUUID := range pendingUUIDs {
+						lease, leaseErr := s.f.App.BillingKeeper.GetLease(ackCtx, leaseUUID)
+						require.NoError(t, leaseErr)
+						require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
+					}
+					return
+				}
+
+				require.NoError(t, err)
+				require.Equal(t, uint64(2), resp.AcknowledgedCount)
+				require.Equal(t, uint64(2), account.ActiveLeaseCount)
+				require.Zero(t, account.PendingLeaseCount)
+				storedLease, leaseErr := s.f.App.BillingKeeper.GetLease(ackCtx, pendingUUIDs[1])
+				require.NoError(t, leaseErr)
+				require.Equal(t, s.tenants[0].String(), storedLease.Tenant)
+			})
+		}
+	})
+
 	t.Run("same-tenant batch succeeds at active cap boundary", func(t *testing.T) {
 		s := newAcknowledgementTestSetup(t, 1, func(params *types.Params) {
 			params.MaxLeasesPerTenant = 2
@@ -3315,6 +3375,78 @@ func TestMsgAcknowledgeLeaseActiveCap(t *testing.T) {
 		}
 		require.Empty(t, ackCtx.EventManager().Events())
 	})
+}
+
+func TestBatchLeaseAccountingUsesCanonicalTenantIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		terminal  types.LeaseState
+		operation func(*acknowledgementTestSetup, []string) error
+	}{
+		{
+			name:     "reject",
+			terminal: types.LEASE_STATE_REJECTED,
+			operation: func(s *acknowledgementTestSetup, leaseUUIDs []string) error {
+				_, err := s.msgServer.RejectLease(s.f.Ctx, &types.MsgRejectLease{
+					Sender:     s.providerAddr.String(),
+					LeaseUuids: leaseUUIDs,
+					Reason:     "canonical identity regression",
+				})
+				return err
+			},
+		},
+		{
+			name:     "close",
+			terminal: types.LEASE_STATE_CLOSED,
+			operation: func(s *acknowledgementTestSetup, leaseUUIDs []string) error {
+				_, err := s.msgServer.AcknowledgeLease(s.f.Ctx, &types.MsgAcknowledgeLease{
+					Sender:     s.providerAddr.String(),
+					LeaseUuids: leaseUUIDs,
+				})
+				if err != nil {
+					return err
+				}
+				aliasedLease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUIDs[1])
+				if err != nil {
+					return err
+				}
+				aliasedLease.Tenant = strings.ToUpper(aliasedLease.Tenant)
+				overwriteLeaseWithLegacyEncoding(t, s.f, aliasedLease)
+				_, err = s.msgServer.CloseLease(s.f.Ctx, &types.MsgCloseLease{
+					Sender:     s.providerAddr.String(),
+					LeaseUuids: leaseUUIDs,
+				})
+				return err
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newAcknowledgementTestSetup(t, 1, func(params *types.Params) {
+				params.MaxLeasesPerTenant = 2
+				params.MaxPendingLeasesPerTenant = 2
+			})
+			leaseUUIDs := []string{
+				s.createPendingLease(t, s.tenants[0]),
+				s.createPendingLease(t, s.tenants[0]),
+			}
+			aliasedLease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUIDs[1])
+			require.NoError(t, err)
+			aliasedLease.Tenant = strings.ToUpper(aliasedLease.Tenant)
+			overwriteLeaseWithLegacyEncoding(t, s.f, aliasedLease)
+
+			require.NoError(t, tc.operation(s, leaseUUIDs))
+			account, err := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.tenants[0].String())
+			require.NoError(t, err)
+			require.Zero(t, account.ActiveLeaseCount)
+			require.Zero(t, account.PendingLeaseCount)
+			require.True(t, account.ReservedAmounts.IsZero())
+			for _, leaseUUID := range leaseUUIDs {
+				lease, leaseErr := s.f.App.BillingKeeper.GetLease(s.f.Ctx, leaseUUID)
+				require.NoError(t, leaseErr)
+				require.Equal(t, tc.terminal, lease.State)
+			}
+		})
+	}
 }
 
 // TestMsgRejectLease tests the provider rejection of pending leases.

@@ -31,13 +31,11 @@ import (
 
 const (
 	// ConsensusVersion defines the current x/billing module consensus version.
-	// v2 introduced the LeaseItem.custom_domain feature: a per-item FQDN claim,
-	// the CustomDomainIndex reverse-lookup map, and the
-	// Params.ReservedDomainSuffixes list. Migrate1to2 is a no-op — the new
-	// state shape is forward-compatible (proto3 zero values + a fresh store
-	// prefix), and operators seed ReservedDomainSuffixes at upgrade time or via
-	// post-upgrade MsgUpdateParams rather than baking values into the binary.
-	ConsensusVersion = 2
+	// v2 introduced the LeaseItem.custom_domain feature. v3 changes only the
+	// billing value encoding: public API protobufs retain Bech32 strings, while
+	// persisted account identities are raw bytes. Migrate2to3 deterministically
+	// rewrites every legacy billing value; keys and indexes were already bytes.
+	ConsensusVersion = 3
 )
 
 var (
@@ -177,6 +175,9 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 	migrator := keeper.NewMigrator(am.keeper)
 	if err := cfg.RegisterMigration(types.ModuleName, 1, migrator.Migrate1to2); err != nil {
 		panic(fmt.Errorf("failed to register %s migration v1→v2: %w", types.ModuleName, err))
+	}
+	if err := cfg.RegisterMigration(types.ModuleName, 2, migrator.Migrate2to3); err != nil {
+		panic(fmt.Errorf("failed to register %s migration v2→v3: %w", types.ModuleName, err))
 	}
 }
 

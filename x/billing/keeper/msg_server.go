@@ -379,15 +379,24 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	if err != nil {
 		return nil, err
 	}
+	senderAddr, err := sdk.AccAddressFromBech32(msg.Sender)
+	if err != nil {
+		return nil, err
+	}
+	authorityAddr, err := sdk.AccAddressFromBech32(ms.k.GetAuthority())
+	if err != nil {
+		return nil, err
+	}
 
 	// Phase 1: Validate ALL leases and authorization first (fail-fast)
 	leases := make([]types.Lease, 0, len(msg.LeaseUuids))
+	tenantKeys := make([]string, 0, len(msg.LeaseUuids))
 	creditAccounts := make(map[string]types.CreditAccount) // keyed by tenant address
 	tenantOrder := make([]string, 0, len(msg.LeaseUuids))  // deterministic iteration order
-	providerCache := make(map[string]string)               // provider UUID -> provider address
+	providerCache := make(map[string]sdk.AccAddress)       // provider UUID -> provider address
 	var closedBy string                                    // consistent role for all leases
 
-	isAuthority := msg.Sender == ms.k.GetAuthority()
+	isAuthority := senderAddr.Equals(authorityAddr)
 
 	for _, uuid := range msg.LeaseUuids {
 		lease, err := ms.k.GetLease(ctx, uuid)
@@ -399,11 +408,20 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			return nil, types.ErrLeaseNotActive.Wrapf("lease %s is not active", uuid)
 		}
 
+		// Address text is not an identity: equivalent Bech32 values can use
+		// different casing. Use the SDK's canonical spelling for every map key
+		// while preserving the lease's stored spelling for events.
+		tenantAddr, err := sdk.AccAddressFromBech32(lease.Tenant)
+		if err != nil {
+			return nil, types.ErrInvalidLease.Wrapf("lease %s has invalid tenant address: %s", uuid, err)
+		}
+		tenantKey := tenantAddr.String()
+
 		// Determine authorization for this lease
 		leaseClosedBy := ""
 
 		// Check if sender is tenant
-		if msg.Sender == lease.Tenant {
+		if senderAddr.Equals(tenantAddr) {
 			leaseClosedBy = "tenant"
 		}
 
@@ -423,11 +441,14 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 					}
 					// Provider not found — sender cannot be the provider
 				} else {
-					providerAddr = provider.Address
+					providerAddr, err = sdk.AccAddressFromBech32(provider.Address)
+					if err != nil {
+						return nil, err
+					}
 					providerCache[lease.ProviderUuid] = providerAddr
 				}
 			}
-			if providerAddr != "" && msg.Sender == providerAddr {
+			if !providerAddr.Empty() && senderAddr.Equals(providerAddr) {
 				leaseClosedBy = "provider"
 			}
 		}
@@ -458,8 +479,8 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		}
 
 		// Validate credit account exists for this tenant (only fetch once per tenant)
-		if _, exists := creditAccounts[lease.Tenant]; !exists {
-			creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
+		if _, exists := creditAccounts[tenantKey]; !exists {
+			creditAccount, err := ms.k.GetCreditAccount(ctx, tenantKey)
 			if err != nil {
 				return nil, types.ErrCreditAccountNotFound.Wrapf(
 					"credit account not found for tenant %s (lease %s): data integrity issue",
@@ -467,11 +488,12 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 					uuid,
 				)
 			}
-			creditAccounts[lease.Tenant] = creditAccount
-			tenantOrder = append(tenantOrder, lease.Tenant)
+			creditAccounts[tenantKey] = creditAccount
+			tenantOrder = append(tenantOrder, tenantKey)
 		}
 
 		leases = append(leases, lease)
+		tenantKeys = append(tenantKeys, tenantKey)
 	}
 
 	// Phase 2: Apply all changes atomically using CacheContext
@@ -575,13 +597,13 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		}
 
 		// Update lease counts: decrement active (in memory map)
-		creditAccount := creditAccounts[leases[i].Tenant]
+		creditAccount := creditAccounts[tenantKeys[i]]
 		ms.k.DecrementActiveLeaseCount(&creditAccount, leases[i].Uuid)
 
 		// Release reservation for this lease
 		ms.k.ReleaseLeaseReservation(&creditAccount, &leases[i], params.MinLeaseDuration)
 
-		creditAccounts[leases[i].Tenant] = creditAccount
+		creditAccounts[tenantKeys[i]] = creditAccount
 
 		// Aggregate settled amounts
 		totalSettledAmounts = totalSettledAmounts.Add(settledAmounts...)
@@ -1052,7 +1074,15 @@ func (ms msgServer) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams
 		return nil, err
 	}
 
-	if ms.k.GetAuthority() != msg.Authority {
+	authorityAddr, err := sdk.AccAddressFromBech32(ms.k.GetAuthority())
+	if err != nil {
+		return nil, err
+	}
+	msgAuthorityAddr, err := sdk.AccAddressFromBech32(msg.Authority)
+	if err != nil {
+		return nil, err
+	}
+	if !authorityAddr.Equals(msgAuthorityAddr) {
 		return nil, types.ErrUnauthorized.Wrapf("expected %s, got %s", ms.k.GetAuthority(), msg.Authority)
 	}
 
@@ -1097,6 +1127,7 @@ func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleT
 // pendingLeaseBatchResult holds the result of validating a batch of pending leases.
 type pendingLeaseBatchResult struct {
 	leases         []types.Lease
+	tenantKeys     []string // canonical SDK Bech32 spelling, parallel to leases
 	creditAccounts map[string]types.CreditAccount
 	tenantOrder    []string // deterministic iteration order (insertion order)
 	providerUUID   string
@@ -1107,6 +1138,7 @@ type pendingLeaseBatchResult struct {
 // Returns the validated leases, credit accounts map, and provider UUID.
 func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []string) (*pendingLeaseBatchResult, error) {
 	leases := make([]types.Lease, 0, len(leaseUuids))
+	tenantKeys := make([]string, 0, len(leaseUuids))
 	creditAccounts := make(map[string]types.CreditAccount)
 	tenantOrder := make([]string, 0, len(leaseUuids))
 	var providerUUID string
@@ -1121,6 +1153,12 @@ func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []
 			return nil, types.ErrLeaseNotPending.Wrapf("lease %s is not in PENDING state", uuid)
 		}
 
+		tenantAddr, err := sdk.AccAddressFromBech32(lease.Tenant)
+		if err != nil {
+			return nil, types.ErrInvalidLease.Wrapf("lease %s has invalid tenant address: %s", uuid, err)
+		}
+		tenantKey := tenantAddr.String()
+
 		// All leases must belong to same provider
 		if providerUUID == "" {
 			providerUUID = lease.ProviderUuid
@@ -1129,8 +1167,8 @@ func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []
 		}
 
 		// Validate credit account exists for this tenant (only fetch once per tenant)
-		if _, exists := creditAccounts[lease.Tenant]; !exists {
-			creditAccount, err := ms.k.GetCreditAccount(ctx, lease.Tenant)
+		if _, exists := creditAccounts[tenantKey]; !exists {
+			creditAccount, err := ms.k.GetCreditAccount(ctx, tenantKey)
 			if err != nil {
 				return nil, types.ErrCreditAccountNotFound.Wrapf(
 					"credit account not found for tenant %s (lease %s): data integrity issue",
@@ -1138,15 +1176,17 @@ func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []
 					uuid,
 				)
 			}
-			creditAccounts[lease.Tenant] = creditAccount
-			tenantOrder = append(tenantOrder, lease.Tenant)
+			creditAccounts[tenantKey] = creditAccount
+			tenantOrder = append(tenantOrder, tenantKey)
 		}
 
 		leases = append(leases, lease)
+		tenantKeys = append(tenantKeys, tenantKey)
 	}
 
 	return &pendingLeaseBatchResult{
 		leases:         leases,
+		tenantKeys:     tenantKeys,
 		creditAccounts: creditAccounts,
 		tenantOrder:    tenantOrder,
 		providerUUID:   providerUUID,
@@ -1161,7 +1201,20 @@ func (ms msgServer) validateProviderAuthorization(ctx context.Context, sender, p
 		return skutypes.Provider{}, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
 	}
 
-	if sender != provider.Address && sender != ms.k.GetAuthority() {
+	senderAddr, err := sdk.AccAddressFromBech32(sender)
+	if err != nil {
+		return skutypes.Provider{}, err
+	}
+	providerAddr, err := sdk.AccAddressFromBech32(provider.Address)
+	if err != nil {
+		return skutypes.Provider{}, err
+	}
+	authorityAddr, err := sdk.AccAddressFromBech32(ms.k.GetAuthority())
+	if err != nil {
+		return skutypes.Provider{}, err
+	}
+
+	if !senderAddr.Equals(providerAddr) && !senderAddr.Equals(authorityAddr) {
 		return skutypes.Provider{}, types.ErrUnauthorized.Wrapf(
 			"sender %s is not authorized to %s leases for provider %s",
 			sender,
@@ -1191,7 +1244,7 @@ func validateLeaseActivationGates(blockTime time.Time, params types.Params, vali
 			)
 		}
 
-		activationsByTenant[lease.Tenant]++
+		activationsByTenant[validated.tenantKeys[i]]++
 	}
 
 	// Iterate in the validated batch's deterministic tenant order. The first
@@ -1274,10 +1327,10 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 
 		// Update lease counts: decrement pending, increment active
 		// Credit account existence was validated in Phase 1
-		creditAccount := creditAccounts[leases[i].Tenant]
+		creditAccount := creditAccounts[validated.tenantKeys[i]]
 		ms.k.DecrementPendingLeaseCount(&creditAccount, leases[i].Uuid)
 		creditAccount.ActiveLeaseCount++
-		creditAccounts[leases[i].Tenant] = creditAccount // Update map with new counts
+		creditAccounts[validated.tenantKeys[i]] = creditAccount // Update map with new counts
 
 		// Queue event for emission after successful commit
 		leaseEvents = append(leaseEvents, leaseEvent{
@@ -1383,13 +1436,13 @@ func (ms msgServer) RejectLease(ctx context.Context, msg *types.MsgRejectLease) 
 
 		// Update lease counts: decrement pending
 		// Credit account existence was validated in Phase 1
-		creditAccount := creditAccounts[leases[i].Tenant]
+		creditAccount := creditAccounts[validated.tenantKeys[i]]
 		ms.k.DecrementPendingLeaseCount(&creditAccount, leases[i].Uuid)
 
 		// Release reservation for this lease (PENDING leases have reservations)
 		ms.k.ReleaseLeaseReservation(&creditAccount, &leases[i], params.MinLeaseDuration)
 
-		creditAccounts[leases[i].Tenant] = creditAccount // Update map with new counts
+		creditAccounts[validated.tenantKeys[i]] = creditAccount // Update map with new counts
 
 		// Queue event for emission after successful commit
 		leaseEvents = append(leaseEvents, leaseEvent{
@@ -1459,6 +1512,11 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 	if err != nil {
 		return nil, err
 	}
+	tenantAddr, err := sdk.AccAddressFromBech32(msg.Tenant)
+	if err != nil {
+		return nil, err
+	}
+	tenantKey := tenantAddr.String()
 
 	// Phase 1: Validate ALL leases first (fail-fast on any error)
 	// Check lease existence and ownership before getting credit account
@@ -1472,7 +1530,11 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 		}
 
 		// Verify tenant owns this lease (check ownership before state)
-		if msg.Tenant != lease.Tenant {
+		leaseTenantAddr, err := sdk.AccAddressFromBech32(lease.Tenant)
+		if err != nil {
+			return nil, types.ErrInvalidLease.Wrapf("lease %s has invalid tenant address: %s", leaseUUID, err)
+		}
+		if !tenantAddr.Equals(leaseTenantAddr) {
 			return nil, types.ErrUnauthorized.Wrapf(
 				"sender %s is not the tenant of lease %s (owned by %s)",
 				msg.Tenant,
@@ -1490,7 +1552,7 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 	}
 
 	// Get and cache the tenant's credit account (after ownership validation)
-	creditAccount, err := ms.k.GetCreditAccount(ctx, msg.Tenant)
+	creditAccount, err := ms.k.GetCreditAccount(ctx, tenantKey)
 	if err != nil {
 		return nil, types.ErrCreditAccountNotFound.Wrapf(
 			"credit account not found for tenant %s",
