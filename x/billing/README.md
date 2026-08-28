@@ -59,7 +59,7 @@ New leases can only be created if `AvailableCredit >= NewLeaseReservation` for a
 
 **Parameter Change Protection:**
 
-Each lease stores `MinLeaseDurationAtCreation` to ensure consistent reservation calculation regardless of subsequent governance changes to the `MinLeaseDuration` parameter. This prevents existing reservations from becoming inconsistent when parameters change.
+New leases store `MinLeaseDurationAtCreation` to ensure consistent reservation calculation regardless of subsequent governance changes to the `MinLeaseDuration` parameter. Legacy leases created before this field was persisted have a zero value.
 
 ### Multi-Denomination Support
 
@@ -522,16 +522,27 @@ The billing module performs comprehensive validation during genesis initializati
 
 ### Reservation Invariant Validation
 
-Genesis validation enforces the credit reservation invariant:
+For tenants whose PENDING and ACTIVE leases all store
+`MinLeaseDurationAtCreation`, genesis validation enforces the exact credit
+reservation invariant:
 
 ```
 CreditAccount.ReservedAmounts == SUM(GetLeaseReservationAmount(lease, params.MinLeaseDuration))
                                  for all PENDING and ACTIVE leases of the tenant
 ```
 
+An imported tenant may also have a legacy lease whose
+`MinLeaseDurationAtCreation` is zero. Its historical minimum duration cannot be
+reconstructed after governance changes, so exact equality is not provable. In
+that case, import validation requires `ReservedAmounts` to be valid and at
+least cover the complete sum for all non-legacy PENDING and ACTIVE leases of
+the tenant. `ValidateStrict()` is available for newly authored state and
+instead applies the current minimum duration to legacy leases before requiring
+exact equality.
+
 **Validation Steps:**
 1. Compute expected reservations by iterating all leases and summing reservation amounts for PENDING/ACTIVE leases per tenant
-2. Compare each credit account's `reserved_amounts` against the computed expected value
+2. Require exact equality for fully verifiable tenants; for tenants with legacy leases, require the stored amount to cover the known non-legacy portion
 3. Verify that every tenant with active reservations has a corresponding credit account
 
 **Error Examples:**
@@ -548,7 +559,9 @@ invalid credit operation: tenant manifest1def... has lease reservations totaling
 - **Lease UUIDs**: All leases must have valid UUIDv7 format, no duplicates
 - **Tenant/Provider addresses**: All addresses must be valid bech32 format
 - **Credit address derivation**: Credit addresses must match deterministic derivation from tenant address
+- **Lease counts**: Each credit account's stored active and pending counts must exactly match the imported lease set
 - **Lease state consistency**: CLOSED leases must have a non-nil, non-zero `closed_at`. At InitGenesis, `created_at`, `last_settled_at`, and `closed_at` must not be after the block time.
+- **Custom domains**: Claims must remain valid and unambiguous. Imports do not replay the current reserved-suffix policy because a claim may predate a later suffix reservation; `ValidateStrict()` applies that policy to newly authored state.
 - **Parameter validation**: All params must pass validation constraints
 
 ## Additional Documentation

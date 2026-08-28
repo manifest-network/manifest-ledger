@@ -8,10 +8,17 @@ package types
 //
 // # Invariant
 //
-// The following invariant must always hold for each tenant:
+// For tenants whose PENDING and ACTIVE leases all store their creation-time
+// minimum duration, the following invariant must hold:
 //
 //	CreditAccount.ReservedAmounts == SUM(GetLeaseReservationAmount(lease, params.MinLeaseDuration))
 //	                                 for all PENDING and ACTIVE leases of the tenant
+//
+// A legacy lease may have a zero MinLeaseDurationAtCreation because that field
+// was not persisted when the reservation was made. Its historical contribution
+// cannot be reconstructed after parameter changes. Genesis imports therefore
+// require the stored aggregate to cover every verifiable non-legacy lease
+// rather than guessing an exact legacy amount.
 //
 // # Reservation Lifecycle
 //
@@ -27,8 +34,10 @@ package types
 //
 // # Parameter Change Protection
 //
-// Each lease stores MinLeaseDurationAtCreation to ensure consistent reservation
-// calculation regardless of subsequent governance changes to the MinLeaseDuration parameter.
+// New leases store MinLeaseDurationAtCreation to ensure consistent reservation
+// calculation regardless of subsequent governance changes to MinLeaseDuration.
+// Legacy leases use the current parameter as a fallback when an operation needs
+// a per-lease amount.
 
 import (
 	"crypto/sha256"

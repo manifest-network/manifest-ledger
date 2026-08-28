@@ -386,7 +386,7 @@ If the lease expires (remains in PENDING past `pending_timeout`), it transitions
 
 ## Genesis Import Validation
 
-When importing billing state via genesis (e.g., during chain upgrades or migrations), the module performs two-phase validation:
+When importing billing state via genesis (e.g., during chain upgrades or migrations), the module performs three-phase validation:
 
 ### Phase 1: Static Validation (`ValidateGenesis`)
 
@@ -394,6 +394,19 @@ Validates without blockchain context:
 - Lease UUIDs are valid and unique
 - Credit account addresses are correctly derived
 - Required fields are present
+- Stored active and pending lease counts match the imported lease set
+- The lease sequence is at least the total number of imported leases
+- Credit reservations exactly match fully verifiable tenants and cover the known portion for tenants with legacy leases
+
+The `validate-genesis` CLI and `InitGenesis` use the same import-safe
+`GenesisState.Validate()` contract. For a tenant holding a legacy PENDING or
+ACTIVE lease with no stored `MinLeaseDurationAtCreation`, the historical
+reservation cannot be reconstructed after parameter changes. Validation still
+requires the stored reservation to cover every non-legacy lease for that
+tenant, but does not guess the legacy portion. Existing custom-domain claims
+are likewise not rechecked against the current reserved-suffix list because a
+claim may predate a later reservation. For newly authored state,
+`ValidateStrict()` opts into both present-day policy checks.
 
 ### Phase 2: Time-Based Validation (`ValidateWithBlockTime`)
 

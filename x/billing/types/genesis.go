@@ -30,8 +30,10 @@ func NewGenesisState(params Params, leases []Lease, creditAccounts []CreditAccou
 }
 
 type genesisValidationOptions struct {
-	allowExistingReservedDomains  bool
-	allowLegacyReservationAmounts bool
+	// The zero value intentionally matches the import-safe production contract.
+	// Strict authoring policies must be enabled explicitly.
+	enforceCurrentReservedSuffixes bool
+	enforceExactLegacyReservations bool
 }
 
 // Validate validates all structural and accounting invariants required before
@@ -41,17 +43,17 @@ type genesisValidationOptions struct {
 // no stored creation duration may have been reserved under an earlier minimum
 // duration.
 func (gs *GenesisState) Validate() error {
-	return gs.validate(genesisValidationOptions{
-		allowExistingReservedDomains:  true,
-		allowLegacyReservationAmounts: true,
-	})
+	return gs.validate(genesisValidationOptions{})
 }
 
 // ValidateStrict additionally applies present-day authoring policies that are
 // not safe to replay against historical exports. Use it to lint newly authored
 // state, not as an import precondition.
 func (gs *GenesisState) ValidateStrict() error {
-	return gs.validate(genesisValidationOptions{})
+	return gs.validate(genesisValidationOptions{
+		enforceCurrentReservedSuffixes: true,
+		enforceExactLegacyReservations: true,
+	})
 }
 
 func (gs *GenesisState) validate(options genesisValidationOptions) error {
@@ -152,7 +154,7 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 			if err := IsValidFQDN(item.CustomDomain); err != nil {
 				return ErrInvalidCustomDomain.Wrapf("lease %s item %d: %s", lease.Uuid, i, err)
 			}
-			if !options.allowExistingReservedDomains && MatchesReservedSuffix(item.CustomDomain, gs.Params.ReservedDomainSuffixes) {
+			if options.enforceCurrentReservedSuffixes && MatchesReservedSuffix(item.CustomDomain, gs.Params.ReservedDomainSuffixes) {
 				return ErrInvalidCustomDomain.Wrapf(
 					"lease %s item %d custom_domain %q matches a reserved provider suffix in gs.Params.ReservedDomainSuffixes",
 					lease.Uuid, i, item.CustomDomain,
@@ -232,14 +234,14 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 		// Balance is tracked in bank module, no validation needed here
 	}
 
-	// Cross-validate: reserved_amounts must match sum of lease reservations per tenant.
+	// Cross-validate reserved_amounts against reconstructible lease reservations.
 	// Only PENDING and ACTIVE leases have reservations. An imported tenant with a
 	// legacy lease cannot be checked exactly because its creation-time minimum
 	// duration was never stored and may differ from the current parameter.
 	expectedReservations := CalculateExpectedReservationsByTenant(gs.Leases, gs.Params.MinLeaseDuration)
 	legacyReservationTenants := make(map[string]bool)
 	knownReservations := make(map[string]sdk.Coins)
-	if options.allowLegacyReservationAmounts {
+	if !options.enforceExactLegacyReservations {
 		for i := range gs.Leases {
 			lease := &gs.Leases[i]
 			if lease.State != LEASE_STATE_PENDING && lease.State != LEASE_STATE_ACTIVE {
