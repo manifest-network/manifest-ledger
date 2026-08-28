@@ -2087,8 +2087,9 @@ func TestGenesisExportImportWithReservations(t *testing.T) {
 	require.Equal(t, uint64(1), exportedCA.PendingLeaseCount)
 	require.Equal(t, uint64(1), exportedCA.ActiveLeaseCount)
 
-	// Validate the exported genesis (this is what ValidateGenesis does)
-	err = exportedGenesis.Validate()
+	// Validate the exported genesis with the same contract used by InitGenesis
+	// and the validate-genesis CLI.
+	err = exportedGenesis.ValidateForImport()
 	require.NoError(t, err, "exported genesis should be valid")
 
 	// Create a fresh fixture for import

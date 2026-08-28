@@ -2024,6 +2024,64 @@ func TestGenesisState_ValidateForImport_RequiresKnownReservationPortion(t *testi
 	require.Contains(t, err.Error(), "below known non-legacy lease reservations")
 }
 
+func TestGenesisState_ValidateForImport_AcceptsMixedHistoricalReservations(t *testing.T) {
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+	tenant := tenantAddr.String()
+	now := time.Unix(1, 0).UTC()
+	closedAt := now.Add(time.Minute)
+	params := types.DefaultParams()
+
+	lease := func(uuid string, state types.LeaseState, duration uint64) types.Lease {
+		return types.Lease{
+			Uuid:         uuid,
+			Tenant:       tenant,
+			ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+			Items: []types.LeaseItem{{
+				SkuUuid:     "01912345-6789-7abc-8def-0123456789ad",
+				Quantity:    1,
+				LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)),
+			}},
+			State:                      state,
+			CreatedAt:                  now,
+			LastSettledAt:              now,
+			MinLeaseDurationAtCreation: duration,
+		}
+	}
+
+	legacyLease := lease("01912345-6789-7abc-8def-0123456789ab", types.LEASE_STATE_ACTIVE, 0)
+	modernLease1 := lease("01912345-6789-7abc-8def-0123456789ae", types.LEASE_STATE_ACTIVE, params.MinLeaseDuration)
+	modernLease2 := lease("01912345-6789-7abc-8def-0123456789af", types.LEASE_STATE_ACTIVE, params.MinLeaseDuration)
+	closedLease := lease("01912345-6789-7abc-8def-0123456789b0", types.LEASE_STATE_CLOSED, 0)
+	closedLease.ClosedAt = &closedAt
+
+	knownModernReservations := types.CalculateLeaseReservation(
+		modernLease1.Items,
+		modernLease1.MinLeaseDurationAtCreation,
+	).Add(types.CalculateLeaseReservation(
+		modernLease2.Items,
+		modernLease2.MinLeaseDurationAtCreation,
+	)...)
+	historicalLegacyReservation := types.CalculateLeaseReservation(
+		legacyLease.Items,
+		params.MinLeaseDuration/2,
+	)
+
+	gs := &types.GenesisState{
+		Params: params,
+		Leases: []types.Lease{legacyLease, modernLease1, modernLease2, closedLease},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:           tenant,
+			CreditAddress:    types.DeriveCreditAddress(tenantAddr).String(),
+			ActiveLeaseCount: 3,
+			ReservedAmounts:  knownModernReservations.Add(historicalLegacyReservation...),
+		}},
+		LeaseSequence: 4,
+	}
+
+	require.ErrorIs(t, gs.Validate(), types.ErrInvalidCreditOperation)
+	require.NoError(t, gs.ValidateForImport())
+}
+
 // ============================================================================
 // Genesis ValidateWithBlockTime Tests
 // ============================================================================

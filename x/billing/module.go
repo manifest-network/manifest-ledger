@@ -87,13 +87,14 @@ func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
 	return cdc.MustMarshalJSON(types.DefaultGenesis())
 }
 
-// ValidateGenesis performs genesis state validation for the module.
+// ValidateGenesis applies the same import-safe validation used by InitGenesis,
+// so CLI preflight checks accept any historical export the chain can load.
 func (AppModuleBasic) ValidateGenesis(marshaler codec.JSONCodec, _ client.TxEncodingConfig, message json.RawMessage) error {
 	var data types.GenesisState
 	if err := marshaler.UnmarshalJSON(message, &data); err != nil {
 		return fmt.Errorf("failed to unmarshal %s genesis state: %w", types.ModuleName, err)
 	}
-	return data.Validate()
+	return data.ValidateForImport()
 }
 
 // RegisterRESTRoutes registers the REST routes for the module.
