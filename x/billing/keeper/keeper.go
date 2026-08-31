@@ -302,21 +302,25 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 	if err := gs.Validate(); err != nil {
 		return err
 	}
-
-	// Validate timestamps against block time
-	// This ensures LastSettledAt is not in the future (important for chain restarts)
-	if err := gs.ValidateWithBlockTime(blockTime); err != nil {
+	preparedGenesis, err := k.prepareGenesisReservationState(sdkCtx, gs)
+	if err != nil {
 		return err
 	}
 
-	if err := k.Params.Set(ctx, gs.Params); err != nil {
+	// Validate timestamps against block time
+	// This ensures LastSettledAt is not in the future (important for chain restarts)
+	if err := preparedGenesis.ValidateWithBlockTime(blockTime); err != nil {
+		return err
+	}
+
+	if err := k.Params.Set(ctx, preparedGenesis.Params); err != nil {
 		return err
 	}
 
 	// Validate and set leases
 	// NOTE: This validation requires the SKU module to be initialized first.
 	// Genesis order ensures: sku -> billing (see app/app.go)
-	for _, lease := range gs.Leases {
+	for _, lease := range preparedGenesis.Leases {
 		// Validate provider exists in SKU module
 		if _, err := k.skuKeeper.GetProvider(ctx, lease.ProviderUuid); err != nil {
 			return fmt.Errorf("lease %s references non-existent provider %s: %w",
@@ -345,7 +349,7 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 		}
 	}
 
-	for _, ca := range gs.CreditAccounts {
+	for _, ca := range preparedGenesis.CreditAccounts {
 		// Use SetCreditAccount to also populate the reverse index
 		if err := k.SetCreditAccount(ctx, ca); err != nil {
 			return err
@@ -354,8 +358,8 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 
 	// Restore UUID generation sequence so new leases don't collide
 	// with previously generated UUIDs after a genesis export/import cycle.
-	if gs.LeaseSequence > 0 {
-		if err := k.LeaseSequence.Set(ctx, gs.LeaseSequence); err != nil {
+	if preparedGenesis.LeaseSequence > 0 {
+		if err := k.LeaseSequence.Set(ctx, preparedGenesis.LeaseSequence); err != nil {
 			return err
 		}
 	}
@@ -817,95 +821,22 @@ func (k *Keeper) getCreditBalancesForDenoms(ctx context.Context, tenant string, 
 	if err != nil {
 		return nil, err
 	}
-	coins := sdk.NewCoins()
-	for _, denom := range denoms {
+	orderedDenoms := slices.Clone(denoms)
+	slices.Sort(orderedDenoms)
+	coins := make(sdk.Coins, 0, len(orderedDenoms))
+	for index, denom := range orderedDenoms {
+		if index > 0 && denom == orderedDenoms[index-1] {
+			continue
+		}
 		if err := sdk.ValidateDenom(denom); err != nil {
 			return nil, types.ErrInvalidCreditOperation.Wrapf("invalid credit balance denom %q: %s", denom, err)
 		}
 		bal := k.bankKeeper.GetBalance(ctx, creditAddr, denom)
 		if bal.IsPositive() {
-			coins, err = types.SafeAddCoins(coins, sdk.Coins{bal})
-			if err != nil {
-				return nil, errorsmod.Wrapf(err, "sum credit balance for denom %s", denom)
-			}
+			coins = append(coins, bal)
 		}
 	}
 	return coins, nil
-}
-
-// maxActiveLeaseQueryIterations is the fixed DoS ceiling for per-tenant ACTIVE
-// lease scans. It covers the maximum active count historically reachable through
-// the message handlers, including the former pending-to-active overshoot band.
-const maxActiveLeaseQueryIterations = types.MaxLeasesPerTenantUpperBound + types.MaxPendingLeasesPerTenantUpperBound
-
-// getRelevantDenomsForTenant collects the unique denoms from a tenant's active and pending leases
-// plus any denoms in the reserved amounts. This avoids GetAllBalances which loads dust from spam.
-// Uses the stored aggregate counts, clamped to fixed hard ceilings, so governance
-// parameter reductions do not silently truncate pre-existing leases.
-func (k *Keeper) getRelevantDenomsForTenant(ctx context.Context, creditAccount types.CreditAccount) ([]string, error) {
-	denomSet := make(map[string]struct{})
-	denoms := make([]string, 0, 4)
-
-	addDenom := func(d string) {
-		if _, ok := denomSet[d]; !ok {
-			denomSet[d] = struct{}{}
-			denoms = append(denoms, d)
-		}
-	}
-
-	// Include denoms from reserved amounts
-	for _, coin := range creditAccount.ReservedAmounts {
-		addDenom(coin.Denom)
-	}
-
-	tenantAddr, err := sdk.AccAddressFromBech32(creditAccount.Tenant)
-	if err != nil {
-		return nil, err
-	}
-
-	// Stored counts are maintained with the indexes by every lifecycle transition.
-	// Fixed ceilings retain a bounded cost even for corrupt or adversarial imported state.
-	activeCap := min(creditAccount.ActiveLeaseCount, maxActiveLeaseQueryIterations)
-	pendingCap := min(creditAccount.PendingLeaseCount, types.MaxPendingLeasesPerTenantUpperBound)
-
-	// Include denoms from active and pending leases via streaming iteration.
-	for _, state := range []types.LeaseState{types.LEASE_STATE_ACTIVE, types.LEASE_STATE_PENDING} {
-		maxLeases := activeCap
-		if state == types.LEASE_STATE_PENDING {
-			maxLeases = pendingCap
-		}
-
-		key := collections.Join(tenantAddr, int32(state))
-		iter, err := k.Leases.Indexes.TenantState.MatchExact(ctx, key)
-		if err != nil {
-			return nil, err
-		}
-
-		var count uint64
-		for ; iter.Valid(); iter.Next() {
-			if count >= maxLeases {
-				break
-			}
-			count++
-
-			leaseUUID, err := iter.PrimaryKey()
-			if err != nil {
-				iter.Close()
-				return nil, err
-			}
-			lease, err := k.Leases.Get(ctx, leaseUUID)
-			if err != nil {
-				iter.Close()
-				return nil, err
-			}
-			for _, item := range lease.Items {
-				addDenom(item.LockedPrice.Denom)
-			}
-		}
-		iter.Close()
-	}
-
-	return denoms, nil
 }
 
 // CalculateWithdrawableForLease calculates the amounts that can be withdrawn from a lease.
@@ -953,21 +884,34 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 		return sdk.NewCoins(), nil
 	}
 
-	// Get credit balances for only the lease's denoms to cap the withdrawable amounts
-	creditBalances, err := k.getCreditBalancesForDenoms(ctx, lease.Tenant, leaseItemDenoms(lease.Items))
+	creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
 	if err != nil {
-		return nil, errorsmod.Wrapf(err, "get credit balances for withdrawable lease %s", lease.Uuid)
+		return nil, errorsmod.Wrapf(err, "get credit account for withdrawable lease %s", lease.Uuid)
+	}
+	creditBalances, reservedAmounts, leaseAllocation, err := k.reservationSpendInputs(ctx, &lease, &creditAccount)
+	if err != nil {
+		return nil, errorsmod.Wrapf(err, "get reservation spend inputs for lease %s", lease.Uuid)
+	}
+	spendPlan, err := types.PlanReservationSpend(
+		creditBalances,
+		reservedAmounts,
+		leaseAllocation,
+		sdk.NewCoins(),
+	)
+	if err != nil {
+		return nil, errorsmod.Wrapf(err, "calculate spendable credit for lease %s", lease.Uuid)
 	}
 
-	// For each representable denom, return the minimum of accrued and available.
-	result := accruedAmounts.Min(creditBalances)
+	// For each representable denom, return the minimum of accrued and the
+	// lease's allocation plus genuinely unreserved credit.
+	result := accruedAmounts.Min(spendPlan.Spendable)
 	if accrualOverflow != nil {
 		for _, denom := range accrualOverflow.Denoms {
-			balance := creditBalances.AmountOf(denom)
-			if !balance.IsPositive() {
+			spendable := spendPlan.Spendable.AmountOf(denom)
+			if !spendable.IsPositive() {
 				continue
 			}
-			result, err = types.SafeAddCoins(result, sdk.Coins{{Denom: denom, Amount: balance}})
+			result, err = types.SafeAddCoins(result, sdk.Coins{{Denom: denom, Amount: spendable}})
 			if err != nil {
 				return nil, errorsmod.Wrapf(err, "clamp withdrawable overflow for denom %s", denom)
 			}
@@ -992,7 +936,11 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 // The function performs settlement calculation to determine if the balance would be exhausted
 // after accrual, rather than just checking the current balance. This ensures leases are
 // closed promptly when credit runs out, even if the balance isn't exactly zero yet.
-func (k *Keeper) ShouldAutoCloseLease(ctx context.Context, lease *types.Lease) (shouldClose bool, closeTime time.Time, err error) {
+func (k *Keeper) ShouldAutoCloseLease(
+	ctx context.Context,
+	lease *types.Lease,
+	creditAccount *types.CreditAccount,
+) (shouldClose bool, closeTime time.Time, err error) {
 	// Only check active leases
 	if lease.State != types.LEASE_STATE_ACTIVE {
 		return false, time.Time{}, nil
@@ -1028,10 +976,18 @@ func (k *Keeper) ShouldAutoCloseLease(ctx context.Context, lease *types.Lease) (
 		return false, time.Time{}, errorsmod.Wrapf(err, "validate accrual items for lease %s", lease.Uuid)
 	}
 
-	// Check tenant's credit balances for only the lease's denoms
-	creditBalances, err := k.getCreditBalancesForDenoms(ctx, lease.Tenant, leaseItemDenoms(lease.Items))
+	creditBalances, reservedAmounts, leaseAllocation, err := k.reservationSpendInputs(ctx, lease, creditAccount)
 	if err != nil {
 		return false, time.Time{}, err
+	}
+	spendPlan, err := types.PlanReservationSpend(
+		creditBalances,
+		reservedAmounts,
+		leaseAllocation,
+		sdk.NewCoins(),
+	)
+	if err != nil {
+		return false, time.Time{}, errorsmod.Wrapf(err, "calculate spendable credit for lease %s", lease.Uuid)
 	}
 
 	// If duration is zero, no accrual - check if any balance is exhausted
@@ -1058,20 +1014,21 @@ func (k *Keeper) ShouldAutoCloseLease(ctx context.Context, lease *types.Lease) (
 			)
 			shouldClose = true
 		} else {
-			// Check if any denom's accrued amount exceeds the balance
+			// Check if any denom's accrued amount exhausts this lease's
+			// allocation plus genuinely unreserved credit.
 			for _, accrued := range accruedAmounts {
-				balance := creditBalances.AmountOf(accrued.Denom)
-				if accrued.Amount.GTE(balance) {
+				spendable := spendPlan.Spendable.AmountOf(accrued.Denom)
+				if accrued.Amount.GTE(spendable) {
 					shouldClose = true
 					break
 				}
 			}
 		}
 	} else {
-		// Check if any required denom balance is zero
+		// Check if any required denom has no lease-spendable credit.
 		for _, item := range lease.Items {
-			balance := creditBalances.AmountOf(item.LockedPrice.Denom)
-			if balance.IsZero() {
+			spendable := spendPlan.Spendable.AmountOf(item.LockedPrice.Denom)
+			if spendable.IsZero() {
 				shouldClose = true
 				break
 			}
@@ -1094,8 +1051,13 @@ type AutoCloseLeaseResult struct {
 // It settles the lease, updates its state to CLOSED, decrements the active lease count,
 // and releases the reservation. All changes are applied to the provided context.
 // The caller is responsible for CacheContext management and event emission.
-func (k *Keeper) AutoCloseLease(ctx context.Context, lease *types.Lease, closeTime time.Time) (*AutoCloseLeaseResult, error) {
-	result, err := k.PerformSettlementSilent(ctx, lease, closeTime)
+func (k *Keeper) AutoCloseLease(
+	ctx context.Context,
+	lease *types.Lease,
+	creditAccount *types.CreditAccount,
+	closeTime time.Time,
+) (*AutoCloseLeaseResult, error) {
+	result, err := k.PerformSettlementSilent(ctx, lease, creditAccount, closeTime)
 	if err != nil {
 		return nil, err
 	}
@@ -1105,21 +1067,15 @@ func (k *Keeper) AutoCloseLease(ctx context.Context, lease *types.Lease, closeTi
 	lease.LastSettledAt = closeTime
 	lease.ClosureReason = types.ClosureReasonCreditExhausted
 
+	k.DecrementActiveLeaseCount(creditAccount, lease.Uuid)
+	if err := k.ReleaseLeaseReservation(ctx, creditAccount, lease); err != nil {
+		return nil, err
+	}
+
 	if err := k.SetLease(ctx, *lease); err != nil {
 		return nil, err
 	}
-
-	creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
-	if err != nil {
-		return nil, err
-	}
-
-	k.DecrementActiveLeaseCount(&creditAccount, lease.Uuid)
-	if err := k.ReleaseLeaseReservation(ctx, &creditAccount, lease); err != nil {
-		return nil, err
-	}
-
-	if err := k.SetCreditAccount(ctx, creditAccount); err != nil {
+	if err := k.SetCreditAccount(ctx, *creditAccount); err != nil {
 		return nil, err
 	}
 
@@ -1154,142 +1110,91 @@ func (k *Keeper) DecrementPendingLeaseCount(ca *types.CreditAccount, leaseUUID s
 	}
 }
 
-// knownLiveReservationFloor returns the exact reservation total for a tenant's
-// remaining PENDING and ACTIVE leases whose creation-time minimum duration is
-// stored, together with whether the existing aggregate must be preserved. The
-// aggregate is preserved when another live legacy lease remains or when the
-// fixed scan ceiling is exceeded; both cases avoid guessing or performing an
-// unbounded consensus scan.
-func (k *Keeper) knownLiveReservationFloor(ctx context.Context, tenant, excludedLeaseUUID string) (sdk.Coins, bool, error) {
-	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
-	if err != nil {
-		return nil, false, err
-	}
-
-	stateLimits := [...]struct {
-		state types.LeaseState
-		limit uint64
-	}{
-		{state: types.LEASE_STATE_PENDING, limit: types.MaxPendingLeasesPerTenantUpperBound},
-		{state: types.LEASE_STATE_ACTIVE, limit: maxActiveLeaseQueryIterations},
-	}
-
-	floor := sdk.NewCoins()
-	for _, stateLimit := range stateLimits {
-		key := collections.Join(tenantAddr, int32(stateLimit.state))
-		iter, err := k.Leases.Indexes.TenantState.MatchExact(ctx, key)
-		if err != nil {
-			return nil, false, err
-		}
-
-		var scanned uint64
-		for ; iter.Valid(); iter.Next() {
-			leaseUUID, err := iter.PrimaryKey()
-			if err != nil {
-				_ = iter.Close()
-				return nil, false, err
-			}
-			if leaseUUID == excludedLeaseUUID {
-				continue
-			}
-
-			if scanned >= stateLimit.limit {
-				if err := iter.Close(); err != nil {
-					return nil, false, err
-				}
-				k.logger.Warn("preserving legacy reservation above live-lease scan ceiling",
-					"tenant", tenant,
-					"state", stateLimit.state.String(),
-					"scan_ceiling", stateLimit.limit,
-				)
-				return sdk.NewCoins(), true, nil
-			}
-			scanned++
-
-			liveLease, err := k.Leases.Get(ctx, leaseUUID)
-			if err != nil {
-				_ = iter.Close()
-				return nil, false, err
-			}
-			if liveLease.MinLeaseDurationAtCreation == 0 {
-				if err := iter.Close(); err != nil {
-					return nil, false, err
-				}
-				return sdk.NewCoins(), true, nil
-			}
-
-			reservation, err := types.CalculateLeaseReservation(
-				liveLease.Items,
-				liveLease.MinLeaseDurationAtCreation,
-			)
-			if err != nil {
-				_ = iter.Close()
-				return nil, false, errorsmod.Wrapf(err, "calculate reservation for lease %s", liveLease.Uuid)
-			}
-			floor, err = types.SafeAddCoins(floor, reservation)
-			if err != nil {
-				_ = iter.Close()
-				return nil, false, errorsmod.Wrapf(err, "sum live reservation floor for tenant %s", tenant)
-			}
-		}
-
-		if err := iter.Close(); err != nil {
-			return nil, false, err
-		}
-	}
-
-	return floor, false, nil
-}
-
 // ReleaseLeaseReservation releases the reservation for a lease from a credit
-// account. It never guesses a legacy lease's unknown historical reservation:
-// while another live legacy lease remains, the shared unknown aggregate is
-// preserved; when the last one terminates, the aggregate is reconciled to the
-// exact floor required by all remaining non-legacy leases.
-func (k *Keeper) ReleaseLeaseReservation(ctx context.Context, ca *types.CreditAccount, lease *types.Lease) error {
-	if lease.MinLeaseDurationAtCreation == 0 {
-		reservationFloor, preserveAggregate, err := k.knownLiveReservationFloor(ctx, lease.Tenant, lease.Uuid)
-		if err != nil {
-			return errorsmod.Wrapf(err, "calculate live reservation floor for legacy lease %s", lease.Uuid)
-		}
-		if preserveAggregate {
-			return nil
-		}
-		if !ca.ReservedAmounts.IsAllGTE(reservationFloor) {
-			k.logger.Warn("repairing credit reservation below live non-legacy floor",
-				"tenant", ca.Tenant,
-				"lease_uuid", lease.Uuid,
-				"current_reserved", ca.ReservedAmounts.String(),
-				"reservation_floor", reservationFloor.String(),
-			)
-		}
-
-		ca.ReservedAmounts = reservationFloor
-		return nil
+// account. Modern leases release their exact remaining tranche. Historical
+// zero-duration leases share only the explicitly unattributed cohort, which is
+// released when the persisted live-member count reaches zero.
+func (k *Keeper) ReleaseLeaseReservation(_ context.Context, ca *types.CreditAccount, lease *types.Lease) error {
+	if err := validateLeaseCreditAccountIdentity(lease, ca); err != nil {
+		return err
 	}
-
-	reservationAmount, err := types.CalculateLeaseReservation(
-		lease.Items,
-		lease.MinLeaseDurationAtCreation,
-	)
-	if err != nil {
-		return errorsmod.Wrapf(err, "calculate reservation release for lease %s", lease.Uuid)
-	}
-
-	// Check for underflow before release (for observability)
-	underflows := types.CheckReservationRelease(ca.ReservedAmounts, reservationAmount)
-	if len(underflows) > 0 {
-		k.logger.Warn("data inconsistency: reservation release would underflow",
-			"tenant", ca.Tenant,
-			"lease_uuid", lease.Uuid,
-			"underflows", underflows,
-			"current_reserved", ca.ReservedAmounts.String(),
-			"attempting_to_release", reservationAmount.String(),
+	if lease.Reservation == nil {
+		return types.ErrReservationInvariant.Wrapf(
+			"lease %s has no initialized reservation to release",
+			lease.Uuid,
 		)
 	}
 
-	ca.ReservedAmounts = types.SubtractReservation(ca.ReservedAmounts, reservationAmount)
+	remaining, err := types.SafeAddCoins(sdk.NewCoins(), lease.Reservation.RemainingAmounts)
+	if err != nil {
+		return types.ErrReservationInvariant.Wrapf(
+			"lease %s has invalid remaining reservation: %s",
+			lease.Uuid, err,
+		)
+	}
+	if !ca.UnattributedReservedAmounts.IsZero() && ca.UnattributedLeaseCount == 0 {
+		return types.ErrReservationInvariant.Wrapf(
+			"credit account for lease %s has an unattributed reservation without live cohort members",
+			lease.Uuid,
+		)
+	}
 
+	if lease.MinLeaseDurationAtCreation == 0 {
+		if !remaining.IsZero() {
+			return types.ErrReservationInvariant.Wrapf(
+				"legacy lease %s has an attributed reservation",
+				lease.Uuid,
+			)
+		}
+		if ca.UnattributedLeaseCount == 0 {
+			return types.ErrReservationInvariant.Wrapf(
+				"legacy lease %s is not represented in the unattributed lease count",
+				lease.Uuid,
+			)
+		}
+		if ca.UnattributedLeaseCount > 1 {
+			ca.UnattributedLeaseCount--
+			return nil
+		}
+
+		reservedAfter, err := types.SafeSubtractCoins(ca.ReservedAmounts, ca.UnattributedReservedAmounts)
+		if err != nil {
+			return types.ErrReservationInvariant.Wrapf(
+				"release unattributed reservation for legacy lease %s: %s",
+				lease.Uuid, err,
+			)
+		}
+		ca.ReservedAmounts = reservedAfter
+		ca.UnattributedReservedAmounts = sdk.NewCoins()
+		ca.UnattributedLeaseCount = 0
+		return nil
+	}
+
+	attributedReserved, err := types.SafeSubtractCoins(
+		ca.ReservedAmounts,
+		ca.UnattributedReservedAmounts,
+	)
+	if err != nil {
+		return types.ErrReservationInvariant.Wrapf(
+			"credit account for lease %s does not contain its unattributed reservation: %s",
+			lease.Uuid, err,
+		)
+	}
+	if _, err := types.SafeSubtractCoins(attributedReserved, remaining); err != nil {
+		return types.ErrReservationInvariant.Wrapf(
+			"credit account for lease %s does not contain its attributed reservation: %s",
+			lease.Uuid, err,
+		)
+	}
+	reservedAfter, err := types.SafeSubtractCoins(ca.ReservedAmounts, remaining)
+	if err != nil {
+		return types.ErrReservationInvariant.Wrapf(
+			"release remaining reservation for lease %s: %s",
+			lease.Uuid, err,
+		)
+	}
+	ca.ReservedAmounts = reservedAfter
+	lease.Reservation.RemainingAmounts = sdk.NewCoins()
 	return nil
 }
 
@@ -1463,10 +1368,6 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 	lease.State = types.LEASE_STATE_EXPIRED
 	lease.ExpiredAt = &blockTime
 
-	if err := k.SetLease(cacheCtx, *lease); err != nil {
-		return err
-	}
-
 	// Decrement pending lease count and release reservation in credit account
 	creditAccount, err := k.GetCreditAccount(cacheCtx, lease.Tenant)
 	if err != nil {
@@ -1484,6 +1385,9 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 
 	// Release reservation for this lease (PENDING leases have reservations)
 	if err := k.ReleaseLeaseReservation(cacheCtx, &creditAccount, lease); err != nil {
+		return err
+	}
+	if err := k.SetLease(cacheCtx, *lease); err != nil {
 		return err
 	}
 

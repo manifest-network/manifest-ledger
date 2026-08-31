@@ -1,7 +1,9 @@
 package types_test
 
 import (
+	"bytes"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -216,6 +218,79 @@ func TestSafeAddCoins_ExactMaximumAndOverflow(t *testing.T) {
 		_, err = types.SafeAddCoins(result, sdk.NewCoins(sdk.NewCoin("upwr", math.OneInt())))
 	})
 	require.ErrorIs(t, err, types.ErrArithmeticOverflow)
+}
+
+func TestSafeAggregateCoins(t *testing.T) {
+	input := []sdk.Coin{
+		sdk.NewInt64Coin("zeta", 4),
+		sdk.NewInt64Coin("alpha", 2),
+		sdk.NewInt64Coin("zeta", 3),
+		sdk.NewInt64Coin("beta", 5),
+		sdk.NewInt64Coin("alpha", 6),
+	}
+	original := append([]sdk.Coin(nil), input...)
+
+	result, err := types.SafeAggregateCoins(input)
+	require.NoError(t, err)
+	require.Equal(t, sdk.NewCoins(
+		sdk.NewInt64Coin("alpha", 8),
+		sdk.NewInt64Coin("beta", 5),
+		sdk.NewInt64Coin("zeta", 7),
+	), result)
+	require.Equal(t, original, input, "aggregation must not reorder the caller's slice")
+
+	empty, err := types.SafeAggregateCoins(nil)
+	require.NoError(t, err)
+	require.NotNil(t, empty)
+	require.Empty(t, empty)
+}
+
+func TestSafeAggregateCoinsRejectsMalformedAndOverflowingInput(t *testing.T) {
+	_, err := types.SafeAggregateCoins([]sdk.Coin{sdk.NewInt64Coin("upwr", 0)})
+	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+
+	_, err = types.SafeAggregateCoins([]sdk.Coin{{Denom: "upwr"}})
+	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+
+	require.NotPanics(t, func() {
+		_, err = types.SafeAggregateCoins([]sdk.Coin{
+			sdk.NewCoin("upwr", maxBillingInt()),
+			sdk.NewInt64Coin("upwr", 1),
+		})
+	})
+	require.ErrorIs(t, err, types.ErrArithmeticOverflow)
+}
+
+func TestSafeSubtractCoins(t *testing.T) {
+	left := sdk.NewCoins(
+		sdk.NewInt64Coin("alpha", 7),
+		sdk.NewInt64Coin("beta", 5),
+		sdk.NewInt64Coin("gamma", 3),
+	)
+
+	result, err := types.SafeSubtractCoins(left, sdk.NewCoins(
+		sdk.NewInt64Coin("alpha", 2),
+		sdk.NewInt64Coin("beta", 5),
+	))
+	require.NoError(t, err)
+	require.Equal(t, sdk.NewCoins(
+		sdk.NewInt64Coin("alpha", 5),
+		sdk.NewInt64Coin("gamma", 3),
+	), result)
+
+	tests := []struct {
+		name  string
+		right sdk.Coins
+	}{
+		{name: "amount underflow", right: sdk.NewCoins(sdk.NewInt64Coin("alpha", 8))},
+		{name: "absent denom", right: sdk.NewCoins(sdk.NewInt64Coin("delta", 1))},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := types.SafeSubtractCoins(left, test.right)
+			require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+		})
+	}
 }
 
 // ============================================================================
@@ -841,179 +916,95 @@ func TestCheckReservationRelease(t *testing.T) {
 // ============================================================================
 
 func TestCalculateExpectedReservationsByTenant(t *testing.T) {
-	tenant1 := "manifest1tenant1"
-	tenant2 := "manifest1tenant2"
-	minDuration := uint64(3600)
+	tenant1 := sdk.AccAddress(bytes.Repeat([]byte{1}, 20)).String()
+	tenant2 := sdk.AccAddress(bytes.Repeat([]byte{2}, 20)).String()
+	coins := func(amount int64) sdk.Coins {
+		if amount == 0 {
+			return sdk.NewCoins()
+		}
+		return sdk.NewCoins(sdk.NewCoin("upwr", math.NewInt(amount)))
+	}
+	lease := func(
+		uuid, tenant string,
+		state types.LeaseState,
+		minDuration uint64,
+		remaining sdk.Coins,
+	) types.Lease {
+		return types.Lease{
+			Uuid:                       uuid,
+			Tenant:                     tenant,
+			State:                      state,
+			MinLeaseDurationAtCreation: minDuration,
+			Reservation: &types.LeaseReservation{
+				RemainingAmounts: remaining,
+			},
+		}
+	}
 
 	tests := []struct {
-		name     string
-		leases   []types.Lease
-		expected map[string]sdk.Coins
+		name               string
+		leases             []types.Lease
+		deprecatedFallback uint64
+		expected           map[string]sdk.Coins
 	}{
 		{
-			name:     "empty leases",
-			leases:   []types.Lease{},
+			name:     "empty",
 			expected: map[string]sdk.Coins{},
 		},
 		{
-			name: "single active lease",
+			name: "live modern leases use remaining tranches and ignore fallback",
 			leases: []types.Lease{
-				{
-					Uuid:   "lease1",
-					Tenant: tenant1,
-					State:  types.LEASE_STATE_ACTIVE,
-					Items: []types.LeaseItem{
-						{SkuUuid: "sku1", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.NewInt(10))},
-					},
-				},
+				lease("active", tenant1, types.LEASE_STATE_ACTIVE, 7200, coins(7)),
+				lease("pending", tenant1, types.LEASE_STATE_PENDING, 3600, coins(3)),
 			},
+			deprecatedFallback: 999_999,
 			expected: map[string]sdk.Coins{
-				tenant1: sdk.NewCoins(sdk.NewCoin("upwr", math.NewInt(36000))), // 10 * 1 * 3600
+				tenant1: coins(10),
 			},
 		},
 		{
-			name: "single pending lease",
+			name: "multiple tenants remain separate",
 			leases: []types.Lease{
-				{
-					Uuid:   "lease1",
-					Tenant: tenant1,
-					State:  types.LEASE_STATE_PENDING,
-					Items: []types.LeaseItem{
-						{SkuUuid: "sku1", Quantity: 2, LockedPrice: sdk.NewCoin("upwr", math.NewInt(10))},
-					},
-				},
+				lease("tenant-1", tenant1, types.LEASE_STATE_ACTIVE, 1, coins(11)),
+				lease("tenant-2", tenant2, types.LEASE_STATE_PENDING, 1, coins(13)),
 			},
 			expected: map[string]sdk.Coins{
-				tenant1: sdk.NewCoins(sdk.NewCoin("upwr", math.NewInt(72000))), // 10 * 2 * 3600
+				tenant1: coins(11),
+				tenant2: coins(13),
 			},
 		},
 		{
-			name: "closed lease - no reservation",
+			name: "legacy and terminal empty tranches do not contribute",
 			leases: []types.Lease{
-				{
-					Uuid:   "lease1",
-					Tenant: tenant1,
-					State:  types.LEASE_STATE_CLOSED,
-					Items: []types.LeaseItem{
-						{SkuUuid: "sku1", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.NewInt(10))},
-					},
-				},
+				lease("legacy-active", tenant1, types.LEASE_STATE_ACTIVE, 0, coins(0)),
+				lease("modern-closed", tenant1, types.LEASE_STATE_CLOSED, 1, coins(0)),
+				lease("modern-rejected", tenant1, types.LEASE_STATE_REJECTED, 1, coins(0)),
+				lease("modern-expired", tenant1, types.LEASE_STATE_EXPIRED, 1, coins(0)),
 			},
 			expected: map[string]sdk.Coins{},
 		},
 		{
-			name: "rejected lease - no reservation",
+			name: "equivalent bech32 spellings share canonical tenant identity",
 			leases: []types.Lease{
-				{
-					Uuid:   "lease1",
-					Tenant: tenant1,
-					State:  types.LEASE_STATE_REJECTED,
-					Items: []types.LeaseItem{
-						{SkuUuid: "sku1", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.NewInt(10))},
-					},
-				},
+				lease("lowercase", tenant1, types.LEASE_STATE_ACTIVE, 1, coins(17)),
+				lease("uppercase", strings.ToUpper(tenant1), types.LEASE_STATE_ACTIVE, 1, coins(19)),
+			},
+			expected: map[string]sdk.Coins{
+				tenant1: coins(36),
+			},
+		},
+		{
+			name: "fully consumed live tranche contributes zero",
+			leases: []types.Lease{
+				lease("consumed", tenant1, types.LEASE_STATE_ACTIVE, 1, coins(0)),
 			},
 			expected: map[string]sdk.Coins{},
-		},
-		{
-			name: "multiple leases same tenant",
-			leases: []types.Lease{
-				{
-					Uuid:   "lease1",
-					Tenant: tenant1,
-					State:  types.LEASE_STATE_ACTIVE,
-					Items: []types.LeaseItem{
-						{SkuUuid: "sku1", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.NewInt(10))},
-					},
-				},
-				{
-					Uuid:   "lease2",
-					Tenant: tenant1,
-					State:  types.LEASE_STATE_PENDING,
-					Items: []types.LeaseItem{
-						{SkuUuid: "sku2", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.NewInt(20))},
-					},
-				},
-			},
-			expected: map[string]sdk.Coins{
-				tenant1: sdk.NewCoins(sdk.NewCoin("upwr", math.NewInt(108000))), // (10 + 20) * 1 * 3600
-			},
-		},
-		{
-			name: "multiple tenants",
-			leases: []types.Lease{
-				{
-					Uuid:   "lease1",
-					Tenant: tenant1,
-					State:  types.LEASE_STATE_ACTIVE,
-					Items: []types.LeaseItem{
-						{SkuUuid: "sku1", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.NewInt(10))},
-					},
-				},
-				{
-					Uuid:   "lease2",
-					Tenant: tenant2,
-					State:  types.LEASE_STATE_ACTIVE,
-					Items: []types.LeaseItem{
-						{SkuUuid: "sku2", Quantity: 2, LockedPrice: sdk.NewCoin("upwr", math.NewInt(15))},
-					},
-				},
-			},
-			expected: map[string]sdk.Coins{
-				tenant1: sdk.NewCoins(sdk.NewCoin("upwr", math.NewInt(36000))),  // 10 * 1 * 3600
-				tenant2: sdk.NewCoins(sdk.NewCoin("upwr", math.NewInt(108000))), // 15 * 2 * 3600
-			},
-		},
-		{
-			name: "lease with stored min_lease_duration_at_creation",
-			leases: []types.Lease{
-				{
-					Uuid:   "lease1",
-					Tenant: tenant1,
-					State:  types.LEASE_STATE_ACTIVE,
-					Items: []types.LeaseItem{
-						{SkuUuid: "sku1", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.NewInt(10))},
-					},
-					MinLeaseDurationAtCreation: 7200, // Override default 3600
-				},
-			},
-			expected: map[string]sdk.Coins{
-				tenant1: sdk.NewCoins(sdk.NewCoin("upwr", math.NewInt(72000))), // 10 * 1 * 7200
-			},
-		},
-		{
-			name: "mixed states - only pending and active count",
-			leases: []types.Lease{
-				{
-					Uuid: "lease1", Tenant: tenant1, State: types.LEASE_STATE_PENDING,
-					Items: []types.LeaseItem{{SkuUuid: "sku1", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.NewInt(10))}},
-				},
-				{
-					Uuid: "lease2", Tenant: tenant1, State: types.LEASE_STATE_ACTIVE,
-					Items: []types.LeaseItem{{SkuUuid: "sku2", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.NewInt(10))}},
-				},
-				{
-					Uuid: "lease3", Tenant: tenant1, State: types.LEASE_STATE_CLOSED,
-					Items: []types.LeaseItem{{SkuUuid: "sku3", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.NewInt(10))}},
-				},
-				{
-					Uuid: "lease4", Tenant: tenant1, State: types.LEASE_STATE_REJECTED,
-					Items: []types.LeaseItem{{SkuUuid: "sku4", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.NewInt(10))}},
-				},
-				{
-					Uuid: "lease5", Tenant: tenant1, State: types.LEASE_STATE_EXPIRED,
-					Items: []types.LeaseItem{{SkuUuid: "sku5", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.NewInt(10))}},
-				},
-			},
-			expected: map[string]sdk.Coins{
-				tenant1: sdk.NewCoins(sdk.NewCoin("upwr", math.NewInt(72000))), // Only 2 leases: (10 + 10) * 1 * 3600
-			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := types.CalculateExpectedReservationsByTenant(tc.leases, minDuration)
+			result, err := types.CalculateExpectedReservationsByTenant(tc.leases, tc.deprecatedFallback)
 			require.NoError(t, err)
 
 			require.Equal(t, len(tc.expected), len(result),
@@ -1027,4 +1018,95 @@ func TestCalculateExpectedReservationsByTenant(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCalculateExpectedReservationsByTenantRejectsInvalidV4State(t *testing.T) {
+	tenant := sdk.AccAddress(bytes.Repeat([]byte{3}, 20)).String()
+	coins := sdk.NewCoins(sdk.NewCoin("upwr", math.OneInt()))
+	tests := []struct {
+		name  string
+		lease types.Lease
+	}{
+		{
+			name: "missing reservation wrapper",
+			lease: types.Lease{
+				Uuid:                       "missing",
+				Tenant:                     tenant,
+				State:                      types.LEASE_STATE_ACTIVE,
+				MinLeaseDurationAtCreation: 1,
+			},
+		},
+		{
+			name: "legacy attributed tranche",
+			lease: types.Lease{
+				Uuid:        "legacy",
+				Tenant:      tenant,
+				State:       types.LEASE_STATE_ACTIVE,
+				Reservation: &types.LeaseReservation{RemainingAmounts: coins},
+			},
+		},
+		{
+			name: "terminal attributed tranche",
+			lease: types.Lease{
+				Uuid:                       "terminal",
+				Tenant:                     tenant,
+				State:                      types.LEASE_STATE_CLOSED,
+				MinLeaseDurationAtCreation: 1,
+				Reservation:                &types.LeaseReservation{RemainingAmounts: coins},
+			},
+		},
+		{
+			name: "invalid tenant",
+			lease: types.Lease{
+				Uuid:                       "bad-tenant",
+				Tenant:                     "not-bech32",
+				State:                      types.LEASE_STATE_ACTIVE,
+				MinLeaseDurationAtCreation: 1,
+				Reservation:                &types.LeaseReservation{RemainingAmounts: coins},
+			},
+		},
+		{
+			name: "malformed remaining coins",
+			lease: types.Lease{
+				Uuid:                       "malformed",
+				Tenant:                     tenant,
+				State:                      types.LEASE_STATE_ACTIVE,
+				MinLeaseDurationAtCreation: 1,
+				Reservation: &types.LeaseReservation{RemainingAmounts: sdk.Coins{
+					sdk.NewCoin("upwr", math.OneInt()),
+					sdk.NewCoin("upwr", math.OneInt()),
+				}},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := types.CalculateExpectedReservationsByTenant([]types.Lease{tc.lease}, 3600)
+			require.Error(t, err)
+			require.ErrorIs(t, err, types.ErrReservationInvariant)
+		})
+	}
+}
+
+func TestCalculateExpectedReservationsByTenantReturnsOverflow(t *testing.T) {
+	tenant := sdk.AccAddress(bytes.Repeat([]byte{4}, 20)).String()
+	lease := func(uuid string) types.Lease {
+		return types.Lease{
+			Uuid:                       uuid,
+			Tenant:                     tenant,
+			State:                      types.LEASE_STATE_ACTIVE,
+			MinLeaseDurationAtCreation: 1,
+			Reservation: &types.LeaseReservation{RemainingAmounts: sdk.NewCoins(
+				sdk.NewCoin("upwr", highBitBillingInt()),
+			)},
+		}
+	}
+
+	_, err := types.CalculateExpectedReservationsByTenant(
+		[]types.Lease{lease("first"), lease("second")},
+		0,
+	)
+	require.Error(t, err)
+	require.ErrorIs(t, err, types.ErrArithmeticOverflow)
 }

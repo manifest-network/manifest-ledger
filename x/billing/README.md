@@ -14,7 +14,11 @@ Each tenant has a credit account with a derived address. Credit accounts can hol
 
 ### Credit Reservation System
 
-The credit reservation system prevents overbooking by tracking reserved amounts per tenant. When a lease is created, credits are reserved to guarantee that sufficient funds exist for at least `min_lease_duration` seconds of operation.
+The credit reservation system prevents overbooking by tracking a consumable
+guarantee for each modern lease. When a lease is created, its initial
+reservation is `rate_per_second × min_lease_duration` in each denomination.
+That amount is stored in `Lease.reservation.remaining_amounts` and included in
+the tenant's aggregate `CreditAccount.reserved_amounts`.
 
 **Why Reservations Matter:**
 
@@ -52,10 +56,31 @@ AvailableCredit = CreditBalance - ReservedAmounts
 
 New leases can only be created if `AvailableCredit >= NewLeaseReservation` for all required denominations.
 
+In consensus version 4, the aggregate is an exact accounting identity, not a
+recalculation of every lease's original nominal reservation:
+
+```
+R = SUM(live modern Lease.reservation.remaining_amounts) + U
+```
+
+Here `R` is `CreditAccount.reserved_amounts` and `U` is
+`CreditAccount.unattributed_reserved_amounts`, the explicit shared allocation
+for live historical leases whose individual guarantees cannot be reconstructed.
+Terminal leases and historical leases have an initialized but empty
+`Lease.reservation`.
+
+Settlement spends the target lease's own remaining tranche before unreserved
+credit while preserving every other lease's guarantee. Per denomination, a
+lease with allocation `A`, tenant balance `B`, and aggregate reservation `R`
+may spend at most `B - (R - A)`. The amount paid from `A` is subtracted from
+both `A` and `R`. A modern lease's terminal transition then releases exactly
+its remaining `A`, never a nominal amount recomputed from current parameters.
+
 **Reservation Lifecycle:**
 - **Added**: When a lease is created (enters PENDING state)
 - **Maintained**: When a lease is acknowledged (transitions to ACTIVE state)
-- **Released**: When a lease transitions to CLOSED, REJECTED, or EXPIRED
+- **Consumed**: Settlement reduces the lease's own remaining tranche and the account aggregate by the same amount
+- **Released**: A terminal transition subtracts exactly the lease's remaining tranche; historical transitions decrement `unattributed_lease_count` in O(1), and the explicit cohort `U` is released when that count reaches zero
 
 **Parameter Change Protection:**
 
@@ -156,7 +181,11 @@ This design keeps on-chain operations light and avoids per-block token transfers
 
 ### Overdraw and Auto-Close
 
-If a tenant's credit balance is insufficient to cover accrued charges, the billing module automatically closes their active leases. This happens through **lazy evaluation** ("check on touch") during write operations:
+If the credit this lease may safely spend is insufficient to cover accrued
+charges, the billing module automatically closes it. Lease-spendable credit is
+its own tranche plus genuinely unreserved balance; reservations belonging to
+other leases remain protected. This happens through **lazy evaluation**
+("check on touch") during write operations:
 
 **When auto-close is triggered:**
 - When withdrawing from a lease (`MsgWithdraw`)
@@ -164,8 +193,8 @@ If a tenant's credit balance is insufficient to cover accrued charges, the billi
 
 **How it works:**
 1. When a lease is "touched" during a transaction, the system calculates accrued charges
-2. If accrued amount >= credit balance:
-   - Performs final settlement (transfers available balance to provider)
+2. If accrued amount >= lease-spendable credit `B - (R - A)`:
+   - Performs final settlement (transfers that spendable amount to the provider)
    - Closes the lease automatically
    - Emits an event whose type depends on the trigger path (see below)
 
@@ -178,6 +207,9 @@ If a tenant's credit balance is insufficient to cover accrued charges, the billi
 | `MsgWithdraw` (provider-wide) | `lease_auto_closed` | `reason = credit_exhausted` |
 
 A consumer that subscribes only to `lease_auto_closed` will miss credit-exhaustion closures triggered via `MsgCloseLease` or specific-lease `MsgWithdraw`.
+For the specific-lease path, event `amount = 0` is an auto-close sentinel; the
+response or batch total may still contain the non-zero final settlement made
+before closure.
 
 **Design rationale:**
 - **O(1) per lease check**: Instead of O(n) scanning all leases in EndBlock
@@ -188,12 +220,14 @@ A consumer that subscribes only to `lease_auto_closed` will miss credit-exhausti
 
 **Note**: Queries (`QueryLease`, `QueryLeases`, etc.) do NOT trigger auto-close. They return the stored state. Auto-close only happens during write operations (Withdraw, CloseLease) to ensure state changes are properly committed.
 
-**Note**: During lazy settlement (withdrawal or manual close), if the credit balance is less than the accrued amount, only the available balance is transferred to the provider.
+**Note**: During lazy settlement (withdrawal or manual close), the transfer is
+capped at `B - (R - A)`, not the raw credit balance. This prevents one lease
+from consuming another lease's reservation.
 
 ## State
 
 Billing API, transaction, query, and genesis protobufs expose account addresses
-as Bech32 strings. Consensus version 3 uses separate disk-only value codecs:
+as Bech32 strings. Consensus version 3 introduced separate disk-only value codecs:
 all account identities inside Params, Lease, and CreditAccount values are
 persisted as raw address bytes. Address-bearing keys and secondary indexes use
 the SDK's `AccAddressKey` byte codec as well. The v2→v3 module migration rewrites
@@ -208,6 +242,21 @@ For tenants with live legacy leases, it raises only deficient denominations to
 the known non-legacy floor and preserves unknown excess. When no live legacy
 lease remains, the reservation is fully reconstructible and is reconciled
 exactly. Bank balances are not changed.
+
+Consensus version 4 converts that aggregate-only state into consumable
+allocations without minting, burning, or transferring tokens. For each tenant
+and denomination, the allocation budget is bounded by both the pre-v4 aggregate
+and the bank balance. Reconstructible PENDING leases receive their full nominal
+reservation first. The remaining budget is divided between modern ACTIVE
+nominal claims and one opaque live-legacy cohort with Hamilton's
+largest-remainder method, using lease UUID order and then the legacy cohort as
+the deterministic tie-break. The resulting state satisfies `R = sum(A) + U`
+and records the exact live historical cohort size in
+`unattributed_lease_count`.
+An upgrade or pre-v4 (v2/v3) genesis import fails before writing billing state
+if either the historical aggregate or bank balance cannot fully back the
+PENDING claims; operators must preflight and fund any bank shortfall before the
+cutover.
 
 ### Storage Key Prefixes
 
@@ -258,6 +307,7 @@ These values are compile-time constants and cannot be changed via governance:
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `MaxItemsPerLeaseHardLimit` | 100 | Absolute maximum items per lease |
+| `MaxReservedDenomsPerCreditAccount` | 1000 | Maximum aggregate reservation denom cardinality that a new lease may create; historical over-limit accounts remain releasable and cannot grow |
 | `MaxQuantityPerItem` | 1,000,000,000 | Maximum quantity per lease item (1 billion). Defined in `types/errors.go`. |
 | `MaxPendingLeaseExpirationsPerBlock` | 100 | Maximum pending lease expirations processed per block (DoS protection) |
 | `DefaultProviderWithdrawLimit` | 50 | Default number of leases processed per provider-wide withdraw call (can be increased to MaxBatchLeaseSize) |
@@ -267,10 +317,13 @@ These values are compile-time constants and cannot be changed via governance:
 | `MaxCustomDomainLength` | 253 | Maximum bytes for `LeaseItem.custom_domain` (RFC 1035 max FQDN length) |
 | `MaxWithdrawCursorLen` | 64 | Maximum bytes of the opaque `--key` cursor for provider-wide withdraw (a lease UUID is 36 bytes). Defined in `types/msgs.go`. |
 | `CreditAccountAddressPrefix` | `billing/credit/` | Prefix used for deterministic credit address derivation |
-| `DefaultProviderWithdrawableQueryLimit` | 100 | Default page size for the ProviderWithdrawable query (`pagination.limit`). The request's old top-level `limit` field was removed; proto field 2 is reserved. |
+| `DefaultCreditAccountBalanceQueryLimit` | 100 | Default bank-balance page size for `CreditAccount` |
+| `MaxCreditAccountBalanceQueryLimit` | 1000 | Maximum bank-balance page size for `CreditAccount` |
+| `DefaultProviderWithdrawableQueryLimit` | 50 | Default page size for the ProviderWithdrawable query, matching provider-wide `MsgWithdraw`. The request's old top-level `limit` field was removed; proto field 2 is reserved. |
 | `MaxProviderWithdrawableQueryLimit` | 1000 | Maximum page size for the ProviderWithdrawable query (`pagination.limit` is clamped to this) |
+| `MaxCreditEstimateLeaseItems` | 100,000 | Maximum active lease items aggregated by one unpaginated `CreditEstimate` request |
 
-> **CreditEstimate / CreditAccount query iteration** follows the lease counts stored on the tenant's credit account rather than the current governance limits. This keeps pre-existing leases visible after limits are lowered and covers historical acknowledgement overshoot state. The stored counts are still clamped to fixed DoS ceilings of 11,000 active iterations and 1,000 pending iterations; corrupt or adversarial imported state above those ceilings is truncated.
+> **CreditEstimate iteration** follows the ACTIVE count stored on the tenant's credit account rather than the current governance limit. It enforces the conservative 11,000 ACTIVE bound, a 100,000-item work bound, and exact count/index agreement. `CreditAccount` does not scan leases: it returns all bank balances through bounded cursor pages (default 100, max 1000). Both queries reject rather than silently truncate work outside their documented contracts.
 
 ### Batch Operations
 
@@ -291,12 +344,13 @@ Several messages support batch processing of multiple leases in a single transac
 
 ### Lease
 
-Leases stored at key prefix `0x01`:
+Leases are stored at key prefix `0x01`. The table gives public protobuf types;
+the disk-only codec persists account identities as raw address bytes.
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field | Public/API Type | Description |
+|-------|-----------------|-------------|
 | uuid | string | UUIDv7 unique identifier |
-| tenant | string | Tenant address |
+| tenant | Bech32 string | Tenant address; raw SDK address bytes on disk |
 | provider_uuid | string | Provider UUID (from SKU module) |
 | items | []LeaseItem | List of SKU items |
 | state | LeaseState | PENDING, ACTIVE, CLOSED, REJECTED, or EXPIRED |
@@ -310,6 +364,7 @@ Leases stored at key prefix `0x01`:
 | closure_reason | string | Closure reason (max 256 chars) |
 | meta_hash | bytes | Hash/reference to off-chain deployment data (max 64 bytes, immutable) |
 | min_lease_duration_at_creation | uint64 | Snapshot of `min_lease_duration` param at creation (for consistent reservation calculation) |
+| reservation | LeaseReservation | Remaining consumable reservation for a modern lease; initialized empty for terminal and historical leases |
 
 ### LeaseItem
 
@@ -325,17 +380,25 @@ Leases stored at key prefix `0x01`:
 
 ### CreditAccount
 
-Credit accounts stored at key prefix `0x05`:
+Credit accounts are stored at key prefix `0x05`. Address strings below are the
+public protobuf view; the disk-only codec persists their raw SDK address bytes.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| tenant | string | Tenant address |
-| credit_address | string | Derived credit account address |
+| Field | Public/API Type | Description |
+|-------|-----------------|-------------|
+| tenant | Bech32 string | Tenant address; raw SDK address bytes on disk |
+| credit_address | Bech32 string | Derived credit account address; raw SDK address bytes on disk |
 | active_lease_count | uint64 | Number of ACTIVE leases |
 | pending_lease_count | uint64 | Number of PENDING leases |
-| reserved_amounts | []Coin | Sum of all credit reservations for active and pending leases |
+| reserved_amounts | []Coin | Exact aggregate `sum(live modern remaining reservations) + unattributed_reserved_amounts` |
+| unattributed_reserved_amounts | []Coin | Explicit shared reservation for the live historical cohort whose per-lease guarantees cannot be reconstructed |
+| unattributed_lease_count | uint64 | Exact number of live historical leases sharing `unattributed_reserved_amounts`; enables O(1) terminal release |
 
-Note: The actual balance is tracked by the bank module at the `credit_address`. Query the bank module or use `QueryCreditAccount` which includes the balance. The `reserved_amounts` field tracks how much credit is reserved by existing leases (rate × min_lease_duration per denom), preventing overbooking.
+Note: The actual balance is tracked by the bank module at the `credit_address`.
+Query the bank module or use cursor-paginated `QueryCreditAccount`, which
+includes one ordered balance page (default 100, maximum 1000).
+New leases begin with a nominal `rate × min_lease_duration` tranche, but
+settlement consumes it; therefore `reserved_amounts` tracks remaining
+guarantees, not a fixed nominal sum.
 
 ## State Transitions
 
@@ -354,8 +417,9 @@ sender → credit_address
 3. Verify tenant hasn't exceeded max active or pending leases
 4. Verify all SKUs exist, are active, and belong to the same provider (locking per-second prices)
 5. Verify the provider exists and is active
-6. Verify `AvailableCredit >= rate × min_lease_duration` per denom and add the reservation
-7. Create lease in PENDING state and increment pending_lease_count
+6. Verify `AvailableCredit >= rate × min_lease_duration` per denom
+7. Initialize the lease's remaining tranche `A` to that nominal amount and add the same coins to aggregate `R`
+8. Create the lease in PENDING state and increment pending_lease_count
 
 ### Acknowledge Lease (PENDING → ACTIVE)
 
@@ -375,7 +439,7 @@ cannot be acknowledged. Providers may still reject it, and tenants may still can
 2. Set lease state to REJECTED
 3. Set rejected_at and rejection_reason
 4. Decrement pending_lease_count
-5. Release credit reservation (rate × min_lease_duration)
+5. Release the lease's exact remaining reservation tranche
 
 ### Cancel Lease (Tenant cancels PENDING)
 
@@ -383,7 +447,7 @@ cannot be acknowledged. Providers may still reject it, and tenants may still can
 2. Verify lease is in PENDING state
 3. Set lease state to REJECTED
 4. Decrement pending_lease_count
-5. Release credit reservation (rate × min_lease_duration)
+5. Release the lease's exact remaining reservation tranche
 
 ### Expire Lease (EndBlocker)
 
@@ -394,7 +458,7 @@ The EndBlocker automatically expires pending leases that exceed the `pending_tim
    - Set lease state to EXPIRED
    - Set expired_at timestamp
    - Decrement pending_lease_count
-   - Release credit reservation (rate × min_lease_duration)
+   - Release the lease's exact remaining reservation tranche
 
 **Rate Limiting:** To prevent DoS attacks, the EndBlocker processes a maximum of **100 lease expirations per block** (`MaxPendingLeaseExpirationsPerBlock`). If more than 100 leases need to expire, the remaining leases are processed in subsequent blocks. This uses a two-pass approach to avoid iterator invalidation during state modification.
 
@@ -405,17 +469,20 @@ EndBlock in the same block and while an overdue lease is waiting behind the expi
 ### Close Lease (ACTIVE → CLOSED)
 
 1. Calculate accrued charges since last settlement
-2. Transfer accrued amount from credit to provider's payout address
+2. Transfer `min(accrued, B - (R - A))` from credit to the provider, consuming
+   this lease's tranche before genuinely unreserved credit and preserving every
+   other lease's guarantee
 3. Set lease state to CLOSED
 4. Record closed_at timestamp
 5. Decrement active_lease_count
-6. Release credit reservation (rate × min_lease_duration)
+6. Release the lease's exact remaining reservation tranche
 
 ### Withdraw
 
 1. Calculate accrued charges since last settlement
-2. Transfer accrued amount from credit to provider's payout address
-3. Update last_settled_at timestamp
+2. Transfer at most this lease's spendable credit `B - (R - A)` to the provider
+3. Auto-close on a shortfall/credit exhaustion; otherwise update
+   `last_settled_at`
 
 ## Messages
 
@@ -446,12 +513,12 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 | LeasesByTenant | List leases for a tenant |
 | LeasesByProvider | List leases for a provider (use `--state pending` filter for pending leases) |
 | LeasesBySKU | List leases using a specific SKU |
-| CreditAccount | Get a tenant's credit account |
+| CreditAccount | Get a tenant's credit account plus one cursor-paginated page of all bank balances and page-aligned available balances |
 | CreditAccounts | List all credit accounts |
-| CreditEstimate | Estimate remaining credit duration |
+| CreditEstimate | Report gross raw-bank-balance runway at the aggregate ACTIVE rate (not reservation-aware or an auto-close forecast) |
 | CreditAddress | Derive credit address for a tenant |
 | WithdrawableAmount | Get withdrawable amount for a lease |
-| ProviderWithdrawable | Withdrawable amount across the provider's ACTIVE leases, one page at a time — sum `amounts` across pages until `pagination.next_key` is empty. `lease_count` counts only non-zero-withdrawable leases in the current page. |
+| ProviderWithdrawable | Ordered best-effort dry-run of the current ACTIVE-lease page. Failed lease simulations are discarded; successful virtual effects feed later leases, while no query state commits. The page is an execution estimate, not an additive snapshot. A forward page with `limit <= 100` is comparable to one provider-wide withdrawal. After it commits, query the next segment with the prior query `pagination.next_key` and withdraw it with the prior transaction `next_key`; the two cursor contracts are not interchangeable. `lease_count` matches the comparable transaction's `withdrawal_count`, including successful zero-transfer auto-closes. |
 | LeaseByCustomDomain | Look up the active or pending lease that has claimed a given custom_domain (and the `service_name` of the matching item) |
 
 **Events**: See [API Reference - Events](docs/API.md#events) for the complete list of events emitted by this module.
@@ -529,6 +596,10 @@ manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --key [next
 ```
 
 > `next_key` is a `bytes` value, so it appears base64-encoded in the JSON/CLI response. Pass that string verbatim to `--key` — it is not a raw UUID.
+> This is the transaction response cursor only. Do not substitute a
+> `ProviderWithdrawable` query's `pagination.next_key`; query pagination points
+> at the first unread entry, while the transaction resumes strictly after its
+> last processed lease.
 
 For detailed scalability analysis, time manipulation considerations, and future improvement plans, see [Architecture](docs/ARCHITECTURE.md#scalability-considerations).
 
@@ -538,45 +609,43 @@ The billing module performs comprehensive validation during genesis initializati
 
 ### Reservation Invariant Validation
 
-For tenants whose PENDING and ACTIVE leases all store
-`MinLeaseDurationAtCreation`, genesis validation enforces the exact credit
-reservation invariant:
+Version 4 genesis state enforces the exact consumable reservation invariant:
 
 ```
-CreditAccount.ReservedAmounts == SUM(GetLeaseReservationAmount(lease, params.MinLeaseDuration))
-                                 for all PENDING and ACTIVE leases of the tenant
+CreditAccount.ReservedAmounts
+    == SUM(Lease.Reservation.RemainingAmounts for live modern leases)
+       + CreditAccount.UnattributedReservedAmounts
 ```
 
-An imported tenant may also have a legacy lease whose
-`MinLeaseDurationAtCreation` is zero. Its historical minimum duration cannot be
-reconstructed after governance changes, so exact equality is not provable.
-This remains true after the legacy lease becomes terminal: older release logic
-used the then-current parameter and could leave a residual from the original
-reservation. For any tenant with such legacy history, import validation
-requires `ReservedAmounts` to be valid and at least cover the complete sum for
-all non-legacy PENDING and ACTIVE leases. Current lifecycle handling never
-guesses a legacy release from present-day params: it preserves the shared
-unknown aggregate while another live legacy lease remains, then reconciles to
-the exact non-legacy floor when the last one terminates. Exceeding the fixed
-per-tenant scan ceiling instead preserves the aggregate rather than failing the
-lifecycle transition or performing an unbounded scan; no later retry is
-assumed.
-`ValidateStrict()` is
-available for newly authored state and instead applies the current minimum
-duration to live legacy leases before requiring exact equality.
+A modern PENDING lease must retain its full nominal creation-time reservation;
+a modern ACTIVE lease may retain any non-negative amount up to nominal after
+settlement. Terminal and historical leases have empty lease-side tranches. `U`
+is permitted only while a live historical lease exists, and
+`unattributed_lease_count` must exactly equal the number of those live leases.
+
+The import path also accepts a complete pre-v4 aggregate-only (v2/v3) export (all
+`Lease.reservation` messages absent). Static validation preserves the earlier
+import-safe rules, then `InitGenesis` applies the same bank-backed,
+PENDING-first/Hamilton conversion as the v3→v4 module migration before its
+first billing-store write. Mixed absent/present reservation wrappers are
+rejected. Because static `validate-genesis` cannot inspect bank balances,
+operators must separately preflight that every tenant/denomination's bank
+balance and historical aggregate can fully back all reconstructible PENDING
+claims. The cutover never mints credit and fails if that condition is false.
 
 **Validation Steps:**
-1. Compute expected reservations by iterating all leases and summing reservation amounts for PENDING/ACTIVE leases per tenant
-2. Require exact equality for fully verifiable tenants; for tenants with legacy leases, require the stored amount to cover the known non-legacy portion
-3. Verify that every tenant with active reservations has a corresponding credit account
+1. Reject mixed pre-v4/v4 reservation representations
+2. For v4 state, verify every lease tranche, exact `R = sum(A) + U`, and the exact live historical cohort count
+3. For a pre-v4 export, validate the reconstructible aggregate floor and normalize it during `InitGenesis`
+4. Verify that every tenant with live reservation claims has a corresponding credit account
 
 **Error Examples:**
 ```
-# Mismatch between stored and calculated reservations
-invalid credit operation: credit account for manifest1abc... has reserved_amounts 500upwr but lease reservations sum to 600upwr
+# Mismatch between v4 aggregate and consumable allocations
+billing reservation invariant violated: credit account for manifest1abc... has reserved_amounts 500upwr but consumable reservations sum to 600upwr
 
-# Tenant with leases but missing credit account
-invalid credit operation: tenant manifest1def... has lease reservations totaling 1000upwr but no credit account
+# Tenant with live reservation claims but missing credit account
+billing reservation invariant violated: tenant manifest1def... has live reservation claims but no credit account
 ```
 
 ### Other Genesis Validations

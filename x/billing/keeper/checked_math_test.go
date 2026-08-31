@@ -54,10 +54,10 @@ func getLeaseReservationAmount(t *testing.T, lease *types.Lease, fallbackDuratio
 func calculateExpectedReservationsByTenant(
 	t *testing.T,
 	leases []types.Lease,
-	fallbackDuration uint64,
+	_ uint64,
 ) map[string]sdk.Coins {
 	t.Helper()
-	expected, err := types.CalculateExpectedReservationsByTenant(leases, fallbackDuration)
+	expected, err := types.CalculateAttributedReservationsByTenant(leases)
 	require.NoError(t, err)
 	return expected
 }

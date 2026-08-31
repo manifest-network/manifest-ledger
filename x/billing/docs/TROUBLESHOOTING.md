@@ -17,7 +17,7 @@ The credit account is created automatically when first funded.
 
 ### "insufficient credit balance"
 
-**Cause**: The check is against *available* credit (available = balance − reserved_amounts), where reserved_amounts is the sum of reservations held by the tenant's existing PENDING and ACTIVE leases — not the raw balance. A tenant whose balance covers the `min_lease_duration` requirement can still hit this error if existing leases have that credit reserved. The full error text includes both balance and reserved, e.g. `insufficient available credit for denom <denom>: need <x>, have <y> available (balance: <b>, reserved: <r>)`. Check the `available_balances` field of `query billing credit-account` rather than the raw balance.
+**Cause**: The check is against *available* credit (available = balance − reserved_amounts), not the raw balance. In v4, `reserved_amounts` is the exact remaining aggregate `R = sum(live modern remaining tranches) + unattributed_reserved_amounts`; it is not a fixed sum of original nominal reservations. A tenant whose balance covers the new lease's `min_lease_duration` requirement can still hit this error if existing leases have that credit reserved. The full error text includes both balance and reserved, e.g. `insufficient available credit for denom <denom>: need <x>, have <y> available (balance: <b>, reserved: <r>)`. Check the `available_balances` field of `query billing credit-account` rather than the raw balance.
 
 **Solution**: 
 1. Check current balances:
@@ -37,6 +37,33 @@ The credit account is created automatically when first funded.
 **Example**: For a lease with SKU1 (10 upwr/second) and SKU2 (5 umfx/second) with `min_lease_duration` of 3600 seconds:
 - Need at least 36,000 upwr
 - Need at least 18,000 umfx
+
+### v4 upgrade/import reports under-backed PENDING reservations
+
+**Cause**: The v4 cutover never mints or moves tokens. For every tenant and
+denomination, both the pre-v4 `reserved_amounts` aggregate and the bank balance
+at the derived credit address must fully cover all reconstructible PENDING
+nominal claims. PENDING claims are allocated first because they have not
+consumed any of their creation guarantee. If either source is smaller,
+migration or `InitGenesis` fails before writing v4 billing state.
+
+**Preflight and resolution**:
+
+1. Sum `locked_price × quantity × min_lease_duration_at_creation` for the
+   tenant's modern PENDING leases in each denomination.
+2. Confirm the pre-v4 aggregate is at least that sum. A normal sequential v2→v3
+   upgrade repairs the provable aggregate floor; investigate index/state
+   corruption if it still falls short.
+3. Confirm the derived credit address's bank balance is at least that sum and
+   fund any bank shortfall before the upgrade or genesis import.
+4. Re-run the preflight. Do not edit v4 per-lease allocations by hand: the
+   deterministic cutover funds PENDING first, then distributes the remaining
+   bank-backed old aggregate across ACTIVE and historical claims with
+   Hamilton's largest-remainder method.
+
+The static `validate-genesis` command cannot detect a bank shortfall because it
+has no bank keeper context; successful static validation does not replace this
+preflight.
 
 ### "invalid denomination for credit account"
 
@@ -329,7 +356,7 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 2. The overall transaction still succeeds
 3. No error is returned for a skipped lease — error skips are logged, normal (nothing-to-settle) skips are silent
 
-> **Arithmetic overflow does NOT skip the lease.** If an accrued charge exceeds the SDK's 256-bit `math.Int` representation (during price × quantity, elapsed-seconds multiplication, or same-denom aggregation), the silent settlement path clamps each overflowed denomination to its **entire remaining credit**, settles exact charges in unaffected denominations normally, and force-closes the lease. Long intervals do not overflow by themselves. Non-silent settlement and paths whose result cannot be balance-capped return `ErrArithmeticOverflow` (billing code 20) without changing state; withdrawable queries return the exact balance-capped amount.
+> **Arithmetic overflow does NOT skip the lease.** If an accrued charge exceeds the SDK's 256-bit `math.Int` representation (during price × quantity, elapsed-seconds multiplication, or same-denom aggregation), the silent settlement path clamps each overflowed denomination to this lease's spendable credit `B - (R - A)`, settles exact charges in unaffected denominations normally, and force-closes the lease. Long intervals do not overflow by themselves. Non-silent settlement and paths whose result cannot be spendable-capped return `ErrArithmeticOverflow` (billing code 20) without changing state; withdrawable queries return the exact spendable-capped amount.
 
 **Solution**:
 1. Use specific lease withdrawal for the problematic lease to see the actual error:
@@ -484,6 +511,25 @@ manifestd query billing lease 01912345-6789-7abc-8def-0123456789ab
 manifestd query billing credit-account manifest1abc...
 ```
 
+### CreditEstimate returns `ResourceExhausted`
+
+**Cause**: `CreditEstimate` is intentionally unpaginated. It accepts the
+conservative historical bound of 11,000 ACTIVE leases (the exact v2 reachable
+maximum is 10,999) and at most 100,000 active lease items. A stored count or
+item total above those bounds returns `ErrLeaseQueryLimitExceeded` (billing
+code 37) as gRPC `ResourceExhausted`; the response is never silently truncated.
+
+**Resolution**: A stored ACTIVE count above 11,000 is malformed; audit the
+credit account and its tenant/state index. More than 100,000 items can be valid
+state but is intentionally unsupported by this unpaginated aggregate query;
+use paginated lease queries for inspection. A count/index mismatch returns
+`ErrReservationInvariant` (billing code 36) as gRPC `Internal`, again without a
+partial response.
+
+`CreditAccount` is separate: bank balances are cursor-paginated (default 100,
+maximum 1000). Follow `pagination.next_key`; offset and `count_total` are
+rejected to keep each request bounded.
+
 ## Pending Lease Expiration
 
 ### Understanding Pending Expiration
@@ -496,7 +542,10 @@ strictly later block times are not.
 1. EndBlocker runs each block
 2. Checks pending leases against `created_at + pending_timeout`
 3. Expired leases transition to EXPIRED state
-4. Credit is unlocked (was never billed since lease was never active)
+4. The exact remaining reservation is released. Modern PENDING leases release
+   their full own tranche; a historical member decrements the persisted cohort
+   count in O(1), releasing the exact remaining shared `U` only when the final
+   member terminates. Bank credit itself was never billed while PENDING.
 5. `lease_expired` event is emitted (attributes: lease_uuid, tenant, provider_uuid, reason="pending_timeout")
 
 **Rate limiting**: Max 100 expirations per block to prevent DoS.
@@ -519,7 +568,7 @@ fails synchronously; rejection and cancellation remain available.
 
 ### Understanding Auto-Close
 
-Auto-close is triggered when an ACTIVE lease's projected accrual meets or exceeds the credit balance for any denom the lease bills in (accrued >= balance) — the balance does not have to reach exactly zero. When no time has elapsed since the last settlement, a zero balance in any lease denom triggers it. It happens during write operations only:
+Auto-close is triggered when an ACTIVE lease's projected accrual meets or exceeds that lease's spendable credit for any billed denomination. With tenant balance `B`, aggregate reservation `R`, and this lease's allocation `A`, the threshold is `B - (R - A)`, not the raw balance. When no time has elapsed since the last settlement, zero lease-spendable credit in any lease denomination triggers it. It happens during write operations only:
 - `Withdraw` - If credit exhausted after settlement
 - `CloseLease` - If credit was already exhausted
 
@@ -531,8 +580,8 @@ Auto-close is triggered when an ACTIVE lease's projected accrual meets or exceed
 ### Lease closed automatically
 
 **What happened**:
-1. During a Withdraw or CloseLease operation, the system detected zero credit
-2. Final settlement was performed (any remaining balance transferred to provider)
+1. During a Withdraw or CloseLease operation, the system detected exhausted lease-spendable credit
+2. Final settlement was performed (the lease's own tranche plus genuinely unreserved credit was transferred, without consuming other leases' reservations)
 3. The lease was closed
 
 **How to verify**:
@@ -569,11 +618,21 @@ Events to look for (the event depends on which write path triggered the auto-clo
   # Get real-time withdrawable for a provider's ACTIVE leases, one page at a time
   manifestd query billing provider-withdrawable [provider-uuid]
   ```
-  A single `provider-withdrawable` response is a partial, per-page total over the
-  provider's ACTIVE leases (page size default 100, max 1000). Loop, passing
-  `pagination.next_key` back as `--page-key`, and sum the per-page `amounts` until
-  `next_key` is empty. This query no longer has a `has_more` field — branch on
-  `len(pagination.next_key) > 0`.
+  A single `provider-withdrawable` response is an ordered execution estimate
+  for that page. Earlier leases consume page-local virtual tenant balances and
+  their own tranches, so shared credit is counted once within the page. Failed
+  lease simulations are discarded just as provider-wide withdrawal skips
+  lease-level failures; successful virtual effects feed later estimates, and
+  `lease_count` matches a comparable transaction's `withdrawal_count`, including
+  successful auto-closes that transfer zero. Do not
+  sum separately queried pages: each begins from current chain state and may
+  count the same tenant balance. Only a forward query with `limit <= 100` is
+  comparable to one provider-wide withdrawal. Commit that transaction, then
+  query the next segment with the prior query's `pagination.next_key`, while
+  the next transaction uses the prior transaction response's `next_key`.
+  Never interchange those inclusive-query and exclusive-transaction cursors.
+  Reverse pages and query limits above 100 are read-only estimates only;
+  offset and count-total requests are rejected.
 
 ## Parameter Issues
 

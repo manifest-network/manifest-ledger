@@ -150,6 +150,7 @@ func newLeaseValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Lea
 				ClosureReason:              lease.ClosureReason,
 				MetaHash:                   append([]byte(nil), lease.MetaHash...),
 				MinLeaseDurationAtCreation: lease.MinLeaseDurationAtCreation,
+				Reservation:                cloneLeaseReservation(lease.Reservation),
 			})
 		},
 		decodeStorage: func(encoded []byte) (types.Lease, error) {
@@ -178,6 +179,7 @@ func newLeaseValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Lea
 				ClosureReason:              stored.ClosureReason,
 				MetaHash:                   append([]byte(nil), stored.MetaHash...),
 				MinLeaseDurationAtCreation: stored.MinLeaseDurationAtCreation,
+				Reservation:                cloneLeaseReservation(stored.Reservation),
 			}, nil
 		},
 		normalizeLegacy: normalizeLeaseAddresses,
@@ -205,6 +207,11 @@ func newCreditAccountValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[t
 				ActiveLeaseCount:  account.ActiveLeaseCount,
 				PendingLeaseCount: account.PendingLeaseCount,
 				ReservedAmounts:   append(sdk.Coins(nil), account.ReservedAmounts...),
+				UnattributedReservedAmounts: append(
+					sdk.Coins(nil),
+					account.UnattributedReservedAmounts...,
+				),
+				UnattributedLeaseCount: account.UnattributedLeaseCount,
 			})
 		},
 		decodeStorage: func(encoded []byte) (types.CreditAccount, error) {
@@ -228,9 +235,23 @@ func newCreditAccountValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[t
 				ActiveLeaseCount:  stored.ActiveLeaseCount,
 				PendingLeaseCount: stored.PendingLeaseCount,
 				ReservedAmounts:   append(sdk.Coins(nil), stored.ReservedAmounts...),
+				UnattributedReservedAmounts: append(
+					sdk.Coins(nil),
+					stored.UnattributedReservedAmounts...,
+				),
+				UnattributedLeaseCount: stored.UnattributedLeaseCount,
 			}, nil
 		},
 		normalizeLegacy: normalizeCreditAccountAddresses,
+	}
+}
+
+func cloneLeaseReservation(reservation *types.LeaseReservation) *types.LeaseReservation {
+	if reservation == nil {
+		return nil
+	}
+	return &types.LeaseReservation{
+		RemainingAmounts: append(sdk.Coins(nil), reservation.RemainingAmounts...),
 	}
 }
 

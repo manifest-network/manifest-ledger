@@ -78,6 +78,16 @@ func (m Migrator) Migrate2to3(ctx sdk.Context) error {
 	return nil
 }
 
+// Migrate3to4 initializes consumable per-lease reservations without creating
+// credit. Modern PENDING reservations are reconstructible and therefore kept
+// in full. The bank-backed portion of the old aggregate that remains is shared
+// proportionally between modern ACTIVE nominal claims and one opaque live
+// legacy cohort. See migrateConsumableReservations for the deterministic
+// largest-remainder allocation and compatibility details.
+func (m Migrator) Migrate3to4(ctx sdk.Context) error {
+	return m.migrateConsumableReservations(ctx)
+}
+
 type leaseMigrationEntry struct {
 	key   string
 	value types.Lease
@@ -257,6 +267,7 @@ func (m Migrator) calculateCreditAccountMigrationRepair(
 	repair := creditAccountMigrationRepair{
 		knownReservationFloor: sdk.NewCoins(),
 	}
+	knownReservationCoins := make([]sdk.Coin, 0)
 
 	liveStates := [...]types.LeaseState{
 		types.LEASE_STATE_PENDING,
@@ -319,11 +330,7 @@ func (m Migrator) calculateCreditAccountMigrationRepair(
 				_ = iterator.Close()
 				return repair, errorsmod.Wrapf(err, "calculate billing lease %q reservation", leaseUUID)
 			}
-			repair.knownReservationFloor, err = types.SafeAddCoins(repair.knownReservationFloor, reservation)
-			if err != nil {
-				_ = iterator.Close()
-				return repair, errorsmod.Wrapf(err, "sum billing reservations for tenant %q", tenant.String())
-			}
+			knownReservationCoins = append(knownReservationCoins, reservation...)
 		}
 
 		if err := iterator.Close(); err != nil {
@@ -332,6 +339,11 @@ func (m Migrator) calculateCreditAccountMigrationRepair(
 				state.String(), tenant.String(), err,
 			)
 		}
+	}
+	var err error
+	repair.knownReservationFloor, err = types.SafeAggregateCoins(knownReservationCoins)
+	if err != nil {
+		return repair, errorsmod.Wrapf(err, "sum billing reservations for tenant %q", tenant.String())
 	}
 	return repair, nil
 }

@@ -134,6 +134,24 @@ message LeaseItem {
   string custom_domain = 5 [(gogoproto.jsontag) = "custom_domain,omitempty"];
 }
 
+// LeaseReservation tracks a modern lease's consumable remaining credit
+// guarantee. The containing Lease uses message presence to distinguish a
+// complete pre-v4 aggregate-only (v2/v3) genesis export from initialized v4
+// state.
+// Persisted historical and terminal leases have a present wrapper with empty
+// remaining_amounts; live historical guarantees are held in the credit
+// account's unattributed_reserved_amounts cohort instead.
+message LeaseReservation {
+  option (amino.name) = "lifted/billing/LeaseReservation";
+
+  // remaining_amounts is the unconsumed reservation, in canonical coin order.
+  repeated cosmos.base.v1beta1.Coin remaining_amounts = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "remaining_amounts"
+  ];
+}
+
 // Lease represents a billing lease between a tenant and provider.
 message Lease {
   option (amino.name) = "lifted/billing/Lease";
@@ -221,6 +239,13 @@ message Lease {
   // reservation = sum(locked_price × quantity) × min_lease_duration_at_creation
   uint64 min_lease_duration_at_creation = 15
       [(gogoproto.jsontag) = "min_lease_duration_at_creation,omitempty,string"];
+
+  // reservation contains this modern lease's remaining consumable guarantee.
+  // It is intentionally nullable only as a genesis-format marker: absence
+  // identifies pre-v4 aggregate-only (v2/v3) state before InitGenesis
+  // normalization. In persisted v4 state every lease has a present wrapper;
+  // terminal and historical leases have no remaining_amounts.
+  LeaseReservation reservation = 16 [(gogoproto.jsontag) = "reservation,omitempty"];
 }
 
 // CustomDomainTarget identifies which lease + item a custom_domain resolves to.
@@ -261,12 +286,30 @@ message CreditAccount {
   uint64 pending_lease_count = 4
       [(gogoproto.jsontag) = "pending_lease_count,omitempty,string"];
 
-  // reserved_amounts holds the sum of all credit reservations for active and pending leases.
-  // Each lease reserves: rate_per_second × min_lease_duration for each denom.
-  // This prevents overbooking by ensuring credit availability before lease creation.
+  // reserved_amounts is the exact remaining reservation aggregate R:
+  //   R = sum(reservation.remaining_amounts for live modern leases)
+  //       + unattributed_reserved_amounts.
+  // New leases initialize a nominal rate_per_second × min_lease_duration
+  // tranche, but settlement consumes it, so R is not a fixed nominal sum.
   repeated cosmos.base.v1beta1.Coin reserved_amounts = 5 [
     (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
     (gogoproto.jsontag) = "reserved_amounts"
   ];
+
+  // unattributed_reserved_amounts is the U subset of reserved_amounts shared
+  // by live historical leases whose individual guarantees cannot be
+  // reconstructed. It is consumed own-cohort-first and cleared when the last
+  // live historical member terminates.
+  repeated cosmos.base.v1beta1.Coin unattributed_reserved_amounts = 6 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
+    (gogoproto.jsontag) = "unattributed_reserved_amounts"
+  ];
+
+  // unattributed_lease_count is the number of live historical leases sharing
+  // unattributed_reserved_amounts. It remains meaningful when that reservation
+  // is empty and lets terminal transitions release the cohort in O(1).
+  uint64 unattributed_lease_count = 7
+      [(gogoproto.jsontag) = "unattributed_lease_count,omitempty,string"];
 }

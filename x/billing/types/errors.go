@@ -41,6 +41,9 @@ var (
 	ErrAmbiguousLeaseItem                    = errors.Register(ModuleName, 33, "lease item lookup is ambiguous")
 	ErrLeaseAcknowledgementDeadlineExceeded  = errors.Register(ModuleName, 34, "lease acknowledgement deadline exceeded")
 	ErrLeaseAcknowledgementActiveCapExceeded = errors.Register(ModuleName, 35, "lease acknowledgement active cap exceeded")
+	ErrReservationInvariant                  = errors.Register(ModuleName, 36, "billing reservation invariant violated")
+	ErrLeaseQueryLimitExceeded               = errors.Register(ModuleName, 37, "tenant lease query limit exceeded")
+	ErrReservationDenomLimitExceeded         = errors.Register(ModuleName, 38, "credit account reservation denomination limit exceeded")
 )
 
 // MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.
@@ -48,6 +51,12 @@ var (
 // denial-of-service attacks. The configurable max_items_per_lease param
 // must be <= this value.
 const MaxItemsPerLeaseHardLimit = 100
+
+// MaxReservedDenomsPerCreditAccount bounds the size of the aggregate coin
+// slices rewritten on every reservation lifecycle transition. Historical
+// accounts above the limit remain releasable, but new leases cannot increase
+// their denomination cardinality.
+const MaxReservedDenomsPerCreditAccount = 1000
 
 // MaxQuantityPerItem is the maximum quantity per lease item.
 // This bounds per-item work and state size. Prices are independently bounded by

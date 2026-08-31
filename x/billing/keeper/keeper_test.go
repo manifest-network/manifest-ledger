@@ -22,7 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"cosmossdk.io/collections"
-	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
@@ -109,6 +108,36 @@ func (f *testFixture) fundAccount(t *testing.T, addr sdk.AccAddress, coins sdk.C
 	require.NoError(t, err)
 	err = f.App.BankKeeper.SendCoinsFromModuleToAccount(f.Ctx, "mint", addr, coins)
 	require.NoError(t, err)
+}
+
+// creditAccountForLease returns the account snapshot required by reservation-
+// aware settlement helpers. Direct keeper tests must construct modern leases
+// explicitly so their fixtures cannot accidentally exercise legacy accounting.
+func (f *testFixture) creditAccountForLease(t *testing.T, lease *types.Lease) *types.CreditAccount {
+	t.Helper()
+	require.NotZero(t, lease.MinLeaseDurationAtCreation)
+	require.NotNil(t, lease.Reservation)
+
+	account, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, lease.Tenant)
+	if err == nil {
+		return &account
+	}
+	require.ErrorIs(t, err, types.ErrCreditAccountNotFound)
+
+	tenant, err := sdk.AccAddressFromBech32(lease.Tenant)
+	require.NoError(t, err)
+	account = types.CreditAccount{
+		Tenant:          tenant.String(),
+		CreditAddress:   types.DeriveCreditAddress(tenant).String(),
+		ReservedAmounts: append(sdk.Coins(nil), lease.Reservation.RemainingAmounts...),
+	}
+	switch lease.State {
+	case types.LEASE_STATE_ACTIVE:
+		account.ActiveLeaseCount = 1
+	case types.LEASE_STATE_PENDING:
+		account.PendingLeaseCount = 1
+	}
+	return &account
 }
 
 // createTestProvider creates a provider in the SKU module for testing.
@@ -675,8 +704,9 @@ func TestExportGenesis(t *testing.T) {
 
 	// Create a credit account
 	ca := types.CreditAccount{
-		Tenant:        tenant.String(),
-		CreditAddress: creditAddr.String(),
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddr.String(),
+		ActiveLeaseCount: 1,
 	}
 	err = k.SetCreditAccount(f.Ctx, ca)
 	require.NoError(t, err)
@@ -693,8 +723,10 @@ func TestExportGenesis(t *testing.T) {
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(50)),
 			},
 		},
-		State:     types.LEASE_STATE_ACTIVE,
-		CreatedAt: f.Ctx.BlockTime(),
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
@@ -794,8 +826,10 @@ func TestGetLease(t *testing.T) {
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 			},
 		},
-		State:     types.LEASE_STATE_ACTIVE,
-		CreatedAt: f.Ctx.BlockTime(),
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
@@ -832,8 +866,10 @@ func TestGetAllLeases(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -866,8 +902,10 @@ func TestGetLeasesByTenant(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -886,8 +924,10 @@ func TestGetLeasesByTenant(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -927,8 +967,10 @@ func TestGetLeasesByProviderID(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -947,8 +989,10 @@ func TestGetLeasesByProviderID(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -995,8 +1039,10 @@ func TestCountActiveLeasesByTenant(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -1778,19 +1824,21 @@ func TestShouldAutoCloseLease(t *testing.T) {
 
 	// Create an active lease with zero credit balance
 	lease := types.Lease{
-		Uuid:          "lease-1",
-		Tenant:        tenant.String(),
-		ProviderUuid:  provider.Uuid,
-		Items:         []types.LeaseItem{{SkuUuid: "sku-1", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
+		Uuid:                       "lease-1",
+		Tenant:                     tenant.String(),
+		ProviderUuid:               provider.Uuid,
+		Items:                      []types.LeaseItem{{SkuUuid: "sku-1", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		LastSettledAt:              f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
 	// Run ShouldAutoCloseLease - should return true (lease should be closed due to zero balance)
-	shouldClose, closeTime, err := k.ShouldAutoCloseLease(f.Ctx, &lease)
+	shouldClose, closeTime, err := k.ShouldAutoCloseLease(f.Ctx, &lease, f.creditAccountForLease(t, &lease))
 	require.NoError(t, err)
 	require.True(t, shouldClose)
 	require.Equal(t, f.Ctx.BlockTime(), closeTime)
@@ -1816,37 +1864,22 @@ func TestShouldAutoCloseLease_InvalidStoredDenomDoesNotPanic(t *testing.T) {
 			Quantity:    1,
 			LockedPrice: sdk.Coin{Denom: "!", Amount: sdkmath.OneInt()},
 		}},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		LastSettledAt:              f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 
 	require.NotPanics(t, func() {
-		_, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease)
+		_, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease, f.creditAccountForLease(t, &lease))
 		require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
 	})
 }
 
-func TestReleaseLegacyReservation_PreservesArithmeticErrorCode(t *testing.T) {
+func TestReleaseLeaseReservation_RejectsMissingWrapper(t *testing.T) {
 	f := initFixture(t)
 	tenant := f.TestAccs[0]
-	now := f.Ctx.BlockTime()
-	modernLease := types.Lease{
-		Uuid:         testLeaseUUID2,
-		Tenant:       tenant.String(),
-		ProviderUuid: testProviderUUID,
-		Items: []types.LeaseItem{{
-			SkuUuid:     testSKUUUID,
-			Quantity:    2,
-			LockedPrice: sdk.NewCoin(testDenom, highBitBillingTestInt()),
-		}},
-		State:                      types.LEASE_STATE_ACTIVE,
-		CreatedAt:                  now,
-		LastSettledAt:              now,
-		MinLeaseDurationAtCreation: 1,
-	}
-	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, modernLease))
-
 	legacyLease := types.Lease{
 		Uuid:         testLeaseUUID1,
 		Tenant:       tenant.String(),
@@ -1855,10 +1888,7 @@ func TestReleaseLegacyReservation_PreservesArithmeticErrorCode(t *testing.T) {
 	}
 	creditAccount := types.CreditAccount{Tenant: tenant.String()}
 	err := f.App.BillingKeeper.ReleaseLeaseReservation(f.Ctx, &creditAccount, &legacyLease)
-	require.ErrorIs(t, err, types.ErrArithmeticOverflow)
-	codespace, code, _ := errorsmod.ABCIInfo(err, false)
-	require.Equal(t, types.ModuleName, codespace)
-	require.Equal(t, uint32(20), code)
+	require.ErrorIs(t, err, types.ErrReservationInvariant)
 }
 
 func TestShouldAutoCloseLease_WithBalance(t *testing.T) {
@@ -1888,19 +1918,23 @@ func TestShouldAutoCloseLease_WithBalance(t *testing.T) {
 
 	// Create an active lease
 	lease := types.Lease{
-		Uuid:          "lease-1",
-		Tenant:        tenant.String(),
-		ProviderUuid:  provider.Uuid,
-		Items:         []types.LeaseItem{{SkuUuid: "sku-1", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
+		Uuid:                       "lease-1",
+		Tenant:                     tenant.String(),
+		ProviderUuid:               provider.Uuid,
+		Items:                      []types.LeaseItem{{SkuUuid: "sku-1", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		LastSettledAt:              f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 1,
+		Reservation: &types.LeaseReservation{
+			RemainingAmounts: sdk.NewCoins(),
+		},
 	}
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
 	// Run ShouldAutoCloseLease - should NOT close the lease (has balance)
-	shouldClose, _, err := k.ShouldAutoCloseLease(f.Ctx, &lease)
+	shouldClose, _, err := k.ShouldAutoCloseLease(f.Ctx, &lease, f.creditAccountForLease(t, &lease))
 	require.NoError(t, err)
 	require.False(t, shouldClose)
 
@@ -1929,20 +1963,22 @@ func TestShouldAutoCloseLease_InactiveLease(t *testing.T) {
 	// Create an inactive lease (already closed)
 	closedAt := f.Ctx.BlockTime()
 	lease := types.Lease{
-		Uuid:          "lease-1",
-		Tenant:        tenant.String(),
-		ProviderUuid:  "provider-1",
-		Items:         []types.LeaseItem{{SkuUuid: "sku-1", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
-		State:         types.LEASE_STATE_CLOSED,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
-		ClosedAt:      &closedAt,
+		Uuid:                       "lease-1",
+		Tenant:                     tenant.String(),
+		ProviderUuid:               "provider-1",
+		Items:                      []types.LeaseItem{{SkuUuid: "sku-1", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
+		State:                      types.LEASE_STATE_CLOSED,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		LastSettledAt:              f.Ctx.BlockTime(),
+		ClosedAt:                   &closedAt,
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
 	// Run ShouldAutoCloseLease - should NOT try to close inactive leases
-	shouldClose, _, err := k.ShouldAutoCloseLease(f.Ctx, &lease)
+	shouldClose, _, err := k.ShouldAutoCloseLease(f.Ctx, &lease, f.creditAccountForLease(t, &lease))
 	require.NoError(t, err)
 	require.False(t, shouldClose)
 }
@@ -1973,15 +2009,17 @@ func TestShouldAutoCloseLease_FutureLastSettledAt(t *testing.T) {
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(3600)),
 			},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     blockTime,
-		LastSettledAt: futureTime, // Future timestamp - data corruption
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  blockTime,
+		LastSettledAt:              futureTime, // Future timestamp - data corruption
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err := k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
 	// Run ShouldAutoCloseLease - should return an error due to future LastSettledAt
-	shouldClose, _, err := k.ShouldAutoCloseLease(f.Ctx, &lease)
+	shouldClose, _, err := k.ShouldAutoCloseLease(f.Ctx, &lease, f.creditAccountForLease(t, &lease))
 	require.Error(t, err, "should return error when LastSettledAt is in the future")
 	require.Contains(t, err.Error(), "in the future")
 	require.Contains(t, err.Error(), lease.Uuid)
@@ -2019,9 +2057,11 @@ func TestGetLeasesByState(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:         state,
-			CreatedAt:     f.Ctx.BlockTime(),
-			LastSettledAt: f.Ctx.BlockTime(),
+			State:                      state,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			LastSettledAt:              f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)

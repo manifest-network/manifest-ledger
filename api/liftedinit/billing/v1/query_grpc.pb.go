@@ -54,13 +54,20 @@ type QueryClient interface {
 	CreditAddress(ctx context.Context, in *QueryCreditAddressRequest, opts ...grpc.CallOption) (*QueryCreditAddressResponse, error)
 	// WithdrawableAmount queries the amount available for provider withdrawal from a lease.
 	WithdrawableAmount(ctx context.Context, in *QueryWithdrawableAmountRequest, opts ...grpc.CallOption) (*QueryWithdrawableAmountResponse, error)
-	// ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
+	// ProviderWithdrawable dry-runs one ordered page of the provider's ACTIVE
+	// leases against page-local virtual tenant balances and reservations. Failed
+	// per-lease simulations are discarded, successful virtual effects feed later
+	// leases, and no query state commits. Pages are execution estimates, not
+	// additive provider-wide snapshots.
 	ProviderWithdrawable(ctx context.Context, in *QueryProviderWithdrawableRequest, opts ...grpc.CallOption) (*QueryProviderWithdrawableResponse, error)
 	// CreditAccounts queries all credit accounts with pagination.
 	CreditAccounts(ctx context.Context, in *QueryCreditAccountsRequest, opts ...grpc.CallOption) (*QueryCreditAccountsResponse, error)
 	// LeasesBySKU queries leases by SKU UUID.
 	LeasesBySKU(ctx context.Context, in *QueryLeasesBySKURequest, opts ...grpc.CallOption) (*QueryLeasesBySKUResponse, error)
-	// CreditEstimate estimates remaining lease duration for a tenant.
+	// CreditEstimate reports gross raw-bank-balance runway at a tenant's current
+	// aggregate ACTIVE lease rate. It is not reservation-aware or an auto-close
+	// forecast. Requests above 11,000 ACTIVE leases or 100,000 total lease items
+	// fail with ResourceExhausted instead of returning a partial result.
 	CreditEstimate(ctx context.Context, in *QueryCreditEstimateRequest, opts ...grpc.CallOption) (*QueryCreditEstimateResponse, error)
 	// LeaseByCustomDomain returns the active or pending lease that has claimed
 	// the given custom_domain, if any.
@@ -212,13 +219,20 @@ type QueryServer interface {
 	CreditAddress(context.Context, *QueryCreditAddressRequest) (*QueryCreditAddressResponse, error)
 	// WithdrawableAmount queries the amount available for provider withdrawal from a lease.
 	WithdrawableAmount(context.Context, *QueryWithdrawableAmountRequest) (*QueryWithdrawableAmountResponse, error)
-	// ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
+	// ProviderWithdrawable dry-runs one ordered page of the provider's ACTIVE
+	// leases against page-local virtual tenant balances and reservations. Failed
+	// per-lease simulations are discarded, successful virtual effects feed later
+	// leases, and no query state commits. Pages are execution estimates, not
+	// additive provider-wide snapshots.
 	ProviderWithdrawable(context.Context, *QueryProviderWithdrawableRequest) (*QueryProviderWithdrawableResponse, error)
 	// CreditAccounts queries all credit accounts with pagination.
 	CreditAccounts(context.Context, *QueryCreditAccountsRequest) (*QueryCreditAccountsResponse, error)
 	// LeasesBySKU queries leases by SKU UUID.
 	LeasesBySKU(context.Context, *QueryLeasesBySKURequest) (*QueryLeasesBySKUResponse, error)
-	// CreditEstimate estimates remaining lease duration for a tenant.
+	// CreditEstimate reports gross raw-bank-balance runway at a tenant's current
+	// aggregate ACTIVE lease rate. It is not reservation-aware or an auto-close
+	// forecast. Requests above 11,000 ACTIVE leases or 100,000 total lease items
+	// fail with ResourceExhausted instead of returning a partial result.
 	CreditEstimate(context.Context, *QueryCreditEstimateRequest) (*QueryCreditEstimateResponse, error)
 	// LeaseByCustomDomain returns the active or pending lease that has claimed
 	// the given custom_domain, if any.

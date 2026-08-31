@@ -37,6 +37,12 @@ const MaxLeasesPerTenantUpperBound = uint64(10_000)
 // MaxPendingLeasesPerTenantUpperBound is the maximum allowed value for max_pending_leases_per_tenant (1,000).
 const MaxPendingLeasesPerTenantUpperBound = uint64(1_000)
 
+// MaxActiveLeasesPerTenantStateUpperBound is a conservative bound for v2
+// ACTIVE state, including acknowledgement overshoot and Bech32-alias count
+// drift. Any ACTIVE undercount caused an equal phantom PENDING count, so the
+// actual ACTIVE population remained bounded by the two configured maxima.
+const MaxActiveLeasesPerTenantStateUpperBound = MaxLeasesPerTenantUpperBound + MaxPendingLeasesPerTenantUpperBound
+
 // MaxMinLeaseDuration is the maximum allowed value for min_lease_duration (30 days).
 const MaxMinLeaseDuration = uint64(30 * 24 * 3600)
 

@@ -278,6 +278,10 @@ func TestMigratorMigrate2to3RepairsReservationFloorAndLeaseCounts(t *testing.T) 
 			require.Equal(t, repairedRawAccount, store.Get(accountKey))
 
 			if tc.legacyState == types.LEASE_STATE_PENDING {
+				// The live network upgrades from v2 through both registered
+				// migrations. Lifecycle code requires the reservation wrapper
+				// initialized by v3→v4 before this legacy lease can expire.
+				require.NoError(t, keeper.NewMigrator(f.App.BillingKeeper).Migrate3to4(f.Ctx))
 				migratedLegacy, err := f.App.BillingKeeper.GetLease(f.Ctx, legacyLease.Uuid)
 				require.NoError(t, err)
 				require.NoError(t, f.App.BillingKeeper.ExpirePendingLease(f.Ctx, &migratedLegacy))

@@ -44,13 +44,18 @@ func TestStorageValueCodecsPersistRawAddressBytes(t *testing.T) {
 		AcknowledgedAt:             &now,
 		MetaHash:                   []byte{0xaa, 0xbb},
 		MinLeaseDurationAtCreation: 3600,
+		Reservation: &types.LeaseReservation{
+			RemainingAmounts: sdk.NewCoins(sdk.NewCoin("umfx", sdkmath.NewInt(30))),
+		},
 	}
 	account := types.CreditAccount{
-		Tenant:            tenant.String(),
-		CreditAddress:     credit.String(),
-		ActiveLeaseCount:  1,
-		PendingLeaseCount: 2,
-		ReservedAmounts:   sdk.NewCoins(sdk.NewCoin("umfx", sdkmath.NewInt(50))),
+		Tenant:                      tenant.String(),
+		CreditAddress:               credit.String(),
+		ActiveLeaseCount:            1,
+		PendingLeaseCount:           2,
+		ReservedAmounts:             sdk.NewCoins(sdk.NewCoin("umfx", sdkmath.NewInt(50))),
+		UnattributedReservedAmounts: sdk.NewCoins(sdk.NewCoin("umfx", sdkmath.NewInt(20))),
+		UnattributedLeaseCount:      3,
 	}
 
 	t.Run("params", func(t *testing.T) {
@@ -93,6 +98,65 @@ func TestStorageValueCodecsPersistRawAddressBytes(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, account, decoded)
 	})
+}
+
+func TestLeaseStorageValueCodecPreservesReservationPresence(t *testing.T) {
+	appparams.SetAddressPrefixes()
+	cfg := moduletestutil.MakeTestEncodingConfig()
+	tenant := sdk.AccAddress(bytes.Repeat([]byte{0x55}, 20))
+	codec := newLeaseValueCodec(cfg.Codec)
+
+	tests := []struct {
+		name        string
+		reservation *types.LeaseReservation
+	}{
+		{
+			name:        "historical absence",
+			reservation: nil,
+		},
+		{
+			name: "initialized empty",
+			reservation: &types.LeaseReservation{
+				RemainingAmounts: sdk.NewCoins(),
+			},
+		},
+		{
+			name: "initialized nonempty",
+			reservation: &types.LeaseReservation{
+				RemainingAmounts: sdk.NewCoins(sdk.NewCoin("umfx", sdkmath.NewInt(7))),
+			},
+		},
+	}
+
+	var absentEncoding, initializedEmptyEncoding []byte
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			lease := types.Lease{
+				Tenant:      tenant.String(),
+				Reservation: tc.reservation,
+			}
+
+			encoded, err := codec.Encode(lease)
+			require.NoError(t, err)
+			decoded, err := codec.Decode(encoded)
+			require.NoError(t, err)
+
+			if tc.reservation == nil {
+				require.Nil(t, decoded.Reservation)
+				absentEncoding = bytes.Clone(encoded)
+				return
+			}
+			require.NotNil(t, decoded.Reservation)
+			require.True(t, tc.reservation.RemainingAmounts.Equal(decoded.Reservation.RemainingAmounts))
+			if tc.reservation.RemainingAmounts.IsZero() {
+				initializedEmptyEncoding = bytes.Clone(encoded)
+			}
+		})
+	}
+
+	require.NotEqual(t, absentEncoding, initializedEmptyEncoding,
+		"a present empty reservation must have a distinct disk encoding from an absent legacy reservation",
+	)
 }
 
 func TestStorageValueCodecsCanonicalizeEquivalentBech32(t *testing.T) {
@@ -169,6 +233,7 @@ func TestStorageValueCodecsDecodeLegacyAndRejectCorruptVersionedValues(t *testin
 		decoded, err := codec.Decode(legacy)
 		require.NoError(t, err)
 		require.Equal(t, tenant.String(), decoded.Tenant)
+		require.Nil(t, decoded.Reservation)
 		_, err = codec.Decode(append([]byte(leaseStoragePrefix), 0xff))
 		require.Error(t, err)
 	})
@@ -186,6 +251,8 @@ func TestStorageValueCodecsDecodeLegacyAndRejectCorruptVersionedValues(t *testin
 		require.NoError(t, err)
 		require.Equal(t, tenant.String(), decoded.Tenant)
 		require.Equal(t, credit.String(), decoded.CreditAddress)
+		require.Empty(t, decoded.UnattributedReservedAmounts)
+		require.Zero(t, decoded.UnattributedLeaseCount)
 		_, err = codec.Decode(append([]byte(creditAccountStoragePrefix), 0xff))
 		require.Error(t, err)
 	})

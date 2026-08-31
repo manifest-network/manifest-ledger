@@ -39,7 +39,7 @@ This document records key design decisions made during the development of the x/
 
 **Trade-offs:**
 - Lease state queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state
-- Use `WithdrawableAmount` or `ProviderWithdrawable` queries for real-time accrued amounts
+- Use `WithdrawableAmount` for one lease or `ProviderWithdrawable` for an ordered page-local execution estimate. The provider query mirrors transaction best-effort semantics: it discards a failed lease simulation and carries successful virtual effects into later leases, but commits no query state. Provider pages are not additive because separate pages can share tenant balances. Only a forward query with `limit <= 100` is comparable to one provider-wide withdrawal. After commit, advance the query with the prior query response's first-unread cursor and the transaction with the prior transaction response's last-processed cursor; never interchange them.
 - Auto-close only happens during write operations (CloseLease, Withdraw)
 - Provider withdrawal requires explicit action
 
@@ -199,12 +199,17 @@ See `x/billing/types/credit.go` for the implementation.
 - Settlement transfers happen per-denom
 - Credit accounts are regular bank accounts that can hold any denom
 - No send restrictions on credit accounts (any token can be sent)
+- Bank balances remain unrestricted and cursor-paginated in queries. Separately,
+  new leases may not grow the reservation aggregate beyond 1,000 denoms because
+  that coin set is rewritten on every reservation lifecycle transition.
 
 **Trade-offs:**
 - Lease creation validation more complex (check each denom)
 - Settlement must aggregate and transfer per-denom
 - Users must fund credit with correct denoms for their desired SKUs
 - No automatic denom conversion
+- Historical v2 reservation aggregates above the new cardinality limit remain
+  releasable and readable, but cannot grow through new lease denominations
 
 **Example:**
 ```
@@ -346,10 +351,35 @@ for each denom in reservation:
     }
 ```
 
-The check is against *available* credit (balance minus existing reservations), evaluated
-per-denom, not against the raw balance as a single scalar. On success the reservation is
-added to `CreditAccount.ReservedAmounts` and `min_lease_duration_at_creation` is snapshotted
-on the lease so the reservation can be released consistently later.
+The check is against *available* credit (balance minus existing reservations),
+evaluated per denomination, not against the raw balance as a single scalar. On
+success the nominal amount initializes `Lease.reservation.remaining_amounts`
+and is added to `CreditAccount.reserved_amounts`.
+
+The runtime model deliberately stores the consumable remainder rather than
+recomputing a fixed nominal sum:
+
+```
+R = SUM(A for each live modern lease) + U
+```
+
+`A` is a modern lease's remaining tranche and `U` is the explicit shared
+allocation for live historical leases whose individual guarantees cannot be
+reconstructed. Settlement protects other leases by limiting this lease to
+`B - (R - A)`, where `B` is the tenant balance. The amount funded from `A` is
+subtracted from both `A` and `R`; a terminal transition releases exactly the
+remaining `A`. This own-tranche-first design lets a lease use its guarantee and
+genuinely unreserved credit without consuming another lease's guarantee.
+
+The account also stores `unattributed_lease_count`, the exact number of live
+historical leases sharing `U`. Historical terminal transitions decrement this
+counter in O(1) and release the exact remaining `U` when it reaches zero. The
+counter remains meaningful when `U` has been fully consumed, avoiding a
+consensus-time scan or inference from coin emptiness.
+
+`min_lease_duration_at_creation` remains the nominal cap and governance-change
+snapshot. It is not the amount released after settlement has consumed part of
+the tranche.
 
 ## Decision 15: UUIDv7 for Identifiers
 
@@ -497,12 +527,20 @@ use EndBlocker to automatically expire PENDING leases after that deadline.
 ### Migration Considerations
 
 When implementing breaking changes:
-- Settle all active leases before migration
 - Preserve credit account balances
 - Maintain lease history
 - Update indexes atomically
 - Version proto messages appropriately
 - Handle PENDING leases during upgrade (either expire or migrate to new state)
+- For the v2→v3→v4 reservation cutover, do not settle or mint implicitly:
+  v2→v3 repairs byte identity, counts, and the provable aggregate floor;
+  v3→v4 fully funds reconstructible PENDING claims first and distributes the
+  remaining bank-backed old aggregate across ACTIVE and historical claims with
+  deterministic Hamilton allocation, recording the exact historical cohort
+  size for O(1) terminal release.
+- Preflight every tenant/denomination before v4: both the old aggregate and
+  bank balance must cover the complete PENDING nominal sum. Fund bank
+  shortfalls before the upgrade; the no-mint migration fails closed otherwise.
 
 ## Related Documentation
 

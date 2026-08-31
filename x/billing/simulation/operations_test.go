@@ -32,11 +32,13 @@ func TestSimulateMsgAcknowledgeLeaseFiltersUnacknowledgeableLeases(t *testing.T)
 	atCapTenant := tenant(2)
 	lease := func(uuid string, owner sdk.AccAddress, state billingtypes.LeaseState, createdAt time.Time) billingtypes.Lease {
 		return billingtypes.Lease{
-			Uuid:         uuid,
-			Tenant:       owner.String(),
-			ProviderUuid: "01912345-6789-7abc-8def-0123456789ba",
-			State:        state,
-			CreatedAt:    createdAt,
+			Uuid:                       uuid,
+			Tenant:                     owner.String(),
+			ProviderUuid:               "01912345-6789-7abc-8def-0123456789ba",
+			State:                      state,
+			CreatedAt:                  createdAt,
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &billingtypes.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 	}
 

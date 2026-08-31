@@ -1,12 +1,64 @@
 package types
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
+
+// SafeAggregateCoins canonicalizes and sums an arbitrarily ordered collection
+// of positive coins. It sorts a copy of the input and performs one checked
+// linear fold, avoiding both nondeterministic map iteration and the quadratic
+// cost of repeatedly merging a growing sdk.Coins value.
+func SafeAggregateCoins(coins []sdk.Coin) (sdk.Coins, error) {
+	if len(coins) == 0 {
+		return sdk.Coins{}, nil
+	}
+
+	canonical := slices.Clone(coins)
+	for index, coin := range canonical {
+		if err := coin.Validate(); err != nil {
+			return nil, ErrInvalidCreditOperation.Wrapf("invalid coin %d: %s", index, err)
+		}
+		if !coin.IsPositive() {
+			return nil, ErrInvalidCreditOperation.Wrapf(
+				"coin %d for denom %q must be positive",
+				index,
+				coin.Denom,
+			)
+		}
+	}
+
+	slices.SortFunc(canonical, func(left, right sdk.Coin) int {
+		return cmp.Compare(left.Denom, right.Denom)
+	})
+
+	result := make(sdk.Coins, 0, len(canonical))
+	for _, coin := range canonical {
+		last := len(result) - 1
+		if last < 0 || result[last].Denom != coin.Denom {
+			result = append(result, coin)
+			continue
+		}
+
+		amount, err := result[last].Amount.SafeAdd(coin.Amount)
+		if err != nil {
+			return nil, ErrArithmeticOverflow.Wrapf(
+				"cannot aggregate %s amounts %s and %s",
+				coin.Denom,
+				result[last].Amount.String(),
+				coin.Amount.String(),
+			)
+		}
+		result[last].Amount = amount
+	}
+
+	return result, nil
+}
 
 // ValidateLeaseItemPricing applies the business invariants shared by
 // reservation, accrual, import, migration, and query paths. Locked prices are
@@ -94,6 +146,70 @@ func SafeAddCoins(left, right sdk.Coins) (sdk.Coins, error) {
 
 	result = append(result, left[leftIndex:]...)
 	result = append(result, right[rightIndex:]...)
+	if result == nil {
+		return sdk.Coins{}, nil
+	}
+	return result, nil
+}
+
+// SafeSubtractCoins subtracts right from left in denomination order. It
+// rejects malformed inputs and denomination underflow instead of calling
+// sdk.Coins.Sub, which panics on underflow, and preserves typed billing errors
+// for malformed or overflowing consensus state.
+func SafeSubtractCoins(left, right sdk.Coins) (sdk.Coins, error) {
+	if err := validateCanonicalCoins(left); err != nil {
+		return nil, ErrInvalidCreditOperation.Wrapf("invalid left coin set: %s", err)
+	}
+	if err := validateCanonicalCoins(right); err != nil {
+		return nil, ErrInvalidCreditOperation.Wrapf("invalid right coin set: %s", err)
+	}
+
+	result := make(sdk.Coins, 0, len(left))
+	leftIndex, rightIndex := 0, 0
+	for leftIndex < len(left) && rightIndex < len(right) {
+		leftCoin := left[leftIndex]
+		rightCoin := right[rightIndex]
+
+		switch {
+		case leftCoin.Denom < rightCoin.Denom:
+			result = append(result, leftCoin)
+			leftIndex++
+		case leftCoin.Denom > rightCoin.Denom:
+			return nil, ErrInvalidCreditOperation.Wrapf(
+				"cannot subtract absent denom %s amount %s",
+				rightCoin.Denom, rightCoin.Amount.String(),
+			)
+		default:
+			if leftCoin.Amount.LT(rightCoin.Amount) {
+				return nil, ErrInvalidCreditOperation.Wrapf(
+					"cannot subtract %s amount %s from %s",
+					leftCoin.Denom, rightCoin.Amount.String(), leftCoin.Amount.String(),
+				)
+			}
+			amount, err := leftCoin.Amount.SafeSub(rightCoin.Amount)
+			if err != nil {
+				return nil, ErrArithmeticOverflow.Wrapf(
+					"cannot subtract %s amount %s from %s",
+					leftCoin.Denom, rightCoin.Amount.String(), leftCoin.Amount.String(),
+				)
+			}
+			if amount.IsPositive() {
+				result = append(result, sdk.Coin{Denom: leftCoin.Denom, Amount: amount})
+			}
+			leftIndex++
+			rightIndex++
+		}
+	}
+
+	if rightIndex < len(right) {
+		rightCoin := right[rightIndex]
+		return nil, ErrInvalidCreditOperation.Wrapf(
+			"cannot subtract absent denom %s amount %s",
+			rightCoin.Denom, rightCoin.Amount.String(),
+		)
+	}
+
+	result = append(result, left[leftIndex:]...)
 	if result == nil {
 		return sdk.Coins{}, nil
 	}

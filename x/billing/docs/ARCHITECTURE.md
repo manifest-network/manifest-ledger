@@ -50,6 +50,8 @@ erDiagram
         uint64 active_lease_count
         uint64 pending_lease_count
         Coins reserved_amounts
+        Coins unattributed_reserved_amounts
+        uint64 unattributed_lease_count
     }
     
     LEASE {
@@ -67,6 +69,7 @@ erDiagram
         string closure_reason
         bytes meta_hash
         uint64 min_lease_duration_at_creation
+        LeaseReservation reservation
     }
     
     LEASE_ITEM {
@@ -88,13 +91,29 @@ erDiagram
 
 Credit accounts hold pre-funded tokens for lease payments:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `tenant` | `string` | Tenant's original address (primary key) |
-| `credit_address` | `string` | Derived credit account address |
+| Field | Public/API Type | Description |
+|-------|-----------------|-------------|
+| `tenant` | Bech32 `string` | Tenant's original address; raw SDK address bytes on disk |
+| `credit_address` | Bech32 `string` | Derived credit account address; raw SDK address bytes on disk |
 | `active_lease_count` | `uint64` | Number of ACTIVE leases |
 | `pending_lease_count` | `uint64` | Number of PENDING leases |
-| `reserved_amounts` | `[]Coin` | Sum of all credit reservations for active and pending leases. Each lease reserves `rate_per_second × min_lease_duration` per denom to prevent overbooking. |
+| `reserved_amounts` | `[]Coin` | Exact aggregate `R`: live modern remaining tranches plus the unattributed historical cohort. |
+| `unattributed_reserved_amounts` | `[]Coin` | `U`, the subset of `R` shared by live historical leases whose individual guarantees cannot be reconstructed. |
+| `unattributed_lease_count` | `uint64` | Exact number of live historical leases sharing `U`; maintained even when `U` is empty. |
+
+The version 4 reservation invariant is evaluated per tenant and denomination:
+
+```
+R = SUM(A for each live modern lease) + U
+```
+
+`A` is `Lease.reservation.remaining_amounts`. It is consumable state, so an
+ACTIVE lease's `A` can be lower than its nominal creation reservation. Modern
+PENDING leases retain the full nominal amount; terminal and historical leases
+have initialized empty lease-side tranches. `unattributed_lease_count` equals
+the number of live historical leases exactly. `U` may be non-zero only while
+that count is non-zero, although the count can remain non-zero after the cohort
+allocation has been fully consumed.
 
 **Address Derivation:**
 ```go
@@ -110,10 +129,10 @@ See `x/billing/types/credit.go` for the implementation.
 
 Leases represent resource rentals with full lifecycle tracking:
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field | Public/API Type | Description |
+|-------|-----------------|-------------|
 | `uuid` | `string` | UUIDv7 unique identifier |
-| `tenant` | `string` | Tenant address |
+| `tenant` | Bech32 `string` | Tenant address; raw SDK address bytes on disk |
 | `provider_uuid` | `string` | Provider UUID (denormalized for efficient querying) |
 | `items` | `[]LeaseItem` | List of SKU items in this lease |
 | `state` | `LeaseState` | PENDING, ACTIVE, CLOSED, REJECTED, or EXPIRED |
@@ -127,6 +146,7 @@ Leases represent resource rentals with full lifecycle tracking:
 | `closure_reason` | `string` | Explanation for why the lease was closed (max 256 chars) |
 | `meta_hash` | `bytes` | Optional hash/reference to off-chain deployment data (max 64 bytes, immutable) |
 | `min_lease_duration_at_creation` | `uint64` | The `min_lease_duration` parameter value at lease creation time, for consistent reservation calculation |
+| `reservation` | `*LeaseReservation` | Remaining consumable tranche. Presence is required in persisted v4 state; absence marks a complete pre-v4 aggregate-only (v2/v3) genesis export before normalization. |
 
 ### LeaseItem
 
@@ -208,6 +228,34 @@ graph LR
 | `CustomDomainIndex` | `string` (lower-cased domain) | `CustomDomainTarget` | Reverse lookup `custom_domain → (lease_uuid, service_name)` for O(1) `QueryLeaseByCustomDomain`. Reconciled by `SetLease` whenever lease items change; freed on close/reject/expire/auto-close. |
 | `LeaseSequence` | - | `uint64` | Monotonic counter feeding deterministic lease UUIDv7 generation |
 | `Params` | - | `Params` | Module parameters |
+
+### Storage Versions and Reservation Cutover
+
+Public protobufs keep Bech32 account strings for wire and genesis
+compatibility. Consensus version 3's disk-only codecs persist address
+identities as raw SDK bytes. The v2→v3 migration rewrites values in ordered,
+bounded pages, canonicalizes the allowed list, rebuilds cached live-lease
+counts from the byte-keyed PENDING then ACTIVE indexes, and repairs the
+provable aggregate reservation floor without changing bank balances.
+
+Consensus version 4 adds consumable per-lease reservation tranches. The v3→v4
+cutover is deterministic and never mints, burns, or transfers tokens. For each
+tenant and denomination it uses `min(pre-v4 aggregate, bank balance)` as the
+maximum budget, assigns reconstructible PENDING leases their full nominal
+claims first, then applies Hamilton's largest-remainder method to modern ACTIVE
+nominal claims and a single opaque live-historical cohort. Active claim ties
+are broken by lease UUID; the historical cohort follows them. Terminal leases
+receive initialized empty wrappers. The cutover records the exact live
+historical cohort size in `unattributed_lease_count`, even if its allocation is
+empty, and the resulting aggregate is exactly `R = sum(A) + U`.
+
+The same planner normalizes a complete pre-v4 aggregate-only (v2/v3) genesis
+export before `InitGenesis` writes billing state. A mixed pre-v4/v4
+representation is rejected.
+The cutover fails if either the old aggregate or bank balance cannot fully back
+the reconstructible PENDING claims. Operators must preflight that condition
+and fund bank shortfalls before an upgrade or import; the migration will not
+manufacture backing.
 
 ## Core Flows
 
@@ -307,12 +355,13 @@ sequenceDiagram
                 alt Provider Inactive
                     MsgServer-->>User: Error: provider not active
                 else Provider Active
-                    Note over MsgServer: reservation = total_rate × min_lease_duration
+                    Note over MsgServer: initial tranche A = total_rate × min_lease_duration
                     alt Available Credit < Reservation
                         MsgServer-->>User: Error: insufficient credit
                     else Sufficient Credit
                         MsgServer->>Keeper: GenerateUUIDv7()
-                        MsgServer->>Store: Save Lease (state=PENDING)
+                        MsgServer->>Store: Save Lease (state=PENDING, reservation=A)
+                        MsgServer->>Store: Add A to CreditAccount.reserved_amounts
                         MsgServer->>Store: Update Indexes
                         MsgServer->>Store: Increment pending_lease_count
                         MsgServer->>MsgServer: Emit LeaseCreated Event
@@ -431,13 +480,15 @@ sequenceDiagram
         
         Keeper->>Keeper: Group by denom
         Keeper->>Bank: Get Credit Balance per denom
-        
-        alt Accrued > Balance for any denom
-            Keeper->>Keeper: Cap Transfer to Balance
-        end
+        Keeper->>Store: Load account aggregate R and lease allocation A
+        Keeper->>Keeper: spendable = B - (R - A)
+        Keeper->>Keeper: transfer = min(accrued, spendable)
+        Keeper->>Keeper: consumed = min(transfer, A)
         
         alt Transfer Amount > 0
             Keeper->>Bank: Transfer each denom to Provider Payout Address
+            Keeper->>Store: Set R = R - consumed
+            Keeper->>Store: Set A = A - consumed
         end
         
         Keeper-->>Trigger: Settlement Amounts
@@ -445,6 +496,21 @@ sequenceDiagram
     
     Note over Keeper,Store: PerformSettlement / PerformSettlementSilent leave last_settled_at untouched;<br/>the caller (e.g. settleLease) persists last_settled_at = settleTime
 ```
+
+The spend planner is own-tranche-first: the target lease may consume its own
+remaining guarantee plus genuinely unreserved credit, but never another live
+lease's reservation. For a live historical lease, `A` is the shared explicit
+`CreditAccount.unattributed_reserved_amounts` cohort; modern leases use their
+own `Lease.reservation.remaining_amounts`. All coin operations use canonical
+ordered slices.
+
+On a modern lease's terminal transition, `ReleaseLeaseReservation` subtracts
+exactly its remaining `A` from `R` and clears the tranche. It never recomputes
+a nominal release from current parameters. A historical transition decrements
+the persisted `unattributed_lease_count` in O(1), without scanning leases. When
+the count reaches zero, the keeper subtracts exactly the remaining `U` from `R`
+and clears `U`; the count is still authoritative when `U` has already been
+fully consumed.
 
 ### Close Lease with Settlement
 
@@ -647,10 +713,27 @@ Settlement happens lazily at these points:
 | Trigger | Scope | Reason |
 |---------|-------|--------|
 | `CloseLease` | Target lease(s) only | Final settlement before closure |
-| `Withdraw` (specific leases) | Target lease(s) only | Settle accrued amount for provider |
-| `Withdraw` (provider-wide) | All provider's active leases | Batch settlement |
+| `Withdraw` (specific leases) | Target lease(s) only | Settle the lease-spendable portion of accrued amount for provider |
+| `Withdraw` (provider-wide) | Current forward page of ACTIVE leases (default 50, max 100) | Bounded batch settlement |
 
-**Note**: Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement. Use `WithdrawableAmount` or `ProviderWithdrawable` queries to get real-time calculated accrued amounts. Settlement (actual token transfer) only happens during write operations.
+**Note**: Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement. `WithdrawableAmount` calculates one lease's current amount. `ProviderWithdrawable` dry-runs exactly the returned ACTIVE-lease page in index order against page-local virtual tenant balances and reservations, so shared credit is counted once within that page. Each lease uses a nested cache: failed simulations are discarded, successful virtual effects feed later leases, and the outer query cache is never committed. This mirrors provider-wide withdrawal's best-effort per-lease behavior. Its pages are not additive snapshots. Only a forward query with `limit <= 100` is comparable to one provider-wide withdrawal. After commit, advance the query with the prior query response's first-unread cursor and the transaction with the prior transaction response's last-processed cursor; never interchange them. Settlement (actual token transfer) only happens during write operations.
+
+`CreditAccount` delegates to the SDK bank module's canonical balance query and
+returns all denoms through cursor pages (default 100, maximum 1000). Offset and
+`count_total` are rejected so bank-store work stays proportional to the
+requested page; `available_balances` covers the same page. It never scans
+leases. The embedded account aggregate is not separately paginated. New leases
+cannot grow it beyond 1,000 reserved denominations; a historical v2 account
+already above that limit remains readable and releasable, so decoding such an
+account can still exceed the balance-page cost during the compatibility window.
+
+`CreditEstimate` is intentionally unpaginated and uses the stored ACTIVE count
+rather than a mutable governance limit. It enforces the conservative 11,000
+lease ceiling (the exact v2 reachable maximum is 10,999), a 100,000-item work
+ceiling, and exact stored-count/index agreement. Violations return
+`ErrLeaseQueryLimitExceeded` / gRPC `ResourceExhausted` or
+`ErrReservationInvariant` / gRPC `Internal`; the query never returns a partial
+estimate.
 
 **Transaction Ordering Note**: Within a single block, transaction order matters. If a block contains both a `FundCredit` transaction and a `CloseLease` transaction for the same tenant, the outcome depends on which transaction is processed first. This is standard blockchain behavior—settlement reads the credit balance at the time of execution. Users should ensure funding is confirmed before triggering settlement-dependent operations.
 
@@ -661,16 +744,39 @@ The provider-wide withdraw mode uses a **cached context pattern** to ensure atom
 ```go
 // For each lease in the batch:
 cacheCtx, writeFn := ctx.CacheContext()
+lease, err := k.GetLease(cacheCtx, leaseUUID)
+if err != nil { continue }
+account, err := k.GetCreditAccount(cacheCtx, lease.Tenant)
+if err != nil { continue }
 
-// Perform settlement + timestamp update in cached context
-err := k.settleLease(cacheCtx, lease)
-if err != nil {
-    // Discard changes for this lease, continue with others
+shouldClose, closeTime, err := k.ShouldAutoCloseLease(cacheCtx, &lease, &account)
+if err != nil { continue }
+if shouldClose {
+    // Settles spendable credit, closes the lease, decrements its count, releases
+    // its remaining reservation, and writes both records to this per-lease cache.
+    result, err := k.AutoCloseLease(cacheCtx, &lease, &account, closeTime)
+    if err != nil { continue }
+    updatedTotal, err := types.SafeAddCoins(totalAmounts, result.TransferAmounts)
+    if err != nil { return err }
+    writeFn()
+    totalAmounts = updatedTotal
     continue
 }
 
-// Commit changes only if settlement succeeded
+// A normal no-op does not advance the timestamp or write either record.
+if !blockTime.After(lease.LastSettledAt) { continue }
+result, err := k.PerformSettlementSilent(cacheCtx, &lease, &account, blockTime)
+if err != nil || result.TransferAmounts.IsZero() { continue }
+
+lease.LastSettledAt = blockTime
+if err := k.SetLease(cacheCtx, lease); err != nil { continue }
+if err := k.SetCreditAccount(cacheCtx, account); err != nil { continue }
+updatedTotal, err := types.SafeAddCoins(totalAmounts, result.TransferAmounts)
+if err != nil { return err }
+
+// Commit transfer, timestamp, A, and R together only after every write succeeds.
 writeFn()
+totalAmounts = updatedTotal
 ```
 
 **Behavior**:
@@ -680,7 +786,7 @@ writeFn()
 - Failed leases don't affect the success of the overall operation
 - Provider can retry failed leases individually using specific lease UUIDs
 
-> **Accrual overflow is NOT a skip.** If an accrued charge cannot fit in the SDK's 256-bit `math.Int` representation, the silent settlement path (`PerformSettlementSilent`) does *not* grant free service. It clamps each overflowed denomination to that denomination's remaining credit and transfers it to the provider; exact charges in unaffected denominations are settled normally. `ShouldAutoCloseLease` then force-closes the lease. The overflow may arise from price × quantity, price × quantity × elapsed seconds, or same-denom aggregation. Long intervals are valid when their charge remains representable, and runtime accrual derives whole seconds directly from timestamps so `time.Duration` saturation cannot undercharge intervals beyond roughly 292 years. Non-silent settlement, lease creation, credit-estimate queries, genesis validation, and migrations instead return the registered `ErrArithmeticOverflow` error; balance-capped withdrawable queries return the exact capped amount.
+> **Accrual overflow is NOT a skip.** If an accrued charge cannot fit in the SDK's 256-bit `math.Int` representation, the silent settlement path (`PerformSettlementSilent`) does *not* grant free service. It clamps each overflowed denomination to this lease's spendable credit `B - (R - A)` and transfers it to the provider; exact charges in unaffected denominations are settled normally. `ShouldAutoCloseLease` then force-closes the lease. The overflow may arise from price × quantity, price × quantity × elapsed seconds, or same-denom aggregation. Long intervals are valid when their charge remains representable, and runtime accrual derives whole seconds directly from timestamps so `time.Duration` saturation cannot undercharge intervals beyond roughly 292 years. Non-silent settlement, lease creation, credit-estimate queries, genesis validation, and migrations instead return the registered `ErrArithmeticOverflow` error; withdrawable queries return the exact spendable-capped amount.
 
 This pattern ensures that partial failures don't corrupt state while still providing best-effort batch processing.
 
@@ -699,9 +805,9 @@ When a lease's credit is exhausted, it can be auto-closed via `ShouldAutoCloseLe
 flowchart TD
     A[ShouldAutoCloseLease] --> B{Is Lease ACTIVE?}
     B -->|No| C[Return: not closed]
-    B -->|Yes| D[Get Credit Balance]
-    D --> E[Calculate Accrued Amounts]
-    E --> F{Accrued >= Balance?}
+    B -->|Yes| D[Load B, R, and lease allocation A]
+    D --> E[Calculate Accrued and spendable B - (R - A)]
+    E --> F{Accrued >= Spendable?}
     F -->|No| G[Return: not closed]
     F -->|Yes| H[AutoCloseLease]
     H --> I[Settle + Set State = CLOSED]
@@ -804,7 +910,7 @@ When a lease expires:
 - State changes from `PENDING` → `EXPIRED`
 - `expired_at` timestamp is set
 - `pending_lease_count` is decremented
-- The lease's reservation is released from `CreditAccount.reserved_amounts` (via `ReleaseLeaseReservation`), freeing the credit for new leases. For legacy leases without a stored creation-time duration, the aggregate is preserved while another live legacy lease remains; the last transition reconciles it to the exact reservation floor for all live non-legacy leases. Imported state exceeding the fixed per-tenant scan ceiling also preserves the aggregate conservatively, without assuming a later retry, so lifecycle progress does not require an unbounded scan.
+- The lease's exact remaining reservation is released via `ReleaseLeaseReservation`, freeing it for new leases. A modern lease subtracts its stored remaining tranche directly. A historical lease has no individual tranche: its terminal transition decrements `unattributed_lease_count` in O(1), and the exact remaining cohort `U` is subtracted from `R` when the count reaches zero. No lease scan or current-parameter guess is required.
 - Credit remains in tenant's account (was never billed since lease never activated)
 - The whole expiration is `CacheContext`-atomic; the `lease_expired` event is emitted on the parent context after commit
 
@@ -952,7 +1058,7 @@ This returns `sdk.Coins` to support multi-denom leases where different SKUs may 
 | GetLeasesByProvider (with state filter) | O(k) | k = matching leases (compound index) |
 | GetPendingLeasesByProvider | O(k) | k = pending leases (compound index) |
 | GetLeasesBySKU | O(k) | k = leases containing the SKU (SKU index) |
-| CreditEstimate | O(k) | k = active leases for tenant (compound index) |
+| CreditEstimate | O(i log i) | i = active lease items, capped at 100,000; ACTIVE leases are additionally capped at the conservative 11,000-state ceiling and count/index drift fails explicitly |
 | EndBlocker | O(e) | e = expirable pending leases (created_at before cutoff, i.e. older than blockTime − pending_timeout), capped at 100/block via time-bounded StateCreatedAt scan |
 
 ### Future Improvements
@@ -998,6 +1104,14 @@ The module also validates credit accounts:
 
 1. **Address Derivation**: Credit address must match the deterministically derived address from the tenant
 2. **Tenant Uniqueness**: No duplicate credit accounts for the same tenant
+3. **Consumable Reservations**: In v4 state, every lease has an initialized reservation wrapper, modern PENDING tranches equal nominal, modern ACTIVE tranches do not exceed nominal, terminal/historical tranches are empty, `R = sum(live modern remaining tranches) + U`, and `unattributed_lease_count` exactly matches the live historical cohort
+4. **Bank Backing**: `InitGenesis` requires the credit-address balance to cover `R` in every denomination
+
+A complete pre-v4 aggregate-only (v2/v3) export is accepted as a compatibility format and
+converted in memory with the v3→v4 no-mint planner before any billing store
+write. Static `validate-genesis` cannot inspect bank balances, so operators must
+preflight that both the historical aggregate and bank balance fully cover all
+modern PENDING nominal claims; otherwise `InitGenesis` fails.
 
 ## Testing Strategy
 
@@ -1144,14 +1258,17 @@ accrued = duration_seconds × locked_price × quantity
 **Overflow protection:**
 - `SafeMultiplyCoin` uses `math.Int.SafeMul`; `SafeAddCoins` validates canonical
   coin sets and merges them in sorted denomination order using `SafeAdd`
-- Creation, credit-estimate/non-balance-capped query, import, migration, and
+- Creation, credit-estimate/non-spendable-capped query, import, migration, and
   non-silent settlement paths return error code 20 (`ErrArithmeticOverflow`)
-  instead of panicking; withdrawable queries balance-cap affected denoms
+  instead of panicking; withdrawable queries spendable-cap affected denoms
 - Runtime monetary accrual derives whole seconds directly from timestamps, so
   intervals beyond `time.Duration`'s range are charged exactly when representable
-- Silent close/settlement clamps only overflowed denominations to their remaining
-  credit; exact accrued totals for unaffected denominations are retained
-- Provider-wide withdraw uses cached context to isolate failures
+- Silent close/settlement clamps only overflowed denominations to this lease's
+  spendable credit `B - (R - A)`; exact accrued totals for unaffected
+  denominations are retained
+- Provider-wide withdraw uses a per-lease cached context to isolate failures;
+  ProviderWithdrawable mirrors that best-effort behavior with nested simulation
+  caches inside an outer cache that is never committed
 
 ### Future Improvement Plans
 

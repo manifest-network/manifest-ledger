@@ -61,7 +61,11 @@ service Query {
         "/liftedinit/billing/v1/lease/{lease_uuid}/withdrawable";
   }
 
-  // ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
+  // ProviderWithdrawable dry-runs one ordered page of the provider's ACTIVE
+  // leases against page-local virtual tenant balances and reservations. Failed
+  // per-lease simulations are discarded, successful virtual effects feed later
+  // leases, and no query state commits. Pages are execution estimates, not
+  // additive provider-wide snapshots.
   rpc ProviderWithdrawable(QueryProviderWithdrawableRequest)
       returns (QueryProviderWithdrawableResponse) {
     option (google.api.http).get =
@@ -80,7 +84,10 @@ service Query {
         "/liftedinit/billing/v1/leases/sku/{sku_uuid}";
   }
 
-  // CreditEstimate estimates remaining lease duration for a tenant.
+  // CreditEstimate reports gross raw-bank-balance runway at a tenant's current
+  // aggregate ACTIVE lease rate. It is not reservation-aware or an auto-close
+  // forecast. Requests above 11,000 ACTIVE leases or 100,000 total lease items
+  // fail with ResourceExhausted instead of returning a partial result.
   rpc CreditEstimate(QueryCreditEstimateRequest)
       returns (QueryCreditEstimateResponse) {
     option (google.api.http).get =
@@ -207,6 +214,12 @@ message QueryCreditAccountRequest {
     (cosmos_proto.scalar) = "cosmos.AddressString",
     (gogoproto.jsontag) = "tenant,omitempty"
   ];
+
+  // pagination bounds the bank balances returned for the derived credit
+  // address. The page size defaults to 100 and is capped at 1000. Cursor
+  // pagination is supported; offset and count_total are rejected so bank-store
+  // iteration remains proportional to the page size.
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
 }
 
 // QueryCreditAccountResponse is the response type for the Query/CreditAccount
@@ -218,20 +231,25 @@ message QueryCreditAccountResponse {
     (gogoproto.jsontag) = "credit_account"
   ];
 
-  // balances is the current balances at the credit address (fetched from bank module).
+  // balances is one page of all current balances at the credit address,
+  // fetched through the bank module's canonical balance query.
   repeated cosmos.base.v1beta1.Coin balances = 2 [
     (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
     (gogoproto.jsontag) = "balances"
   ];
 
-  // available_balances is the amount available for new leases (balances - reserved_amounts).
-  // This is what can be used to create new leases without overbooking.
+  // available_balances is the amount from this balance page available for new
+  // leases (balances - reserved_amounts). It has the same pagination window as
+  // balances.
   repeated cosmos.base.v1beta1.Coin available_balances = 3 [
     (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
     (gogoproto.jsontag) = "available_balances"
   ];
+
+  // pagination describes the returned bank-balance page.
+  cosmos.base.query.v1beta1.PageResponse pagination = 4;
 }
 
 // QueryCreditAddressRequest is the request type for the Query/CreditAddress RPC
@@ -282,30 +300,50 @@ message QueryProviderWithdrawableRequest {
   reserved "limit";
 
   // pagination defines optional pagination. Only ACTIVE leases are iterated
-  // (the only ones that can contribute a withdrawable amount). Page size
-  // defaults to 100 and is capped at 1000. Loop until pagination.next_key is
-  // empty and sum the response amounts for the provider's full withdrawable total.
+  // in the requested index order. Page size defaults to 50 and is capped at
+  // 1000. Earlier leases consume page-local virtual tenant credit before later
+  // leases are estimated, so shared credit is counted once within this page.
+  // Per-lease failures are skipped with their nested cache discarded, matching
+  // provider-wide MsgWithdraw's best-effort behavior.
+  //
+  // Do not sum separately queried pages: every page starts from current chain
+  // state and pages may share tenant balances. Only a forward page with limit
+  // <= 100 is comparable to one provider-wide MsgWithdraw. After that
+  // transaction commits, query the next segment with this response's
+  // pagination.next_key and withdraw it with the transaction response's
+  // next_key. The query cursor is first-unread/inclusive; the transaction
+  // cursor is last-processed/exclusive, so never interchange them. Reverse
+  // pages and larger limits are read-only estimates only. Offset and
+  // count_total are rejected so work is bounded by the page size.
   cosmos.base.query.v1beta1.PageRequest pagination = 3;
 }
 
 // QueryProviderWithdrawableResponse is the response type for the
 // Query/ProviderWithdrawable RPC method.
 message QueryProviderWithdrawableResponse {
-  // amounts is the total amounts available for withdrawal across all leases (one per denom).
+  // amounts is the estimated transfer from executing exactly this page in its
+  // returned index order (one entry per denom). It is not an additive slice of
+  // a provider-wide total.
   repeated cosmos.base.v1beta1.Coin amounts = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
     (gogoproto.jsontag) = "amounts"
   ];
 
-  // lease_count is the number of leases with a non-zero withdrawable amount in this page.
+  // lease_count is the number of successfully simulated withdrawals in this
+  // page, including successful auto-closes with zero transfer. Failed
+  // simulations and ordinary zero-accrual leases are not counted. For a
+  // comparable forward page this matches MsgWithdrawResponse.withdrawal_count.
   uint64 lease_count = 2 [(gogoproto.jsontag) = "lease_count,omitempty,string"];
 
   reserved 3; // was: bool has_more (superseded by pagination.next_key)
   reserved "has_more";
 
-  // pagination defines the pagination in the response. A non-empty next_key
-  // means more leases remain; pass it as the next request's pagination.key.
+  // pagination describes query index traversal only. A non-empty next_key is
+  // the first unread query entry and may be passed to another query request,
+  // but page estimates are not additive. It must not be used as
+  // MsgWithdraw.key, whose cursor is the last processed lease and resumes
+  // strictly after it.
   cosmos.base.query.v1beta1.PageResponse pagination = 4;
 }
 
@@ -368,7 +406,8 @@ message QueryCreditEstimateRequest {
 // QueryCreditEstimateResponse is the response type for the Query/CreditEstimate
 // RPC method.
 message QueryCreditEstimateResponse {
-  // current_balance is the tenant's current credit balance.
+  // current_balance is the tenant's raw bank balance for denominations used by
+  // active leases.
   repeated cosmos.base.v1beta1.Coin current_balance = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
@@ -382,8 +421,10 @@ message QueryCreditEstimateResponse {
     (gogoproto.jsontag) = "total_rate_per_second"
   ];
 
-  // estimated_duration_seconds is the estimated time until credit exhaustion.
-  // Calculated as min(balance[denom] / rate[denom]) across all denoms.
+  // estimated_duration_seconds is the gross balance runway at the current
+  // aggregate active rate, calculated as min(balance[denom] / rate[denom]). It
+  // deliberately does not subtract pending/other-lease reservations or
+  // unsettled accrued charges and is not a prediction of auto-close timing.
   // Returns 0 if no active leases or no matching denoms.
   uint64 estimated_duration_seconds = 3
       [(gogoproto.jsontag) = "estimated_duration_seconds,omitempty,string"];

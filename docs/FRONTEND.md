@@ -49,10 +49,16 @@ const lease = await client.liftedinit.billing.v1.lease({
 
 const credit = await client.liftedinit.billing.v1.creditAccount({
   tenant: "manifest1...",
+  pagination: { key: new Uint8Array(), limit: 100n },
 });
-// credit.balances           — bank balances at the credit address
-// credit.availableBalances  — balances - reserved_amounts (what new leases can use)
-// credit.creditAccount.reservedAmounts — locked by PENDING/ACTIVE leases
+// credit.balances           — one cursor page of all bank balances
+// credit.availableBalances  — the same page minus reserved_amounts
+// Follow credit.pagination.nextKey to read the next page. Offset/countTotal
+// are intentionally rejected so each request stays bounded.
+// credit.creditAccount.reservedAmounts — R = live modern remaining tranches + U
+// credit.creditAccount.unattributedReservedAmounts — U, shared live historical cohort
+// credit.creditAccount.unattributedLeaseCount — exact live historical cohort size
+// lease.lease.reservation?.remainingAmounts — this modern lease's remaining tranche A
 ```
 
 Prefer `createLCDClient` if you need to hit the REST gateway instead of CometBFT RPC (e.g. browser sandboxes that can't open a WS):
@@ -294,21 +300,29 @@ Read-only "what would I withdraw" estimates:
 ```ts
 const perLease = await client.liftedinit.billing.v1.withdrawableAmount({ leaseUuid });
 
-// Provider-wide is paginated over the provider's ACTIVE leases; each response is
-// one PAGE, so sum across pages until the cursor is empty for the true total.
-let pageKey = new Uint8Array();
-const totals: Record<string, bigint> = {};
-do {
-  const page = await client.liftedinit.billing.v1.providerWithdrawable({
-    providerUuid,
-    pagination: { key: pageKey, limit: 100n },   // page size defaults to 100, capped at 1000
-  });
-  for (const c of page.amounts) totals[c.denom] = (totals[c.denom] ?? 0n) + BigInt(c.amount);
-  pageKey = page.pagination?.nextKey ?? new Uint8Array();
-} while (pageKey.length > 0);
-// `totals` = full per-denom withdrawable across ACTIVE leases.
-// page.amounts is this page's subtotal; page.leaseCount counts only leases with a
-// non-zero withdrawable amount in that page. (`limit`/`has_more` were removed in v2.2.0.)
+// Provider-wide estimates are page-local ordered dry-runs. A forward page with
+// limit <= 100 is comparable to one provider-wide MsgWithdraw over the same
+// current segment (the transaction is forward-only and capped at 100).
+const page = await client.liftedinit.billing.v1.providerWithdrawable({
+  providerUuid,
+  pagination: { key: new Uint8Array(), limit: 100n },
+});
+// page.amounts estimates executing this page in index order. Earlier leases
+// consume virtual shared tenant balances before later leases are evaluated.
+// Failed per-lease simulations are discarded (matching provider-wide tx
+// best-effort semantics); successful virtual effects feed later leases, but no
+// query state commits. page.leaseCount matches the comparable transaction's
+// withdrawalCount, including a successful zero-transfer auto-close.
+
+// Do not loop and sum query pages: separately queried pages can count the same
+// shared balance. Submit the comparable transaction and wait for commit. Then
+// query the next segment with this page's pagination.nextKey, while the next
+// transaction uses the prior transaction response's nextKey.
+//
+// Never interchange those cursors: the query key is its first unread
+// (inclusive) index entry; the transaction key is its last processed lease and
+// resumes exclusively. Reverse query pages and query limits > 100 are read-only
+// estimates with no one-transaction analogue. Offset and countTotal are rejected.
 ```
 
 ### Tenant authentication to your provider API

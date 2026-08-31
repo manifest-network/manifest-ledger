@@ -76,12 +76,25 @@ const (
 
 // Query limits to prevent DoS attacks on RPC nodes.
 const (
-	// DefaultProviderWithdrawableQueryLimit is the default limit for ProviderWithdrawable queries.
-	DefaultProviderWithdrawableQueryLimit uint64 = 100
+	// DefaultCreditAccountBalanceQueryLimit is the default number of bank
+	// balances returned by CreditAccount.
+	DefaultCreditAccountBalanceQueryLimit uint64 = 100
+
+	// MaxCreditAccountBalanceQueryLimit bounds bank-store work and response size.
+	MaxCreditAccountBalanceQueryLimit uint64 = 1000
+
+	// DefaultProviderWithdrawableQueryLimit matches provider-wide MsgWithdraw so
+	// an omitted limit previews the same number of leases.
+	DefaultProviderWithdrawableQueryLimit uint64 = DefaultProviderWithdrawLimit
 
 	// MaxProviderWithdrawableQueryLimit is the maximum limit for ProviderWithdrawable queries.
 	// This prevents queries from iterating over unbounded numbers of leases.
 	MaxProviderWithdrawableQueryLimit uint64 = 1000
+
+	// MaxCreditEstimateLeaseItems bounds the total stored pricing items decoded
+	// and aggregated by one unpaginated CreditEstimate request. It matches the
+	// maximum work of a largest ProviderWithdrawable query page.
+	MaxCreditEstimateLeaseItems uint64 = MaxProviderWithdrawableQueryLimit * MaxItemsPerLeaseHardLimit
 )
 
 // EndBlocker limits to prevent DoS attacks.

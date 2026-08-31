@@ -23,10 +23,31 @@ const (
 )
 
 func TestConsensusVersion(t *testing.T) {
-	require.Equal(t, uint64(3), billingmodule.AppModule{}.ConsensusVersion())
+	require.Equal(t, uint64(4), billingmodule.AppModule{}.ConsensusVersion())
 }
 
-func validGenesis(t *testing.T, minLeaseDuration uint64) *types.GenesisState {
+func TestGenesisJSONRoundTripPreservesEmptyReservationPresence(t *testing.T) {
+	basic := billingmodule.AppModuleBasic{}
+	encCfg := moduletestutil.MakeTestEncodingConfig(basic)
+	genesis := validGenesis(t)
+	genesis.Leases[0].Reservation = &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()}
+	genesis.CreditAccounts[0].ReservedAmounts = sdk.NewCoins()
+
+	encoded := encCfg.Codec.MustMarshalJSON(genesis)
+	require.Contains(t, string(encoded), `"reservation"`)
+
+	var decoded types.GenesisState
+	encCfg.Codec.MustUnmarshalJSON(encoded, &decoded)
+	require.Len(t, decoded.Leases, 1)
+	require.NotNil(t, decoded.Leases[0].Reservation)
+	require.True(t, decoded.Leases[0].Reservation.RemainingAmounts.IsZero())
+	legacy, err := decoded.HasLegacyReservationState()
+	require.NoError(t, err)
+	require.False(t, legacy)
+	require.NoError(t, decoded.Validate())
+}
+
+func validGenesis(t *testing.T) *types.GenesisState {
 	t.Helper()
 	tenantAddr := sdk.AccAddress([]byte("billing-test-tenant"))
 	items := []types.LeaseItem{{
@@ -35,7 +56,7 @@ func validGenesis(t *testing.T, minLeaseDuration uint64) *types.GenesisState {
 		LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 		ServiceName: "web",
 	}}
-	reservation, err := types.CalculateLeaseReservation(items, minLeaseDuration)
+	reservation, err := types.CalculateLeaseReservation(items, types.DefaultMinLeaseDuration)
 	require.NoError(t, err)
 
 	return &types.GenesisState{
@@ -46,7 +67,7 @@ func validGenesis(t *testing.T, minLeaseDuration uint64) *types.GenesisState {
 			ProviderUuid:               testProviderUUID,
 			Items:                      items,
 			State:                      types.LEASE_STATE_ACTIVE,
-			MinLeaseDurationAtCreation: minLeaseDuration,
+			MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
 		}},
 		CreditAccounts: []types.CreditAccount{{
 			Tenant:           tenantAddr.String(),
@@ -68,7 +89,7 @@ func TestAppModuleBasicValidateGenesisAcceptsHistoricalExports(t *testing.T) {
 	}
 
 	t.Run("legacy reservation from an earlier minimum duration", func(t *testing.T) {
-		gs := validGenesis(t, types.DefaultMinLeaseDuration)
+		gs := validGenesis(t)
 		gs.Params.MinLeaseDuration = 2 * types.DefaultMinLeaseDuration
 		gs.Leases[0].MinLeaseDurationAtCreation = 0
 
@@ -78,7 +99,7 @@ func TestAppModuleBasicValidateGenesisAcceptsHistoricalExports(t *testing.T) {
 	})
 
 	t.Run("domain claimed before suffix reservation", func(t *testing.T) {
-		gs := validGenesis(t, types.DefaultMinLeaseDuration)
+		gs := validGenesis(t)
 		gs.Params.ReservedDomainSuffixes = []string{".manifest0.net"}
 		gs.Leases[0].Items[0].CustomDomain = "app.manifest0.net"
 
@@ -138,7 +159,7 @@ func TestAppModuleBasicValidateGenesisRetainsImportInvariants(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gs := validGenesis(t, types.DefaultMinLeaseDuration)
+			gs := validGenesis(t)
 			tc.mutate(gs)
 			require.ErrorIs(t, validateGenesis(t, gs), tc.expected)
 		})

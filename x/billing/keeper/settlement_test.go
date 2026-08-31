@@ -235,9 +235,11 @@ func TestPerformSettlement(t *testing.T) {
 		Items: []types.LeaseItem{
 			{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
@@ -270,7 +272,7 @@ func TestPerformSettlement(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := k.PerformSettlement(f.Ctx, &lease, tc.settleTime)
+			result, err := k.PerformSettlement(f.Ctx, &lease, f.creditAccountForLease(t, &lease), tc.settleTime)
 
 			if tc.expectErr {
 				require.Error(t, err)
@@ -315,15 +317,17 @@ func TestPerformSettlement_InsufficientCredit(t *testing.T) {
 		Items: []types.LeaseItem{
 			{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
 	// Try to settle for 100 seconds (100 tokens accrued, only 50 available)
-	result, err := k.PerformSettlement(f.Ctx, &lease, now.Add(100*time.Second))
+	result, err := k.PerformSettlement(f.Ctx, &lease, f.creditAccountForLease(t, &lease), now.Add(100*time.Second))
 	require.NoError(t, err)
 
 	// Should accrue 100 but transfer only 50
@@ -352,13 +356,15 @@ func TestPerformSettlement_ProviderNotFound(t *testing.T) {
 		Items: []types.LeaseItem{
 			{SkuUuid: "01912345-6789-7abc-8def-0123456789ae", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 
 	// Settlement should fail due to missing provider
-	_, err = k.PerformSettlement(f.Ctx, &lease, now.Add(100*time.Second))
+	_, err = k.PerformSettlement(f.Ctx, &lease, f.creditAccountForLease(t, &lease), now.Add(100*time.Second))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not found")
 }
@@ -391,9 +397,11 @@ func TestPerformSettlement_LongDurationUsesExactAccrual(t *testing.T) {
 		Items: []types.LeaseItem{
 			{SkuUuid: "01912345-6789-7abc-8def-0123456789ae", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
@@ -401,7 +409,7 @@ func TestPerformSettlement_LongDurationUsesExactAccrual(t *testing.T) {
 	longDuration := 101 * 365 * 24 * time.Hour
 	veryFarFuture := now.Add(longDuration)
 
-	result, err := k.PerformSettlement(f.Ctx, &lease, veryFarFuture)
+	result, err := k.PerformSettlement(f.Ctx, &lease, f.creditAccountForLease(t, &lease), veryFarFuture)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -433,12 +441,14 @@ func TestPerformSettlement_IntervalBeyondDurationRange(t *testing.T) {
 			Quantity:    1,
 			LockedPrice: sdk.NewCoin(testDenom, sdkmath.OneInt()),
 		}},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     lastSettledAt,
-		LastSettledAt: lastSettledAt,
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  lastSettledAt,
+		LastSettledAt:              lastSettledAt,
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 
-	result, err := k.PerformSettlement(f.Ctx, &lease, settleTime)
+	result, err := k.PerformSettlement(f.Ctx, &lease, f.creditAccountForLease(t, &lease), settleTime)
 	require.NoError(t, err)
 	expectedSeconds := settleTime.Unix() - lastSettledAt.Unix() - 1 // nanoseconds truncate toward zero
 	require.Greater(t, expectedSeconds, int64((time.Duration(1<<63-1))/time.Second))
@@ -467,13 +477,15 @@ func TestPerformSettlement_CheckedPriceQuantityOverflow(t *testing.T) {
 			Quantity:    2,
 			LockedPrice: sdk.NewCoin(testDenom, highBitBillingTestInt()),
 		}},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 
 	require.NotPanics(t, func() {
-		_, err = k.PerformSettlement(f.Ctx, &lease, now.Add(time.Second))
+		_, err = k.PerformSettlement(f.Ctx, &lease, f.creditAccountForLease(t, &lease), now.Add(time.Second))
 	})
 	require.ErrorIs(t, err, types.ErrArithmeticOverflow)
 	require.Equal(t, sdkmath.NewInt(10_000), f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom).Amount)
@@ -481,7 +493,7 @@ func TestPerformSettlement_CheckedPriceQuantityOverflow(t *testing.T) {
 
 	var result *keeper.SettlementResult
 	require.NotPanics(t, func() {
-		result, err = k.PerformSettlementSilent(f.Ctx, &lease, now.Add(time.Second))
+		result, err = k.PerformSettlementSilent(f.Ctx, &lease, f.creditAccountForLease(t, &lease), now.Add(time.Second))
 	})
 	require.NoError(t, err)
 	require.Equal(t, sdkmath.NewInt(10_000), result.TransferAmounts.AmountOf(testDenom))
@@ -513,12 +525,14 @@ func TestPerformSettlementSilent_OverflowIsDenomLocal(t *testing.T) {
 			{SkuUuid: testSKUUUID, Quantity: 2, LockedPrice: sdk.NewCoin(testDenom, highBitBillingTestInt())},
 			{SkuUuid: "01912345-6789-7abc-8def-0123456789af", Quantity: 1, LockedPrice: sdk.NewCoin(unaffectedDenom, sdkmath.NewInt(3))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 
-	result, err := k.PerformSettlementSilent(f.Ctx, &lease, now.Add(10*time.Second))
+	result, err := k.PerformSettlementSilent(f.Ctx, &lease, f.creditAccountForLease(t, &lease), now.Add(10*time.Second))
 	require.NoError(t, err)
 	expectedTransferred := sdk.NewCoins(
 		sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
@@ -555,15 +569,17 @@ func TestPerformSettlementSilent_NormalOperation(t *testing.T) {
 		Items: []types.LeaseItem{
 			{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
 	// Normal settlement should work the same as PerformSettlement
-	result, err := k.PerformSettlementSilent(f.Ctx, &lease, now.Add(100*time.Second))
+	result, err := k.PerformSettlementSilent(f.Ctx, &lease, f.creditAccountForLease(t, &lease), now.Add(100*time.Second))
 	require.NoError(t, err)
 	require.Equal(t, int64(100), result.AccruedAmounts.AmountOf(testDenom).Int64())
 	require.Equal(t, int64(100), result.TransferAmounts.AmountOf(testDenom).Int64())

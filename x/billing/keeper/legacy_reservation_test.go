@@ -143,6 +143,9 @@ func (s legacyReservationScenario) assertExportReimports(t *testing.T, expectedR
 	fresh.Ctx = fresh.Ctx.WithBlockTime(s.f.Ctx.BlockTime())
 	require.NoError(t, fresh.App.SKUKeeper.SetProvider(fresh.Ctx, s.provider))
 	require.NoError(t, fresh.App.SKUKeeper.SetSKU(fresh.Ctx, s.sku))
+	if !expectedReservation.IsZero() {
+		fresh.fundAccount(t, types.DeriveCreditAddress(s.tenant), expectedReservation)
+	}
 	require.NoError(t, fresh.App.BillingKeeper.InitGenesis(fresh.Ctx, exported))
 
 	importedAccount, err := fresh.App.BillingKeeper.GetCreditAccount(fresh.Ctx, s.tenant.String())
@@ -274,75 +277,22 @@ func TestLegacyReservationReleaseProtectsModernLeaseOnPendingTransitions(t *test
 	}
 }
 
-func TestLegacyReservationReleaseRepairsPreexistingKnownFloorShortfall(t *testing.T) {
-	tests := []struct {
-		name       string
-		state      types.LeaseState
-		wantState  types.LeaseState
-		transition func(*testing.T, legacyReservationScenario)
-	}{
-		{
-			name:      "manual close",
-			state:     types.LEASE_STATE_ACTIVE,
-			wantState: types.LEASE_STATE_CLOSED,
-			transition: func(t *testing.T, s legacyReservationScenario) {
-				_, err := keeper.NewMsgServerImpl(s.f.App.BillingKeeper).CloseLease(s.f.Ctx, &types.MsgCloseLease{
-					Sender:     s.f.Authority.String(),
-					LeaseUuids: []string{s.legacyLeaseUUIDs[0]},
-				})
-				require.NoError(t, err)
-			},
-		},
-		{
-			name:      "pending expiry",
-			state:     types.LEASE_STATE_PENDING,
-			wantState: types.LEASE_STATE_EXPIRED,
-			transition: func(t *testing.T, s legacyReservationScenario) {
-				// The legacy lease is processed once and must not remain PENDING
-				// for the EndBlocker to retry on every subsequent block.
-				require.NoError(t, s.f.App.BillingKeeper.EndBlocker(s.f.Ctx))
-				require.NoError(t, s.f.App.BillingKeeper.EndBlocker(s.f.Ctx))
-			},
-		},
-	}
+func TestReservationInvariantDetectsPreexistingAttributedShortfall(t *testing.T) {
+	s := setupLegacyReservationScenario(t, types.LEASE_STATE_ACTIVE, 1, false)
+	account, err := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.tenant.String())
+	require.NoError(t, err)
+	account.ReservedAmounts = sdk.NewCoins(
+		sdk.NewCoin(testDenom, sdkmath.NewIntFromUint64(historicalLegacyMinDuration)),
+	)
+	require.False(t, account.ReservedAmounts.IsAllGTE(s.modernReservation))
+	require.NoError(t, s.f.App.BillingKeeper.SetCreditAccount(s.f.Ctx, account))
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			s := setupLegacyReservationScenario(
-				t,
-				tc.state,
-				1,
-				tc.wantState == types.LEASE_STATE_EXPIRED,
-			)
-
-			account, err := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.tenant.String())
-			require.NoError(t, err)
-			account.ReservedAmounts = sdk.NewCoins(
-				sdk.NewCoin(testDenom, sdkmath.NewIntFromUint64(historicalLegacyMinDuration)),
-			)
-			require.False(t, account.ReservedAmounts.IsAllGTE(s.modernReservation))
-			require.NoError(t, s.f.App.BillingKeeper.SetCreditAccount(s.f.Ctx, account))
-
-			tc.transition(t, s)
-
-			legacyLease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.legacyLeaseUUIDs[0])
-			require.NoError(t, err)
-			require.Equal(t, tc.wantState, legacyLease.State)
-
-			account, err = s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.tenant.String())
-			require.NoError(t, err)
-			require.True(t, s.modernReservation.Equal(account.ReservedAmounts))
-			if tc.state == types.LEASE_STATE_ACTIVE {
-				require.Equal(t, uint64(1), account.ActiveLeaseCount)
-			} else {
-				require.Equal(t, uint64(1), account.PendingLeaseCount)
-			}
-			s.assertExportReimports(t, s.modernReservation)
-		})
-	}
+	message, broken := keeper.ReservationAccountingInvariant(s.f.App.BillingKeeper)(s.f.Ctx)
+	require.True(t, broken)
+	require.Contains(t, message, "consumable reservations sum")
 }
 
-func TestLegacyReservationReleaseDefersAtScanCeiling(t *testing.T) {
+func TestLegacyReservationGenesisRejectsCountsAbovePendingStateBound(t *testing.T) {
 	f := initFixture(t)
 	tenant := f.TestAccs[0]
 	providerAddr := f.TestAccs[1]
@@ -396,21 +346,8 @@ func TestLegacyReservationReleaseDefersAtScanCeiling(t *testing.T) {
 		}},
 		LeaseSequence: uint64(len(leases)),
 	}
-	require.NoError(t, genesis.Validate())
-	require.NoError(t, f.App.BillingKeeper.InitGenesis(f.Ctx, genesis))
-
-	storedLegacy, err := f.App.BillingKeeper.GetLease(f.Ctx, legacyLease.Uuid)
-	require.NoError(t, err)
-	require.NoError(t, f.App.BillingKeeper.ExpirePendingLease(f.Ctx, &storedLegacy))
-
-	expiredLegacy, err := f.App.BillingKeeper.GetLease(f.Ctx, legacyLease.Uuid)
-	require.NoError(t, err)
-	require.Equal(t, types.LEASE_STATE_EXPIRED, expiredLegacy.State)
-	account, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
-	require.NoError(t, err)
-	require.Equal(t, modernLeaseCount, account.PendingLeaseCount)
-	require.True(t, totalReservation.Equal(account.ReservedAmounts),
-		"scan-ceiling fallback must conservatively preserve the aggregate",
-	)
-	require.NoError(t, f.App.BillingKeeper.ExportGenesis(f.Ctx).Validate())
+	err := genesis.Validate()
+	require.Error(t, err)
+	require.ErrorContains(t, err, "pending_lease_count")
+	require.ErrorContains(t, err, "above hard upper bound")
 }

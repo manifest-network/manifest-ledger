@@ -102,6 +102,7 @@ func (e *AccrualOverflowError) Cause() error  { return types.ErrArithmeticOverfl
 func (e *AccrualOverflowError) ABCICode() uint32 {
 	return types.ErrArithmeticOverflow.ABCICode()
 }
+
 func (e *AccrualOverflowError) Codespace() string {
 	return types.ErrArithmeticOverflow.Codespace()
 }

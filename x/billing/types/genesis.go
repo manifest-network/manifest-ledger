@@ -1,7 +1,7 @@
 package types
 
 import (
-	"maps"
+	"math"
 	"slices"
 	"time"
 
@@ -177,8 +177,17 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 			}
 		}
 
-		if lease.State == LEASE_STATE_UNSPECIFIED {
+		switch lease.State {
+		case LEASE_STATE_PENDING,
+			LEASE_STATE_ACTIVE,
+			LEASE_STATE_CLOSED,
+			LEASE_STATE_REJECTED,
+			LEASE_STATE_EXPIRED:
+			// Valid persisted states.
+		case LEASE_STATE_UNSPECIFIED:
 			return ErrInvalidLease.Wrapf("lease %s has unspecified state", lease.Uuid)
+		default:
+			return ErrInvalidLease.Wrapf("lease %s has unknown state %d", lease.Uuid, lease.State)
 		}
 
 		// Validate meta_hash length
@@ -242,102 +251,37 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 				err,
 			)
 		}
+		if err := validateCanonicalCoins(ca.UnattributedReservedAmounts); err != nil {
+			return ErrInvalidCreditOperation.Wrapf(
+				"credit account for %s has invalid unattributed_reserved_amounts: %s",
+				ca.Tenant,
+				err,
+			)
+		}
 
 		// Balance is tracked in bank module, no validation needed here
 	}
 
-	// Cross-validate reserved_amounts against reconstructible lease reservations.
-	// Only PENDING and ACTIVE leases require reservations. A tenant with legacy
-	// lease history cannot be checked exactly because its creation-time minimum
-	// was never stored; a terminal transition under a later parameter may also
-	// have left an unreconstructible residual.
-	expectedReservations := make(map[string]sdk.Coins)
-	legacyReservationTenants := make(map[string]bool)
-	knownReservations := make(map[string]sdk.Coins)
-	for i := range gs.Leases {
-		lease := &gs.Leases[i]
-		tenantKey := leaseTenantKeys[i]
-		if !options.enforceExactLegacyReservations && lease.MinLeaseDurationAtCreation == 0 {
-			// A terminal legacy lease is evidence that a historical release may
-			// have left an unreconstructible residual after a parameter change.
-			legacyReservationTenants[tenantKey] = true
-		}
-
-		if lease.State != LEASE_STATE_PENDING && lease.State != LEASE_STATE_ACTIVE {
-			continue
-		}
-
-		reservation, err := GetLeaseReservationAmount(lease, gs.Params.MinLeaseDuration)
-		if err != nil {
-			return errorsmod.Wrapf(err, "calculate reservation for lease %s", lease.Uuid)
-		}
-		if existing, ok := expectedReservations[tenantKey]; ok {
-			expectedReservations[tenantKey], err = SafeAddCoins(existing, reservation)
-			if err != nil {
-				return errorsmod.Wrapf(err, "sum reservations for tenant %s", tenantKey)
-			}
-		} else {
-			expectedReservations[tenantKey] = reservation
-		}
-
-		if !options.enforceExactLegacyReservations && lease.MinLeaseDurationAtCreation != 0 {
-			if existing, ok := knownReservations[tenantKey]; ok {
-				knownReservations[tenantKey], err = SafeAddCoins(existing, reservation)
-				if err != nil {
-					return errorsmod.Wrapf(err, "sum known reservations for tenant %s", tenantKey)
-				}
-			} else {
-				knownReservations[tenantKey] = reservation
-			}
-		}
+	legacyReservationState, err := gs.HasLegacyReservationState()
+	if err != nil {
+		return err
 	}
-
-	// Check each credit account's reserved_amounts matches expected
-	for i := range gs.CreditAccounts {
-		ca := gs.CreditAccounts[i]
-		tenantKey := creditAccountTenantKeys[i]
-		actualNormalized := sdk.NewCoins(ca.ReservedAmounts...)
-		if legacyReservationTenants[tenantKey] {
-			known := knownReservations[tenantKey]
-			if known == nil {
-				known = sdk.NewCoins()
-			}
-			if !actualNormalized.IsAllGTE(known) {
-				return ErrInvalidCreditOperation.Wrapf(
-					"credit account for %s has reserved_amounts %s below known non-legacy lease reservations %s",
-					ca.Tenant, actualNormalized.String(), known.String(),
-				)
-			}
-			continue
-		}
-
-		expected := expectedReservations[tenantKey]
-		if expected == nil {
-			expected = sdk.NewCoins()
-		}
-
-		// Normalize both for comparison (removes zero coins)
-		expectedNormalized := sdk.NewCoins(expected...)
-
-		if !actualNormalized.Equal(expectedNormalized) {
-			return ErrInvalidCreditOperation.Wrapf(
-				"credit account for %s has reserved_amounts %s but lease reservations sum to %s",
-				ca.Tenant, actualNormalized.String(), expectedNormalized.String(),
-			)
-		}
+	if legacyReservationState {
+		err = gs.validateLegacyReservationState(
+			options,
+			leaseTenantKeys,
+			creditAccountTenantKeys,
+			seenTenants,
+		)
+	} else {
+		err = gs.validateConsumableReservationState(
+			leaseTenantKeys,
+			creditAccountTenantKeys,
+			seenTenants,
+		)
 	}
-
-	// Check for tenants with leases but no credit account. Iterate sorted keys
-	// so that a genesis with several offending tenants always names the same
-	// one in the error, rather than an arbitrary one per run.
-	for _, tenant := range slices.Sorted(maps.Keys(expectedReservations)) {
-		expected := expectedReservations[tenant]
-		if !expected.IsZero() && !seenTenants[tenant] {
-			return ErrInvalidCreditOperation.Wrapf(
-				"tenant %s has lease reservations totaling %s but no credit account",
-				tenant, expected.String(),
-			)
-		}
+	if err != nil {
+		return err
 	}
 
 	if err := gs.ValidateCreditAccountLeaseCounts(); err != nil {
@@ -354,6 +298,274 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 		)
 	}
 
+	return nil
+}
+
+// HasLegacyReservationState reports whether the genesis uses the aggregate-only
+// reservation representation written before billing consensus version 4.
+// Presence of Lease.reservation is the wire-compatible format marker: all
+// leases must either omit it or include it, even when a tranche is empty.
+func (gs *GenesisState) HasLegacyReservationState() (bool, error) {
+	hasLegacyLease := false
+	hasConsumableLease := false
+	for i := range gs.Leases {
+		if gs.Leases[i].Reservation == nil {
+			hasLegacyLease = true
+		} else {
+			hasConsumableLease = true
+		}
+	}
+	if hasLegacyLease && hasConsumableLease {
+		return false, ErrReservationInvariant.Wrap(
+			"genesis mixes leases with legacy and consumable reservation state",
+		)
+	}
+	if !hasLegacyLease {
+		return false, nil
+	}
+
+	for i := range gs.CreditAccounts {
+		if !gs.CreditAccounts[i].UnattributedReservedAmounts.IsZero() {
+			return false, ErrReservationInvariant.Wrapf(
+				"legacy reservation state for tenant %s carries unattributed_reserved_amounts",
+				gs.CreditAccounts[i].Tenant,
+			)
+		}
+		if gs.CreditAccounts[i].UnattributedLeaseCount != 0 {
+			return false, ErrReservationInvariant.Wrapf(
+				"legacy reservation state for tenant %s carries unattributed_lease_count %d",
+				gs.CreditAccounts[i].Tenant,
+				gs.CreditAccounts[i].UnattributedLeaseCount,
+			)
+		}
+	}
+	return true, nil
+}
+
+// validateLegacyReservationState preserves the import contract for pre-v4
+// aggregate-only (v2/v3) exports, where only the account aggregate was stored.
+// Exact per-lease amounts are established by InitGenesis before this state is
+// persisted in v4 format.
+func (gs *GenesisState) validateLegacyReservationState(
+	options genesisValidationOptions,
+	leaseTenantKeys,
+	creditAccountTenantKeys []string,
+	seenTenants map[string]bool,
+) error {
+	expectedReservationCoins := make(map[string][]sdk.Coin)
+	legacyReservationTenants := make(map[string]bool)
+	knownReservationCoins := make(map[string][]sdk.Coin)
+	reservationTenantOrder := make([]string, 0)
+	seenReservationTenants := make(map[string]bool)
+	for i := range gs.Leases {
+		lease := &gs.Leases[i]
+		tenantKey := leaseTenantKeys[i]
+		if !options.enforceExactLegacyReservations && lease.MinLeaseDurationAtCreation == 0 {
+			// A terminal legacy lease is evidence that a historical release may
+			// have left an unreconstructible residual after a parameter change.
+			legacyReservationTenants[tenantKey] = true
+		}
+
+		if lease.State != LEASE_STATE_PENDING && lease.State != LEASE_STATE_ACTIVE {
+			continue
+		}
+		if !seenReservationTenants[tenantKey] {
+			seenReservationTenants[tenantKey] = true
+			reservationTenantOrder = append(reservationTenantOrder, tenantKey)
+		}
+
+		reservation, err := GetLeaseReservationAmount(lease, gs.Params.MinLeaseDuration)
+		if err != nil {
+			return errorsmod.Wrapf(err, "calculate reservation for lease %s", lease.Uuid)
+		}
+		expectedReservationCoins[tenantKey] = append(
+			expectedReservationCoins[tenantKey],
+			reservation...,
+		)
+
+		if !options.enforceExactLegacyReservations && lease.MinLeaseDurationAtCreation != 0 {
+			knownReservationCoins[tenantKey] = append(
+				knownReservationCoins[tenantKey],
+				reservation...,
+			)
+		}
+	}
+
+	// Check each credit account's reserved_amounts matches expected
+	for i := range gs.CreditAccounts {
+		ca := gs.CreditAccounts[i]
+		tenantKey := creditAccountTenantKeys[i]
+		actualNormalized := sdk.NewCoins(ca.ReservedAmounts...)
+		if legacyReservationTenants[tenantKey] {
+			known, err := SafeAggregateCoins(knownReservationCoins[tenantKey])
+			if err != nil {
+				return errorsmod.Wrapf(err, "sum known reservations for tenant %s", tenantKey)
+			}
+			if !actualNormalized.IsAllGTE(known) {
+				return ErrInvalidCreditOperation.Wrapf(
+					"credit account for %s has reserved_amounts %s below known non-legacy lease reservations %s",
+					ca.Tenant, actualNormalized.String(), known.String(),
+				)
+			}
+			continue
+		}
+
+		expected, err := SafeAggregateCoins(expectedReservationCoins[tenantKey])
+		if err != nil {
+			return errorsmod.Wrapf(err, "sum reservations for tenant %s", tenantKey)
+		}
+
+		// Normalize both for comparison (removes zero coins)
+		expectedNormalized := sdk.NewCoins(expected...)
+
+		if !actualNormalized.Equal(expectedNormalized) {
+			return ErrInvalidCreditOperation.Wrapf(
+				"credit account for %s has reserved_amounts %s but lease reservations sum to %s",
+				ca.Tenant, actualNormalized.String(), expectedNormalized.String(),
+			)
+		}
+	}
+
+	// Sort the explicitly collected keys rather than ranging over a Go map in a
+	// consensus validation path.
+	slices.Sort(reservationTenantOrder)
+	for _, tenant := range reservationTenantOrder {
+		expected, err := SafeAggregateCoins(expectedReservationCoins[tenant])
+		if err != nil {
+			return errorsmod.Wrapf(err, "sum reservations for tenant %s", tenant)
+		}
+		if !expected.IsZero() && !seenTenants[tenant] {
+			return ErrInvalidCreditOperation.Wrapf(
+				"tenant %s has lease reservations totaling %s but no credit account",
+				tenant, expected.String(),
+			)
+		}
+	}
+	return nil
+}
+
+// validateConsumableReservationState enforces the exact v4 accounting model:
+// each modern live lease owns its remaining tranche, historical live leases
+// share only an explicit unattributed cohort, and the account aggregate equals
+// the sum of those claims.
+func (gs *GenesisState) validateConsumableReservationState(
+	leaseTenantKeys,
+	creditAccountTenantKeys []string,
+	seenTenants map[string]bool,
+) error {
+	modernReservationCoins := make(map[string][]sdk.Coin)
+	legacyLeaseCounts := make(map[string]uint64)
+	liveTenantOrder := make([]string, 0)
+	seenLiveTenants := make(map[string]bool)
+
+	for i := range gs.Leases {
+		lease := &gs.Leases[i]
+		tenantKey := leaseTenantKeys[i]
+		remaining, err := SafeAddCoins(sdk.NewCoins(), lease.Reservation.RemainingAmounts)
+		if err != nil {
+			return ErrReservationInvariant.Wrapf(
+				"lease %s has invalid remaining reservation: %s",
+				lease.Uuid, err,
+			)
+		}
+
+		live := lease.State == LEASE_STATE_PENDING || lease.State == LEASE_STATE_ACTIVE
+		if !live {
+			if !remaining.IsZero() {
+				return ErrReservationInvariant.Wrapf(
+					"terminal lease %s has remaining reservation %s",
+					lease.Uuid, remaining.String(),
+				)
+			}
+			continue
+		}
+		if !seenLiveTenants[tenantKey] {
+			seenLiveTenants[tenantKey] = true
+			liveTenantOrder = append(liveTenantOrder, tenantKey)
+		}
+
+		if lease.MinLeaseDurationAtCreation == 0 {
+			if !remaining.IsZero() {
+				return ErrReservationInvariant.Wrapf(
+					"legacy lease %s has attributed reservation %s",
+					lease.Uuid, remaining.String(),
+				)
+			}
+			if legacyLeaseCounts[tenantKey] == math.MaxUint64 {
+				return ErrReservationInvariant.Wrapf(
+					"live legacy lease count overflows uint64 for tenant %s", tenantKey,
+				)
+			}
+			legacyLeaseCounts[tenantKey]++
+			continue
+		}
+
+		nominal, err := GetLeaseReservationAmount(lease, gs.Params.MinLeaseDuration)
+		if err != nil {
+			return errorsmod.Wrapf(err, "calculate nominal reservation for lease %s", lease.Uuid)
+		}
+		if lease.State == LEASE_STATE_PENDING && !remaining.Equal(nominal) {
+			return ErrReservationInvariant.Wrapf(
+				"pending lease %s has remaining reservation %s, expected %s",
+				lease.Uuid, remaining.String(), nominal.String(),
+			)
+		}
+		if _, err := SafeSubtractCoins(nominal, remaining); err != nil {
+			return ErrReservationInvariant.Wrapf(
+				"lease %s remaining reservation %s exceeds nominal reservation %s: %s",
+				lease.Uuid, remaining.String(), nominal.String(), err,
+			)
+		}
+
+		modernReservationCoins[tenantKey] = append(
+			modernReservationCoins[tenantKey],
+			remaining...,
+		)
+	}
+
+	for i := range gs.CreditAccounts {
+		ca := &gs.CreditAccounts[i]
+		tenantKey := creditAccountTenantKeys[i]
+		expectedLegacyCount := legacyLeaseCounts[tenantKey]
+		if ca.UnattributedLeaseCount != expectedLegacyCount {
+			return ErrReservationInvariant.Wrapf(
+				"credit account for %s has unattributed_lease_count %d but has %d live legacy leases",
+				ca.Tenant, ca.UnattributedLeaseCount, expectedLegacyCount,
+			)
+		}
+		if expectedLegacyCount == 0 && !ca.UnattributedReservedAmounts.IsZero() {
+			return ErrReservationInvariant.Wrapf(
+				"credit account for %s has unattributed reservation %s without a live legacy lease",
+				ca.Tenant, ca.UnattributedReservedAmounts.String(),
+			)
+		}
+
+		modernReservations, err := SafeAggregateCoins(modernReservationCoins[tenantKey])
+		if err != nil {
+			return errorsmod.Wrapf(err, "sum attributed reservations for tenant %s", tenantKey)
+		}
+		expected, err := SafeAddCoins(modernReservations, ca.UnattributedReservedAmounts)
+		if err != nil {
+			return errorsmod.Wrapf(err, "sum reservations for tenant %s", tenantKey)
+		}
+		actual := sdk.NewCoins(ca.ReservedAmounts...)
+		if !actual.Equal(expected) {
+			return ErrReservationInvariant.Wrapf(
+				"credit account for %s has reserved_amounts %s but consumable reservations sum to %s",
+				ca.Tenant, actual.String(), expected.String(),
+			)
+		}
+	}
+
+	slices.Sort(liveTenantOrder)
+	for _, tenant := range liveTenantOrder {
+		if !seenTenants[tenant] {
+			return ErrReservationInvariant.Wrapf(
+				"tenant %s has live reservation claims but no credit account",
+				tenant,
+			)
+		}
+	}
 	return nil
 }
 
@@ -397,6 +609,18 @@ func (gs *GenesisState) ValidateCreditAccountLeaseCounts() error {
 		}
 		tenantKey := tenantAddr.String()
 		creditAccountTenants[tenantKey] = true
+		if ca.ActiveLeaseCount > MaxActiveLeasesPerTenantStateUpperBound {
+			return ErrInvalidCreditOperation.Wrapf(
+				"credit account for %s has active_lease_count %d above hard upper bound %d",
+				ca.Tenant, ca.ActiveLeaseCount, MaxActiveLeasesPerTenantStateUpperBound,
+			)
+		}
+		if ca.PendingLeaseCount > MaxPendingLeasesPerTenantUpperBound {
+			return ErrInvalidCreditOperation.Wrapf(
+				"credit account for %s has pending_lease_count %d above hard upper bound %d",
+				ca.Tenant, ca.PendingLeaseCount, MaxPendingLeasesPerTenantUpperBound,
+			)
+		}
 		expectedActive := activeCounts[tenantKey]
 		if ca.ActiveLeaseCount != expectedActive {
 			return ErrInvalidCreditOperation.Wrapf(

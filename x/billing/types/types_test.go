@@ -1498,6 +1498,27 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 			errMsg:    "has unspecified state",
 		},
 		{
+			name: "lease with unknown numeric state",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items: []types.LeaseItem{
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+						},
+						State:         types.LeaseState(99),
+						CreatedAt:     now,
+						LastSettledAt: now,
+					},
+				},
+			},
+			expectErr: true,
+			errMsg:    "has unknown state 99",
+		},
+		{
 			name: "inactive lease without closed_at",
 			genesis: &types.GenesisState{
 				Params: types.DefaultParams(),
@@ -2076,6 +2097,21 @@ func TestGenesisState_ValidateCreditAccountLeaseCounts_MissingAccountUsesLeaseOr
 		require.Contains(t, err.Error(), firstTenant+" has 1 active and 0 pending leases but no credit account")
 		require.NotContains(t, err.Error(), secondTenant)
 	}
+}
+
+func TestGenesisState_HasLegacyReservationStateRejectsConsumableCohortCount(t *testing.T) {
+	gs := &types.GenesisState{
+		Leases: []types.Lease{{Reservation: nil}},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:                 "historical-tenant",
+			UnattributedLeaseCount: 1,
+		}},
+	}
+
+	legacy, err := gs.HasLegacyReservationState()
+	require.False(t, legacy)
+	require.ErrorIs(t, err, types.ErrReservationInvariant)
+	require.ErrorContains(t, err, "carries unattributed_lease_count 1")
 }
 
 func TestGenesisState_Validate_UsesCanonicalTenantIdentity(t *testing.T) {

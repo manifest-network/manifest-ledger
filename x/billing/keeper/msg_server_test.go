@@ -609,6 +609,40 @@ func TestMsgCreateLease_ArithmeticOverflowReturnsModuleErrorWithoutState(t *test
 	require.True(t, account.ReservedAmounts.IsZero())
 }
 
+func TestMsgCreateLeaseRejectsReservedDenomCardinalityGrowth(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+	creditAddr := types.DeriveCreditAddress(tenant)
+
+	existing := make([]sdk.Coin, 0, types.MaxReservedDenomsPerCreditAccount)
+	for index := range types.MaxReservedDenomsPerCreditAccount {
+		existing = append(existing, sdk.NewInt64Coin(fmt.Sprintf("a%04d", index), 1))
+	}
+	reserved := sdk.NewCoins(existing...)
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:          tenant.String(),
+		CreditAddress:   creditAddr.String(),
+		ReservedAmounts: reserved,
+	}))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewInt64Coin(testDenom, 1_000_000)))
+
+	_, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+		Tenant: tenant.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	})
+	require.ErrorIs(t, err, types.ErrReservationDenomLimitExceeded)
+
+	account, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, reserved, account.ReservedAmounts)
+	require.Zero(t, account.PendingLeaseCount)
+}
+
 func TestMsgCreateLeaseInsufficientCredit(t *testing.T) {
 	f := initFixture(t)
 
@@ -1970,21 +2004,25 @@ func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 			{SkuUuid: sku.Uuid, Quantity: 1},
 		})
 
-		// Simulate a historical locked rate whose price × quantity is valid for its
-		// one-second reservation but whose two-second accrued charge exceeds the SDK
-		// integer representation. PerformSettlementSilent clamps that denom to the
-		// remaining balance (so the unpaid remainder reads zero), but its explicit
-		// overflow metadata must still classify the close as exhaustion.
+		// Simulate a migrated historical locked rate whose two-second accrued charge
+		// exceeds the SDK integer representation. Its cutover allocation is capped to
+		// the bank-backed 5000 units, so R/A/B remain coherent. Silent settlement
+		// drains that allocation, but its explicit overflow metadata must still
+		// classify the close as exhaustion.
 		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
 		require.NoError(t, err)
 		lease.Items[0].Quantity = 1
 		lease.Items[0].LockedPrice = sdk.NewCoin(testDenom, highBitBillingTestInt())
 		lease.MinLeaseDurationAtCreation = 1
 		lease.LastSettledAt = f.Ctx.BlockTime().Add(-2 * time.Second)
+		backedReservation := sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(5000)))
+		lease.Reservation = &types.LeaseReservation{
+			RemainingAmounts: append(sdk.Coins(nil), backedReservation...),
+		}
 		require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
 		creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
 		require.NoError(t, err)
-		creditAccount.ReservedAmounts = sdk.NewCoins(sdk.NewCoin(testDenom, highBitBillingTestInt()))
+		creditAccount.ReservedAmounts = backedReservation
 		require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, creditAccount))
 
 		_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
@@ -2012,11 +2050,20 @@ func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 			{SkuUuid: sku.Uuid, Quantity: 1},
 		})
 
-		// Drain the credit balance to zero WITHOUT advancing block time, so the
+		// Model a fully consumed reservation before draining the remaining unreserved
+		// balance. This keeps R/A/B coherent at zero without advancing block time, so the
 		// close sees duration == 0 and a zero balance. ShouldAutoCloseLease flags
 		// this via its zero-balance branch, but PerformSettlementSilent accrues and
 		// transfers nothing (duration == 0), so there is no unpaid remainder — the
 		// close must still be recorded as genuine credit exhaustion, not the reason.
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+		require.NoError(t, err)
+		lease.Reservation.RemainingAmounts = sdk.NewCoins()
+		require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+		creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+		require.NoError(t, err)
+		creditAccount.ReservedAmounts = sdk.NewCoins()
+		require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, creditAccount))
 		bal := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom)
 		require.NoError(t, f.App.BankKeeper.SendCoins(f.Ctx, creditAddr, payoutAddr, sdk.NewCoins(bal)))
 
@@ -2027,7 +2074,7 @@ func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+		lease, err = f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
 		require.NoError(t, err)
 		require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
 		require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason,
@@ -3239,10 +3286,12 @@ func TestMsgAcknowledgeLeaseBatch(t *testing.T) {
 		// Use valid UUIDv7 format (version 7 = 0x7xxx in the version nibble)
 		orphanLeaseUUID := "01912345-6789-7abc-8def-ffffffffffff"
 		orphanLease := types.Lease{
-			Uuid:         orphanLeaseUUID,
-			Tenant:       orphanTenant.String(),
-			ProviderUuid: provider.Uuid,
-			State:        types.LEASE_STATE_PENDING,
+			Uuid:                       orphanLeaseUUID,
+			Tenant:                     orphanTenant.String(),
+			ProviderUuid:               provider.Uuid,
+			State:                      types.LEASE_STATE_PENDING,
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 			Items: []types.LeaseItem{
 				{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewInt64Coin(denom, 3600)},
 			},
@@ -5022,9 +5071,10 @@ func TestEndBlockerRateLimiting(t *testing.T) {
 
 	// Create 150 pending leases directly (more than MaxPendingLeaseExpirationsPerBlock = 100)
 	// Using direct SetLease to avoid message validation overhead for bulk creation
-	numLeases := 150
+	const numLeases = 150
 	leaseUUIDs := make([]string, numLeases)
 	baseTime := f.Ctx.BlockTime()
+	totalReservation := sdk.NewCoins()
 
 	for i := 0; i < numLeases; i++ {
 		leaseUUID := fmt.Sprintf("rate-limit-test-lease-%03d", i)
@@ -5041,16 +5091,27 @@ func TestEndBlockerRateLimiting(t *testing.T) {
 					LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1)),
 				},
 			},
-			State:          types.LEASE_STATE_PENDING,
-			CreatedAt:      baseTime, // All created at same time
-			LastSettledAt:  baseTime,
-			AcknowledgedAt: nil,
-			ClosedAt:       nil,
-			ExpiredAt:      nil,
+			State:                      types.LEASE_STATE_PENDING,
+			CreatedAt:                  baseTime, // All created at same time
+			LastSettledAt:              baseTime,
+			AcknowledgedAt:             nil,
+			ClosedAt:                   nil,
+			ExpiredAt:                  nil,
+			MinLeaseDurationAtCreation: params.MinLeaseDuration,
 		}
+		reservation := getLeaseReservationAmount(t, &lease, params.MinLeaseDuration)
+		lease.Reservation = &types.LeaseReservation{
+			RemainingAmounts: append(sdk.Coins(nil), reservation...),
+		}
+		totalReservation = addTestReservation(t, totalReservation, reservation)
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
 	}
+	creditAccount, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	creditAccount.PendingLeaseCount = uint64(numLeases)
+	creditAccount.ReservedAmounts = totalReservation
+	require.NoError(t, k.SetCreditAccount(f.Ctx, creditAccount))
 
 	// Verify all 150 leases are pending
 	pendingLeases, err := k.GetPendingLeases(f.Ctx)
@@ -5129,6 +5190,7 @@ func TestEndBlockerIteratorDoesNotLoadAll(t *testing.T) {
 	require.NoError(t, err)
 
 	baseTime := f.Ctx.BlockTime()
+	totalReservation := sdk.NewCoins()
 
 	// Create 50 leases that will be expired (created at baseTime)
 	expiredLeaseUUIDs := make([]string, 50)
@@ -5137,14 +5199,20 @@ func TestEndBlockerIteratorDoesNotLoadAll(t *testing.T) {
 		expiredLeaseUUIDs[i] = leaseUUID
 
 		lease := types.Lease{
-			Uuid:          leaseUUID,
-			Tenant:        tenant.String(),
-			ProviderUuid:  provider.Uuid,
-			Items:         []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
-			State:         types.LEASE_STATE_PENDING,
-			CreatedAt:     baseTime, // Will be expired
-			LastSettledAt: baseTime,
+			Uuid:                       leaseUUID,
+			Tenant:                     tenant.String(),
+			ProviderUuid:               provider.Uuid,
+			Items:                      []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
+			State:                      types.LEASE_STATE_PENDING,
+			CreatedAt:                  baseTime, // Will be expired
+			LastSettledAt:              baseTime,
+			MinLeaseDurationAtCreation: params.MinLeaseDuration,
 		}
+		reservation := getLeaseReservationAmount(t, &lease, params.MinLeaseDuration)
+		lease.Reservation = &types.LeaseReservation{
+			RemainingAmounts: append(sdk.Coins(nil), reservation...),
+		}
+		totalReservation = addTestReservation(t, totalReservation, reservation)
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
 	}
@@ -5157,17 +5225,28 @@ func TestEndBlockerIteratorDoesNotLoadAll(t *testing.T) {
 		notExpiredLeaseUUIDs[i] = leaseUUID
 
 		lease := types.Lease{
-			Uuid:          leaseUUID,
-			Tenant:        tenant.String(),
-			ProviderUuid:  provider.Uuid,
-			Items:         []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
-			State:         types.LEASE_STATE_PENDING,
-			CreatedAt:     futureTime, // Created 30s later, won't be expired yet
-			LastSettledAt: futureTime,
+			Uuid:                       leaseUUID,
+			Tenant:                     tenant.String(),
+			ProviderUuid:               provider.Uuid,
+			Items:                      []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
+			State:                      types.LEASE_STATE_PENDING,
+			CreatedAt:                  futureTime, // Created 30s later, won't be expired yet
+			LastSettledAt:              futureTime,
+			MinLeaseDurationAtCreation: params.MinLeaseDuration,
 		}
+		reservation := getLeaseReservationAmount(t, &lease, params.MinLeaseDuration)
+		lease.Reservation = &types.LeaseReservation{
+			RemainingAmounts: append(sdk.Coins(nil), reservation...),
+		}
+		totalReservation = addTestReservation(t, totalReservation, reservation)
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
 	}
+	creditAccount, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	creditAccount.PendingLeaseCount = 100
+	creditAccount.ReservedAmounts = totalReservation
+	require.NoError(t, k.SetCreditAccount(f.Ctx, creditAccount))
 
 	// Verify we have 100 pending leases total
 	pendingLeases, err := k.GetPendingLeases(f.Ctx)
@@ -5252,6 +5331,10 @@ func (f *testFixture) setPendingLease(t *testing.T, uuid, providerUUID, skuUUID,
 		LastSettledAt:              createdAt,
 		MinLeaseDurationAtCreation: params.MinLeaseDuration,
 	}
+	reservation := getLeaseReservationAmount(t, &lease, params.MinLeaseDuration)
+	lease.Reservation = &types.LeaseReservation{
+		RemainingAmounts: append(sdk.Coins(nil), reservation...),
+	}
 	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
 
 	// Mirror CreateLease's credit-account side effects so EndBlocker expiry finds a
@@ -5261,7 +5344,7 @@ func (f *testFixture) setPendingLease(t *testing.T, uuid, providerUUID, skuUUID,
 	ca, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, lease.Tenant)
 	require.NoError(t, err)
 	ca.PendingLeaseCount++
-	ca.ReservedAmounts = addTestReservation(t, ca.ReservedAmounts, getLeaseReservationAmount(t, &lease, params.MinLeaseDuration))
+	ca.ReservedAmounts = addTestReservation(t, ca.ReservedAmounts, reservation)
 	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, ca))
 }
 

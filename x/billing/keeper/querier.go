@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"math"
+	"slices"
 	"strings"
 
+	"github.com/spf13/cast"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -15,6 +17,7 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 
 	"github.com/manifest-network/manifest-ledger/pkg/pagination"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
@@ -253,44 +256,54 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	// Collect relevant denoms from the tenant's leases and reserved amounts.
-	// Uses per-denom GetBalance to avoid loading dust from unrelated token sends (DoS mitigation).
-	relevantDenoms, err := q.k.getRelevantDenomsForTenant(ctx, ca)
+	pageReq := query.PageRequest{}
+	if req.Pagination != nil {
+		pageReq = *req.Pagination
+	}
+	if pageReq.Offset != 0 {
+		return nil, status.Error(codes.InvalidArgument, "credit-account supports cursor pagination only; offset must be zero")
+	}
+	if pageReq.CountTotal {
+		return nil, status.Error(codes.InvalidArgument, "credit-account does not support count_total")
+	}
+	if pageReq.Limit == 0 {
+		pageReq.Limit = types.DefaultCreditAccountBalanceQueryLimit
+	}
+	if pageReq.Limit > types.MaxCreditAccountBalanceQueryLimit {
+		pageReq.Limit = types.MaxCreditAccountBalanceQueryLimit
+	}
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(req.Tenant)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-
-	var balances sdk.Coins
-	if len(relevantDenoms) > 0 {
-		// Primary path: per-denom queries using only lease/reservation denoms (DoS-safe).
-		balances, err = q.k.getCreditBalancesForDenoms(ctx, req.Tenant, relevantDenoms)
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-	} else {
-		// Fallback for tenants with no denom hints: reached whenever the credit account
-		// currently has no active/pending leases and no reservations. getRelevantDenomsForTenant
-		// derives denoms only from ReservedAmounts plus ACTIVE/PENDING leases, and reservations
-		// are released when a lease closes, so this covers any inter-lease steady state (a funded
-		// account between leases), not just the window between FundCredit and the first lease.
-		// Uses GetAllBalances since we have no denom hints. The node-side cost is O(n) where n is
-		// the number of denoms on the credit address, but exploiting this requires spending gas to
-		// send dust; revisit this scan if the fallback ever becomes hot.
-		creditAddr, addrErr := types.DeriveCreditAddressFromBech32(req.Tenant)
-		if addrErr != nil {
-			return nil, status.Error(codes.Internal, addrErr.Error())
-		}
-		balances = q.k.bankKeeper.GetAllBalances(ctx, creditAddr)
+	bankResponse, err := q.k.bankKeeper.AllBalances(ctx, &banktypes.QueryAllBalancesRequest{
+		Address:    creditAddr.String(),
+		Pagination: &pageReq,
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	// Calculate available balances (balance - reserved amounts)
-	// This is what can be used for new lease reservations
-	availableBalances := types.GetAvailableCredit(balances, ca.ReservedAmounts)
+	// bank's reverse pagination preserves store order and therefore returns a
+	// descending coin slice. GetAvailableCredit operates on canonical ascending
+	// sdk.Coins, so normalize only the page view and restore the requested order
+	// in the response. The bank response itself remains untouched.
+	availablePage := bankResponse.Balances
+	if pageReq.Reverse {
+		availablePage = slices.Clone(availablePage)
+		slices.Reverse(availablePage)
+	}
+	availableBalances := types.GetAvailableCredit(availablePage, ca.ReservedAmounts)
+	if pageReq.Reverse {
+		slices.Reverse(availableBalances)
+	}
 
 	return &types.QueryCreditAccountResponse{
 		CreditAccount:     ca,
-		Balances:          balances,
+		Balances:          bankResponse.Balances,
 		AvailableBalances: availableBalances,
+		Pagination:        bankResponse.Pagination,
 	}, nil
 }
 
@@ -339,13 +352,16 @@ func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdra
 	}, nil
 }
 
-// ProviderWithdrawable queries the withdrawable amounts for a provider, paginated
-// over the provider's ACTIVE leases (the only state CalculateWithdrawableForLease
-// can return a non-zero amount for). It mirrors how LeasesByProvider paginates and
-// is symmetric with provider-wide MsgWithdraw: loop until pagination.next_key is
-// empty and sum the per-page amounts for the provider's full withdrawable total.
-// The page size defaults to DefaultProviderWithdrawableQueryLimit and is capped at
-// MaxProviderWithdrawableQueryLimit to bound query cost.
+// ProviderWithdrawable estimates a provider withdrawal for one page of ACTIVE
+// leases. Leases are dry-run in the returned index order against page-local,
+// canonical-tenant snapshots, so leases in the same page cannot each count the
+// same unreserved credit. A page is an execution estimate, not an additive part
+// of a provider-wide snapshot: clients should submit the corresponding withdraw
+// and re-query before processing another page because pages can share balances.
+// Per-lease failures are discarded and skipped, matching provider-wide
+// withdrawal's best-effort execution contract.
+// The page size defaults to DefaultProviderWithdrawableQueryLimit and is capped
+// at MaxProviderWithdrawableQueryLimit to bound query cost.
 func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProviderWithdrawableRequest) (*types.QueryProviderWithdrawableResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -354,12 +370,29 @@ func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProvi
 	if req.ProviderUuid == "" {
 		return nil, status.Error(codes.InvalidArgument, "provider_uuid cannot be empty")
 	}
+	provider, err := q.k.skuKeeper.GetProvider(ctx, req.ProviderUuid)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, types.ErrProviderNotFound.Wrapf(
+			"provider_uuid %s not found", req.ProviderUuid,
+		).Error())
+	}
+	if _, err := sdk.AccAddressFromBech32(provider.GetPayoutAddress()); err != nil {
+		return nil, status.Error(codes.Internal, types.ErrProviderNotFound.Wrapf(
+			"provider %s has invalid payout address: %s", req.ProviderUuid, err,
+		).Error())
+	}
 
 	// Normalize pagination: default and cap the page limit to bound query cost,
 	// preserving any cursor/order the caller supplied.
 	pageReq := query.PageRequest{}
 	if req.Pagination != nil {
 		pageReq = *req.Pagination
+	}
+	if pageReq.Offset != 0 {
+		return nil, status.Error(codes.InvalidArgument, "provider-withdrawable supports cursor pagination only; offset must be zero")
+	}
+	if pageReq.CountTotal {
+		return nil, status.Error(codes.InvalidArgument, "provider-withdrawable does not support count_total")
 	}
 	if pageReq.Limit == 0 {
 		pageReq.Limit = types.DefaultProviderWithdrawableQueryLimit
@@ -381,20 +414,33 @@ func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProvi
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalWithdrawable := sdk.NewCoins()
+	// Run the page through the real lifecycle against a discarded cache. This
+	// is read-only at the query boundary and keeps estimates aligned with future
+	// settlement/release changes without duplicating consensus accounting.
+	simulationCtx, _ := sdk.UnwrapSDKContext(ctx).CacheContext()
+	transferCoins := make([]sdk.Coin, 0, len(leases))
 	var leaseCount uint64
 	for i := range leases {
-		withdrawable, err := q.k.CalculateWithdrawableForLease(ctx, leases[i])
+		// Match provider-wide withdrawal's best-effort contract: each lease gets
+		// its own nested cache, failures are discarded, and successful effects
+		// are committed into the shared page simulation for subsequent leases.
+		leaseCtx, commitLease := simulationCtx.CacheContext()
+		lease := leases[i]
+		result, err := q.k.executeProviderLeaseWithdrawal(leaseCtx, &lease)
 		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+			continue
 		}
-		if !withdrawable.IsZero() {
-			totalWithdrawable, err = types.SafeAddCoins(totalWithdrawable, withdrawable)
-			if err != nil {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
-			leaseCount++
+		if !result.counted {
+			continue
 		}
+
+		commitLease()
+		transferCoins = append(transferCoins, result.transferAmounts...)
+		leaseCount++
+	}
+	totalWithdrawable, err := types.SafeAggregateCoins(transferCoins)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &types.QueryProviderWithdrawableResponse{
@@ -488,7 +534,8 @@ func (q Querier) LeasesBySKU(ctx context.Context, req *types.QueryLeasesBySKUReq
 	}, nil
 }
 
-// CreditEstimate estimates remaining lease duration for a tenant.
+// CreditEstimate reports gross bank-balance runway at the tenant's current
+// aggregate ACTIVE rate. It is not a reservation-aware lifecycle forecast.
 func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstimateRequest) (*types.QueryCreditEstimateResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -510,15 +557,25 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	// Bound iteration by the stored count rather than current params so pre-existing
-	// active leases remain visible after a limit reduction. Retain a fixed hard ceiling
-	// for corrupt or adversarial imported state.
-	maxActiveLeases := min(creditAccount.ActiveLeaseCount, maxActiveLeaseQueryIterations)
+	// Historical state can exceed the current governance parameter, but not the
+	// fixed v2 state bound. Refuse malformed state rather than returning a partial
+	// estimate from a silently truncated scan.
+	if creditAccount.ActiveLeaseCount > types.MaxActiveLeasesPerTenantStateUpperBound {
+		return nil, status.Error(codes.ResourceExhausted,
+			types.ErrLeaseQueryLimitExceeded.Wrapf(
+				"tenant %s has %d active leases; unpaginated query ceiling is %d",
+				creditAccount.Tenant,
+				creditAccount.ActiveLeaseCount,
+				types.MaxActiveLeasesPerTenantStateUpperBound,
+			).Error(),
+		)
+	}
 
 	// Calculate total rate per second across all active leases.
 	// Also collect relevant denoms for per-denom balance queries (DoS mitigation).
-	totalRatePerSecond := sdk.NewCoins()
+	rateCoins := make([]sdk.Coin, 0, 4)
 	var activeLeaseCount uint64
+	var leaseItemCount uint64
 	denomSet := make(map[string]struct{})
 	denoms := make([]string, 0, 4)
 
@@ -530,13 +587,7 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 	}
 	defer iter.Close()
 
-	for ; iter.Valid(); iter.Next() {
-		// Bounded by the aggregate-derived cap (see maxActiveLeases above). Check before the
-		// increment (mirroring getRelevantDenomsForTenant) so ActiveLeaseCount and the
-		// summed set never diverge if the cap is ever reached.
-		if activeLeaseCount >= maxActiveLeases {
-			break
-		}
+	for ; activeLeaseCount < creditAccount.ActiveLeaseCount && iter.Valid(); iter.Next() {
 		activeLeaseCount++
 
 		leaseUUID, err := iter.PrimaryKey()
@@ -547,6 +598,14 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		lease, err := q.k.Leases.Get(ctx, leaseUUID)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
+		}
+		leaseItemCount, err = checkedCreditEstimateItemCount(
+			creditAccount.Tenant,
+			leaseItemCount,
+			len(lease.Items),
+		)
+		if err != nil {
+			return nil, err
 		}
 
 		// Sum up rates for all items in this lease
@@ -565,15 +624,22 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 			if err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
 			}
-			totalRatePerSecond, err = types.SafeAddCoins(totalRatePerSecond, sdk.Coins{itemRate})
-			if err != nil {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
+			rateCoins = append(rateCoins, itemRate)
 			if _, ok := denomSet[item.LockedPrice.Denom]; !ok {
 				denomSet[item.LockedPrice.Denom] = struct{}{}
 				denoms = append(denoms, item.LockedPrice.Denom)
 			}
 		}
+	}
+	if activeLeaseCount != creditAccount.ActiveLeaseCount || iter.Valid() {
+		return nil, status.Error(codes.Internal, types.ErrReservationInvariant.Wrapf(
+			"tenant %s account reports %d active leases but its index does not contain exactly that count",
+			creditAccount.Tenant, creditAccount.ActiveLeaseCount,
+		).Error())
+	}
+	totalRatePerSecond, err := types.SafeAggregateCoins(rateCoins)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// Fetch balances for only the denoms used by active leases (DoS mitigation).
@@ -589,13 +655,20 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		// Start with max uint64, then find minimum
 		estimatedDurationSeconds = math.MaxUint64
 		foundRate := false
+		balanceIndex := 0
 
 		for _, rateCoin := range totalRatePerSecond {
 			if rateCoin.Amount.IsZero() {
 				continue
 			}
 			foundRate = true
-			balanceAmount := currentBalance.AmountOf(rateCoin.Denom)
+			for balanceIndex < len(currentBalance) && currentBalance[balanceIndex].Denom < rateCoin.Denom {
+				balanceIndex++
+			}
+			balanceAmount := sdkmath.ZeroInt()
+			if balanceIndex < len(currentBalance) && currentBalance[balanceIndex].Denom == rateCoin.Denom {
+				balanceAmount = currentBalance[balanceIndex].Amount
+			}
 			if balanceAmount.IsZero() {
 				// No balance for this denom means immediate exhaustion
 				estimatedDurationSeconds = 0
@@ -624,6 +697,28 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		EstimatedDurationSeconds: estimatedDurationSeconds,
 		ActiveLeaseCount:         activeLeaseCount,
 	}, nil
+}
+
+func checkedCreditEstimateItemCount(tenant string, current uint64, additional int) (uint64, error) {
+	additionalCount, err := cast.ToUint64E(additional)
+	if err != nil {
+		return current, status.Error(codes.Internal, types.ErrReservationInvariant.Wrapf(
+			"tenant %s has invalid negative credit-estimate item count increment %d",
+			tenant,
+			additional,
+		).Error())
+	}
+	if current > types.MaxCreditEstimateLeaseItems ||
+		additionalCount > types.MaxCreditEstimateLeaseItems-current {
+		return current, status.Error(codes.ResourceExhausted,
+			types.ErrLeaseQueryLimitExceeded.Wrapf(
+				"tenant %s active leases contain more than %d items; credit-estimate work ceiling exceeded",
+				tenant,
+				types.MaxCreditEstimateLeaseItems,
+			).Error(),
+		)
+	}
+	return current + additionalCount, nil
 }
 
 // paginateSKUIndex paginates over the LeaseBySKUIndex iterator.

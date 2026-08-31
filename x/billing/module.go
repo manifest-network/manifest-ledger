@@ -31,11 +31,10 @@ import (
 
 const (
 	// ConsensusVersion defines the current x/billing module consensus version.
-	// v2 introduced the LeaseItem.custom_domain feature. v3 changes only the
-	// billing value encoding: public API protobufs retain Bech32 strings, while
-	// persisted account identities are raw bytes. Migrate2to3 deterministically
-	// rewrites every legacy billing value; keys and indexes were already bytes.
-	ConsensusVersion = 3
+	// v2 introduced LeaseItem.custom_domain. v3 moved persisted identities to
+	// raw bytes. v4 initializes consumable per-lease reservations using a
+	// deterministic, bank-backed, no-mint cutover.
+	ConsensusVersion = 4
 )
 
 var (
@@ -159,7 +158,8 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, marshaler codec.JSONCodec) js
 }
 
 // RegisterInvariants registers the module's invariants.
-func (am AppModule) RegisterInvariants(_ sdk.InvariantRegistry) {
+func (am AppModule) RegisterInvariants(registry sdk.InvariantRegistry) {
+	keeper.RegisterInvariants(registry, am.keeper)
 }
 
 // QuerierRoute returns the module's query routing key.
@@ -178,6 +178,9 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 	}
 	if err := cfg.RegisterMigration(types.ModuleName, 2, migrator.Migrate2to3); err != nil {
 		panic(fmt.Errorf("failed to register %s migration v2→v3: %w", types.ModuleName, err))
+	}
+	if err := cfg.RegisterMigration(types.ModuleName, 3, migrator.Migrate3to4); err != nil {
+		panic(fmt.Errorf("failed to register %s migration v3→v4: %w", types.ModuleName, err))
 	}
 }
 

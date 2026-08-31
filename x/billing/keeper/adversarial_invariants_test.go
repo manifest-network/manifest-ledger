@@ -75,19 +75,10 @@ func CheckFundConservationInvariant(
 	return InvariantResult{Name: "FundConservation", Passed: true}
 }
 
-// CheckReservationConsistencyInvariant verifies that every credit account's
-// ReservedAmounts equals the sum of GetLeaseReservationAmount for all PENDING
-// and ACTIVE leases of that tenant.
+// CheckReservationConsistencyInvariant verifies the v4 accounting identity:
+// each credit account aggregate equals its unattributed legacy cohort plus the
+// remaining tranches of its live modern leases.
 func CheckReservationConsistencyInvariant(ctx context.Context, k keeper.Keeper) InvariantResult {
-	params, err := k.GetParams(ctx)
-	if err != nil {
-		return InvariantResult{
-			Name:    "ReservationConsistency",
-			Passed:  false,
-			Message: "failed to get params: " + err.Error(),
-		}
-	}
-
 	allLeases, err := k.GetAllLeases(ctx)
 	if err != nil {
 		return InvariantResult{
@@ -98,7 +89,7 @@ func CheckReservationConsistencyInvariant(ctx context.Context, k keeper.Keeper) 
 	}
 
 	// Calculate expected reservations per tenant
-	expected, err := types.CalculateExpectedReservationsByTenant(allLeases, params.MinLeaseDuration)
+	expected, err := types.CalculateAttributedReservationsByTenant(allLeases)
 	if err != nil {
 		return InvariantResult{
 			Name:    "ReservationConsistency",
@@ -117,21 +108,43 @@ func CheckReservationConsistencyInvariant(ctx context.Context, k keeper.Keeper) 
 	}
 
 	for _, ca := range accounts {
-		exp := expected[ca.Tenant]
-		if exp == nil {
-			exp = sdk.NewCoins()
+		tenant, err := sdk.AccAddressFromBech32(ca.Tenant)
+		if err != nil {
+			return InvariantResult{
+				Name:    "ReservationConsistency",
+				Passed:  false,
+				Message: "invalid tenant address in credit account: " + ca.Tenant,
+			}
+		}
+		tenantKey := tenant.String()
+		attributed := expected[tenantKey]
+		if attributed == nil {
+			attributed = sdk.NewCoins()
+		}
+		expectedTotal, err := types.SafeAddCoins(attributed, ca.UnattributedReservedAmounts)
+		if err != nil {
+			return InvariantResult{
+				Name:    "ReservationConsistency",
+				Passed:  false,
+				Message: "invalid unattributed reservation for tenant " + tenantKey + ": " + err.Error(),
+			}
+		}
+		actual, err := types.SafeAddCoins(sdk.NewCoins(), ca.ReservedAmounts)
+		if err != nil {
+			return InvariantResult{
+				Name:    "ReservationConsistency",
+				Passed:  false,
+				Message: "invalid aggregate reservation for tenant " + tenantKey + ": " + err.Error(),
+			}
 		}
 
-		actualNormalized := sdk.NewCoins(ca.ReservedAmounts...)
-		expectedNormalized := sdk.NewCoins(exp...)
-
-		if !actualNormalized.Equal(expectedNormalized) {
+		if !actual.Equal(expectedTotal) {
 			return InvariantResult{
 				Name:   "ReservationConsistency",
 				Passed: false,
-				Message: "tenant " + ca.Tenant + " has reserved " +
-					actualNormalized.String() + " but leases sum to " +
-					expectedNormalized.String(),
+				Message: "tenant " + tenantKey + " has reserved " +
+					actual.String() + " but live modern tranches plus unattributed reserve sum to " +
+					expectedTotal.String(),
 			}
 		}
 	}
@@ -442,6 +455,78 @@ func TestInvariants_AfterMixedOperations(t *testing.T) {
 	for _, r := range results {
 		require.True(t, r.Passed, "invariant %s failed: %s", r.Name, r.Message)
 	}
+}
+
+func TestReservationConsistencyInvariantAfterPartialSettlement(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	msgServer := keeper.NewMsgServerImpl(k)
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+	creditAddr := types.DeriveCreditAddress(tenant)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(
+		sdk.NewCoin(testDenom, sdkmath.NewInt(100_000)),
+	))
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	leaseUUID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+		{SkuUuid: sku.Uuid, Quantity: 1},
+	})
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(300 * time.Second))
+	_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{leaseUUID},
+	})
+	require.NoError(t, err)
+
+	lease, err := k.GetLease(f.Ctx, leaseUUID)
+	require.NoError(t, err)
+	require.NotNil(t, lease.Reservation)
+	require.Equal(t, sdkmath.NewInt(3300),
+		lease.Reservation.RemainingAmounts.AmountOf(testDenom))
+	account, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(3300), account.ReservedAmounts.AmountOf(testDenom))
+
+	result := CheckReservationConsistencyInvariant(f.Ctx, k)
+	require.True(t, result.Passed, result.Message)
+}
+
+func TestReservationConsistencyInvariantIncludesUnattributedCohort(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	tenant := f.TestAccs[0]
+	cohort := sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(100)))
+	require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		State:        types.LEASE_STATE_ACTIVE,
+		CreatedAt:    f.Ctx.BlockTime(),
+		Reservation:  &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
+	}))
+	account := types.CreditAccount{
+		Tenant:                      tenant.String(),
+		CreditAddress:               types.DeriveCreditAddress(tenant).String(),
+		ActiveLeaseCount:            1,
+		ReservedAmounts:             append(sdk.Coins(nil), cohort...),
+		UnattributedReservedAmounts: append(sdk.Coins(nil), cohort...),
+		UnattributedLeaseCount:      1,
+	}
+	require.NoError(t, k.SetCreditAccount(f.Ctx, account))
+
+	result := CheckReservationConsistencyInvariant(f.Ctx, k)
+	require.True(t, result.Passed, result.Message)
+
+	account.ReservedAmounts = sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(99)))
+	require.NoError(t, k.SetCreditAccount(f.Ctx, account))
+	result = CheckReservationConsistencyInvariant(f.Ctx, k)
+	require.False(t, result.Passed)
 }
 
 // TestInvariants_AfterEndBlockerExpiration runs invariants after EndBlocker expires

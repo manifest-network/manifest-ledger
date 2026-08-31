@@ -44,6 +44,9 @@ message Lease {
   string closure_reason = 13;
   bytes meta_hash = 14;
   uint64 min_lease_duration_at_creation = 15;
+  // Kept nullable so old rows (absent) remain distinguishable from an
+  // initialized reservation with an empty remaining_amounts list.
+  liftedinit.billing.v1.LeaseReservation reservation = 16;
 }
 
 // CreditAccount is the disk-only representation of a billing credit account.
@@ -57,4 +60,9 @@ message CreditAccount {
     (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
   ];
+  repeated cosmos.base.v1beta1.Coin unattributed_reserved_amounts = 6 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
+  ];
+  uint64 unattributed_lease_count = 7;
 }

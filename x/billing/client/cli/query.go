@@ -281,8 +281,13 @@ func GetLeasesByProviderCmd() *cobra.Command {
 // GetCreditAccountCmd returns the command to query a credit account.
 func GetCreditAccountCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "credit-account [tenant]",
-		Short:   "Query a tenant's credit account",
+		Use:   "credit-account [tenant]",
+		Short: "Query a tenant's credit account",
+		Long: `Query a tenant's credit-account metadata and one bank-balance page.
+
+Balance pagination defaults to 100 entries and is capped at 1000. Cursor flags
+(--page-key, --limit, and --reverse) are supported; non-zero --offset and
+--count-total are rejected so each request remains bounded.`,
 		Example: `credit-account manifest1abc...`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -290,11 +295,16 @@ func GetCreditAccountCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			if err != nil {
+				return err
+			}
 
 			queryClient := types.NewQueryClient(clientCtx)
 
 			res, err := queryClient.CreditAccount(cmd.Context(), &types.QueryCreditAccountRequest{
-				Tenant: args[0],
+				Tenant:     args[0],
+				Pagination: pageReq,
 			})
 			if err != nil {
 				return err
@@ -305,6 +315,7 @@ func GetCreditAccountCmd() *cobra.Command {
 	}
 
 	flags.AddQueryFlagsToCmd(cmd)
+	flags.AddPaginationFlagsToCmd(cmd, "balances")
 
 	return cmd
 }
@@ -376,18 +387,22 @@ func GetWithdrawableAmountCmd() *cobra.Command {
 	return cmd
 }
 
-// GetProviderWithdrawableCmd returns the command to query total withdrawable for a provider.
+// GetProviderWithdrawableCmd returns the command to estimate one provider page.
 func GetProviderWithdrawableCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "provider-withdrawable [provider-uuid]",
-		Short: "Query the total withdrawable amount for a provider across its active leases",
-		Long: `Query the withdrawable amount for a provider across its active leases.
+		Short: "Estimate provider withdrawals for one page of active leases",
+		Long: `Estimate a provider withdrawal for one page of active leases.
 
-Results are paginated over the provider's active leases (page size default 100,
-max 1000). When the response's pagination.next_key is non-empty, pass it as
---page-key on the next call and sum the per-page amounts until next_key is empty.`,
+Results are paginated over the provider's active leases (page size default 50,
+max 1000). Each page is a fresh best-effort simulation, so page amounts are not
+additive. Only a forward page of at most 100 leases is directly comparable to a
+single provider-wide withdrawal transaction. Keep the query's next_key for the
+next query and the transaction's next_key for the next transaction; the two
+cursor formats are not interchangeable. Cursor flags (--page-key, --limit, and
+--reverse) are supported; non-zero --offset and --count-total are rejected.`,
 		Example: `provider-withdrawable 01902a9b-1234-7000-8000-000000000001
-provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 500`,
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -521,17 +536,21 @@ Use pagination flags (--limit, --page-key) to page through results.`,
 	return cmd
 }
 
-// GetCreditEstimateCmd returns the command to estimate remaining lease duration.
+// GetCreditEstimateCmd returns the command to report gross credit runway.
 func GetCreditEstimateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "credit-estimate [tenant]",
-		Short: "Estimate remaining lease duration for a tenant",
-		Long: `Estimate how long a tenant's credit balance will last based on current active leases.
+		Short: "Report a tenant's gross credit runway",
+		Long: `Report gross raw-bank-balance runway at the tenant's current aggregate ACTIVE lease rate.
+
+This coarse funding metric does not subtract reservations or unsettled accrued
+charges and is not a prediction of lease auto-close timing. The unpaginated
+query rejects state above 11,000 ACTIVE leases or 100,000 total lease items.
 
 Returns:
-  - Current credit balance
+  - Raw bank balance for denominations used by ACTIVE leases
   - Total burn rate per second across all active leases
-  - Estimated duration until credit exhaustion
+  - Gross balance/rate runway in seconds
   - Number of active leases`,
 		Example: `credit-estimate manifest1abc...`,
 		Args:    cobra.ExactArgs(1),

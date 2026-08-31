@@ -13,7 +13,7 @@ Test Coverage:
 - QueryCreditAddress: credit address derivation queries
 - QueryCreditEstimate: credit duration estimation queries
 - QueryWithdrawableAmount: per-lease withdrawable amount with accrual calculation
-- QueryProviderWithdrawable: provider total withdrawable across all leases
+- QueryProviderWithdrawable: ordered page-local provider withdrawal estimates
 */
 package keeper_test
 
@@ -75,8 +75,10 @@ func TestQueryLease(t *testing.T) {
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 			},
 		},
-		State:     types.LEASE_STATE_ACTIVE,
-		CreatedAt: f.Ctx.BlockTime(),
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
@@ -130,9 +132,11 @@ func TestQueryLeases(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     state,
-			CreatedAt: f.Ctx.BlockTime(),
-			ClosedAt:  closedAt,
+			State:                      state,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			ClosedAt:                   closedAt,
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -188,8 +192,10 @@ func TestQueryLeasesByTenant(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -232,8 +238,10 @@ func TestQueryLeasesByTenant(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -303,8 +311,10 @@ func TestQueryLeasesByProvider(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -346,8 +356,10 @@ func TestQueryLeasesByProvider(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -410,8 +422,10 @@ func TestQueryLeasesReverse(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -462,8 +476,10 @@ func TestQueryLeasesByTenantReverse(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -584,8 +600,10 @@ func TestQueryLeasesByProviderReverse(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 				},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -670,8 +688,10 @@ func TestQueryLeasesBySKUReverse(t *testing.T) {
 			Items: []types.LeaseItem{
 				{SkuUuid: skuUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		require.NoError(t, k.SetLease(f.Ctx, lease))
 	}
@@ -755,8 +775,10 @@ func TestQueryLeasesBySKUCountTotal(t *testing.T) {
 			Items: []types.LeaseItem{
 				{SkuUuid: skuUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		require.NoError(t, k.SetLease(f.Ctx, lease))
 	}
@@ -872,6 +894,87 @@ func TestQueryCreditAccount(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestQueryCreditAccountPaginatesAllBankBalances(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+	tenant := f.TestAccs[0]
+	creditAddr := types.DeriveCreditAddress(tenant)
+
+	reserved := sdk.NewCoins(sdk.NewInt64Coin("bbeta", 2))
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:          tenant.String(),
+		CreditAddress:   creditAddr.String(),
+		ReservedAmounts: reserved,
+	}))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(
+		sdk.NewInt64Coin("aalpha", 5),
+		sdk.NewInt64Coin("bbeta", 10),
+		sdk.NewInt64Coin("cgamma", 15),
+	))
+
+	var key []byte
+	balances := sdk.NewCoins()
+	available := sdk.NewCoins()
+	for pages := 0; ; pages++ {
+		require.Less(t, pages, 4, "cursor pagination must terminate")
+		response, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+			Tenant: tenant.String(),
+			Pagination: &query.PageRequest{
+				Key:   key,
+				Limit: 1,
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, response.Balances, 1)
+		balances = balances.Add(response.Balances...)
+		available = available.Add(response.AvailableBalances...)
+		if len(response.Pagination.NextKey) == 0 {
+			break
+		}
+		key = response.Pagination.NextKey
+	}
+	require.Equal(t, sdk.NewCoins(
+		sdk.NewInt64Coin("aalpha", 5),
+		sdk.NewInt64Coin("bbeta", 10),
+		sdk.NewInt64Coin("cgamma", 15),
+	), balances)
+	require.Equal(t, sdk.NewCoins(
+		sdk.NewInt64Coin("aalpha", 5),
+		sdk.NewInt64Coin("bbeta", 8),
+		sdk.NewInt64Coin("cgamma", 15),
+	), available)
+
+	reverse, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+		Tenant: tenant.String(),
+		Pagination: &query.PageRequest{
+			Limit:   2,
+			Reverse: true,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, sdk.Coins{
+		sdk.NewInt64Coin("cgamma", 15),
+		sdk.NewInt64Coin("bbeta", 10),
+	}, reverse.Balances)
+	require.Equal(t, sdk.Coins{
+		sdk.NewInt64Coin("cgamma", 15),
+		sdk.NewInt64Coin("bbeta", 8),
+	}, reverse.AvailableBalances)
+	require.NotEmpty(t, reverse.Pagination.NextKey)
+
+	for _, pagination := range []*query.PageRequest{
+		{Offset: 1, Limit: 1},
+		{CountTotal: true, Limit: 1},
+	} {
+		_, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+			Tenant:     tenant.String(),
+			Pagination: pagination,
+		})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+	}
+}
+
 func TestQueryCreditAddress(t *testing.T) {
 	f := initFixture(t)
 
@@ -950,9 +1053,11 @@ func TestQueryWithdrawableAmount(t *testing.T) {
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1)), // 1 per second
 			},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		LastSettledAt:              f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
@@ -1000,12 +1105,14 @@ func TestArithmeticQueries_HandleOverflowWithoutPanicking(t *testing.T) {
 	querier := keeper.NewQuerier(k)
 	tenant := f.TestAccs[0]
 	creditAddr := types.DeriveCreditAddress(tenant)
-	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(123))))
+	allocation := sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(123)))
+	f.fundAccount(t, creditAddr, allocation)
 
 	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
 		Tenant:           tenant.String(),
 		CreditAddress:    creditAddr.String(),
 		ActiveLeaseCount: 1,
+		ReservedAmounts:  append(sdk.Coins(nil), allocation...),
 	}))
 	lease := types.Lease{
 		Uuid:         testLeaseUUID1,
@@ -1016,9 +1123,13 @@ func TestArithmeticQueries_HandleOverflowWithoutPanicking(t *testing.T) {
 			Quantity:    2,
 			LockedPrice: sdk.NewCoin(testDenom, highBitBillingTestInt()),
 		}},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime().Add(-time.Second),
-		LastSettledAt: f.Ctx.BlockTime().Add(-time.Second),
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime().Add(-time.Second),
+		LastSettledAt:              f.Ctx.BlockTime().Add(-time.Second),
+		MinLeaseDurationAtCreation: 1,
+		Reservation: &types.LeaseReservation{
+			RemainingAmounts: append(sdk.Coins(nil), allocation...),
+		},
 	}
 	require.NoError(t, k.SetLease(f.Ctx, lease))
 
@@ -1105,9 +1216,11 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1)), // 1 per second
 				},
 			},
-			State:         types.LEASE_STATE_ACTIVE,
-			CreatedAt:     f.Ctx.BlockTime(),
-			LastSettledAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			LastSettledAt:              f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -1141,7 +1254,7 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.True(t, resp.Amounts.IsZero())
-	require.Equal(t, uint64(0), resp.LeaseCount) // No leases with withdrawable amounts yet
+	require.Equal(t, uint64(0), resp.LeaseCount) // No settlement or auto-close succeeds yet
 
 	// Advance block time by 100 seconds
 	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
@@ -1154,7 +1267,7 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	require.NotNil(t, resp)
 	require.Equal(t, denom, resp.Amounts[0].Denom)
 	require.Equal(t, sdkmath.NewInt(300), resp.Amounts[0].Amount)
-	require.Equal(t, uint64(3), resp.LeaseCount) // Only active leases with withdrawable amounts
+	require.Equal(t, uint64(3), resp.LeaseCount) // Three successful simulated settlements
 
 	// Query with empty provider_uuid
 	_, err = querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
@@ -1166,6 +1279,12 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	_, err = querier.ProviderWithdrawable(f.Ctx, nil)
 	require.Error(t, err)
 
+	// A missing provider must fail even when its ACTIVE index is empty.
+	_, err = querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
+		ProviderUuid: "01912345-6789-7abc-8def-000000009999",
+	})
+	require.Equal(t, codes.NotFound, status.Code(err))
+
 	// Test pagination with page limit
 	t.Run("pagination with limit", func(t *testing.T) {
 		// Query with limit=2 - should return partial results plus a cursor
@@ -1176,7 +1295,8 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.NotEmpty(t, resp.Pagination.NextKey) // More leases exist beyond the page
-		// Note: LeaseCount only counts leases with non-zero withdrawable that were processed
+		// LeaseCount follows transaction WithdrawalCount for the two simulated leases.
+		require.Equal(t, uint64(2), resp.LeaseCount)
 	})
 
 	t.Run("empty next_key when all leases processed", func(t *testing.T) {
@@ -1192,13 +1312,13 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	})
 
 	t.Run("default limit applied when pagination omitted", func(t *testing.T) {
-		// nil pagination should use the default page size (100)
+		// nil pagination should use the transaction-aligned default page size (50)
 		resp, err := querier.ProviderWithdrawable(newCtx, &types.QueryProviderWithdrawableRequest{
 			ProviderUuid: provider.Uuid,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.Empty(t, resp.Pagination.NextKey) // Default limit (100) exceeds the 3 active leases
+		require.Empty(t, resp.Pagination.NextKey) // Default limit (50) exceeds the 3 active leases
 		require.Equal(t, uint64(3), resp.LeaseCount)
 	})
 
@@ -1214,7 +1334,20 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 		require.Equal(t, uint64(3), resp.LeaseCount)
 	})
 
-	t.Run("cursor drains all pages and sums to the single-page total", func(t *testing.T) {
+	t.Run("rejects unbounded pagination modes", func(t *testing.T) {
+		for _, pageReq := range []*query.PageRequest{
+			{Offset: 1, Limit: 1},
+			{CountTotal: true, Limit: 1},
+		} {
+			_, err := querier.ProviderWithdrawable(newCtx, &types.QueryProviderWithdrawableRequest{
+				ProviderUuid: provider.Uuid,
+				Pagination:   pageReq,
+			})
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+		}
+	})
+
+	t.Run("cursor drains all pages with ample credit", func(t *testing.T) {
 		// Full total and count in one page.
 		full, err := querier.ProviderWithdrawable(newCtx, &types.QueryProviderWithdrawableRequest{
 			ProviderUuid: provider.Uuid,
@@ -1223,7 +1356,9 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, full.Pagination.NextKey)
 
-		// The same total, accumulated across pages of size 1 by threading next_key.
+		// This fixture has enough unreserved credit for every lease, so its page
+		// estimates happen to add up. That is not the API contract: constrained
+		// same-tenant pages share balances and must be re-queried after execution.
 		total := sdk.NewCoins()
 		var count uint64
 		var key []byte
@@ -1248,6 +1383,481 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 	})
 }
 
+func TestQueryProviderWithdrawable_DryRunCountsSharedCreditOncePerPage(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddress := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddress.String(), providerAddress.String())
+	creditAddr := types.DeriveCreditAddress(tenant)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewInt64Coin(testDenom, 30)))
+
+	now := f.Ctx.BlockTime()
+	allocation := sdk.NewCoins(sdk.NewInt64Coin(testDenom, 10))
+	lease := func(uuid string) types.Lease {
+		return types.Lease{
+			Uuid:         uuid,
+			Tenant:       tenant.String(),
+			ProviderUuid: provider.Uuid,
+			Items: []types.LeaseItem{{
+				SkuUuid:     testSKUUUID,
+				Quantity:    1,
+				LockedPrice: sdk.NewInt64Coin(testDenom, 1),
+			}},
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  now,
+			LastSettledAt:              now,
+			MinLeaseDurationAtCreation: 10,
+			Reservation: &types.LeaseReservation{
+				RemainingAmounts: append(sdk.Coins(nil), allocation...),
+			},
+		}
+	}
+	leaseA := lease(testLeaseUUID1)
+	leaseB := lease(testLeaseUUID2)
+	require.NoError(t, k.SetLease(f.Ctx, leaseA))
+	require.NoError(t, k.SetLease(f.Ctx, leaseB))
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddr.String(),
+		ActiveLeaseCount: 2,
+		ReservedAmounts:  sdk.NewCoins(sdk.NewInt64Coin(testDenom, 20)),
+	}))
+
+	queryCtx := f.Ctx.WithBlockTime(now.Add(20 * time.Second))
+	for _, reverse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reverse=%t", reverse), func(t *testing.T) {
+			response, err := querier.ProviderWithdrawable(queryCtx, &types.QueryProviderWithdrawableRequest{
+				ProviderUuid: provider.Uuid,
+				Pagination: &query.PageRequest{
+					Limit:   10,
+					Reverse: reverse,
+				},
+			})
+			require.NoError(t, err)
+			require.Equal(t, uint64(2), response.LeaseCount)
+			require.Equal(t, sdkmath.NewInt(30), response.Amounts.AmountOf(testDenom))
+		})
+	}
+
+	firstPage, err := querier.ProviderWithdrawable(queryCtx, &types.QueryProviderWithdrawableRequest{
+		ProviderUuid: provider.Uuid,
+		Pagination:   &query.PageRequest{Limit: 1},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, firstPage.Pagination.NextKey)
+	require.Equal(t, sdkmath.NewInt(20), firstPage.Amounts.AmountOf(testDenom))
+	secondPage, err := querier.ProviderWithdrawable(queryCtx, &types.QueryProviderWithdrawableRequest{
+		ProviderUuid: provider.Uuid,
+		Pagination: &query.PageRequest{
+			Limit: 1,
+			Key:   firstPage.Pagination.NextKey,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(20), secondPage.Amounts.AmountOf(testDenom))
+	require.Equal(t, sdkmath.NewInt(40),
+		firstPage.Amounts.Add(secondPage.Amounts...).AmountOf(testDenom),
+		"separately queried pages are execution estimates, not additive snapshots",
+	)
+
+	// Each lease independently reports 20, demonstrating the old provider query's
+	// 40-token overcount. The ordered page dry-run caps their combined estimate at
+	// the account's actual 30-token balance.
+	for _, leaseUUID := range []string{leaseA.Uuid, leaseB.Uuid} {
+		response, err := querier.WithdrawableAmount(queryCtx, &types.QueryWithdrawableAmountRequest{
+			LeaseUuid: leaseUUID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, sdkmath.NewInt(20), response.Amounts.AmountOf(testDenom))
+	}
+
+	// Queries are dry-runs: neither bank funds nor reservation state changes.
+	account, err := k.GetCreditAccount(queryCtx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(20), account.ReservedAmounts.AmountOf(testDenom))
+	require.Equal(t, sdkmath.NewInt(30),
+		f.App.BankKeeper.GetBalance(queryCtx, creditAddr, testDenom).Amount)
+	for _, leaseUUID := range []string{leaseA.Uuid, leaseB.Uuid} {
+		stored, err := k.GetLease(queryCtx, leaseUUID)
+		require.NoError(t, err)
+		require.NotNil(t, stored.Reservation)
+		require.Equal(t, sdkmath.NewInt(10),
+			stored.Reservation.RemainingAmounts.AmountOf(testDenom))
+	}
+
+	// The forward estimate and the real provider-wide transaction use the same
+	// per-lease lifecycle. Here both leases auto-close while competing for one
+	// shared balance, so this also pins ordering and page-local cache parity.
+	estimate, err := querier.ProviderWithdrawable(queryCtx, &types.QueryProviderWithdrawableRequest{
+		ProviderUuid: provider.Uuid,
+		Pagination:   &query.PageRequest{Limit: 2},
+	})
+	require.NoError(t, err)
+	withdrawal, err := msgServer.Withdraw(queryCtx, &types.MsgWithdraw{
+		Sender:       providerAddress.String(),
+		ProviderUuid: provider.Uuid,
+		Limit:        2,
+	})
+	require.NoError(t, err)
+	require.Equal(t, estimate.Amounts, withdrawal.TotalAmounts)
+	require.Equal(t, estimate.LeaseCount, withdrawal.WithdrawalCount)
+	require.Equal(t, sdkmath.NewInt(30), withdrawal.TotalAmounts.AmountOf(testDenom))
+	require.Equal(t, uint64(2), withdrawal.WithdrawalCount)
+}
+
+func TestQueryProviderWithdrawable_ParityIncludesZeroTransferAutoClose(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddress := f.TestAccs[1]
+	payoutAddress := f.TestAccs[2]
+	provider := f.createTestProvider(t, providerAddress.String(), payoutAddress.String())
+	creditAddress := types.DeriveCreditAddress(tenant)
+	now := f.Ctx.BlockTime()
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    1,
+			LockedPrice: sdk.NewInt64Coin(testDenom, 1),
+		}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
+	}
+	require.NoError(t, k.SetLease(f.Ctx, lease))
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddress.String(),
+		ActiveLeaseCount: 1,
+		ReservedAmounts:  sdk.NewCoins(),
+	}))
+
+	// With no balance at the required denomination, touching the lease at the
+	// same block time auto-closes it without transferring a token.
+	estimate, err := querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
+		ProviderUuid: provider.Uuid,
+		Pagination:   &query.PageRequest{Limit: 1},
+	})
+	require.NoError(t, err)
+	require.True(t, estimate.Amounts.IsZero())
+	require.Equal(t, uint64(1), estimate.LeaseCount)
+
+	// Query simulation is discarded, including the close and count decrement.
+	stored, err := k.GetLease(f.Ctx, lease.Uuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, stored.State)
+	account, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), account.ActiveLeaseCount)
+
+	withdrawal, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:       providerAddress.String(),
+		ProviderUuid: provider.Uuid,
+		Limit:        1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, estimate.Amounts, withdrawal.TotalAmounts)
+	require.Equal(t, estimate.LeaseCount, withdrawal.WithdrawalCount)
+	require.True(t, withdrawal.TotalAmounts.IsZero())
+	require.Equal(t, uint64(1), withdrawal.WithdrawalCount)
+
+	stored, err = k.GetLease(f.Ctx, lease.Uuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_CLOSED, stored.State)
+	account, err = k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Zero(t, account.ActiveLeaseCount)
+}
+
+func TestQueryProviderWithdrawable_DefaultLimitAndDualCursorsMatchWithdraw(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddress := f.TestAccs[1]
+	payoutAddress := f.TestAccs[2]
+	provider := f.createTestProvider(t, providerAddress.String(), payoutAddress.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+	creditAddress := types.DeriveCreditAddress(tenant)
+	now := f.Ctx.BlockTime()
+	leaseCount := int(types.DefaultProviderWithdrawableQueryLimit) + 1
+	leaseUUIDs := make([]string, 0, leaseCount)
+	allocation := sdk.NewCoins(sdk.NewInt64Coin(testDenom, 1))
+
+	for i := 1; i <= leaseCount; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+		leaseUUIDs = append(leaseUUIDs, leaseUUID)
+		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+			Uuid:         leaseUUID,
+			Tenant:       tenant.String(),
+			ProviderUuid: provider.Uuid,
+			Items: []types.LeaseItem{{
+				SkuUuid:     sku.Uuid,
+				Quantity:    1,
+				LockedPrice: sdk.NewInt64Coin(testDenom, 1),
+			}},
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  now,
+			LastSettledAt:              now,
+			MinLeaseDurationAtCreation: 1,
+			Reservation: &types.LeaseReservation{
+				RemainingAmounts: append(sdk.Coins(nil), allocation...),
+			},
+		}))
+	}
+
+	reserved := sdk.NewCoins(sdk.NewInt64Coin(testDenom, int64(leaseCount)))
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddress.String(),
+		ActiveLeaseCount: types.DefaultProviderWithdrawableQueryLimit + 1,
+		ReservedAmounts:  reserved,
+	}))
+	f.fundAccount(t, creditAddress, sdk.NewCoins(sdk.NewInt64Coin(testDenom, int64(leaseCount*2))))
+
+	settleCtx := f.Ctx.WithBlockTime(now.Add(time.Second))
+	firstEstimate, err := querier.ProviderWithdrawable(settleCtx, &types.QueryProviderWithdrawableRequest{
+		ProviderUuid: provider.Uuid,
+	})
+	require.NoError(t, err)
+	require.Equal(t, types.DefaultProviderWithdrawableQueryLimit, firstEstimate.LeaseCount)
+	require.Equal(t, sdkmath.NewInt(int64(types.DefaultProviderWithdrawableQueryLimit)),
+		firstEstimate.Amounts.AmountOf(testDenom))
+	require.Equal(t, []byte(leaseUUIDs[leaseCount-1]), firstEstimate.Pagination.NextKey,
+		"the query cursor is the first unread lease")
+
+	firstWithdrawal, err := msgServer.Withdraw(settleCtx, &types.MsgWithdraw{
+		Sender:       providerAddress.String(),
+		ProviderUuid: provider.Uuid,
+		// Limit zero exercises the transaction's matching default of 50.
+	})
+	require.NoError(t, err)
+	require.Equal(t, firstEstimate.Amounts, firstWithdrawal.TotalAmounts)
+	require.Equal(t, firstEstimate.LeaseCount, firstWithdrawal.WithdrawalCount)
+	require.True(t, firstWithdrawal.HasMore)
+	require.Equal(t, []byte(leaseUUIDs[leaseCount-2]), firstWithdrawal.NextKey,
+		"the transaction cursor is the last processed lease")
+	require.NotEqual(t, firstEstimate.Pagination.NextKey, firstWithdrawal.NextKey)
+
+	// After the first transaction commits, advance each operation with its own
+	// cursor. The next estimates and withdrawals still match exactly.
+	secondEstimate, err := querier.ProviderWithdrawable(settleCtx, &types.QueryProviderWithdrawableRequest{
+		ProviderUuid: provider.Uuid,
+		Pagination: &query.PageRequest{
+			Key: firstEstimate.Pagination.NextKey,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), secondEstimate.LeaseCount)
+	require.Equal(t, sdkmath.OneInt(), secondEstimate.Amounts.AmountOf(testDenom))
+	require.Empty(t, secondEstimate.Pagination.NextKey)
+
+	secondWithdrawal, err := msgServer.Withdraw(settleCtx, &types.MsgWithdraw{
+		Sender:       providerAddress.String(),
+		ProviderUuid: provider.Uuid,
+		Key:          firstWithdrawal.NextKey,
+	})
+	require.NoError(t, err)
+	require.Equal(t, secondEstimate.Amounts, secondWithdrawal.TotalAmounts)
+	require.Equal(t, secondEstimate.LeaseCount, secondWithdrawal.WithdrawalCount)
+	require.False(t, secondWithdrawal.HasMore)
+	require.Empty(t, secondWithdrawal.NextKey)
+}
+
+func TestQueryProviderWithdrawable_DryRunAppliesAutoCloseReservationRelease(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+	providerAddress := f.TestAccs[1]
+	payoutAddress := f.TestAccs[2]
+	provider := f.createTestProvider(t, providerAddress.String(), payoutAddress.String())
+	creditAddress := types.DeriveCreditAddress(tenant)
+	creditBalance := sdk.NewCoins(
+		sdk.NewInt64Coin(testDenom, 5),
+		sdk.NewInt64Coin(testDenom2, 20),
+	)
+	f.fundAccount(t, creditAddress, creditBalance)
+
+	now := f.Ctx.BlockTime()
+	firstAllocation := sdk.NewCoins(
+		sdk.NewInt64Coin(testDenom, 5),
+		sdk.NewInt64Coin(testDenom2, 10),
+	)
+	secondAllocation := sdk.NewCoins(sdk.NewInt64Coin(testDenom2, 10))
+	first := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{
+			{
+				SkuUuid:     testSKUUUID,
+				Quantity:    1,
+				LockedPrice: sdk.NewInt64Coin(testDenom, 1),
+			},
+			{
+				SkuUuid:     reservationRuntimeSKUUUID2,
+				Quantity:    1,
+				LockedPrice: sdk.NewInt64Coin(testDenom2, 1),
+			},
+		},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 10,
+		Reservation: &types.LeaseReservation{
+			RemainingAmounts: append(sdk.Coins(nil), firstAllocation...),
+		},
+	}
+	second := types.Lease{
+		Uuid:         testLeaseUUID2,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    1,
+			LockedPrice: sdk.NewInt64Coin(testDenom2, 3),
+		}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 10,
+		Reservation: &types.LeaseReservation{
+			RemainingAmounts: append(sdk.Coins(nil), secondAllocation...),
+		},
+	}
+	require.NoError(t, k.SetLease(f.Ctx, first))
+	require.NoError(t, k.SetLease(f.Ctx, second))
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddress.String(),
+		ActiveLeaseCount: 2,
+		ReservedAmounts:  append(sdk.Coins(nil), creditBalance...),
+	}))
+
+	queryCtx := f.Ctx.WithBlockTime(now.Add(5 * time.Second))
+	response, err := querier.ProviderWithdrawable(queryCtx, &types.QueryProviderWithdrawableRequest{
+		ProviderUuid: provider.Uuid,
+		Pagination:   &query.PageRequest{Limit: 2},
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), response.LeaseCount)
+	require.Equal(t, sdkmath.NewInt(5), response.Amounts.AmountOf(testDenom))
+	require.Equal(t, sdkmath.NewInt(20), response.Amounts.AmountOf(testDenom2),
+		"the second lease must observe the first auto-close releasing unused reservation")
+
+	// The lifecycle simulation runs in a discarded cache context.
+	account, err := k.GetCreditAccount(queryCtx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), account.ActiveLeaseCount)
+	require.True(t, creditBalance.Equal(account.ReservedAmounts))
+	require.True(t, creditBalance.Equal(f.App.BankKeeper.GetAllBalances(queryCtx, creditAddress)))
+	require.True(t, f.App.BankKeeper.GetAllBalances(queryCtx, payoutAddress).IsZero())
+	for _, expected := range []types.Lease{first, second} {
+		stored, err := k.GetLease(queryCtx, expected.Uuid)
+		require.NoError(t, err)
+		require.Equal(t, expected, stored)
+	}
+}
+
+func TestQueryProviderWithdrawable_SkipsFailedLeaseLikeProviderWithdrawal(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+	msgServer := keeper.NewMsgServerImpl(k)
+
+	tenant := f.TestAccs[0]
+	providerAddress := f.TestAccs[1]
+	payoutAddress := f.TestAccs[2]
+	provider := f.createTestProvider(t, providerAddress.String(), payoutAddress.String())
+	creditAddress := types.DeriveCreditAddress(tenant)
+	f.fundAccount(t, creditAddress, sdk.NewCoins(sdk.NewInt64Coin(testDenom, 20)))
+	now := f.Ctx.BlockTime()
+
+	malformed := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    types.MaxQuantityPerItem + 1,
+			LockedPrice: sdk.NewInt64Coin(testDenom, 1),
+		}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 10,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
+	}
+	validAllocation := sdk.NewCoins(sdk.NewInt64Coin(testDenom, 10))
+	valid := types.Lease{
+		Uuid:         testLeaseUUID2,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    1,
+			LockedPrice: sdk.NewInt64Coin(testDenom, 1),
+		}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 10,
+		Reservation: &types.LeaseReservation{
+			RemainingAmounts: append(sdk.Coins(nil), validAllocation...),
+		},
+	}
+	require.NoError(t, k.SetLease(f.Ctx, malformed))
+	require.NoError(t, k.SetLease(f.Ctx, valid))
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddress.String(),
+		ActiveLeaseCount: 2,
+		ReservedAmounts:  append(sdk.Coins(nil), validAllocation...),
+	}))
+
+	queryCtx := f.Ctx.WithBlockTime(now.Add(5 * time.Second))
+	response, err := querier.ProviderWithdrawable(queryCtx, &types.QueryProviderWithdrawableRequest{
+		ProviderUuid: provider.Uuid,
+		Pagination:   &query.PageRequest{Limit: 2},
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), response.LeaseCount)
+	require.Equal(t, sdkmath.NewInt(5), response.Amounts.AmountOf(testDenom))
+
+	// The query is still a dry-run even when an earlier lease fails.
+	account, err := k.GetCreditAccount(queryCtx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), account.ActiveLeaseCount)
+	require.True(t, validAllocation.Equal(account.ReservedAmounts))
+	require.Equal(t, sdkmath.NewInt(20),
+		f.App.BankKeeper.GetBalance(queryCtx, creditAddress, testDenom).Amount)
+
+	withdrawal, err := msgServer.Withdraw(queryCtx, &types.MsgWithdraw{
+		Sender:       providerAddress.String(),
+		ProviderUuid: provider.Uuid,
+		Limit:        2,
+	})
+	require.NoError(t, err)
+	require.Equal(t, response.Amounts, withdrawal.TotalAmounts)
+	require.Equal(t, response.LeaseCount, withdrawal.WithdrawalCount)
+}
+
 // TestLeasesByProvider_ActiveCursorSurvivesClosedBoundary is the read-side analogue
 // of TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease: it closes the
 // exact lease named by a page's next_key (removing it from the (provider, ACTIVE)
@@ -1267,13 +1877,15 @@ func TestLeasesByProvider_ActiveCursorSurvivesClosedBoundary(t *testing.T) {
 	for i := 1; i <= 5; i++ {
 		u := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
 		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
-			Uuid:          u,
-			Tenant:        tenant.String(),
-			ProviderUuid:  provider.Uuid,
-			Items:         []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))}},
-			State:         types.LEASE_STATE_ACTIVE,
-			CreatedAt:     f.Ctx.BlockTime(),
-			LastSettledAt: f.Ctx.BlockTime(),
+			Uuid:                       u,
+			Tenant:                     tenant.String(),
+			ProviderUuid:               provider.Uuid,
+			Items:                      []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))}},
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			LastSettledAt:              f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}))
 		uuids = append(uuids, u)
 	}
@@ -1399,8 +2011,10 @@ func TestQueryLeasesBySKU(t *testing.T) {
 			Items: []types.LeaseItem{
 				{SkuUuid: skuUUID1, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		lease2 := types.Lease{
 			Uuid:         "01912345-6789-7abc-8def-lease0000002",
@@ -1420,8 +2034,10 @@ func TestQueryLeasesBySKU(t *testing.T) {
 			Items: []types.LeaseItem{
 				{SkuUuid: skuUUID2, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(200))},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 
 		require.NoError(t, k.SetLease(f.Ctx, lease1))
@@ -1498,8 +2114,10 @@ func TestQueryLeasesBySKUPaginationEdgeCases(t *testing.T) {
 			Items: []types.LeaseItem{
 				{SkuUuid: skuUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))},
 			},
-			State:     types.LEASE_STATE_ACTIVE,
-			CreatedAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		require.NoError(t, k.SetLease(f.Ctx, lease))
 	}
@@ -1639,9 +2257,11 @@ func TestQueryCreditEstimate(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)), // 100 per second
 				},
 			},
-			State:         types.LEASE_STATE_ACTIVE,
-			CreatedAt:     f.Ctx.BlockTime(),
-			LastSettledAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			LastSettledAt:              f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}
 		require.NoError(t, k.SetLease(f.Ctx, lease))
 
@@ -1684,6 +2304,60 @@ func TestQueryCreditEstimate(t *testing.T) {
 	})
 }
 
+func TestQueryCreditEstimateReportsGrossBalanceRunway(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+	tenant := f.TestAccs[0]
+	creditAddr := types.DeriveCreditAddress(tenant)
+	now := f.Ctx.BlockTime()
+
+	activeReservation := sdk.NewCoins(sdk.NewInt64Coin(testDenom, 10))
+	pendingReservation := sdk.NewCoins(sdk.NewInt64Coin(testDenom, 90))
+	active := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    1,
+			LockedPrice: sdk.NewInt64Coin(testDenom, 1),
+		}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 10,
+		Reservation: &types.LeaseReservation{
+			RemainingAmounts: activeReservation,
+		},
+	}
+	pending := active
+	pending.Uuid = testLeaseUUID2
+	pending.State = types.LEASE_STATE_PENDING
+	pending.MinLeaseDurationAtCreation = 90
+	pending.Reservation = &types.LeaseReservation{RemainingAmounts: pendingReservation}
+	require.NoError(t, k.SetLease(f.Ctx, active))
+	require.NoError(t, k.SetLease(f.Ctx, pending))
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:            tenant.String(),
+		CreditAddress:     creditAddr.String(),
+		ActiveLeaseCount:  1,
+		PendingLeaseCount: 1,
+		ReservedAmounts: sdk.NewCoins(
+			sdk.NewInt64Coin(testDenom, 100),
+		),
+	}))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewInt64Coin(testDenom, 100)))
+
+	response, err := querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
+		Tenant: tenant.String(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(100), response.EstimatedDurationSeconds,
+		"the documented metric is raw balance/rate, not per-lease spendable runway")
+	require.Equal(t, sdkmath.OneInt(), response.TotalRatePerSecond.AmountOf(testDenom))
+}
+
 func TestQueryCreditEstimate_SaturatesLegitimateUint64Boundary(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1724,9 +2398,11 @@ func TestQueryCreditEstimate_SaturatesLegitimateUint64Boundary(t *testing.T) {
 					Quantity:    1,
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.OneInt()),
 				}},
-				State:         types.LEASE_STATE_ACTIVE,
-				CreatedAt:     f.Ctx.BlockTime(),
-				LastSettledAt: f.Ctx.BlockTime(),
+				State:                      types.LEASE_STATE_ACTIVE,
+				CreatedAt:                  f.Ctx.BlockTime(),
+				LastSettledAt:              f.Ctx.BlockTime(),
+				MinLeaseDurationAtCreation: 1,
+				Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 			}))
 
 			resp, err := keeper.NewQuerier(k).CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
@@ -1778,9 +2454,11 @@ func TestQueryCreditEstimate_StoredActiveCount(t *testing.T) {
 					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1)),
 				},
 			},
-			State:         types.LEASE_STATE_ACTIVE,
-			CreatedAt:     f.Ctx.BlockTime(),
-			LastSettledAt: f.Ctx.BlockTime(),
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			LastSettledAt:              f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 		}))
 	}
 
@@ -1793,129 +2471,36 @@ func TestQueryCreditEstimate_StoredActiveCount(t *testing.T) {
 	require.Equal(t, uint64(numLeases), resp.ActiveLeaseCount)
 }
 
-// TestQueryCreditAccount_IncludesActiveDenomBeyondLegacyCap verifies that a denom used
-// only by an active lease past position #100 still appears in the CreditAccount balances.
-// getRelevantDenomsForTenant must use the maintained aggregate count, clamped only by
-// the fixed hard ceiling, or the tail denom's balance is silently omitted.
-func TestQueryCreditAccount_IncludesActiveDenomBeyondLegacyCap(t *testing.T) {
+func TestCreditEstimateRejectsCountsAboveHistoricalBound(t *testing.T) {
 	f := initFixture(t)
 	k := f.App.BillingKeeper
 	querier := keeper.NewQuerier(k)
-
 	tenant := f.TestAccs[0]
-	const numLeases = 120
-
-	params, err := k.GetParams(f.Ctx)
-	require.NoError(t, err)
-	params.MaxLeasesPerTenant = 200
-	require.NoError(t, k.SetParams(f.Ctx, params))
-
-	creditAddr := types.DeriveCreditAddress(tenant)
 	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
 		Tenant:           tenant.String(),
-		CreditAddress:    creditAddr.String(),
-		ActiveLeaseCount: numLeases,
+		CreditAddress:    types.DeriveCreditAddress(tenant).String(),
+		ActiveLeaseCount: types.MaxActiveLeasesPerTenantStateUpperBound + 1,
 	}))
 
-	const tailDenom = "tailactivedenom"
-	f.fundAccount(t, creditAddr, sdk.NewCoins(
-		sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000)),
-		sdk.NewCoin(tailDenom, sdkmath.NewInt(777)),
-	))
-
-	// 120 active leases; only the last (position 120, by ascending UUID) uses tailDenom. The
-	// TenantState MatchExact index iterates ascending by primary key (UUID), so the zero-padded
-	// UUIDs place the tail lease last — past the legacy cap of 100 but within the raised param cap.
-	for i := range numLeases {
-		denom := testDenom
-		if i == numLeases-1 {
-			denom = tailDenom
-		}
-		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
-			Uuid:         fmt.Sprintf("01912345-6789-7abc-8def-active%06d", i),
-			Tenant:       tenant.String(),
-			ProviderUuid: testProviderUUID,
-			Items: []types.LeaseItem{
-				{
-					SkuUuid:     "01912345-6789-7abc-8def-sku000000001",
-					Quantity:    1,
-					LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1)),
-				},
-			},
-			State:         types.LEASE_STATE_ACTIVE,
-			CreatedAt:     f.Ctx.BlockTime(),
-			LastSettledAt: f.Ctx.BlockTime(),
-		}))
-	}
-
-	resp, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
-		Tenant: tenant.String(),
-	})
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(777), resp.Balances.AmountOf(tailDenom),
-		"denom used only by an active lease past the legacy 100 cap must appear in balances")
+	_, err := querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{Tenant: tenant.String()})
+	require.Equal(t, codes.ResourceExhausted, status.Code(err))
+	require.ErrorContains(t, err, types.ErrLeaseQueryLimitExceeded.Error())
 }
 
-// TestQueryCreditAccount_IncludesPendingDenomBeyondLegacyCap is the pending-state analogue:
-// the pending iteration must use the maintained aggregate count, so a denom used only by a
-// pending lease past position #100 still appears in balances.
-func TestQueryCreditAccount_IncludesPendingDenomBeyondLegacyCap(t *testing.T) {
+func TestCreditEstimateRejectsLeaseCountIndexMismatch(t *testing.T) {
 	f := initFixture(t)
 	k := f.App.BillingKeeper
 	querier := keeper.NewQuerier(k)
-
 	tenant := f.TestAccs[0]
-	const numLeases = 120
-
-	params, err := k.GetParams(f.Ctx)
-	require.NoError(t, err)
-	params.MaxPendingLeasesPerTenant = 200
-	require.NoError(t, k.SetParams(f.Ctx, params))
-
-	creditAddr := types.DeriveCreditAddress(tenant)
 	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
-		Tenant:            tenant.String(),
-		CreditAddress:     creditAddr.String(),
-		PendingLeaseCount: numLeases,
+		Tenant:           tenant.String(),
+		CreditAddress:    types.DeriveCreditAddress(tenant).String(),
+		ActiveLeaseCount: 1,
 	}))
 
-	const tailDenom = "tailpendingdenom"
-	f.fundAccount(t, creditAddr, sdk.NewCoins(
-		sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000)),
-		sdk.NewCoin(tailDenom, sdkmath.NewInt(555)),
-	))
-
-	// 120 pending leases; only the last (position 120, by ascending UUID) uses tailDenom. The
-	// TenantState MatchExact index iterates ascending by primary key (UUID), so the zero-padded
-	// UUIDs place the tail lease last — past the legacy cap of 100 but within the raised param cap.
-	for i := range numLeases {
-		denom := testDenom
-		if i == numLeases-1 {
-			denom = tailDenom
-		}
-		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
-			Uuid:         fmt.Sprintf("01912345-6789-7abc-8def-pending%05d", i),
-			Tenant:       tenant.String(),
-			ProviderUuid: testProviderUUID,
-			Items: []types.LeaseItem{
-				{
-					SkuUuid:     "01912345-6789-7abc-8def-sku000000001",
-					Quantity:    1,
-					LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1)),
-				},
-			},
-			State:         types.LEASE_STATE_PENDING,
-			CreatedAt:     f.Ctx.BlockTime(),
-			LastSettledAt: f.Ctx.BlockTime(),
-		}))
-	}
-
-	resp, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
-		Tenant: tenant.String(),
-	})
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(555), resp.Balances.AmountOf(tailDenom),
-		"denom used only by a pending lease past the legacy 100 cap must appear in balances")
+	_, err := querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{Tenant: tenant.String()})
+	require.Equal(t, codes.Internal, status.Code(err))
+	require.ErrorContains(t, err, types.ErrReservationInvariant.Error())
 }
 
 // TestQueryCreditEstimate_UsesStoredCountAfterParamReduction verifies a governance
@@ -2065,64 +2650,6 @@ func TestQueryCreditEstimate_RejectsAcknowledgeOvershoot(t *testing.T) {
 		"failed acknowledgement must not change the active burn rate")
 }
 
-// TestQueryCreditAccount_UsesStoredCountAfterParamReduction verifies denom discovery
-// remains complete when current params are lower than the maintained active count.
-func TestQueryCreditAccount_UsesStoredCountAfterParamReduction(t *testing.T) {
-	f := initFixture(t)
-	k := f.App.BillingKeeper
-	querier := keeper.NewQuerier(k)
-	tenant := f.TestAccs[0]
-	const numLeases = 10
-
-	params, err := k.GetParams(f.Ctx)
-	require.NoError(t, err)
-	params.MaxLeasesPerTenant = 5
-	params.MaxPendingLeasesPerTenant = 3
-	require.NoError(t, k.SetParams(f.Ctx, params))
-
-	creditAddr := types.DeriveCreditAddress(tenant)
-	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
-		Tenant:           tenant.String(),
-		CreditAddress:    creditAddr.String(),
-		ActiveLeaseCount: numLeases,
-	}))
-
-	const tailDenom = "beyondcapdenom"
-	f.fundAccount(t, creditAddr, sdk.NewCoins(
-		sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000)),
-		sdk.NewCoin(tailDenom, sdkmath.NewInt(999)),
-	))
-
-	// Ten active leases exceed the new parameter sum of eight; tailDenom appears only
-	// on the last lease and must still be discovered from the stored aggregate count.
-	for i := range numLeases {
-		denom := testDenom
-		if i == numLeases-1 {
-			denom = tailDenom
-		}
-		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
-			Uuid:         fmt.Sprintf("01912345-6789-7abc-8def-capbnd%06d", i),
-			Tenant:       tenant.String(),
-			ProviderUuid: testProviderUUID,
-			Items: []types.LeaseItem{{
-				SkuUuid:     "01912345-6789-7abc-8def-sku000000001",
-				Quantity:    1,
-				LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1)),
-			}},
-			State:         types.LEASE_STATE_ACTIVE,
-			CreatedAt:     f.Ctx.BlockTime(),
-			LastSettledAt: f.Ctx.BlockTime(),
-		}))
-	}
-
-	resp, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{Tenant: tenant.String()})
-	require.NoError(t, err)
-	require.Equal(t, sdkmath.NewInt(999), resp.Balances.AmountOf(tailDenom),
-		"lowering current limits must not hide denoms from pre-existing active leases")
-	require.Equal(t, sdkmath.NewInt(1_000_000), resp.Balances.AmountOf(testDenom),
-		"denoms within the cap must still be present")
-}
-
 // TestQueryErrorCasesComprehensive tests additional error cases across queries
 // including invalid UUID formats, non-existent resources, and malformed requests.
 func TestQueryErrorCasesComprehensive(t *testing.T) {
@@ -2181,12 +2708,11 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		})
 		require.Error(t, err, "empty provider_uuid should error")
 
-		// Invalid UUID format returns empty results (no format validation)
-		resp, err := querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
+		// Unknown provider identifiers fail before index iteration.
+		_, err = querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
 			ProviderUuid: "bad-uuid",
 		})
-		require.NoError(t, err)
-		require.True(t, resp.Amounts.IsZero(), "invalid UUID should return zero amounts")
+		require.Equal(t, codes.NotFound, status.Code(err))
 	})
 
 	t.Run("LeasesBySKU with empty/invalid UUID", func(t *testing.T) {

@@ -849,7 +849,7 @@ func NewApp(
 		tokenfactorytypes.ModuleName, // before bank
 		authtypes.ModuleName, banktypes.ModuleName,
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
-		minttypes.ModuleName, crisistypes.ModuleName, genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
+		minttypes.ModuleName, genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
 		feegrant.ModuleName, group.ModuleName, paramstypes.ModuleName, upgradetypes.ModuleName,
 		vestingtypes.ModuleName, consensusparamtypes.ModuleName, circuittypes.ModuleName,
 		// additional non simd modules
@@ -861,6 +861,7 @@ func NewApp(
 		manifesttypes.ModuleName,
 		skutypes.ModuleName,
 		billingtypes.ModuleName, // after sku (billing depends on sku)
+		crisistypes.ModuleName,  // after modules with registered invariants
 		wasmtypes.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
