@@ -407,6 +407,66 @@ func TestMigratorMigrate2to3RejectsMismatchedCreditAccountKey(t *testing.T) {
 	require.ErrorContains(t, err, "does not match its store key")
 }
 
+func TestMigratorMigrate2to3RejectsStaleLiveTenantStateEntry(t *testing.T) {
+	f := initFixture(t)
+	tenant := f.TestAccs[0]
+	createdAt := f.Ctx.BlockTime()
+	indexedLease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    1,
+			LockedPrice: sdk.NewCoin(testDenom, math.OneInt()),
+		}},
+		State:                      types.LEASE_STATE_PENDING,
+		CreatedAt:                  createdAt,
+		LastSettledAt:              createdAt,
+		MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
+	}
+	reservation := types.CalculateLeaseReservation(
+		indexedLease.Items,
+		indexedLease.MinLeaseDurationAtCreation,
+	)
+	account := types.CreditAccount{
+		Tenant:            tenant.String(),
+		CreditAddress:     types.DeriveCreditAddress(tenant).String(),
+		PendingLeaseCount: 1,
+		ReservedAmounts:   reservation,
+	}
+
+	// Seed a PENDING TenantState entry, then model a corrupt v2 primary value
+	// whose state changed without the secondary index being updated.
+	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, indexedLease))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, account))
+	storedLease := indexedLease
+	storedLease.State = types.LEASE_STATE_ACTIVE
+	legacy, err := sdkcodec.CollValue[types.Lease](f.EncodingCfg.Codec).Encode(storedLease)
+	require.NoError(t, err)
+	key, err := collections.EncodeKeyWithPrefix(
+		types.LeaseKey.Bytes(),
+		collections.StringKey,
+		storedLease.Uuid,
+	)
+	require.NoError(t, err)
+	f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Set(key, legacy)
+	stored, err := f.App.BillingKeeper.GetLease(f.Ctx, storedLease.Uuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, stored.State)
+	indexedAsPending, err := f.App.BillingKeeper.GetLeasesByTenantAndState(
+		f.Ctx,
+		tenant.String(),
+		types.LEASE_STATE_PENDING,
+	)
+	require.NoError(t, err)
+	require.Len(t, indexedAsPending, 1)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, indexedAsPending[0].State)
+
+	err = keeper.NewMigrator(f.App.BillingKeeper).Migrate2to3(f.Ctx)
+	require.ErrorContains(t, err, "does not match its LEASE_STATE_PENDING tenant-state index entry")
+}
+
 func assertRawAddressStorage(t *testing.T, encoded []byte, prefix string, address sdk.AccAddress) {
 	t.Helper()
 	require.True(t, bytes.HasPrefix(encoded, []byte(prefix)))

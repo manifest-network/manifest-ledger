@@ -291,6 +291,10 @@ func (m Migrator) calculateCreditAccountMigrationRepair(
 				return repair, fmt.Errorf("decode billing lease %q tenant %q: %w", leaseUUID, lease.Tenant, err)
 			}
 			if !tenant.Equals(leaseTenant) || lease.State != state {
+				// Account aggregates can be rebuilt safely from a consistent
+				// TenantState index, but silently accepting index drift could omit
+				// or double-count a live reservation. Index repair requires a full
+				// primary-state rebuild and is deliberately outside this migration.
 				_ = iterator.Close()
 				return repair, fmt.Errorf(
 					"billing lease %q does not match its %s tenant-state index entry",

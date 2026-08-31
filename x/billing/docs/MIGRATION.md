@@ -34,6 +34,17 @@ Value rewrites use bounded pages and close each iterator before writing. The
 already-byte-addressed keys and indexes remain unchanged. Re-running the
 migration produces the same bytes.
 
+The existing tenant/state index must be complete and internally consistent for
+each credit account's aggregate repair. Every PENDING or ACTIVE entry visited
+for that account is checked against its primary lease's decoded tenant and
+state; a disagreement fails closed instead of silently producing an incomplete
+or double-counted reservation. This is not a comprehensive secondary-index
+audit: tenants without credit accounts, missing live entries, and entries
+stranded only under terminal-state keys are outside the repair scan. This
+migration repairs derived credit-account aggregates; rebuilding corrupt
+secondary indexes requires a separate full-primary-state repair before the
+migration can complete.
+
 ## Prerequisites
 
 - You must be the **module authority** (POA admin group address) OR
