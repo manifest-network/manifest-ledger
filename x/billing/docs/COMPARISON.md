@@ -192,14 +192,20 @@ Both systems must prevent tenants from creating more leases than they can pay fo
 
 ```go
 // On lease creation (PENDING state):
-reservationAmount := CalculateLeaseReservation(items, params.MinLeaseDuration)
+reservationAmount, err := CalculateLeaseReservation(items, params.MinLeaseDuration)
+if err != nil {
+    return err
+}
 availableCredit := GetAvailableCredit(balance, creditAccount.ReservedAmounts)
 
 if availableCredit.AmountOf(denom) < reservationAmount.AmountOf(denom) {
     return ErrInsufficientCredit
 }
 
-creditAccount.ReservedAmounts = AddReservation(creditAccount.ReservedAmounts, reservationAmount)
+creditAccount.ReservedAmounts, err = AddReservation(creditAccount.ReservedAmounts, reservationAmount)
+if err != nil {
+    return err
+}
 ```
 
 This ensures each lease has guaranteed funds for at least `min_lease_duration`, preventing overbooking at both PENDING and ACTIVE stages.

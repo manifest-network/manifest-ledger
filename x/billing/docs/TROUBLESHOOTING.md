@@ -307,7 +307,7 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 2. The overall transaction still succeeds
 3. No error is returned for a skipped lease — error skips are logged, normal (nothing-to-settle) skips are silent
 
-> **Arithmetic overflow does NOT skip the lease.** If a lease's accrued charge overflows (settlement duration beyond ~100 years, `MaxDurationSeconds`), the silent settlement path instead transfers the tenant's **entire remaining credit** in that lease's denoms to the provider and force-closes the lease. The funds are **not** preserved. Overflow is effectively unreachable in normal operation but can arise from a genesis import with an ancient `last_settled_at`.
+> **Arithmetic overflow does NOT skip the lease.** If an accrued charge exceeds the SDK's 256-bit `math.Int` representation (during price × quantity, elapsed-seconds multiplication, or same-denom aggregation), the silent settlement path clamps each overflowed denomination to its **entire remaining credit**, settles exact charges in unaffected denominations normally, and force-closes the lease. Long intervals do not overflow by themselves. Non-silent settlement and paths whose result cannot be balance-capped return `ErrArithmeticOverflow` (billing code 20) without changing state; withdrawable queries return the exact balance-capped amount.
 
 **Solution**:
 1. Use specific lease withdrawal for the problematic lease to see the actual error:

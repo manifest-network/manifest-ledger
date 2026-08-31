@@ -6,25 +6,34 @@ Test Coverage:
 - CalculateAccruedAmount: accrual calculation for single items
 - CalculateTotalAccruedForLease: total accrual for multiple items
 - Precision loss scenarios with various price/duration combinations
-- Overflow protection for long-running leases
+- Checked overflow protection at the SDK math.Int boundary
 - Large value calculations with big integers
 */
 package keeper
 
 import (
+	"errors"
+	"math/big"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/status"
 
+	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 const testDenom = "upwr"
+
+func highBitAccrualInt() math.Int {
+	return math.NewIntFromBigInt(new(big.Int).Lsh(big.NewInt(1), 255))
+}
 
 func TestConvertBasePriceToPerSecond(t *testing.T) {
 	tests := []struct {
@@ -109,6 +118,7 @@ func TestCalculateAccruedAmount(t *testing.T) {
 		quantity             uint64
 		duration             time.Duration
 		expected             sdk.Coin
+		expectErr            bool
 	}{
 		{
 			name:                 "1 per second, 1 quantity, 100 seconds",
@@ -150,7 +160,7 @@ func TestCalculateAccruedAmount(t *testing.T) {
 			lockedPricePerSecond: sdk.NewCoin(testDenom, math.ZeroInt()),
 			quantity:             5,
 			duration:             100 * time.Second,
-			expected:             sdk.NewCoin(testDenom, math.NewInt(0)),
+			expectErr:            true,
 		},
 		{
 			name:                 "1 hour duration",
@@ -171,6 +181,10 @@ func TestCalculateAccruedAmount(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			result, err := CalculateAccruedAmount(tc.lockedPricePerSecond, tc.quantity, tc.duration)
+			if tc.expectErr {
+				require.ErrorIs(t, err, billingtypes.ErrInvalidCreditOperation)
+				return
+			}
 			require.NoError(t, err)
 			require.True(t, tc.expected.IsEqual(result), "expected %s, got %s", tc.expected, result)
 		})
@@ -239,26 +253,22 @@ func TestCalculateTotalAccruedForLease(t *testing.T) {
 	}
 }
 
-func TestCalculateAccruedAmountOverflow(t *testing.T) {
+func TestCalculateAccruedAmount_LongDurations(t *testing.T) {
 	tests := []struct {
-		name      string
-		duration  time.Duration
-		expectErr bool
+		name     string
+		duration time.Duration
 	}{
 		{
-			name:      "normal duration: 1 year",
-			duration:  365 * 24 * time.Hour,
-			expectErr: false,
+			name:     "normal duration: 1 year",
+			duration: 365 * 24 * time.Hour,
 		},
 		{
-			name:      "long duration: 50 years",
-			duration:  50 * 365 * 24 * time.Hour,
-			expectErr: false,
+			name:     "long duration: 50 years",
+			duration: 50 * 365 * 24 * time.Hour,
 		},
 		{
-			name:      "very long duration: 100+ years",
-			duration:  101 * 365 * 24 * time.Hour,
-			expectErr: true, // Should exceed MaxDurationSeconds
+			name:     "very long duration: 100+ years",
+			duration: 101 * 365 * 24 * time.Hour,
 		},
 	}
 
@@ -266,14 +276,123 @@ func TestCalculateAccruedAmountOverflow(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := CalculateAccruedAmount(pricePerSecond, 1, tc.duration)
-			if tc.expectErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
+			accrued, err := CalculateAccruedAmount(pricePerSecond, 1, tc.duration)
+			require.NoError(t, err)
+			require.Equal(t, math.NewInt(int64(tc.duration/time.Second)), accrued.Amount)
 		})
 	}
+}
+
+func TestCalculateAccruedAmount_CheckedBitBoundaries(t *testing.T) {
+	highBit := highBitAccrualInt()
+
+	t.Run("near maximum succeeds", func(t *testing.T) {
+		nearHalf, err := highBit.SafeSub(math.OneInt())
+		require.NoError(t, err)
+
+		accrued, err := CalculateAccruedAmount(sdk.NewCoin(testDenom, nearHalf), 2, time.Second)
+		require.NoError(t, err)
+		expected, err := nearHalf.SafeMul(math.NewInt(2))
+		require.NoError(t, err)
+		require.Equal(t, expected, accrued.Amount)
+	})
+
+	t.Run("item multiplication overflow returns module error", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			_, err := CalculateAccruedAmount(sdk.NewCoin(testDenom, highBit), 2, time.Second)
+			require.ErrorIs(t, err, billingtypes.ErrArithmeticOverflow)
+		})
+	})
+
+	t.Run("same denom sum overflow returns module error", func(t *testing.T) {
+		items := []LeaseItemWithPrice{
+			{SkuUUID: "sku-a", Quantity: 1, LockedPricePerSecond: sdk.NewCoin(testDenom, highBit)},
+			{SkuUUID: "sku-b", Quantity: 1, LockedPricePerSecond: sdk.NewCoin(testDenom, highBit)},
+		}
+		require.NotPanics(t, func() {
+			accrued, err := CalculateTotalAccruedForLease(items, time.Second)
+			require.ErrorIs(t, err, billingtypes.ErrArithmeticOverflow)
+			require.Empty(t, accrued)
+			var overflow *AccrualOverflowError
+			require.ErrorAs(t, err, &overflow)
+			require.Equal(t, []string{testDenom}, overflow.Denoms)
+		})
+	})
+
+	t.Run("overflow is isolated by denom in first-detected order", func(t *testing.T) {
+		items := []LeaseItemWithPrice{
+			{SkuUUID: "sku-z", Quantity: 2, LockedPricePerSecond: sdk.NewCoin("zoverflow", highBit)},
+			{SkuUUID: "sku-ok-a", Quantity: 3, LockedPricePerSecond: sdk.NewCoin("uok", math.NewInt(7))},
+			{SkuUUID: "sku-a", Quantity: 2, LockedPricePerSecond: sdk.NewCoin("aoverflow", highBit)},
+			{SkuUUID: "sku-ok-b", Quantity: 2, LockedPricePerSecond: sdk.NewCoin("uok", math.NewInt(2))},
+		}
+
+		accrued, err := CalculateTotalAccruedForLease(items, time.Second)
+		require.ErrorIs(t, err, billingtypes.ErrArithmeticOverflow)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin("uok", math.NewInt(25))), accrued)
+		var overflow *AccrualOverflowError
+		require.ErrorAs(t, err, &overflow)
+		require.Equal(t, []string{"zoverflow", "aoverflow"}, overflow.Denoms)
+	})
+
+	t.Run("later malformed item is not hidden by prior denom overflow", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			item     LeaseItemWithPrice
+			expected error
+		}{
+			{
+				name:     "invalid locked price",
+				item:     LeaseItemWithPrice{SkuUUID: "sku-invalid-price", Quantity: 1, LockedPricePerSecond: sdk.Coin{Denom: testDenom}},
+				expected: billingtypes.ErrInvalidCreditOperation,
+			},
+			{
+				name:     "zero quantity",
+				item:     LeaseItemWithPrice{SkuUUID: "sku-zero", Quantity: 0, LockedPricePerSecond: sdk.NewCoin(testDenom, math.OneInt())},
+				expected: billingtypes.ErrInvalidQuantity,
+			},
+			{
+				name:     "quantity above maximum",
+				item:     LeaseItemWithPrice{SkuUUID: "sku-too-many", Quantity: billingtypes.MaxQuantityPerItem + 1, LockedPricePerSecond: sdk.NewCoin(testDenom, math.OneInt())},
+				expected: billingtypes.ErrInvalidQuantity,
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				items := []LeaseItemWithPrice{
+					{SkuUUID: "sku-overflow", Quantity: 2, LockedPricePerSecond: sdk.NewCoin(testDenom, highBit)},
+					tc.item,
+				}
+				accrued, err := CalculateTotalAccruedForLease(items, time.Second)
+				require.ErrorIs(t, err, tc.expected)
+				require.Nil(t, accrued)
+				var overflow *AccrualOverflowError
+				require.False(t, errors.As(err, &overflow))
+			})
+		}
+	})
+
+	t.Run("nil stored amount returns registered invalid operation", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			_, err := CalculateAccruedAmount(sdk.Coin{Denom: testDenom}, 1, time.Second)
+			require.ErrorIs(t, err, billingtypes.ErrInvalidCreditOperation)
+		})
+	})
+}
+
+func TestAccrualOverflowError_PreservesCosmosErrorIdentity(t *testing.T) {
+	err := errorsmod.Wrap(&AccrualOverflowError{Denoms: []string{testDenom}}, "calculate lease accrual")
+
+	codespace, code, _ := errorsmod.ABCIInfo(err, false)
+	require.Equal(t, billingtypes.ModuleName, codespace)
+	require.Equal(t, uint32(20), code)
+
+	grpcStatus, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Contains(t, grpcStatus.Message(), "codespace billing code 20")
+	require.Contains(t, grpcStatus.Message(), billingtypes.ErrArithmeticOverflow.Error())
+	require.Contains(t, grpcStatus.Message(), "calculate lease accrual")
 }
 
 func TestLargeValueCalculations(t *testing.T) {

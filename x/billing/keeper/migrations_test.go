@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"cosmossdk.io/collections"
+	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/math"
 
 	sdkcodec "github.com/cosmos/cosmos-sdk/codec"
@@ -49,12 +50,13 @@ func TestMigratorMigrate2to3RewritesLegacyAddressStrings(t *testing.T) {
 		LastSettledAt:              f.Ctx.BlockTime(),
 		MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
 	}
-	knownReservationFloor := types.CalculateLeaseReservation(lease.Items, lease.MinLeaseDurationAtCreation)
+	knownReservationFloor := calculateLeaseReservation(t, lease.Items, lease.MinLeaseDurationAtCreation)
+	doubledReservation := addTestCoins(t, knownReservationFloor, knownReservationFloor)
 	account := types.CreditAccount{
 		Tenant:           upperTenant,
 		CreditAddress:    upperCredit,
 		ActiveLeaseCount: 1,
-		ReservedAmounts:  knownReservationFloor.Add(knownReservationFloor...),
+		ReservedAmounts:  doubledReservation,
 	}
 
 	// Seed the indexes through the current keeper, then replace only the three
@@ -191,14 +193,15 @@ func TestMigratorMigrate2to3RepairsReservationFloorAndLeaseCounts(t *testing.T) 
 				legacyLease.ClosureReason = "tenant requested"
 			}
 
-			knownFloor := types.CalculateLeaseReservation(
+			knownFloor := calculateLeaseReservation(t,
 				modernLease.Items,
 				modernLease.MinLeaseDurationAtCreation,
 			)
-			knownFloor = knownFloor.Add(types.CalculateLeaseReservation(
+			knownPendingFloor := calculateLeaseReservation(t,
 				modernPendingLease.Items,
 				modernPendingLease.MinLeaseDurationAtCreation,
-			)...)
+			)
+			knownFloor = addTestCoins(t, knownFloor, knownPendingFloor)
 			legacyResidual := sdk.NewCoin("uother", math.NewInt(1800))
 			underBacked := sdk.NewCoins(
 				sdk.NewCoin(testDenom, math.NewInt(1800)),
@@ -324,12 +327,13 @@ func TestMigratorMigrate2to3RepairsBech32AliasLeaseCount(t *testing.T) {
 			MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
 		},
 	}
-	perLeaseReservation := types.CalculateLeaseReservation(items, types.DefaultMinLeaseDuration)
+	perLeaseReservation := calculateLeaseReservation(t, items, types.DefaultMinLeaseDuration)
+	doubledReservation := addTestCoins(t, perLeaseReservation, perLeaseReservation)
 	account := types.CreditAccount{
 		Tenant:           upperTenant,
 		CreditAddress:    strings.ToUpper(types.DeriveCreditAddress(tenant).String()),
 		ActiveLeaseCount: 1,
-		ReservedAmounts:  perLeaseReservation.Add(perLeaseReservation...),
+		ReservedAmounts:  doubledReservation,
 	}
 
 	for _, lease := range leases {
@@ -425,7 +429,7 @@ func TestMigratorMigrate2to3RejectsStaleLiveTenantStateEntry(t *testing.T) {
 		LastSettledAt:              createdAt,
 		MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
 	}
-	reservation := types.CalculateLeaseReservation(
+	reservation := calculateLeaseReservation(t,
 		indexedLease.Items,
 		indexedLease.MinLeaseDurationAtCreation,
 	)
@@ -473,4 +477,70 @@ func assertRawAddressStorage(t *testing.T, encoded []byte, prefix string, addres
 	require.True(t, bytes.Contains(encoded, address.Bytes()))
 	require.False(t, bytes.Contains(encoded, []byte(address.String())))
 	require.False(t, bytes.Contains(encoded, []byte(strings.ToUpper(address.String()))))
+}
+
+func TestMigrate2to3_ArithmeticOverflowReturnsError(t *testing.T) {
+	f := initFixture(t)
+	tenant := f.TestAccs[0]
+	now := f.Ctx.BlockTime()
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    2,
+			LockedPrice: sdk.NewCoin(testDenom, highBitBillingTestInt()),
+		}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+	}
+	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    types.DeriveCreditAddress(tenant).String(),
+		ActiveLeaseCount: 1,
+	}))
+
+	var err error
+	require.NotPanics(t, func() {
+		err = keeper.NewMigrator(f.App.BillingKeeper).Migrate2to3(f.Ctx)
+	})
+	require.ErrorIs(t, err, types.ErrArithmeticOverflow)
+	codespace, code, _ := errorsmod.ABCIInfo(err, false)
+	require.Equal(t, types.ModuleName, codespace)
+	require.Equal(t, uint32(20), code)
+}
+
+func TestMigrate2to3_RejectsStoredQuantityAboveMaximum(t *testing.T) {
+	f := initFixture(t)
+	tenant := f.TestAccs[0]
+	now := f.Ctx.BlockTime()
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    types.MaxQuantityPerItem + 1,
+			LockedPrice: sdk.NewCoin(testDenom, math.OneInt()),
+		}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+	}
+	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    types.DeriveCreditAddress(tenant).String(),
+		ActiveLeaseCount: 1,
+	}))
+
+	require.NotPanics(t, func() {
+		err := keeper.NewMigrator(f.App.BillingKeeper).Migrate2to3(f.Ctx)
+		require.ErrorIs(t, err, types.ErrInvalidQuantity)
+	})
 }

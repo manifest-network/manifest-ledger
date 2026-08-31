@@ -19,11 +19,14 @@ package keeper_test
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	sdkmath "cosmossdk.io/math"
 
@@ -991,6 +994,75 @@ func TestQueryWithdrawableAmount(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestArithmeticQueries_HandleOverflowWithoutPanicking(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+	tenant := f.TestAccs[0]
+	creditAddr := types.DeriveCreditAddress(tenant)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(123))))
+
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddr.String(),
+		ActiveLeaseCount: 1,
+	}))
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    2,
+			LockedPrice: sdk.NewCoin(testDenom, highBitBillingTestInt()),
+		}},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     f.Ctx.BlockTime().Add(-time.Second),
+		LastSettledAt: f.Ctx.BlockTime().Add(-time.Second),
+	}
+	require.NoError(t, k.SetLease(f.Ctx, lease))
+
+	t.Run("withdrawable amount", func(t *testing.T) {
+		var (
+			resp *types.QueryWithdrawableAmountResponse
+			err  error
+		)
+		require.NotPanics(t, func() {
+			resp, err = querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
+				LeaseUuid: lease.Uuid,
+			})
+		})
+		require.NoError(t, err)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(123))), resp.Amounts)
+	})
+
+	t.Run("credit estimate", func(t *testing.T) {
+		var err error
+		require.NotPanics(t, func() {
+			_, err = querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
+				Tenant: tenant.String(),
+			})
+		})
+		require.Equal(t, codes.Internal, status.Code(err))
+		require.Contains(t, err.Error(), types.ErrArithmeticOverflow.Error())
+	})
+
+	t.Run("credit estimate rejects stored quantity above runtime maximum", func(t *testing.T) {
+		lease.Items[0].Quantity = types.MaxQuantityPerItem + 1
+		lease.Items[0].LockedPrice = sdk.NewCoin(testDenom, sdkmath.OneInt())
+		require.NoError(t, k.SetLease(f.Ctx, lease))
+
+		var err error
+		require.NotPanics(t, func() {
+			_, err = querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
+				Tenant: tenant.String(),
+			})
+		})
+		require.Equal(t, codes.Internal, status.Code(err))
+		require.Contains(t, err.Error(), types.ErrInvalidQuantity.Error())
+	})
+}
+
 func TestQueryProviderWithdrawable(t *testing.T) {
 	f := initFixture(t)
 
@@ -1610,6 +1682,60 @@ func TestQueryCreditEstimate(t *testing.T) {
 		})
 		require.Error(t, err)
 	})
+}
+
+func TestQueryCreditEstimate_SaturatesLegitimateUint64Boundary(t *testing.T) {
+	tests := []struct {
+		name    string
+		balance sdkmath.Int
+	}{
+		{
+			name:    "exact max uint64",
+			balance: sdkmath.NewIntFromUint64(math.MaxUint64),
+		},
+		{
+			name: "above max uint64",
+			balance: func() sdkmath.Int {
+				amount, err := sdkmath.NewIntFromUint64(math.MaxUint64).SafeAdd(sdkmath.OneInt())
+				require.NoError(t, err)
+				return amount
+			}(),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := initFixture(t)
+			k := f.App.BillingKeeper
+			tenant := f.TestAccs[0]
+			creditAddr := types.DeriveCreditAddress(tenant)
+			f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, tc.balance)))
+			require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+				Tenant:           tenant.String(),
+				CreditAddress:    creditAddr.String(),
+				ActiveLeaseCount: 1,
+			}))
+			require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+				Uuid:         testLeaseUUID1,
+				Tenant:       tenant.String(),
+				ProviderUuid: testProviderUUID,
+				Items: []types.LeaseItem{{
+					SkuUuid:     testSKUUUID,
+					Quantity:    1,
+					LockedPrice: sdk.NewCoin(testDenom, sdkmath.OneInt()),
+				}},
+				State:         types.LEASE_STATE_ACTIVE,
+				CreatedAt:     f.Ctx.BlockTime(),
+				LastSettledAt: f.Ctx.BlockTime(),
+			}))
+
+			resp, err := keeper.NewQuerier(k).CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
+				Tenant: tenant.String(),
+			})
+			require.NoError(t, err)
+			require.Equal(t, uint64(math.MaxUint64), resp.EstimatedDurationSeconds)
+		})
+	}
 }
 
 // TestQueryCreditEstimate_StoredActiveCount verifies that CreditEstimate uses the

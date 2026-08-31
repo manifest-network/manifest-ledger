@@ -12,6 +12,7 @@ import (
 	collcodec "cosmossdk.io/collections/codec"
 	"cosmossdk.io/collections/indexes"
 	storetypes "cosmossdk.io/core/store"
+	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log"
 
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -799,6 +800,9 @@ func (k *Keeper) countLeasesByTenantAndStateScan(ctx context.Context, tenant str
 
 // GetCreditBalance returns the credit balance for a specific denom from the bank module for a tenant.
 func (k *Keeper) GetCreditBalance(ctx context.Context, tenant string, denom string) (sdk.Coin, error) {
+	if err := sdk.ValidateDenom(denom); err != nil {
+		return sdk.Coin{}, types.ErrInvalidCreditOperation.Wrapf("invalid credit balance denom %q: %s", denom, err)
+	}
 	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant)
 	if err != nil {
 		return sdk.Coin{}, err
@@ -815,9 +819,15 @@ func (k *Keeper) getCreditBalancesForDenoms(ctx context.Context, tenant string, 
 	}
 	coins := sdk.NewCoins()
 	for _, denom := range denoms {
+		if err := sdk.ValidateDenom(denom); err != nil {
+			return nil, types.ErrInvalidCreditOperation.Wrapf("invalid credit balance denom %q: %s", denom, err)
+		}
 		bal := k.bankKeeper.GetBalance(ctx, creditAddr, denom)
 		if bal.IsPositive() {
-			coins = coins.Add(bal)
+			coins, err = types.SafeAddCoins(coins, sdk.Coins{bal})
+			if err != nil {
+				return nil, errorsmod.Wrapf(err, "sum credit balance for denom %s", denom)
+			}
 		}
 	}
 	return coins, nil
@@ -900,69 +910,71 @@ func (k *Keeper) getRelevantDenomsForTenant(ctx context.Context, creditAccount t
 
 // CalculateWithdrawableForLease calculates the amounts that can be withdrawn from a lease.
 // It considers the time since last settlement and the credit balance available.
-// Returns a Coins collection (one entry per denom).
-func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.Lease) sdk.Coins {
+// Returns a Coins collection (one entry per denom), balance-capping any denom
+// whose complete accrued amount cannot be represented. Malformed stored lease
+// pricing and balance lookup failures are returned as errors.
+func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.Lease) (sdk.Coins, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// Calculate duration since last settlement
-	var duration time.Duration
+	// Identify the settlement interval without time.Time.Sub, whose duration
+	// result saturates for intervals beyond roughly 292 years.
+	var settleTime time.Time
 	if lease.State == types.LEASE_STATE_ACTIVE {
-		duration = blockTime.Sub(lease.LastSettledAt)
+		settleTime = blockTime
 	} else {
 		// For inactive leases, calculate from last settled to closed
 		if lease.ClosedAt != nil {
-			duration = lease.ClosedAt.Sub(lease.LastSettledAt)
+			settleTime = *lease.ClosedAt
 		} else {
-			return sdk.NewCoins()
+			return sdk.NewCoins(), nil
 		}
 	}
 
-	if duration <= 0 {
-		return sdk.NewCoins()
+	if !settleTime.After(lease.LastSettledAt) {
+		return sdk.NewCoins(), nil
+	}
+	durationSeconds, err := elapsedWholeSeconds(lease.LastSettledAt, settleTime)
+	if err != nil {
+		return nil, err
 	}
 
 	// Calculate total accrued with overflow handling
 	items := LeaseItemsToWithPrice(lease.Items)
-	accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
+	accruedAmounts, err := calculateTotalAccruedForLeaseSeconds(items, durationSeconds)
+	var accrualOverflow *AccrualOverflowError
 	if err != nil {
-		// Log overflow error and return empty
-		k.logger.Error("accrual calculation overflow in withdrawable calculation",
-			"lease_uuid", lease.Uuid,
-			"error", err,
-		)
-		return sdk.NewCoins()
+		if !errors.As(err, &accrualOverflow) {
+			return nil, errorsmod.Wrapf(err, "calculate withdrawable amount for lease %s", lease.Uuid)
+		}
 	}
 
-	if accruedAmounts.IsZero() {
-		return sdk.NewCoins()
+	if accruedAmounts.IsZero() && accrualOverflow == nil {
+		return sdk.NewCoins(), nil
 	}
 
 	// Get credit balances for only the lease's denoms to cap the withdrawable amounts
 	creditBalances, err := k.getCreditBalancesForDenoms(ctx, lease.Tenant, leaseItemDenoms(lease.Items))
 	if err != nil {
-		k.logger.Error("failed to get credit balances for withdrawable calculation",
-			"lease_uuid", lease.Uuid,
-			"tenant", lease.Tenant,
-			"error", err,
-		)
-		return sdk.NewCoins()
+		return nil, errorsmod.Wrapf(err, "get credit balances for withdrawable lease %s", lease.Uuid)
 	}
 
-	// For each denom, return the minimum of accrued amount and available balance
-	result := sdk.NewCoins()
-	for _, accrued := range accruedAmounts {
-		balance := creditBalances.AmountOf(accrued.Denom)
-		if balance.LT(accrued.Amount) {
-			if balance.IsPositive() {
-				result = result.Add(sdk.NewCoin(accrued.Denom, balance))
+	// For each representable denom, return the minimum of accrued and available.
+	result := accruedAmounts.Min(creditBalances)
+	if accrualOverflow != nil {
+		for _, denom := range accrualOverflow.Denoms {
+			balance := creditBalances.AmountOf(denom)
+			if !balance.IsPositive() {
+				continue
 			}
-		} else {
-			result = result.Add(accrued)
+			result, err = types.SafeAddCoins(result, sdk.Coins{{Denom: denom, Amount: balance}})
+			if err != nil {
+				return nil, errorsmod.Wrapf(err, "clamp withdrawable overflow for denom %s", denom)
+			}
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 // ShouldAutoCloseLease checks if a lease should be auto-closed due to exhausted credit.
@@ -989,9 +1001,9 @@ func (k *Keeper) ShouldAutoCloseLease(ctx context.Context, lease *types.Lease) (
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// Calculate duration since last settlement
-	duration := blockTime.Sub(lease.LastSettledAt)
-	if duration < 0 {
+	// Compare timestamps directly so a future value beyond time.Duration's range
+	// cannot be mistaken for an old value after duration saturation.
+	if blockTime.Before(lease.LastSettledAt) {
 		// LastSettledAt is in the future - this indicates data corruption or clock issues.
 		// Return an error rather than silently masking the issue, as this could leave
 		// leases in an invalid state where credit is exhausted but the lease stays active.
@@ -1000,12 +1012,20 @@ func (k *Keeper) ShouldAutoCloseLease(ctx context.Context, lease *types.Lease) (
 			"tenant", lease.Tenant,
 			"last_settled_at", lease.LastSettledAt,
 			"block_time", blockTime,
-			"difference", -duration,
+			"difference", lease.LastSettledAt.Sub(blockTime),
 		)
 		return false, time.Time{}, types.ErrInvalidLease.Wrapf(
 			"lease %s has LastSettledAt (%s) in the future relative to block time (%s)",
 			lease.Uuid, lease.LastSettledAt, blockTime,
 		)
+	}
+
+	// Validate stored items before deriving denoms or calling the bank keeper.
+	// In particular, bank GetBalance assumes the denom is SDK-valid and may
+	// panic if corrupt imported state reaches it unchecked.
+	items := LeaseItemsToWithPrice(lease.Items)
+	if err := validateLeaseAccrualItems(items); err != nil {
+		return false, time.Time{}, errorsmod.Wrapf(err, "validate accrual items for lease %s", lease.Uuid)
 	}
 
 	// Check tenant's credit balances for only the lease's denoms
@@ -1014,20 +1034,26 @@ func (k *Keeper) ShouldAutoCloseLease(ctx context.Context, lease *types.Lease) (
 		return false, time.Time{}, err
 	}
 
-	// Calculate what would be accrued for each denom
-	items := LeaseItemsToWithPrice(lease.Items)
-
 	// If duration is zero, no accrual - check if any balance is exhausted
 	shouldClose = false
-	if duration > 0 {
-		accruedAmounts, calcErr := CalculateTotalAccruedForLease(items, duration)
+	if blockTime.After(lease.LastSettledAt) {
+		durationSeconds, secondsErr := elapsedWholeSeconds(lease.LastSettledAt, blockTime)
+		if secondsErr != nil {
+			return false, time.Time{}, secondsErr
+		}
+		accruedAmounts, calcErr := calculateTotalAccruedForLeaseSeconds(items, durationSeconds)
 		if calcErr != nil {
+			var accrualOverflow *AccrualOverflowError
+			if !errors.As(calcErr, &accrualOverflow) {
+				return false, time.Time{}, errorsmod.Wrapf(calcErr, "calculate accrued amount for lease %s", lease.Uuid)
+			}
 			// Overflow in accrual calculation means the accrued amount is extremely large,
 			// which certainly exceeds any credit balance. Defensively close the lease.
 			k.logger.Error("accrual calculation overflow in auto-close check, closing lease defensively",
 				"lease_uuid", lease.Uuid,
 				"tenant", lease.Tenant,
-				"duration", duration.String(),
+				"duration_seconds", durationSeconds.String(),
+				"denoms", accrualOverflow.Denoms,
 				"error", calcErr,
 			)
 			shouldClose = true
@@ -1192,11 +1218,19 @@ func (k *Keeper) knownLiveReservationFloor(ctx context.Context, tenant, excluded
 				return sdk.NewCoins(), true, nil
 			}
 
-			reservation := types.CalculateLeaseReservation(
+			reservation, err := types.CalculateLeaseReservation(
 				liveLease.Items,
 				liveLease.MinLeaseDurationAtCreation,
 			)
-			floor = floor.Add(reservation...)
+			if err != nil {
+				_ = iter.Close()
+				return nil, false, errorsmod.Wrapf(err, "calculate reservation for lease %s", liveLease.Uuid)
+			}
+			floor, err = types.SafeAddCoins(floor, reservation)
+			if err != nil {
+				_ = iter.Close()
+				return nil, false, errorsmod.Wrapf(err, "sum live reservation floor for tenant %s", tenant)
+			}
 		}
 
 		if err := iter.Close(); err != nil {
@@ -1216,7 +1250,7 @@ func (k *Keeper) ReleaseLeaseReservation(ctx context.Context, ca *types.CreditAc
 	if lease.MinLeaseDurationAtCreation == 0 {
 		reservationFloor, preserveAggregate, err := k.knownLiveReservationFloor(ctx, lease.Tenant, lease.Uuid)
 		if err != nil {
-			return fmt.Errorf("calculate live reservation floor for legacy lease %s: %w", lease.Uuid, err)
+			return errorsmod.Wrapf(err, "calculate live reservation floor for legacy lease %s", lease.Uuid)
 		}
 		if preserveAggregate {
 			return nil
@@ -1234,10 +1268,13 @@ func (k *Keeper) ReleaseLeaseReservation(ctx context.Context, ca *types.CreditAc
 		return nil
 	}
 
-	reservationAmount := types.CalculateLeaseReservation(
+	reservationAmount, err := types.CalculateLeaseReservation(
 		lease.Items,
 		lease.MinLeaseDurationAtCreation,
 	)
+	if err != nil {
+		return errorsmod.Wrapf(err, "calculate reservation release for lease %s", lease.Uuid)
+	}
 
 	// Check for underflow before release (for observability)
 	underflows := types.CheckReservationRelease(ca.ReservedAmounts, reservationAmount)

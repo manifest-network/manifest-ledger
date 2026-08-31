@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"cosmossdk.io/collections"
+	errorsmod "cosmossdk.io/errors"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
@@ -313,9 +314,16 @@ func (m Migrator) calculateCreditAccountMigrationRepair(
 				repair.hasLiveLegacy = true
 				continue
 			}
-			repair.knownReservationFloor = repair.knownReservationFloor.Add(
-				types.CalculateLeaseReservation(lease.Items, lease.MinLeaseDurationAtCreation)...,
-			)
+			reservation, err := types.CalculateLeaseReservation(lease.Items, lease.MinLeaseDurationAtCreation)
+			if err != nil {
+				_ = iterator.Close()
+				return repair, errorsmod.Wrapf(err, "calculate billing lease %q reservation", leaseUUID)
+			}
+			repair.knownReservationFloor, err = types.SafeAddCoins(repair.knownReservationFloor, reservation)
+			if err != nil {
+				_ = iterator.Close()
+				return repair, errorsmod.Wrapf(err, "sum billing reservations for tenant %q", tenant.String())
+			}
 		}
 
 		if err := iterator.Close(); err != nil {

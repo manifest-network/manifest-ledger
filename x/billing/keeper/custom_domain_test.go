@@ -612,7 +612,7 @@ func TestInitGenesis_RebuildsExistingDomainMatchingNewReservedSuffix(t *testing.
 		LastSettledAt:              now,
 		MinLeaseDurationAtCreation: params.MinLeaseDuration,
 	}
-	reservation := types.CalculateLeaseReservation(lease.Items, lease.MinLeaseDurationAtCreation)
+	reservation := calculateLeaseReservation(t, lease.Items, lease.MinLeaseDurationAtCreation)
 	genesisState := &types.GenesisState{
 		Params: params,
 		Leases: []types.Lease{lease},

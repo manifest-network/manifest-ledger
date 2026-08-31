@@ -367,7 +367,7 @@ func TestPerformSettlement_ProviderNotFound(t *testing.T) {
 // PerformSettlementSilent Tests
 // ============================================================================
 
-func TestPerformSettlementSilent_OverflowHandling(t *testing.T) {
+func TestPerformSettlement_LongDurationUsesExactAccrual(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.BillingKeeper
@@ -380,9 +380,9 @@ func TestPerformSettlementSilent_OverflowHandling(t *testing.T) {
 	// Fund tenant credit account
 	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
 	require.NoError(t, err)
-	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(10000))))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(4_000_000_000))))
 
-	// Create lease with very long duration that would cause overflow
+	// A long duration is valid when the actual charge remains representable.
 	now := f.Ctx.BlockTime()
 	lease := types.Lease{
 		Uuid:         "01912345-6789-7abc-8def-0123456789ab",
@@ -398,19 +398,137 @@ func TestPerformSettlementSilent_OverflowHandling(t *testing.T) {
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
-	// Try to settle for 101+ years (exceeds MaxDurationSeconds)
-	veryFarFuture := now.Add(101 * 365 * 24 * time.Hour)
+	longDuration := 101 * 365 * 24 * time.Hour
+	veryFarFuture := now.Add(longDuration)
 
-	// PerformSettlementSilent should NOT error on overflow
-	result, err := k.PerformSettlementSilent(f.Ctx, &lease, veryFarFuture)
+	result, err := k.PerformSettlement(f.Ctx, &lease, veryFarFuture)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	// On overflow, all remaining credit should be transferred to the provider
-	// (accrued amount would far exceed balance, so provider gets everything)
-	require.Equal(t, int64(10000), result.AccruedAmounts.AmountOf(testDenom).Int64())
-	require.Equal(t, int64(10000), result.TransferAmounts.AmountOf(testDenom).Int64())
+	expected := sdkmath.NewInt(int64(longDuration / time.Second))
+	require.Equal(t, expected, result.AccruedAmounts.AmountOf(testDenom))
+	require.Equal(t, expected, result.TransferAmounts.AmountOf(testDenom))
+	require.Empty(t, result.AccrualOverflow)
+}
+
+func TestPerformSettlement_IntervalBeyondDurationRange(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(20_000_000_000))))
+
+	lastSettledAt := time.Date(1600, time.January, 1, 0, 0, 0, 500_000_000, time.UTC)
+	settleTime := time.Date(2001, time.January, 1, 0, 0, 0, 400_000_000, time.UTC)
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    1,
+			LockedPrice: sdk.NewCoin(testDenom, sdkmath.OneInt()),
+		}},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     lastSettledAt,
+		LastSettledAt: lastSettledAt,
+	}
+
+	result, err := k.PerformSettlement(f.Ctx, &lease, settleTime)
+	require.NoError(t, err)
+	expectedSeconds := settleTime.Unix() - lastSettledAt.Unix() - 1 // nanoseconds truncate toward zero
+	require.Greater(t, expectedSeconds, int64((time.Duration(1<<63-1))/time.Second))
+	require.Equal(t, sdkmath.NewInt(expectedSeconds), result.AccruedAmounts.AmountOf(testDenom))
+	require.Equal(t, sdkmath.NewInt(expectedSeconds), result.TransferAmounts.AmountOf(testDenom))
+}
+
+func TestPerformSettlement_CheckedPriceQuantityOverflow(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(10_000))))
+
+	now := f.Ctx.BlockTime()
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    2,
+			LockedPrice: sdk.NewCoin(testDenom, highBitBillingTestInt()),
+		}},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     now,
+		LastSettledAt: now,
+	}
+
+	require.NotPanics(t, func() {
+		_, err = k.PerformSettlement(f.Ctx, &lease, now.Add(time.Second))
+	})
+	require.ErrorIs(t, err, types.ErrArithmeticOverflow)
+	require.Equal(t, sdkmath.NewInt(10_000), f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom).Amount)
+	require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, providerAddr, testDenom).IsZero())
+
+	var result *keeper.SettlementResult
+	require.NotPanics(t, func() {
+		result, err = k.PerformSettlementSilent(f.Ctx, &lease, now.Add(time.Second))
+	})
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(10_000), result.TransferAmounts.AmountOf(testDenom))
 	require.True(t, result.CreditBalanceAfter.IsZero())
+	require.Equal(t, []string{testDenom}, result.AccrualOverflow)
+}
+
+func TestPerformSettlementSilent_OverflowIsDenomLocal(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+
+	const unaffectedDenom = "uok"
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(
+		sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+		sdk.NewCoin(unaffectedDenom, sdkmath.NewInt(1_000)),
+	))
+
+	now := f.Ctx.BlockTime()
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{
+			{SkuUuid: testSKUUUID, Quantity: 2, LockedPrice: sdk.NewCoin(testDenom, highBitBillingTestInt())},
+			{SkuUuid: "01912345-6789-7abc-8def-0123456789af", Quantity: 1, LockedPrice: sdk.NewCoin(unaffectedDenom, sdkmath.NewInt(3))},
+		},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     now,
+		LastSettledAt: now,
+	}
+
+	result, err := k.PerformSettlementSilent(f.Ctx, &lease, now.Add(10*time.Second))
+	require.NoError(t, err)
+	expectedTransferred := sdk.NewCoins(
+		sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+		sdk.NewCoin(unaffectedDenom, sdkmath.NewInt(30)),
+	)
+	require.Equal(t, expectedTransferred, result.AccruedAmounts)
+	require.Equal(t, expectedTransferred, result.TransferAmounts)
+	require.Equal(t, []string{testDenom}, result.AccrualOverflow)
+	require.Equal(t, sdkmath.NewInt(970), result.CreditBalanceAfter.AmountOf(unaffectedDenom))
+	require.Equal(t, sdkmath.NewInt(970), f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, unaffectedDenom).Amount)
 }
 
 func TestPerformSettlementSilent_NormalOperation(t *testing.T) {

@@ -2,7 +2,10 @@ package keeper
 
 import (
 	"context"
+	"errors"
 	"time"
+
+	errorsmod "cosmossdk.io/errors"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
@@ -13,10 +16,15 @@ import (
 type SettlementResult struct {
 	// TransferAmounts is the actual amount transferred to the provider.
 	TransferAmounts sdk.Coins
-	// AccruedAmounts is the total amount accrued (may be higher than transferred if credit is insufficient).
+	// AccruedAmounts contains exact representable accruals plus the remaining
+	// balance for each overflowed denom (and may exceed transfers when credit is insufficient).
 	AccruedAmounts sdk.Coins
 	// CreditBalanceAfter is the tenant's credit balance after the settlement.
 	CreditBalanceAfter sdk.Coins
+	// AccrualOverflow lists denoms whose mathematical accrued amount exceeded
+	// math.Int. For silent settlement, only these denoms are clamped to their
+	// remaining credit balance. Order is deterministic first-detected overflow order.
+	AccrualOverflow []string
 }
 
 // leaseItemDenoms returns the unique denoms used by a lease's items.
@@ -48,18 +56,7 @@ func LeaseItemsToWithPrice(items []types.LeaseItem) []LeaseItemWithPrice {
 // CalculateTransferAmounts returns the minimum of accrued and available for each denom.
 // This ensures we never try to transfer more than what's available in the credit account.
 func CalculateTransferAmounts(accrued, available sdk.Coins) sdk.Coins {
-	result := sdk.NewCoins()
-	for _, coin := range accrued {
-		balance := available.AmountOf(coin.Denom)
-		transferAmount := coin.Amount
-		if balance.LT(coin.Amount) {
-			transferAmount = balance
-		}
-		if transferAmount.IsPositive() {
-			result = result.Add(sdk.NewCoin(coin.Denom, transferAmount))
-		}
-	}
-	return result
+	return accrued.Min(available)
 }
 
 // PerformSettlement calculates and transfers accrued amounts from a tenant's credit account
@@ -80,46 +77,53 @@ func (k *Keeper) PerformSettlement(ctx context.Context, lease *types.Lease, sett
 	return k.performSettlementCore(ctx, lease, settleTime, false)
 }
 
-// PerformSettlementSilent is like PerformSettlement but returns empty amounts on overflow
-// instead of an error. This is useful for close operations where we want to proceed
-// even if accrual calculation fails due to overflow.
+// PerformSettlementSilent is like PerformSettlement but, on a representational
+// accrual overflow, retains exact totals for unaffected denoms and clamps each
+// overflowed denom to its remaining balance instead of returning an error. This
+// is used by close operations so an unrepresentably large charge cannot grant
+// free service or drain an unaffected denomination.
 func (k *Keeper) PerformSettlementSilent(ctx context.Context, lease *types.Lease, settleTime time.Time) (*SettlementResult, error) {
 	return k.performSettlementCore(ctx, lease, settleTime, true)
 }
 
 // performSettlementCore contains the shared settlement logic.
-// If silentOnOverflow is true, accrual calculation errors result in empty amounts
-// rather than returning an error.
+// If silentOnOverflow is true, only ErrArithmeticOverflow is handled
+// conservatively; malformed pricing and other calculation errors are returned.
 func (k *Keeper) performSettlementCore(ctx context.Context, lease *types.Lease, settleTime time.Time, silentOnOverflow bool) (*SettlementResult, error) {
-	// Calculate duration since last settlement
-	duration := settleTime.Sub(lease.LastSettledAt)
-	if duration <= 0 {
+	// Compare timestamps before deriving seconds so a historical interval beyond
+	// time.Duration's range cannot saturate and undercharge the lease.
+	if !settleTime.After(lease.LastSettledAt) {
 		return &SettlementResult{
 			TransferAmounts:    sdk.NewCoins(),
 			AccruedAmounts:     sdk.NewCoins(),
 			CreditBalanceAfter: sdk.NewCoins(),
 		}, nil
 	}
+	durationSeconds, err := elapsedWholeSeconds(lease.LastSettledAt, settleTime)
+	if err != nil {
+		return nil, err
+	}
+	duration := settleTime.Sub(lease.LastSettledAt) // logging only; may saturate
 
 	// Calculate accrued amounts
 	items := LeaseItemsToWithPrice(lease.Items)
-	accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
-	overflowed := false
+	accruedAmounts, err := calculateTotalAccruedForLeaseSeconds(items, durationSeconds)
+	var accrualOverflow *AccrualOverflowError
 	if err != nil {
-		if silentOnOverflow {
+		if errors.As(err, &accrualOverflow) && silentOnOverflow {
 			// On overflow, the accrued amount exceeds representable range.
-			// This means accrued >> available credit. Transfer all remaining
-			// credit to the provider rather than zeroing it out, which would
-			// grant free service to the tenant.
+			// For each affected denom, accrued exceeds every representable bank
+			// balance. Clamp only those denoms to their remaining credit rather
+			// than granting free service or draining unaffected denoms.
 			k.logger.Warn("accrual calculation overflow during settlement, will transfer remaining credit",
 				"lease_uuid", lease.Uuid,
 				"tenant", lease.Tenant,
 				"duration", duration.String(),
+				"denoms", accrualOverflow.Denoms,
 				"error", err,
 			)
-			overflowed = true
 		} else {
-			return nil, types.ErrInvalidCreditOperation.Wrapf("accrual calculation error: %s", err)
+			return nil, errorsmod.Wrap(err, "accrual calculation error")
 		}
 	}
 
@@ -130,11 +134,24 @@ func (k *Keeper) performSettlementCore(ctx context.Context, lease *types.Lease, 
 		return nil, err
 	}
 
-	if overflowed {
-		// On overflow, transfer all remaining credit in the lease's denoms to the provider.
-		// The actual accrual would far exceed the balance, so this is the
-		// correct settlement: the provider receives everything that remains.
-		accruedAmounts = creditBalances
+	if accrualOverflow != nil {
+		for _, denom := range accrualOverflow.Denoms {
+			balance := creditBalances.AmountOf(denom)
+			if !balance.IsPositive() {
+				continue
+			}
+			accruedAmounts, err = types.SafeAddCoins(
+				accruedAmounts,
+				sdk.Coins{{Denom: denom, Amount: balance}},
+			)
+			if err != nil {
+				return nil, errorsmod.Wrapf(err, "clamp overflowed accrual for denom %s", denom)
+			}
+		}
+	}
+	overflowDenoms := make([]string, 0)
+	if accrualOverflow != nil {
+		overflowDenoms = append(overflowDenoms, accrualOverflow.Denoms...)
 	}
 
 	// If nothing accrued, return early with current balances
@@ -143,6 +160,7 @@ func (k *Keeper) performSettlementCore(ctx context.Context, lease *types.Lease, 
 			TransferAmounts:    sdk.NewCoins(),
 			AccruedAmounts:     sdk.NewCoins(),
 			CreditBalanceAfter: creditBalances,
+			AccrualOverflow:    overflowDenoms,
 		}, nil
 	}
 
@@ -155,6 +173,7 @@ func (k *Keeper) performSettlementCore(ctx context.Context, lease *types.Lease, 
 			TransferAmounts:    sdk.NewCoins(),
 			AccruedAmounts:     accruedAmounts,
 			CreditBalanceAfter: creditBalances,
+			AccrualOverflow:    overflowDenoms,
 		}, nil
 	}
 
@@ -184,5 +203,6 @@ func (k *Keeper) performSettlementCore(ctx context.Context, lease *types.Lease, 
 		TransferAmounts:    transferAmounts,
 		AccruedAmounts:     accruedAmounts,
 		CreditBalanceAfter: creditBalances.Sub(transferAmounts...),
+		AccrualOverflow:    overflowDenoms,
 	}, nil
 }

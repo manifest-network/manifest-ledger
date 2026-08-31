@@ -91,9 +91,16 @@ When credit is exhausted:
 
 ### Overflow Protection
 
-- Maximum duration capped at ~100 years (`MaxDurationSeconds`)
+- SDK `math.Int` values are fixed at 256 bits; price/quantity/duration
+  multiplication and same-denom addition use checked operations
 - Maximum quantity per item: 1 billion (`MaxQuantityPerItem`)
-- Uses `math.Int` (big.Int) for all arithmetic
+- Creation, CreditEstimate/non-balance-capped queries, import, migration, and
+  non-silent settlement return `ErrArithmeticOverflow` (code 20) instead of
+  panicking; withdrawable queries balance-cap affected denominations
+- Long settlement intervals are charged from timestamp-derived whole seconds;
+  only actual representational overflow triggers the conservative path
+- Silent overflow settlement clamps only affected denominations to their
+  remaining balances and preserves exact charges for unaffected denominations
 
 ---
 
@@ -632,7 +639,7 @@ func (ms msgServer) CompleteTask(ctx context.Context, msg *types.MsgCompleteTask
 For time-based leases, we reserve `rate × min_lease_duration`. For task-based leases:
 
 ```go
-func CalculateLeaseReservation(lease *Lease, params Params) sdk.Coins {
+func CalculateLeaseReservation(lease *Lease, params Params) (sdk.Coins, error) {
     switch lease.BillingMode {
     case BILLING_MODE_TIME:
         // Existing logic: rate × min_lease_duration

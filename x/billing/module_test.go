@@ -26,7 +26,8 @@ func TestConsensusVersion(t *testing.T) {
 	require.Equal(t, uint64(3), billingmodule.AppModule{}.ConsensusVersion())
 }
 
-func validGenesis(minLeaseDuration uint64) *types.GenesisState {
+func validGenesis(t *testing.T, minLeaseDuration uint64) *types.GenesisState {
+	t.Helper()
 	tenantAddr := sdk.AccAddress([]byte("billing-test-tenant"))
 	items := []types.LeaseItem{{
 		SkuUuid:     testSKUUUID,
@@ -34,6 +35,8 @@ func validGenesis(minLeaseDuration uint64) *types.GenesisState {
 		LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 		ServiceName: "web",
 	}}
+	reservation, err := types.CalculateLeaseReservation(items, minLeaseDuration)
+	require.NoError(t, err)
 
 	return &types.GenesisState{
 		Params: types.DefaultParams(),
@@ -48,7 +51,7 @@ func validGenesis(minLeaseDuration uint64) *types.GenesisState {
 		CreditAccounts: []types.CreditAccount{{
 			Tenant:           tenantAddr.String(),
 			CreditAddress:    types.DeriveCreditAddress(tenantAddr).String(),
-			ReservedAmounts:  types.CalculateLeaseReservation(items, minLeaseDuration),
+			ReservedAmounts:  reservation,
 			ActiveLeaseCount: 1,
 		}},
 		LeaseSequence: 1,
@@ -65,7 +68,7 @@ func TestAppModuleBasicValidateGenesisAcceptsHistoricalExports(t *testing.T) {
 	}
 
 	t.Run("legacy reservation from an earlier minimum duration", func(t *testing.T) {
-		gs := validGenesis(types.DefaultMinLeaseDuration)
+		gs := validGenesis(t, types.DefaultMinLeaseDuration)
 		gs.Params.MinLeaseDuration = 2 * types.DefaultMinLeaseDuration
 		gs.Leases[0].MinLeaseDurationAtCreation = 0
 
@@ -75,7 +78,7 @@ func TestAppModuleBasicValidateGenesisAcceptsHistoricalExports(t *testing.T) {
 	})
 
 	t.Run("domain claimed before suffix reservation", func(t *testing.T) {
-		gs := validGenesis(types.DefaultMinLeaseDuration)
+		gs := validGenesis(t, types.DefaultMinLeaseDuration)
 		gs.Params.ReservedDomainSuffixes = []string{".manifest0.net"}
 		gs.Leases[0].Items[0].CustomDomain = "app.manifest0.net"
 
@@ -135,7 +138,7 @@ func TestAppModuleBasicValidateGenesisRetainsImportInvariants(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gs := validGenesis(types.DefaultMinLeaseDuration)
+			gs := validGenesis(t, types.DefaultMinLeaseDuration)
 			tc.mutate(gs)
 			require.ErrorIs(t, validateGenesis(t, gs), tc.expected)
 		})

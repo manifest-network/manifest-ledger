@@ -1,6 +1,7 @@
 package types_test
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +12,16 @@ import (
 
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
+
+func maxBillingInt() math.Int {
+	value := new(big.Int).Lsh(big.NewInt(1), 256)
+	value.Sub(value, big.NewInt(1))
+	return math.NewIntFromBigInt(value)
+}
+
+func highBitBillingInt() math.Int {
+	return math.NewIntFromBigInt(new(big.Int).Lsh(big.NewInt(1), 255))
+}
 
 // ============================================================================
 // GetAvailableCredit Tests
@@ -164,10 +175,47 @@ func TestAddReservation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := types.AddReservation(tc.reserved, tc.toAdd)
+			result, err := types.AddReservation(tc.reserved, tc.toAdd)
+			require.NoError(t, err)
 			require.Equal(t, tc.expected, result)
 		})
 	}
+}
+
+func TestAddReservation_CheckedBoundary(t *testing.T) {
+	maxAmount := maxBillingInt()
+	nearMax, err := maxAmount.SafeSub(math.OneInt())
+	require.NoError(t, err)
+
+	result, err := types.AddReservation(
+		sdk.NewCoins(sdk.NewCoin("upwr", nearMax)),
+		sdk.NewCoins(sdk.NewCoin("upwr", math.OneInt())),
+	)
+	require.NoError(t, err)
+	require.Equal(t, maxAmount, result.AmountOf("upwr"))
+
+	require.NotPanics(t, func() {
+		_, err = types.AddReservation(result, sdk.NewCoins(sdk.NewCoin("upwr", math.OneInt())))
+	})
+	require.ErrorIs(t, err, types.ErrArithmeticOverflow)
+}
+
+func TestSafeAddCoins_ExactMaximumAndOverflow(t *testing.T) {
+	maxAmount := maxBillingInt()
+	nearMax, err := maxAmount.SafeSub(math.OneInt())
+	require.NoError(t, err)
+
+	result, err := types.SafeAddCoins(
+		sdk.NewCoins(sdk.NewCoin("upwr", nearMax)),
+		sdk.NewCoins(sdk.NewCoin("upwr", math.OneInt())),
+	)
+	require.NoError(t, err)
+	require.Equal(t, maxAmount, result.AmountOf("upwr"))
+
+	require.NotPanics(t, func() {
+		_, err = types.SafeAddCoins(result, sdk.NewCoins(sdk.NewCoin("upwr", math.OneInt())))
+	})
+	require.ErrorIs(t, err, types.ErrArithmeticOverflow)
 }
 
 // ============================================================================
@@ -341,7 +389,8 @@ func TestCalculateLeaseReservation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := types.CalculateLeaseReservation(tc.items, tc.minLeaseDuration)
+			result, err := types.CalculateLeaseReservation(tc.items, tc.minLeaseDuration)
+			require.NoError(t, err)
 			require.Equal(t, tc.expected, result)
 		})
 	}
@@ -392,10 +441,96 @@ func TestCalculateLeaseReservationFromRates(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := types.CalculateLeaseReservationFromRates(tc.totalRatesPerSecond, tc.minLeaseDuration)
+			result, err := types.CalculateLeaseReservationFromRates(tc.totalRatesPerSecond, tc.minLeaseDuration)
+			require.NoError(t, err)
 			require.Equal(t, tc.expected, result)
 		})
 	}
+}
+
+func TestCalculateLeaseReservation_CheckedBoundaries(t *testing.T) {
+	highBit := highBitBillingInt()
+
+	t.Run("stored pricing business invariants are enforced", func(t *testing.T) {
+		tests := []struct {
+			name             string
+			item             types.LeaseItem
+			minLeaseDuration uint64
+			expected         error
+		}{
+			{
+				name:             "zero quantity",
+				item:             types.LeaseItem{SkuUuid: "sku-zero", Quantity: 0, LockedPrice: sdk.NewCoin("upwr", math.OneInt())},
+				minLeaseDuration: 1,
+				expected:         types.ErrInvalidQuantity,
+			},
+			{
+				name:             "quantity above maximum",
+				item:             types.LeaseItem{SkuUuid: "sku-too-many", Quantity: types.MaxQuantityPerItem + 1, LockedPrice: sdk.NewCoin("upwr", math.OneInt())},
+				minLeaseDuration: 1,
+				expected:         types.ErrInvalidQuantity,
+			},
+			{
+				name:             "zero price even at zero reservation duration",
+				item:             types.LeaseItem{SkuUuid: "sku-zero-price", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", math.ZeroInt())},
+				minLeaseDuration: 0,
+				expected:         types.ErrInvalidCreditOperation,
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				require.NotPanics(t, func() {
+					_, err := types.CalculateLeaseReservation([]types.LeaseItem{tc.item}, tc.minLeaseDuration)
+					require.ErrorIs(t, err, tc.expected)
+				})
+			})
+		}
+	})
+
+	t.Run("quantity multiplication overflow", func(t *testing.T) {
+		items := []types.LeaseItem{{
+			SkuUuid:     "sku-overflow",
+			Quantity:    2,
+			LockedPrice: sdk.NewCoin("upwr", highBit),
+		}}
+
+		require.NotPanics(t, func() {
+			_, err := types.CalculateLeaseReservation(items, 1)
+			require.ErrorIs(t, err, types.ErrArithmeticOverflow)
+		})
+	})
+
+	t.Run("duration multiplication overflow", func(t *testing.T) {
+		rates := sdk.NewCoins(sdk.NewCoin("upwr", highBit))
+
+		require.NotPanics(t, func() {
+			_, err := types.CalculateLeaseReservationFromRates(rates, 2)
+			require.ErrorIs(t, err, types.ErrArithmeticOverflow)
+		})
+	})
+
+	t.Run("near maximum succeeds", func(t *testing.T) {
+		nearHalf, err := highBit.SafeSub(math.OneInt())
+		require.NoError(t, err)
+		rates := sdk.NewCoins(sdk.NewCoin("upwr", nearHalf))
+
+		reservation, err := types.CalculateLeaseReservationFromRates(rates, 2)
+		require.NoError(t, err)
+		expected, err := nearHalf.SafeMul(math.NewInt(2))
+		require.NoError(t, err)
+		require.Equal(t, expected, reservation.AmountOf("upwr"))
+	})
+
+	t.Run("precomputed rates must be canonical", func(t *testing.T) {
+		unsortedRates := sdk.Coins{
+			sdk.NewCoin("upwr", math.OneInt()),
+			sdk.NewCoin("uatom", math.OneInt()),
+		}
+
+		_, err := types.CalculateLeaseReservationFromRates(unsortedRates, 1)
+		require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+	})
 }
 
 // ============================================================================
@@ -420,37 +555,44 @@ func TestReservationScenario_PreventOverbooking(t *testing.T) {
 
 	// Lease A creation: need 30, have 100 available
 	leaseAItems := []types.LeaseItem{{SkuUuid: "a", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", ratePerSecond)}}
-	leaseAReservation := types.CalculateLeaseReservation(leaseAItems, duration)
+	leaseAReservation, err := types.CalculateLeaseReservation(leaseAItems, duration)
+	require.NoError(t, err)
 	require.Equal(t, sdk.NewCoins(sdk.NewCoin("upwr", math.NewInt(30))), leaseAReservation)
 
 	available := types.GetAvailableCredit(balance, reserved)
 	require.True(t, available.AmountOf("upwr").GTE(leaseAReservation.AmountOf("upwr")))
-	reserved = types.AddReservation(reserved, leaseAReservation)
+	reserved, err = types.AddReservation(reserved, leaseAReservation)
+	require.NoError(t, err)
 	// Reserved: 30, Available: 70
 
 	// Lease B creation: need 30, have 70 available
 	leaseBItems := []types.LeaseItem{{SkuUuid: "b", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", ratePerSecond)}}
-	leaseBReservation := types.CalculateLeaseReservation(leaseBItems, duration)
+	leaseBReservation, err := types.CalculateLeaseReservation(leaseBItems, duration)
+	require.NoError(t, err)
 
 	available = types.GetAvailableCredit(balance, reserved)
 	require.Equal(t, math.NewInt(70), available.AmountOf("upwr"))
 	require.True(t, available.AmountOf("upwr").GTE(leaseBReservation.AmountOf("upwr")))
-	reserved = types.AddReservation(reserved, leaseBReservation)
+	reserved, err = types.AddReservation(reserved, leaseBReservation)
+	require.NoError(t, err)
 	// Reserved: 60, Available: 40
 
 	// Lease C creation: need 30, have 40 available
 	leaseCItems := []types.LeaseItem{{SkuUuid: "c", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", ratePerSecond)}}
-	leaseCReservation := types.CalculateLeaseReservation(leaseCItems, duration)
+	leaseCReservation, err := types.CalculateLeaseReservation(leaseCItems, duration)
+	require.NoError(t, err)
 
 	available = types.GetAvailableCredit(balance, reserved)
 	require.Equal(t, math.NewInt(40), available.AmountOf("upwr"))
 	require.True(t, available.AmountOf("upwr").GTE(leaseCReservation.AmountOf("upwr")))
-	reserved = types.AddReservation(reserved, leaseCReservation)
+	reserved, err = types.AddReservation(reserved, leaseCReservation)
+	require.NoError(t, err)
 	// Reserved: 90, Available: 10
 
 	// Lease D creation: need 30, have 10 available - SHOULD FAIL
 	leaseDItems := []types.LeaseItem{{SkuUuid: "d", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", ratePerSecond)}}
-	leaseDReservation := types.CalculateLeaseReservation(leaseDItems, duration)
+	leaseDReservation, err := types.CalculateLeaseReservation(leaseDItems, duration)
+	require.NoError(t, err)
 
 	available = types.GetAvailableCredit(balance, reserved)
 	require.Equal(t, math.NewInt(10), available.AmountOf("upwr"))
@@ -468,20 +610,25 @@ func TestReservationScenario_ReleaseOnClose(t *testing.T) {
 
 	// Lease A creation: reserve 40
 	leaseAItems := []types.LeaseItem{{SkuUuid: "a", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", ratePerSecond)}}
-	leaseAReservation := types.CalculateLeaseReservation(leaseAItems, duration)
-	reserved = types.AddReservation(reserved, leaseAReservation)
+	leaseAReservation, err := types.CalculateLeaseReservation(leaseAItems, duration)
+	require.NoError(t, err)
+	reserved, err = types.AddReservation(reserved, leaseAReservation)
+	require.NoError(t, err)
 
 	// Lease B creation: reserve 40 (total reserved: 80, available: 20)
 	leaseBItems := []types.LeaseItem{{SkuUuid: "b", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", ratePerSecond)}}
-	leaseBReservation := types.CalculateLeaseReservation(leaseBItems, duration)
-	reserved = types.AddReservation(reserved, leaseBReservation)
+	leaseBReservation, err := types.CalculateLeaseReservation(leaseBItems, duration)
+	require.NoError(t, err)
+	reserved, err = types.AddReservation(reserved, leaseBReservation)
+	require.NoError(t, err)
 
 	available := types.GetAvailableCredit(balance, reserved)
 	require.Equal(t, math.NewInt(20), available.AmountOf("upwr"))
 
 	// Lease C would fail: need 40, only 20 available
 	leaseCItems := []types.LeaseItem{{SkuUuid: "c", Quantity: 1, LockedPrice: sdk.NewCoin("upwr", ratePerSecond)}}
-	leaseCReservation := types.CalculateLeaseReservation(leaseCItems, duration)
+	leaseCReservation, err := types.CalculateLeaseReservation(leaseCItems, duration)
+	require.NoError(t, err)
 	require.False(t, available.AmountOf("upwr").GTE(leaseCReservation.AmountOf("upwr")))
 
 	// Close Lease A: release its reservation
@@ -565,7 +712,8 @@ func TestGetLeaseReservationAmount(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := types.GetLeaseReservationAmount(&tc.lease, tc.minLeaseDur)
+			result, err := types.GetLeaseReservationAmount(&tc.lease, tc.minLeaseDur)
+			require.NoError(t, err)
 			require.Equal(t, tc.expectedAmount, result.AmountOf(tc.expectedDenom))
 		})
 	}
@@ -584,7 +732,8 @@ func TestGetLeaseReservationAmount_ParamChangeScenario(t *testing.T) {
 	}
 
 	// Calculate expected reservation at creation
-	reservationAtCreation := types.CalculateLeaseReservation(items, originalMinDuration)
+	reservationAtCreation, err := types.CalculateLeaseReservation(items, originalMinDuration)
+	require.NoError(t, err)
 	require.Equal(t, math.NewInt(36000), reservationAtCreation.AmountOf("upwr")) // 10 * 3600
 
 	// Create lease with stored min_lease_duration
@@ -597,13 +746,15 @@ func TestGetLeaseReservationAmount_ParamChangeScenario(t *testing.T) {
 	newMinDuration := uint64(1800)
 
 	// At closure time: GetLeaseReservationAmount should use STORED duration
-	releaseAmount := types.GetLeaseReservationAmount(&lease, newMinDuration)
+	releaseAmount, err := types.GetLeaseReservationAmount(&lease, newMinDuration)
+	require.NoError(t, err)
 
 	// Should calculate using stored duration (3600), not current (1800)
 	require.Equal(t, math.NewInt(36000), releaseAmount.AmountOf("upwr"))
 
 	// Verify that using current param would give wrong answer
-	wrongAmount := types.CalculateLeaseReservation(items, newMinDuration)
+	wrongAmount, err := types.CalculateLeaseReservation(items, newMinDuration)
+	require.NoError(t, err)
 	require.Equal(t, math.NewInt(18000), wrongAmount.AmountOf("upwr")) // 10 * 1800 = wrong!
 
 	// The stored duration ensures correct release
@@ -862,7 +1013,8 @@ func TestCalculateExpectedReservationsByTenant(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := types.CalculateExpectedReservationsByTenant(tc.leases, minDuration)
+			result, err := types.CalculateExpectedReservationsByTenant(tc.leases, minDuration)
+			require.NoError(t, err)
 
 			require.Equal(t, len(tc.expected), len(result),
 				"expected %d tenants, got %d", len(tc.expected), len(result))

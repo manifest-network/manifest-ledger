@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -558,6 +559,54 @@ func TestMsgCreateLease(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMsgCreateLease_ArithmeticOverflowReturnsModuleErrorWithoutState(t *testing.T) {
+	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	// Use the largest valid hourly price divisible by 3600. Conversion remains
+	// valid, but multiplying the resulting per-second rate by MaxQuantityPerItem
+	// exceeds math.Int's 256-bit representation.
+	perSecond := maxBillingTestInt().QuoRaw(3600)
+	basePriceAmount, err := perSecond.SafeMul(sdkmath.NewInt(3600))
+	require.NoError(t, err)
+	sku.BasePrice = sdk.NewCoin(testDenom, basePriceAmount)
+	require.NoError(t, f.App.SKUKeeper.SetSKU(f.Ctx, sku))
+
+	creditAddr := types.DeriveCreditAddress(tenant)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.OneInt())))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	var resp *types.MsgCreateLeaseResponse
+	require.NotPanics(t, func() {
+		resp, err = msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
+			Tenant: tenant.String(),
+			Items: []types.LeaseItemInput{{
+				SkuUuid:  sku.Uuid,
+				Quantity: types.MaxQuantityPerItem,
+			}},
+		})
+	})
+	require.Nil(t, resp)
+	require.ErrorIs(t, err, types.ErrArithmeticOverflow)
+	codespace, code, _ := errorsmod.ABCIInfo(err, false)
+	require.Equal(t, types.ModuleName, codespace)
+	require.Equal(t, uint32(20), code)
+
+	leases, getErr := f.App.BillingKeeper.GetAllLeases(f.Ctx)
+	require.NoError(t, getErr)
+	require.Empty(t, leases)
+	account, getErr := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, getErr)
+	require.True(t, account.ReservedAmounts.IsZero())
 }
 
 func TestMsgCreateLeaseInsufficientCredit(t *testing.T) {
@@ -1719,7 +1768,7 @@ func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 		}
 	})
 
-	t.Run("overflow: an unsettled-for-a-century lease is still credit_exhausted", func(t *testing.T) {
+	t.Run("representational overflow is still credit_exhausted", func(t *testing.T) {
 		// tenant0's earlier lease is already closed; reuse and re-fund it.
 		tenant := f.TestAccs[0]
 		fundTenant(t, tenant, 5000)
@@ -1728,14 +1777,22 @@ func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 			{SkuUuid: sku.Uuid, Quantity: 1},
 		})
 
-		// Force the lease to look >100 years unsettled so accrual overflows.
-		// PerformSettlementSilent then clamps the accrued amount to the remaining
-		// balance and transfers it all (so the unpaid remainder reads zero) — the
-		// close must still be recorded as credit exhaustion, not the caller reason.
+		// Simulate a historical locked rate whose price × quantity is valid for its
+		// one-second reservation but whose two-second accrued charge exceeds the SDK
+		// integer representation. PerformSettlementSilent clamps that denom to the
+		// remaining balance (so the unpaid remainder reads zero), but its explicit
+		// overflow metadata must still classify the close as exhaustion.
 		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
 		require.NoError(t, err)
-		lease.LastSettledAt = f.Ctx.BlockTime().Add(-time.Duration(keeper.MaxDurationSeconds+10) * time.Second)
+		lease.Items[0].Quantity = 1
+		lease.Items[0].LockedPrice = sdk.NewCoin(testDenom, highBitBillingTestInt())
+		lease.MinLeaseDurationAtCreation = 1
+		lease.LastSettledAt = f.Ctx.BlockTime().Add(-2 * time.Second)
 		require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+		creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+		require.NoError(t, err)
+		creditAccount.ReservedAmounts = sdk.NewCoins(sdk.NewCoin(testDenom, highBitBillingTestInt()))
+		require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, creditAccount))
 
 		_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
 			Sender:     tenant.String(),
@@ -1783,6 +1840,46 @@ func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 		require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason,
 			"a zero-balance lease closed with no time elapsed is genuine exhaustion")
 	})
+}
+
+func TestMsgCloseLease_EventReportsExactDurationBeyondTimeDurationRange(t *testing.T) {
+	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	creditAddr := types.DeriveCreditAddress(tenant)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(20_000_000_000))))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+	leaseID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{{
+		SkuUuid:  sku.Uuid,
+		Quantity: 1,
+	}})
+
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+	require.NoError(t, err)
+	lastSettledAt := time.Date(1600, time.January, 1, 0, 0, 0, f.Ctx.BlockTime().Nanosecond(), time.UTC)
+	lease.CreatedAt = lastSettledAt
+	lease.LastSettledAt = lastSettledAt
+	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+
+	expectedSeconds := f.Ctx.BlockTime().Unix() - lastSettledAt.Unix()
+	require.Greater(t, expectedSeconds, int64((time.Duration(1<<63-1))/time.Second))
+	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		Sender:     tenant.String(),
+		LeaseUuids: []string{leaseID},
+		Reason:     "long-running lease",
+	})
+	require.NoError(t, err)
+
+	closedEvent := findEvent(t, f.Ctx, types.EventTypeLeaseClosed)
+	require.Equal(t, fmt.Sprintf("%d", expectedSeconds), attrValue(t, closedEvent, types.AttributeKeyDuration))
 }
 
 // TestMsgCloseLease_ProviderClose tests that provider can close a lease.
@@ -4971,7 +5068,7 @@ func (f *testFixture) setPendingLease(t *testing.T, uuid, providerUUID, skuUUID,
 	ca, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, lease.Tenant)
 	require.NoError(t, err)
 	ca.PendingLeaseCount++
-	ca.ReservedAmounts = types.AddReservation(ca.ReservedAmounts, types.GetLeaseReservationAmount(&lease, params.MinLeaseDuration))
+	ca.ReservedAmounts = addTestReservation(t, ca.ReservedAmounts, getLeaseReservationAmount(t, &lease, params.MinLeaseDuration))
 	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, ca))
 }
 

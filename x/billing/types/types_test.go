@@ -42,6 +42,60 @@ func generateManyLeaseItems(n uint64) []types.LeaseItemInput {
 	return items
 }
 
+func TestGenesisState_Validate_ArithmeticOverflowReturnsModuleError(t *testing.T) {
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+	now := time.Unix(1, 0).UTC()
+	gs := &types.GenesisState{
+		Params: types.DefaultParams(),
+		Leases: []types.Lease{{
+			Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+			Tenant:       tenantAddr.String(),
+			ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+			Items: []types.LeaseItem{{
+				SkuUuid:     "01912345-6789-7abc-8def-0123456789ad",
+				Quantity:    2,
+				LockedPrice: sdk.NewCoin(testDenom, highBitBillingInt()),
+			}},
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  now,
+			LastSettledAt:              now,
+			MinLeaseDurationAtCreation: 1,
+		}},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:           tenantAddr.String(),
+			CreditAddress:    types.DeriveCreditAddress(tenantAddr).String(),
+			ActiveLeaseCount: 1,
+		}},
+		LeaseSequence: 1,
+	}
+
+	var err error
+	require.NotPanics(t, func() {
+		err = gs.Validate()
+	})
+	require.ErrorIs(t, err, types.ErrArithmeticOverflow)
+}
+
+func TestGenesisState_Validate_NilReservedAmountDoesNotPanic(t *testing.T) {
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+	gs := &types.GenesisState{
+		Params: types.DefaultParams(),
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:          tenantAddr.String(),
+			CreditAddress:   types.DeriveCreditAddress(tenantAddr).String(),
+			ReservedAmounts: sdk.Coins{{Denom: testDenom}},
+		}},
+	}
+
+	for _, validate := range []func() error{gs.Validate, gs.ValidateStrict} {
+		require.NotPanics(t, func() {
+			err := validate()
+			require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+			require.ErrorContains(t, err, "invalid reserved_amounts")
+		})
+	}
+}
+
 // ============================================================================
 // Params Tests
 // ============================================================================
@@ -1336,7 +1390,28 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 				},
 			},
 			expectErr: true,
-			errMsg:    "has zero quantity",
+			errMsg:    "invalid pricing",
+		},
+		{
+			name: "lease item quantity exceeds runtime maximum",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items: []types.LeaseItem{
+							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: types.MaxQuantityPerItem + 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
+						},
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     now,
+						LastSettledAt: now,
+					},
+				},
+			},
+			expectErr: true,
+			errMsg:    "invalid pricing",
 		},
 		{
 			name: "lease item with nil locked_price",
@@ -1357,7 +1432,7 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 				},
 			},
 			expectErr: true,
-			errMsg:    "invalid locked_price",
+			errMsg:    "invalid pricing",
 		},
 		{
 			name: "lease item with zero locked_price",
@@ -1378,7 +1453,7 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 				},
 			},
 			expectErr: true,
-			errMsg:    "invalid locked_price",
+			errMsg:    "invalid pricing",
 		},
 		{
 			name: "lease item with negative locked_price",
@@ -1399,7 +1474,7 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 				},
 			},
 			expectErr: true,
-			errMsg:    "invalid locked_price",
+			errMsg:    "invalid pricing",
 		},
 		{
 			name: "lease with unspecified state",
@@ -2030,7 +2105,10 @@ func TestGenesisState_Validate_UsesCanonicalTenantIdentity(t *testing.T) {
 
 	firstLease := lease("01912345-6789-7abc-8def-0123456789ab", tenant)
 	secondLease := lease("01912345-6789-7abc-8def-0123456789ae", tenantAlias)
-	reservation := types.GetLeaseReservationAmount(&firstLease, params.MinLeaseDuration)
+	reservation, err := types.GetLeaseReservationAmount(&firstLease, params.MinLeaseDuration)
+	require.NoError(t, err)
+	totalReservation, err := types.SafeAddCoins(reservation, reservation)
+	require.NoError(t, err)
 	gs := &types.GenesisState{
 		Params: params,
 		Leases: []types.Lease{firstLease, secondLease},
@@ -2038,7 +2116,7 @@ func TestGenesisState_Validate_UsesCanonicalTenantIdentity(t *testing.T) {
 			Tenant:           tenant,
 			CreditAddress:    strings.ToUpper(creditAddress),
 			ActiveLeaseCount: 2,
-			ReservedAmounts:  reservation.Add(reservation...),
+			ReservedAmounts:  totalReservation,
 		}},
 		LeaseSequence: 2,
 	}
@@ -2054,7 +2132,7 @@ func TestGenesisState_Validate_UsesCanonicalTenantIdentity(t *testing.T) {
 	})
 	gs.CreditAccounts[0].ActiveLeaseCount = 0
 	gs.CreditAccounts[0].ReservedAmounts = nil
-	err := gs.Validate()
+	err = gs.Validate()
 	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
 	require.Contains(t, err.Error(), "duplicate credit account for tenant")
 }
@@ -2085,10 +2163,11 @@ func TestGenesisState_Validate_RequiresKnownReservationPortion(t *testing.T) {
 
 	legacyLease := lease("01912345-6789-7abc-8def-0123456789ab", 0)
 	modernLease := lease("01912345-6789-7abc-8def-0123456789ae", params.MinLeaseDuration)
-	knownReservation := types.CalculateLeaseReservation(
+	knownReservation, err := types.CalculateLeaseReservation(
 		modernLease.Items,
 		modernLease.MinLeaseDurationAtCreation,
 	)
+	require.NoError(t, err)
 	gs := &types.GenesisState{
 		Params: params,
 		Leases: []types.Lease{legacyLease, modernLease},
@@ -2104,7 +2183,7 @@ func TestGenesisState_Validate_RequiresKnownReservationPortion(t *testing.T) {
 		LeaseSequence: 2,
 	}
 
-	err := gs.Validate()
+	err = gs.Validate()
 	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
 	require.Contains(t, err.Error(), "below known non-legacy lease reservations")
 }
@@ -2139,17 +2218,25 @@ func TestGenesisState_Validate_AcceptsMixedHistoricalReservations(t *testing.T) 
 	closedLease := lease("01912345-6789-7abc-8def-0123456789b0", types.LEASE_STATE_CLOSED, 0)
 	closedLease.ClosedAt = &closedAt
 
-	knownModernReservations := types.CalculateLeaseReservation(
+	knownModernReservation1, err := types.CalculateLeaseReservation(
 		modernLease1.Items,
 		modernLease1.MinLeaseDurationAtCreation,
-	).Add(types.CalculateLeaseReservation(
+	)
+	require.NoError(t, err)
+	knownModernReservation2, err := types.CalculateLeaseReservation(
 		modernLease2.Items,
 		modernLease2.MinLeaseDurationAtCreation,
-	)...)
-	historicalLegacyReservation := types.CalculateLeaseReservation(
+	)
+	require.NoError(t, err)
+	knownModernReservations, err := types.SafeAddCoins(knownModernReservation1, knownModernReservation2)
+	require.NoError(t, err)
+	historicalLegacyReservation, err := types.CalculateLeaseReservation(
 		legacyLease.Items,
 		params.MinLeaseDuration/2,
 	)
+	require.NoError(t, err)
+	allReservations, err := types.SafeAddCoins(knownModernReservations, historicalLegacyReservation)
+	require.NoError(t, err)
 
 	gs := &types.GenesisState{
 		Params: params,
@@ -2158,7 +2245,7 @@ func TestGenesisState_Validate_AcceptsMixedHistoricalReservations(t *testing.T) 
 			Tenant:           tenant,
 			CreditAddress:    types.DeriveCreditAddress(tenantAddr).String(),
 			ActiveLeaseCount: 3,
-			ReservedAmounts:  knownModernReservations.Add(historicalLegacyReservation...),
+			ReservedAmounts:  allReservations,
 		}},
 		LeaseSequence: 4,
 	}
@@ -2190,10 +2277,11 @@ func TestGenesisState_Validate_AcceptsTerminalLegacyReservationResidual(t *testi
 		// Zero identifies a lease created before the duration was stored.
 		MinLeaseDurationAtCreation: 0,
 	}
-	historicalReservation := types.CalculateLeaseReservation(
+	historicalReservation, err := types.CalculateLeaseReservation(
 		legacyLease.Items,
 		params.MinLeaseDuration*2,
 	)
+	require.NoError(t, err)
 	gs := &types.GenesisState{
 		Params: params,
 		Leases: []types.Lease{legacyLease},

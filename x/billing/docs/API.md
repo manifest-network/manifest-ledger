@@ -921,7 +921,7 @@ manifestd query billing credit-estimate manifest1abc...
 **Fields:**
 | Field | Description |
 |-------|-------------|
-| `current_balance` | Tenant's current credit balance (all denominations) |
+| `current_balance` | Tenant's current credit balance for denominations used by active leases |
 | `total_rate_per_second` | Combined burn rate of all active leases (per denom) |
 | `estimated_duration_seconds` | Seconds until credit exhaustion (minimum across all denoms) |
 | `active_lease_count` | Number of currently active leases |
@@ -930,6 +930,7 @@ manifestd query billing credit-estimate manifest1abc...
 - The estimate is calculated in real-time based on current balances and active lease rates
 - If no active leases exist, `estimated_duration_seconds` will be `0` and `total_rate_per_second` will be empty
 - With multi-denom support, the estimate returns the minimum duration across all denominations (the limiting factor)
+- A quotient at or above `18,446,744,073,709,551,615` seconds is saturated to that maximum `uint64` value; it is not reported as zero
 
 **Limitations:**
 - **Bounded lease iteration**: Active iteration uses the credit account's stored `active_lease_count`, not the current governance limit, so parameter reductions and pre-gate acknowledgement overshoot state remain fully represented. The count is clamped to a fixed hard ceiling of 11,000 iterations; corrupt or adversarial imported state above that ceiling is truncated.
@@ -1714,7 +1715,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrInvalidQuantity` | 17 | Item quantity is zero, or exceeds `MaxQuantityPerItem` (1,000,000,000) |
 | `ErrDuplicateSKU` | 18 | Same SKU appears multiple times |
 | `ErrInvalidCreditOperation` | 19 | Credit operation failed |
-| `ErrReserved20` | 20 | Reserved for future use |
+| `ErrArithmeticOverflow` | 20 | Billing arithmetic cannot be represented safely |
 | `ErrTooManyLeaseItems` | 21 | Lease exceeds max items |
 | `ErrLeaseNotPending` | 22 | Lease is not in PENDING state |
 | `ErrMaxPendingLeasesReached` | 23 | Tenant at max pending leases |

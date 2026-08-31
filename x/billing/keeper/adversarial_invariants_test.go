@@ -98,7 +98,14 @@ func CheckReservationConsistencyInvariant(ctx context.Context, k keeper.Keeper) 
 	}
 
 	// Calculate expected reservations per tenant
-	expected := types.CalculateExpectedReservationsByTenant(allLeases, params.MinLeaseDuration)
+	expected, err := types.CalculateExpectedReservationsByTenant(allLeases, params.MinLeaseDuration)
+	if err != nil {
+		return InvariantResult{
+			Name:    "ReservationConsistency",
+			Passed:  false,
+			Message: "failed to calculate reservations: " + err.Error(),
+		}
+	}
 
 	accounts, err := k.GetAllCreditAccounts(ctx)
 	if err != nil {

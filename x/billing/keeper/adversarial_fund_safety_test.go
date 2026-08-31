@@ -600,9 +600,9 @@ func TestAdversarial_SettlementWithMaxQuantity(t *testing.T) {
 		"accrual with max quantity produced unexpected result")
 }
 
-// TestAdversarial_SettlementNearOverflowBoundary tests settlement at just under
-// the 100-year overflow boundary.
-func TestAdversarial_SettlementNearOverflowBoundary(t *testing.T) {
+// TestAdversarial_LongSettlementIntervalChargesExactly verifies that elapsed
+// time alone is not treated as overflow when the monetary result is valid.
+func TestAdversarial_LongSettlementIntervalChargesExactly(t *testing.T) {
 	f := initFixture(t)
 
 	tenant := f.TestAccs[0]
@@ -624,31 +624,16 @@ func TestAdversarial_SettlementNearOverflowBoundary(t *testing.T) {
 	err := f.App.BillingKeeper.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
-	// Just under 100 years should succeed
-	justUnder := time.Duration(keeper.MaxDurationSeconds-1) * time.Second
-	settleTime := f.Ctx.BlockTime().Add(justUnder)
+	longDuration := 101 * 365 * 24 * time.Hour
+	settleTime := f.Ctx.BlockTime().Add(longDuration)
 
 	creditAddr, _ := types.DeriveCreditAddressFromBech32(tenant.String())
-	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1).Mul(sdkmath.NewInt(keeper.MaxDurationSeconds)))))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(4_000_000_000))))
 
 	result, err := f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, settleTime)
 	require.NoError(t, err)
-	require.True(t, result.AccruedAmounts.AmountOf(testDenom).IsPositive())
-
-	// Exactly at the boundary should still succeed
-	lease.LastSettledAt = f.Ctx.BlockTime() // Reset
-	exactBoundary := time.Duration(keeper.MaxDurationSeconds) * time.Second
-	settleTimeExact := f.Ctx.BlockTime().Add(exactBoundary)
-
-	_, err = f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, settleTimeExact)
-	require.NoError(t, err) // MaxDurationSeconds is inclusive (> check, not >=)
-
-	// One second over should fail
-	lease.LastSettledAt = f.Ctx.BlockTime() // Reset
-	overBoundary := time.Duration(keeper.MaxDurationSeconds+1) * time.Second
-	settleTimeOver := f.Ctx.BlockTime().Add(overBoundary)
-
-	_, err = f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, settleTimeOver)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "overflow")
+	expected := sdkmath.NewInt(int64(longDuration / time.Second))
+	require.Equal(t, expected, result.AccruedAmounts.AmountOf(testDenom))
+	require.Equal(t, expected, result.TransferAmounts.AmountOf(testDenom))
+	require.Empty(t, result.AccrualOverflow)
 }

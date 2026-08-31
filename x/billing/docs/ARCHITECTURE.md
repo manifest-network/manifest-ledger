@@ -680,7 +680,7 @@ writeFn()
 - Failed leases don't affect the success of the overall operation
 - Provider can retry failed leases individually using specific lease UUIDs
 
-> **Accrual overflow is NOT a skip.** If a lease's accrued charge overflows — the settlement duration exceeds `MaxDurationSeconds` (~100 years, `keeper/accrual.go`) — the silent settlement path (`PerformSettlementSilent`) does *not* skip and does *not* preserve the funds. It sets the accrued amount to the tenant's entire remaining credit in that lease's denoms and transfers it to the provider (`keeper/settlement.go`), and `ShouldAutoCloseLease` force-closes the lease. This is deliberate — zeroing it out would grant free service to the tenant. Overflow is effectively unreachable in normal operation (a lease would have to go ~100 years without settlement) but can arise from a genesis import with an ancient `last_settled_at`.
+> **Accrual overflow is NOT a skip.** If an accrued charge cannot fit in the SDK's 256-bit `math.Int` representation, the silent settlement path (`PerformSettlementSilent`) does *not* grant free service. It clamps each overflowed denomination to that denomination's remaining credit and transfers it to the provider; exact charges in unaffected denominations are settled normally. `ShouldAutoCloseLease` then force-closes the lease. The overflow may arise from price × quantity, price × quantity × elapsed seconds, or same-denom aggregation. Long intervals are valid when their charge remains representable, and runtime accrual derives whole seconds directly from timestamps so `time.Duration` saturation cannot undercharge intervals beyond roughly 292 years. Non-silent settlement, lease creation, credit-estimate queries, genesis validation, and migrations instead return the registered `ErrArithmeticOverflow` error; balance-capped withdrawable queries return the exact capped amount.
 
 This pattern ensures that partial failures don't corrupt state while still providing best-effort batch processing.
 
@@ -899,22 +899,16 @@ For the complete reference of module parameters, events, error codes, and author
 
 ### Overflow Protection
 
-Accrual calculations use safe math operations to prevent overflow:
+Billing calculations use checked multiplication and deterministic sorted-slice
+coin addition so the SDK's fixed 256-bit integer limit returns a module error
+instead of triggering `math.Int`/`sdk.Coins` panics:
 
 ```go
-func CalculateTotalAccruedForLease(items []LeaseItemWithPrice, duration time.Duration) (sdk.Coins, error) {
-    totals := sdk.NewCoins()
-
-    for _, item := range items {
-        accrued, err := CalculateAccruedAmount(item.LockedPricePerSecond, item.Quantity, duration)
-        if err != nil {
-            return nil, fmt.Errorf("overflow calculating accrual for SKU %s: %w", item.SkuUUID, err)
-        }
-        if accrued.IsPositive() {
-            totals = totals.Add(accrued)
-        }
-    }
-    return totals, nil
+totals, err := CalculateTotalAccruedForLease(items, duration)
+var overflow *AccrualOverflowError
+if errors.As(err, &overflow) {
+    // totals remains exact for unaffected denoms; overflow.Denoms is in
+    // deterministic first-detected overflow order.
 }
 ```
 
@@ -1126,7 +1120,9 @@ The billing module relies on block timestamps for accrual calculations. Cosmos S
 
 ### Arithmetic Precision
 
-All billing calculations use `math.Int` (arbitrary precision integers):
+All billing calculations use the SDK's deterministic `math.Int` integers. The
+SDK deliberately limits values to 256 bits, so every user- or state-derived
+multiplication and same-denom addition is checked:
 
 ```go
 // Accrual calculation (no floating point)
@@ -1139,8 +1135,15 @@ accrued = duration_seconds × locked_price × quantity
 - SKU prices must be divisible by unit seconds (enforced at creation)
 
 **Overflow protection:**
-- `MaxDurationSeconds` (~100 years) prevents overflow in duration calculations
-- `CalculateAccruedAmount` returns error on overflow instead of wrapping
+- `SafeMultiplyCoin` uses `math.Int.SafeMul`; `SafeAddCoins` validates canonical
+  coin sets and merges them in sorted denomination order using `SafeAdd`
+- Creation, credit-estimate/non-balance-capped query, import, migration, and
+  non-silent settlement paths return error code 20 (`ErrArithmeticOverflow`)
+  instead of panicking; withdrawable queries balance-cap affected denoms
+- Runtime monetary accrual derives whole seconds directly from timestamps, so
+  intervals beyond `time.Duration`'s range are charged exactly when representable
+- Silent close/settlement clamps only overflowed denominations to their remaining
+  credit; exact accrued totals for unaffected denominations are retained
 - Provider-wide withdraw uses cached context to isolate failures
 
 ### Future Improvement Plans

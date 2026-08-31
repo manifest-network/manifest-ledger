@@ -67,8 +67,8 @@ func setupLegacyReservationScenario(
 		Quantity:    1,
 		LockedPrice: sdk.NewCoin(testDenom, sdkmath.OneInt()),
 	}}
-	legacyReservation := types.CalculateLeaseReservation(items, historicalLegacyMinDuration)
-	modernReservation := types.CalculateLeaseReservation(items, currentLegacyMinDuration)
+	legacyReservation := calculateLeaseReservation(t, items, historicalLegacyMinDuration)
+	modernReservation := calculateLeaseReservation(t, items, currentLegacyMinDuration)
 	totalReservation := sdk.NewCoins(modernReservation...)
 
 	legacyUUIDs := []string{legacyLeaseUUID1, legacyLeaseUUID2}
@@ -365,8 +365,8 @@ func TestLegacyReservationReleaseDefersAtScanCeiling(t *testing.T) {
 		MinLeaseDurationAtCreation: 0,
 	}
 	leases := []types.Lease{legacyLease}
-	modernReservation := types.CalculateLeaseReservation(items, types.DefaultMinLeaseDuration)
-	totalReservation := types.CalculateLeaseReservation(items, historicalLegacyMinDuration)
+	modernReservation := calculateLeaseReservation(t, items, types.DefaultMinLeaseDuration)
+	totalReservation := calculateLeaseReservation(t, items, historicalLegacyMinDuration)
 	modernLeaseCount := types.MaxPendingLeasesPerTenantUpperBound + 1
 	for i := uint64(0); i < modernLeaseCount; i++ {
 		leases = append(leases, types.Lease{

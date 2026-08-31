@@ -3,6 +3,7 @@ package simulation
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 
 	sdkmath "cosmossdk.io/math"
@@ -18,6 +19,26 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
+
+func randomFundingAmount(r *rand.Rand, minimum, maximum sdkmath.Int) (sdkmath.Int, error) {
+	if !maximum.GT(minimum) {
+		return minimum, nil
+	}
+
+	randomRange, err := maximum.SafeSub(minimum)
+	if err != nil {
+		return sdkmath.Int{}, err
+	}
+	rangeInt64 := int64(math.MaxInt64)
+	if randomRange.IsInt64() {
+		rangeInt64 = randomRange.Int64()
+	}
+	if rangeInt64 <= 0 {
+		return minimum, nil
+	}
+
+	return minimum.SafeAdd(sdkmath.NewInt(r.Int63n(rangeInt64)))
+}
 
 const (
 	OpWeightMsgFundCredit           = "op_weight_msg_billing_fund_credit"             //nolint:gosec
@@ -177,7 +198,10 @@ func SimulateMsgFundCredit(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper)
 
 		// Minimum amount required: fee + minimum meaningful funding
 		minFundingAmount := sdkmath.NewInt(1_000_000)
-		minRequired := fixedFee.Add(minFundingAmount)
+		minRequired, err := fixedFee.SafeAdd(minFundingAmount)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "funding amount overflow"), nil, nil
+		}
 
 		if senderBalance.LT(minRequired) {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "sender balance too low"), nil, nil
@@ -199,16 +223,9 @@ func SimulateMsgFundCredit(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper)
 		}
 
 		// Random amount between min and max
-		var randAmount sdkmath.Int
-		if maxFundingAmount.GT(minFundingAmount) {
-			randRange := maxFundingAmount.Sub(minFundingAmount).Int64()
-			if randRange > 0 {
-				randAmount = minFundingAmount.Add(sdkmath.NewInt(int64(r.Intn(int(randRange)))))
-			} else {
-				randAmount = minFundingAmount
-			}
-		} else {
-			randAmount = minFundingAmount
+		randAmount, err := randomFundingAmount(r, minFundingAmount, maxFundingAmount)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "random funding amount overflow"), nil, nil
 		}
 
 		amount := sdk.NewCoin(denom, randAmount)
@@ -716,7 +733,10 @@ func SimulateMsgWithdraw(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper) s
 		var withdrawableLeases []types.Lease
 		for _, lease := range allLeases {
 			// Calculate withdrawable amount for this lease
-			withdrawable := k.CalculateWithdrawableForLease(ctx, lease)
+			withdrawable, err := k.CalculateWithdrawableForLease(ctx, lease)
+			if err != nil {
+				continue
+			}
 			if !withdrawable.IsZero() {
 				withdrawableLeases = append(withdrawableLeases, lease)
 			}
@@ -941,12 +961,20 @@ func tenantCanAffordLease(ctx sdk.Context, k keeper.Keeper, tenant string, items
 		if err != nil {
 			return false
 		}
-		totalRatesPerSecond = totalRatesPerSecond.Add(
-			sdk.NewCoin(ratePerSecond.Denom, ratePerSecond.Amount.Mul(sdkmath.NewIntFromUint64(item.Quantity))),
-		)
+		itemRate, err := types.SafeMultiplyCoin(ratePerSecond, sdkmath.NewIntFromUint64(item.Quantity))
+		if err != nil {
+			return false
+		}
+		totalRatesPerSecond, err = types.SafeAddCoins(totalRatesPerSecond, sdk.Coins{itemRate})
+		if err != nil {
+			return false
+		}
 	}
 
-	reservation := types.CalculateLeaseReservationFromRates(totalRatesPerSecond, minLeaseDuration)
+	reservation, err := types.CalculateLeaseReservationFromRates(totalRatesPerSecond, minLeaseDuration)
+	if err != nil {
+		return false
+	}
 	if reservation.IsZero() {
 		return true
 	}
@@ -961,7 +989,12 @@ func tenantCanAffordLease(ctx sdk.Context, k keeper.Keeper, tenant string, items
 		if err != nil {
 			return false
 		}
-		balances = balances.Add(bal)
+		if bal.IsPositive() {
+			balances, err = types.SafeAddCoins(balances, sdk.Coins{bal})
+			if err != nil {
+				return false
+			}
+		}
 	}
 
 	available := types.GetAvailableCredit(balances, creditAccount.ReservedAmounts)

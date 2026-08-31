@@ -5,6 +5,8 @@ import (
 	"slices"
 	"time"
 
+	errorsmod "cosmossdk.io/errors"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
@@ -109,11 +111,8 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 			if !pkguuid.IsValidUUID(item.SkuUuid) {
 				return ErrInvalidLease.Wrapf("lease %s item %d has invalid sku_uuid format: %s", lease.Uuid, i, item.SkuUuid)
 			}
-			if item.Quantity == 0 {
-				return ErrInvalidLease.Wrapf("lease %s item %d has zero quantity", lease.Uuid, i)
-			}
-			if !item.LockedPrice.IsValid() || item.LockedPrice.IsZero() {
-				return ErrInvalidLease.Wrapf("lease %s item %d has invalid locked_price", lease.Uuid, i)
+			if err := ValidateLeaseItemPricing(item.LockedPrice, item.Quantity); err != nil {
+				return ErrInvalidLease.Wrapf("lease %s item %d has invalid pricing: %s", lease.Uuid, i, err)
 			}
 			if item.ServiceName != "" {
 				hasServiceName++
@@ -236,8 +235,12 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 		}
 
 		// Validate reserved_amounts if present
-		if !ca.ReservedAmounts.IsValid() {
-			return ErrInvalidCreditOperation.Wrapf("credit account for %s has invalid reserved_amounts", ca.Tenant)
+		if err := validateCanonicalCoins(ca.ReservedAmounts); err != nil {
+			return ErrInvalidCreditOperation.Wrapf(
+				"credit account for %s has invalid reserved_amounts: %s",
+				ca.Tenant,
+				err,
+			)
 		}
 
 		// Balance is tracked in bank module, no validation needed here
@@ -264,16 +267,25 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 			continue
 		}
 
-		reservation := GetLeaseReservationAmount(lease, gs.Params.MinLeaseDuration)
+		reservation, err := GetLeaseReservationAmount(lease, gs.Params.MinLeaseDuration)
+		if err != nil {
+			return errorsmod.Wrapf(err, "calculate reservation for lease %s", lease.Uuid)
+		}
 		if existing, ok := expectedReservations[tenantKey]; ok {
-			expectedReservations[tenantKey] = existing.Add(reservation...)
+			expectedReservations[tenantKey], err = SafeAddCoins(existing, reservation)
+			if err != nil {
+				return errorsmod.Wrapf(err, "sum reservations for tenant %s", tenantKey)
+			}
 		} else {
 			expectedReservations[tenantKey] = reservation
 		}
 
 		if !options.enforceExactLegacyReservations && lease.MinLeaseDurationAtCreation != 0 {
 			if existing, ok := knownReservations[tenantKey]; ok {
-				knownReservations[tenantKey] = existing.Add(reservation...)
+				knownReservations[tenantKey], err = SafeAddCoins(existing, reservation)
+				if err != nil {
+					return errorsmod.Wrapf(err, "sum known reservations for tenant %s", tenantKey)
+				}
 			} else {
 				knownReservations[tenantKey] = reservation
 			}

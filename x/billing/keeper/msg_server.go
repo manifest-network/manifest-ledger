@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cosmossdk.io/collections"
+	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -214,8 +215,14 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		}
 
 		// Accumulate total rate for each denom
-		itemRate := sdk.NewCoin(lockedPricePerSecond.Denom, lockedPricePerSecond.Amount.Mul(sdkmath.NewIntFromUint64(inputItem.Quantity)))
-		totalRatesPerSecond = totalRatesPerSecond.Add(itemRate)
+		itemRate, err := types.SafeMultiplyCoin(lockedPricePerSecond, sdkmath.NewIntFromUint64(inputItem.Quantity))
+		if err != nil {
+			return nil, errorsmod.Wrapf(err, "calculate rate for sku_uuid %s", inputItem.SkuUuid)
+		}
+		totalRatesPerSecond, err = types.SafeAddCoins(totalRatesPerSecond, sdk.Coins{itemRate})
+		if err != nil {
+			return nil, errorsmod.Wrapf(err, "sum rate for sku_uuid %s", inputItem.SkuUuid)
+		}
 
 		leaseItems = append(leaseItems, types.LeaseItem{
 			SkuUuid:     inputItem.SkuUuid,
@@ -237,7 +244,10 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 	// 5. Calculate reservation and verify tenant has enough AVAILABLE credit
 	// Available credit = balance - already reserved amounts
 	// This prevents overbooking where multiple leases could exhaust the same credit
-	reservationAmount := types.CalculateLeaseReservationFromRates(totalRatesPerSecond, params.MinLeaseDuration)
+	reservationAmount, err := types.CalculateLeaseReservationFromRates(totalRatesPerSecond, params.MinLeaseDuration)
+	if err != nil {
+		return nil, errorsmod.Wrap(err, "calculate lease reservation")
+	}
 
 	// Fetch credit balances for only the denoms needed by this lease.
 	// This avoids loading dust from unrelated token sends to the credit address.
@@ -269,7 +279,10 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 	}
 
 	// Reserve credit immediately (lease is PENDING but credit is locked)
-	creditAccount.ReservedAmounts = types.AddReservation(creditAccount.ReservedAmounts, reservationAmount)
+	creditAccount.ReservedAmounts, err = types.AddReservation(creditAccount.ReservedAmounts, reservationAmount)
+	if err != nil {
+		return nil, errorsmod.Wrap(err, "add lease reservation to credit account")
+	}
 
 	// 6. Create lease with deterministic UUIDv7
 	leaseSeq, err := ms.k.GetNextLeaseSequence(ctx)
@@ -509,21 +522,21 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 
 	// Track close events to emit after successful commit.
 	type leaseEvent struct {
-		uuid           string
-		tenant         string
-		providerUUID   string
-		settledAmounts sdk.Coins
-		closedBy       string
-		duration       time.Duration
-		activeCount    uint64
-		closureReason  string
+		uuid            string
+		tenant          string
+		providerUUID    string
+		settledAmounts  sdk.Coins
+		closedBy        string
+		durationSeconds string
+		activeCount     uint64
+		closureReason   string
 	}
 	leaseEvents := make([]leaseEvent, 0, len(leases))
 
 	for i := range leases {
 		var settledAmounts sdk.Coins
-		var duration time.Duration
 		var closeTime time.Time
+		lastSettledAt := leases[i].LastSettledAt
 		leaseClosedBy := closedBy
 
 		// Check if lease should be auto-closed due to exhausted credit
@@ -535,9 +548,6 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		if shouldAutoClose {
 			// Lease should be auto-closed due to credit exhaustion.
 			closeTime = autoCloseTime
-
-			// Calculate duration for event (before updating LastSettledAt)
-			duration = closeTime.Sub(leases[i].LastSettledAt)
 
 			// Perform settlement using silent mode (doesn't fail on overflow)
 			result, err := ms.k.PerformSettlementSilent(cacheCtx, &leases[i], closeTime)
@@ -562,16 +572,16 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			// Keep the caller's reason ONLY when a positive accrued charge was
 			// settled in full. Everything else ShouldAutoCloseLease flags is genuine
 			// exhaustion and keeps the credit_exhausted label:
-			//   - overflow: PerformSettlementSilent clamps AccruedAmounts to the
-			//     remaining balance and transfers it all, so `unpaid` reads zero;
-			//     detect it via the same duration threshold the accrual layer uses.
+			//   - overflow: PerformSettlementSilent clamps the affected denoms to
+			//     their remaining balances, so a capped result can look fully paid;
+			//     use its explicit overflow metadata rather than inferring from duration.
 			//   - partial settlement: the transfer fell short of the accrued amount.
 			//   - zero-balance / zero-duration: a required denom balance is already
 			//     zero with nothing accrued this instant (AccruedAmounts empty) — the
 			//     credit is exhausted even though there is no unpaid remainder.
-			overflowed := int64(duration/time.Second) > MaxDurationSeconds
-			unpaid := result.AccruedAmounts.Sub(result.TransferAmounts...)
-			if overflowed || !unpaid.IsZero() || result.AccruedAmounts.IsZero() {
+			overflowed := len(result.AccrualOverflow) > 0
+			fullyPaid := result.TransferAmounts.Equal(result.AccruedAmounts)
+			if overflowed || !fullyPaid || result.AccruedAmounts.IsZero() {
 				leases[i].ClosureReason = types.ClosureReasonCreditExhausted
 				leaseClosedBy = "credit_exhaustion"
 			} else {
@@ -580,9 +590,6 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		} else {
 			// Normal close - use block time
 			closeTime = blockTime
-
-			// Calculate duration for event
-			duration = closeTime.Sub(leases[i].LastSettledAt)
 
 			// Settle accrued charges
 			settledAmounts, err = ms.settleLease(cacheCtx, &leases[i], closeTime)
@@ -594,6 +601,11 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			leases[i].State = types.LEASE_STATE_CLOSED
 			leases[i].ClosedAt = &closeTime
 			leases[i].ClosureReason = msg.Reason
+		}
+
+		durationSeconds, err := elapsedWholeSeconds(lastSettledAt, closeTime)
+		if err != nil {
+			return nil, errorsmod.Wrapf(err, "calculate close duration for lease %s", leases[i].Uuid)
 		}
 
 		// SetLease reconciles the custom_domain reverse index from the lease's
@@ -614,19 +626,22 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		creditAccounts[tenantKeys[i]] = creditAccount
 
 		// Aggregate settled amounts
-		totalSettledAmounts = totalSettledAmounts.Add(settledAmounts...)
+		totalSettledAmounts, err = types.SafeAddCoins(totalSettledAmounts, settledAmounts)
+		if err != nil {
+			return nil, errorsmod.Wrap(err, "sum settled amounts while closing leases")
+		}
 
 		// Queue event for emission after successful commit
 		// (creditAccount already has the updated ActiveLeaseCount from above)
 		leaseEvents = append(leaseEvents, leaseEvent{
-			uuid:           leases[i].Uuid,
-			tenant:         tenantKeys[i],
-			providerUUID:   leases[i].ProviderUuid,
-			settledAmounts: settledAmounts,
-			closedBy:       leaseClosedBy,
-			duration:       duration,
-			activeCount:    creditAccount.ActiveLeaseCount,
-			closureReason:  leases[i].ClosureReason,
+			uuid:            leases[i].Uuid,
+			tenant:          tenantKeys[i],
+			providerUUID:    leases[i].ProviderUuid,
+			settledAmounts:  settledAmounts,
+			closedBy:        leaseClosedBy,
+			durationSeconds: durationSeconds.String(),
+			activeCount:     creditAccount.ActiveLeaseCount,
+			closureReason:   leases[i].ClosureReason,
 		})
 	}
 
@@ -649,7 +664,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, ev.providerUUID),
 			sdk.NewAttribute(types.AttributeKeySettledAmounts, ev.settledAmounts.String()),
 			sdk.NewAttribute(types.AttributeKeyClosedBy, ev.closedBy),
-			sdk.NewAttribute(types.AttributeKeyDuration, strconv.FormatInt(int64(ev.duration/time.Second), 10)),
+			sdk.NewAttribute(types.AttributeKeyDuration, ev.durationSeconds),
 			sdk.NewAttribute(types.AttributeKeyActiveLeaseCount, strconv.FormatUint(ev.activeCount, 10)),
 		}
 		if ev.closureReason != "" {
@@ -762,7 +777,10 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 
 				autoClosedLeases = append(autoClosedLeases, lease.Uuid)
 				if !result.TransferAmounts.IsZero() {
-					totalAmounts = totalAmounts.Add(result.TransferAmounts...)
+					totalAmounts, err = types.SafeAddCoins(totalAmounts, result.TransferAmounts)
+					if err != nil {
+						return nil, errorsmod.Wrap(err, "sum auto-close withdrawal amounts")
+					}
 					leaseAmounts[lease.Uuid] = result.TransferAmounts
 				}
 				withdrawalCount++
@@ -798,7 +816,10 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 			return nil, err
 		}
 
-		totalAmounts = totalAmounts.Add(result.TransferAmounts...)
+		totalAmounts, err = types.SafeAddCoins(totalAmounts, result.TransferAmounts)
+		if err != nil {
+			return nil, errorsmod.Wrap(err, "sum lease withdrawal amounts")
+		}
 		leaseAmounts[lease.Uuid] = result.TransferAmounts
 		withdrawalCount++
 	}
@@ -985,6 +1006,14 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 					continue
 				}
 
+				updatedTotal := totalAmounts
+				if !result.TransferAmounts.IsZero() {
+					updatedTotal, acErr = types.SafeAddCoins(totalAmounts, result.TransferAmounts)
+					if acErr != nil {
+						return nil, errorsmod.Wrap(acErr, "sum provider auto-close withdrawal amounts")
+					}
+				}
+
 				// Commit all changes atomically (lease + credit account)
 				write()
 
@@ -999,9 +1028,7 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 					),
 				)
 
-				if !result.TransferAmounts.IsZero() {
-					totalAmounts = totalAmounts.Add(result.TransferAmounts...)
-				}
+				totalAmounts = updatedTotal
 				withdrawalCount++
 				autoClosedCount++
 				continue
@@ -1047,10 +1074,15 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 			continue
 		}
 
+		updatedTotal, addErr := types.SafeAddCoins(totalAmounts, result.TransferAmounts)
+		if addErr != nil {
+			return nil, errorsmod.Wrap(addErr, "sum provider withdrawal amounts")
+		}
+
 		// Commit both settlement and timestamp update atomically
 		write()
 
-		totalAmounts = totalAmounts.Add(result.TransferAmounts...)
+		totalAmounts = updatedTotal
 		withdrawalCount++
 	}
 

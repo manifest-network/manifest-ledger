@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"cosmossdk.io/collections"
+	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -328,7 +329,10 @@ func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdra
 	}
 
 	// Calculate withdrawable amounts based on accrual since last settlement
-	withdrawableAmounts := q.k.CalculateWithdrawableForLease(ctx, lease)
+	withdrawableAmounts, err := q.k.CalculateWithdrawableForLease(ctx, lease)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
 
 	return &types.QueryWithdrawableAmountResponse{
 		Amounts: withdrawableAmounts,
@@ -380,9 +384,15 @@ func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProvi
 	totalWithdrawable := sdk.NewCoins()
 	var leaseCount uint64
 	for i := range leases {
-		withdrawable := q.k.CalculateWithdrawableForLease(ctx, leases[i])
+		withdrawable, err := q.k.CalculateWithdrawableForLease(ctx, leases[i])
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 		if !withdrawable.IsZero() {
-			totalWithdrawable = totalWithdrawable.Add(withdrawable...)
+			totalWithdrawable, err = types.SafeAddCoins(totalWithdrawable, withdrawable)
+			if err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
+			}
 			leaseCount++
 		}
 	}
@@ -541,10 +551,24 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 
 		// Sum up rates for all items in this lease
 		for _, item := range lease.Items {
+			if err := types.ValidateLeaseItemPricing(item.LockedPrice, item.Quantity); err != nil {
+				return nil, status.Error(codes.Internal, errorsmod.Wrapf(
+					err,
+					"validate accrual input for lease %s sku %s",
+					lease.Uuid,
+					item.SkuUuid,
+				).Error())
+			}
 			// Rate per second = locked_price * quantity
 			// locked_price is already in per-second terms
-			itemRate := sdk.NewCoin(item.LockedPrice.Denom, item.LockedPrice.Amount.Mul(sdkmath.NewIntFromUint64(item.Quantity)))
-			totalRatePerSecond = totalRatePerSecond.Add(itemRate)
+			itemRate, err := types.SafeMultiplyCoin(item.LockedPrice, sdkmath.NewIntFromUint64(item.Quantity))
+			if err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
+			}
+			totalRatePerSecond, err = types.SafeAddCoins(totalRatePerSecond, sdk.Coins{itemRate})
+			if err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
+			}
 			if _, ok := denomSet[item.LockedPrice.Denom]; !ok {
 				denomSet[item.LockedPrice.Denom] = struct{}{}
 				denoms = append(denoms, item.LockedPrice.Denom)
@@ -564,11 +588,13 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 	if activeLeaseCount > 0 && !totalRatePerSecond.IsZero() {
 		// Start with max uint64, then find minimum
 		estimatedDurationSeconds = math.MaxUint64
+		foundRate := false
 
 		for _, rateCoin := range totalRatePerSecond {
 			if rateCoin.Amount.IsZero() {
 				continue
 			}
+			foundRate = true
 			balanceAmount := currentBalance.AmountOf(rateCoin.Denom)
 			if balanceAmount.IsZero() {
 				// No balance for this denom means immediate exhaustion
@@ -587,7 +613,7 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		}
 
 		// If we never found a matching denom, set to 0
-		if estimatedDurationSeconds == math.MaxUint64 {
+		if !foundRate {
 			estimatedDurationSeconds = 0
 		}
 	}

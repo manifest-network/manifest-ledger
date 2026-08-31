@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"cosmossdk.io/collections"
+	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
@@ -252,7 +253,7 @@ func TestInitGenesis_AllowsLegacyReservationFromHistoricalMinDuration(t *testing
 		LastSettledAt:              f.Ctx.BlockTime(),
 		MinLeaseDurationAtCreation: 0, // Legacy lease: duration was not persisted.
 	}
-	historicalReservation := types.CalculateLeaseReservation(lease.Items, historicalMinLeaseDuration)
+	historicalReservation := calculateLeaseReservation(t, lease.Items, historicalMinLeaseDuration)
 	genesisState := &types.GenesisState{
 		Params: params,
 		Leases: []types.Lease{lease},
@@ -311,7 +312,7 @@ func TestExportGenesis_ReconcilesLastTerminalLegacyLease(t *testing.T) {
 		LastSettledAt:              f.Ctx.BlockTime(),
 		MinLeaseDurationAtCreation: 0,
 	}
-	historicalReservation := types.CalculateLeaseReservation(lease.Items, historicalMinLeaseDuration)
+	historicalReservation := calculateLeaseReservation(t, lease.Items, historicalMinLeaseDuration)
 	genesisState := &types.GenesisState{
 		Params: params,
 		Leases: []types.Lease{lease},
@@ -389,7 +390,7 @@ func TestInitGenesis_RejectsStructuralInconsistencyBeforeWrites(t *testing.T) {
 				LastSettledAt:              f.Ctx.BlockTime(),
 				MinLeaseDurationAtCreation: genesisParams.MinLeaseDuration,
 			}
-			reservation := types.CalculateLeaseReservation(lease.Items, lease.MinLeaseDurationAtCreation)
+			reservation := calculateLeaseReservation(t, lease.Items, lease.MinLeaseDurationAtCreation)
 			genesisState := &types.GenesisState{
 				Params: genesisParams,
 				Leases: []types.Lease{lease},
@@ -417,6 +418,25 @@ func TestInitGenesis_RejectsStructuralInconsistencyBeforeWrites(t *testing.T) {
 			require.ErrorIs(t, err, types.ErrCreditAccountNotFound)
 		})
 	}
+}
+
+func TestInitGenesis_NilReservedAmountDoesNotPanic(t *testing.T) {
+	f := initFixture(t)
+	tenant := f.TestAccs[0]
+	genesisState := &types.GenesisState{
+		Params: types.DefaultParams(),
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:          tenant.String(),
+			CreditAddress:   types.DeriveCreditAddress(tenant).String(),
+			ReservedAmounts: sdk.Coins{{Denom: testDenom}},
+		}},
+	}
+
+	require.NotPanics(t, func() {
+		err := f.App.BillingKeeper.InitGenesis(f.Ctx, genesisState)
+		require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+		require.ErrorContains(t, err, "invalid reserved_amounts")
+	})
 }
 
 func TestInitGenesis_RejectsUnderreportedActiveLeaseCountBeforeWrites(t *testing.T) {
@@ -456,7 +476,7 @@ func TestInitGenesis_RejectsUnderreportedActiveLeaseCountBeforeWrites(t *testing
 			Tenant:           tenant.String(),
 			CreditAddress:    creditAddr.String(),
 			ActiveLeaseCount: 0, // Invalid: the genesis contains one ACTIVE lease.
-			ReservedAmounts: types.CalculateLeaseReservation(
+			ReservedAmounts: calculateLeaseReservation(t,
 				lease.Items,
 				lease.MinLeaseDurationAtCreation,
 			),
@@ -1785,6 +1805,62 @@ func TestShouldAutoCloseLease(t *testing.T) {
 	require.Equal(t, uint64(1), updatedCA.ActiveLeaseCount)
 }
 
+func TestShouldAutoCloseLease_InvalidStoredDenomDoesNotPanic(t *testing.T) {
+	f := initFixture(t)
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       f.TestAccs[0].String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    1,
+			LockedPrice: sdk.Coin{Denom: "!", Amount: sdkmath.OneInt()},
+		}},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     f.Ctx.BlockTime(),
+		LastSettledAt: f.Ctx.BlockTime(),
+	}
+
+	require.NotPanics(t, func() {
+		_, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease)
+		require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+	})
+}
+
+func TestReleaseLegacyReservation_PreservesArithmeticErrorCode(t *testing.T) {
+	f := initFixture(t)
+	tenant := f.TestAccs[0]
+	now := f.Ctx.BlockTime()
+	modernLease := types.Lease{
+		Uuid:         testLeaseUUID2,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    2,
+			LockedPrice: sdk.NewCoin(testDenom, highBitBillingTestInt()),
+		}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+	}
+	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, modernLease))
+
+	legacyLease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		State:        types.LEASE_STATE_CLOSED,
+	}
+	creditAccount := types.CreditAccount{Tenant: tenant.String()}
+	err := f.App.BillingKeeper.ReleaseLeaseReservation(f.Ctx, &creditAccount, &legacyLease)
+	require.ErrorIs(t, err, types.ErrArithmeticOverflow)
+	codespace, code, _ := errorsmod.ABCIInfo(err, false)
+	require.Equal(t, types.ModuleName, codespace)
+	require.Equal(t, uint32(20), code)
+}
+
 func TestShouldAutoCloseLease_WithBalance(t *testing.T) {
 	f := initFixture(t)
 
@@ -2131,9 +2207,9 @@ func TestGenesisExportImportWithReservations(t *testing.T) {
 	require.Equal(t, types.LEASE_STATE_ACTIVE, activeLease.State)
 
 	// Calculate expected reservations (both PENDING and ACTIVE leases have reservations)
-	pendingReservation := types.CalculateLeaseReservation(pendingLease.Items, params.MinLeaseDuration)
-	activeReservation := types.CalculateLeaseReservation(activeLease.Items, params.MinLeaseDuration)
-	expectedReservations := pendingReservation.Add(activeReservation...)
+	pendingReservation := calculateLeaseReservation(t, pendingLease.Items, params.MinLeaseDuration)
+	activeReservation := calculateLeaseReservation(t, activeLease.Items, params.MinLeaseDuration)
+	expectedReservations := addTestCoins(t, pendingReservation, activeReservation)
 
 	require.True(t, expectedReservations.Equal(caBeforeExport.ReservedAmounts),
 		"before export: expected reservations %s, got %s",
@@ -2620,7 +2696,7 @@ func TestParamChangeDoesNotAffectExistingLeaseReservations(t *testing.T) {
 
 	// Calculate expected reservation based on initial min_lease_duration
 	// rate = 1/sec, quantity = 1, duration = 3600 => reservation = 3600
-	expectedReservation := types.CalculateLeaseReservation(lease.Items, initialMinDuration)
+	expectedReservation := calculateLeaseReservation(t, lease.Items, initialMinDuration)
 	require.True(t, expectedReservation.Equal(reservationBeforeChange),
 		"initial reservation should match: expected %s, got %s",
 		expectedReservation.String(), reservationBeforeChange.String())
@@ -2673,9 +2749,9 @@ func TestParamChangeDoesNotAffectExistingLeaseReservations(t *testing.T) {
 	// First lease: rate * quantity * 3600 = 3600
 	// Second lease: rate * quantity * 7200 = 7200
 	// Total: 10800
-	expectedOldReservation := types.CalculateLeaseReservation(lease.Items, initialMinDuration)
-	expectedNewReservation := types.CalculateLeaseReservation(newLease.Items, newMinDuration)
-	expectedTotalReservation := expectedOldReservation.Add(expectedNewReservation...)
+	expectedOldReservation := calculateLeaseReservation(t, lease.Items, initialMinDuration)
+	expectedNewReservation := calculateLeaseReservation(t, newLease.Items, newMinDuration)
+	expectedTotalReservation := addTestCoins(t, expectedOldReservation, expectedNewReservation)
 
 	require.True(t, expectedTotalReservation.Equal(caAfterNewLease.ReservedAmounts),
 		"total reservations should be sum of both leases: expected %s, got %s",
