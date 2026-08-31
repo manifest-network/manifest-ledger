@@ -5,8 +5,9 @@ import (
 	"math/rand"
 	"testing"
 
-	sdkmath "cosmossdk.io/math"
 	"github.com/stretchr/testify/require"
+
+	sdkmath "cosmossdk.io/math"
 )
 
 func TestRandomFundingAmount_LargeRangeDoesNotNarrowOrPanic(t *testing.T) {
