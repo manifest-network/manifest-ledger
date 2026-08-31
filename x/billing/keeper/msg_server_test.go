@@ -1210,6 +1210,199 @@ func TestMsgWithdraw(t *testing.T) {
 	require.True(t, payoutBalance.Amount.IsPositive())
 }
 
+func TestMsgWithdraw_RejectsPayoutToTenantCreditAddressWithoutStateChange(t *testing.T) {
+	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	creditAddr := types.DeriveCreditAddress(tenant)
+	// Use an equivalent uppercase Bech32 spelling to pin byte-identity comparison
+	// through the SDK parser rather than raw string equality.
+	payoutAddress := strings.ToUpper(creditAddr.String())
+	require.NotEqual(t, creditAddr.String(), payoutAddress)
+	decodedPayout, err := sdk.AccAddressFromBech32(payoutAddress)
+	require.NoError(t, err)
+	require.True(t, decodedPayout.Equals(creditAddr))
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddress)
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 per hour = 1 per second
+
+	initialBalance := sdk.NewCoin(testDenom, sdkmath.NewInt(100_000_000))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(initialBalance))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	leaseUUID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{{
+		SkuUuid:  sku.Uuid,
+		Quantity: 1,
+	}})
+	leaseBefore, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
+	require.NoError(t, err)
+
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second)).
+		WithEventManager(sdk.NewEventManager())
+	resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:     providerAddr.String(),
+		LeaseUuids: []string{leaseUUID},
+	})
+	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+	require.Nil(t, resp)
+
+	require.Equal(t, initialBalance, f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom))
+	leaseAfter, getErr := f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
+	require.NoError(t, getErr)
+	require.Equal(t, leaseBefore.LastSettledAt, leaseAfter.LastSettledAt)
+	for _, event := range f.Ctx.EventManager().Events() {
+		require.NotEqual(t, types.EventTypeProviderWithdraw, event.Type)
+		require.NotEqual(t, types.EventTypeBatchWithdraw, event.Type)
+	}
+}
+
+type selfPayoutBatchFixture struct {
+	f                 *testFixture
+	msgServer         types.MsgServer
+	providerAddr      sdk.AccAddress
+	normalTenant      sdk.AccAddress
+	selfPayoutTenant  sdk.AccAddress
+	normalCreditAddr  sdk.AccAddress
+	selfCreditAddr    sdk.AccAddress
+	normalLeaseUUID   string
+	selfLeaseUUID     string
+	initialCreditCoin sdk.Coin
+}
+
+func newSelfPayoutBatchFixture(t *testing.T) *selfPayoutBatchFixture {
+	t.Helper()
+	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+	normalTenant := f.TestAccs[0]
+	selfPayoutTenant := f.TestAccs[1]
+	providerAddr := f.TestAccs[2]
+	normalCreditAddr := types.DeriveCreditAddress(normalTenant)
+	selfCreditAddr := types.DeriveCreditAddress(selfPayoutTenant)
+
+	payoutAddress := strings.ToUpper(selfCreditAddr.String())
+	require.NotEqual(t, selfCreditAddr.String(), payoutAddress)
+	decodedPayout, err := sdk.AccAddressFromBech32(payoutAddress)
+	require.NoError(t, err)
+	require.True(t, decodedPayout.Equals(selfCreditAddr))
+	provider := f.createTestProvider(t, providerAddr.String(), payoutAddress)
+	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 per hour = 1 per second
+
+	initialCreditCoin := sdk.NewCoin(testDenom, sdkmath.NewInt(100_000_000))
+	accounts := [...]struct {
+		tenant     sdk.AccAddress
+		creditAddr sdk.AccAddress
+	}{
+		{tenant: normalTenant, creditAddr: normalCreditAddr},
+		{tenant: selfPayoutTenant, creditAddr: selfCreditAddr},
+	}
+	for _, account := range accounts {
+		f.fundAccount(t, account.creditAddr, sdk.NewCoins(initialCreditCoin))
+		require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+			Tenant:        account.tenant.String(),
+			CreditAddress: account.creditAddr.String(),
+		}))
+	}
+
+	normalLeaseUUID := f.createAndAcknowledgeLease(t, msgServer, normalTenant, providerAddr, []types.LeaseItemInput{{
+		SkuUuid:  sku.Uuid,
+		Quantity: 1,
+	}})
+	selfLeaseUUID := f.createAndAcknowledgeLease(t, msgServer, selfPayoutTenant, providerAddr, []types.LeaseItemInput{{
+		SkuUuid:  sku.Uuid,
+		Quantity: 1,
+	}})
+
+	return &selfPayoutBatchFixture{
+		f:                 f,
+		msgServer:         msgServer,
+		providerAddr:      providerAddr,
+		normalTenant:      normalTenant,
+		selfPayoutTenant:  selfPayoutTenant,
+		normalCreditAddr:  normalCreditAddr,
+		selfCreditAddr:    selfCreditAddr,
+		normalLeaseUUID:   normalLeaseUUID,
+		selfLeaseUUID:     selfLeaseUUID,
+		initialCreditCoin: initialCreditCoin,
+	}
+}
+
+func TestMsgWithdraw_SpecificBatchSelfPayoutRollsBackEarlierLease(t *testing.T) {
+	s := newSelfPayoutBatchFixture(t)
+	normalLeaseBefore, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.normalLeaseUUID)
+	require.NoError(t, err)
+	selfLeaseBefore, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.selfLeaseUUID)
+	require.NoError(t, err)
+
+	s.f.Ctx = s.f.Ctx.WithBlockTime(s.f.Ctx.BlockTime().Add(100 * time.Second)).
+		WithEventManager(sdk.NewEventManager())
+	resp, err := s.msgServer.Withdraw(s.f.Ctx, &types.MsgWithdraw{
+		Sender: s.providerAddr.String(),
+		// The normal lease transfers first inside the batch cache. The self-payout
+		// lease must reject second and discard that earlier transfer as well.
+		LeaseUuids: []string{s.normalLeaseUUID, s.selfLeaseUUID},
+	})
+	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+	require.Nil(t, resp)
+
+	require.Equal(t, s.initialCreditCoin, s.f.App.BankKeeper.GetBalance(s.f.Ctx, s.normalCreditAddr, testDenom))
+	require.Equal(t, s.initialCreditCoin, s.f.App.BankKeeper.GetBalance(s.f.Ctx, s.selfCreditAddr, testDenom))
+	normalLeaseAfter, getErr := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.normalLeaseUUID)
+	require.NoError(t, getErr)
+	selfLeaseAfter, getErr := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.selfLeaseUUID)
+	require.NoError(t, getErr)
+	require.Equal(t, normalLeaseBefore.LastSettledAt, normalLeaseAfter.LastSettledAt)
+	require.Equal(t, selfLeaseBefore.LastSettledAt, selfLeaseAfter.LastSettledAt)
+	require.Empty(t, s.f.Ctx.EventManager().Events())
+}
+
+func TestMsgCloseLease_BatchSelfPayoutRollsBackEarlierLease(t *testing.T) {
+	s := newSelfPayoutBatchFixture(t)
+	normalLeaseBefore, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.normalLeaseUUID)
+	require.NoError(t, err)
+	selfLeaseBefore, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.selfLeaseUUID)
+	require.NoError(t, err)
+	normalAccountBefore, err := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.normalTenant.String())
+	require.NoError(t, err)
+	selfAccountBefore, err := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.selfPayoutTenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), normalAccountBefore.ActiveLeaseCount)
+	require.Equal(t, uint64(1), selfAccountBefore.ActiveLeaseCount)
+	require.False(t, normalAccountBefore.ReservedAmounts.IsZero())
+	require.False(t, selfAccountBefore.ReservedAmounts.IsZero())
+
+	s.f.Ctx = s.f.Ctx.WithBlockTime(s.f.Ctx.BlockTime().Add(100 * time.Second)).
+		WithEventManager(sdk.NewEventManager())
+	resp, err := s.msgServer.CloseLease(s.f.Ctx, &types.MsgCloseLease{
+		Sender: s.providerAddr.String(),
+		// As in the withdrawal regression, make the normal lease mutate the batch
+		// cache before the self-payout lease rejects.
+		LeaseUuids: []string{s.normalLeaseUUID, s.selfLeaseUUID},
+		Reason:     "atomic self-payout regression",
+	})
+	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+	require.Nil(t, resp)
+
+	require.Equal(t, s.initialCreditCoin, s.f.App.BankKeeper.GetBalance(s.f.Ctx, s.normalCreditAddr, testDenom))
+	require.Equal(t, s.initialCreditCoin, s.f.App.BankKeeper.GetBalance(s.f.Ctx, s.selfCreditAddr, testDenom))
+	normalLeaseAfter, getErr := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.normalLeaseUUID)
+	require.NoError(t, getErr)
+	selfLeaseAfter, getErr := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.selfLeaseUUID)
+	require.NoError(t, getErr)
+	require.Equal(t, normalLeaseBefore, normalLeaseAfter)
+	require.Equal(t, selfLeaseBefore, selfLeaseAfter)
+	normalAccountAfter, getErr := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.normalTenant.String())
+	require.NoError(t, getErr)
+	selfAccountAfter, getErr := s.f.App.BillingKeeper.GetCreditAccount(s.f.Ctx, s.selfPayoutTenant.String())
+	require.NoError(t, getErr)
+	require.Equal(t, normalAccountBefore, normalAccountAfter)
+	require.Equal(t, selfAccountBefore, selfAccountAfter)
+	require.Empty(t, s.f.Ctx.EventManager().Events())
+}
+
 // TestMsgWithdrawBatch tests batch withdrawal operations.
 func TestMsgWithdrawBatch(t *testing.T) {
 	f := initFixture(t)

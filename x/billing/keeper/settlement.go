@@ -193,6 +193,11 @@ func (k *Keeper) performSettlementCore(ctx context.Context, lease *types.Lease, 
 	if err != nil {
 		return nil, types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
 	}
+	if payoutAddr.Equals(creditAddr) {
+		return nil, types.ErrInvalidCreditOperation.Wrap(
+			"provider payout address must not equal tenant credit address",
+		)
+	}
 
 	// Transfer funds
 	if err := k.bankKeeper.SendCoins(ctx, creditAddr, payoutAddr, transferAmounts); err != nil {

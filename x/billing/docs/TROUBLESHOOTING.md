@@ -295,12 +295,34 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
    ```
 2. Use a valid provider UUID.
 
+### "provider payout address must not equal tenant credit address"
+
+**Cause**: The provider's payout address SDK-decodes to the same account as the
+affected tenant's deterministically derived billing credit address. Alternate
+Bech32 casing is only a different wire spelling, not a different account. A
+bank self-send would leave credit in place while appearing to settle it, so
+billing rejects this configuration.
+
+**What happens**:
+1. A specific-lease `Withdraw` or `CloseLease` batch fails atomically: no
+   transfer, lease timestamp/state, count, reservation, or event from any lease
+   in that batch is committed.
+2. Provider-wide withdraw is best-effort per lease: it logs and skips the
+   affected lease, leaves that lease unchanged, and continues with other leases.
+
+**Solution**: Update the provider to use a payout account distinct from every
+tenant-derived credit address, then retry the affected lease explicitly:
+```bash
+manifestd tx sku update-provider [provider-uuid] [provider-address] [new-payout-address] true --from [authorized-key]
+manifestd tx billing withdraw [lease-uuid] --from [provider-key]
+```
+
 ### Lease not included in provider-wide withdraw results
 
 **Cause**: A provider-wide withdraw processes each lease in its own cached context; if a single lease fails, it is logged and skipped so the rest of the batch still succeeds. Two things determine what appears in the results:
 
 1. **Only ACTIVE leases are considered.** Provider-wide withdraw iterates the provider's ACTIVE leases only — CLOSED leases are already fully settled at close and never appear.
-2. **Leases are skipped for two different reasons.** A *normal* skip happens when the lease has nothing to settle — no elapsed time since the last settlement, or a zero withdrawable amount — and is silent and expected. An *error* skip happens when the lease's settlement or store operation fails — a bank transfer failure, a missing or invalid provider payout address, or a `last_settled_at` that is after the block time — in which case that lease's changes are discarded.
+2. **Leases are skipped for two different reasons.** A *normal* skip happens when the lease has nothing to settle — no elapsed time since the last settlement, or a zero withdrawable amount — and is silent and expected. An *error* skip happens when the lease's settlement or store operation fails — a bank transfer failure, a missing or invalid provider payout address, a payout address equal to that tenant's derived credit address, or a `last_settled_at` that is after the block time — in which case that lease's changes are discarded.
 
 **What happens**:
 1. The skipped lease is left unchanged; other leases in the batch are processed normally

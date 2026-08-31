@@ -675,7 +675,7 @@ writeFn()
 
 **Behavior**:
 - Each lease's settlement is atomic (all-or-nothing)
-- If settlement fails for one lease (e.g., a bank transfer error, a missing or invalid provider payout address, or a `last_settled_at` that is after the block time), only that lease is skipped
+- If settlement fails for one lease (e.g., a bank transfer error, a missing or invalid provider payout address, a payout address that resolves to the tenant's derived credit address, or a `last_settled_at` that is after the block time), only that lease is logged and skipped
 - Other leases in the batch are processed normally
 - Failed leases don't affect the success of the overall operation
 - Provider can retry failed leases individually using specific lease UUIDs
@@ -683,6 +683,13 @@ writeFn()
 > **Accrual overflow is NOT a skip.** If an accrued charge cannot fit in the SDK's 256-bit `math.Int` representation, the silent settlement path (`PerformSettlementSilent`) does *not* grant free service. It clamps each overflowed denomination to that denomination's remaining credit and transfers it to the provider; exact charges in unaffected denominations are settled normally. `ShouldAutoCloseLease` then force-closes the lease. The overflow may arise from price × quantity, price × quantity × elapsed seconds, or same-denom aggregation. Long intervals are valid when their charge remains representable, and runtime accrual derives whole seconds directly from timestamps so `time.Duration` saturation cannot undercharge intervals beyond roughly 292 years. Non-silent settlement, lease creation, credit-estimate queries, genesis validation, and migrations instead return the registered `ErrArithmeticOverflow` error; balance-capped withdrawable queries return the exact capped amount.
 
 This pattern ensures that partial failures don't corrupt state while still providing best-effort batch processing.
+
+Settlement compares SDK-decoded address bytes and rejects a provider payout
+address equal to the source tenant credit address. A self-send would leave the
+bank balance unchanged while falsely appearing to settle accrued credit;
+different Bech32 casing therefore cannot bypass this check. Specific-lease
+withdraw and `CloseLease` wrap the whole requested batch in one cached context,
+so this error rolls back every earlier transfer and state update in that batch.
 
 ### Auto-Close on Credit Exhaustion
 

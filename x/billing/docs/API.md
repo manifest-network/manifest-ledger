@@ -283,6 +283,9 @@ manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab 01912345-6
   - Provider: All leases must belong to that provider
   - Authority: Can close any leases
 - If any lease fails validation, the entire batch fails (no partial closures)
+- Final settlement rejects a provider payout address that SDK-decodes to the
+  target tenant's derived credit address. Equivalent Bech32 casing is the same
+  account; if any target has this configuration, the entire batch is rolled back.
 - Response includes total_settled_amounts aggregated across all closed leases
 - Emits `batch_closed` event when multiple leases are processed (includes lease_count, closed_by)
 - Transfers accrued amount to provider payout address
@@ -338,16 +341,24 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
 **Notes:**
 - **Mode 1 (Specific leases):**
   - All leases must belong to the same provider
-  - If any lease fails validation, the entire batch fails (no partial withdrawals)
+  - If any lease fails validation or settlement, the entire batch fails and all
+    earlier transfers and timestamp updates in that batch are rolled back
   - `has_more` is always false in this mode
 - **Mode 2 (Provider-wide):**
   - Processes up to `limit` active leases
+  - Processes each lease in its own cached context. A lease-level settlement or
+    store error is logged and skipped without failing successful leases in the
+    same call; the failed lease remains unchanged and can be retried explicitly.
   - Response includes `has_more` and an opaque `next_key` cursor if more leases remain
   - Pass the returned `next_key` back as `--key` on the next call and repeat until `has_more` is false. Calling again *without* `--key` restarts from the first lease and never advances past `limit`.
   - `--key` is only valid in provider-wide mode (setting it alongside lease UUIDs is rejected) and the decoded cursor may not exceed 64 bytes (`MaxWithdrawCursorLen`).
   - See [Provider-Wide Withdraw Workflow](#provider-wide-withdraw-workflow) below for example
 - Settles accrued amount since last settlement for each lease
 - Transfers aggregated amounts to provider's payout address
+- Rejects settlement when the provider payout address SDK-decodes to the same
+  account as that tenant's derived credit address; Bech32 text casing does not
+  create a distinct account. Specific-lease batches fail atomically, while
+  provider-wide mode logs and skips only the affected lease.
 - May trigger auto-close if credit exhausted during withdrawal
 - Response includes withdrawal_count and total_amounts aggregated across all leases
 - Emits `batch_withdraw` event when multiple leases are processed
