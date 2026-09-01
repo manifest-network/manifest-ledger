@@ -37,8 +37,8 @@ type LeaseState int32
 const (
 	// LEASE_STATE_UNSPECIFIED is the default value.
 	LEASE_STATE_UNSPECIFIED LeaseState = 0
-	// LEASE_STATE_PENDING indicates the lease is awaiting provider acknowledgement.
-	// Credit is locked but billing has not started.
+	// LEASE_STATE_PENDING indicates the lease is awaiting provider
+	// acknowledgement. Credit is locked but billing has not started.
 	LEASE_STATE_PENDING LeaseState = 1
 	// LEASE_STATE_ACTIVE indicates the lease is active and accruing charges.
 	// Provider has acknowledged and resources are provisioned.
@@ -83,37 +83,42 @@ func (LeaseState) EnumDescriptor() ([]byte, []int) {
 
 // Params defines the parameters for the billing module.
 type Params struct {
-	// max_leases_per_tenant is the maximum number of active leases a tenant can have.
-	// Lease creation and acknowledgement both enforce this limit; acknowledgement evaluates
-	// each tenant's active count after applying the entire batch. Must be greater than zero.
+	// max_leases_per_tenant is the maximum number of active leases a tenant can
+	// have. Lease creation and acknowledgement both enforce this limit;
+	// acknowledgement evaluates each tenant's active count after applying the
+	// entire batch. Must be greater than zero.
 	MaxLeasesPerTenant uint64 `protobuf:"varint,1,opt,name=max_leases_per_tenant,json=maxLeasesPerTenant,proto3" json:"max_leases_per_tenant,omitempty,string"`
-	// allowed_list is the list of addresses allowed to create leases on behalf of tenants
-	// in addition to the module authority.
+	// allowed_list is the list of addresses allowed to create leases on behalf of
+	// tenants in addition to the module authority.
 	AllowedList []string `protobuf:"bytes,2,rep,name=allowed_list,json=allowedList,proto3" json:"allowed_list,omitempty"`
-	// max_items_per_lease is the maximum number of items (SKUs) allowed in a single lease.
-	// Must be greater than zero. Prevents excessive gas consumption from large leases.
+	// max_items_per_lease is the maximum number of items (SKUs) allowed in a
+	// single lease. Must be greater than zero. Prevents excessive gas consumption
+	// from large leases.
 	MaxItemsPerLease uint64 `protobuf:"varint,3,opt,name=max_items_per_lease,json=maxItemsPerLease,proto3" json:"max_items_per_lease,omitempty,string"`
-	// min_lease_duration is the minimum duration (in seconds) that a tenant's credit balance
-	// must be able to cover when creating a lease. This prevents tenants from creating leases
-	// that would immediately exhaust their credit. Default is 3600 (1 hour).
+	// min_lease_duration is the minimum duration (in seconds) that a tenant's
+	// credit balance must be able to cover when creating a lease. This prevents
+	// tenants from creating leases that would immediately exhaust their credit.
+	// Default is 3600 (1 hour).
 	MinLeaseDuration uint64 `protobuf:"varint,4,opt,name=min_lease_duration,json=minLeaseDuration,proto3" json:"min_lease_duration,omitempty,string"`
-	// max_pending_leases_per_tenant is the maximum number of PENDING leases a tenant can have.
-	// Prevents spam attacks where tenants create many leases that providers must process.
-	// Default is 10.
+	// max_pending_leases_per_tenant is the maximum number of PENDING leases a
+	// tenant can have. Prevents spam attacks where tenants create many leases
+	// that providers must process. Default is 10.
 	MaxPendingLeasesPerTenant uint64 `protobuf:"varint,5,opt,name=max_pending_leases_per_tenant,json=maxPendingLeasesPerTenant,proto3" json:"max_pending_leases_per_tenant,omitempty,string"`
-	// pending_timeout is the current duration in seconds that defines a PENDING lease's hard
-	// acknowledgement deadline at created_at + pending_timeout. Acknowledgement is allowed exactly
-	// at that deadline and rejected when block time is strictly later, even if EndBlock has not yet
-	// marked the lease EXPIRED. Applies globally to all providers. Default is 1800 (30 minutes).
+	// pending_timeout is the current duration in seconds that defines a PENDING
+	// lease's hard acknowledgement deadline at created_at + pending_timeout.
+	// Acknowledgement is allowed exactly at that deadline and rejected when block
+	// time is strictly later, even if EndBlock has not yet marked the lease
+	// EXPIRED. Applies globally to all providers. Default is 1800 (30 minutes).
 	// Must be between 60 (1 minute) and 86400 (24 hours).
 	PendingTimeout uint64 `protobuf:"varint,6,opt,name=pending_timeout,json=pendingTimeout,proto3" json:"pending_timeout,omitempty,string"`
-	// reserved_domain_suffixes is the list of DNS suffixes (each beginning with `.`)
-	// that tenants are forbidden from claiming as a LeaseItem.custom_domain. These match
-	// provider wildcard zones (e.g. `.barney0.manifest0.net`) where the provider
-	// already serves auto-generated subdomains under a wildcard TLS cert. The match
-	// is a case-insensitive label-boundary suffix check and also covers the apex
-	// (e.g. `barney0.manifest0.net` itself). Tunable via MsgUpdateParams so new
-	// provider zones can be reserved without a chain upgrade.
+	// reserved_domain_suffixes is the list of DNS suffixes (each beginning with
+	// `.`) that tenants are forbidden from claiming as a LeaseItem.custom_domain.
+	// These match provider wildcard zones (e.g. `.barney0.manifest0.net`) where
+	// the provider already serves auto-generated subdomains under a wildcard TLS
+	// cert. The match is a case-insensitive label-boundary suffix check and also
+	// covers the apex (e.g. `barney0.manifest0.net` itself). Tunable via
+	// MsgUpdateParams so new provider zones can be reserved without a chain
+	// upgrade.
 	ReservedDomainSuffixes []string `protobuf:"bytes,7,rep,name=reserved_domain_suffixes,json=reservedDomainSuffixes,proto3" json:"reserved_domain_suffixes,omitempty"`
 }
 
@@ -208,11 +213,13 @@ type LeaseItem struct {
 	// locked_price is the price per unit locked at lease creation (per second).
 	// The denom comes from the SKU's base_price at lease creation time.
 	LockedPrice types.Coin `protobuf:"bytes,3,opt,name=locked_price,json=lockedPrice,proto3" json:"locked_price"`
-	// service_name is an optional DNS-label identifier for this item within a stack deployment.
-	// Must be a valid RFC 1123 DNS label: 1-63 lowercase alphanumeric characters or hyphens,
-	// must not start or end with a hyphen (e.g., "web", "db", "my-service-1").
-	// When used, all items must have a service_name and uniqueness shifts from sku_uuid to service_name,
-	// allowing the same SKU to appear multiple times (e.g., "web" and "db" both using docker-small).
+	// service_name is an optional DNS-label identifier for this item within a
+	// stack deployment. Must be a valid RFC 1123 DNS label: 1-63 lowercase
+	// alphanumeric characters or hyphens, must not start or end with a hyphen
+	// (e.g., "web", "db", "my-service-1"). When used, all items must have a
+	// service_name and uniqueness shifts from sku_uuid to service_name, allowing
+	// the same SKU to appear multiple times (e.g., "web" and "db" both using
+	// docker-small).
 	//
 	// COMPUTE-SPECIFIC: this field belongs in a future x/deployment module rather
 	// than the generic billing lease. It lives here today as a pragmatic shortcut
@@ -358,7 +365,8 @@ type Lease struct {
 	Uuid string `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	// tenant is the address of the tenant who owns this lease.
 	Tenant string `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	// provider_uuid is the provider UUID (denormalized from SKUs for efficient querying).
+	// provider_uuid is the provider UUID (denormalized from SKUs for efficient
+	// querying).
 	ProviderUuid string `protobuf:"bytes,3,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
 	// items is the list of SKU items in this lease.
 	Items []LeaseItem `protobuf:"bytes,4,rep,name=items,proto3" json:"items"`
@@ -369,8 +377,10 @@ type Lease struct {
 	CreatedAt time.Time `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3,stdtime" json:"created_at"`
 	// closed_at is the timestamp when the lease was closed (if CLOSED state).
 	ClosedAt *time.Time `protobuf:"bytes,7,opt,name=closed_at,json=closedAt,proto3,stdtime" json:"closed_at,omitempty"`
-	// last_settled_at is the timestamp of the last settlement/withdrawal.
-	// Only applicable for ACTIVE and CLOSED states.
+	// last_settled_at is the accrual cursor through which complete per-second
+	// charges have settled. For an ACTIVE lease it can precede the latest
+	// withdrawal time by less than one second so that fractional elapsed time is
+	// carried into the next settlement. A CLOSED lease sets it to closed_at.
 	LastSettledAt time.Time `protobuf:"bytes,8,opt,name=last_settled_at,json=lastSettledAt,proto3,stdtime" json:"last_settled_at"`
 	// acknowledged_at is the timestamp when the provider acknowledged the lease.
 	// Only set when state transitions from PENDING to ACTIVE.
@@ -380,20 +390,20 @@ type Lease struct {
 	// Only set when state is REJECTED.
 	RejectedAt *time.Time `protobuf:"bytes,10,opt,name=rejected_at,json=rejectedAt,proto3,stdtime" json:"rejected_at,omitempty"`
 	// rejection_reason is a free-form explanation for why the lease was rejected.
-	// Only set when state is REJECTED. Maximum 256 characters.
+	// Only set when state is REJECTED. Maximum 256 UTF-8 bytes.
 	RejectionReason string `protobuf:"bytes,11,opt,name=rejection_reason,json=rejectionReason,proto3" json:"rejection_reason,omitempty"`
 	// expired_at is the timestamp when the lease expired while in PENDING state.
 	// Only set when state is EXPIRED.
 	ExpiredAt *time.Time `protobuf:"bytes,12,opt,name=expired_at,json=expiredAt,proto3,stdtime" json:"expired_at,omitempty"`
 	// closure_reason is a free-form explanation for why the lease was closed.
-	// Only set when state is CLOSED. Maximum 256 characters.
+	// Only set when state is CLOSED. Maximum 256 UTF-8 bytes.
 	ClosureReason string `protobuf:"bytes,13,opt,name=closure_reason,json=closureReason,proto3" json:"closure_reason,omitempty"`
 	// meta_hash is an optional hash/reference to off-chain deployment data.
 	// Set once at lease creation and immutable. Maximum 64 bytes.
 	MetaHash []byte `protobuf:"bytes,14,opt,name=meta_hash,json=metaHash,proto3" json:"meta_hash,omitempty"`
-	// min_lease_duration_at_creation stores the min_lease_duration parameter value
-	// at the time this lease was created. This ensures consistent reservation
-	// calculation regardless of subsequent parameter changes.
+	// min_lease_duration_at_creation stores the min_lease_duration parameter
+	// value at the time this lease was created. This ensures consistent
+	// reservation calculation regardless of subsequent parameter changes.
 	// reservation = sum(locked_price × quantity) × min_lease_duration_at_creation
 	MinLeaseDurationAtCreation uint64 `protobuf:"varint,15,opt,name=min_lease_duration_at_creation,json=minLeaseDurationAtCreation,proto3" json:"min_lease_duration_at_creation,omitempty,string"`
 	// reservation contains this modern lease's remaining consumable guarantee.
@@ -614,10 +624,11 @@ type CreditAccount struct {
 	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	// credit_address is the derived address where credit funds are held.
 	CreditAddress string `protobuf:"bytes,2,opt,name=credit_address,json=creditAddress,proto3" json:"credit_address,omitempty"`
-	// active_lease_count tracks the number of active leases for O(1) count queries.
+	// active_lease_count tracks the number of active leases for O(1) count
+	// queries.
 	ActiveLeaseCount uint64 `protobuf:"varint,3,opt,name=active_lease_count,json=activeLeaseCount,proto3" json:"active_lease_count,omitempty,string"`
-	// pending_lease_count tracks the number of pending leases for O(1) count queries.
-	// Used to enforce max_pending_leases_per_tenant limit.
+	// pending_lease_count tracks the number of pending leases for O(1) count
+	// queries. Used to enforce max_pending_leases_per_tenant limit.
 	PendingLeaseCount uint64 `protobuf:"varint,4,opt,name=pending_lease_count,json=pendingLeaseCount,proto3" json:"pending_lease_count,omitempty,string"`
 	// reserved_amounts is the exact remaining reservation aggregate R:
 	//

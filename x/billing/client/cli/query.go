@@ -1,3 +1,4 @@
+// Package cli defines billing module command-line commands.
 package cli
 
 import (
@@ -149,7 +150,12 @@ func GetLeasesCmd() *cobra.Command {
 				return err
 			}
 
-			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
 			if err != nil {
 				return err
 			}
@@ -197,7 +203,12 @@ func GetLeasesByTenantCmd() *cobra.Command {
 				return err
 			}
 
-			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
 			if err != nil {
 				return err
 			}
@@ -251,7 +262,12 @@ func GetLeasesByProviderCmd() *cobra.Command {
 				return err
 			}
 
-			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
 			if err != nil {
 				return err
 			}
@@ -295,7 +311,12 @@ Balance pagination defaults to 100 entries and is capped at 1000. Cursor flags
 			if err != nil {
 				return err
 			}
-			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
 			if err != nil {
 				return err
 			}
@@ -415,7 +436,12 @@ provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100`,
 				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
 			}
 
-			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
 			if err != nil {
 				return err
 			}
@@ -453,7 +479,12 @@ func GetCreditAccountsCmd() *cobra.Command {
 				return err
 			}
 
-			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
 			if err != nil {
 				return err
 			}
@@ -509,7 +540,12 @@ Use pagination flags (--limit, --page-key) to page through results.`,
 				return err
 			}
 
-			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
 			if err != nil {
 				return err
 			}

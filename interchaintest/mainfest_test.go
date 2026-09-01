@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"testing"
 
-	sdkmath "cosmossdk.io/math"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
@@ -14,10 +13,12 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest"
 
-	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
-	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
+	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
+	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
 func TestManifestModule(t *testing.T) {
@@ -83,7 +84,7 @@ func TestManifestModule(t *testing.T) {
 		// print beforeBal1
 		fmt.Println(beforeBal1)
 
-		_, err := helpers.ManifestStakeholderPayout(t, ctx, appChain, poaAdmin, payouts)
+		_, err := helpers.ManifestStakeholderPayout(ctx, appChain, poaAdmin, payouts)
 		require.NoError(t, err)
 
 		// validate new user1 balance is 1_000_000 higher
@@ -101,18 +102,17 @@ func TestManifestModule(t *testing.T) {
 		user3bal, err := appChain.GetBalance(ctx, addr3, Denom)
 		require.NoError(t, err)
 		require.EqualValues(t, user3bal.Uint64(), beforeBal3.Uint64()+3_000_000)
-
 	})
 
 	t.Run("fail: invalid payout 0 coin", func(t *testing.T) {
-		_, err := helpers.ManifestStakeholderPayout(t, ctx, appChain, poaAdmin, []manifesttypes.PayoutPair{
+		_, err := helpers.ManifestStakeholderPayout(ctx, appChain, poaAdmin, []manifesttypes.PayoutPair{
 			manifesttypes.NewPayoutPair(sdk.MustAccAddressFromBech32(uaddr), Denom, 0),
 		})
 		require.Error(t, err)
 	})
 
 	t.Run("fail: invalid payout addr", func(t *testing.T) {
-		_, err = helpers.ManifestStakeholderPayout(t, ctx, appChain, poaAdmin, []manifesttypes.PayoutPair{
+		_, err = helpers.ManifestStakeholderPayout(ctx, appChain, poaAdmin, []manifesttypes.PayoutPair{
 			manifesttypes.NewPayoutPair(sdk.MustAccAddressFromBech32(uaddr), Denom, 1),
 			manifesttypes.NewPayoutPair(sdk.MustAccAddressFromBech32(uaddr), Denom, 2),
 		})
@@ -120,7 +120,7 @@ func TestManifestModule(t *testing.T) {
 	})
 
 	t.Run("fail: duplicate address payout", func(t *testing.T) {
-		_, err = helpers.ManifestStakeholderPayout(t, ctx, appChain, poaAdmin, []manifesttypes.PayoutPair{
+		_, err = helpers.ManifestStakeholderPayout(ctx, appChain, poaAdmin, []manifesttypes.PayoutPair{
 			{
 				Address: "abcdefg",
 				Coin:    sdk.NewCoin(Denom, sdkmath.NewInt(1)),
@@ -132,7 +132,7 @@ func TestManifestModule(t *testing.T) {
 	t.Run("fail: invalid burn authority", func(t *testing.T) {
 		accBal, err := appChain.GetBalance(ctx, uaddr, Denom)
 		require.NoError(t, err)
-		o, err := helpers.ManifestBurnTokens(t, ctx, appChain, uaddr, "1"+Denom)
+		o, err := helpers.ManifestBurnTokens(ctx, appChain, uaddr, "1"+Denom)
 		require.NoError(t, err) // The tx is successful but the burn fails
 		tx, err := appChain.GetTransaction(o.TxHash)
 		require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestManifestModule(t *testing.T) {
 		poaAdminAddr := poaAdmin.FormattedAddress()
 		accBal, err := appChain.GetBalance(ctx, poaAdminAddr, Denom)
 		require.NoError(t, err)
-		o, err := helpers.ManifestBurnTokens(t, ctx, appChain, poaAdminAddr, "1"+Denom)
+		o, err := helpers.ManifestBurnTokens(ctx, appChain, poaAdminAddr, "1"+Denom)
 		require.NoError(t, err)
 		tx, err := appChain.GetTransaction(o.TxHash)
 		require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestManifestModule(t *testing.T) {
 		poaAdminAddr := poaAdmin.FormattedAddress()
 		accBal, err := appChain.GetBalance(ctx, poaAdminAddr, Denom)
 		require.NoError(t, err)
-		o, err := helpers.ManifestBurnTokens(t, ctx, appChain, poaAdminAddr, "1foobar")
+		o, err := helpers.ManifestBurnTokens(ctx, appChain, poaAdminAddr, "1foobar")
 		require.NoError(t, err) // The tx is successful but the burn fails
 		tx, err := appChain.GetTransaction(o.TxHash)
 		require.NoError(t, err)
@@ -176,7 +176,7 @@ func TestManifestModule(t *testing.T) {
 		poaAdminAddr := poaAdmin.FormattedAddress()
 		accBal, err := appChain.GetBalance(ctx, poaAdminAddr, Denom)
 		require.NoError(t, err)
-		_, err = helpers.ManifestBurnTokens(t, ctx, appChain, poaAdminAddr, "foobar")
+		_, err = helpers.ManifestBurnTokens(ctx, appChain, poaAdminAddr, "foobar")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid decimal coin expression")
 		accBal2, err := appChain.GetBalance(ctx, poaAdminAddr, Denom)

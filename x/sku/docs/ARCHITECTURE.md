@@ -92,8 +92,9 @@ The SKU module supports configurable parameters to control access and behavior:
 
 ### Parameter Validation
 
-- All addresses in `AllowedList` must be valid bech32 addresses.
-- No duplicate addresses are allowed.
+- All addresses in `AllowedList` must be valid Bech32 account addresses.
+- No duplicate decoded address identities are allowed; equivalent Bech32
+  spellings count as duplicates.
 
 Parameters can be updated only via `MsgUpdateParams` from the POA authority (allow-listed addresses cannot modify params), and changes are emitted as `params_updated` events.
 
@@ -134,6 +135,55 @@ graph LR
 | `ProviderSequence` | - | `uint64` | Sequence counter for deterministic UUID generation |
 | `ProvidersByAddress` | `(AccAddress, string)` | `bool` | Index for address → provider lookups |
 | `ProvidersByActive` | `(bool, string)` | `bool` | Index for active status → provider lookups |
+
+The registered `state` invariant verifies that provider and SKU collection keys
+match their value UUIDs, then applies the full genesis validator to the live
+export. This covers provider references, sequence monotonicity, pricing, URL,
+address, metadata, and parameter constraints. It also checks both directions of
+the provider address/active and SKU provider/active/provider-active indexes,
+rejecting missing, stale, or mismatched rows. Collections owns secondary-index
+updates and commits them atomically with each primary record; the explicit
+invariant provides corruption detection beyond that normal-write guarantee.
+
+### Public Models Versus Stored Values
+
+The `Provider` and `Params` types in the data model are the public protobuf
+contract. Transactions, queries, JSON genesis, and exports use Bech32 strings.
+Collections expose those same Go types to keeper code, but custom value codecs
+translate address identities at the storage boundary:
+
+| Collection | Public value | Persistent value |
+|------------|--------------|------------------|
+| `Params` | `allowed_list: repeated string` | Disk-only `allowed_addresses: repeated bytes` |
+| `Providers` | `address` and `payout_address` as strings | Disk-only raw address bytes; all non-address fields are preserved |
+| `SKUs` | Public `SKU` protobuf | Public `SKU` protobuf; it contains no account address |
+
+Params and Provider values carry the unambiguous storage tags
+`\x00sku/params/v1` and `\x00sku/provider/v1`. The `v1` suffix names the
+disk-message format; the module consensus version that introduced it is v2.
+Unknown tag-zero formats fail closed. Legacy untagged values remain decodable so
+the registered migration can read them, while every new write uses the tagged
+raw-byte form. Decoding for keeper callers and exports returns canonical Bech32.
+
+Address-bearing keys follow the same rule. `ProvidersByAddress` uses the SDK's
+`AccAddressKey`; it never stores a Bech32 string in its key. The remaining keys
+are UUIDs, booleans, or sequences and do not carry account identities.
+
+### Module Consensus v1→v2
+
+At an application upgrade, `RunMigrations` invokes `Migrate1to2` when the stored
+SKU module version is 1. The migration:
+
+1. Canonicalizes and deduplicates `Params.allowed_list` by decoded address bytes,
+   preserving first-seen order.
+2. Rewrites Params through the current value codec.
+3. Reads Providers in ascending primary-key pages of 1,000, closes each iterator,
+   and then rewrites that page through the current value codec.
+
+Provider indexes were already byte-addressed and are left intact. SKU values,
+sequences, and bank state are not changed. Because the codecs read both legacy
+and current values but always write the current representation, rerunning the
+migration produces the same bytes.
 
 ### Key Prefixes
 
@@ -346,8 +396,8 @@ Both providers and SKUs use soft delete (active flag):
 
 ### Input Validation
 
-- SKU names: Max 256 characters (`MaxSKUNameLength`)
-- API URLs: Max 2048 characters (`MaxAPIURLLength`), HTTPS required
+- SKU names: Max 256 UTF-8 bytes (`MaxSKUNameLength`)
+- API URLs: Max 2048 UTF-8 bytes (`MaxAPIURLLength`), HTTPS required
 - Provider/Payout addresses: Valid bech32 addresses
 - Prices: Positive, divisible by unit seconds
 - Meta hash: Optional, max 64 bytes (SHA-256/SHA-512)

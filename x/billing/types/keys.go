@@ -56,6 +56,7 @@ var (
 	CustomDomainIndexKey = collections.NewPrefix(12)
 )
 
+// Module identity constants define the billing store and legacy query route.
 const (
 	ModuleName = "billing"
 
@@ -155,6 +156,8 @@ const (
 	AttributeKeyCustomDomain      = "custom_domain"
 	AttributeKeySetBy             = "set_by"
 	AttributeKeyServiceName       = "service_name"
+	AttributeKeyFailedLeaseCount  = "failed_lease_count"
+	AttributeKeyFailedLeaseUUIDs  = "failed_lease_uuids"
 )
 
 // Rejection reasons for lease cancellation/rejection.

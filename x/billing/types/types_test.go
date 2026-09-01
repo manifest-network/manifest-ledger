@@ -255,6 +255,74 @@ func TestParams_Validate_DuplicateAllowedListCanonicalIdentity(t *testing.T) {
 	require.Contains(t, err.Error(), "duplicate address in allowed list")
 }
 
+func TestGenesisState_PrepareForImportCanonicalizesAllowedListAliases(t *testing.T) {
+	_, _, addr := testdata.KeyTestPubAddr()
+	original := []string{addr.String(), strings.ToUpper(addr.String()), addr.String()}
+	genesis := types.DefaultGenesis()
+	genesis.Params.AllowedList = append([]string(nil), original...)
+
+	prepared, err := genesis.PrepareForImport()
+	require.NoError(t, err)
+	require.Equal(t, []string{addr.String()}, prepared.Params.AllowedList)
+	require.Equal(t, original, genesis.Params.AllowedList, "import preparation must not mutate its caller")
+	require.NoError(t, genesis.Validate())
+	require.ErrorIs(t, genesis.ValidateStrict(), types.ErrInvalidParams)
+}
+
+func TestGenesisState_PrepareForImportRepairsLeaseCountsByDecodedTenantIdentity(t *testing.T) {
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+	tenant := tenantAddr.String()
+	tenantAlias := strings.ToUpper(tenant)
+	now := time.Unix(1, 0).UTC()
+
+	lease := func(uuid, owner string, state types.LeaseState) types.Lease {
+		return types.Lease{
+			Uuid:         uuid,
+			Tenant:       owner,
+			ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+			Items: []types.LeaseItem{{
+				SkuUuid:     "01912345-6789-7abc-8def-0123456789ad",
+				Quantity:    1,
+				LockedPrice: sdk.NewInt64Coin(testDenom, 1),
+			}},
+			State:                      state,
+			CreatedAt:                  now,
+			LastSettledAt:              now,
+			MinLeaseDurationAtCreation: 1,
+		}
+	}
+
+	genesis := &types.GenesisState{
+		Params: types.DefaultParams(),
+		Leases: []types.Lease{
+			lease("01912345-6789-7abc-8def-0123456789ab", tenant, types.LEASE_STATE_ACTIVE),
+			lease("01912345-6789-7abc-8def-0123456789ae", tenantAlias, types.LEASE_STATE_ACTIVE),
+			lease("01912345-6789-7abc-8def-0123456789af", tenantAlias, types.LEASE_STATE_PENDING),
+		},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:            tenant,
+			CreditAddress:     types.DeriveCreditAddress(tenantAddr).String(),
+			ActiveLeaseCount:  1, // Reachable v2 alias bug: the decoded identity owns two.
+			PendingLeaseCount: 0,
+			ReservedAmounts:   sdk.NewCoins(sdk.NewInt64Coin(testDenom, 3)),
+		}},
+		LeaseSequence: 3,
+	}
+	originalAccount := genesis.CreditAccounts[0]
+
+	prepared, err := genesis.PrepareForImport()
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), prepared.CreditAccounts[0].ActiveLeaseCount)
+	require.Equal(t, uint64(1), prepared.CreditAccounts[0].PendingLeaseCount)
+	require.Equal(t, originalAccount, genesis.CreditAccounts[0], "import preparation must not mutate its caller")
+
+	preparedAgain, err := genesis.PrepareForImport()
+	require.NoError(t, err)
+	require.Equal(t, prepared, preparedAgain, "import preparation must be deterministic")
+	require.NoError(t, genesis.Validate(), "import-safe validation repairs derived v2 counts")
+	require.ErrorIs(t, genesis.ValidateStrict(), types.ErrInvalidCreditOperation)
+}
+
 func TestParams_Validate_ValidAllowedList(t *testing.T) {
 	// Generate valid addresses for testing
 	_, _, addr1 := testdata.KeyTestPubAddr()
@@ -797,6 +865,16 @@ func TestMsgCloseLease_ValidateBasic(t *testing.T) {
 			expectErr: true,
 			errMsg:    "reason exceeds maximum length",
 		},
+		{
+			name: "multibyte reason exceeds byte limit",
+			msg: types.MsgCloseLease{
+				Sender:     sender,
+				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
+				Reason:     strings.Repeat("é", types.MaxClosureReasonLength/2+1),
+			},
+			expectErr: true,
+			errMsg:    "reason exceeds maximum length of 256 bytes",
+		},
 	}
 
 	for _, tc := range tests {
@@ -810,6 +888,28 @@ func TestMsgCloseLease_ValidateBasic(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMsgRejectLease_ReasonLengthUsesBytes(t *testing.T) {
+	_, _, senderAddr := testdata.KeyTestPubAddr()
+	leaseUUIDs := []string{"01912345-6789-7abc-8def-0123456789ab"}
+
+	reasonAtLimit := strings.Repeat("é", types.MaxRejectionReasonLength/2)
+	require.Len(t, []byte(reasonAtLimit), types.MaxRejectionReasonLength)
+	require.NoError(t, (&types.MsgRejectLease{
+		Sender:     senderAddr.String(),
+		LeaseUuids: leaseUUIDs,
+		Reason:     reasonAtLimit,
+	}).ValidateBasic())
+
+	reasonOverLimit := reasonAtLimit + "é"
+	require.Len(t, []byte(reasonOverLimit), types.MaxRejectionReasonLength+2)
+	err := (&types.MsgRejectLease{
+		Sender:     senderAddr.String(),
+		LeaseUuids: leaseUUIDs,
+		Reason:     reasonOverLimit,
+	}).ValidateBasic()
+	require.ErrorContains(t, err, "reason exceeds maximum length of 256 bytes")
 }
 
 // ============================================================================
@@ -1218,10 +1318,11 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		genesis   *types.GenesisState
-		expectErr bool
-		errMsg    string
+		name          string
+		genesis       *types.GenesisState
+		expectErr     bool
+		strictOnlyErr bool
+		errMsg        string
 	}{
 		{
 			name:      "valid default genesis",
@@ -1682,9 +1783,11 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(100000))), // Wrong: too low
 					},
 				},
+				LeaseSequence: 1,
 			},
-			expectErr: true,
-			errMsg:    "reserved_amounts",
+			expectErr:     true,
+			strictOnlyErr: true,
+			errMsg:        "reserved_amounts",
 		},
 		{
 			name: "reserved_amounts mismatch - too high",
@@ -1698,9 +1801,11 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 						ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, math.NewInt(1000000))), // Wrong: too high
 					},
 				},
+				LeaseSequence: 1,
 			},
-			expectErr: true,
-			errMsg:    "reserved_amounts",
+			expectErr:     true,
+			strictOnlyErr: true,
+			errMsg:        "reserved_amounts",
 		},
 		{
 			name: "reserved_amounts should be empty for closed lease",
@@ -1752,9 +1857,11 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 						ReservedAmounts: sdk.NewCoins(), // Wrong: pending lease needs reservation
 					},
 				},
+				LeaseSequence: 1,
 			},
-			expectErr: true,
-			errMsg:    "reserved_amounts",
+			expectErr:     true,
+			strictOnlyErr: true,
+			errMsg:        "reserved_amounts",
 		},
 		{
 			name: "multiple leases - combined reservation",
@@ -1850,9 +1957,11 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 						ReservedAmounts:  validLeaseReservation,
 					},
 				},
+				LeaseSequence: 1,
 			},
-			expectErr: true,
-			errMsg:    "active_lease_count 5 but has 1 active leases",
+			expectErr:     true,
+			strictOnlyErr: true,
+			errMsg:        "active_lease_count 5 but has 1 active leases",
 		},
 		{
 			name: "pending_lease_count mismatch",
@@ -1876,9 +1985,11 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 						ReservedAmounts:   validLeaseReservation,
 					},
 				},
+				LeaseSequence: 1,
 			},
-			expectErr: true,
-			errMsg:    "pending_lease_count 3 but has 1 pending leases",
+			expectErr:     true,
+			strictOnlyErr: true,
+			errMsg:        "pending_lease_count 3 but has 1 pending leases",
 		},
 		// ---- service_name genesis validation ----
 		{
@@ -2018,7 +2129,8 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 			for _, tc := range tests {
 				t.Run(tc.name, func(t *testing.T) {
 					err := validator.validate(tc.genesis)
-					if tc.expectErr {
+					expectErr := tc.expectErr && (!tc.strictOnlyErr || validator.name == "strict")
+					if expectErr {
 						require.Error(t, err)
 						require.Contains(t, err.Error(), tc.errMsg)
 					} else {
@@ -2173,7 +2285,7 @@ func TestGenesisState_Validate_UsesCanonicalTenantIdentity(t *testing.T) {
 	require.Contains(t, err.Error(), "duplicate credit account for tenant")
 }
 
-func TestGenesisState_Validate_RequiresKnownReservationPortion(t *testing.T) {
+func TestGenesisState_PrepareForImport_RepairsKnownReservationFloor(t *testing.T) {
 	_, _, tenantAddr := testdata.KeyTestPubAddr()
 	tenant := tenantAddr.String()
 	creditAddr := types.DeriveCreditAddress(tenantAddr)
@@ -2219,9 +2331,14 @@ func TestGenesisState_Validate_RequiresKnownReservationPortion(t *testing.T) {
 		LeaseSequence: 2,
 	}
 
-	err = gs.Validate()
-	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
-	require.Contains(t, err.Error(), "below known non-legacy lease reservations")
+	reservedBefore := append(sdk.Coins(nil), gs.CreditAccounts[0].ReservedAmounts...)
+	prepared, err := gs.PrepareForImport()
+	require.NoError(t, err)
+	require.Equal(t, knownReservation, prepared.CreditAccounts[0].ReservedAmounts)
+	require.Equal(t, reservedBefore, gs.CreditAccounts[0].ReservedAmounts,
+		"import preparation must not mutate the exported state")
+	require.NoError(t, gs.Validate())
+	require.ErrorIs(t, gs.ValidateStrict(), types.ErrInvalidCreditOperation)
 }
 
 func TestGenesisState_Validate_AcceptsMixedHistoricalReservations(t *testing.T) {

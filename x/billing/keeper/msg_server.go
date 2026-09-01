@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"cosmossdk.io/collections"
@@ -608,7 +609,7 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 			closeTime = blockTime
 
 			// Settle accrued charges
-			settledAmounts, err = ms.settleLease(cacheCtx, &leases[i], &creditAccount, closeTime)
+			settledAmounts, err = ms.settleLeaseForClose(cacheCtx, &leases[i], &creditAccount, closeTime)
 			if err != nil {
 				return nil, err
 			}
@@ -710,8 +711,8 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 }
 
 // Withdraw allows a provider to withdraw accrued funds from one or more leases.
-// All leases must belong to the same provider.
-// This is an atomic operation: all withdrawals succeed or all fail.
+// Specific-lease mode is atomic. Provider-wide mode isolates each lease in its
+// own cache, reports failures in processing order, and continues the page.
 func (ms msgServer) Withdraw(ctx context.Context, msg *types.MsgWithdraw) (*types.MsgWithdrawResponse, error) {
 	if err := msg.ValidateBasic(); err != nil {
 		return nil, err
@@ -810,12 +811,12 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 				}
 
 				autoClosedLeases = append(autoClosedLeases, lease.Uuid)
+				leaseAmounts[lease.Uuid] = result.TransferAmounts
 				if !result.TransferAmounts.IsZero() {
 					totalAmounts, err = types.SafeAddCoins(totalAmounts, result.TransferAmounts)
 					if err != nil {
 						return nil, errorsmod.Wrap(err, "sum auto-close withdrawal amounts")
 					}
-					leaseAmounts[lease.Uuid] = result.TransferAmounts
 				}
 				creditAccounts[tenantKeys[i]] = creditAccount
 				withdrawalCount++
@@ -845,8 +846,15 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 			continue
 		}
 
-		// Update last_settled_at to prevent re-settlement of the same period
-		lease.LastSettledAt = settleTime
+		// A live lease advances only through the whole seconds charged. Keeping
+		// the sub-second remainder in LastSettledAt makes repeated settlements
+		// equivalent to one settlement over their combined interval. A terminal
+		// lease has no future accrual and keeps the historical close-time rule.
+		if lease.State == types.LEASE_STATE_ACTIVE {
+			lease.LastSettledAt = result.SettledThrough
+		} else {
+			lease.LastSettledAt = settleTime
+		}
 		if err := ms.k.SetLease(cacheCtx, *lease); err != nil {
 			return nil, err
 		}
@@ -885,12 +893,14 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 		_, wasAutoClosed := autoClosedSet[lease.Uuid]
 
 		if wasAutoClosed {
+			amounts := leaseAmounts[lease.Uuid]
 			sdkCtx.EventManager().EmitEvent(
 				sdk.NewEvent(
 					types.EventTypeProviderWithdraw,
 					sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
-					sdk.NewAttribute(types.AttributeKeyAmount, "0"),
+					sdk.NewAttribute(types.AttributeKeyAmount, amounts.String()),
 					sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
+					sdk.NewAttribute(types.AttributeKeyPayoutAddress, payoutAddress),
 					sdk.NewAttribute(types.AttributeKeyAutoClosed, "true"),
 				),
 			)
@@ -988,14 +998,14 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 		uuid, pkErr := iter.PrimaryKey()
 		if pkErr != nil {
 			if closeErr := iter.Close(); closeErr != nil {
-				ms.k.Logger().Error("failed to close provider withdraw iterator", "error", closeErr)
+				return nil, errors.Join(pkErr, closeErr)
 			}
 			return nil, pkErr
 		}
 		leaseUUIDs = append(leaseUUIDs, uuid)
 	}
 	if closeErr := iter.Close(); closeErr != nil {
-		ms.k.Logger().Error("failed to close provider withdraw iterator", "error", closeErr)
+		return nil, errorsmod.Wrap(closeErr, "close provider withdraw iterator")
 	}
 
 	// next_key is the last collected UUID; the next call resumes StartExclusive after it.
@@ -1008,10 +1018,12 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 	totalAmounts := sdk.NewCoins()
 	var withdrawalCount uint64
 	autoClosedCount := uint64(0)
+	failedLeaseUUIDs := make([]string, 0)
 
 	for _, leaseUUID := range leaseUUIDs {
 		lease, getErr := ms.k.GetLease(ctx, leaseUUID)
 		if getErr != nil {
+			failedLeaseUUIDs = append(failedLeaseUUIDs, leaseUUID)
 			ms.k.Logger().Error("failed to get lease for withdrawal",
 				"lease_id", leaseUUID,
 				"error", getErr,
@@ -1025,6 +1037,7 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 		cacheCtx, write := sdkCtx.CacheContext()
 		result, processErr := ms.k.executeProviderLeaseWithdrawal(cacheCtx, &lease)
 		if processErr != nil {
+			failedLeaseUUIDs = append(failedLeaseUUIDs, leaseUUID)
 			// Provider-wide withdrawal is intentionally best effort. Discard this
 			// lease's cache and continue with the remaining page.
 			ms.k.Logger().Error("failed to process provider withdrawal lease",
@@ -1057,6 +1070,8 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 					sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
 					sdk.NewAttribute(types.AttributeKeyTenant, lease.Tenant),
 					sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
+					sdk.NewAttribute(types.AttributeKeyAmount, result.transferAmounts.String()),
+					sdk.NewAttribute(types.AttributeKeyPayoutAddress, payoutAddress),
 					sdk.NewAttribute(types.AttributeKeyReason, "credit_exhausted"),
 				),
 			)
@@ -1076,15 +1091,18 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 			sdk.NewAttribute(types.AttributeKeyLeaseCount, strconv.FormatUint(withdrawalCount, 10)),
 			sdk.NewAttribute(types.AttributeKeyPayoutAddress, payoutAddress),
 			sdk.NewAttribute(types.AttributeKeyAutoClosed, strconv.FormatUint(autoClosedCount, 10)),
+			sdk.NewAttribute(types.AttributeKeyFailedLeaseCount, strconv.Itoa(len(failedLeaseUUIDs))),
+			sdk.NewAttribute(types.AttributeKeyFailedLeaseUUIDs, strings.Join(failedLeaseUUIDs, ",")),
 		),
 	)
 
 	return &types.MsgWithdrawResponse{
-		TotalAmounts:    totalAmounts,
-		PayoutAddress:   payoutAddress,
-		WithdrawalCount: withdrawalCount,
-		HasMore:         hasMore,
-		NextKey:         nextKey,
+		TotalAmounts:     totalAmounts,
+		PayoutAddress:    payoutAddress,
+		WithdrawalCount:  withdrawalCount,
+		HasMore:          hasMore,
+		NextKey:          nextKey,
+		FailedLeaseUuids: failedLeaseUUIDs,
 	}, nil
 }
 
@@ -1130,9 +1148,10 @@ func (ms msgServer) SetItemCustomDomain(ctx context.Context, msg *types.MsgSetIt
 	return &types.MsgSetItemCustomDomainResponse{}, nil
 }
 
-// settleLease calculates and transfers accrued charges from tenant's credit account
-// to the provider's payout address. Returns the amounts settled (one per denom).
-func (ms msgServer) settleLease(
+// settleLeaseForClose transfers accrued charges and advances the terminal
+// cursor to the exact close time. Unlike a live withdrawal, a closed lease has
+// no later settlement into which a sub-second remainder could carry.
+func (ms msgServer) settleLeaseForClose(
 	ctx context.Context,
 	lease *types.Lease,
 	creditAccount *types.CreditAccount,
@@ -1143,7 +1162,7 @@ func (ms msgServer) settleLease(
 		return sdk.NewCoins(), err
 	}
 
-	// Update last_settled_at
+	// Terminal leases record the exact close time.
 	lease.LastSettledAt = settleTime
 
 	return result.TransferAmounts, nil

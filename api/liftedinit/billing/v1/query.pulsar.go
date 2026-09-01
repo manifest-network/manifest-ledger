@@ -3,10 +3,10 @@ package billingv1
 
 import (
 	v1beta1 "cosmossdk.io/api/cosmos/base/query/v1beta1"
+	v1beta11 "cosmossdk.io/api/cosmos/base/v1beta1"
 	fmt "fmt"
 	_ "github.com/cosmos/cosmos-proto"
 	runtime "github.com/cosmos/cosmos-proto/runtime"
-	types "cosmossdk.io/api/cosmos/base/v1beta1"
 	_ "github.com/cosmos/gogoproto/gogoproto"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -5461,7 +5461,7 @@ func (x *fastReflection_QueryCreditAccountRequest) ProtoMethods() *protoiface.Me
 var _ protoreflect.List = (*_QueryCreditAccountResponse_2_list)(nil)
 
 type _QueryCreditAccountResponse_2_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta11.Coin
 }
 
 func (x *_QueryCreditAccountResponse_2_list) Len() int {
@@ -5477,18 +5477,18 @@ func (x *_QueryCreditAccountResponse_2_list) Get(i int) protoreflect.Value {
 
 func (x *_QueryCreditAccountResponse_2_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta11.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_QueryCreditAccountResponse_2_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta11.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_QueryCreditAccountResponse_2_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta11.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -5501,7 +5501,7 @@ func (x *_QueryCreditAccountResponse_2_list) Truncate(n int) {
 }
 
 func (x *_QueryCreditAccountResponse_2_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta11.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -5512,7 +5512,7 @@ func (x *_QueryCreditAccountResponse_2_list) IsValid() bool {
 var _ protoreflect.List = (*_QueryCreditAccountResponse_3_list)(nil)
 
 type _QueryCreditAccountResponse_3_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta11.Coin
 }
 
 func (x *_QueryCreditAccountResponse_3_list) Len() int {
@@ -5528,18 +5528,18 @@ func (x *_QueryCreditAccountResponse_3_list) Get(i int) protoreflect.Value {
 
 func (x *_QueryCreditAccountResponse_3_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta11.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_QueryCreditAccountResponse_3_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta11.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_QueryCreditAccountResponse_3_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta11.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -5552,7 +5552,7 @@ func (x *_QueryCreditAccountResponse_3_list) Truncate(n int) {
 }
 
 func (x *_QueryCreditAccountResponse_3_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta11.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -5806,13 +5806,13 @@ func (x *fastReflection_QueryCreditAccountResponse) Mutable(fd protoreflect.Fiel
 		return protoreflect.ValueOfMessage(x.CreditAccount.ProtoReflect())
 	case "liftedinit.billing.v1.QueryCreditAccountResponse.balances":
 		if x.Balances == nil {
-			x.Balances = []*types.Coin{}
+			x.Balances = []*v1beta11.Coin{}
 		}
 		value := &_QueryCreditAccountResponse_2_list{list: &x.Balances}
 		return protoreflect.ValueOfList(value)
 	case "liftedinit.billing.v1.QueryCreditAccountResponse.available_balances":
 		if x.AvailableBalances == nil {
-			x.AvailableBalances = []*types.Coin{}
+			x.AvailableBalances = []*v1beta11.Coin{}
 		}
 		value := &_QueryCreditAccountResponse_3_list{list: &x.AvailableBalances}
 		return protoreflect.ValueOfList(value)
@@ -5838,10 +5838,10 @@ func (x *fastReflection_QueryCreditAccountResponse) NewField(fd protoreflect.Fie
 		m := new(CreditAccount)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	case "liftedinit.billing.v1.QueryCreditAccountResponse.balances":
-		list := []*types.Coin{}
+		list := []*v1beta11.Coin{}
 		return protoreflect.ValueOfList(&_QueryCreditAccountResponse_2_list{list: &list})
 	case "liftedinit.billing.v1.QueryCreditAccountResponse.available_balances":
-		list := []*types.Coin{}
+		list := []*v1beta11.Coin{}
 		return protoreflect.ValueOfList(&_QueryCreditAccountResponse_3_list{list: &list})
 	case "liftedinit.billing.v1.QueryCreditAccountResponse.pagination":
 		m := new(v1beta1.PageResponse)
@@ -6138,7 +6138,7 @@ func (x *fastReflection_QueryCreditAccountResponse) ProtoMethods() *protoiface.M
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.Balances = append(x.Balances, &types.Coin{})
+				x.Balances = append(x.Balances, &v1beta11.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Balances[len(x.Balances)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -6172,7 +6172,7 @@ func (x *fastReflection_QueryCreditAccountResponse) ProtoMethods() *protoiface.M
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.AvailableBalances = append(x.AvailableBalances, &types.Coin{})
+				x.AvailableBalances = append(x.AvailableBalances, &v1beta11.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.AvailableBalances[len(x.AvailableBalances)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -7511,7 +7511,7 @@ func (x *fastReflection_QueryWithdrawableAmountRequest) ProtoMethods() *protoifa
 var _ protoreflect.List = (*_QueryWithdrawableAmountResponse_1_list)(nil)
 
 type _QueryWithdrawableAmountResponse_1_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta11.Coin
 }
 
 func (x *_QueryWithdrawableAmountResponse_1_list) Len() int {
@@ -7527,18 +7527,18 @@ func (x *_QueryWithdrawableAmountResponse_1_list) Get(i int) protoreflect.Value 
 
 func (x *_QueryWithdrawableAmountResponse_1_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta11.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_QueryWithdrawableAmountResponse_1_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta11.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_QueryWithdrawableAmountResponse_1_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta11.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -7551,7 +7551,7 @@ func (x *_QueryWithdrawableAmountResponse_1_list) Truncate(n int) {
 }
 
 func (x *_QueryWithdrawableAmountResponse_1_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta11.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -7744,7 +7744,7 @@ func (x *fastReflection_QueryWithdrawableAmountResponse) Mutable(fd protoreflect
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.QueryWithdrawableAmountResponse.amounts":
 		if x.Amounts == nil {
-			x.Amounts = []*types.Coin{}
+			x.Amounts = []*v1beta11.Coin{}
 		}
 		value := &_QueryWithdrawableAmountResponse_1_list{list: &x.Amounts}
 		return protoreflect.ValueOfList(value)
@@ -7762,7 +7762,7 @@ func (x *fastReflection_QueryWithdrawableAmountResponse) Mutable(fd protoreflect
 func (x *fastReflection_QueryWithdrawableAmountResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.QueryWithdrawableAmountResponse.amounts":
-		list := []*types.Coin{}
+		list := []*v1beta11.Coin{}
 		return protoreflect.ValueOfList(&_QueryWithdrawableAmountResponse_1_list{list: &list})
 	default:
 		if fd.IsExtension() {
@@ -7962,7 +7962,7 @@ func (x *fastReflection_QueryWithdrawableAmountResponse) ProtoMethods() *protoif
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.Amounts = append(x.Amounts, &types.Coin{})
+				x.Amounts = append(x.Amounts, &v1beta11.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Amounts[len(x.Amounts)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -8504,7 +8504,7 @@ func (x *fastReflection_QueryProviderWithdrawableRequest) ProtoMethods() *protoi
 var _ protoreflect.List = (*_QueryProviderWithdrawableResponse_1_list)(nil)
 
 type _QueryProviderWithdrawableResponse_1_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta11.Coin
 }
 
 func (x *_QueryProviderWithdrawableResponse_1_list) Len() int {
@@ -8520,18 +8520,18 @@ func (x *_QueryProviderWithdrawableResponse_1_list) Get(i int) protoreflect.Valu
 
 func (x *_QueryProviderWithdrawableResponse_1_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta11.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_QueryProviderWithdrawableResponse_1_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta11.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_QueryProviderWithdrawableResponse_1_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta11.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -8544,7 +8544,7 @@ func (x *_QueryProviderWithdrawableResponse_1_list) Truncate(n int) {
 }
 
 func (x *_QueryProviderWithdrawableResponse_1_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta11.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -8552,11 +8552,58 @@ func (x *_QueryProviderWithdrawableResponse_1_list) IsValid() bool {
 	return x.list != nil
 }
 
+var _ protoreflect.List = (*_QueryProviderWithdrawableResponse_5_list)(nil)
+
+type _QueryProviderWithdrawableResponse_5_list struct {
+	list *[]string
+}
+
+func (x *_QueryProviderWithdrawableResponse_5_list) Len() int {
+	if x.list == nil {
+		return 0
+	}
+	return len(*x.list)
+}
+
+func (x *_QueryProviderWithdrawableResponse_5_list) Get(i int) protoreflect.Value {
+	return protoreflect.ValueOfString((*x.list)[i])
+}
+
+func (x *_QueryProviderWithdrawableResponse_5_list) Set(i int, value protoreflect.Value) {
+	valueUnwrapped := value.String()
+	concreteValue := valueUnwrapped
+	(*x.list)[i] = concreteValue
+}
+
+func (x *_QueryProviderWithdrawableResponse_5_list) Append(value protoreflect.Value) {
+	valueUnwrapped := value.String()
+	concreteValue := valueUnwrapped
+	*x.list = append(*x.list, concreteValue)
+}
+
+func (x *_QueryProviderWithdrawableResponse_5_list) AppendMutable() protoreflect.Value {
+	panic(fmt.Errorf("AppendMutable can not be called on message QueryProviderWithdrawableResponse at list field FailedLeaseUuids as it is not of Message kind"))
+}
+
+func (x *_QueryProviderWithdrawableResponse_5_list) Truncate(n int) {
+	*x.list = (*x.list)[:n]
+}
+
+func (x *_QueryProviderWithdrawableResponse_5_list) NewElement() protoreflect.Value {
+	v := ""
+	return protoreflect.ValueOfString(v)
+}
+
+func (x *_QueryProviderWithdrawableResponse_5_list) IsValid() bool {
+	return x.list != nil
+}
+
 var (
-	md_QueryProviderWithdrawableResponse             protoreflect.MessageDescriptor
-	fd_QueryProviderWithdrawableResponse_amounts     protoreflect.FieldDescriptor
-	fd_QueryProviderWithdrawableResponse_lease_count protoreflect.FieldDescriptor
-	fd_QueryProviderWithdrawableResponse_pagination  protoreflect.FieldDescriptor
+	md_QueryProviderWithdrawableResponse                    protoreflect.MessageDescriptor
+	fd_QueryProviderWithdrawableResponse_amounts            protoreflect.FieldDescriptor
+	fd_QueryProviderWithdrawableResponse_lease_count        protoreflect.FieldDescriptor
+	fd_QueryProviderWithdrawableResponse_pagination         protoreflect.FieldDescriptor
+	fd_QueryProviderWithdrawableResponse_failed_lease_uuids protoreflect.FieldDescriptor
 )
 
 func init() {
@@ -8565,6 +8612,7 @@ func init() {
 	fd_QueryProviderWithdrawableResponse_amounts = md_QueryProviderWithdrawableResponse.Fields().ByName("amounts")
 	fd_QueryProviderWithdrawableResponse_lease_count = md_QueryProviderWithdrawableResponse.Fields().ByName("lease_count")
 	fd_QueryProviderWithdrawableResponse_pagination = md_QueryProviderWithdrawableResponse.Fields().ByName("pagination")
+	fd_QueryProviderWithdrawableResponse_failed_lease_uuids = md_QueryProviderWithdrawableResponse.Fields().ByName("failed_lease_uuids")
 }
 
 var _ protoreflect.Message = (*fastReflection_QueryProviderWithdrawableResponse)(nil)
@@ -8650,6 +8698,12 @@ func (x *fastReflection_QueryProviderWithdrawableResponse) Range(f func(protoref
 			return
 		}
 	}
+	if len(x.FailedLeaseUuids) != 0 {
+		value := protoreflect.ValueOfList(&_QueryProviderWithdrawableResponse_5_list{list: &x.FailedLeaseUuids})
+		if !f(fd_QueryProviderWithdrawableResponse_failed_lease_uuids, value) {
+			return
+		}
+	}
 }
 
 // Has reports whether a field is populated.
@@ -8671,6 +8725,8 @@ func (x *fastReflection_QueryProviderWithdrawableResponse) Has(fd protoreflect.F
 		return x.LeaseCount != uint64(0)
 	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.pagination":
 		return x.Pagination != nil
+	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.failed_lease_uuids":
+		return len(x.FailedLeaseUuids) != 0
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.QueryProviderWithdrawableResponse"))
@@ -8693,6 +8749,8 @@ func (x *fastReflection_QueryProviderWithdrawableResponse) Clear(fd protoreflect
 		x.LeaseCount = uint64(0)
 	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.pagination":
 		x.Pagination = nil
+	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.failed_lease_uuids":
+		x.FailedLeaseUuids = nil
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.QueryProviderWithdrawableResponse"))
@@ -8721,6 +8779,12 @@ func (x *fastReflection_QueryProviderWithdrawableResponse) Get(descriptor protor
 	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.pagination":
 		value := x.Pagination
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
+	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.failed_lease_uuids":
+		if len(x.FailedLeaseUuids) == 0 {
+			return protoreflect.ValueOfList(&_QueryProviderWithdrawableResponse_5_list{})
+		}
+		listValue := &_QueryProviderWithdrawableResponse_5_list{list: &x.FailedLeaseUuids}
+		return protoreflect.ValueOfList(listValue)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.QueryProviderWithdrawableResponse"))
@@ -8749,6 +8813,10 @@ func (x *fastReflection_QueryProviderWithdrawableResponse) Set(fd protoreflect.F
 		x.LeaseCount = value.Uint()
 	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.pagination":
 		x.Pagination = value.Message().Interface().(*v1beta1.PageResponse)
+	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.failed_lease_uuids":
+		lv := value.List()
+		clv := lv.(*_QueryProviderWithdrawableResponse_5_list)
+		x.FailedLeaseUuids = *clv.list
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.QueryProviderWithdrawableResponse"))
@@ -8771,7 +8839,7 @@ func (x *fastReflection_QueryProviderWithdrawableResponse) Mutable(fd protorefle
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.amounts":
 		if x.Amounts == nil {
-			x.Amounts = []*types.Coin{}
+			x.Amounts = []*v1beta11.Coin{}
 		}
 		value := &_QueryProviderWithdrawableResponse_1_list{list: &x.Amounts}
 		return protoreflect.ValueOfList(value)
@@ -8780,6 +8848,12 @@ func (x *fastReflection_QueryProviderWithdrawableResponse) Mutable(fd protorefle
 			x.Pagination = new(v1beta1.PageResponse)
 		}
 		return protoreflect.ValueOfMessage(x.Pagination.ProtoReflect())
+	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.failed_lease_uuids":
+		if x.FailedLeaseUuids == nil {
+			x.FailedLeaseUuids = []string{}
+		}
+		value := &_QueryProviderWithdrawableResponse_5_list{list: &x.FailedLeaseUuids}
+		return protoreflect.ValueOfList(value)
 	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.lease_count":
 		panic(fmt.Errorf("field lease_count of message liftedinit.billing.v1.QueryProviderWithdrawableResponse is not mutable"))
 	default:
@@ -8796,13 +8870,16 @@ func (x *fastReflection_QueryProviderWithdrawableResponse) Mutable(fd protorefle
 func (x *fastReflection_QueryProviderWithdrawableResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.amounts":
-		list := []*types.Coin{}
+		list := []*v1beta11.Coin{}
 		return protoreflect.ValueOfList(&_QueryProviderWithdrawableResponse_1_list{list: &list})
 	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.lease_count":
 		return protoreflect.ValueOfUint64(uint64(0))
 	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.pagination":
 		m := new(v1beta1.PageResponse)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
+	case "liftedinit.billing.v1.QueryProviderWithdrawableResponse.failed_lease_uuids":
+		list := []string{}
+		return protoreflect.ValueOfList(&_QueryProviderWithdrawableResponse_5_list{list: &list})
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.QueryProviderWithdrawableResponse"))
@@ -8885,6 +8962,12 @@ func (x *fastReflection_QueryProviderWithdrawableResponse) ProtoMethods() *proto
 			l = options.Size(x.Pagination)
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
+		if len(x.FailedLeaseUuids) > 0 {
+			for _, s := range x.FailedLeaseUuids {
+				l = len(s)
+				n += 1 + l + runtime.Sov(uint64(l))
+			}
+		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
 		}
@@ -8913,6 +8996,15 @@ func (x *fastReflection_QueryProviderWithdrawableResponse) ProtoMethods() *proto
 		if x.unknownFields != nil {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
+		}
+		if len(x.FailedLeaseUuids) > 0 {
+			for iNdEx := len(x.FailedLeaseUuids) - 1; iNdEx >= 0; iNdEx-- {
+				i -= len(x.FailedLeaseUuids[iNdEx])
+				copy(dAtA[i:], x.FailedLeaseUuids[iNdEx])
+				i = runtime.EncodeVarint(dAtA, i, uint64(len(x.FailedLeaseUuids[iNdEx])))
+				i--
+				dAtA[i] = 0x2a
+			}
 		}
 		if x.Pagination != nil {
 			encoded, err := options.Marshal(x.Pagination)
@@ -9027,7 +9119,7 @@ func (x *fastReflection_QueryProviderWithdrawableResponse) ProtoMethods() *proto
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.Amounts = append(x.Amounts, &types.Coin{})
+				x.Amounts = append(x.Amounts, &v1beta11.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Amounts[len(x.Amounts)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -9086,6 +9178,38 @@ func (x *fastReflection_QueryProviderWithdrawableResponse) ProtoMethods() *proto
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Pagination); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
+				iNdEx = postIndex
+			case 5:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field FailedLeaseUuids", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.FailedLeaseUuids = append(x.FailedLeaseUuids, string(dAtA[iNdEx:postIndex]))
 				iNdEx = postIndex
 			default:
 				iNdEx = preIndex
@@ -11673,7 +11797,7 @@ func (x *fastReflection_QueryCreditEstimateRequest) ProtoMethods() *protoiface.M
 var _ protoreflect.List = (*_QueryCreditEstimateResponse_1_list)(nil)
 
 type _QueryCreditEstimateResponse_1_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta11.Coin
 }
 
 func (x *_QueryCreditEstimateResponse_1_list) Len() int {
@@ -11689,18 +11813,18 @@ func (x *_QueryCreditEstimateResponse_1_list) Get(i int) protoreflect.Value {
 
 func (x *_QueryCreditEstimateResponse_1_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta11.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_QueryCreditEstimateResponse_1_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta11.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_QueryCreditEstimateResponse_1_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta11.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -11713,7 +11837,7 @@ func (x *_QueryCreditEstimateResponse_1_list) Truncate(n int) {
 }
 
 func (x *_QueryCreditEstimateResponse_1_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta11.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -11724,7 +11848,7 @@ func (x *_QueryCreditEstimateResponse_1_list) IsValid() bool {
 var _ protoreflect.List = (*_QueryCreditEstimateResponse_2_list)(nil)
 
 type _QueryCreditEstimateResponse_2_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta11.Coin
 }
 
 func (x *_QueryCreditEstimateResponse_2_list) Len() int {
@@ -11740,18 +11864,18 @@ func (x *_QueryCreditEstimateResponse_2_list) Get(i int) protoreflect.Value {
 
 func (x *_QueryCreditEstimateResponse_2_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta11.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_QueryCreditEstimateResponse_2_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta11.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_QueryCreditEstimateResponse_2_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta11.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -11764,7 +11888,7 @@ func (x *_QueryCreditEstimateResponse_2_list) Truncate(n int) {
 }
 
 func (x *_QueryCreditEstimateResponse_2_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta11.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -12013,13 +12137,13 @@ func (x *fastReflection_QueryCreditEstimateResponse) Mutable(fd protoreflect.Fie
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.QueryCreditEstimateResponse.current_balance":
 		if x.CurrentBalance == nil {
-			x.CurrentBalance = []*types.Coin{}
+			x.CurrentBalance = []*v1beta11.Coin{}
 		}
 		value := &_QueryCreditEstimateResponse_1_list{list: &x.CurrentBalance}
 		return protoreflect.ValueOfList(value)
 	case "liftedinit.billing.v1.QueryCreditEstimateResponse.total_rate_per_second":
 		if x.TotalRatePerSecond == nil {
-			x.TotalRatePerSecond = []*types.Coin{}
+			x.TotalRatePerSecond = []*v1beta11.Coin{}
 		}
 		value := &_QueryCreditEstimateResponse_2_list{list: &x.TotalRatePerSecond}
 		return protoreflect.ValueOfList(value)
@@ -12041,10 +12165,10 @@ func (x *fastReflection_QueryCreditEstimateResponse) Mutable(fd protoreflect.Fie
 func (x *fastReflection_QueryCreditEstimateResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.QueryCreditEstimateResponse.current_balance":
-		list := []*types.Coin{}
+		list := []*v1beta11.Coin{}
 		return protoreflect.ValueOfList(&_QueryCreditEstimateResponse_1_list{list: &list})
 	case "liftedinit.billing.v1.QueryCreditEstimateResponse.total_rate_per_second":
-		list := []*types.Coin{}
+		list := []*v1beta11.Coin{}
 		return protoreflect.ValueOfList(&_QueryCreditEstimateResponse_2_list{list: &list})
 	case "liftedinit.billing.v1.QueryCreditEstimateResponse.estimated_duration_seconds":
 		return protoreflect.ValueOfUint64(uint64(0))
@@ -12286,7 +12410,7 @@ func (x *fastReflection_QueryCreditEstimateResponse) ProtoMethods() *protoiface.
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.CurrentBalance = append(x.CurrentBalance, &types.Coin{})
+				x.CurrentBalance = append(x.CurrentBalance, &v1beta11.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.CurrentBalance[len(x.CurrentBalance)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -12320,7 +12444,7 @@ func (x *fastReflection_QueryCreditEstimateResponse) ProtoMethods() *protoiface.
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.TotalRatePerSecond = append(x.TotalRatePerSecond, &types.Coin{})
+				x.TotalRatePerSecond = append(x.TotalRatePerSecond, &v1beta11.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.TotalRatePerSecond[len(x.TotalRatePerSecond)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -13474,7 +13598,8 @@ type QueryLeasesRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// pagination defines an optional pagination for the request.
+	// pagination is cursor-only; non-zero offset and count_total are rejected,
+	// and limit is capped at 1000.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// state_filter filters leases by state. If UNSPECIFIED, returns all leases.
 	StateFilter LeaseState `protobuf:"varint,2,opt,name=state_filter,json=stateFilter,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state_filter,omitempty"`
@@ -13569,7 +13694,8 @@ type QueryLeasesByTenantRequest struct {
 
 	// tenant is the address of the tenant.
 	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	// pagination defines an optional pagination for the request.
+	// pagination is cursor-only; non-zero offset and count_total are rejected,
+	// and limit is capped at 1000.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// state_filter filters leases by state. If UNSPECIFIED, returns all leases.
 	StateFilter LeaseState `protobuf:"varint,3,opt,name=state_filter,json=stateFilter,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state_filter,omitempty"`
@@ -13672,7 +13798,8 @@ type QueryLeasesByProviderRequest struct {
 
 	// provider_uuid is the provider UUID.
 	ProviderUuid string `protobuf:"bytes,1,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
-	// pagination defines an optional pagination for the request.
+	// pagination is cursor-only; non-zero offset and count_total are rejected,
+	// and limit is capped at 1000.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// state_filter filters leases by state. If UNSPECIFIED, returns all leases.
 	StateFilter LeaseState `protobuf:"varint,3,opt,name=state_filter,json=stateFilter,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state_filter,omitempty"`
@@ -13827,11 +13954,11 @@ type QueryCreditAccountResponse struct {
 	CreditAccount *CreditAccount `protobuf:"bytes,1,opt,name=credit_account,json=creditAccount,proto3" json:"credit_account,omitempty"`
 	// balances is one page of all current balances at the credit address,
 	// fetched through the bank module's canonical balance query.
-	Balances []*types.Coin `protobuf:"bytes,2,rep,name=balances,proto3" json:"balances,omitempty"`
+	Balances []*v1beta11.Coin `protobuf:"bytes,2,rep,name=balances,proto3" json:"balances,omitempty"`
 	// available_balances is the amount from this balance page available for new
 	// leases (balances - reserved_amounts). It has the same pagination window as
 	// balances.
-	AvailableBalances []*types.Coin `protobuf:"bytes,3,rep,name=available_balances,json=availableBalances,proto3" json:"available_balances,omitempty"`
+	AvailableBalances []*v1beta11.Coin `protobuf:"bytes,3,rep,name=available_balances,json=availableBalances,proto3" json:"available_balances,omitempty"`
 	// pagination describes the returned bank-balance page.
 	Pagination *v1beta1.PageResponse `protobuf:"bytes,4,opt,name=pagination,proto3" json:"pagination,omitempty"`
 }
@@ -13863,14 +13990,14 @@ func (x *QueryCreditAccountResponse) GetCreditAccount() *CreditAccount {
 	return nil
 }
 
-func (x *QueryCreditAccountResponse) GetBalances() []*types.Coin {
+func (x *QueryCreditAccountResponse) GetBalances() []*v1beta11.Coin {
 	if x != nil {
 		return x.Balances
 	}
 	return nil
 }
 
-func (x *QueryCreditAccountResponse) GetAvailableBalances() []*types.Coin {
+func (x *QueryCreditAccountResponse) GetAvailableBalances() []*v1beta11.Coin {
 	if x != nil {
 		return x.AvailableBalances
 	}
@@ -14006,7 +14133,7 @@ type QueryWithdrawableAmountResponse struct {
 	unknownFields protoimpl.UnknownFields
 
 	// amounts is the amounts available for withdrawal (one per denom).
-	Amounts []*types.Coin `protobuf:"bytes,1,rep,name=amounts,proto3" json:"amounts,omitempty"`
+	Amounts []*v1beta11.Coin `protobuf:"bytes,1,rep,name=amounts,proto3" json:"amounts,omitempty"`
 }
 
 func (x *QueryWithdrawableAmountResponse) Reset() {
@@ -14029,7 +14156,7 @@ func (*QueryWithdrawableAmountResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_query_proto_rawDescGZIP(), []int{15}
 }
 
-func (x *QueryWithdrawableAmountResponse) GetAmounts() []*types.Coin {
+func (x *QueryWithdrawableAmountResponse) GetAmounts() []*v1beta11.Coin {
 	if x != nil {
 		return x.Amounts
 	}
@@ -14108,7 +14235,7 @@ type QueryProviderWithdrawableResponse struct {
 	// amounts is the estimated transfer from executing exactly this page in its
 	// returned index order (one entry per denom). It is not an additive slice of
 	// a provider-wide total.
-	Amounts []*types.Coin `protobuf:"bytes,1,rep,name=amounts,proto3" json:"amounts,omitempty"`
+	Amounts []*v1beta11.Coin `protobuf:"bytes,1,rep,name=amounts,proto3" json:"amounts,omitempty"`
 	// lease_count is the number of successfully simulated withdrawals in this
 	// page, including successful auto-closes with zero transfer. Failed
 	// simulations and ordinary zero-accrual leases are not counted. For a
@@ -14120,6 +14247,11 @@ type QueryProviderWithdrawableResponse struct {
 	// MsgWithdraw.key, whose cursor is the last processed lease and resumes
 	// strictly after it.
 	Pagination *v1beta1.PageResponse `protobuf:"bytes,4,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	// failed_lease_uuids lists leases whose isolated simulations failed, in the
+	// returned provider-index order. These leases are excluded from amounts and
+	// lease_count. For a comparable forward page, this matches provider-wide
+	// MsgWithdrawResponse.failed_lease_uuids at the same state and block time.
+	FailedLeaseUuids []string `protobuf:"bytes,5,rep,name=failed_lease_uuids,json=failedLeaseUuids,proto3" json:"failed_lease_uuids,omitempty"`
 }
 
 func (x *QueryProviderWithdrawableResponse) Reset() {
@@ -14142,7 +14274,7 @@ func (*QueryProviderWithdrawableResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_query_proto_rawDescGZIP(), []int{17}
 }
 
-func (x *QueryProviderWithdrawableResponse) GetAmounts() []*types.Coin {
+func (x *QueryProviderWithdrawableResponse) GetAmounts() []*v1beta11.Coin {
 	if x != nil {
 		return x.Amounts
 	}
@@ -14163,6 +14295,13 @@ func (x *QueryProviderWithdrawableResponse) GetPagination() *v1beta1.PageRespons
 	return nil
 }
 
+func (x *QueryProviderWithdrawableResponse) GetFailedLeaseUuids() []string {
+	if x != nil {
+		return x.FailedLeaseUuids
+	}
+	return nil
+}
+
 // QueryCreditAccountsRequest is the request type for the Query/CreditAccounts
 // RPC method.
 type QueryCreditAccountsRequest struct {
@@ -14170,7 +14309,8 @@ type QueryCreditAccountsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// pagination defines an optional pagination for the request.
+	// pagination is cursor-only; non-zero offset and count_total are rejected,
+	// and limit is capped at 1000.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 }
 
@@ -14257,7 +14397,9 @@ type QueryLeasesBySKURequest struct {
 
 	// sku_uuid is the UUID of the SKU.
 	SkuUuid string `protobuf:"bytes,1,opt,name=sku_uuid,json=skuUuid,proto3" json:"sku_uuid,omitempty"`
-	// pagination defines an optional pagination for the request.
+	// pagination is cursor-only; non-zero offset and count_total are rejected,
+	// and limit is capped at 1000. Filtered pages inspect at most 1000 index
+	// rows and may therefore be short while returning a continuation cursor.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// state_filter filters leases by state. If UNSPECIFIED, returns all leases.
 	StateFilter LeaseState `protobuf:"varint,3,opt,name=state_filter,json=stateFilter,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state_filter,omitempty"`
@@ -14398,9 +14540,10 @@ type QueryCreditEstimateResponse struct {
 
 	// current_balance is the tenant's raw bank balance for denominations used by
 	// active leases.
-	CurrentBalance []*types.Coin `protobuf:"bytes,1,rep,name=current_balance,json=currentBalance,proto3" json:"current_balance,omitempty"`
-	// total_rate_per_second is the combined rate of all active leases (per denom).
-	TotalRatePerSecond []*types.Coin `protobuf:"bytes,2,rep,name=total_rate_per_second,json=totalRatePerSecond,proto3" json:"total_rate_per_second,omitempty"`
+	CurrentBalance []*v1beta11.Coin `protobuf:"bytes,1,rep,name=current_balance,json=currentBalance,proto3" json:"current_balance,omitempty"`
+	// total_rate_per_second is the combined rate of all active leases (per
+	// denom).
+	TotalRatePerSecond []*v1beta11.Coin `protobuf:"bytes,2,rep,name=total_rate_per_second,json=totalRatePerSecond,proto3" json:"total_rate_per_second,omitempty"`
 	// estimated_duration_seconds is the gross balance runway at the current
 	// aggregate active rate, calculated as min(balance[denom] / rate[denom]). It
 	// deliberately does not subtract pending/other-lease reservations or
@@ -14431,14 +14574,14 @@ func (*QueryCreditEstimateResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_query_proto_rawDescGZIP(), []int{23}
 }
 
-func (x *QueryCreditEstimateResponse) GetCurrentBalance() []*types.Coin {
+func (x *QueryCreditEstimateResponse) GetCurrentBalance() []*v1beta11.Coin {
 	if x != nil {
 		return x.CurrentBalance
 	}
 	return nil
 }
 
-func (x *QueryCreditEstimateResponse) GetTotalRatePerSecond() []*types.Coin {
+func (x *QueryCreditEstimateResponse) GetTotalRatePerSecond() []*v1beta11.Coin {
 	if x != nil {
 		return x.TotalRatePerSecond
 	}
@@ -14740,7 +14883,7 @@ var file_liftedinit_billing_v1_query_proto_rawDesc = []byte{
 	0x2e, 0x71, 0x75, 0x65, 0x72, 0x79, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x50,
 	0x61, 0x67, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x52, 0x0a, 0x70, 0x61, 0x67, 0x69,
 	0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4a, 0x04, 0x08, 0x02, 0x10, 0x03, 0x52, 0x05, 0x6c, 0x69,
-	0x6d, 0x69, 0x74, 0x22, 0xb1, 0x02, 0x0a, 0x21, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x72, 0x6f,
+	0x6d, 0x69, 0x74, 0x22, 0x81, 0x03, 0x0a, 0x21, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x72, 0x6f,
 	0x76, 0x69, 0x64, 0x65, 0x72, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x61, 0x62, 0x6c,
 	0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x70, 0x0a, 0x07, 0x61, 0x6d, 0x6f,
 	0x75, 0x6e, 0x74, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73,
@@ -14758,7 +14901,12 @@ var file_liftedinit_billing_v1_query_proto_rawDesc = []byte{
 	0x28, 0x0b, 0x32, 0x27, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65,
 	0x2e, 0x71, 0x75, 0x65, 0x72, 0x79, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x50,
 	0x61, 0x67, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x52, 0x0a, 0x70, 0x61, 0x67,
-	0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4a, 0x04, 0x08, 0x03, 0x10, 0x04, 0x52, 0x08, 0x68,
+	0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x4e, 0x0a, 0x12, 0x66, 0x61, 0x69, 0x6c, 0x65,
+	0x64, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x73, 0x18, 0x05, 0x20,
+	0x03, 0x28, 0x09, 0x42, 0x20, 0xea, 0xde, 0x1f, 0x1c, 0x66, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x5f,
+	0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x73, 0x2c, 0x6f, 0x6d, 0x69, 0x74,
+	0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x10, 0x66, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x4c, 0x65, 0x61,
+	0x73, 0x65, 0x55, 0x75, 0x69, 0x64, 0x73, 0x4a, 0x04, 0x08, 0x03, 0x10, 0x04, 0x52, 0x08, 0x68,
 	0x61, 0x73, 0x5f, 0x6d, 0x6f, 0x72, 0x65, 0x22, 0x64, 0x0a, 0x1a, 0x51, 0x75, 0x65, 0x72, 0x79,
 	0x43, 0x72, 0x65, 0x64, 0x69, 0x74, 0x41, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0x52, 0x65,
 	0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x46, 0x0a, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74,
@@ -15066,7 +15214,7 @@ var file_liftedinit_billing_v1_query_proto_goTypes = []interface{}{
 	(LeaseState)(0),                           // 29: liftedinit.billing.v1.LeaseState
 	(*v1beta1.PageResponse)(nil),              // 30: cosmos.base.query.v1beta1.PageResponse
 	(*CreditAccount)(nil),                     // 31: liftedinit.billing.v1.CreditAccount
-	(*types.Coin)(nil),                        // 32: cosmos.base.v1beta1.Coin
+	(*v1beta11.Coin)(nil),                     // 32: cosmos.base.v1beta1.Coin
 }
 var file_liftedinit_billing_v1_query_proto_depIdxs = []int32{
 	26, // 0: liftedinit.billing.v1.QueryParamsResponse.params:type_name -> liftedinit.billing.v1.Params

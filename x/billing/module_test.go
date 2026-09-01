@@ -2,6 +2,7 @@ package module_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -107,6 +108,35 @@ func TestAppModuleBasicValidateGenesisAcceptsHistoricalExports(t *testing.T) {
 		require.NoError(t, gs.Validate())
 		require.NoError(t, validateGenesis(t, gs))
 	})
+
+	t.Run("equivalent legacy allowed-list spellings", func(t *testing.T) {
+		gs := validGenesis(t)
+		allowed := gs.Leases[0].Tenant
+		gs.Params.AllowedList = []string{allowed, strings.ToUpper(allowed)}
+
+		require.ErrorIs(t, gs.ValidateStrict(), types.ErrInvalidParams)
+		require.NoError(t, gs.Validate())
+		require.NoError(t, validateGenesis(t, gs))
+	})
+
+	t.Run("stale derived lease count", func(t *testing.T) {
+		gs := validGenesis(t)
+		gs.CreditAccounts[0].ActiveLeaseCount = 0
+
+		require.ErrorIs(t, gs.ValidateStrict(), types.ErrInvalidCreditOperation)
+		require.NoError(t, gs.Validate())
+		require.NoError(t, validateGenesis(t, gs))
+	})
+
+	t.Run("pre-v4 derived reservation drift", func(t *testing.T) {
+		gs := validGenesis(t)
+		amount := gs.CreditAccounts[0].ReservedAmounts.AmountOf(testDenom).SubRaw(1)
+		gs.CreditAccounts[0].ReservedAmounts = sdk.NewCoins(sdk.NewCoin(testDenom, amount))
+
+		require.ErrorIs(t, gs.ValidateStrict(), types.ErrInvalidCreditOperation)
+		require.NoError(t, gs.Validate())
+		require.NoError(t, validateGenesis(t, gs))
+	})
 }
 
 func TestAppModuleBasicValidateGenesisRetainsImportInvariants(t *testing.T) {
@@ -134,13 +164,6 @@ func TestAppModuleBasicValidateGenesisRetainsImportInvariants(t *testing.T) {
 			expected: types.ErrInvalidLease,
 		},
 		{
-			name: "underreported active lease count",
-			mutate: func(gs *types.GenesisState) {
-				gs.CreditAccounts[0].ActiveLeaseCount = 0
-			},
-			expected: types.ErrInvalidCreditOperation,
-		},
-		{
 			name: "low lease sequence",
 			mutate: func(gs *types.GenesisState) {
 				gs.LeaseSequence = 0
@@ -148,12 +171,15 @@ func TestAppModuleBasicValidateGenesisRetainsImportInvariants(t *testing.T) {
 			expected: types.ErrInvalidLease,
 		},
 		{
-			name: "verifiable reservation mismatch",
+			name: "current-format reservation mismatch",
 			mutate: func(gs *types.GenesisState) {
+				gs.Leases[0].Reservation = &types.LeaseReservation{
+					RemainingAmounts: gs.CreditAccounts[0].ReservedAmounts,
+				}
 				amount := gs.CreditAccounts[0].ReservedAmounts.AmountOf(testDenom).SubRaw(1)
 				gs.CreditAccounts[0].ReservedAmounts = sdk.NewCoins(sdk.NewCoin(testDenom, amount))
 			},
-			expected: types.ErrInvalidCreditOperation,
+			expected: types.ErrReservationInvariant,
 		},
 	}
 

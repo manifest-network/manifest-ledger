@@ -25,6 +25,11 @@ type SettlementResult struct {
 	// math.Int. For silent settlement, only these denoms are clamped to their
 	// remaining credit balance. Order is deterministic first-detected overflow order.
 	AccrualOverflow []string
+	// SettledThrough is the timestamp through which whole seconds were charged.
+	// Live callers persist it instead of settleTime so a sub-second remainder is
+	// carried into the next settlement. Terminal callers intentionally discard
+	// that remainder by persisting their close time.
+	SettledThrough time.Time
 }
 
 // leaseItemDenoms returns the unique denoms used by a lease's items.
@@ -74,8 +79,9 @@ func CalculateTransferAmounts(accrued, available sdk.Coins) sdk.Coins {
 //   - error if settlement fails (including accrual calculation errors)
 //
 // Note: This function does NOT persist the lease or credit account and does not
-// update LastSettledAt. The caller must persist both in the same CacheContext
-// after a successful settlement.
+// update LastSettledAt. After a successful live settlement, the caller must set
+// LastSettledAt to SettlementResult.SettledThrough and persist both values in
+// the same CacheContext. A terminal close instead records its exact close time.
 func (k *Keeper) PerformSettlement(
 	ctx context.Context,
 	lease *types.Lease,
@@ -124,13 +130,16 @@ func (k *Keeper) performSettlementCore(
 			TransferAmounts:    sdk.NewCoins(),
 			AccruedAmounts:     sdk.NewCoins(),
 			CreditBalanceAfter: creditBalances,
+			SettledThrough:     lease.LastSettledAt,
 		}, nil
 	}
-	durationSeconds, err := elapsedWholeSeconds(lease.LastSettledAt, settleTime)
+	durationSeconds, accrualCursor, err := elapsedWholeSecondsAndAccrualCursor(
+		lease.LastSettledAt,
+		settleTime,
+	)
 	if err != nil {
 		return nil, err
 	}
-	duration := settleTime.Sub(lease.LastSettledAt) // logging only; may saturate
 
 	// Calculate accrued amounts
 	items := LeaseItemsToWithPrice(lease.Items)
@@ -145,7 +154,7 @@ func (k *Keeper) performSettlementCore(
 			k.logger.Warn("accrual calculation overflow during settlement, will transfer remaining credit",
 				"lease_uuid", lease.Uuid,
 				"tenant", lease.Tenant,
-				"duration", duration.String(),
+				"duration_seconds", durationSeconds.String(),
 				"denoms", accrualOverflow.Denoms,
 				"error", err,
 			)
@@ -197,6 +206,7 @@ func (k *Keeper) performSettlementCore(
 			AccruedAmounts:     sdk.NewCoins(),
 			CreditBalanceAfter: creditBalances,
 			AccrualOverflow:    overflowDenoms,
+			SettledThrough:     accrualCursor,
 		}, nil
 	}
 
@@ -218,6 +228,7 @@ func (k *Keeper) performSettlementCore(
 			AccruedAmounts:     accruedAmounts,
 			CreditBalanceAfter: creditBalances,
 			AccrualOverflow:    overflowDenoms,
+			SettledThrough:     accrualCursor,
 		}, nil
 	}
 
@@ -281,5 +292,6 @@ func (k *Keeper) performSettlementCore(
 		AccruedAmounts:     accruedAmounts,
 		CreditBalanceAfter: spendPlan.BalanceAfter,
 		AccrualOverflow:    overflowDenoms,
+		SettledThrough:     accrualCursor,
 	}, nil
 }

@@ -1,3 +1,4 @@
+// Package module wires the SKU module into the application.
 package module
 
 import (
@@ -12,6 +13,7 @@ import (
 
 	modulev1 "github.com/manifest-network/manifest-ledger/api/liftedinit/sku/module/v1"
 	"github.com/manifest-network/manifest-ledger/x/sku/keeper"
+	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 var _ appmodule.AppModule = AppModule{}
@@ -35,9 +37,11 @@ func init() {
 type ModuleInputs struct {
 	depinject.In
 
-	Cdc          codec.Codec
-	StoreService store.KVStoreService
-	Logger       log.Logger
+	Cdc           codec.Codec
+	StoreService  store.KVStoreService
+	Logger        log.Logger
+	AccountKeeper types.AccountKeeper
+	BankKeeper    types.BankKeeper
 }
 
 // ModuleOutputs defines the outputs provided by the module.
@@ -57,6 +61,8 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		in.StoreService,
 		in.Logger,
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+		in.AccountKeeper,
+		in.BankKeeper,
 	)
 	m := NewAppModule(in.Cdc, k)
 

@@ -454,6 +454,7 @@ func TestPerformSettlement_IntervalBeyondDurationRange(t *testing.T) {
 	require.Greater(t, expectedSeconds, int64((time.Duration(1<<63-1))/time.Second))
 	require.Equal(t, sdkmath.NewInt(expectedSeconds), result.AccruedAmounts.AmountOf(testDenom))
 	require.Equal(t, sdkmath.NewInt(expectedSeconds), result.TransferAmounts.AmountOf(testDenom))
+	require.True(t, result.SettledThrough.Equal(settleTime.Add(-900*time.Millisecond)))
 }
 
 func TestPerformSettlement_CheckedPriceQuantityOverflow(t *testing.T) {

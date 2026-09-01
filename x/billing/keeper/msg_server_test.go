@@ -4493,9 +4493,8 @@ func TestAddressEventAttributesUseCanonicalBech32(t *testing.T) {
 	uppercaseTenant := strings.ToUpper(tenant.String())
 	uppercaseProvider := strings.ToUpper(providerAddr.String())
 
-	// x/sku historically persists its public string value unchanged. Seed both
-	// provider addresses in uppercase to distinguish SDK identity handling from
-	// the raw string comparisons and event values this regression replaces.
+	// Supply uppercase wire spellings and verify SKU storage/API normalization,
+	// billing authorization, and event attributes all use SDK address identity.
 	provider := f.createTestProvider(
 		t,
 		uppercaseProvider,
@@ -4503,8 +4502,8 @@ func TestAddressEventAttributesUseCanonicalBech32(t *testing.T) {
 	)
 	storedProvider, err := f.App.SKUKeeper.GetProvider(f.Ctx, provider.Uuid)
 	require.NoError(t, err)
-	require.Equal(t, uppercaseProvider, storedProvider.Address)
-	require.Equal(t, strings.ToUpper(payoutAddr.String()), storedProvider.PayoutAddress)
+	require.Equal(t, providerAddr.String(), storedProvider.Address)
+	require.Equal(t, payoutAddr.String(), storedProvider.PayoutAddress)
 	sku := f.createTestSKU(t, provider.Uuid, 3600)
 
 	creditAddr := types.DeriveCreditAddress(tenant)

@@ -98,11 +98,16 @@ func (e *AccrualOverflowError) Error() string {
 // Unwrap supports errors.Is/errors.As while Cause and the ABCI methods retain
 // the registered billing error code through Cosmos SDK error wrapping.
 func (e *AccrualOverflowError) Unwrap() error { return types.ErrArithmeticOverflow }
-func (e *AccrualOverflowError) Cause() error  { return types.ErrArithmeticOverflow }
+
+// Cause returns the registered billing arithmetic-overflow error.
+func (e *AccrualOverflowError) Cause() error { return types.ErrArithmeticOverflow }
+
+// ABCICode returns the registered billing arithmetic-overflow ABCI code.
 func (e *AccrualOverflowError) ABCICode() uint32 {
 	return types.ErrArithmeticOverflow.ABCICode()
 }
 
+// Codespace returns the billing module's error codespace.
 func (e *AccrualOverflowError) Codespace() string {
 	return types.ErrArithmeticOverflow.Codespace()
 }
@@ -183,6 +188,30 @@ func elapsedWholeSeconds(start, end time.Time) (math.Int, error) {
 		return math.Int{}, errorsmod.Wrap(types.ErrArithmeticOverflow, "adjust timestamp second difference")
 	}
 	return seconds, nil
+}
+
+// elapsedWholeSecondsAndAccrualCursor returns the billable whole seconds in a
+// forward interval and the timestamp through which those seconds reach. The
+// cursor deliberately excludes the interval's sub-second remainder so a live
+// lease can carry that remainder into its next settlement.
+//
+// The cursor is derived by subtracting at most one second from end. It never
+// converts the complete interval to time.Duration, whose roughly 292-year
+// range would otherwise saturate and undercharge historical timestamps.
+func elapsedWholeSecondsAndAccrualCursor(start, end time.Time) (math.Int, time.Time, error) {
+	seconds, err := elapsedWholeSeconds(start, end)
+	if err != nil {
+		return math.Int{}, time.Time{}, err
+	}
+	if !end.After(start) {
+		return seconds, start, nil
+	}
+
+	remainderNanoseconds := int64(end.Nanosecond()) - int64(start.Nanosecond())
+	if remainderNanoseconds < 0 {
+		remainderNanoseconds += int64(time.Second)
+	}
+	return seconds, end.Add(-time.Duration(remainderNanoseconds)), nil
 }
 
 func removeCoinByDenom(coins sdk.Coins, denom string) sdk.Coins {

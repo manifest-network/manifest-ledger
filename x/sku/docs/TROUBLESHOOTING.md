@@ -121,6 +121,14 @@ or simply raise the price.
 
 ## API URL Issues
 
+### "clear_api_url cannot be true when api_url is non-empty"
+
+**Cause**: An update requested two conflicting operations: set the URL and
+clear it.
+
+**Solution**: Use exactly one of `--api-url <https-url>` or
+`--clear-api-url`. Omit both to preserve the existing URL.
+
 ### "invalid API URL" (not HTTPS)
 
 **Cause**: The API URL doesn't use HTTPS scheme.
@@ -164,7 +172,7 @@ manifestd tx sku create-provider manifest1... manifest1... --api-url https://api
 
 ### "invalid API URL" (too long)
 
-**Cause**: The API URL exceeds the maximum length of 2048 characters.
+**Cause**: The API URL exceeds the maximum encoded length of 2048 UTF-8 bytes.
 
 **Solution**: Use a shorter URL. Consider using a URL shortener service or a shorter domain/path.
 

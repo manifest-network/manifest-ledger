@@ -64,7 +64,9 @@ func (msg *MsgCreateProvider) Validate() error {
 	return nil
 }
 
-// NewMsgUpdateProvider creates a new MsgUpdateProvider instance.
+// NewMsgUpdateProvider creates a new MsgUpdateProvider instance. An empty
+// apiURL preserves the existing URL; callers can explicitly clear it by
+// setting ClearApiUrl on the returned message.
 func NewMsgUpdateProvider(
 	authority string,
 	uuid string,
@@ -108,7 +110,11 @@ func (msg *MsgUpdateProvider) Validate() error {
 		return ErrInvalidProvider.Wrapf("meta_hash exceeds maximum length of %d bytes", MaxMetaHashLength)
 	}
 
-	// Validate api_url if provided (empty means keep existing)
+	if msg.ClearApiUrl && msg.ApiUrl != "" {
+		return ErrInvalidAPIURL.Wrap("clear_api_url cannot be true when api_url is non-empty")
+	}
+
+	// Validate api_url if provided (empty means keep existing unless clear_api_url is true)
 	if msg.ApiUrl != "" {
 		if err := ValidateAPIURL(msg.ApiUrl); err != nil {
 			return err
@@ -182,7 +188,7 @@ func (msg *MsgCreateSKU) Validate() error {
 	}
 
 	if len(msg.Name) > MaxSKUNameLength {
-		return ErrInvalidSKU.Wrapf("name exceeds maximum length of %d characters", MaxSKUNameLength)
+		return ErrInvalidSKU.Wrapf("name exceeds maximum length of %d bytes", MaxSKUNameLength)
 	}
 
 	if msg.Unit == Unit_UNIT_UNSPECIFIED {
@@ -248,7 +254,7 @@ func (msg *MsgUpdateSKU) Validate() error {
 	}
 
 	if len(msg.Name) > MaxSKUNameLength {
-		return ErrInvalidSKU.Wrapf("name exceeds maximum length of %d characters", MaxSKUNameLength)
+		return ErrInvalidSKU.Wrapf("name exceeds maximum length of %d bytes", MaxSKUNameLength)
 	}
 
 	if msg.Unit == Unit_UNIT_UNSPECIFIED {
@@ -316,7 +322,7 @@ func (msg *MsgUpdateParams) Validate() error {
 // ValidateAPIURL validates that the API URL is a valid HTTPS URL.
 func ValidateAPIURL(apiURL string) error {
 	if len(apiURL) > MaxAPIURLLength {
-		return ErrInvalidAPIURL.Wrapf("api_url exceeds maximum length of %d characters", MaxAPIURLLength)
+		return ErrInvalidAPIURL.Wrapf("api_url exceeds maximum length of %d bytes", MaxAPIURLLength)
 	}
 
 	parsedURL, err := url.Parse(apiURL)

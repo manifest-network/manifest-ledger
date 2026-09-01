@@ -16,6 +16,7 @@ package keeper_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -199,8 +200,10 @@ func TestInitGenesis(t *testing.T) {
 	// Mint and send to credit address
 	f.fundAccount(t, creditAddr, sdk.NewCoins(balance))
 
+	params := types.DefaultParams()
+	params.AllowedList = []string{providerAddr.String(), strings.ToUpper(providerAddr.String())}
 	genesisState := &types.GenesisState{
-		Params: types.DefaultParams(),
+		Params: params,
 		Leases: []types.Lease{
 			{
 				Uuid:         "01912345-6789-7abc-8def-0123456789ab",
@@ -233,6 +236,10 @@ func TestInitGenesis(t *testing.T) {
 
 	err = k.InitGenesis(f.Ctx, genesisState)
 	require.NoError(t, err)
+	require.Len(t, genesisState.Params.AllowedList, 2, "InitGenesis must not mutate its input")
+	storedParams, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{providerAddr.String()}, storedParams.AllowedList)
 
 	// Verify lease was imported
 	lease, err := k.GetLease(f.Ctx, "01912345-6789-7abc-8def-0123456789ab")
@@ -468,7 +475,7 @@ func TestInitGenesis_NilReservedAmountDoesNotPanic(t *testing.T) {
 	})
 }
 
-func TestInitGenesis_RejectsUnderreportedActiveLeaseCountBeforeWrites(t *testing.T) {
+func TestInitGenesis_RepairsUnderreportedActiveLeaseCount(t *testing.T) {
 	f := initFixture(t)
 	k := f.App.BillingKeeper
 
@@ -513,27 +520,34 @@ func TestInitGenesis_RejectsUnderreportedActiveLeaseCountBeforeWrites(t *testing
 		LeaseSequence: 1,
 	}
 
-	// The old InitGenesis check accepted this state because every timestamp is valid.
+	// Timestamp validation is independent of the cached-count repair.
 	require.NoError(t, genesisState.ValidateWithBlockTime(f.Ctx.BlockTime()))
 
-	err = k.InitGenesis(f.Ctx, genesisState)
-	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
-	require.Contains(t, err.Error(), "active_lease_count 0 but has 1 active leases")
+	require.NoError(t, k.InitGenesis(f.Ctx, genesisState))
+	require.Zero(t, genesisState.CreditAccounts[0].ActiveLeaseCount, "InitGenesis must not mutate its input")
 
-	// Validation must fail before any billing state is written.
 	paramsAfter, err := k.GetParams(f.Ctx)
 	require.NoError(t, err)
-	require.Equal(t, paramsBefore, paramsAfter)
-	_, err = k.GetLease(f.Ctx, lease.Uuid)
-	require.ErrorIs(t, err, types.ErrLeaseNotFound)
-	_, err = k.GetCreditAccount(f.Ctx, tenant.String())
-	require.ErrorIs(t, err, types.ErrCreditAccountNotFound)
+	require.Equal(t, genesisParams, paramsAfter)
+	storedLease, err := k.GetLease(f.Ctx, lease.Uuid)
+	require.NoError(t, err)
+	expectedLease := lease
+	expectedLease.Reservation = &types.LeaseReservation{}
+	require.Equal(t, expectedLease, storedLease)
+	storedAccount, err := k.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), storedAccount.ActiveLeaseCount)
+	require.Zero(t, storedAccount.PendingLeaseCount)
 }
 
 func TestInitGenesis_InvalidProviderReference(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.BillingKeeper
+	paramsBefore, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	genesisParams := paramsBefore
+	genesisParams.MaxLeasesPerTenant++
 
 	tenant := f.TestAccs[0]
 	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
@@ -541,7 +555,7 @@ func TestInitGenesis_InvalidProviderReference(t *testing.T) {
 
 	// Create genesis with a lease referencing a non-existent provider
 	genesisState := &types.GenesisState{
-		Params: types.DefaultParams(),
+		Params: genesisParams,
 		Leases: []types.Lease{
 			{
 				Uuid:         "01912345-6789-7abc-8def-0123456789ab",
@@ -575,6 +589,14 @@ func TestInitGenesis_InvalidProviderReference(t *testing.T) {
 	err = k.InitGenesis(f.Ctx, genesisState)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "non-existent provider")
+
+	paramsAfter, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, paramsBefore, paramsAfter)
+	_, err = k.GetLease(f.Ctx, genesisState.Leases[0].Uuid)
+	require.ErrorIs(t, err, types.ErrLeaseNotFound)
+	_, err = k.GetCreditAccount(f.Ctx, tenant.String())
+	require.ErrorIs(t, err, types.ErrCreditAccountNotFound)
 }
 
 func TestInitGenesis_InvalidSKUReference(t *testing.T) {
@@ -1089,10 +1111,20 @@ func TestCreditAccountOperations(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrCreditAccountNotFound)
 
-	// Create credit account
-	ca := types.CreditAccount{
+	// Reject a mismatched derived identity without writing either side of the index.
+	err = k.SetCreditAccount(f.Ctx, types.CreditAccount{
 		Tenant:        tenant.String(),
-		CreditAddress: creditAddr.String(),
+		CreditAddress: f.TestAccs[1].String(),
+	})
+	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+	_, err = k.GetCreditAccount(f.Ctx, tenant.String())
+	require.ErrorIs(t, err, types.ErrCreditAccountNotFound)
+
+	// Accept equivalent Bech32 spellings, but canonicalize the public value and
+	// use decoded address bytes for both store keys.
+	ca := types.CreditAccount{
+		Tenant:        strings.ToUpper(tenant.String()),
+		CreditAddress: strings.ToUpper(creditAddr.String()),
 	}
 	err = k.SetCreditAccount(f.Ctx, ca)
 	require.NoError(t, err)
@@ -1100,8 +1132,8 @@ func TestCreditAccountOperations(t *testing.T) {
 	// Get credit account
 	gotCA, err := k.GetCreditAccount(f.Ctx, tenant.String())
 	require.NoError(t, err)
-	require.Equal(t, ca.Tenant, gotCA.Tenant)
-	require.Equal(t, ca.CreditAddress, gotCA.CreditAddress)
+	require.Equal(t, tenant.String(), gotCA.Tenant)
+	require.Equal(t, creditAddr.String(), gotCA.CreditAddress)
 }
 
 // TestActiveLeaseCountAccuracy verifies that ActiveLeaseCount tracking is accurate

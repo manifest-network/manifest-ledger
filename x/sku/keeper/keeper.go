@@ -1,3 +1,4 @@
+// Package keeper implements SKU module state transitions and queries.
 package keeper
 
 import (
@@ -11,8 +12,6 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	accountkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
-	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
@@ -117,12 +116,14 @@ func NewSKUIndexes(sb *collections.SchemaBuilder) SKUIndexes {
 
 // Keeper of the sku store.
 type Keeper struct {
-	cdc    codec.BinaryCodec
-	logger log.Logger
+	cdc          codec.BinaryCodec
+	storeService storetypes.KVStoreService
+	logger       log.Logger
 
-	// keepers for simulation
-	accountKeeper accountkeeper.AccountKeeper
-	bankKeeper    bankkeeper.Keeper
+	// Simulation dependencies are constructor-injected so the module cannot be
+	// wired with a partially initialized keeper.
+	accountKeeper types.AccountKeeper
+	bankKeeper    types.BankKeeper
 
 	// state management
 	Schema    collections.Schema
@@ -143,28 +144,33 @@ func NewKeeper(
 	storeService storetypes.KVStoreService,
 	logger log.Logger,
 	authority string,
+	accountKeeper types.AccountKeeper,
+	bankKeeper types.BankKeeper,
 ) Keeper {
 	logger = logger.With(log.ModuleKey, "x/"+types.ModuleName)
 
 	sb := collections.NewSchemaBuilder(storeService)
 
 	k := Keeper{
-		cdc:       cdc,
-		logger:    logger,
-		authority: authority,
+		cdc:           cdc,
+		storeService:  storeService,
+		logger:        logger,
+		authority:     authority,
+		accountKeeper: accountKeeper,
+		bankKeeper:    bankKeeper,
 
 		Params: collections.NewItem(
 			sb,
 			types.ParamsKey,
 			"params",
-			codec.CollValue[types.Params](cdc),
+			newParamsValueCodec(cdc),
 		),
 		Providers: collections.NewIndexedMap(
 			sb,
 			types.ProviderKey,
 			"providers",
 			collections.StringKey,
-			codec.CollValue[types.Provider](cdc),
+			newProviderValueCodec(cdc),
 			NewProviderIndexes(sb),
 		),
 		SKUs: collections.NewIndexedMap(
@@ -213,23 +219,13 @@ func (k *Keeper) SetAuthority(authority string) {
 	k.authority = authority
 }
 
-// SetAccountKeeper sets the account keeper (used for simulation/testing).
-func (k *Keeper) SetAccountKeeper(ak accountkeeper.AccountKeeper) {
-	k.accountKeeper = ak
-}
-
 // GetAccountKeeper returns the account keeper.
-func (k *Keeper) GetAccountKeeper() accountkeeper.AccountKeeper {
+func (k *Keeper) GetAccountKeeper() types.AccountKeeper {
 	return k.accountKeeper
 }
 
-// SetBankKeeper sets the bank keeper (used for simulation/testing).
-func (k *Keeper) SetBankKeeper(bk bankkeeper.Keeper) {
-	k.bankKeeper = bk
-}
-
 // GetBankKeeper returns the bank keeper.
-func (k *Keeper) GetBankKeeper() bankkeeper.Keeper {
+func (k *Keeper) GetBankKeeper() types.BankKeeper {
 	return k.bankKeeper
 }
 
@@ -245,17 +241,22 @@ func (k *Keeper) SetParams(ctx context.Context, params types.Params) error {
 
 // InitGenesis initializes the module's state from a provided genesis state.
 func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error {
-	if err := k.Params.Set(ctx, gs.Params); err != nil {
+	prepared, err := gs.PrepareForImport()
+	if err != nil {
 		return err
 	}
 
-	for _, provider := range gs.Providers {
+	if err := k.Params.Set(ctx, prepared.Params); err != nil {
+		return err
+	}
+
+	for _, provider := range prepared.Providers {
 		if err := k.Providers.Set(ctx, provider.Uuid, provider); err != nil {
 			return err
 		}
 	}
 
-	for _, sku := range gs.Skus {
+	for _, sku := range prepared.Skus {
 		if err := k.SKUs.Set(ctx, sku.Uuid, sku); err != nil {
 			return err
 		}
@@ -263,13 +264,13 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 
 	// Restore UUID generation sequences so new entities don't collide
 	// with previously generated UUIDs after a genesis export/import cycle.
-	if gs.ProviderSequence > 0 {
-		if err := k.ProviderSequence.Set(ctx, gs.ProviderSequence); err != nil {
+	if prepared.ProviderSequence > 0 {
+		if err := k.ProviderSequence.Set(ctx, prepared.ProviderSequence); err != nil {
 			return err
 		}
 	}
-	if gs.SkuSequence > 0 {
-		if err := k.SKUSequence.Set(ctx, gs.SkuSequence); err != nil {
+	if prepared.SkuSequence > 0 {
+		if err := k.SKUSequence.Set(ctx, prepared.SkuSequence); err != nil {
 			return err
 		}
 	}
@@ -411,14 +412,16 @@ func (k *Keeper) GetAllSKUs(ctx context.Context) ([]types.SKU, error) {
 // GetSKUsByProviderUUID returns all SKUs for a given provider UUID using the provider index.
 // WARNING: This loads all SKUs into memory. For large datasets or batch operations,
 // use IterateActiveSKUsByProvider instead to process SKUs with a limit.
-func (k *Keeper) GetSKUsByProviderUUID(ctx context.Context, providerUUID string) ([]types.SKU, error) {
-	var skus []types.SKU
-
+func (k *Keeper) GetSKUsByProviderUUID(ctx context.Context, providerUUID string) (skus []types.SKU, err error) {
 	iter, err := k.SKUs.Indexes.Provider.MatchExact(ctx, providerUUID)
 	if err != nil {
 		return nil, err
 	}
-	defer iter.Close()
+	defer func() {
+		if closeErr := iter.Close(); err == nil {
+			err = closeErr
+		}
+	}()
 
 	for ; iter.Valid(); iter.Next() {
 		skuUUID, err := iter.PrimaryKey()
@@ -449,7 +452,9 @@ func (k *Keeper) IterateActiveSKUsByProvider(
 	if err != nil {
 		return 0, false, err
 	}
-	defer iter.Close()
+	defer func() {
+		err = errors.Join(err, iter.Close())
+	}()
 
 	for ; iter.Valid(); iter.Next() {
 		// Check if we've reached the limit
@@ -492,7 +497,10 @@ func (k *Keeper) HasActiveSKUsByProvider(ctx context.Context, providerUUID strin
 	if err != nil {
 		return false, err
 	}
-	defer iter.Close()
 
-	return iter.Valid(), nil
+	hasActive := iter.Valid()
+	if err := iter.Close(); err != nil {
+		return false, err
+	}
+	return hasActive, nil
 }

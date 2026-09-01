@@ -282,7 +282,7 @@ close-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-0000000
 		},
 	}
 
-	cmd.Flags().String("reason", "", "Reason for closing the leases (max 256 characters, applied to all)")
+	cmd.Flags().String("reason", "", "Reason for closing the leases (max 256 UTF-8 bytes, applied to all)")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd
@@ -615,7 +615,7 @@ reject-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000
 		},
 	}
 
-	cmd.Flags().String("reason", "", "Reason for rejecting the leases (max 256 characters, applied to all)")
+	cmd.Flags().String("reason", "", "Reason for rejecting the leases (max 256 UTF-8 bytes, applied to all)")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd

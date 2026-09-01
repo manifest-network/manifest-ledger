@@ -1,6 +1,7 @@
 name: Build Manifest
 
 on:
+  workflow_call:
   push:
     branches:
       - main
@@ -11,57 +12,170 @@ on:
       - release/**
     types: [opened, reopened, synchronize]
 
+permissions:
+  contents: read
+
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: build-manifest-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  GO_VERSION: 1.25.9
+  GO_VERSION: 1.26.7
+  GORELEASER_VERSION: v2.18.0
+  GORELEASER_TOOLCHAIN: go1.27.1
+  SYFT_CHECK_FOR_APP_UPDATE: "false"
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
-        arch: [amd64]
-        targetos: [darwin, linux]
+        include:
+          - arch: amd64
+            cgo_enabled: 0
+            ledger_enabled: false
+            targetos: darwin
+          - arch: amd64
+            cgo_enabled: 1
+            ledger_enabled: true
+            targetos: linux
 
     name: build ${{ matrix.arch }} for ${{ matrix.targetos }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Setup go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
-          check-latest: true
-        env:
-          GOOS: ${{ matrix.targetos }}
-          GOARCH: ${{ matrix.arch }}
-      - name: lint
-        run: make lint
-      # TODO: re-enable once all vulnerable packages have released fixes
-      # - name: govulncheck
-      #   run: make govulncheck
       - name: Compile binary
+        env:
+          CGO_ENABLED: ${{ matrix.cgo_enabled }}
+          GOARCH: ${{ matrix.arch }}
+          GOOS: ${{ matrix.targetos }}
+          LEDGER_ENABLED: ${{ matrix.ledger_enabled }}
         run: |
           go mod download
           make build
 
+  lint:
+    runs-on: ubuntu-24.04
+    name: lint
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: make lint
+
   tidy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: tidy
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Setup go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: |
           go mod tidy
+          (cd interchaintest && go mod tidy)
           CHANGES_IN_REPO=$(git status --porcelain)
           if [[ -n "$CHANGES_IN_REPO" ]]; then
             echo "Repository is dirty. Showing 'git status' and 'git --no-pager diff' for debugging now:"
             git status && git --no-pager diff
             exit 1
           fi
+
+  protobuf:
+    runs-on: ubuntu-24.04
+    name: protobuf
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Verify protobuf sources and generated code
+        run: |
+          make proto-all
+          changes_in_repo=$(git status --porcelain)
+          if [[ -n "$changes_in_repo" ]]; then
+            echo "Protobuf generation changed the repository:"
+            git status --short
+            git --no-pager diff
+            exit 1
+          fi
+
+  security:
+    runs-on: ubuntu-24.04
+    name: govulncheck
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: make govulncheck
+
+  release-config:
+    runs-on: ubuntu-22.04
+    name: goreleaser snapshot
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Setup go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Install checksum-verified Syft
+        env:
+          SYFT_INSTALL_DIR: ${{ runner.temp }}/syft-bin
+        run: |
+          mkdir -p "$SYFT_INSTALL_DIR"
+          sh ./scripts/install-syft.sh "$SYFT_INSTALL_DIR"
+          echo "$SYFT_INSTALL_DIR" >> "$GITHUB_PATH"
+      - name: Install pinned GoReleaser from the Go checksum database
+        env:
+          GOBIN: ${{ runner.temp }}/goreleaser-bin
+          GOPROXY: https://proxy.golang.org
+          GOSUMDB: sum.golang.org
+          GOTOOLCHAIN: ${{ env.GORELEASER_TOOLCHAIN }}
+          CGO_ENABLED: "0"
+        run: |
+          go install "github.com/goreleaser/goreleaser/v2@${GORELEASER_VERSION}"
+          echo "$GOBIN" >> "$GITHUB_PATH"
+      - name: Build the pinned Alpine release toolchain
+        env:
+          RELEASE_BUILDER_IMAGE: manifest-release-builder:${{ github.sha }}
+        run: |
+          docker build \
+            --target go-builder \
+            --build-arg COMMIT="$GITHUB_SHA" \
+            --build-arg VERSION="snapshot-${GITHUB_SHA}" \
+            --tag "$RELEASE_BUILDER_IMAGE" \
+            .
+      - name: Build and smoke-test release artifacts
+        env:
+          RELEASE_BUILDER_IMAGE: manifest-release-builder:${{ github.sha }}
+        run: |
+          ./scripts/run-goreleaser-in-container.sh \
+            "$RELEASE_BUILDER_IMAGE" \
+            "$RUNNER_TEMP/syft-bin/syft" \
+            "$RUNNER_TEMP/goreleaser-bin/goreleaser" \
+            release --snapshot --clean --skip=publish
+      - name: Verify packaged release artifacts
+        run: ./scripts/verify-release-artifacts.sh dist "$GITHUB_SHA" "" "netgo,muslc,ledger"

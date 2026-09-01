@@ -26,21 +26,21 @@ message Lease {
   string uuid = 1;
   bytes tenant_address = 2;
   string provider_uuid = 3;
-  repeated liftedinit.billing.v1.LeaseItem items = 4 [(gogoproto.nullable) = false];
+  repeated liftedinit.billing.v1.LeaseItem items = 4
+      [ (gogoproto.nullable) = false ];
   liftedinit.billing.v1.LeaseState state = 5;
-  google.protobuf.Timestamp created_at = 6 [
-    (gogoproto.nullable) = false,
-    (gogoproto.stdtime) = true
-  ];
-  google.protobuf.Timestamp closed_at = 7 [(gogoproto.stdtime) = true];
-  google.protobuf.Timestamp last_settled_at = 8 [
-    (gogoproto.nullable) = false,
-    (gogoproto.stdtime) = true
-  ];
-  google.protobuf.Timestamp acknowledged_at = 9 [(gogoproto.stdtime) = true];
-  google.protobuf.Timestamp rejected_at = 10 [(gogoproto.stdtime) = true];
+  google.protobuf.Timestamp created_at = 6
+      [ (gogoproto.nullable) = false, (gogoproto.stdtime) = true ];
+  google.protobuf.Timestamp closed_at = 7 [ (gogoproto.stdtime) = true ];
+  // Accrual cursor through which complete per-second charges have settled.
+  // ACTIVE rows retain any sub-second remainder in this timestamp; CLOSED rows
+  // set it to closed_at.
+  google.protobuf.Timestamp last_settled_at = 8
+      [ (gogoproto.nullable) = false, (gogoproto.stdtime) = true ];
+  google.protobuf.Timestamp acknowledged_at = 9 [ (gogoproto.stdtime) = true ];
+  google.protobuf.Timestamp rejected_at = 10 [ (gogoproto.stdtime) = true ];
   string rejection_reason = 11;
-  google.protobuf.Timestamp expired_at = 12 [(gogoproto.stdtime) = true];
+  google.protobuf.Timestamp expired_at = 12 [ (gogoproto.stdtime) = true ];
   string closure_reason = 13;
   bytes meta_hash = 14;
   uint64 min_lease_duration_at_creation = 15;

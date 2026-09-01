@@ -643,6 +643,10 @@ func TestInitGenesis_RebuildsExistingDomainMatchingNewReservedSuffix(t *testing.
 
 func TestInitGenesis_DuplicateCustomDomainFails(t *testing.T) {
 	f := initFixture(t)
+	beforeParams := types.DefaultParams()
+	beforeParams.MaxLeasesPerTenant++
+	require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, beforeParams))
+
 	provider := f.createTestProvider(t, f.TestAccs[1].String(), f.TestAccs[2].String())
 	sku := f.createTestSKU(t, provider.Uuid, 100)
 	tenant := f.TestAccs[0]
@@ -686,6 +690,21 @@ func TestInitGenesis_DuplicateCustomDomainFails(t *testing.T) {
 	err = f.App.BillingKeeper.InitGenesis(f.Ctx, gs)
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrCustomDomainAlreadyClaimed)
+
+	// Duplicate live claims are rejected by the read-only genesis preflight,
+	// before Params, primary leases, or derived indexes are written.
+	afterParams, getErr := f.App.BillingKeeper.GetParams(f.Ctx)
+	require.NoError(t, getErr)
+	require.Equal(t, beforeParams, afterParams)
+	leasingState, getErr := f.App.BillingKeeper.GetAllLeases(f.Ctx)
+	require.NoError(t, getErr)
+	require.Empty(t, leasingState)
+	creditAccounts, getErr := f.App.BillingKeeper.GetAllCreditAccounts(f.Ctx)
+	require.NoError(t, getErr)
+	require.Empty(t, creditAccounts)
+	_, _, has, getErr := f.App.BillingKeeper.GetLeaseByCustomDomain(f.Ctx, "dup.example.com")
+	require.NoError(t, getErr)
+	require.False(t, has)
 }
 
 // TestMigrate1to2 verifies the v1→v2 migration is a true no-op: it must not

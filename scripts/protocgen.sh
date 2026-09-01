@@ -4,17 +4,14 @@ set -e
 
 echo "Generating gogo proto code"
 cd proto
-proto_dirs=$(find . -path -prune -o -name '*.proto' -print0 | xargs -0 -n1 dirname | sort | uniq)
-for dir in $proto_dirs; do
-  for file in $(find "${dir}" -maxdepth 1 -name '*.proto'); do
-    # this regex checks if a proto file has its go_package set to github.com/manifest-network/manifest-ledger/...
-    # gogo proto files SHOULD ONLY be generated if this is false
-    # we don't want gogo proto to run for proto files which are natively built for google.golang.org/protobuf
-    if grep -q "option go_package" "$file" && grep -H -o -c 'option go_package.*github.com/manifest-network/manifest-ledger/api' "$file" | grep -q ':0$'; then
-      buf generate --template buf.gen.gogo.yaml "$file"
-    fi
-  done
-done
+# Generate only repository-owned, non-API messages. The sorted NUL-delimited
+# file walk is deterministic and does not split valid paths on whitespace.
+while IFS= read -r -d '' file; do
+  if grep -q 'option go_package.*github.com/manifest-network/manifest-ledger/' "$file" &&
+    ! grep -q 'option go_package.*github.com/manifest-network/manifest-ledger/api' "$file"; then
+    buf generate --template buf.gen.gogo.yaml "$file"
+  fi
+done < <(find . -type f -name '*.proto' -print0 | sort -z)
 
 echo "Generating pulsar proto code"
 buf generate --template buf.gen.pulsar.yaml
@@ -26,15 +23,14 @@ rm -rf github.com
 
 # Copy files over for dep injection
 rm -rf api && mkdir api
-custom_modules=$(find . -name 'module' -type d -not -path "./proto/*")
-for module in $custom_modules; do
-  dirPath=$(dirname $module)
-  mkdir -p api/$dirPath
-
-  mv $dirPath/* ./api/$dirPath/
-
-  # incorrect ref
-  find api/$dirPath -type f -name '*.go' -exec sed -i '' -e 's|types "github.com/cosmos/cosmos-sdk/types"|types "cosmossdk.io/api/cosmos/base/v1beta1"|g' {} \;
-
-  rm -rf $dirPath
+# Pulsar's source-relative output is created only under these generated module
+# roots. Restricting the move to that known shape avoids scanning or moving
+# unrelated workspace directories that happen to be named "module".
+for module in liftedinit/*/module; do
+  [ -d "$module" ] || continue
+  dir_path=$(dirname "$module")
+  mkdir -p "api/$dir_path"
+  mv "$dir_path"/* "api/$dir_path/"
+  rm -rf "$dir_path"
 done
+rmdir liftedinit 2>/dev/null || true

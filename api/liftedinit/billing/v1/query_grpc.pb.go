@@ -52,7 +52,8 @@ type QueryClient interface {
 	CreditAccount(ctx context.Context, in *QueryCreditAccountRequest, opts ...grpc.CallOption) (*QueryCreditAccountResponse, error)
 	// CreditAddress derives the credit address for a tenant.
 	CreditAddress(ctx context.Context, in *QueryCreditAddressRequest, opts ...grpc.CallOption) (*QueryCreditAddressResponse, error)
-	// WithdrawableAmount queries the amount available for provider withdrawal from a lease.
+	// WithdrawableAmount queries the amount available for provider withdrawal
+	// from a lease.
 	WithdrawableAmount(ctx context.Context, in *QueryWithdrawableAmountRequest, opts ...grpc.CallOption) (*QueryWithdrawableAmountResponse, error)
 	// ProviderWithdrawable dry-runs one ordered page of the provider's ACTIVE
 	// leases against page-local virtual tenant balances and reservations. Failed
@@ -217,7 +218,8 @@ type QueryServer interface {
 	CreditAccount(context.Context, *QueryCreditAccountRequest) (*QueryCreditAccountResponse, error)
 	// CreditAddress derives the credit address for a tenant.
 	CreditAddress(context.Context, *QueryCreditAddressRequest) (*QueryCreditAddressResponse, error)
-	// WithdrawableAmount queries the amount available for provider withdrawal from a lease.
+	// WithdrawableAmount queries the amount available for provider withdrawal
+	// from a lease.
 	WithdrawableAmount(context.Context, *QueryWithdrawableAmountRequest) (*QueryWithdrawableAmountResponse, error)
 	// ProviderWithdrawable dry-runs one ordered page of the provider's ACTIVE
 	// leases against page-local virtual tenant balances and reservations. Failed

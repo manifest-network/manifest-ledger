@@ -178,6 +178,12 @@ Settlement is performed **lazily** (on-touch):
 - When a lease is closed
 
 This design keeps on-chain operations light and avoids per-block token transfers.
+Charges use complete elapsed seconds. After a successful live settlement,
+`last_settled_at` advances only through the seconds actually charged, leaving a
+remainder of less than one second for the next settlement. Consequently, many
+sub-second touches charge exactly the same total as one settlement over their
+combined interval. A terminal close charges every complete remaining second,
+then records the exact close time and discards the final fractional remainder.
 
 ### Overdraw and Auto-Close
 
@@ -203,13 +209,10 @@ other leases remain protected. This happens through **lazy evaluation**
 | Trigger | Event | Distinguishing attribute |
 |---|---|---|
 | `MsgCloseLease` | `lease_closed` | `closed_by = credit_exhaustion` on a genuine exhaustion (shortfall, accrual overflow, or a zero-balance close); a fully-paid close keeps the caller's `reason`/role |
-| `MsgWithdraw` (specific lease UUIDs) | `provider_withdraw` | `auto_closed = true` (with `amount = 0`) |
-| `MsgWithdraw` (provider-wide) | `lease_auto_closed` | `reason = credit_exhausted` |
+| `MsgWithdraw` (specific lease UUIDs) | `provider_withdraw` | `auto_closed = true`; `amount` and `payout_address` report the final transfer |
+| `MsgWithdraw` (provider-wide) | `lease_auto_closed` | `reason = credit_exhausted`; `amount` and `payout_address` report the final transfer |
 
 A consumer that subscribes only to `lease_auto_closed` will miss credit-exhaustion closures triggered via `MsgCloseLease` or specific-lease `MsgWithdraw`.
-For the specific-lease path, event `amount = 0` is an auto-close sentinel; the
-response or batch total may still contain the non-zero final settlement made
-before closure.
 
 **Design rationale:**
 - **O(1) per lease check**: Instead of O(n) scanning all leases in EndBlock
@@ -246,16 +249,30 @@ exactly. Bank balances are not changed.
 Consensus version 4 converts that aggregate-only state into consumable
 allocations without minting, burning, or transferring tokens. For each tenant
 and denomination, the allocation budget is bounded by both the pre-v4 aggregate
-and the bank balance. Reconstructible PENDING leases receive their full nominal
-reservation first. The remaining budget is divided between modern ACTIVE
-nominal claims and one opaque live-legacy cohort with Hamilton's
-largest-remainder method, using lease UUID order and then the legacy cohort as
-the deterministic tie-break. The resulting state satisfies `R = sum(A) + U`
-and records the exact live historical cohort size in
-`unattributed_lease_count`.
-An upgrade or pre-v4 (v2/v3) genesis import fails before writing billing state
-if either the historical aggregate or bank balance cannot fully back the
-PENDING claims; operators must preflight and fund any bank shortfall before the
+and the bank balance. The repaired aggregate must cover the tenant's complete
+modern PENDING nominal sum; a short aggregate is corruption and halts the
+migration. Bank underbacking is handled separately and tenant-wide. If every
+denomination covers the PENDING sum, every modern PENDING lease keeps its exact
+claim. If any denomination is short, all modern PENDING leases for that tenant
+expire atomically at the upgrade block, receive empty tranches, and have their
+counts and state-dependent indexes repaired. The cutover never creates a
+partial pending guarantee, chooses arbitrary winners, or mints backing.
+
+Modern ACTIVE nominal claims and one opaque live-legacy cohort share the
+remaining bank-backed historical budget with Hamilton's largest-remainder
+method, using lease UUID order and then the legacy cohort as the deterministic
+tie-break. The resulting state satisfies `R = sum(A) + U` and records the exact
+live historical cohort size in `unattributed_lease_count`. An expired request
+remains as terminal history and transfers no funds; its client may submit a new
+lease after the upgrade under current prices, parameters, limits, and available
+credit.
+
+A pre-v4 (v2/v3) genesis import applies the same policy at genesis block time
+before its first billing-store write. During a live v2→v4 upgrade, v2→v3 can
+stage writes before v3→v4 detects corrupt aggregate state. If the migration
+halts, the upgrade handler returns an error and the upgrade block does not
+commit, so none of the staged migration writes become chain state. A bank
+shortfall alone expires the tenant's modern PENDING cohort and does not halt the
 cutover.
 
 ### Storage Key Prefixes
@@ -275,6 +292,13 @@ cutover.
 | `0x0A` | LeaseBySKU | Many-to-many index: SKU UUID → lease UUIDs |
 | `0x0B` | LeaseByStateCreatedAt | Compound index: state+created_at → lease UUIDs |
 | `0x0C` | CustomDomainIndex | Reverse index: custom_domain → CustomDomainTarget (lease_uuid + service_name) |
+
+`SetLease` atomically reconciles both manually maintained lease projections:
+the SKU membership set and the state-dependent custom-domain claims.
+`SetCreditAccount` maintains the byte-keyed credit-address reverse index. The
+module registers a bidirectional derived-index invariant that rejects missing,
+stale, false, or mismatched entries in any of these three maps; the reservation
+accounting/backing invariant remains a separate route.
 
 ### Params
 
@@ -312,8 +336,8 @@ These values are compile-time constants and cannot be changed via governance:
 | `MaxPendingLeaseExpirationsPerBlock` | 100 | Maximum pending lease expirations processed per block (DoS protection) |
 | `DefaultProviderWithdrawLimit` | 50 | Default number of leases processed per provider-wide withdraw call (can be increased to MaxBatchLeaseSize) |
 | `MaxBatchLeaseSize` | 100 | Hard limit for any batch operation. For provider-wide withdraw: configurable via `--limit` up to this value. For specific lease operations: maximum UUIDs per call. |
-| `MaxRejectionReasonLength` | 256 | Maximum characters for lease rejection reason |
-| `MaxClosureReasonLength` | 256 | Maximum characters for lease closure reason |
+| `MaxRejectionReasonLength` | 256 | Maximum UTF-8 bytes for lease rejection reason |
+| `MaxClosureReasonLength` | 256 | Maximum UTF-8 bytes for lease closure reason |
 | `MaxCustomDomainLength` | 253 | Maximum bytes for `LeaseItem.custom_domain` (RFC 1035 max FQDN length) |
 | `MaxWithdrawCursorLen` | 64 | Maximum bytes of the opaque `--key` cursor for provider-wide withdraw (a lease UUID is 36 bytes). Defined in `types/msgs.go`. |
 | `CreditAccountAddressPrefix` | `billing/credit/` | Prefix used for deterministic credit address derivation |
@@ -336,11 +360,11 @@ Several messages support batch processing of multiple leases in a single transac
 | `MsgCancelLease` | 100 | All leases must be PENDING, same tenant. Atomic. |
 | `MsgCloseLease` | 100 | All leases must be ACTIVE, authorized for sender. Atomic. |
 | `MsgWithdraw` (specific) | 100 | All leases must be ACTIVE, same provider. Atomic. |
-| `MsgWithdraw` (provider-wide) | 50 (default), 100 (max) | Paginated; pass `next_key` back as `--key` until `has_more` is false. |
+| `MsgWithdraw` (provider-wide) | 50 (default), 100 (max) | Ordered best effort per lease; pass `next_key` back as `--key` until `has_more` is false and retry every UUID reported in `failed_lease_uuids`. |
 
 **Atomic Batch Operations:** When providing specific lease UUIDs, the operation is atomic—all leases succeed or all fail. If any lease fails validation (wrong state, unauthorized, etc.), the entire transaction is rejected.
 
-**Provider-Wide Withdraw:** Unlike specific-lease operations, provider-wide withdraw is paginated. It processes up to `--limit` leases (default 50, max 100) and returns `has_more: true` plus an opaque `next_key` cursor if more remain. Pass `next_key` back as `--key` on the next call and repeat until `has_more: false`; calling again without `--key` restarts from the first lease. Only ACTIVE leases are considered — CLOSED leases are already fully settled at close and are skipped, so every page is dense with ACTIVE leases. Leases are processed in ascending UUID order; `next_key` is the last lease UUID of the page and the next call resumes strictly after it.
+**Provider-Wide Withdraw:** Unlike specific-lease operations, provider-wide withdraw is paginated and best effort per lease. It processes up to `--limit` leases (default 50, max 100) and returns `has_more: true` plus an opaque `next_key` cursor if more remain. Pass `next_key` back as `--key` on the next call and repeat until `has_more: false`; calling again without `--key` restarts from the first lease. Only ACTIVE leases are considered — CLOSED leases are already fully settled at close and are skipped, so every page is dense with ACTIVE leases. Leases are processed in ascending UUID order; `next_key` is the last lease UUID of the page and the next call resumes strictly after it. Failed lease caches are discarded and their UUIDs are returned in that same order in `failed_lease_uuids`; retain and retry those UUIDs because the next cursor resumes after them.
 
 ### Lease
 
@@ -359,7 +383,7 @@ the disk-only codec persists account identities as raw address bytes.
 | closed_at | Timestamp | Closure time |
 | rejected_at | Timestamp | Rejection time |
 | expired_at | Timestamp | Expiration time |
-| last_settled_at | Timestamp | Last settlement time |
+| last_settled_at | Timestamp | Accrual cursor through which complete seconds have settled; an ACTIVE lease retains any sub-second remainder here, while a CLOSED lease sets it to `closed_at` |
 | rejection_reason | string | Provider's rejection reason (max 256 chars) |
 | closure_reason | string | Closure reason (max 256 chars) |
 | meta_hash | bytes | Hash/reference to off-chain deployment data (max 64 bytes, immutable) |
@@ -482,7 +506,8 @@ EndBlock in the same block and while an overdue lease is waiting behind the expi
 1. Calculate accrued charges since last settlement
 2. Transfer at most this lease's spendable credit `B - (R - A)` to the provider
 3. Auto-close on a shortfall/credit exhaustion; otherwise update
-   `last_settled_at`
+   `last_settled_at` through the complete seconds charged, retaining any
+   sub-second remainder
 
 ## Messages
 
@@ -518,8 +543,12 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 | CreditEstimate | Report gross raw-bank-balance runway at the aggregate ACTIVE rate (not reservation-aware or an auto-close forecast) |
 | CreditAddress | Derive credit address for a tenant |
 | WithdrawableAmount | Get withdrawable amount for a lease |
-| ProviderWithdrawable | Ordered best-effort dry-run of the current ACTIVE-lease page. Failed lease simulations are discarded; successful virtual effects feed later leases, while no query state commits. The page is an execution estimate, not an additive snapshot. A forward page with `limit <= 100` is comparable to one provider-wide withdrawal. After it commits, query the next segment with the prior query `pagination.next_key` and withdraw it with the prior transaction `next_key`; the two cursor contracts are not interchangeable. `lease_count` matches the comparable transaction's `withdrawal_count`, including successful zero-transfer auto-closes. |
+| ProviderWithdrawable | Ordered best-effort dry-run of the current ACTIVE-lease page. Failed lease simulations are discarded and reported in `failed_lease_uuids`; successful virtual effects feed later leases, while no query state commits. The page is an execution estimate, not an additive snapshot. A forward page with `limit <= 100` is comparable to one provider-wide withdrawal. After it commits, query the next segment with the prior query `pagination.next_key` and withdraw it with the prior transaction `next_key`; the two cursor contracts are not interchangeable. `lease_count` and `failed_lease_uuids` match the comparable transaction, including successful zero-transfer auto-closes in the count. |
 | LeaseByCustomDomain | Look up the active or pending lease that has claimed a given custom_domain (and the `service_name` of the matching item) |
+
+Generic list-query pages default to 100 rows and are capped at 1000 rows. An
+oversized requested limit is clamped; callers continue with the opaque
+`pagination.next_key` cursor.
 
 **Events**: See [API Reference - Events](docs/API.md#events) for the complete list of events emitted by this module.
 
@@ -600,6 +629,12 @@ manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --key [next
 > `ProviderWithdrawable` query's `pagination.next_key`; query pagination points
 > at the first unread entry, while the transaction resumes strictly after its
 > last processed lease.
+>
+> A provider-wide page can succeed while individual leases fail. Save every
+> ordered UUID in `failed_lease_uuids` before advancing `next_key`, correct the
+> underlying problem, then retry those leases explicitly. The `batch_withdraw`
+> event carries the same `failed_lease_count` and comma-separated
+> `failed_lease_uuids` for transaction-indexing clients.
 
 For detailed scalability analysis, time manipulation considerations, and future improvement plans, see [Architecture](docs/ARCHITECTURE.md#scalability-considerations).
 
@@ -622,22 +657,45 @@ a modern ACTIVE lease may retain any non-negative amount up to nominal after
 settlement. Terminal and historical leases have empty lease-side tranches. `U`
 is permitted only while a live historical lease exists, and
 `unattributed_lease_count` must exactly equal the number of those live leases.
+For a pre-v4 import, any modern PENDING lease that cannot receive that full
+guarantee under the tenant-wide bank-backing policy is first transitioned to
+EXPIRED; there is no valid partially reserved PENDING state.
 
 The import path also accepts a complete pre-v4 aggregate-only (v2/v3) export (all
 `Lease.reservation` messages absent). Static validation preserves the earlier
 import-safe rules, then `InitGenesis` applies the same bank-backed,
-PENDING-first/Hamilton conversion as the v3→v4 module migration before its
-first billing-store write. Mixed absent/present reservation wrappers are
-rejected. Because static `validate-genesis` cannot inspect bank balances,
-operators must separately preflight that every tenant/denomination's bank
-balance and historical aggregate can fully back all reconstructible PENDING
-claims. The cutover never mints credit and fails if that condition is false.
+tenant-wide PENDING-cohort/Hamilton conversion as the v3→v4 module migration
+before its first billing-store write. Mixed absent/present reservation wrappers
+are rejected. Import preparation mirrors v2→v3: it reconstructs the modern
+reservation floor by decoded tenant identity, raises an account with a live
+opaque legacy cohort to at least that floor while preserving unknown excess,
+and otherwise reconciles the aggregate exactly to the floor. This bounded
+repair handles historical legacy-release clamping without minting or moving
+bank funds. `ValidateStrict()` remains non-repairing for newly authored state.
+Static `validate-genesis` cannot inspect bank balances. A later bank shortfall
+causes atomic expiration of every modern PENDING lease for the affected tenant,
+followed by count recomputation, index construction, and allocation of the
+remaining bank-backed budget to modern ACTIVE leases and the live historical
+cohort. It does not fail the import, mint credit, partially reserve a pending
+lease, or select a favored subset. That normalization applies only to complete
+pre-v4 aggregate-only input. An already-v4 consumable import is not re-planned:
+if its aggregate is not bank-backed, `InitGenesis` rejects it before the first
+billing-store write.
 
 **Validation Steps:**
 1. Reject mixed pre-v4/v4 reservation representations
-2. For v4 state, verify every lease tranche, exact `R = sum(A) + U`, and the exact live historical cohort count
-3. For a pre-v4 export, validate the reconstructible aggregate floor and normalize it during `InitGenesis`
-4. Verify that every tenant with live reservation claims has a corresponding credit account
+2. Prepare an import copy: canonicalize address aliases and rebuild cached
+   counts; for a pre-v4 export, also reconcile the aggregate to the provable
+   modern floor using the v2→v3 policy
+3. Validate structural invariants and account presence; for v4 state, also
+   verify every lease tranche, exact `R = sum(A) + U`, and the exact live
+   historical cohort count
+4. During `InitGenesis`, expire a pre-v4 under-backed tenant's entire modern
+   PENDING cohort, compute the remaining bank-backed allocation, and revalidate
+   the resulting v4 counts and accounting; reject an under-backed already-v4
+   aggregate
+5. Validate timestamps and SKU/provider references before the first billing-store write
+6. Persist the normalized leases and build their state-dependent indexes
 
 **Error Examples:**
 ```
@@ -653,10 +711,38 @@ billing reservation invariant violated: tenant manifest1def... has live reservat
 - **Lease UUIDs**: All leases must have valid UUIDv7 format, no duplicates
 - **Tenant/Provider addresses**: All addresses must be valid bech32 format
 - **Credit address derivation**: Credit addresses must match deterministic derivation from tenant address
-- **Lease counts**: Each credit account's stored active and pending counts must exactly match the imported lease set
+- **Lease counts**: Import preparation deterministically rebuilds each credit
+  account's active and pending counts from primary lease state, grouped by
+  decoded tenant address identity, before validation and persistence.
+  `ValidateStrict()` performs no repair and requires newly authored counts to
+  match exactly.
 - **Lease state consistency**: CLOSED leases must have a non-nil, non-zero `closed_at`. At InitGenesis, `created_at`, `last_settled_at`, and `closed_at` must not be after the block time.
 - **Custom domains**: Claims must remain valid and unambiguous. Imports do not replay the current reserved-suffix policy because a claim may predate a later suffix reservation; `ValidateStrict()` applies that policy to newly authored state.
 - **Parameter validation**: All params must pass validation constraints
+
+## Simulation Coverage
+
+The state-machine simulator registers bounded operations for `FundCredit`,
+tenant `CreateLease`, `AcknowledgeLease`, `RejectLease`, `CancelLease`,
+`CloseLease`, `Withdraw`, and both set/replace and clear transitions of
+`SetItemCustomDomain`; custom-domain operations exercise both tenant and current
+`allowed_list` signers when available. Candidate lists retain
+collection/simulation-account slice order; maps are used only for lookup and
+are never ranged when building a request.
+
+`CreateLeaseForTenant` is deliberately excluded from randomized transactions.
+It is an administrative migration message whose governance authority has no
+simulation private key. A delayed governance proposal is also unsound for this
+stateful request because its SKU and tenant-credit preconditions can change
+before proposal execution. Dedicated keeper, migration, and end-to-end tests
+cover that path instead.
+
+`UpdateParams` is also deliberately excluded. It requires the configured POA
+authority, which has no simulation private key, while Cosmos SDK governance
+proposal messages must instead have the governance module account as their sole
+signer. Registering either form would only create guaranteed failures. Parameter
+validation and update authorization remain covered by focused keeper/type tests;
+randomized genesis supplies bounded valid parameter combinations to simulation.
 
 ## Additional Documentation
 

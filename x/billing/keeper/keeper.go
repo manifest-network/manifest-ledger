@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"time"
 
@@ -17,8 +16,6 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	accountkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
-	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
@@ -159,10 +156,11 @@ type Keeper struct {
 
 	authority string
 
-	// keepers (to be set via setters for now, full DI later)
+	// Module dependencies are constructor-injected so a Keeper cannot be used
+	// in a partially initialized state.
 	skuKeeper     SKUKeeper
-	bankKeeper    bankkeeper.Keeper
-	accountKeeper accountkeeper.AccountKeeper
+	bankKeeper    types.BankKeeper
+	accountKeeper types.AccountKeeper
 }
 
 // NewKeeper creates a new billing Keeper instance.
@@ -171,16 +169,22 @@ func NewKeeper(
 	storeService storetypes.KVStoreService,
 	logger log.Logger,
 	authority string,
+	skuKeeper SKUKeeper,
+	bankKeeper types.BankKeeper,
+	accountKeeper types.AccountKeeper,
 ) Keeper {
 	logger = logger.With(log.ModuleKey, "x/"+types.ModuleName)
 
 	sb := collections.NewSchemaBuilder(storeService)
 
 	k := Keeper{
-		cdc:          cdc,
-		storeService: storeService,
-		logger:       logger,
-		authority:    authority,
+		cdc:           cdc,
+		storeService:  storeService,
+		logger:        logger,
+		authority:     authority,
+		skuKeeper:     skuKeeper,
+		bankKeeper:    bankKeeper,
+		accountKeeper: accountKeeper,
 
 		Params: collections.NewItem(
 			sb,
@@ -256,28 +260,13 @@ func (k *Keeper) SetAuthority(authority string) {
 	k.authority = authority
 }
 
-// SetSKUKeeper sets the SKU keeper.
-func (k *Keeper) SetSKUKeeper(sk SKUKeeper) {
-	k.skuKeeper = sk
-}
-
-// SetBankKeeper sets the bank keeper.
-func (k *Keeper) SetBankKeeper(bk bankkeeper.Keeper) {
-	k.bankKeeper = bk
-}
-
-// SetAccountKeeper sets the account keeper.
-func (k *Keeper) SetAccountKeeper(ak accountkeeper.AccountKeeper) {
-	k.accountKeeper = ak
-}
-
 // GetAccountKeeper returns the account keeper (for simulation).
-func (k *Keeper) GetAccountKeeper() accountkeeper.AccountKeeper {
+func (k *Keeper) GetAccountKeeper() types.AccountKeeper {
 	return k.accountKeeper
 }
 
 // GetBankKeeper returns the bank keeper (for simulation).
-func (k *Keeper) GetBankKeeper() bankkeeper.Keeper {
+func (k *Keeper) GetBankKeeper() types.BankKeeper {
 	return k.bankKeeper
 }
 
@@ -296,13 +285,15 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
 
-	// Validate structural and accounting invariants before any writes. Import
-	// validation preserves historical state without replaying claim-time domain
-	// policy or unverifiable legacy reservation calculations.
-	if err := gs.Validate(); err != nil {
+	// Prepare and validate structural and accounting invariants before any
+	// writes. Import preparation canonicalizes historically reachable Bech32
+	// aliases without replaying claim-time domain policy or unverifiable legacy
+	// reservation calculations.
+	importGenesis, err := gs.PrepareForImport()
+	if err != nil {
 		return err
 	}
-	preparedGenesis, err := k.prepareGenesisReservationState(sdkCtx, gs)
+	preparedGenesis, err := k.prepareGenesisReservationState(sdkCtx, importGenesis)
 	if err != nil {
 		return err
 	}
@@ -312,34 +303,18 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 	if err := preparedGenesis.ValidateWithBlockTime(blockTime); err != nil {
 		return err
 	}
+	if err := k.validateGenesisSKUReferences(ctx, preparedGenesis.Leases); err != nil {
+		return err
+	}
 
 	if err := k.Params.Set(ctx, preparedGenesis.Params); err != nil {
 		return err
 	}
 
 	// Validate and set leases
-	// NOTE: This validation requires the SKU module to be initialized first.
+	// NOTE: Reference validation above requires the SKU module to be initialized first.
 	// Genesis order ensures: sku -> billing (see app/app.go)
 	for _, lease := range preparedGenesis.Leases {
-		// Validate provider exists in SKU module
-		if _, err := k.skuKeeper.GetProvider(ctx, lease.ProviderUuid); err != nil {
-			return fmt.Errorf("lease %s references non-existent provider %s: %w",
-				lease.Uuid, lease.ProviderUuid, err)
-		}
-
-		// Validate each SKU exists and belongs to the lease's provider
-		for i, item := range lease.Items {
-			sku, err := k.skuKeeper.GetSKU(ctx, item.SkuUuid)
-			if err != nil {
-				return fmt.Errorf("lease %s item %d references non-existent SKU %s: %w",
-					lease.Uuid, i, item.SkuUuid, err)
-			}
-			if sku.ProviderUuid != lease.ProviderUuid {
-				return fmt.Errorf("lease %s item %d SKU %s belongs to provider %s, not %s",
-					lease.Uuid, i, item.SkuUuid, sku.ProviderUuid, lease.ProviderUuid)
-			}
-		}
-
 		// SetLease populates LeaseBySKUIndex and reconciles the custom_domain
 		// reverse index from (state, custom_domain). Storage-level uniqueness
 		// detects two genesis leases claiming the same domain via
@@ -364,6 +339,31 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 		}
 	}
 
+	return nil
+}
+
+// validateGenesisSKUReferences completes the read-only import preflight before
+// InitGenesis writes billing state. Genesis module ordering guarantees SKU has
+// already initialized its provider and product collections.
+func (k *Keeper) validateGenesisSKUReferences(ctx context.Context, leases []types.Lease) error {
+	for _, lease := range leases {
+		if _, err := k.skuKeeper.GetProvider(ctx, lease.ProviderUuid); err != nil {
+			return fmt.Errorf("lease %s references non-existent provider %s: %w",
+				lease.Uuid, lease.ProviderUuid, err)
+		}
+
+		for itemIndex, item := range lease.Items {
+			sku, err := k.skuKeeper.GetSKU(ctx, item.SkuUuid)
+			if err != nil {
+				return fmt.Errorf("lease %s item %d references non-existent SKU %s: %w",
+					lease.Uuid, itemIndex, item.SkuUuid, err)
+			}
+			if sku.ProviderUuid != lease.ProviderUuid {
+				return fmt.Errorf("lease %s item %d SKU %s belongs to provider %s, not %s",
+					lease.Uuid, itemIndex, item.SkuUuid, sku.ProviderUuid, lease.ProviderUuid)
+			}
+		}
+	}
 	return nil
 }
 
@@ -420,7 +420,7 @@ func (k *Keeper) GetLease(ctx context.Context, uuid string) (types.Lease, error)
 }
 
 // SetLease sets a Lease in the store and reconciles all derived indexes.
-// The SKU index update is idempotent. The custom_domain reverse index is
+// The SKU index is reconciled against the previous item set. The custom_domain reverse index is
 // reconciled per-item from (lease.State, item.CustomDomain) for each item: if
 // the lease is editable (PENDING or ACTIVE) and the item's CustomDomain is
 // non-empty, an index entry points the domain at (lease.Uuid, item.ServiceName);
@@ -457,11 +457,8 @@ func (k *Keeper) SetLease(ctx context.Context, lease types.Lease) error {
 		return err
 	}
 
-	for _, item := range lease.Items {
-		key := collections.Join(item.SkuUuid, lease.Uuid)
-		if err := k.LeaseBySKUIndex.Set(cacheCtx, key, true); err != nil {
-			return err
-		}
+	if err := k.reconcileLeaseBySKUIndex(cacheCtx, prev, hadPrev, lease); err != nil {
+		return err
 	}
 
 	if err := k.reconcileCustomDomainIndex(cacheCtx, prev, hadPrev, lease); err != nil {
@@ -486,6 +483,54 @@ func (k *Keeper) getPreviousLease(ctx context.Context, uuid string) (types.Lease
 	return prev, true, nil
 }
 
+// reconcileLeaseBySKUIndex makes the many-to-many SKU index exactly match the
+// lease's current item set. Lease items are immutable through the public API,
+// but exact reconciliation keeps SetLease correct for migrations, imports, and
+// future internal callers. Sorted unique slices drive every store operation;
+// no map iteration is used in this consensus path.
+func (k *Keeper) reconcileLeaseBySKUIndex(ctx context.Context, prev types.Lease, hadPrev bool, lease types.Lease) error {
+	previousSKUs := make([]string, 0, len(prev.Items))
+	if hadPrev {
+		for _, item := range prev.Items {
+			previousSKUs = append(previousSKUs, item.SkuUuid)
+		}
+	}
+	currentSKUs := make([]string, 0, len(lease.Items))
+	for _, item := range lease.Items {
+		currentSKUs = append(currentSKUs, item.SkuUuid)
+	}
+
+	slices.Sort(previousSKUs)
+	previousSKUs = slices.Compact(previousSKUs)
+	slices.Sort(currentSKUs)
+	currentSKUs = slices.Compact(currentSKUs)
+
+	previousIndex, currentIndex := 0, 0
+	for previousIndex < len(previousSKUs) || currentIndex < len(currentSKUs) {
+		switch {
+		case currentIndex == len(currentSKUs) ||
+			(previousIndex < len(previousSKUs) && previousSKUs[previousIndex] < currentSKUs[currentIndex]):
+			if err := k.LeaseBySKUIndex.Remove(ctx, collections.Join(previousSKUs[previousIndex], lease.Uuid)); err != nil {
+				return err
+			}
+			previousIndex++
+		case previousIndex == len(previousSKUs) || currentSKUs[currentIndex] < previousSKUs[previousIndex]:
+			if err := k.LeaseBySKUIndex.Set(ctx, collections.Join(currentSKUs[currentIndex], lease.Uuid), true); err != nil {
+				return err
+			}
+			currentIndex++
+		default:
+			if err := k.LeaseBySKUIndex.Set(ctx, collections.Join(currentSKUs[currentIndex], lease.Uuid), true); err != nil {
+				return err
+			}
+			previousIndex++
+			currentIndex++
+		}
+	}
+
+	return nil
+}
+
 // reconcileCustomDomainIndex enforces the per-item (state, custom_domain) →
 // index invariant after a SetLease write. It walks both the previous and
 // current item slices, releases entries for items whose domain changed or
@@ -507,24 +552,34 @@ func (k *Keeper) getPreviousLease(ctx context.Context, uuid string) (types.Lease
 func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Lease, hadPrev bool, lease types.Lease) error {
 	editable := lease.State == types.LEASE_STATE_PENDING || lease.State == types.LEASE_STATE_ACTIVE
 
-	// Build per-service maps of the live (non-empty) domain claims for both
-	// snapshots. Service_name is the lease's commit-time uniqueness key, so
-	// it suffices as the diff key. Empty service_name is a valid map key
-	// (used by 1-item legacy leases — only one entry per lease in that case).
+	// Build per-service lookup maps plus explicit service-order slices. The
+	// maps are never iterated; the sorted slices drive every store operation.
+	// Service_name is the lease's commit-time uniqueness key, so it suffices as
+	// the diff key. Empty service_name is valid for 1-item legacy leases.
 	prevByService := map[string]string{}
+	prevServices := make([]string, 0, len(prev.Items))
 	if hadPrev {
 		for _, item := range prev.Items {
 			if item.CustomDomain != "" {
+				if _, exists := prevByService[item.ServiceName]; !exists {
+					prevServices = append(prevServices, item.ServiceName)
+				}
 				prevByService[item.ServiceName] = item.CustomDomain
 			}
 		}
 	}
 	newByService := map[string]string{}
+	newServices := make([]string, 0, len(lease.Items))
 	for _, item := range lease.Items {
 		if item.CustomDomain != "" {
+			if _, exists := newByService[item.ServiceName]; !exists {
+				newServices = append(newServices, item.ServiceName)
+			}
 			newByService[item.ServiceName] = item.CustomDomain
 		}
 	}
+	slices.Sort(prevServices)
+	slices.Sort(newServices)
 
 	// Release any prev entry whose live domain disappeared, changed, or whose
 	// lease moved to terminal state. The Remove is gated on an ownership check
@@ -536,7 +591,7 @@ func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Leas
 	// has since legitimately claimed. Removing only when the index still
 	// targets (this lease, this service) closes that hole without sacrificing
 	// the audit-trail field on the closed lease record.
-	for _, s := range slices.Sorted(maps.Keys(prevByService)) {
+	for _, s := range prevServices {
 		prevDomain := prevByService[s]
 		if editable && newByService[s] == prevDomain {
 			continue
@@ -566,7 +621,7 @@ func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Leas
 
 	// Install / verify entries for current items. Storage-level uniqueness
 	// rejects overwriting a different (lease, service) pair.
-	for _, s := range slices.Sorted(maps.Keys(newByService)) {
+	for _, s := range newServices {
 		newDomain := newByService[s]
 		existing, err := k.CustomDomainIndex.Get(ctx, newDomain)
 		switch {
@@ -621,9 +676,7 @@ func (k *Keeper) GetAllLeases(ctx context.Context) ([]types.Lease, error) {
 }
 
 // GetLeasesByTenant returns all Leases for a given tenant address.
-func (k *Keeper) GetLeasesByTenant(ctx context.Context, tenant string) ([]types.Lease, error) {
-	var leases []types.Lease
-
+func (k *Keeper) GetLeasesByTenant(ctx context.Context, tenant string) (leases []types.Lease, err error) {
 	// Convert bech32 address to AccAddress for index lookup
 	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
 	if err != nil {
@@ -634,7 +687,11 @@ func (k *Keeper) GetLeasesByTenant(ctx context.Context, tenant string) ([]types.
 	if err != nil {
 		return nil, err
 	}
-	defer iter.Close()
+	defer func() {
+		if closeErr := iter.Close(); err == nil {
+			err = closeErr
+		}
+	}()
 
 	for ; iter.Valid(); iter.Next() {
 		leaseUUID, err := iter.PrimaryKey()
@@ -676,12 +733,16 @@ func (k *Keeper) GetLeasesByProviderUUID(ctx context.Context, providerUUID strin
 // iteration early, or (false, err) to abort with an error.
 // This is the preferred method for processing large numbers of leases as it
 // doesn't load all leases into memory at once.
-func (k *Keeper) IterateLeasesByProvider(ctx context.Context, providerUUID string, cb func(lease types.Lease) (stop bool, err error)) error {
+func (k *Keeper) IterateLeasesByProvider(ctx context.Context, providerUUID string, cb func(lease types.Lease) (stop bool, err error)) (err error) {
 	iter, err := k.Leases.Indexes.Provider.MatchExact(ctx, providerUUID)
 	if err != nil {
 		return err
 	}
-	defer iter.Close()
+	defer func() {
+		if closeErr := iter.Close(); err == nil {
+			err = closeErr
+		}
+	}()
 
 	for ; iter.Valid(); iter.Next() {
 		leaseUUID, err := iter.PrimaryKey()
@@ -725,23 +786,40 @@ func (k *Keeper) GetCreditAccount(ctx context.Context, tenant string) (types.Cre
 	return ca, nil
 }
 
-// SetCreditAccount sets a CreditAccount in the store and updates the reverse lookup index.
+// SetCreditAccount validates and canonicalizes a CreditAccount, then atomically
+// updates the primary record and its byte-keyed reverse lookup index.
 func (k *Keeper) SetCreditAccount(ctx context.Context, ca types.CreditAccount) error {
-	// Convert bech32 address to AccAddress for storage
 	tenantAddr, err := sdk.AccAddressFromBech32(ca.Tenant)
 	if err != nil {
-		return err
+		return types.ErrInvalidCreditOperation.Wrapf("invalid tenant address: %v", err)
+	}
+	expectedCreditAddr := types.DeriveCreditAddress(tenantAddr)
+	creditAddr, err := sdk.AccAddressFromBech32(ca.CreditAddress)
+	if err != nil {
+		return types.ErrInvalidCreditOperation.Wrapf("invalid credit address for tenant %s: %v", tenantAddr, err)
+	}
+	if !expectedCreditAddr.Equals(creditAddr) {
+		return types.ErrInvalidCreditOperation.Wrapf(
+			"credit address %s does not match derived address %s for tenant %s",
+			creditAddr,
+			expectedCreditAddr,
+			tenantAddr,
+		)
 	}
 	ca.Tenant = tenantAddr.String()
+	ca.CreditAddress = expectedCreditAddr.String()
 
-	// Store the credit account keyed by tenant AccAddress
-	if err := k.CreditAccounts.Set(ctx, tenantAddr, ca); err != nil {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	cacheCtx, write := sdkCtx.CacheContext()
+	if err := k.CreditAccounts.Set(cacheCtx, tenantAddr, ca); err != nil {
+		return err
+	}
+	if err := k.CreditAddressIndex.Set(cacheCtx, expectedCreditAddr, tenantAddr); err != nil {
 		return err
 	}
 
-	// Update the reverse lookup index (derived address -> tenant)
-	derivedAddr := types.DeriveCreditAddress(tenantAddr)
-	return k.CreditAddressIndex.Set(ctx, derivedAddr, tenantAddr)
+	write()
+	return nil
 }
 
 // GetAllCreditAccounts returns all CreditAccounts in the store.
@@ -778,9 +856,7 @@ func (k *Keeper) CountActiveLeasesByTenant(ctx context.Context, tenant string) (
 
 // countLeasesByTenantAndStateScan counts leases in a specific state using the TenantState
 // compound index. This is used as a fallback when credit account doesn't exist.
-func (k *Keeper) countLeasesByTenantAndStateScan(ctx context.Context, tenant string, state types.LeaseState) (uint64, error) {
-	var count uint64
-
+func (k *Keeper) countLeasesByTenantAndStateScan(ctx context.Context, tenant string, state types.LeaseState) (count uint64, err error) {
 	// Convert bech32 address to bytes for index lookup
 	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
 	if err != nil {
@@ -793,7 +869,11 @@ func (k *Keeper) countLeasesByTenantAndStateScan(ctx context.Context, tenant str
 	if err != nil {
 		return 0, err
 	}
-	defer iter.Close()
+	defer func() {
+		if closeErr := iter.Close(); err == nil {
+			err = closeErr
+		}
+	}()
 
 	for ; iter.Valid(); iter.Next() {
 		count++
@@ -960,7 +1040,6 @@ func (k *Keeper) ShouldAutoCloseLease(
 			"tenant", lease.Tenant,
 			"last_settled_at", lease.LastSettledAt,
 			"block_time", blockTime,
-			"difference", lease.LastSettledAt.Sub(blockTime),
 		)
 		return false, time.Time{}, types.ErrInvalidLease.Wrapf(
 			"lease %s has LastSettledAt (%s) in the future relative to block time (%s)",
@@ -1223,14 +1302,16 @@ func (k *Keeper) GetPendingLeases(ctx context.Context) ([]types.Lease, error) {
 
 // GetLeasesByState returns all leases with a specific state.
 // Uses the state index for efficient lookup.
-func (k *Keeper) GetLeasesByState(ctx context.Context, state types.LeaseState) ([]types.Lease, error) {
-	var leases []types.Lease
-
+func (k *Keeper) GetLeasesByState(ctx context.Context, state types.LeaseState) (leases []types.Lease, err error) {
 	iter, err := k.Leases.Indexes.State.MatchExact(ctx, int32(state))
 	if err != nil {
 		return nil, err
 	}
-	defer iter.Close()
+	defer func() {
+		if closeErr := iter.Close(); err == nil {
+			err = closeErr
+		}
+	}()
 
 	for ; iter.Valid(); iter.Next() {
 		leaseUUID, err := iter.PrimaryKey()
@@ -1261,16 +1342,18 @@ func (k *Keeper) GetPendingLeasesByProvider(ctx context.Context, providerUUID st
 
 // GetLeasesByProviderAndState returns leases for a provider with a specific state.
 // Uses the compound (provider, state) index for O(1) direct lookup.
-func (k *Keeper) GetLeasesByProviderAndState(ctx context.Context, providerUUID string, state types.LeaseState) ([]types.Lease, error) {
-	var leases []types.Lease
-
+func (k *Keeper) GetLeasesByProviderAndState(ctx context.Context, providerUUID string, state types.LeaseState) (leases []types.Lease, err error) {
 	// Use the compound index for direct lookup
 	key := collections.Join(providerUUID, int32(state))
 	iter, err := k.Leases.Indexes.ProviderState.MatchExact(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	defer iter.Close()
+	defer func() {
+		if closeErr := iter.Close(); err == nil {
+			err = closeErr
+		}
+	}()
 
 	for ; iter.Valid(); iter.Next() {
 		leaseUUID, err := iter.PrimaryKey()
@@ -1289,9 +1372,7 @@ func (k *Keeper) GetLeasesByProviderAndState(ctx context.Context, providerUUID s
 
 // GetLeasesByTenantAndState returns leases for a tenant with a specific state.
 // Uses the compound (tenant, state) index for O(1) direct lookup.
-func (k *Keeper) GetLeasesByTenantAndState(ctx context.Context, tenant string, state types.LeaseState) ([]types.Lease, error) {
-	var leases []types.Lease
-
+func (k *Keeper) GetLeasesByTenantAndState(ctx context.Context, tenant string, state types.LeaseState) (leases []types.Lease, err error) {
 	tenantAddr, err := sdk.AccAddressFromBech32(tenant)
 	if err != nil {
 		return nil, err
@@ -1303,7 +1384,11 @@ func (k *Keeper) GetLeasesByTenantAndState(ctx context.Context, tenant string, s
 	if err != nil {
 		return nil, err
 	}
-	defer iter.Close()
+	defer func() {
+		if closeErr := iter.Close(); err == nil {
+			err = closeErr
+		}
+	}()
 
 	for ; iter.Valid(); iter.Next() {
 		leaseUUID, err := iter.PrimaryKey()
@@ -1322,16 +1407,18 @@ func (k *Keeper) GetLeasesByTenantAndState(ctx context.Context, tenant string, s
 
 // GetLeasesBySKU returns leases that contain the specified SKU.
 // Uses the LeaseBySKUIndex for efficient O(k) lookup where k = leases containing the SKU.
-func (k *Keeper) GetLeasesBySKU(ctx context.Context, skuUUID string) ([]types.Lease, error) {
-	var leases []types.Lease
-
+func (k *Keeper) GetLeasesBySKU(ctx context.Context, skuUUID string) (leases []types.Lease, err error) {
 	// Create a range that matches all (skuUUID, *) keys
 	rng := collections.NewPrefixedPairRange[string, string](skuUUID)
 	iter, err := k.LeaseBySKUIndex.Iterate(ctx, rng)
 	if err != nil {
 		return nil, err
 	}
-	defer iter.Close()
+	defer func() {
+		if closeErr := iter.Close(); err == nil {
+			err = closeErr
+		}
+	}()
 
 	for ; iter.Valid(); iter.Next() {
 		key, err := iter.Key()
@@ -1504,7 +1591,7 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 
 	// Close iterator before modifying state to avoid iterator invalidation
 	if err := iter.Close(); err != nil {
-		k.logger.Error("failed to close iterator", "error", err)
+		return fmt.Errorf("close pending-lease expiration iterator: %w", err)
 	}
 
 	// Second pass: expire the collected leases

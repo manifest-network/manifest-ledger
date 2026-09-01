@@ -24,18 +24,20 @@ service Msg {
 
   // DeactivateProvider deactivates a provider (soft delete).
   // Deactivated providers cannot create new SKUs but existing SKUs continue.
-  rpc DeactivateProvider(MsgDeactivateProvider) returns (MsgDeactivateProviderResponse);
+  rpc DeactivateProvider(MsgDeactivateProvider)
+      returns (MsgDeactivateProviderResponse);
 
   // CreateSKU creates a new SKU.
   rpc CreateSKU(MsgCreateSKU) returns (MsgCreateSKUResponse);
 
   // UpdateSKU updates an existing SKU.
-  // Can reactivate an inactive SKU (if provider is active) but cannot deactivate an active one.
-  // Use DeactivateSKU to deactivate.
+  // Can reactivate an inactive SKU (if provider is active) but cannot
+  // deactivate an active one. Use DeactivateSKU to deactivate.
   rpc UpdateSKU(MsgUpdateSKU) returns (MsgUpdateSKUResponse);
 
   // DeactivateSKU deactivates a SKU (soft delete).
-  // Deactivated SKUs cannot be used for new leases but existing leases continue.
+  // Deactivated SKUs cannot be used for new leases but existing leases
+  // continue.
   rpc DeactivateSKU(MsgDeactivateSKU) returns (MsgDeactivateSKUResponse);
 
   // UpdateParams updates the module parameters.
@@ -98,16 +100,22 @@ message MsgUpdateProvider {
   bool active = 6;
 
   // api_url is the HTTPS endpoint where the provider's off-chain API is hosted.
+  // An empty value preserves the existing URL unless clear_api_url is true.
   string api_url = 7;
+
+  // clear_api_url clears the provider's existing API URL when true.
+  // It cannot be combined with a non-empty api_url.
+  bool clear_api_url = 8;
 }
 
 // MsgUpdateProviderResponse is the Msg/UpdateProvider response type.
 message MsgUpdateProviderResponse {}
 
 // MsgDeactivateProvider is the Msg/DeactivateProvider request type.
-// This performs a soft delete - the provider remains in state but is marked inactive.
-// SKU deactivation is paginated to prevent gas exhaustion with many SKUs.
-// If has_more is true in the response, call again to continue deactivating SKUs.
+// This performs a soft delete - the provider remains in state but is marked
+// inactive. SKU deactivation is paginated to prevent gas exhaustion with many
+// SKUs. If has_more is true in the response, call again to continue
+// deactivating SKUs.
 message MsgDeactivateProvider {
   option (cosmos.msg.v1.signer) = "authority";
   option (gogoproto.equal) = false;
@@ -212,7 +220,8 @@ message MsgUpdateSKU {
 message MsgUpdateSKUResponse {}
 
 // MsgDeactivateSKU is the Msg/DeactivateSKU request type.
-// This performs a soft delete - the SKU remains in state but is marked inactive.
+// This performs a soft delete - the SKU remains in state but is marked
+// inactive.
 message MsgDeactivateSKU {
   option (cosmos.msg.v1.signer) = "authority";
   option (gogoproto.equal) = false;

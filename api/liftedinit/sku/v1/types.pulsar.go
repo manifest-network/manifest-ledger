@@ -2,10 +2,10 @@
 package skuv1
 
 import (
+	v1beta1 "cosmossdk.io/api/cosmos/base/v1beta1"
 	fmt "fmt"
 	_ "github.com/cosmos/cosmos-proto"
 	runtime "github.com/cosmos/cosmos-proto/runtime"
-	types "cosmossdk.io/api/cosmos/base/v1beta1"
 	_ "github.com/cosmos/cosmos-sdk/types/tx/amino"
 	_ "github.com/cosmos/gogoproto/gogoproto"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -1483,7 +1483,7 @@ func (x *fastReflection_SKU) Set(fd protoreflect.FieldDescriptor, value protoref
 	case "liftedinit.sku.v1.SKU.unit":
 		x.Unit = (Unit)(value.Enum())
 	case "liftedinit.sku.v1.SKU.base_price":
-		x.BasePrice = value.Message().Interface().(*types.Coin)
+		x.BasePrice = value.Message().Interface().(*v1beta1.Coin)
 	case "liftedinit.sku.v1.SKU.meta_hash":
 		x.MetaHash = value.Bytes()
 	case "liftedinit.sku.v1.SKU.active":
@@ -1510,7 +1510,7 @@ func (x *fastReflection_SKU) Mutable(fd protoreflect.FieldDescriptor) protorefle
 	switch fd.FullName() {
 	case "liftedinit.sku.v1.SKU.base_price":
 		if x.BasePrice == nil {
-			x.BasePrice = new(types.Coin)
+			x.BasePrice = new(v1beta1.Coin)
 		}
 		return protoreflect.ValueOfMessage(x.BasePrice.ProtoReflect())
 	case "liftedinit.sku.v1.SKU.uuid":
@@ -1547,7 +1547,7 @@ func (x *fastReflection_SKU) NewField(fd protoreflect.FieldDescriptor) protorefl
 	case "liftedinit.sku.v1.SKU.unit":
 		return protoreflect.ValueOfEnum(0)
 	case "liftedinit.sku.v1.SKU.base_price":
-		m := new(types.Coin)
+		m := new(v1beta1.Coin)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	case "liftedinit.sku.v1.SKU.meta_hash":
 		return protoreflect.ValueOfBytes(nil)
@@ -1928,7 +1928,7 @@ func (x *fastReflection_SKU) ProtoMethods() *protoiface.Methods {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
 				if x.BasePrice == nil {
-					x.BasePrice = &types.Coin{}
+					x.BasePrice = &v1beta1.Coin{}
 				}
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.BasePrice); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
@@ -2226,7 +2226,7 @@ type SKU struct {
 	// unit is the billing unit for the SKU.
 	Unit Unit `protobuf:"varint,4,opt,name=unit,proto3,enum=liftedinit.sku.v1.Unit" json:"unit,omitempty"`
 	// base_price is the base price for the SKU.
-	BasePrice *types.Coin `protobuf:"bytes,5,opt,name=base_price,json=basePrice,proto3" json:"base_price,omitempty"`
+	BasePrice *v1beta1.Coin `protobuf:"bytes,5,opt,name=base_price,json=basePrice,proto3" json:"base_price,omitempty"`
 	// meta_hash is a hash of the off-chain metadata.
 	MetaHash []byte `protobuf:"bytes,6,opt,name=meta_hash,json=metaHash,proto3" json:"meta_hash,omitempty"`
 	// active indicates whether the SKU is active.
@@ -2281,7 +2281,7 @@ func (x *SKU) GetUnit() Unit {
 	return Unit_UNIT_UNSPECIFIED
 }
 
-func (x *SKU) GetBasePrice() *types.Coin {
+func (x *SKU) GetBasePrice() *v1beta1.Coin {
 	if x != nil {
 		return x.BasePrice
 	}
@@ -2411,11 +2411,11 @@ func file_liftedinit_sku_v1_types_proto_rawDescGZIP() []byte {
 var file_liftedinit_sku_v1_types_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_liftedinit_sku_v1_types_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_liftedinit_sku_v1_types_proto_goTypes = []interface{}{
-	(Unit)(0),          // 0: liftedinit.sku.v1.Unit
-	(*Params)(nil),     // 1: liftedinit.sku.v1.Params
-	(*Provider)(nil),   // 2: liftedinit.sku.v1.Provider
-	(*SKU)(nil),        // 3: liftedinit.sku.v1.SKU
-	(*types.Coin)(nil), // 4: cosmos.base.v1beta1.Coin
+	(Unit)(0),            // 0: liftedinit.sku.v1.Unit
+	(*Params)(nil),       // 1: liftedinit.sku.v1.Params
+	(*Provider)(nil),     // 2: liftedinit.sku.v1.Provider
+	(*SKU)(nil),          // 3: liftedinit.sku.v1.SKU
+	(*v1beta1.Coin)(nil), // 4: cosmos.base.v1beta1.Coin
 }
 var file_liftedinit_sku_v1_types_proto_depIdxs = []int32{
 	0, // 0: liftedinit.sku.v1.SKU.unit:type_name -> liftedinit.sku.v1.Unit

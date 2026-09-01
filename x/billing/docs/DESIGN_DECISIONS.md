@@ -39,7 +39,7 @@ This document records key design decisions made during the development of the x/
 
 **Trade-offs:**
 - Lease state queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state
-- Use `WithdrawableAmount` for one lease or `ProviderWithdrawable` for an ordered page-local execution estimate. The provider query mirrors transaction best-effort semantics: it discards a failed lease simulation and carries successful virtual effects into later leases, but commits no query state. Provider pages are not additive because separate pages can share tenant balances. Only a forward query with `limit <= 100` is comparable to one provider-wide withdrawal. After commit, advance the query with the prior query response's first-unread cursor and the transaction with the prior transaction response's last-processed cursor; never interchange them.
+- Use `WithdrawableAmount` for one lease or `ProviderWithdrawable` for an ordered page-local execution estimate. The provider query mirrors transaction best-effort semantics: it discards a failed lease simulation, reports its UUID in index order, and carries successful virtual effects into later leases, but commits no query state. Provider pages are not additive because separate pages can share tenant balances. Only a forward query with `limit <= 100` is comparable to one provider-wide withdrawal. At identical state and time their failure lists also match. After commit, advance the query with the prior query response's first-unread cursor and the transaction with the prior transaction response's last-processed cursor; never interchange them.
 - Auto-close only happens during write operations (CloseLease, Withdraw)
 - Provider withdrawal requires explicit action
 
@@ -534,13 +534,15 @@ When implementing breaking changes:
 - Handle PENDING leases during upgrade (either expire or migrate to new state)
 - For the v2→v3→v4 reservation cutover, do not settle or mint implicitly:
   v2→v3 repairs byte identity, counts, and the provable aggregate floor;
-  v3→v4 fully funds reconstructible PENDING claims first and distributes the
-  remaining bank-backed old aggregate across ACTIVE and historical claims with
-  deterministic Hamilton allocation, recording the exact historical cohort
-  size for O(1) terminal release.
-- Preflight every tenant/denomination before v4: both the old aggregate and
-  bank balance must cover the complete PENDING nominal sum. Fund bank
-  shortfalls before the upgrade; the no-mint migration fails closed otherwise.
+  v3→v4 preserves a tenant's complete modern PENDING cohort only when every
+  denomination is bank-backed, otherwise expires the whole cohort, and then
+  distributes the remaining bank-backed historical budget across ACTIVE and
+  historical claims with deterministic Hamilton allocation, recording the
+  exact historical cohort size for O(1) terminal release.
+- Preflight every tenant/denomination before v4. A repaired aggregate below the
+  complete PENDING nominal sum is corruption and fails closed. A bank-only
+  shortfall is reachable under v2 and deterministically expires every modern
+  PENDING lease for that tenant; identify the affected clients before cutover.
 
 ## Related Documentation
 

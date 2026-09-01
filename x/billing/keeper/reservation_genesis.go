@@ -82,6 +82,7 @@ func (k *Keeper) prepareGenesisReservationState(
 			})
 		}
 		planned, aggregate, legacyAllocation, err := planConsumableReservationCutover(
+			ctx.BlockTime(),
 			oldAggregate,
 			bankBalances,
 			records,
@@ -91,10 +92,10 @@ func (k *Keeper) prepareGenesisReservationState(
 				"normalize imported reservations for tenant %q: %s", tenant.String(), err,
 			)
 		}
-		legacyLeaseCount, err := countLiveLegacyReservationLeases(records)
+		counts, err := countReservationMigrationLeases(planned)
 		if err != nil {
 			return nil, types.ErrReservationInvariant.Wrapf(
-				"count imported live legacy leases for tenant %q: %s", tenant.String(), err,
+				"count imported post-cutover leases for tenant %q: %s", tenant.String(), err,
 			)
 		}
 		for recordIndex, leaseIndex := range indexes {
@@ -102,7 +103,9 @@ func (k *Keeper) prepareGenesisReservationState(
 		}
 		account.ReservedAmounts = aggregate
 		account.UnattributedReservedAmounts = legacyAllocation
-		account.UnattributedLeaseCount = legacyLeaseCount
+		account.ActiveLeaseCount = counts.active
+		account.PendingLeaseCount = counts.pending
+		account.UnattributedLeaseCount = counts.legacy
 	}
 
 	if err := prepared.Validate(); err != nil {

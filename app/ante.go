@@ -1,3 +1,4 @@
+// Package app assembles the Manifest Network application.
 package app
 
 import (
@@ -20,6 +21,7 @@ import (
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
+// RateMinMax defines the permitted validator commission-rate bounds.
 type RateMinMax struct {
 	Floor sdkmath.LegacyDec
 	Ceil  sdkmath.LegacyDec
@@ -38,6 +40,7 @@ type HandlerOptions struct {
 	TxCounterStoreKey corestoretypes.KVStoreService
 }
 
+// NewAnteHandler constructs the application's ante-handler chain.
 func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 	if options.AccountKeeper == nil {
 		return nil, errors.New("account keeper is required for ante builder")

@@ -1,3 +1,4 @@
+// Package simulation defines SKU module simulation operations and genesis data.
 package simulation
 
 import (
@@ -6,11 +7,14 @@ import (
 	"math/rand"
 
 	"github.com/cosmos/cosmos-sdk/codec"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
+
+const maxSimulationManagers = 3
 
 // RandomizedGenState generates a random GenesisState for the sku module.
 func RandomizedGenState(simState *module.SimulationState) {
@@ -36,15 +40,52 @@ func RandomizedGenState(simState *module.SimulationState) {
 		skus = append(skus, sku)
 	}
 
+	params := types.DefaultParams()
+	params.AllowedList = simulationAllowedList(simState.Rand, simState.Accounts)
+
 	genesisState := types.GenesisState{
-		Params:           types.DefaultParams(),
+		Params:           params,
 		Providers:        providers,
 		Skus:             skus,
-		ProviderSequence: uint64(numProviders),
-		SkuSequence:      uint64(numSKUs),
+		ProviderSequence: uint64(numProviders), //nolint:gosec // generated in the closed range [1, 5]
+		SkuSequence:      uint64(numSKUs),      //nolint:gosec // generated in the closed range [1, 10]
 	}
 
 	simState.GenState[types.ModuleName] = simState.Cdc.MustMarshalJSON(&genesisState)
+}
+
+// simulationAllowedList selects a small set of simulation accounts in PRNG
+// order. This gives ordinary SKU operations signers that the module actually
+// authorizes; the governance authority has no simulation private key.
+func simulationAllowedList(r *rand.Rand, accs []simtypes.Account) []string {
+	if len(accs) == 0 {
+		return nil
+	}
+
+	target := min(maxSimulationManagers, len(accs))
+	target = r.Intn(target) + 1
+	permutation := r.Perm(len(accs))
+	allowed := make([]string, 0, target)
+	allowedAddresses := make([]sdk.AccAddress, 0, target)
+	for _, index := range permutation {
+		candidate := accs[index].Address
+		duplicate := false
+		for _, existing := range allowedAddresses {
+			if candidate.Equals(existing) {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
+			continue
+		}
+		allowed = append(allowed, candidate.String())
+		allowedAddresses = append(allowedAddresses, candidate)
+		if len(allowed) == target {
+			break
+		}
+	}
+	return allowed
 }
 
 // generateSimUUID generates a deterministic UUID-like string for simulation.

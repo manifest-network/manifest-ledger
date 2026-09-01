@@ -45,7 +45,7 @@ func (app *ManifestApp) ExportAppStateAndValidators(forZeroHeight bool, jailAllo
 		AppState:        appState,
 		Validators:      validators,
 		Height:          height,
-		ConsensusParams: app.BaseApp.GetConsensusParams(ctx),
+		ConsensusParams: app.GetConsensusParams(ctx),
 	}, err
 }
 
@@ -54,12 +54,8 @@ func (app *ManifestApp) ExportAppStateAndValidators(forZeroHeight bool, jailAllo
 //
 //	in favor of export at a block height
 func (app *ManifestApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddrs []string) {
-	applyAllowedAddrs := false
-
-	// check if there is a allowed address list
-	if len(jailAllowedAddrs) > 0 {
-		applyAllowedAddrs = true
-	}
+	// check if there is an allowed address list
+	applyAllowedAddrs := len(jailAllowedAddrs) > 0
 
 	allowedAddrsMap := make(map[string]bool)
 

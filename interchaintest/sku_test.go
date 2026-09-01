@@ -211,91 +211,91 @@ func TestSKU(t *testing.T) {
 
 	// Run test cases
 	t.Run("QueryParams", func(t *testing.T) {
-		testSKUQueryParams(t, ctx, chain)
+		testSKUQueryParams(ctx, t, chain)
 	})
 
 	// Provider tests
 	var providerUUID string
 	t.Run("CreateProvider", func(t *testing.T) {
-		providerUUID = testProviderCreate(t, ctx, chain, authority, user1)
+		providerUUID = testProviderCreate(ctx, t, chain, authority, user1)
 	})
 
 	t.Run("QueryProvider", func(t *testing.T) {
-		testProviderQuery(t, ctx, chain, providerUUID)
+		testProviderQuery(ctx, t, chain, providerUUID)
 	})
 
 	t.Run("UpdateProvider", func(t *testing.T) {
-		testProviderUpdate(t, ctx, chain, authority, user1, providerUUID)
+		testProviderUpdate(ctx, t, chain, authority, user1, providerUUID)
 	})
 
 	// SKU tests
 	var skuUUID string
 	t.Run("CreateSKU", func(t *testing.T) {
-		skuUUID = testSKUCreate(t, ctx, chain, authority, user1, providerUUID)
+		skuUUID = testSKUCreate(ctx, t, chain, authority, user1, providerUUID)
 	})
 
 	t.Run("QuerySKU", func(t *testing.T) {
-		testSKUQuery(t, ctx, chain, skuUUID, providerUUID)
+		testSKUQuery(ctx, t, chain, skuUUID, providerUUID)
 	})
 
 	t.Run("UpdateSKU", func(t *testing.T) {
-		testSKUUpdate(t, ctx, chain, authority, user1, skuUUID, providerUUID)
+		testSKUUpdate(ctx, t, chain, authority, user1, skuUUID, providerUUID)
 	})
 
 	t.Run("DeactivateSKU", func(t *testing.T) {
-		testSKUDeactivate(t, ctx, chain, authority, user1, providerUUID)
+		testSKUDeactivate(ctx, t, chain, authority, user1, providerUUID)
 	})
 
 	t.Run("DeactivateProvider", func(t *testing.T) {
-		testProviderDeactivate(t, ctx, chain, authority, user1)
+		testProviderDeactivate(ctx, t, chain, authority, user1)
 	})
 
 	t.Run("DeactivateProviderPagination", func(t *testing.T) {
-		testProviderDeactivatePagination(t, ctx, chain, authority)
+		testProviderDeactivatePagination(ctx, t, chain, authority)
 	})
 
 	t.Run("UpdateParams", func(t *testing.T) {
-		testSKUUpdateParams(t, ctx, chain, authority, user1)
+		testSKUUpdateParams(ctx, t, chain, authority, user1)
 	})
 
 	t.Run("AllowedListOperations", func(t *testing.T) {
-		testSKUAllowedListOperations(t, ctx, chain, authority, user1, user2)
+		testSKUAllowedListOperations(ctx, t, chain, authority, user1, user2)
 	})
 
 	t.Run("QuerySKUsByProvider", func(t *testing.T) {
-		testSKUQueryByProvider(t, ctx, chain, authority)
+		testSKUQueryByProvider(ctx, t, chain, authority)
 	})
 
 	t.Run("Pagination", func(t *testing.T) {
-		testSKUPagination(t, ctx, chain, authority)
+		testSKUPagination(ctx, t, chain, authority)
 	})
 
 	t.Run("MultiDenom", func(t *testing.T) {
-		testSKUMultiDenom(t, ctx, chain, authority)
+		testSKUMultiDenom(ctx, t, chain, authority)
 	})
 
 	t.Run("ProviderFullFields", func(t *testing.T) {
-		testProviderFullFields(t, ctx, chain, authority)
+		testProviderFullFields(ctx, t, chain, authority)
 	})
 
 	t.Run("UnitPerDay", func(t *testing.T) {
-		testSKUUnitPerDay(t, ctx, chain, authority)
+		testSKUUnitPerDay(ctx, t, chain, authority)
 	})
 
 	t.Run("ProviderPagination", func(t *testing.T) {
-		testProviderPagination(t, ctx, chain, authority)
+		testProviderPagination(ctx, t, chain, authority)
 	})
 
 	t.Run("SKUValidation", func(t *testing.T) {
-		testSKUValidation(t, ctx, chain, authority)
+		testSKUValidation(ctx, t, chain, authority)
 	})
 
 	t.Run("InvalidUUID", func(t *testing.T) {
-		testSKUInvalidUUID(t, ctx, chain, authority)
+		testSKUInvalidUUID(ctx, t, chain, authority)
 	})
 
 	t.Run("EmptyParams", func(t *testing.T) {
-		testSKUEmptyParams(t, ctx, chain, authority)
+		testSKUEmptyParams(ctx, t, chain, authority)
 	})
 
 	t.Cleanup(func() {
@@ -304,7 +304,7 @@ func TestSKU(t *testing.T) {
 	})
 }
 
-func testSKUQueryParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain) {
+func testSKUQueryParams(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain) {
 	t.Log("=== Testing SKU Query Params ===")
 
 	res, err := helpers.SKUQueryParams(ctx, chain)
@@ -313,7 +313,7 @@ func testSKUQueryParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosC
 	require.Empty(t, res.Params.AllowedList, "default allowed list should be empty")
 }
 
-func testProviderCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet) string {
+func testProviderCreate(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet) string {
 	t.Log("=== Testing Provider Create ===")
 
 	address := authority.FormattedAddress()
@@ -362,7 +362,7 @@ func testProviderCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosC
 	return providerUUID
 }
 
-func testProviderQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, providerUUID string) {
+func testProviderQuery(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, providerUUID string) {
 	t.Log("=== Testing Provider Query ===")
 
 	t.Run("success: query existing provider", func(t *testing.T) {
@@ -378,7 +378,7 @@ func testProviderQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	})
 }
 
-func testProviderUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, providerUUID string) {
+func testProviderUpdate(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, providerUUID string) {
 	t.Log("=== Testing Provider Update ===")
 
 	address := authority.FormattedAddress()
@@ -419,7 +419,7 @@ func testProviderUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosC
 	})
 }
 
-func testProviderDeactivate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet) {
+func testProviderDeactivate(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet) {
 	t.Log("=== Testing Provider Deactivate ===")
 
 	address := authority.FormattedAddress()
@@ -486,7 +486,7 @@ func testProviderDeactivate(t *testing.T, ctx context.Context, chain *cosmos.Cos
 
 // testProviderDeactivatePagination tests that SKU deactivation is paginated
 // to prevent gas exhaustion when a provider has many SKUs.
-func testProviderDeactivatePagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+func testProviderDeactivatePagination(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority ibc.Wallet) {
 	t.Log("=== Testing Provider Deactivate Pagination ===")
 
 	address := authority.FormattedAddress()
@@ -629,7 +629,7 @@ func testProviderDeactivatePagination(t *testing.T, ctx context.Context, chain *
 	})
 }
 
-func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, providerUUID string) string {
+func testSKUCreate(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, providerUUID string) string {
 	t.Log("=== Testing SKU Create ===")
 
 	name := "Compute Small"
@@ -743,7 +743,7 @@ func testSKUCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	return skuUUID
 }
 
-func testSKUQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, skuUUID, providerUUID string) {
+func testSKUQuery(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, skuUUID, providerUUID string) {
 	t.Log("=== Testing SKU Query ===")
 
 	t.Run("success: query existing SKU", func(t *testing.T) {
@@ -760,7 +760,7 @@ func testSKUQuery(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 	})
 }
 
-func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, skuUUID, providerUUID string) {
+func testSKUUpdate(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, skuUUID, providerUUID string) {
 	t.Log("=== Testing SKU Update ===")
 
 	// Price must be >= 3600 for UNIT_PER_HOUR to have non-zero per-second rate
@@ -848,7 +848,7 @@ func testSKUUpdate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 	})
 }
 
-func testSKUDeactivate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, providerUUID string) {
+func testSKUDeactivate(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet, providerUUID string) {
 	t.Log("=== Testing SKU Deactivate ===")
 
 	// Create a SKU specifically for deactivation
@@ -911,7 +911,7 @@ func testSKUDeactivate(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	})
 }
 
-func testSKUUpdateParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet) {
+func testSKUUpdateParams(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority, user1 ibc.Wallet) {
 	t.Log("=== Testing SKU Update Params ===")
 
 	t.Run("fail: unauthorized user updates params", func(t *testing.T) {
@@ -954,7 +954,7 @@ func testSKUUpdateParams(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	})
 }
 
-func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority, user1, user2 ibc.Wallet) {
+func testSKUAllowedListOperations(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority, user1, user2 ibc.Wallet) {
 	t.Log("=== Testing SKU Allowed List Operations ===")
 
 	// Create a provider for testing
@@ -1058,7 +1058,7 @@ func testSKUAllowedListOperations(t *testing.T, ctx context.Context, chain *cosm
 	})
 }
 
-func testSKUQueryByProvider(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+func testSKUQueryByProvider(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority ibc.Wallet) {
 	t.Log("=== Testing SKU Query By Provider ===")
 
 	// Create a new provider specifically for this test
@@ -1107,7 +1107,7 @@ func testSKUQueryByProvider(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	})
 }
 
-func testSKUPagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+func testSKUPagination(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority ibc.Wallet) {
 	t.Log("=== Testing SKU Pagination ===")
 
 	// Create a new provider for pagination testing
@@ -1211,7 +1211,7 @@ func testSKUPagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 }
 
 // testSKUMultiDenom tests that SKUs can be created with different denoms
-func testSKUMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+func testSKUMultiDenom(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority ibc.Wallet) {
 	t.Log("=== Testing SKU Multi-Denom Support ===")
 
 	// Create a new provider for multi-denom testing
@@ -1337,7 +1337,7 @@ func testSKUMultiDenom(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 }
 
 // testProviderFullFields tests provider creation and update with api_url field.
-func testProviderFullFields(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+func testProviderFullFields(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority ibc.Wallet) {
 	t.Log("=== Testing Provider Full Fields (api_url) ===")
 
 	address := authority.FormattedAddress()
@@ -1430,7 +1430,7 @@ func testProviderFullFields(t *testing.T, ctx context.Context, chain *cosmos.Cos
 }
 
 // testSKUUnitPerDay tests SKU creation and updates with UNIT_PER_DAY pricing model.
-func testSKUUnitPerDay(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+func testSKUUnitPerDay(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority ibc.Wallet) {
 	t.Log("=== Testing SKU UNIT_PER_DAY Pricing Model ===")
 
 	// Create a provider for UNIT_PER_DAY testing
@@ -1574,7 +1574,7 @@ func testSKUUnitPerDay(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 }
 
 // testProviderPagination tests provider query pagination.
-func testProviderPagination(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+func testProviderPagination(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority ibc.Wallet) {
 	t.Log("=== Testing Provider Pagination ===")
 
 	// Create multiple providers to test pagination
@@ -1644,7 +1644,7 @@ func testProviderPagination(t *testing.T, ctx context.Context, chain *cosmos.Cos
 }
 
 // testSKUValidation tests SKU validation edge cases.
-func testSKUValidation(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+func testSKUValidation(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority ibc.Wallet) {
 	t.Log("=== Testing SKU Validation ===")
 
 	// Create a provider for testing
@@ -1718,7 +1718,7 @@ func testSKUValidation(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 }
 
 // testSKUInvalidUUID tests that invalid UUID formats are rejected.
-func testSKUInvalidUUID(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+func testSKUInvalidUUID(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority ibc.Wallet) {
 	t.Log("=== Testing Invalid UUID Format Rejection ===")
 
 	// Invalid UUID formats to test
@@ -1839,7 +1839,7 @@ func testSKUInvalidUUID(t *testing.T, ctx context.Context, chain *cosmos.CosmosC
 }
 
 // testSKUEmptyParams tests that empty string parameters are rejected.
-func testSKUEmptyParams(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) {
+func testSKUEmptyParams(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, authority ibc.Wallet) {
 	t.Log("=== Testing Empty String Parameter Rejection ===")
 
 	t.Run("fail: create provider with empty address", func(t *testing.T) {

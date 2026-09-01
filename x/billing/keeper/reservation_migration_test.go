@@ -123,6 +123,105 @@ func TestMigrate2to3Then3to4ComposesFromV2State(t *testing.T) {
 		"sequential migrations must not mint or transfer bank balances")
 }
 
+func TestMigrate2to3Then3to4ExpiresReachableUnderbackedPendingLease(t *testing.T) {
+	f := initFixture(t)
+	tenant := f.TestAccs[0]
+	upperTenant := strings.ToUpper(tenant.String())
+	creditAddress := types.DeriveCreditAddress(tenant)
+	now := f.Ctx.BlockTime()
+	const pendingUUID = "01912345-6789-7abc-8def-0123456789a0"
+
+	active := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       upperTenant,
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid: testSKUUUID, Quantity: 1,
+			LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(3)),
+		}},
+		State: types.LEASE_STATE_ACTIVE, CreatedAt: now, LastSettledAt: now,
+		MinLeaseDurationAtCreation: 1,
+	}
+	pending := types.Lease{
+		Uuid:         pendingUUID,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid: testSKUUUID, Quantity: 1,
+			LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(5)),
+		}},
+		State: types.LEASE_STATE_PENDING, CreatedAt: now, LastSettledAt: now,
+		MinLeaseDurationAtCreation: 1,
+	}
+	for _, lease := range []types.Lease{pending, active} {
+		require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+		overwriteLeaseWithLegacyEncoding(t, f, lease)
+	}
+	require.NoError(t, f.App.BillingKeeper.LeaseSequence.Set(f.Ctx, 2))
+
+	// This is reachable in v2: both nominal claims were reserved against eight
+	// coins, then settlement of the ACTIVE lease consumed four coins without
+	// excluding the concurrent PENDING claim. The aggregate remained eight.
+	f.fundAccount(t, creditAddress, sdk.NewCoins(
+		sdk.NewCoin(testDenom, sdkmath.NewInt(4)),
+	))
+	legacyAccount := types.CreditAccount{
+		Tenant:            upperTenant,
+		CreditAddress:     strings.ToUpper(creditAddress.String()),
+		ActiveLeaseCount:  0,
+		PendingLeaseCount: 0,
+		ReservedAmounts: sdk.NewCoins(
+			sdk.NewCoin(testDenom, sdkmath.NewInt(8)),
+		),
+	}
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, legacyAccount))
+	legacyAccountEncoding, err := sdkcodec.CollValue[types.CreditAccount](f.EncodingCfg.Codec).Encode(legacyAccount)
+	require.NoError(t, err)
+	accountKey, err := collections.EncodeKeyWithPrefix(
+		types.CreditAccountKey.Bytes(),
+		sdk.AccAddressKey,
+		tenant,
+	)
+	require.NoError(t, err)
+	f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Set(accountKey, legacyAccountEncoding)
+	bankBefore := f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress)
+
+	migrator := keeper.NewMigrator(f.App.BillingKeeper)
+	require.NoError(t, migrator.Migrate2to3(f.Ctx))
+	accountAfterV3, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), accountAfterV3.ActiveLeaseCount)
+	require.Equal(t, uint64(1), accountAfterV3.PendingLeaseCount)
+	require.Equal(t, sdkmath.NewInt(8), accountAfterV3.ReservedAmounts.AmountOf(testDenom))
+	for _, uuid := range []string{active.Uuid, pending.Uuid} {
+		stored, err := f.App.BillingKeeper.GetLease(f.Ctx, uuid)
+		require.NoError(t, err)
+		require.Nil(t, stored.Reservation)
+	}
+
+	require.NoError(t, migrator.Migrate3to4(f.Ctx))
+	pendingAfter, err := f.App.BillingKeeper.GetLease(f.Ctx, pending.Uuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_EXPIRED, pendingAfter.State)
+	require.NotNil(t, pendingAfter.ExpiredAt)
+	require.Equal(t, now, *pendingAfter.ExpiredAt)
+	require.NotNil(t, pendingAfter.Reservation)
+	require.True(t, pendingAfter.Reservation.RemainingAmounts.IsZero())
+	activeAfter, err := f.App.BillingKeeper.GetLease(f.Ctx, active.Uuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, activeAfter.State)
+	require.NotNil(t, activeAfter.Reservation)
+	require.Equal(t, sdkmath.NewInt(3), activeAfter.Reservation.RemainingAmounts.AmountOf(testDenom))
+	accountAfterV4, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), accountAfterV4.ActiveLeaseCount)
+	require.Zero(t, accountAfterV4.PendingLeaseCount)
+	require.Equal(t, sdkmath.NewInt(3), accountAfterV4.ReservedAmounts.AmountOf(testDenom))
+	require.True(t, bankBefore.Equal(f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress)),
+		"sequential migrations must not mint, burn, or transfer bank balances")
+	require.NoError(t, f.App.BillingKeeper.ExportGenesis(f.Ctx).Validate())
+}
+
 func TestMigrate3to4CountsLiveLegacyCohortWithZeroAllocation(t *testing.T) {
 	f := initFixture(t)
 	tenant := f.TestAccs[0]
@@ -449,71 +548,207 @@ func TestMigrate3to4LargestRemainderPrefersActiveBeforeLegacyCohort(t *testing.T
 		"the ACTIVE UUID must win an equal largest-remainder tie over the cohort")
 }
 
-func TestMigrate3to4RejectsUnfundedExactPendingReservation(t *testing.T) {
-	tests := []struct {
-		name           string
-		oldReservation int64
-		bankBalance    int64
-		errorText      string
-	}{
-		{
-			name:           "old aggregate is insufficient despite bank surplus",
-			oldReservation: 4,
-			bankBalance:    10,
-			errorText:      "old aggregate cannot fully back exact PENDING reservations",
-		},
-		{
-			name:           "bank balance is insufficient",
-			oldReservation: 10,
-			bankBalance:    4,
-			errorText:      "bank balance cannot fully back exact PENDING reservations",
-		},
+func TestMigrate3to4RejectsOldAggregateBelowExactPendingFloor(t *testing.T) {
+	f := initFixture(t)
+	tenant := f.TestAccs[0]
+	creditAddress := types.DeriveCreditAddress(tenant)
+	now := f.Ctx.BlockTime()
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid: testSKUUUID, Quantity: 1,
+			LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(5)),
+		}},
+		State: types.LEASE_STATE_PENDING, CreatedAt: now, LastSettledAt: now,
+		MinLeaseDurationAtCreation: 1,
+	}
+	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+	f.fundAccount(t, creditAddress, sdk.NewCoins(
+		sdk.NewCoin(testDenom, sdkmath.NewInt(10)),
+	))
+	account := types.CreditAccount{
+		Tenant:            tenant.String(),
+		CreditAddress:     creditAddress.String(),
+		PendingLeaseCount: 1,
+		ReservedAmounts: sdk.NewCoins(
+			sdk.NewCoin(testDenom, sdkmath.NewInt(4)),
+		),
+	}
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, account))
+
+	err := keeper.NewMigrator(f.App.BillingKeeper).Migrate3to4(f.Ctx)
+	require.ErrorIs(t, err, types.ErrReservationInvariant)
+	require.ErrorContains(t, err, "old aggregate cannot fully back exact PENDING reservations")
+	storedLease, getErr := f.App.BillingKeeper.GetLease(f.Ctx, lease.Uuid)
+	require.NoError(t, getErr)
+	require.Nil(t, storedLease.Reservation)
+	storedAccount, getErr := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, getErr)
+	require.Equal(t, account, storedAccount)
+	require.Equal(t, sdkmath.NewInt(10),
+		f.App.BankKeeper.GetBalance(f.Ctx, creditAddress, testDenom).Amount)
+}
+
+func TestMigrate3to4ExpiresAllModernPendingWhenOneDenomIsUnderbacked(t *testing.T) {
+	f := initFixture(t)
+	tenant := f.TestAccs[0]
+	creditAddress := types.DeriveCreditAddress(tenant)
+	now := f.Ctx.BlockTime()
+	const (
+		pendingUUID1 = "01912345-6789-7abc-8def-0123456789a0"
+		pendingUUID2 = "01912345-6789-7abc-8def-0123456789a1"
+		domain1      = "first.cutover.example"
+		domain2      = "second.cutover.example"
+	)
+
+	active := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid: testSKUUUID, Quantity: 1,
+			LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(3)),
+		}},
+		State: types.LEASE_STATE_ACTIVE, CreatedAt: now, LastSettledAt: now,
+		MinLeaseDurationAtCreation: 1,
+	}
+	pending1 := types.Lease{
+		Uuid:         pendingUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid: testSKUUUID, Quantity: 1,
+			LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(5)),
+			ServiceName: "first", CustomDomain: domain1,
+		}},
+		State: types.LEASE_STATE_PENDING, CreatedAt: now, LastSettledAt: now,
+		MinLeaseDurationAtCreation: 1,
+	}
+	pending2 := types.Lease{
+		Uuid:         pendingUUID2,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid: testSKUUUID, Quantity: 1,
+			LockedPrice: sdk.NewCoin(testDenom2, sdkmath.NewInt(7)),
+			ServiceName: "second", CustomDomain: domain2,
+		}},
+		State: types.LEASE_STATE_PENDING, CreatedAt: now, LastSettledAt: now,
+		MinLeaseDurationAtCreation: 1,
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			f := initFixture(t)
-			tenant := f.TestAccs[0]
-			creditAddress := types.DeriveCreditAddress(tenant)
-			now := f.Ctx.BlockTime()
-			lease := types.Lease{
-				Uuid:         testLeaseUUID1,
-				Tenant:       tenant.String(),
-				ProviderUuid: testProviderUUID,
-				Items: []types.LeaseItem{{
-					SkuUuid: testSKUUUID, Quantity: 1,
-					LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(5)),
-				}},
-				State: types.LEASE_STATE_PENDING, CreatedAt: now, LastSettledAt: now,
-				MinLeaseDurationAtCreation: 1,
-			}
-			require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
-			f.fundAccount(t, creditAddress, sdk.NewCoins(
-				sdk.NewCoin(testDenom, sdkmath.NewInt(test.bankBalance)),
-			))
-			account := types.CreditAccount{
-				Tenant:            tenant.String(),
-				CreditAddress:     creditAddress.String(),
-				PendingLeaseCount: 1,
-				ReservedAmounts: sdk.NewCoins(
-					sdk.NewCoin(testDenom, sdkmath.NewInt(test.oldReservation)),
-				),
-			}
-			require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, account))
-
-			err := keeper.NewMigrator(f.App.BillingKeeper).Migrate3to4(f.Ctx)
-			require.ErrorIs(t, err, types.ErrReservationInvariant)
-			require.ErrorContains(t, err, test.errorText)
-			storedLease, getErr := f.App.BillingKeeper.GetLease(f.Ctx, lease.Uuid)
-			require.NoError(t, getErr)
-			require.Nil(t, storedLease.Reservation)
-			storedAccount, getErr := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
-			require.NoError(t, getErr)
-			require.Equal(t, account, storedAccount)
-			require.Equal(t, sdkmath.NewInt(test.bankBalance),
-				f.App.BankKeeper.GetBalance(f.Ctx, creditAddress, testDenom).Amount)
-		})
+	// Reverse insertion order must not affect the cutover result.
+	for _, lease := range []types.Lease{pending2, active, pending1} {
+		require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
 	}
+	f.fundAccount(t, creditAddress, sdk.NewCoins(
+		sdk.NewCoin(testDenom, sdkmath.NewInt(8)),
+		sdk.NewCoin(testDenom2, sdkmath.NewInt(6)),
+	))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:            tenant.String(),
+		CreditAddress:     creditAddress.String(),
+		ActiveLeaseCount:  1,
+		PendingLeaseCount: 2,
+		ReservedAmounts: sdk.NewCoins(
+			sdk.NewCoin(testDenom, sdkmath.NewInt(8)),
+			sdk.NewCoin(testDenom2, sdkmath.NewInt(7)),
+		),
+	}))
+	bankBefore := f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress)
+
+	require.NoError(t, keeper.NewMigrator(f.App.BillingKeeper).Migrate3to4(f.Ctx))
+
+	for _, expected := range []types.Lease{pending1, pending2} {
+		stored, err := f.App.BillingKeeper.GetLease(f.Ctx, expected.Uuid)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_EXPIRED, stored.State)
+		require.NotNil(t, stored.ExpiredAt)
+		require.Equal(t, now, *stored.ExpiredAt)
+		require.NotNil(t, stored.Reservation)
+		require.True(t, stored.Reservation.RemainingAmounts.IsZero())
+		require.Equal(t, expected.Items, stored.Items,
+			"terminalization must preserve the lease audit trail")
+	}
+
+	activeAfter, err := f.App.BillingKeeper.GetLease(f.Ctx, active.Uuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, activeAfter.State)
+	require.NotNil(t, activeAfter.Reservation)
+	require.Equal(t, sdkmath.NewInt(3), activeAfter.Reservation.RemainingAmounts.AmountOf(testDenom))
+	require.True(t, activeAfter.Reservation.RemainingAmounts.AmountOf(testDenom2).IsZero())
+
+	account, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), account.ActiveLeaseCount)
+	require.Zero(t, account.PendingLeaseCount)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(3))), account.ReservedAmounts)
+	require.True(t, account.UnattributedReservedAmounts.IsZero())
+	require.Zero(t, account.UnattributedLeaseCount)
+	require.True(t, bankBefore.Equal(f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress)),
+		"cutover must not mint, burn, or transfer bank balances")
+
+	pendingByTenant, err := f.App.BillingKeeper.GetLeasesByTenantAndState(
+		f.Ctx, tenant.String(), types.LEASE_STATE_PENDING,
+	)
+	require.NoError(t, err)
+	require.Empty(t, pendingByTenant)
+	expiredByTenant, err := f.App.BillingKeeper.GetLeasesByTenantAndState(
+		f.Ctx, tenant.String(), types.LEASE_STATE_EXPIRED,
+	)
+	require.NoError(t, err)
+	require.Len(t, expiredByTenant, 2)
+	require.Equal(t, []string{pendingUUID1, pendingUUID2}, []string{
+		expiredByTenant[0].Uuid,
+		expiredByTenant[1].Uuid,
+	})
+	pendingByProvider, err := f.App.BillingKeeper.GetLeasesByProviderAndState(
+		f.Ctx, testProviderUUID, types.LEASE_STATE_PENDING,
+	)
+	require.NoError(t, err)
+	require.Empty(t, pendingByProvider)
+
+	stateCreatedAtUUIDs := func(state types.LeaseState) []string {
+		t.Helper()
+		iterator, err := f.App.BillingKeeper.Leases.Indexes.StateCreatedAt.MatchExact(
+			f.Ctx,
+			collections.Join(int32(state), now),
+		)
+		require.NoError(t, err)
+		uuids := make([]string, 0)
+		for ; iterator.Valid(); iterator.Next() {
+			uuid, err := iterator.PrimaryKey()
+			require.NoError(t, err)
+			uuids = append(uuids, uuid)
+		}
+		require.NoError(t, iterator.Close())
+		return uuids
+	}
+	require.Equal(t, []string{active.Uuid}, stateCreatedAtUUIDs(types.LEASE_STATE_ACTIVE))
+	require.Empty(t, stateCreatedAtUUIDs(types.LEASE_STATE_PENDING))
+	require.Equal(t, []string{pendingUUID1, pendingUUID2}, stateCreatedAtUUIDs(types.LEASE_STATE_EXPIRED))
+
+	for _, domain := range []string{domain1, domain2} {
+		_, _, has, err := f.App.BillingKeeper.GetLeaseByCustomDomain(f.Ctx, domain)
+		require.NoError(t, err)
+		require.False(t, has)
+	}
+
+	// The presence wrapper is the migration's idempotence marker. A direct retry
+	// must preserve terminal states, timestamps, indexes, accounting and bank state.
+	leasesBeforeRetry, err := f.App.BillingKeeper.GetAllLeases(f.Ctx)
+	require.NoError(t, err)
+	accountBeforeRetry := account
+	require.NoError(t, keeper.NewMigrator(f.App.BillingKeeper).Migrate3to4(f.Ctx))
+	leasesAfterRetry, err := f.App.BillingKeeper.GetAllLeases(f.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, leasesBeforeRetry, leasesAfterRetry)
+	accountAfterRetry, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, accountBeforeRetry, accountAfterRetry)
+	require.True(t, bankBefore.Equal(f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress)))
 }
 
 func TestMigrate3to4ReleasesExcessWithoutLiveLegacyCohort(t *testing.T) {

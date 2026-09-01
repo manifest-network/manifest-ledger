@@ -488,7 +488,7 @@ func NewApp(
 		helpers.GetPoAAdmin(),
 		app.AccountKeeper.AddressCodec(),
 	)
-	app.BaseApp.SetCircuitBreaker(&app.CircuitKeeper)
+	app.SetCircuitBreaker(&app.CircuitKeeper)
 
 	app.AuthzKeeper = authzkeeper.NewKeeper(
 		runtime.NewKVStoreService(keys[authzkeeper.StoreKey]),
@@ -589,9 +589,9 @@ func NewApp(
 		runtime.NewKVStoreService(keys[skutypes.StoreKey]),
 		logger,
 		helpers.GetPoAAdmin(),
+		app.AccountKeeper,
+		app.BankKeeper,
 	)
-	app.SKUKeeper.SetAccountKeeper(app.AccountKeeper)
-	app.SKUKeeper.SetBankKeeper(app.BankKeeper)
 
 	// Create the Billing Keeper
 	app.BillingKeeper = billingkeeper.NewKeeper(
@@ -599,10 +599,10 @@ func NewApp(
 		runtime.NewKVStoreService(keys[billingtypes.StoreKey]),
 		logger,
 		helpers.GetPoAAdmin(),
+		&app.SKUKeeper,
+		app.BankKeeper,
+		app.AccountKeeper,
 	)
-	app.BillingKeeper.SetSKUKeeper(&app.SKUKeeper)
-	app.BillingKeeper.SetBankKeeper(app.BankKeeper)
-	app.BillingKeeper.SetAccountKeeper(app.AccountKeeper)
 
 	// Create the TokenFactory Keeper
 	app.TokenFactoryKeeper = tokenfactorykeeper.NewKeeper(
@@ -1007,6 +1007,7 @@ func (app *ManifestApp) setPostHandler() {
 // Name returns the name of the App
 func (app *ManifestApp) Name() string { return app.BaseApp.Name() }
 
+// ProcessProposalHandler accepts a proposal for deterministic application processing.
 func (app *ManifestApp) ProcessProposalHandler(_ sdk.Context, _ *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
 	return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
 }
@@ -1079,6 +1080,7 @@ func dedupValidatorUpdates(logger log.Logger, updates []abci.ValidatorUpdate) []
 	return out
 }
 
+// Configurator returns the application's module service configurator.
 func (app *ManifestApp) Configurator() module.Configurator {
 	return app.configurator
 }
@@ -1224,7 +1226,7 @@ func (app *ManifestApp) RegisterAPIRoutes(apiSvr *api.Server, apiConfig config.A
 
 // RegisterTxService implements the Application.RegisterTxService method.
 func (app *ManifestApp) RegisterTxService(clientCtx client.Context) {
-	authtx.RegisterTxService(app.BaseApp.GRPCQueryRouter(), clientCtx, app.BaseApp.Simulate, app.interfaceRegistry)
+	authtx.RegisterTxService(app.GRPCQueryRouter(), clientCtx, app.Simulate, app.interfaceRegistry)
 }
 
 // RegisterTendermintService implements the Application.RegisterTendermintService method.
@@ -1232,12 +1234,13 @@ func (app *ManifestApp) RegisterTendermintService(clientCtx client.Context) {
 	cmtApp := server.NewCometABCIWrapper(app)
 	cmtservice.RegisterTendermintService(
 		clientCtx,
-		app.BaseApp.GRPCQueryRouter(),
+		app.GRPCQueryRouter(),
 		app.interfaceRegistry,
 		cmtApp.Query,
 	)
 }
 
+// RegisterNodeService registers the SDK node gRPC service.
 func (app *ManifestApp) RegisterNodeService(clientCtx client.Context, cfg config.Config) {
 	nodeservice.RegisterNodeService(clientCtx, app.GRPCQueryRouter(), cfg)
 }

@@ -2,6 +2,7 @@ package pagination
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -18,9 +19,10 @@ const filterYes = "yes"
 
 // mockIterator implements StringIndexIterator for testing.
 type mockIterator struct {
-	keys   []string
-	pos    int
-	closed bool
+	keys     []string
+	pos      int
+	closed   bool
+	closeErr error
 }
 
 func newMockIterator(keys []string) *mockIterator {
@@ -37,7 +39,7 @@ func (m *mockIterator) Next() {
 
 func (m *mockIterator) Close() error {
 	m.closed = true
-	return nil
+	return m.closeErr
 }
 
 func (m *mockIterator) PrimaryKey() (string, error) {
@@ -103,6 +105,67 @@ func TestPaginateStringIndex_ExplicitLimit(t *testing.T) {
 	require.Equal(t, []byte("d"), pageResp.NextKey)
 }
 
+func TestLimitPageRequest_CapsWithoutMutatingCaller(t *testing.T) {
+	original := &query.PageRequest{
+		Key:        []byte("cursor"),
+		Offset:     7,
+		Limit:      MaxPageLimit + 1,
+		CountTotal: true,
+		Reverse:    true,
+	}
+
+	limited := limitPageRequest(original)
+	require.NotSame(t, original, limited)
+	require.Equal(t, MaxPageLimit, limited.Limit)
+	require.Equal(t, original.Offset, limited.Offset)
+	require.Equal(t, original.CountTotal, limited.CountTotal)
+	require.Equal(t, original.Reverse, limited.Reverse)
+	require.Equal(t, original.Key, limited.Key)
+
+	limited.Key[0] = 'X'
+	require.Equal(t, []byte("cursor"), original.Key)
+	require.Equal(t, MaxPageLimit+1, original.Limit)
+	require.Nil(t, limitPageRequest(nil))
+}
+
+func TestCursorPageRequest_RejectsUnboundedModes(t *testing.T) {
+	_, err := CursorPageRequest(&query.PageRequest{Offset: 1})
+	require.ErrorIs(t, err, ErrOffsetPaginationUnsupported)
+
+	_, err = CursorPageRequest(&query.PageRequest{CountTotal: true})
+	require.ErrorIs(t, err, ErrCountTotalUnsupported)
+
+	original := &query.PageRequest{Key: []byte("cursor"), Limit: MaxPageLimit + 1, Reverse: true}
+	bounded, err := CursorPageRequest(original)
+	require.NoError(t, err)
+	require.Equal(t, MaxPageLimit, bounded.Limit)
+	require.Equal(t, original.Key, bounded.Key)
+	require.Equal(t, original.Reverse, bounded.Reverse)
+	require.NotSame(t, original, bounded)
+}
+
+func TestPaginateStringIndex_CapsOversizedLimit(t *testing.T) {
+	keyCount := int(MaxPageLimit + 2)
+	keys := make([]string, keyCount)
+	data := make(map[string]string, keyCount)
+	for i := range keyCount {
+		key := fmt.Sprintf("key-%04d", i)
+		keys[i] = key
+		data[key] = key
+	}
+
+	values, pageResp, err := PaginateStringIndex(
+		context.Background(),
+		newMockIterator(keys),
+		mockGetter(data),
+		&query.PageRequest{Limit: MaxPageLimit + 1},
+		nil,
+	)
+	require.NoError(t, err)
+	require.Len(t, values, int(MaxPageLimit))
+	require.Equal(t, []byte("key-1000"), pageResp.NextKey)
+}
+
 func TestPaginateStringIndex_KeyBasedCursor(t *testing.T) {
 	// MatchExactWithOrder now seeks the iterator to the cursor, so PaginateStringIndex
 	// receives an ALREADY-POSITIONED iterator (here, one that starts at "c"). The Key
@@ -143,12 +206,12 @@ func TestPaginateStringIndex_KeyBasedCursorLastPage(t *testing.T) {
 	require.Empty(t, pageResp.NextKey, "last page should have empty NextKey")
 }
 
-func TestPaginateStringIndex_OffsetPagination(t *testing.T) {
+func TestPaginateStringIndex_RejectsOffsetPagination(t *testing.T) {
 	keys := []string{"a", "b", "c", "d", "e"}
 	data := map[string]string{"a": "1", "b": "2", "c": "3", "d": "4", "e": "5"}
 
 	iter := newMockIterator(keys)
-	values, pageResp, err := PaginateStringIndex(
+	_, _, err := PaginateStringIndex(
 		context.Background(),
 		iter,
 		mockGetter(data),
@@ -156,10 +219,8 @@ func TestPaginateStringIndex_OffsetPagination(t *testing.T) {
 		nil,
 	)
 
-	require.NoError(t, err)
-	require.Len(t, values, 2)
-	require.Equal(t, []string{"3", "4"}, values)
-	require.Equal(t, []byte("e"), pageResp.NextKey)
+	require.ErrorIs(t, err, ErrOffsetPaginationUnsupported)
+	require.True(t, iter.closed)
 }
 
 func TestPaginateStringIndex_FilterFunction(t *testing.T) {
@@ -244,8 +305,44 @@ func TestPaginateStringIndex_NonNotFoundErrorPropagated(t *testing.T) {
 		nil,
 	)
 
-	require.Error(t, err)
-	require.ErrorIs(t, err, expectedErr)
+	require.Same(t, expectedErr, err)
+	require.True(t, iter.closed)
+}
+
+func TestPaginateStringIndex_CloseErrorPropagated(t *testing.T) {
+	expectedErr := errors.New("close iterator")
+	iter := newMockIterator(nil)
+	iter.closeErr = expectedErr
+
+	values, pageResp, err := PaginateStringIndex(
+		context.Background(),
+		iter,
+		mockGetter(nil),
+		&query.PageRequest{Limit: 10},
+		nil,
+	)
+
+	require.Same(t, expectedErr, err)
+	require.Empty(t, values)
+	require.NotNil(t, pageResp)
+	require.True(t, iter.closed)
+}
+
+func TestPaginateStringIndex_PrimaryErrorWinsOverCloseError(t *testing.T) {
+	primaryErr := errors.New("read iterator")
+	iter := newMockIterator([]string{"a"})
+	iter.closeErr = errors.New("close iterator")
+
+	_, _, err := PaginateStringIndex(
+		context.Background(),
+		iter,
+		func(context.Context, string) (string, error) { return "", primaryErr },
+		&query.PageRequest{Limit: 10},
+		nil,
+	)
+
+	require.Same(t, primaryErr, err)
+	require.True(t, iter.closed)
 }
 
 func TestPaginateStringIndex_EmptyIterator(t *testing.T) {
@@ -301,12 +398,12 @@ func TestPaginateStringIndex_ExactLimit(t *testing.T) {
 	require.Empty(t, pageResp.NextKey, "should be empty when results exactly match limit")
 }
 
-func TestPaginateStringIndex_OffsetBeyondResults(t *testing.T) {
+func TestPaginateStringIndex_RejectsLargeOffsetBeforeScanning(t *testing.T) {
 	keys := []string{"a", "b", "c"}
 	data := map[string]string{"a": "1", "b": "2", "c": "3"}
 
 	iter := newMockIterator(keys)
-	values, pageResp, err := PaginateStringIndex(
+	_, _, err := PaginateStringIndex(
 		context.Background(),
 		iter,
 		mockGetter(data),
@@ -314,9 +411,9 @@ func TestPaginateStringIndex_OffsetBeyondResults(t *testing.T) {
 		nil,
 	)
 
-	require.NoError(t, err)
-	require.Empty(t, values)
-	require.Empty(t, pageResp.NextKey)
+	require.ErrorIs(t, err, ErrOffsetPaginationUnsupported)
+	require.Equal(t, 0, iter.pos)
+	require.True(t, iter.closed)
 }
 
 func TestPaginateStringIndex_KeyNotUsedForPositioning(t *testing.T) {
@@ -340,12 +437,12 @@ func TestPaginateStringIndex_KeyNotUsedForPositioning(t *testing.T) {
 	require.Empty(t, pageResp.NextKey)
 }
 
-func TestPaginateStringIndex_CountTotal(t *testing.T) {
+func TestPaginateStringIndex_RejectsCountTotal(t *testing.T) {
 	keys := []string{"a", "b", "c", "d", "e"}
 	data := map[string]string{"a": "1", "b": "2", "c": "3", "d": "4", "e": "5"}
 
 	iter := newMockIterator(keys)
-	values, pageResp, err := PaginateStringIndex(
+	_, _, err := PaginateStringIndex(
 		context.Background(),
 		iter,
 		mockGetter(data),
@@ -353,31 +450,37 @@ func TestPaginateStringIndex_CountTotal(t *testing.T) {
 		nil,
 	)
 
-	require.NoError(t, err)
-	require.Len(t, values, 2)
-	require.Equal(t, []string{"1", "2"}, values)
-	require.NotEmpty(t, pageResp.NextKey)
-	require.Equal(t, uint64(5), pageResp.Total)
+	require.ErrorIs(t, err, ErrCountTotalUnsupported)
+	require.Equal(t, 0, iter.pos)
+	require.True(t, iter.closed)
 }
 
-func TestPaginateStringIndex_CountTotalWithFilter(t *testing.T) {
-	keys := []string{"a", "b", "c", "d", "e", "f"}
-	data := map[string]string{"a": "yes", "b": "no", "c": "yes", "d": "no", "e": "yes", "f": "yes"}
+func TestPaginateStringIndex_BoundsSparseFilterScan(t *testing.T) {
+	keyCount := int(MaxPageScanLimit + 1)
+	keys := make([]string, keyCount)
+	data := make(map[string]string, keyCount)
+	getterCalls := 0
+	for i := range keyCount {
+		key := fmt.Sprintf("key-%04d", i)
+		keys[i] = key
+		data[key] = "no"
+	}
 
-	iter := newMockIterator(keys)
 	values, pageResp, err := PaginateStringIndex(
 		context.Background(),
-		iter,
-		mockGetter(data),
-		&query.PageRequest{Limit: 2, CountTotal: true},
+		newMockIterator(keys),
+		func(ctx context.Context, key string) (string, error) {
+			getterCalls++
+			return mockGetter(data)(ctx, key)
+		},
+		&query.PageRequest{Limit: MaxPageLimit},
 		func(v string) bool { return v == filterYes },
 	)
 
 	require.NoError(t, err)
-	require.Len(t, values, 2)
-	require.Equal(t, []string{"yes", "yes"}, values)
-	require.NotEmpty(t, pageResp.NextKey)
-	require.Equal(t, uint64(4), pageResp.Total, "total should count only filtered matches")
+	require.Empty(t, values)
+	require.Equal(t, int(MaxPageScanLimit), getterCalls)
+	require.Equal(t, []byte("key-1000"), pageResp.NextKey)
 }
 
 func TestPaginateStringIndex_CountTotalDisabled(t *testing.T) {

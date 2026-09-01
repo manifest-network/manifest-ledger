@@ -174,7 +174,7 @@ func (m *MsgCloseLease) ValidateBasic() error {
 	}
 
 	if len(m.Reason) > MaxClosureReasonLength {
-		return ErrInvalidClosureReason.Wrapf("reason exceeds maximum length of %d characters", MaxClosureReasonLength)
+		return ErrInvalidClosureReason.Wrapf("reason exceeds maximum length of %d bytes", MaxClosureReasonLength)
 	}
 
 	return nil
@@ -290,7 +290,7 @@ func (m *MsgRejectLease) ValidateBasic() error {
 	}
 
 	if len(m.Reason) > MaxRejectionReasonLength {
-		return ErrInvalidRejectionReason.Wrapf("reason exceeds maximum length of %d characters", MaxRejectionReasonLength)
+		return ErrInvalidRejectionReason.Wrapf("reason exceeds maximum length of %d bytes", MaxRejectionReasonLength)
 	}
 
 	return nil

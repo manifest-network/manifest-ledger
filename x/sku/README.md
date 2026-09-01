@@ -84,8 +84,8 @@ Only the module authority can update the parameters (including the allowed list)
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `MaxSKUNameLength` | 256 | Maximum length of SKU name in characters |
-| `MaxAPIURLLength` | 2048 | Maximum length of provider API URL in characters |
+| `MaxSKUNameLength` | 256 | Maximum encoded length of SKU name in UTF-8 bytes |
+| `MaxAPIURLLength` | 2048 | Maximum encoded length of provider API URL in UTF-8 bytes |
 | `MaxMetaHashLength` | 64 | Maximum length of meta_hash field in bytes (accommodates SHA-512) |
 | `DefaultDeactivateSKULimit` | 50 | SKUs deactivated per `DeactivateProvider` call when `limit` is unset (0) |
 | `MaxDeactivateSKULimit` | 100 | Maximum SKUs deactivatable in a single `DeactivateProvider` call |
@@ -94,7 +94,7 @@ Only the module authority can update the parameters (including the allowed list)
 - Must use HTTPS scheme (http:// is rejected)
 - Must have a valid host (empty host is rejected)
 - Must not contain user credentials (e.g., `https://user:pass@host` is rejected)
-- Must not exceed `MaxAPIURLLength` (2048 characters)
+- Must not exceed `MaxAPIURLLength` (2048 UTF-8 bytes)
 
 **MetaHash Requirements:**
 - Optional field for both Providers and SKUs
@@ -102,7 +102,10 @@ Only the module authority can update the parameters (including the allowed list)
 - Typically contains a hash reference to off-chain metadata (e.g., IPFS CID, SHA-256/SHA-512 hash)
 - Stored unchanged in state; validated only for length
 
-**Note on MsgUpdateProvider**: If `api_url` is an empty string during an update, the existing API URL is preserved rather than being cleared. This allows updating other fields without accidentally removing the API URL.
+**Note on MsgUpdateProvider**: If `api_url` is an empty string during an update,
+the existing API URL is preserved for compatibility with existing clients. Set
+`clear_api_url=true` to remove the stored URL. A request with
+`clear_api_url=true` and a non-empty `api_url` is rejected as ambiguous.
 
 ### Security
 
@@ -136,6 +139,31 @@ This soft-delete approach maintains billing integrity and allows graceful phase-
 
 ## State
 
+### Public Address Fields and Disk Encoding
+
+SKU transaction, query, and genesis protobufs intentionally expose account
+addresses as Bech32 strings. That is the public wire format, not the persistent
+representation. Since module consensus version 2, the keeper's custom value
+codecs store `Params.allowed_list`, `Provider.address`, and
+`Provider.payout_address` as raw SDK account-address bytes. The
+`ProviderByAddress` index was already keyed by `AccAddress` bytes; UUID, boolean,
+and sequence keys are unchanged. `SKU` values contain no account address and
+continue to use the public protobuf encoding.
+
+The stored Params and Provider payloads have explicit disk-format tags
+(`\x00sku/params/v1` and `\x00sku/provider/v1`). These are value-format
+discriminators, not collection-key prefixes or module consensus versions.
+Queries and exports decode the internal values back to canonical Bech32, so API
+clients do not need a new protobuf field or wire format.
+
+The registered v1→v2 module migration runs automatically through the Cosmos SDK
+module manager. It canonicalizes the allowed list by decoded address identity,
+keeps the first occurrence, rewrites Params, and rewrites Provider values in
+ascending primary-key pages of 1,000. Each iterator is closed before its page is
+written. It does not rebuild indexes, rewrite SKU values or sequences, or move
+bank balances. The migration is idempotent: legacy and current values can both
+be decoded, while every write uses the current raw-byte format.
+
 ### Storage Key Prefixes
 
 | Prefix | Key Type | Description |
@@ -161,6 +189,13 @@ This soft-delete approach maintains billing integrity and allows graceful phase-
 | `SKUs` | `string` (UUID) | `SKU` | Primary SKU storage |
 | `SKUSequence` | - | `uint64` | Sequence for deterministic UUID generation |
 
+The module registers a runtime state invariant that validates the complete
+exported provider/SKU graph, UUID sequences, API URLs, pricing, and parameters,
+requires every collection key to equal the UUID in its stored value, and
+bidirectionally verifies all five provider/SKU secondary indexes. Collections
+maintains those indexes atomically during normal writes; the invariant also
+detects missing, stale, or mismatched rows if state is corrupted.
+
 ## Parameters
 
 The module has the following configurable parameters:
@@ -169,7 +204,9 @@ The module has the following configurable parameters:
 |-----------|------|-------------|
 | `allowed_list` | `[]string` | List of addresses authorized to manage Providers and SKUs |
 
-**Note:** The `allowed_list` must not contain duplicate addresses. Duplicate addresses will cause parameter validation to fail during `UpdateParams`.
+**Note:** The `allowed_list` must not contain duplicate decoded address
+identities. Equivalent Bech32 spellings are duplicates and cause `UpdateParams`
+validation to fail.
 
 ## Messages
 
@@ -198,6 +235,10 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 | SKU | Get a SKU by UUID |
 | SKUs | List all SKUs (supports `--active-only` filter) |
 | SKUsByProvider | List SKUs for a specific provider |
+
+List-query pages default to 100 rows and are capped at 1000 rows. Oversized
+limits are clamped, and bulk consumers continue with the opaque
+`pagination.next_key` cursor.
 
 For detailed query documentation with response formats, see [API Reference](docs/API.md#query-commands).
 
@@ -263,6 +304,29 @@ Example genesis configuration:
 - Provider API URLs are validated if provided (must be HTTPS, no credentials)
 - No duplicate provider or SKU UUIDs allowed
 - `provider_sequence` must be >= `len(providers)` and `sku_sequence` >= `len(skus)` (omitted counters default to 0, which fails validation when any provider/sku is listed)
+
+Genesis remains string-based. Import preparation canonicalizes Provider
+management and payout addresses and collapses equivalent historical
+`allowed_list` spellings in first-seen order before validation and persistence.
+Export renders the stored raw identities as canonical Bech32 strings. Newly
+submitted `MsgUpdateParams` values remain subject to identity-based duplicate
+rejection.
+
+## Simulation Coverage
+
+Randomized genesis selects one to three simulation accounts for the SKU
+`allowed_list`, so the governance module account does not need a private key for
+ordinary simulation transactions. All six provider/SKU CRUD messages select a
+current authorized signer by decoded address identity and preserve the input
+account slice order. Provider updates cover API URL preserve, set/replace, and
+explicit-clear modes. Provider deactivation uses bounded pages and includes
+already-inactive providers with an unfinished SKU cascade, exercising the
+`has_more` continuation state. `UpdateParams` is deliberately excluded: it
+requires the configured POA authority (which has no simulation private key),
+while Cosmos SDK proposal messages require the governance module account as the
+sole signer. Parameter validation and update authorization are covered by
+focused type/keeper tests, and randomized genesis supplies bounded valid
+parameters for the state-machine run.
 
 ## Client
 

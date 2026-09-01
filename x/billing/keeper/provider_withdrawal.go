@@ -86,7 +86,9 @@ func (k *Keeper) executeProviderLeaseWithdrawal(
 		return providerLeaseWithdrawalResult{}, nil
 	}
 
-	lease.LastSettledAt = blockTime
+	// Advance only through charged whole seconds. The retained sub-second
+	// remainder participates in the next live settlement.
+	lease.LastSettledAt = result.SettledThrough
 	if err := k.SetLease(ctx, *lease); err != nil {
 		return providerLeaseWithdrawalResult{}, errorsmod.Wrapf(
 			err,

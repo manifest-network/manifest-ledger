@@ -266,6 +266,84 @@ func TestUpdateProvider(t *testing.T) {
 	}
 }
 
+func TestUpdateProviderAPIURLPatchSemantics(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	const existingAPIURL = "https://old.provider.example"
+	tests := []struct {
+		name        string
+		apiURL      string
+		clearAPIURL bool
+		wantAPIURL  string
+		wantErr     string
+	}{
+		{
+			name:       "legacy omitted value preserves",
+			wantAPIURL: existingAPIURL,
+		},
+		{
+			name:       "explicit empty value preserves",
+			apiURL:     "",
+			wantAPIURL: existingAPIURL,
+		},
+		{
+			name:       "non-empty value replaces",
+			apiURL:     "https://new.provider.example",
+			wantAPIURL: "https://new.provider.example",
+		},
+		{
+			name:        "clear flag removes",
+			clearAPIURL: true,
+			wantAPIURL:  "",
+		},
+		{
+			name:        "set and clear is rejected without mutation",
+			apiURL:      "https://new.provider.example",
+			clearAPIURL: true,
+			wantAPIURL:  existingAPIURL,
+			wantErr:     "clear_api_url cannot be true when api_url is non-empty",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, k.SetProvider(f.Ctx, types.Provider{
+				Uuid:          testProviderUUID,
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				Active:        true,
+				ApiUrl:        existingAPIURL,
+			}))
+
+			_, err := ms.UpdateProvider(f.Ctx, &types.MsgUpdateProvider{
+				Authority:     authority.String(),
+				Uuid:          testProviderUUID,
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				Active:        true,
+				ApiUrl:        tc.apiURL,
+				ClearApiUrl:   tc.clearAPIURL,
+			})
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+
+			provider, err := k.GetProvider(f.Ctx, testProviderUUID)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantAPIURL, provider.ApiUrl)
+		})
+	}
+}
+
 func TestProviderReactivation(t *testing.T) {
 	_, _, authority := testdata.KeyTestPubAddr()
 	_, _, allowedUser := testdata.KeyTestPubAddr()

@@ -28,8 +28,49 @@ func NewGenesisState(params Params, providers []Provider, skus []SKU, providerSe
 	}
 }
 
-// Validate performs basic genesis state validation.
+// PrepareForImport returns a copy of genesis state with historical Bech32
+// aliases normalized. Public genesis remains string-based, while keeper state
+// is written through raw-byte storage codecs.
+func (gs *GenesisState) PrepareForImport() (*GenesisState, error) {
+	if gs == nil {
+		return nil, ErrInvalidConfig.Wrap("genesis state cannot be nil")
+	}
+
+	prepared := *gs
+	params, err := gs.Params.CanonicalizeAllowedList()
+	if err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
+	}
+	prepared.Params = params
+	prepared.Providers = append([]Provider(nil), gs.Providers...)
+	for i := range prepared.Providers {
+		provider := &prepared.Providers[i]
+		address, err := sdk.AccAddressFromBech32(provider.Address)
+		if err != nil {
+			return nil, ErrInvalidProvider.Wrapf("provider %s has invalid address: %s", provider.Uuid, err)
+		}
+		payoutAddress, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
+		if err != nil {
+			return nil, ErrInvalidProvider.Wrapf("provider %s has invalid payout address: %s", provider.Uuid, err)
+		}
+		provider.Address = address.String()
+		provider.PayoutAddress = payoutAddress.String()
+	}
+	prepared.Skus = append([]SKU(nil), gs.Skus...)
+	if err := prepared.validate(); err != nil {
+		return nil, err
+	}
+	return &prepared, nil
+}
+
+// Validate performs import-safe genesis state validation. Equivalent historical
+// Bech32 spellings are normalized before applying current structural checks.
 func (gs *GenesisState) Validate() error {
+	_, err := gs.PrepareForImport()
+	return err
+}
+
+func (gs *GenesisState) validate() error {
 	if err := gs.Params.Validate(); err != nil {
 		return fmt.Errorf("invalid params: %w", err)
 	}
@@ -98,7 +139,7 @@ func (gs *GenesisState) Validate() error {
 		}
 
 		if len(sku.Name) > MaxSKUNameLength {
-			return ErrInvalidSKU.Wrapf("sku %s name exceeds maximum length of %d characters", sku.Uuid, MaxSKUNameLength)
+			return ErrInvalidSKU.Wrapf("sku %s name exceeds maximum length of %d bytes", sku.Uuid, MaxSKUNameLength)
 		}
 
 		if sku.Unit == Unit_UNIT_UNSPECIFIED {

@@ -216,6 +216,30 @@ func SafeSubtractCoins(left, right sdk.Coins) (sdk.Coins, error) {
 	return result, nil
 }
 
+// ReconcilePreV4ReservationAggregate applies the shared v2→v3/import repair
+// policy to aggregate-only reservation state. Modern live leases establish the
+// exact provable floor. A live zero-duration lease is an opaque claimant, so
+// unknown historical excess must be preserved; without a live opaque claimant,
+// the aggregate is reconciled exactly to the modern floor.
+func ReconcilePreV4ReservationAggregate(
+	actual,
+	knownModernFloor sdk.Coins,
+	hasLiveLegacy bool,
+) (sdk.Coins, error) {
+	normalizedActual, err := SafeAddCoins(sdk.NewCoins(), actual)
+	if err != nil {
+		return nil, fmt.Errorf("validate pre-v4 reservation aggregate: %w", err)
+	}
+	normalizedFloor, err := SafeAddCoins(sdk.NewCoins(), knownModernFloor)
+	if err != nil {
+		return nil, fmt.Errorf("validate modern reservation floor: %w", err)
+	}
+	if hasLiveLegacy {
+		return normalizedActual.Max(normalizedFloor), nil
+	}
+	return normalizedFloor, nil
+}
+
 func validateCanonicalCoins(coins sdk.Coins) error {
 	// Validate each coin first because sdk.Coins.Validate assumes non-nil
 	// amounts when checking positivity.

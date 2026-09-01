@@ -1,28 +1,66 @@
 #!/usr/bin/make -f
 
-PACKAGES_SIMTEST=$(shell go list ./... | grep '/simulation')
-COMMIT := $(shell git log -1 --format='%H')
+ifeq ($(origin VERSION), command line)
+  $(error VERSION must be passed through the environment, not as a Make command-line variable)
+endif
+ifeq ($(origin COMMIT), command line)
+  $(error COMMIT must be passed through the environment, not as a Make command-line variable)
+endif
+ifeq ($(origin E2E_IMAGE_VERSION), command line)
+  $(error E2E_IMAGE_VERSION must be passed through the environment, not as a Make command-line variable)
+endif
+
+# Make expands command-line variable values as Make syntax while constructing
+# child environments. Metadata overrides are therefore supported only as
+# inherited environment variables, for example:
+#
+#   VERSION=v2.4.0 COMMIT=0123456789abcdef make build
+#
+# $(value ...) copies inherited data without expanding it. Only the internal
+# names are exported to recipes; the public names are deliberately unexported
+# before this file invokes any child process.
+unexport MANIFEST_BUILD_COMMIT MANIFEST_BUILD_VERSION MANIFEST_E2E_IMAGE_VERSION
+unexport MANIFEST_BUILD_TAGS MANIFEST_WITH_CLEVELDB MANIFEST_LINK_STATICALLY MANIFEST_EXTRA_LDFLAGS
+override undefine MANIFEST_BUILD_COMMIT
+override undefine MANIFEST_BUILD_VERSION
+override undefine MANIFEST_E2E_IMAGE_VERSION
+ifneq ($(origin COMMIT), undefined)
+  override MANIFEST_BUILD_COMMIT := $(value COMMIT)
+endif
+ifneq ($(origin VERSION), undefined)
+  override MANIFEST_BUILD_VERSION := $(value VERSION)
+endif
+ifneq ($(origin E2E_IMAGE_VERSION), undefined)
+  override MANIFEST_E2E_IMAGE_VERSION := $(value E2E_IMAGE_VERSION)
+endif
+unexport COMMIT VERSION E2E_IMAGE_VERSION
+undefine COMMIT
+undefine VERSION
+undefine E2E_IMAGE_VERSION
+
+ifeq ($(origin MANIFEST_BUILD_COMMIT), undefined)
+  override MANIFEST_BUILD_COMMIT := $(shell git rev-parse HEAD 2>/dev/null || printf '%s' unknown)
+endif
+ifeq ($(origin MANIFEST_BUILD_VERSION), undefined)
+  override MANIFEST_BUILD_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || printf '%s' dev)
+endif
+ifeq ($(origin MANIFEST_E2E_IMAGE_VERSION), undefined)
+  override MANIFEST_E2E_IMAGE_VERSION := $(value MANIFEST_BUILD_VERSION)
+endif
+export MANIFEST_BUILD_COMMIT MANIFEST_BUILD_VERSION MANIFEST_E2E_IMAGE_VERSION
+
+GO ?= go
+PACKAGES_SIMTEST=$(shell $(GO) list ./... | grep '/simulation')
 DOCKER := $(shell which docker)
 LEDGER_ENABLED ?= true
 BINDIR ?= $(GOPATH)/bin
 BUILD_DIR = ./build
-VERSION ?= v2.3.1
-GO ?= go
 GOROOT := $(shell $(GO) env GOROOT)
 export GOROOT
 
 export GO111MODULE = on
 
 # process build tags
-
-# don't override user values
-ifeq (,$(VERSION))
-  VERSION := $(shell git describe --tags --always)
-  # if VERSION is empty, then populate it with branch's name and raw commit hash
-  ifeq (,$(VERSION))
-    VERSION := $(BRANCH)-$(COMMIT)
-  endif
-endif
 
 build_tags = netgo
 ifeq ($(LEDGER_ENABLED),true)
@@ -59,125 +97,151 @@ empty = $(whitespace) $(whitespace)
 comma := ,
 build_tags_comma_sep := $(subst $(empty),$(comma),$(build_tags))
 
-ldflags = -X github.com/cosmos/cosmos-sdk/version.Name=manifest \
-		  -X github.com/cosmos/cosmos-sdk/version.AppName=manifestd \
-		  -X github.com/cosmos/cosmos-sdk/version.Version=$(VERSION) \
-		  -X github.com/cosmos/cosmos-sdk/version.Commit=$(COMMIT) \
-		  -X github.com/manifest-network/manifest-ledger/app.Bech32Prefix=manifest \
-		  -X "github.com/cosmos/cosmos-sdk/version.BuildTags=$(build_tags_comma_sep)"
+override MANIFEST_BUILD_TAGS := $(build_tags_comma_sep)
+override MANIFEST_WITH_CLEVELDB := $(value WITH_CLEVELDB)
+override MANIFEST_LINK_STATICALLY := $(value LINK_STATICALLY)
+override MANIFEST_EXTRA_LDFLAGS := $(value LDFLAGS)
+export MANIFEST_BUILD_TAGS MANIFEST_WITH_CLEVELDB MANIFEST_LINK_STATICALLY MANIFEST_EXTRA_LDFLAGS
 
-ifeq ($(WITH_CLEVELDB),yes)
-  ldflags += -X github.com/cosmos/cosmos-sdk/types.DBBackend=cleveldb
-endif
-ifeq ($(LINK_STATICALLY),true)
-	ldflags += -linkmode=external -extldflags "-Wl,-z,muldefs -static"
-endif
-ldflags += $(LDFLAGS)
-ldflags := $(strip $(ldflags))
-
-BUILD_FLAGS := -tags "$(build_tags_comma_sep)" -ldflags '$(ldflags)' -trimpath
+BUILD_FLAGS = -tags "$${MANIFEST_BUILD_TAGS}" -ldflags "$$(sh ./scripts/build-ldflags.sh)" -trimpath
 ###########
 # Install #
 ###########
 
 all: install
 
-install:
+validate-build-inputs:
+	@sh ./scripts/validate-build-inputs.sh metadata
+
+install: validate-build-inputs
 	@echo "--> ensure dependencies have not been modified"
-	@go mod verify
-	@echo "--> installing manifestd instrumented for coverage"
-	@go install $(BUILD_FLAGS) -cover -covermode=atomic -mod=readonly -coverpkg=github.com/manifest-network/manifest-ledger/... ./cmd/manifestd
+	@$(GO) mod verify
+	@echo "--> installing manifestd"
+	@$(GO) install $(BUILD_FLAGS) -mod=readonly ./cmd/manifestd
 
 init:
 	./scripts/init.sh
 
-build:
+build: validate-build-inputs
 ifeq ($(OS),Windows_NT)
 	$(error demo server not supported)
 	exit 1
 else
-	go build -mod=readonly $(BUILD_FLAGS) -cover -covermode=atomic -coverpkg=github.com/manifest-network/manifest-ledger/... -o $(BUILD_DIR)/manifestd ./cmd/manifestd
+	$(GO) build -mod=readonly $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
+
+build-cover: validate-build-inputs
+	$(GO) build -mod=readonly $(BUILD_FLAGS) -cover -covermode=atomic -coverpkg=github.com/manifest-network/manifest-ledger/... -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 endif
 
-build-vendored:
-	go build -mod=vendor $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
+build-vendored: validate-build-inputs
+	$(GO) build -mod=vendor $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 
-.PHONY: all build build-linux install init lint build-vendored
+.PHONY: all build build-cover build-linux install init lint build-vendored validate-build-inputs
 
 ###############################################################################
 ###                          INTERCHAINTEST (ictest)                        ###
 ###############################################################################
 
 ictest-ibc:
-	cd interchaintest && go test -race -v -run TestIBC . -count=1
+	cd interchaintest && $(GO) test -race -v -run TestIBC . -count=1
 
 ictest-tokenfactory:
-	cd interchaintest && go test -race -v -run TestTokenFactory . -count=1
+	cd interchaintest && $(GO) test -race -v -run TestTokenFactory . -count=1
 
 ictest-manifest:
-	cd interchaintest && go test -race -v -run TestManifestModule . -count=1
+	cd interchaintest && $(GO) test -race -v -run TestManifestModule . -count=1
 
 ictest-poa:
-	cd interchaintest && go test -race -v -run TestPOA . -count=1
+	cd interchaintest && $(GO) test -race -v -run TestPOA . -count=1
 
 ictest-poa-unjail-dup:
-	cd interchaintest && go test -timeout 25m -race -v -run TestPOAUnjailDup . -count=1
+	cd interchaintest && $(GO) test -timeout 25m -race -v -run TestPOAUnjailDup . -count=1
 
 ictest-poa-unjail-dup-bug:
-	cd interchaintest && UNJAIL_DUP_IMAGE=ghcr.io/manifest-network/manifest-ledger:2.1.1 go test -timeout 25m -race -v -run TestPOAUnjailDup . -count=1
+	cd interchaintest && UNJAIL_DUP_IMAGE=ghcr.io/manifest-network/manifest-ledger:2.1.1 $(GO) test -timeout 25m -race -v -run TestPOAUnjailDup . -count=1
 
 ictest-group-poa:
-	cd interchaintest && go test -timeout 25m -race -v -run TestGroupPOA . -count=1
+	cd interchaintest && $(GO) test -timeout 25m -race -v -run TestGroupPOA . -count=1
 
 ictest-cosmwasm:
-	cd interchaintest && go test -race -v -run TestCosmWasm . -count=1
+	cd interchaintest && $(GO) test -race -v -run TestCosmWasm . -count=1
 
-ictest-chain-upgrade:
-	cd interchaintest && go test -timeout 20m -race -v -run TestBasicManifestUpgrade . -count=1
+verify-chain-upgrade-image: validate-build-inputs
+	@$(DOCKER) run --rm \
+		--env "EXPECTED_VERSION=$${MANIFEST_E2E_IMAGE_VERSION}" \
+		--env "EXPECTED_COMMIT=$${MANIFEST_BUILD_COMMIT}" \
+		manifest:local sh -ec '\
+			metadata="$$(manifestd version --long --output json)"; \
+			actual_version="$$(printf "%s\n" "$$metadata" | jq -er .version)"; \
+			actual_commit="$$(printf "%s\n" "$$metadata" | jq -er .commit)"; \
+			if [ "$$actual_version" != "$$EXPECTED_VERSION" ] || [ "$$actual_commit" != "$$EXPECTED_COMMIT" ]; then \
+				printf "%s\n" \
+					"manifest:local identity mismatch:" \
+					"  version: $$actual_version (expected $$EXPECTED_VERSION)" \
+					"  commit:  $$actual_commit (expected $$EXPECTED_COMMIT)" >&2; \
+				exit 1; \
+			fi'
+
+# CI consumes the image artifact built from the same checked-out commit. Local
+# runs must use ictest-chain-upgrade-local so dirty source changes cannot be
+# hidden by a stale manifest:local image carrying otherwise matching metadata.
+ictest-chain-upgrade: validate-build-inputs
+	@test "$${CI:-}" = "true" || \
+		(printf '%s\n' "local upgrade rehearsals must use: make ictest-chain-upgrade-local"; exit 1)
+	@$(MAKE) --no-print-directory verify-chain-upgrade-image
+	cd interchaintest && MANIFEST_UPGRADE_VERSION="$${MANIFEST_E2E_IMAGE_VERSION}" $(GO) test -timeout 20m -race -v -run TestBasicManifestUpgrade . -count=1
+
+ictest-chain-upgrade-local: local-image
+	@$(MAKE) --no-print-directory verify-chain-upgrade-image
+	cd interchaintest && MANIFEST_UPGRADE_VERSION="$${MANIFEST_E2E_IMAGE_VERSION}" $(GO) test -timeout 20m -race -v -run TestBasicManifestUpgrade . -count=1
 
 ictest-group:
-	cd interchaintest && go test -race -v -run TestGroupMetadataLimits . -count=1
+	cd interchaintest && $(GO) test -race -v -run TestGroupMetadataLimits . -count=1
 
 ictest-sku:
-	cd interchaintest && go test -timeout 20m -race -v -run TestSKU . -count=1
+	cd interchaintest && $(GO) test -timeout 20m -race -v -run TestSKU . -count=1
 
 ictest-billing:
-	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(Lease|Credit|Advanced|State|Reservation)$$" . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run "^TestBilling(Lease|Credit|Advanced|State|Reservation)$$" . -count=1
 
 # Extra billing e2e tests kept out of the main ictest-billing batch so it stays under the 45m
 # timeout. Runs as its own parallel CI job.
 ictest-billing-extra:
-	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(AcknowledgeActiveCap|CustomDomain)$$" . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run "^TestBilling(AcknowledgeActiveCap|CustomDomain)$$" . -count=1
 
 ictest-billing-lease:
-	cd interchaintest && go test -race -v -timeout 45m -run TestBillingLease . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingLease . -count=1
 
 ictest-billing-credit:
-	cd interchaintest && go test -race -v -timeout 45m -run TestBillingCredit . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingCredit . -count=1
 
 ictest-billing-advanced:
-	cd interchaintest && go test -race -v -timeout 45m -run TestBillingAdvanced . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingAdvanced . -count=1
 
 ictest-billing-state:
-	cd interchaintest && go test -race -v -timeout 45m -run TestBillingState . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingState . -count=1
 
 ictest-billing-upgrade:
-	cd interchaintest && go test -race -v -timeout 45m -run TestBillingModuleUpgrade . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingModuleUpgrade . -count=1
 
 ictest-billing-reservation:
-	cd interchaintest && go test -race -v -timeout 45m -run TestBillingReservation . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingReservation . -count=1
 
-.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-poa-unjail-dup ictest-poa-unjail-dup-bug ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku ictest-billing ictest-billing-extra ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-upgrade ictest-billing-reservation
+.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-poa-unjail-dup ictest-poa-unjail-dup-bug ictest-group-poa ictest-cosmwasm verify-chain-upgrade-image ictest-chain-upgrade ictest-chain-upgrade-local ictest-group ictest-sku ictest-billing ictest-billing-extra ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-upgrade ictest-billing-reservation
 
 ###############################################################################
 ###                                Build Image                              ###
 ###############################################################################
 
-local-image:
+local-image: validate-build-inputs
 	@echo "--> Building local image"
-	docker build . -t manifest:local
+	$(DOCKER) build --build-arg BUILD_CMD=build --build-arg "COMMIT=$${MANIFEST_BUILD_COMMIT}" --build-arg "VERSION=$${MANIFEST_E2E_IMAGE_VERSION}" . -t manifest:local
 
-.PHONY: local-image
+local-image-cover: validate-build-inputs
+	@echo "--> Building coverage-instrumented local image"
+	$(DOCKER) build --build-arg BUILD_CMD=build-cover --build-arg "COMMIT=$${MANIFEST_BUILD_COMMIT}" --build-arg "VERSION=$${MANIFEST_E2E_IMAGE_VERSION}" . -t manifest:local
+
+.PHONY: local-image local-image-cover
 
 #################
 ###   Test    ###
@@ -185,7 +249,7 @@ local-image:
 
 test:
 	@echo "--> Running tests"
-	go test -v ./...
+	$(GO) test -v ./...
 
 .PHONY: test
 
@@ -205,7 +269,7 @@ coverage: ## Run coverage report
 	@echo "--> Cleaning up coverage files, if any"
 	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/*
 	@echo "--> Building instrumented simulation test binary"
-	@go test -c ./app -mod=readonly -covermode=atomic -coverpkg=${COV_PKG} -cover -o ${COV_SIM_CMD}
+	@$(GO) test -c ./app -mod=readonly -covermode=atomic -coverpkg=${COV_PKG} -cover -o ${COV_SIM_CMD}
 	@echo "  --> Running Full App Simulation"
 	@${COV_SIM_CMD} -test.run TestFullAppSimulation ${COV_SIM_COMMON} > /dev/null 2>&1
 	@echo "  --> Running App Simulation After Import"
@@ -213,17 +277,17 @@ coverage: ## Run coverage report
 	@echo "  --> Running App State Determinism Simulation"
 	@${COV_SIM_CMD} -test.run TestAppStateDeterminism ${COV_SIM_COMMON} > /dev/null 2>&1
 	@echo "--> Running unit & e2e tests coverage"
-	@go test -p 1 -timeout 90m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
+	@$(GO) test -p 1 -timeout 90m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$($(GO) list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
 	@echo "--> Merging coverage reports"
-	@go tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_ROOT}
+	@$(GO) tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_ROOT}
 	@echo "--> Converting binary coverage report to text format"
-	@go tool covdata textfmt -i=${COV_ROOT} -o ${COV_ROOT}/coverage-merged.out
+	@$(GO) tool covdata textfmt -i=${COV_ROOT} -o ${COV_ROOT}/coverage-merged.out
 	@echo "--> Filtering coverage reports"
 	@./scripts/filter-coverage.sh ${COV_ROOT}/coverage-merged.out ${COV_ROOT}/coverage-merged-filtered.out
 	@echo "--> Generating coverage report"
-	@go tool cover -func=${COV_ROOT}/coverage-merged-filtered.out
+	@$(GO) tool cover -func=${COV_ROOT}/coverage-merged-filtered.out
 	@echo "--> Generating HTML coverage report"
-	@go tool cover -html=${COV_ROOT}/coverage-merged-filtered.out -o coverage.html
+	@$(GO) tool cover -html=${COV_ROOT}/coverage-merged-filtered.out -o coverage.html
 	@echo "--> Coverage report available at coverage.html"
 	@echo "--> Cleaning up coverage files"
 	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/*
@@ -237,7 +301,8 @@ coverage: ## Run coverage report
 ##################
 
 protoVer=0.14.0
-protoImageName=ghcr.io/cosmos/proto-builder:$(protoVer)
+protoDigest=sha256:93e2035b90e5780b4d56210a88ecb0afed881c7bb828285d4a61a897cebb54fb
+protoImageName=ghcr.io/cosmos/proto-builder:$(protoVer)@$(protoDigest)
 protoImage=$(DOCKER) run --rm -v $(CURDIR):/workspace --workdir /workspace $(protoImageName)
 
 proto-all: proto-format proto-lint proto-gen
@@ -245,7 +310,7 @@ proto-all: proto-format proto-lint proto-gen
 proto-gen:
 	@echo "Generating protobuf files..."
 	@$(protoImage) sh ./scripts/protocgen.sh
-	@go mod tidy
+	@$(GO) mod tidy
 
 proto-format:
 	@$(protoImage) find ./ -name "*.proto" -exec clang-format -i {} \;
@@ -259,52 +324,66 @@ proto-lint:
 ###  Linting  ###
 #################
 
-golangci_lint_cmd=golangci-lint
-golangci_version=v1.63.4
+golangci_version=v2.12.2
+go_bin=$(shell $(GO) env GOPATH)/bin
+golangci_lint_cmd=$(go_bin)/golangci-lint
 
 lint:
 	@echo "--> Running linter"
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(golangci_version)
+	@GOBIN=$(go_bin) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(golangci_version)
 	@$(golangci_lint_cmd) run ./... --timeout 15m
+	@cd interchaintest && $(golangci_lint_cmd) run ./... --timeout 15m
 
 lint-fix:
 	@echo "--> Running linter and fixing issues"
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(golangci_version)
+	@GOBIN=$(go_bin) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(golangci_version)
 	@$(golangci_lint_cmd) run ./... --fix --timeout 15m
+	@cd interchaintest && $(golangci_lint_cmd) run ./... --fix --timeout 15m
 
 .PHONY: lint lint-fix
 
 #### FORMAT ####
-goimports_version=latest
+goimports_version=v0.49.0
 
 format-install:
 	@echo "--> Installing goimports $(goimports_version)"
-	@go install golang.org/x/tools/cmd/goimports@$(goimports_version)
+	@GOBIN=$(go_bin) $(GO) install golang.org/x/tools/cmd/goimports@$(goimports_version)
 	@echo "--> Installing goimports $(goimports_version) complete"
 
 format: ## Run formatter (goimports)
 	@echo "--> Running goimports"
 	$(MAKE) format-install
-	@find . -name '*.go' -not -name '*.pulsar.go' -not -name '*.pb.go' -exec goimports -w -local github.com/manifest-network/manifest-ledger {} \;
+	@find . -name '*.go' -not -name '*.pulsar.go' -not -name '*.pb.go' -exec $(go_bin)/goimports -w -local github.com/manifest-network/manifest-ledger {} \;
 
 #### GOVULNCHECK ####
-govulncheck_version=latest
+govulncheck_version=v1.7.0
 
 govulncheck-install:
 	@echo "--> Installing govulncheck $(govulncheck_version)"
-	@go install golang.org/x/vuln/cmd/govulncheck@$(govulncheck_version)
+	@GOBIN=$(go_bin) $(GO) install golang.org/x/vuln/cmd/govulncheck@$(govulncheck_version)
 	@echo "--> Installing govulncheck $(govulncheck_version) complete"
 
 govulncheck: ## Run govulncheck
-	@echo "--> Running govulncheck"
+	@echo "--> Running govulncheck for the static ledger release build"
 	$(MAKE) govulncheck-install
-	@govulncheck ./...
+	@$(GO) run ./tools/govulncheck-policy -govulncheck $(go_bin)/govulncheck -goos linux -goarch amd64 -- -tags=netgo,muslc,ledger ./...
+	@echo "--> Running govulncheck for the linux/amd64 muslc container build"
+	@$(GO) run ./tools/govulncheck-policy -govulncheck $(go_bin)/govulncheck -goos linux -goarch amd64 -- -tags=netgo,muslc ./...
+	@echo "--> Running govulncheck for the interchaintest module"
+	@$(GO) run ./tools/govulncheck-policy -govulncheck $(go_bin)/govulncheck -profile interchaintest -- -test ./interchaintest/...
+
+.PHONY: govulncheck govulncheck-install
 
 #### VET ####
 
+# Pulsar output is generator-owned and currently contains deliberate trailing
+# panics after exhaustive switches that Go's unreachable analyzer rejects.
 vet: ## Run go vet
 	@echo "--> Running go vet"
-	@go vet ./...
+	@packages="$$($(GO) list ./...)" || exit $$?; \
+		packages="$$(printf '%s\n' "$$packages" | grep -v '/api/')"; \
+		test -n "$$packages"; \
+		$(GO) vet $$packages
 
 .PHONY: vet
 
@@ -317,37 +396,41 @@ SIM_COMMIT ?= true
 SIM_ENABLED ?= true
 SIM_VERBOSE ?= false
 SIM_TIMEOUT ?= 24h
-SIM_SEED ?= 42
+# Cosmos SDK reserves 42 as DefaultSeedValue, and the determinism harness
+# replaces that sentinel with a process-random seed. Keep release simulations
+# reproducible across invocations by using an explicit non-sentinel default.
+SIM_SEED ?= 2507940531156952020
+# $RANDOM is a Bash extension, while Make recipes use /bin/sh. Generate random
+# target seeds portably from the OS entropy source instead.
+SIM_RANDOM_SEED = $(strip $(shell od -An -N4 -tu4 /dev/urandom))
 SIM_COMMON_ARGS = -NumBlocks=${SIM_NUM_BLOCKS} -Enabled=${SIM_ENABLED} -Commit=${SIM_COMMIT} -Period=${SIM_PERIOD} -Params=${SIM_PARAMS} -Verbose=${SIM_VERBOSE} -Seed=${SIM_SEED} -v -timeout ${SIM_TIMEOUT}
 
 sim-full-app:
 	@echo "--> Running full app simulation (blocks: ${SIM_NUM_BLOCKS}, commit: ${SIM_COMMIT}, period: ${SIM_PERIOD}, seed: ${SIM_SEED}, params: ${SIM_PARAMS}"
-	@go test ./app -run TestFullAppSimulation ${SIM_COMMON_ARGS}
+	@$(GO) test ./app -run TestFullAppSimulation ${SIM_COMMON_ARGS}
 
 sim-full-app-random:
-	$(MAKE) sim-full-app SIM_SEED=$$RANDOM
+	$(MAKE) sim-full-app SIM_SEED=$(SIM_RANDOM_SEED)
 
-# Note: known to fail when using app wiring v1
 sim-import-export:
 	@echo "--> Running app import/export simulation (blocks: ${SIM_NUM_BLOCKS}, commit: ${SIM_COMMIT}, period: ${SIM_PERIOD}, seed: ${SIM_SEED}, params: ${SIM_PARAMS}"
-	@go test ./app -run TestAppImportExport ${SIM_COMMON_ARGS}
+	@$(GO) test ./app -run TestAppImportExport ${SIM_COMMON_ARGS}
 
-# Note: known to fail when using app wiring v1
 sim-import-export-random:
-	$(MAKE) sim-import-export SIM_SEED=$$RANDOM
+	$(MAKE) sim-import-export SIM_SEED=$(SIM_RANDOM_SEED)
 
 sim-after-import:
 	@echo "--> Running app after import simulation (blocks: ${SIM_NUM_BLOCKS}, commit: ${SIM_COMMIT}, period: ${SIM_PERIOD}, seed: ${SIM_SEED}, params: ${SIM_PARAMS}"
-	@go test ./app -run TestAppSimulationAfterImport ${SIM_COMMON_ARGS}
+	@$(GO) test ./app -run TestAppSimulationAfterImport ${SIM_COMMON_ARGS}
 
 sim-after-import-random:
-	$(MAKE) sim-after-import SIM_SEED=$$RANDOM
+	$(MAKE) sim-after-import SIM_SEED=$(SIM_RANDOM_SEED)
 
 sim-app-determinism:
 	@echo "--> Running app determinism simulation (blocks: ${SIM_NUM_BLOCKS}, commit: ${SIM_COMMIT}, period: ${SIM_PERIOD}, seed: ${SIM_SEED}, params: ${SIM_PARAMS}"
-	@go test ./app -run TestAppStateDeterminism ${SIM_COMMON_ARGS}
+	@$(GO) test ./app -run TestAppStateDeterminism ${SIM_COMMON_ARGS}
 
 sim-app-determinism-random:
-	$(MAKE) sim-app-determinism SIM_SEED=$$RANDOM
+	$(MAKE) sim-app-determinism SIM_SEED=$(SIM_RANDOM_SEED)
 
 .PHONY: sim-full-app sim-full-app-random sim-import-export sim-after-import sim-app-determinism sim-import-export-random sim-after-import-random sim-app-determinism-random

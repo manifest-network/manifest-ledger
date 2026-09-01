@@ -293,6 +293,36 @@ func TestSafeSubtractCoins(t *testing.T) {
 	}
 }
 
+func TestReconcilePreV4ReservationAggregate(t *testing.T) {
+	actual := sdk.NewCoins(
+		sdk.NewInt64Coin("alpha", 5),
+		sdk.NewInt64Coin("beta", 10),
+	)
+	knownFloor := sdk.NewCoins(
+		sdk.NewInt64Coin("alpha", 7),
+		sdk.NewInt64Coin("gamma", 3),
+	)
+
+	withLiveLegacy, err := types.ReconcilePreV4ReservationAggregate(actual, knownFloor, true)
+	require.NoError(t, err)
+	require.Equal(t, sdk.NewCoins(
+		sdk.NewInt64Coin("alpha", 7),
+		sdk.NewInt64Coin("beta", 10),
+		sdk.NewInt64Coin("gamma", 3),
+	), withLiveLegacy)
+
+	withoutLiveLegacy, err := types.ReconcilePreV4ReservationAggregate(actual, knownFloor, false)
+	require.NoError(t, err)
+	require.Equal(t, knownFloor, withoutLiveLegacy)
+
+	_, err = types.ReconcilePreV4ReservationAggregate(
+		sdk.Coins{{Denom: "alpha"}},
+		knownFloor,
+		true,
+	)
+	require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+}
+
 // ============================================================================
 // SubtractReservation Tests
 // ============================================================================

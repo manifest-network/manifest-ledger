@@ -1,34 +1,44 @@
+// Package interchaintest contains end-to-end tests for Manifest Network.
 package interchaintest
 
 import (
 	"fmt"
 
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
+	"github.com/strangelove-ventures/interchaintest/v8/ibc"
+
+	sdkmath "cosmossdk.io/math"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdktestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
 	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
+
 	poatypes "github.com/strangelove-ventures/poa"
+
 	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
+
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
 	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
-
-	sdkmath "cosmossdk.io/math"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
-	"github.com/strangelove-ventures/interchaintest/v8/ibc"
-
-	sdktestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
 )
 
 const (
+	// ExternalGoCoverDir is the host directory where interchaintest coverage is collected.
 	ExternalGoCoverDir = "/tmp/manifest-ledger-coverage/unit-e2e"
+	// Denom is the manifest chain's native denomination used by interchain tests.
+	Denom = "umfx"
+
+	chainName         = "manifest"
+	chainID           = "manifest-2"
+	localImageVersion = "local"
+	imageUIDGID       = "1025:1025"
+	votingPeriod      = "15s"
+	maxDepositPeriod  = "10s"
 )
 
 var (
-	votingPeriod     = "15s"
-	maxDepositPeriod = "10s"
-	Denom            = "umfx"
-
 	// PoA Admin
 	accAddr     = "manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct"
 	accMnemonic = "decorate bright ozone fork gallery riot bus exhaust worth way bone indoor calm squirrel merry zero scheme cotton until shop any excess stage laundry"
@@ -42,6 +52,7 @@ var (
 	vals      = 2
 	fullNodes = 0
 
+	// DefaultGenesis contains the common genesis overrides used by interchain tests.
 	DefaultGenesis = []cosmos.GenesisKV{
 		// Governance
 		cosmos.NewGenesisKV("app_state.gov.params.voting_period", votingPeriod),
@@ -58,23 +69,23 @@ var (
 		cosmos.NewGenesisKV("app_state.auth.params.tx_size_cost_per_byte", "1"),
 	}
 
-	// `make local-image`
+	// LocalChainConfig describes the image produced by `make local-image`.
 	LocalChainConfig = ibc.ChainConfig{
 		Type:    "cosmos",
-		Name:    "manifest",
-		ChainID: "manifest-2",
+		Name:    chainName,
+		ChainID: chainID,
 		Env: []string{
 			fmt.Sprintf("POA_ADMIN_ADDRESS=%s", accAddr),
 		},
 		Images: []ibc.DockerImage{
 			{
-				Repository: "manifest",
-				Version:    "local",
-				UIDGID:     "1025:1025",
+				Repository: chainName,
+				Version:    localImageVersion,
+				UIDGID:     imageUIDGID,
 			},
 		},
 		Bin:            "manifestd",
-		Bech32Prefix:   "manifest",
+		Bech32Prefix:   chainName,
 		Denom:          Denom,
 		GasPrices:      "0" + Denom,
 		GasAdjustment:  1.3,
@@ -84,6 +95,7 @@ var (
 		ModifyGenesis:  cosmos.ModifyGenesis(DefaultGenesis),
 	}
 
+	// DefaultGenesisAmt is the amount assigned to funded interchain test users.
 	DefaultGenesisAmt = sdkmath.NewInt(10_000_000)
 )
 
@@ -91,6 +103,7 @@ func init() {
 	sdk.GetConfig().SetBech32PrefixForAccount(LocalChainConfig.Bech32Prefix, LocalChainConfig.Bech32Prefix+"pub")
 }
 
+// AppEncoding returns an encoding configuration with all application interfaces registered.
 func AppEncoding() *sdktestutil.TestEncodingConfig {
 	enc := cosmos.DefaultEncoding()
 

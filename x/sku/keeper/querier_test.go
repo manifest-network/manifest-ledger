@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	sdkmath "cosmossdk.io/math"
 
@@ -112,6 +114,60 @@ func TestQuerierProviders(t *testing.T) {
 	// Test nil request
 	_, err = q.Providers(f.Ctx, nil)
 	require.Error(t, err)
+}
+
+func TestListQueriesRejectUnboundedPaginationModes(t *testing.T) {
+	f := initFixture(t)
+	q := keeper.NewQuerier(f.App.SKUKeeper)
+
+	queries := []struct {
+		name string
+		call func(*query.PageRequest) error
+	}{
+		{
+			name: "providers",
+			call: func(pageReq *query.PageRequest) error {
+				_, err := q.Providers(f.Ctx, &types.QueryProvidersRequest{Pagination: pageReq})
+				return err
+			},
+		},
+		{
+			name: "SKUs",
+			call: func(pageReq *query.PageRequest) error {
+				_, err := q.SKUs(f.Ctx, &types.QuerySKUsRequest{Pagination: pageReq})
+				return err
+			},
+		},
+		{
+			name: "SKUs by provider",
+			call: func(pageReq *query.PageRequest) error {
+				_, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+					ProviderUuid: testProvider1UUID,
+					Pagination:   pageReq,
+				})
+				return err
+			},
+		},
+		{
+			name: "provider by address",
+			call: func(pageReq *query.PageRequest) error {
+				_, err := q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+					Address:    f.TestAccs[0].String(),
+					Pagination: pageReq,
+				})
+				return err
+			},
+		},
+	}
+
+	for _, queryCase := range queries {
+		t.Run(queryCase.name+"/offset", func(t *testing.T) {
+			require.Equal(t, codes.InvalidArgument, status.Code(queryCase.call(&query.PageRequest{Offset: 1})))
+		})
+		t.Run(queryCase.name+"/count total", func(t *testing.T) {
+			require.Equal(t, codes.InvalidArgument, status.Code(queryCase.call(&query.PageRequest{CountTotal: true})))
+		})
+	}
 }
 
 func TestQuerierProvidersPagination(t *testing.T) {

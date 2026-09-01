@@ -69,7 +69,7 @@ func TestInitGenesis(t *testing.T) {
 
 	k := f.App.SKUKeeper
 
-	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(86400))
 
 	genesisState := &types.GenesisState{
 		Params: types.DefaultParams(),
@@ -102,6 +102,8 @@ func TestInitGenesis(t *testing.T) {
 				Active:       false,
 			},
 		},
+		ProviderSequence: 1,
+		SkuSequence:      2,
 	}
 
 	err := k.InitGenesis(f.Ctx, genesisState)
@@ -488,7 +490,7 @@ func TestInitGenesisWithParams(t *testing.T) {
 
 	k := f.App.SKUKeeper
 
-	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(100))
+	basePrice := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
 
 	genesisState := &types.GenesisState{
 		Params: types.Params{
@@ -512,6 +514,8 @@ func TestInitGenesisWithParams(t *testing.T) {
 				Active:       true,
 			},
 		},
+		ProviderSequence: 1,
+		SkuSequence:      1,
 	}
 
 	err := k.InitGenesis(f.Ctx, genesisState)

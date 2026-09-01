@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"slices"
+	"time"
 
 	"cosmossdk.io/collections"
 	sdkmath "cosmossdk.io/math"
@@ -16,9 +17,10 @@ import (
 )
 
 type reservationMigrationLease struct {
-	value      types.Lease
-	nominal    sdk.Coins
-	allocation sdk.Coins
+	value        types.Lease
+	nominal      sdk.Coins
+	allocation   sdk.Coins
+	stateChanged bool
 }
 
 type reservationMigrationClaim struct {
@@ -29,8 +31,15 @@ type reservationMigrationClaim struct {
 }
 
 type reservationMigrationPlan struct {
-	account types.CreditAccount
-	leases  []reservationMigrationLease
+	account                  types.CreditAccount
+	leases                   []reservationMigrationLease
+	expiredPendingLeaseCount uint64
+}
+
+type reservationMigrationLeaseCounts struct {
+	active  uint64
+	pending uint64
+	legacy  uint64
 }
 
 type reservationMigrationShare struct {
@@ -145,6 +154,13 @@ func (m Migrator) migrateReservationAccounts(ctx sdk.Context) error {
 			}
 
 			for _, lease := range plan.leases {
+				if lease.stateChanged {
+					if err := m.keeper.SetLease(ctx, lease.value); err != nil {
+						return fmt.Errorf("update billing lease %q during reservation migration: %w", lease.value.Uuid, err)
+					}
+					continue
+				}
+
 				encoded, err := m.keeper.Leases.ValueCodec().Encode(lease.value)
 				if err != nil {
 					return fmt.Errorf("encode billing lease %q reservation: %w", lease.value.Uuid, err)
@@ -176,6 +192,13 @@ func (m Migrator) migrateReservationAccounts(ctx sdk.Context) error {
 			}
 			if err := store.Set(storeKey, encoded); err != nil {
 				return fmt.Errorf("write billing reservation account %q: %w", entry.key.String(), err)
+			}
+			if plan.expiredPendingLeaseCount != 0 {
+				m.keeper.logger.Warn(
+					"expired under-backed pending leases during billing reservation migration",
+					"tenant", entry.key.String(),
+					"expired_pending_count", plan.expiredPendingLeaseCount,
+				)
 			}
 		}
 
@@ -242,17 +265,12 @@ func (m Migrator) buildReservationMigrationPlan(
 	if err != nil {
 		return plan, err
 	}
-	legacyLeaseCount, err := countLiveLegacyReservationLeases(records)
-	if err != nil {
-		return plan, types.ErrReservationInvariant.Wrapf(
-			"count live legacy leases for tenant %q: %s", tenant.String(), err,
-		)
-	}
 	bankBalances, err := m.reservationMigrationBankBalances(ctx, expectedCreditAddress, oldAggregate)
 	if err != nil {
 		return plan, err
 	}
 	records, newAggregate, legacyAllocation, err := planConsumableReservationCutover(
+		ctx.BlockTime(),
 		oldAggregate,
 		bankBalances,
 		records,
@@ -262,35 +280,70 @@ func (m Migrator) buildReservationMigrationPlan(
 			"plan consumable reservations for tenant %q: %s", tenant.String(), err,
 		)
 	}
+	counts, err := countReservationMigrationLeases(records)
+	if err != nil {
+		return plan, types.ErrReservationInvariant.Wrapf(
+			"count post-cutover leases for tenant %q: %s", tenant.String(), err,
+		)
+	}
 
 	plan.account.ReservedAmounts = newAggregate
 	plan.account.UnattributedReservedAmounts = legacyAllocation
-	plan.account.UnattributedLeaseCount = legacyLeaseCount
+	plan.account.ActiveLeaseCount = counts.active
+	plan.account.PendingLeaseCount = counts.pending
+	plan.account.UnattributedLeaseCount = counts.legacy
 	plan.leases = records
+	for index := range records {
+		if records[index].stateChanged {
+			plan.expiredPendingLeaseCount++
+		}
+	}
 	return plan, nil
 }
 
-func countLiveLegacyReservationLeases(records []reservationMigrationLease) (uint64, error) {
-	var count uint64
+func countReservationMigrationLeases(records []reservationMigrationLease) (reservationMigrationLeaseCounts, error) {
+	var counts reservationMigrationLeaseCounts
 	for index := range records {
-		if records[index].value.MinLeaseDurationAtCreation != 0 {
+		lease := &records[index].value
+		var count *uint64
+		switch lease.State {
+		case types.LEASE_STATE_ACTIVE:
+			count = &counts.active
+		case types.LEASE_STATE_PENDING:
+			count = &counts.pending
+		default:
 			continue
 		}
-		if count == math.MaxUint64 {
-			return 0, fmt.Errorf("legacy lease count overflows uint64")
+		if *count == math.MaxUint64 {
+			return reservationMigrationLeaseCounts{}, fmt.Errorf(
+				"%s lease count overflows uint64 at lease %q",
+				lease.State.String(), lease.Uuid,
+			)
 		}
-		count++
+		(*count)++
+
+		if lease.MinLeaseDurationAtCreation == 0 {
+			if counts.legacy == math.MaxUint64 {
+				return reservationMigrationLeaseCounts{}, fmt.Errorf(
+					"legacy lease count overflows uint64 at lease %q", lease.Uuid,
+				)
+			}
+			counts.legacy++
+		}
 	}
-	return count, nil
+	return counts, nil
 }
 
 // planConsumableReservationCutover is the shared pure v3-state conversion used
 // by both in-place migrations and exported-genesis imports. It never creates a
 // claim from unreserved bank credit: its total budget is bounded by both the
-// historical aggregate and the actual bank balance. Exact PENDING claims are
-// funded first; modern ACTIVE claims and the opaque live-legacy cohort share
-// the remainder proportionally with a stable UUID/cohort tie-break.
+// historical aggregate and the actual bank balance. A tenant's exact modern
+// PENDING claims are retained only when every denomination is fully bank
+// backed; otherwise all of them expire atomically at cutover. Modern ACTIVE
+// claims and the opaque live-legacy cohort share the remaining historical,
+// bank-backed budget proportionally with a stable UUID/cohort tie-break.
 func planConsumableReservationCutover(
+	cutoverTime time.Time,
 	oldAggregate,
 	bankBalances sdk.Coins,
 	records []reservationMigrationLease,
@@ -303,8 +356,7 @@ func planConsumableReservationCutover(
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("validate reservation bank balances: %w", err)
 	}
-	budget := boundedReservationBudget(oldAggregate, bankBalances)
-	planned = append([]reservationMigrationLease(nil), records...)
+	planned = slices.Clone(records)
 
 	modernPendingEntries := make([]sdk.Coin, 0)
 	modernActiveEntries := make([]sdk.Coin, 0)
@@ -313,6 +365,7 @@ func planConsumableReservationCutover(
 
 	for index := range planned {
 		planned[index].allocation = sdk.NewCoins()
+		planned[index].stateChanged = false
 		lease := &planned[index].value
 		if lease.MinLeaseDurationAtCreation == 0 {
 			hasLegacyCohort = true
@@ -360,33 +413,42 @@ func planConsumableReservationCutover(
 		return nil, nil, nil, fmt.Errorf("sum ACTIVE claims: %w", err)
 	}
 
-	if _, err := types.SafeSubtractCoins(oldAggregate, modernPending); err != nil {
+	remainingHistorical, err := types.SafeSubtractCoins(oldAggregate, modernPending)
+	if err != nil {
 		return nil, nil, nil, types.ErrReservationInvariant.Wrapf(
 			"old aggregate cannot fully back exact PENDING reservations %s: %s",
 			modernPending.String(), err,
 		)
 	}
-	if _, err := types.SafeSubtractCoins(bankBalances, modernPending); err != nil {
-		return nil, nil, nil, types.ErrReservationInvariant.Wrapf(
-			"bank balance cannot fully back exact PENDING reservations %s: %s",
-			modernPending.String(), err,
-		)
-	}
-	remainingBudget, err := types.SafeSubtractCoins(budget, modernPending)
-	if err != nil {
-		return nil, nil, nil, types.ErrReservationInvariant.Wrapf(
-			"subtract exact PENDING reservations from migration budget: %s",
-			err,
-		)
-	}
 
-	modernLive, err := types.SafeAddCoins(modernPending, modernActive)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("sum modern live claims: %w", err)
+	pendingAllocation := modernPending
+	bankForRemaining, pendingBackingErr := types.SafeSubtractCoins(bankBalances, modernPending)
+	effectiveOldAggregate := oldAggregate
+	if pendingBackingErr != nil {
+		// v2 settlement could consume credit backing a concurrent PENDING
+		// lease. A partially funded PENDING lease cannot be acknowledged safely,
+		// and choosing a subset creates arbitrary multi-denomination winners, so
+		// the cutover expires the tenant's whole modern PENDING cohort.
+		pendingAllocation = sdk.NewCoins()
+		bankForRemaining = bankBalances
+		effectiveOldAggregate = remainingHistorical
+		for index := range planned {
+			lease := &planned[index].value
+			if lease.State != types.LEASE_STATE_PENDING || lease.MinLeaseDurationAtCreation == 0 {
+				continue
+			}
+			lease.State = types.LEASE_STATE_EXPIRED
+			expiredAt := cutoverTime
+			lease.ExpiredAt = &expiredAt
+			planned[index].allocation = sdk.NewCoins()
+			planned[index].stateChanged = true
+		}
 	}
+	remainingBudget := boundedReservationBudget(remainingHistorical, bankForRemaining)
+
 	legacyClaim := sdk.NewCoins()
 	if hasLegacyCohort {
-		legacyClaim = positiveCoinDifference(oldAggregate, modernLive)
+		legacyClaim = positiveCoinDifference(remainingHistorical, modernActive)
 	}
 
 	legacyAllocation, err = allocateReservationClaims(remainingBudget, activeClaims, legacyClaim)
@@ -400,7 +462,7 @@ func planConsumableReservationCutover(
 		planned[claim.recordIndex].allocation = claim.allocation
 	}
 
-	newAggregateEntries := append([]sdk.Coin(nil), modernPending...)
+	newAggregateEntries := append([]sdk.Coin(nil), pendingAllocation...)
 	for index := range activeClaims {
 		newAggregateEntries = append(newAggregateEntries, activeClaims[index].allocation...)
 	}
@@ -409,9 +471,15 @@ func planConsumableReservationCutover(
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("sum migration allocations: %w", err)
 	}
-	if _, err := types.SafeSubtractCoins(budget, newAggregate); err != nil {
+	if _, err := types.SafeSubtractCoins(effectiveOldAggregate, newAggregate); err != nil {
 		return nil, nil, nil, types.ErrReservationInvariant.Wrapf(
-			"migration allocation exceeds its bank-backed old aggregate: %s",
+			"migration allocation exceeds its effective historical aggregate: %s",
+			err,
+		)
+	}
+	if _, err := types.SafeSubtractCoins(bankBalances, newAggregate); err != nil {
+		return nil, nil, nil, types.ErrReservationInvariant.Wrapf(
+			"migration allocation exceeds its bank balance: %s",
 			err,
 		)
 	}
@@ -513,9 +581,23 @@ func (m Migrator) reservationMigrationBankBalances(
 	creditAddress sdk.AccAddress,
 	oldAggregate sdk.Coins,
 ) (sdk.Coins, error) {
+	return reservationMigrationBankBalancesForAggregate(
+		creditAddress,
+		oldAggregate,
+		func(denom string) sdk.Coin {
+			return m.keeper.bankKeeper.GetBalance(ctx, creditAddress, denom)
+		},
+	)
+}
+
+func reservationMigrationBankBalancesForAggregate(
+	creditAddress sdk.AccAddress,
+	oldAggregate sdk.Coins,
+	getBalance func(string) sdk.Coin,
+) (sdk.Coins, error) {
 	bankBalances := sdk.NewCoins()
 	for _, reserved := range oldAggregate {
-		balance := m.keeper.bankKeeper.GetBalance(ctx, creditAddress, reserved.Denom)
+		balance := getBalance(reserved.Denom)
 		if err := balance.Validate(); err != nil {
 			return nil, types.ErrReservationInvariant.Wrapf(
 				"credit address %q has invalid %s bank balance: %s",

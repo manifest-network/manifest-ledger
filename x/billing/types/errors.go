@@ -2,6 +2,7 @@ package types
 
 import "cosmossdk.io/errors"
 
+// Registered billing module errors.
 var (
 	ErrInvalidParams          = errors.Register(ModuleName, 1, "invalid params")
 	ErrLeaseNotFound          = errors.Register(ModuleName, 2, "lease not found")
@@ -63,10 +64,10 @@ const MaxReservedDenomsPerCreditAccount = 1000
 // math.Int, so all price/quantity arithmetic must still use checked operations.
 const MaxQuantityPerItem uint64 = 1_000_000_000 // 1 billion
 
-// MaxRejectionReasonLength is the maximum length of a rejection reason.
+// MaxRejectionReasonLength is the maximum encoded byte length of a rejection reason.
 const MaxRejectionReasonLength = 256
 
-// MaxClosureReasonLength is the maximum length of a closure reason.
+// MaxClosureReasonLength is the maximum encoded byte length of a closure reason.
 const MaxClosureReasonLength = 256
 
 // MaxMetaHashLength is the maximum length of a meta_hash field.

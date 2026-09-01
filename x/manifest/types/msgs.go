@@ -11,6 +11,7 @@ import (
 
 var _ sdk.Msg = &MsgPayout{}
 
+// NewMsgPayout constructs a payout message.
 func NewMsgPayout(
 	sender sdk.Address,
 	payouts []PayoutPair,
@@ -21,6 +22,7 @@ func NewMsgPayout(
 	}
 }
 
+// NewPayoutPair constructs a payout for addr.
 func NewPayoutPair(addr sdk.AccAddress, denom string, amt int64) PayoutPair {
 	return PayoutPair{
 		Address: addr.String(),
@@ -85,6 +87,7 @@ func (msg *MsgPayout) Validate() error {
 
 var _ sdk.Msg = &MsgBurnHeldBalance{}
 
+// NewMsgBurnHeldBalance constructs a held-balance burn message.
 func NewMsgBurnHeldBalance(
 	sender sdk.Address,
 	coins sdk.Coins,

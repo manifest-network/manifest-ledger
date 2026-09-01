@@ -2,9 +2,9 @@
 package internalv1
 
 import (
+	v1beta1 "cosmossdk.io/api/cosmos/base/v1beta1"
 	fmt "fmt"
 	runtime "github.com/cosmos/cosmos-proto/runtime"
-	types "cosmossdk.io/api/cosmos/base/v1beta1"
 	_ "github.com/cosmos/gogoproto/gogoproto"
 	v1 "github.com/manifest-network/manifest-ledger/api/liftedinit/billing/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -2396,7 +2396,7 @@ func (x *fastReflection_Lease) ProtoMethods() *protoiface.Methods {
 var _ protoreflect.List = (*_CreditAccount_5_list)(nil)
 
 type _CreditAccount_5_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta1.Coin
 }
 
 func (x *_CreditAccount_5_list) Len() int {
@@ -2412,18 +2412,18 @@ func (x *_CreditAccount_5_list) Get(i int) protoreflect.Value {
 
 func (x *_CreditAccount_5_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_CreditAccount_5_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_CreditAccount_5_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -2436,7 +2436,7 @@ func (x *_CreditAccount_5_list) Truncate(n int) {
 }
 
 func (x *_CreditAccount_5_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -2447,7 +2447,7 @@ func (x *_CreditAccount_5_list) IsValid() bool {
 var _ protoreflect.List = (*_CreditAccount_6_list)(nil)
 
 type _CreditAccount_6_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta1.Coin
 }
 
 func (x *_CreditAccount_6_list) Len() int {
@@ -2463,18 +2463,18 @@ func (x *_CreditAccount_6_list) Get(i int) protoreflect.Value {
 
 func (x *_CreditAccount_6_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_CreditAccount_6_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_CreditAccount_6_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -2487,7 +2487,7 @@ func (x *_CreditAccount_6_list) Truncate(n int) {
 }
 
 func (x *_CreditAccount_6_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -2787,13 +2787,13 @@ func (x *fastReflection_CreditAccount) Mutable(fd protoreflect.FieldDescriptor) 
 	switch fd.FullName() {
 	case "liftedinit.billing.internal.v1.CreditAccount.reserved_amounts":
 		if x.ReservedAmounts == nil {
-			x.ReservedAmounts = []*types.Coin{}
+			x.ReservedAmounts = []*v1beta1.Coin{}
 		}
 		value := &_CreditAccount_5_list{list: &x.ReservedAmounts}
 		return protoreflect.ValueOfList(value)
 	case "liftedinit.billing.internal.v1.CreditAccount.unattributed_reserved_amounts":
 		if x.UnattributedReservedAmounts == nil {
-			x.UnattributedReservedAmounts = []*types.Coin{}
+			x.UnattributedReservedAmounts = []*v1beta1.Coin{}
 		}
 		value := &_CreditAccount_6_list{list: &x.UnattributedReservedAmounts}
 		return protoreflect.ValueOfList(value)
@@ -2829,10 +2829,10 @@ func (x *fastReflection_CreditAccount) NewField(fd protoreflect.FieldDescriptor)
 	case "liftedinit.billing.internal.v1.CreditAccount.pending_lease_count":
 		return protoreflect.ValueOfUint64(uint64(0))
 	case "liftedinit.billing.internal.v1.CreditAccount.reserved_amounts":
-		list := []*types.Coin{}
+		list := []*v1beta1.Coin{}
 		return protoreflect.ValueOfList(&_CreditAccount_5_list{list: &list})
 	case "liftedinit.billing.internal.v1.CreditAccount.unattributed_reserved_amounts":
-		list := []*types.Coin{}
+		list := []*v1beta1.Coin{}
 		return protoreflect.ValueOfList(&_CreditAccount_6_list{list: &list})
 	case "liftedinit.billing.internal.v1.CreditAccount.unattributed_lease_count":
 		return protoreflect.ValueOfUint64(uint64(0))
@@ -3208,7 +3208,7 @@ func (x *fastReflection_CreditAccount) ProtoMethods() *protoiface.Methods {
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.ReservedAmounts = append(x.ReservedAmounts, &types.Coin{})
+				x.ReservedAmounts = append(x.ReservedAmounts, &v1beta1.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.ReservedAmounts[len(x.ReservedAmounts)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -3242,7 +3242,7 @@ func (x *fastReflection_CreditAccount) ProtoMethods() *protoiface.Methods {
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.UnattributedReservedAmounts = append(x.UnattributedReservedAmounts, &types.Coin{})
+				x.UnattributedReservedAmounts = append(x.UnattributedReservedAmounts, &v1beta1.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.UnattributedReservedAmounts[len(x.UnattributedReservedAmounts)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -3406,13 +3406,16 @@ type Lease struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Uuid                       string                 `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
-	TenantAddress              []byte                 `protobuf:"bytes,2,opt,name=tenant_address,json=tenantAddress,proto3" json:"tenant_address,omitempty"`
-	ProviderUuid               string                 `protobuf:"bytes,3,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
-	Items                      []*v1.LeaseItem        `protobuf:"bytes,4,rep,name=items,proto3" json:"items,omitempty"`
-	State                      v1.LeaseState          `protobuf:"varint,5,opt,name=state,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state,omitempty"`
-	CreatedAt                  *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	ClosedAt                   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=closed_at,json=closedAt,proto3" json:"closed_at,omitempty"`
+	Uuid          string                 `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
+	TenantAddress []byte                 `protobuf:"bytes,2,opt,name=tenant_address,json=tenantAddress,proto3" json:"tenant_address,omitempty"`
+	ProviderUuid  string                 `protobuf:"bytes,3,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
+	Items         []*v1.LeaseItem        `protobuf:"bytes,4,rep,name=items,proto3" json:"items,omitempty"`
+	State         v1.LeaseState          `protobuf:"varint,5,opt,name=state,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	ClosedAt      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=closed_at,json=closedAt,proto3" json:"closed_at,omitempty"`
+	// Accrual cursor through which complete per-second charges have settled.
+	// ACTIVE rows retain any sub-second remainder in this timestamp; CLOSED rows
+	// set it to closed_at.
 	LastSettledAt              *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=last_settled_at,json=lastSettledAt,proto3" json:"last_settled_at,omitempty"`
 	AcknowledgedAt             *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=acknowledged_at,json=acknowledgedAt,proto3" json:"acknowledged_at,omitempty"`
 	RejectedAt                 *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=rejected_at,json=rejectedAt,proto3" json:"rejected_at,omitempty"`
@@ -3565,13 +3568,13 @@ type CreditAccount struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	TenantAddress               []byte        `protobuf:"bytes,1,opt,name=tenant_address,json=tenantAddress,proto3" json:"tenant_address,omitempty"`
-	CreditAddress               []byte        `protobuf:"bytes,2,opt,name=credit_address,json=creditAddress,proto3" json:"credit_address,omitempty"`
-	ActiveLeaseCount            uint64        `protobuf:"varint,3,opt,name=active_lease_count,json=activeLeaseCount,proto3" json:"active_lease_count,omitempty"`
-	PendingLeaseCount           uint64        `protobuf:"varint,4,opt,name=pending_lease_count,json=pendingLeaseCount,proto3" json:"pending_lease_count,omitempty"`
-	ReservedAmounts             []*types.Coin `protobuf:"bytes,5,rep,name=reserved_amounts,json=reservedAmounts,proto3" json:"reserved_amounts,omitempty"`
-	UnattributedReservedAmounts []*types.Coin `protobuf:"bytes,6,rep,name=unattributed_reserved_amounts,json=unattributedReservedAmounts,proto3" json:"unattributed_reserved_amounts,omitempty"`
-	UnattributedLeaseCount      uint64        `protobuf:"varint,7,opt,name=unattributed_lease_count,json=unattributedLeaseCount,proto3" json:"unattributed_lease_count,omitempty"`
+	TenantAddress               []byte          `protobuf:"bytes,1,opt,name=tenant_address,json=tenantAddress,proto3" json:"tenant_address,omitempty"`
+	CreditAddress               []byte          `protobuf:"bytes,2,opt,name=credit_address,json=creditAddress,proto3" json:"credit_address,omitempty"`
+	ActiveLeaseCount            uint64          `protobuf:"varint,3,opt,name=active_lease_count,json=activeLeaseCount,proto3" json:"active_lease_count,omitempty"`
+	PendingLeaseCount           uint64          `protobuf:"varint,4,opt,name=pending_lease_count,json=pendingLeaseCount,proto3" json:"pending_lease_count,omitempty"`
+	ReservedAmounts             []*v1beta1.Coin `protobuf:"bytes,5,rep,name=reserved_amounts,json=reservedAmounts,proto3" json:"reserved_amounts,omitempty"`
+	UnattributedReservedAmounts []*v1beta1.Coin `protobuf:"bytes,6,rep,name=unattributed_reserved_amounts,json=unattributedReservedAmounts,proto3" json:"unattributed_reserved_amounts,omitempty"`
+	UnattributedLeaseCount      uint64          `protobuf:"varint,7,opt,name=unattributed_lease_count,json=unattributedLeaseCount,proto3" json:"unattributed_lease_count,omitempty"`
 }
 
 func (x *CreditAccount) Reset() {
@@ -3622,14 +3625,14 @@ func (x *CreditAccount) GetPendingLeaseCount() uint64 {
 	return 0
 }
 
-func (x *CreditAccount) GetReservedAmounts() []*types.Coin {
+func (x *CreditAccount) GetReservedAmounts() []*v1beta1.Coin {
 	if x != nil {
 		return x.ReservedAmounts
 	}
 	return nil
 }
 
-func (x *CreditAccount) GetUnattributedReservedAmounts() []*types.Coin {
+func (x *CreditAccount) GetUnattributedReservedAmounts() []*v1beta1.Coin {
 	if x != nil {
 		return x.UnattributedReservedAmounts
 	}
@@ -3812,7 +3815,7 @@ var file_liftedinit_billing_internal_v1_storage_proto_goTypes = []interface{}{
 	(v1.LeaseState)(0),            // 4: liftedinit.billing.v1.LeaseState
 	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
 	(*v1.LeaseReservation)(nil),   // 6: liftedinit.billing.v1.LeaseReservation
-	(*types.Coin)(nil),            // 7: cosmos.base.v1beta1.Coin
+	(*v1beta1.Coin)(nil),          // 7: cosmos.base.v1beta1.Coin
 }
 var file_liftedinit_billing_internal_v1_storage_proto_depIdxs = []int32{
 	3,  // 0: liftedinit.billing.internal.v1.Lease.items:type_name -> liftedinit.billing.v1.LeaseItem

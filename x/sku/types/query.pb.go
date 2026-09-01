@@ -208,7 +208,8 @@ func (m *QueryProviderResponse) GetProvider() Provider {
 
 // QueryProvidersRequest is the request type for the Query/Providers RPC method.
 type QueryProvidersRequest struct {
-	// pagination defines an optional pagination for the request.
+	// pagination is cursor-only; non-zero offset and count_total are rejected,
+	// and limit is capped at 1000.
 	Pagination *query.PageRequest `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active providers when true.
 	ActiveOnly bool `protobuf:"varint,2,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`
@@ -261,7 +262,8 @@ func (m *QueryProvidersRequest) GetActiveOnly() bool {
 	return false
 }
 
-// QueryProvidersResponse is the response type for the Query/Providers RPC method.
+// QueryProvidersResponse is the response type for the Query/Providers RPC
+// method.
 type QueryProvidersResponse struct {
 	// providers is the list of providers.
 	Providers []Provider `protobuf:"bytes,1,rep,name=providers,proto3" json:"providers"`
@@ -410,7 +412,8 @@ func (m *QuerySKUResponse) GetSku() SKU {
 
 // QuerySKUsRequest is the request type for the Query/SKUs RPC method.
 type QuerySKUsRequest struct {
-	// pagination defines an optional pagination for the request.
+	// pagination is cursor-only; non-zero offset and count_total are rejected,
+	// and limit is capped at 1000.
 	Pagination *query.PageRequest `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active SKUs when true.
 	ActiveOnly bool `protobuf:"varint,2,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`
@@ -523,7 +526,8 @@ func (m *QuerySKUsResponse) GetPagination() *query.PageResponse {
 type QuerySKUsByProviderRequest struct {
 	// provider_uuid is the unique identifier of the SKU provider.
 	ProviderUuid string `protobuf:"bytes,1,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
-	// pagination defines an optional pagination for the request.
+	// pagination is cursor-only; non-zero offset and count_total are rejected,
+	// and limit is capped at 1000.
 	Pagination *query.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active SKUs when true.
 	ActiveOnly bool `protobuf:"varint,3,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`
@@ -639,12 +643,14 @@ func (m *QuerySKUsByProviderResponse) GetPagination() *query.PageResponse {
 	return nil
 }
 
-// QueryProviderByAddressRequest is the request type for the Query/ProviderByAddress
-// RPC method.
+// QueryProviderByAddressRequest is the request type for the
+// Query/ProviderByAddress RPC method.
 type QueryProviderByAddressRequest struct {
 	// address is the management address of the provider.
 	Address string `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
-	// pagination defines an optional pagination for the request.
+	// pagination is cursor-only; non-zero offset and count_total are rejected,
+	// and limit is capped at 1000. Filtered pages inspect at most 1000 index
+	// rows and may therefore be short while returning a continuation cursor.
 	Pagination *query.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active providers when true.
 	ActiveOnly bool `protobuf:"varint,3,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`
@@ -704,8 +710,8 @@ func (m *QueryProviderByAddressRequest) GetActiveOnly() bool {
 	return false
 }
 
-// QueryProviderByAddressResponse is the response type for the Query/ProviderByAddress
-// RPC method.
+// QueryProviderByAddressResponse is the response type for the
+// Query/ProviderByAddress RPC method.
 type QueryProviderByAddressResponse struct {
 	// providers is the list of providers with the given address.
 	Providers []Provider `protobuf:"bytes,1,rep,name=providers,proto3" json:"providers"`

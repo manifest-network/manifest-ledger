@@ -1,3 +1,4 @@
+// Package module wires the billing module into the application.
 package module
 
 import (
@@ -12,6 +13,7 @@ import (
 
 	modulev1 "github.com/manifest-network/manifest-ledger/api/liftedinit/billing/module/v1"
 	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 	skukeeper "github.com/manifest-network/manifest-ledger/x/sku/keeper"
 )
 
@@ -36,10 +38,12 @@ func init() {
 type ModuleInputs struct {
 	depinject.In
 
-	Cdc          codec.Codec
-	StoreService store.KVStoreService
-	Logger       log.Logger
-	SKUKeeper    skukeeper.Keeper
+	Cdc           codec.Codec
+	StoreService  store.KVStoreService
+	Logger        log.Logger
+	SKUKeeper     skukeeper.Keeper
+	BankKeeper    billingtypes.BankKeeper
+	AccountKeeper billingtypes.AccountKeeper
 }
 
 // ModuleOutputs defines the outputs provided by the module.
@@ -59,8 +63,10 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		in.StoreService,
 		in.Logger,
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+		&in.SKUKeeper,
+		in.BankKeeper,
+		in.AccountKeeper,
 	)
-	k.SetSKUKeeper(&in.SKUKeeper)
 	m := NewAppModule(in.Cdc, k, in.SKUKeeper)
 
 	return ModuleOutputs{Module: m, Keeper: k, Out: depinject.Out{}}

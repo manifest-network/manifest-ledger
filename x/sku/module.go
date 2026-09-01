@@ -30,7 +30,8 @@ import (
 
 const (
 	// ConsensusVersion defines the current x/sku module consensus version.
-	ConsensusVersion = 1
+	// v2 moved persisted account identities from Bech32 strings to raw bytes.
+	ConsensusVersion = 2
 )
 
 var (
@@ -150,7 +151,8 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, marshaler codec.JSONCodec) js
 }
 
 // RegisterInvariants registers the module's invariants.
-func (am AppModule) RegisterInvariants(_ sdk.InvariantRegistry) {
+func (am AppModule) RegisterInvariants(registry sdk.InvariantRegistry) {
+	keeper.RegisterInvariants(registry, am.keeper)
 }
 
 // QuerierRoute returns the module's query routing key.
@@ -162,6 +164,11 @@ func (am AppModule) QuerierRoute() string {
 func (am AppModule) RegisterServices(cfg module.Configurator) {
 	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImpl(am.keeper))
 	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQuerier(am.keeper))
+
+	migrator := keeper.NewMigrator(am.keeper)
+	if err := cfg.RegisterMigration(types.ModuleName, 1, migrator.Migrate1to2); err != nil {
+		panic(fmt.Errorf("failed to register %s migration v1→v2: %w", types.ModuleName, err))
+	}
 }
 
 // ConsensusVersion implements AppModule/ConsensusVersion.

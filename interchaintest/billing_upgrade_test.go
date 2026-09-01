@@ -6,12 +6,6 @@ import (
 	"testing"
 	"time"
 
-	sdkmath "cosmossdk.io/math"
-	upgradetypes "cosmossdk.io/x/upgrade/types"
-	"github.com/cosmos/cosmos-sdk/codec"
-	"github.com/cosmos/cosmos-sdk/codec/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
@@ -19,6 +13,14 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
+
+	sdkmath "cosmossdk.io/math"
+	upgradetypes "cosmossdk.io/x/upgrade/types"
+
+	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/codec/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 )
@@ -29,14 +31,12 @@ const (
 	billingBlocksAfterUpgrade = int64(7)
 )
 
-var (
-	// preBillingChain is the version without sku/billing modules
-	preBillingChain = ibc.DockerImage{
-		Repository: "ghcr.io/manifest-network/manifest-ledger",
-		Version:    "1.0.13",
-		UIDGID:     "1025:1025",
-	}
-)
+// preBillingChain is the version without sku/billing modules
+var preBillingChain = ibc.DockerImage{
+	Repository: "ghcr.io/manifest-network/manifest-ledger",
+	Version:    "1.0.13",
+	UIDGID:     "1025:1025",
+}
 
 // TestBillingModuleUpgrade tests upgrading from a pre-billing version to the current version
 // with the x/sku and x/billing modules. It verifies:
@@ -72,7 +72,8 @@ func TestBillingModuleUpgrade(t *testing.T) {
 	require.NoError(t, err)
 
 	// Setup chain with group-based governance (required for upgrade proposals)
-	previousVersionGenesis := append(DefaultGenesis,
+	previousVersionGenesis := append([]cosmos.GenesisKV(nil), DefaultGenesis...)
+	previousVersionGenesis = append(previousVersionGenesis,
 		cosmos.NewGenesisKV("app_state.group.group_seq", "1"),
 		cosmos.NewGenesisKV("app_state.group.groups", []grouptypes.GroupInfo{groupInfo}),
 		cosmos.NewGenesisKV("app_state.group.group_members", []grouptypes.GroupMember{groupMember1, groupMember2}),
@@ -145,8 +146,8 @@ func TestBillingModuleUpgrade(t *testing.T) {
 	t.Log("Submitting upgrade proposal through group")
 
 	upgradeMsg := createUpgradeProposal(groupAddr, upgradeName, haltHeight)
-	createAndRunProposalSuccess(t, ctx, chain, &cfg, accAddr, []*types.Any{createAny(t, &upgradeMsg)})
-	verifyUpgradePlan(t, ctx, chain, &upgradetypes.Plan{Name: upgradeName, Height: haltHeight})
+	createAndRunProposalSuccess(ctx, t, chain, &cfg, accAddr, []*types.Any{createAny(t, &upgradeMsg)})
+	verifyUpgradePlan(ctx, t, chain, &upgradetypes.Plan{Name: upgradeName, Height: haltHeight})
 
 	t.Log("Waiting for chain to halt at upgrade height")
 	timeoutCtx, timeoutCtxCancel := context.WithTimeout(ctx, time.Second*45)
@@ -195,16 +196,16 @@ func TestBillingModuleUpgrade(t *testing.T) {
 	t.Log("Chain successfully upgraded, now testing new modules...")
 
 	// Test SKU module functionality after upgrade
-	testSKUModuleAfterUpgrade(t, ctx, chain, &cfg, user1Wallet)
+	testSKUModuleAfterUpgrade(ctx, t, chain, &cfg, user1Wallet)
 
 	// Test Billing module functionality after upgrade
-	testBillingModuleAfterUpgrade(t, ctx, chain, user1Wallet)
+	testBillingModuleAfterUpgrade(ctx, t, chain, user1Wallet)
 
 	t.Log("Upgrade test completed successfully - sku and billing modules are functional")
 }
 
 // testSKUModuleAfterUpgrade verifies that the SKU module works after the upgrade
-func testSKUModuleAfterUpgrade(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, cfg *ibc.ChainConfig, _ ibc.Wallet) {
+func testSKUModuleAfterUpgrade(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, cfg *ibc.ChainConfig, _ ibc.Wallet) {
 	t.Log("Testing SKU module after upgrade...")
 
 	// Query SKU params - should return default params
@@ -229,7 +230,7 @@ func testSKUModuleAfterUpgrade(t *testing.T, ctx context.Context, chain *cosmos.
 		"",              // api_url (optional)
 	)
 
-	createAndRunProposalSuccess(t, ctx, chain, cfg, accAddr, []*types.Any{createAny(t, &createProviderMsg)})
+	createAndRunProposalSuccess(ctx, t, chain, cfg, accAddr, []*types.Any{createAny(t, &createProviderMsg)})
 
 	// Verify provider was created
 	providers, err = helpers.SKUQueryProviders(ctx, chain)
@@ -253,7 +254,7 @@ func testSKUModuleAfterUpgrade(t *testing.T, ctx context.Context, chain *cosmos.
 		"UNIT_PER_HOUR", // price model
 	)
 
-	createAndRunProposalSuccess(t, ctx, chain, cfg, accAddr, []*types.Any{createAny(t, &createSKUMsg)})
+	createAndRunProposalSuccess(ctx, t, chain, cfg, accAddr, []*types.Any{createAny(t, &createSKUMsg)})
 
 	// Verify SKU was created
 	skus, err := helpers.SKUQuerySKUs(ctx, chain)
@@ -266,7 +267,7 @@ func testSKUModuleAfterUpgrade(t *testing.T, ctx context.Context, chain *cosmos.
 }
 
 // testBillingModuleAfterUpgrade verifies that the Billing module works after the upgrade
-func testBillingModuleAfterUpgrade(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet) {
+func testBillingModuleAfterUpgrade(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, user ibc.Wallet) {
 	t.Log("Testing Billing module after upgrade...")
 
 	// Query billing params - should return default params

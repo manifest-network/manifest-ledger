@@ -127,21 +127,24 @@ func (m *Params) GetReservedDomainSuffixes() []string {
 // Lease is the disk-only representation of a billing lease. The tenant is
 // stored as raw account bytes.
 type Lease struct {
-	Uuid                       string            `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
-	TenantAddress              []byte            `protobuf:"bytes,2,opt,name=tenant_address,json=tenantAddress,proto3" json:"tenant_address,omitempty"`
-	ProviderUuid               string            `protobuf:"bytes,3,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
-	Items                      []types.LeaseItem `protobuf:"bytes,4,rep,name=items,proto3" json:"items"`
-	State                      types.LeaseState  `protobuf:"varint,5,opt,name=state,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state,omitempty"`
-	CreatedAt                  time.Time         `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3,stdtime" json:"created_at"`
-	ClosedAt                   *time.Time        `protobuf:"bytes,7,opt,name=closed_at,json=closedAt,proto3,stdtime" json:"closed_at,omitempty"`
-	LastSettledAt              time.Time         `protobuf:"bytes,8,opt,name=last_settled_at,json=lastSettledAt,proto3,stdtime" json:"last_settled_at"`
-	AcknowledgedAt             *time.Time        `protobuf:"bytes,9,opt,name=acknowledged_at,json=acknowledgedAt,proto3,stdtime" json:"acknowledged_at,omitempty"`
-	RejectedAt                 *time.Time        `protobuf:"bytes,10,opt,name=rejected_at,json=rejectedAt,proto3,stdtime" json:"rejected_at,omitempty"`
-	RejectionReason            string            `protobuf:"bytes,11,opt,name=rejection_reason,json=rejectionReason,proto3" json:"rejection_reason,omitempty"`
-	ExpiredAt                  *time.Time        `protobuf:"bytes,12,opt,name=expired_at,json=expiredAt,proto3,stdtime" json:"expired_at,omitempty"`
-	ClosureReason              string            `protobuf:"bytes,13,opt,name=closure_reason,json=closureReason,proto3" json:"closure_reason,omitempty"`
-	MetaHash                   []byte            `protobuf:"bytes,14,opt,name=meta_hash,json=metaHash,proto3" json:"meta_hash,omitempty"`
-	MinLeaseDurationAtCreation uint64            `protobuf:"varint,15,opt,name=min_lease_duration_at_creation,json=minLeaseDurationAtCreation,proto3" json:"min_lease_duration_at_creation,omitempty"`
+	Uuid          string            `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
+	TenantAddress []byte            `protobuf:"bytes,2,opt,name=tenant_address,json=tenantAddress,proto3" json:"tenant_address,omitempty"`
+	ProviderUuid  string            `protobuf:"bytes,3,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
+	Items         []types.LeaseItem `protobuf:"bytes,4,rep,name=items,proto3" json:"items"`
+	State         types.LeaseState  `protobuf:"varint,5,opt,name=state,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state,omitempty"`
+	CreatedAt     time.Time         `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3,stdtime" json:"created_at"`
+	ClosedAt      *time.Time        `protobuf:"bytes,7,opt,name=closed_at,json=closedAt,proto3,stdtime" json:"closed_at,omitempty"`
+	// Accrual cursor through which complete per-second charges have settled.
+	// ACTIVE rows retain any sub-second remainder in this timestamp; CLOSED rows
+	// set it to closed_at.
+	LastSettledAt              time.Time  `protobuf:"bytes,8,opt,name=last_settled_at,json=lastSettledAt,proto3,stdtime" json:"last_settled_at"`
+	AcknowledgedAt             *time.Time `protobuf:"bytes,9,opt,name=acknowledged_at,json=acknowledgedAt,proto3,stdtime" json:"acknowledged_at,omitempty"`
+	RejectedAt                 *time.Time `protobuf:"bytes,10,opt,name=rejected_at,json=rejectedAt,proto3,stdtime" json:"rejected_at,omitempty"`
+	RejectionReason            string     `protobuf:"bytes,11,opt,name=rejection_reason,json=rejectionReason,proto3" json:"rejection_reason,omitempty"`
+	ExpiredAt                  *time.Time `protobuf:"bytes,12,opt,name=expired_at,json=expiredAt,proto3,stdtime" json:"expired_at,omitempty"`
+	ClosureReason              string     `protobuf:"bytes,13,opt,name=closure_reason,json=closureReason,proto3" json:"closure_reason,omitempty"`
+	MetaHash                   []byte     `protobuf:"bytes,14,opt,name=meta_hash,json=metaHash,proto3" json:"meta_hash,omitempty"`
+	MinLeaseDurationAtCreation uint64     `protobuf:"varint,15,opt,name=min_lease_duration_at_creation,json=minLeaseDurationAtCreation,proto3" json:"min_lease_duration_at_creation,omitempty"`
 	// Kept nullable so old rows (absent) remain distinguishable from an
 	// initialized reservation with an empty remaining_amounts list.
 	Reservation *types.LeaseReservation `protobuf:"bytes,16,opt,name=reservation,proto3" json:"reservation,omitempty"`

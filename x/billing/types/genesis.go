@@ -38,14 +38,138 @@ type genesisValidationOptions struct {
 	enforceExactLegacyReservations bool
 }
 
-// Validate validates all structural and accounting invariants required before
-// writing genesis state. It accepts historical state that InitGenesis can
-// safely import without replaying policies that cannot be reconstructed from
-// that state: a domain may predate its reserved suffix, and a legacy lease with
-// no stored creation duration may have been reserved under an earlier minimum
-// duration.
+// Validate applies the same import-safe preparation and validation used before
+// InitGenesis writes state. It accepts bounded, historically reachable drift in
+// derived counts and pre-v4 aggregate reservations, and does not replay policies
+// that cannot be reconstructed: a domain may predate its reserved suffix, and a
+// legacy lease with no stored creation duration may have been reserved under an
+// earlier minimum duration. Use ValidateStrict for newly authored state.
 func (gs *GenesisState) Validate() error {
-	return gs.validate(genesisValidationOptions{})
+	_, err := gs.PrepareForImport()
+	return err
+}
+
+// PrepareForImport returns an import-safe copy. It canonicalizes equivalent
+// Bech32 allowed-list spellings, reconstructs cached live-lease counts, and
+// reconciles a complete pre-v4 aggregate-only export to the reservation floor
+// provable from modern leases. Import-safe validation is applied to the
+// prepared copy; the caller's genesis value is not mutated.
+func (gs *GenesisState) PrepareForImport() (*GenesisState, error) {
+	prepared := *gs
+	prepared.Params = gs.Params
+	prepared.CreditAccounts = append([]CreditAccount(nil), gs.CreditAccounts...)
+	legacyReservationState, err := prepared.HasLegacyReservationState()
+	if err != nil {
+		return nil, err
+	}
+
+	allowedList, err := CanonicalUniqueAddresses(gs.Params.AllowedList)
+	if err != nil {
+		return nil, err
+	}
+	prepared.Params.AllowedList = allowedList
+	if err := prepared.repairCreditAccountDerivedStateForImport(legacyReservationState); err != nil {
+		return nil, err
+	}
+
+	if err := prepared.validate(genesisValidationOptions{}); err != nil {
+		return nil, err
+	}
+	return &prepared, nil
+}
+
+// repairCreditAccountDerivedStateForImport reconstructs cached live-lease
+// counts from primary lease state. For a complete pre-v4 aggregate-only export,
+// it also mirrors Migrate2to3's reservation repair: accounts with a live opaque
+// legacy cohort preserve unknown excess but are raised to the modern provable
+// floor, while every other account is reconciled exactly to that floor.
+//
+// Historical v2 handlers could under-report counts when equivalent Bech32
+// spellings identified the same account. They could also clamp the aggregate
+// below a concurrent modern claim when releasing a zero-duration legacy lease
+// after the minimum duration changed. Grouping uses decoded address bytes, and
+// credit-account slice order drives every update; the maps are lookup-only and
+// are never iterated.
+func (gs *GenesisState) repairCreditAccountDerivedStateForImport(repairLegacyReservations bool) error {
+	activeCounts := make(map[string]uint64)
+	pendingCounts := make(map[string]uint64)
+	knownReservationCoins := make(map[string][]sdk.Coin)
+	hasLiveLegacy := make(map[string]bool)
+	for i := range gs.Leases {
+		lease := &gs.Leases[i]
+		if lease.State != LEASE_STATE_ACTIVE && lease.State != LEASE_STATE_PENDING {
+			continue
+		}
+		if lease.Tenant == "" {
+			return ErrInvalidLease.Wrapf("lease %s has empty tenant", lease.Uuid)
+		}
+
+		tenant, err := sdk.AccAddressFromBech32(lease.Tenant)
+		if err != nil {
+			return ErrInvalidLease.Wrapf("lease %s has invalid tenant address: %s", lease.Uuid, err)
+		}
+		tenantKey := string(tenant.Bytes())
+		if lease.State == LEASE_STATE_ACTIVE {
+			activeCounts[tenantKey]++
+		} else {
+			pendingCounts[tenantKey]++
+		}
+
+		if !repairLegacyReservations {
+			continue
+		}
+		if lease.MinLeaseDurationAtCreation == 0 {
+			hasLiveLegacy[tenantKey] = true
+			continue
+		}
+		reservation, err := CalculateLeaseReservation(
+			lease.Items,
+			lease.MinLeaseDurationAtCreation,
+		)
+		if err != nil {
+			return errorsmod.Wrapf(err, "calculate billing lease %q import reservation", lease.Uuid)
+		}
+		knownReservationCoins[tenantKey] = append(
+			knownReservationCoins[tenantKey],
+			reservation...,
+		)
+	}
+
+	for i := range gs.CreditAccounts {
+		account := &gs.CreditAccounts[i]
+		if account.Tenant == "" {
+			return ErrInvalidCreditOperation.Wrap("credit account has empty tenant")
+		}
+		tenant, err := sdk.AccAddressFromBech32(account.Tenant)
+		if err != nil {
+			return ErrInvalidCreditOperation.Wrapf("credit account has invalid tenant address: %s", err)
+		}
+		tenantKey := string(tenant.Bytes())
+		account.ActiveLeaseCount = activeCounts[tenantKey]
+		account.PendingLeaseCount = pendingCounts[tenantKey]
+
+		if !repairLegacyReservations {
+			continue
+		}
+		knownFloor, err := SafeAggregateCoins(knownReservationCoins[tenantKey])
+		if err != nil {
+			return errorsmod.Wrapf(err, "sum known import reservations for tenant %s", account.Tenant)
+		}
+		account.ReservedAmounts, err = ReconcilePreV4ReservationAggregate(
+			account.ReservedAmounts,
+			knownFloor,
+			hasLiveLegacy[tenantKey],
+		)
+		if err != nil {
+			return ErrInvalidCreditOperation.Wrapf(
+				"repair credit account for %s reserved_amounts: %s",
+				account.Tenant,
+				err,
+			)
+		}
+	}
+
+	return nil
 }
 
 // ValidateStrict additionally applies present-day authoring policies that are
@@ -65,6 +189,10 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 
 	// Validate leases
 	seenLeaseUUIDs := make(map[string]bool)
+	liveDomainClaims := make(map[string]struct {
+		leaseUUID   string
+		serviceName string
+	})
 	leaseTenantKeys := make([]string, len(gs.Leases))
 	for leaseIndex := range gs.Leases {
 		lease := gs.Leases[leaseIndex]
@@ -174,6 +302,22 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 					"lease %s item %d carries custom_domain %q but is not uniquely addressable by service_name %q",
 					lease.Uuid, i, item.CustomDomain, item.ServiceName,
 				)
+			}
+			if lease.State == LEASE_STATE_PENDING || lease.State == LEASE_STATE_ACTIVE {
+				if previous, exists := liveDomainClaims[item.CustomDomain]; exists {
+					return ErrCustomDomainAlreadyClaimed.Wrapf(
+						"custom_domain %q on lease %s item %q is already claimed by lease %s item %q",
+						item.CustomDomain,
+						lease.Uuid,
+						item.ServiceName,
+						previous.leaseUUID,
+						previous.serviceName,
+					)
+				}
+				liveDomainClaims[item.CustomDomain] = struct {
+					leaseUUID   string
+					serviceName string
+				}{leaseUUID: lease.Uuid, serviceName: item.ServiceName}
 			}
 		}
 

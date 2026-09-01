@@ -5,6 +5,7 @@
 package pagination
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -15,12 +16,66 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/query"
 )
 
+const (
+	// MaxPageLimit is the largest response page accepted by the shared module
+	// query helpers. It bounds response allocation while remaining large enough
+	// for bulk indexers.
+	MaxPageLimit uint64 = 1000
+
+	// MaxPageScanLimit is the largest number of index rows a filtered page may
+	// inspect. A sparse filter can therefore return fewer than MaxPageLimit
+	// values with a non-empty continuation cursor, but one unauthenticated query
+	// can never force a full-index scan.
+	MaxPageScanLimit uint64 = 1000
+)
+
+var (
+	// ErrOffsetPaginationUnsupported is returned for public list requests that
+	// attempt an O(offset) front scan. Callers must use continuation cursors.
+	ErrOffsetPaginationUnsupported = errors.New("offset pagination is not supported; use pagination.key")
+
+	// ErrCountTotalUnsupported is returned because an exact total requires an
+	// unbounded scan on the collection and filtered-index query paths.
+	ErrCountTotalUnsupported = errors.New("count_total is not supported; follow pagination.next_key")
+)
+
+// limitPageRequest returns a defensive copy of pageReq with its response limit
+// capped. The caller-owned request and cursor bytes are never mutated.
+func limitPageRequest(pageReq *query.PageRequest) *query.PageRequest {
+	if pageReq == nil {
+		return nil
+	}
+	limited := *pageReq
+	limited.Key = bytes.Clone(pageReq.Key)
+	if limited.Limit > MaxPageLimit {
+		limited.Limit = MaxPageLimit
+	}
+	return &limited
+}
+
+// CursorPageRequest validates the bounded cursor-only pagination contract and
+// returns a capped defensive copy. Public RPC handlers call this before opening
+// an iterator so rejected requests perform no store scan.
+func CursorPageRequest(pageReq *query.PageRequest) (*query.PageRequest, error) {
+	if pageReq == nil {
+		return nil, nil
+	}
+	if pageReq.Offset != 0 {
+		return nil, ErrOffsetPaginationUnsupported
+	}
+	if pageReq.CountTotal {
+		return nil, ErrCountTotalUnsupported
+	}
+	return limitPageRequest(pageReq), nil
+}
+
 // MatchExactWithOrder builds an index iterator for refKey. It applies descending
 // order when pageReq.Reverse is set, and — when pageReq.Key is present — seeks the
 // iterator to the resume cursor with a store-level bound. That seek is O(log n)
 // and, unlike a front-scan, tolerant of the cursor row having been deleted between
-// page calls (it resumes from the nearest surviving key). limit, offset, and
-// count_total remain the responsibility of PaginateStringIndex downstream.
+// page calls (it resumes from the nearest surviving key). Cursor validation
+// and response-limit normalization remain the responsibility of
+// CursorPageRequest.
 func MatchExactWithOrder[RK, V any](
 	ctx context.Context,
 	idx *indexes.Multi[RK, string, V],
@@ -76,8 +131,17 @@ func PaginateStringIndex[V any](
 	getter func(context.Context, string) (V, error),
 	pageReq *query.PageRequest,
 	filter func(V) bool,
-) ([]V, *query.PageResponse, error) {
-	defer iter.Close()
+) (values []V, pageResponse *query.PageResponse, err error) {
+	defer func() {
+		if closeErr := iter.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+
+	pageReq, err = CursorPageRequest(pageReq)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	// Initialize pagination defaults
 	if pageReq == nil {
@@ -88,25 +152,23 @@ func PaginateStringIndex[V any](
 		limit = query.DefaultLimit
 	}
 
-	countTotal := pageReq.CountTotal
-
-	var values []V
 	var count uint64
-	var total uint64
 	var nextKey []byte
 
 	// The iterator is already positioned at the resume point by MatchExactWithOrder
-	// (a store-level seek on pageReq.Key), so no front-scan is needed here. Offset
-	// applies only when no cursor key is set (matching prior behavior).
-	hasKey := len(pageReq.Key) > 0
-	offset := pageReq.Offset
-	var skipped uint64
+	// (a store-level seek on pageReq.Key), so no front-scan is needed here.
+	var scanned uint64
 
 	for ; iter.Valid(); iter.Next() {
 		pk, err := iter.PrimaryKey()
 		if err != nil {
 			return nil, nil, err
 		}
+		if scanned >= MaxPageScanLimit {
+			nextKey = []byte(pk)
+			break
+		}
+		scanned++
 
 		value, err := getter(ctx, pk)
 		if err != nil {
@@ -126,36 +188,15 @@ func PaginateStringIndex[V any](
 			continue
 		}
 
-		// Count for total (if requested)
-		if countTotal {
-			total++
-		}
-
-		// Handle offset-based pagination (only applies if no key provided)
-		if !hasKey && skipped < offset {
-			skipped++
-			continue
-		}
-
 		// Check if we've reached the limit
 		if count >= limit {
-			if len(nextKey) == 0 {
-				nextKey = []byte(pk)
-			}
-			if !countTotal {
-				break
-			}
-			continue
+			nextKey = []byte(pk)
+			break
 		}
 
 		values = append(values, value)
 		count++
 	}
 
-	pageRes := &query.PageResponse{NextKey: nextKey}
-	if countTotal {
-		pageRes.Total = total
-	}
-
-	return values, pageRes, nil
+	return values, &query.PageResponse{NextKey: nextKey}, nil
 }

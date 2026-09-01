@@ -227,10 +227,12 @@ and account aggregate; terminal release subtracts exactly the remainder.
 
 The v2→v3→v4 upgrade preserves that economic boundary without creating
 credit: v2→v3 canonicalizes stored address identities and repairs the provable
-aggregate floor; v3→v4 assigns reconstructible PENDING claims first, then
-shares the remaining bank-backed old aggregate among ACTIVE and historical
-claims with deterministic Hamilton allocation. An underfunded PENDING cohort
-fails preflight rather than receiving a partial guarantee.
+aggregate floor; v3→v4 preserves a tenant's complete modern PENDING cohort only
+when every denomination is bank-backed. If any denomination is short, the
+cutover expires that tenant's entire modern PENDING cohort rather than creating
+a partial guarantee or choosing arbitrary winners. It then shares the remaining
+bank-backed historical budget among ACTIVE and historical claims with
+deterministic Hamilton allocation.
 
 ## Event Hooks Pattern
 

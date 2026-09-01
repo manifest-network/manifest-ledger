@@ -109,6 +109,215 @@ func TestInitGenesisNormalizesAggregateReservationsWithMigrationPolicy(t *testin
 	require.ErrorContains(t, exported.Validate(), "has 1 live legacy leases")
 }
 
+func TestInitGenesisRepairsLegacyAggregateBelowModernPendingFloor(t *testing.T) {
+	f := initFixture(t)
+	tenant := f.TestAccs[0]
+	providerAddress := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddress.String(), providerAddress.String())
+	sku := f.createTestSKU(t, provider.Uuid, 1)
+	creditAddress := types.DeriveCreditAddress(tenant)
+	now := f.Ctx.BlockTime()
+	const (
+		pendingUUID = "01912345-6789-7abc-8def-0123456789a0"
+		legacyUUID  = "01912345-6789-7abc-8def-0123456789b0"
+	)
+
+	pending := types.Lease{
+		Uuid:         pendingUUID,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid: sku.Uuid, Quantity: 1,
+			LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(5)),
+		}},
+		State: types.LEASE_STATE_PENDING, CreatedAt: now, LastSettledAt: now,
+		MinLeaseDurationAtCreation: 1,
+	}
+	legacy := types.Lease{
+		Uuid:         legacyUUID,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid: sku.Uuid, Quantity: 1,
+			LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(2)),
+		}},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     now,
+		LastSettledAt: now,
+		// A zero stored creation duration makes this an opaque pre-v4 lease.
+		MinLeaseDurationAtCreation: 0,
+	}
+	genesis := &types.GenesisState{
+		Params: types.DefaultParams(),
+		Leases: []types.Lease{legacy, pending},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:            tenant.String(),
+			CreditAddress:     creditAddress.String(),
+			ActiveLeaseCount:  1,
+			PendingLeaseCount: 1,
+			// A historical legacy release could clamp this below the modern
+			// PENDING floor. Import repair must raise one to the provable five.
+			ReservedAmounts: sdk.NewCoins(
+				sdk.NewCoin(testDenom, sdkmath.OneInt()),
+			),
+		}},
+		LeaseSequence: 2,
+	}
+	paramsBefore := genesis.Params
+	leasesBefore := append([]types.Lease(nil), genesis.Leases...)
+	accountsBefore := append([]types.CreditAccount(nil), genesis.CreditAccounts...)
+
+	f.fundAccount(t, creditAddress, sdk.NewCoins(
+		sdk.NewCoin(testDenom, sdkmath.NewInt(5)),
+	))
+	bankBefore := f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress)
+	require.NoError(t, genesis.Validate())
+	require.ErrorIs(t, genesis.ValidateStrict(), types.ErrInvalidCreditOperation)
+	require.NoError(t, f.App.BillingKeeper.InitGenesis(f.Ctx, genesis))
+	require.Equal(t, paramsBefore, genesis.Params)
+	require.Equal(t, leasesBefore, genesis.Leases)
+	require.Equal(t, accountsBefore, genesis.CreditAccounts,
+		"import repair must not mutate the exported aggregate in its source value")
+	require.True(t, bankBefore.Equal(f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress)))
+
+	pendingAfter, err := f.App.BillingKeeper.GetLease(f.Ctx, pendingUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_PENDING, pendingAfter.State)
+	require.Nil(t, pendingAfter.ExpiredAt)
+	require.NotNil(t, pendingAfter.Reservation)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(5))),
+		pendingAfter.Reservation.RemainingAmounts)
+	legacyAfter, err := f.App.BillingKeeper.GetLease(f.Ctx, legacyUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, legacyAfter.State)
+	require.NotNil(t, legacyAfter.Reservation)
+	require.True(t, legacyAfter.Reservation.RemainingAmounts.IsZero())
+
+	account, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), account.ActiveLeaseCount)
+	require.Equal(t, uint64(1), account.PendingLeaseCount)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(5))), account.ReservedAmounts)
+	require.True(t, account.UnattributedReservedAmounts.IsZero())
+	require.Equal(t, uint64(1), account.UnattributedLeaseCount)
+	require.NoError(t, f.App.BillingKeeper.ExportGenesis(f.Ctx).Validate())
+}
+
+func TestInitGenesisExpiresAllModernPendingWhenOneDenomIsUnderbacked(t *testing.T) {
+	f := initFixture(t)
+	tenant := f.TestAccs[0]
+	providerAddress := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddress.String(), providerAddress.String())
+	sku := f.createTestSKU(t, provider.Uuid, 1)
+	creditAddress := types.DeriveCreditAddress(tenant)
+	now := f.Ctx.BlockTime()
+	const (
+		pendingUUID1 = "01912345-6789-7abc-8def-0123456789a0"
+		pendingUUID2 = "01912345-6789-7abc-8def-0123456789a1"
+	)
+
+	lease := func(uuid string, state types.LeaseState, denom string, amount int64) types.Lease {
+		return types.Lease{
+			Uuid:         uuid,
+			Tenant:       tenant.String(),
+			ProviderUuid: provider.Uuid,
+			Items: []types.LeaseItem{{
+				SkuUuid:     sku.Uuid,
+				Quantity:    1,
+				LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(amount)),
+			}},
+			State:                      state,
+			CreatedAt:                  now,
+			LastSettledAt:              now,
+			MinLeaseDurationAtCreation: 1,
+		}
+	}
+	active := lease(testLeaseUUID1, types.LEASE_STATE_ACTIVE, testDenom, 3)
+	pending1 := lease(pendingUUID1, types.LEASE_STATE_PENDING, testDenom, 5)
+	pending2 := lease(pendingUUID2, types.LEASE_STATE_PENDING, testDenom2, 7)
+	genesis := &types.GenesisState{
+		Params: types.DefaultParams(),
+		// Reverse UUID order exercises the shared planner's canonical ordering;
+		// the all-or-none decision must not depend on genesis slice order.
+		Leases: []types.Lease{pending2, active, pending1},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:            tenant.String(),
+			CreditAddress:     creditAddress.String(),
+			ActiveLeaseCount:  1,
+			PendingLeaseCount: 2,
+			ReservedAmounts: sdk.NewCoins(
+				sdk.NewCoin(testDenom, sdkmath.NewInt(8)),
+				sdk.NewCoin(testDenom2, sdkmath.NewInt(7)),
+			),
+		}},
+		LeaseSequence: 3,
+	}
+	genesisBefore := *genesis
+	genesisBefore.Params = genesis.Params
+	if genesis.Params.AllowedList != nil {
+		genesisBefore.Params.AllowedList = append([]string{}, genesis.Params.AllowedList...)
+	}
+	if genesis.Params.ReservedDomainSuffixes != nil {
+		genesisBefore.Params.ReservedDomainSuffixes = append(
+			[]string{},
+			genesis.Params.ReservedDomainSuffixes...,
+		)
+	}
+	genesisBefore.Leases = append([]types.Lease(nil), genesis.Leases...)
+	for index := range genesisBefore.Leases {
+		genesisBefore.Leases[index].Items = append(
+			[]types.LeaseItem(nil),
+			genesis.Leases[index].Items...,
+		)
+	}
+	genesisBefore.CreditAccounts = append([]types.CreditAccount(nil), genesis.CreditAccounts...)
+	for index := range genesisBefore.CreditAccounts {
+		genesisBefore.CreditAccounts[index].ReservedAmounts = append(
+			sdk.Coins(nil),
+			genesis.CreditAccounts[index].ReservedAmounts...,
+		)
+	}
+	require.NoError(t, genesis.Validate())
+
+	f.fundAccount(t, creditAddress, sdk.NewCoins(
+		sdk.NewCoin(testDenom, sdkmath.NewInt(8)),
+		sdk.NewCoin(testDenom2, sdkmath.NewInt(6)),
+	))
+	bankBefore := f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress)
+	require.NoError(t, f.App.BillingKeeper.InitGenesis(f.Ctx, genesis))
+	require.Equal(t, &genesisBefore, genesis, "InitGenesis must not mutate its input")
+	require.True(t, bankBefore.Equal(f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress)),
+		"genesis cutover must not mint, burn, or transfer bank balances")
+
+	for _, uuid := range []string{pendingUUID1, pendingUUID2} {
+		stored, err := f.App.BillingKeeper.GetLease(f.Ctx, uuid)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_EXPIRED, stored.State)
+		require.NotNil(t, stored.ExpiredAt)
+		require.Equal(t, now, *stored.ExpiredAt)
+		require.NotNil(t, stored.Reservation)
+		require.True(t, stored.Reservation.RemainingAmounts.IsZero())
+	}
+	activeAfter, err := f.App.BillingKeeper.GetLease(f.Ctx, active.Uuid)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, activeAfter.State)
+	require.NotNil(t, activeAfter.Reservation)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(3))),
+		activeAfter.Reservation.RemainingAmounts)
+
+	account, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), account.ActiveLeaseCount)
+	require.Zero(t, account.PendingLeaseCount)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(3))), account.ReservedAmounts)
+	require.True(t, account.UnattributedReservedAmounts.IsZero())
+	require.Zero(t, account.UnattributedLeaseCount)
+
+	exported := f.App.BillingKeeper.ExportGenesis(f.Ctx)
+	require.NoError(t, exported.Validate())
+	require.NoError(t, exported.ValidateWithBlockTime(now))
+}
+
 func TestInitGenesisRejectsUnderbackedConsumableReservationsBeforeWrites(t *testing.T) {
 	f := initFixture(t)
 	tenant := f.TestAccs[0]

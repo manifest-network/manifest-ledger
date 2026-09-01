@@ -1,6 +1,7 @@
 package types
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -57,6 +58,12 @@ func TestParams_Validate(t *testing.T) {
 			expectErr: true,
 			errMsg:    "duplicate address in allowed list",
 		},
+		{
+			name:      "invalid: equivalent Bech32 spelling",
+			params:    Params{AllowedList: []string{addr1.String(), strings.ToUpper(addr1.String())}},
+			expectErr: true,
+			errMsg:    "duplicate address in allowed list",
+		},
 	}
 
 	for _, tc := range tests {
@@ -96,6 +103,12 @@ func TestParams_IsAllowed(t *testing.T) {
 			expected:    true,
 		},
 		{
+			name:        "equivalent Bech32 spelling returns true",
+			allowedList: []string{addr1.String()},
+			address:     strings.ToUpper(addr1.String()),
+			expected:    true,
+		},
+		{
 			name:        "address not in list returns false",
 			allowedList: []string{addr1.String()},
 			address:     addr2.String(),
@@ -128,6 +141,21 @@ func TestParams_IsAllowed(t *testing.T) {
 			require.Equal(t, tc.expected, result)
 		})
 	}
+}
+
+func TestParamsCanonicalizeAllowedList(t *testing.T) {
+	_, _, addr1 := testdata.KeyTestPubAddr()
+	_, _, addr2 := testdata.KeyTestPubAddr()
+	params := Params{AllowedList: []string{
+		strings.ToUpper(addr1.String()),
+		addr2.String(),
+		addr1.String(),
+	}}
+
+	canonical, err := params.CanonicalizeAllowedList()
+	require.NoError(t, err)
+	require.Equal(t, []string{addr1.String(), addr2.String()}, canonical.AllowedList)
+	require.Equal(t, strings.ToUpper(addr1.String()), params.AllowedList[0], "receiver must not be mutated")
 }
 
 func TestDefaultParams(t *testing.T) {

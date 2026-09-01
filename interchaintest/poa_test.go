@@ -4,14 +4,16 @@ import (
 	"context"
 	"testing"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
-	"github.com/strangelove-ventures/poa"
 	"github.com/stretchr/testify/require"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+
+	"github.com/strangelove-ventures/poa"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 )
@@ -58,7 +60,7 @@ func TestPOA(t *testing.T) {
 	vals, err := chain.StakingQueryValidators(ctx, stakingtypes.Bonded.String())
 	require.NoError(t, err)
 	require.Equal(t, len(vals), numVals)
-	assertSignatures(t, ctx, chain, len(vals))
+	assertSignatures(ctx, t, chain, len(vals))
 
 	validators := make([]string, len(vals))
 	for i, v := range vals {
@@ -66,8 +68,8 @@ func TestPOA(t *testing.T) {
 	}
 
 	// === Test Cases ===
-	testStakingDisabled(t, ctx, chain, validators, acc0, acc1)
-	testPowerErrors(t, ctx, chain, validators, incorrectUser, acc0)
+	testStakingDisabled(ctx, t, chain, validators, acc0, acc1)
+	testPowerErrors(ctx, t, chain, validators, incorrectUser, acc0)
 
 	t.Cleanup(func() {
 		// Copy coverage files from the container
@@ -76,7 +78,7 @@ func TestPOA(t *testing.T) {
 	})
 }
 
-func testStakingDisabled(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, validators []string, acc0, acc1 ibc.Wallet) {
+func testStakingDisabled(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, validators []string, acc0, acc1 ibc.Wallet) {
 	t.Log("\n===== TEST STAKING DISABLED =====")
 
 	err := chain.GetNode().StakingDelegate(ctx, acc0.KeyName(), validators[0], "1stake")
@@ -100,7 +102,7 @@ func testStakingDisabled(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	require.ErrorContains(t, err, poa.ErrStakingActionNotAllowed.Error())
 }
 
-func testPowerErrors(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, validators []string, incorrectUser ibc.Wallet, admin ibc.Wallet) {
+func testPowerErrors(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, validators []string, incorrectUser ibc.Wallet, admin ibc.Wallet) {
 	t.Log("\n===== TEST POWER ERRORS =====")
 	var res sdk.TxResponse
 	var err error
@@ -120,9 +122,9 @@ func testPowerErrors(t *testing.T, ctx context.Context, chain *cosmos.CosmosChai
 }
 
 // assertSignatures asserts that the current block has the exact number of signatures as expected
-func assertSignatures(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, expectedSigs int) {
+func assertSignatures(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, expectedSigs int) {
 	height, err := chain.GetNode().Height(ctx)
 	require.NoError(t, err)
-	block := helpers.GetBlockData(t, ctx, chain, height)
+	block := helpers.GetBlockData(ctx, chain, height)
 	require.Equal(t, len(block.LastCommit.Signatures), expectedSigs)
 }

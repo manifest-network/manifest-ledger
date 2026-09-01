@@ -2,6 +2,7 @@ package types
 
 import "cosmossdk.io/errors"
 
+// Registered SKU module errors.
 var (
 	ErrInvalidSKU       = errors.Register(ModuleName, 1, "invalid sku")
 	ErrSKUNotFound      = errors.Register(ModuleName, 2, "sku not found")
@@ -14,10 +15,10 @@ var (
 
 // Validation constants for provider and SKU fields
 const (
-	// MaxAPIURLLength is the maximum length of an API URL.
+	// MaxAPIURLLength is the maximum encoded byte length of an API URL.
 	MaxAPIURLLength = 2048
 
-	// MaxSKUNameLength is the maximum length of a SKU name.
+	// MaxSKUNameLength is the maximum encoded byte length of a SKU name.
 	MaxSKUNameLength = 256
 
 	// MaxMetaHashLength is the maximum length of a metadata hash in bytes.

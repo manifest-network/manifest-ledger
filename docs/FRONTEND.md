@@ -23,7 +23,7 @@ npm install @manifest-network/manifestjs
 npm install @cosmjs/proto-signing @cosmjs/stargate @cosmjs/tendermint-rpc
 ```
 
-manifestjs is a pure-codegen package — its semver tracks the proto surface, not chain releases. As of writing, mainnet runs `v2.3.1` of the chain; pin the `@manifest-network/manifestjs` range whose proto surface matches (see the [releases page](https://github.com/liftedinit/manifest-ledger/releases)).
+manifestjs is a pure-codegen package — its semver tracks the proto surface, not chain releases. As of writing, mainnet runs `v2.3.1` of the chain; pin the `@manifest-network/manifestjs` range whose proto surface matches (see the [releases page](https://github.com/manifest-network/manifest-ledger/releases)).
 
 ## Query client (read path)
 
@@ -140,6 +140,29 @@ Two equivalent patterns sit on top of the registry:
 - **Module RPC clients** — `client.liftedinit.billing.v1.fundCredit(...)` etc. Use this when you're sending one message and want a typed response.
 
 Either way you end up sending the same on-chain message.
+
+### Set, preserve, or clear a provider API URL
+
+`MsgUpdateProvider` keeps legacy patch semantics for `apiUrl`: an empty string
+preserves the stored URL. New clients clear it explicitly with
+`clearApiUrl: true`. A non-empty `apiUrl` and `clearApiUrl: true` are mutually
+exclusive and the chain rejects that combination.
+
+```ts
+const clearProviderAPIURL = liftedinit.sku.v1.MessageComposer.encoded.updateProvider({
+  authority,
+  uuid: providerUuid,
+  address: providerAddress,
+  payoutAddress,
+  metaHash: new Uint8Array(),
+  active: true,
+  apiUrl: "",
+  clearApiUrl: true,
+});
+
+// To preserve the current URL while updating other fields, leave both values
+// at their protobuf defaults: apiUrl: "", clearApiUrl: false.
+```
 
 ### Fund a tenant's credit account (`MsgFundCredit`)
 

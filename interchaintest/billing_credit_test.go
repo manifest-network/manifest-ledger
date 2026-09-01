@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"testing"
 
-	sdkmath "cosmossdk.io/math"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
+
+	sdkmath "cosmossdk.io/math"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
@@ -21,14 +22,14 @@ import (
 
 // setupCreditAccounts funds credit accounts for tenant1 and tenant2.
 // This is called before subtests to ensure credit accounts exist regardless of test filter.
-func setupCreditAccounts(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func setupCreditAccounts(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Helper()
 	t.Log("Setting up credit accounts for tenant1 and tenant2...")
 
 	node := tc.chain.GetNode()
 
 	// Fund tenant1's credit account
-	err := node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err := node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tc.tenant1.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(100_000_000),
@@ -45,7 +46,7 @@ func setupCreditAccounts(t *testing.T, ctx context.Context, tc *billingTestConte
 	t.Logf("Funded tenant1 credit account with %s", fundAmount1)
 
 	// Fund tenant2's credit account
-	err = node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err = node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tc.tenant2.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(100_000_000),
@@ -78,46 +79,46 @@ func TestBillingCredit(t *testing.T) {
 
 	// Setup: Fund credit accounts for tenant1 and tenant2
 	// This runs before any subtests to ensure credit accounts exist
-	setupCreditAccounts(t, ctx, tc)
+	setupCreditAccounts(ctx, t, tc)
 
 	t.Run("QueryParams", func(t *testing.T) {
-		testBillingQueryParamsIndependent(t, ctx, tc)
+		testBillingQueryParamsIndependent(ctx, t, tc)
 	})
 
 	t.Run("CreditAccountOperations", func(t *testing.T) {
-		testCreditAccountOperationsIndependent(t, ctx, tc)
+		testCreditAccountOperationsIndependent(ctx, t, tc)
 	})
 
 	t.Run("CreditAddressQuery", func(t *testing.T) {
-		testCreditAddressQueryIndependent(t, ctx, tc)
+		testCreditAddressQueryIndependent(ctx, t, tc)
 	})
 
 	t.Run("CreditAccountsQuery", func(t *testing.T) {
-		testCreditAccountsQueryIndependent(t, ctx, tc)
+		testCreditAccountsQueryIndependent(ctx, t, tc)
 	})
 
 	t.Run("CreditEstimateQuery", func(t *testing.T) {
-		testCreditEstimateQueryIndependent(t, ctx, tc)
+		testCreditEstimateQueryIndependent(ctx, t, tc)
 	})
 
 	t.Run("AccrualCalculation", func(t *testing.T) {
-		testAccrualCalculationIndependent(t, ctx, tc)
+		testAccrualCalculationIndependent(ctx, t, tc)
 	})
 
 	t.Run("Withdraw", func(t *testing.T) {
-		testWithdrawIndependent(t, ctx, tc)
+		testWithdrawIndependent(ctx, t, tc)
 	})
 
 	t.Run("WithdrawByProvider", func(t *testing.T) {
-		testWithdrawByProviderIndependent(t, ctx, tc)
+		testWithdrawByProviderIndependent(ctx, t, tc)
 	})
 
 	t.Run("WithdrawableQueries", func(t *testing.T) {
-		testWithdrawableQueriesIndependent(t, ctx, tc)
+		testWithdrawableQueriesIndependent(ctx, t, tc)
 	})
 }
 
-func testBillingQueryParamsIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testBillingQueryParamsIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Billing Query Params ===")
 
 	res, err := helpers.BillingQueryParams(ctx, tc.chain)
@@ -130,7 +131,7 @@ func testBillingQueryParamsIndependent(t *testing.T, ctx context.Context, tc *bi
 		res.Params.MaxLeasesPerTenant, res.Params.MaxItemsPerLease, res.Params.MinLeaseDuration)
 }
 
-func testCreditAccountOperationsIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testCreditAccountOperationsIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Credit Account Operations ===")
 
 	node := tc.chain.GetNode()
@@ -145,7 +146,7 @@ func testCreditAccountOperationsIndependent(t *testing.T, ctx context.Context, t
 
 	t.Run("success: fund credit account", func(t *testing.T) {
 		// Send PWR to tenant1
-		err := node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+		err := node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 			Address: tc.tenant1.FormattedAddress(),
 			Denom:   tc.pwrDenom,
 			Amount:  sdkmath.NewInt(100_000_000),
@@ -173,7 +174,7 @@ func testCreditAccountOperationsIndependent(t *testing.T, ctx context.Context, t
 	// Note: tenant2 credit is funded in setupCreditAccounts() which runs before subtests
 }
 
-func testCreditAddressQueryIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testCreditAddressQueryIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Credit Address Query ===")
 
 	t.Run("success: derive credit address without credit account", func(t *testing.T) {
@@ -199,7 +200,7 @@ func testCreditAddressQueryIndependent(t *testing.T, ctx context.Context, tc *bi
 	})
 }
 
-func testCreditAccountsQueryIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testCreditAccountsQueryIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Credit Accounts Query ===")
 
 	t.Run("success: query returns existing credit accounts", func(t *testing.T) {
@@ -257,7 +258,7 @@ func testCreditAccountsQueryIndependent(t *testing.T, ctx context.Context, tc *b
 	})
 }
 
-func testCreditEstimateQueryIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testCreditEstimateQueryIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Credit Estimate Query ===")
 
 	// Create a fresh tenant for this test
@@ -310,7 +311,7 @@ func testCreditEstimateQueryIndependent(t *testing.T, ctx context.Context, tc *b
 	_, _ = helpers.BillingCloseLease(ctx, tc.chain, tenant, leaseUUID)
 }
 
-func testAccrualCalculationIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testAccrualCalculationIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Accrual Calculation ===")
 
 	// Create a lease for accrual testing
@@ -338,14 +339,14 @@ func testAccrualCalculationIndependent(t *testing.T, ctx context.Context, tc *bi
 	})
 }
 
-func testWithdrawIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testWithdrawIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Withdraw ===")
 
 	// Get an active lease for tenant1
 	leases, err := helpers.BillingQueryLeasesByTenant(ctx, tc.chain, tc.tenant1.FormattedAddress(), "active")
 	require.NoError(t, err)
 	require.NotEmpty(t, leases.Leases)
-	leaseUUID := leases.Leases[0].Uuid
+	leaseUUID := leases.Leases[0].UUID
 
 	// Wait for some accrual
 	require.NoError(t, testutil.WaitForBlocks(ctx, 3, tc.chain))
@@ -398,7 +399,7 @@ func testWithdrawIndependent(t *testing.T, ctx context.Context, tc *billingTestC
 	})
 }
 
-func testWithdrawByProviderIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testWithdrawByProviderIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Withdraw By Provider ===")
 
 	// Wait for some accrual
@@ -422,14 +423,14 @@ func testWithdrawByProviderIndependent(t *testing.T, ctx context.Context, tc *bi
 	})
 }
 
-func testWithdrawableQueriesIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testWithdrawableQueriesIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Withdrawable Queries ===")
 
 	// Get an active lease
 	leases, err := helpers.BillingQueryLeasesByTenant(ctx, tc.chain, tc.tenant1.FormattedAddress(), "active")
 	require.NoError(t, err)
 	require.NotEmpty(t, leases.Leases)
-	leaseUUID := leases.Leases[0].Uuid
+	leaseUUID := leases.Leases[0].UUID
 
 	t.Run("success: query withdrawable amount for lease", func(t *testing.T) {
 		res, err := helpers.BillingQueryWithdrawable(ctx, tc.chain, leaseUUID)

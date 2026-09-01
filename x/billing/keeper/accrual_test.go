@@ -447,6 +447,45 @@ func TestPrecisionLoss(t *testing.T) {
 	require.Equal(t, math.NewInt(2), perSecond.Amount)
 }
 
+func TestElapsedWholeSecondsAndAccrualCursorPreservesPartitionedRemainders(t *testing.T) {
+	start := time.Date(2026, time.September, 1, 12, 0, 0, 123_456_789, time.UTC)
+	operationTime := start
+	cursor := start
+	partitionedSeconds := math.ZeroInt()
+	delta := 859 * time.Nanosecond
+
+	// A fixed integer recurrence creates varied sub-second partitions without
+	// introducing a random source into a deterministic consensus-code test.
+	for range 1_000 {
+		delta = (delta*48_271 + 1) % (time.Second - 1)
+		operationTime = operationTime.Add(delta)
+		seconds, nextCursor, err := elapsedWholeSecondsAndAccrualCursor(cursor, operationTime)
+		require.NoError(t, err)
+		partitionedSeconds, err = partitionedSeconds.SafeAdd(seconds)
+		require.NoError(t, err)
+		cursor = nextCursor
+	}
+
+	directSeconds, directCursor, err := elapsedWholeSecondsAndAccrualCursor(start, operationTime)
+	require.NoError(t, err)
+	require.Equal(t, directSeconds, partitionedSeconds)
+	require.True(t, directCursor.Equal(cursor), "partitioned cursor %s, direct cursor %s", cursor, directCursor)
+	require.True(t, operationTime.After(cursor))
+	require.Less(t, operationTime.Sub(cursor), time.Second)
+}
+
+func TestElapsedWholeSecondsAndAccrualCursorAvoidsDurationSaturation(t *testing.T) {
+	start := time.Date(1600, time.January, 1, 0, 0, 0, 900_000_000, time.UTC)
+	end := time.Date(2001, time.January, 1, 0, 0, 0, 100_000_000, time.UTC)
+
+	seconds, cursor, err := elapsedWholeSecondsAndAccrualCursor(start, end)
+	require.NoError(t, err)
+	expectedSeconds := math.NewInt(end.Unix() - start.Unix() - 1)
+	require.Greater(t, expectedSeconds.Int64(), int64((time.Duration(1<<63-1))/time.Second))
+	require.Equal(t, expectedSeconds, seconds)
+	require.True(t, cursor.Equal(end.Add(-200*time.Millisecond)))
+}
+
 // ============================================================================
 // Benchmarks for Accrual Calculations
 // ============================================================================

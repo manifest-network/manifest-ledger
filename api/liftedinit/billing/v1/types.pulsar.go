@@ -2,10 +2,10 @@
 package billingv1
 
 import (
+	v1beta1 "cosmossdk.io/api/cosmos/base/v1beta1"
 	fmt "fmt"
 	_ "github.com/cosmos/cosmos-proto"
 	runtime "github.com/cosmos/cosmos-proto/runtime"
-	types "cosmossdk.io/api/cosmos/base/v1beta1"
 	_ "github.com/cosmos/cosmos-sdk/types/tx/amino"
 	_ "github.com/cosmos/gogoproto/gogoproto"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -1082,7 +1082,7 @@ func (x *fastReflection_LeaseItem) Set(fd protoreflect.FieldDescriptor, value pr
 	case "liftedinit.billing.v1.LeaseItem.quantity":
 		x.Quantity = value.Uint()
 	case "liftedinit.billing.v1.LeaseItem.locked_price":
-		x.LockedPrice = value.Message().Interface().(*types.Coin)
+		x.LockedPrice = value.Message().Interface().(*v1beta1.Coin)
 	case "liftedinit.billing.v1.LeaseItem.service_name":
 		x.ServiceName = value.Interface().(string)
 	case "liftedinit.billing.v1.LeaseItem.custom_domain":
@@ -1109,7 +1109,7 @@ func (x *fastReflection_LeaseItem) Mutable(fd protoreflect.FieldDescriptor) prot
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.LeaseItem.locked_price":
 		if x.LockedPrice == nil {
-			x.LockedPrice = new(types.Coin)
+			x.LockedPrice = new(v1beta1.Coin)
 		}
 		return protoreflect.ValueOfMessage(x.LockedPrice.ProtoReflect())
 	case "liftedinit.billing.v1.LeaseItem.sku_uuid":
@@ -1138,7 +1138,7 @@ func (x *fastReflection_LeaseItem) NewField(fd protoreflect.FieldDescriptor) pro
 	case "liftedinit.billing.v1.LeaseItem.quantity":
 		return protoreflect.ValueOfUint64(uint64(0))
 	case "liftedinit.billing.v1.LeaseItem.locked_price":
-		m := new(types.Coin)
+		m := new(v1beta1.Coin)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	case "liftedinit.billing.v1.LeaseItem.service_name":
 		return protoreflect.ValueOfString("")
@@ -1431,7 +1431,7 @@ func (x *fastReflection_LeaseItem) ProtoMethods() *protoiface.Methods {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
 				if x.LockedPrice == nil {
-					x.LockedPrice = &types.Coin{}
+					x.LockedPrice = &v1beta1.Coin{}
 				}
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.LockedPrice); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
@@ -1539,7 +1539,7 @@ func (x *fastReflection_LeaseItem) ProtoMethods() *protoiface.Methods {
 var _ protoreflect.List = (*_LeaseReservation_1_list)(nil)
 
 type _LeaseReservation_1_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta1.Coin
 }
 
 func (x *_LeaseReservation_1_list) Len() int {
@@ -1555,18 +1555,18 @@ func (x *_LeaseReservation_1_list) Get(i int) protoreflect.Value {
 
 func (x *_LeaseReservation_1_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_LeaseReservation_1_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_LeaseReservation_1_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -1579,7 +1579,7 @@ func (x *_LeaseReservation_1_list) Truncate(n int) {
 }
 
 func (x *_LeaseReservation_1_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -1772,7 +1772,7 @@ func (x *fastReflection_LeaseReservation) Mutable(fd protoreflect.FieldDescripto
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.LeaseReservation.remaining_amounts":
 		if x.RemainingAmounts == nil {
-			x.RemainingAmounts = []*types.Coin{}
+			x.RemainingAmounts = []*v1beta1.Coin{}
 		}
 		value := &_LeaseReservation_1_list{list: &x.RemainingAmounts}
 		return protoreflect.ValueOfList(value)
@@ -1790,7 +1790,7 @@ func (x *fastReflection_LeaseReservation) Mutable(fd protoreflect.FieldDescripto
 func (x *fastReflection_LeaseReservation) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.LeaseReservation.remaining_amounts":
-		list := []*types.Coin{}
+		list := []*v1beta1.Coin{}
 		return protoreflect.ValueOfList(&_LeaseReservation_1_list{list: &list})
 	default:
 		if fd.IsExtension() {
@@ -1990,7 +1990,7 @@ func (x *fastReflection_LeaseReservation) ProtoMethods() *protoiface.Methods {
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.RemainingAmounts = append(x.RemainingAmounts, &types.Coin{})
+				x.RemainingAmounts = append(x.RemainingAmounts, &v1beta1.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.RemainingAmounts[len(x.RemainingAmounts)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -4048,7 +4048,7 @@ func (x *fastReflection_CustomDomainTarget) ProtoMethods() *protoiface.Methods {
 var _ protoreflect.List = (*_CreditAccount_5_list)(nil)
 
 type _CreditAccount_5_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta1.Coin
 }
 
 func (x *_CreditAccount_5_list) Len() int {
@@ -4064,18 +4064,18 @@ func (x *_CreditAccount_5_list) Get(i int) protoreflect.Value {
 
 func (x *_CreditAccount_5_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_CreditAccount_5_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_CreditAccount_5_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -4088,7 +4088,7 @@ func (x *_CreditAccount_5_list) Truncate(n int) {
 }
 
 func (x *_CreditAccount_5_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -4099,7 +4099,7 @@ func (x *_CreditAccount_5_list) IsValid() bool {
 var _ protoreflect.List = (*_CreditAccount_6_list)(nil)
 
 type _CreditAccount_6_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta1.Coin
 }
 
 func (x *_CreditAccount_6_list) Len() int {
@@ -4115,18 +4115,18 @@ func (x *_CreditAccount_6_list) Get(i int) protoreflect.Value {
 
 func (x *_CreditAccount_6_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_CreditAccount_6_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_CreditAccount_6_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -4139,7 +4139,7 @@ func (x *_CreditAccount_6_list) Truncate(n int) {
 }
 
 func (x *_CreditAccount_6_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -4439,13 +4439,13 @@ func (x *fastReflection_CreditAccount) Mutable(fd protoreflect.FieldDescriptor) 
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.CreditAccount.reserved_amounts":
 		if x.ReservedAmounts == nil {
-			x.ReservedAmounts = []*types.Coin{}
+			x.ReservedAmounts = []*v1beta1.Coin{}
 		}
 		value := &_CreditAccount_5_list{list: &x.ReservedAmounts}
 		return protoreflect.ValueOfList(value)
 	case "liftedinit.billing.v1.CreditAccount.unattributed_reserved_amounts":
 		if x.UnattributedReservedAmounts == nil {
-			x.UnattributedReservedAmounts = []*types.Coin{}
+			x.UnattributedReservedAmounts = []*v1beta1.Coin{}
 		}
 		value := &_CreditAccount_6_list{list: &x.UnattributedReservedAmounts}
 		return protoreflect.ValueOfList(value)
@@ -4481,10 +4481,10 @@ func (x *fastReflection_CreditAccount) NewField(fd protoreflect.FieldDescriptor)
 	case "liftedinit.billing.v1.CreditAccount.pending_lease_count":
 		return protoreflect.ValueOfUint64(uint64(0))
 	case "liftedinit.billing.v1.CreditAccount.reserved_amounts":
-		list := []*types.Coin{}
+		list := []*v1beta1.Coin{}
 		return protoreflect.ValueOfList(&_CreditAccount_5_list{list: &list})
 	case "liftedinit.billing.v1.CreditAccount.unattributed_reserved_amounts":
-		list := []*types.Coin{}
+		list := []*v1beta1.Coin{}
 		return protoreflect.ValueOfList(&_CreditAccount_6_list{list: &list})
 	case "liftedinit.billing.v1.CreditAccount.unattributed_lease_count":
 		return protoreflect.ValueOfUint64(uint64(0))
@@ -4856,7 +4856,7 @@ func (x *fastReflection_CreditAccount) ProtoMethods() *protoiface.Methods {
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.ReservedAmounts = append(x.ReservedAmounts, &types.Coin{})
+				x.ReservedAmounts = append(x.ReservedAmounts, &v1beta1.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.ReservedAmounts[len(x.ReservedAmounts)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -4890,7 +4890,7 @@ func (x *fastReflection_CreditAccount) ProtoMethods() *protoiface.Methods {
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.UnattributedReservedAmounts = append(x.UnattributedReservedAmounts, &types.Coin{})
+				x.UnattributedReservedAmounts = append(x.UnattributedReservedAmounts, &v1beta1.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.UnattributedReservedAmounts[len(x.UnattributedReservedAmounts)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -4968,8 +4968,8 @@ type LeaseState int32
 const (
 	// LEASE_STATE_UNSPECIFIED is the default value.
 	LeaseState_LEASE_STATE_UNSPECIFIED LeaseState = 0
-	// LEASE_STATE_PENDING indicates the lease is awaiting provider acknowledgement.
-	// Credit is locked but billing has not started.
+	// LEASE_STATE_PENDING indicates the lease is awaiting provider
+	// acknowledgement. Credit is locked but billing has not started.
 	LeaseState_LEASE_STATE_PENDING LeaseState = 1
 	// LEASE_STATE_ACTIVE indicates the lease is active and accruing charges.
 	// Provider has acknowledged and resources are provisioned.
@@ -5039,37 +5039,42 @@ type Params struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// max_leases_per_tenant is the maximum number of active leases a tenant can have.
-	// Lease creation and acknowledgement both enforce this limit; acknowledgement evaluates
-	// each tenant's active count after applying the entire batch. Must be greater than zero.
+	// max_leases_per_tenant is the maximum number of active leases a tenant can
+	// have. Lease creation and acknowledgement both enforce this limit;
+	// acknowledgement evaluates each tenant's active count after applying the
+	// entire batch. Must be greater than zero.
 	MaxLeasesPerTenant uint64 `protobuf:"varint,1,opt,name=max_leases_per_tenant,json=maxLeasesPerTenant,proto3" json:"max_leases_per_tenant,omitempty"`
-	// allowed_list is the list of addresses allowed to create leases on behalf of tenants
-	// in addition to the module authority.
+	// allowed_list is the list of addresses allowed to create leases on behalf of
+	// tenants in addition to the module authority.
 	AllowedList []string `protobuf:"bytes,2,rep,name=allowed_list,json=allowedList,proto3" json:"allowed_list,omitempty"`
-	// max_items_per_lease is the maximum number of items (SKUs) allowed in a single lease.
-	// Must be greater than zero. Prevents excessive gas consumption from large leases.
+	// max_items_per_lease is the maximum number of items (SKUs) allowed in a
+	// single lease. Must be greater than zero. Prevents excessive gas consumption
+	// from large leases.
 	MaxItemsPerLease uint64 `protobuf:"varint,3,opt,name=max_items_per_lease,json=maxItemsPerLease,proto3" json:"max_items_per_lease,omitempty"`
-	// min_lease_duration is the minimum duration (in seconds) that a tenant's credit balance
-	// must be able to cover when creating a lease. This prevents tenants from creating leases
-	// that would immediately exhaust their credit. Default is 3600 (1 hour).
+	// min_lease_duration is the minimum duration (in seconds) that a tenant's
+	// credit balance must be able to cover when creating a lease. This prevents
+	// tenants from creating leases that would immediately exhaust their credit.
+	// Default is 3600 (1 hour).
 	MinLeaseDuration uint64 `protobuf:"varint,4,opt,name=min_lease_duration,json=minLeaseDuration,proto3" json:"min_lease_duration,omitempty"`
-	// max_pending_leases_per_tenant is the maximum number of PENDING leases a tenant can have.
-	// Prevents spam attacks where tenants create many leases that providers must process.
-	// Default is 10.
+	// max_pending_leases_per_tenant is the maximum number of PENDING leases a
+	// tenant can have. Prevents spam attacks where tenants create many leases
+	// that providers must process. Default is 10.
 	MaxPendingLeasesPerTenant uint64 `protobuf:"varint,5,opt,name=max_pending_leases_per_tenant,json=maxPendingLeasesPerTenant,proto3" json:"max_pending_leases_per_tenant,omitempty"`
-	// pending_timeout is the current duration in seconds that defines a PENDING lease's hard
-	// acknowledgement deadline at created_at + pending_timeout. Acknowledgement is allowed exactly
-	// at that deadline and rejected when block time is strictly later, even if EndBlock has not yet
-	// marked the lease EXPIRED. Applies globally to all providers. Default is 1800 (30 minutes).
+	// pending_timeout is the current duration in seconds that defines a PENDING
+	// lease's hard acknowledgement deadline at created_at + pending_timeout.
+	// Acknowledgement is allowed exactly at that deadline and rejected when block
+	// time is strictly later, even if EndBlock has not yet marked the lease
+	// EXPIRED. Applies globally to all providers. Default is 1800 (30 minutes).
 	// Must be between 60 (1 minute) and 86400 (24 hours).
 	PendingTimeout uint64 `protobuf:"varint,6,opt,name=pending_timeout,json=pendingTimeout,proto3" json:"pending_timeout,omitempty"`
-	// reserved_domain_suffixes is the list of DNS suffixes (each beginning with `.`)
-	// that tenants are forbidden from claiming as a LeaseItem.custom_domain. These match
-	// provider wildcard zones (e.g. `.barney0.manifest0.net`) where the provider
-	// already serves auto-generated subdomains under a wildcard TLS cert. The match
-	// is a case-insensitive label-boundary suffix check and also covers the apex
-	// (e.g. `barney0.manifest0.net` itself). Tunable via MsgUpdateParams so new
-	// provider zones can be reserved without a chain upgrade.
+	// reserved_domain_suffixes is the list of DNS suffixes (each beginning with
+	// `.`) that tenants are forbidden from claiming as a LeaseItem.custom_domain.
+	// These match provider wildcard zones (e.g. `.barney0.manifest0.net`) where
+	// the provider already serves auto-generated subdomains under a wildcard TLS
+	// cert. The match is a case-insensitive label-boundary suffix check and also
+	// covers the apex (e.g. `barney0.manifest0.net` itself). Tunable via
+	// MsgUpdateParams so new provider zones can be reserved without a chain
+	// upgrade.
 	ReservedDomainSuffixes []string `protobuf:"bytes,7,rep,name=reserved_domain_suffixes,json=reservedDomainSuffixes,proto3" json:"reserved_domain_suffixes,omitempty"`
 }
 
@@ -5154,12 +5159,14 @@ type LeaseItem struct {
 	Quantity uint64 `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	// locked_price is the price per unit locked at lease creation (per second).
 	// The denom comes from the SKU's base_price at lease creation time.
-	LockedPrice *types.Coin `protobuf:"bytes,3,opt,name=locked_price,json=lockedPrice,proto3" json:"locked_price,omitempty"`
-	// service_name is an optional DNS-label identifier for this item within a stack deployment.
-	// Must be a valid RFC 1123 DNS label: 1-63 lowercase alphanumeric characters or hyphens,
-	// must not start or end with a hyphen (e.g., "web", "db", "my-service-1").
-	// When used, all items must have a service_name and uniqueness shifts from sku_uuid to service_name,
-	// allowing the same SKU to appear multiple times (e.g., "web" and "db" both using docker-small).
+	LockedPrice *v1beta1.Coin `protobuf:"bytes,3,opt,name=locked_price,json=lockedPrice,proto3" json:"locked_price,omitempty"`
+	// service_name is an optional DNS-label identifier for this item within a
+	// stack deployment. Must be a valid RFC 1123 DNS label: 1-63 lowercase
+	// alphanumeric characters or hyphens, must not start or end with a hyphen
+	// (e.g., "web", "db", "my-service-1"). When used, all items must have a
+	// service_name and uniqueness shifts from sku_uuid to service_name, allowing
+	// the same SKU to appear multiple times (e.g., "web" and "db" both using
+	// docker-small).
 	//
 	// COMPUTE-SPECIFIC: this field belongs in a future x/deployment module rather
 	// than the generic billing lease. It lives here today as a pragmatic shortcut
@@ -5213,7 +5220,7 @@ func (x *LeaseItem) GetQuantity() uint64 {
 	return 0
 }
 
-func (x *LeaseItem) GetLockedPrice() *types.Coin {
+func (x *LeaseItem) GetLockedPrice() *v1beta1.Coin {
 	if x != nil {
 		return x.LockedPrice
 	}
@@ -5247,7 +5254,7 @@ type LeaseReservation struct {
 	unknownFields protoimpl.UnknownFields
 
 	// remaining_amounts is the unconsumed reservation, in canonical coin order.
-	RemainingAmounts []*types.Coin `protobuf:"bytes,1,rep,name=remaining_amounts,json=remainingAmounts,proto3" json:"remaining_amounts,omitempty"`
+	RemainingAmounts []*v1beta1.Coin `protobuf:"bytes,1,rep,name=remaining_amounts,json=remainingAmounts,proto3" json:"remaining_amounts,omitempty"`
 }
 
 func (x *LeaseReservation) Reset() {
@@ -5270,7 +5277,7 @@ func (*LeaseReservation) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_types_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *LeaseReservation) GetRemainingAmounts() []*types.Coin {
+func (x *LeaseReservation) GetRemainingAmounts() []*v1beta1.Coin {
 	if x != nil {
 		return x.RemainingAmounts
 	}
@@ -5287,7 +5294,8 @@ type Lease struct {
 	Uuid string `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	// tenant is the address of the tenant who owns this lease.
 	Tenant string `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	// provider_uuid is the provider UUID (denormalized from SKUs for efficient querying).
+	// provider_uuid is the provider UUID (denormalized from SKUs for efficient
+	// querying).
 	ProviderUuid string `protobuf:"bytes,3,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
 	// items is the list of SKU items in this lease.
 	Items []*LeaseItem `protobuf:"bytes,4,rep,name=items,proto3" json:"items,omitempty"`
@@ -5298,8 +5306,10 @@ type Lease struct {
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// closed_at is the timestamp when the lease was closed (if CLOSED state).
 	ClosedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=closed_at,json=closedAt,proto3" json:"closed_at,omitempty"`
-	// last_settled_at is the timestamp of the last settlement/withdrawal.
-	// Only applicable for ACTIVE and CLOSED states.
+	// last_settled_at is the accrual cursor through which complete per-second
+	// charges have settled. For an ACTIVE lease it can precede the latest
+	// withdrawal time by less than one second so that fractional elapsed time is
+	// carried into the next settlement. A CLOSED lease sets it to closed_at.
 	LastSettledAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=last_settled_at,json=lastSettledAt,proto3" json:"last_settled_at,omitempty"`
 	// acknowledged_at is the timestamp when the provider acknowledged the lease.
 	// Only set when state transitions from PENDING to ACTIVE.
@@ -5309,20 +5319,20 @@ type Lease struct {
 	// Only set when state is REJECTED.
 	RejectedAt *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=rejected_at,json=rejectedAt,proto3" json:"rejected_at,omitempty"`
 	// rejection_reason is a free-form explanation for why the lease was rejected.
-	// Only set when state is REJECTED. Maximum 256 characters.
+	// Only set when state is REJECTED. Maximum 256 UTF-8 bytes.
 	RejectionReason string `protobuf:"bytes,11,opt,name=rejection_reason,json=rejectionReason,proto3" json:"rejection_reason,omitempty"`
 	// expired_at is the timestamp when the lease expired while in PENDING state.
 	// Only set when state is EXPIRED.
 	ExpiredAt *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=expired_at,json=expiredAt,proto3" json:"expired_at,omitempty"`
 	// closure_reason is a free-form explanation for why the lease was closed.
-	// Only set when state is CLOSED. Maximum 256 characters.
+	// Only set when state is CLOSED. Maximum 256 UTF-8 bytes.
 	ClosureReason string `protobuf:"bytes,13,opt,name=closure_reason,json=closureReason,proto3" json:"closure_reason,omitempty"`
 	// meta_hash is an optional hash/reference to off-chain deployment data.
 	// Set once at lease creation and immutable. Maximum 64 bytes.
 	MetaHash []byte `protobuf:"bytes,14,opt,name=meta_hash,json=metaHash,proto3" json:"meta_hash,omitempty"`
-	// min_lease_duration_at_creation stores the min_lease_duration parameter value
-	// at the time this lease was created. This ensures consistent reservation
-	// calculation regardless of subsequent parameter changes.
+	// min_lease_duration_at_creation stores the min_lease_duration parameter
+	// value at the time this lease was created. This ensures consistent
+	// reservation calculation regardless of subsequent parameter changes.
 	// reservation = sum(locked_price × quantity) × min_lease_duration_at_creation
 	MinLeaseDurationAtCreation uint64 `protobuf:"varint,15,opt,name=min_lease_duration_at_creation,json=minLeaseDurationAtCreation,proto3" json:"min_lease_duration_at_creation,omitempty"`
 	// reservation contains this modern lease's remaining consumable guarantee.
@@ -5525,10 +5535,11 @@ type CreditAccount struct {
 	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	// credit_address is the derived address where credit funds are held.
 	CreditAddress string `protobuf:"bytes,2,opt,name=credit_address,json=creditAddress,proto3" json:"credit_address,omitempty"`
-	// active_lease_count tracks the number of active leases for O(1) count queries.
+	// active_lease_count tracks the number of active leases for O(1) count
+	// queries.
 	ActiveLeaseCount uint64 `protobuf:"varint,3,opt,name=active_lease_count,json=activeLeaseCount,proto3" json:"active_lease_count,omitempty"`
-	// pending_lease_count tracks the number of pending leases for O(1) count queries.
-	// Used to enforce max_pending_leases_per_tenant limit.
+	// pending_lease_count tracks the number of pending leases for O(1) count
+	// queries. Used to enforce max_pending_leases_per_tenant limit.
 	PendingLeaseCount uint64 `protobuf:"varint,4,opt,name=pending_lease_count,json=pendingLeaseCount,proto3" json:"pending_lease_count,omitempty"`
 	// reserved_amounts is the exact remaining reservation aggregate R:
 	//
@@ -5537,12 +5548,12 @@ type CreditAccount struct {
 	//
 	// New leases initialize a nominal rate_per_second × min_lease_duration
 	// tranche, but settlement consumes it, so R is not a fixed nominal sum.
-	ReservedAmounts []*types.Coin `protobuf:"bytes,5,rep,name=reserved_amounts,json=reservedAmounts,proto3" json:"reserved_amounts,omitempty"`
+	ReservedAmounts []*v1beta1.Coin `protobuf:"bytes,5,rep,name=reserved_amounts,json=reservedAmounts,proto3" json:"reserved_amounts,omitempty"`
 	// unattributed_reserved_amounts is the U subset of reserved_amounts shared
 	// by live historical leases whose individual guarantees cannot be
 	// reconstructed. It is consumed own-cohort-first and cleared when the last
 	// live historical member terminates.
-	UnattributedReservedAmounts []*types.Coin `protobuf:"bytes,6,rep,name=unattributed_reserved_amounts,json=unattributedReservedAmounts,proto3" json:"unattributed_reserved_amounts,omitempty"`
+	UnattributedReservedAmounts []*v1beta1.Coin `protobuf:"bytes,6,rep,name=unattributed_reserved_amounts,json=unattributedReservedAmounts,proto3" json:"unattributed_reserved_amounts,omitempty"`
 	// unattributed_lease_count is the number of live historical leases sharing
 	// unattributed_reserved_amounts. It remains meaningful when that reservation
 	// is empty and lets terminal transitions release the cohort in O(1).
@@ -5597,14 +5608,14 @@ func (x *CreditAccount) GetPendingLeaseCount() uint64 {
 	return 0
 }
 
-func (x *CreditAccount) GetReservedAmounts() []*types.Coin {
+func (x *CreditAccount) GetReservedAmounts() []*v1beta1.Coin {
 	if x != nil {
 		return x.ReservedAmounts
 	}
 	return nil
 }
 
-func (x *CreditAccount) GetUnattributedReservedAmounts() []*types.Coin {
+func (x *CreditAccount) GetUnattributedReservedAmounts() []*v1beta1.Coin {
 	if x != nil {
 		return x.UnattributedReservedAmounts
 	}
@@ -5906,7 +5917,7 @@ var file_liftedinit_billing_v1_types_proto_goTypes = []interface{}{
 	(*Lease)(nil),                 // 4: liftedinit.billing.v1.Lease
 	(*CustomDomainTarget)(nil),    // 5: liftedinit.billing.v1.CustomDomainTarget
 	(*CreditAccount)(nil),         // 6: liftedinit.billing.v1.CreditAccount
-	(*types.Coin)(nil),            // 7: cosmos.base.v1beta1.Coin
+	(*v1beta1.Coin)(nil),          // 7: cosmos.base.v1beta1.Coin
 	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
 }
 var file_liftedinit_billing_v1_types_proto_depIdxs = []int32{

@@ -41,11 +41,14 @@ The credit account is created automatically when first funded.
 ### v4 upgrade/import reports under-backed PENDING reservations
 
 **Cause**: The v4 cutover never mints or moves tokens. For every tenant and
-denomination, both the pre-v4 `reserved_amounts` aggregate and the bank balance
-at the derived credit address must fully cover all reconstructible PENDING
-nominal claims. PENDING claims are allocated first because they have not
-consumed any of their creation guarantee. If either source is smaller,
-migration or `InitGenesis` fails before writing v4 billing state.
+denomination, the aggregate produced by v2→v3 or direct-import preparation must
+cover all modern PENDING nominal claims. Preparation deterministically repairs
+the historical aggregate to the modern provable floor while preserving unknown
+excess only for a live opaque legacy cohort. A short aggregate after that repair
+is inconsistent state and stops the migration. A smaller bank balance is
+historically reachable under v2 settlement and is handled without minting: if
+any denomination is short, the cutover expires that tenant's entire modern
+PENDING cohort atomically.
 
 **Preflight and resolution**:
 
@@ -54,16 +57,21 @@ migration or `InitGenesis` fails before writing v4 billing state.
 2. Confirm the pre-v4 aggregate is at least that sum. A normal sequential v2→v3
    upgrade repairs the provable aggregate floor; investigate index/state
    corruption if it still falls short.
-3. Confirm the derived credit address's bank balance is at least that sum and
-   fund any bank shortfall before the upgrade or genesis import.
-4. Re-run the preflight. Do not edit v4 per-lease allocations by hand: the
-   deterministic cutover funds PENDING first, then distributes the remaining
-   bank-backed old aggregate across ACTIVE and historical claims with
-   Hamilton's largest-remainder method.
+3. Compare the derived credit address's bank balance with that sum. If any
+   denomination is short, record every modern PENDING lease for the tenant: all
+   will become EXPIRED at the upgrade/genesis block with an empty tranche.
+4. Notify affected clients that they may resubmit after cutover. Do not edit
+   per-lease allocations or manufacture backing: the deterministic cutover
+   either preserves the complete tenant cohort or expires it, then distributes
+   the remaining bank-backed historical budget across ACTIVE and historical
+   claims with Hamilton's largest-remainder method.
 
 The static `validate-genesis` command cannot detect a bank shortfall because it
 has no bank keeper context; successful static validation does not replace this
-preflight.
+preflight and does not guarantee that pre-v4 PENDING leases remain pending.
+Tenant-wide expiration is only a pre-v4 cutover policy. An already-v4
+consumable import whose aggregate exceeds its bank backing is rejected by
+`InitGenesis` before billing state is written.
 
 ### "invalid denomination for credit account"
 
@@ -224,11 +232,11 @@ manifestd tx billing acknowledge-lease [lease-uuid] --from [provider-key]
 
 ### "invalid rejection reason"
 
-**Cause**: The rejection reason provided to `reject-lease` exceeds the maximum length of 256 characters.
+**Cause**: The rejection reason provided to `reject-lease` exceeds the maximum encoded length of 256 UTF-8 bytes.
 
 **Solution**: Provide a shorter rejection reason:
 ```bash
-# Maximum 256 characters
+# Maximum 256 UTF-8 bytes
 manifestd tx billing reject-lease [lease-uuid] --reason "Service unavailable" --from provider
 ```
 
@@ -335,7 +343,8 @@ billing rejects this configuration.
    transfer, lease timestamp/state, count, reservation, or event from any lease
    in that batch is committed.
 2. Provider-wide withdraw is best-effort per lease: it logs and skips the
-   affected lease, leaves that lease unchanged, and continues with other leases.
+   affected lease, returns its UUID in `failed_lease_uuids`, leaves that lease
+   unchanged, and continues with other leases.
 
 **Solution**: Update the provider to use a payout account distinct from every
 tenant-derived credit address, then retry the affected lease explicitly:
@@ -349,21 +358,34 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 **Cause**: A provider-wide withdraw processes each lease in its own cached context; if a single lease fails, it is logged and skipped so the rest of the batch still succeeds. Two things determine what appears in the results:
 
 1. **Only ACTIVE leases are considered.** Provider-wide withdraw iterates the provider's ACTIVE leases only — CLOSED leases are already fully settled at close and never appear.
-2. **Leases are skipped for two different reasons.** A *normal* skip happens when the lease has nothing to settle — no elapsed time since the last settlement, or a zero withdrawable amount — and is silent and expected. An *error* skip happens when the lease's settlement or store operation fails — a bank transfer failure, a missing or invalid provider payout address, a payout address equal to that tenant's derived credit address, or a `last_settled_at` that is after the block time — in which case that lease's changes are discarded.
+2. **Leases are skipped for two different reasons.** A *normal* skip happens
+   when the lease has nothing to settle — no elapsed time since the last
+   settlement, or a zero withdrawable amount — and is silent and expected. An
+   *error* skip happens when a lease-local settlement or store operation fails
+   — for example, a bank transfer failure, malformed stored lease/account data,
+   a payout address equal to that tenant's derived credit address, or a
+   `last_settled_at` after block time — in which case that lease's changes are
+   discarded. Provider lookup, authorization, and payout-address validation are
+   request-wide gates and fail the transaction before any page lease runs.
 
 **What happens**:
 1. The skipped lease is left unchanged; other leases in the batch are processed normally
 2. The overall transaction still succeeds
-3. No error is returned for a skipped lease — error skips are logged, normal (nothing-to-settle) skips are silent
+3. No transaction error is returned for a skipped lease. Error skips are logged,
+   returned in ordered `failed_lease_uuids`, and included in the provider-wide
+   `batch_withdraw` event's `failed_lease_count` and comma-separated
+   `failed_lease_uuids` attributes. Normal nothing-to-settle skips remain silent.
 
 > **Arithmetic overflow does NOT skip the lease.** If an accrued charge exceeds the SDK's 256-bit `math.Int` representation (during price × quantity, elapsed-seconds multiplication, or same-denom aggregation), the silent settlement path clamps each overflowed denomination to this lease's spendable credit `B - (R - A)`, settles exact charges in unaffected denominations normally, and force-closes the lease. Long intervals do not overflow by themselves. Non-silent settlement and paths whose result cannot be spendable-capped return `ErrArithmeticOverflow` (billing code 20) without changing state; withdrawable queries return the exact spendable-capped amount.
 
 **Solution**:
-1. Use specific lease withdrawal for the problematic lease to see the actual error:
+1. Save the response's `failed_lease_uuids` before advancing `next_key`; the
+   transaction cursor resumes after failed leases too.
+2. Use specific lease withdrawal for a problematic lease to see the actual error:
    ```bash
    manifestd tx billing withdraw [lease-uuid] --from provider
    ```
-2. Verify the provider's payout address is set and valid (`manifestd query sku provider [provider-uuid]`), then retry.
+3. Verify the provider's payout address is set and valid (`manifestd query sku provider [provider-uuid]`), then retry every reported UUID.
 
 ---
 
@@ -598,16 +620,20 @@ Events to look for (the event depends on which write path triggered the auto-clo
 - `provider_withdraw` with `auto_closed="true"` (auto-close via specific-lease `Withdraw`)
 - `lease_auto_closed` with `reason="credit_exhausted"` (auto-close via provider-wide `Withdraw`)
 
+Both withdrawal auto-close events include the actual final `amount` (possibly
+empty/zero) and `payout_address`; they do not use a zero sentinel for a positive
+transfer.
+
 **Resolution**: 
 1. Fund the credit account again
 2. Create a new lease
 
 ### Why doesn't my query show accurate accrued amounts?
 
-**Cause**: Lease queries (`Lease`, `Leases`, etc.) return stored state without performing settlement calculations. The `last_settled_at` field shows when settlement last occurred.
+**Cause**: Lease queries (`Lease`, `Leases`, etc.) return stored state without performing settlement calculations. For an ACTIVE lease, `last_settled_at` is the accrual cursor through which complete seconds have settled; it can precede the latest withdrawal by less than one second because that fractional time is carried forward.
 
 **Explanation**: 
-- Lease queries return the stored `last_settled_at` timestamp
+- Lease queries return the stored `last_settled_at` accrual cursor
 - They don't calculate time elapsed since then
 - PENDING leases don't accrue charges (billing starts at acknowledgement)
 - Use `WithdrawableAmount` or `ProviderWithdrawable` queries to get **real-time calculated amounts**:
@@ -621,8 +647,9 @@ Events to look for (the event depends on which write path triggered the auto-clo
   A single `provider-withdrawable` response is an ordered execution estimate
   for that page. Earlier leases consume page-local virtual tenant balances and
   their own tranches, so shared credit is counted once within the page. Failed
-  lease simulations are discarded just as provider-wide withdrawal skips
-  lease-level failures; successful virtual effects feed later estimates, and
+  lease simulations are discarded and listed in `failed_lease_uuids`, just as
+  provider-wide withdrawal reports lease-level failures; successful virtual
+  effects feed later estimates, and
   `lease_count` matches a comparable transaction's `withdrawal_count`, including
   successful auto-closes that transfer zero. Do not
   sum separately queried pages: each begins from current chain state and may

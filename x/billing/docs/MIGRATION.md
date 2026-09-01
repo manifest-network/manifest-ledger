@@ -66,29 +66,136 @@ For each denomination, the migration's maximum allocation budget is
 `min(v3 reserved_amounts, bank balance)`. It then:
 
 1. Calculates every modern live lease's nominal creation-time claim.
-2. Assigns modern PENDING leases their full nominal claims first. They have not
-   accrued, so a partial PENDING guarantee would violate the creation contract.
-3. Treats modern ACTIVE nominal claims and one opaque live-historical cohort as
-   claimants on the remaining budget.
-4. Allocates that remainder proportionally with Hamilton's largest-remainder
+2. Requires the v3 aggregate to cover the tenant's complete modern PENDING
+   nominal sum in every denomination. A short aggregate is not a reachable
+   bank-underbacking case; it indicates corrupt reservation or index state and
+   halts the migration.
+3. Compares the tenant's bank balances with that PENDING sum as one cohort. If
+   every denomination is fully backed, every modern PENDING lease keeps its
+   exact nominal claim. If any denomination is short, every modern PENDING lease
+   for that tenant expires atomically at the upgrade block and receives an empty
+   tranche. The migration never partially reserves a pending lease or selects
+   arbitrary winners.
+4. Treats modern ACTIVE nominal claims and one opaque live-historical cohort as
+   claimants on the remaining bank-backed historical budget. When PENDING is
+   preserved, its exact sum is removed from the budget first; when the cohort is
+   expired, no PENDING claim participates.
+5. Allocates that remainder proportionally with Hamilton's largest-remainder
    method. Modern ACTIVE claims use ascending lease UUID as the stable tie-break;
    the historical cohort follows them.
-5. Writes the per-lease tranches, `U`, its exact live-member
+6. Writes the per-lease tranches, `U`, its exact live-member
    `unattributed_lease_count`, and aggregate `R` in ordered, bounded account
-   pages. The count remains non-zero if the cohort allocation is fully consumed.
+   pages. It also repairs active/pending counts and all affected state-dependent
+   indexes from the resulting lease states. The historical count remains
+   non-zero if the cohort allocation is fully consumed.
+
+The tenant-wide expiration rule handles a state reachable under v2: settlement
+could reduce the credit-address bank balance while a separate modern PENDING
+claim remained in the account aggregate. Expiration sets each affected lease to
+`EXPIRED` at the upgrade block, releases its claim without transferring funds,
+updates its state indexes to EXPIRED, and removes its live custom-domain claim.
+The original lease remains as terminal history. A client may submit a
+replacement lease after the upgrade, subject to current prices, parameters,
+limits, and available credit.
+
+This cutover is a module migration or genesis normalization, not the normal
+EndBlock timeout path, and it does not emit a `lease_expired` event for each
+transition. Operators and indexers must reconcile the preflight UUID list with
+post-cutover lease queries. A replacement has a new lease UUID: if deployment
+data was already uploaded or a custom domain was claimed for the old request,
+the client must repeat those steps and obtain a new provider acknowledgement.
 
 The migration is idempotent when every lease already has a reservation wrapper
 and fails closed on partially initialized state. A normal upgrade from v2 runs
 v2→v3 before v3→v4, so raw-address canonicalization, count reconstruction,
 and the provable aggregate repair happen before allocations are planned.
 
-> **Required preflight:** For every tenant and denomination, both the v3
-> aggregate and the actual bank balance at the derived credit address must be
-> at least the complete modern PENDING nominal sum. If either is smaller, the
-> v4 cutover stops before writing that state. Fund bank shortfalls before the
-> upgrade. If the aggregate remains deficient after the v2→v3 repair, investigate
-> the tenant/state index and primary lease state rather than manufacturing an
-> allocation. The cutover intentionally never mints backing.
+> **Required preflight:** For every tenant and denomination, calculate the
+> complete modern PENDING nominal sum after the v2→v3 repair. If the repaired v3
+> aggregate is smaller, treat the state as corruption and halt; investigate the
+> tenant/state index and primary leases rather than manufacturing an allocation.
+> A smaller bank balance is not a migration failure: it predicts tenant-wide
+> atomic expiration of that tenant's modern PENDING cohort. Identify and notify
+> affected clients so they can resubmit after the upgrade. Do not patch
+> reservation metadata or manufacture backing. The cutover never mints, creates
+> a partial pending guarantee, or favors a subset of pending leases.
+
+The prediction is specific to the state height used for the preflight: funding,
+new leases, and settlement can change it before the upgrade. Recompute it from
+the final pre-upgrade snapshot. A tenant or other funder may prevent the
+expiration by sending existing tokens through the normal `fund-credit` message
+in every short denomination, but the balance must still cover the complete
+modern PENDING cohort at cutover; an intervening v2 settlement can consume that
+backing again.
+
+Run the candidate binary's offline preflight against a complete exported
+genesis. It reads the official billing and bank genesis types, uses the export's
+`genesis_time` only as the planner's simulated timestamp, and writes
+deterministic JSON to standard output without opening or changing application
+state:
+
+```bash
+manifestd genesis preflight-billing-v4 exported-genesis.json \
+  > billing-v4-preflight.json
+
+jq '.reservation_change_tenant_count,
+    .expiring_modern_pending_tenant_count,
+    .expiring_modern_pending_lease_count' \
+  billing-v4-preflight.json
+jq '.tenants[] | select(.has_planned_reservation_change)' \
+  billing-v4-preflight.json
+jq '.tenants[] | select(.expiring_modern_pending_lease_uuids | length > 0)' \
+  billing-v4-preflight.json
+```
+
+Archive the export, its committed app hash, the candidate binary checksum, and
+the report together. The report carries `source_chain_id` and
+`source_initial_height` from the export so automation can reject a wrong-chain
+or wrong-height report. `source_initial_height` is the export's restart height
+(normally the committed export height plus one, or zero for a zero-height
+export), not the last committed block height itself. `input_genesis_time` is
+also copied and normalized to UTC. Cosmos SDK export preserves the chain's
+original genesis timestamp, so this field is provenance—not the future
+upgrade-block time. Cohort selection does not depend on that timestamp in v4;
+the real migration writes the actual upgrade block time to newly expired
+leases.
+
+`billing_state` is `pre_v4_aggregate` when the command actually applies the
+cutover planner and `consumable_v4` when the input is already in the new
+representation. Already-v4 input is never repaired: the command fails if its
+reservation aggregate is not fully bank-backed. It also fails closed on a
+missing or malformed billing/bank app state, mixed reservation formats,
+duplicate decoded address identities, or any planner invariant failure.
+
+`denominations` records the source aggregate, repaired pre-cutover aggregate,
+planned post-cutover aggregate, pre/post opaque unattributed cohort allocation,
+bank balance, complete modern PENDING requirement, and shortfall as base-10
+integer strings. `modern_active_leases` is sorted by UUID and records each
+modern ACTIVE lease's nominal and planned remaining denomination amounts;
+legacy leases remain one opaque aggregate cohort and are never assigned
+individual predictions. `reservation_change_tenant_count` counts tenants whose
+source/pre/post aggregates, ACTIVE allocation, opaque cohort allocation, or
+PENDING lifecycle will change economically; initializing fully backed wrapper
+fields alone does not increment it. The two explicitly named PENDING counters
+and `expiring_modern_pending_lease_uuids` describe only tenant-wide PENDING
+expiration.
+
+This command previews billing reservation migration only. It does not run
+`ValidateWithBlockTime`, resolve provider/SKU references from `x/sku`, or
+certify that the document will pass full `InitGenesis`. Use `validate-genesis`
+and an isolated start/import rehearsal for those separate checks. The planner
+timestamp affects the simulated, unreported `expired_at` transition but not
+cohort selection. This remains a snapshot report, not a promise about later
+chain state: rerun it on the final height-labelled export immediately before
+the upgrade and compare that final report with the post-upgrade queries.
+
+An exported genesis contains primary module records but not collections
+secondary indexes. The command therefore cannot certify that the source node's
+tenant/state indexes agree with those records; the in-place migration still
+fails closed when an indexed row decodes to a mismatched tenant or state. Run
+the source binary's state/invariant checks during rehearsal and investigate any
+index or primary-record error rather than treating this offline report as a
+general database-integrity certificate.
 
 ## Prerequisites
 
@@ -475,7 +582,7 @@ When importing billing state via genesis (e.g., during chain upgrades or migrati
 - **pre-v4 aggregate-only (v2/v3) export:** every lease omits `reservation` and
   every account has empty `U` and zero `unattributed_lease_count`.
   `InitGenesis` normalizes this format in memory with the same no-mint,
-  PENDING-first/Hamilton planner used by v3→v4.
+  tenant-wide PENDING-cohort/Hamilton planner used by v3→v4.
 
 Mixing present and absent reservation wrappers is rejected.
 
@@ -485,9 +592,9 @@ Validates without blockchain context:
 - Lease UUIDs are valid and unique
 - Credit account addresses are correctly derived
 - Required fields are present
-- Stored active and pending lease counts match the imported lease set
+- After import preparation, active and pending lease counts match the imported lease set
 - The lease sequence is at least the total number of imported leases
-- v4 lease tranches are valid and satisfy the exact account invariant, or the complete pre-v4 aggregate-only state covers its statically reconstructible floor
+- v4 lease tranches are valid and satisfy the exact account invariant, or a complete pre-v4 aggregate-only state can be deterministically reconciled to its statically reconstructible floor
 
 The `validate-genesis` CLI and `InitGenesis` use the same import-safe
 `GenesisState.Validate()` contract. For v4 state, modern PENDING tranches must
@@ -505,15 +612,37 @@ reserved-suffix list because a claim may predate a later reservation. For newly
 authored state, `ValidateStrict()` opts into both present-day policy checks.
 
 Static `validate-genesis` has no bank keeper and therefore cannot prove that a
-pre-v4 aggregate is actually bank-backed. Before importing v2/v3 state, perform
-the same underfunded-PENDING preflight required for the module upgrade: every
-tenant/denomination's bank balance and old aggregate must cover the complete
-modern PENDING nominal sum. `InitGenesis` checks bank backing and fails before
-its first billing-store write if the no-mint conversion cannot be supported.
+pre-v4 aggregate is actually bank-backed. Import preparation first mirrors the
+v2→v3 repair by reconstructing each tenant's modern live floor. With a live
+zero-duration lease it keeps the per-denomination maximum of the exported
+aggregate and that floor, preserving opaque historical excess; without a live
+opaque claimant it uses the exact floor and drops stale residuals. This repairs
+the reachable case where historical parameter-dependent release clamped through
+a concurrent modern claim. The input JSON is not mutated, and
+`ValidateStrict()` remains non-repairing.
 
-A direct v2 genesis import must already contain exact stored live-lease counts;
-it does not run the in-place v2→v3 count-repair migration. A live v2 chain
-upgrade runs the registered v2→v3 and v3→v4 migrations sequentially.
+For a pre-v4 representation, bank underbacking is handled only when
+`InitGenesis` has bank keeper access. If any denomination is short, import
+preparation expires all of that tenant's modern PENDING leases atomically at the
+genesis block time, recomputes the resulting counts, and allocates the
+bank-backed budget only among modern ACTIVE claims and the live historical
+cohort. `InitGenesis` subsequently builds indexes from those normalized lease
+states. Therefore a successful static `validate-genesis` does not promise that
+pre-v4 PENDING leases will remain pending after import. An already-v4
+consumable import is not re-planned: `InitGenesis` rejects it before billing
+writes if its aggregate is not bank-backed.
+
+A direct v2 genesis import deterministically rebuilds the cached active and
+pending lease counts and the bounded aggregate repair above from primary lease
+state before validation. Tenant leases are grouped by decoded SDK address bytes,
+so equivalent historical Bech32 spellings contribute to the same account; the
+repaired derived fields are what the planner starts from. If the bank-backed
+policy expires a tenant's modern PENDING cohort, `InitGenesis` persists the
+recomputed counts and builds indexes from the resulting terminal states.
+`ValidateStrict()` does not perform these import repairs and rejects stale
+derived state in newly authored genesis. A live v2 chain upgrade runs the
+registered v2→v3 and v3→v4 migrations sequentially, with v2→v3 performing the
+same initial in-place repair.
 
 ### Phase 2: Time-Based Validation (`ValidateWithBlockTime`)
 
@@ -541,6 +670,8 @@ During `InitGenesis`, the module additionally performs cross-module checks again
 - Every item's SKU must exist (`skuKeeper.GetSKU`)
 - Each SKU's `provider_uuid` must match the lease's `provider_uuid`
 - Each prepared v4 reservation aggregate must be backed by the derived credit address's bank balance
+- A bank-underbacked modern PENDING cohort is expired tenant-wide before final
+  counts, indexes, and consumable allocations are persisted
 
 These checks require the SKU module to be initialized first, which the genesis order (`sku -> billing`) guarantees.
 

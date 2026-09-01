@@ -49,6 +49,70 @@ func TestQueryParams(t *testing.T) {
 	require.Equal(t, types.DefaultMaxLeasesPerTenant, resp.Params.MaxLeasesPerTenant)
 }
 
+func TestListQueriesRejectUnboundedPaginationModes(t *testing.T) {
+	f := initFixture(t)
+	querier := keeper.NewQuerier(f.App.BillingKeeper)
+
+	queries := []struct {
+		name string
+		call func(*query.PageRequest) error
+	}{
+		{
+			name: "leases",
+			call: func(pageReq *query.PageRequest) error {
+				_, err := querier.Leases(f.Ctx, &types.QueryLeasesRequest{Pagination: pageReq})
+				return err
+			},
+		},
+		{
+			name: "leases by tenant",
+			call: func(pageReq *query.PageRequest) error {
+				_, err := querier.LeasesByTenant(f.Ctx, &types.QueryLeasesByTenantRequest{
+					Tenant:     f.TestAccs[0].String(),
+					Pagination: pageReq,
+				})
+				return err
+			},
+		},
+		{
+			name: "leases by provider",
+			call: func(pageReq *query.PageRequest) error {
+				_, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+					ProviderUuid: testProviderUUID,
+					Pagination:   pageReq,
+				})
+				return err
+			},
+		},
+		{
+			name: "credit accounts",
+			call: func(pageReq *query.PageRequest) error {
+				_, err := querier.CreditAccounts(f.Ctx, &types.QueryCreditAccountsRequest{Pagination: pageReq})
+				return err
+			},
+		},
+		{
+			name: "leases by SKU",
+			call: func(pageReq *query.PageRequest) error {
+				_, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+					SkuUuid:    testSKUUUID,
+					Pagination: pageReq,
+				})
+				return err
+			},
+		},
+	}
+
+	for _, queryCase := range queries {
+		t.Run(queryCase.name+"/offset", func(t *testing.T) {
+			require.Equal(t, codes.InvalidArgument, status.Code(queryCase.call(&query.PageRequest{Offset: 1})))
+		})
+		t.Run(queryCase.name+"/count total", func(t *testing.T) {
+			require.Equal(t, codes.InvalidArgument, status.Code(queryCase.call(&query.PageRequest{CountTotal: true})))
+		})
+	}
+}
+
 func TestQueryLease(t *testing.T) {
 	f := initFixture(t)
 
@@ -755,7 +819,7 @@ func TestQueryLeasesBySKUReverse(t *testing.T) {
 	})
 }
 
-func TestQueryLeasesBySKUCountTotal(t *testing.T) {
+func TestQueryLeasesBySKUCursorOnlyPagination(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.BillingKeeper
@@ -783,22 +847,18 @@ func TestQueryLeasesBySKUCountTotal(t *testing.T) {
 		require.NoError(t, k.SetLease(f.Ctx, lease))
 	}
 
-	t.Run("countTotal with limit", func(t *testing.T) {
-		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+	t.Run("count total is rejected before scanning", func(t *testing.T) {
+		_, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
 			SkuUuid:    skuUUID,
 			Pagination: &query.PageRequest{Limit: 2, CountTotal: true},
 		})
-		require.NoError(t, err)
-		require.Len(t, resp.Leases, 2)
-		require.Equal(t, uint64(5), resp.Pagination.Total)
-		require.NotEmpty(t, resp.Pagination.NextKey)
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
 	})
 
-	t.Run("countTotal cursor continues correctly", func(t *testing.T) {
-		// Page 1 with countTotal
+	t.Run("cursor continues correctly", func(t *testing.T) {
 		page1, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
 			SkuUuid:    skuUUID,
-			Pagination: &query.PageRequest{Limit: 2, CountTotal: true},
+			Pagination: &query.PageRequest{Limit: 2},
 		})
 		require.NoError(t, err)
 		require.Len(t, page1.Leases, 2)
@@ -1839,6 +1899,7 @@ func TestQueryProviderWithdrawable_SkipsFailedLeaseLikeProviderWithdrawal(t *tes
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), response.LeaseCount)
 	require.Equal(t, sdkmath.NewInt(5), response.Amounts.AmountOf(testDenom))
+	require.Equal(t, []string{malformed.Uuid}, response.FailedLeaseUuids)
 
 	// The query is still a dry-run even when an earlier lease fails.
 	account, err := k.GetCreditAccount(queryCtx, tenant.String())
@@ -1856,6 +1917,7 @@ func TestQueryProviderWithdrawable_SkipsFailedLeaseLikeProviderWithdrawal(t *tes
 	require.NoError(t, err)
 	require.Equal(t, response.Amounts, withdrawal.TotalAmounts)
 	require.Equal(t, response.LeaseCount, withdrawal.WithdrawalCount)
+	require.Equal(t, response.FailedLeaseUuids, withdrawal.FailedLeaseUuids)
 }
 
 // TestLeasesByProvider_ActiveCursorSurvivesClosedBoundary is the read-side analogue
@@ -2122,17 +2184,15 @@ func TestQueryLeasesBySKUPaginationEdgeCases(t *testing.T) {
 		require.NoError(t, k.SetLease(f.Ctx, lease))
 	}
 
-	t.Run("offset exceeds total results returns empty", func(t *testing.T) {
-		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+	t.Run("offset pagination is rejected", func(t *testing.T) {
+		_, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
 			SkuUuid: skuUUID,
 			Pagination: &query.PageRequest{
-				Offset: 100, // Far exceeds 5 leases
+				Offset: 100,
 				Limit:  10,
 			},
 		})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Empty(t, resp.Leases, "should return empty when offset exceeds total")
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
 	})
 
 	t.Run("limit of 0 uses default", func(t *testing.T) {
@@ -2158,32 +2218,6 @@ func TestQueryLeasesBySKUPaginationEdgeCases(t *testing.T) {
 		require.NotNil(t, resp)
 		require.Len(t, resp.Leases, 2, "should return only 2 leases")
 		require.NotNil(t, resp.Pagination, "should have pagination response")
-	})
-
-	t.Run("pagination with offset and limit works", func(t *testing.T) {
-		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
-			SkuUuid: skuUUID,
-			Pagination: &query.PageRequest{
-				Offset: 2,
-				Limit:  2,
-			},
-		})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Len(t, resp.Leases, 2, "should return 2 leases starting from offset 2")
-	})
-
-	t.Run("offset at boundary returns remaining", func(t *testing.T) {
-		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
-			SkuUuid: skuUUID,
-			Pagination: &query.PageRequest{
-				Offset: 4, // 5 total, offset 4 = last one
-				Limit:  10,
-			},
-		})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Len(t, resp.Leases, 1, "should return 1 lease at boundary")
 	})
 
 	t.Run("empty SKU index with pagination", func(t *testing.T) {

@@ -5,33 +5,38 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	sdkmath "cosmossdk.io/math"
-	upgradetypes "cosmossdk.io/x/upgrade/types"
-	"github.com/cosmos/cosmos-sdk/codec"
-	"github.com/cosmos/cosmos-sdk/codec/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
-	"github.com/cosmos/gogoproto/proto"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
-	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cosmos/gogoproto/proto"
+
+	sdkmath "cosmossdk.io/math"
+	upgradetypes "cosmossdk.io/x/upgrade/types"
+
+	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/codec/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	grouptypes "github.com/cosmos/cosmos-sdk/x/group"
+
+	tokenfactorytypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
+
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
-
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 const (
@@ -101,7 +106,8 @@ func TestGroupPOA(t *testing.T) {
 	require.NoError(t, err)
 
 	groupGenesis := createGroupGenesis()
-	wasmGenesis := append(groupGenesis,
+	wasmGenesis := slices.Clone(groupGenesis)
+	wasmGenesis = append(wasmGenesis,
 		cosmos.NewGenesisKV("app_state.wasm.params.code_upload_access.permission", "AnyOfAddresses"),
 		cosmos.NewGenesisKV("app_state.wasm.params.code_upload_access.addresses", []string{groupAddr}), // Only the Group address can upload code
 	)
@@ -126,22 +132,22 @@ func TestGroupPOA(t *testing.T) {
 	require.NoError(t, err)
 
 	// CosmWasm store and instantiate
-	testWasmContract(t, ctx, chain, &cfgA, accAddr)
-	testWasmContractInvalidUploader(t, ctx, chain, accAddr)
-	testWasmContractInvalidInstantiater(t, ctx, chain, accAddr)
+	testWasmContract(ctx, t, chain, &cfgA, accAddr)
+	testWasmContractInvalidUploader(ctx, t, chain, accAddr)
+	testWasmContractInvalidInstantiater(ctx, t, chain, accAddr)
 	// Software Upgrade
-	testSoftwareUpgrade(t, ctx, chain, &cfgA, accAddr)
+	testSoftwareUpgrade(ctx, t, chain, &cfgA, accAddr)
 	// Manifest module
-	testManifestStakeholdersPayout(t, ctx, chain, &cfgA, accAddr)
+	testManifestStakeholdersPayout(ctx, t, chain, &cfgA, accAddr)
 	// TokenFactory
-	testTokenCreate(t, ctx, chain, &cfgA, accAddr)
+	testTokenCreate(ctx, t, chain, &cfgA, accAddr)
 	// Bank
-	testBankSend(t, ctx, chain, &cfgA, accAddr)
-	testBankSendIllegal(t, ctx, chain, &cfgA, accAddr)
+	testBankSend(ctx, t, chain, &cfgA, accAddr)
+	testBankSendIllegal(ctx, t, chain, &cfgA, accAddr)
 	// SKU Module - Provider and SKU Management via Group
-	testGroupProviderAndSKU(t, ctx, chain, &cfgA, accAddr)
+	testGroupProviderAndSKU(ctx, t, chain, &cfgA, accAddr)
 	// Billing Module - Lease Creation via Group
-	testGroupLeaseCreation(t, ctx, chain, &cfgA, accAddr)
+	testGroupLeaseCreation(ctx, t, chain, &cfgA, accAddr)
 
 	t.Cleanup(func() {
 		dockerutil.CopyCoverageFromContainer(ctx, t, client, chain.GetNode().ContainerID(), chain.HomeDir(), ExternalGoCoverDir)
@@ -150,21 +156,21 @@ func TestGroupPOA(t *testing.T) {
 }
 
 // testWasmStore tests the submission, voting, and execution of a wasm store proposal
-func testWasmContract(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
+func testWasmContract(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP WASM STORE AND INSTANTIATE =====")
 
 	// Store the wasm code
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &wasmStoreProposal)})
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &wasmStoreProposal)})
 
 	// Query the code ID
-	codeId := queryLatestCodeId(t, ctx, chain)
-	require.Equal(t, uint64(1), codeId)
+	codeID := queryLatestCodeID(ctx, t, chain)
+	require.Equal(t, uint64(1), codeID)
 
-	wasmInstantiateProposal := createWasmInstantiateProposal(groupAddr, codeId, `{"count":1}`)
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &wasmInstantiateProposal)})
+	wasmInstantiateProposal := createWasmInstantiateProposal(groupAddr, codeID, `{"count":1}`)
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &wasmInstantiateProposal)})
 
 	// Query the contract address
-	contractAddr := queryLatestContractAddress(t, ctx, chain, codeId)
+	contractAddr := queryLatestContractAddress(ctx, t, chain, codeID)
 	require.NotEmpty(t, contractAddr)
 
 	// Query contract state to verify instantiation
@@ -175,7 +181,7 @@ func testWasmContract(t *testing.T, ctx context.Context, chain *cosmos.CosmosCha
 }
 
 // Only the POA admin should be able to store contracts
-func testWasmContractInvalidUploader(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, accAddr string) {
+func testWasmContractInvalidUploader(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, accAddr string) {
 	t.Log("\n===== TEST GROUP WASM STORE AND INSTANTIATE (INVALID UPLOADER) =====")
 
 	_, err := chain.GetNode().StoreContract(ctx, accAddr, wasmFile)
@@ -184,159 +190,159 @@ func testWasmContractInvalidUploader(t *testing.T, ctx context.Context, chain *c
 }
 
 // Only the POA admin should be able to instantiate contracts
-func testWasmContractInvalidInstantiater(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, accAddr string) {
+func testWasmContractInvalidInstantiater(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, accAddr string) {
 	t.Log("\n===== TEST GROUP WASM STORE AND INSTANTIATE (INVALID INSTANTIATER) =====")
-	codeId := queryLatestCodeId(t, ctx, chain)
-	require.Equal(t, uint64(1), codeId)
+	codeID := queryLatestCodeID(ctx, t, chain)
+	require.Equal(t, uint64(1), codeID)
 
-	_, err := chain.InstantiateContract(ctx, accAddr, strconv.FormatUint(codeId, 10), `{"count":1}`, true)
+	_, err := chain.InstantiateContract(ctx, accAddr, strconv.FormatUint(codeID, 10), `{"count":1}`, true)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "can not instantiate: unauthorized")
 }
 
 // testSoftwareUpgrade tests the submission, voting, and execution of a software upgrade proposal
 // The software upgrade plan is set and then cancelled
-func testSoftwareUpgrade(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
+func testSoftwareUpgrade(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP SOFTWARE UPGRADE =====")
-	verifyUpgradePlanIsNil(t, ctx, chain)
-	verifyUpgradeAuthority(t, ctx, chain, groupAddr)
+	verifyUpgradePlanIsNil(ctx, t, chain)
+	verifyUpgradeAuthority(ctx, t, chain, groupAddr)
 
 	// Set the upgrade plan
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &upgradeProposal)})
-	verifyUpgradePlan(t, ctx, chain, &upgradetypes.Plan{Name: planName, Height: planHeight})
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &upgradeProposal)})
+	verifyUpgradePlan(ctx, t, chain, &upgradetypes.Plan{Name: planName, Height: planHeight})
 
 	// Cancel the upgrade
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &cancelUpgradeProposal)})
-	verifyUpgradePlanIsNil(t, ctx, chain)
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &cancelUpgradeProposal)})
+	verifyUpgradePlanIsNil(ctx, t, chain)
 }
 
 // testManifestStakeholdersPayout tests the submission, voting, and execution of a manifest stakeholders payout proposal.
 // The stakeholders are paid out and the newly minted tokens are burned
-func testManifestStakeholdersPayout(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
+func testManifestStakeholdersPayout(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP MANIFEST STAKEHOLDERS PAYOUT (MINT) & BURN =====")
 	// Verify the initial balances
-	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
-	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.ZeroInt())
+	verifyBalance(ctx, t, chain, accAddr, Denom, DefaultGenesisAmt)
+	verifyBalance(ctx, t, chain, groupAddr, Denom, sdkmath.ZeroInt())
 
 	// Stakeholders payout
 	manifestPayoutProposal := createManifestPayoutProposal(groupAddr, []manifesttypes.PayoutPair{
 		manifesttypes.NewPayoutPair(sdk.MustAccAddressFromBech32(acc3Addr), "umfx", 25),
 		manifesttypes.NewPayoutPair(sdk.MustAccAddressFromBech32(acc4Addr), "umfx", 25),
 	})
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &manifestPayoutProposal)})
-	verifyBalance(t, ctx, chain, acc3Addr, Denom, sdkmath.NewInt(25))
-	verifyBalance(t, ctx, chain, acc4Addr, Denom, sdkmath.NewInt(25))
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &manifestPayoutProposal)})
+	verifyBalance(ctx, t, chain, acc3Addr, Denom, sdkmath.NewInt(25))
+	verifyBalance(ctx, t, chain, acc4Addr, Denom, sdkmath.NewInt(25))
 
-	buildWallet(t, ctx, chain, acc3Addr, acc3Mnemonic)
-	buildWallet(t, ctx, chain, acc4Addr, acc4Mnemonic)
+	buildWallet(ctx, t, chain, acc3Addr, acc3Mnemonic)
+	buildWallet(ctx, t, chain, acc4Addr, acc4Mnemonic)
 
 	// Send back the funds to the Group address
-	sendFunds(t, ctx, chain, acc3Addr, groupAddr, Denom, sdkmath.NewInt(25))
-	verifyBalance(t, ctx, chain, acc3Addr, Denom, sdkmath.ZeroInt())
+	sendFunds(ctx, t, chain, acc3Addr, groupAddr, Denom, sdkmath.NewInt(25))
+	verifyBalance(ctx, t, chain, acc3Addr, Denom, sdkmath.ZeroInt())
 
-	sendFunds(t, ctx, chain, acc4Addr, groupAddr, Denom, sdkmath.NewInt(25))
-	verifyBalance(t, ctx, chain, acc4Addr, Denom, sdkmath.ZeroInt())
+	sendFunds(ctx, t, chain, acc4Addr, groupAddr, Denom, sdkmath.NewInt(25))
+	verifyBalance(ctx, t, chain, acc4Addr, Denom, sdkmath.ZeroInt())
 
 	// Burn the newly minted tokens using a Group Proposal
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &manifestBurnProposal)})
-	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
-	verifyBalance(t, ctx, chain, acc3Addr, Denom, sdkmath.ZeroInt())
-	verifyBalance(t, ctx, chain, acc4Addr, Denom, sdkmath.ZeroInt())
-	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.ZeroInt())
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &manifestBurnProposal)})
+	verifyBalance(ctx, t, chain, accAddr, Denom, DefaultGenesisAmt)
+	verifyBalance(ctx, t, chain, acc3Addr, Denom, sdkmath.ZeroInt())
+	verifyBalance(ctx, t, chain, acc4Addr, Denom, sdkmath.ZeroInt())
+	verifyBalance(ctx, t, chain, groupAddr, Denom, sdkmath.ZeroInt())
 }
 
 // testBankSend tests the sending of funds from one account to another using a group proposal
-func testBankSend(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
+func testBankSend(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP BANK SEND =====")
 
 	// Verify the initial balances
-	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
-	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.ZeroInt())
+	verifyBalance(ctx, t, chain, accAddr, Denom, DefaultGenesisAmt)
+	verifyBalance(ctx, t, chain, groupAddr, Denom, sdkmath.ZeroInt())
 
 	// Send funds from accAddr to groupAddr
-	sendFunds(t, ctx, chain, accAddr, groupAddr, Denom, sdkmath.NewInt(1))
-	verifyBalance(t, ctx, chain, accAddr, Denom, sdkmath.NewInt(DefaultGenesisAmt.Int64()-1))
-	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.OneInt())
+	sendFunds(ctx, t, chain, accAddr, groupAddr, Denom, sdkmath.NewInt(1))
+	verifyBalance(ctx, t, chain, accAddr, Denom, sdkmath.NewInt(DefaultGenesisAmt.Int64()-1))
+	verifyBalance(ctx, t, chain, groupAddr, Denom, sdkmath.OneInt())
 
 	// Send funds from groupAddr back to accAddr using a Group Proposal
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &bankSendProposal)})
-	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
-	verifyBalance(t, ctx, chain, groupAddr, Denom, sdkmath.ZeroInt())
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &bankSendProposal)})
+	verifyBalance(ctx, t, chain, accAddr, Denom, DefaultGenesisAmt)
+	verifyBalance(ctx, t, chain, groupAddr, Denom, sdkmath.ZeroInt())
 }
 
-func testBankSendIllegal(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
+func testBankSendIllegal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP BANK SEND (INVALID SENDER - FAIL) =====")
 	newProp := bankSendProposal
 	newProp.FromAddress = accAddr
 	newProp.ToAddress = acc2Addr
 
 	// Verify initial balances
-	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
-	verifyBalance(t, ctx, chain, acc2Addr, Denom, DefaultGenesisAmt)
+	verifyBalance(ctx, t, chain, accAddr, Denom, DefaultGenesisAmt)
+	verifyBalance(ctx, t, chain, acc2Addr, Denom, DefaultGenesisAmt)
 
 	// Send funds from groupAddr back to accAddr using a Group Proposal
-	createAndRunProposalFailure(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &newProp)}, "msg does not have group policy authorization")
+	createAndRunProposalFailure(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &newProp)}, "msg does not have group policy authorization")
 
 	// Verify the funds were not sent
-	verifyBalance(t, ctx, chain, accAddr, Denom, DefaultGenesisAmt)
-	verifyBalance(t, ctx, chain, acc2Addr, Denom, DefaultGenesisAmt)
+	verifyBalance(ctx, t, chain, accAddr, Denom, DefaultGenesisAmt)
+	verifyBalance(ctx, t, chain, acc2Addr, Denom, DefaultGenesisAmt)
 }
 
 // testTokenCreate tests the creation, modification, and admin transfer of a token using a group proposal
-func testTokenCreate(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
+func testTokenCreate(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr string) {
 	t.Log("\n===== TEST GROUP TOKEN CREATION, MODIFICATION, MINT (-TO), BURN (-FROM), FORCE TRANSFER AND ADMIN CHANGE =====")
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfCreateProposal)})
-	verifyTfAdmin(t, ctx, chain, tfFullDenom, groupAddr)
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &tfCreateProposal)})
+	verifyTfAdmin(ctx, t, chain, tfFullDenom, groupAddr)
 
 	// Modify token metadata
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfModifyProposal)})
-	verifyBankDenomMetadata(t, ctx, chain, tfModifyProposal.Metadata)
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &tfModifyProposal)})
+	verifyBankDenomMetadata(ctx, t, chain, tfModifyProposal.Metadata)
 
 	// Mint some token to groupAddr
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfMintProposal)})
-	verifyBalance(t, ctx, chain, groupAddr, tfFullDenom, tfMintProposal.Amount.Amount)
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &tfMintProposal)})
+	verifyBalance(ctx, t, chain, groupAddr, tfFullDenom, tfMintProposal.Amount.Amount)
 
 	// Burn the token using a Group Proposal
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfBurnProposal)})
-	verifyBalance(t, ctx, chain, groupAddr, tfFullDenom, sdkmath.ZeroInt())
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &tfBurnProposal)})
+	verifyBalance(ctx, t, chain, groupAddr, tfFullDenom, sdkmath.ZeroInt())
 
 	// Mint some token to accAddr
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfMintToProposal)})
-	verifyBalance(t, ctx, chain, accAddr, tfFullDenom, tfMintToProposal.Amount.Amount)
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &tfMintToProposal)})
+	verifyBalance(ctx, t, chain, accAddr, tfFullDenom, tfMintToProposal.Amount.Amount)
 
 	// Force transfer the token from accAddr to acc2Addr using a Group Proposal
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfForceTransferProposal)})
-	verifyBalance(t, ctx, chain, accAddr, tfFullDenom, sdkmath.NewInt(4320))
-	verifyBalance(t, ctx, chain, acc2Addr, tfFullDenom, tfForceTransferProposal.Amount.Amount)
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &tfForceTransferProposal)})
+	verifyBalance(ctx, t, chain, accAddr, tfFullDenom, sdkmath.NewInt(4320))
+	verifyBalance(ctx, t, chain, acc2Addr, tfFullDenom, tfForceTransferProposal.Amount.Amount)
 
 	// Send the token from acc2Addr to accAddr
-	sendFunds(t, ctx, chain, acc2Addr, accAddr, tfFullDenom, sdkmath.OneInt())
+	sendFunds(ctx, t, chain, acc2Addr, accAddr, tfFullDenom, sdkmath.OneInt())
 
 	// Verify the token was sent
-	verifyBalance(t, ctx, chain, accAddr, tfFullDenom, sdkmath.NewInt(4321))
-	verifyBalance(t, ctx, chain, acc2Addr, tfFullDenom, sdkmath.ZeroInt())
+	verifyBalance(ctx, t, chain, accAddr, tfFullDenom, sdkmath.NewInt(4321))
+	verifyBalance(ctx, t, chain, acc2Addr, tfFullDenom, sdkmath.ZeroInt())
 
 	// Burn the token from accAddr using a Group Proposal
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfBurnFromProposal)})
-	verifyBalance(t, ctx, chain, accAddr, tfFullDenom, sdkmath.ZeroInt())
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &tfBurnFromProposal)})
+	verifyBalance(ctx, t, chain, accAddr, tfFullDenom, sdkmath.ZeroInt())
 
 	// Transfer the token to accAddr
-	createAndRunProposalSuccess(t, ctx, chain, config, accAddr, []*types.Any{createAny(t, &tfChangeAdminProposal)})
-	verifyTfAdmin(t, ctx, chain, tfFullDenom, accAddr)
+	createAndRunProposalSuccess(ctx, t, chain, config, accAddr, []*types.Any{createAny(t, &tfChangeAdminProposal)})
+	verifyTfAdmin(ctx, t, chain, tfFullDenom, accAddr)
 }
 
-func _createAndRunProposal(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposer string, proposalAny []*types.Any) error {
+func _createAndRunProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposer string, proposalAny []*types.Any) error {
 	prop := createProposal(groupAddr, []string{proposer}, proposalAny, "Proposal", "Proposal")
 	return submitVoteAndExecProposal(ctx, t, chain, config, accAddr, prop)
 }
 
-func createAndRunProposalSuccess(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposer string, proposalAny []*types.Any) {
-	err := _createAndRunProposal(t, ctx, chain, config, proposer, proposalAny)
+func createAndRunProposalSuccess(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposer string, proposalAny []*types.Any) {
+	err := _createAndRunProposal(ctx, t, chain, config, proposer, proposalAny)
 	require.NoError(t, err)
 }
 
-func createAndRunProposalFailure(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposer string, proposalAny []*types.Any, expectedErr string) {
-	err := _createAndRunProposal(t, ctx, chain, config, proposer, proposalAny)
+func createAndRunProposalFailure(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposer string, proposalAny []*types.Any, expectedErr string) {
+	err := _createAndRunProposal(ctx, t, chain, config, proposer, proposalAny)
 	require.Error(t, err)
 	require.ErrorContains(t, err, expectedErr)
 }
@@ -462,7 +468,7 @@ func createThresholdDecisionPolicy(threshold string, votingPeriod, minExecutionP
 }
 
 func createWasmStoreProposal(sender string, wasmFile string) wasmtypes.MsgStoreCode {
-	wasmBytes, err := os.ReadFile(wasmFile)
+	wasmBytes, err := os.ReadFile(wasmFile) //nolint:gosec // The path is a repository-controlled test fixture.
 	if err != nil {
 		panic(fmt.Sprintf("failed to read wasm file: %v", err))
 	}
@@ -585,42 +591,42 @@ func createTfModifyMetadataProposal(sender, denom, name, symbol, base, display, 
 	}
 }
 
-func verifyBalance(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, address, denom string, expected sdkmath.Int) {
+func verifyBalance(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, address, denom string, expected sdkmath.Int) {
 	bal, err := chain.BankQueryBalance(ctx, address, denom)
 	require.NoError(t, err)
 	require.Equal(t, expected, bal, fmt.Sprintf("expected balance %s to be %s, got %s", address, expected, bal))
 }
 
-func buildWallet(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, address, mnemonic string) {
+func buildWallet(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, address, mnemonic string) {
 	_, err := chain.BuildWallet(ctx, address, mnemonic)
 	require.NoError(t, err)
 }
 
-func _verifyUpgradePlan(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain) *upgradetypes.Plan {
+func _verifyUpgradePlan(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain) *upgradetypes.Plan {
 	plan, err := chain.UpgradeQueryPlan(ctx)
 	require.NoError(t, err)
 	return plan
 }
 
-func verifyUpgradePlanIsNil(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain) {
-	plan := _verifyUpgradePlan(t, ctx, chain)
+func verifyUpgradePlanIsNil(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain) {
+	plan := _verifyUpgradePlan(ctx, t, chain)
 	require.Nil(t, plan)
 }
 
-func verifyUpgradePlan(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, expectedPlan *upgradetypes.Plan) {
-	plan := _verifyUpgradePlan(t, ctx, chain)
+func verifyUpgradePlan(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, expectedPlan *upgradetypes.Plan) {
+	plan := _verifyUpgradePlan(ctx, t, chain)
 	require.NotNil(t, plan)
 	require.Equal(t, expectedPlan.Name, plan.Name)
 	require.Equal(t, expectedPlan.Height, plan.Height)
 }
 
-func verifyUpgradeAuthority(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, expectedAuthority string) {
+func verifyUpgradeAuthority(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, expectedAuthority string) {
 	authority, err := chain.UpgradeQueryAuthority(ctx)
 	require.NoError(t, err)
 	require.Equal(t, expectedAuthority, authority)
 }
 
-func sendFunds(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, from, to, denom string, amount sdkmath.Int) {
+func sendFunds(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, from, to, denom string, amount sdkmath.Int) {
 	err := chain.SendFunds(ctx, from, ibc.WalletAmount{
 		Address: to,
 		Denom:   denom,
@@ -629,30 +635,30 @@ func sendFunds(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, fro
 	require.NoError(t, err)
 }
 
-func verifyBankDenomMetadata(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, expectedMetadata banktypes.Metadata) {
+func verifyBankDenomMetadata(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, expectedMetadata banktypes.Metadata) {
 	meta, err := chain.BankQueryDenomMetadata(ctx, tfFullDenom)
 	require.NoError(t, err)
 	require.Equal(t, expectedMetadata, *meta)
 }
 
-func verifyTfAdmin(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, denom, expectedAdmin string) {
+func verifyTfAdmin(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, denom, expectedAdmin string) {
 	resp, err := chain.TokenFactoryQueryAdmin(ctx, denom)
 	require.NoError(t, err)
 	require.Equal(t, expectedAdmin, resp.AuthorityMetadata.Admin)
 }
 
-func createWasmInstantiateProposal(sender string, codeId uint64, msg string) wasmtypes.MsgInstantiateContract {
+func createWasmInstantiateProposal(sender string, codeID uint64, msg string) wasmtypes.MsgInstantiateContract {
 	return wasmtypes.MsgInstantiateContract{
 		Sender: sender,
 		Admin:  sender, // Set group as admin
-		CodeID: codeId,
+		CodeID: codeID,
 		Label:  "wasm-contract",
 		Msg:    []byte(msg),
 		Funds:  sdk.Coins{},
 	}
 }
 
-func queryLatestCodeId(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain) uint64 {
+func queryLatestCodeID(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain) uint64 {
 	stdout, _, err := chain.GetNode().ExecQuery(ctx, "wasm", "list-code", "--reverse")
 	require.NoError(t, err)
 
@@ -665,13 +671,13 @@ func queryLatestCodeId(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 	require.NoError(t, err)
 	require.NotEmpty(t, res.CodeInfos)
 
-	codeId, err := strconv.ParseUint(res.CodeInfos[0].CodeID, 10, 64)
+	codeID, err := strconv.ParseUint(res.CodeInfos[0].CodeID, 10, 64)
 	require.NoError(t, err)
-	return codeId
+	return codeID
 }
 
-func queryLatestContractAddress(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, codeId uint64) string {
-	stdout, _, err := chain.GetNode().ExecQuery(ctx, "wasm", "list-contract-by-code", fmt.Sprintf("%d", codeId))
+func queryLatestContractAddress(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, codeID uint64) string {
+	stdout, _, err := chain.GetNode().ExecQuery(ctx, "wasm", "list-contract-by-code", fmt.Sprintf("%d", codeID))
 	require.NoError(t, err)
 
 	var res struct {
@@ -685,14 +691,14 @@ func queryLatestContractAddress(t *testing.T, ctx context.Context, chain *cosmos
 }
 
 // testGroupProviderAndSKU tests provider and SKU creation/management via group proposals.
-func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposerAddr string) {
+func testGroupProviderAndSKU(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposerAddr string) {
 	t.Log("\n===== TEST GROUP PROVIDER AND SKU MANAGEMENT =====")
 
 	// Create provider via group proposal
 	var providerUUID string
 	t.Run("create_provider_via_proposal", func(t *testing.T) {
 		createProviderMsg := createSKUCreateProviderProposal(groupAddr, groupAddr, groupAddr, nil)
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createProviderMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &createProviderMsg)})
 
 		// Query providers to get the created provider ID
 		providers, err := helpers.SKUQueryProviders(ctx, chain)
@@ -714,8 +720,8 @@ func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.Co
 	t.Run("create_sku_via_proposal", func(t *testing.T) {
 		// Price: 3600 umfx per hour (evenly divisible by 3600 seconds)
 		basePrice := sdk.NewInt64Coin(Denom, 3600)
-		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerUUID, "Compute Small", skutypes.Unit_UNIT_PER_HOUR, basePrice, nil)
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
+		createSKUMsg := createSKUCreateSKUProposal(providerUUID, "Compute Small", skutypes.Unit_UNIT_PER_HOUR, basePrice)
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
 
 		// Query SKUs to get the created SKU ID
 		skus, err := helpers.SKUQuerySKUs(ctx, chain)
@@ -735,7 +741,7 @@ func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.Co
 	// Update provider via group proposal
 	t.Run("update_provider_via_proposal", func(t *testing.T) {
 		updateProviderMsg := createSKUUpdateProviderProposal(groupAddr, providerUUID, groupAddr, acc2Addr, true, []byte("cafebabe"))
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &updateProviderMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &updateProviderMsg)})
 
 		// Verify update
 		provider, err := helpers.SKUQueryProvider(ctx, chain, providerUUID)
@@ -748,7 +754,7 @@ func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.Co
 		// Updated price: 7200 umfx per hour
 		updatedPrice := sdk.NewInt64Coin(Denom, 7200)
 		updateSKUMsg := createSKUUpdateSKUProposal(groupAddr, skuUUID, providerUUID, "Compute Medium", skutypes.Unit_UNIT_PER_HOUR, updatedPrice, true, nil)
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &updateSKUMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &updateSKUMsg)})
 
 		// Verify update
 		sku, err := helpers.SKUQuerySKU(ctx, chain, skuUUID)
@@ -761,8 +767,8 @@ func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.Co
 	var skuToDeactivateUUID string
 	t.Run("create_sku_for_deactivation", func(t *testing.T) {
 		basePrice := sdk.NewInt64Coin(Denom, 86400) // 86400 umfx per day
-		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerUUID, "Storage Large", skutypes.Unit_UNIT_PER_DAY, basePrice, nil)
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
+		createSKUMsg := createSKUCreateSKUProposal(providerUUID, "Storage Large", skutypes.Unit_UNIT_PER_DAY, basePrice)
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
 
 		// Get the SKU ID
 		skus, err := helpers.SKUQuerySKUs(ctx, chain)
@@ -773,7 +779,7 @@ func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.Co
 	// Deactivate SKU via group proposal
 	t.Run("deactivate_sku_via_proposal", func(t *testing.T) {
 		deactivateSKUMsg := createSKUDeactivateSKUProposal(groupAddr, skuToDeactivateUUID)
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &deactivateSKUMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &deactivateSKUMsg)})
 
 		// Verify deactivation
 		sku, err := helpers.SKUQuerySKU(ctx, chain, skuToDeactivateUUID)
@@ -785,7 +791,7 @@ func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.Co
 	var providerToDeactivateUUID string
 	t.Run("create_provider_for_deactivation", func(t *testing.T) {
 		createProviderMsg := createSKUCreateProviderProposal(groupAddr, acc3Addr, acc3Addr, nil)
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createProviderMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &createProviderMsg)})
 
 		providers, err := helpers.SKUQueryProviders(ctx, chain)
 		require.NoError(t, err)
@@ -795,7 +801,7 @@ func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.Co
 	// Deactivate provider via group proposal
 	t.Run("deactivate_provider_via_proposal", func(t *testing.T) {
 		deactivateProviderMsg := createSKUDeactivateProviderProposal(groupAddr, providerToDeactivateUUID)
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &deactivateProviderMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &deactivateProviderMsg)})
 
 		// Verify deactivation
 		provider, err := helpers.SKUQueryProvider(ctx, chain, providerToDeactivateUUID)
@@ -805,7 +811,7 @@ func testGroupProviderAndSKU(t *testing.T, ctx context.Context, chain *cosmos.Co
 }
 
 // testGroupLeaseCreation tests lease creation via group proposals (as POA admin authority).
-func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposerAddr string) {
+func testGroupLeaseCreation(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposerAddr string) {
 	t.Log("\n===== TEST GROUP LEASE CREATION =====")
 
 	node := chain.GetNode()
@@ -818,7 +824,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 			Sender:   groupAddr,
 			Subdenom: pwrSubdenom,
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createDenomMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &createDenomMsg)})
 		pwrDenom = fmt.Sprintf("factory/%s/%s", groupAddr, pwrSubdenom)
 		t.Logf("Created PWR denom: %s", pwrDenom)
 	})
@@ -830,7 +836,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 			Amount:        sdk.NewInt64Coin(pwrDenom, 1_000_000_000_000),
 			MintToAddress: groupAddr,
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &mintMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &mintMsg)})
 
 		// Verify minting
 		balance, err := chain.GetBalance(ctx, groupAddr, pwrDenom)
@@ -852,7 +858,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 				AllowedList:               nil, // Empty allowed list - only authority can create leases for tenants
 			},
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &updateParamsMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &updateParamsMsg)})
 
 		// Verify params
 		params, err := helpers.BillingQueryParams(ctx, chain)
@@ -872,8 +878,8 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 	t.Run("create_pwr_sku_via_proposal", func(t *testing.T) {
 		// Price: 7200 upwr per hour (2 upwr per second)
 		basePrice := sdk.NewInt64Coin(pwrDenom, 7200)
-		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerUUID, "Compute PWR", skutypes.Unit_UNIT_PER_HOUR, basePrice, nil)
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
+		createSKUMsg := createSKUCreateSKUProposal(providerUUID, "Compute PWR", skutypes.Unit_UNIT_PER_HOUR, basePrice)
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
 
 		// Query SKUs to get the created SKU ID
 		skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerUUID)
@@ -909,7 +915,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// so the FundCredit can transfer from there to the credit account
 		// The group already has PWR from minting, so we can directly fund
 
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &fundCreditMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &fundCreditMsg)})
 
 		// Verify credit account
 		creditRes, err := helpers.BillingQueryCreditAccount(ctx, chain, tenantAddr)
@@ -928,13 +934,13 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 				{SkuUuid: activeSKUUUID, Quantity: 1},
 			},
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
 
 		// Query leases to get the created lease ID (query all, not just active, since lease is PENDING)
 		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "")
 		require.NoError(t, err)
 		require.NotEmpty(t, leases.Leases, "tenant should have at least one lease")
-		leaseID = leases.Leases[len(leases.Leases)-1].Uuid
+		leaseID = leases.Leases[len(leases.Leases)-1].UUID
 		t.Logf("Created lease UUID: %s for tenant: %s", leaseID, tenantAddr)
 
 		// Verify lease is in PENDING state
@@ -950,7 +956,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 			Sender:     groupAddr,
 			LeaseUuids: []string{leaseID},
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
 
 		// Verify lease is now ACTIVE
 		lease, err := helpers.BillingQueryLease(ctx, chain, leaseID)
@@ -983,7 +989,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 				{SkuUuid: activeSKUUUID, Quantity: 2},
 			},
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
 
 		// Query all leases (not just active since this one is PENDING)
 		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "")
@@ -992,7 +998,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		// Get the most recent PENDING lease
 		for i := len(leases.Leases) - 1; i >= 0; i-- {
 			if leases.Leases[i].GetState() == billingtypes.LEASE_STATE_PENDING {
-				withdrawLeaseID = leases.Leases[i].Uuid
+				withdrawLeaseID = leases.Leases[i].UUID
 				break
 			}
 		}
@@ -1005,7 +1011,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 			Sender:     groupAddr,
 			LeaseUuids: []string{withdrawLeaseID},
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
 
 		// Verify lease is now ACTIVE
 		lease, err := helpers.BillingQueryLease(ctx, chain, withdrawLeaseID)
@@ -1032,7 +1038,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 			Sender:     groupAddr,
 			LeaseUuids: []string{withdrawLeaseID},
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &withdrawMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &withdrawMsg)})
 
 		// Verify provider received funds
 		newBalance, err := chain.GetBalance(ctx, payoutAddr, pwrDenom)
@@ -1047,7 +1053,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 			Sender:     groupAddr,
 			LeaseUuids: []string{withdrawLeaseID},
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &closeLeaseMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &closeLeaseMsg)})
 
 		// Verify lease is closed
 		lease, err := helpers.BillingQueryLease(ctx, chain, withdrawLeaseID)
@@ -1065,7 +1071,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 				{SkuUuid: activeSKUUUID, Quantity: 1},
 			},
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &createLeaseForTenantMsg)})
 
 		// Query to get the new lease ID (PENDING state)
 		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "")
@@ -1073,7 +1079,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		var withdrawAllLeaseID string
 		for i := len(leases.Leases) - 1; i >= 0; i-- {
 			if leases.Leases[i].GetState() == billingtypes.LEASE_STATE_PENDING {
-				withdrawAllLeaseID = leases.Leases[i].Uuid
+				withdrawAllLeaseID = leases.Leases[i].UUID
 				break
 			}
 		}
@@ -1084,7 +1090,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 			Sender:     groupAddr,
 			LeaseUuids: []string{withdrawAllLeaseID},
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
 
 		// Wait for some accrual
 		require.NoError(t, testutil.WaitForBlocks(ctx, 3, chain))
@@ -1095,15 +1101,15 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 			ProviderUuid: providerUUID,
 			Limit:        0, // Use default limit
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &withdrawMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &withdrawMsg)})
 	})
 
 	// Test multi-SKU lease creation
 	t.Run("create_multi_sku_lease", func(t *testing.T) {
 		// Create another SKU for multi-item lease (priced in PWR to match tenant credit)
 		basePrice := sdk.NewInt64Coin(pwrDenom, 86400) // 86400 upwr per day (1 upwr per second)
-		createSKUMsg := createSKUCreateSKUProposal(groupAddr, providerUUID, "Storage Small", skutypes.Unit_UNIT_PER_DAY, basePrice, nil)
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
+		createSKUMsg := createSKUCreateSKUProposal(providerUUID, "Storage Small", skutypes.Unit_UNIT_PER_DAY, basePrice)
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &createSKUMsg)})
 
 		// Get the new SKU ID (find a PWR-priced SKU that's not activeSKUUUID)
 		skus, err := helpers.SKUQuerySKUsByProvider(ctx, chain, providerUUID)
@@ -1126,7 +1132,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 				{SkuUuid: secondSKUUUID, Quantity: 1},
 			},
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &createMultiLeaseMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &createMultiLeaseMsg)})
 
 		// Get the newly created PENDING lease
 		leases, err := helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "")
@@ -1134,7 +1140,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		var multiLeaseID string
 		for i := len(leases.Leases) - 1; i >= 0; i-- {
 			if leases.Leases[i].GetState() == billingtypes.LEASE_STATE_PENDING && len(leases.Leases[i].Items) == 2 {
-				multiLeaseID = leases.Leases[i].Uuid
+				multiLeaseID = leases.Leases[i].UUID
 				break
 			}
 		}
@@ -1145,7 +1151,7 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 			Sender:     groupAddr,
 			LeaseUuids: []string{multiLeaseID},
 		}
-		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
+		createAndRunProposalSuccess(ctx, t, chain, config, proposerAddr, []*types.Any{createAny(t, &ackLeaseMsg)})
 
 		// Verify multi-SKU lease is now active
 		leases, err = helpers.BillingQueryLeasesByTenant(ctx, chain, tenantAddr, "active")
@@ -1196,14 +1202,13 @@ func createSKUDeactivateProviderProposal(authority string, uuid string) skutypes
 	}
 }
 
-func createSKUCreateSKUProposal(authority string, providerUUID string, name string, unit skutypes.Unit, basePrice sdk.Coin, metaHash []byte) skutypes.MsgCreateSKU {
+func createSKUCreateSKUProposal(providerUUID, name string, unit skutypes.Unit, basePrice sdk.Coin) skutypes.MsgCreateSKU {
 	return skutypes.MsgCreateSKU{
-		Authority:    authority,
+		Authority:    groupAddr,
 		ProviderUuid: providerUUID,
 		Name:         name,
 		Unit:         unit,
 		BasePrice:    basePrice,
-		MetaHash:     metaHash,
 	}
 }
 

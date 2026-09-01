@@ -1,0 +1,23 @@
+# Security-sensitive release and consensus surfaces. @fmorency is currently the
+# repository's only administrator; replace or supplement this principal with a
+# dedicated release/consensus team when one is created.
+/.github/workflows/ @fmorency
+/.github/dependabot.yml @fmorency
+/.github/CODEOWNERS @fmorency
+/.dockerignore @fmorency
+/.goreleaser.yaml @fmorency
+/Dockerfile @fmorency
+/Makefile @fmorency
+/go.mod @fmorency
+/go.sum @fmorency
+/go.work @fmorency
+/scripts/ @fmorency
+/tools/ @fmorency
+
+/app/ @fmorency
+/api/liftedinit/billing/ @fmorency
+/api/liftedinit/sku/ @fmorency
+/proto/liftedinit/billing/ @fmorency
+/proto/liftedinit/sku/ @fmorency
+/x/billing/ @fmorency
+/x/sku/ @fmorency

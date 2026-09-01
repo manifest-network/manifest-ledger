@@ -153,6 +153,71 @@ func TestGenesisValidate_RejectsAmbiguousCustomDomain(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrAmbiguousLeaseItem)
 }
 
+func TestGenesisValidate_RejectsDuplicateLiveCustomDomain(t *testing.T) {
+	now := time.Now().UTC()
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+	const domain = "shared.example.com"
+	const providerUUID = "01912345-6789-7abc-8def-dddddddddddd"
+	const skuUUID = "01912345-6789-7abc-8def-bbbbbbbbbbbb"
+
+	newLease := func(uuid, serviceName string, state types.LeaseState) types.Lease {
+		return types.Lease{
+			Uuid:         uuid,
+			Tenant:       tenantAddr.String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{{
+				SkuUuid:      skuUUID,
+				Quantity:     1,
+				LockedPrice:  sdk.NewCoin("umfx", math.NewInt(1)),
+				ServiceName:  serviceName,
+				CustomDomain: domain,
+			}},
+			State:         state,
+			CreatedAt:     now,
+			LastSettledAt: now,
+		}
+	}
+
+	for _, validate := range []struct {
+		name string
+		fn   func(*types.GenesisState) error
+	}{
+		{name: "import", fn: (*types.GenesisState).Validate},
+		{name: "strict", fn: (*types.GenesisState).ValidateStrict},
+	} {
+		t.Run(validate.name, func(t *testing.T) {
+			gs := &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					newLease("01912345-6789-7abc-8def-aaaaaaaaaaa1", "web", types.LEASE_STATE_PENDING),
+					newLease("01912345-6789-7abc-8def-aaaaaaaaaaa2", "api", types.LEASE_STATE_ACTIVE),
+				},
+				LeaseSequence: 2,
+			}
+
+			err := validate.fn(gs)
+			require.ErrorIs(t, err, types.ErrCustomDomainAlreadyClaimed)
+			require.Contains(t, err.Error(), domain)
+			require.Contains(t, err.Error(), gs.Leases[0].Uuid)
+			require.Contains(t, err.Error(), gs.Leases[1].Uuid)
+		})
+	}
+
+	t.Run("terminal audit fields do not own the domain", func(t *testing.T) {
+		gs := &types.GenesisState{
+			Params: types.DefaultParams(),
+			Leases: []types.Lease{
+				newLease("01912345-6789-7abc-8def-aaaaaaaaaaa1", "web", types.LEASE_STATE_REJECTED),
+				newLease("01912345-6789-7abc-8def-aaaaaaaaaaa2", "api", types.LEASE_STATE_EXPIRED),
+			},
+			LeaseSequence: 2,
+		}
+
+		require.NoError(t, gs.Validate())
+		require.NoError(t, gs.ValidateStrict())
+	})
+}
+
 // TestGenesisValidateStrict_RejectsReservedSuffixCustomDomain verifies that
 // strict authoring validation refuses a custom_domain claim that falls under a
 // reserved provider suffix in the same Params.ReservedDomainSuffixes list.

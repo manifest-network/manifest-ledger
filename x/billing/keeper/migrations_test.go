@@ -247,7 +247,12 @@ func TestMigratorMigrate2to3RepairsReservationFloorAndLeaseCounts(t *testing.T) 
 			balanceBeforeMigration := f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress)
 
 			preMigrationGenesis := f.App.BillingKeeper.ExportGenesis(f.Ctx)
-			require.ErrorContains(t, preMigrationGenesis.Validate(), "below known non-legacy lease reservations")
+			preparedGenesis, err := preMigrationGenesis.PrepareForImport()
+			require.NoError(t, err)
+			require.Len(t, preparedGenesis.CreditAccounts, 1)
+			require.True(t, underBacked.Equal(preMigrationGenesis.CreditAccounts[0].ReservedAmounts),
+				"import preparation must not mutate the exported source",
+			)
 
 			require.NoError(t, keeper.NewMigrator(f.App.BillingKeeper).Migrate2to3(f.Ctx))
 			require.Equal(t, balanceBeforeMigration, f.App.BankKeeper.GetAllBalances(f.Ctx, creditAddress),
@@ -263,6 +268,9 @@ func TestMigratorMigrate2to3RepairsReservationFloorAndLeaseCounts(t *testing.T) 
 			require.True(t, expectedAfterMigration.Equal(repairedAccount.ReservedAmounts),
 				"migration must preserve only unknown live-legacy excess",
 			)
+			require.True(t, preparedGenesis.CreditAccounts[0].ReservedAmounts.Equal(repairedAccount.ReservedAmounts),
+				"direct import preparation and the live v2-to-v3 migration must apply the same repair policy",
+			)
 			require.Equal(t, uint64(1), repairedAccount.ActiveLeaseCount)
 			expectedPendingCount := uint64(1)
 			if tc.legacyState == types.LEASE_STATE_PENDING {
@@ -271,6 +279,8 @@ func TestMigratorMigrate2to3RepairsReservationFloorAndLeaseCounts(t *testing.T) 
 			require.Equal(t, expectedPendingCount, repairedAccount.PendingLeaseCount,
 				"migration must reconstruct byte-identity lease counts rather than preserve alias-corrupted counters",
 			)
+			require.Equal(t, repairedAccount.ActiveLeaseCount, preparedGenesis.CreditAccounts[0].ActiveLeaseCount)
+			require.Equal(t, repairedAccount.PendingLeaseCount, preparedGenesis.CreditAccounts[0].PendingLeaseCount)
 
 			// Re-running the migration after the repair is byte-for-byte stable.
 			repairedRawAccount := bytes.Clone(store.Get(accountKey))
@@ -361,7 +371,7 @@ func TestMigratorMigrate2to3RepairsBech32AliasLeaseCount(t *testing.T) {
 	require.NoError(t, err)
 	store.Set(accountKey, legacyAccount)
 
-	require.ErrorContains(t, f.App.BillingKeeper.ExportGenesis(f.Ctx).Validate(), "has 2 active leases")
+	require.ErrorContains(t, f.App.BillingKeeper.ExportGenesis(f.Ctx).ValidateStrict(), "has 2 active leases")
 	require.NoError(t, keeper.NewMigrator(f.App.BillingKeeper).Migrate2to3(f.Ctx))
 
 	repaired, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
@@ -369,7 +379,7 @@ func TestMigratorMigrate2to3RepairsBech32AliasLeaseCount(t *testing.T) {
 	require.Equal(t, uint64(2), repaired.ActiveLeaseCount)
 	require.Zero(t, repaired.PendingLeaseCount)
 	require.True(t, account.ReservedAmounts.Equal(repaired.ReservedAmounts))
-	require.NoError(t, f.App.BillingKeeper.ExportGenesis(f.Ctx).Validate())
+	require.NoError(t, f.App.BillingKeeper.ExportGenesis(f.Ctx).ValidateStrict())
 }
 
 func TestMigratorMigrate2to3ProcessesMultipleOrderedPages(t *testing.T) {

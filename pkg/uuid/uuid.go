@@ -79,12 +79,12 @@ func GenerateUUIDv7WithEntropy(t time.Time, headerHash []byte, chainID, moduleNa
 	var uuid [16]byte
 
 	// Bytes 0-5: 48-bit timestamp (big-endian)
-	uuid[0] = byte(ms >> 40)
-	uuid[1] = byte(ms >> 32)
-	uuid[2] = byte(ms >> 24)
-	uuid[3] = byte(ms >> 16)
-	uuid[4] = byte(ms >> 8)
-	uuid[5] = byte(ms)
+	uuid[0] = byte((ms >> 40) & 0xFF)
+	uuid[1] = byte((ms >> 32) & 0xFF)
+	uuid[2] = byte((ms >> 24) & 0xFF)
+	uuid[3] = byte((ms >> 16) & 0xFF)
+	uuid[4] = byte((ms >> 8) & 0xFF)
+	uuid[5] = byte(ms & 0xFF)
 
 	// Bytes 6-7: version (7) and 12-bit sequence
 	// High 4 bits of byte 6 = version 7
@@ -100,13 +100,13 @@ func GenerateUUIDv7WithEntropy(t time.Time, headerHash []byte, chainID, moduleNa
 	uuid[8] = 0x80 | byte((nodeHash>>56)&0x3F)
 
 	// Bytes 9-15: remaining node bits
-	uuid[9] = byte(nodeHash >> 48)
-	uuid[10] = byte(nodeHash >> 40)
-	uuid[11] = byte(nodeHash >> 32)
-	uuid[12] = byte(nodeHash >> 24)
-	uuid[13] = byte(nodeHash >> 16)
-	uuid[14] = byte(nodeHash >> 8)
-	uuid[15] = byte(nodeHash)
+	uuid[9] = byte((nodeHash >> 48) & 0xFF)
+	uuid[10] = byte((nodeHash >> 40) & 0xFF)
+	uuid[11] = byte((nodeHash >> 32) & 0xFF)
+	uuid[12] = byte((nodeHash >> 24) & 0xFF)
+	uuid[13] = byte((nodeHash >> 16) & 0xFF)
+	uuid[14] = byte((nodeHash >> 8) & 0xFF)
+	uuid[15] = byte(nodeHash & 0xFF)
 
 	return formatUUID(uuid)
 }

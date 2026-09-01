@@ -34,7 +34,7 @@ message Provider {
   option (amino.name) = "lifted/sku/Provider";
 
   // uuid is the unique identifier for the provider (UUIDv7 format).
-  string uuid = 1 [(gogoproto.jsontag) = "uuid,omitempty"];
+  string uuid = 1 [ (gogoproto.jsontag) = "uuid,omitempty" ];
 
   // address is the management address of the provider.
   string address = 2 [
@@ -49,15 +49,15 @@ message Provider {
   ];
 
   // meta_hash is a hash of the off-chain metadata (name, description, etc.).
-  bytes meta_hash = 4 [(gogoproto.jsontag) = "meta_hash,omitempty"];
+  bytes meta_hash = 4 [ (gogoproto.jsontag) = "meta_hash,omitempty" ];
 
   // active indicates whether the provider is active.
-  bool active = 5 [(gogoproto.jsontag) = "active,omitempty"];
+  bool active = 5 [ (gogoproto.jsontag) = "active,omitempty" ];
 
   // api_url is the HTTPS endpoint where the provider's off-chain API is hosted.
   // Tenants use this URL to retrieve connection details for their leases.
   // Must be a valid HTTPS URL.
-  string api_url = 6 [(gogoproto.jsontag) = "api_url,omitempty"];
+  string api_url = 6 [ (gogoproto.jsontag) = "api_url,omitempty" ];
 }
 
 // SKU defines a stock keeping unit for on-chain billing.
@@ -65,16 +65,16 @@ message SKU {
   option (amino.name) = "lifted/sku/SKU";
 
   // uuid is the unique identifier for the SKU (UUIDv7 format).
-  string uuid = 1 [(gogoproto.jsontag) = "uuid,omitempty"];
+  string uuid = 1 [ (gogoproto.jsontag) = "uuid,omitempty" ];
 
   // provider_uuid is the unique identifier of the SKU provider.
-  string provider_uuid = 2 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
+  string provider_uuid = 2 [ (gogoproto.jsontag) = "provider_uuid,omitempty" ];
 
   // name is the human-readable name of the SKU.
-  string name = 3 [(gogoproto.jsontag) = "name,omitempty"];
+  string name = 3 [ (gogoproto.jsontag) = "name,omitempty" ];
 
   // unit is the billing unit for the SKU.
-  Unit unit = 4 [(gogoproto.jsontag) = "unit,omitempty"];
+  Unit unit = 4 [ (gogoproto.jsontag) = "unit,omitempty" ];
 
   // base_price is the base price for the SKU.
   cosmos.base.v1beta1.Coin base_price = 5 [
@@ -86,8 +86,8 @@ message SKU {
   ];
 
   // meta_hash is a hash of the off-chain metadata.
-  bytes meta_hash = 6 [(gogoproto.jsontag) = "meta_hash,omitempty"];
+  bytes meta_hash = 6 [ (gogoproto.jsontag) = "meta_hash,omitempty" ];
 
   // active indicates whether the SKU is active.
-  bool active = 7 [(gogoproto.jsontag) = "active,omitempty"];
+  bool active = 7 [ (gogoproto.jsontag) = "active,omitempty" ];
 }

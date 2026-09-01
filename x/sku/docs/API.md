@@ -72,6 +72,7 @@ manifestd tx sku update-provider [uuid] [address] [payout-address] [active] [fla
 | Flag | Type | Description |
 |------|------|-------------|
 | --api-url | string | HTTPS endpoint for provider's off-chain API (optional) |
+| --clear-api-url | bool | Clear the stored API URL; cannot be combined with a non-empty `--api-url` |
 | --meta-hash | string | Hex-encoded hash of off-chain metadata (optional) |
 
 **Example:**
@@ -80,9 +81,16 @@ manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1p
   --api-url https://api.provider.com \
   --meta-hash cafebabe \
   --from authority
+
+# Clear the stored API URL while updating the other required fields:
+manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1provider... manifest1payout... true \
+  --clear-api-url \
+  --from authority
 ```
 
-**Note:** If `--api-url` is omitted (empty string), the existing API URL is preserved. This allows updating other fields without accidentally clearing the API URL.
+**Note:** If `--api-url` is omitted (empty string), the existing API URL is
+preserved. Use `--clear-api-url` to remove it. Supplying both
+`--clear-api-url` and a non-empty `--api-url` is rejected.
 
 ---
 
@@ -234,7 +242,23 @@ manifestd tx sku update-params \
 
 ### Query Commands
 
-**Pagination note:** For the index-backed queries below (`provider-by-address`, `providers`, `skus`, `skus-by-provider`), cursor resume is deletion-tolerant — a `--page-key` whose row was removed between calls resumes from the next surviving entry rather than returning an empty page — and `--reverse` may be combined with `--page-key`. The `next_key` value is unchanged on the wire, so existing paging clients need no change.
+**Query cursor contract:** `pagination.next_key` is opaque `bytes`. JSON and CLI
+output encode it as base64; pass that string verbatim to `--page-key`. Do not
+decode it in the shell or treat it as a UUID. Programmatic gRPC clients pass the
+decoded bytes in `PageRequest.key`. The cursor identifies the first unread row,
+and the next scan resumes inclusively at that key. `--reverse` may be combined
+with `--page-key` and resumes in the same direction.
+
+SKU list queries are cursor-only: non-zero `--offset`, `--page` greater than 1,
+and `--count-total` are rejected because they require work proportional to
+earlier rows or the entire collection. Cursor resume on index-backed paths is
+deletion-tolerant: if the cursor row is removed between calls, the query starts
+at the nearest surviving row in the requested direction.
+
+The SDK default page size is 100, oversized `limit` values are clamped to 1000,
+and filtered index pages inspect at most 1000 rows per request. A sparse filter
+can therefore return a short or empty page with a non-empty `next_key`; bulk
+indexers must continue until that cursor is empty.
 
 #### params
 
@@ -302,7 +326,7 @@ manifestd query sku provider-by-address [address] [flags]
 |------|------|-------------|
 | --active-only | bool | Filter to return only active providers |
 | --limit | uint64 | Pagination limit |
-| --page-key | string | Pagination key from previous response |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
 
 **Example:**
 ```bash
@@ -346,7 +370,7 @@ manifestd query sku providers [flags]
 |------|------|-------------|
 | --active-only | bool | Filter to return only active providers |
 | --limit | uint64 | Pagination limit |
-| --page-key | string | Pagination key from previous response |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
 
 **Example:**
 ```bash
@@ -421,7 +445,7 @@ manifestd query sku skus [flags]
 |------|------|-------------|
 | --active-only | bool | Filter to return only active SKUs |
 | --limit | uint64 | Pagination limit |
-| --page-key | string | Pagination key from previous response |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
 
 **Example:**
 ```bash
@@ -448,7 +472,7 @@ manifestd query sku skus-by-provider [provider-uuid] [flags]
 |------|------|-------------|
 | --active-only | bool | Filter to return only active SKUs |
 | --limit | uint64 | Pagination limit |
-| --page-key | string | Pagination key from previous response |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
 
 **Example:**
 ```bash
@@ -514,6 +538,7 @@ message MsgUpdateProvider {
   bytes meta_hash = 5;        // New metadata hash
   bool active = 6;            // Active status
   string api_url = 7;         // HTTPS endpoint for off-chain API
+  bool clear_api_url = 8;     // Explicitly clear the stored API URL
 }
 ```
 
@@ -523,7 +548,12 @@ message MsgUpdateProviderResponse {}
 ```
 
 **Notes:**
-- If `api_url` is an empty string, the existing API URL is preserved rather than being cleared. This allows updating other fields without modifying the API URL.
+- If `api_url` is empty and `clear_api_url` is false, the existing API URL is
+  preserved. This retains the behavior of clients built before tag 8 existed.
+- If `clear_api_url` is true, the stored API URL is cleared. The request is
+  rejected if `api_url` is also non-empty.
+- This is a transaction-only wire addition. Provider storage and genesis are
+  unchanged, so no module or store migration is required.
 - **Reactivation is allowed:** Setting `active=true` on an inactive provider will reactivate it.
 - **Deactivation is forbidden:** Setting `active=false` on an active provider will return an error. Use `MsgDeactivateProvider` instead, which properly cascades deactivation to all associated SKUs.
 

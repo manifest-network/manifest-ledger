@@ -153,6 +153,27 @@ func (p *Params) Validate() error {
 	return nil
 }
 
+// CanonicalUniqueAddresses canonicalizes SDK account addresses and removes
+// equivalent Bech32 spellings while preserving their first-seen slice order.
+// The map is used only for membership lookup and is never iterated.
+func CanonicalUniqueAddresses(addresses []string) ([]string, error) {
+	canonical := make([]string, 0, len(addresses))
+	seen := make(map[string]struct{}, len(addresses))
+	for _, address := range addresses {
+		decoded, err := sdk.AccAddressFromBech32(address)
+		if err != nil {
+			return nil, ErrInvalidParams.Wrapf("invalid address in allowed list: %s", address)
+		}
+		identity := string(decoded.Bytes())
+		if _, exists := seen[identity]; exists {
+			continue
+		}
+		seen[identity] = struct{}{}
+		canonical = append(canonical, decoded.String())
+	}
+	return canonical, nil
+}
+
 // IsAllowed checks if an address is in the allowed list.
 func (p Params) IsAllowed(addr string) bool {
 	candidate, err := sdk.AccAddressFromBech32(addr)

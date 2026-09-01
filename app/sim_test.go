@@ -7,8 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"runtime/debug"
-	"strings"
+	"slices"
 	"testing"
 	"time"
 
@@ -144,6 +143,7 @@ func TestFullAppSimulation(t *testing.T) {
 		t.Skip("skipping application simulation")
 	}
 	require.NoError(t, err, "simulation setup failed")
+	markSimulationComplete := requireSimulationCompletion(t)
 
 	defer func() {
 		require.NoError(t, db.Close())
@@ -167,7 +167,7 @@ func TestFullAppSimulation(t *testing.T) {
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// run randomized simulation
-	_, simParams, simErr := simulation.SimulateFromSeed(
+	stopEarly, simParams, simErr := simulation.SimulateFromSeed(
 		t,
 		os.Stdout,
 		bApp.BaseApp,
@@ -183,10 +183,12 @@ func TestFullAppSimulation(t *testing.T) {
 	err = simtestutil.CheckExportSimulation(bApp, config, simParams)
 	require.NoError(t, err)
 	require.NoError(t, simErr)
+	require.False(t, stopEarly, "simulation stopped before all configured blocks completed")
 
 	if config.Commit {
 		simtestutil.PrintStats(db)
 	}
+	markSimulationComplete()
 }
 
 func TestAppImportExport(t *testing.T) {
@@ -198,6 +200,7 @@ func TestAppImportExport(t *testing.T) {
 		t.Skip("skipping application import/export simulation")
 	}
 	require.NoError(t, err, "simulation setup failed")
+	markSimulationComplete := requireSimulationCompletion(t)
 
 	cfg := sdk.GetConfig()
 	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
@@ -221,7 +224,7 @@ func TestAppImportExport(t *testing.T) {
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// Run randomized simulation
-	_, simParams, simErr := simulation.SimulateFromSeed(
+	stopEarly, simParams, simErr := simulation.SimulateFromSeed(
 		t,
 		os.Stdout,
 		bApp.BaseApp,
@@ -237,6 +240,7 @@ func TestAppImportExport(t *testing.T) {
 	err = simtestutil.CheckExportSimulation(bApp, config, simParams)
 	require.NoError(t, err)
 	require.NoError(t, simErr)
+	require.False(t, stopEarly, "simulation stopped before all configured blocks completed")
 
 	if config.Commit {
 		simtestutil.PrintStats(db)
@@ -264,13 +268,6 @@ func TestAppImportExport(t *testing.T) {
 	ctxA := bApp.NewContextLegacy(true, cmtproto.Header{Height: bApp.LastBlockHeight()})
 	ctxB := newApp.NewContextLegacy(true, cmtproto.Header{Height: bApp.LastBlockHeight()})
 	_, err = newApp.InitChainer(ctxB, &abci.RequestInitChain{AppStateBytes: exported.AppState})
-	if err != nil {
-		if strings.Contains(err.Error(), "validator set is empty after InitGenesis") {
-			logger.Info("Skipping simulation as all validators have been unbonded")
-			logger.Info("err", err, "stacktrace", string(debug.Stack()))
-			return
-		}
-	}
 	require.NoError(t, err)
 	err = newApp.StoreConsensusParams(ctxB, exported.ConsensusParams)
 	require.NoError(t, err)
@@ -310,6 +307,7 @@ func TestAppImportExport(t *testing.T) {
 
 		require.Equal(t, 0, len(failedKVAs), simtestutil.GetSimulationLog(keyName, bApp.SimulationManager().StoreDecoders, failedKVAs, failedKVBs))
 	}
+	markSimulationComplete()
 }
 
 func TestAppSimulationAfterImport(t *testing.T) {
@@ -330,6 +328,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		t.Skip("skipping application simulation after import")
 	}
 	require.NoError(t, err, "simulation setup failed")
+	markSimulationComplete := requireSimulationCompletion(t)
 
 	defer func() {
 		require.NoError(t, db.Close())
@@ -343,12 +342,30 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, bApp.Name())
 
+	var (
+		simulationAccounts    []simulationtypes.Account
+		simulationChainID     string
+		simulationGenesisTime time.Time
+	)
+	newGenesisState := simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis())
+	recordGenesisState := func(
+		r *rand.Rand,
+		accounts []simulationtypes.Account,
+		config simulationtypes.Config,
+	) (json.RawMessage, []simulationtypes.Account, string, time.Time) {
+		appState, accounts, chainID, genesisTime := newGenesisState(r, accounts, config)
+		simulationAccounts = slices.Clone(accounts)
+		simulationChainID = chainID
+		simulationGenesisTime = genesisTime
+		return appState, accounts, chainID, genesisTime
+	}
+
 	// Run randomized simulation
 	stopEarly, simParams, simErr := simulation.SimulateFromSeed(
 		t,
 		os.Stdout,
 		bApp.BaseApp,
-		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
+		recordGenesisState,
 		simulationtypes.RandomAccounts,
 		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
 		app.BlockedAddresses(),
@@ -360,14 +377,13 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	err = simtestutil.CheckExportSimulation(bApp, config, simParams)
 	require.NoError(t, err)
 	require.NoError(t, simErr)
+	require.False(t, stopEarly, "simulation stopped before all configured blocks completed")
+	require.NotEmpty(t, simulationAccounts, "simulation genesis did not return signing accounts")
+	require.NotEmpty(t, simulationChainID, "simulation genesis did not return a chain ID")
+	require.False(t, simulationGenesisTime.IsZero(), "simulation genesis did not return a timestamp")
 
 	if config.Commit {
 		simtestutil.PrintStats(db)
-	}
-
-	if stopEarly {
-		fmt.Println("can't export or import a zero-validator genesis, exiting test...")
-		return
 	}
 
 	fmt.Printf("exporting genesis...\n")
@@ -389,30 +405,38 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
 	require.Equal(t, app.AppName, newApp.Name())
 
-	_, err = newApp.InitChain(&abci.RequestInitChain{
-		AppStateBytes: exported.AppState,
-		ChainId:       SimAppChainID,
-	})
-	require.NoError(t, err)
+	importGenesisCalls := 0
+	importGenesisState := func(
+		_ *rand.Rand,
+		_ []simulationtypes.Account,
+		_ simulationtypes.Config,
+	) (json.RawMessage, []simulationtypes.Account, string, time.Time) {
+		importGenesisCalls++
+		return slices.Clone(exported.AppState), slices.Clone(simulationAccounts), simulationChainID, simulationGenesisTime
+	}
 
-	_, _, err = simulation.SimulateFromSeed(
+	stopEarlyAfterImport, _, err := simulation.SimulateFromSeed(
 		t,
 		os.Stdout,
 		newApp.BaseApp,
-		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
+		importGenesisState,
 		simulationtypes.RandomAccounts,
 		simtestutil.SimulationOperations(newApp, newApp.AppCodec(), config),
 		app.BlockedAddresses(),
 		config,
-		bApp.AppCodec(),
+		newApp.AppCodec(),
 	)
 	require.NoError(t, err)
+	require.False(t, stopEarlyAfterImport, "post-import simulation stopped before all configured blocks completed")
+	require.Equal(t, 1, importGenesisCalls, "post-import simulation must initialize exactly once from exported state")
+	markSimulationComplete()
 }
 
 func TestAppStateDeterminism(t *testing.T) {
 	if !simcli.FlagEnabledValue {
 		t.Skip("skipping application simulation")
 	}
+	markSimulationComplete := requireSimulationCompletion(t)
 
 	cfg := sdk.GetConfig()
 	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
@@ -488,7 +512,7 @@ func TestAppStateDeterminism(t *testing.T) {
 				config.Seed, i+1, numSeeds, j+1, numTimesToRunPerSeed,
 			)
 
-			_, _, err = simulation.SimulateFromSeed(
+			stopEarly, _, err := simulation.SimulateFromSeed(
 				t,
 				os.Stdout,
 				bApp.BaseApp,
@@ -504,6 +528,7 @@ func TestAppStateDeterminism(t *testing.T) {
 				bApp.AppCodec(),
 			)
 			require.NoError(t, err)
+			require.False(t, stopEarly, "determinism replay stopped before all configured blocks completed")
 
 			if config.Commit {
 				simtestutil.PrintStats(db)
@@ -519,6 +544,23 @@ func TestAppStateDeterminism(t *testing.T) {
 				)
 			}
 		}
+	}
+	markSimulationComplete()
+}
+
+// requireSimulationCompletion turns the SDK simulator's zero-validator Skip
+// into a failure after a simulation has been explicitly enabled. Release gates
+// must not report success when they did not execute every configured block.
+func requireSimulationCompletion(t *testing.T) func() {
+	t.Helper()
+	completed := false
+	t.Cleanup(func() {
+		if !completed && !t.Failed() {
+			t.Error("simulation exited before completing its configured validation")
+		}
+	})
+	return func() {
+		completed = true
 	}
 }
 

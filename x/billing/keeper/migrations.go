@@ -61,7 +61,7 @@ func (m Migrator) Migrate2to3(ctx sdk.Context) error {
 	if err != nil {
 		return fmt.Errorf("read billing params: %w", err)
 	}
-	params.AllowedList, err = canonicalUniqueAddresses(params.AllowedList)
+	params.AllowedList, err = types.CanonicalUniqueAddresses(params.AllowedList)
 	if err != nil {
 		return fmt.Errorf("repair billing params allowed list: %w", err)
 	}
@@ -79,11 +79,12 @@ func (m Migrator) Migrate2to3(ctx sdk.Context) error {
 }
 
 // Migrate3to4 initializes consumable per-lease reservations without creating
-// credit. Modern PENDING reservations are reconstructible and therefore kept
-// in full. The bank-backed portion of the old aggregate that remains is shared
-// proportionally between modern ACTIVE nominal claims and one opaque live
-// legacy cohort. See migrateConsumableReservations for the deterministic
-// largest-remainder allocation and compatibility details.
+// credit. A tenant's modern PENDING cohort is kept in full when every claim is
+// bank-backed; otherwise the entire cohort expires at the cutover block. The
+// bank-backed historical budget that remains is shared proportionally between
+// modern ACTIVE nominal claims and one opaque live legacy cohort. See
+// migrateConsumableReservations for the deterministic largest-remainder
+// allocation and compatibility details.
 func (m Migrator) Migrate3to4(ctx sdk.Context) error {
 	return m.migrateConsumableReservations(ctx)
 }
@@ -209,10 +210,13 @@ func (m Migrator) rewriteCreditAccountValues(ctx sdk.Context) error {
 				return err
 			}
 			originalReservations := entry.value.ReservedAmounts
-			if repair.hasLiveLegacy {
-				entry.value.ReservedAmounts = entry.value.ReservedAmounts.Max(repair.knownReservationFloor)
-			} else {
-				entry.value.ReservedAmounts = repair.knownReservationFloor
+			entry.value.ReservedAmounts, err = types.ReconcilePreV4ReservationAggregate(
+				entry.value.ReservedAmounts,
+				repair.knownReservationFloor,
+				repair.hasLiveLegacy,
+			)
+			if err != nil {
+				return errorsmod.Wrapf(err, "repair billing reservations for tenant %q", entry.key.String())
 			}
 			if !entry.value.ReservedAmounts.Equal(originalReservations) {
 				m.keeper.logger.Warn("repaired billing credit reservation during v2 to v3 migration",
@@ -346,25 +350,4 @@ func (m Migrator) calculateCreditAccountMigrationRepair(
 		return repair, errorsmod.Wrapf(err, "sum billing reservations for tenant %q", tenant.String())
 	}
 	return repair, nil
-}
-
-// canonicalUniqueAddresses canonicalizes SDK account addresses and removes
-// equivalent Bech32 spellings while preserving their first-seen slice order.
-// The map is used only for membership lookup; it is never iterated.
-func canonicalUniqueAddresses(addresses []string) ([]string, error) {
-	canonical := make([]string, 0, len(addresses))
-	seen := make(map[string]struct{}, len(addresses))
-	for _, address := range addresses {
-		decoded, err := sdk.AccAddressFromBech32(address)
-		if err != nil {
-			return nil, fmt.Errorf("decode account address %q: %w", address, err)
-		}
-		identity := string(decoded.Bytes())
-		if _, exists := seen[identity]; exists {
-			continue
-		}
-		seen[identity] = struct{}{}
-		canonical = append(canonical, decoded.String())
-	}
-	return canonical, nil
 }

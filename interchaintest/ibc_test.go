@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"cosmossdk.io/math"
-	transfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
@@ -15,6 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest"
+
+	transfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
+
+	"cosmossdk.io/math"
 )
 
 func TestIBC(t *testing.T) {
