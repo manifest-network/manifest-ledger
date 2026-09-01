@@ -245,12 +245,75 @@ func TestChainUpgradeTargetsBindTheTestedImageToSource(t *testing.T) {
 	require.Contains(t, makefileText, `actual_commit="$$(printf "%s\n" "$$metadata" | jq -er .commit)"`)
 	require.Contains(t, makefileText, `--env "EXPECTED_VERSION=$${MANIFEST_E2E_IMAGE_VERSION}"`)
 	require.Contains(t, makefileText, `--env "EXPECTED_COMMIT=$${MANIFEST_BUILD_COMMIT}"`)
+	require.NotContains(t, makefileText, `$(MAKE) --no-print-directory verify-chain-upgrade-image`,
+		"recursive Make drops the sanitized metadata variables")
 
 	workflow, err := os.ReadFile(filepath.Join(repoRoot, ".github/workflows/e2e.yml")) //nolint:gosec
 	require.NoError(t, err)
 	workflowText := string(workflow)
 	require.Contains(t, workflowText, "e2e-tests:\n    needs: build-docker")
 	require.Contains(t, workflowText, `- "ictest-chain-upgrade"`)
+}
+
+func TestChainUpgradeImageVerificationPreservesEnvironmentMetadata(t *testing.T) {
+	testDir := t.TempDir()
+	dockerArgsFile := filepath.Join(testDir, "docker-args")
+	upgradeVersionFile := filepath.Join(testDir, "upgrade-version")
+	fakeDocker := filepath.Join(testDir, "docker")
+	fakeGo := filepath.Join(testDir, "fake-go.sh")
+
+	const fakeDockerSource = `#!/bin/sh
+set -eu
+: "${DOCKER_ARGS_FILE:?}"
+printf '%s\n' "$@" > "$DOCKER_ARGS_FILE"
+`
+	const fakeGoSource = `#!/bin/sh
+set -eu
+if [ "${1-}" = env ] && [ "${2-}" = GOROOT ]; then
+	printf '/tmp\n'
+	exit 0
+fi
+if [ "${1-}" = list ]; then
+	exit 0
+fi
+if [ "${1-}" = test ]; then
+	: "${UPGRADE_VERSION_FILE:?}"
+	printf '%s\n' "${MANIFEST_UPGRADE_VERSION:?}" > "$UPGRADE_VERSION_FILE"
+	exit 0
+fi
+printf '%s\n' "unexpected fake Go invocation: $*" >&2
+exit 1
+`
+	require.NoError(t, os.WriteFile(fakeDocker, []byte(fakeDockerSource), 0o700))
+	require.NoError(t, os.WriteFile(fakeGo, []byte(fakeGoSource), 0o600))
+
+	version := "v2.4.0-3-gabcdef0"
+	commit := strings.Repeat("a", 40)
+	e2eVersion := "e2e-" + strings.Repeat("b", 40)
+	cmd := exec.Command("make", "--no-print-directory", "ictest-chain-upgrade", //nolint:gosec
+		"GO=sh "+fakeGo, "LEDGER_ENABLED=false")
+	cmd.Dir = filepath.Clean("..")
+	cmd.Env = []string{
+		"CI=true",
+		"COMMIT=" + commit,
+		"DOCKER_ARGS_FILE=" + dockerArgsFile,
+		"E2E_IMAGE_VERSION=" + e2eVersion,
+		"LC_ALL=C",
+		"PATH=" + testDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"UPGRADE_VERSION_FILE=" + upgradeVersionFile,
+		"VERSION=" + version,
+	}
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "%s", output)
+
+	dockerArgs, err := os.ReadFile(dockerArgsFile) //nolint:gosec
+	require.NoError(t, err)
+	dockerArgList := strings.Split(strings.TrimSpace(string(dockerArgs)), "\n")
+	require.Contains(t, dockerArgList, "EXPECTED_VERSION="+e2eVersion)
+	require.Contains(t, dockerArgList, "EXPECTED_COMMIT="+commit)
+	upgradeVersion, err := os.ReadFile(upgradeVersionFile) //nolint:gosec
+	require.NoError(t, err)
+	require.Equal(t, e2eVersion, strings.TrimSpace(string(upgradeVersion)))
 }
 
 func shellPayload(marker string) string {

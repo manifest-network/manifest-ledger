@@ -166,8 +166,8 @@ ictest-group-poa:
 ictest-cosmwasm:
 	cd interchaintest && $(GO) test -race -v -run TestCosmWasm . -count=1
 
-verify-chain-upgrade-image: validate-build-inputs
-	@$(DOCKER) run --rm \
+define verify_chain_upgrade_image
+$(DOCKER) run --rm \
 		--env "EXPECTED_VERSION=$${MANIFEST_E2E_IMAGE_VERSION}" \
 		--env "EXPECTED_COMMIT=$${MANIFEST_BUILD_COMMIT}" \
 		manifest:local sh -ec '\
@@ -181,6 +181,10 @@ verify-chain-upgrade-image: validate-build-inputs
 					"  commit:  $$actual_commit (expected $$EXPECTED_COMMIT)" >&2; \
 				exit 1; \
 			fi'
+endef
+
+verify-chain-upgrade-image: validate-build-inputs
+	@$(verify_chain_upgrade_image)
 
 # CI consumes the image artifact built from the same checked-out commit. Local
 # runs must use ictest-chain-upgrade-local so dirty source changes cannot be
@@ -188,11 +192,11 @@ verify-chain-upgrade-image: validate-build-inputs
 ictest-chain-upgrade: validate-build-inputs
 	@test "$${CI:-}" = "true" || \
 		(printf '%s\n' "local upgrade rehearsals must use: make ictest-chain-upgrade-local"; exit 1)
-	@$(MAKE) --no-print-directory verify-chain-upgrade-image
+	@$(verify_chain_upgrade_image)
 	cd interchaintest && MANIFEST_UPGRADE_VERSION="$${MANIFEST_E2E_IMAGE_VERSION}" $(GO) test -timeout 20m -race -v -run TestBasicManifestUpgrade . -count=1
 
 ictest-chain-upgrade-local: local-image
-	@$(MAKE) --no-print-directory verify-chain-upgrade-image
+	@$(verify_chain_upgrade_image)
 	cd interchaintest && MANIFEST_UPGRADE_VERSION="$${MANIFEST_E2E_IMAGE_VERSION}" $(GO) test -timeout 20m -race -v -run TestBasicManifestUpgrade . -count=1
 
 ictest-group:
@@ -253,12 +257,25 @@ test:
 
 .PHONY: test
 
-COV_ROOT="/tmp/manifest-ledger-coverage"
-COV_UNIT_E2E="${COV_ROOT}/unit-e2e"
-COV_SIMULATION="${COV_ROOT}/simulation"
-COV_PKG="github.com/manifest-network/manifest-ledger/..."
-COV_SIM_CMD=${COV_SIMULATION}/simulation.test
-COV_SIM_COMMON=-Enabled=True -NumBlocks=100 -Commit=true -Period=5 -Params=$(shell pwd)/simulation/sim_params.json -Verbose=false -test.v -test.gocoverdir=${COV_SIMULATION}
+COV_ROOT := /tmp/manifest-ledger-coverage
+COV_UNIT_E2E := ${COV_ROOT}/unit-e2e
+COV_SIMULATION := ${COV_ROOT}/simulation
+COV_PKG := github.com/manifest-network/manifest-ledger/...
+COV_SIM_CMD := ${COV_SIMULATION}/simulation.test
+# Coverage is a reproducible release gate. Seed exploration belongs to the
+# explicit sim-*-random targets below, which always print the selected seed.
+COV_SIM_COMMON = -Enabled=True -NumBlocks=100 -Commit=true -Period=5 -Params=$(CURDIR)/simulation/sim_params.json -Verbose=false -Seed=${SIM_SEED} -test.v -test.gocoverdir=${COV_SIMULATION}
+
+define run_coverage_simulation
+	@log_file=${COV_ROOT}/$(1).log; \
+		${COV_SIM_CMD} -test.run $(2) ${COV_SIM_COMMON} > "$$log_file" 2>&1 || { \
+			status=$$?; \
+			printf '%s\n' "$(2) failed with seed ${SIM_SEED}; full output follows:" >&2; \
+			cat "$$log_file" >&2; \
+			exit $$status; \
+		}; \
+		rm -f "$$log_file"
+endef
 
 coverage: ## Run coverage report
 	@echo "--> Using Go: $(shell $(GO) version)"
@@ -270,12 +287,12 @@ coverage: ## Run coverage report
 	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/*
 	@echo "--> Building instrumented simulation test binary"
 	@$(GO) test -c ./app -mod=readonly -covermode=atomic -coverpkg=${COV_PKG} -cover -o ${COV_SIM_CMD}
-	@echo "  --> Running Full App Simulation"
-	@${COV_SIM_CMD} -test.run TestFullAppSimulation ${COV_SIM_COMMON} > /dev/null 2>&1
-	@echo "  --> Running App Simulation After Import"
-	@${COV_SIM_CMD} -test.run TestAppSimulationAfterImport ${COV_SIM_COMMON} > /dev/null 2>&1
-	@echo "  --> Running App State Determinism Simulation"
-	@${COV_SIM_CMD} -test.run TestAppStateDeterminism ${COV_SIM_COMMON} > /dev/null 2>&1
+	@echo "  --> Running Full App Simulation (seed: ${SIM_SEED})"
+	$(call run_coverage_simulation,full-app,TestFullAppSimulation)
+	@echo "  --> Running App Simulation After Import (seed: ${SIM_SEED})"
+	$(call run_coverage_simulation,after-import,TestAppSimulationAfterImport)
+	@echo "  --> Running App State Determinism Simulation (seed: ${SIM_SEED})"
+	$(call run_coverage_simulation,determinism,TestAppStateDeterminism)
 	@echo "--> Running unit & e2e tests coverage"
 	@$(GO) test -p 1 -timeout 90m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$($(GO) list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
 	@echo "--> Merging coverage reports"

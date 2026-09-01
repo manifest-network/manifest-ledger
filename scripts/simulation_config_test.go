@@ -56,6 +56,14 @@ func TestReleaseSimulationSeedIsReproducible(t *testing.T) {
 		"changing the release seed requires a complete three-replay, 100-block validation")
 	require.NotEqual(t, int64(simcli.DefaultSeedValue), seed,
 		"Cosmos SDK's default seed is a sentinel that TestAppStateDeterminism randomizes")
+
+	makefileText := string(makefile)
+	require.Regexp(t, `(?m)^COV_SIM_COMMON\s*=.*-Seed=\$\{SIM_SEED\}(?:\s|$)`, makefileText,
+		"coverage simulations must use the reproducible release seed")
+	require.NotContains(t, makefileText, `${COV_SIM_CMD} -test.run TestAppSimulationAfterImport ${COV_SIM_COMMON} > /dev/null`,
+		"coverage simulation failures must preserve their diagnostic output")
+	require.Contains(t, makefileText, `cat "$$log_file" >&2`,
+		"coverage simulation failures must print their captured output")
 }
 
 func TestRandomSimulationTargetsOverrideTheFixedSeed(t *testing.T) {

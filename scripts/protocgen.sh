@@ -1,36 +1,58 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
-set -e
+set -eu
+
+export LC_ALL=C
+
+script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
+repo_root=$(dirname "$script_dir")
+proto_root="$repo_root/proto"
+gogo_output_root="$repo_root/github.com/manifest-network/manifest-ledger"
+pulsar_output_root="$repo_root/liftedinit"
+
+if [ ! -f "$repo_root/go.mod" ] || [ ! -d "$proto_root" ]; then
+  echo "unable to locate the manifest-ledger repository" >&2
+  exit 1
+fi
+
+cleanup_generated_roots() {
+  rm -rf "$gogo_output_root" "$pulsar_output_root"
+  rmdir "$repo_root/github.com/manifest-network" "$repo_root/github.com" 2>/dev/null || true
+}
+
+# Always generate from empty, repository-owned staging roots. This prevents a
+# prior local run from masking a generator that silently produced no output.
+cleanup_generated_roots
+trap cleanup_generated_roots EXIT
+trap 'exit 1' HUP INT TERM
 
 echo "Generating gogo proto code"
-cd proto
-# Generate only repository-owned, non-API messages. The sorted NUL-delimited
-# file walk is deterministic and does not split valid paths on whitespace.
-while IFS= read -r -d '' file; do
+cd "$proto_root"
+# Generate only repository-owned, non-API messages. Repository proto paths are
+# newline-free; the C-locale sort makes the invocation order reproducible.
+find . -type f -name '*.proto' -print | sort | while IFS= read -r file; do
   if grep -q 'option go_package.*github.com/manifest-network/manifest-ledger/' "$file" &&
     ! grep -q 'option go_package.*github.com/manifest-network/manifest-ledger/api' "$file"; then
     buf generate --template buf.gen.gogo.yaml "$file"
   fi
-done < <(find . -type f -name '*.proto' -print0 | sort -z)
+done
+
+if [ ! -d "$gogo_output_root" ]; then
+  echo "gogo protobuf generation produced no repository output" >&2
+  exit 1
+fi
 
 echo "Generating pulsar proto code"
 buf generate --template buf.gen.pulsar.yaml
 
-cd ..
+if [ ! -d "$pulsar_output_root" ]; then
+  echo "pulsar protobuf generation produced no repository output" >&2
+  exit 1
+fi
 
-cp -r github.com/manifest-network/manifest-ledger/* ./
-rm -rf github.com
+cp -R "$gogo_output_root"/. "$repo_root"/
 
 # Copy files over for dep injection
-rm -rf api && mkdir api
-# Pulsar's source-relative output is created only under these generated module
-# roots. Restricting the move to that known shape avoids scanning or moving
-# unrelated workspace directories that happen to be named "module".
-for module in liftedinit/*/module; do
-  [ -d "$module" ] || continue
-  dir_path=$(dirname "$module")
-  mkdir -p "api/$dir_path"
-  mv "$dir_path"/* "api/$dir_path/"
-  rm -rf "$dir_path"
-done
-rmdir liftedinit 2>/dev/null || true
+rm -rf "$repo_root/api"
+mkdir "$repo_root/api"
+cp -R "$pulsar_output_root" "$repo_root/api/"
