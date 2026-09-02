@@ -250,6 +250,7 @@ func TestReleaseWorkflowsUseVerifiedToolsAndCollisionGate(t *testing.T) {
 	require.Contains(t, string(dockerfile), `test "$(/code/build/manifestd version)" = "${VERSION}"`)
 	require.Equal(t, 2, strings.Count(string(dockerfile), "libcrypto3=3.5.8-r0"))
 	require.Equal(t, 2, strings.Count(string(dockerfile), "libssl3=3.5.8-r0"))
+	require.Contains(t, string(dockerfile), "jq=1.8.2-r0")
 	require.Contains(t, string(dockerfile), "musl=1.2.6-r2")
 	require.Contains(t, string(dockerfile), "musl-dev=1.2.6-r2")
 	require.Contains(t, string(dockerfile), "linux-headers=7.0.0-r1")
@@ -276,6 +277,32 @@ func TestReleaseWorkflowsUseVerifiedToolsAndCollisionGate(t *testing.T) {
 		require.Contains(t, dockerignoreLines, requiredScript)
 	}
 	require.NotContains(t, dockerignoreLines, "!scripts/**")
+}
+
+func TestCodeQLWorkflowUsesImmutableLocalCosmosQueries(t *testing.T) {
+	const queryCommit = "95e3707788fe2b95c84b7bc8e5694977fdc95611"
+
+	repoRoot := filepath.Clean("..")
+	workflow, err := os.ReadFile(filepath.Join(repoRoot, ".github/workflows/codeql.yml")) //nolint:gosec
+	require.NoError(t, err)
+	workflowText := string(workflow)
+
+	require.Contains(t, workflowText, "permissions:\n      actions: read\n      contents: read\n      security-events: write")
+	require.Equal(t, 2, strings.Count(workflowText,
+		"uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1"))
+	require.Contains(t, workflowText, "repository: crypto-com/cosmos-sdk-codeql")
+	require.Contains(t, workflowText, "ref: "+queryCommit)
+	require.Contains(t, workflowText, "path: .codeql/cosmos-sdk-codeql")
+	require.Equal(t, 2, strings.Count(workflowText, "persist-credentials: false"))
+	require.Contains(t, workflowText,
+		`test "$(git -C .codeql/cosmos-sdk-codeql rev-parse HEAD)" = "`+queryCommit+`"`)
+	require.Contains(t, workflowText, "queries: ./.codeql/cosmos-sdk-codeql,security-and-quality")
+	require.NotContains(t, workflowText, "queries: crypto-com/cosmos-sdk-codeql@")
+
+	for _, path := range []string{"codeql-pack.lock.yml", "qlpack.yml", "src"} {
+		require.Contains(t, workflowText, "            "+path+"\n")
+	}
+	require.Contains(t, workflowText, "sparse-checkout-cone-mode: false")
 }
 
 func TestSPDXReleaseProfileValidation(t *testing.T) {

@@ -1,13 +1,60 @@
 package scripts_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestProtobufContainerUsesHostOwnershipAndWritableHome(t *testing.T) {
+	testDir := t.TempDir()
+	dockerArguments := filepath.Join(testDir, "docker-arguments")
+	fakeDocker := filepath.Join(testDir, "docker")
+	fakeGo := filepath.Join(testDir, "go")
+
+	writeExecutable(t, fakeDocker, `#!/bin/sh
+set -eu
+: "${PROTO_DOCKER_ARGUMENTS:?}"
+printf '%s\n' "$@" > "$PROTO_DOCKER_ARGUMENTS"
+`)
+	writeExecutable(t, fakeGo, `#!/bin/sh
+set -eu
+if [ "${1-}" = env ] && [ "${2-}" = GOROOT ]; then
+	printf '/tmp\n'
+	exit 0
+fi
+if [ "${1-}" = list ]; then
+	exit 0
+fi
+printf '%s\n' "unexpected fake Go invocation: $*" >&2
+exit 1
+`)
+
+	cmd := exec.Command( //nolint:gosec // The command and arguments are fixed test fixtures.
+		"make", "--no-print-directory", "proto-lint",
+		"DOCKER="+fakeDocker, "GO="+fakeGo, "LEDGER_ENABLED=false",
+	)
+	cmd.Dir = filepath.Clean("..")
+	cmd.Env = []string{
+		"LC_ALL=C",
+		"PATH=" + os.Getenv("PATH"),
+		"PROTO_DOCKER_ARGUMENTS=" + dockerArguments,
+	}
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "%s", output)
+
+	arguments, err := os.ReadFile(dockerArguments) //nolint:gosec // Fixed test-owned path.
+	require.NoError(t, err)
+	invocation := "\n" + string(arguments)
+	require.Contains(t, invocation, fmt.Sprintf("\n--user\n%d:%d\n", os.Getuid(), os.Getgid()))
+	require.Contains(t, invocation, "\n--env\nHOME=/tmp\n")
+	require.Less(t, strings.Index(invocation, "\n--user\n"), strings.Index(invocation, "\n-v\n"))
+}
 
 func TestProtobufGenerationStartsCleanAndFailsWithoutOutput(t *testing.T) {
 	fixtureRoot, scriptPath, binDir := newProtobufGenerationFixture(t)
@@ -80,11 +127,11 @@ func newProtobufGenerationFixture(t *testing.T) (fixtureRoot, scriptPath, binDir
 	script, err := os.ReadFile("protocgen.sh") //nolint:gosec
 	require.NoError(t, err)
 	scriptPath = filepath.Join(scriptDir, "protocgen.sh")
-	require.NoError(t, os.WriteFile(scriptPath, script, 0o600))
+	require.NoError(t, os.WriteFile(scriptPath, script, 0o600)) //nolint:gosec // G703: both paths are rooted in the test's private temporary directory.
 	return fixtureRoot, scriptPath, binDir
 }
 
 func writeExecutable(t *testing.T, path, contents string) {
 	t.Helper()
-	require.NoError(t, os.WriteFile(path, []byte(contents), 0o700))
+	require.NoError(t, os.WriteFile(path, []byte(contents), 0o700)) //nolint:gosec // G306: callers use this helper exclusively to create executable test fixtures.
 }

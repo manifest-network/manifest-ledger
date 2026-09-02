@@ -1472,9 +1472,7 @@ func requireContractCount(
 ) {
 	t.Helper()
 
-	var response struct {
-		Count int `json:"count"`
-	}
+	var response GetCountResponse
 	require.NoError(t, chain.QueryContract(ctx, contractAddr, `{"get_count":{}}`, &response))
-	require.Equal(t, expected, response.Count)
+	require.Equal(t, expected, response.Data.Count)
 }

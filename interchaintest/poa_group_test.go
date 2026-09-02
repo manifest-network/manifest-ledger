@@ -50,6 +50,10 @@ const (
 	user2            = "user2"
 )
 
+// groupPOAVotingPeriod accommodates race and coverage instrumentation without
+// delaying proposals, which execute as soon as their threshold is met.
+const groupPOAVotingPeriod = time.Minute
+
 var (
 	groupInfo = grouptypes.GroupInfo{
 		Id:          1,
@@ -94,7 +98,7 @@ func TestGroupPOA(t *testing.T) {
 
 	name := "group-poa"
 
-	err := groupPolicy.SetDecisionPolicy(createThresholdDecisionPolicy("1", 10*time.Second, 0*time.Second))
+	err := groupPolicy.SetDecisionPolicy(createThresholdDecisionPolicy("1", groupPOAVotingPeriod, 0*time.Second))
 	require.NoError(t, err)
 
 	// TODO: The following block is needed in order for the GroupPolicy to get properly serialized in the ModifyGenesis function

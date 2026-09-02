@@ -57,7 +57,7 @@ RUN apk add --no-cache \
       ca-certificates-bundle=20260611-r0 \
       bash=5.2.37-r0 \
       curl=8.14.1-r3 \
-      jq=1.8.1-r0 \
+      jq=1.8.2-r0 \
       libcrypto3=3.5.8-r0 \
       libssl3=3.5.8-r0 \
       make=4.4.1-r3 \

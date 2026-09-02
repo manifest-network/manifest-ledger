@@ -17,6 +17,7 @@ const (
 	releaseSimulationSeed     int64 = 2507940531156952020
 	releaseSimulationBlocks   int   = 100
 	determinismReplaysPerSeed int   = 3
+	coverageTestTimeout             = "2h"
 )
 
 func TestReleaseSimulationDefaultsArePinned(t *testing.T) {
@@ -64,6 +65,19 @@ func TestReleaseSimulationSeedIsReproducible(t *testing.T) {
 		"coverage simulation failures must preserve their diagnostic output")
 	require.Contains(t, makefileText, `cat "$$log_file" >&2`,
 		"coverage simulation failures must print their captured output")
+}
+
+func TestCoverageTimeoutAccommodatesInstrumentedE2ESuite(t *testing.T) {
+	makefile, err := os.ReadFile(filepath.Join("..", "Makefile")) //nolint:gosec
+	require.NoError(t, err)
+
+	timeoutAssignment := regexp.MustCompile(`(?m)^COV_TEST_TIMEOUT\s*:=\s*(\S+)\s*$`)
+	matches := timeoutAssignment.FindAllSubmatch(makefile, -1)
+	require.Len(t, matches, 1, "Makefile must define exactly one coverage test timeout")
+	require.Equal(t, coverageTestTimeout, string(matches[0][1]),
+		"race- and coverage-instrumented e2e tests need a two-hour package timeout")
+	require.Contains(t, string(makefile), `test -p 1 -timeout ${COV_TEST_TIMEOUT}`,
+		"coverage must apply the dedicated timeout to its combined unit and e2e test command")
 }
 
 func TestRandomSimulationTargetsOverrideTheFixedSeed(t *testing.T) {

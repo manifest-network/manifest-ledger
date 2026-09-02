@@ -284,7 +284,7 @@ fi
 printf '%s\n' "unexpected fake Go invocation: $*" >&2
 exit 1
 `
-	require.NoError(t, os.WriteFile(fakeDocker, []byte(fakeDockerSource), 0o700))
+	require.NoError(t, os.WriteFile(fakeDocker, []byte(fakeDockerSource), 0o700)) //nolint:gosec // G306: this test fixture must be executable as a fake docker command.
 	require.NoError(t, os.WriteFile(fakeGo, []byte(fakeGoSource), 0o600))
 
 	version := "v2.4.0-3-gabcdef0"

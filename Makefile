@@ -262,6 +262,9 @@ COV_UNIT_E2E := ${COV_ROOT}/unit-e2e
 COV_SIMULATION := ${COV_ROOT}/simulation
 COV_PKG := github.com/manifest-network/manifest-ledger/...
 COV_SIM_CMD := ${COV_SIMULATION}/simulation.test
+# Race and coverage instrumentation make the sequential interchaintest package
+# exceed its normal 90-minute runtime as the suite grows.
+COV_TEST_TIMEOUT := 2h
 # Coverage is a reproducible release gate. Seed exploration belongs to the
 # explicit sim-*-random targets below, which always print the selected seed.
 COV_SIM_COMMON = -Enabled=True -NumBlocks=100 -Commit=true -Period=5 -Params=$(CURDIR)/simulation/sim_params.json -Verbose=false -Seed=${SIM_SEED} -test.v -test.gocoverdir=${COV_SIMULATION}
@@ -294,7 +297,7 @@ coverage: ## Run coverage report
 	@echo "  --> Running App State Determinism Simulation (seed: ${SIM_SEED})"
 	$(call run_coverage_simulation,determinism,TestAppStateDeterminism)
 	@echo "--> Running unit & e2e tests coverage"
-	@$(GO) test -p 1 -timeout 90m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$($(GO) list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
+	@$(GO) test -p 1 -timeout ${COV_TEST_TIMEOUT} -race -covermode=atomic -v -cpu=$$(nproc) -cover $$($(GO) list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
 	@echo "--> Merging coverage reports"
 	@$(GO) tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_ROOT}
 	@echo "--> Converting binary coverage report to text format"
@@ -320,7 +323,7 @@ coverage: ## Run coverage report
 protoVer=0.14.0
 protoDigest=sha256:93e2035b90e5780b4d56210a88ecb0afed881c7bb828285d4a61a897cebb54fb
 protoImageName=ghcr.io/cosmos/proto-builder:$(protoVer)@$(protoDigest)
-protoImage=$(DOCKER) run --rm -v $(CURDIR):/workspace --workdir /workspace $(protoImageName)
+protoImage=$(DOCKER) run --rm --user "$$(id -u):$$(id -g)" --env HOME=/tmp -v $(CURDIR):/workspace --workdir /workspace $(protoImageName)
 
 proto-all: proto-format proto-lint proto-gen
 

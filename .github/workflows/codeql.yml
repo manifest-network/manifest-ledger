@@ -32,6 +32,22 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # CodeQL's external-repository resolver treats the revision as a branch or tag,
+      # so check out the immutable commit first and pass it to CodeQL as a local pack.
+      - name: Checkout pinned Cosmos SDK CodeQL queries
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: crypto-com/cosmos-sdk-codeql
+          ref: 95e3707788fe2b95c84b7bc8e5694977fdc95611
+          path: .codeql/cosmos-sdk-codeql
+          persist-credentials: false
+          sparse-checkout: |
+            codeql-pack.lock.yml
+            qlpack.yml
+            src
+          sparse-checkout-cone-mode: false
+      - name: Verify Cosmos SDK CodeQL query pin
+        run: test "$(git -C .codeql/cosmos-sdk-codeql rev-parse HEAD)" = "95e3707788fe2b95c84b7bc8e5694977fdc95611"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -40,11 +56,7 @@ jobs:
         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           languages: "go"
-          queries: crypto-com/cosmos-sdk-codeql@95e3707788fe2b95c84b7bc8e5694977fdc95611,security-and-quality
-          # If you wish to specify custom queries, you can do so here or in a config file.
-          # By default, queries listed here will override any specified in a config file.
-          # Prefix the list here with "+" to use these queries and those in the config file.
-          # queries: ./path/to/local/query, your-org/your-repo/queries@main
+          queries: ./.codeql/cosmos-sdk-codeql,security-and-quality
       # Autobuild attempts to build any compiled languages  (C/C++, C#, or Java).
 
       # If this step fails, then you should remove it and run the build manually (see below)
