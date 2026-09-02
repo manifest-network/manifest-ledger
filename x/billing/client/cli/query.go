@@ -416,7 +416,7 @@ func GetProviderWithdrawableCmd() *cobra.Command {
 		Long: `Estimate a provider withdrawal for one page of active leases.
 
 Results are paginated over the provider's active leases (page size default 50,
-max 1000). Each page is a fresh best-effort simulation, so page amounts are not
+max 100). Each page is a fresh best-effort simulation, so page amounts are not
 additive. Only a forward page of at most 100 leases is directly comparable to a
 single provider-wide withdrawal transaction. Keep the query's next_key for the
 next query and the transaction's next_key for the next transaction; the two

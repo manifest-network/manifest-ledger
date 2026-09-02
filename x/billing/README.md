@@ -344,7 +344,7 @@ These values are compile-time constants and cannot be changed via governance:
 | `DefaultCreditAccountBalanceQueryLimit` | 100 | Default bank-balance page size for `CreditAccount` |
 | `MaxCreditAccountBalanceQueryLimit` | 1000 | Maximum bank-balance page size for `CreditAccount` |
 | `DefaultProviderWithdrawableQueryLimit` | 50 | Default page size for the ProviderWithdrawable query, matching provider-wide `MsgWithdraw`. The request's old top-level `limit` field was removed; proto field 2 is reserved. |
-| `MaxProviderWithdrawableQueryLimit` | 1000 | Maximum page size for the ProviderWithdrawable query (`pagination.limit` is clamped to this) |
+| `MaxProviderWithdrawableQueryLimit` | 100 | Maximum page size for the ProviderWithdrawable query (`pagination.limit` is clamped to the transaction batch ceiling) |
 | `MaxCreditEstimateLeaseItems` | 100,000 | Maximum active lease items aggregated by one unpaginated `CreditEstimate` request |
 
 > **CreditEstimate iteration** follows the ACTIVE count stored on the tenant's credit account rather than the current governance limit. It enforces the conservative 11,000 ACTIVE bound, a 100,000-item work bound, and exact count/index agreement. `CreditAccount` does not scan leases: it returns all bank balances through bounded cursor pages (default 100, max 1000). Both queries reject rather than silently truncate work outside their documented contracts.
@@ -420,6 +420,9 @@ public protobuf view; the disk-only codec persists their raw SDK address bytes.
 Note: The actual balance is tracked by the bank module at the `credit_address`.
 Query the bank module or use cursor-paginated `QueryCreditAccount`, which
 includes one ordered balance page (default 100, maximum 1000).
+Reverse pages follow `x/bank` and return both coin lists in descending
+denomination order; Go callers must call `Sort()` before using `sdk.Coins`
+operations that require canonical ascending order.
 New leases begin with a nominal `rate × min_lease_duration` tranche, but
 settlement consumes it; therefore `reserved_amounts` tracks remaining
 guarantees, not a fixed nominal sum.
@@ -548,7 +551,12 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 
 Generic list-query pages default to 100 rows and are capped at 1000 rows. An
 oversized requested limit is clamped; callers continue with the opaque
-`pagination.next_key` cursor.
+`pagination.next_key` cursor. Standard offset and explicitly requested exact
+total compatibility is available for the five collection/index list queries
+with a 20,000-row scan ceiling; an omitted or zero limit does not implicitly
+request a total. Larger histories must use cursors. `CreditAccount` and
+`ProviderWithdrawable` remain cursor-only because their per-row work is more
+expensive.
 
 **Events**: See [API Reference - Events](docs/API.md#events) for the complete list of events emitted by this module.
 

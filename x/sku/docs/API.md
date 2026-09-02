@@ -249,9 +249,13 @@ decoded bytes in `PageRequest.key`. The cursor identifies the first unread row,
 and the next scan resumes inclusively at that key. `--reverse` may be combined
 with `--page-key` and resumes in the same direction.
 
-SKU list queries are cursor-only: non-zero `--offset`, `--page` greater than 1,
-and `--count-total` are rejected because they require work proportional to
-earlier rows or the entire collection. Cursor resume on index-backed paths is
+SKU list queries support the standard SDK `--offset`, `--page`, and
+`--count-total` compatibility modes. Those modes may inspect at most 20,000
+rows and fail rather than return an inexact page or total when that ceiling is
+exceeded. Cursor pagination remains the efficient, unbounded-history path; as
+in the SDK, `count_total` is ignored when a page key is present. An omitted or
+zero limit defaults to 100 without implicitly enabling `count_total`; request
+the total explicitly when needed. Cursor resume on index-backed paths is
 deletion-tolerant: if the cursor row is removed between calls, the query starts
 at the nearest surviving row in the requested direction.
 

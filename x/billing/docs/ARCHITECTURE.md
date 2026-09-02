@@ -742,8 +742,11 @@ Settlement happens lazily at these points:
 `CreditAccount` delegates to the SDK bank module's canonical balance query and
 returns all denoms through cursor pages (default 100, maximum 1000). Offset and
 `count_total` are rejected so bank-store work stays proportional to the
-requested page; `available_balances` covers the same page. It never scans
-leases. The embedded account aggregate is not separately paginated. New leases
+requested page; `available_balances` covers the same page. Reverse pages follow
+`x/bank` and return both coin lists in descending denomination order, so Go
+callers must call `Sort()` before using `sdk.Coins` operations that require
+canonical ascending order. It never scans leases. The embedded account
+aggregate is not separately paginated. New leases
 cannot grow it beyond 1,000 reserved denominations; a historical v2 account
 already above that limit remains readable and releasable, so decoding such an
 account can still exceed the balance-page cost during the compatibility window.

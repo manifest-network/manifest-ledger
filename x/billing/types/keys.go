@@ -89,13 +89,14 @@ const (
 	DefaultProviderWithdrawableQueryLimit uint64 = DefaultProviderWithdrawLimit
 
 	// MaxProviderWithdrawableQueryLimit is the maximum limit for ProviderWithdrawable queries.
-	// This prevents queries from iterating over unbounded numbers of leases.
-	MaxProviderWithdrawableQueryLimit uint64 = 1000
+	// Match the transaction ceiling because each lease runs the full settlement
+	// lifecycle in a discarded cache context.
+	MaxProviderWithdrawableQueryLimit uint64 = MaxBatchLeaseSize
 
 	// MaxCreditEstimateLeaseItems bounds the total stored pricing items decoded
-	// and aggregated by one unpaginated CreditEstimate request. It matches the
-	// maximum work of a largest ProviderWithdrawable query page.
-	MaxCreditEstimateLeaseItems uint64 = MaxProviderWithdrawableQueryLimit * MaxItemsPerLeaseHardLimit
+	// and aggregated by one unpaginated CreditEstimate request. Keep this ceiling
+	// independent from ProviderWithdrawable's settlement-simulation limit.
+	MaxCreditEstimateLeaseItems uint64 = 100_000
 )
 
 // EndBlocker limits to prevent DoS attacks.

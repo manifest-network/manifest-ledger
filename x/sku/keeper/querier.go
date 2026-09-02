@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -9,7 +10,6 @@ import (
 	"cosmossdk.io/collections"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/types/query"
 
 	"github.com/manifest-network/manifest-ledger/pkg/pagination"
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
@@ -66,16 +66,16 @@ func (q Querier) Providers(ctx context.Context, req *types.QueryProvidersRequest
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid request")
 	}
-	pageReq, err := pagination.CursorPageRequest(req.Pagination)
+	pageReq, err := pagination.BoundedPageRequest(req.Pagination)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, paginationRequestError(err)
 	}
 
 	// Use Active index if active_only is set (O(k) instead of O(n))
 	if req.ActiveOnly {
 		iter, err := pagination.MatchExactWithOrder(ctx, q.k.Providers.Indexes.Active, true, pageReq)
 		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+			return nil, paginationResultError(err)
 		}
 
 		providers, pageRes, err := pagination.PaginateStringIndex(
@@ -84,9 +84,10 @@ func (q Querier) Providers(ctx context.Context, req *types.QueryProvidersRequest
 			q.k.Providers.Get,
 			pageReq,
 			nil, // No additional filter needed - index already filters active
+			pagination.WithStringIndexHas(q.k.Providers.Has),
 		)
 		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+			return nil, paginationResultError(err)
 		}
 
 		return &types.QueryProvidersResponse{
@@ -95,7 +96,7 @@ func (q Querier) Providers(ctx context.Context, req *types.QueryProvidersRequest
 		}, nil
 	}
 
-	providers, pageRes, err := query.CollectionPaginate(
+	providers, pageRes, err := pagination.CollectionPaginate(
 		ctx,
 		q.k.Providers,
 		pageReq,
@@ -104,7 +105,7 @@ func (q Querier) Providers(ctx context.Context, req *types.QueryProvidersRequest
 		},
 	)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, paginationResultError(err)
 	}
 
 	return &types.QueryProvidersResponse{
@@ -136,16 +137,16 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid request")
 	}
-	pageReq, err := pagination.CursorPageRequest(req.Pagination)
+	pageReq, err := pagination.BoundedPageRequest(req.Pagination)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, paginationRequestError(err)
 	}
 
 	// Use Active index if active_only is set (O(k) instead of O(n))
 	if req.ActiveOnly {
 		iter, err := pagination.MatchExactWithOrder(ctx, q.k.SKUs.Indexes.Active, true, pageReq)
 		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+			return nil, paginationResultError(err)
 		}
 
 		skus, pageRes, err := pagination.PaginateStringIndex(
@@ -154,9 +155,10 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 			q.k.SKUs.Get,
 			pageReq,
 			nil, // No additional filter needed - index already filters active
+			pagination.WithStringIndexHas(q.k.SKUs.Has),
 		)
 		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+			return nil, paginationResultError(err)
 		}
 
 		return &types.QuerySKUsResponse{
@@ -165,7 +167,7 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 		}, nil
 	}
 
-	skus, pageRes, err := query.CollectionPaginate(
+	skus, pageRes, err := pagination.CollectionPaginate(
 		ctx,
 		q.k.SKUs,
 		pageReq,
@@ -174,7 +176,7 @@ func (q Querier) SKUs(ctx context.Context, req *types.QuerySKUsRequest) (*types.
 		},
 	)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, paginationResultError(err)
 	}
 
 	return &types.QuerySKUsResponse{
@@ -194,16 +196,16 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 	if req.ProviderUuid == "" {
 		return nil, status.Error(codes.InvalidArgument, "provider_uuid cannot be empty")
 	}
-	pageReq, err := pagination.CursorPageRequest(req.Pagination)
+	pageReq, err := pagination.BoundedPageRequest(req.Pagination)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, paginationRequestError(err)
 	}
 
 	// Use ProviderActive compound index if active_only is set (O(k) direct lookup)
 	if req.ActiveOnly {
 		iter, err := pagination.MatchExactWithOrder(ctx, q.k.SKUs.Indexes.ProviderActive, collections.Join(req.ProviderUuid, true), pageReq)
 		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+			return nil, paginationResultError(err)
 		}
 
 		skus, pageRes, err := pagination.PaginateStringIndex(
@@ -212,9 +214,10 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 			q.k.SKUs.Get,
 			pageReq,
 			nil, // No additional filter needed - index already filters by provider and active
+			pagination.WithStringIndexHas(q.k.SKUs.Has),
 		)
 		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+			return nil, paginationResultError(err)
 		}
 
 		return &types.QuerySKUsByProviderResponse{
@@ -226,7 +229,7 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 	// Use the provider index to iterate only over this provider's SKUs
 	iter, err := pagination.MatchExactWithOrder(ctx, q.k.SKUs.Indexes.Provider, req.ProviderUuid, pageReq)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, paginationResultError(err)
 	}
 
 	skus, pageRes, err := pagination.PaginateStringIndex(
@@ -235,9 +238,10 @@ func (q Querier) SKUsByProvider(ctx context.Context, req *types.QuerySKUsByProvi
 		q.k.SKUs.Get,
 		pageReq,
 		nil,
+		pagination.WithStringIndexHas(q.k.SKUs.Has),
 	)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, paginationResultError(err)
 	}
 
 	return &types.QuerySKUsByProviderResponse{
@@ -262,15 +266,15 @@ func (q Querier) ProviderByAddress(ctx context.Context, req *types.QueryProvider
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid address format")
 	}
-	pageReq, err := pagination.CursorPageRequest(req.Pagination)
+	pageReq, err := pagination.BoundedPageRequest(req.Pagination)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, paginationRequestError(err)
 	}
 
 	// Use the address index to iterate only over providers with this address
 	iter, err := pagination.MatchExactWithOrder(ctx, q.k.Providers.Indexes.Address, addr, pageReq)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, paginationResultError(err)
 	}
 
 	// Build filter based on active_only
@@ -285,13 +289,28 @@ func (q Querier) ProviderByAddress(ctx context.Context, req *types.QueryProvider
 		q.k.Providers.Get,
 		pageReq,
 		filter,
+		pagination.WithStringIndexHas(q.k.Providers.Has),
 	)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, paginationResultError(err)
 	}
 
 	return &types.QueryProviderByAddressResponse{
 		Providers:  providers,
 		Pagination: pageRes,
 	}, nil
+}
+
+func paginationResultError(err error) error {
+	if errors.Is(err, pagination.ErrPaginationScanLimitExceeded) {
+		return status.Error(codes.ResourceExhausted, err.Error())
+	}
+	return status.Error(codes.Internal, err.Error())
+}
+
+func paginationRequestError(err error) error {
+	if errors.Is(err, pagination.ErrPaginationScanLimitExceeded) {
+		return status.Error(codes.ResourceExhausted, err.Error())
+	}
+	return status.Error(codes.InvalidArgument, err.Error())
 }

@@ -398,9 +398,10 @@ func TestAdversarial_GenesisValidationRejectsMismatchedReservations(t *testing.T
 	require.Contains(t, err.Error(), "reserved_amounts")
 }
 
-// TestAdversarial_GenesisValidationRejectsMismatchedCounts tests that genesis
-// validation catches active/pending lease count mismatches.
-func TestAdversarial_GenesisValidationRejectsMismatchedCounts(t *testing.T) {
+// TestAdversarial_GenesisStrictRejectsAndImportRepairsMismatchedCounts pins the
+// two intentional contracts: authored state is rejected, while historical
+// imports deterministically rebuild derived counts from authoritative leases.
+func TestAdversarial_GenesisStrictRejectsAndImportRepairsMismatchedCounts(t *testing.T) {
 	f := initFixture(t)
 
 	tenant := f.TestAccs[0]

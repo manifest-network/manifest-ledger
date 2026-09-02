@@ -49,7 +49,7 @@ func TestQueryParams(t *testing.T) {
 	require.Equal(t, types.DefaultMaxLeasesPerTenant, resp.Params.MaxLeasesPerTenant)
 }
 
-func TestListQueriesRejectUnboundedPaginationModes(t *testing.T) {
+func TestListQueriesSupportBoundedSDKPagination(t *testing.T) {
 	f := initFixture(t)
 	querier := keeper.NewQuerier(f.App.BillingKeeper)
 
@@ -104,11 +104,15 @@ func TestListQueriesRejectUnboundedPaginationModes(t *testing.T) {
 	}
 
 	for _, queryCase := range queries {
-		t.Run(queryCase.name+"/offset", func(t *testing.T) {
-			require.Equal(t, codes.InvalidArgument, status.Code(queryCase.call(&query.PageRequest{Offset: 1})))
+		t.Run(queryCase.name+"/bounded offset and count total", func(t *testing.T) {
+			require.NoError(t, queryCase.call(&query.PageRequest{Offset: 1, Limit: 1, CountTotal: true}))
 		})
-		t.Run(queryCase.name+"/count total", func(t *testing.T) {
-			require.Equal(t, codes.InvalidArgument, status.Code(queryCase.call(&query.PageRequest{CountTotal: true})))
+		t.Run(queryCase.name+"/count total ignored with key", func(t *testing.T) {
+			require.NoError(t, queryCase.call(&query.PageRequest{Key: []byte("cursor"), CountTotal: true}))
+		})
+		t.Run(queryCase.name+"/key and offset", func(t *testing.T) {
+			err := queryCase.call(&query.PageRequest{Key: []byte("cursor"), Offset: 1})
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
 		})
 	}
 }
@@ -819,7 +823,7 @@ func TestQueryLeasesBySKUReverse(t *testing.T) {
 	})
 }
 
-func TestQueryLeasesBySKUCursorOnlyPagination(t *testing.T) {
+func TestQueryLeasesBySKUBoundedSDKPagination(t *testing.T) {
 	f := initFixture(t)
 
 	k := f.App.BillingKeeper
@@ -847,12 +851,15 @@ func TestQueryLeasesBySKUCursorOnlyPagination(t *testing.T) {
 		require.NoError(t, k.SetLease(f.Ctx, lease))
 	}
 
-	t.Run("count total is rejected before scanning", func(t *testing.T) {
-		_, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+	t.Run("offset and count total are exact", func(t *testing.T) {
+		page, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
 			SkuUuid:    skuUUID,
-			Pagination: &query.PageRequest{Limit: 2, CountTotal: true},
+			Pagination: &query.PageRequest{Offset: 1, Limit: 2, CountTotal: true},
 		})
-		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.NoError(t, err)
+		require.Len(t, page.Leases, 2)
+		require.Equal(t, uint64(5), page.Pagination.Total)
+		require.Equal(t, "01912345-6789-7abc-8def-leasecount02", page.Leases[0].Uuid)
 	})
 
 	t.Run("cursor continues correctly", func(t *testing.T) {
@@ -1386,7 +1393,7 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 		// Page limit exceeding the max should be capped, not rejected
 		resp, err := querier.ProviderWithdrawable(newCtx, &types.QueryProviderWithdrawableRequest{
 			ProviderUuid: provider.Uuid,
-			Pagination:   &query.PageRequest{Limit: 10000}, // Exceeds MaxProviderWithdrawableQueryLimit (1000)
+			Pagination:   &query.PageRequest{Limit: 10000}, // Exceeds MaxProviderWithdrawableQueryLimit (100)
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
@@ -1441,6 +1448,85 @@ func TestQueryProviderWithdrawable(t *testing.T) {
 		require.Equal(t, full.Amounts, total, "paged total must equal the single-page total")
 		require.Equal(t, full.LeaseCount, count)
 	})
+}
+
+func TestQueryProviderWithdrawable_ClampsPageToTransactionMaximum(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+
+	tenant := f.TestAccs[0]
+	providerAddress := f.TestAccs[1]
+	payoutAddress := f.TestAccs[2]
+	provider := f.createTestProvider(t, providerAddress.String(), payoutAddress.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+	creditAddress := types.DeriveCreditAddress(tenant)
+	now := f.Ctx.BlockTime()
+	leaseCount := types.MaxProviderWithdrawableQueryLimit + 1
+	leaseUUIDs := make([]string, 0, leaseCount)
+	allocation := sdk.NewCoins(sdk.NewInt64Coin(testDenom, 1))
+
+	for i := uint64(1); i <= leaseCount; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+		leaseUUIDs = append(leaseUUIDs, leaseUUID)
+		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+			Uuid:         leaseUUID,
+			Tenant:       tenant.String(),
+			ProviderUuid: provider.Uuid,
+			Items: []types.LeaseItem{{
+				SkuUuid:     sku.Uuid,
+				Quantity:    1,
+				LockedPrice: sdk.NewInt64Coin(testDenom, 1),
+			}},
+			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  now,
+			LastSettledAt:              now,
+			MinLeaseDurationAtCreation: 1,
+			Reservation: &types.LeaseReservation{
+				RemainingAmounts: append(sdk.Coins(nil), allocation...),
+			},
+		}))
+	}
+
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:           tenant.String(),
+		CreditAddress:    creditAddress.String(),
+		ActiveLeaseCount: leaseCount,
+		ReservedAmounts: sdk.NewCoins(
+			sdk.NewInt64Coin(testDenom, int64(leaseCount)),
+		),
+	}))
+	f.fundAccount(t, creditAddress, sdk.NewCoins(
+		sdk.NewInt64Coin(testDenom, int64(leaseCount*2)),
+	))
+
+	queryCtx := f.Ctx.WithBlockTime(now.Add(time.Second))
+	firstPage, err := querier.ProviderWithdrawable(queryCtx, &types.QueryProviderWithdrawableRequest{
+		ProviderUuid: provider.Uuid,
+		Pagination: &query.PageRequest{
+			Limit: leaseCount, // Requests 101; the query clamps this to the transaction max of 100.
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, types.MaxProviderWithdrawableQueryLimit, firstPage.LeaseCount)
+	require.Equal(t, sdkmath.NewInt(int64(types.MaxProviderWithdrawableQueryLimit)),
+		firstPage.Amounts.AmountOf(testDenom))
+	require.Empty(t, firstPage.FailedLeaseUuids)
+	require.Equal(t, []byte(leaseUUIDs[types.MaxProviderWithdrawableQueryLimit]),
+		firstPage.Pagination.NextKey, "the cursor must identify the one unread lease")
+
+	secondPage, err := querier.ProviderWithdrawable(queryCtx, &types.QueryProviderWithdrawableRequest{
+		ProviderUuid: provider.Uuid,
+		Pagination: &query.PageRequest{
+			Key:   firstPage.Pagination.NextKey,
+			Limit: leaseCount,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), secondPage.LeaseCount)
+	require.Equal(t, sdkmath.OneInt(), secondPage.Amounts.AmountOf(testDenom))
+	require.Empty(t, secondPage.FailedLeaseUuids)
+	require.Empty(t, secondPage.Pagination.NextKey)
 }
 
 func TestQueryProviderWithdrawable_DryRunCountsSharedCreditOncePerPage(t *testing.T) {
@@ -2184,15 +2270,17 @@ func TestQueryLeasesBySKUPaginationEdgeCases(t *testing.T) {
 		require.NoError(t, k.SetLease(f.Ctx, lease))
 	}
 
-	t.Run("offset pagination is rejected", func(t *testing.T) {
-		_, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+	t.Run("offset beyond results returns empty page", func(t *testing.T) {
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
 			SkuUuid: skuUUID,
 			Pagination: &query.PageRequest{
 				Offset: 100,
 				Limit:  10,
 			},
 		})
-		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.NoError(t, err)
+		require.Empty(t, resp.Leases)
+		require.Empty(t, resp.Pagination.NextKey)
 	})
 
 	t.Run("limit of 0 uses default", func(t *testing.T) {

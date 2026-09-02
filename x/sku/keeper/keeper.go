@@ -453,7 +453,9 @@ func (k *Keeper) IterateActiveSKUsByProvider(
 		return 0, false, err
 	}
 	defer func() {
-		err = errors.Join(err, iter.Close())
+		if closeErr := iter.Close(); err == nil {
+			err = closeErr
+		}
 	}()
 
 	for ; iter.Valid(); iter.Next() {

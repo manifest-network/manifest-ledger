@@ -7050,8 +7050,11 @@ type QueryProvidersRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// pagination is cursor-only; non-zero offset and count_total are rejected,
-	// and limit is capped at 1000.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active providers when true.
 	ActiveOnly bool `protobuf:"varint,2,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`
@@ -7218,8 +7221,11 @@ type QuerySKUsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// pagination is cursor-only; non-zero offset and count_total are rejected,
-	// and limit is capped at 1000.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active SKUs when true.
 	ActiveOnly bool `protobuf:"varint,2,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`
@@ -7314,8 +7320,11 @@ type QuerySKUsByProviderRequest struct {
 
 	// provider_uuid is the unique identifier of the SKU provider.
 	ProviderUuid string `protobuf:"bytes,1,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
-	// pagination is cursor-only; non-zero offset and count_total are rejected,
-	// and limit is capped at 1000.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active SKUs when true.
 	ActiveOnly bool `protobuf:"varint,3,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`
@@ -7418,9 +7427,13 @@ type QueryProviderByAddressRequest struct {
 
 	// address is the management address of the provider.
 	Address string `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
-	// pagination is cursor-only; non-zero offset and count_total are rejected,
-	// and limit is capped at 1000. Filtered pages inspect at most 1000 index
-	// rows and may therefore be short while returning a continuation cursor.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
+	// Cursor-filtered pages inspect at most 1000 index rows and may therefore be
+	// short or empty while returning a continuation cursor.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active providers when true.
 	ActiveOnly bool `protobuf:"varint,3,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`

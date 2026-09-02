@@ -224,6 +224,25 @@ Before the upgrade:
   Verify that a tenant with one underbacked PENDING denomination loses its entire
   modern PENDING cohort, never an arbitrary subset, while other tenants are
   unaffected.
+- Build and deploy compatible `manifest-admin`, `manifest-mcp-mono`, and Fred
+  clients to dev before scheduling the production height. Exercise all billing
+  and SKU list screens/resources with both cursor pagination and the bounded
+  SDK-compatible offset/`count_total` path. Offset/exact-total scans fail closed
+  above 20,000 rows, so bulk consumers must always support `next_key`.
+  `CreditAccount` and `ProviderWithdrawable` remain cursor-only.
+- Verify Fred does not sum separately queried `ProviderWithdrawable` pages:
+  shared tenant balances make those estimates non-additive. It must query one
+  forward transaction-sized page, submit the matching withdrawal, wait for the
+  commit, and then re-query current state.
+- Regenerate downstream protobuf clients before using
+  `MsgUpdateProvider.clear_api_url`. The field is additive; older clients
+  continue to preserve the URL because an absent field decodes as false, but
+  they cannot request an explicit clear.
+- Run the `manifest-loadtest` K6 and edge-case suites against dev, including
+  concurrent 100-lease `ProviderWithdrawable` queries, bounded
+  offset/`count_total` queries near their ceilings, upgrade-height traffic, and
+  removal/recovery of one backend node. Record latency, memory, error rates,
+  app hashes, and post-recovery catch-up before approving the mainnet release.
 
 After the upgrade:
 

@@ -658,8 +658,8 @@ transfer.
   query the next segment with the prior query's `pagination.next_key`, while
   the next transaction uses the prior transaction response's `next_key`.
   Never interchange those inclusive-query and exclusive-transaction cursors.
-  Reverse pages and query limits above 100 are read-only estimates only;
-  offset and count-total requests are rejected.
+  Reverse pages are read-only estimates only. Query limits above 100 are
+  clamped to 100; offset and count-total requests are rejected.
 
 ## Parameter Issues
 

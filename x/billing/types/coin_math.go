@@ -146,9 +146,6 @@ func SafeAddCoins(left, right sdk.Coins) (sdk.Coins, error) {
 
 	result = append(result, left[leftIndex:]...)
 	result = append(result, right[rightIndex:]...)
-	if result == nil {
-		return sdk.Coins{}, nil
-	}
 	return result, nil
 }
 
@@ -210,9 +207,6 @@ func SafeSubtractCoins(left, right sdk.Coins) (sdk.Coins, error) {
 	}
 
 	result = append(result, left[leftIndex:]...)
-	if result == nil {
-		return sdk.Coins{}, nil
-	}
 	return result, nil
 }
 

@@ -344,8 +344,8 @@ const page = await client.liftedinit.billing.v1.providerWithdrawable({
 //
 // Never interchange those cursors: the query key is its first unread
 // (inclusive) index entry; the transaction key is its last processed lease and
-// resumes exclusively. Reverse query pages and query limits > 100 are read-only
-// estimates with no one-transaction analogue. Offset and countTotal are rejected.
+// resumes exclusively. Reverse query pages are read-only estimates with no
+// one-transaction analogue. Offset and countTotal are rejected.
 ```
 
 ### Tenant authentication to your provider API
@@ -400,7 +400,14 @@ const { lease, serviceName } = await client.liftedinit.billing.v1.leaseByCustomD
 
 ### Pagination
 
-All `Query.<list>` queries take a Cosmos `PageRequest`. Use `key` for stable cursoring across pages.
+All `Query.<list>` queries take a Cosmos `PageRequest`. Use `key` for stable
+cursoring across pages. The billing and SKU collection/index lists also accept
+SDK-compatible `offset` and explicit `countTotal` requests, but those
+less-efficient modes are limited to 20,000 scanned rows and fail rather than
+return a partial total. An omitted or zero limit defaults to 100 without
+implicitly enabling `countTotal`; clients that need a total must request it.
+`countTotal` is ignored when `key` is set, matching the SDK. The `CreditAccount`
+and `ProviderWithdrawable` queries are deliberately cursor-only.
 
 ```ts
 import { cosmos, liftedinit } from "@manifest-network/manifestjs";

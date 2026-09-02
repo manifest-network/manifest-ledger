@@ -13598,8 +13598,11 @@ type QueryLeasesRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// pagination is cursor-only; non-zero offset and count_total are rejected,
-	// and limit is capped at 1000.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// state_filter filters leases by state. If UNSPECIFIED, returns all leases.
 	StateFilter LeaseState `protobuf:"varint,2,opt,name=state_filter,json=stateFilter,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state_filter,omitempty"`
@@ -13694,8 +13697,11 @@ type QueryLeasesByTenantRequest struct {
 
 	// tenant is the address of the tenant.
 	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	// pagination is cursor-only; non-zero offset and count_total are rejected,
-	// and limit is capped at 1000.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// state_filter filters leases by state. If UNSPECIFIED, returns all leases.
 	StateFilter LeaseState `protobuf:"varint,3,opt,name=state_filter,json=stateFilter,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state_filter,omitempty"`
@@ -13798,8 +13804,11 @@ type QueryLeasesByProviderRequest struct {
 
 	// provider_uuid is the provider UUID.
 	ProviderUuid string `protobuf:"bytes,1,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
-	// pagination is cursor-only; non-zero offset and count_total are rejected,
-	// and limit is capped at 1000.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// state_filter filters leases by state. If UNSPECIFIED, returns all leases.
 	StateFilter LeaseState `protobuf:"varint,3,opt,name=state_filter,json=stateFilter,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state_filter,omitempty"`
@@ -13953,11 +13962,13 @@ type QueryCreditAccountResponse struct {
 	// credit_account is the tenant's credit account.
 	CreditAccount *CreditAccount `protobuf:"bytes,1,opt,name=credit_account,json=creditAccount,proto3" json:"credit_account,omitempty"`
 	// balances is one page of all current balances at the credit address,
-	// fetched through the bank module's canonical balance query.
+	// fetched through the bank module's canonical balance query. Reverse pages
+	// follow x/bank and use descending denomination order; Go callers must call
+	// Sort before using sdk.Coins operations that require canonical order.
 	Balances []*v1beta11.Coin `protobuf:"bytes,2,rep,name=balances,proto3" json:"balances,omitempty"`
 	// available_balances is the amount from this balance page available for new
-	// leases (balances - reserved_amounts). It has the same pagination window as
-	// balances.
+	// leases (balances - reserved_amounts). It has the same pagination window
+	// and denomination order as balances.
 	AvailableBalances []*v1beta11.Coin `protobuf:"bytes,3,rep,name=available_balances,json=availableBalances,proto3" json:"available_balances,omitempty"`
 	// pagination describes the returned bank-balance page.
 	Pagination *v1beta1.PageResponse `protobuf:"bytes,4,opt,name=pagination,proto3" json:"pagination,omitempty"`
@@ -14174,7 +14185,7 @@ type QueryProviderWithdrawableRequest struct {
 	ProviderUuid string `protobuf:"bytes,1,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
 	// pagination defines optional pagination. Only ACTIVE leases are iterated
 	// in the requested index order. Page size defaults to 50 and is capped at
-	// 1000. Earlier leases consume page-local virtual tenant credit before later
+	// 100. Earlier leases consume page-local virtual tenant credit before later
 	// leases are estimated, so shared credit is counted once within this page.
 	// Per-lease failures are skipped with their nested cache discarded, matching
 	// provider-wide MsgWithdraw's best-effort behavior.
@@ -14186,8 +14197,8 @@ type QueryProviderWithdrawableRequest struct {
 	// pagination.next_key and withdraw it with the transaction response's
 	// next_key. The query cursor is first-unread/inclusive; the transaction
 	// cursor is last-processed/exclusive, so never interchange them. Reverse
-	// pages and larger limits are read-only estimates only. Offset and
-	// count_total are rejected so work is bounded by the page size.
+	// pages are read-only estimates only. Offset and count_total are rejected so
+	// work is bounded by the page size.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,3,opt,name=pagination,proto3" json:"pagination,omitempty"`
 }
 
@@ -14309,8 +14320,11 @@ type QueryCreditAccountsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// pagination is cursor-only; non-zero offset and count_total are rejected,
-	// and limit is capped at 1000.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 }
 
@@ -14397,9 +14411,13 @@ type QueryLeasesBySKURequest struct {
 
 	// sku_uuid is the UUID of the SKU.
 	SkuUuid string `protobuf:"bytes,1,opt,name=sku_uuid,json=skuUuid,proto3" json:"sku_uuid,omitempty"`
-	// pagination is cursor-only; non-zero offset and count_total are rejected,
-	// and limit is capped at 1000. Filtered pages inspect at most 1000 index
-	// rows and may therefore be short while returning a continuation cursor.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
+	// Cursor-filtered pages inspect at most 1000 index rows and may therefore be
+	// short or empty while returning a continuation cursor.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// state_filter filters leases by state. If UNSPECIFIED, returns all leases.
 	StateFilter LeaseState `protobuf:"varint,3,opt,name=state_filter,json=stateFilter,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state_filter,omitempty"`

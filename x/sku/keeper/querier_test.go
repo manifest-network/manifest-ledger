@@ -116,7 +116,7 @@ func TestQuerierProviders(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestListQueriesRejectUnboundedPaginationModes(t *testing.T) {
+func TestListQueriesSupportBoundedSDKPagination(t *testing.T) {
 	f := initFixture(t)
 	q := keeper.NewQuerier(f.App.SKUKeeper)
 
@@ -161,11 +161,15 @@ func TestListQueriesRejectUnboundedPaginationModes(t *testing.T) {
 	}
 
 	for _, queryCase := range queries {
-		t.Run(queryCase.name+"/offset", func(t *testing.T) {
-			require.Equal(t, codes.InvalidArgument, status.Code(queryCase.call(&query.PageRequest{Offset: 1})))
+		t.Run(queryCase.name+"/bounded offset and count total", func(t *testing.T) {
+			require.NoError(t, queryCase.call(&query.PageRequest{Offset: 1, Limit: 1, CountTotal: true}))
 		})
-		t.Run(queryCase.name+"/count total", func(t *testing.T) {
-			require.Equal(t, codes.InvalidArgument, status.Code(queryCase.call(&query.PageRequest{CountTotal: true})))
+		t.Run(queryCase.name+"/count total ignored with key", func(t *testing.T) {
+			require.NoError(t, queryCase.call(&query.PageRequest{Key: []byte("cursor"), CountTotal: true}))
+		})
+		t.Run(queryCase.name+"/key and offset", func(t *testing.T) {
+			err := queryCase.call(&query.PageRequest{Key: []byte("cursor"), Offset: 1})
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
 		})
 	}
 }

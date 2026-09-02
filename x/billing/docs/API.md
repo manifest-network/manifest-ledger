@@ -528,11 +528,17 @@ same direction. General billing list queries use the SDK default page size of
 per request. A filtered page can therefore be short or empty while still
 returning a non-empty `next_key`; continue until that cursor is empty.
 
-All billing list queries are cursor-only: non-zero `--offset`, `--page` greater
-than 1, and `--count-total` are rejected because they require work proportional
-to earlier rows or the entire collection. Query cursors are not interchangeable
-with provider-wide `MsgWithdrawResponse.next_key`, whose separate contract is
-described below.
+The five billing collection/index list queries support the standard SDK
+`--offset`, `--page`, and `--count-total` compatibility modes. Those modes may
+inspect at most 20,000 rows and fail rather than return an inexact page or
+total when that ceiling is exceeded. Cursor pagination remains the efficient,
+unbounded-history path. An omitted or zero limit defaults to 100 without
+implicitly enabling `count_total`; request the total explicitly when needed.
+As in the SDK, `count_total` is ignored when a page key is present. The
+`CreditAccount` and `ProviderWithdrawable` queries remain cursor-only because
+they respectively traverse bank balances and simulate the settlement
+lifecycle. Query cursors are not interchangeable with provider-wide
+`MsgWithdrawResponse.next_key`, whose separate contract is described below.
 
 #### params
 
@@ -708,6 +714,10 @@ manifestd query billing credit-account [tenant]
 `--reverse`). The default limit is 100 and the maximum is 1000. `--offset` and
 `--count-total` are rejected so bank-store iteration remains page-bounded. Pass
 the prior response's base64 `pagination.next_key` verbatim to `--page-key`.
+Reverse pages follow `x/bank` and return `balances` and `available_balances` in
+descending denomination order. Go callers must call `Sort()` before using
+`sdk.Coins` operations that require canonical ascending order (including
+`AmountOf`, `Add`, and `Validate`).
 
 **Response:**
 ```json
@@ -848,11 +858,11 @@ manifestd query billing provider-withdrawable [provider-uuid] --limit 100
 
 **Flags:** cursor pagination (`--page-key`, `--limit`) plus `--reverse`. Pass the
 prior query response's base64 `pagination.next_key` verbatim to `--page-key`.
-Page size defaults to 50 and is capped at 1000. Non-zero `--offset` and
+Page size defaults to 50 and is capped at 100. Non-zero `--offset` and
 `--count-total` are rejected so query work remains page-bounded. The query
-iterates the provider's active leases. Reverse pages and limits above 100 are
-useful for read-only inspection, but no single provider-wide `MsgWithdraw` call
-mirrors them; the transaction is forward-only and capped at 100 leases.
+iterates the provider's active leases. Reverse pages are useful for read-only
+inspection, but no provider-wide `MsgWithdraw` call mirrors them; the
+transaction is forward-only and capped at 100 leases.
 
 **Response:**
 ```json
@@ -897,9 +907,9 @@ Query and transaction cursors are different contracts: the query's
 `pagination.next_key` identifies its first unread index entry, while
 `MsgWithdrawResponse.next_key` identifies the last processed lease and resumes
 strictly after it. Never pass a query cursor as `MsgWithdraw.key` (or vice
-versa). Reverse query pages and query limits above 100 are estimates only, not
-one-transaction previews; offset and count-total requests are rejected. The
-query itself is read-only and transfers no tokens.
+versa). Reverse query pages are estimates only, not one-transaction previews;
+offset and count-total requests are rejected. The query itself is read-only and
+transfers no tokens.
 
 ---
 
@@ -1523,6 +1533,11 @@ message QueryCreditAccountResponse {
   cosmos.base.query.v1beta1.PageResponse pagination = 4;
 }
 ```
+
+Reverse pages follow `x/bank` and return both coin lists in descending
+denomination order. Go callers must call `Sort()` before using `sdk.Coins`
+operations that require canonical ascending order (including `AmountOf`, `Add`,
+and `Validate`).
 
 ---
 
