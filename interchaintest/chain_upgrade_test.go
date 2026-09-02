@@ -462,7 +462,7 @@ func populateMigrationState(
 	legacyLeaseRes, err := helpers.BillingQueryLease(ctx, chain, legacyLeaseUUID)
 	require.NoError(t, err)
 	require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, legacyLeaseRes.Lease.GetState())
-	require.Empty(t, legacyLeaseRes.Lease.MinLeaseDurationAtCreation)
+	require.Equal(t, "0", legacyLeaseRes.Lease.MinLeaseDurationAtCreation)
 	legacyDomainRes, err := helpers.BillingQueryLeaseByCustomDomain(ctx, chain, legacyCustomDomain)
 	require.NoError(t, err)
 	require.Equal(t, legacyLeaseUUID, legacyDomainRes.Lease.UUID)
