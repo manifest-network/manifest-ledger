@@ -519,7 +519,8 @@ manifestd query tx [txhash] --output json | jq '.events[] | select(.type | start
 
 **Cause**: The lease UUID is not in valid UUIDv7 format.
 
-**Solution**: Ensure you're using a valid UUID (format: `xxxxxxxx-xxxx-7xxx-xxxx-xxxxxxxxxxxx`):
+**Solution**: Use a lowercase UUIDv7 in the format
+`xxxxxxxx-xxxx-7xxx-yxxx-xxxxxxxxxxxx`, where `y` is `8`, `9`, `a`, or `b`:
 ```bash
 manifestd query billing lease 01912345-6789-7abc-8def-0123456789ab
 ```

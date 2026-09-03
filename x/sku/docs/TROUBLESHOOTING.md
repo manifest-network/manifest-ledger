@@ -249,9 +249,13 @@ manifestd query sku sku [sku-uuid]
 
 ## UUID Format Issues
 
-### "invalid UUIDv7 format"
+### "invalid UUIDv7 format" / "provider_uuid must be a valid UUIDv7"
 
-**Error**: `invalid UUIDv7 format: {uuid}` (typically surfaced wrapped, e.g. `invalid provider: invalid uuid: invalid UUIDv7 format: ...`)
+**Errors**:
+
+- Transactions: `invalid UUIDv7 format: {uuid}` (typically wrapped, for
+  example `invalid provider: invalid uuid: invalid UUIDv7 format: ...`).
+- `skus-by-provider`: `provider_uuid must be a valid UUIDv7`.
 
 **Cause**: The UUID is not in valid UUIDv7 format. Transactions validate UUIDs
 during message validation. The `query sku skus-by-provider` collection query
