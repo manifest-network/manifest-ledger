@@ -2908,18 +2908,17 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 	k := f.App.BillingKeeper
 	querier := keeper.NewQuerier(k)
 
-	t.Run("Lease query with invalid UUID format", func(t *testing.T) {
-		// Not a valid UUIDv7 format
-		_, err := querier.Lease(f.Ctx, &types.QueryLeaseRequest{
-			LeaseUuid: "not-a-valid-uuid",
-		})
-		require.Error(t, err)
+	t.Run("Lease query preserves direct lookup semantics", func(t *testing.T) {
+		for _, leaseUUID := range []string{"not-a-valid-uuid", "12345"} {
+			_, err := querier.Lease(f.Ctx, &types.QueryLeaseRequest{
+				LeaseUuid: leaseUUID,
+			})
+			require.Equal(t, codes.NotFound, status.Code(err), "lease_uuid %q", leaseUUID)
+		}
 
-		// Too short
-		_, err = querier.Lease(f.Ctx, &types.QueryLeaseRequest{
-			LeaseUuid: "12345",
-		})
-		require.Error(t, err)
+		_, err := querier.Lease(f.Ctx, &types.QueryLeaseRequest{})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Equal(t, "lease_uuid cannot be empty", status.Convert(err).Message())
 	})
 
 	t.Run("LeasesByProvider with empty/invalid UUID", func(t *testing.T) {
@@ -2927,13 +2926,15 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		_, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
 			ProviderUuid: "",
 		})
-		require.Error(t, err, "empty provider_uuid should error")
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Equal(t, "provider_uuid cannot be empty", status.Convert(err).Message())
 
 		// Invalid UUID formats are rejected before composite-key construction.
 		_, err = querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
 			ProviderUuid: "invalid-uuid-format",
 		})
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Equal(t, "provider_uuid must be a valid UUIDv7", status.Convert(err).Message())
 
 		_, err = querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
 			ProviderUuid: testProviderUUID + "\x00",
@@ -2947,18 +2948,19 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		require.Empty(t, resp.Leases, "unknown valid UUID should return empty results")
 	})
 
-	t.Run("WithdrawableAmount with empty/invalid UUID", func(t *testing.T) {
+	t.Run("WithdrawableAmount preserves direct lookup semantics", func(t *testing.T) {
 		// Empty lease_uuid should error
 		_, err := querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
 			LeaseUuid: "",
 		})
-		require.Error(t, err, "empty lease_uuid should error")
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Equal(t, "lease_uuid cannot be empty", status.Convert(err).Message())
 
-		// Invalid UUID format should error (does format validation)
+		// Non-empty values are looked up as supplied, without format validation.
 		_, err = querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
 			LeaseUuid: "not-valid",
 		})
-		require.Error(t, err, "invalid UUID format should error")
+		require.Equal(t, codes.NotFound, status.Code(err))
 	})
 
 	t.Run("ProviderWithdrawable with empty/invalid UUID", func(t *testing.T) {
@@ -2966,7 +2968,8 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		_, err := querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
 			ProviderUuid: "",
 		})
-		require.Error(t, err, "empty provider_uuid should error")
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Equal(t, "provider_uuid cannot be empty", status.Convert(err).Message())
 
 		// Unknown provider identifiers fail before index iteration.
 		_, err = querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
@@ -2980,13 +2983,15 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		_, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
 			SkuUuid: "",
 		})
-		require.Error(t, err, "empty sku_uuid should error")
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Equal(t, "sku_uuid cannot be empty", status.Convert(err).Message())
 
 		// Invalid UUID formats are rejected before composite-key construction.
 		_, err = querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
 			SkuUuid: "invalid",
 		})
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Equal(t, "sku_uuid must be a valid UUIDv7", status.Convert(err).Message())
 
 		_, err = querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
 			SkuUuid: testSKUUUID + "\x00",

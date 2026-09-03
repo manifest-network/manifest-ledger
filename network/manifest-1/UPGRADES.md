@@ -230,6 +230,12 @@ Before the upgrade:
   SDK-compatible offset/`count_total` path. Offset/exact-total scans fail closed
   above 20,000 rows, so bulk consumers must always support `next_key`.
   `CreditAccount` and `ProviderWithdrawable` remain cursor-only.
+- Verify those clients preserve chain-returned identifiers as canonical
+  lowercase UUIDv7 values when calling `LeasesByProvider`, `LeasesBySKU`, and
+  `SKUsByProvider`. Empty fields keep their distinct `<field> cannot be empty`
+  error; non-empty malformed, uppercase, or non-v7 values now fail with gRPC
+  `InvalidArgument` instead of being treated as unknown. An unknown canonical
+  UUIDv7 remains valid input and returns an empty page.
 - Verify Fred does not sum separately queried `ProviderWithdrawable` pages:
   shared tenant balances make those estimates non-additive. It must query one
   forward transaction-sized page, submit the matching withdrawal, wait for the

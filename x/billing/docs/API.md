@@ -149,7 +149,7 @@ manifestd tx billing acknowledge-lease [lease-uuid]... [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string (repeated) | UUIDs of leases to acknowledge (1-100) |
+| lease-uuid | string (repeated) | Canonical lowercase UUIDv7 values of leases to acknowledge (1-100) |
 
 **Examples:**
 ```bash
@@ -186,7 +186,7 @@ manifestd tx billing reject-lease [lease-uuid]... [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID(s) of leases to reject (1-100) |
+| lease-uuid | string | Canonical lowercase UUIDv7 values of leases to reject (1-100) |
 
 **Flags:**
 | Flag | Type | Description |
@@ -223,7 +223,7 @@ manifestd tx billing cancel-lease [lease-uuid]... [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID(s) of leases to cancel (1-100) |
+| lease-uuid | string | Canonical lowercase UUIDv7 values of leases to cancel (1-100) |
 
 **Examples:**
 ```bash
@@ -257,7 +257,7 @@ manifestd tx billing close-lease [lease-uuid]... [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID(s) of leases to close (1-100) |
+| lease-uuid | string | Canonical lowercase UUIDv7 values of leases to close (1-100) |
 
 **Flags:**
 | Flag | Type | Description |
@@ -314,12 +314,12 @@ manifestd tx billing withdraw --provider [provider-uuid] [flags]
 **Arguments (Mode 1):**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID(s) of leases to withdraw from (1-100) |
+| lease-uuid | string | Canonical lowercase UUIDv7 values of leases to withdraw from (1-100) |
 
 **Flags:**
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| --provider | string | - | Provider UUID for provider-wide withdrawal |
+| --provider | string | - | Canonical lowercase provider UUIDv7 for provider-wide withdrawal |
 | --limit | uint64 | 50 | Maximum leases to process in provider mode (max 100) |
 | --key | string | "" | Base64 `next_key` from the previous provider-wide withdraw response; continues paging. Rejected in specific-leases mode. |
 
@@ -436,7 +436,7 @@ manifestd tx billing set-item-custom-domain [lease-uuid] [service-name] [domain]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID of the lease that owns the target item |
+| lease-uuid | string | Canonical lowercase UUIDv7 of the lease that owns the target item |
 | service-name | string | `service_name` of the target item; pass `""` for a 1-item legacy lease |
 | domain | string | FQDN to set, or `""` to clear |
 
@@ -545,9 +545,12 @@ traverse bank balances and simulate the settlement lifecycle. Query cursors are
 not interchangeable with provider-wide `MsgWithdrawResponse.next_key`, whose
 separate contract is described below.
 
-`LeasesByProvider.provider_uuid` and `LeasesBySKU.sku_uuid` require canonical
-lowercase UUIDv7 values. Malformed, uppercase, or non-v7 inputs fail with gRPC
-`InvalidArgument`; an unknown canonical lowercase UUIDv7 returns an empty page.
+The five UUID-taking billing query commands validate locally before constructing
+an RPC. `lease` and `withdrawable` report `invalid lease_uuid format: {uuid}`;
+`leases-by-provider` and `provider-withdrawable` report
+`invalid provider_uuid format: {uuid}`; and `leases-by-sku` reports
+`invalid sku_uuid format: {uuid}`. Each requires canonical lowercase UUIDv7
+input.
 
 #### params
 
@@ -587,7 +590,7 @@ manifestd query billing lease [lease-uuid]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID of the lease |
+| lease-uuid | string | Canonical lowercase UUIDv7 of the lease |
 
 **Response:**
 ```json
@@ -823,7 +826,7 @@ manifestd query billing withdrawable [lease-uuid]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID of the lease |
+| lease-uuid | string | Canonical lowercase UUIDv7 of the lease |
 
 **Response:**
 ```json
@@ -863,7 +866,7 @@ manifestd query billing provider-withdrawable [provider-uuid] --limit 100
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-uuid | string | UUID of the provider |
+| provider-uuid | string | Canonical lowercase UUIDv7 of the provider |
 
 **Flags:** cursor pagination (`--page-key`, `--limit`) plus `--reverse`. Pass the
 prior query response's base64 `pagination.next_key` verbatim to `--page-key`.
@@ -1116,6 +1119,10 @@ manifestd query billing lease-by-domain app.example.com
 ---
 
 ## gRPC API
+
+The generated embedded descriptors omit protobuf `SourceCodeInfo`, so runtime
+reflection exposes the schema but not source comments. Use this API reference
+for the documented validation and error semantics.
 
 ### Msg Service
 
@@ -1456,6 +1463,19 @@ service Query {
 }
 ```
 
+`LeasesByProvider.provider_uuid` and `LeasesBySKU.sku_uuid` must be non-empty
+canonical lowercase UUIDv7 values. Empty fields fail with gRPC
+`InvalidArgument` and `<field> cannot be empty`. Non-empty malformed, uppercase,
+or non-v7 values fail with `InvalidArgument` and
+`<field> must be a valid UUIDv7`. An unknown canonical lowercase UUIDv7 is
+valid input and returns an empty page.
+
+By contrast, `Lease.lease_uuid`, `WithdrawableAmount.lease_uuid`, and
+`ProviderWithdrawable.provider_uuid` preserve direct-lookup behavior. They
+reject an empty field with `InvalidArgument`, then look up every non-empty key
+as supplied. A malformed, uppercase, non-v7, or unknown canonical value
+therefore returns gRPC `NotFound` rather than a UUID-format error.
+
 **Important Note:** Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement or auto-close. `WithdrawableAmount` calculates the current amount for one lease. `ProviderWithdrawable` dry-runs the current ordered page against page-local virtual tenant state and reports skipped failed simulations in `failed_lease_uuids`, just as provider-wide withdrawal does. Its pages are not additive. Every forward page has a one-transaction analogue because the query limit is capped at the transaction maximum of 100. After commit, advance the query with its prior first-unread cursor and the transaction with its prior last-processed cursor; never interchange them. Settlement (actual token transfer) only happens during write operations (`Withdraw`, `CloseLease`). Only ACTIVE leases accrue charges.
 
 #### QueryParams
@@ -1629,6 +1649,21 @@ http://localhost:1317/liftedinit/billing/v1
 | GET | `/lease/{lease_uuid}/withdrawable` | Get withdrawable amount |
 | GET | `/provider/{provider_uuid}/withdrawable` | Best-effort estimate for the current ordered page; every forward page mirrors one provider transaction because the query limit is capped at 100, after which clients re-query rather than summing pages |
 | GET | `/lease/by-domain/{custom_domain}` | Look up lease by custom domain (v2.1.0+) |
+
+The `/leases/provider/{provider_uuid}` and `/leases/sku/{sku_uuid}` routes apply
+the same canonical lowercase UUIDv7 validation as their gRPC methods. A
+non-empty malformed, uppercase, or non-v7 path value maps to HTTP 400 / gRPC
+`InvalidArgument`; an unknown canonical value returns an empty page. A missing
+path component does not match these routes; a trailing empty component does
+match and maps the handler's `<field> cannot be empty` response to HTTP 400.
+
+The direct-lookup routes `/lease/{lease_uuid}`,
+`/lease/{lease_uuid}/withdrawable`, and
+`/provider/{provider_uuid}/withdrawable` map any non-empty key that does not
+exist—including malformed, uppercase, or non-v7 text—to HTTP 404 / gRPC
+`NotFound`. `/lease/` reaches the lease handler with an empty value and returns
+HTTP 400; an omitted UUID in either withdrawable route shape does not reach its
+handler.
 
 ### Examples
 

@@ -63,7 +63,7 @@ manifestd tx sku update-provider [uuid] [address] [payout-address] [active] [fla
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| uuid | string | Provider UUID (UUIDv7 format) |
+| uuid | string | Canonical lowercase UUIDv7 of the provider |
 | address | string | New management address |
 | payout-address | string | New payout address |
 | active | bool | Whether the provider is active (true/false) |
@@ -107,7 +107,7 @@ manifestd tx sku deactivate-provider [uuid] [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| uuid | string | Provider UUID to deactivate |
+| uuid | string | Canonical lowercase UUIDv7 of the provider to deactivate |
 
 **Flags:**
 | Flag | Type | Default | Description |
@@ -133,7 +133,7 @@ manifestd tx sku create-sku [provider-uuid] [name] [unit] [base-price] [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-uuid | string | UUID of the provider this SKU belongs to |
+| provider-uuid | string | Canonical lowercase UUIDv7 of the provider this SKU belongs to |
 | name | string | Human-readable name for the SKU |
 | unit | int | Billing unit: 1 = per hour, 2 = per day |
 | base-price | coin | Base price (e.g., `3600upwr` for 1/second rate per hour) |
@@ -171,8 +171,8 @@ manifestd tx sku update-sku [uuid] [provider-uuid] [name] [unit] [base-price] [a
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| uuid | string | SKU UUID |
-| provider-uuid | string | Provider UUID |
+| uuid | string | Canonical lowercase UUIDv7 of the SKU |
+| provider-uuid | string | Canonical lowercase UUIDv7 of the provider |
 | name | string | SKU name |
 | unit | int | Billing unit: 1 = per hour, 2 = per day |
 | base-price | coin | Base price |
@@ -203,7 +203,7 @@ manifestd tx sku deactivate-sku [uuid] [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| uuid | string | SKU UUID to deactivate |
+| uuid | string | Canonical lowercase UUIDv7 of the SKU to deactivate |
 
 **Example:**
 ```bash
@@ -269,9 +269,17 @@ and value-filtered cursor pages inspect at most 1000 physical rows. A sparse
 filter can therefore return a short or empty page with a non-empty `next_key`;
 bulk indexers must continue until that cursor is empty.
 
-`SKUsByProvider.provider_uuid` requires a canonical lowercase UUIDv7. Malformed,
-uppercase, or non-v7 inputs fail with gRPC `InvalidArgument`; an unknown
-canonical lowercase UUIDv7 returns an empty page.
+`skus-by-provider` forwards `provider-uuid` to the service without local UUID
+validation. It therefore surfaces the service's field-specific gRPC
+`InvalidArgument`: an empty value reports `provider_uuid cannot be empty`, and
+a non-empty malformed, uppercase, or non-v7 value reports
+`provider_uuid must be a valid UUIDv7`. An unknown canonical lowercase UUIDv7
+returns an empty page.
+
+The direct `provider` and `sku` commands also forward their lookup keys without
+local UUID validation. Their services reject an empty `uuid` with
+`InvalidArgument`; every non-empty key is looked up as supplied, so malformed,
+uppercase, non-v7, and unknown canonical values return `NotFound`.
 
 #### params
 
@@ -303,7 +311,7 @@ manifestd query sku provider [uuid]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| uuid | string | Provider UUID |
+| uuid | string | Canonical lowercase UUIDv7 of the provider |
 
 **Response:**
 ```json
@@ -425,7 +433,7 @@ manifestd query sku sku [uuid]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| uuid | string | SKU UUID |
+| uuid | string | Canonical lowercase UUIDv7 of the SKU |
 
 **Response:**
 ```json
@@ -498,6 +506,10 @@ manifestd query sku skus-by-provider 01912345-6789-7abc-8def-0123456789ab --acti
 
 ## gRPC API
 
+The generated embedded descriptors omit protobuf `SourceCodeInfo`, so runtime
+reflection exposes the schema but not source comments. Use this API reference
+for the documented validation and error semantics.
+
 ### Msg Service
 
 The Msg service handles all state-changing operations.
@@ -547,7 +559,7 @@ Update an existing provider.
 ```protobuf
 message MsgUpdateProvider {
   string authority = 1;       // Authority or allowed address
-  string uuid = 2;            // Provider UUID
+  string uuid = 2;            // Canonical lowercase provider UUIDv7
   string address = 3;         // New management address
   string payout_address = 4;  // New payout address
   bytes meta_hash = 5;        // New metadata hash
@@ -585,7 +597,7 @@ If `has_more` is true in the response, call again to continue deactivating SKUs.
 ```protobuf
 message MsgDeactivateProvider {
   string authority = 1;  // Authority or allowed address
-  string uuid = 2;       // Provider UUID
+  string uuid = 2;       // Canonical lowercase provider UUIDv7
   uint64 limit = 3;      // Max SKUs to deactivate (0 = default 50, max 100)
 }
 ```
@@ -608,7 +620,7 @@ Create a new SKU.
 ```protobuf
 message MsgCreateSKU {
   string authority = 1;                    // Authority or allowed address
-  string provider_uuid = 2;                // Provider UUID
+  string provider_uuid = 2;                // Canonical lowercase provider UUIDv7
   string name = 3;                         // SKU name
   Unit unit = 4;                           // Billing unit
   cosmos.base.v1beta1.Coin base_price = 5; // Base price
@@ -633,8 +645,8 @@ Update an existing SKU.
 ```protobuf
 message MsgUpdateSKU {
   string authority = 1;                    // Authority or allowed address
-  string uuid = 2;                         // SKU UUID
-  string provider_uuid = 3;                // Provider UUID
+  string uuid = 2;                         // Canonical lowercase SKU UUIDv7
+  string provider_uuid = 3;                // Canonical lowercase provider UUIDv7
   string name = 4;                         // SKU name
   Unit unit = 5;                           // Billing unit
   cosmos.base.v1beta1.Coin base_price = 6; // Base price
@@ -662,7 +674,7 @@ Deactivate a SKU (soft delete).
 ```protobuf
 message MsgDeactivateSKU {
   string authority = 1;  // Authority or allowed address
-  string uuid = 2;       // SKU UUID
+  string uuid = 2;       // Canonical lowercase SKU UUIDv7
 }
 ```
 
@@ -708,6 +720,11 @@ service Query {
   rpc SKUsByProvider(QuerySKUsByProviderRequest) returns (QuerySKUsByProviderResponse);
 }
 ```
+
+`Provider.uuid` and `SKU.uuid` preserve direct-lookup behavior. They reject an
+empty field with gRPC `InvalidArgument`, then look up every non-empty key as
+supplied. A malformed, uppercase, non-v7, or unknown canonical value therefore
+returns `NotFound` rather than a UUID-format error.
 
 #### QueryParams
 
@@ -868,6 +885,12 @@ message QuerySKUsByProviderResponse {
 }
 ```
 
+`provider_uuid` must be a non-empty canonical lowercase UUIDv7. An empty field
+fails with gRPC `InvalidArgument` and `provider_uuid cannot be empty`; a
+non-empty malformed, uppercase, or non-v7 value fails with `InvalidArgument`
+and `provider_uuid must be a valid UUIDv7`. An unknown canonical value is valid
+input and returns an empty page.
+
 ---
 
 ## REST API
@@ -891,6 +914,18 @@ http://localhost:1317/liftedinit/sku/v1
 | GET | `/sku/{uuid}` | Get SKU by UUID |
 | GET | `/skus` | List all SKUs |
 | GET | `/skus/provider/{provider_uuid}` | List SKUs by provider |
+
+`/skus/provider/{provider_uuid}` applies the same canonical lowercase UUIDv7
+validation as `QuerySKUsByProvider`. A non-empty malformed, uppercase, or
+non-v7 path value maps to HTTP 400 / gRPC `InvalidArgument`; an unknown
+canonical value returns an empty page. A missing path component does not match
+the route; a trailing empty component does match and maps the handler's
+`provider_uuid cannot be empty` response to HTTP 400.
+
+The direct `/provider/{uuid}` and `/sku/{uuid}` routes map any non-empty key
+that does not exist—including malformed, uppercase, or non-v7 text—to HTTP 404
+/ gRPC `NotFound`. Their trailing-empty forms reach the handlers and map
+`uuid cannot be empty` to HTTP 400.
 
 ### Examples
 

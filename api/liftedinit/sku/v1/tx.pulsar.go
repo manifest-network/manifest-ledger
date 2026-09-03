@@ -7516,7 +7516,8 @@ type MsgUpdateProvider struct {
 
 	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	// uuid is the unique identifier of the provider to update.
+	// uuid is the provider's canonical lowercase UUIDv7. Empty, malformed,
+	// uppercase, or non-v7 values fail message validation.
 	Uuid string `protobuf:"bytes,2,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	// address is the management address of the provider.
 	Address string `protobuf:"bytes,3,opt,name=address,proto3" json:"address,omitempty"`
@@ -7649,7 +7650,8 @@ type MsgDeactivateProvider struct {
 
 	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	// uuid is the unique identifier of the provider to deactivate.
+	// uuid is the provider's canonical lowercase UUIDv7. Empty, malformed,
+	// uppercase, or non-v7 values fail message validation.
 	Uuid string `protobuf:"bytes,2,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	// limit is the maximum number of SKUs to deactivate in this call.
 	// If 0, uses default limit. Cannot exceed MaxDeactivateSKULimit.
@@ -7752,7 +7754,8 @@ type MsgCreateSKU struct {
 
 	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	// provider_uuid is the unique identifier of the SKU provider.
+	// provider_uuid is the SKU provider's canonical lowercase UUIDv7. Empty,
+	// malformed, uppercase, or non-v7 values fail message validation.
 	ProviderUuid string `protobuf:"bytes,2,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
 	// name is the human-readable name of the SKU.
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
@@ -7873,9 +7876,11 @@ type MsgUpdateSKU struct {
 
 	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	// uuid is the unique identifier of the SKU to update.
+	// uuid is the SKU's canonical lowercase UUIDv7. Empty, malformed, uppercase,
+	// or non-v7 values fail message validation.
 	Uuid string `protobuf:"bytes,2,opt,name=uuid,proto3" json:"uuid,omitempty"`
-	// provider_uuid is the unique identifier of the SKU provider.
+	// provider_uuid is the SKU provider's canonical lowercase UUIDv7. Empty,
+	// malformed, uppercase, or non-v7 values fail message validation.
 	ProviderUuid string `protobuf:"bytes,3,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
 	// name is the human-readable name of the SKU.
 	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
@@ -8002,7 +8007,8 @@ type MsgDeactivateSKU struct {
 
 	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	// uuid is the unique identifier of the SKU to deactivate.
+	// uuid is the SKU's canonical lowercase UUIDv7. Empty, malformed, uppercase,
+	// or non-v7 values fail message validation.
 	Uuid string `protobuf:"bytes,2,opt,name=uuid,proto3" json:"uuid,omitempty"`
 }
 

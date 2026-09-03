@@ -996,44 +996,49 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 	k := f.App.SKUKeeper
 	q := keeper.NewQuerier(k)
 
-	t.Run("Provider query with invalid UUID format", func(t *testing.T) {
-		// Not a valid UUIDv7 format
-		_, err := q.Provider(f.Ctx, &types.QueryProviderRequest{
-			Uuid: "not-a-valid-uuid",
-		})
-		require.Error(t, err)
-
-		// Too short
-		_, err = q.Provider(f.Ctx, &types.QueryProviderRequest{
-			Uuid: "12345",
-		})
-		require.Error(t, err)
+	t.Run("Provider query preserves direct lookup semantics", func(t *testing.T) {
+		for _, providerUUID := range []string{"not-a-valid-uuid", "12345"} {
+			_, err := q.Provider(f.Ctx, &types.QueryProviderRequest{
+				Uuid: providerUUID,
+			})
+			require.Equal(t, codes.NotFound, status.Code(err), "uuid %q", providerUUID)
+		}
 
 		// Empty UUID
-		_, err = q.Provider(f.Ctx, &types.QueryProviderRequest{
+		_, err := q.Provider(f.Ctx, &types.QueryProviderRequest{
 			Uuid: "",
 		})
-		require.Error(t, err)
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Equal(t, "uuid cannot be empty", status.Convert(err).Message())
 	})
 
-	t.Run("SKU query with invalid UUID format", func(t *testing.T) {
+	t.Run("SKU query preserves direct lookup semantics", func(t *testing.T) {
 		_, err := q.SKU(f.Ctx, &types.QuerySKURequest{
 			Uuid: "invalid-uuid-format",
 		})
-		require.Error(t, err)
+		require.Equal(t, codes.NotFound, status.Code(err))
 
 		_, err = q.SKU(f.Ctx, &types.QuerySKURequest{
 			Uuid: "",
 		})
-		require.Error(t, err)
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Equal(t, "uuid cannot be empty", status.Convert(err).Message())
 	})
 
 	t.Run("SKUsByProvider rejects invalid provider_uuid", func(t *testing.T) {
-		for _, providerUUID := range []string{"", "bad-uuid", "bad\x00uuid"} {
+		for _, testCase := range []struct {
+			providerUUID string
+			message      string
+		}{
+			{providerUUID: "", message: "provider_uuid cannot be empty"},
+			{providerUUID: "bad-uuid", message: "provider_uuid must be a valid UUIDv7"},
+			{providerUUID: "bad\x00uuid", message: "provider_uuid must be a valid UUIDv7"},
+		} {
 			_, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
-				ProviderUuid: providerUUID,
+				ProviderUuid: testCase.providerUUID,
 			})
-			require.Equal(t, codes.InvalidArgument, status.Code(err), "provider_uuid %q", providerUUID)
+			require.Equal(t, codes.InvalidArgument, status.Code(err), "provider_uuid %q", testCase.providerUUID)
+			require.Equal(t, testCase.message, status.Convert(err).Message())
 		}
 	})
 
@@ -1043,13 +1048,13 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		_, err := q.Provider(f.Ctx, &types.QueryProviderRequest{
 			Uuid: nonExistentUUID,
 		})
-		require.Error(t, err, "should error for non-existent provider")
+		require.Equal(t, codes.NotFound, status.Code(err))
 
 		// Non-existent SKU
 		_, err = q.SKU(f.Ctx, &types.QuerySKURequest{
 			Uuid: nonExistentUUID,
 		})
-		require.Error(t, err, "should error for non-existent SKU")
+		require.Equal(t, codes.NotFound, status.Code(err))
 	})
 
 	t.Run("queries with valid but empty results", func(t *testing.T) {

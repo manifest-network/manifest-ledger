@@ -525,14 +525,31 @@ manifestd query tx [txhash] --output json | jq '.events[] | select(.type | start
 manifestd query billing lease 01912345-6789-7abc-8def-0123456789ab
 ```
 
-### "provider_uuid/sku_uuid must be a valid UUIDv7"
+### "provider_uuid must be a valid UUIDv7" or "sku_uuid must be a valid UUIDv7"
 
-**Cause**: `leases-by-provider` or `leases-by-sku` received a value that is not
-a canonical lowercase UUIDv7. Uppercase, malformed, and non-v7 UUIDs are
-rejected with gRPC `InvalidArgument` rather than treated as unknown resources.
+**Errors**:
+
+- Direct `LeasesByProvider` RPC: `provider_uuid must be a valid UUIDv7`.
+- Direct `LeasesBySKU` RPC: `sku_uuid must be a valid UUIDv7`.
+- `leases-by-provider` CLI: `invalid provider_uuid format: {uuid}`.
+- `provider-withdrawable` CLI: `invalid provider_uuid format: {uuid}`.
+- `leases-by-sku` CLI: `invalid sku_uuid format: {uuid}`.
+
+**Cause**: The two collection RPCs require non-empty canonical lowercase
+UUIDv7 values. A non-empty malformed, uppercase, or non-v7 value is rejected
+with gRPC `InvalidArgument` and the corresponding `must be a valid UUIDv7`
+message. An empty field is rejected earlier, also with `InvalidArgument`, as
+`provider_uuid cannot be empty` or `sku_uuid cannot be empty`.
+
+These billing CLI commands validate their UUID arguments locally before
+constructing an RPC, so they report the `invalid ... format` messages above
+instead of server messages. Omitting a required positional argument produces
+Cobra's argument-count error; passing an explicitly empty argument produces the
+local format error.
 
 **Solution**: Use the canonical lowercase UUIDv7 returned by the SKU module.
-An unknown canonical lowercase UUIDv7 is valid input and returns an empty page.
+For these two collection queries, an unknown canonical lowercase UUIDv7 is
+valid input and returns an empty page.
 
 ### "invalid tenant address"
 

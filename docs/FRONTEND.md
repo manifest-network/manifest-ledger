@@ -369,6 +369,13 @@ Use the same recipe with Leap (`window.leap.signArbitrary(...)`) — the API is 
 
 ## Querying state — common patterns
 
+The collection filters `LeasesByProvider.provider_uuid`,
+`LeasesBySKU.sku_uuid`, and `SKUsByProvider.provider_uuid` require non-empty
+canonical lowercase UUIDv7 values. Empty, malformed, uppercase, or non-v7
+values fail with gRPC `InvalidArgument`; an unknown canonical value returns an
+empty page. Preserve identifiers returned by the chain without changing their
+case.
+
 ### Filter leases by state
 
 `stateFilter` is a `LeaseState` enum value, exposed under the chain's bundle namespace. `LEASE_STATE_UNSPECIFIED (0)` returns everything.

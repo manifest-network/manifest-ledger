@@ -253,16 +253,23 @@ manifestd query sku sku [sku-uuid]
 
 **Errors**:
 
-- Transactions: `invalid UUIDv7 format: {uuid}` (typically wrapped, for
-  example `invalid provider: invalid uuid: invalid UUIDv7 format: ...`).
-- `skus-by-provider`: `provider_uuid must be a valid UUIDv7`.
+- Transactions with an empty UUID field include `uuid cannot be empty`, wrapped
+  with the field and module-error context.
+- Transactions with a non-empty invalid UUID: `invalid UUIDv7 format: {uuid}`
+  appears inside the field- and module-specific error.
+- `skus-by-provider` with an empty value: `provider_uuid cannot be empty`.
+- `skus-by-provider` with a non-empty invalid value:
+  `provider_uuid must be a valid UUIDv7`.
 
 **Cause**: The UUID is not in valid UUIDv7 format. Transactions validate UUIDs
 during message validation. The `query sku skus-by-provider` collection query
 also requires a canonical lowercase provider UUIDv7 and returns gRPC
-`InvalidArgument` for malformed, uppercase, or non-v7 input. Direct
-`query sku provider` and `query sku sku` lookups remain unchanged: they look up
-the supplied key as-is and return `provider not found` or `sku not found`.
+`InvalidArgument` for malformed, uppercase, or non-v7 input. An unknown
+canonical provider UUIDv7 returns an empty SKU page. Direct `query sku provider`
+and `query sku sku` lookups remain unchanged: an empty `uuid` is rejected with
+`InvalidArgument: uuid cannot be empty`; a non-empty malformed or unknown key
+is looked up as-is and returns gRPC `NotFound` with `provider not found` or
+`sku not found`.
 
 **Format constraints** (see the UUIDv7 regex): lowercase hex digits only, the version nibble must be `7`, and the variant nibble must be one of `8`, `9`, `a`, or `b`. Uppercase UUIDs are rejected.
 

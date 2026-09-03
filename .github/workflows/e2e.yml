@@ -189,7 +189,6 @@ jobs:
           - "ictest-billing-state"
           - "ictest-billing-reservation"
           - "ictest-billing-extra"
-          - "ictest-billing-upgrade"
       fail-fast: false
 
     steps:

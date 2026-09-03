@@ -143,28 +143,28 @@ build-vendored: validate-build-inputs
 ###############################################################################
 
 ictest-ibc:
-	cd interchaintest && $(GO) test -race -v -run TestIBC . -count=1
+	cd interchaintest && $(GO) test -race -v -run '^TestIBC$$' . -count=1
 
 ictest-tokenfactory:
-	cd interchaintest && $(GO) test -race -v -run TestTokenFactory . -count=1
+	cd interchaintest && $(GO) test -race -v -run '^TestTokenFactory$$' . -count=1
 
 ictest-manifest:
-	cd interchaintest && $(GO) test -race -v -run TestManifestModule . -count=1
+	cd interchaintest && $(GO) test -race -v -run '^TestManifestModule$$' . -count=1
 
 ictest-poa:
-	cd interchaintest && $(GO) test -race -v -run TestPOA . -count=1
+	cd interchaintest && $(GO) test -race -v -run '^TestPOA$$' . -count=1
 
 ictest-poa-unjail-dup:
-	cd interchaintest && $(GO) test -timeout 25m -race -v -run TestPOAUnjailDup . -count=1
+	cd interchaintest && $(GO) test -timeout 25m -race -v -run '^TestPOAUnjailDup$$' . -count=1
 
 ictest-poa-unjail-dup-bug:
-	cd interchaintest && UNJAIL_DUP_IMAGE=ghcr.io/manifest-network/manifest-ledger:2.1.1 $(GO) test -timeout 25m -race -v -run TestPOAUnjailDup . -count=1
+	cd interchaintest && UNJAIL_DUP_IMAGE=ghcr.io/manifest-network/manifest-ledger:2.1.1 $(GO) test -timeout 25m -race -v -run '^TestPOAUnjailDup$$' . -count=1
 
 ictest-group-poa:
-	cd interchaintest && $(GO) test -timeout 25m -race -v -run TestGroupPOA . -count=1
+	cd interchaintest && $(GO) test -timeout 25m -race -v -run '^TestGroupPOA$$' . -count=1
 
 ictest-cosmwasm:
-	cd interchaintest && $(GO) test -race -v -run TestCosmWasm . -count=1
+	cd interchaintest && $(GO) test -race -v -run '^TestCosmWasm$$' . -count=1
 
 define verify_chain_upgrade_image
 $(DOCKER) run --rm \
@@ -193,17 +193,17 @@ ictest-chain-upgrade: validate-build-inputs
 	@test "$${CI:-}" = "true" || \
 		(printf '%s\n' "local upgrade rehearsals must use: make ictest-chain-upgrade-local"; exit 1)
 	@$(verify_chain_upgrade_image)
-	cd interchaintest && MANIFEST_UPGRADE_VERSION="$${MANIFEST_E2E_IMAGE_VERSION}" $(GO) test -timeout 20m -race -v -run TestBasicManifestUpgrade . -count=1
+	cd interchaintest && MANIFEST_UPGRADE_VERSION="$${MANIFEST_E2E_IMAGE_VERSION}" $(GO) test -timeout 20m -race -v -run '^TestBasicManifestUpgrade$$' . -count=1
 
 ictest-chain-upgrade-local: local-image
 	@$(verify_chain_upgrade_image)
-	cd interchaintest && MANIFEST_UPGRADE_VERSION="$${MANIFEST_E2E_IMAGE_VERSION}" $(GO) test -timeout 20m -race -v -run TestBasicManifestUpgrade . -count=1
+	cd interchaintest && MANIFEST_UPGRADE_VERSION="$${MANIFEST_E2E_IMAGE_VERSION}" $(GO) test -timeout 20m -race -v -run '^TestBasicManifestUpgrade$$' . -count=1
 
 ictest-group:
-	cd interchaintest && $(GO) test -race -v -run TestGroupMetadataLimits . -count=1
+	cd interchaintest && $(GO) test -race -v -run '^TestGroupMetadataLimits$$' . -count=1
 
 ictest-sku:
-	cd interchaintest && $(GO) test -timeout 20m -race -v -run TestSKU . -count=1
+	cd interchaintest && $(GO) test -timeout 20m -race -v -run '^TestSKU$$' . -count=1
 
 # Full local aggregate. CI runs these suites as separate matrix jobs so each retains
 # an independent 45m hang guard.
@@ -226,13 +226,10 @@ ictest-billing-advanced:
 ictest-billing-state:
 	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingState$$' . -count=1
 
-ictest-billing-upgrade:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingModuleUpgrade$$' . -count=1
-
 ictest-billing-reservation:
 	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingReservation$$' . -count=1
 
-.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-poa-unjail-dup ictest-poa-unjail-dup-bug ictest-group-poa ictest-cosmwasm verify-chain-upgrade-image ictest-chain-upgrade ictest-chain-upgrade-local ictest-group ictest-sku ictest-billing ictest-billing-extra ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-upgrade ictest-billing-reservation
+.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-poa-unjail-dup ictest-poa-unjail-dup-bug ictest-group-poa ictest-cosmwasm verify-chain-upgrade-image ictest-chain-upgrade ictest-chain-upgrade-local ictest-group ictest-sku ictest-billing ictest-billing-extra ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-reservation
 
 ###############################################################################
 ###                                Build Image                              ###

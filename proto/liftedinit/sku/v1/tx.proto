@@ -84,7 +84,8 @@ message MsgUpdateProvider {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // uuid is the unique identifier of the provider to update.
+  // uuid is the provider's canonical lowercase UUIDv7. Empty, malformed,
+  // uppercase, or non-v7 values fail message validation.
   string uuid = 2;
 
   // address is the management address of the provider.
@@ -124,7 +125,8 @@ message MsgDeactivateProvider {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // uuid is the unique identifier of the provider to deactivate.
+  // uuid is the provider's canonical lowercase UUIDv7. Empty, malformed,
+  // uppercase, or non-v7 values fail message validation.
   string uuid = 2;
 
   // limit is the maximum number of SKUs to deactivate in this call.
@@ -151,7 +153,8 @@ message MsgCreateSKU {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // provider_uuid is the unique identifier of the SKU provider.
+  // provider_uuid is the SKU provider's canonical lowercase UUIDv7. Empty,
+  // malformed, uppercase, or non-v7 values fail message validation.
   string provider_uuid = 2;
 
   // name is the human-readable name of the SKU.
@@ -189,10 +192,12 @@ message MsgUpdateSKU {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // uuid is the unique identifier of the SKU to update.
+  // uuid is the SKU's canonical lowercase UUIDv7. Empty, malformed, uppercase,
+  // or non-v7 values fail message validation.
   string uuid = 2;
 
-  // provider_uuid is the unique identifier of the SKU provider.
+  // provider_uuid is the SKU provider's canonical lowercase UUIDv7. Empty,
+  // malformed, uppercase, or non-v7 values fail message validation.
   string provider_uuid = 3;
 
   // name is the human-readable name of the SKU.
@@ -230,7 +235,8 @@ message MsgDeactivateSKU {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // uuid is the unique identifier of the SKU to deactivate.
+  // uuid is the SKU's canonical lowercase UUIDv7. Empty, malformed, uppercase,
+  // or non-v7 values fail message validation.
   string uuid = 2;
 }
 
