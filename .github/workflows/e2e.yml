@@ -183,7 +183,11 @@ jobs:
           - "ictest-cosmwasm"
           - "ictest-chain-upgrade"
           - "ictest-sku"
-          - "ictest-billing"
+          - "ictest-billing-lease"
+          - "ictest-billing-credit"
+          - "ictest-billing-advanced"
+          - "ictest-billing-state"
+          - "ictest-billing-reservation"
           - "ictest-billing-extra"
           - "ictest-billing-upgrade"
       fail-fast: false

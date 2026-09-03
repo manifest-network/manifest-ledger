@@ -205,11 +205,12 @@ ictest-group:
 ictest-sku:
 	cd interchaintest && $(GO) test -timeout 20m -race -v -run TestSKU . -count=1
 
+# Full local aggregate. CI runs these suites as separate matrix jobs so each retains
+# an independent 45m hang guard.
 ictest-billing:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run "^TestBilling(Lease|Credit|Advanced|State|Reservation)$$" . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 60m -run "^TestBilling(Lease|Credit|Advanced|State|Reservation)$$" . -count=1
 
-# Extra billing e2e tests kept out of the main ictest-billing batch so it stays under the 45m
-# timeout. Runs as its own parallel CI job.
+# Extra billing e2e tests run as their own parallel CI job.
 ictest-billing-extra:
 	cd interchaintest && $(GO) test -race -v -timeout 45m -run "^TestBilling(AcknowledgeActiveCap|CustomDomain)$$" . -count=1
 
