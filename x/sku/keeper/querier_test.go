@@ -118,57 +118,95 @@ func TestQuerierProviders(t *testing.T) {
 
 func TestListQueriesSupportBoundedSDKPagination(t *testing.T) {
 	f := initFixture(t)
-	q := keeper.NewQuerier(f.App.SKUKeeper)
+	k := f.App.SKUKeeper
+	q := keeper.NewQuerier(k)
+	require.NoError(t, k.SetProvider(f.Ctx, types.Provider{
+		Uuid:          testProvider1UUID,
+		Address:       f.TestAccs[0].String(),
+		PayoutAddress: f.TestAccs[1].String(),
+		Active:        true,
+	}))
+	require.NoError(t, k.SetSKU(f.Ctx, types.SKU{
+		Uuid:         testSKU1UUID,
+		ProviderUuid: testProvider1UUID,
+		Name:         "pagination test SKU",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    sdk.NewInt64Coin("umfx", 1),
+		Active:       true,
+	}))
 
 	queries := []struct {
 		name string
-		call func(*query.PageRequest) error
+		key  []byte
+		call func(*query.PageRequest) (*query.PageResponse, error)
 	}{
 		{
 			name: "providers",
-			call: func(pageReq *query.PageRequest) error {
-				_, err := q.Providers(f.Ctx, &types.QueryProvidersRequest{Pagination: pageReq})
-				return err
+			key:  []byte(testProvider1UUID),
+			call: func(pageReq *query.PageRequest) (*query.PageResponse, error) {
+				resp, err := q.Providers(f.Ctx, &types.QueryProvidersRequest{Pagination: pageReq})
+				if err != nil {
+					return nil, err
+				}
+				return resp.Pagination, nil
 			},
 		},
 		{
 			name: "SKUs",
-			call: func(pageReq *query.PageRequest) error {
-				_, err := q.SKUs(f.Ctx, &types.QuerySKUsRequest{Pagination: pageReq})
-				return err
+			key:  []byte(testSKU1UUID),
+			call: func(pageReq *query.PageRequest) (*query.PageResponse, error) {
+				resp, err := q.SKUs(f.Ctx, &types.QuerySKUsRequest{Pagination: pageReq})
+				if err != nil {
+					return nil, err
+				}
+				return resp.Pagination, nil
 			},
 		},
 		{
 			name: "SKUs by provider",
-			call: func(pageReq *query.PageRequest) error {
-				_, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			key:  []byte(testSKU1UUID),
+			call: func(pageReq *query.PageRequest) (*query.PageResponse, error) {
+				resp, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
 					ProviderUuid: testProvider1UUID,
 					Pagination:   pageReq,
 				})
-				return err
+				if err != nil {
+					return nil, err
+				}
+				return resp.Pagination, nil
 			},
 		},
 		{
 			name: "provider by address",
-			call: func(pageReq *query.PageRequest) error {
-				_, err := q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
+			key:  []byte(testProvider1UUID),
+			call: func(pageReq *query.PageRequest) (*query.PageResponse, error) {
+				resp, err := q.ProviderByAddress(f.Ctx, &types.QueryProviderByAddressRequest{
 					Address:    f.TestAccs[0].String(),
 					Pagination: pageReq,
 				})
-				return err
+				if err != nil {
+					return nil, err
+				}
+				return resp.Pagination, nil
 			},
 		},
 	}
 
 	for _, queryCase := range queries {
 		t.Run(queryCase.name+"/bounded offset and count total", func(t *testing.T) {
-			require.NoError(t, queryCase.call(&query.PageRequest{Offset: 1, Limit: 1, CountTotal: true}))
+			pageRes, err := queryCase.call(&query.PageRequest{Offset: 1, Limit: 1, CountTotal: true})
+			require.NoError(t, err)
+			require.NotNil(t, pageRes)
+			require.Equal(t, uint64(1), pageRes.Total)
 		})
 		t.Run(queryCase.name+"/count total ignored with key", func(t *testing.T) {
-			require.NoError(t, queryCase.call(&query.PageRequest{Key: []byte("cursor"), CountTotal: true}))
+			pageRes, err := queryCase.call(&query.PageRequest{Key: queryCase.key, CountTotal: true})
+			require.NoError(t, err)
+			require.NotNil(t, pageRes)
+			require.Zero(t, pageRes.Total)
 		})
 		t.Run(queryCase.name+"/key and offset", func(t *testing.T) {
-			err := queryCase.call(&query.PageRequest{Key: []byte("cursor"), Offset: 1})
+			_, err := queryCase.call(&query.PageRequest{Key: queryCase.key, Offset: 1})
 			require.Equal(t, codes.InvalidArgument, status.Code(err))
 		})
 	}
@@ -990,19 +1028,13 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("SKUsByProvider with empty provider_uuid", func(t *testing.T) {
-		// Empty provider_uuid should error
-		_, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
-			ProviderUuid: "",
-		})
-		require.Error(t, err)
-
-		// Invalid UUID format returns empty results (no validation on format)
-		resp, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
-			ProviderUuid: "bad-uuid",
-		})
-		require.NoError(t, err)
-		require.Empty(t, resp.Skus, "invalid UUID should return empty results")
+	t.Run("SKUsByProvider rejects invalid provider_uuid", func(t *testing.T) {
+		for _, providerUUID := range []string{"", "bad-uuid", "bad\x00uuid"} {
+			_, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+				ProviderUuid: providerUUID,
+			})
+			require.Equal(t, codes.InvalidArgument, status.Code(err), "provider_uuid %q", providerUUID)
+		}
 	})
 
 	t.Run("non-existent resources return appropriate errors", func(t *testing.T) {

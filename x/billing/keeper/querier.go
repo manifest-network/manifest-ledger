@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"context"
-	"errors"
 	"math"
 	"slices"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 
 	"github.com/manifest-network/manifest-ledger/pkg/pagination"
+	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
@@ -71,14 +71,14 @@ func (q Querier) Leases(ctx context.Context, req *types.QueryLeasesRequest) (*ty
 	}
 	pageReq, err := pagination.BoundedPageRequest(req.Pagination)
 	if err != nil {
-		return nil, paginationRequestError(err)
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	// Use state index for efficient lookup when filtering by state
 	if req.StateFilter != types.LEASE_STATE_UNSPECIFIED {
 		iter, err := pagination.MatchExactWithOrder(ctx, q.k.Leases.Indexes.State, int32(req.StateFilter), pageReq)
 		if err != nil {
-			return nil, paginationResultError(err)
+			return nil, pagination.GRPCStatusError(err)
 		}
 
 		leases, pageRes, err := pagination.PaginateStringIndex(
@@ -90,7 +90,7 @@ func (q Querier) Leases(ctx context.Context, req *types.QueryLeasesRequest) (*ty
 			pagination.WithStringIndexHas(q.k.Leases.Has),
 		)
 		if err != nil {
-			return nil, paginationResultError(err)
+			return nil, pagination.GRPCStatusError(err)
 		}
 
 		return &types.QueryLeasesResponse{
@@ -108,7 +108,7 @@ func (q Querier) Leases(ctx context.Context, req *types.QueryLeasesRequest) (*ty
 		},
 	)
 	if err != nil {
-		return nil, paginationResultError(err)
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	return &types.QueryLeasesResponse{
@@ -135,7 +135,7 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 	}
 	pageReq, err := pagination.BoundedPageRequest(req.Pagination)
 	if err != nil {
-		return nil, paginationRequestError(err)
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	// Use compound index when state filter is provided - O(1) direct lookup
@@ -143,7 +143,7 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 		key := collections.Join(tenantAddr, int32(req.StateFilter))
 		iter, err := pagination.MatchExactWithOrder(ctx, q.k.Leases.Indexes.TenantState, key, pageReq)
 		if err != nil {
-			return nil, paginationResultError(err)
+			return nil, pagination.GRPCStatusError(err)
 		}
 
 		leases, pageRes, err := pagination.PaginateStringIndex(
@@ -155,7 +155,7 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 			pagination.WithStringIndexHas(q.k.Leases.Has),
 		)
 		if err != nil {
-			return nil, paginationResultError(err)
+			return nil, pagination.GRPCStatusError(err)
 		}
 
 		return &types.QueryLeasesByTenantResponse{
@@ -167,7 +167,7 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 	// Use tenant index when no state filter - iterate all tenant's leases
 	iter, err := pagination.MatchExactWithOrder(ctx, q.k.Leases.Indexes.Tenant, tenantAddr, pageReq)
 	if err != nil {
-		return nil, paginationResultError(err)
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	leases, pageRes, err := pagination.PaginateStringIndex(
@@ -179,7 +179,7 @@ func (q Querier) LeasesByTenant(ctx context.Context, req *types.QueryLeasesByTen
 		pagination.WithStringIndexHas(q.k.Leases.Has),
 	)
 	if err != nil {
-		return nil, paginationResultError(err)
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	return &types.QueryLeasesByTenantResponse{
@@ -199,9 +199,12 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 	if req.ProviderUuid == "" {
 		return nil, status.Error(codes.InvalidArgument, "provider_uuid cannot be empty")
 	}
+	if !pkguuid.IsValidUUID(req.ProviderUuid) {
+		return nil, status.Error(codes.InvalidArgument, "provider_uuid must be a valid UUIDv7")
+	}
 	pageReq, err := pagination.BoundedPageRequest(req.Pagination)
 	if err != nil {
-		return nil, paginationRequestError(err)
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	// Use compound index when state filter is provided - O(1) direct lookup
@@ -209,7 +212,7 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 		key := collections.Join(req.ProviderUuid, int32(req.StateFilter))
 		iter, err := pagination.MatchExactWithOrder(ctx, q.k.Leases.Indexes.ProviderState, key, pageReq)
 		if err != nil {
-			return nil, paginationResultError(err)
+			return nil, pagination.GRPCStatusError(err)
 		}
 
 		leases, pageRes, err := pagination.PaginateStringIndex(
@@ -221,7 +224,7 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 			pagination.WithStringIndexHas(q.k.Leases.Has),
 		)
 		if err != nil {
-			return nil, paginationResultError(err)
+			return nil, pagination.GRPCStatusError(err)
 		}
 
 		return &types.QueryLeasesByProviderResponse{
@@ -233,7 +236,7 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 	// Use provider index when no state filter - iterate all provider's leases
 	iter, err := pagination.MatchExactWithOrder(ctx, q.k.Leases.Indexes.Provider, req.ProviderUuid, pageReq)
 	if err != nil {
-		return nil, paginationResultError(err)
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	leases, pageRes, err := pagination.PaginateStringIndex(
@@ -245,7 +248,7 @@ func (q Querier) LeasesByProvider(ctx context.Context, req *types.QueryLeasesByP
 		pagination.WithStringIndexHas(q.k.Leases.Has),
 	)
 	if err != nil {
-		return nil, paginationResultError(err)
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	return &types.QueryLeasesByProviderResponse{
@@ -422,24 +425,29 @@ func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProvi
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	leases, pageRes, err := pagination.PaginateStringIndex(ctx, iter, q.k.Leases.Get, pageReq, nil)
+	leaseUUIDs, pageRes, err := pagination.PaginateStringIndexKeys(ctx, iter, pageReq)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	// Run the page through the real lifecycle against a discarded cache. This
 	// is read-only at the query boundary and keeps estimates aligned with future
 	// settlement/release changes without duplicating consensus accounting.
 	simulationCtx, _ := sdk.UnwrapSDKContext(ctx).CacheContext()
-	transferCoins := make([]sdk.Coin, 0, len(leases))
+	transferCoins := make([]sdk.Coin, 0, len(leaseUUIDs))
 	failedLeaseUUIDs := make([]string, 0)
 	var leaseCount uint64
-	for i := range leases {
+	for _, leaseUUID := range leaseUUIDs {
+		lease, getErr := q.k.GetLease(simulationCtx, leaseUUID)
+		if getErr != nil {
+			failedLeaseUUIDs = append(failedLeaseUUIDs, leaseUUID)
+			continue
+		}
+
 		// Match provider-wide withdrawal's best-effort contract: each lease gets
 		// its own nested cache, failures are discarded, and successful effects
 		// are committed into the shared page simulation for subsequent leases.
 		leaseCtx, commitLease := simulationCtx.CacheContext()
-		lease := leases[i]
 		result, err := q.k.executeProviderLeaseWithdrawal(leaseCtx, &lease)
 		if err != nil {
 			failedLeaseUUIDs = append(failedLeaseUUIDs, lease.Uuid)
@@ -473,7 +481,7 @@ func (q Querier) CreditAccounts(ctx context.Context, req *types.QueryCreditAccou
 	}
 	pageReq, err := pagination.BoundedPageRequest(req.Pagination)
 	if err != nil {
-		return nil, paginationRequestError(err)
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	creditAccounts, pageRes, err := pagination.CollectionPaginate(
@@ -485,7 +493,7 @@ func (q Querier) CreditAccounts(ctx context.Context, req *types.QueryCreditAccou
 		},
 	)
 	if err != nil {
-		return nil, paginationResultError(err)
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	return &types.QueryCreditAccountsResponse{
@@ -504,31 +512,32 @@ func (q Querier) LeasesBySKU(ctx context.Context, req *types.QueryLeasesBySKUReq
 	if req.SkuUuid == "" {
 		return nil, status.Error(codes.InvalidArgument, "sku_uuid cannot be empty")
 	}
+	if !pkguuid.IsValidUUID(req.SkuUuid) {
+		return nil, status.Error(codes.InvalidArgument, "sku_uuid must be a valid UUIDv7")
+	}
 
 	pageReq, err := pagination.BoundedPageRequest(req.Pagination)
 	if err != nil {
-		return nil, paginationRequestError(err)
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	// Use the SKU index to iterate only over leases containing this SKU.
 	rng := collections.NewPrefixedPairRange[string, string](req.SkuUuid)
-	if pageReq != nil {
-		// Resume by a store-level seek on the cursor (deletion-tolerant, O(log n)),
-		// mirroring pkg/pagination.MatchExactWithOrder. collections.PairRange's Start*
-		// binds the byte-order lower bound regardless of Descending(), so reverse
-		// resume must bound the upper end (EndInclusive) to land inclusively on the
-		// cursor and iterate downward. Inclusive bounds keep next_key wire-compatible.
-		if len(pageReq.Key) > 0 {
-			cursor := string(pageReq.Key)
-			if pageReq.Reverse {
-				rng = rng.EndInclusive(cursor)
-			} else {
-				rng = rng.StartInclusive(cursor)
-			}
-		}
+	// Resume by a store-level seek on the cursor (deletion-tolerant, O(log n)),
+	// mirroring pkg/pagination.MatchExactWithOrder. collections.PairRange's Start*
+	// binds the byte-order lower bound regardless of Descending(), so reverse
+	// resume must bound the upper end (EndInclusive) to land inclusively on the
+	// cursor and iterate downward. Inclusive bounds keep next_key wire-compatible.
+	if len(pageReq.Key) > 0 {
+		cursor := string(pageReq.Key)
 		if pageReq.Reverse {
-			rng = rng.Descending()
+			rng = rng.EndInclusive(cursor)
+		} else {
+			rng = rng.StartInclusive(cursor)
 		}
+	}
+	if pageReq.Reverse {
+		rng = rng.Descending()
 	}
 	iter, err := q.k.LeaseBySKUIndex.Iterate(ctx, rng)
 	if err != nil {
@@ -553,7 +562,7 @@ func (q Querier) LeasesBySKU(ctx context.Context, req *types.QueryLeasesBySKUReq
 		pagination.WithStringIndexHas(q.k.Leases.Has),
 	)
 	if err != nil {
-		return nil, paginationResultError(err)
+		return nil, pagination.GRPCStatusError(err)
 	}
 
 	return &types.QueryLeasesBySKUResponse{
@@ -764,20 +773,6 @@ func (i leaseBySKUStringIterator) PrimaryKey() (string, error) {
 		return "", err
 	}
 	return key.K2(), nil
-}
-
-func paginationResultError(err error) error {
-	if errors.Is(err, pagination.ErrPaginationScanLimitExceeded) {
-		return status.Error(codes.ResourceExhausted, err.Error())
-	}
-	return status.Error(codes.Internal, err.Error())
-}
-
-func paginationRequestError(err error) error {
-	if errors.Is(err, pagination.ErrPaginationScanLimitExceeded) {
-		return status.Error(codes.ResourceExhausted, err.Error())
-	}
-	return status.Error(codes.InvalidArgument, err.Error())
 }
 
 // LeaseByCustomDomain returns the lease and the service_name of the item that

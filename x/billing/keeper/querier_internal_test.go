@@ -8,18 +8,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/manifest-network/manifest-ledger/pkg/pagination"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
-
-func TestPaginationErrorCodes(t *testing.T) {
-	require.Equal(t, codes.ResourceExhausted,
-		status.Code(paginationResultError(pagination.ErrPaginationScanLimitExceeded)))
-	require.Equal(t, codes.ResourceExhausted,
-		status.Code(paginationRequestError(pagination.ErrPaginationScanLimitExceeded)))
-	require.Equal(t, codes.InvalidArgument,
-		status.Code(paginationRequestError(pagination.ErrPageKeyAndOffset)))
-}
 
 func TestCheckedCreditEstimateItemCount(t *testing.T) {
 	count, err := checkedCreditEstimateItemCount(

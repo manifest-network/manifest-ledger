@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"cosmossdk.io/collections"
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -15,6 +16,84 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
+
+func TestProviderWithdrawable_PrimaryReadFailuresMatchWithdrawal(t *testing.T) {
+	testCases := []struct {
+		name          string
+		corruptRecord bool
+	}{
+		{name: "missing primary record"},
+		{name: "undecodable primary record", corruptRecord: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := initFixture(t)
+			msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+			querier := keeper.NewQuerier(f.App.BillingKeeper)
+			providerAddr := f.TestAccs[2]
+			provider := f.createTestProvider(t, providerAddr.String(), f.TestAccs[3].String())
+			sku := f.createTestSKU(t, provider.Uuid, 3600) // 1 unit per second
+
+			tenants := []sdk.AccAddress{f.TestAccs[0], f.TestAccs[1]}
+			for _, tenant := range tenants {
+				creditAddr := types.DeriveCreditAddress(tenant)
+				f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewInt64Coin(testDenom, 100_000_000)))
+				require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+					Tenant:        tenant.String(),
+					CreditAddress: creditAddr.String(),
+				}))
+			}
+
+			failedUUID := f.createAndAcknowledgeLease(t, msgServer, tenants[0], providerAddr, []types.LeaseItemInput{{
+				SkuUuid:  sku.Uuid,
+				Quantity: 1,
+			}})
+			validUUID := f.createAndAcknowledgeLease(t, msgServer, tenants[1], providerAddr, []types.LeaseItemInput{{
+				SkuUuid:  sku.Uuid,
+				Quantity: 1,
+			}})
+			require.Less(t, failedUUID, validUUID)
+
+			primaryKey, err := collections.EncodeKeyWithPrefix(
+				types.LeaseKey.Bytes(),
+				collections.StringKey,
+				failedUUID,
+			)
+			require.NoError(t, err)
+			store := f.Ctx.KVStore(f.App.GetKey(types.StoreKey))
+			if tc.corruptRecord {
+				store.Set(primaryKey, []byte{0xff})
+			} else {
+				store.Delete(primaryKey)
+			}
+
+			settleCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second)).
+				WithEventManager(sdk.NewEventManager())
+			estimate, err := querier.ProviderWithdrawable(settleCtx, &types.QueryProviderWithdrawableRequest{
+				ProviderUuid: provider.Uuid,
+				Pagination:   &query.PageRequest{Limit: 2},
+			})
+			require.NoError(t, err)
+			require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin(testDenom, 100)), estimate.Amounts)
+			require.Equal(t, uint64(1), estimate.LeaseCount)
+			require.Equal(t, []string{failedUUID}, estimate.FailedLeaseUuids)
+			require.NotNil(t, estimate.Pagination)
+			require.Empty(t, estimate.Pagination.NextKey)
+
+			withdrawal, err := msgServer.Withdraw(settleCtx, &types.MsgWithdraw{
+				Sender:       providerAddr.String(),
+				ProviderUuid: provider.Uuid,
+				Limit:        2,
+			})
+			require.NoError(t, err)
+			require.Equal(t, estimate.Amounts, withdrawal.TotalAmounts)
+			require.Equal(t, estimate.LeaseCount, withdrawal.WithdrawalCount)
+			require.Equal(t, estimate.FailedLeaseUuids, withdrawal.FailedLeaseUuids)
+			require.False(t, withdrawal.HasMore)
+		})
+	}
+}
 
 func TestProviderWithdrawable_FailuresAreOrderedObservableAndRetryable(t *testing.T) {
 	s := newSelfPayoutBatchFixture(t)

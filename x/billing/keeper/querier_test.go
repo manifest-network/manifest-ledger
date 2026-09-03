@@ -18,6 +18,7 @@ Test Coverage:
 package keeper_test
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 	"slices"
@@ -33,6 +34,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
 
+	sharedpagination "github.com/manifest-network/manifest-ledger/pkg/pagination"
 	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
@@ -51,70 +53,138 @@ func TestQueryParams(t *testing.T) {
 
 func TestListQueriesSupportBoundedSDKPagination(t *testing.T) {
 	f := initFixture(t)
-	querier := keeper.NewQuerier(f.App.BillingKeeper)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+	tenant := f.TestAccs[0]
+	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: types.DeriveCreditAddress(tenant).String(),
+	}))
+	require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: testProviderUUID,
+		Items: []types.LeaseItem{{
+			SkuUuid:     testSKUUUID,
+			Quantity:    1,
+			LockedPrice: sdk.NewInt64Coin(testDenom, 1),
+		}},
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
+	}))
 
 	queries := []struct {
 		name string
-		call func(*query.PageRequest) error
+		key  []byte
+		call func(*query.PageRequest) (*query.PageResponse, error)
 	}{
 		{
 			name: "leases",
-			call: func(pageReq *query.PageRequest) error {
-				_, err := querier.Leases(f.Ctx, &types.QueryLeasesRequest{Pagination: pageReq})
-				return err
+			key:  []byte(testLeaseUUID1),
+			call: func(pageReq *query.PageRequest) (*query.PageResponse, error) {
+				resp, err := querier.Leases(f.Ctx, &types.QueryLeasesRequest{Pagination: pageReq})
+				if err != nil {
+					return nil, err
+				}
+				return resp.Pagination, nil
 			},
 		},
 		{
 			name: "leases by tenant",
-			call: func(pageReq *query.PageRequest) error {
-				_, err := querier.LeasesByTenant(f.Ctx, &types.QueryLeasesByTenantRequest{
-					Tenant:     f.TestAccs[0].String(),
+			key:  []byte(testLeaseUUID1),
+			call: func(pageReq *query.PageRequest) (*query.PageResponse, error) {
+				resp, err := querier.LeasesByTenant(f.Ctx, &types.QueryLeasesByTenantRequest{
+					Tenant:     tenant.String(),
 					Pagination: pageReq,
 				})
-				return err
+				if err != nil {
+					return nil, err
+				}
+				return resp.Pagination, nil
 			},
 		},
 		{
 			name: "leases by provider",
-			call: func(pageReq *query.PageRequest) error {
-				_, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+			key:  []byte(testLeaseUUID1),
+			call: func(pageReq *query.PageRequest) (*query.PageResponse, error) {
+				resp, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
 					ProviderUuid: testProviderUUID,
 					Pagination:   pageReq,
 				})
-				return err
+				if err != nil {
+					return nil, err
+				}
+				return resp.Pagination, nil
 			},
 		},
 		{
 			name: "credit accounts",
-			call: func(pageReq *query.PageRequest) error {
-				_, err := querier.CreditAccounts(f.Ctx, &types.QueryCreditAccountsRequest{Pagination: pageReq})
-				return err
+			key:  []byte(tenant),
+			call: func(pageReq *query.PageRequest) (*query.PageResponse, error) {
+				resp, err := querier.CreditAccounts(f.Ctx, &types.QueryCreditAccountsRequest{Pagination: pageReq})
+				if err != nil {
+					return nil, err
+				}
+				return resp.Pagination, nil
 			},
 		},
 		{
 			name: "leases by SKU",
-			call: func(pageReq *query.PageRequest) error {
-				_, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			key:  []byte(testLeaseUUID1),
+			call: func(pageReq *query.PageRequest) (*query.PageResponse, error) {
+				resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
 					SkuUuid:    testSKUUUID,
 					Pagination: pageReq,
 				})
-				return err
+				if err != nil {
+					return nil, err
+				}
+				return resp.Pagination, nil
 			},
 		},
 	}
 
 	for _, queryCase := range queries {
 		t.Run(queryCase.name+"/bounded offset and count total", func(t *testing.T) {
-			require.NoError(t, queryCase.call(&query.PageRequest{Offset: 1, Limit: 1, CountTotal: true}))
+			pageRes, err := queryCase.call(&query.PageRequest{Offset: 1, Limit: 1, CountTotal: true})
+			require.NoError(t, err)
+			require.NotNil(t, pageRes)
+			require.Equal(t, uint64(1), pageRes.Total)
 		})
 		t.Run(queryCase.name+"/count total ignored with key", func(t *testing.T) {
-			require.NoError(t, queryCase.call(&query.PageRequest{Key: []byte("cursor"), CountTotal: true}))
+			pageRes, err := queryCase.call(&query.PageRequest{Key: queryCase.key, CountTotal: true})
+			require.NoError(t, err)
+			require.NotNil(t, pageRes)
+			require.Zero(t, pageRes.Total)
 		})
 		t.Run(queryCase.name+"/key and offset", func(t *testing.T) {
-			err := queryCase.call(&query.PageRequest{Key: []byte("cursor"), Offset: 1})
+			_, err := queryCase.call(&query.PageRequest{Key: queryCase.key, Offset: 1})
 			require.Equal(t, codes.InvalidArgument, status.Code(err))
 		})
 	}
+}
+
+func TestCreditAccounts_CountTotalScanCeilingReturnsResourceExhausted(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	account := types.CreditAccount{
+		Tenant:        f.TestAccs[0].String(),
+		CreditAddress: types.DeriveCreditAddress(f.TestAccs[0]).String(),
+	}
+
+	for i := uint64(0); i <= sharedpagination.MaxOffsetCountTotalScanLimit; i++ {
+		var addressBytes [20]byte
+		binary.BigEndian.PutUint64(addressBytes[12:], i+1)
+		require.NoError(t, k.CreditAccounts.Set(f.Ctx, sdk.AccAddress(addressBytes[:]), account))
+	}
+
+	_, err := keeper.NewQuerier(k).CreditAccounts(f.Ctx, &types.QueryCreditAccountsRequest{
+		Pagination: &query.PageRequest{Limit: 1, CountTotal: true},
+	})
+	require.Equal(t, codes.ResourceExhausted, status.Code(err))
+	require.ErrorContains(t, err, "use pagination.key")
 }
 
 func TestQueryLease(t *testing.T) {
@@ -744,7 +814,7 @@ func TestQueryLeasesBySKUReverse(t *testing.T) {
 
 	tenant := f.TestAccs[0]
 	providerUUID := testProviderUUID
-	skuUUID := "01912345-6789-7abc-8def-sku000000001"
+	skuUUID := testSKUUUID
 
 	// Create 5 leases with the same SKU for pagination testing
 	for i := 1; i <= 5; i++ {
@@ -831,7 +901,7 @@ func TestQueryLeasesBySKUBoundedSDKPagination(t *testing.T) {
 
 	tenant := f.TestAccs[0]
 	providerUUID := testProviderUUID
-	skuUUID := "01912345-6789-7abc-8def-sku00count01"
+	skuUUID := testSKUUUID
 
 	// Create 5 leases with the same SKU
 	for i := 1; i <= 5; i++ {
@@ -902,6 +972,64 @@ func TestQueryLeasesBySKUBoundedSDKPagination(t *testing.T) {
 		}
 		require.Len(t, allUUIDs, 5, "all 5 leases should be returned across pages with no duplicates")
 	})
+}
+
+func TestQueryLeasesBySKU_StateFilterScanCeiling(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	querier := keeper.NewQuerier(k)
+	tenant := f.TestAccs[0]
+	lastLeaseUUID := ""
+
+	for i := uint64(0); i <= sharedpagination.MaxPageScanLimit; i++ {
+		leaseUUID := fmt.Sprintf("01912345-6789-7abc-8def-%012d", i)
+		state := types.LEASE_STATE_CLOSED
+		if i == sharedpagination.MaxPageScanLimit {
+			state = types.LEASE_STATE_ACTIVE
+			lastLeaseUUID = leaseUUID
+		}
+		require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+			Uuid:         leaseUUID,
+			Tenant:       tenant.String(),
+			ProviderUuid: testProviderUUID,
+			Items: []types.LeaseItem{{
+				SkuUuid:     testSKUUUID,
+				Quantity:    1,
+				LockedPrice: sdk.NewInt64Coin(testDenom, 1),
+			}},
+			State:                      state,
+			CreatedAt:                  f.Ctx.BlockTime(),
+			MinLeaseDurationAtCreation: 1,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
+		}))
+	}
+
+	_, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+		SkuUuid:     testSKUUUID,
+		StateFilter: types.LEASE_STATE_ACTIVE,
+		Pagination:  &query.PageRequest{Limit: 1, CountTotal: true},
+	})
+	require.Equal(t, codes.ResourceExhausted, status.Code(err),
+		"an exact filtered total must fail rather than exceed its value-decode budget")
+
+	firstPage, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+		SkuUuid:     testSKUUUID,
+		StateFilter: types.LEASE_STATE_ACTIVE,
+		Pagination:  &query.PageRequest{Limit: 1},
+	})
+	require.NoError(t, err)
+	require.Empty(t, firstPage.Leases)
+	require.Equal(t, []byte(lastLeaseUUID), firstPage.Pagination.NextKey)
+
+	secondPage, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+		SkuUuid:     testSKUUUID,
+		StateFilter: types.LEASE_STATE_ACTIVE,
+		Pagination:  &query.PageRequest{Key: firstPage.Pagination.NextKey, Limit: 1},
+	})
+	require.NoError(t, err)
+	require.Len(t, secondPage.Leases, 1)
+	require.Equal(t, lastLeaseUUID, secondPage.Leases[0].Uuid)
+	require.Empty(t, secondPage.Pagination.NextKey)
 }
 
 func TestQueryCreditAccount(t *testing.T) {
@@ -2138,8 +2266,8 @@ func TestQueryLeasesBySKU(t *testing.T) {
 
 	tenant := f.TestAccs[0]
 	providerUUID := testProviderUUID
-	skuUUID1 := "01912345-6789-7abc-8def-sku000000001"
-	skuUUID2 := "01912345-6789-7abc-8def-sku000000002"
+	skuUUID1 := testSKUUUID
+	skuUUID2 := "01912345-6789-7abc-8def-0123456789af"
 
 	t.Run("empty result when no leases exist", func(t *testing.T) {
 		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
@@ -2251,7 +2379,7 @@ func TestQueryLeasesBySKUPaginationEdgeCases(t *testing.T) {
 
 	tenant := f.TestAccs[0]
 	providerUUID := testProviderUUID
-	skuUUID := "01912345-6789-7abc-8def-skupage00001"
+	skuUUID := testSKUUUID
 
 	// Create 5 leases with the same SKU
 	for i := 0; i < 5; i++ {
@@ -2309,7 +2437,7 @@ func TestQueryLeasesBySKUPaginationEdgeCases(t *testing.T) {
 	})
 
 	t.Run("empty SKU index with pagination", func(t *testing.T) {
-		nonExistentSKU := "01912345-6789-7abc-8def-skunotexist1"
+		nonExistentSKU := "01912345-6789-7abc-8def-999999999999"
 		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
 			SkuUuid: nonExistentSKU,
 			Pagination: &query.PageRequest{
@@ -2801,12 +2929,22 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		})
 		require.Error(t, err, "empty provider_uuid should error")
 
-		// Invalid UUID format returns empty results (no format validation)
-		resp, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+		// Invalid UUID formats are rejected before composite-key construction.
+		_, err = querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
 			ProviderUuid: "invalid-uuid-format",
 		})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+		_, err = querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+			ProviderUuid: testProviderUUID + "\x00",
+		})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+		resp, err := querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+			ProviderUuid: "01912345-6789-7abc-8def-999999999999",
+		})
 		require.NoError(t, err)
-		require.Empty(t, resp.Leases, "invalid UUID should return empty results")
+		require.Empty(t, resp.Leases, "unknown valid UUID should return empty results")
 	})
 
 	t.Run("WithdrawableAmount with empty/invalid UUID", func(t *testing.T) {
@@ -2844,12 +2982,22 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		})
 		require.Error(t, err, "empty sku_uuid should error")
 
-		// Invalid UUID format returns empty results (no format validation)
-		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+		// Invalid UUID formats are rejected before composite-key construction.
+		_, err = querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
 			SkuUuid: "invalid",
 		})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+		_, err = querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: testSKUUUID + "\x00",
+		})
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+		resp, err := querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
+			SkuUuid: "01912345-6789-7abc-8def-999999999999",
+		})
 		require.NoError(t, err)
-		require.Empty(t, resp.Leases, "invalid UUID should return empty results")
+		require.Empty(t, resp.Leases, "unknown valid UUID should return empty results")
 	})
 
 	t.Run("non-existent resources return appropriate errors", func(t *testing.T) {

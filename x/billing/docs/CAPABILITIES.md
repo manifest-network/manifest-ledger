@@ -139,7 +139,7 @@ it in O(1) and release the exact remaining `U` when it reaches zero.
 | `CreditEstimate` | Gross raw-bank-balance runway at the aggregate ACTIVE rate; not a reservation-aware auto-close forecast |
 | `CreditAddress` | Derive credit address for a tenant |
 | `WithdrawableAmount` | Current `min(accrued, B - (R - A))` for a specific lease |
-| `ProviderWithdrawable` | Ordered best-effort execution estimate for the current ACTIVE-lease page. Failed lease simulations are discarded and reported in `failed_lease_uuids`; successful virtual effects feed later leases and no query state commits. Shared tenant credit is counted once within the page, and pages are not additive. Only forward `limit <= 100` is comparable to one provider withdrawal. After commit, advance the query with its prior first-unread cursor and the transaction with its prior last-processed cursor; never interchange them. |
+| `ProviderWithdrawable` | Ordered best-effort execution estimate for the current ACTIVE-lease page. Failed lease simulations are discarded and reported in `failed_lease_uuids`; successful virtual effects feed later leases and no query state commits. Shared tenant credit is counted once within the page, and pages are not additive. Every forward page is comparable to one provider withdrawal because the query limit is capped at the transaction maximum of 100. After commit, advance the query with its prior first-unread cursor and the transaction with its prior last-processed cursor; never interchange them. |
 | `LeaseByCustomDomain` | Look up the PENDING/ACTIVE lease + item that owns a given `custom_domain` (v2.1.0+) |
 
 `CreditAccount` reads the SDK bank balance store through bounded cursor pages

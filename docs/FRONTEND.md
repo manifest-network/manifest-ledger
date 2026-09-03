@@ -323,9 +323,9 @@ Read-only "what would I withdraw" estimates:
 ```ts
 const perLease = await client.liftedinit.billing.v1.withdrawableAmount({ leaseUuid });
 
-// Provider-wide estimates are page-local ordered dry-runs. A forward page with
-// limit <= 100 is comparable to one provider-wide MsgWithdraw over the same
-// current segment (the transaction is forward-only and capped at 100).
+// Provider-wide estimates are page-local ordered dry-runs. Every forward page
+// is comparable to one provider-wide MsgWithdraw over the same current segment
+// because both the query and transaction are capped at 100 leases.
 const page = await client.liftedinit.billing.v1.providerWithdrawable({
   providerUuid,
   pagination: { key: new Uint8Array(), limit: 100n },
@@ -402,12 +402,15 @@ const { lease, serviceName } = await client.liftedinit.billing.v1.leaseByCustomD
 
 All `Query.<list>` queries take a Cosmos `PageRequest`. Use `key` for stable
 cursoring across pages. The billing and SKU collection/index lists also accept
-SDK-compatible `offset` and explicit `countTotal` requests, but those
-less-efficient modes are limited to 20,000 scanned rows and fail rather than
-return a partial total. An omitted or zero limit defaults to 100 without
-implicitly enabling `countTotal`; clients that need a total must request it.
-`countTotal` is ignored when `key` is set, matching the SDK. The `CreditAccount`
-and `ProviderWithdrawable` queries are deliberately cursor-only.
+SDK-compatible `offset` and explicit `countTotal` requests. Unfiltered
+compatibility requests may inspect at most 20,000 physical rows. Value-filtered
+requests remain capped at 1,000 physical rows in every mode; this applies to
+`LeasesBySKU` with a state filter and `ProviderByAddress` with `activeOnly`.
+Requests fail rather than return an inexact page or total. An omitted or zero
+limit defaults to 100 without implicitly enabling `countTotal`; clients that
+need a total must request it. `countTotal` is ignored when `key` is set,
+matching the SDK. The `CreditAccount` and `ProviderWithdrawable` queries are
+deliberately cursor-only.
 
 ```ts
 import { cosmos, liftedinit } from "@manifest-network/manifestjs";

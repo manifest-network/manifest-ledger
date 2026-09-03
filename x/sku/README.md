@@ -239,9 +239,11 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 List-query pages default to 100 rows and are capped at 1000 rows. Oversized
 limits are clamped, and bulk consumers continue with the opaque
 `pagination.next_key` cursor. SDK-compatible offset and explicitly requested
-exact-total queries are supported with a 20,000-row scan ceiling. An omitted or
-zero limit does not implicitly request a total; larger histories must use
-cursors.
+exact-total queries are supported. Unfiltered requests may inspect at most
+20,000 physical rows; `ProviderByAddress` requests with `active_only` retain a
+1,000-row ceiling in every pagination mode. Requests that cannot produce an
+exact page or total within the applicable ceiling fail. An omitted or zero
+limit does not implicitly request a total; larger histories must use cursors.
 
 For detailed query documentation with response formats, see [API Reference](docs/API.md#query-commands).
 

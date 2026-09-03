@@ -546,17 +546,20 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 | CreditEstimate | Report gross raw-bank-balance runway at the aggregate ACTIVE rate (not reservation-aware or an auto-close forecast) |
 | CreditAddress | Derive credit address for a tenant |
 | WithdrawableAmount | Get withdrawable amount for a lease |
-| ProviderWithdrawable | Ordered best-effort dry-run of the current ACTIVE-lease page. Failed lease simulations are discarded and reported in `failed_lease_uuids`; successful virtual effects feed later leases, while no query state commits. The page is an execution estimate, not an additive snapshot. A forward page with `limit <= 100` is comparable to one provider-wide withdrawal. After it commits, query the next segment with the prior query `pagination.next_key` and withdraw it with the prior transaction `next_key`; the two cursor contracts are not interchangeable. `lease_count` and `failed_lease_uuids` match the comparable transaction, including successful zero-transfer auto-closes in the count. |
+| ProviderWithdrawable | Ordered best-effort dry-run of the current ACTIVE-lease page. Failed lease simulations are discarded and reported in `failed_lease_uuids`; successful virtual effects feed later leases, while no query state commits. The page is an execution estimate, not an additive snapshot. Every forward page is comparable to one provider-wide withdrawal because the query limit is capped at the transaction maximum of 100. After it commits, query the next segment with the prior query `pagination.next_key` and withdraw it with the prior transaction `next_key`; the two cursor contracts are not interchangeable. `lease_count` and `failed_lease_uuids` match the comparable transaction, including successful zero-transfer auto-closes in the count. |
 | LeaseByCustomDomain | Look up the active or pending lease that has claimed a given custom_domain (and the `service_name` of the matching item) |
 
 Generic list-query pages default to 100 rows and are capped at 1000 rows. An
 oversized requested limit is clamped; callers continue with the opaque
 `pagination.next_key` cursor. Standard offset and explicitly requested exact
-total compatibility is available for the five collection/index list queries
-with a 20,000-row scan ceiling; an omitted or zero limit does not implicitly
-request a total. Larger histories must use cursors. `CreditAccount` and
-`ProviderWithdrawable` remain cursor-only because their per-row work is more
-expensive.
+total compatibility is available for the five collection/index list queries.
+Unfiltered requests may inspect at most 20,000 physical rows; value-filtered
+`LeasesBySKU` requests with a state filter retain a 1,000-row ceiling in every
+pagination mode.
+Requests that cannot produce an exact page or total within the applicable
+ceiling fail. An omitted or zero limit does not implicitly request a total.
+Larger histories must use cursors. `CreditAccount` and `ProviderWithdrawable`
+remain cursor-only because their per-row work is more expensive.
 
 **Events**: See [API Reference - Events](docs/API.md#events) for the complete list of events emitted by this module.
 

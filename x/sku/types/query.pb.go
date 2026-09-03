@@ -662,8 +662,10 @@ type QueryProviderByAddressRequest struct {
 	// without implicitly requesting a total. Key pagination is recommended.
 	// Offset and exact-total compatibility scans are limited to 20000 rows;
 	// requests that cannot be completed within that bound fail.
-	// Cursor-filtered pages inspect at most 1000 index rows and may therefore be
-	// short or empty while returning a continuation cursor.
+	// Value-filtered pages inspect at most 1000 physical index rows in every
+	// pagination mode. Cursor pages may therefore be short or empty while
+	// returning a continuation cursor; compatibility requests that cannot
+	// produce the exact requested page or total within that bound fail.
 	Pagination *query.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active providers when true.
 	ActiveOnly bool `protobuf:"varint,3,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`

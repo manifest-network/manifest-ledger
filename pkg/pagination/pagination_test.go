@@ -1,12 +1,16 @@
 package pagination
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/collections/colltest"
@@ -188,6 +192,27 @@ func TestCursorPageRequest_RejectsUnboundedModes(t *testing.T) {
 	require.NotSame(t, original, bounded)
 }
 
+func TestGRPCStatusError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code codes.Code
+	}{
+		{name: "nil", code: codes.OK},
+		{name: "scan ceiling", err: fmt.Errorf("context: %w", ErrPaginationScanLimitExceeded), code: codes.ResourceExhausted},
+		{name: "offset unsupported", err: ErrOffsetPaginationUnsupported, code: codes.InvalidArgument},
+		{name: "count total unsupported", err: ErrCountTotalUnsupported, code: codes.InvalidArgument},
+		{name: "key and offset", err: ErrPageKeyAndOffset, code: codes.InvalidArgument},
+		{name: "unexpected", err: errors.New("iterator read failed"), code: codes.Internal},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.code, status.Code(GRPCStatusError(test.err)))
+		})
+	}
+}
+
 func TestPaginateStringIndex_CapsOversizedLimit(t *testing.T) {
 	keyCount := int(MaxPageLimit + 2)
 	keys := make([]string, keyCount)
@@ -328,6 +353,27 @@ func TestPaginateStringIndex_IndexInconsistencySkip(t *testing.T) {
 	require.Len(t, values, 3, "should skip the deleted entry")
 	require.Equal(t, []string{"1", "2", "3"}, values)
 	require.Empty(t, pageResp.NextKey)
+}
+
+func TestPaginateStringIndex_OrphanWarningIdentifiesFirstPrimaryKey(t *testing.T) {
+	previousLogger := slog.Default()
+	var logOutput bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logOutput, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	keys := []string{"orphan-a", "present", "orphan-b"}
+	values, _, err := PaginateStringIndex(
+		context.Background(),
+		newMockIterator(keys),
+		mockGetter(map[string]string{"present": "value"}),
+		&query.PageRequest{Limit: 10},
+		nil,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"value"}, values)
+	require.Contains(t, logOutput.String(), "count=2")
+	require.Contains(t, logOutput.String(), "first_orphaned_primary_key=orphan-a")
 }
 
 func TestPaginateStringIndex_NonNotFoundErrorPropagated(t *testing.T) {
@@ -606,6 +652,52 @@ func TestPaginateStringIndex_KeyIgnoresCountTotal(t *testing.T) {
 	require.Zero(t, pageRes.Total)
 }
 
+func TestPaginateStringIndexKeys(t *testing.T) {
+	iter := newMockIterator([]string{"a", "b", "c"})
+	keys, pageRes, err := PaginateStringIndexKeys(
+		context.Background(),
+		iter,
+		&query.PageRequest{Limit: 2},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"a", "b"}, keys)
+	require.Equal(t, []byte("c"), pageRes.NextKey)
+	require.True(t, iter.closed)
+}
+
+func TestPaginateStringIndex_UnfilteredCompatibilitySucceedsAtCeiling(t *testing.T) {
+	keys := make([]string, MaxOffsetCountTotalScanLimit+1)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("key-%05d", i)
+	}
+
+	getterCalls := 0
+	hasCalls := 0
+	iter := newMockIterator(keys)
+	values, pageRes, err := PaginateStringIndex(
+		context.Background(),
+		iter,
+		func(_ context.Context, key string) (string, error) {
+			getterCalls++
+			return key, nil
+		},
+		&query.PageRequest{Offset: MaxOffsetCountTotalScanLimit - 1, Limit: 1},
+		nil,
+		WithStringIndexHas(func(context.Context, string) (bool, error) {
+			hasCalls++
+			return true, nil
+		}),
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"key-19999"}, values)
+	require.Equal(t, []byte("key-20000"), pageRes.NextKey)
+	require.Equal(t, int(MaxOffsetCountTotalScanLimit), hasCalls)
+	require.Equal(t, 1, getterCalls)
+	require.True(t, iter.closed)
+}
+
 func TestPaginateStringIndex_ExactTotalExceedingCeilingFails(t *testing.T) {
 	keys := make([]string, MaxOffsetCountTotalScanLimit+1)
 	for i := range keys {
@@ -630,26 +722,51 @@ func TestPaginateStringIndex_ExactTotalExceedingCeilingFails(t *testing.T) {
 }
 
 func TestPaginateStringIndex_SparseCompatibilityScansFailExactly(t *testing.T) {
-	keys := make([]string, MaxOffsetCountTotalScanLimit+1)
+	keys := make([]string, MaxPageScanLimit+1)
 	for i := range keys {
-		keys[i] = fmt.Sprintf("key-%05d", i)
+		keys[i] = fmt.Sprintf("key-%04d", i)
 	}
 
 	for _, pageReq := range []*query.PageRequest{
 		{Offset: 1, Limit: 1},
 		{Limit: 1, CountTotal: true},
 	} {
+		getterCalls := 0
 		iter := newMockIterator(keys)
 		_, _, err := PaginateStringIndex(
 			context.Background(),
 			iter,
-			func(_ context.Context, _ string) (string, error) { return "no", nil },
+			func(_ context.Context, _ string) (string, error) {
+				getterCalls++
+				return "no", nil
+			},
 			pageReq,
 			func(value string) bool { return value == filterYes },
 		)
 		require.ErrorIs(t, err, ErrPaginationScanLimitExceeded)
+		require.Equal(t, int(MaxPageScanLimit), getterCalls)
 		require.True(t, iter.closed)
 	}
+}
+
+func TestPaginateStringIndex_FilteredExactTotalSucceedsAtCeiling(t *testing.T) {
+	keys := make([]string, MaxPageScanLimit)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("key-%04d", i)
+	}
+
+	values, pageRes, err := PaginateStringIndex(
+		context.Background(),
+		newMockIterator(keys),
+		func(_ context.Context, key string) (string, error) { return key, nil },
+		&query.PageRequest{Limit: 1, CountTotal: true},
+		func(string) bool { return true },
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"key-0000"}, values)
+	require.Equal(t, []byte("key-0001"), pageRes.NextKey)
+	require.Equal(t, MaxPageScanLimit, pageRes.Total)
 }
 
 func TestPaginateStringIndex_BoundsSparseFilterScan(t *testing.T) {

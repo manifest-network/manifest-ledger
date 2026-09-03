@@ -524,21 +524,26 @@ Programmatic gRPC clients pass the decoded bytes in `PageRequest.key`. The
 cursor identifies the first unread row, and the next scan resumes inclusively
 at that key. `--reverse` may be combined with a query cursor and resumes in the
 same direction. General billing list queries use the SDK default page size of
-100, clamp oversized `limit` values to 1000, and inspect at most 1000 index rows
-per request. A filtered page can therefore be short or empty while still
+100 and clamp oversized `limit` values to 1000. Cursor pages do work
+proportional to that bounded page size. Value-filtered cursor pages inspect at
+most 1000 physical index rows and can therefore be short or empty while still
 returning a non-empty `next_key`; continue until that cursor is empty.
 
 The five billing collection/index list queries support the standard SDK
-`--offset`, `--page`, and `--count-total` compatibility modes. Those modes may
-inspect at most 20,000 rows and fail rather than return an inexact page or
-total when that ceiling is exceeded. Cursor pagination remains the efficient,
-unbounded-history path. An omitted or zero limit defaults to 100 without
-implicitly enabling `count_total`; request the total explicitly when needed.
-As in the SDK, `count_total` is ignored when a page key is present. The
-`CreditAccount` and `ProviderWithdrawable` queries remain cursor-only because
-they respectively traverse bank balances and simulate the settlement
-lifecycle. Query cursors are not interchangeable with provider-wide
-`MsgWithdrawResponse.next_key`, whose separate contract is described below.
+`--offset`, `--page`, and `--count-total` compatibility modes. Unfiltered
+compatibility requests may inspect at most 20,000 physical rows. Value-filtered
+requests retain the 1000-row ceiling in every mode; currently this applies to
+`LeasesBySKU --state`. A request that cannot return an exact page or total
+within its ceiling fails with gRPC `ResourceExhausted` rather than returning a
+partial result. Cursor pagination remains the efficient, unbounded-history
+path. An omitted or zero limit defaults to 100 without implicitly enabling
+`count_total`; request the total explicitly when needed. A request that combines
+a page key with a nonzero offset fails with gRPC `InvalidArgument`; as in the
+SDK, `count_total` is ignored when a page key is present. The `CreditAccount`
+and `ProviderWithdrawable` queries remain cursor-only because they respectively
+traverse bank balances and simulate the settlement lifecycle. Query cursors are
+not interchangeable with provider-wide `MsgWithdrawResponse.next_key`, whose
+separate contract is described below.
 
 #### params
 
@@ -897,11 +902,11 @@ block time, `failed_lease_uuids` also matches that transaction's failure list.
 
 **Do not sum independently queried pages.** Each page begins from current chain
 state, so pages that contain leases for the same tenant can count the same
-balance. A forward query with `limit <= 100` is comparable to one
-provider-wide withdrawal over the same current segment. Submit the transaction
-and wait for it to commit. Query the next segment with the prior query response's
-`pagination.next_key`; withdraw the next segment with the prior transaction
-response's `next_key`.
+balance. Every forward query page is comparable to one provider-wide withdrawal
+over the same current segment because the query limit is capped at the
+transaction maximum of 100. Submit the transaction and wait for it to commit.
+Query the next segment with the prior query response's `pagination.next_key`;
+withdraw the next segment with the prior transaction response's `next_key`.
 
 Query and transaction cursors are different contracts: the query's
 `pagination.next_key` identifies its first unread index entry, while
@@ -926,10 +931,11 @@ manifestd query billing credit-accounts [flags]
 |------|------|-------------|
 | --limit | uint64 | Pagination limit |
 | --page-key | string | Base64 `pagination.next_key` from the previous response |
+| --count-total | bool | Return the exact total when it can be computed within the applicable scan ceiling |
 
 **Example:**
 ```bash
-manifestd query billing credit-accounts --limit 10
+manifestd query billing credit-accounts --limit 10 --count-total
 ```
 
 **Response:**
@@ -973,10 +979,11 @@ manifestd query billing leases-by-sku [sku-uuid] [flags]
 | --state | string | Filter by state (pending, active, closed, rejected, expired) |
 | --limit | uint64 | Pagination limit |
 | --page-key | string | Base64 `pagination.next_key` from the previous response |
+| --count-total | bool | Return the exact total when it can be computed within the applicable scan ceiling |
 
 **Example:**
 ```bash
-manifestd query billing leases-by-sku 01912345-6789-7abc-8def-0123456789ab --state active
+manifestd query billing leases-by-sku 01912345-6789-7abc-8def-0123456789ab --state active --count-total
 ```
 
 **Response:**
@@ -1445,7 +1452,7 @@ service Query {
 }
 ```
 
-**Important Note:** Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement or auto-close. `WithdrawableAmount` calculates the current amount for one lease. `ProviderWithdrawable` dry-runs the current ordered page against page-local virtual tenant state and reports skipped failed simulations in `failed_lease_uuids`, just as provider-wide withdrawal does. Its pages are not additive. Only a forward page with `limit <= 100` has a one-transaction analogue. After commit, advance the query with its prior first-unread cursor and the transaction with its prior last-processed cursor; never interchange them. Settlement (actual token transfer) only happens during write operations (`Withdraw`, `CloseLease`). Only ACTIVE leases accrue charges.
+**Important Note:** Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement or auto-close. `WithdrawableAmount` calculates the current amount for one lease. `ProviderWithdrawable` dry-runs the current ordered page against page-local virtual tenant state and reports skipped failed simulations in `failed_lease_uuids`, just as provider-wide withdrawal does. Its pages are not additive. Every forward page has a one-transaction analogue because the query limit is capped at the transaction maximum of 100. After commit, advance the query with its prior first-unread cursor and the transaction with its prior last-processed cursor; never interchange them. Settlement (actual token transfer) only happens during write operations (`Withdraw`, `CloseLease`). Only ACTIVE leases accrue charges.
 
 #### QueryParams
 
@@ -1616,7 +1623,7 @@ http://localhost:1317/liftedinit/billing/v1
 | GET | `/credit/{tenant}/estimate` | Estimate credit duration |
 | GET | `/credit-address/{tenant}` | Derive credit address |
 | GET | `/lease/{lease_uuid}/withdrawable` | Get withdrawable amount |
-| GET | `/provider/{provider_uuid}/withdrawable` | Best-effort estimate for the current ordered page; only forward `limit <= 100` mirrors one provider transaction, after which clients re-query rather than summing pages |
+| GET | `/provider/{provider_uuid}/withdrawable` | Best-effort estimate for the current ordered page; every forward page mirrors one provider transaction because the query limit is capped at 100, after which clients re-query rather than summing pages |
 | GET | `/lease/by-domain/{custom_domain}` | Look up lease by custom domain (v2.1.0+) |
 
 ### Examples
@@ -1902,7 +1909,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 - Error codes in logs and metrics remain comparable across versions
 - New errors get the next number after the highest assigned code rather than reusing gaps
 
-**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code (currently 37).
+**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code (currently 38).
 
 ---
 

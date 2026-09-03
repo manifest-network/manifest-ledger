@@ -417,11 +417,12 @@ func GetProviderWithdrawableCmd() *cobra.Command {
 
 Results are paginated over the provider's active leases (page size default 50,
 max 100). Each page is a fresh best-effort simulation, so page amounts are not
-additive. Only a forward page of at most 100 leases is directly comparable to a
-single provider-wide withdrawal transaction. Keep the query's next_key for the
-next query and the transaction's next_key for the next transaction; the two
-cursor formats are not interchangeable. Cursor flags (--page-key, --limit, and
---reverse) are supported; non-zero --offset and --count-total are rejected.`,
+additive. Every forward page is directly comparable to a single provider-wide
+withdrawal because the query limit is capped at the transaction maximum of 100.
+Keep the query's next_key for the next query and the transaction's next_key for
+the next transaction; the two cursor formats are not interchangeable. Cursor
+flags (--page-key, --limit, and --reverse) are supported; non-zero --offset and
+--count-total are rejected.`,
 		Example: `provider-withdrawable 01902a9b-1234-7000-8000-000000000001
 provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100`,
 		Args: cobra.ExactArgs(1),

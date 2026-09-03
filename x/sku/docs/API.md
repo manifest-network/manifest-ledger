@@ -250,19 +250,24 @@ and the next scan resumes inclusively at that key. `--reverse` may be combined
 with `--page-key` and resumes in the same direction.
 
 SKU list queries support the standard SDK `--offset`, `--page`, and
-`--count-total` compatibility modes. Those modes may inspect at most 20,000
-rows and fail rather than return an inexact page or total when that ceiling is
-exceeded. Cursor pagination remains the efficient, unbounded-history path; as
-in the SDK, `count_total` is ignored when a page key is present. An omitted or
-zero limit defaults to 100 without implicitly enabling `count_total`; request
-the total explicitly when needed. Cursor resume on index-backed paths is
-deletion-tolerant: if the cursor row is removed between calls, the query starts
-at the nearest surviving row in the requested direction.
+`--count-total` compatibility modes. Unfiltered compatibility requests may
+inspect at most 20,000 physical rows. Value-filtered requests retain a 1000-row
+ceiling in every mode; currently this applies to `ProviderByAddress
+--active-only`. A request that cannot return an exact page or total within its
+ceiling fails with gRPC `ResourceExhausted` rather than returning a partial
+result. Cursor pagination remains the efficient, unbounded-history path. A
+request that combines a page key with a nonzero offset fails with gRPC
+`InvalidArgument`; as in the SDK, `count_total` is ignored when a page key is
+present. An omitted or zero limit defaults to 100 without implicitly enabling
+`count_total`; request the total explicitly when needed. Cursor resume on
+index-backed paths is deletion-tolerant: if the cursor row is removed between
+calls, the query starts at the nearest surviving row in the requested
+direction.
 
 The SDK default page size is 100, oversized `limit` values are clamped to 1000,
-and filtered index pages inspect at most 1000 rows per request. A sparse filter
-can therefore return a short or empty page with a non-empty `next_key`; bulk
-indexers must continue until that cursor is empty.
+and value-filtered cursor pages inspect at most 1000 physical rows. A sparse
+filter can therefore return a short or empty page with a non-empty `next_key`;
+bulk indexers must continue until that cursor is empty.
 
 #### params
 
@@ -331,10 +336,11 @@ manifestd query sku provider-by-address [address] [flags]
 | --active-only | bool | Filter to return only active providers |
 | --limit | uint64 | Pagination limit |
 | --page-key | string | Base64 `pagination.next_key` from the previous response |
+| --count-total | bool | Return the exact total when it can be computed within the applicable scan ceiling |
 
 **Example:**
 ```bash
-manifestd query sku provider-by-address manifest1abc... --active-only --limit 10
+manifestd query sku provider-by-address manifest1abc... --active-only --limit 10 --count-total
 ```
 
 **Response:**
@@ -375,10 +381,11 @@ manifestd query sku providers [flags]
 | --active-only | bool | Filter to return only active providers |
 | --limit | uint64 | Pagination limit |
 | --page-key | string | Base64 `pagination.next_key` from the previous response |
+| --count-total | bool | Return the exact total when it can be computed within the applicable scan ceiling |
 
 **Example:**
 ```bash
-manifestd query sku providers --active-only --limit 10
+manifestd query sku providers --active-only --limit 10 --count-total
 ```
 
 **Response:**

@@ -653,8 +653,9 @@ transfer.
   `lease_count` matches a comparable transaction's `withdrawal_count`, including
   successful auto-closes that transfer zero. Do not
   sum separately queried pages: each begins from current chain state and may
-  count the same tenant balance. Only a forward query with `limit <= 100` is
-  comparable to one provider-wide withdrawal. Commit that transaction, then
+  count the same tenant balance. Every forward query page is comparable to one
+  provider-wide withdrawal because the query limit is capped at the transaction
+  maximum of 100. Commit that transaction, then
   query the next segment with the prior query's `pagination.next_key`, while
   the next transaction uses the prior transaction response's `next_key`.
   Never interchange those inclusive-query and exclusive-transaction cursors.

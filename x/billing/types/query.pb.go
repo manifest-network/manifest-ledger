@@ -911,14 +911,14 @@ type QueryProviderWithdrawableRequest struct {
 	// provider-wide MsgWithdraw's best-effort behavior.
 	//
 	// Do not sum separately queried pages: every page starts from current chain
-	// state and pages may share tenant balances. Only a forward page with limit
-	// <= 100 is comparable to one provider-wide MsgWithdraw. After that
-	// transaction commits, query the next segment with this response's
-	// pagination.next_key and withdraw it with the transaction response's
-	// next_key. The query cursor is first-unread/inclusive; the transaction
-	// cursor is last-processed/exclusive, so never interchange them. Reverse
-	// pages are read-only estimates only. Offset and count_total are rejected so
-	// work is bounded by the page size.
+	// state and pages may share tenant balances. Every forward page is comparable
+	// to one provider-wide MsgWithdraw because the query limit is capped at the
+	// transaction maximum of 100. After that transaction commits, query the next
+	// segment with this response's pagination.next_key and withdraw it with the
+	// transaction response's next_key. The query cursor is
+	// first-unread/inclusive; the transaction cursor is last-processed/exclusive,
+	// so never interchange them. Reverse pages are read-only estimates only.
+	// Offset and count_total are rejected so work is bounded by the page size.
 	Pagination *query.PageRequest `protobuf:"bytes,3,opt,name=pagination,proto3" json:"pagination,omitempty"`
 }
 
@@ -1172,8 +1172,10 @@ type QueryLeasesBySKURequest struct {
 	// without implicitly requesting a total. Key pagination is recommended.
 	// Offset and exact-total compatibility scans are limited to 20000 rows;
 	// requests that cannot be completed within that bound fail.
-	// Cursor-filtered pages inspect at most 1000 index rows and may therefore be
-	// short or empty while returning a continuation cursor.
+	// Value-filtered pages inspect at most 1000 physical index rows in every
+	// pagination mode. Cursor pages may therefore be short or empty while
+	// returning a continuation cursor; compatibility requests that cannot
+	// produce the exact requested page or total within that bound fail.
 	Pagination *query.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// state_filter filters leases by state. If UNSPECIFIED, returns all leases.
 	StateFilter LeaseState `protobuf:"varint,3,opt,name=state_filter,json=stateFilter,proto3,enum=liftedinit.billing.v1.LeaseState" json:"state_filter,omitempty"`

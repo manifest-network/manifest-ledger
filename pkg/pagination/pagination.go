@@ -11,6 +11,9 @@ import (
 	"fmt"
 	"log/slog"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"cosmossdk.io/collections"
 	"cosmossdk.io/collections/indexes"
 
@@ -30,11 +33,13 @@ const (
 	MaxPageScanLimit uint64 = 1000
 
 	// MaxOffsetCountTotalScanLimit is the largest number of physical collection
-	// or index rows an offset or exact-total request may inspect. These legacy SDK
-	// pagination modes necessarily scan from the beginning of a result set;
-	// keeping their budget separate from MaxPageScanLimit preserves compatibility
-	// for existing clients without making the work unbounded. A paginator may
-	// read one additional key, without decoding its value, to produce next_key.
+	// or unfiltered index rows an offset or exact-total request may inspect. These
+	// legacy SDK pagination modes necessarily scan from the beginning of a result
+	// set; keeping their budget separate from MaxPageScanLimit preserves
+	// compatibility for existing clients without making the work unbounded.
+	// Value-filtered index requests retain MaxPageScanLimit because every inspected
+	// row must be decoded. A paginator may read one additional key, without
+	// decoding its value, to produce next_key.
 	MaxOffsetCountTotalScanLimit uint64 = 20_000
 )
 
@@ -56,6 +61,26 @@ var (
 	// request cannot be answered exactly within the compatibility scan ceiling.
 	ErrPaginationScanLimitExceeded = errors.New("pagination scan limit exceeded")
 )
+
+// GRPCStatusError maps shared pagination errors to their public gRPC status.
+// A scan-budget failure is a resource policy error, request-contract failures
+// are invalid arguments, and unexpected iterator or codec failures are internal.
+func GRPCStatusError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	switch {
+	case errors.Is(err, ErrPaginationScanLimitExceeded):
+		return status.Error(codes.ResourceExhausted, err.Error())
+	case errors.Is(err, ErrOffsetPaginationUnsupported),
+		errors.Is(err, ErrCountTotalUnsupported),
+		errors.Is(err, ErrPageKeyAndOffset):
+		return status.Error(codes.InvalidArgument, err.Error())
+	default:
+		return status.Error(codes.Internal, err.Error())
+	}
+}
 
 // limitPageRequest returns a normalized defensive copy of pageReq with an
 // explicit default response limit and a capped maximum. Supplying the default
@@ -163,7 +188,10 @@ func CollectionPaginate[K, V any, C query.Collection[K, V], T any](
 				return nil, nil, keyErr
 			}
 			pageRes.NextKey, err = collections.EncodeKeyWithPrefix(nil, coll.KeyCodec(), key)
-			return results, pageRes, err
+			if err != nil {
+				return nil, nil, err
+			}
+			return results, pageRes, nil
 		}
 
 		if uint64(len(results)) == bounded.Limit && len(pageRes.NextKey) == 0 {
@@ -290,10 +318,12 @@ func PaginateStringIndex[V any](
 	options ...StringIndexPaginationOption,
 ) (values []V, pageResponse *query.PageResponse, err error) {
 	var orphaned uint64
+	var firstOrphanedPrimaryKey string
 	defer func() {
 		if orphaned > 0 {
 			slog.Warn("index references non-existent primary keys, skipping orphaned entries",
 				"count", orphaned,
+				"first_orphaned_primary_key", firstOrphanedPrimaryKey,
 			)
 		}
 		if closeErr := iter.Close(); err == nil {
@@ -310,7 +340,7 @@ func PaginateStringIndex[V any](
 	hasKey := len(pageReq.Key) > 0
 	compatibilityMode := !hasKey && (pageReq.Offset != 0 || pageReq.CountTotal)
 	scanLimit := MaxPageScanLimit
-	if compatibilityMode {
+	if compatibilityMode && filter == nil {
 		scanLimit = MaxOffsetCountTotalScanLimit
 	}
 	var paginationOptions stringIndexPaginationOptions
@@ -361,6 +391,9 @@ func PaginateStringIndex[V any](
 				return nil, nil, hasErr
 			}
 			if !exists {
+				if orphaned == 0 {
+					firstOrphanedPrimaryKey = pk
+				}
 				orphaned++
 				continue
 			}
@@ -370,6 +403,9 @@ func PaginateStringIndex[V any](
 				if errors.Is(err, collections.ErrNotFound) {
 					// Index references a key that no longer exists (index inconsistency).
 					// Skip the entry rather than failing the entire query.
+					if orphaned == 0 {
+						firstOrphanedPrimaryKey = pk
+					}
 					orphaned++
 					continue
 				}
@@ -416,4 +452,24 @@ func PaginateStringIndex[V any](
 		pageRes.Total = total
 	}
 	return values, pageRes, nil
+}
+
+// PaginateStringIndexKeys paginates the primary keys yielded by an index
+// without loading the corresponding values. It is intended for callers whose
+// subsequent processing consumes keys directly and handles missing primary
+// values itself; this helper therefore does not detect orphaned index entries.
+func PaginateStringIndexKeys(
+	ctx context.Context,
+	iter StringIndexIterator,
+	pageReq *query.PageRequest,
+) ([]string, *query.PageResponse, error) {
+	return PaginateStringIndex(
+		ctx,
+		iter,
+		func(_ context.Context, primaryKey string) (string, error) {
+			return primaryKey, nil
+		},
+		pageReq,
+		nil,
+	)
 }
