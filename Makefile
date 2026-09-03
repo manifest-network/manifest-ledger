@@ -215,22 +215,22 @@ ictest-billing-extra:
 	cd interchaintest && $(GO) test -race -v -timeout 45m -run "^TestBilling(AcknowledgeActiveCap|CustomDomain)$$" . -count=1
 
 ictest-billing-lease:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingLease . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingLease$$' . -count=1
 
 ictest-billing-credit:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingCredit . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingCredit$$' . -count=1
 
 ictest-billing-advanced:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingAdvanced . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingAdvanced$$' . -count=1
 
 ictest-billing-state:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingState . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingState$$' . -count=1
 
 ictest-billing-upgrade:
 	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingModuleUpgrade . -count=1
 
 ictest-billing-reservation:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingReservation . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingReservation$$' . -count=1
 
 .PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-poa-unjail-dup ictest-poa-unjail-dup-bug ictest-group-poa ictest-cosmwasm verify-chain-upgrade-image ictest-chain-upgrade ictest-chain-upgrade-local ictest-group ictest-sku ictest-billing ictest-billing-extra ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-upgrade ictest-billing-reservation
 
