@@ -545,6 +545,10 @@ traverse bank balances and simulate the settlement lifecycle. Query cursors are
 not interchangeable with provider-wide `MsgWithdrawResponse.next_key`, whose
 separate contract is described below.
 
+`LeasesByProvider.provider_uuid` and `LeasesBySKU.sku_uuid` require canonical
+lowercase UUIDv7 values. Malformed, uppercase, or non-v7 inputs fail with gRPC
+`InvalidArgument`; an unknown canonical lowercase UUIDv7 returns an empty page.
+
 #### params
 
 Query module parameters.
@@ -691,7 +695,7 @@ manifestd query billing leases-by-provider [provider-uuid] [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-uuid | string | UUID of the provider |
+| provider-uuid | string | Canonical lowercase UUIDv7 of the provider |
 
 **Flags:**
 | Flag | Type | Description |
@@ -971,7 +975,7 @@ manifestd query billing leases-by-sku [sku-uuid] [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| sku-uuid | string | UUID of the SKU |
+| sku-uuid | string | Canonical lowercase UUIDv7 of the SKU |
 
 **Flags:**
 | Flag | Type | Description |

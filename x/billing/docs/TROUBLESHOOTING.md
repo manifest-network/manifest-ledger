@@ -524,6 +524,15 @@ manifestd query tx [txhash] --output json | jq '.events[] | select(.type | start
 manifestd query billing lease 01912345-6789-7abc-8def-0123456789ab
 ```
 
+### "provider_uuid/sku_uuid must be a valid UUIDv7"
+
+**Cause**: `leases-by-provider` or `leases-by-sku` received a value that is not
+a canonical lowercase UUIDv7. Uppercase, malformed, and non-v7 UUIDs are
+rejected with gRPC `InvalidArgument` rather than treated as unknown resources.
+
+**Solution**: Use the canonical lowercase UUIDv7 returned by the SKU module.
+An unknown canonical lowercase UUIDv7 is valid input and returns an empty page.
+
 ### "invalid tenant address"
 
 **Cause**: The address format is invalid.

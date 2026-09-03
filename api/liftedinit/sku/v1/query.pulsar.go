@@ -7318,7 +7318,8 @@ type QuerySKUsByProviderRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// provider_uuid is the unique identifier of the SKU provider.
+	// provider_uuid is the SKU provider's canonical lowercase UUIDv7. Malformed,
+	// uppercase, or non-v7 values are rejected with InvalidArgument.
 	ProviderUuid string `protobuf:"bytes,1,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
 	// pagination supports Cosmos SDK key/offset and explicit count_total
 	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100

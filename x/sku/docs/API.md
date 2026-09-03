@@ -269,6 +269,10 @@ and value-filtered cursor pages inspect at most 1000 physical rows. A sparse
 filter can therefore return a short or empty page with a non-empty `next_key`;
 bulk indexers must continue until that cursor is empty.
 
+`SKUsByProvider.provider_uuid` requires a canonical lowercase UUIDv7. Malformed,
+uppercase, or non-v7 inputs fail with gRPC `InvalidArgument`; an unknown
+canonical lowercase UUIDv7 returns an empty page.
+
 #### params
 
 Query module parameters.
@@ -476,7 +480,7 @@ manifestd query sku skus-by-provider [provider-uuid] [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-uuid | string | Provider UUID |
+| provider-uuid | string | Canonical lowercase UUIDv7 of the provider |
 
 **Flags:**
 | Flag | Type | Description |

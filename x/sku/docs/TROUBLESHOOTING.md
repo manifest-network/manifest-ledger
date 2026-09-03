@@ -253,7 +253,12 @@ manifestd query sku sku [sku-uuid]
 
 **Error**: `invalid UUIDv7 format: {uuid}` (typically surfaced wrapped, e.g. `invalid provider: invalid uuid: invalid UUIDv7 format: ...`)
 
-**Cause**: The UUID is not in valid UUIDv7 format. This error is raised only by **transactions** (update/deactivate provider or SKU, and create-sku's `provider_uuid`) during message validation — **not** by queries. Queries do not validate UUID format: a malformed UUID passed to `query sku provider` / `query sku sku` is looked up as-is and returns `provider not found` / `sku not found` instead.
+**Cause**: The UUID is not in valid UUIDv7 format. Transactions validate UUIDs
+during message validation. The `query sku skus-by-provider` collection query
+also requires a canonical lowercase provider UUIDv7 and returns gRPC
+`InvalidArgument` for malformed, uppercase, or non-v7 input. Direct
+`query sku provider` and `query sku sku` lookups remain unchanged: they look up
+the supplied key as-is and return `provider not found` or `sku not found`.
 
 **Format constraints** (see the UUIDv7 regex): lowercase hex digits only, the version nibble must be `7`, and the variant nibble must be one of `8`, `9`, `a`, or `b`. Uppercase UUIDs are rejected.
 

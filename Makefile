@@ -227,7 +227,7 @@ ictest-billing-state:
 	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingState$$' . -count=1
 
 ictest-billing-upgrade:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run TestBillingModuleUpgrade . -count=1
+	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingModuleUpgrade$$' . -count=1
 
 ictest-billing-reservation:
 	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingReservation$$' . -count=1

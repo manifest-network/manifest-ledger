@@ -13802,7 +13802,8 @@ type QueryLeasesByProviderRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// provider_uuid is the provider UUID.
+	// provider_uuid is the provider's canonical lowercase UUIDv7. Malformed,
+	// uppercase, or non-v7 values are rejected with InvalidArgument.
 	ProviderUuid string `protobuf:"bytes,1,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
 	// pagination supports Cosmos SDK key/offset and explicit count_total
 	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
@@ -14409,7 +14410,8 @@ type QueryLeasesBySKURequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// sku_uuid is the UUID of the SKU.
+	// sku_uuid is the SKU's canonical lowercase UUIDv7. Malformed, uppercase,
+	// or non-v7 values are rejected with InvalidArgument.
 	SkuUuid string `protobuf:"bytes,1,opt,name=sku_uuid,json=skuUuid,proto3" json:"sku_uuid,omitempty"`
 	// pagination supports Cosmos SDK key/offset and explicit count_total
 	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100

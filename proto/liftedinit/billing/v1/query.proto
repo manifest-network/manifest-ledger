@@ -186,7 +186,8 @@ message QueryLeasesByTenantResponse {
 // QueryLeasesByProviderRequest is the request type for the
 // Query/LeasesByProvider RPC method.
 message QueryLeasesByProviderRequest {
-  // provider_uuid is the provider UUID.
+  // provider_uuid is the provider's canonical lowercase UUIDv7. Malformed,
+  // uppercase, or non-v7 values are rejected with InvalidArgument.
   string provider_uuid = 1 [ (gogoproto.jsontag) = "provider_uuid,omitempty" ];
 
   // pagination supports Cosmos SDK key/offset and explicit count_total
@@ -386,7 +387,8 @@ message QueryCreditAccountsResponse {
 // QueryLeasesBySKURequest is the request type for the Query/LeasesBySKU
 // RPC method.
 message QueryLeasesBySKURequest {
-  // sku_uuid is the UUID of the SKU.
+  // sku_uuid is the SKU's canonical lowercase UUIDv7. Malformed, uppercase,
+  // or non-v7 values are rejected with InvalidArgument.
   string sku_uuid = 1 [ (gogoproto.jsontag) = "sku_uuid,omitempty" ];
 
   // pagination supports Cosmos SDK key/offset and explicit count_total
