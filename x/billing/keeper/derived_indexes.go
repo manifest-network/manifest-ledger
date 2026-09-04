@@ -33,8 +33,12 @@ func (k Keeper) validateDerivedIndexes(ctx context.Context) error {
 }
 
 func (k Keeper) validateManagedLeaseIndexes(ctx context.Context) error {
+	walkLeases := func(walkFunc func(string, types.Lease) (bool, error)) error {
+		return k.Leases.Walk(ctx, nil, walkFunc)
+	}
+
 	var leaseCount uint64
-	if err := k.Leases.Walk(ctx, nil, func(uuid string, lease types.Lease) (bool, error) {
+	if err := walkLeases(func(uuid string, lease types.Lease) (bool, error) {
 		if uuid != lease.Uuid {
 			return true, fmt.Errorf("lease key %s does not match stored UUID %s", uuid, lease.Uuid)
 		}
@@ -50,6 +54,7 @@ func (k Keeper) validateManagedLeaseIndexes(ctx context.Context) error {
 		leaseCount,
 		k.Leases.Indexes.Tenant,
 		k.Leases.Get,
+		walkLeases,
 		func(lease types.Lease) (sdk.AccAddress, error) {
 			tenant, err := sdk.AccAddressFromBech32(lease.Tenant)
 			if err != nil {
@@ -58,6 +63,7 @@ func (k Keeper) validateManagedLeaseIndexes(ctx context.Context) error {
 			return tenant, nil
 		},
 		func(indexed, expected sdk.AccAddress) bool { return indexed.Equals(expected) },
+		func(reference sdk.AccAddress) string { return reference.String() },
 	); err != nil {
 		return err
 	}
@@ -67,8 +73,10 @@ func (k Keeper) validateManagedLeaseIndexes(ctx context.Context) error {
 		leaseCount,
 		k.Leases.Indexes.Provider,
 		k.Leases.Get,
+		walkLeases,
 		func(lease types.Lease) (string, error) { return lease.ProviderUuid, nil },
 		func(indexed, expected string) bool { return indexed == expected },
+		func(reference string) string { return fmt.Sprintf("%q", reference) },
 	); err != nil {
 		return err
 	}
@@ -78,8 +86,10 @@ func (k Keeper) validateManagedLeaseIndexes(ctx context.Context) error {
 		leaseCount,
 		k.Leases.Indexes.State,
 		k.Leases.Get,
+		walkLeases,
 		func(lease types.Lease) (int32, error) { return int32(lease.State), nil },
 		func(indexed, expected int32) bool { return indexed == expected },
+		func(reference int32) string { return fmt.Sprintf("%d", reference) },
 	); err != nil {
 		return err
 	}
@@ -89,11 +99,15 @@ func (k Keeper) validateManagedLeaseIndexes(ctx context.Context) error {
 		leaseCount,
 		k.Leases.Indexes.ProviderState,
 		k.Leases.Get,
+		walkLeases,
 		func(lease types.Lease) (collections.Pair[string, int32], error) {
 			return collections.Join(lease.ProviderUuid, int32(lease.State)), nil
 		},
 		func(indexed, expected collections.Pair[string, int32]) bool {
 			return indexed.K1() == expected.K1() && indexed.K2() == expected.K2()
+		},
+		func(reference collections.Pair[string, int32]) string {
+			return fmt.Sprintf("(%q, %d)", reference.K1(), reference.K2())
 		},
 	); err != nil {
 		return err
@@ -104,6 +118,7 @@ func (k Keeper) validateManagedLeaseIndexes(ctx context.Context) error {
 		leaseCount,
 		k.Leases.Indexes.TenantState,
 		k.Leases.Get,
+		walkLeases,
 		func(lease types.Lease) (collections.Pair[sdk.AccAddress, int32], error) {
 			tenant, err := sdk.AccAddressFromBech32(lease.Tenant)
 			if err != nil {
@@ -118,6 +133,9 @@ func (k Keeper) validateManagedLeaseIndexes(ctx context.Context) error {
 		func(indexed, expected collections.Pair[sdk.AccAddress, int32]) bool {
 			return indexed.K1().Equals(expected.K1()) && indexed.K2() == expected.K2()
 		},
+		func(reference collections.Pair[sdk.AccAddress, int32]) string {
+			return fmt.Sprintf("(%s, %d)", reference.K1(), reference.K2())
+		},
 	); err != nil {
 		return err
 	}
@@ -127,11 +145,19 @@ func (k Keeper) validateManagedLeaseIndexes(ctx context.Context) error {
 		leaseCount,
 		k.Leases.Indexes.StateCreatedAt,
 		k.Leases.Get,
+		walkLeases,
 		func(lease types.Lease) (collections.Pair[int32, time.Time], error) {
 			return collections.Join(int32(lease.State), lease.CreatedAt), nil
 		},
 		func(indexed, expected collections.Pair[int32, time.Time]) bool {
 			return indexed.K1() == expected.K1() && indexed.K2().Equal(expected.K2())
+		},
+		func(reference collections.Pair[int32, time.Time]) string {
+			return fmt.Sprintf(
+				"(%d, %s)",
+				reference.K1(),
+				reference.K2().UTC().Format(time.RFC3339Nano),
+			)
 		},
 	)
 }
@@ -145,8 +171,10 @@ func validateLeaseMultiIndex[ReferenceKey any](
 	expectedCount uint64,
 	index *indexes.Multi[ReferenceKey, string, types.Lease],
 	getLease func(context.Context, string) (types.Lease, error),
+	walkLeases func(func(string, types.Lease) (bool, error)) error,
 	expectedReference func(types.Lease) (ReferenceKey, error),
 	equal func(ReferenceKey, ReferenceKey) bool,
+	formatReference func(ReferenceKey) string,
 ) error {
 	var actualCount uint64
 	err := index.Walk(ctx, nil, func(indexedReference ReferenceKey, leaseUUID string) (bool, error) {
@@ -163,11 +191,11 @@ func validateLeaseMultiIndex[ReferenceKey any](
 		}
 		if !equal(indexedReference, expected) {
 			return true, fmt.Errorf(
-				"lease %s index key %v for primary key %s does not match derived key %v",
+				"lease %s index key %s for primary key %s does not match derived key %s",
 				name,
-				indexedReference,
+				formatReference(indexedReference),
 				leaseUUID,
-				expected,
+				formatReference(expected),
 			)
 		}
 		actualCount++
@@ -176,15 +204,72 @@ func validateLeaseMultiIndex[ReferenceKey any](
 	if err != nil {
 		return err
 	}
-	if actualCount != expectedCount {
-		return fmt.Errorf(
-			"lease %s index contains %d entries, expected %d",
-			name,
-			actualCount,
-			expectedCount,
-		)
+	if actualCount == expectedCount {
+		return nil
 	}
-	return nil
+
+	// Keep the healthy path to one index walk. If the counts differ, walk the
+	// ordered primary map only to identify the exact lease whose row is absent.
+	if err := walkLeases(func(leaseUUID string, lease types.Lease) (bool, error) {
+		expected, err := expectedReference(lease)
+		if err != nil {
+			return true, err
+		}
+		indexed, err := leaseMultiIndexContains(ctx, index, expected, leaseUUID)
+		if err != nil {
+			return true, fmt.Errorf(
+				"inspect lease %s index key %s for primary key %s: %w",
+				name,
+				formatReference(expected),
+				leaseUUID,
+				err,
+			)
+		}
+		if !indexed {
+			return true, fmt.Errorf(
+				"lease %s index is missing derived key %s for lease %s",
+				name,
+				formatReference(expected),
+				leaseUUID,
+			)
+		}
+		return false, nil
+	}); err != nil {
+		return err
+	}
+
+	return fmt.Errorf(
+		"lease %s index contains %d entries, expected %d",
+		name,
+		actualCount,
+		expectedCount,
+	)
+}
+
+func leaseMultiIndexContains[ReferenceKey any](
+	ctx context.Context,
+	index *indexes.Multi[ReferenceKey, string, types.Lease],
+	reference ReferenceKey,
+	leaseUUID string,
+) (found bool, err error) {
+	iterator, err := index.MatchExact(ctx, reference)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		err = errors.Join(err, iterator.Close())
+	}()
+
+	for ; iterator.Valid(); iterator.Next() {
+		indexedUUID, err := iterator.PrimaryKey()
+		if err != nil {
+			return false, err
+		}
+		if indexedUUID == leaseUUID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (k Keeper) validateCreditAddressIndex(ctx context.Context) error {

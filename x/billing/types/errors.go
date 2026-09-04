@@ -46,6 +46,7 @@ var (
 	ErrLeaseQueryLimitExceeded               = errors.Register(ModuleName, 37, "tenant lease query limit exceeded")
 	ErrReservationDenomLimitExceeded         = errors.Register(ModuleName, 38, "credit account reservation denomination limit exceeded")
 	ErrSequenceExhausted                     = errors.Register(ModuleName, 39, "lease UUID sequence exhausted")
+	ErrInternalCorruption                    = errors.Register(ModuleName, 40, "internal billing state corruption")
 )
 
 // MaxItemsPerLeaseHardLimit is the absolute maximum number of items per lease.

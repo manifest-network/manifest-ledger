@@ -954,7 +954,7 @@ To prevent DoS attacks where an attacker creates many pending leases to overload
 3. **Remaining leases expire in subsequent blocks** - In invariant-consistent
    state, no indexed overdue lease is left indefinitely
 4. **Time-bounded index scan** - The StateCreatedAt index is range-queried for `created_at` before the cutoff (`created_at < blockTime - pending_timeout`), so a consistent store visits only expirable leases, not all pending ones
-5. **Stale-row defense** - Primary UUID/state/deadline checks skip and log corrupt index references before counting them against the 100-expiration quota. Stale rows can still add scan work, and missing rows cannot be discovered by EndBlock; neither condition is auto-repaired. The invariant framework reports both for operator remediation.
+5. **Stale-row defense** - Primary UUID/state/deadline checks skip and log corrupt index references before counting them against the 100-expiration quota. Missing and unreadable primary records have distinct diagnostics. Stale rows can still add scan work, and missing rows cannot be discovered by EndBlock; neither condition is auto-repaired. A separate rows-visited cap would let an oldest corrupt prefix permanently starve valid expirations unless paired with a repair mechanism or persisted cursor, so the invariant framework instead reports corruption for operator remediation.
 6. **Two-pass approach** - Avoids iterator invalidation during state modification
 
 #### Lease State on Expiration
@@ -1027,7 +1027,7 @@ The `locked_price` stored in `LeaseItem` is already the per-second rate, calcula
 lockedPricePerSecond, err := ConvertBasePriceToPerSecond(sku.BasePrice, sku.Unit)
 ```
 
-`ConvertBasePriceToPerSecond` (`x/billing/keeper/accrual.go`) wraps `skutypes.CalculatePricePerSecond`, re-attaching the SKU's `base_price` denom so the result is an `sdk.Coin` suitable for `LeaseItem.locked_price`. It returns an error on unknown unit, a zero per-second rate, or inexact division; at lease creation this surfaces as `ErrSKUNotFound.Wrapf("invalid SKU pricing: %s", err)`.
+`ConvertBasePriceToPerSecond` (`x/billing/keeper/accrual.go`) wraps `skutypes.CalculatePricePerSecond`, re-attaching the SKU's `base_price` denom so the result is an `sdk.Coin` suitable for `LeaseItem.locked_price`. It returns an error on unknown unit, a zero per-second rate, or inexact division; at lease creation the underlying pricing error is wrapped with the SKU UUID and returned unchanged rather than being misclassified as `ErrSKUNotFound`.
 
 ### Accrual Formula
 

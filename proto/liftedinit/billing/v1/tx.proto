@@ -66,7 +66,8 @@ service Msg {
 message LeaseItemInput {
   option (amino.name) = "lifted/billing/LeaseItemInput";
 
-  // sku_uuid is the UUID of the SKU to lease.
+  // sku_uuid is the SKU's canonical lowercase UUIDv7. Empty, malformed,
+  // uppercase, or non-v7 values fail message validation.
   string sku_uuid = 1 [ (gogoproto.jsontag) = "sku_uuid,omitempty" ];
 
   // quantity is the number of instances.
@@ -193,7 +194,8 @@ message MsgCloseLease {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_uuids are the UUIDs of the leases to close (1-100).
+  // lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+  // malformed, uppercase, or non-v7 values fail message validation.
   repeated string lease_uuids = 2
       [ (gogoproto.jsontag) = "lease_uuids,omitempty" ];
 
@@ -241,12 +243,15 @@ message MsgWithdraw {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_uuids are the UUIDs of the leases to withdraw from (1-100).
-  // Mutually exclusive with provider_uuid.
+  // lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+  // malformed, uppercase, or non-v7 values fail message validation. Mutually
+  // exclusive with provider_uuid.
   repeated string lease_uuids = 2
       [ (gogoproto.jsontag) = "lease_uuids,omitempty" ];
 
-  // provider_uuid enables provider-wide withdrawal mode.
+  // provider_uuid enables provider-wide withdrawal mode. When present it must
+  // be a canonical lowercase UUIDv7; malformed, uppercase, or non-v7 values
+  // fail message validation.
   // When set, withdraws from all active leases for this provider with
   // pagination. Mutually exclusive with lease_uuids.
   string provider_uuid = 3 [ (gogoproto.jsontag) = "provider_uuid,omitempty" ];
@@ -339,7 +344,8 @@ message MsgAcknowledgeLease {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_uuids are the UUIDs of the leases to acknowledge (1-100).
+  // lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+  // malformed, uppercase, or non-v7 values fail message validation.
   repeated string lease_uuids = 2
       [ (gogoproto.jsontag) = "lease_uuids,omitempty" ];
 }
@@ -371,7 +377,8 @@ message MsgRejectLease {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_uuids are the UUIDs of the leases to reject (1-100).
+  // lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+  // malformed, uppercase, or non-v7 values fail message validation.
   repeated string lease_uuids = 2
       [ (gogoproto.jsontag) = "lease_uuids,omitempty" ];
 
@@ -406,7 +413,8 @@ message MsgCancelLease {
     (gogoproto.jsontag) = "tenant,omitempty"
   ];
 
-  // lease_uuids are the UUIDs of the leases to cancel (1-100).
+  // lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+  // malformed, uppercase, or non-v7 values fail message validation.
   repeated string lease_uuids = 2
       [ (gogoproto.jsontag) = "lease_uuids,omitempty" ];
 }
@@ -440,7 +448,8 @@ message MsgSetItemCustomDomain {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_uuid is the UUID of the lease that owns the target item.
+  // lease_uuid is the lease's canonical lowercase UUIDv7. Empty, malformed,
+  // uppercase, or non-v7 values fail message validation.
   string lease_uuid = 2 [ (gogoproto.jsontag) = "lease_uuid,omitempty" ];
 
   // service_name addresses the target LeaseItem. The keeper finds the unique

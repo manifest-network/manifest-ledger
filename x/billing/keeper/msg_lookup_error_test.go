@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"cosmossdk.io/collections"
+	errorsmod "cosmossdk.io/errors"
 
 	sdkcodec "github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -79,30 +80,42 @@ func (s billingLookupFixture) createActiveLease(t *testing.T) string {
 
 func TestCreateLeaseDoesNotMaskCorruptLookupsAsNotFound(t *testing.T) {
 	tests := []struct {
-		name     string
-		corrupt  func(testing.TB, billingLookupFixture)
-		notFound error
+		name       string
+		corrupt    func(testing.TB, billingLookupFixture)
+		notFound   error
+		corruption error
+		codespace  string
+		code       uint32
 	}{
 		{
 			name: "credit account",
 			corrupt: func(t testing.TB, s billingLookupFixture) {
 				corruptBillingCreditAccount(t, s, s.tenant)
 			},
-			notFound: types.ErrCreditAccountNotFound,
+			notFound:   types.ErrCreditAccountNotFound,
+			corruption: types.ErrInternalCorruption,
+			codespace:  types.ModuleName,
+			code:       40,
 		},
 		{
 			name: "SKU",
 			corrupt: func(t testing.TB, s billingLookupFixture) {
 				corruptStringPrimaryRecordInStore(t, s.f, skutypes.StoreKey, skutypes.SKUKey.Bytes(), s.sku.Uuid)
 			},
-			notFound: types.ErrSKUNotFound,
+			notFound:   types.ErrSKUNotFound,
+			corruption: skutypes.ErrInternalCorruption,
+			codespace:  skutypes.ModuleName,
+			code:       9,
 		},
 		{
 			name: "provider",
 			corrupt: func(t testing.TB, s billingLookupFixture) {
 				corruptStringPrimaryRecordInStore(t, s.f, skutypes.StoreKey, skutypes.ProviderKey.Bytes(), s.provider.Uuid)
 			},
-			notFound: types.ErrProviderNotFound,
+			notFound:   types.ErrProviderNotFound,
+			corruption: skutypes.ErrInternalCorruption,
+			codespace:  skutypes.ModuleName,
+			code:       9,
 		},
 	}
 
@@ -117,8 +130,35 @@ func TestCreateLeaseDoesNotMaskCorruptLookupsAsNotFound(t *testing.T) {
 			})
 			require.Error(t, err)
 			require.NotErrorIs(t, err, test.notFound)
+			require.ErrorIs(t, err, test.corruption)
+			codespace, code, _ := errorsmod.ABCIInfo(err, false)
+			require.Equal(t, test.codespace, codespace)
+			require.Equal(t, test.code, code)
 		})
 	}
+}
+
+func TestFundCreditPreservesCorruptAccountClassification(t *testing.T) {
+	s := newBillingLookupFixture(t)
+	amount := sdk.NewInt64Coin(testDenom, 100)
+	s.f.fundAccount(t, s.tenant, sdk.NewCoins(amount))
+	corruptBillingCreditAccount(t, s, s.tenant)
+	creditAddress := types.DeriveCreditAddress(s.tenant)
+	senderBefore := s.f.App.BankKeeper.GetBalance(s.f.Ctx, s.tenant, testDenom)
+	creditBefore := s.f.App.BankKeeper.GetBalance(s.f.Ctx, creditAddress, testDenom)
+
+	_, err := s.msgServer.FundCredit(s.f.Ctx, &types.MsgFundCredit{
+		Sender: s.tenant.String(),
+		Tenant: s.tenant.String(),
+		Amount: amount,
+	})
+	require.ErrorIs(t, err, types.ErrInternalCorruption)
+	require.NotErrorIs(t, err, types.ErrInvalidCreditOperation)
+	codespace, code, _ := errorsmod.ABCIInfo(err, false)
+	require.Equal(t, types.ModuleName, codespace)
+	require.Equal(t, uint32(40), code)
+	require.True(t, senderBefore.Equal(s.f.App.BankKeeper.GetBalance(s.f.Ctx, s.tenant, testDenom)))
+	require.True(t, creditBefore.Equal(s.f.App.BankKeeper.GetBalance(s.f.Ctx, creditAddress, testDenom)))
 }
 
 func TestCreateLeaseDoesNotMaskInvalidStoredPricingAsMissingSKU(t *testing.T) {
@@ -183,6 +223,7 @@ func TestLeaseMessagesDoNotMaskCorruptLeaseAsNotFound(t *testing.T) {
 			err := test.call(s, leaseUUID)
 			require.Error(t, err)
 			require.NotErrorIs(t, err, types.ErrLeaseNotFound)
+			require.ErrorIs(t, err, types.ErrInternalCorruption)
 		})
 	}
 }
@@ -199,6 +240,7 @@ func TestLeaseMessagesDoNotMaskCorruptCreditAccountAsNotFound(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.NotErrorIs(t, err, types.ErrCreditAccountNotFound)
+		require.ErrorIs(t, err, types.ErrInternalCorruption)
 	})
 
 	t.Run("close", func(t *testing.T) {
@@ -213,6 +255,7 @@ func TestLeaseMessagesDoNotMaskCorruptCreditAccountAsNotFound(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.NotErrorIs(t, err, types.ErrCreditAccountNotFound)
+		require.ErrorIs(t, err, types.ErrInternalCorruption)
 	})
 
 	t.Run("cancel", func(t *testing.T) {
@@ -226,6 +269,7 @@ func TestLeaseMessagesDoNotMaskCorruptCreditAccountAsNotFound(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.NotErrorIs(t, err, types.ErrCreditAccountNotFound)
+		require.ErrorIs(t, err, types.ErrInternalCorruption)
 	})
 }
 
@@ -241,6 +285,7 @@ func TestLeaseMessagesDoNotMaskCorruptProviderAsNotFound(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.NotErrorIs(t, err, types.ErrProviderNotFound)
+		require.ErrorIs(t, err, skutypes.ErrInternalCorruption)
 	})
 
 	t.Run("settlement", func(t *testing.T) {
@@ -257,6 +302,7 @@ func TestLeaseMessagesDoNotMaskCorruptProviderAsNotFound(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.NotErrorIs(t, err, types.ErrProviderNotFound)
+		require.ErrorIs(t, err, skutypes.ErrInternalCorruption)
 	})
 
 	t.Run("legacy provider with invalid payout address", func(t *testing.T) {

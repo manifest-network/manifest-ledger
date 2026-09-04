@@ -95,6 +95,19 @@ printf '%s\n' "$@" > "$FAKE_DOCKER_LOG"
 	require.Contains(t, invocation, "release\n--snapshot\n--clean\n--skip=publish\n")
 }
 
+func TestReleaseSourceVulnerabilityScansUseStandaloneModuleGraph(t *testing.T) {
+	makefile, err := os.ReadFile(filepath.Join("..", "Makefile")) //nolint:gosec
+	require.NoError(t, err)
+
+	makefileText := string(makefile)
+	require.Contains(t, makefileText,
+		"@GOWORK=off $(GO) run ./tools/govulncheck-policy -govulncheck $(go_bin)/govulncheck -goos linux -goarch amd64 -- -tags=netgo,muslc,ledger ./...",
+	)
+	require.Contains(t, makefileText,
+		"@GOWORK=off $(GO) run ./tools/govulncheck-policy -govulncheck $(go_bin)/govulncheck -goos linux -goarch amd64 -- -tags=netgo,muslc ./...",
+	)
+}
+
 func TestReleaseCollisionCheckFailsClosed(t *testing.T) {
 	tests := []struct {
 		name        string

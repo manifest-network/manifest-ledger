@@ -1073,6 +1073,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrProviderNotFound` | 6 | Provider doesn't exist |
 | `ErrInvalidAPIURL` | 7 | Invalid API URL (not HTTPS, too long, contains credentials, etc.) |
 | `ErrSequenceExhausted` | 8 | A deterministic provider or SKU UUID sequence has exhausted its `uint64` range |
+| `ErrInternalCorruption` | 9 | Provider/SKU primary state or the active-SKU index cannot be read consistently; distinct from a missing requested resource |
 
 **Note:** Active status checks (e.g., "provider is not active", "SKU is not active") are reported via `ErrInvalidProvider` or `ErrInvalidSKU` respectively.
 

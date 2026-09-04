@@ -1184,7 +1184,7 @@ message MsgCreateLease {
 }
 
 message LeaseItemInput {
-  string sku_uuid = 1;      // UUIDv7 of SKU
+  string sku_uuid = 1;      // Canonical lowercase SKU UUIDv7
   uint64 quantity = 2;
   string service_name = 3;  // Optional RFC 1123 DNS label for stack deployments
 }
@@ -1232,7 +1232,7 @@ pending deadline, and fit within each tenant's post-batch active cap.
 ```protobuf
 message MsgAcknowledgeLease {
   string sender = 1;               // Provider or authority
-  repeated string lease_uuids = 2; // Leases to acknowledge (1-100)
+  repeated string lease_uuids = 2; // Canonical lowercase lease UUIDv7 values (1-100)
 }
 ```
 
@@ -1267,7 +1267,7 @@ Provider rejects one or more PENDING leases atomically.
 ```protobuf
 message MsgRejectLease {
   string sender = 1;               // Provider or authority
-  repeated string lease_uuids = 2; // Leases to reject (1-100)
+  repeated string lease_uuids = 2; // Canonical lowercase lease UUIDv7 values (1-100)
   string reason = 3;               // Optional reason (max 256 chars, applied to all)
 }
 ```
@@ -1296,7 +1296,7 @@ Tenant cancels one or more of their own PENDING leases atomically.
 ```protobuf
 message MsgCancelLease {
   string tenant = 1;               // Tenant (must own all leases)
-  repeated string lease_uuids = 2; // Leases to cancel (1-100)
+  repeated string lease_uuids = 2; // Canonical lowercase lease UUIDv7 values (1-100)
 }
 ```
 
@@ -1324,7 +1324,7 @@ Close one or more ACTIVE leases atomically.
 ```protobuf
 message MsgCloseLease {
   string sender = 1;               // Sender (tenant, provider, or authority)
-  repeated string lease_uuids = 2; // Leases to close (1-100)
+  repeated string lease_uuids = 2; // Canonical lowercase lease UUIDv7 values (1-100)
   string reason = 3;               // Optional closure reason (max 256 chars, applied to all)
 }
 ```
@@ -1357,8 +1357,8 @@ Withdraw from leases. Supports two mutually exclusive modes:
 ```protobuf
 message MsgWithdraw {
   string sender = 1;               // Provider or authority
-  repeated string lease_uuids = 2; // Mode 1: specific lease UUIDs (1-100)
-  string provider_uuid = 3;        // Mode 2: provider UUID for provider-wide withdrawal
+  repeated string lease_uuids = 2; // Mode 1: canonical lowercase lease UUIDv7 values (1-100)
+  string provider_uuid = 3;        // Mode 2: canonical lowercase provider UUIDv7
   uint64 limit = 4;                // Max leases in provider mode (default 50, max 100)
   bytes key = 5;                   // Mode 2: opaque cursor from the previous response's next_key; base64 in JSON. Must be empty in mode 1.
 }
@@ -1412,7 +1412,7 @@ Set or clear `custom_domain` on a specific lease item identified by `service_nam
 ```protobuf
 message MsgSetItemCustomDomain {
   string sender = 1;        // Tenant, authority, or allowed_list member
-  string lease_uuid = 2;    // Target lease (must be PENDING or ACTIVE)
+  string lease_uuid = 2;    // Canonical lowercase UUIDv7 of target PENDING/ACTIVE lease
   string service_name = 3;  // Item addressing key; "" for a 1-item legacy lease
   string custom_domain = 4; // FQDN to set, or "" to clear
 }
@@ -1946,6 +1946,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrLeaseQueryLimitExceeded` | 37 | `CreditEstimate` would exceed its conservative ACTIVE-lease or total-item work bound |
 | `ErrReservationDenomLimitExceeded` | 38 | A new lease would increase a credit account's aggregate reservation beyond 1,000 denominations |
 | `ErrSequenceExhausted` | 39 | The deterministic lease UUID sequence has exhausted its `uint64` range |
+| `ErrInternalCorruption` | 40 | A stored billing record exists but cannot be decoded; distinct from a missing record |
 
 **Note on Reserved Codes:** Error code 7 is explicitly reserved to maintain stable error code assignments across module versions. Code 20 is active and belongs to `ErrArithmeticOverflow`.
 
@@ -1954,7 +1955,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 - Error codes in logs and metrics remain comparable across versions
 - New errors get the next number after the highest assigned code rather than reusing gaps
 
-**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code (currently 38).
+**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code (currently 40).
 
 ---
 

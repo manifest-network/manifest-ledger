@@ -5496,6 +5496,43 @@ func TestEndBlocker_StaleTerminalIndexRowsDoNotConsumeExpirationLimit(t *testing
 		"stale terminal index rows must not consume the expiration quota")
 }
 
+func TestEndBlocker_UUIDMismatchIsSkippedWithoutBlockingValidExpiry(t *testing.T) {
+	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t)
+	k := f.App.BillingKeeper
+
+	const (
+		mismatchedPrimaryUUID = "aaa-mismatched-primary"
+		mismatchedValueUUID   = "different-stored-uuid"
+		validUUID             = "zzz-valid-expired"
+	)
+	f.setPendingLease(t, mismatchedPrimaryUUID, providerUUID, skuUUID, denom, baseTime)
+	f.setPendingLease(t, validUUID, providerUUID, skuUUID, denom, baseTime)
+
+	corruptLease, err := k.Leases.Get(f.Ctx, mismatchedPrimaryUUID)
+	require.NoError(t, err)
+	corruptLease.Uuid = mismatchedValueUUID
+	require.NoError(t, k.Leases.Set(f.Ctx, mismatchedPrimaryUUID, corruptLease))
+
+	ctx := f.Ctx.WithBlockTime(baseTime.Add(61 * time.Second))
+	require.NoError(t, k.EndBlocker(ctx))
+
+	unchanged, err := k.Leases.Get(ctx, mismatchedPrimaryUUID)
+	require.NoError(t, err)
+	require.Equal(t, mismatchedValueUUID, unchanged.Uuid)
+	require.Equal(t, types.LEASE_STATE_PENDING, unchanged.State,
+		"a UUID-mismatched primary must not be transitioned under either identity")
+
+	valid, err := k.GetLease(ctx, validUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_EXPIRED, valid.State,
+		"a corrupt row must not block a later valid expiration")
+
+	account, err := k.GetCreditAccount(ctx, f.TestAccs[0].String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), account.PendingLeaseCount,
+		"only the skipped corrupt lease remains pending")
+}
+
 // TestMsgWithdraw_ProviderWideMode tests the provider-wide withdrawal mode using --provider flag.
 func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 	f := initFixture(t)

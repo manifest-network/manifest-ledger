@@ -73,6 +73,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"cosmossdk.io/collections"
+	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
@@ -2098,6 +2099,10 @@ func TestMsgServerLookupErrorClassification(t *testing.T) {
 				err := operation.call()
 				require.Error(t, err)
 				require.NotErrorIs(t, err, types.ErrProviderNotFound)
+				require.ErrorIs(t, err, types.ErrInternalCorruption)
+				codespace, code, _ := errorsmod.ABCIInfo(err, false)
+				require.Equal(t, types.ModuleName, codespace)
+				require.Equal(t, uint32(9), code)
 			})
 		}
 	})
@@ -2116,6 +2121,53 @@ func TestMsgServerLookupErrorClassification(t *testing.T) {
 				err := operation.call()
 				require.Error(t, err)
 				require.NotErrorIs(t, err, types.ErrSKUNotFound)
+				require.ErrorIs(t, err, types.ErrInternalCorruption)
+				codespace, code, _ := errorsmod.ABCIInfo(err, false)
+				require.Equal(t, types.ModuleName, codespace)
+				require.Equal(t, uint32(9), code)
+			})
+		}
+	})
+
+	t.Run("provider cascade classifies corrupt indexed SKU", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			corrupt func(*testing.T, *testFixture)
+		}{
+			{
+				name: "unreadable primary",
+				corrupt: func(t *testing.T, f *testFixture) {
+					corruptStringPrimaryRecord(t, f, types.SKUKey.Bytes(), sku.Uuid)
+				},
+			},
+			{
+				name: "missing primary",
+				corrupt: func(t *testing.T, f *testFixture) {
+					key, err := collections.EncodeKeyWithPrefix(types.SKUKey.Bytes(), collections.StringKey, sku.Uuid)
+					require.NoError(t, err)
+					f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Delete(key)
+				},
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				f := initFixture(t)
+				k := f.App.SKUKeeper
+				k.SetAuthority(authority.String())
+				require.NoError(t, k.SetProvider(f.Ctx, provider))
+				require.NoError(t, k.SetSKU(f.Ctx, sku))
+				test.corrupt(t, f)
+
+				_, err := keeper.NewMsgServerImpl(k).DeactivateProvider(f.Ctx, &types.MsgDeactivateProvider{
+					Authority: authority.String(),
+					Uuid:      provider.Uuid,
+				})
+				require.ErrorIs(t, err, types.ErrInternalCorruption)
+				require.NotErrorIs(t, err, types.ErrSKUNotFound)
+				codespace, code, _ := errorsmod.ABCIInfo(err, false)
+				require.Equal(t, types.ModuleName, codespace)
+				require.Equal(t, uint32(9), code)
 			})
 		}
 	})

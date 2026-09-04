@@ -33,11 +33,15 @@ func migrationAllowedList(size int) []string {
 func TestMigratorMigrate1to2RejectsOversizedAllowedListBeforeWrite(t *testing.T) {
 	f := initFixture(t)
 	params := types.Params{AllowedList: migrationAllowedList(types.MaxAllowedListEntries + 1)}
-	require.NoError(t, f.App.SKUKeeper.SetParams(f.Ctx, params))
+	legacyParams, err := sdkcodec.CollValue[types.Params](f.EncodingCfg.Codec).Encode(params)
+	require.NoError(t, err)
 
 	store := f.Ctx.KVStore(f.App.GetKey(types.StoreKey))
+	store.Set(types.ParamsKey.Bytes(), legacyParams)
 	before := bytes.Clone(store.Get(types.ParamsKey.Bytes()))
-	err := keeper.NewMigrator(f.App.SKUKeeper).Migrate1to2(f.Ctx)
+	require.False(t, bytes.HasPrefix(before, []byte(testParamsStoragePrefix)),
+		"fixture must use the legacy encoding so an early current-codec write changes bytes")
+	err = keeper.NewMigrator(f.App.SKUKeeper).Migrate1to2(f.Ctx)
 	require.ErrorIs(t, err, types.ErrInvalidConfig)
 	require.Contains(t, err.Error(), "allowed list has 101 entries, maximum allowed is 100")
 	require.Equal(t, before, store.Get(types.ParamsKey.Bytes()))

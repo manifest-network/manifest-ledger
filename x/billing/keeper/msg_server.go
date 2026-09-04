@@ -77,7 +77,7 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 	creditAccount, err := ms.k.GetCreditAccount(cacheCtx, tenant)
 	if err != nil {
 		if !errors.Is(err, types.ErrCreditAccountNotFound) {
-			return nil, types.ErrInvalidCreditOperation.Wrapf("failed to get credit account: %s", err)
+			return nil, errorsmod.Wrap(err, "failed to get credit account")
 		}
 		// Credit account doesn't exist, create it
 		creditAccount = types.CreditAccount{

@@ -211,6 +211,13 @@ Before the upgrade:
 - Confirm `manifestd version --long --output json | jq -r .go` reports a Go
   1.26.7 linux/amd64 build for the published archive. Go 1.25 is no longer a
   supported release line and must not be used for an operator-local rebuild.
+- Account for the expected transaction gas-profile change at the coordinated
+  upgrade height. Lease, provider, and SKU UUID allocation now reads (`Peek`)
+  the stored sequence before advancing it so exhaustion cannot wrap or mutate
+  state. That extra consensus-store read can change `gas_used` (and therefore
+  transaction result hashes) relative to v2.3.1. All validators must activate
+  it together; update fixed-gas clients and pre-upgrade gas baselines rather
+  than expecting byte-identical execution results across the boundary.
 - Take and verify a recoverable, height-labelled snapshot before the halt. Record
   the committed height and app hash from more than one validator.
 - Run the candidate binary's deterministic offline

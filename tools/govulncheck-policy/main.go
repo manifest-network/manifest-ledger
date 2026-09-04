@@ -30,15 +30,36 @@ type exception struct {
 	module  string
 	version string
 	profile string
-	// packagePrefixes restricts an exception to explicitly reviewed package
-	// families. An empty list permits every package in the exact module version.
-	packagePrefixes []string
-	reason          string
-	url             string
+	// packages restricts an exception to exact, explicitly reviewed packages.
+	// An empty list permits every package in the exact module version.
+	packages []string
+	reason   string
+	url      string
 }
 
-var dockerClientPackagePrefixes = []string{
+// dockerClientPackages is the exact Docker/Moby package set reached by the
+// standalone interchaintest module at dockerClientVersion. Keep this list
+// exact: notably, github.com/docker/docker/api/server is daemon code and must
+// never inherit an exception through an api package-prefix match.
+var dockerClientPackages = []string{
 	"github.com/docker/docker/api",
+	"github.com/docker/docker/api/types",
+	"github.com/docker/docker/api/types/blkiodev",
+	"github.com/docker/docker/api/types/checkpoint",
+	"github.com/docker/docker/api/types/container",
+	"github.com/docker/docker/api/types/events",
+	"github.com/docker/docker/api/types/filters",
+	"github.com/docker/docker/api/types/image",
+	"github.com/docker/docker/api/types/mount",
+	"github.com/docker/docker/api/types/network",
+	"github.com/docker/docker/api/types/registry",
+	"github.com/docker/docker/api/types/strslice",
+	"github.com/docker/docker/api/types/swarm",
+	"github.com/docker/docker/api/types/swarm/runtime",
+	"github.com/docker/docker/api/types/system",
+	"github.com/docker/docker/api/types/time",
+	"github.com/docker/docker/api/types/versions",
+	"github.com/docker/docker/api/types/volume",
 	"github.com/docker/docker/errdefs",
 	"github.com/docker/docker/internal/multierror",
 	"github.com/moby/moby/client",
@@ -62,40 +83,40 @@ var exceptions = []exception{
 		url:     "https://github.com/golang/vulndb/issues/5034",
 	},
 	{
-		id:              "GO-2026-4883",
-		module:          "github.com/docker/docker",
-		version:         dockerClientVersion,
-		profile:         interchaintestProfile,
-		packagePrefixes: dockerClientPackagePrefixes,
-		reason:          "advisory affects Docker Engine plugin validation; this graph imports only reviewed client packages, not the daemon",
-		url:             "https://github.com/moby/moby/security/advisories/GHSA-pxq6-2prw-chj9",
+		id:       "GO-2026-4883",
+		module:   "github.com/docker/docker",
+		version:  dockerClientVersion,
+		profile:  interchaintestProfile,
+		packages: dockerClientPackages,
+		reason:   "advisory affects Docker Engine plugin validation; this graph imports only reviewed client packages, not the daemon",
+		url:      "https://github.com/moby/moby/security/advisories/GHSA-pxq6-2prw-chj9",
 	},
 	{
-		id:              "GO-2026-4883",
-		module:          "github.com/moby/moby",
-		version:         dockerClientVersion,
-		profile:         interchaintestProfile,
-		packagePrefixes: dockerClientPackagePrefixes,
-		reason:          "advisory affects Docker Engine plugin validation; this graph imports only reviewed client packages, not the daemon",
-		url:             "https://github.com/moby/moby/security/advisories/GHSA-pxq6-2prw-chj9",
+		id:       "GO-2026-4883",
+		module:   "github.com/moby/moby",
+		version:  dockerClientVersion,
+		profile:  interchaintestProfile,
+		packages: dockerClientPackages,
+		reason:   "advisory affects Docker Engine plugin validation; this graph imports only reviewed client packages, not the daemon",
+		url:      "https://github.com/moby/moby/security/advisories/GHSA-pxq6-2prw-chj9",
 	},
 	{
-		id:              "GO-2026-4887",
-		module:          "github.com/docker/docker",
-		version:         dockerClientVersion,
-		profile:         interchaintestProfile,
-		packagePrefixes: dockerClientPackagePrefixes,
-		reason:          "advisory affects Docker Engine AuthZ plugins; this graph imports only reviewed client packages, not the daemon",
-		url:             "https://github.com/moby/moby/security/advisories/GHSA-x744-4wpc-v9h2",
+		id:       "GO-2026-4887",
+		module:   "github.com/docker/docker",
+		version:  dockerClientVersion,
+		profile:  interchaintestProfile,
+		packages: dockerClientPackages,
+		reason:   "advisory affects Docker Engine AuthZ plugins; this graph imports only reviewed client packages, not the daemon",
+		url:      "https://github.com/moby/moby/security/advisories/GHSA-x744-4wpc-v9h2",
 	},
 	{
-		id:              "GO-2026-4887",
-		module:          "github.com/moby/moby",
-		version:         dockerClientVersion,
-		profile:         interchaintestProfile,
-		packagePrefixes: dockerClientPackagePrefixes,
-		reason:          "advisory affects Docker Engine AuthZ plugins; this graph imports only reviewed client packages, not the daemon",
-		url:             "https://github.com/moby/moby/security/advisories/GHSA-x744-4wpc-v9h2",
+		id:       "GO-2026-4887",
+		module:   "github.com/moby/moby",
+		version:  dockerClientVersion,
+		profile:  interchaintestProfile,
+		packages: dockerClientPackages,
+		reason:   "advisory affects Docker Engine AuthZ plugins; this graph imports only reviewed client packages, not the daemon",
+		url:      "https://github.com/moby/moby/security/advisories/GHSA-x744-4wpc-v9h2",
 	},
 }
 
@@ -307,7 +328,7 @@ func (f finding) acceptedException(profile string) *exception {
 		if f.OSV == candidate.id &&
 			vulnerable.Module == candidate.module &&
 			vulnerable.Version == candidate.version &&
-			matchesPackagePrefix(vulnerable.Package, candidate.packagePrefixes) {
+			matchesPackage(vulnerable.Package, candidate.packages) {
 			return candidate
 		}
 	}
@@ -315,16 +336,12 @@ func (f finding) acceptedException(profile string) *exception {
 	return nil
 }
 
-func matchesPackagePrefix(packageName string, prefixes []string) bool {
-	if len(prefixes) == 0 {
+func matchesPackage(packageName string, packages []string) bool {
+	if len(packages) == 0 {
 		return true
 	}
-	for _, prefix := range prefixes {
-		if packageName == prefix || strings.HasPrefix(packageName, prefix+"/") {
-			return true
-		}
-	}
-	return false
+
+	return slices.Contains(packages, packageName)
 }
 
 func summarize(findings []finding) []string {

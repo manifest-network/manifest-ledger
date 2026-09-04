@@ -4,14 +4,15 @@ import "cosmossdk.io/errors"
 
 // Registered SKU module errors.
 var (
-	ErrInvalidSKU        = errors.Register(ModuleName, 1, "invalid sku")
-	ErrSKUNotFound       = errors.Register(ModuleName, 2, "sku not found")
-	ErrUnauthorized      = errors.Register(ModuleName, 3, "unauthorized")
-	ErrInvalidConfig     = errors.Register(ModuleName, 4, "invalid module configuration")
-	ErrInvalidProvider   = errors.Register(ModuleName, 5, "invalid provider")
-	ErrProviderNotFound  = errors.Register(ModuleName, 6, "provider not found")
-	ErrInvalidAPIURL     = errors.Register(ModuleName, 7, "invalid API URL")
-	ErrSequenceExhausted = errors.Register(ModuleName, 8, "UUID sequence exhausted")
+	ErrInvalidSKU         = errors.Register(ModuleName, 1, "invalid sku")
+	ErrSKUNotFound        = errors.Register(ModuleName, 2, "sku not found")
+	ErrUnauthorized       = errors.Register(ModuleName, 3, "unauthorized")
+	ErrInvalidConfig      = errors.Register(ModuleName, 4, "invalid module configuration")
+	ErrInvalidProvider    = errors.Register(ModuleName, 5, "invalid provider")
+	ErrProviderNotFound   = errors.Register(ModuleName, 6, "provider not found")
+	ErrInvalidAPIURL      = errors.Register(ModuleName, 7, "invalid API URL")
+	ErrSequenceExhausted  = errors.Register(ModuleName, 8, "UUID sequence exhausted")
+	ErrInternalCorruption = errors.Register(ModuleName, 9, "internal SKU state corruption")
 )
 
 // Validation constants for provider and SKU fields

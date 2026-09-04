@@ -11552,7 +11552,8 @@ type LeaseItemInput struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// sku_uuid is the UUID of the SKU to lease.
+	// sku_uuid is the SKU's canonical lowercase UUIDv7. Empty, malformed,
+	// uppercase, or non-v7 values fail message validation.
 	SkuUuid string `protobuf:"bytes,1,opt,name=sku_uuid,json=skuUuid,proto3" json:"sku_uuid,omitempty"`
 	// quantity is the number of instances.
 	Quantity uint64 `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
@@ -11918,7 +11919,8 @@ type MsgCloseLease struct {
 	// sender is the address requesting the closure (tenant, provider, or
 	// authority).
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuids are the UUIDs of the leases to close (1-100).
+	// lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+	// malformed, uppercase, or non-v7 values fail message validation.
 	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
 	// reason is an optional explanation for the closure (applied to all leases).
 	// Maximum 256 UTF-8 bytes.
@@ -12037,10 +12039,13 @@ type MsgWithdraw struct {
 
 	// sender is the provider's address or authority.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuids are the UUIDs of the leases to withdraw from (1-100).
-	// Mutually exclusive with provider_uuid.
+	// lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+	// malformed, uppercase, or non-v7 values fail message validation. Mutually
+	// exclusive with provider_uuid.
 	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
-	// provider_uuid enables provider-wide withdrawal mode.
+	// provider_uuid enables provider-wide withdrawal mode. When present it must
+	// be a canonical lowercase UUIDv7; malformed, uppercase, or non-v7 values
+	// fail message validation.
 	// When set, withdraws from all active leases for this provider with
 	// pagination. Mutually exclusive with lease_uuids.
 	ProviderUuid string `protobuf:"bytes,3,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
@@ -12289,7 +12294,8 @@ type MsgAcknowledgeLease struct {
 
 	// sender is the provider's address or authority.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuids are the UUIDs of the leases to acknowledge (1-100).
+	// lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+	// malformed, uppercase, or non-v7 values fail message validation.
 	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
 }
 
@@ -12384,7 +12390,8 @@ type MsgRejectLease struct {
 
 	// sender is the provider's address or authority.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuids are the UUIDs of the leases to reject (1-100).
+	// lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+	// malformed, uppercase, or non-v7 values fail message validation.
 	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
 	// reason is an optional explanation for the rejection (applied to all
 	// leases). Maximum 256 UTF-8 bytes.
@@ -12488,7 +12495,8 @@ type MsgCancelLease struct {
 
 	// tenant is the address of the tenant who owns the leases.
 	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	// lease_uuids are the UUIDs of the leases to cancel (1-100).
+	// lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+	// malformed, uppercase, or non-v7 values fail message validation.
 	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
 }
 
@@ -12584,7 +12592,8 @@ type MsgSetItemCustomDomain struct {
 	// sender is the address signing the transaction. Must be the lease tenant,
 	// the module authority, or an address in params.allowed_list.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuid is the UUID of the lease that owns the target item.
+	// lease_uuid is the lease's canonical lowercase UUIDv7. Empty, malformed,
+	// uppercase, or non-v7 values fail message validation.
 	LeaseUuid string `protobuf:"bytes,2,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
 	// service_name addresses the target LeaseItem. The keeper finds the unique
 	// item where item.service_name == this value. For a 1-item legacy lease

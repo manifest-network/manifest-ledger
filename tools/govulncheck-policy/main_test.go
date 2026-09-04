@@ -85,6 +85,24 @@ func TestEvaluate(t *testing.T) {
 			wantBlocked: 1,
 		},
 		{
+			name:    "Docker API server package fails closed in interchaintest profile",
+			profile: "interchaintest",
+			messages: []string{
+				validConfig,
+				`{"finding":{"osv":"GO-2026-4883","trace":[{"module":"github.com/docker/docker","version":"v27.5.1+incompatible","package":"github.com/docker/docker/api/server/router/plugin","function":"validatePrivileges"}]}}`,
+			},
+			wantBlocked: 1,
+		},
+		{
+			name:    "unreviewed Docker API types package fails closed in interchaintest profile",
+			profile: "interchaintest",
+			messages: []string{
+				validConfig,
+				`{"finding":{"osv":"GO-2026-4887","trace":[{"module":"github.com/docker/docker","version":"v27.5.1+incompatible","package":"github.com/docker/docker/api/types/future","function":"FutureType"}]}}`,
+			},
+			wantBlocked: 1,
+		},
+		{
 			name:    "Moby authorization daemon package fails closed in interchaintest profile",
 			profile: "interchaintest",
 			messages: []string{

@@ -343,7 +343,7 @@ func (k *Keeper) GetProvider(ctx context.Context, uuid string) (types.Provider, 
 		if errors.Is(err, collections.ErrNotFound) {
 			return types.Provider{}, types.ErrProviderNotFound
 		}
-		return types.Provider{}, err
+		return types.Provider{}, types.ErrInternalCorruption.Wrapf("read provider %s: %v", uuid, err)
 	}
 	return provider, nil
 }
@@ -387,7 +387,7 @@ func (k *Keeper) GetSKU(ctx context.Context, uuid string) (types.SKU, error) {
 		if errors.Is(err, collections.ErrNotFound) {
 			return types.SKU{}, types.ErrSKUNotFound
 		}
-		return types.SKU{}, err
+		return types.SKU{}, types.ErrInternalCorruption.Wrapf("read SKU %s: %v", uuid, err)
 	}
 	return sku, nil
 }
@@ -477,11 +477,19 @@ func (k *Keeper) IterateActiveSKUsByProvider(
 	// Use the ProviderActive compound index to efficiently query active SKUs for this provider
 	iter, err := k.SKUs.Indexes.ProviderActive.MatchExact(ctx, collections.Join(providerUUID, true))
 	if err != nil {
-		return 0, false, err
+		return 0, false, types.ErrInternalCorruption.Wrapf(
+			"open active SKU index for provider %s: %v",
+			providerUUID,
+			err,
+		)
 	}
 	defer func() {
-		if closeErr := iter.Close(); err == nil {
-			err = closeErr
+		if closeErr := iter.Close(); err == nil && closeErr != nil {
+			err = types.ErrInternalCorruption.Wrapf(
+				"close active SKU index for provider %s: %v",
+				providerUUID,
+				closeErr,
+			)
 		}
 	}()
 
@@ -494,12 +502,21 @@ func (k *Keeper) IterateActiveSKUsByProvider(
 
 		skuUUID, err := iter.PrimaryKey()
 		if err != nil {
-			return processed, false, err
+			return processed, false, types.ErrInternalCorruption.Wrapf(
+				"decode active SKU index primary for provider %s: %v",
+				providerUUID,
+				err,
+			)
 		}
 
 		sku, err := k.SKUs.Get(ctx, skuUUID)
 		if err != nil {
-			return processed, false, err
+			return processed, false, types.ErrInternalCorruption.Wrapf(
+				"active SKU index for provider %s references unreadable SKU %s: %v",
+				providerUUID,
+				skuUUID,
+				err,
+			)
 		}
 
 		stop, err := cb(sku)

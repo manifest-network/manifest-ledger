@@ -426,7 +426,7 @@ func (k *Keeper) GetLease(ctx context.Context, uuid string) (types.Lease, error)
 		if errors.Is(err, collections.ErrNotFound) {
 			return types.Lease{}, types.ErrLeaseNotFound
 		}
-		return types.Lease{}, err
+		return types.Lease{}, types.ErrInternalCorruption.Wrapf("read lease %s: %v", uuid, err)
 	}
 	return lease, nil
 }
@@ -800,7 +800,7 @@ func (k *Keeper) GetCreditAccount(ctx context.Context, tenant string) (types.Cre
 		if errors.Is(err, collections.ErrNotFound) {
 			return types.CreditAccount{}, types.ErrCreditAccountNotFound
 		}
-		return types.CreditAccount{}, err
+		return types.CreditAccount{}, types.ErrInternalCorruption.Wrapf("read credit account for tenant %s: %v", tenantAddr, err)
 	}
 	return ca, nil
 }
@@ -1577,6 +1577,13 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 	// PENDING leases. Primary UUID/state and timeout checks remain defense-in-depth:
 	// stale index rows cannot consume the processing quota, and a not-yet-expired
 	// lease cannot be expired even if the range bounds were ever mis-encoded.
+	//
+	// Corrupt rows are logged and skipped instead of halting consensus. The number
+	// of rows visited is deliberately not capped separately from successful
+	// expirations: without a repair or persisted cursor, a fixed visit cap would
+	// let the same oldest stale rows permanently starve every valid row after them.
+	// Normal writes maintain this index atomically; the registered invariant is the
+	// operator-facing mechanism for detecting corruption that violates that bound.
 	var expiredUUIDs []string
 	for ; iter.Valid(); iter.Next() {
 		// Rate limit: stop collecting after max expirations to process
@@ -1594,10 +1601,16 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 
 		lease, err := k.Leases.Get(ctx, leaseUUID)
 		if err != nil {
-			k.logger.Error("failed to get lease from storage",
-				"lease_uuid", leaseUUID,
-				"error", err,
-			)
+			if errors.Is(err, collections.ErrNotFound) {
+				k.logger.Error("pending expiration index references missing lease",
+					"lease_uuid", leaseUUID,
+				)
+			} else {
+				k.logger.Error("pending expiration index references unreadable lease",
+					"lease_uuid", leaseUUID,
+					"error", err,
+				)
+			}
 			continue
 		}
 		if lease.Uuid != leaseUUID {
@@ -1634,10 +1647,16 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 	for _, leaseUUID := range expiredUUIDs {
 		lease, err := k.Leases.Get(ctx, leaseUUID)
 		if err != nil {
-			k.logger.Error("failed to get lease for expiration",
-				"lease_uuid", leaseUUID,
-				"error", err,
-			)
+			if errors.Is(err, collections.ErrNotFound) {
+				k.logger.Error("collected pending lease is missing before expiration",
+					"lease_uuid", leaseUUID,
+				)
+			} else {
+				k.logger.Error("collected pending lease is unreadable before expiration",
+					"lease_uuid", leaseUUID,
+					"error", err,
+				)
+			}
 			continue
 		}
 

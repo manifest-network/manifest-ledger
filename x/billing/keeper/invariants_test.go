@@ -1,6 +1,7 @@
 package keeper_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -213,9 +214,10 @@ func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		mismatch   func(*testFixture, *types.Lease)
-		alterIndex func(*testFixture, types.Lease, types.Lease, bool) error
+		name            string
+		mismatch        func(*testFixture, *types.Lease)
+		alterIndex      func(*testFixture, types.Lease, types.Lease, bool) error
+		formatReference func(types.Lease) string
 	}{
 		{
 			name: "tenant",
@@ -260,6 +262,9 @@ func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
 					f.Ctx, f.App.BillingKeeper.Leases.Indexes.ProviderState, current, indexed, missing,
 				)
 			},
+			formatReference: func(lease types.Lease) string {
+				return fmt.Sprintf("(%q, %d)", lease.ProviderUuid, lease.State)
+			},
 		},
 		{
 			name: "tenant-state",
@@ -271,6 +276,9 @@ func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
 					f.Ctx, f.App.BillingKeeper.Leases.Indexes.TenantState, current, indexed, missing,
 				)
 			},
+			formatReference: func(lease types.Lease) string {
+				return fmt.Sprintf("(%s, %d)", lease.Tenant, lease.State)
+			},
 		},
 		{
 			name: "state-created-at",
@@ -280,6 +288,13 @@ func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
 			alterIndex: func(f *testFixture, current, indexed types.Lease, missing bool) error {
 				return alterManagedLeaseIndex(
 					f.Ctx, f.App.BillingKeeper.Leases.Indexes.StateCreatedAt, current, indexed, missing,
+				)
+			},
+			formatReference: func(lease types.Lease) string {
+				return fmt.Sprintf(
+					"(%d, %s)",
+					lease.State,
+					lease.CreatedAt.UTC().Format(time.RFC3339Nano),
 				)
 			},
 		},
@@ -303,15 +318,47 @@ func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
 					message, broken := keeper.DerivedIndexesInvariant(f.App.BillingKeeper)(f.Ctx)
 					require.True(t, broken, message)
 					if missing {
-						require.Contains(t, message, "lease "+test.name+" index contains 0 entries, expected 1")
+						require.Contains(t, message, "lease "+test.name+" index is missing derived key")
+						require.Contains(t, message, "for lease "+lease.Uuid)
 						return
 					}
 					require.Contains(t, message, "lease "+test.name+" index key")
 					require.Contains(t, message, "does not match derived key")
+					if test.formatReference != nil {
+						require.Contains(t, message, "index key "+test.formatReference(indexed))
+						require.Contains(t, message, "derived key "+test.formatReference(lease))
+						require.NotContains(t, message, "0x")
+					}
 				})
 			}
 		})
 	}
+
+	t.Run("primary key differs from stored UUID", func(t *testing.T) {
+		f, lease := setup(t)
+		primaryKey := lease.Uuid
+		lease.Uuid = "00000000-0000-7000-8000-000000000099"
+		require.NoError(t, f.App.BillingKeeper.Leases.Set(f.Ctx, primaryKey, lease))
+
+		message, broken := keeper.DerivedIndexesInvariant(f.App.BillingKeeper)(f.Ctx)
+		require.True(t, broken, message)
+		require.Contains(t, message, "lease key "+primaryKey+" does not match stored UUID "+lease.Uuid)
+	})
+
+	t.Run("index row references missing primary", func(t *testing.T) {
+		f, lease := setup(t)
+		missingUUID := "00000000-0000-7000-8000-000000000099"
+		require.NoError(t, f.App.BillingKeeper.Leases.Indexes.Provider.Reference(
+			f.Ctx,
+			missingUUID,
+			lease,
+			func() (types.Lease, error) { return types.Lease{}, collections.ErrNotFound },
+		))
+
+		message, broken := keeper.DerivedIndexesInvariant(f.App.BillingKeeper)(f.Ctx)
+		require.True(t, broken, message)
+		require.Contains(t, message, "lease provider index references missing primary key "+missingUUID)
+	})
 }
 
 // alterManagedLeaseIndex removes the correct index reference and optionally

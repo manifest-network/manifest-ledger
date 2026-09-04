@@ -82,11 +82,15 @@ func TestMigratorMigrate2to3RejectsOversizedReservedSuffixesBeforeWrite(t *testi
 	f := initFixture(t)
 	params := types.DefaultParams()
 	params.ReservedDomainSuffixes = billingCapReservedSuffixes(types.MaxReservedDomainSuffixEntries + 1)
-	require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, params))
+	legacyParams, err := sdkcodec.CollValue[types.Params](f.EncodingCfg.Codec).Encode(params)
+	require.NoError(t, err)
 
 	store := f.Ctx.KVStore(f.App.GetKey(types.StoreKey))
+	store.Set(types.ParamsKey.Bytes(), legacyParams)
 	before := bytes.Clone(store.Get(types.ParamsKey.Bytes()))
-	err := keeper.NewMigrator(f.App.BillingKeeper).Migrate2to3(f.Ctx)
+	require.False(t, bytes.HasPrefix(before, []byte(testParamsStoragePrefix)),
+		"fixture must use the legacy encoding so an early current-codec write changes bytes")
+	err = keeper.NewMigrator(f.App.BillingKeeper).Migrate2to3(f.Ctx)
 
 	require.ErrorIs(t, err, types.ErrInvalidParams)
 	require.ErrorContains(t, err, "reserved domain suffix list has 101 entries, maximum allowed is 100")
