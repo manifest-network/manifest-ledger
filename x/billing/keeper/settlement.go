@@ -269,9 +269,9 @@ func (k *Keeper) performSettlementCore(
 		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
 	}
 
-	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
+	payoutAddr, err := storedProviderPayoutAddress(provider)
 	if err != nil {
-		return nil, errorsmod.Wrapf(err, "provider %s has invalid payout address", lease.ProviderUuid)
+		return nil, err
 	}
 	if payoutAddr.Equals(creditAddr) {
 		return nil, types.ErrInvalidCreditOperation.Wrap(
@@ -298,4 +298,20 @@ func (k *Keeper) performSettlementCore(
 		AccrualOverflow:    overflowDenoms,
 		SettledThrough:     accrualCursor,
 	}, nil
+}
+
+// storedProviderPayoutAddress converts the wire-facing provider address into
+// its typed SDK identity. Providers are validated before storage, so a keeper
+// dependency returning an invalid address is an internal state-contract
+// violation rather than caller input.
+func storedProviderPayoutAddress(provider skutypes.Provider) (sdk.AccAddress, error) {
+	payoutAddress, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
+	if err != nil {
+		return nil, types.ErrInternalCorruption.Wrapf(
+			"provider %s has invalid stored payout address: %v",
+			provider.Uuid,
+			err,
+		)
+	}
+	return payoutAddress, nil
 }

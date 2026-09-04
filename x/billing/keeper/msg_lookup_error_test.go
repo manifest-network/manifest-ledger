@@ -161,7 +161,7 @@ func TestFundCreditPreservesCorruptAccountClassification(t *testing.T) {
 	require.True(t, creditBefore.Equal(s.f.App.BankKeeper.GetBalance(s.f.Ctx, creditAddress, testDenom)))
 }
 
-func TestCreateLeaseDoesNotMaskInvalidStoredPricingAsMissingSKU(t *testing.T) {
+func TestCreateLeaseClassifiesInvalidStoredPricingAsCorruption(t *testing.T) {
 	s := newBillingLookupFixture(t)
 	invalidSKU := s.sku
 	invalidSKU.Unit = skutypes.Unit_UNIT_UNSPECIFIED
@@ -173,6 +173,11 @@ func TestCreateLeaseDoesNotMaskInvalidStoredPricingAsMissingSKU(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.NotErrorIs(t, err, types.ErrSKUNotFound)
+	require.NotErrorIs(t, err, types.ErrInvalidCreditOperation)
+	require.ErrorIs(t, err, types.ErrInternalCorruption)
+	codespace, code, _ := errorsmod.ABCIInfo(err, false)
+	require.Equal(t, types.ModuleName, codespace)
+	require.Equal(t, uint32(40), code)
 }
 
 func TestLeaseMessagesDoNotMaskCorruptLeaseAsNotFound(t *testing.T) {

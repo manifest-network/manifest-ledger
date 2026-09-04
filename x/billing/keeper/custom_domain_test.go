@@ -8,6 +8,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"cosmossdk.io/collections"
+	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
 
@@ -77,6 +79,85 @@ func setupCustomDomain(t *testing.T) *customDomainSetup {
 		allowed: allowed, stranger: stranger,
 		sku: sku, leaseUUID: leaseUUID,
 	}
+}
+
+func TestCustomDomainOperationalReadsClassifyCorruption(t *testing.T) {
+	assertCorruption := func(t *testing.T, err error) {
+		t.Helper()
+		require.ErrorIs(t, err, types.ErrInternalCorruption)
+		codespace, code, _ := errorsmod.ABCIInfo(err, false)
+		require.Equal(t, types.ModuleName, codespace)
+		require.Equal(t, uint32(40), code)
+	}
+	corruptTarget := func(t *testing.T, s *customDomainSetup, domain string) {
+		t.Helper()
+		key, err := collections.EncodeKeyWithPrefix(
+			types.CustomDomainIndexKey.Bytes(),
+			collections.StringKey,
+			domain,
+		)
+		require.NoError(t, err)
+		s.f.Ctx.KVStore(s.f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
+	}
+
+	t.Run("assignment pre-flight", func(t *testing.T) {
+		s := setupCustomDomain(t)
+		const domain = "corrupt-preflight.example.com"
+		corruptTarget(t, s, domain)
+
+		_, err := s.f.App.BillingKeeper.SetItemCustomDomain(
+			s.f.Ctx, s.tenant.String(), s.leaseUUID, "", domain,
+		)
+		assertCorruption(t, err)
+
+		lease, getErr := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+		require.NoError(t, getErr)
+		require.Empty(t, lease.Items[0].CustomDomain)
+	})
+
+	t.Run("reconcile release", func(t *testing.T) {
+		s := setupCustomDomain(t)
+		const domain = "corrupt-release.example.com"
+		_, err := s.f.App.BillingKeeper.SetItemCustomDomain(
+			s.f.Ctx, s.tenant.String(), s.leaseUUID, "", domain,
+		)
+		require.NoError(t, err)
+		corruptTarget(t, s, domain)
+
+		_, err = s.f.App.BillingKeeper.SetItemCustomDomain(
+			s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "",
+		)
+		assertCorruption(t, err)
+
+		lease, getErr := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+		require.NoError(t, getErr)
+		require.Equal(t, domain, lease.Items[0].CustomDomain, "failed reconcile must not commit the lease mutation")
+	})
+
+	t.Run("reconcile install", func(t *testing.T) {
+		s := setupCustomDomain(t)
+		const domain = "corrupt-install.example.com"
+		corruptTarget(t, s, domain)
+		lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+		require.NoError(t, err)
+		lease.Items[0].CustomDomain = domain
+
+		err = s.f.App.BillingKeeper.SetLease(s.f.Ctx, lease)
+		assertCorruption(t, err)
+
+		stored, getErr := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+		require.NoError(t, getErr)
+		require.Empty(t, stored.Items[0].CustomDomain, "failed reconcile must not commit the lease mutation")
+	})
+
+	t.Run("query lookup", func(t *testing.T) {
+		s := setupCustomDomain(t)
+		const domain = "corrupt-query.example.com"
+		corruptTarget(t, s, domain)
+
+		_, _, _, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, domain)
+		assertCorruption(t, err)
+	})
 }
 
 // createMultiItemLease creates a multi-item ACTIVE lease in service-name mode

@@ -1,12 +1,14 @@
 package keeper_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"cosmossdk.io/collections"
+	"cosmossdk.io/collections/indexes"
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -182,6 +184,143 @@ func TestStateInvariant_DetectsSecondaryIndexCorruption(t *testing.T) {
 			require.Contains(t, message, test.contains)
 		})
 	}
+}
+
+func TestStateInvariant_FormatsSecondaryIndexKeys(t *testing.T) {
+	tests := []struct {
+		name     string
+		corrupt  func(*testing.T, *testFixture, types.Provider, types.SKU)
+		expected func(*testFixture, types.Provider, types.SKU) string
+	}{
+		{
+			name: "provider address",
+			corrupt: func(t *testing.T, f *testFixture, provider types.Provider, _ types.SKU) {
+				indexed := provider
+				indexed.Address = f.TestAccs[3].String()
+				replaceMultiIndexReference(
+					t, f.Ctx, f.App.SKUKeeper.Providers.Indexes.Address, provider.Uuid, provider, indexed,
+				)
+			},
+			expected: func(f *testFixture, provider types.Provider, _ types.SKU) string {
+				return fmt.Sprintf(
+					"provider address index key %s for primary key %s does not match derived key %s",
+					f.TestAccs[3],
+					provider.Uuid,
+					provider.Address,
+				)
+			},
+		},
+		{
+			name: "provider active",
+			corrupt: func(t *testing.T, f *testFixture, provider types.Provider, _ types.SKU) {
+				indexed := provider
+				indexed.Active = false
+				replaceMultiIndexReference(
+					t, f.Ctx, f.App.SKUKeeper.Providers.Indexes.Active, provider.Uuid, provider, indexed,
+				)
+			},
+			expected: func(_ *testFixture, provider types.Provider, _ types.SKU) string {
+				return fmt.Sprintf(
+					"provider active index key false for primary key %s does not match derived key true",
+					provider.Uuid,
+				)
+			},
+		},
+		{
+			name: "SKU provider",
+			corrupt: func(t *testing.T, f *testFixture, _ types.Provider, sku types.SKU) {
+				indexed := sku
+				indexed.ProviderUuid = testProvider2UUID
+				replaceMultiIndexReference(
+					t, f.Ctx, f.App.SKUKeeper.SKUs.Indexes.Provider, sku.Uuid, sku, indexed,
+				)
+			},
+			expected: func(_ *testFixture, _ types.Provider, sku types.SKU) string {
+				return fmt.Sprintf(
+					"SKU provider index key %q for primary key %s does not match derived key %q",
+					testProvider2UUID,
+					sku.Uuid,
+					sku.ProviderUuid,
+				)
+			},
+		},
+		{
+			name: "SKU active",
+			corrupt: func(t *testing.T, f *testFixture, _ types.Provider, sku types.SKU) {
+				indexed := sku
+				indexed.Active = false
+				replaceMultiIndexReference(
+					t, f.Ctx, f.App.SKUKeeper.SKUs.Indexes.Active, sku.Uuid, sku, indexed,
+				)
+			},
+			expected: func(_ *testFixture, _ types.Provider, sku types.SKU) string {
+				return fmt.Sprintf(
+					"SKU active index key false for primary key %s does not match derived key true",
+					sku.Uuid,
+				)
+			},
+		},
+		{
+			name: "SKU provider-active",
+			corrupt: func(t *testing.T, f *testFixture, _ types.Provider, sku types.SKU) {
+				indexed := sku
+				indexed.ProviderUuid = testProvider2UUID
+				indexed.Active = false
+				replaceMultiIndexReference(
+					t, f.Ctx, f.App.SKUKeeper.SKUs.Indexes.ProviderActive, sku.Uuid, sku, indexed,
+				)
+			},
+			expected: func(_ *testFixture, _ types.Provider, sku types.SKU) string {
+				return fmt.Sprintf(
+					"SKU provider-active index key (%q, false) for primary key %s does not match derived key (%q, true)",
+					testProvider2UUID,
+					sku.Uuid,
+					sku.ProviderUuid,
+				)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f := initFixture(t)
+			provider, sku := seedInvariantState(t, f)
+			test.corrupt(t, f, provider, sku)
+
+			message, broken := keeper.StateInvariant(f.App.SKUKeeper)(f.Ctx)
+			require.True(t, broken, message)
+			require.Equal(
+				t,
+				sdk.FormatInvariant(types.ModuleName, "state", test.expected(f, provider, sku)),
+				message,
+			)
+		})
+	}
+}
+
+func replaceMultiIndexReference[ReferenceKey, Value any](
+	t *testing.T,
+	ctx sdk.Context,
+	index *indexes.Multi[ReferenceKey, string, Value],
+	primaryKey string,
+	current,
+	indexed Value,
+) {
+	t.Helper()
+	require.NoError(t, index.Unreference(
+		ctx,
+		primaryKey,
+		func() (Value, error) { return current, nil },
+	))
+	require.NoError(t, index.Reference(
+		ctx,
+		primaryKey,
+		indexed,
+		func() (Value, error) {
+			var zero Value
+			return zero, collections.ErrNotFound
+		},
+	))
 }
 
 func seedInvariantState(t *testing.T, f *testFixture) (types.Provider, types.SKU) {

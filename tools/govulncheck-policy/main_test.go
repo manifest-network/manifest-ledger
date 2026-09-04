@@ -76,6 +76,14 @@ func TestEvaluate(t *testing.T) {
 			wantAllowed: 1,
 		},
 		{
+			name: "Docker client exception is blocked outside the interchaintest profile",
+			messages: []string{
+				validConfig,
+				`{"finding":{"osv":"GO-2026-4887","trace":[{"module":"github.com/docker/docker","version":"v27.5.1+incompatible","package":"github.com/docker/docker/api/types/container","function":"ContainerList"}]}}`,
+			},
+			wantBlocked: 1,
+		},
+		{
 			name:    "Docker plugin daemon package fails closed in interchaintest profile",
 			profile: "interchaintest",
 			messages: []string{

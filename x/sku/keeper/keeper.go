@@ -541,12 +541,20 @@ func (k *Keeper) IterateActiveSKUsByProvider(
 func (k *Keeper) HasActiveSKUsByProvider(ctx context.Context, providerUUID string) (bool, error) {
 	iter, err := k.SKUs.Indexes.ProviderActive.MatchExact(ctx, collections.Join(providerUUID, true))
 	if err != nil {
-		return false, err
+		return false, types.ErrInternalCorruption.Wrapf(
+			"open active SKU index for provider %s: %v",
+			providerUUID,
+			err,
+		)
 	}
 
 	hasActive := iter.Valid()
 	if err := iter.Close(); err != nil {
-		return false, err
+		return false, types.ErrInternalCorruption.Wrapf(
+			"close active SKU index for provider %s: %v",
+			providerUUID,
+			err,
+		)
 	}
 	return hasActive, nil
 }

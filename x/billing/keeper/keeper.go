@@ -608,7 +608,7 @@ func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Leas
 		if editable && newByService[s] == prevDomain {
 			continue
 		}
-		existing, err := k.CustomDomainIndex.Get(ctx, prevDomain)
+		existing, err := k.getCustomDomainTarget(ctx, prevDomain)
 		switch {
 		case err == nil:
 			if existing.LeaseUuid != lease.Uuid || existing.ServiceName != s {
@@ -635,7 +635,7 @@ func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Leas
 	// rejects overwriting a different (lease, service) pair.
 	for _, s := range newServices {
 		newDomain := newByService[s]
-		existing, err := k.CustomDomainIndex.Get(ctx, newDomain)
+		existing, err := k.getCustomDomainTarget(ctx, newDomain)
 		switch {
 		case err == nil:
 			switch {

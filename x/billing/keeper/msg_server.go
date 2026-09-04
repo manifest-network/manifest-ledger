@@ -217,10 +217,14 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		// Lock price from SKU (convert to per-second rate, preserving denom)
 		lockedPricePerSecond, err := ConvertBasePriceToPerSecond(sku.BasePrice, sku.Unit)
 		if err != nil {
-			// This should not happen for a SKU admitted by x/sku validation. Keep
-			// the underlying fault visible instead of disguising corrupt state as
-			// a missing SKU.
-			return nil, errorsmod.Wrapf(err, "convert price for sku_uuid %s", inputItem.SkuUuid)
+			// A SKU admitted by x/sku validation always has convertible pricing.
+			// Reaching this branch means the dependency returned semantically
+			// corrupt stored state, not that the requested SKU was absent.
+			return nil, types.ErrInternalCorruption.Wrapf(
+				"stored SKU %s has invalid pricing: %v",
+				inputItem.SkuUuid,
+				err,
+			)
 		}
 
 		// Accumulate total rate for each denom
@@ -797,9 +801,9 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 		leases = append(leases, lease)
 		tenantKeys = append(tenantKeys, tenantKey)
 	}
-	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
+	payoutAddr, err := storedProviderPayoutAddress(provider)
 	if err != nil {
-		return nil, errorsmod.Wrapf(err, "provider %s has invalid payout address", provider.Uuid)
+		return nil, err
 	}
 	payoutAddress := payoutAddr.String()
 
@@ -967,9 +971,9 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 	if err != nil {
 		return nil, err
 	}
-	payoutAddr, err := sdk.AccAddressFromBech32(provider.GetPayoutAddress())
+	payoutAddr, err := storedProviderPayoutAddress(provider)
 	if err != nil {
-		return nil, errorsmod.Wrapf(err, "provider %s has invalid payout address", provider.GetUuid())
+		return nil, err
 	}
 	payoutAddress := payoutAddr.String()
 

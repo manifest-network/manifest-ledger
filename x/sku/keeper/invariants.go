@@ -94,6 +94,7 @@ func (k Keeper) validateSecondaryIndexes(ctx context.Context, providerCount, sku
 			return address, nil
 		},
 		func(indexed, expected sdk.AccAddress) bool { return indexed.Equals(expected) },
+		func(reference sdk.AccAddress) string { return reference.String() },
 	); err != nil {
 		return err
 	}
@@ -105,6 +106,7 @@ func (k Keeper) validateSecondaryIndexes(ctx context.Context, providerCount, sku
 		k.Providers.Get,
 		func(provider types.Provider) (bool, error) { return provider.Active, nil },
 		func(indexed, expected bool) bool { return indexed == expected },
+		func(reference bool) string { return fmt.Sprintf("%t", reference) },
 	); err != nil {
 		return err
 	}
@@ -116,6 +118,7 @@ func (k Keeper) validateSecondaryIndexes(ctx context.Context, providerCount, sku
 		k.SKUs.Get,
 		func(sku types.SKU) (string, error) { return sku.ProviderUuid, nil },
 		func(indexed, expected string) bool { return indexed == expected },
+		func(reference string) string { return fmt.Sprintf("%q", reference) },
 	); err != nil {
 		return err
 	}
@@ -127,6 +130,7 @@ func (k Keeper) validateSecondaryIndexes(ctx context.Context, providerCount, sku
 		k.SKUs.Get,
 		func(sku types.SKU) (bool, error) { return sku.Active, nil },
 		func(indexed, expected bool) bool { return indexed == expected },
+		func(reference bool) string { return fmt.Sprintf("%t", reference) },
 	); err != nil {
 		return err
 	}
@@ -141,6 +145,9 @@ func (k Keeper) validateSecondaryIndexes(ctx context.Context, providerCount, sku
 		},
 		func(indexed, expected collections.Pair[string, bool]) bool {
 			return indexed.K1() == expected.K1() && indexed.K2() == expected.K2()
+		},
+		func(reference collections.Pair[string, bool]) string {
+			return fmt.Sprintf("(%q, %t)", reference.K1(), reference.K2())
 		},
 	)
 }
@@ -157,6 +164,7 @@ func validateMultiIndex[ReferenceKey, Value any](
 	getValue func(context.Context, string) (Value, error),
 	expectedReference func(Value) (ReferenceKey, error),
 	equal func(ReferenceKey, ReferenceKey) bool,
+	formatReference func(ReferenceKey) string,
 ) error {
 	var actualCount uint64
 	err := index.Walk(ctx, nil, func(indexedReference ReferenceKey, primaryKey string) (bool, error) {
@@ -173,11 +181,11 @@ func validateMultiIndex[ReferenceKey, Value any](
 		}
 		if !equal(indexedReference, expected) {
 			return true, fmt.Errorf(
-				"%s index key %v for primary key %s does not match derived key %v",
+				"%s index key %s for primary key %s does not match derived key %s",
 				name,
-				indexedReference,
+				formatReference(indexedReference),
 				primaryKey,
-				expected,
+				formatReference(expected),
 			)
 		}
 		actualCount++

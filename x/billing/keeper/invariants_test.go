@@ -229,6 +229,9 @@ func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
 					f.Ctx, f.App.BillingKeeper.Leases.Indexes.Tenant, current, indexed, missing,
 				)
 			},
+			formatReference: func(lease types.Lease) string {
+				return lease.Tenant
+			},
 		},
 		{
 			name: "provider",
@@ -240,6 +243,9 @@ func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
 					f.Ctx, f.App.BillingKeeper.Leases.Indexes.Provider, current, indexed, missing,
 				)
 			},
+			formatReference: func(lease types.Lease) string {
+				return fmt.Sprintf("%q", lease.ProviderUuid)
+			},
 		},
 		{
 			name: "state",
@@ -250,6 +256,9 @@ func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
 				return alterManagedLeaseIndex(
 					f.Ctx, f.App.BillingKeeper.Leases.Indexes.State, current, indexed, missing,
 				)
+			},
+			formatReference: func(lease types.Lease) string {
+				return fmt.Sprintf("%d", lease.State)
 			},
 		},
 		{
@@ -309,6 +318,16 @@ func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
 				}
 				t.Run(name, func(t *testing.T) {
 					f, lease := setup(t)
+					const decoyLeaseUUID = "00000000-0000-7000-8000-000000000001"
+					if missing {
+						// Put a valid lease before the damaged lease in primary-key
+						// order. This proves localization scans past healthy rows and
+						// reports the lease whose index row is actually absent.
+						require.Greater(t, lease.Uuid, decoyLeaseUUID)
+						decoy := lease
+						decoy.Uuid = decoyLeaseUUID
+						require.NoError(t, f.App.BillingKeeper.Leases.Set(f.Ctx, decoy.Uuid, decoy))
+					}
 					indexed := lease
 					if !missing {
 						test.mismatch(f, &indexed)
@@ -318,17 +337,24 @@ func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
 					message, broken := keeper.DerivedIndexesInvariant(f.App.BillingKeeper)(f.Ctx)
 					require.True(t, broken, message)
 					if missing {
-						require.Contains(t, message, "lease "+test.name+" index is missing derived key")
-						require.Contains(t, message, "for lease "+lease.Uuid)
+						require.Equal(t, fmt.Sprintf(
+							"billing: derived-indexes invariant\n"+
+								"invalid derived index state: lease %s index is missing derived key %s for lease %s\n",
+							test.name,
+							test.formatReference(lease),
+							lease.Uuid,
+						), message)
+						require.NotContains(t, message, "for lease "+decoyLeaseUUID)
 						return
 					}
-					require.Contains(t, message, "lease "+test.name+" index key")
-					require.Contains(t, message, "does not match derived key")
-					if test.formatReference != nil {
-						require.Contains(t, message, "index key "+test.formatReference(indexed))
-						require.Contains(t, message, "derived key "+test.formatReference(lease))
-						require.NotContains(t, message, "0x")
-					}
+					require.Equal(t, fmt.Sprintf(
+						"billing: derived-indexes invariant\n"+
+							"invalid derived index state: lease %s index key %s for primary key %s does not match derived key %s\n",
+						test.name,
+						test.formatReference(indexed),
+						lease.Uuid,
+						test.formatReference(lease),
+					), message)
 				})
 			}
 		})
