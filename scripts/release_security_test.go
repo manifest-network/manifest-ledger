@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -50,6 +51,33 @@ func TestChecksumManifestBindsExactReleaseArtifactSet(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDockerBuildContextIncludesInternalCollectionsUtility(t *testing.T) {
+	repoRoot := filepath.Clean("..")
+	dockerignore, err := os.ReadFile(filepath.Join(repoRoot, ".dockerignore")) //nolint:gosec
+	require.NoError(t, err)
+	dockerignoreLines := strings.Split(string(dockerignore), "\n")
+
+	denyAllCount := 0
+	for _, line := range dockerignoreLines {
+		if line == "**" {
+			denyAllCount++
+		}
+	}
+	require.Equal(t, 1, denyAllCount, "Docker build context must have one deny-all rule")
+	previousIndex := slices.Index(dockerignoreLines, "**")
+	for _, requiredPath := range []string{
+		"!internal/",
+		"!internal/collectionsutil/",
+		"!internal/collectionsutil/**",
+	} {
+		allowIndex := slices.Index(dockerignoreLines, requiredPath)
+		require.Greater(t, allowIndex, previousIndex, "%s is missing or out of order", requiredPath)
+		previousIndex = allowIndex
+	}
+	require.NotContains(t, dockerignoreLines, "!internal/**",
+		"only explicitly reviewed internal packages may enter the Docker build context")
 }
 
 func TestContainerizedGoReleaserUsesPinnedOfflineToolchain(t *testing.T) {
