@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"cosmossdk.io/collections"
@@ -11,6 +12,7 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/manifest-network/manifest-ledger/internal/collectionsutil"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
@@ -33,18 +35,26 @@ func (k Keeper) validateDerivedIndexes(ctx context.Context) error {
 }
 
 func (k Keeper) validateManagedLeaseIndexes(ctx context.Context) error {
-	walkLeases := func(walkFunc func(string, types.Lease) (bool, error)) error {
-		return k.Leases.Walk(ctx, nil, walkFunc)
+	scanLeases := func(validate func(string, types.Lease) error) (uint64, error) {
+		return collectionsutil.ValidateMap(
+			ctx,
+			"lease collection",
+			k.Leases.Iterate,
+			strconv.Quote,
+			validate,
+		)
 	}
-
-	var leaseCount uint64
-	if err := walkLeases(func(uuid string, lease types.Lease) (bool, error) {
+	leaseCount, err := scanLeases(func(uuid string, lease types.Lease) error {
 		if uuid != lease.Uuid {
-			return true, fmt.Errorf("lease key %s does not match stored UUID %s", uuid, lease.Uuid)
+			return fmt.Errorf("lease key %s does not match stored UUID %s", uuid, lease.Uuid)
 		}
-		leaseCount++
-		return false, nil
-	}); err != nil {
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	walkLeases := func(validate func(string, types.Lease) error) error {
+		_, err := scanLeases(validate)
 		return err
 	}
 
@@ -171,26 +181,26 @@ func validateLeaseMultiIndex[ReferenceKey any](
 	expectedCount uint64,
 	index *indexes.Multi[ReferenceKey, string, types.Lease],
 	getLease func(context.Context, string) (types.Lease, error),
-	walkLeases func(func(string, types.Lease) (bool, error)) error,
+	walkLeases func(func(string, types.Lease) error) error,
 	expectedReference func(types.Lease) (ReferenceKey, error),
 	equal func(ReferenceKey, ReferenceKey) bool,
 	formatReference func(ReferenceKey) string,
 ) error {
 	var actualCount uint64
-	err := index.Walk(ctx, nil, func(indexedReference ReferenceKey, leaseUUID string) (bool, error) {
+	err := collectionsutil.ValidateMultiIndex(ctx, "lease "+name, index, func(indexedReference ReferenceKey, leaseUUID string) error {
 		lease, err := getLease(ctx, leaseUUID)
 		if err != nil {
 			if errors.Is(err, collections.ErrNotFound) {
-				return true, fmt.Errorf("lease %s index references missing primary key %s", name, leaseUUID)
+				return fmt.Errorf("lease %s index references missing primary key %s", name, leaseUUID)
 			}
-			return true, fmt.Errorf("read lease %s index primary key %s: %w", name, leaseUUID, err)
+			return fmt.Errorf("read lease %s index primary key %s: %w", name, leaseUUID, err)
 		}
 		expected, err := expectedReference(lease)
 		if err != nil {
-			return true, err
+			return err
 		}
 		if !equal(indexedReference, expected) {
-			return true, fmt.Errorf(
+			return fmt.Errorf(
 				"lease %s index key %s for primary key %s does not match derived key %s",
 				name,
 				formatReference(indexedReference),
@@ -199,7 +209,7 @@ func validateLeaseMultiIndex[ReferenceKey any](
 			)
 		}
 		actualCount++
-		return false, nil
+		return nil
 	})
 	if err != nil {
 		return err
@@ -210,14 +220,14 @@ func validateLeaseMultiIndex[ReferenceKey any](
 
 	// Keep the healthy path to one index walk. If the counts differ, walk the
 	// ordered primary map only to identify the exact lease whose row is absent.
-	if err := walkLeases(func(leaseUUID string, lease types.Lease) (bool, error) {
+	if err := walkLeases(func(leaseUUID string, lease types.Lease) error {
 		expected, err := expectedReference(lease)
 		if err != nil {
-			return true, err
+			return err
 		}
 		indexed, err := leaseMultiIndexContains(ctx, index, expected, leaseUUID)
 		if err != nil {
-			return true, fmt.Errorf(
+			return fmt.Errorf(
 				"inspect lease %s index key %s for primary key %s: %w",
 				name,
 				formatReference(expected),
@@ -226,14 +236,14 @@ func validateLeaseMultiIndex[ReferenceKey any](
 			)
 		}
 		if !indexed {
-			return true, fmt.Errorf(
+			return fmt.Errorf(
 				"lease %s index is missing derived key %s for lease %s",
 				name,
 				formatReference(expected),
 				leaseUUID,
 			)
 		}
-		return false, nil
+		return nil
 	}); err != nil {
 		return err
 	}
@@ -273,171 +283,225 @@ func leaseMultiIndexContains[ReferenceKey any](
 }
 
 func (k Keeper) validateCreditAddressIndex(ctx context.Context) error {
-	if err := k.CreditAccounts.Walk(ctx, nil, func(tenant sdk.AccAddress, account types.CreditAccount) (bool, error) {
-		accountTenant, err := sdk.AccAddressFromBech32(account.Tenant)
-		if err != nil {
-			return true, fmt.Errorf("credit account %X has invalid tenant: %w", []byte(tenant), err)
-		}
-		if !tenant.Equals(accountTenant) {
-			return true, fmt.Errorf("credit account key %s does not match tenant %s", tenant, account.Tenant)
-		}
-
-		expectedCreditAddress := types.DeriveCreditAddress(tenant)
-		accountCreditAddress, err := sdk.AccAddressFromBech32(account.CreditAddress)
-		if err != nil {
-			return true, fmt.Errorf("credit account for tenant %s has invalid credit address: %w", tenant, err)
-		}
-		if !expectedCreditAddress.Equals(accountCreditAddress) {
-			return true, fmt.Errorf(
-				"credit account for tenant %s has credit address %s, expected %s",
-				tenant,
-				account.CreditAddress,
-				expectedCreditAddress,
-			)
-		}
-
-		indexedTenant, err := k.CreditAddressIndex.Get(ctx, expectedCreditAddress)
-		if err != nil {
-			if errors.Is(err, collections.ErrNotFound) {
-				return true, fmt.Errorf("credit address %s for tenant %s is missing from the reverse index", expectedCreditAddress, tenant)
+	_, err := collectionsutil.ValidateMap(
+		ctx,
+		"credit-account collection",
+		k.CreditAccounts.Iterate,
+		func(tenant sdk.AccAddress) string { return tenant.String() },
+		func(tenant sdk.AccAddress, account types.CreditAccount) error {
+			accountTenant, err := sdk.AccAddressFromBech32(account.Tenant)
+			if err != nil {
+				return fmt.Errorf("credit account %X has invalid tenant: %w", []byte(tenant), err)
 			}
-			return true, err
-		}
-		if !tenant.Equals(indexedTenant) {
-			return true, fmt.Errorf("credit address %s indexes tenant %s, expected %s", expectedCreditAddress, indexedTenant, tenant)
-		}
-		return false, nil
-	}); err != nil {
+			if !tenant.Equals(accountTenant) {
+				return fmt.Errorf("credit account key %s does not match tenant %s", tenant, account.Tenant)
+			}
+
+			expectedCreditAddress := types.DeriveCreditAddress(tenant)
+			accountCreditAddress, err := sdk.AccAddressFromBech32(account.CreditAddress)
+			if err != nil {
+				return fmt.Errorf("credit account for tenant %s has invalid credit address: %w", tenant, err)
+			}
+			if !expectedCreditAddress.Equals(accountCreditAddress) {
+				return fmt.Errorf(
+					"credit account for tenant %s has credit address %s, expected %s",
+					tenant,
+					account.CreditAddress,
+					expectedCreditAddress,
+				)
+			}
+
+			indexedTenant, err := k.CreditAddressIndex.Get(ctx, expectedCreditAddress)
+			if err != nil {
+				if errors.Is(err, collections.ErrNotFound) {
+					return fmt.Errorf("credit address %s for tenant %s is missing from the reverse index", expectedCreditAddress, tenant)
+				}
+				return fmt.Errorf(
+					"read credit-address reverse index for tenant %s at credit address %s: %w",
+					tenant,
+					expectedCreditAddress,
+					err,
+				)
+			}
+			if !tenant.Equals(indexedTenant) {
+				return fmt.Errorf("credit address %s indexes tenant %s, expected %s", expectedCreditAddress, indexedTenant, tenant)
+			}
+			return nil
+		})
+	if err != nil {
 		return err
 	}
 
-	return k.CreditAddressIndex.Walk(ctx, nil, func(creditAddress, tenant sdk.AccAddress) (bool, error) {
-		expectedCreditAddress := types.DeriveCreditAddress(tenant)
-		if !creditAddress.Equals(expectedCreditAddress) {
-			return true, fmt.Errorf(
-				"reverse index key %s does not match derived credit address %s for tenant %s",
-				creditAddress,
-				expectedCreditAddress,
-				tenant,
-			)
-		}
-		account, err := k.CreditAccounts.Get(ctx, tenant)
-		if err != nil {
-			if errors.Is(err, collections.ErrNotFound) {
-				return true, fmt.Errorf("reverse index credit address %s references missing tenant %s", creditAddress, tenant)
+	_, err = collectionsutil.ValidateMap(
+		ctx,
+		"credit-address reverse index",
+		k.CreditAddressIndex.Iterate,
+		func(creditAddress sdk.AccAddress) string { return creditAddress.String() },
+		func(creditAddress, tenant sdk.AccAddress) error {
+			expectedCreditAddress := types.DeriveCreditAddress(tenant)
+			if !creditAddress.Equals(expectedCreditAddress) {
+				return fmt.Errorf(
+					"reverse index key %s does not match derived credit address %s for tenant %s",
+					creditAddress,
+					expectedCreditAddress,
+					tenant,
+				)
 			}
-			return true, err
-		}
-		accountTenant, err := sdk.AccAddressFromBech32(account.Tenant)
-		if err != nil || !tenant.Equals(accountTenant) {
-			return true, fmt.Errorf("reverse index credit address %s references mismatched tenant account %q", creditAddress, account.Tenant)
-		}
-		return false, nil
-	})
+			account, err := k.CreditAccounts.Get(ctx, tenant)
+			if err != nil {
+				if errors.Is(err, collections.ErrNotFound) {
+					return fmt.Errorf("reverse index credit address %s references missing tenant %s", creditAddress, tenant)
+				}
+				return fmt.Errorf(
+					"read credit account for reverse-index tenant %s at credit address %s: %w",
+					tenant,
+					creditAddress,
+					err,
+				)
+			}
+			accountTenant, err := sdk.AccAddressFromBech32(account.Tenant)
+			if err != nil || !tenant.Equals(accountTenant) {
+				return fmt.Errorf("reverse index credit address %s references mismatched tenant account %q", creditAddress, account.Tenant)
+			}
+			return nil
+		})
+	return err
 }
 
 func (k Keeper) validateLeaseBySKUIndex(ctx context.Context) error {
-	if err := k.Leases.Walk(ctx, nil, func(uuid string, lease types.Lease) (bool, error) {
-		if lease.Uuid != uuid {
-			return true, fmt.Errorf("lease key %s does not match stored UUID %s", uuid, lease.Uuid)
-		}
-		for _, item := range lease.Items {
-			indexed, err := k.LeaseBySKUIndex.Get(ctx, collections.Join(item.SkuUuid, uuid))
-			if err != nil {
-				if errors.Is(err, collections.ErrNotFound) {
-					return true, fmt.Errorf("lease %s SKU %s is missing from the SKU index", uuid, item.SkuUuid)
+	_, err := collectionsutil.ValidateMap(
+		ctx,
+		"lease collection",
+		k.Leases.Iterate,
+		strconv.Quote,
+		func(uuid string, lease types.Lease) error {
+			if lease.Uuid != uuid {
+				return fmt.Errorf("lease key %s does not match stored UUID %s", uuid, lease.Uuid)
+			}
+			for _, item := range lease.Items {
+				indexed, err := k.LeaseBySKUIndex.Get(ctx, collections.Join(item.SkuUuid, uuid))
+				if err != nil {
+					if errors.Is(err, collections.ErrNotFound) {
+						return fmt.Errorf("lease %s SKU %s is missing from the SKU index", uuid, item.SkuUuid)
+					}
+					return fmt.Errorf("read SKU index for lease %s SKU %s: %w", uuid, item.SkuUuid, err)
 				}
-				return true, err
+				if !indexed {
+					return fmt.Errorf("lease %s SKU %s has a false SKU-index marker", uuid, item.SkuUuid)
+				}
 			}
-			if !indexed {
-				return true, fmt.Errorf("lease %s SKU %s has a false SKU-index marker", uuid, item.SkuUuid)
-			}
-		}
-		return false, nil
-	}); err != nil {
+			return nil
+		})
+	if err != nil {
 		return err
 	}
 
-	return k.LeaseBySKUIndex.Walk(ctx, nil, func(key collections.Pair[string, string], indexed bool) (bool, error) {
-		skuUUID, leaseUUID := key.K1(), key.K2()
-		if !indexed {
-			return true, fmt.Errorf("lease %s SKU %s has a false SKU-index marker", leaseUUID, skuUUID)
-		}
-		lease, err := k.Leases.Get(ctx, leaseUUID)
-		if err != nil {
-			if errors.Is(err, collections.ErrNotFound) {
-				return true, fmt.Errorf("SKU index %s references missing lease %s", skuUUID, leaseUUID)
+	_, err = collectionsutil.ValidateMap(
+		ctx,
+		"lease-by-SKU reverse index",
+		k.LeaseBySKUIndex.Iterate,
+		func(key collections.Pair[string, string]) string {
+			return fmt.Sprintf("(%q, %q)", key.K1(), key.K2())
+		},
+		func(key collections.Pair[string, string], indexed bool) error {
+			skuUUID, leaseUUID := key.K1(), key.K2()
+			if !indexed {
+				return fmt.Errorf("lease %s SKU %s has a false SKU-index marker", leaseUUID, skuUUID)
 			}
-			return true, err
-		}
-		for _, item := range lease.Items {
-			if item.SkuUuid == skuUUID {
-				return false, nil
+			lease, err := k.Leases.Get(ctx, leaseUUID)
+			if err != nil {
+				if errors.Is(err, collections.ErrNotFound) {
+					return fmt.Errorf("SKU index %s references missing lease %s", skuUUID, leaseUUID)
+				}
+				return fmt.Errorf("read lease %s referenced by SKU index %s: %w", leaseUUID, skuUUID, err)
 			}
-		}
-		return true, fmt.Errorf("SKU index %s references lease %s without that SKU", skuUUID, leaseUUID)
-	})
+			for _, item := range lease.Items {
+				if item.SkuUuid == skuUUID {
+					return nil
+				}
+			}
+			return fmt.Errorf("SKU index %s references lease %s without that SKU", skuUUID, leaseUUID)
+		})
+	return err
 }
 
 func (k Keeper) validateCustomDomainIndex(ctx context.Context) error {
-	if err := k.Leases.Walk(ctx, nil, func(uuid string, lease types.Lease) (bool, error) {
-		editable := lease.State == types.LEASE_STATE_PENDING || lease.State == types.LEASE_STATE_ACTIVE
-		for _, item := range lease.Items {
-			if item.CustomDomain == "" {
-				continue
-			}
-			target, err := k.CustomDomainIndex.Get(ctx, item.CustomDomain)
-			switch {
-			case err == nil:
-				if editable && target.LeaseUuid == uuid && target.ServiceName == item.ServiceName {
+	_, err := collectionsutil.ValidateMap(
+		ctx,
+		"lease collection",
+		k.Leases.Iterate,
+		strconv.Quote,
+		func(uuid string, lease types.Lease) error {
+			editable := lease.State == types.LEASE_STATE_PENDING || lease.State == types.LEASE_STATE_ACTIVE
+			for _, item := range lease.Items {
+				if item.CustomDomain == "" {
 					continue
 				}
-				if !editable && (target.LeaseUuid != uuid || target.ServiceName != item.ServiceName) {
-					continue // A later editable lease legitimately reclaimed the domain.
-				}
-				return true, fmt.Errorf(
-					"custom domain %s has target (%s, %s), incompatible with lease %s item %s in state %s",
-					item.CustomDomain,
-					target.LeaseUuid,
-					target.ServiceName,
-					uuid,
-					item.ServiceName,
-					lease.State,
-				)
-			case errors.Is(err, collections.ErrNotFound):
-				if editable {
-					return true, fmt.Errorf(
-						"lease %s item %s custom domain %s is missing from the reverse index",
+				target, err := k.CustomDomainIndex.Get(ctx, item.CustomDomain)
+				switch {
+				case err == nil:
+					if editable && target.LeaseUuid == uuid && target.ServiceName == item.ServiceName {
+						continue
+					}
+					if !editable && (target.LeaseUuid != uuid || target.ServiceName != item.ServiceName) {
+						continue // A later editable lease legitimately reclaimed the domain.
+					}
+					return fmt.Errorf(
+						"custom domain %s has target (%s, %s), incompatible with lease %s item %s in state %s",
+						item.CustomDomain,
+						target.LeaseUuid,
+						target.ServiceName,
+						uuid,
+						item.ServiceName,
+						lease.State,
+					)
+				case errors.Is(err, collections.ErrNotFound):
+					if editable {
+						return fmt.Errorf(
+							"lease %s item %s custom domain %s is missing from the reverse index",
+							uuid,
+							item.ServiceName,
+							item.CustomDomain,
+						)
+					}
+				default:
+					return fmt.Errorf(
+						"read custom-domain reverse index for lease %s item %q domain %q: %w",
 						uuid,
 						item.ServiceName,
 						item.CustomDomain,
+						err,
 					)
 				}
-			default:
-				return true, err
 			}
-		}
-		return false, nil
-	}); err != nil {
+			return nil
+		})
+	if err != nil {
 		return err
 	}
 
-	return k.CustomDomainIndex.Walk(ctx, nil, func(domain string, target types.CustomDomainTarget) (bool, error) {
-		lease, err := k.Leases.Get(ctx, target.LeaseUuid)
-		if err != nil {
-			if errors.Is(err, collections.ErrNotFound) {
-				return true, fmt.Errorf("custom domain %s references missing lease %s", domain, target.LeaseUuid)
+	_, err = collectionsutil.ValidateMap(
+		ctx,
+		"custom-domain reverse index",
+		k.CustomDomainIndex.Iterate,
+		strconv.Quote,
+		func(domain string, target types.CustomDomainTarget) error {
+			lease, err := k.Leases.Get(ctx, target.LeaseUuid)
+			if err != nil {
+				if errors.Is(err, collections.ErrNotFound) {
+					return fmt.Errorf("custom domain %s references missing lease %s", domain, target.LeaseUuid)
+				}
+				return fmt.Errorf("read lease %s referenced by custom domain %q: %w", target.LeaseUuid, domain, err)
 			}
-			return true, err
-		}
-		if lease.State != types.LEASE_STATE_PENDING && lease.State != types.LEASE_STATE_ACTIVE {
-			return true, fmt.Errorf("custom domain %s references terminal lease %s in state %s", domain, target.LeaseUuid, lease.State)
-		}
-		for _, item := range lease.Items {
-			if item.ServiceName == target.ServiceName && item.CustomDomain == domain {
-				return false, nil
+			if lease.State != types.LEASE_STATE_PENDING && lease.State != types.LEASE_STATE_ACTIVE {
+				return fmt.Errorf("custom domain %s references terminal lease %s in state %s", domain, target.LeaseUuid, lease.State)
 			}
-		}
-		return true, fmt.Errorf("custom domain %s references missing item %s on lease %s", domain, target.ServiceName, target.LeaseUuid)
-	})
+			for _, item := range lease.Items {
+				if item.ServiceName == target.ServiceName && item.CustomDomain == domain {
+					return nil
+				}
+			}
+			return fmt.Errorf("custom domain %s references missing item %s on lease %s", domain, target.ServiceName, target.LeaseUuid)
+		})
+	return err
 }

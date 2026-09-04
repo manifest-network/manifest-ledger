@@ -409,10 +409,8 @@ func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProvi
 			"provider_uuid %s not found", req.ProviderUuid,
 		).Error())
 	}
-	if _, err := sdk.AccAddressFromBech32(provider.GetPayoutAddress()); err != nil {
-		return nil, status.Error(codes.Internal, types.ErrProviderNotFound.Wrapf(
-			"provider %s has invalid payout address: %s", req.ProviderUuid, err,
-		).Error())
+	if _, err := storedProviderPayoutAddress(provider); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// Normalize pagination: default and cap the page limit to bound query cost,

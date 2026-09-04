@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/collections/indexes"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/manifest-network/manifest-ledger/internal/collectionsutil"
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
@@ -25,25 +27,35 @@ func RegisterInvariants(registry sdk.InvariantRegistry, keeper Keeper) {
 // directions of every Collections-managed secondary index.
 func StateInvariant(keeper Keeper) sdk.Invariant {
 	return func(ctx sdk.Context) (string, bool) {
-		var providerCount uint64
-		if err := keeper.Providers.Walk(ctx, nil, func(uuid string, provider types.Provider) (bool, error) {
-			if uuid != provider.Uuid {
-				return true, fmt.Errorf("provider key %s does not match stored UUID %s", uuid, provider.Uuid)
-			}
-			providerCount++
-			return false, nil
-		}); err != nil {
+		providerCount, err := collectionsutil.ValidateMap(
+			ctx,
+			"provider collection",
+			keeper.Providers.Iterate,
+			strconv.Quote,
+			func(uuid string, provider types.Provider) error {
+				if uuid != provider.Uuid {
+					return fmt.Errorf("provider key %s does not match stored UUID %s", uuid, provider.Uuid)
+				}
+				return nil
+			},
+		)
+		if err != nil {
 			return sdk.FormatInvariant(types.ModuleName, stateInvariantRoute, err.Error()), true
 		}
 
-		var skuCount uint64
-		if err := keeper.SKUs.Walk(ctx, nil, func(uuid string, sku types.SKU) (bool, error) {
-			if uuid != sku.Uuid {
-				return true, fmt.Errorf("SKU key %s does not match stored UUID %s", uuid, sku.Uuid)
-			}
-			skuCount++
-			return false, nil
-		}); err != nil {
+		skuCount, err := collectionsutil.ValidateMap(
+			ctx,
+			"SKU collection",
+			keeper.SKUs.Iterate,
+			strconv.Quote,
+			func(uuid string, sku types.SKU) error {
+				if uuid != sku.Uuid {
+					return fmt.Errorf("SKU key %s does not match stored UUID %s", uuid, sku.Uuid)
+				}
+				return nil
+			},
+		)
+		if err != nil {
 			return sdk.FormatInvariant(types.ModuleName, stateInvariantRoute, err.Error()), true
 		}
 		if err := keeper.validateSecondaryIndexes(ctx, providerCount, skuCount); err != nil {
@@ -167,20 +179,20 @@ func validateMultiIndex[ReferenceKey, Value any](
 	formatReference func(ReferenceKey) string,
 ) error {
 	var actualCount uint64
-	err := index.Walk(ctx, nil, func(indexedReference ReferenceKey, primaryKey string) (bool, error) {
+	err := collectionsutil.ValidateMultiIndex(ctx, name, index, func(indexedReference ReferenceKey, primaryKey string) error {
 		value, err := getValue(ctx, primaryKey)
 		if err != nil {
 			if errors.Is(err, collections.ErrNotFound) {
-				return true, fmt.Errorf("%s index references missing primary key %s", name, primaryKey)
+				return fmt.Errorf("%s index references missing primary key %s", name, primaryKey)
 			}
-			return true, fmt.Errorf("read %s index primary key %s: %w", name, primaryKey, err)
+			return fmt.Errorf("read %s index primary key %s: %w", name, primaryKey, err)
 		}
 		expected, err := expectedReference(value)
 		if err != nil {
-			return true, err
+			return err
 		}
 		if !equal(indexedReference, expected) {
-			return true, fmt.Errorf(
+			return fmt.Errorf(
 				"%s index key %s for primary key %s does not match derived key %s",
 				name,
 				formatReference(indexedReference),
@@ -189,7 +201,7 @@ func validateMultiIndex[ReferenceKey, Value any](
 			)
 		}
 		actualCount++
-		return false, nil
+		return nil
 	})
 	if err != nil {
 		return err

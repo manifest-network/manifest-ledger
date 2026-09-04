@@ -41,6 +41,81 @@ func TestStateInvariantReportsCorruptParamsWithoutPanicking(t *testing.T) {
 	require.Contains(t, message, "read SKU params")
 }
 
+func TestStateInvariantReportsCorruptPrimaryRowWithContext(t *testing.T) {
+	tests := []struct {
+		name       string
+		prefix     collections.Prefix
+		primaryKey string
+		seedDecoy  func(*testing.T, *testFixture)
+		collection string
+	}{
+		{
+			name:       "provider",
+			prefix:     types.ProviderKey,
+			primaryKey: testProviderUUID,
+			collection: "provider",
+			seedDecoy: func(t *testing.T, f *testFixture) {
+				require.NoError(t, f.App.SKUKeeper.SetProvider(f.Ctx, types.Provider{
+					Uuid:          testProvider2UUID,
+					Address:       f.TestAccs[2].String(),
+					PayoutAddress: f.TestAccs[3].String(),
+					Active:        true,
+				}))
+				require.NoError(t, f.App.SKUKeeper.ProviderSequence.Set(f.Ctx, 2))
+			},
+		},
+		{
+			name:       "SKU",
+			prefix:     types.SKUKey,
+			primaryKey: testSKU2UUID,
+			collection: "SKU",
+			seedDecoy: func(t *testing.T, f *testFixture) {
+				require.NoError(t, f.App.SKUKeeper.SetSKU(f.Ctx, types.SKU{
+					Uuid:         testSKU2UUID,
+					ProviderUuid: testProviderUUID,
+					Name:         "storage",
+					Unit:         types.Unit_UNIT_PER_HOUR,
+					BasePrice:    sdk.NewInt64Coin("umfx", 3600),
+					Active:       true,
+				}))
+				require.NoError(t, f.App.SKUKeeper.SKUSequence.Set(f.Ctx, 2))
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f := initFixture(t)
+			seedInvariantState(t, f)
+			test.seedDecoy(t, f)
+
+			key, err := collections.EncodeKeyWithPrefix(
+				test.prefix.Bytes(),
+				collections.StringKey,
+				test.primaryKey,
+			)
+			require.NoError(t, err)
+			f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
+
+			message, broken := keeper.StateInvariant(f.App.SKUKeeper)(f.Ctx)
+			require.True(t, broken)
+			require.Equal(
+				t,
+				sdk.FormatInvariant(
+					types.ModuleName,
+					"state",
+					fmt.Sprintf(
+						"%s collection row %q: decode value: unexpected EOF",
+						test.collection,
+						test.primaryKey,
+					),
+				),
+				message,
+			)
+		})
+	}
+}
+
 func TestStateInvariantValidatesRawStoredParams(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -142,6 +217,19 @@ func TestStateInvariant_DetectsSecondaryIndexCorruption(t *testing.T) {
 				))
 			},
 			contains: "SKU provider-active index contains 0 entries, expected 1",
+		},
+		{
+			name: "corrupt provider active marker",
+			corrupt: func(t *testing.T, f *testFixture, provider types.Provider, _ types.SKU) {
+				key, err := collections.EncodeKeyWithPrefix(
+					types.ProviderByActiveIndexKey.Bytes(),
+					collections.PairKeyCodec(collections.BoolKey, collections.StringKey),
+					collections.Join(provider.Active, provider.Uuid),
+				)
+				require.NoError(t, err)
+				f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
+			},
+			contains: "walk provider active index:",
 		},
 		{
 			name: "mismatched provider address row",

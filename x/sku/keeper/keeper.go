@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/collections/indexes"
@@ -15,6 +16,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/manifest-network/manifest-ledger/internal/collectionsutil"
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
@@ -299,21 +301,31 @@ func (k *Keeper) exportGenesis(ctx context.Context) (*types.GenesisState, error)
 	}
 
 	var providers []types.Provider
-	err = k.Providers.Walk(ctx, nil, func(_ string, provider types.Provider) (bool, error) {
-		providers = append(providers, provider)
-		return false, nil
-	})
+	_, err = collectionsutil.ValidateMap(
+		ctx,
+		"provider collection",
+		k.Providers.Iterate,
+		strconv.Quote,
+		func(_ string, provider types.Provider) error {
+			providers = append(providers, provider)
+			return nil
+		})
 	if err != nil {
-		return nil, fmt.Errorf("walk providers: %w", err)
+		return nil, err
 	}
 
 	var skus []types.SKU
-	err = k.SKUs.Walk(ctx, nil, func(_ string, sku types.SKU) (bool, error) {
-		skus = append(skus, sku)
-		return false, nil
-	})
+	_, err = collectionsutil.ValidateMap(
+		ctx,
+		"SKU collection",
+		k.SKUs.Iterate,
+		strconv.Quote,
+		func(_ string, sku types.SKU) error {
+			skus = append(skus, sku)
+			return nil
+		})
 	if err != nil {
-		return nil, fmt.Errorf("walk SKUs: %w", err)
+		return nil, err
 	}
 
 	providerSeq, err := k.ProviderSequence.Peek(ctx)

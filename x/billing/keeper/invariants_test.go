@@ -1,6 +1,7 @@
 package keeper_test
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 	"time"
@@ -84,6 +85,52 @@ func TestReservationAccountingInvariantReportsCorruptParamsWithoutPanicking(t *t
 	require.True(t, broken)
 	require.Contains(t, message, "failed to export billing state")
 	require.Contains(t, message, "read billing params")
+}
+
+func TestReservationAccountingInvariantReportsCorruptPrimaryRowWithContext(t *testing.T) {
+	t.Run("lease", func(t *testing.T) {
+		s := setupCustomDomain(t)
+		key, err := collections.EncodeKeyWithPrefix(
+			types.LeaseKey.Bytes(),
+			collections.StringKey,
+			s.leaseUUID,
+		)
+		require.NoError(t, err)
+		s.f.Ctx.KVStore(s.f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
+
+		message, broken := keeper.ReservationAccountingInvariant(s.f.App.BillingKeeper)(s.f.Ctx)
+		require.True(t, broken)
+		require.Equal(t, sdk.FormatInvariant(
+			types.ModuleName,
+			"reservation-accounting",
+			fmt.Sprintf(
+				"failed to export billing state: lease collection row %q: decode value: unexpected EOF",
+				s.leaseUUID,
+			),
+		), message)
+	})
+
+	t.Run("credit account", func(t *testing.T) {
+		s := setupCustomDomain(t)
+		key, err := collections.EncodeKeyWithPrefix(
+			types.CreditAccountKey.Bytes(),
+			sdk.AccAddressKey,
+			s.tenant,
+		)
+		require.NoError(t, err)
+		s.f.Ctx.KVStore(s.f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
+
+		message, broken := keeper.ReservationAccountingInvariant(s.f.App.BillingKeeper)(s.f.Ctx)
+		require.True(t, broken)
+		require.Equal(t, sdk.FormatInvariant(
+			types.ModuleName,
+			"reservation-accounting",
+			fmt.Sprintf(
+				"failed to export billing state: credit-account collection row %s: decode value: unexpected EOF",
+				s.tenant,
+			),
+		), message)
+	})
 }
 
 func TestReservationAccountingInvariantValidatesRawStoredParams(t *testing.T) {
@@ -187,6 +234,130 @@ func TestDerivedIndexesInvariant(t *testing.T) {
 		ServiceName: "service",
 	}))
 	assertBroken("references missing lease")
+}
+
+func TestDerivedIndexesInvariantReadErrorsIncludeEntityContext(t *testing.T) {
+	const domain = "diagnostic.example.com"
+
+	setup := func(t *testing.T) *customDomainSetup {
+		t.Helper()
+		s := setupCustomDomain(t)
+		_, err := s.f.App.BillingKeeper.SetItemCustomDomain(
+			s.f.Ctx,
+			s.tenant.String(),
+			s.leaseUUID,
+			"",
+			domain,
+		)
+		require.NoError(t, err)
+		message, broken := keeper.DerivedIndexesInvariant(s.f.App.BillingKeeper)(s.f.Ctx)
+		require.False(t, broken, message)
+		return s
+	}
+	corruptValue := func(t *testing.T, s *customDomainSetup, key []byte, err error) {
+		t.Helper()
+		require.NoError(t, err)
+		s.f.Ctx.KVStore(s.f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
+	}
+
+	t.Run("lease primary row", func(t *testing.T) {
+		s := setup(t)
+		lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+		require.NoError(t, err)
+		decoy := lease
+		decoy.Uuid = "00000000-0000-7000-8000-000000000001"
+		decoy.Items[0].CustomDomain = ""
+		require.Less(t, decoy.Uuid, s.leaseUUID)
+		require.NoError(t, s.f.App.BillingKeeper.SetLease(s.f.Ctx, decoy))
+
+		key, err := collections.EncodeKeyWithPrefix(
+			types.LeaseKey.Bytes(),
+			collections.StringKey,
+			s.leaseUUID,
+		)
+		corruptValue(t, s, key, err)
+
+		message, broken := keeper.DerivedIndexesInvariant(s.f.App.BillingKeeper)(s.f.Ctx)
+		require.True(t, broken)
+		require.Equal(t, sdk.FormatInvariant(
+			types.ModuleName,
+			"derived-indexes",
+			fmt.Sprintf(
+				"invalid derived index state: lease collection row %q: decode value: unexpected EOF",
+				s.leaseUUID,
+			),
+		), message)
+	})
+
+	t.Run("credit-account primary row", func(t *testing.T) {
+		s := setup(t)
+		secondTenant := s.allowed
+		secondCreditAddress := types.DeriveCreditAddress(secondTenant)
+		require.NoError(t, s.f.App.BillingKeeper.SetCreditAccount(s.f.Ctx, types.CreditAccount{
+			Tenant:        secondTenant.String(),
+			CreditAddress: secondCreditAddress.String(),
+		}))
+		decoyTenant, corruptTenant := s.tenant, secondTenant
+		if bytes.Compare(decoyTenant, corruptTenant) > 0 {
+			decoyTenant, corruptTenant = corruptTenant, decoyTenant
+		}
+		require.Less(t, bytes.Compare(decoyTenant, corruptTenant), 0)
+
+		key, err := collections.EncodeKeyWithPrefix(
+			types.CreditAccountKey.Bytes(),
+			sdk.AccAddressKey,
+			corruptTenant,
+		)
+		corruptValue(t, s, key, err)
+
+		message, broken := keeper.DerivedIndexesInvariant(s.f.App.BillingKeeper)(s.f.Ctx)
+		require.True(t, broken)
+		require.Equal(t, sdk.FormatInvariant(
+			types.ModuleName,
+			"derived-indexes",
+			fmt.Sprintf(
+				"invalid derived index state: credit-account collection row %s: decode value: unexpected EOF",
+				corruptTenant,
+			),
+		), message)
+	})
+
+	t.Run("SKU index lookup", func(t *testing.T) {
+		s := setup(t)
+		key, err := collections.EncodeKeyWithPrefix(
+			types.LeaseBySKUIndexKey.Bytes(),
+			collections.PairKeyCodec(collections.StringKey, collections.StringKey),
+			collections.Join(s.sku.Uuid, s.leaseUUID),
+		)
+		corruptValue(t, s, key, err)
+
+		message, broken := keeper.DerivedIndexesInvariant(s.f.App.BillingKeeper)(s.f.Ctx)
+		require.True(t, broken)
+		require.Contains(t, message, fmt.Sprintf(
+			"read SKU index for lease %s SKU %s:",
+			s.leaseUUID,
+			s.sku.Uuid,
+		))
+	})
+
+	t.Run("custom-domain reverse lookup", func(t *testing.T) {
+		s := setup(t)
+		key, err := collections.EncodeKeyWithPrefix(
+			types.CustomDomainIndexKey.Bytes(),
+			collections.StringKey,
+			domain,
+		)
+		corruptValue(t, s, key, err)
+
+		message, broken := keeper.DerivedIndexesInvariant(s.f.App.BillingKeeper)(s.f.Ctx)
+		require.True(t, broken)
+		require.Contains(t, message, fmt.Sprintf(
+			"read custom-domain reverse index for lease %s item %q domain %q:",
+			s.leaseUUID,
+			"",
+			domain,
+		))
+	})
 }
 
 func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
@@ -326,7 +497,9 @@ func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
 						require.Greater(t, lease.Uuid, decoyLeaseUUID)
 						decoy := lease
 						decoy.Uuid = decoyLeaseUUID
-						require.NoError(t, f.App.BillingKeeper.Leases.Set(f.Ctx, decoy.Uuid, decoy))
+						require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, decoy))
+						message, broken := keeper.DerivedIndexesInvariant(f.App.BillingKeeper)(f.Ctx)
+						require.False(t, broken, message)
 					}
 					indexed := lease
 					if !missing {
@@ -369,6 +542,23 @@ func TestDerivedIndexesInvariantDetectsManagedLeaseIndexDrift(t *testing.T) {
 		message, broken := keeper.DerivedIndexesInvariant(f.App.BillingKeeper)(f.Ctx)
 		require.True(t, broken, message)
 		require.Contains(t, message, "lease key "+primaryKey+" does not match stored UUID "+lease.Uuid)
+	})
+
+	t.Run("managed index traversal error names index", func(t *testing.T) {
+		f, lease := setup(t)
+		tenant, err := sdk.AccAddressFromBech32(lease.Tenant)
+		require.NoError(t, err)
+		key, err := collections.EncodeKeyWithPrefix(
+			types.LeaseByTenantIndexKey.Bytes(),
+			collections.PairKeyCodec(sdk.AccAddressKey, collections.StringKey),
+			collections.Join(tenant, lease.Uuid),
+		)
+		require.NoError(t, err)
+		f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
+
+		message, broken := keeper.DerivedIndexesInvariant(f.App.BillingKeeper)(f.Ctx)
+		require.True(t, broken, message)
+		require.Contains(t, message, "walk lease tenant index:")
 	})
 
 	t.Run("index row references missing primary", func(t *testing.T) {

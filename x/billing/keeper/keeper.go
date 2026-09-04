@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"time"
 
 	"cosmossdk.io/collections"
@@ -18,6 +19,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/manifest-network/manifest-ledger/internal/collectionsutil"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
@@ -387,21 +389,31 @@ func (k *Keeper) exportGenesis(ctx context.Context) (*types.GenesisState, error)
 	}
 
 	var leases []types.Lease
-	err = k.Leases.Walk(ctx, nil, func(_ string, lease types.Lease) (bool, error) {
-		leases = append(leases, lease)
-		return false, nil
-	})
+	_, err = collectionsutil.ValidateMap(
+		ctx,
+		"lease collection",
+		k.Leases.Iterate,
+		strconv.Quote,
+		func(_ string, lease types.Lease) error {
+			leases = append(leases, lease)
+			return nil
+		})
 	if err != nil {
-		return nil, fmt.Errorf("walk leases: %w", err)
+		return nil, err
 	}
 
 	var creditAccounts []types.CreditAccount
-	err = k.CreditAccounts.Walk(ctx, nil, func(_ sdk.AccAddress, ca types.CreditAccount) (bool, error) {
-		creditAccounts = append(creditAccounts, ca)
-		return false, nil
-	})
+	_, err = collectionsutil.ValidateMap(
+		ctx,
+		"credit-account collection",
+		k.CreditAccounts.Iterate,
+		func(tenant sdk.AccAddress) string { return tenant.String() },
+		func(_ sdk.AccAddress, ca types.CreditAccount) error {
+			creditAccounts = append(creditAccounts, ca)
+			return nil
+		})
 	if err != nil {
-		return nil, fmt.Errorf("walk credit accounts: %w", err)
+		return nil, err
 	}
 
 	leaseSeq, err := k.LeaseSequence.Peek(ctx)
