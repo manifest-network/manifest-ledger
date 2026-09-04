@@ -23,7 +23,7 @@ npm install @manifest-network/manifestjs
 npm install @cosmjs/proto-signing @cosmjs/stargate @cosmjs/tendermint-rpc
 ```
 
-manifestjs is a pure-codegen package — its semver tracks the proto surface, not chain releases. As of writing, mainnet runs `v2.3.1` of the chain; pin the `@manifest-network/manifestjs` range whose proto surface matches (see the [releases page](https://github.com/liftedinit/manifest-ledger/releases)).
+manifestjs is a pure-codegen package — its semver tracks the proto surface, not chain releases. As of writing, mainnet runs `v2.3.1` of the chain; pin the `@manifest-network/manifestjs` range whose proto surface matches (see the [releases page](https://github.com/manifest-network/manifest-ledger/releases)).
 
 ## Query client (read path)
 
@@ -49,10 +49,16 @@ const lease = await client.liftedinit.billing.v1.lease({
 
 const credit = await client.liftedinit.billing.v1.creditAccount({
   tenant: "manifest1...",
+  pagination: { key: new Uint8Array(), limit: 100n },
 });
-// credit.balances           — bank balances at the credit address
-// credit.availableBalances  — balances - reserved_amounts (what new leases can use)
-// credit.creditAccount.reservedAmounts — locked by PENDING/ACTIVE leases
+// credit.balances           — one cursor page of all bank balances
+// credit.availableBalances  — the same page minus reserved_amounts
+// Follow credit.pagination.nextKey to read the next page. Offset/countTotal
+// are intentionally rejected so each request stays bounded.
+// credit.creditAccount.reservedAmounts — R = live modern remaining tranches + U
+// credit.creditAccount.unattributedReservedAmounts — U, shared live historical cohort
+// credit.creditAccount.unattributedLeaseCount — exact live historical cohort size
+// lease.lease.reservation?.remainingAmounts — this modern lease's remaining tranche A
 ```
 
 Prefer `createLCDClient` if you need to hit the REST gateway instead of CometBFT RPC (e.g. browser sandboxes that can't open a WS):
@@ -134,6 +140,29 @@ Two equivalent patterns sit on top of the registry:
 - **Module RPC clients** — `client.liftedinit.billing.v1.fundCredit(...)` etc. Use this when you're sending one message and want a typed response.
 
 Either way you end up sending the same on-chain message.
+
+### Set, preserve, or clear a provider API URL
+
+`MsgUpdateProvider` keeps legacy patch semantics for `apiUrl`: an empty string
+preserves the stored URL. New clients clear it explicitly with
+`clearApiUrl: true`. A non-empty `apiUrl` and `clearApiUrl: true` are mutually
+exclusive and the chain rejects that combination.
+
+```ts
+const clearProviderAPIURL = liftedinit.sku.v1.MessageComposer.encoded.updateProvider({
+  authority,
+  uuid: providerUuid,
+  address: providerAddress,
+  payoutAddress,
+  metaHash: new Uint8Array(),
+  active: true,
+  apiUrl: "",
+  clearApiUrl: true,
+});
+
+// To preserve the current URL while updating other fields, leave both values
+// at their protobuf defaults: apiUrl: "", clearApiUrl: false.
+```
 
 ### Fund a tenant's credit account (`MsgFundCredit`)
 
@@ -252,6 +281,10 @@ const reject = liftedinit.billing.v1.MessageComposer.encoded.rejectLease({
 });
 ```
 
+Acknowledgement revalidates every lease against the hard pending deadline and each tenant's
+post-batch active cap. It succeeds exactly at `createdAt + current pendingTimeout`, fails strictly
+afterward even if the lease still queries as PENDING, and applies no part of a failing batch.
+
 ### Withdraw (`MsgWithdraw`)
 
 Two mutually-exclusive modes. Specific-leases mode is atomic across the batch; provider-wide mode is paginated.
@@ -290,21 +323,29 @@ Read-only "what would I withdraw" estimates:
 ```ts
 const perLease = await client.liftedinit.billing.v1.withdrawableAmount({ leaseUuid });
 
-// Provider-wide is paginated over the provider's ACTIVE leases; each response is
-// one PAGE, so sum across pages until the cursor is empty for the true total.
-let pageKey = new Uint8Array();
-const totals: Record<string, bigint> = {};
-do {
-  const page = await client.liftedinit.billing.v1.providerWithdrawable({
-    providerUuid,
-    pagination: { key: pageKey, limit: 100n },   // page size defaults to 100, capped at 1000
-  });
-  for (const c of page.amounts) totals[c.denom] = (totals[c.denom] ?? 0n) + BigInt(c.amount);
-  pageKey = page.pagination?.nextKey ?? new Uint8Array();
-} while (pageKey.length > 0);
-// `totals` = full per-denom withdrawable across ACTIVE leases.
-// page.amounts is this page's subtotal; page.leaseCount counts only leases with a
-// non-zero withdrawable amount in that page. (`limit`/`has_more` were removed in v2.2.0.)
+// Provider-wide estimates are page-local ordered dry-runs. Every forward page
+// is comparable to one provider-wide MsgWithdraw over the same current segment
+// because both the query and transaction are capped at 100 leases.
+const page = await client.liftedinit.billing.v1.providerWithdrawable({
+  providerUuid,
+  pagination: { key: new Uint8Array(), limit: 100n },
+});
+// page.amounts estimates executing this page in index order. Earlier leases
+// consume virtual shared tenant balances before later leases are evaluated.
+// Failed per-lease simulations are discarded (matching provider-wide tx
+// best-effort semantics); successful virtual effects feed later leases, but no
+// query state commits. page.leaseCount matches the comparable transaction's
+// withdrawalCount, including a successful zero-transfer auto-close.
+
+// Do not loop and sum query pages: separately queried pages can count the same
+// shared balance. Submit the comparable transaction and wait for commit. Then
+// query the next segment with this page's pagination.nextKey, while the next
+// transaction uses the prior transaction response's nextKey.
+//
+// Never interchange those cursors: the query key is its first unread
+// (inclusive) index entry; the transaction key is its last processed lease and
+// resumes exclusively. Reverse query pages are read-only estimates with no
+// one-transaction analogue. Offset and countTotal are rejected.
 ```
 
 ### Tenant authentication to your provider API
@@ -327,6 +368,13 @@ await fetch(`${provider.api_url}/v1/leases/${leaseUuid}/connection`, {
 Use the same recipe with Leap (`window.leap.signArbitrary(...)`) — the API is identical. Web3Auth-derived signers reach this through `OfflineAminoSigner.signAmino`.
 
 ## Querying state — common patterns
+
+The collection filters `LeasesByProvider.provider_uuid`,
+`LeasesBySKU.sku_uuid`, and `SKUsByProvider.provider_uuid` require non-empty
+canonical lowercase UUIDv7 values. Empty, malformed, uppercase, or non-v7
+values fail with gRPC `InvalidArgument`; an unknown canonical value returns an
+empty page. Preserve identifiers returned by the chain without changing their
+case.
 
 ### Filter leases by state
 
@@ -359,7 +407,17 @@ const { lease, serviceName } = await client.liftedinit.billing.v1.leaseByCustomD
 
 ### Pagination
 
-All `Query.<list>` queries take a Cosmos `PageRequest`. Use `key` for stable cursoring across pages.
+All `Query.<list>` queries take a Cosmos `PageRequest`. Use `key` for stable
+cursoring across pages. The billing and SKU collection/index lists also accept
+SDK-compatible `offset` and explicit `countTotal` requests. Unfiltered
+compatibility requests may inspect at most 20,000 physical rows. Value-filtered
+requests remain capped at 1,000 physical rows in every mode; this applies to
+`LeasesBySKU` with a state filter and `ProviderByAddress` with `activeOnly`.
+Requests fail rather than return an inexact page or total. An omitted or zero
+limit defaults to 100 without implicitly enabling `countTotal`; clients that
+need a total must request it. `countTotal` is ignored when `key` is set,
+matching the SDK. The `CreditAccount` and `ProviderWithdrawable` queries are
+deliberately cursor-only.
 
 ```ts
 import { cosmos, liftedinit } from "@manifest-network/manifestjs";

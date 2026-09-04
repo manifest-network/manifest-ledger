@@ -192,17 +192,47 @@ Both systems must prevent tenants from creating more leases than they can pay fo
 
 ```go
 // On lease creation (PENDING state):
-reservationAmount := CalculateLeaseReservation(items, params.MinLeaseDuration)
+reservationAmount, err := CalculateLeaseReservation(items, params.MinLeaseDuration)
+if err != nil {
+    return err
+}
 availableCredit := GetAvailableCredit(balance, creditAccount.ReservedAmounts)
 
 if availableCredit.AmountOf(denom) < reservationAmount.AmountOf(denom) {
     return ErrInsufficientCredit
 }
 
-creditAccount.ReservedAmounts = AddReservation(creditAccount.ReservedAmounts, reservationAmount)
+creditAccount.ReservedAmounts, err = AddReservation(creditAccount.ReservedAmounts, reservationAmount)
+if err != nil {
+    return err
+}
+lease.Reservation = &types.LeaseReservation{
+    RemainingAmounts: append(sdk.Coins(nil), reservationAmount...),
+}
 ```
 
-This ensures each lease has guaranteed funds for at least `min_lease_duration`, preventing overbooking at both PENDING and ACTIVE stages.
+This initializes a modern lease's consumable tranche at enough credit for
+`min_lease_duration`, preventing overbooking at both PENDING and ACTIVE stages.
+After creation, version 4 maintains the exact identity
+`R = sum(live modern remaining tranches) + U`, where `U` is the explicit shared
+allocation for the live historical cohort. The account's
+`unattributed_lease_count` records that cohort's exact live membership even when
+`U` has been fully consumed.
+
+Settlement is own-tranche-first. For a lease allocation `A`, tenant balance
+`B`, and total reservation `R`, spendable credit is `B - (R - A)`. Thus the
+lease can use its own guarantee and unreserved funds without consuming another
+lease's guarantee. The consumed part of `A` is subtracted from both the lease
+and account aggregate; terminal release subtracts exactly the remainder.
+
+The v2→v3→v4 upgrade preserves that economic boundary without creating
+credit: v2→v3 canonicalizes stored address identities and repairs the provable
+aggregate floor; v3→v4 preserves a tenant's complete modern PENDING cohort only
+when every denomination is bank-backed. If any denomination is short, the
+cutover expires that tenant's entire modern PENDING cohort rather than creating
+a partial guarantee or choosing arbitrary winners. It then shares the remaining
+bank-backed historical budget among ACTIVE and historical claims with
+deterministic Hamilton allocation.
 
 ## Event Hooks Pattern
 
@@ -262,36 +292,35 @@ Manifest handles side effects inline where they occur. For example, in `CloseLea
 ```go
 // In msg_server.go - CloseLease
 // 1. Settlement (branch depends on whether credit is exhausted)
-shouldAutoClose, autoCloseTime, err := ms.k.ShouldAutoCloseLease(cacheCtx, &leases[i])
+shouldAutoClose, autoCloseTime, err := ms.k.ShouldAutoCloseLease(cacheCtx, &leases[i], &creditAccount)
 if shouldAutoClose {
     // Credit exhausted: settle in silent mode (doesn't fail on overflow)
-    result, err := ms.k.PerformSettlementSilent(cacheCtx, &leases[i], autoCloseTime)
+    result, err := ms.k.PerformSettlementSilent(cacheCtx, &leases[i], &creditAccount, autoCloseTime)
     settledAmounts = result.TransferAmounts
 } else {
     // Normal close: settle accrued charges up to block time
-    settledAmounts, err = ms.settleLease(cacheCtx, &leases[i], closeTime)
+    settledAmounts, err = ms.settleLease(cacheCtx, &leases[i], &creditAccount, closeTime)
 }
 
 // 2. State update
 leases[i].State = types.LEASE_STATE_CLOSED
 leases[i].ClosedAt = &closeTime
 
-// 3. Persist lease
-if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil { ... }
-
-// 4. Update credit account counts
+// 3. Update credit account counts
 ms.k.DecrementActiveLeaseCount(&creditAccount, leases[i].Uuid)
 
-// 5. Release reservation
-// GetLeaseReservationAmount prefers lease.MinLeaseDurationAtCreation (when
-// non-zero) over the current param, so leases created under a different
-// min_lease_duration release the correct amount.
-ms.k.ReleaseLeaseReservation(&creditAccount, &leases[i], params.MinLeaseDuration)
+// 4. Release reservation
+// Modern leases release their exact stored remaining tranche. Historical
+// leases never guess from current params: their explicit unattributed cohort U
+// uses a persisted live-member count. Each terminal transition decrements it in
+// O(1); when it reaches zero, exactly the remaining U is subtracted from R.
+if err := ms.k.ReleaseLeaseReservation(cacheCtx, &creditAccount, &leases[i]); err != nil { ... }
 
-// 6. Save credit account
+// 5. Persist the cleared lease tranche and updated account aggregate
+if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil { ... }
 if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil { ... }
 
-// 7. Emit event
+// 6. Emit event after the enclosing CacheContext commits
 leaseEvents = append(leaseEvents, leaseEvent{...})
 ```
 

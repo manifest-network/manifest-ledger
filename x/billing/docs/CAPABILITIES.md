@@ -26,6 +26,7 @@ This document provides a comprehensive overview of the Billing module's capabili
 | **Lease Lifecycle** | PENDING → ACTIVE → CLOSED/REJECTED/EXPIRED states |
 | **Two-Phase Commit** | Tenant creates, provider acknowledges (or rejects) |
 | **Price Locking** | SKU prices locked at lease creation for duration |
+| **Consumable Reservations** | Per-lease remaining guarantees prevent one lease from spending another's reserved credit |
 | **Lazy Settlement** | Charges calculated on-touch (withdraw/close), not per-block |
 | **Auto-Close** | Leases automatically close when credit exhausted |
 | **Multi-Denom Support** | Credit accounts can hold multiple token types |
@@ -85,15 +86,42 @@ This design enables:
 ### Overdraw Handling
 
 When credit is exhausted:
-1. Transfer available balance to provider (partial payment)
+1. Transfer this lease's spendable credit `B - (R - A)` to the provider (partial payment), preserving every other reservation
 2. Auto-close the lease
 3. Emit an auto-close event whose type depends on the path: `lease_auto_closed` (reason=`credit_exhausted`) from provider-wide withdraw; `lease_closed` with `closed_by=credit_exhaustion` from CloseLease on a genuine exhaustion (shortfall, accrual overflow, or a zero-balance close) — a fully-paid CloseLease keeps the caller's reason/role; `provider_withdraw` with `auto_closed=true` from specific-lease withdraw
 
 ### Overflow Protection
 
-- Maximum duration capped at ~100 years (`MaxDurationSeconds`)
+- SDK `math.Int` values are fixed at 256 bits; price/quantity/duration
+  multiplication and same-denom addition use checked operations
 - Maximum quantity per item: 1 billion (`MaxQuantityPerItem`)
-- Uses `math.Int` (big.Int) for all arithmetic
+- Creation, CreditEstimate/non-spendable-capped queries, import, migration, and
+  non-silent settlement return `ErrArithmeticOverflow` (code 20) instead of
+  panicking; withdrawable queries cap affected denominations at this lease's
+  spendable credit
+- Long settlement intervals are charged from timestamp-derived whole seconds;
+  only actual representational overflow triggers the conservative path
+- Silent overflow settlement clamps only affected denominations to the lease's
+  own tranche plus genuinely unreserved credit and preserves exact charges for
+  unaffected denominations
+
+### Reservation Accounting
+
+For each tenant and denomination, consensus version 4 maintains:
+
+```
+R = SUM(A for each live modern lease) + U
+```
+
+`R` is the credit-account aggregate, `A` is a modern lease's consumable
+remaining tranche, and `U` is the explicit shared allocation for live
+historical leases. Settlement is own-tranche-first: spendable credit is
+`B - (R - A)`, consumed reservation is removed from both `A` and `R`, and a
+modern terminal transition releases exactly its remaining `A`. Historical and
+terminal leases keep initialized empty lease-side reservation wrappers. The
+account's `unattributed_lease_count` exactly tracks live historical cohort
+membership even when `U` is empty; historical terminal transitions decrement
+it in O(1) and release the exact remaining `U` when it reaches zero.
 
 ---
 
@@ -106,13 +134,24 @@ When credit is exhausted:
 | `LeasesByTenant` | All leases for a tenant (with state filter) |
 | `LeasesByProvider` | All leases for a provider (with state filter) |
 | `LeasesBySKU` | All leases using a specific SKU |
-| `CreditAccount` | Balance and lease counts for a tenant |
+| `CreditAccount` | Account state plus a cursor-paginated page of all bank balances and page-aligned available balances |
 | `CreditAccounts` | List all credit accounts |
-| `CreditEstimate` | Estimated remaining duration based on active leases |
+| `CreditEstimate` | Gross raw-bank-balance runway at the aggregate ACTIVE rate; not a reservation-aware auto-close forecast |
 | `CreditAddress` | Derive credit address for a tenant |
-| `WithdrawableAmount` | Accrued amount for a specific lease |
-| `ProviderWithdrawable` | Withdrawable amount across the provider's ACTIVE leases, one page at a time — sum `amounts` across pages until `pagination.next_key` is empty for the provider total |
+| `WithdrawableAmount` | Current `min(accrued, B - (R - A))` for a specific lease |
+| `ProviderWithdrawable` | Ordered best-effort execution estimate for the current ACTIVE-lease page. Failed lease simulations are discarded and reported in `failed_lease_uuids`; successful virtual effects feed later leases and no query state commits. Shared tenant credit is counted once within the page, and pages are not additive. Every forward page is comparable to one provider withdrawal because the query limit is capped at the transaction maximum of 100. After commit, advance the query with its prior first-unread cursor and the transaction with its prior last-processed cursor; never interchange them. |
 | `LeaseByCustomDomain` | Look up the PENDING/ACTIVE lease + item that owns a given `custom_domain` (v2.1.0+) |
+
+`CreditAccount` reads the SDK bank balance store through bounded cursor pages
+(default 100, maximum 1000), so unrelated funded denoms remain visible without
+an unbounded scan. Offset and `count_total` are rejected.
+
+`CreditEstimate` uses the account's stored ACTIVE count so parameter reductions
+cannot hide existing state. It enforces the conservative 11,000-lease bound
+(exact v2 reachable maximum 10,999), a 100,000-item work bound, and exact
+count/index agreement. Violations fail with `ErrLeaseQueryLimitExceeded` /
+gRPC `ResourceExhausted` or `ErrReservationInvariant` / gRPC `Internal`; the
+query never returns a partial estimate.
 
 ---
 
@@ -274,6 +313,13 @@ message QuantityChange {
 
 **Start simple** - scale existing items only, same locked price:
 
+> **Reservation requirement:** The following is design pseudocode, not current
+> API. A real implementation must load and persist the tenant credit account in
+> the same `CacheContext`, settle through the existing own-tranche-first path,
+> and atomically resize both `Lease.reservation.remaining_amounts` and
+> `CreditAccount.reserved_amounts`. A raw bank-balance check is not sufficient
+> because it can allocate credit already guaranteed to another lease.
+
 ```go
 func (ms msgServer) ScaleLease(ctx context.Context, msg *types.MsgScaleLease) (*types.MsgScaleLeaseResponse, error) {
     sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -312,18 +358,23 @@ func (ms msgServer) ScaleLease(ctx context.Context, msg *types.MsgScaleLease) (*
 
     // 3. Use CacheContext for atomicity
     cacheCtx, write := sdkCtx.CacheContext()
-
-    // 4. Settle up to now (before rate changes)
-    _, err = ms.k.PerformSettlement(cacheCtx, &lease, blockTime)
+    account, err := ms.k.GetCreditAccount(cacheCtx, lease.Tenant)
     if err != nil {
         return nil, err
     }
 
-    // 5. If scaling UP, validate credit covers new burn rate
-    if newQuantity > oldQuantity {
-        if err := ms.k.ValidateCreditForScaleUp(cacheCtx, &lease, itemIdx, newQuantity); err != nil {
-            return nil, err
-        }
+    // 4. Settle up to now (before rate changes)
+    _, err = ms.k.PerformSettlement(cacheCtx, &lease, &account, blockTime)
+    if err != nil {
+        return nil, err
+    }
+
+    // 5. Resize A and R together. Scale-up reserves the incremental nominal
+    //    guarantee from B - R; scale-down releases at most the remaining A.
+    if err := ms.k.ResizeLeaseReservation(
+        cacheCtx, &lease, &account, itemIdx, oldQuantity, newQuantity,
+    ); err != nil {
+        return nil, err
     }
 
     // 6. Update quantity and timestamp
@@ -331,6 +382,9 @@ func (ms msgServer) ScaleLease(ctx context.Context, msg *types.MsgScaleLease) (*
     lease.LastSettledAt = blockTime
 
     if err := ms.k.SetLease(cacheCtx, lease); err != nil {
+        return nil, err
+    }
+    if err := ms.k.SetCreditAccount(cacheCtx, account); err != nil {
         return nil, err
     }
 
@@ -356,42 +410,71 @@ func (ms msgServer) ScaleLease(ctx context.Context, msg *types.MsgScaleLease) (*
 }
 ```
 
-### Validation for Scale Up
+### Reservation Planning for Scale Changes
+
+The reservation policy must be explicit. A simple policy that does not
+replenish already consumed credit is:
+
+- **Scale up:** compute the incremental nominal reservation for only the added
+  capacity, require `B - R` to cover it per denomination, then add that delta
+  to both lease `A` and account `R`.
+- **Scale down:** compute the nominal reduction, release
+  `min(A, nominal_reduction)` from both `A` and `R`, and never make either value
+  negative.
+
+The planner must use checked, canonical `sdk.Coins` operations across all lease
+denominations. It must not assume `lease.Items[0]` represents the entire lease,
+and must not replenish the consumed part of existing capacity unless a future
+protocol decision explicitly chooses that economic policy.
 
 ```go
-func (k *Keeper) ValidateCreditForScaleUp(
+func (k *Keeper) ResizeLeaseReservation(
     ctx context.Context,
     lease *types.Lease,
+    account *types.CreditAccount,
     itemIdx int,
+    oldQuantity uint64,
     newQuantity uint64,
 ) error {
-    // Calculate new total rate with updated quantity
-    var newTotalRate sdkmath.Int
-    for i, item := range lease.Items {
-        qty := item.Quantity
-        if i == itemIdx {
-            qty = newQuantity
-        }
-        itemRate := item.LockedPrice.Amount.Mul(sdkmath.NewIntFromUint64(qty))
-        newTotalRate = newTotalRate.Add(itemRate)
-    }
-
-    // Get available credit
-    creditAddr, _ := types.DeriveCreditAddressFromBech32(lease.Tenant)
-    balance := k.bankKeeper.GetBalance(ctx, creditAddr, lease.Items[0].LockedPrice.Denom)
-
-    // Check if credit covers min_lease_duration at new rate
     params, _ := k.GetParams(ctx)
-    minRequired := newTotalRate.Mul(sdkmath.NewIntFromUint64(params.MinLeaseDuration))
+    deltaNominal, direction, err := CalculateCheckedReservationDelta(
+        lease.Items[itemIdx], oldQuantity, newQuantity, params.MinLeaseDuration,
+    )
+    if err != nil { return err }
 
-    if balance.Amount.LT(minRequired) {
-        return types.ErrInsufficientCredit.Wrapf(
-            "scaling up requires %s, but only %s available",
-            minRequired.String(),
-            balance.Amount.String(),
+    if direction == ScaleUp {
+        balances, err := k.getCreditBalancesForDenoms(
+            ctx, lease.Tenant, coinDenoms(deltaNominal),
         )
+        if err != nil { return err }
+        available := types.GetAvailableCredit(balances, account.ReservedAmounts)
+        if !available.IsAllGTE(deltaNominal) {
+            return types.ErrInsufficientCredit
+        }
+        leaseAfter, err := types.SafeAddCoins(
+            lease.Reservation.RemainingAmounts, deltaNominal,
+        )
+        if err != nil { return err }
+        accountAfter, err := types.SafeAddCoins(
+            account.ReservedAmounts, deltaNominal,
+        )
+        if err != nil { return err }
+        lease.Reservation.RemainingAmounts = leaseAfter
+        account.ReservedAmounts = accountAfter
+        return nil
     }
 
+    release := lease.Reservation.RemainingAmounts.Min(deltaNominal)
+    leaseAfter, err := types.SafeSubtractCoins(
+        lease.Reservation.RemainingAmounts, release,
+    )
+    if err != nil { return err }
+    accountAfter, err := types.SafeSubtractCoins(
+        account.ReservedAmounts, release,
+    )
+    if err != nil { return err }
+    lease.Reservation.RemainingAmounts = leaseAfter
+    account.ReservedAmounts = accountAfter
     return nil
 }
 ```
@@ -516,6 +599,12 @@ message SKU {
 
 ### Settlement Logic
 
+Task settlement must use the same reservation planner as time-based
+settlement. Directly checking or sending the raw credit-account balance would
+let task charges consume guarantees owned by other leases. The pseudocode below
+therefore updates the lease tranche and account aggregate in the same cached
+transaction as the bank send.
+
 ```go
 func (ms msgServer) CompleteTask(ctx context.Context, msg *types.MsgCompleteTask) (*types.MsgCompleteTaskResponse, error) {
     sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -575,30 +664,49 @@ func (ms msgServer) CompleteTask(ctx context.Context, msg *types.MsgCompleteTask
     // 6. Use CacheContext for atomicity
     cacheCtx, write := sdkCtx.CacheContext()
 
-    // 7. Transfer from credit account to provider
-    creditAddr, _ := types.DeriveCreditAddressFromBech32(lease.Tenant)
-    payoutAddr, _ := sdk.AccAddressFromBech32(provider.PayoutAddress)
-
-    // Check available credit
-    available := ms.k.bankKeeper.GetAllBalances(cacheCtx, creditAddr)
-    if !available.IsAllGTE(cost) {
-        // Partial payment or auto-close?
-        // Option A: Reject if insufficient
-        return nil, types.ErrInsufficientCredit.Wrapf(
-            "task completion costs %s, only %s available",
-            cost.String(), available.String(),
-        )
-        // Option B: Allow partial and auto-close (more complex)
-    }
-
-    if err := ms.k.bankKeeper.SendCoins(cacheCtx, creditAddr, payoutAddr, cost); err != nil {
+    // 7. Plan an own-tranche-first transfer.
+    account, err := ms.k.GetCreditAccount(cacheCtx, lease.Tenant)
+    if err != nil {
         return nil, err
     }
+    balances, reserved, allocation, err := ms.k.reservationSpendInputs(cacheCtx, &lease, &account)
+    if err != nil {
+        return nil, err
+    }
+    plan, err := types.PlanReservationSpend(balances, reserved, allocation, cost)
+    if err != nil {
+        return nil, err
+    }
+    if !plan.Transfer.Equal(cost) {
+        return nil, types.ErrInsufficientCredit.Wrapf(
+            "task completion costs %s, only %s is lease-spendable",
+            cost.String(), plan.Spendable.String(),
+        )
+    }
+    reservedAfter, err := types.SafeSubtractCoins(
+        account.ReservedAmounts, plan.Consumed,
+    )
+    if err != nil { return err }
+
+    creditAddr, _ := types.DeriveCreditAddressFromBech32(lease.Tenant)
+    payoutAddr, _ := sdk.AccAddressFromBech32(provider.PayoutAddress)
+    if payoutAddr.Equals(creditAddr) {
+        return nil, types.ErrInvalidCreditOperation.Wrap("provider payout address must not equal tenant credit address")
+    }
+
+    if err := ms.k.bankKeeper.SendCoins(cacheCtx, creditAddr, payoutAddr, plan.Transfer); err != nil {
+        return nil, err
+    }
+    account.ReservedAmounts = reservedAfter
+    lease.Reservation.RemainingAmounts = plan.AllocationAfter
 
     // 8. Update lease
     lease.TasksCompleted += msg.TaskCount
 
     if err := ms.k.SetLease(cacheCtx, lease); err != nil {
+        return nil, err
+    }
+    if err := ms.k.SetCreditAccount(cacheCtx, account); err != nil {
         return nil, err
     }
 
@@ -632,7 +740,7 @@ func (ms msgServer) CompleteTask(ctx context.Context, msg *types.MsgCompleteTask
 For time-based leases, we reserve `rate × min_lease_duration`. For task-based leases:
 
 ```go
-func CalculateLeaseReservation(lease *Lease, params Params) sdk.Coins {
+func CalculateLeaseReservation(lease *Lease, params Params) (sdk.Coins, error) {
     switch lease.BillingMode {
     case BILLING_MODE_TIME:
         // Existing logic: rate × min_lease_duration
@@ -648,6 +756,11 @@ func CalculateLeaseReservation(lease *Lease, params Params) sdk.Coins {
     }
 }
 ```
+
+Whichever nominal policy is chosen, lease creation must initialize
+`Lease.reservation.remaining_amounts`, add the same coins to
+`CreditAccount.reserved_amounts`, and thereafter consume/release the exact
+remaining tranche. Task reservations are not a separate aggregate.
 
 ### Hybrid Billing Mode
 

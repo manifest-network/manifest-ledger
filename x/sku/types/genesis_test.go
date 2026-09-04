@@ -323,3 +323,36 @@ func TestGenesisState_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestGenesisStatePrepareForImportCanonicalizesHistoricalAddresses(t *testing.T) {
+	manager := sdk.AccAddress([]byte("provider_address____"))
+	payout := sdk.AccAddress([]byte("payout_address______"))
+	allowed := sdk.AccAddress([]byte("allowed_address_____"))
+	allowedAliases := make([]string, MaxAllowedListEntries+1)
+	for i := range allowedAliases {
+		if i%2 == 0 {
+			allowedAliases[i] = strings.ToUpper(allowed.String())
+		} else {
+			allowedAliases[i] = allowed.String()
+		}
+	}
+	genesis := &GenesisState{
+		Params: Params{AllowedList: allowedAliases},
+		Providers: []Provider{{
+			Uuid:          "01912345-6789-7abc-8def-0123456789ab",
+			Address:       strings.ToUpper(manager.String()),
+			PayoutAddress: strings.ToUpper(payout.String()),
+			Active:        true,
+		}},
+		ProviderSequence: 1,
+	}
+
+	prepared, err := genesis.PrepareForImport()
+	require.NoError(t, err)
+	require.Equal(t, []string{allowed.String()}, prepared.Params.AllowedList)
+	require.Equal(t, manager.String(), prepared.Providers[0].Address)
+	require.Equal(t, payout.String(), prepared.Providers[0].PayoutAddress)
+	require.Len(t, genesis.Params.AllowedList, MaxAllowedListEntries+1, "source must not be mutated")
+	require.Equal(t, strings.ToUpper(manager.String()), genesis.Providers[0].Address, "source must not be mutated")
+	require.NoError(t, genesis.Validate(), "historical equivalent aliases remain importable")
+}

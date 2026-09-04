@@ -4,7 +4,10 @@ import (
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 )
 
-// ProposalMsgs defines the module weighted proposals' contents.
+// ProposalMsgs is empty because MsgUpdateParams requires the configured POA
+// authority, while Cosmos SDK proposal messages must be signed by the gov
+// module account. Neither account has a simulation private key, so registering
+// the message as a direct operation or governance proposal would be unsound.
 func ProposalMsgs() []simtypes.WeightedProposalMsg {
-	return []simtypes.WeightedProposalMsg{}
+	return nil
 }

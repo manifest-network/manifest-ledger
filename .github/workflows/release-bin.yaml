@@ -1,41 +1,442 @@
-name: "Release"
+name: Release
 
 on:
   push:
     tags:
-    - '**'
+      - "v[0-9]*.[0-9]*.[0-9]*"
 
-# Test Locally with:
-# goreleaser build --skip-validate --snapshot
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: 1.26.7
+  GORELEASER_VERSION: v2.18.0
+  GORELEASER_TOOLCHAIN: go1.27.1
+  SYFT_CHECK_FOR_APP_UPDATE: "false"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  RELEASE_ARTIFACT: release-assets-${{ github.sha }}
+  UPGRADE_TARGET_RELEASE: v2.4.0
+  UPGRADE_SOURCE_RELEASE: v2.3.1
+  UPGRADE_SOURCE_BILLING_VERSION: "2"
+  UPGRADE_SOURCE_SKU_VERSION: "1"
 
 jobs:
-  goreleaser:
-    permissions: write-all
-    runs-on: ubuntu-22.04
+  validate-release-ref:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate canonical release tag
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_REF_NAME: ${{ github.ref_name }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+        run: sh ./scripts/validate-build-inputs.sh release-ref
+
+      - name: Refuse existing release and immutable image tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: sh ./scripts/check-release-collisions.sh
+
+  validate-build:
+    needs: validate-release-ref
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build.yml
+
+  validate-unit-tests:
+    needs: validate-release-ref
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test.yml
+
+  validate-simulations:
+    needs: validate-release-ref
+    permissions:
+      contents: read
+    uses: ./.github/workflows/simulation.yml
+
+  validate-e2e:
+    needs: validate-release-ref
+    permissions:
+      contents: read
+    uses: ./.github/workflows/e2e.yml
+
+  validate-codeql:
+    needs: validate-release-ref
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/codeql.yml
+
+  prepare:
+    needs: [validate-release-ref, validate-build, validate-unit-tests, validate-simulations, validate-e2e, validate-codeql]
+    runs-on: ubuntu-22.04
+    outputs:
+      archive: ${{ steps.names.outputs.archive }}
+      sbom: ${{ steps.names.outputs.sbom }}
+      checksums: ${{ steps.names.outputs.checksums }}
+      notes: ${{ steps.notes.outputs.path }}
+      notes_sha256: ${{ steps.notes.outputs.sha256 }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-go@v2
+      - name: Set up Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.25.9'
+          go-version: ${{ env.GO_VERSION }}
 
-      - name: Clean up dist directory
-        run: rm -rf dist
-
-      - name: Build
-        uses: goreleaser/goreleaser-action@v5
-        with:
-          version: latest
-          args: build --skip-validate
-
-      - name: Release
-        uses: goreleaser/goreleaser-action@v5
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          version: latest
-          args: release --skip-validate --clean
+      - name: Install checksum-verified Syft
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYFT_INSTALL_DIR: ${{ runner.temp }}/syft-bin
+        run: |
+          mkdir -p "$SYFT_INSTALL_DIR"
+          sh ./scripts/install-syft.sh "$SYFT_INSTALL_DIR"
+          echo "$SYFT_INSTALL_DIR" >> "$GITHUB_PATH"
+
+      - name: Install pinned GoReleaser from the Go checksum database
+        env:
+          GOBIN: ${{ runner.temp }}/goreleaser-bin
+          GOPROXY: https://proxy.golang.org
+          GOSUMDB: sum.golang.org
+          GOTOOLCHAIN: ${{ env.GORELEASER_TOOLCHAIN }}
+          CGO_ENABLED: "0"
+        run: |
+          go install "github.com/goreleaser/goreleaser/v2@${GORELEASER_VERSION}"
+          echo "$GOBIN" >> "$GITHUB_PATH"
+
+      - name: Build the pinned Alpine release toolchain
+        env:
+          RELEASE_BUILDER_IMAGE: manifest-release-builder:${{ github.sha }}
+        run: |
+          docker build \
+            --target go-builder \
+            --build-arg COMMIT="$GITHUB_SHA" \
+            --build-arg VERSION="$GITHUB_REF_NAME" \
+            --tag "$RELEASE_BUILDER_IMAGE" \
+            .
+
+      - name: Package without publishing
+        env:
+          RELEASE_BUILDER_IMAGE: manifest-release-builder:${{ github.sha }}
+        run: |
+          ./scripts/run-goreleaser-in-container.sh \
+            "$RELEASE_BUILDER_IMAGE" \
+            "$RUNNER_TEMP/syft-bin/syft" \
+            "$RUNNER_TEMP/goreleaser-bin/goreleaser" \
+            release --clean --skip=publish
+
+      - name: Verify packaged release artifacts
+        run: ./scripts/verify-release-artifacts.sh dist "$GITHUB_SHA" "$GITHUB_REF_NAME" "netgo,muslc,ledger"
+
+      - name: Resolve exact release asset names
+        id: names
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          archive="dist/manifest-ledger-${GITHUB_REF_NAME}-linux-amd64.tar.gz"
+          sbom="${archive}.sbom.json"
+          checksums="dist/manifest-ledger_${version}_checksums.txt"
+          test -f "$archive"
+          test -f "$sbom"
+          test -f "$checksums"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "sbom=$sbom" >> "$GITHUB_OUTPUT"
+          echo "checksums=$checksums" >> "$GITHUB_OUTPUT"
+
+      - name: Render deterministic upgrade details
+        id: notes
+        run: |
+          notes="dist/release-notes.md"
+          go run ./tools/release-notes \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
+            --target-release "$UPGRADE_TARGET_RELEASE" \
+            --source-release "$UPGRADE_SOURCE_RELEASE" \
+            --billing-source-version "$UPGRADE_SOURCE_BILLING_VERSION" \
+            --sku-source-version "$UPGRADE_SOURCE_SKU_VERSION" \
+            > "$notes"
+          sha256=$(sha256sum "$notes" | awk '{print $1}')
+          echo "path=$notes" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload verified release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.RELEASE_ARTIFACT }}
+          path: |
+            ${{ steps.names.outputs.archive }}
+            ${{ steps.names.outputs.sbom }}
+            ${{ steps.names.outputs.checksums }}
+            ${{ steps.notes.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-image:
+    needs: [validate-release-ref, prepare]
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      artifact-metadata: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install checksum-verified Buildx
+        run: |
+          docker_config="$RUNNER_TEMP/docker-config"
+          mkdir -p "$docker_config/cli-plugins"
+          sh ./scripts/install-buildx.sh "$docker_config/cli-plugins"
+          DOCKER_CONFIG="$docker_config" docker buildx version | grep --fixed-strings ' v0.36.1 '
+          chmod 0555 "$docker_config/cli-plugins/docker-buildx" "$docker_config/cli-plugins"
+          printf '%s\n' "DOCKER_CONFIG=$docker_config" >> "$GITHUB_ENV"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        with:
+          driver-opts: |
+            image=docker.io/moby/buildkit:v0.32.2@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
+
+      - name: Select image aliases
+        id: aliases
+        run: |
+          floating=false
+          if [[ "$GITHUB_REF_NAME" != *-* ]]; then
+            latest_stable=""
+            while IFS= read -r tag; do
+              if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                latest_stable="$tag"
+                break
+              fi
+            done < <(git tag --sort=-version:refname)
+            if [[ "$GITHUB_REF_NAME" == "$latest_stable" ]]; then
+              floating=true
+            fi
+          fi
+          echo "floating=$floating" >> "$GITHUB_OUTPUT"
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern=v{{version}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.aliases.outputs.floating == 'true' }}
+            type=semver,pattern={{major}},enable=${{ steps.aliases.outputs.floating == 'true' }}
+            type=raw,value=latest,enable=${{ steps.aliases.outputs.floating == 'true' }}
+
+      - name: Build exact multi-platform publication image
+        id: image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          build-args: |
+            COMMIT=${{ github.sha }}
+            VERSION=${{ github.ref_name }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          outputs: |
+            type=oci,dest=${{ runner.temp }}/manifest-release-oci,tar=false
+            type=local,dest=${{ runner.temp }}/manifest-release-rootfs,platform-split=true
+          provenance: mode=max
+          sbom: generator=docker.io/docker/buildkit-syft-scanner:1.12.0@sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9
+
+      - name: Resolve the local OCI layout digest
+        id: local_image
+        env:
+          ACTION_DIGEST: ${{ steps.image.outputs.digest }}
+          OCI_LAYOUT: ${{ runner.temp }}/manifest-release-oci
+        run: |
+          digest=$(jq -r '[.manifests[].digest] | unique | if length == 1 then .[0] else empty end' "$OCI_LAYOUT/index.json")
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "could not resolve one local OCI image digest" >&2
+            exit 1
+          fi
+          if [[ -n "$ACTION_DIGEST" && "$ACTION_DIGEST" != "$digest" ]]; then
+            echo "Buildx digest $ACTION_DIGEST does not match local OCI digest $digest" >&2
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Install checksum-verified Trivy
+        env:
+          TRIVY_INSTALL_DIR: ${{ runner.temp }}/trivy-bin
+        run: |
+          mkdir -p "$TRIVY_INSTALL_DIR"
+          sh ./scripts/install-trivy.sh "$TRIVY_INSTALL_DIR"
+          echo "$TRIVY_INSTALL_DIR" >> "$GITHUB_PATH"
+
+      - name: Scan the exact image filesystems to be published
+        env:
+          IMAGE_ROOTFS: ${{ runner.temp }}/manifest-release-rootfs
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        run: |
+          scan_rootfs() {
+            rootfs=$1
+            test -f "$rootfs/lib/apk/db/installed"
+            test -x "$rootfs/usr/bin/manifestd"
+            trivy rootfs \
+              --scanners vuln \
+              --pkg-types os \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed=false \
+              --exit-code 1 \
+              --timeout 10m0s \
+              --disable-telemetry \
+              --skip-version-check \
+              --no-progress \
+              "$rootfs"
+          }
+          scan_rootfs "$IMAGE_ROOTFS/linux_amd64"
+          scan_rootfs "$IMAGE_ROOTFS/linux_arm64"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reverify release identity before image publication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sh ./scripts/check-release-collisions.sh
+          sh ./scripts/verify-release-tag-target.sh
+
+      - name: Publish the exact scanned OCI layout
+        id: publish
+        env:
+          IMAGE_DIGEST: ${{ steps.local_image.outputs.digest }}
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          OCI_LAYOUT: ${{ runner.temp }}/manifest-release-oci
+        run: |
+          if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "invalid local OCI image digest: $IMAGE_DIGEST" >&2
+            exit 1
+          fi
+          metadata="$RUNNER_TEMP/published-image.json"
+          args=(imagetools create --metadata-file "$metadata")
+          tag_count=0
+          while IFS= read -r tag; do
+            if [[ -n "$tag" ]]; then
+              args+=(--tag "$tag")
+              tag_count=$((tag_count + 1))
+            fi
+          done <<< "$IMAGE_TAGS"
+          if (( tag_count == 0 )); then
+            echo "no release image tags were selected" >&2
+            exit 1
+          fi
+          args+=("oci-layout://${OCI_LAYOUT}@${IMAGE_DIGEST}")
+          docker buildx "${args[@]}"
+          published_digest=$(jq -r '."containerimage.descriptor".digest // empty' "$metadata")
+          if [[ "$published_digest" != "$IMAGE_DIGEST" ]]; then
+            echo "published image digest $published_digest does not match scanned digest $IMAGE_DIGEST" >&2
+            exit 1
+          fi
+          echo "digest=$published_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Attest published image
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+
+  publish-release:
+    needs: [validate-release-ref, prepare, publish-image]
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      actions: read
+      attestations: write
+      artifact-metadata: write
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download verified release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.RELEASE_ARTIFACT }}
+          path: dist
+
+      - name: Reverify downloaded release assets
+        run: ./scripts/verify-release-artifacts.sh dist "$GITHUB_SHA" "$GITHUB_REF_NAME" "netgo,muslc,ledger"
+
+      - name: Reverify release identity before attestation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: sh ./scripts/verify-release-tag-target.sh
+
+      - name: Attest release provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ${{ needs.prepare.outputs.checksums }}
+
+      - name: Attest release SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ needs.prepare.outputs.archive }}
+          sbom-path: ${{ needs.prepare.outputs.sbom }}
+
+      - name: Publish GitHub release last
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ARCHIVE: ${{ needs.prepare.outputs.archive }}
+          RELEASE_SBOM: ${{ needs.prepare.outputs.sbom }}
+          RELEASE_CHECKSUMS: ${{ needs.prepare.outputs.checksums }}
+          RELEASE_NOTES: ${{ needs.prepare.outputs.notes }}
+          RELEASE_NOTES_SHA256: ${{ needs.prepare.outputs.notes_sha256 }}
+        run: |
+          sh ./scripts/verify-release-tag-target.sh
+          printf '%s  %s\n' "$RELEASE_NOTES_SHA256" "$RELEASE_NOTES" | sha256sum --check --status
+          args=(
+            "$GITHUB_REF_NAME"
+            "$RELEASE_ARCHIVE"
+            "$RELEASE_SBOM"
+            "$RELEASE_CHECKSUMS"
+            --verify-tag
+            --notes-file "$RELEASE_NOTES"
+            --generate-notes
+          )
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"

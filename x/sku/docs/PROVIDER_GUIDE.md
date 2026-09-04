@@ -53,7 +53,9 @@ manifestd tx sku update-params \
   --chain-id manifest-1
 ```
 
-> **Note:** The allowed list is replaced entirely, so include all addresses you want authorized.
+> **Note:** The allowed list is replaced entirely, so include all addresses you
+> want authorized. It accepts at most 100 valid, distinct decoded account
+> identities; equivalent Bech32 spellings are duplicates.
 
 ## Step 2: Prepare Provider Information
 
@@ -184,7 +186,7 @@ manifestd tx sku update-provider \
   --chain-id manifest-1
 ```
 
-> **Important:** `update-provider` is a full overwrite, not a partial update. Every field — `address`, `payout_address`, `meta_hash`, and `active` — must be re-supplied. Omitting `--meta-hash` clears the existing meta_hash; only `--api-url` is preserved when left empty.
+> **Important:** `update-provider` is a full overwrite, not a partial update. Every field — `address`, `payout_address`, `meta_hash`, and `active` — must be re-supplied. Omitting `--meta-hash` clears the existing meta_hash; only `--api-url` is preserved when left empty. Use `--clear-api-url` to remove the existing URL. Do not combine it with a non-empty `--api-url`.
 >
 > The `<active>` argument cannot be used to deactivate a currently-active provider: passing `false` on an active provider fails with `cannot deactivate provider via UpdateProvider; use DeactivateProvider instead` — use `deactivate-provider` (Step 6) instead, which cascades to SKUs. Pass `true` to keep the provider active or to reactivate an inactive one. (An already-inactive provider also accepts `false`, leaving it inactive.)
 
@@ -198,6 +200,19 @@ manifestd tx sku update-provider \
   true \
   --api-url https://api.myprovider.com \
   --meta-hash a1b2c3d4e5f6 \
+  --from mykey \
+  --chain-id manifest-1
+```
+
+### Clear the API URL
+
+```bash
+manifestd tx sku update-provider \
+  01912345-6789-7abc-8def-0123456789ab \
+  manifest1provideraddr123456789abcdef \
+  manifest1payoutaddr987654321fedcba \
+  true \
+  --clear-api-url \
   --from mykey \
   --chain-id manifest-1
 ```

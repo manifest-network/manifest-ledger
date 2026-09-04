@@ -8,6 +8,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"cosmossdk.io/collections"
+	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
 
@@ -77,6 +79,85 @@ func setupCustomDomain(t *testing.T) *customDomainSetup {
 		allowed: allowed, stranger: stranger,
 		sku: sku, leaseUUID: leaseUUID,
 	}
+}
+
+func TestCustomDomainOperationalReadsClassifyCorruption(t *testing.T) {
+	assertCorruption := func(t *testing.T, err error) {
+		t.Helper()
+		require.ErrorIs(t, err, types.ErrInternalCorruption)
+		codespace, code, _ := errorsmod.ABCIInfo(err, false)
+		require.Equal(t, types.ModuleName, codespace)
+		require.Equal(t, uint32(40), code)
+	}
+	corruptTarget := func(t *testing.T, s *customDomainSetup, domain string) {
+		t.Helper()
+		key, err := collections.EncodeKeyWithPrefix(
+			types.CustomDomainIndexKey.Bytes(),
+			collections.StringKey,
+			domain,
+		)
+		require.NoError(t, err)
+		s.f.Ctx.KVStore(s.f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
+	}
+
+	t.Run("assignment pre-flight", func(t *testing.T) {
+		s := setupCustomDomain(t)
+		const domain = "corrupt-preflight.example.com"
+		corruptTarget(t, s, domain)
+
+		_, err := s.f.App.BillingKeeper.SetItemCustomDomain(
+			s.f.Ctx, s.tenant.String(), s.leaseUUID, "", domain,
+		)
+		assertCorruption(t, err)
+
+		lease, getErr := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+		require.NoError(t, getErr)
+		require.Empty(t, lease.Items[0].CustomDomain)
+	})
+
+	t.Run("reconcile release", func(t *testing.T) {
+		s := setupCustomDomain(t)
+		const domain = "corrupt-release.example.com"
+		_, err := s.f.App.BillingKeeper.SetItemCustomDomain(
+			s.f.Ctx, s.tenant.String(), s.leaseUUID, "", domain,
+		)
+		require.NoError(t, err)
+		corruptTarget(t, s, domain)
+
+		_, err = s.f.App.BillingKeeper.SetItemCustomDomain(
+			s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "",
+		)
+		assertCorruption(t, err)
+
+		lease, getErr := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+		require.NoError(t, getErr)
+		require.Equal(t, domain, lease.Items[0].CustomDomain, "failed reconcile must not commit the lease mutation")
+	})
+
+	t.Run("reconcile install", func(t *testing.T) {
+		s := setupCustomDomain(t)
+		const domain = "corrupt-install.example.com"
+		corruptTarget(t, s, domain)
+		lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+		require.NoError(t, err)
+		lease.Items[0].CustomDomain = domain
+
+		err = s.f.App.BillingKeeper.SetLease(s.f.Ctx, lease)
+		assertCorruption(t, err)
+
+		stored, getErr := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+		require.NoError(t, getErr)
+		require.Empty(t, stored.Items[0].CustomDomain, "failed reconcile must not commit the lease mutation")
+	})
+
+	t.Run("query lookup", func(t *testing.T) {
+		s := setupCustomDomain(t)
+		const domain = "corrupt-query.example.com"
+		corruptTarget(t, s, domain)
+
+		_, _, _, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, domain)
+		assertCorruption(t, err)
+	})
 }
 
 // createMultiItemLease creates a multi-item ACTIVE lease in service-name mode
@@ -490,13 +571,12 @@ func TestSetItemCustomDomain_LifecycleCleanup_AutoCloseLease(t *testing.T) {
 
 	lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
 	require.NoError(t, err)
-	shouldClose, closeTime, err := s.f.App.BillingKeeper.ShouldAutoCloseLease(s.f.Ctx, &lease)
+	creditAccount := s.f.creditAccountForLease(t, &lease)
+	shouldClose, closeTime, err := s.f.App.BillingKeeper.ShouldAutoCloseLease(s.f.Ctx, &lease, creditAccount)
 	require.NoError(t, err)
 	require.True(t, shouldClose)
 
-	params, err := s.f.App.BillingKeeper.GetParams(s.f.Ctx)
-	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.AutoCloseLease(s.f.Ctx, &lease, closeTime, params.MinLeaseDuration)
+	_, err = s.f.App.BillingKeeper.AutoCloseLease(s.f.Ctx, &lease, creditAccount, closeTime)
 	require.NoError(t, err)
 
 	_, _, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, "auto.example.com")
@@ -561,8 +641,14 @@ func TestInitGenesis_RebuildsCustomDomainIndex(t *testing.T) {
 			MinLeaseDurationAtCreation: 3600,
 		}},
 		CreditAccounts: []types.CreditAccount{
-			{Tenant: tenant.String(), CreditAddress: creditAddr.String(), PendingLeaseCount: 1},
+			{
+				Tenant:            tenant.String(),
+				CreditAddress:     creditAddr.String(),
+				PendingLeaseCount: 1,
+				ReservedAmounts:   sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(7_200))),
+			},
 		},
+		LeaseSequence: 1,
 	}
 
 	require.NoError(t, f.App.BillingKeeper.InitGenesis(f.Ctx, gs))
@@ -574,8 +660,74 @@ func TestInitGenesis_RebuildsCustomDomainIndex(t *testing.T) {
 	require.Equal(t, "web", serviceName)
 }
 
+// TestInitGenesis_RebuildsExistingDomainMatchingNewReservedSuffix verifies that
+// an exported domain claim remains importable after governance reserves its
+// suffix. Reserved suffixes gate new claims; they do not retroactively remove
+// existing domains.
+func TestInitGenesis_RebuildsExistingDomainMatchingNewReservedSuffix(t *testing.T) {
+	f := initFixture(t)
+	provider := f.createTestProvider(t, f.TestAccs[1].String(), f.TestAccs[2].String())
+	sku := f.createTestSKU(t, provider.Uuid, 100)
+	tenant := f.TestAccs[0]
+
+	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))))
+
+	const domain = "web.legacy.example"
+	params := types.DefaultParams()
+	params.ReservedDomainSuffixes = []string{".legacy.example"}
+	now := f.Ctx.BlockTime()
+	lease := types.Lease{
+		Uuid:         "01912345-6789-7abc-8def-aaaaaaaaaaa2",
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid:      sku.Uuid,
+			Quantity:     1,
+			LockedPrice:  sdk.NewCoin(testDenom, sdkmath.NewInt(1)),
+			ServiceName:  "web",
+			CustomDomain: domain,
+		}},
+		State:                      types.LEASE_STATE_PENDING,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: params.MinLeaseDuration,
+	}
+	reservation := calculateLeaseReservation(t, lease.Items, lease.MinLeaseDurationAtCreation)
+	genesisState := &types.GenesisState{
+		Params: params,
+		Leases: []types.Lease{lease},
+		CreditAccounts: []types.CreditAccount{{
+			Tenant:            tenant.String(),
+			CreditAddress:     creditAddr.String(),
+			PendingLeaseCount: 1,
+			ReservedAmounts:   reservation,
+		}},
+		LeaseSequence: 1,
+	}
+
+	// Strict validation applies the current claim-time suffix policy and rejects
+	// the export even though this domain was valid when originally claimed.
+	require.ErrorIs(t, genesisState.ValidateStrict(), types.ErrInvalidCustomDomain)
+	require.NoError(t, genesisState.Validate())
+	require.NoError(t, genesisState.ValidateWithBlockTime(now))
+
+	require.NoError(t, f.App.BillingKeeper.InitGenesis(f.Ctx, genesisState))
+
+	got, serviceName, has, err := f.App.BillingKeeper.GetLeaseByCustomDomain(f.Ctx, domain)
+	require.NoError(t, err)
+	require.True(t, has)
+	require.Equal(t, lease.Uuid, got.Uuid)
+	require.Equal(t, "web", serviceName)
+}
+
 func TestInitGenesis_DuplicateCustomDomainFails(t *testing.T) {
 	f := initFixture(t)
+	beforeParams := types.DefaultParams()
+	beforeParams.MaxLeasesPerTenant++
+	require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, beforeParams))
+
 	provider := f.createTestProvider(t, f.TestAccs[1].String(), f.TestAccs[2].String())
 	sku := f.createTestSKU(t, provider.Uuid, 100)
 	tenant := f.TestAccs[0]
@@ -606,13 +758,34 @@ func TestInitGenesis_DuplicateCustomDomainFails(t *testing.T) {
 			mkLease("01912345-6789-7abc-8def-bbbbbbbbbbb2"),
 		},
 		CreditAccounts: []types.CreditAccount{
-			{Tenant: tenant.String(), CreditAddress: creditAddr.String(), PendingLeaseCount: 2},
+			{
+				Tenant:            tenant.String(),
+				CreditAddress:     creditAddr.String(),
+				PendingLeaseCount: 2,
+				ReservedAmounts:   sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(7_200))),
+			},
 		},
+		LeaseSequence: 2,
 	}
 
 	err = f.App.BillingKeeper.InitGenesis(f.Ctx, gs)
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrCustomDomainAlreadyClaimed)
+
+	// Duplicate live claims are rejected by the read-only genesis preflight,
+	// before Params, primary leases, or derived indexes are written.
+	afterParams, getErr := f.App.BillingKeeper.GetParams(f.Ctx)
+	require.NoError(t, getErr)
+	require.Equal(t, beforeParams, afterParams)
+	leasingState, getErr := f.App.BillingKeeper.GetAllLeases(f.Ctx)
+	require.NoError(t, getErr)
+	require.Empty(t, leasingState)
+	creditAccounts, getErr := f.App.BillingKeeper.GetAllCreditAccounts(f.Ctx)
+	require.NoError(t, getErr)
+	require.Empty(t, creditAccounts)
+	_, _, has, getErr := f.App.BillingKeeper.GetLeaseByCustomDomain(f.Ctx, "dup.example.com")
+	require.NoError(t, getErr)
+	require.False(t, has)
 }
 
 // TestMigrate1to2 verifies the v1→v2 migration is a true no-op: it must not

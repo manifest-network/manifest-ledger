@@ -1,3 +1,4 @@
+// Package types defines the manifest module's messages and state types.
 package types
 
 import (
@@ -14,6 +15,7 @@ func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	legacy.RegisterAminoMsg(cdc, &MsgBurnHeldBalance{}, "lifted/manifest/MsgBurnHeldBalance")
 }
 
+// RegisterInterfaces registers the manifest module's protobuf interfaces.
 func RegisterInterfaces(registry types.InterfaceRegistry) {
 	registry.RegisterImplementations(
 		(*sdk.Msg)(nil),

@@ -1,7 +1,7 @@
 package types
 
 import (
-	"slices"
+	"time"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -36,6 +36,22 @@ const MaxLeasesPerTenantUpperBound = uint64(10_000)
 
 // MaxPendingLeasesPerTenantUpperBound is the maximum allowed value for max_pending_leases_per_tenant (1,000).
 const MaxPendingLeasesPerTenantUpperBound = uint64(1_000)
+
+// MaxActiveLeasesPerTenantStateUpperBound is a conservative bound for v2
+// ACTIVE state, including acknowledgement overshoot and Bech32-alias count
+// drift. Any ACTIVE undercount caused an equal phantom PENDING count, so the
+// actual ACTIVE population remained bounded by the two configured maxima.
+const MaxActiveLeasesPerTenantStateUpperBound = MaxLeasesPerTenantUpperBound + MaxPendingLeasesPerTenantUpperBound
+
+// MaxAllowedListEntries bounds the authorization work performed by billing
+// messages that accept delegated senders. It is a protocol hard limit rather
+// than a governable parameter so an authority update cannot leave subsequent
+// writes with unbounded scans.
+const MaxAllowedListEntries = 100
+
+// MaxReservedDomainSuffixEntries bounds the suffix checks performed when a
+// custom domain is assigned.
+const MaxReservedDomainSuffixEntries = 100
 
 // MaxMinLeaseDuration is the maximum allowed value for min_lease_duration (30 days).
 const MaxMinLeaseDuration = uint64(30 * 24 * 3600)
@@ -114,16 +130,34 @@ func (p *Params) Validate() error {
 		return ErrInvalidParams.Wrapf("pending_timeout must be at most %d seconds (24 hours)", MaxPendingTimeout)
 	}
 
-	// Validate allowed list addresses
-	seen := make(map[string]bool)
+	if len(p.AllowedList) > MaxAllowedListEntries {
+		return ErrInvalidParams.Wrapf(
+			"allowed list has %d entries, maximum allowed is %d",
+			len(p.AllowedList),
+			MaxAllowedListEntries,
+		)
+	}
+
+	// Validate allowed list addresses.
+	seen := make(map[string]struct{}, len(p.AllowedList))
 	for _, addr := range p.AllowedList {
-		if _, err := sdk.AccAddressFromBech32(addr); err != nil {
+		decoded, err := sdk.AccAddressFromBech32(addr)
+		if err != nil {
 			return ErrInvalidParams.Wrapf("invalid address in allowed list: %s", addr)
 		}
-		if seen[addr] {
+		identity := string(decoded.Bytes())
+		if _, exists := seen[identity]; exists {
 			return ErrInvalidParams.Wrapf("duplicate address in allowed list: %s", addr)
 		}
-		seen[addr] = true
+		seen[identity] = struct{}{}
+	}
+
+	if len(p.ReservedDomainSuffixes) > MaxReservedDomainSuffixEntries {
+		return ErrInvalidParams.Wrapf(
+			"reserved domain suffix list has %d entries, maximum allowed is %d",
+			len(p.ReservedDomainSuffixes),
+			MaxReservedDomainSuffixEntries,
+		)
 	}
 
 	// Validate reserved domain suffixes: each entry must start with '.' and
@@ -145,7 +179,56 @@ func (p *Params) Validate() error {
 	return nil
 }
 
+// CanonicalUniqueAddresses canonicalizes SDK account addresses and removes
+// equivalent Bech32 spellings while preserving their first-seen slice order.
+// The map is used only for membership lookup and is never iterated.
+func CanonicalUniqueAddresses(addresses []string) ([]string, error) {
+	canonical := make([]string, 0, len(addresses))
+	seen := make(map[string]struct{}, len(addresses))
+	for _, address := range addresses {
+		decoded, err := sdk.AccAddressFromBech32(address)
+		if err != nil {
+			return nil, ErrInvalidParams.Wrapf("invalid address in allowed list: %s", address)
+		}
+		identity := string(decoded.Bytes())
+		if _, exists := seen[identity]; exists {
+			continue
+		}
+		seen[identity] = struct{}{}
+		canonical = append(canonical, decoded.String())
+	}
+	return canonical, nil
+}
+
 // IsAllowed checks if an address is in the allowed list.
 func (p Params) IsAllowed(addr string) bool {
-	return slices.Contains(p.AllowedList, addr)
+	candidate, err := sdk.AccAddressFromBech32(addr)
+	if err != nil {
+		return false
+	}
+	for _, allowed := range p.AllowedList {
+		allowedAddress, err := sdk.AccAddressFromBech32(allowed)
+		if err == nil && candidate.Equals(allowedAddress) {
+			return true
+		}
+	}
+	return false
+}
+
+// PendingTimeoutDuration returns the validated pending timeout as a duration.
+func (p Params) PendingTimeoutDuration() time.Duration {
+	// #nosec G115 -- PendingTimeout is validated to be within 60-86400 seconds.
+	return time.Duration(p.PendingTimeout) * time.Second
+}
+
+// PendingLeaseDeadline returns the last block time at which a pending lease may
+// still be acknowledged. The current PendingTimeout parameter is authoritative.
+func (p Params) PendingLeaseDeadline(createdAt time.Time) time.Time {
+	return createdAt.Add(p.PendingTimeoutDuration())
+}
+
+// PendingLeaseDeadlineExceeded reports whether the hard acknowledgement deadline
+// has passed. The boundary is strict: acknowledgement remains valid at the deadline.
+func (p Params) PendingLeaseDeadlineExceeded(blockTime, createdAt time.Time) bool {
+	return blockTime.After(p.PendingLeaseDeadline(createdAt))
 }

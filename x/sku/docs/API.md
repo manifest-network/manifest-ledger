@@ -63,7 +63,7 @@ manifestd tx sku update-provider [uuid] [address] [payout-address] [active] [fla
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| uuid | string | Provider UUID (UUIDv7 format) |
+| uuid | string | Canonical lowercase UUIDv7 of the provider |
 | address | string | New management address |
 | payout-address | string | New payout address |
 | active | bool | Whether the provider is active (true/false) |
@@ -72,6 +72,7 @@ manifestd tx sku update-provider [uuid] [address] [payout-address] [active] [fla
 | Flag | Type | Description |
 |------|------|-------------|
 | --api-url | string | HTTPS endpoint for provider's off-chain API (optional) |
+| --clear-api-url | bool | Clear the stored API URL; cannot be combined with a non-empty `--api-url` |
 | --meta-hash | string | Hex-encoded hash of off-chain metadata (optional) |
 
 **Example:**
@@ -80,9 +81,16 @@ manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1p
   --api-url https://api.provider.com \
   --meta-hash cafebabe \
   --from authority
+
+# Clear the stored API URL while updating the other required fields:
+manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1provider... manifest1payout... true \
+  --clear-api-url \
+  --from authority
 ```
 
-**Note:** If `--api-url` is omitted (empty string), the existing API URL is preserved. This allows updating other fields without accidentally clearing the API URL.
+**Note:** If `--api-url` is omitted (empty string), the existing API URL is
+preserved. Use `--clear-api-url` to remove it. Supplying both
+`--clear-api-url` and a non-empty `--api-url` is rejected.
 
 ---
 
@@ -99,7 +107,7 @@ manifestd tx sku deactivate-provider [uuid] [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| uuid | string | Provider UUID to deactivate |
+| uuid | string | Canonical lowercase UUIDv7 of the provider to deactivate |
 
 **Flags:**
 | Flag | Type | Default | Description |
@@ -125,7 +133,7 @@ manifestd tx sku create-sku [provider-uuid] [name] [unit] [base-price] [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-uuid | string | UUID of the provider this SKU belongs to |
+| provider-uuid | string | Canonical lowercase UUIDv7 of the provider this SKU belongs to |
 | name | string | Human-readable name for the SKU |
 | unit | int | Billing unit: 1 = per hour, 2 = per day |
 | base-price | coin | Base price (e.g., `3600upwr` for 1/second rate per hour) |
@@ -163,8 +171,8 @@ manifestd tx sku update-sku [uuid] [provider-uuid] [name] [unit] [base-price] [a
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| uuid | string | SKU UUID |
-| provider-uuid | string | Provider UUID |
+| uuid | string | Canonical lowercase UUIDv7 of the SKU |
+| provider-uuid | string | Canonical lowercase UUIDv7 of the provider |
 | name | string | SKU name |
 | unit | int | Billing unit: 1 = per hour, 2 = per day |
 | base-price | coin | Base price |
@@ -195,7 +203,7 @@ manifestd tx sku deactivate-sku [uuid] [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| uuid | string | SKU UUID to deactivate |
+| uuid | string | Canonical lowercase UUIDv7 of the SKU to deactivate |
 
 **Example:**
 ```bash
@@ -234,7 +242,44 @@ manifestd tx sku update-params \
 
 ### Query Commands
 
-**Pagination note:** For the index-backed queries below (`provider-by-address`, `providers`, `skus`, `skus-by-provider`), cursor resume is deletion-tolerant — a `--page-key` whose row was removed between calls resumes from the next surviving entry rather than returning an empty page — and `--reverse` may be combined with `--page-key`. The `next_key` value is unchanged on the wire, so existing paging clients need no change.
+**Query cursor contract:** `pagination.next_key` is opaque `bytes`. JSON and CLI
+output encode it as base64; pass that string verbatim to `--page-key`. Do not
+decode it in the shell or treat it as a UUID. Programmatic gRPC clients pass the
+decoded bytes in `PageRequest.key`. The cursor identifies the first unread row,
+and the next scan resumes inclusively at that key. `--reverse` may be combined
+with `--page-key` and resumes in the same direction.
+
+SKU list queries support the standard SDK `--offset`, `--page`, and
+`--count-total` compatibility modes. Unfiltered compatibility requests may
+inspect at most 20,000 physical rows. Value-filtered requests retain a 1000-row
+ceiling in every mode; currently this applies to `ProviderByAddress
+--active-only`. A request that cannot return an exact page or total within its
+ceiling fails with gRPC `ResourceExhausted` rather than returning a partial
+result. Cursor pagination remains the efficient, unbounded-history path. A
+request that combines a page key with a nonzero offset fails with gRPC
+`InvalidArgument`; as in the SDK, `count_total` is ignored when a page key is
+present. An omitted or zero limit defaults to 100 without implicitly enabling
+`count_total`; request the total explicitly when needed. Cursor resume on
+index-backed paths is deletion-tolerant: if the cursor row is removed between
+calls, the query starts at the nearest surviving row in the requested
+direction.
+
+The SDK default page size is 100, oversized `limit` values are clamped to 1000,
+and value-filtered cursor pages inspect at most 1000 physical rows. A sparse
+filter can therefore return a short or empty page with a non-empty `next_key`;
+bulk indexers must continue until that cursor is empty.
+
+`skus-by-provider` forwards `provider-uuid` to the service without local UUID
+validation. It therefore surfaces the service's field-specific gRPC
+`InvalidArgument`: an empty value reports `provider_uuid cannot be empty`, and
+a non-empty malformed, uppercase, or non-v7 value reports
+`provider_uuid must be a valid UUIDv7`. An unknown canonical lowercase UUIDv7
+returns an empty page.
+
+The direct `provider` and `sku` commands also forward their lookup keys without
+local UUID validation. Their services reject an empty `uuid` with
+`InvalidArgument`; every non-empty key is looked up as supplied, so malformed,
+uppercase, non-v7, and unknown canonical values return `NotFound`.
 
 #### params
 
@@ -266,7 +311,7 @@ manifestd query sku provider [uuid]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| uuid | string | Provider UUID |
+| uuid | string | Canonical lowercase UUIDv7 of the provider |
 
 **Response:**
 ```json
@@ -302,11 +347,12 @@ manifestd query sku provider-by-address [address] [flags]
 |------|------|-------------|
 | --active-only | bool | Filter to return only active providers |
 | --limit | uint64 | Pagination limit |
-| --page-key | string | Pagination key from previous response |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
+| --count-total | bool | Return the exact total when it can be computed within the applicable scan ceiling |
 
 **Example:**
 ```bash
-manifestd query sku provider-by-address manifest1abc... --active-only --limit 10
+manifestd query sku provider-by-address manifest1abc... --active-only --limit 10 --count-total
 ```
 
 **Response:**
@@ -346,11 +392,12 @@ manifestd query sku providers [flags]
 |------|------|-------------|
 | --active-only | bool | Filter to return only active providers |
 | --limit | uint64 | Pagination limit |
-| --page-key | string | Pagination key from previous response |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
+| --count-total | bool | Return the exact total when it can be computed within the applicable scan ceiling |
 
 **Example:**
 ```bash
-manifestd query sku providers --active-only --limit 10
+manifestd query sku providers --active-only --limit 10 --count-total
 ```
 
 **Response:**
@@ -386,7 +433,7 @@ manifestd query sku sku [uuid]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| uuid | string | SKU UUID |
+| uuid | string | Canonical lowercase UUIDv7 of the SKU |
 
 **Response:**
 ```json
@@ -421,7 +468,7 @@ manifestd query sku skus [flags]
 |------|------|-------------|
 | --active-only | bool | Filter to return only active SKUs |
 | --limit | uint64 | Pagination limit |
-| --page-key | string | Pagination key from previous response |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
 
 **Example:**
 ```bash
@@ -441,14 +488,14 @@ manifestd query sku skus-by-provider [provider-uuid] [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-uuid | string | Provider UUID |
+| provider-uuid | string | Canonical lowercase UUIDv7 of the provider |
 
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
 | --active-only | bool | Filter to return only active SKUs |
 | --limit | uint64 | Pagination limit |
-| --page-key | string | Pagination key from previous response |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
 
 **Example:**
 ```bash
@@ -458,6 +505,10 @@ manifestd query sku skus-by-provider 01912345-6789-7abc-8def-0123456789ab --acti
 ---
 
 ## gRPC API
+
+The generated embedded descriptors omit protobuf `SourceCodeInfo`, so runtime
+reflection exposes the schema but not source comments. Use this API reference
+for the documented validation and error semantics.
 
 ### Msg Service
 
@@ -508,12 +559,13 @@ Update an existing provider.
 ```protobuf
 message MsgUpdateProvider {
   string authority = 1;       // Authority or allowed address
-  string uuid = 2;            // Provider UUID
+  string uuid = 2;            // Canonical lowercase provider UUIDv7
   string address = 3;         // New management address
   string payout_address = 4;  // New payout address
   bytes meta_hash = 5;        // New metadata hash
   bool active = 6;            // Active status
   string api_url = 7;         // HTTPS endpoint for off-chain API
+  bool clear_api_url = 8;     // Explicitly clear the stored API URL
 }
 ```
 
@@ -523,7 +575,12 @@ message MsgUpdateProviderResponse {}
 ```
 
 **Notes:**
-- If `api_url` is an empty string, the existing API URL is preserved rather than being cleared. This allows updating other fields without modifying the API URL.
+- If `api_url` is empty and `clear_api_url` is false, the existing API URL is
+  preserved. This retains the behavior of clients built before tag 8 existed.
+- If `clear_api_url` is true, the stored API URL is cleared. The request is
+  rejected if `api_url` is also non-empty.
+- This is a transaction-only wire addition. Provider storage and genesis are
+  unchanged, so no module or store migration is required.
 - **Reactivation is allowed:** Setting `active=true` on an inactive provider will reactivate it.
 - **Deactivation is forbidden:** Setting `active=false` on an active provider will return an error. Use `MsgDeactivateProvider` instead, which properly cascades deactivation to all associated SKUs.
 
@@ -540,7 +597,7 @@ If `has_more` is true in the response, call again to continue deactivating SKUs.
 ```protobuf
 message MsgDeactivateProvider {
   string authority = 1;  // Authority or allowed address
-  string uuid = 2;       // Provider UUID
+  string uuid = 2;       // Canonical lowercase provider UUIDv7
   uint64 limit = 3;      // Max SKUs to deactivate (0 = default 50, max 100)
 }
 ```
@@ -563,7 +620,7 @@ Create a new SKU.
 ```protobuf
 message MsgCreateSKU {
   string authority = 1;                    // Authority or allowed address
-  string provider_uuid = 2;                // Provider UUID
+  string provider_uuid = 2;                // Canonical lowercase provider UUIDv7
   string name = 3;                         // SKU name
   Unit unit = 4;                           // Billing unit
   cosmos.base.v1beta1.Coin base_price = 5; // Base price
@@ -588,8 +645,8 @@ Update an existing SKU.
 ```protobuf
 message MsgUpdateSKU {
   string authority = 1;                    // Authority or allowed address
-  string uuid = 2;                         // SKU UUID
-  string provider_uuid = 3;                // Provider UUID
+  string uuid = 2;                         // Canonical lowercase SKU UUIDv7
+  string provider_uuid = 3;                // Canonical lowercase provider UUIDv7
   string name = 4;                         // SKU name
   Unit unit = 5;                           // Billing unit
   cosmos.base.v1beta1.Coin base_price = 6; // Base price
@@ -617,7 +674,7 @@ Deactivate a SKU (soft delete).
 ```protobuf
 message MsgDeactivateSKU {
   string authority = 1;  // Authority or allowed address
-  string uuid = 2;       // SKU UUID
+  string uuid = 2;       // Canonical lowercase SKU UUIDv7
 }
 ```
 
@@ -663,6 +720,13 @@ service Query {
   rpc SKUsByProvider(QuerySKUsByProviderRequest) returns (QuerySKUsByProviderResponse);
 }
 ```
+
+`Provider.uuid` and `SKU.uuid` preserve direct-lookup behavior. They reject an
+empty field with gRPC `InvalidArgument`, then look up every non-empty key as
+supplied. A malformed, uppercase, non-v7, or unknown canonical value therefore
+returns `NotFound` rather than a UUID-format error. `NotFound` is reserved for
+an absent key; an unexpected primary-store or value-decoding failure returns
+`Internal` so state corruption is not disguised as a missing resource.
 
 #### QueryParams
 
@@ -823,6 +887,12 @@ message QuerySKUsByProviderResponse {
 }
 ```
 
+`provider_uuid` must be a non-empty canonical lowercase UUIDv7. An empty field
+fails with gRPC `InvalidArgument` and `provider_uuid cannot be empty`; a
+non-empty malformed, uppercase, or non-v7 value fails with `InvalidArgument`
+and `provider_uuid must be a valid UUIDv7`. An unknown canonical value is valid
+input and returns an empty page.
+
 ---
 
 ## REST API
@@ -846,6 +916,19 @@ http://localhost:1317/liftedinit/sku/v1
 | GET | `/sku/{uuid}` | Get SKU by UUID |
 | GET | `/skus` | List all SKUs |
 | GET | `/skus/provider/{provider_uuid}` | List SKUs by provider |
+
+`/skus/provider/{provider_uuid}` applies the same canonical lowercase UUIDv7
+validation as `QuerySKUsByProvider`. A non-empty malformed, uppercase, or
+non-v7 path value maps to HTTP 400 / gRPC `InvalidArgument`; an unknown
+canonical value returns an empty page. A missing path component does not match
+the route; a trailing empty component does match and maps the handler's
+`provider_uuid cannot be empty` response to HTTP 400.
+
+The direct `/provider/{uuid}` and `/sku/{uuid}` routes map any non-empty key
+that does not exist—including malformed, uppercase, or non-v7 text—to HTTP 404
+/ gRPC `NotFound`. Their trailing-empty forms reach the handlers and map
+`uuid cannot be empty` to HTTP 400. An unexpected primary-store or decoding
+failure maps to HTTP 500 / gRPC `Internal`.
 
 ### Examples
 
@@ -939,6 +1022,9 @@ message Params {
 }
 ```
 
+`allowed_list` is limited to 100 valid, distinct decoded account identities.
+The hard cap bounds authorization scans and cannot be changed by governance.
+
 ---
 
 ## Events
@@ -986,6 +1072,8 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrInvalidProvider` | 5 | Invalid provider parameters (includes inactive check) |
 | `ErrProviderNotFound` | 6 | Provider doesn't exist |
 | `ErrInvalidAPIURL` | 7 | Invalid API URL (not HTTPS, too long, contains credentials, etc.) |
+| `ErrSequenceExhausted` | 8 | A deterministic provider or SKU UUID sequence has exhausted its `uint64` range |
+| `ErrInternalCorruption` | 9 | Provider/SKU primary state or the active-SKU index cannot be read consistently; distinct from a missing requested resource |
 
 **Note:** Active status checks (e.g., "provider is not active", "SKU is not active") are reported via `ErrInvalidProvider` or `ErrInvalidSKU` respectively.
 

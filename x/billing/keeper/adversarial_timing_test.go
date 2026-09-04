@@ -96,15 +96,17 @@ func TestAdversarial_SettlementWithZeroDuration(t *testing.T) {
 		Items: []types.LeaseItem{
 			{SkuUuid: testSKUUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = f.App.BillingKeeper.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
 	// Settle at the exact LastSettledAt time — duration = 0
-	result, err := f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, now)
+	result, err := f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, f.creditAccountForLease(t, &lease), now)
 	require.NoError(t, err)
 	require.True(t, result.TransferAmounts.IsZero(), "zero duration should produce zero transfer")
 	require.True(t, result.AccruedAmounts.IsZero(), "zero duration should produce zero accrual")
@@ -132,16 +134,20 @@ func TestAdversarial_SettlementWithNegativeDuration(t *testing.T) {
 		Items: []types.LeaseItem{
 			{SkuUuid: testSKUUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+		Reservation: &types.LeaseReservation{
+			RemainingAmounts: sdk.NewCoins(),
+		},
 	}
 	err = f.App.BillingKeeper.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
 	// Settle BEFORE LastSettledAt
 	pastTime := now.Add(-100 * time.Second)
-	result, err := f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, pastTime)
+	result, err := f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, f.creditAccountForLease(t, &lease), pastTime)
 	require.NoError(t, err)
 	require.True(t, result.TransferAmounts.IsZero(), "negative duration should produce zero transfer")
 }
@@ -399,9 +405,13 @@ func TestAdversarial_AutoCloseAtExactExhaustionPoint(t *testing.T) {
 		Items: []types.LeaseItem{
 			{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+		Reservation: &types.LeaseReservation{
+			RemainingAmounts: sdk.NewCoins(),
+		},
 	}
 	err = f.App.BillingKeeper.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
@@ -409,14 +419,14 @@ func TestAdversarial_AutoCloseAtExactExhaustionPoint(t *testing.T) {
 	// At exactly 100 seconds, accrued (100) >= balance (100) → should auto-close
 	f.Ctx = f.Ctx.WithBlockTime(now.Add(100 * time.Second))
 
-	shouldClose, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease)
+	shouldClose, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease, f.creditAccountForLease(t, &lease))
 	require.NoError(t, err)
 	require.True(t, shouldClose, "lease should auto-close when accrued == balance (GTE)")
 
 	// At 99 seconds, accrued (99) < balance (100) → should NOT auto-close
 	f.Ctx = f.Ctx.WithBlockTime(now.Add(99 * time.Second))
 
-	shouldClose, _, err = f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease)
+	shouldClose, _, err = f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease, f.creditAccountForLease(t, &lease))
 	require.NoError(t, err)
 	require.False(t, shouldClose, "lease should NOT auto-close when accrued < balance")
 }
@@ -443,15 +453,17 @@ func TestAdversarial_ShouldAutoCloseWithFutureLastSettledAt(t *testing.T) {
 		Items: []types.LeaseItem{
 			{SkuUuid: testSKUUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now.Add(1 * time.Hour), // Future!
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now.Add(1 * time.Hour), // Future!
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = f.App.BillingKeeper.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
 	// This should return an error, not silently skip
-	_, _, err = f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease)
+	_, _, err = f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease, f.creditAccountForLease(t, &lease))
 	require.Error(t, err, "should detect data corruption: LastSettledAt in the future")
 }
 
@@ -481,12 +493,14 @@ func TestAdversarial_ShouldAutoCloseOnNonActiveLease(t *testing.T) {
 				Items: []types.LeaseItem{
 					{SkuUuid: testSKUUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
 				},
-				State:         state,
-				CreatedAt:     now,
-				LastSettledAt: now,
+				State:                      state,
+				CreatedAt:                  now,
+				LastSettledAt:              now,
+				MinLeaseDurationAtCreation: 1,
+				Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 			}
 
-			shouldClose, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease)
+			shouldClose, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease, f.creditAccountForLease(t, &lease))
 			require.NoError(t, err)
 			require.False(t, shouldClose, "non-ACTIVE lease should not auto-close")
 		})

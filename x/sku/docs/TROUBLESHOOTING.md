@@ -121,6 +121,14 @@ or simply raise the price.
 
 ## API URL Issues
 
+### "clear_api_url cannot be true when api_url is non-empty"
+
+**Cause**: An update requested two conflicting operations: set the URL and
+clear it.
+
+**Solution**: Use exactly one of `--api-url <https-url>` or
+`--clear-api-url`. Omit both to preserve the existing URL.
+
 ### "invalid API URL" (not HTTPS)
 
 **Cause**: The API URL doesn't use HTTPS scheme.
@@ -164,13 +172,22 @@ manifestd tx sku create-provider manifest1... manifest1... --api-url https://api
 
 ### "invalid API URL" (too long)
 
-**Cause**: The API URL exceeds the maximum length of 2048 characters.
+**Cause**: The API URL exceeds the maximum encoded length of 2048 UTF-8 bytes.
 
 **Solution**: Use a shorter URL. Consider using a URL shortener service or a shorter domain/path.
 
 ---
 
 ## Parameter Issues
+
+### "allowed list has ... entries, maximum allowed is 100"
+
+**Cause**: `allowed_list` contains more than 100 addresses. The limit is a
+compile-time safety bound because every authorized SKU write checks this list.
+
+**Solution**: Remove obsolete delegates. If the deployment genuinely needs
+more than 100 managers, redesign authorization around a keyed on-chain
+collection instead of increasing an unpaginated parameter list.
 
 ### "invalid module configuration" (duplicate addresses)
 
@@ -241,11 +258,29 @@ manifestd query sku sku [sku-uuid]
 
 ## UUID Format Issues
 
-### "invalid UUIDv7 format"
+### "invalid UUIDv7 format" / "provider_uuid must be a valid UUIDv7"
 
-**Error**: `invalid UUIDv7 format: {uuid}` (typically surfaced wrapped, e.g. `invalid provider: invalid uuid: invalid UUIDv7 format: ...`)
+**Errors**:
 
-**Cause**: The UUID is not in valid UUIDv7 format. This error is raised only by **transactions** (update/deactivate provider or SKU, and create-sku's `provider_uuid`) during message validation — **not** by queries. Queries do not validate UUID format: a malformed UUID passed to `query sku provider` / `query sku sku` is looked up as-is and returns `provider not found` / `sku not found` instead.
+- Transactions with an empty UUID field include `uuid cannot be empty`, wrapped
+  with the field and module-error context.
+- Transactions with a non-empty invalid UUID: `invalid UUIDv7 format: {uuid}`
+  appears inside the field- and module-specific error.
+- `skus-by-provider` with an empty value: `provider_uuid cannot be empty`.
+- `skus-by-provider` with a non-empty invalid value:
+  `provider_uuid must be a valid UUIDv7`.
+
+**Cause**: The UUID is not in valid UUIDv7 format. Transactions validate UUIDs
+during message validation. The `query sku skus-by-provider` collection query
+also requires a canonical lowercase provider UUIDv7 and returns gRPC
+`InvalidArgument` for malformed, uppercase, or non-v7 input. An unknown
+canonical provider UUIDv7 returns an empty SKU page. Direct `query sku provider`
+and `query sku sku` lookups remain unchanged: an empty `uuid` is rejected with
+`InvalidArgument: uuid cannot be empty`; a non-empty malformed or unknown key
+is looked up as-is and returns gRPC `NotFound` with `provider not found` or
+`sku not found`. A stored primary value that cannot be decoded is not treated
+as absent: the point query returns gRPC `Internal`, which requires operator
+investigation.
 
 **Format constraints** (see the UUIDv7 regex): lowercase hex digits only, the version nibble must be `7`, and the variant nibble must be one of `8`, `9`, `a`, or `b`. Uppercase UUIDs are rejected.
 

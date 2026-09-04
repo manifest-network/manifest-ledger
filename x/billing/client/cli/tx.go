@@ -282,7 +282,7 @@ close-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-0000000
 		},
 	}
 
-	cmd.Flags().String("reason", "", "Reason for closing the leases (max 256 characters, applied to all)")
+	cmd.Flags().String("reason", "", "Reason for closing the leases (max 256 UTF-8 bytes, applied to all)")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd
@@ -532,10 +532,12 @@ func splitAndTrim(s string) []string {
 func NewAcknowledgeLeaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "acknowledge-lease [lease-uuid]...",
-		Short: "Acknowledge one or more pending leases (provider only)",
+		Short: "Acknowledge one or more pending leases (provider or module authority)",
 		Long: `Acknowledge one or more pending leases to transition them to active state.
 Only the provider of the leases or the module authority can acknowledge.
 All leases must belong to the same provider and be in PENDING state.
+Every lease must be at or before its pending-timeout deadline, and each tenant's
+post-batch active lease count must remain within max_leases_per_tenant.
 This is an atomic operation: all leases succeed or all fail.
 Billing starts from the acknowledgement time.`,
 		Example: `# Acknowledge a single lease
@@ -613,7 +615,7 @@ reject-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000
 		},
 	}
 
-	cmd.Flags().String("reason", "", "Reason for rejecting the leases (max 256 characters, applied to all)")
+	cmd.Flags().String("reason", "", "Reason for rejecting the leases (max 256 UTF-8 bytes, applied to all)")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd

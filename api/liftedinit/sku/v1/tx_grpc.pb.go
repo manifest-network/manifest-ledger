@@ -44,11 +44,12 @@ type MsgClient interface {
 	// CreateSKU creates a new SKU.
 	CreateSKU(ctx context.Context, in *MsgCreateSKU, opts ...grpc.CallOption) (*MsgCreateSKUResponse, error)
 	// UpdateSKU updates an existing SKU.
-	// Can reactivate an inactive SKU (if provider is active) but cannot deactivate an active one.
-	// Use DeactivateSKU to deactivate.
+	// Can reactivate an inactive SKU (if provider is active) but cannot
+	// deactivate an active one. Use DeactivateSKU to deactivate.
 	UpdateSKU(ctx context.Context, in *MsgUpdateSKU, opts ...grpc.CallOption) (*MsgUpdateSKUResponse, error)
 	// DeactivateSKU deactivates a SKU (soft delete).
-	// Deactivated SKUs cannot be used for new leases but existing leases continue.
+	// Deactivated SKUs cannot be used for new leases but existing leases
+	// continue.
 	DeactivateSKU(ctx context.Context, in *MsgDeactivateSKU, opts ...grpc.CallOption) (*MsgDeactivateSKUResponse, error)
 	// UpdateParams updates the module parameters.
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
@@ -141,11 +142,12 @@ type MsgServer interface {
 	// CreateSKU creates a new SKU.
 	CreateSKU(context.Context, *MsgCreateSKU) (*MsgCreateSKUResponse, error)
 	// UpdateSKU updates an existing SKU.
-	// Can reactivate an inactive SKU (if provider is active) but cannot deactivate an active one.
-	// Use DeactivateSKU to deactivate.
+	// Can reactivate an inactive SKU (if provider is active) but cannot
+	// deactivate an active one. Use DeactivateSKU to deactivate.
 	UpdateSKU(context.Context, *MsgUpdateSKU) (*MsgUpdateSKUResponse, error)
 	// DeactivateSKU deactivates a SKU (soft delete).
-	// Deactivated SKUs cannot be used for new leases but existing leases continue.
+	// Deactivated SKUs cannot be used for new leases but existing leases
+	// continue.
 	DeactivateSKU(context.Context, *MsgDeactivateSKU) (*MsgDeactivateSKUResponse, error)
 	// UpdateParams updates the module parameters.
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)

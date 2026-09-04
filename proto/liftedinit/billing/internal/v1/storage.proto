@@ -1,0 +1,68 @@
+syntax = "proto3";
+package liftedinit.billing.internal.v1;
+
+import "cosmos/base/v1beta1/coin.proto";
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+import "liftedinit/billing/v1/types.proto";
+
+option go_package = "github.com/manifest-network/manifest-ledger/x/billing/internal/types";
+
+// Params is the disk-only representation of billing parameters. Address
+// fields are raw account bytes; public APIs use liftedinit.billing.v1.Params.
+message Params {
+  uint64 max_leases_per_tenant = 1;
+  repeated bytes allowed_addresses = 2;
+  uint64 max_items_per_lease = 3;
+  uint64 min_lease_duration = 4;
+  uint64 max_pending_leases_per_tenant = 5;
+  uint64 pending_timeout = 6;
+  repeated string reserved_domain_suffixes = 7;
+}
+
+// Lease is the disk-only representation of a billing lease. The tenant is
+// stored as raw account bytes.
+message Lease {
+  string uuid = 1;
+  bytes tenant_address = 2;
+  string provider_uuid = 3;
+  repeated liftedinit.billing.v1.LeaseItem items = 4
+      [ (gogoproto.nullable) = false ];
+  liftedinit.billing.v1.LeaseState state = 5;
+  google.protobuf.Timestamp created_at = 6
+      [ (gogoproto.nullable) = false, (gogoproto.stdtime) = true ];
+  google.protobuf.Timestamp closed_at = 7 [ (gogoproto.stdtime) = true ];
+  // Accrual cursor through which complete per-second charges have settled.
+  // ACTIVE rows retain any sub-second remainder in this timestamp; CLOSED rows
+  // set it to closed_at.
+  google.protobuf.Timestamp last_settled_at = 8
+      [ (gogoproto.nullable) = false, (gogoproto.stdtime) = true ];
+  google.protobuf.Timestamp acknowledged_at = 9 [ (gogoproto.stdtime) = true ];
+  google.protobuf.Timestamp rejected_at = 10 [ (gogoproto.stdtime) = true ];
+  string rejection_reason = 11;
+  google.protobuf.Timestamp expired_at = 12 [ (gogoproto.stdtime) = true ];
+  string closure_reason = 13;
+  bytes meta_hash = 14;
+  uint64 min_lease_duration_at_creation = 15;
+  // Kept nullable so old rows (absent) remain distinguishable from an
+  // initialized reservation with an empty remaining_amounts list.
+  liftedinit.billing.v1.LeaseReservation reservation = 16;
+}
+
+// CreditAccount is the disk-only representation of a billing credit account.
+// Both account identities are stored as raw account bytes.
+message CreditAccount {
+  bytes tenant_address = 1;
+  bytes credit_address = 2;
+  uint64 active_lease_count = 3;
+  uint64 pending_lease_count = 4;
+  repeated cosmos.base.v1beta1.Coin reserved_amounts = 5 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
+  ];
+  repeated cosmos.base.v1beta1.Coin unattributed_reserved_amounts = 6 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
+  ];
+  uint64 unattributed_lease_count = 7;
+}

@@ -39,7 +39,7 @@ This document records key design decisions made during the development of the x/
 
 **Trade-offs:**
 - Lease state queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state
-- Use `WithdrawableAmount` or `ProviderWithdrawable` queries for real-time accrued amounts
+- Use `WithdrawableAmount` for one lease or `ProviderWithdrawable` for an ordered page-local execution estimate. The provider query mirrors transaction best-effort semantics: it discards a failed lease simulation, reports its UUID in index order, and carries successful virtual effects into later leases, but commits no query state. Provider pages are not additive because separate pages can share tenant balances. Every forward query page is comparable to one provider-wide withdrawal because the query limit is capped at the transaction maximum of 100. At identical state and time their failure lists also match. After commit, advance the query with the prior query response's first-unread cursor and the transaction with the prior transaction response's last-processed cursor; never interchange them.
 - Auto-close only happens during write operations (CloseLease, Withdraw)
 - Provider withdrawal requires explicit action
 
@@ -199,12 +199,17 @@ See `x/billing/types/credit.go` for the implementation.
 - Settlement transfers happen per-denom
 - Credit accounts are regular bank accounts that can hold any denom
 - No send restrictions on credit accounts (any token can be sent)
+- Bank balances remain unrestricted and cursor-paginated in queries. Separately,
+  new leases may not grow the reservation aggregate beyond 1,000 denoms because
+  that coin set is rewritten on every reservation lifecycle transition.
 
 **Trade-offs:**
 - Lease creation validation more complex (check each denom)
 - Settlement must aggregate and transfer per-denom
 - Users must fund credit with correct denoms for their desired SKUs
 - No automatic denom conversion
+- Historical v2 reservation aggregates above the new cardinality limit remain
+  releasable and readable, but cannot grow through new lease denominations
 
 **Example:**
 ```
@@ -346,10 +351,35 @@ for each denom in reservation:
     }
 ```
 
-The check is against *available* credit (balance minus existing reservations), evaluated
-per-denom, not against the raw balance as a single scalar. On success the reservation is
-added to `CreditAccount.ReservedAmounts` and `min_lease_duration_at_creation` is snapshotted
-on the lease so the reservation can be released consistently later.
+The check is against *available* credit (balance minus existing reservations),
+evaluated per denomination, not against the raw balance as a single scalar. On
+success the nominal amount initializes `Lease.reservation.remaining_amounts`
+and is added to `CreditAccount.reserved_amounts`.
+
+The runtime model deliberately stores the consumable remainder rather than
+recomputing a fixed nominal sum:
+
+```
+R = SUM(A for each live modern lease) + U
+```
+
+`A` is a modern lease's remaining tranche and `U` is the explicit shared
+allocation for live historical leases whose individual guarantees cannot be
+reconstructed. Settlement protects other leases by limiting this lease to
+`B - (R - A)`, where `B` is the tenant balance. The amount funded from `A` is
+subtracted from both `A` and `R`; a terminal transition releases exactly the
+remaining `A`. This own-tranche-first design lets a lease use its guarantee and
+genuinely unreserved credit without consuming another lease's guarantee.
+
+The account also stores `unattributed_lease_count`, the exact number of live
+historical leases sharing `U`. Historical terminal transitions decrement this
+counter in O(1) and release the exact remaining `U` when it reaches zero. The
+counter remains meaningful when `U` has been fully consumed, avoiding a
+consensus-time scan or inference from coin emptiness.
+
+`min_lease_duration_at_creation` remains the nominal cap and governance-change
+snapshot. It is not the amount released after settlement has consumed part of
+the tranche.
 
 ## Decision 15: UUIDv7 for Identifiers
 
@@ -396,7 +426,8 @@ on the lease so the reservation can be released consistently later.
 
 **Implementation:**
 - Create → PENDING (credit locked)
-- AcknowledgeLease → ACTIVE (billing starts)
+- AcknowledgeLease revalidates every lease's hard timeout and every tenant's post-batch active cap before any writes
+- AcknowledgeLease → ACTIVE (billing starts) only when `blockTime <= created_at + current pending_timeout`
 - RejectLease → REJECTED (credit unlocked)
 - EndBlocker expiration → EXPIRED (credit unlocked)
 
@@ -407,7 +438,8 @@ on the lease so the reservation can be released consistently later.
 
 ## Decision 17: EndBlocker for Pending Expiration
 
-**Decision:** Use EndBlocker to automatically expire PENDING leases that exceed timeout.
+**Decision:** `created_at + current pending_timeout` is a hard provider-acknowledgement deadline;
+use EndBlocker to automatically expire PENDING leases after that deadline.
 
 **Alternatives Considered:**
 1. No automatic expiration (manual only)
@@ -415,14 +447,19 @@ on the lease so the reservation can be released consistently later.
 3. EndBlocker with rate limiting (chosen)
 
 **Rationale:**
-- **Automatic Cleanup:** No manual intervention needed
+- **Automatic Cleanup:** No manual intervention is needed while the derived
+  index remains consistent; the registered invariant exposes corruption that
+  requires operator repair
 - **Predictable:** Consistent behavior based on timeout
-- **Fair to Tenants:** Credit unlocked without waiting indefinitely
-- **DoS Protected:** Rate limited to 100 per block
+- **Fair to Tenants:** In invariant-consistent state, credit is unlocked without
+  waiting indefinitely
+- **DoS Protected:** Successful expiration mutations are rate limited to 100
+  per block and the normal-state scan is time-bounded
 
 **Trade-offs:**
 - EndBlocker overhead (mitigated by rate limiting)
-- Range-queries the StateCreatedAt index (prefix 11) for `created_at` before the timeout cutoff (`created_at < blockTime - pending_timeout`), so each block visits only expirable pending leases rather than the full pending set (O(expired) instead of O(total pending)). A manual `collections.Range` over the compound `((state, created_at), uuid)` key is used because collections' `PairRange` helper cannot do partial-prefix ranges on the `Pair[int32, time.Time]` reference key; `sdk.TimeKey`'s sortable encoding makes the byte range match the `created_at` range. Consequence: with >100 expirable leases, the oldest 100 are expired first and the remainder wait for later blocks (rate limit).
+- Cleanup can lag behind the hard deadline, but overdue PENDING leases cannot be acknowledged while waiting; they can still be rejected or cancelled
+- Range-queries the StateCreatedAt index (prefix 11) for `created_at` before the timeout cutoff (`created_at < blockTime - pending_timeout`), so a consistent store visits only expirable pending leases rather than the full pending set (O(expired) instead of O(total pending)). A manual `collections.Range` over the compound `((state, created_at), uuid)` key is used because collections' `PairRange` helper cannot do partial-prefix ranges on the `Pair[int32, time.Time]` reference key; `sdk.TimeKey`'s sortable encoding makes the byte range match the `created_at` range. Primary UUID, state, and deadline checks skip stale references before they consume the expiration quota and missing versus unreadable primaries produce distinct diagnostics. Stale rows can still increase scan work and missing rows remain invisible; neither is auto-repaired, so invariant failures require operator remediation. A separate visit cap is intentionally avoided until repair or a persisted cursor exists, because an oldest corrupt prefix would otherwise permanently starve valid expirations. In consistent state, with >100 expirable leases, the oldest 100 are expired first and the remainder wait for later blocks.
 - Max pending leases per tenant limit needed
 
 ## Decision 18: Tenant Cancellation of Pending Leases
@@ -494,12 +531,22 @@ on the lease so the reservation can be released consistently later.
 ### Migration Considerations
 
 When implementing breaking changes:
-- Settle all active leases before migration
 - Preserve credit account balances
 - Maintain lease history
 - Update indexes atomically
 - Version proto messages appropriately
 - Handle PENDING leases during upgrade (either expire or migrate to new state)
+- For the v2→v3→v4 reservation cutover, do not settle or mint implicitly:
+  v2→v3 repairs byte identity, counts, and the provable aggregate floor;
+  v3→v4 preserves a tenant's complete modern PENDING cohort only when every
+  denomination is bank-backed, otherwise expires the whole cohort, and then
+  distributes the remaining bank-backed historical budget across ACTIVE and
+  historical claims with deterministic Hamilton allocation, recording the
+  exact historical cohort size for O(1) terminal release.
+- Preflight every tenant/denomination before v4. A repaired aggregate below the
+  complete PENDING nominal sum is corruption and fails closed. A bank-only
+  shortfall is reachable under v2 and deterministically expires every modern
+  PENDING lease for that tenant; identify the affected clients before cutover.
 
 ## Related Documentation
 

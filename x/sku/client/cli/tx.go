@@ -104,9 +104,12 @@ Active values:
 Note: To deactivate a provider, use the 'deactivate-provider' command which
 properly cascades deactivation to all associated SKUs.
 
-The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.`,
-		Example: "update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com",
-		Args:    cobra.ExactArgs(4),
+The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.
+Omit --api-url to preserve the existing URL, or use --clear-api-url to remove it.
+--clear-api-url cannot be combined with a non-empty --api-url.`,
+		Example: `update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com
+update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --clear-api-url`,
+		Args: cobra.ExactArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
@@ -129,7 +132,14 @@ The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.`
 				return err
 			}
 
-			apiURL, _ := cmd.Flags().GetString("api-url")
+			apiURL, err := cmd.Flags().GetString("api-url")
+			if err != nil {
+				return err
+			}
+			clearAPIURL, err := cmd.Flags().GetBool("clear-api-url")
+			if err != nil {
+				return err
+			}
 
 			msg := types.NewMsgUpdateProvider(
 				authority.String(),
@@ -140,6 +150,7 @@ The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.`
 				active,
 				apiURL,
 			)
+			msg.ClearApiUrl = clearAPIURL
 
 			if err := msg.Validate(); err != nil {
 				return err
@@ -150,7 +161,8 @@ The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.`
 	}
 
 	cmd.Flags().String("meta-hash", "", "Hex-encoded hash of off-chain metadata")
-	cmd.Flags().String("api-url", "", "HTTPS endpoint where the provider's off-chain API is hosted")
+	cmd.Flags().String("api-url", "", "HTTPS endpoint where the provider's off-chain API is hosted (empty preserves the existing URL)")
+	cmd.Flags().Bool("clear-api-url", false, "Clear the provider's existing API URL (cannot be combined with a non-empty --api-url)")
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }

@@ -17,7 +17,15 @@ import (
 // rights — i.e. is the module authority or appears in params.AllowedList.
 // Returns ("", nil) when the sender has no admin privileges.
 func (k *Keeper) HasAdminPrivileges(ctx context.Context, sender string) (string, error) {
-	if sender == k.GetAuthority() {
+	senderAddress, err := sdk.AccAddressFromBech32(sender)
+	if err != nil {
+		return "", fmt.Errorf("invalid sender address: %w", err)
+	}
+	authorityAddress, err := sdk.AccAddressFromBech32(k.GetAuthority())
+	if err != nil {
+		return "", fmt.Errorf("invalid billing authority address: %w", err)
+	}
+	if senderAddress.Equals(authorityAddress) {
 		return types.AttributeValueRoleAuthority, nil
 	}
 	params, err := k.GetParams(ctx)
@@ -39,7 +47,15 @@ func (k *Keeper) IsAuthorizedForTenant(ctx context.Context, sender, tenant strin
 	if tenant == "" {
 		return "", fmt.Errorf("IsAuthorizedForTenant requires non-empty tenant; use HasAdminPrivileges for tenant-agnostic checks")
 	}
-	if sender == tenant {
+	senderAddress, err := sdk.AccAddressFromBech32(sender)
+	if err != nil {
+		return "", fmt.Errorf("invalid sender address: %w", err)
+	}
+	tenantAddress, err := sdk.AccAddressFromBech32(tenant)
+	if err != nil {
+		return "", fmt.Errorf("invalid tenant address: %w", err)
+	}
+	if senderAddress.Equals(tenantAddress) {
 		return types.AttributeValueRoleTenant, nil
 	}
 	return k.HasAdminPrivileges(ctx, sender)
@@ -55,7 +71,7 @@ func (k *Keeper) IsAuthorizedForTenant(ctx context.Context, sender, tenant strin
 // would otherwise miss a real match.
 func (k *Keeper) GetLeaseByCustomDomain(ctx context.Context, domain string) (types.Lease, string, bool, error) {
 	domain = strings.ToLower(strings.TrimSpace(domain))
-	target, err := k.CustomDomainIndex.Get(ctx, domain)
+	target, err := k.getCustomDomainTarget(ctx, domain)
 	if err != nil {
 		if errors.Is(err, collections.ErrNotFound) {
 			return types.Lease{}, "", false, nil
@@ -67,6 +83,22 @@ func (k *Keeper) GetLeaseByCustomDomain(ctx context.Context, domain string) (typ
 		return types.Lease{}, "", false, err
 	}
 	return lease, target.ServiceName, true, nil
+}
+
+// getCustomDomainTarget is the operational read boundary for the derived
+// custom-domain index. It preserves the absence sentinel used by callers and
+// gives every other read failure a stable module ABCI code. Invariants read the
+// collection directly because they produce their own diagnostic messages.
+func (k *Keeper) getCustomDomainTarget(ctx context.Context, domain string) (types.CustomDomainTarget, error) {
+	target, err := k.CustomDomainIndex.Get(ctx, domain)
+	if err != nil && !errors.Is(err, collections.ErrNotFound) {
+		return types.CustomDomainTarget{}, types.ErrInternalCorruption.Wrapf(
+			"read custom-domain index for %q: %v",
+			domain,
+			err,
+		)
+	}
+	return target, err
 }
 
 // findLeaseItemByServiceName returns the index of the unique LeaseItem whose
@@ -193,7 +225,7 @@ func (k *Keeper) SetItemCustomDomain(ctx context.Context, sender, leaseUUID, ser
 	// Pre-flight uniqueness with three branches: idempotent re-set on the
 	// same (lease, item), reject within-lease cross-item collision with a
 	// helpful message, reject cross-lease collision with a helpful message.
-	target, err := k.CustomDomainIndex.Get(ctx, domain)
+	target, err := k.getCustomDomainTarget(ctx, domain)
 	switch {
 	case err == nil:
 		switch {

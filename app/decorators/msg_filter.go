@@ -1,3 +1,4 @@
+// Package decorators provides application-specific ante-handler decorators.
 package decorators
 
 // Taken from https://github.com/rollchains/spawn/blob/release/v0.50/simapp/app/decorators/msg_filter_template.go @ e332ed
@@ -28,6 +29,7 @@ func FilterDecorator(blockedMsgTypes ...sdk.Msg) MsgFilterDecorator {
 	}
 }
 
+// AnteHandle rejects transactions containing a configured message type.
 func (mfd MsgFilterDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, simulate bool, next sdk.AnteHandler) (newCtx sdk.Context, err error) {
 	if mfd.HasDisallowedMessage(ctx, tx.GetMsgs()) {
 		currHeight := ctx.BlockHeight()
@@ -37,6 +39,7 @@ func (mfd MsgFilterDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, simulate bo
 	return next(ctx, tx, simulate)
 }
 
+// HasDisallowedMessage reports whether msgs contains a configured message type.
 func (mfd MsgFilterDecorator) HasDisallowedMessage(ctx sdk.Context, msgs []sdk.Msg) bool {
 	for _, msg := range msgs {
 		// check nested messages in a recursive manner

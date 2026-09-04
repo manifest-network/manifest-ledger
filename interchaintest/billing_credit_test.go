@@ -9,25 +9,27 @@ import (
 	"fmt"
 	"testing"
 
-	sdkmath "cosmossdk.io/math"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
 
+	sdkmath "cosmossdk.io/math"
+
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
 // setupCreditAccounts funds credit accounts for tenant1 and tenant2.
 // This is called before subtests to ensure credit accounts exist regardless of test filter.
-func setupCreditAccounts(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func setupCreditAccounts(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Helper()
 	t.Log("Setting up credit accounts for tenant1 and tenant2...")
 
 	node := tc.chain.GetNode()
 
 	// Fund tenant1's credit account
-	err := node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err := node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tc.tenant1.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(100_000_000),
@@ -44,7 +46,7 @@ func setupCreditAccounts(t *testing.T, ctx context.Context, tc *billingTestConte
 	t.Logf("Funded tenant1 credit account with %s", fundAmount1)
 
 	// Fund tenant2's credit account
-	err = node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err = node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tc.tenant2.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(100_000_000),
@@ -77,46 +79,46 @@ func TestBillingCredit(t *testing.T) {
 
 	// Setup: Fund credit accounts for tenant1 and tenant2
 	// This runs before any subtests to ensure credit accounts exist
-	setupCreditAccounts(t, ctx, tc)
+	setupCreditAccounts(ctx, t, tc)
 
 	t.Run("QueryParams", func(t *testing.T) {
-		testBillingQueryParamsIndependent(t, ctx, tc)
+		testBillingQueryParamsIndependent(ctx, t, tc)
 	})
 
 	t.Run("CreditAccountOperations", func(t *testing.T) {
-		testCreditAccountOperationsIndependent(t, ctx, tc)
+		testCreditAccountOperationsIndependent(ctx, t, tc)
 	})
 
 	t.Run("CreditAddressQuery", func(t *testing.T) {
-		testCreditAddressQueryIndependent(t, ctx, tc)
+		testCreditAddressQueryIndependent(ctx, t, tc)
 	})
 
 	t.Run("CreditAccountsQuery", func(t *testing.T) {
-		testCreditAccountsQueryIndependent(t, ctx, tc)
+		testCreditAccountsQueryIndependent(ctx, t, tc)
 	})
 
 	t.Run("CreditEstimateQuery", func(t *testing.T) {
-		testCreditEstimateQueryIndependent(t, ctx, tc)
+		testCreditEstimateQueryIndependent(ctx, t, tc)
 	})
 
 	t.Run("AccrualCalculation", func(t *testing.T) {
-		testAccrualCalculationIndependent(t, ctx, tc)
+		testAccrualCalculationIndependent(ctx, t, tc)
 	})
 
 	t.Run("Withdraw", func(t *testing.T) {
-		testWithdrawIndependent(t, ctx, tc)
+		testWithdrawIndependent(ctx, t, tc)
 	})
 
 	t.Run("WithdrawByProvider", func(t *testing.T) {
-		testWithdrawByProviderIndependent(t, ctx, tc)
+		testWithdrawByProviderIndependent(ctx, t, tc)
 	})
 
 	t.Run("WithdrawableQueries", func(t *testing.T) {
-		testWithdrawableQueriesIndependent(t, ctx, tc)
+		testWithdrawableQueriesIndependent(ctx, t, tc)
 	})
 }
 
-func testBillingQueryParamsIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testBillingQueryParamsIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Billing Query Params ===")
 
 	res, err := helpers.BillingQueryParams(ctx, tc.chain)
@@ -129,7 +131,7 @@ func testBillingQueryParamsIndependent(t *testing.T, ctx context.Context, tc *bi
 		res.Params.MaxLeasesPerTenant, res.Params.MaxItemsPerLease, res.Params.MinLeaseDuration)
 }
 
-func testCreditAccountOperationsIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testCreditAccountOperationsIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Credit Account Operations ===")
 
 	node := tc.chain.GetNode()
@@ -144,7 +146,7 @@ func testCreditAccountOperationsIndependent(t *testing.T, ctx context.Context, t
 
 	t.Run("success: fund credit account", func(t *testing.T) {
 		// Send PWR to tenant1
-		err := node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+		err := node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 			Address: tc.tenant1.FormattedAddress(),
 			Denom:   tc.pwrDenom,
 			Amount:  sdkmath.NewInt(100_000_000),
@@ -172,7 +174,7 @@ func testCreditAccountOperationsIndependent(t *testing.T, ctx context.Context, t
 	// Note: tenant2 credit is funded in setupCreditAccounts() which runs before subtests
 }
 
-func testCreditAddressQueryIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testCreditAddressQueryIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Credit Address Query ===")
 
 	t.Run("success: derive credit address without credit account", func(t *testing.T) {
@@ -198,7 +200,7 @@ func testCreditAddressQueryIndependent(t *testing.T, ctx context.Context, tc *bi
 	})
 }
 
-func testCreditAccountsQueryIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testCreditAccountsQueryIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Credit Accounts Query ===")
 
 	t.Run("success: query returns existing credit accounts", func(t *testing.T) {
@@ -256,7 +258,7 @@ func testCreditAccountsQueryIndependent(t *testing.T, ctx context.Context, tc *b
 	})
 }
 
-func testCreditEstimateQueryIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testCreditEstimateQueryIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Credit Estimate Query ===")
 
 	// Create a fresh tenant for this test
@@ -309,7 +311,7 @@ func testCreditEstimateQueryIndependent(t *testing.T, ctx context.Context, tc *b
 	_, _ = helpers.BillingCloseLease(ctx, tc.chain, tenant, leaseUUID)
 }
 
-func testAccrualCalculationIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testAccrualCalculationIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Accrual Calculation ===")
 
 	// Create a lease for accrual testing
@@ -337,14 +339,14 @@ func testAccrualCalculationIndependent(t *testing.T, ctx context.Context, tc *bi
 	})
 }
 
-func testWithdrawIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testWithdrawIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Withdraw ===")
 
 	// Get an active lease for tenant1
 	leases, err := helpers.BillingQueryLeasesByTenant(ctx, tc.chain, tc.tenant1.FormattedAddress(), "active")
 	require.NoError(t, err)
 	require.NotEmpty(t, leases.Leases)
-	leaseUUID := leases.Leases[0].Uuid
+	leaseUUID := leases.Leases[0].UUID
 
 	// Wait for some accrual
 	require.NoError(t, testutil.WaitForBlocks(ctx, 3, tc.chain))
@@ -397,7 +399,7 @@ func testWithdrawIndependent(t *testing.T, ctx context.Context, tc *billingTestC
 	})
 }
 
-func testWithdrawByProviderIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testWithdrawByProviderIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Withdraw By Provider ===")
 
 	// Wait for some accrual
@@ -421,14 +423,14 @@ func testWithdrawByProviderIndependent(t *testing.T, ctx context.Context, tc *bi
 	})
 }
 
-func testWithdrawableQueriesIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testWithdrawableQueriesIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Withdrawable Queries ===")
 
 	// Get an active lease
 	leases, err := helpers.BillingQueryLeasesByTenant(ctx, tc.chain, tc.tenant1.FormattedAddress(), "active")
 	require.NoError(t, err)
 	require.NotEmpty(t, leases.Leases)
-	leaseUUID := leases.Leases[0].Uuid
+	leaseUUID := leases.Leases[0].UUID
 
 	t.Run("success: query withdrawable amount for lease", func(t *testing.T) {
 		res, err := helpers.BillingQueryWithdrawable(ctx, tc.chain, leaseUUID)
@@ -445,19 +447,14 @@ func testWithdrawableQueriesIndependent(t *testing.T, ctx context.Context, tc *b
 	})
 }
 
-// TestBillingCreditEstimateOvershoot is an end-to-end test for ENG-527. It drives a tenant into
-// the pending->active acknowledge overshoot — active lease count exceeding max_leases_per_tenant,
-// reachable because AcknowledgeLease moves pending->active without re-gating the active limit — and
-// verifies that CreditEstimate sums the burn rate over ALL active leases rather than truncating at
-// max_leases_per_tenant. The query iteration cap is derived from
-// max_leases_per_tenant + max_pending_leases_per_tenant (the maximum reachable active count).
-func TestBillingCreditEstimateOvershoot(t *testing.T) {
-	ctx, tc, cleanup := setupBillingTest(t, "billing-estimate-overshoot")
+// TestBillingAcknowledgeActiveCap is an end-to-end regression for ENG-859. It verifies that a
+// same-tenant acknowledgement batch cannot push the active count above max_leases_per_tenant and
+// that the failed batch leaves both pending leases and the credit estimate unchanged.
+func TestBillingAcknowledgeActiveCap(t *testing.T) {
+	ctx, tc, cleanup := setupBillingTest(t, "billing-ack-active-cap")
 	t.Cleanup(cleanup)
 
-	// Lower the lease limits so the overshoot is reachable with a handful of txs:
-	// max_leases_per_tenant=2, max_pending_leases_per_tenant=2 => reachable active =
-	// (2-1)+2 = 3, strictly greater than max_leases_per_tenant.
+	// Lower the lease limits so a post-batch overshoot can be attempted with a handful of txs.
 	current, err := helpers.BillingQueryParams(ctx, tc.chain)
 	require.NoError(t, err)
 	paramRes, err := helpers.BillingUpdateParams(ctx, tc.chain, tc.authority,
@@ -475,7 +472,7 @@ func TestBillingCreditEstimateOvershoot(t *testing.T) {
 	require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
 
 	// Fresh tenant with a well-funded credit account.
-	users := interchaintest.GetAndFundTestUsers(t, ctx, "overshoot-tenant", DefaultGenesisAmt, tc.chain)
+	users := interchaintest.GetAndFundTestUsers(t, ctx, "active-cap-tenant", DefaultGenesisAmt, tc.chain)
 	tenant := users[0]
 	err = tc.chain.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tenant.FormattedAddress(),
@@ -512,7 +509,7 @@ func TestBillingCreditEstimateOvershoot(t *testing.T) {
 		require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
 	}
 
-	// Reach active = max_leases_per_tenant-1 = 1, then overshoot to 3.
+	// Reach active = max_leases_per_tenant-1 = 1, then prepare two pending leases.
 	l1 := createLease() // pending 1 (active 0 < 2)
 	ack(l1)             // active 1
 
@@ -525,14 +522,38 @@ func TestBillingCreditEstimateOvershoot(t *testing.T) {
 
 	l2 := createLease() // pending 1 (active 1 < 2)
 	l3 := createLease() // pending 2 (active 1 < 2, pending 2 <= 2)
-	ack(l2, l3)         // active 3 -> overshoot past max_leases_per_tenant (2)
+	beforeAck, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, tenant.FormattedAddress())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), beforeAck.CreditAccount.ActiveLeaseCount)
+	require.Equal(t, uint64(2), beforeAck.CreditAccount.PendingLeaseCount)
+
+	ackRes, err := helpers.BillingAcknowledgeLeases(ctx, tc.chain, tc.providerWallet, []string{l2, l3})
+	require.NoError(t, err)
+	ackTx, err := tc.chain.GetTransaction(ackRes.TxHash)
+	require.NoError(t, err)
+	require.NotEqual(t, uint32(0), ackTx.Code, "post-batch active-cap overshoot must fail")
+	require.Contains(t, ackTx.RawLog, "lease acknowledgement active cap exceeded")
+	require.NoError(t, testutil.WaitForBlocks(ctx, 2, tc.chain))
+
+	afterAck, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, tenant.FormattedAddress())
+	require.NoError(t, err)
+	require.Equal(t, beforeAck.CreditAccount.ActiveLeaseCount, afterAck.CreditAccount.ActiveLeaseCount)
+	require.Equal(t, beforeAck.CreditAccount.PendingLeaseCount, afterAck.CreditAccount.PendingLeaseCount)
+	require.True(t, beforeAck.CreditAccount.ReservedAmounts.Equal(afterAck.CreditAccount.ReservedAmounts),
+		"failed acknowledgement must preserve reservations")
+
+	for _, leaseUUID := range []string{l2, l3} {
+		leaseRes, err := helpers.BillingQueryLease(ctx, tc.chain, leaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, billingtypes.LEASE_STATE_PENDING, leaseRes.Lease.GetState())
+		require.Nil(t, leaseRes.Lease.AcknowledgedAt)
+	}
 
 	res, err := helpers.BillingQueryCreditEstimate(ctx, tc.chain, tenant.FormattedAddress())
 	require.NoError(t, err)
-	require.Equal(t, uint64(3), res.ActiveLeaseCount,
-		"CreditEstimate must count all active leases in the overshoot state")
-	require.Equal(t, baseAmt.MulRaw(3), res.TotalRatePerSecond.AmountOf(tc.pwrDenom),
-		"burn rate must sum all 3 active leases (3x baseline), not truncate at max_leases_per_tenant")
-	t.Logf("Overshoot verified: active_leases=%d (max_leases_per_tenant=2), rate/sec=%s",
+	require.Equal(t, uint64(1), res.ActiveLeaseCount)
+	require.Equal(t, baseAmt, res.TotalRatePerSecond.AmountOf(tc.pwrDenom),
+		"failed acknowledgement must not change the active burn rate")
+	t.Logf("Active-cap gate verified: active_leases=%d (max_leases_per_tenant=2), rate/sec=%s",
 		res.ActiveLeaseCount, res.TotalRatePerSecond)
 }

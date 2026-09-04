@@ -1,0 +1,24 @@
+# Send only the root Go module's build inputs to BuildKit. In particular, never
+# expose checkout credentials from .git or local operator files to the daemon,
+# layer cache, or remote builders.
+**
+!go.mod
+!go.sum
+!Makefile
+!api/
+!api/**
+!app/
+!app/**
+!cmd/
+!cmd/**
+!internal/
+!internal/collectionsutil/
+!internal/collectionsutil/**
+!pkg/
+!pkg/**
+!scripts/
+!scripts/build-ldflags.sh
+!scripts/install-wasmvm-muslc.sh
+!scripts/validate-build-inputs.sh
+!x/
+!x/**

@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	"fmt"
 	"math/rand"
 
 	sdkmath "cosmossdk.io/math"
@@ -16,6 +17,7 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
+// SKU simulation operation keys and weights configure message frequencies.
 const (
 	OpWeightMsgCreateProvider     = "op_weight_msg_sku_create_provider"     //nolint:gosec
 	OpWeightMsgUpdateProvider     = "op_weight_msg_sku_update_provider"     //nolint:gosec
@@ -30,6 +32,8 @@ const (
 	DefaultWeightMsgCreateSKU          = 50
 	DefaultWeightMsgUpdateSKU          = 30
 	DefaultWeightMsgDeactivateSKU      = 20
+
+	maxSimulationDeactivateSKULimit = uint64(20)
 )
 
 var (
@@ -44,7 +48,7 @@ func WeightedOperations(
 	txGen client.TxConfig,
 	k keeper.Keeper,
 ) []simtypes.WeightedOperation {
-	operations := make([]simtypes.WeightedOperation, 0)
+	operations := make([]simtypes.WeightedOperation, 0, 6)
 
 	var weightMsgCreateProvider int
 	appParams.GetOrGenerate(OpWeightMsgCreateProvider, &weightMsgCreateProvider, nil, func(_ *rand.Rand) {
@@ -115,9 +119,12 @@ func SimulateMsgCreateProvider(txGen client.TxConfig, k keeper.Keeper) simtypes.
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		msgType := sdk.MsgTypeURL(&types.MsgCreateProvider{})
 
-		simAccount, found := findAuthority(accs, k.GetAuthority())
+		simAccount, found, err := randomAuthorizedAccount(r, ctx, accs, k)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to select an authorized account"), nil, err
+		}
 		if !found {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "authority not found in accounts"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no authorized simulation account"), nil, nil
 		}
 
 		// Select random accounts for address and payout address
@@ -145,9 +152,12 @@ func SimulateMsgUpdateProvider(txGen client.TxConfig, k keeper.Keeper) simtypes.
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		msgType := sdk.MsgTypeURL(&types.MsgUpdateProvider{})
 
-		simAccount, found := findAuthority(accs, k.GetAuthority())
+		simAccount, found, err := randomAuthorizedAccount(r, ctx, accs, k)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to select an authorized account"), nil, err
+		}
 		if !found {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "authority not found in accounts"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no authorized simulation account"), nil, nil
 		}
 
 		allProviders, err := k.GetAllProviders(ctx)
@@ -173,8 +183,7 @@ func SimulateMsgUpdateProvider(txGen client.TxConfig, k keeper.Keeper) simtypes.
 			active = r.Float32() > 0.5 // 50% chance to reactivate
 		}
 
-		// Generate a random API URL
-		apiURL := generateRandomAPIURL(r)
+		apiURL, clearAPIURL := simulationProviderAPIURLUpdate(r)
 
 		msg := &types.MsgUpdateProvider{
 			Authority:     simAccount.Address.String(),
@@ -184,6 +193,7 @@ func SimulateMsgUpdateProvider(txGen client.TxConfig, k keeper.Keeper) simtypes.
 			MetaHash:      generateRandomBytes(r),
 			Active:        active,
 			ApiUrl:        apiURL,
+			ClearApiUrl:   clearAPIURL,
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
@@ -196,9 +206,12 @@ func SimulateMsgDeactivateProvider(txGen client.TxConfig, k keeper.Keeper) simty
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		msgType := sdk.MsgTypeURL(&types.MsgDeactivateProvider{})
 
-		simAccount, found := findAuthority(accs, k.GetAuthority())
+		simAccount, found, err := randomAuthorizedAccount(r, ctx, accs, k)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to select an authorized account"), nil, err
+		}
 		if !found {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "authority not found in accounts"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no authorized simulation account"), nil, nil
 		}
 
 		allProviders, err := k.GetAllProviders(ctx)
@@ -206,23 +219,27 @@ func SimulateMsgDeactivateProvider(txGen client.TxConfig, k keeper.Keeper) simty
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no providers found to deactivate"), nil, nil
 		}
 
-		// Find an active provider to deactivate
-		var activeProviders []types.Provider
-		for _, provider := range allProviders {
-			if provider.Active {
-				activeProviders = append(activeProviders, provider)
-			}
+		// Include inactive providers whose paginated SKU cascade is incomplete so
+		// simulation exercises the continuation state, not only the first page.
+		deactivatableProviders, err := providersRequiringDeactivation(allProviders, func(providerUUID string) (bool, error) {
+			return k.HasActiveSKUsByProvider(ctx, providerUUID)
+		})
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to inspect provider SKUs"), nil, err
 		}
 
-		if len(activeProviders) == 0 {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "no active providers found to deactivate"), nil, nil
+		if len(deactivatableProviders) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no providers require deactivation"), nil, nil
 		}
 
-		provider := activeProviders[r.Intn(len(activeProviders))]
+		provider := deactivatableProviders[r.Intn(len(deactivatableProviders))]
 
+		// Zero exercises the keeper default. A small explicit page exercises the
+		// has_more continuation path without creating unbounded work per block.
 		msg := &types.MsgDeactivateProvider{
 			Authority: simAccount.Address.String(),
 			Uuid:      provider.Uuid,
+			Limit:     simulationDeactivateLimit(r),
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
@@ -235,9 +252,12 @@ func SimulateMsgCreateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		msgType := sdk.MsgTypeURL(&types.MsgCreateSKU{})
 
-		simAccount, found := findAuthority(accs, k.GetAuthority())
+		simAccount, found, err := randomAuthorizedAccount(r, ctx, accs, k)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to select an authorized account"), nil, err
+		}
 		if !found {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "authority not found in accounts"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no authorized simulation account"), nil, nil
 		}
 
 		allProviders, err := k.GetAllProviders(ctx)
@@ -287,9 +307,12 @@ func SimulateMsgUpdateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		msgType := sdk.MsgTypeURL(&types.MsgUpdateSKU{})
 
-		simAccount, found := findAuthority(accs, k.GetAuthority())
+		simAccount, found, err := randomAuthorizedAccount(r, ctx, accs, k)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to select an authorized account"), nil, err
+		}
 		if !found {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "authority not found in accounts"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no authorized simulation account"), nil, nil
 		}
 
 		allSKUs, err := k.GetAllSKUs(ctx)
@@ -349,9 +372,12 @@ func SimulateMsgDeactivateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.O
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		msgType := sdk.MsgTypeURL(&types.MsgDeactivateSKU{})
 
-		simAccount, found := findAuthority(accs, k.GetAuthority())
+		simAccount, found, err := randomAuthorizedAccount(r, ctx, accs, k)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to select an authorized account"), nil, err
+		}
 		if !found {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "authority not found in accounts"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no authorized simulation account"), nil, nil
 		}
 
 		allSKUs, err := k.GetAllSKUs(ctx)
@@ -382,13 +408,75 @@ func SimulateMsgDeactivateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.O
 	}
 }
 
-func findAuthority(accs []simtypes.Account, authority string) (simtypes.Account, bool) {
-	for _, acc := range accs {
-		if acc.Address.String() == authority {
-			return acc, true
+func providersRequiringDeactivation(
+	providers []types.Provider,
+	hasActiveSKUs func(providerUUID string) (bool, error),
+) ([]types.Provider, error) {
+	deactivatable := make([]types.Provider, 0, len(providers))
+	for _, provider := range providers {
+		if provider.Active {
+			deactivatable = append(deactivatable, provider)
+			continue
+		}
+		hasActive, err := hasActiveSKUs(provider.Uuid)
+		if err != nil {
+			return nil, err
+		}
+		if hasActive {
+			deactivatable = append(deactivatable, provider)
 		}
 	}
-	return simtypes.Account{}, false
+	return deactivatable, nil
+}
+
+func simulationDeactivateLimit(r *rand.Rand) uint64 {
+	if r.Intn(2) == 0 {
+		return 0
+	}
+	return uint64(r.Intn(int(maxSimulationDeactivateSKULimit))) + 1 //nolint:gosec // bounded to [1, 20]
+}
+
+func randomAuthorizedAccount(
+	r *rand.Rand,
+	ctx sdk.Context,
+	accs []simtypes.Account,
+	k keeper.Keeper,
+) (simtypes.Account, bool, error) {
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return simtypes.Account{}, false, fmt.Errorf("get sku params: %w", err)
+	}
+
+	authorized, err := authorizedSimulationAccounts(accs, k.GetAuthority(), params)
+	if err != nil {
+		return simtypes.Account{}, false, err
+	}
+	if len(authorized) == 0 {
+		return simtypes.Account{}, false, nil
+	}
+	return authorized[r.Intn(len(authorized))], true, nil
+}
+
+// authorizedSimulationAccounts preserves simulation-account slice order. It
+// compares decoded address bytes so equivalent Bech32 spellings have one
+// identity and never relies on map iteration.
+func authorizedSimulationAccounts(
+	accs []simtypes.Account,
+	authority string,
+	params types.Params,
+) ([]simtypes.Account, error) {
+	authorityAddress, err := sdk.AccAddressFromBech32(authority)
+	if err != nil {
+		return nil, fmt.Errorf("decode sku authority: %w", err)
+	}
+
+	authorized := make([]simtypes.Account, 0, len(accs))
+	for _, acc := range accs {
+		if acc.Address.Equals(authorityAddress) || params.IsAllowed(acc.Address.String()) {
+			authorized = append(authorized, acc)
+		}
+	}
+	return authorized, nil
 }
 
 func generateRandomBytes(r *rand.Rand) []byte {
@@ -410,6 +498,19 @@ func generateRandomAPIURL(r *rand.Rand) string {
 		"api.hosting-service.org",
 	}
 	return "https://" + domains[r.Intn(len(domains))]
+}
+
+// simulationProviderAPIURLUpdate exercises all presence-aware update modes:
+// preserve the existing value, set/replace it, and explicitly clear it.
+func simulationProviderAPIURLUpdate(r *rand.Rand) (apiURL string, clearAPIURL bool) {
+	switch r.Intn(3) {
+	case 0:
+		return "", false
+	case 1:
+		return generateRandomAPIURL(r), false
+	default:
+		return "", true
+	}
 }
 
 // generateValidPrice generates a price that is exactly divisible by the unit's seconds.

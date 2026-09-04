@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
@@ -22,7 +23,11 @@ func NewMsgServerImpl(keeper Keeper) types.MsgServer {
 
 // isAuthorizedSender checks if the sender is the authority or in the allowed list.
 func (ms msgServer) isAuthorizedSender(ctx context.Context, sender string) (bool, error) {
-	if ms.k.GetAuthority() == sender {
+	isAuthority, err := accountAddressesEqual(ms.k.GetAuthority(), sender)
+	if err != nil {
+		return false, err
+	}
+	if isAuthority {
 		return true, nil
 	}
 	params, err := ms.k.GetParams(ctx)
@@ -30,6 +35,18 @@ func (ms msgServer) isAuthorizedSender(ctx context.Context, sender string) (bool
 		return false, err
 	}
 	return params.IsAllowed(sender), nil
+}
+
+func accountAddressesEqual(left, right string) (bool, error) {
+	leftAddress, err := sdk.AccAddressFromBech32(left)
+	if err != nil {
+		return false, err
+	}
+	rightAddress, err := sdk.AccAddressFromBech32(right)
+	if err != nil {
+		return false, err
+	}
+	return leftAddress.Equals(rightAddress), nil
 }
 
 // CreateProvider creates a new Provider.
@@ -50,11 +67,19 @@ func (ms msgServer) CreateProvider(ctx context.Context, req *types.MsgCreateProv
 	if err != nil {
 		return nil, err
 	}
+	address, err := sdk.AccAddressFromBech32(req.Address)
+	if err != nil {
+		return nil, types.ErrInvalidProvider.Wrapf("invalid provider address: %s", err)
+	}
+	payoutAddress, err := sdk.AccAddressFromBech32(req.PayoutAddress)
+	if err != nil {
+		return nil, types.ErrInvalidProvider.Wrapf("invalid payout address: %s", err)
+	}
 
 	provider := types.Provider{
 		Uuid:          uuid,
-		Address:       req.Address,
-		PayoutAddress: req.PayoutAddress,
+		Address:       address.String(),
+		PayoutAddress: payoutAddress.String(),
 		MetaHash:      req.MetaHash,
 		Active:        true,
 		ApiUrl:        req.ApiUrl,
@@ -69,13 +94,13 @@ func (ms msgServer) CreateProvider(ctx context.Context, req *types.MsgCreateProv
 		sdk.NewEvent(
 			types.EventTypeProviderCreated,
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, uuid),
-			sdk.NewAttribute(types.AttributeKeyAddress, req.Address),
-			sdk.NewAttribute(types.AttributeKeyPayoutAddress, req.PayoutAddress),
+			sdk.NewAttribute(types.AttributeKeyAddress, address.String()),
+			sdk.NewAttribute(types.AttributeKeyPayoutAddress, payoutAddress.String()),
 			sdk.NewAttribute(types.AttributeKeyCreatedBy, req.Authority),
 		),
 	})
 
-	ms.k.Logger().Info("Provider created", "uuid", uuid, "address", req.Address)
+	ms.k.Logger().Info("Provider created", "uuid", uuid, "address", address.String())
 
 	return &types.MsgCreateProviderResponse{Uuid: uuid}, nil
 }
@@ -96,6 +121,9 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 
 	existingProvider, err := ms.k.GetProvider(ctx, req.Uuid)
 	if err != nil {
+		if !errors.Is(err, types.ErrProviderNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.Uuid)
 	}
 
@@ -107,16 +135,27 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 
 	wasInactive := !existingProvider.Active
 
-	// Preserve existing api_url if not provided in the update
-	apiURL := req.ApiUrl
-	if apiURL == "" {
-		apiURL = existingProvider.ApiUrl
+	// Preserve the existing API URL for legacy clients, which omit api_url by
+	// sending its proto3 zero value. New clients can explicitly clear it.
+	apiURL := existingProvider.ApiUrl
+	if req.ClearApiUrl {
+		apiURL = ""
+	} else if req.ApiUrl != "" {
+		apiURL = req.ApiUrl
+	}
+	address, err := sdk.AccAddressFromBech32(req.Address)
+	if err != nil {
+		return nil, types.ErrInvalidProvider.Wrapf("invalid provider address: %s", err)
+	}
+	payoutAddress, err := sdk.AccAddressFromBech32(req.PayoutAddress)
+	if err != nil {
+		return nil, types.ErrInvalidProvider.Wrapf("invalid payout address: %s", err)
 	}
 
 	provider := types.Provider{
 		Uuid:          req.Uuid,
-		Address:       req.Address,
-		PayoutAddress: req.PayoutAddress,
+		Address:       address.String(),
+		PayoutAddress: payoutAddress.String(),
 		MetaHash:      req.MetaHash,
 		Active:        req.Active,
 		ApiUrl:        apiURL,
@@ -186,6 +225,9 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 
 	existingProvider, err := ms.k.GetProvider(ctx, req.Uuid)
 	if err != nil {
+		if !errors.Is(err, types.ErrProviderNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.Uuid)
 	}
 
@@ -291,6 +333,9 @@ func (ms msgServer) CreateSKU(ctx context.Context, req *types.MsgCreateSKU) (*ty
 	// Verify provider exists and is active
 	provider, err := ms.k.GetProvider(ctx, req.ProviderUuid)
 	if err != nil {
+		if !errors.Is(err, types.ErrProviderNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.ProviderUuid)
 	}
 	if !provider.Active {
@@ -352,6 +397,9 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 
 	existingSKU, err := ms.k.GetSKU(ctx, req.Uuid)
 	if err != nil {
+		if !errors.Is(err, types.ErrSKUNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrSKUNotFound.Wrapf("sku %s not found", req.Uuid)
 	}
 
@@ -362,6 +410,9 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 	// Verify provider still exists
 	provider, err := ms.k.GetProvider(ctx, existingSKU.ProviderUuid)
 	if err != nil {
+		if !errors.Is(err, types.ErrProviderNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", existingSKU.ProviderUuid)
 	}
 
@@ -445,6 +496,9 @@ func (ms msgServer) DeactivateSKU(ctx context.Context, req *types.MsgDeactivateS
 
 	existingSKU, err := ms.k.GetSKU(ctx, req.Uuid)
 	if err != nil {
+		if !errors.Is(err, types.ErrSKUNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrSKUNotFound.Wrapf("sku %s not found", req.Uuid)
 	}
 
@@ -474,7 +528,11 @@ func (ms msgServer) DeactivateSKU(ctx context.Context, req *types.MsgDeactivateS
 
 // UpdateParams updates the module parameters.
 func (ms msgServer) UpdateParams(ctx context.Context, req *types.MsgUpdateParams) (*types.MsgUpdateParamsResponse, error) {
-	if ms.k.GetAuthority() != req.Authority {
+	isAuthority, err := accountAddressesEqual(ms.k.GetAuthority(), req.Authority)
+	if err != nil {
+		return nil, types.ErrUnauthorized.Wrapf("failed to compare authority addresses: %s", err)
+	}
+	if !isAuthority {
 		return nil, types.ErrUnauthorized.Wrapf("expected %s, got %s", ms.k.GetAuthority(), req.Authority)
 	}
 

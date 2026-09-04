@@ -255,9 +255,10 @@ func TestAdversarial_CreditExhaustedDuringSettlement(t *testing.T) {
 	_ = resp
 }
 
-// TestAdversarial_ManualTransferDrainsCredit tests that if someone manually
-// transfers tokens OUT of a credit address (via bank send), settlement handles
-// the reduced balance gracefully without panicking or going negative.
+// TestAdversarial_ManualTransferDrainsCredit tests that an impossible
+// post-v4 under-backed reservation fails closed. Credit addresses cannot sign
+// on-chain transactions; this direct bank write models store corruption or a
+// privileged module violating the billing invariant.
 func TestAdversarial_ManualTransferDrainsCredit(t *testing.T) {
 	f := initFixture(t)
 	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
@@ -293,21 +294,24 @@ func TestAdversarial_ManualTransferDrainsCredit(t *testing.T) {
 	// Advance time
 	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(3600 * time.Second))
 
-	// Settlement should handle the reduced balance gracefully (transfer min(accrued, available))
-	resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+	// Settlement must not guess which lease loses its guarantee. It rejects the
+	// corrupted snapshot and leaves all remaining funds and billing state intact.
+	_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
 		Sender:     providerAddr.String(),
 		LeaseUuids: []string{leaseID},
 	})
-	require.NoError(t, err)
+	require.ErrorIs(t, err, types.ErrReservationInvariant)
 
-	// Provider should get at most 1 (the remaining balance)
-	require.True(t, resp.TotalAmounts.AmountOf(testDenom).LTE(sdkmath.NewInt(1)),
-		"provider received more than available balance")
-
-	// Credit balance should be non-negative
 	creditBal := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom)
-	require.True(t, creditBal.Amount.GTE(sdkmath.ZeroInt()),
-		"credit balance went negative: %s", creditBal.Amount)
+	require.Equal(t, sdkmath.OneInt(), creditBal.Amount)
+	require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, providerAddr, testDenom).IsZero())
+
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+	account, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(3600), account.ReservedAmounts.AmountOf(testDenom))
 }
 
 // =============================================================================
@@ -439,7 +443,7 @@ func TestAdversarial_MultiDenomPartialExhaustion(t *testing.T) {
 	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, createResp.LeaseUuid)
 	require.NoError(t, err)
 
-	shouldClose, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease)
+	shouldClose, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease, f.creditAccountForLease(t, &lease))
 	require.NoError(t, err)
 	require.True(t, shouldClose, "lease should auto-close when any denom is exhausted")
 
@@ -579,9 +583,11 @@ func TestAdversarial_SettlementWithMaxQuantity(t *testing.T) {
 				LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1)),
 			},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		LastSettledAt:              f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err = f.App.BillingKeeper.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
@@ -591,7 +597,7 @@ func TestAdversarial_SettlementWithMaxQuantity(t *testing.T) {
 
 	// Settle for 1 day — should be fine
 	settleTime := f.Ctx.BlockTime().Add(86400 * time.Second)
-	result, err := f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, settleTime)
+	result, err := f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, f.creditAccountForLease(t, &lease), settleTime)
 	require.NoError(t, err)
 
 	// Expected: 1 * 1_000_000_000 * 86400 = 86_400_000_000_000
@@ -600,9 +606,9 @@ func TestAdversarial_SettlementWithMaxQuantity(t *testing.T) {
 		"accrual with max quantity produced unexpected result")
 }
 
-// TestAdversarial_SettlementNearOverflowBoundary tests settlement at just under
-// the 100-year overflow boundary.
-func TestAdversarial_SettlementNearOverflowBoundary(t *testing.T) {
+// TestAdversarial_LongSettlementIntervalChargesExactly verifies that elapsed
+// time alone is not treated as overflow when the monetary result is valid.
+func TestAdversarial_LongSettlementIntervalChargesExactly(t *testing.T) {
 	f := initFixture(t)
 
 	tenant := f.TestAccs[0]
@@ -617,38 +623,25 @@ func TestAdversarial_SettlementNearOverflowBoundary(t *testing.T) {
 		Items: []types.LeaseItem{
 			{SkuUuid: testSKUUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		LastSettledAt:              f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 1,
+		Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
 	}
 	err := f.App.BillingKeeper.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
-	// Just under 100 years should succeed
-	justUnder := time.Duration(keeper.MaxDurationSeconds-1) * time.Second
-	settleTime := f.Ctx.BlockTime().Add(justUnder)
+	longDuration := 101 * 365 * 24 * time.Hour
+	settleTime := f.Ctx.BlockTime().Add(longDuration)
 
 	creditAddr, _ := types.DeriveCreditAddressFromBech32(tenant.String())
-	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1).Mul(sdkmath.NewInt(keeper.MaxDurationSeconds)))))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(4_000_000_000))))
 
-	result, err := f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, settleTime)
+	result, err := f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, f.creditAccountForLease(t, &lease), settleTime)
 	require.NoError(t, err)
-	require.True(t, result.AccruedAmounts.AmountOf(testDenom).IsPositive())
-
-	// Exactly at the boundary should still succeed
-	lease.LastSettledAt = f.Ctx.BlockTime() // Reset
-	exactBoundary := time.Duration(keeper.MaxDurationSeconds) * time.Second
-	settleTimeExact := f.Ctx.BlockTime().Add(exactBoundary)
-
-	_, err = f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, settleTimeExact)
-	require.NoError(t, err) // MaxDurationSeconds is inclusive (> check, not >=)
-
-	// One second over should fail
-	lease.LastSettledAt = f.Ctx.BlockTime() // Reset
-	overBoundary := time.Duration(keeper.MaxDurationSeconds+1) * time.Second
-	settleTimeOver := f.Ctx.BlockTime().Add(overBoundary)
-
-	_, err = f.App.BillingKeeper.PerformSettlement(f.Ctx, &lease, settleTimeOver)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "overflow")
+	expected := sdkmath.NewInt(int64(longDuration / time.Second))
+	require.Equal(t, expected, result.AccruedAmounts.AmountOf(testDenom))
+	require.Equal(t, expected, result.TransferAmounts.AmountOf(testDenom))
+	require.Empty(t, result.AccrualOverflow)
 }

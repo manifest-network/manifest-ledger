@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"testing"
 
-	sdkmath "cosmossdk.io/math"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
+
+	sdkmath "cosmossdk.io/math"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
@@ -32,46 +33,46 @@ func TestBillingState(t *testing.T) {
 	testSKUUUID2 = tc.skuUUID2
 
 	// Fund tenant2 for edge case tests
-	fundTenantCredit(t, ctx, tc, tc.tenant2, 100_000_000)
+	fundTenantCredit(ctx, t, tc, tc.tenant2)
 
 	// Run state and validation test suites
 	t.Run("EdgeCases", func(t *testing.T) {
-		testEdgeCasesIndependent(t, ctx, tc)
+		testEdgeCasesIndependent(ctx, t, tc)
 	})
 	t.Run("PendingLeaseExpiration", func(t *testing.T) {
-		testPendingLeaseExpirationIndependent(t, ctx, tc)
+		testPendingLeaseExpirationIndependent(ctx, t, tc)
 	})
 	t.Run("StateIndexQueries", func(t *testing.T) {
-		testStateIndexQueriesIndependent(t, ctx, tc)
+		testStateIndexQueriesIndependent(ctx, t, tc)
 	})
 	t.Run("MaxLeaseLimits", func(t *testing.T) {
-		testMaxLeaseLimitsIndependent(t, ctx, tc)
+		testMaxLeaseLimitsIndependent(ctx, t, tc)
 	})
 	t.Run("LeaseAcknowledgeEdgeCases", func(t *testing.T) {
-		testLeaseAcknowledgeEdgeCasesIndependent(t, ctx, tc)
+		testLeaseAcknowledgeEdgeCasesIndependent(ctx, t, tc)
 	})
 	t.Run("LeasePagination", func(t *testing.T) {
-		testLeasePaginationIndependent(t, ctx, tc)
+		testLeasePaginationIndependent(ctx, t, tc)
 	})
 	t.Run("InvalidUUID", func(t *testing.T) {
-		testBillingInvalidUUIDIndependent(t, ctx, tc)
+		testBillingInvalidUUIDIndependent(ctx, t, tc)
 	})
 	t.Run("EmptyParams", func(t *testing.T) {
-		testBillingEmptyParamsIndependent(t, ctx, tc)
+		testBillingEmptyParamsIndependent(ctx, t, tc)
 	})
 	t.Run("LeasesBySKUQuery", func(t *testing.T) {
-		testLeasesBySKUQueryIndependent(t, ctx, tc)
+		testLeasesBySKUQueryIndependent(ctx, t, tc)
 	})
 	t.Run("ProviderByAddressQuery", func(t *testing.T) {
-		testProviderByAddressQueryIndependent(t, ctx, tc)
+		testProviderByAddressQueryIndependent(ctx, t, tc)
 	})
 	t.Run("ParamUpperBounds", func(t *testing.T) {
-		testParamUpperBoundsIndependent(t, ctx, tc)
+		testParamUpperBoundsIndependent(ctx, t, tc)
 	})
 }
 
 // testEdgeCasesIndependent tests edge cases.
-func testEdgeCasesIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testEdgeCasesIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Edge Cases ===")
 
 	t.Run("success: remaining credit stays after lease close", func(t *testing.T) {
@@ -129,7 +130,7 @@ func testEdgeCasesIndependent(t *testing.T, ctx context.Context, tc *billingTest
 		var closedLeaseUUID string
 		for _, lease := range leases.Leases {
 			if lease.GetState() == billingtypes.LEASE_STATE_CLOSED {
-				closedLeaseUUID = lease.Uuid
+				closedLeaseUUID = lease.UUID
 				break
 			}
 		}
@@ -152,7 +153,7 @@ func testEdgeCasesIndependent(t *testing.T, ctx context.Context, tc *billingTest
 }
 
 // testPendingLeaseExpirationIndependent tests pending lease expiration.
-func testPendingLeaseExpirationIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testPendingLeaseExpirationIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Pending Lease Expiration ===")
 
 	// Create a new tenant for this test
@@ -336,7 +337,7 @@ func testPendingLeaseExpirationIndependent(t *testing.T, ctx context.Context, tc
 }
 
 // testStateIndexQueriesIndependent tests efficient lease state index queries.
-func testStateIndexQueriesIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testStateIndexQueriesIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing State Index Queries ===")
 
 	// Create a new tenant for isolated state testing
@@ -345,7 +346,7 @@ func testStateIndexQueriesIndependent(t *testing.T, ctx context.Context, tc *bil
 
 	// First send PWR to tenant so they can fund their credit
 	node := tc.chain.GetNode()
-	err := node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err := node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: stateTestTenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(100_000_000_000), // 100B PWR - enough for multiple leases
@@ -443,7 +444,7 @@ func testStateIndexQueriesIndependent(t *testing.T, ctx context.Context, tc *bil
 		// Our pending lease should be in the results
 		found := false
 		for _, lease := range res.Leases {
-			if lease.Uuid == pendingLeaseUUID {
+			if lease.UUID == pendingLeaseUUID {
 				found = true
 				break
 			}
@@ -464,7 +465,7 @@ func testStateIndexQueriesIndependent(t *testing.T, ctx context.Context, tc *bil
 		// Our active lease should be in the results
 		found := false
 		for _, lease := range res.Leases {
-			if lease.Uuid == activeLeaseUUID {
+			if lease.UUID == activeLeaseUUID {
 				found = true
 				break
 			}
@@ -485,7 +486,7 @@ func testStateIndexQueriesIndependent(t *testing.T, ctx context.Context, tc *bil
 		// Our closed lease should be in the results
 		found := false
 		for _, lease := range res.Leases {
-			if lease.Uuid == closedLeaseUUID {
+			if lease.UUID == closedLeaseUUID {
 				found = true
 				break
 			}
@@ -501,13 +502,13 @@ func testStateIndexQueriesIndependent(t *testing.T, ctx context.Context, tc *bil
 		// All returned leases should be PENDING and from this provider
 		for _, lease := range res.Leases {
 			require.Equal(t, billingtypes.LEASE_STATE_PENDING, lease.GetState(), "all leases should be pending")
-			require.Equal(t, tc.providerUUID, lease.ProviderUuid, "all leases should be from test provider")
+			require.Equal(t, tc.providerUUID, lease.ProviderUUID, "all leases should be from test provider")
 		}
 
 		// Our pending lease should be in the results
 		found := false
 		for _, lease := range res.Leases {
-			if lease.Uuid == pendingLeaseUUID {
+			if lease.UUID == pendingLeaseUUID {
 				found = true
 				break
 			}
@@ -529,7 +530,7 @@ func testStateIndexQueriesIndependent(t *testing.T, ctx context.Context, tc *bil
 		// Our active lease should be in the results
 		found := false
 		for _, lease := range res.Leases {
-			if lease.Uuid == activeLeaseUUID {
+			if lease.UUID == activeLeaseUUID {
 				found = true
 				break
 			}
@@ -545,13 +546,13 @@ func testStateIndexQueriesIndependent(t *testing.T, ctx context.Context, tc *bil
 
 		for _, lease := range res.Leases {
 			require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.GetState())
-			require.Equal(t, tc.providerUUID, lease.ProviderUuid)
+			require.Equal(t, tc.providerUUID, lease.ProviderUUID)
 		}
 
 		// Our closed lease should be in the results
 		found := false
 		for _, lease := range res.Leases {
-			if lease.Uuid == closedLeaseUUID {
+			if lease.UUID == closedLeaseUUID {
 				found = true
 				break
 			}
@@ -576,7 +577,7 @@ func testStateIndexQueriesIndependent(t *testing.T, ctx context.Context, tc *bil
 
 		// Pending lease should NOT be in active results
 		for _, lease := range res.Leases {
-			require.NotEqual(t, pendingLeaseUUID, lease.Uuid, "pending lease should not appear in active query")
+			require.NotEqual(t, pendingLeaseUUID, lease.UUID, "pending lease should not appear in active query")
 		}
 		t.Log("Correctly excluded pending lease from active query")
 	})
@@ -587,7 +588,7 @@ func testStateIndexQueriesIndependent(t *testing.T, ctx context.Context, tc *bil
 
 		// Closed lease should NOT be in active results
 		for _, lease := range res.Leases {
-			require.NotEqual(t, closedLeaseUUID, lease.Uuid, "closed lease should not appear in active query")
+			require.NotEqual(t, closedLeaseUUID, lease.UUID, "closed lease should not appear in active query")
 		}
 		t.Log("Correctly excluded closed lease from active query")
 	})
@@ -619,7 +620,7 @@ func testStateIndexQueriesIndependent(t *testing.T, ctx context.Context, tc *bil
 }
 
 // testMaxLeaseLimitsIndependent tests max_leases_per_tenant and max_pending_leases_per_tenant limits.
-func testMaxLeaseLimitsIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testMaxLeaseLimitsIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Max Lease Limits ===")
 
 	node := tc.chain.GetNode()
@@ -629,7 +630,7 @@ func testMaxLeaseLimitsIndependent(t *testing.T, ctx context.Context, tc *billin
 	require.NoError(t, err)
 
 	// Send PWR tokens to tenant first
-	err = node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err = node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: limitTestTenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(200_000_000), // 200 PWR (generous amount for multiple leases)
@@ -694,10 +695,10 @@ func testMaxLeaseLimitsIndependent(t *testing.T, ctx context.Context, tc *billin
 		leases, err := helpers.BillingQueryLeasesByTenant(ctx, tc.chain, limitTestTenant.FormattedAddress(), "pending")
 		require.NoError(t, err)
 		for _, lease := range leases.Leases {
-			ackRes, _ := helpers.BillingAcknowledgeLease(ctx, tc.chain, tc.providerWallet, lease.Uuid)
+			ackRes, _ := helpers.BillingAcknowledgeLease(ctx, tc.chain, tc.providerWallet, lease.UUID)
 			ackTxRes, _ := tc.chain.GetTransaction(ackRes.TxHash)
 			if ackTxRes.Code == 0 {
-				_, _ = helpers.BillingCloseLease(ctx, tc.chain, limitTestTenant, lease.Uuid)
+				_, _ = helpers.BillingCloseLease(ctx, tc.chain, limitTestTenant, lease.UUID)
 			}
 		}
 
@@ -786,7 +787,7 @@ func testMaxLeaseLimitsIndependent(t *testing.T, ctx context.Context, tc *billin
 }
 
 // testLeaseAcknowledgeEdgeCasesIndependent tests edge cases for lease acknowledgment.
-func testLeaseAcknowledgeEdgeCasesIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testLeaseAcknowledgeEdgeCasesIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Lease Acknowledge Edge Cases ===")
 
 	node := tc.chain.GetNode()
@@ -809,7 +810,7 @@ func testLeaseAcknowledgeEdgeCasesIndependent(t *testing.T, ctx context.Context,
 	require.NoError(t, err)
 
 	// Send PWR tokens to tenant first
-	err = node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err = node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: ackTestTenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(50_000_000), // 50 PWR
@@ -1010,7 +1011,7 @@ func testLeaseAcknowledgeEdgeCasesIndependent(t *testing.T, ctx context.Context,
 }
 
 // testLeasePaginationIndependent tests pagination for lease queries.
-func testLeasePaginationIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testLeasePaginationIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Lease Pagination ===")
 
 	node := tc.chain.GetNode()
@@ -1020,7 +1021,7 @@ func testLeasePaginationIndependent(t *testing.T, ctx context.Context, tc *billi
 	require.NoError(t, err)
 
 	// Send PWR tokens to tenant first
-	err = node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err = node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: paginationTenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(200_000_000), // 200 PWR (generous amount for 5 leases)
@@ -1124,7 +1125,7 @@ func testLeasePaginationIndependent(t *testing.T, ctx context.Context, tc *billi
 }
 
 // testBillingInvalidUUIDIndependent tests that invalid UUID formats are rejected.
-func testBillingInvalidUUIDIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testBillingInvalidUUIDIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Billing Invalid UUID Format Rejection ===")
 
 	node := tc.chain.GetNode()
@@ -1147,7 +1148,7 @@ func testBillingInvalidUUIDIndependent(t *testing.T, ctx context.Context, tc *bi
 	require.NoError(t, err)
 
 	// Send PWR tokens to tenant first
-	err = node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err = node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: invalidUUIDTenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(10_000_000), // 10 PWR
@@ -1204,7 +1205,7 @@ func testBillingInvalidUUIDIndependent(t *testing.T, ctx context.Context, tc *bi
 }
 
 // testBillingEmptyParamsIndependent tests that empty string parameters are rejected.
-func testBillingEmptyParamsIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testBillingEmptyParamsIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Billing Empty String Parameter Rejection ===")
 
 	node := tc.chain.GetNode()
@@ -1214,7 +1215,7 @@ func testBillingEmptyParamsIndependent(t *testing.T, ctx context.Context, tc *bi
 	require.NoError(t, err)
 
 	// Send PWR tokens to tenant first
-	err = node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err = node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: emptyParamsTenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(10_000_000), // 10 PWR
@@ -1261,7 +1262,7 @@ func testBillingEmptyParamsIndependent(t *testing.T, ctx context.Context, tc *bi
 }
 
 // testLeasesBySKUQueryIndependent tests the leases-by-sku query.
-func testLeasesBySKUQueryIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testLeasesBySKUQueryIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Leases By SKU Query ===")
 
 	// Create a fresh tenant and lease for this test
@@ -1293,7 +1294,7 @@ func testLeasesBySKUQueryIndependent(t *testing.T, ctx context.Context, tc *bill
 		// Verify our lease is in the results
 		found := false
 		for _, lease := range res.Leases {
-			if lease.Uuid == leaseUUID {
+			if lease.UUID == leaseUUID {
 				found = true
 				break
 			}
@@ -1338,7 +1339,7 @@ func testLeasesBySKUQueryIndependent(t *testing.T, ctx context.Context, tc *bill
 }
 
 // testParamUpperBoundsIndependent tests that parameter upper bounds are enforced via MsgUpdateParams.
-func testParamUpperBoundsIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testParamUpperBoundsIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Parameter Upper Bounds ===")
 
 	// Get current params to use as baseline
@@ -1436,7 +1437,7 @@ func testParamUpperBoundsIndependent(t *testing.T, ctx context.Context, tc *bill
 }
 
 // testProviderByAddressQueryIndependent tests the provider-by-address query in the SKU module.
-func testProviderByAddressQueryIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testProviderByAddressQueryIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Provider By Address Query ===")
 
 	t.Run("success: query provider by address", func(t *testing.T) {

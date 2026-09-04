@@ -12,6 +12,7 @@ Test Coverage:
 package types
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -161,6 +162,18 @@ func TestMsgCreateSKUValidate(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "exceeds maximum length",
+		},
+		{
+			name: "invalid: multibyte name exceeds byte limit",
+			msg: &MsgCreateSKU{
+				Authority:    authority.String(),
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Name:         strings.Repeat("é", MaxSKUNameLength/2+1),
+				Unit:         Unit_UNIT_PER_HOUR,
+				BasePrice:    sdk.NewCoin(testDenom, math.NewInt(3600)),
+			},
+			expectErr: true,
+			errMsg:    "maximum length of 256 bytes",
 		},
 		{
 			name: "invalid: unspecified unit",
@@ -729,7 +742,7 @@ func TestValidateAPIURL(t *testing.T) {
 			expectErr: true,
 			errMsg:    "must use HTTPS scheme",
 		},
-		{
+		{ //nolint:gosec // deliberately invalid credential-bearing URL
 			name:      "invalid: contains credentials",
 			apiURL:    "https://user:pass@example.com",
 			expectErr: true,
@@ -740,6 +753,12 @@ func TestValidateAPIURL(t *testing.T) {
 			apiURL:    "https://example.com/" + string(make([]byte, MaxAPIURLLength)),
 			expectErr: true,
 			errMsg:    "exceeds maximum length",
+		},
+		{
+			name:      "invalid: multibyte URL exceeds byte limit",
+			apiURL:    "https://example.com/" + strings.Repeat("é", MaxAPIURLLength/2),
+			expectErr: true,
+			errMsg:    "maximum length of 2048 bytes",
 		},
 	}
 
@@ -845,6 +864,32 @@ func TestMsgUpdateProviderValidateNewFields(t *testing.T) {
 				Active:        true,
 			},
 			expectErr: false,
+		},
+		{
+			name: "valid: explicitly clear api_url",
+			msg: &MsgUpdateProvider{
+				Authority:     authority.String(),
+				Uuid:          "01912345-6789-7abc-8def-0123456789ac",
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				Active:        true,
+				ClearApiUrl:   true,
+			},
+			expectErr: false,
+		},
+		{
+			name: "invalid: set and clear api_url",
+			msg: &MsgUpdateProvider{
+				Authority:     authority.String(),
+				Uuid:          "01912345-6789-7abc-8def-0123456789ac",
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				Active:        true,
+				ApiUrl:        "https://api.provider.com",
+				ClearApiUrl:   true,
+			},
+			expectErr: true,
+			errMsg:    "clear_api_url cannot be true when api_url is non-empty",
 		},
 		{
 			name: "invalid: HTTP API URL",

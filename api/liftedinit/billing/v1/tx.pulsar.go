@@ -2,10 +2,10 @@
 package billingv1
 
 import (
+	v1beta1 "cosmossdk.io/api/cosmos/base/v1beta1"
 	fmt "fmt"
 	_ "github.com/cosmos/cosmos-proto"
 	runtime "github.com/cosmos/cosmos-proto/runtime"
-	types "cosmossdk.io/api/cosmos/base/v1beta1"
 	_ "github.com/cosmos/cosmos-sdk/types/msgservice"
 	_ "github.com/cosmos/cosmos-sdk/types/tx/amino"
 	_ "github.com/cosmos/gogoproto/gogoproto"
@@ -741,7 +741,7 @@ func (x *fastReflection_MsgFundCredit) Set(fd protoreflect.FieldDescriptor, valu
 	case "liftedinit.billing.v1.MsgFundCredit.tenant":
 		x.Tenant = value.Interface().(string)
 	case "liftedinit.billing.v1.MsgFundCredit.amount":
-		x.Amount = value.Message().Interface().(*types.Coin)
+		x.Amount = value.Message().Interface().(*v1beta1.Coin)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgFundCredit"))
@@ -764,7 +764,7 @@ func (x *fastReflection_MsgFundCredit) Mutable(fd protoreflect.FieldDescriptor) 
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgFundCredit.amount":
 		if x.Amount == nil {
-			x.Amount = new(types.Coin)
+			x.Amount = new(v1beta1.Coin)
 		}
 		return protoreflect.ValueOfMessage(x.Amount.ProtoReflect())
 	case "liftedinit.billing.v1.MsgFundCredit.sender":
@@ -789,7 +789,7 @@ func (x *fastReflection_MsgFundCredit) NewField(fd protoreflect.FieldDescriptor)
 	case "liftedinit.billing.v1.MsgFundCredit.tenant":
 		return protoreflect.ValueOfString("")
 	case "liftedinit.billing.v1.MsgFundCredit.amount":
-		m := new(types.Coin)
+		m := new(v1beta1.Coin)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	default:
 		if fd.IsExtension() {
@@ -1072,7 +1072,7 @@ func (x *fastReflection_MsgFundCredit) ProtoMethods() *protoiface.Methods {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
 				if x.Amount == nil {
-					x.Amount = &types.Coin{}
+					x.Amount = &v1beta1.Coin{}
 				}
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Amount); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
@@ -1287,7 +1287,7 @@ func (x *fastReflection_MsgFundCreditResponse) Set(fd protoreflect.FieldDescript
 	case "liftedinit.billing.v1.MsgFundCreditResponse.credit_address":
 		x.CreditAddress = value.Interface().(string)
 	case "liftedinit.billing.v1.MsgFundCreditResponse.new_balance":
-		x.NewBalance = value.Message().Interface().(*types.Coin)
+		x.NewBalance = value.Message().Interface().(*v1beta1.Coin)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgFundCreditResponse"))
@@ -1310,7 +1310,7 @@ func (x *fastReflection_MsgFundCreditResponse) Mutable(fd protoreflect.FieldDesc
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgFundCreditResponse.new_balance":
 		if x.NewBalance == nil {
-			x.NewBalance = new(types.Coin)
+			x.NewBalance = new(v1beta1.Coin)
 		}
 		return protoreflect.ValueOfMessage(x.NewBalance.ProtoReflect())
 	case "liftedinit.billing.v1.MsgFundCreditResponse.credit_address":
@@ -1331,7 +1331,7 @@ func (x *fastReflection_MsgFundCreditResponse) NewField(fd protoreflect.FieldDes
 	case "liftedinit.billing.v1.MsgFundCreditResponse.credit_address":
 		return protoreflect.ValueOfString("")
 	case "liftedinit.billing.v1.MsgFundCreditResponse.new_balance":
-		m := new(types.Coin)
+		m := new(v1beta1.Coin)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	default:
 		if fd.IsExtension() {
@@ -1571,7 +1571,7 @@ func (x *fastReflection_MsgFundCreditResponse) ProtoMethods() *protoiface.Method
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
 				if x.NewBalance == nil {
-					x.NewBalance = &types.Coin{}
+					x.NewBalance = &v1beta1.Coin{}
 				}
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.NewBalance); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
@@ -4375,7 +4375,7 @@ func (x *fastReflection_MsgCloseLease) ProtoMethods() *protoiface.Methods {
 var _ protoreflect.List = (*_MsgCloseLeaseResponse_3_list)(nil)
 
 type _MsgCloseLeaseResponse_3_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta1.Coin
 }
 
 func (x *_MsgCloseLeaseResponse_3_list) Len() int {
@@ -4391,18 +4391,18 @@ func (x *_MsgCloseLeaseResponse_3_list) Get(i int) protoreflect.Value {
 
 func (x *_MsgCloseLeaseResponse_3_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_MsgCloseLeaseResponse_3_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_MsgCloseLeaseResponse_3_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -4415,7 +4415,7 @@ func (x *_MsgCloseLeaseResponse_3_list) Truncate(n int) {
 }
 
 func (x *_MsgCloseLeaseResponse_3_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -4647,7 +4647,7 @@ func (x *fastReflection_MsgCloseLeaseResponse) Mutable(fd protoreflect.FieldDesc
 		return protoreflect.ValueOfMessage(x.ClosedAt.ProtoReflect())
 	case "liftedinit.billing.v1.MsgCloseLeaseResponse.total_settled_amounts":
 		if x.TotalSettledAmounts == nil {
-			x.TotalSettledAmounts = []*types.Coin{}
+			x.TotalSettledAmounts = []*v1beta1.Coin{}
 		}
 		value := &_MsgCloseLeaseResponse_3_list{list: &x.TotalSettledAmounts}
 		return protoreflect.ValueOfList(value)
@@ -4672,7 +4672,7 @@ func (x *fastReflection_MsgCloseLeaseResponse) NewField(fd protoreflect.FieldDes
 	case "liftedinit.billing.v1.MsgCloseLeaseResponse.closed_count":
 		return protoreflect.ValueOfUint64(uint64(0))
 	case "liftedinit.billing.v1.MsgCloseLeaseResponse.total_settled_amounts":
-		list := []*types.Coin{}
+		list := []*v1beta1.Coin{}
 		return protoreflect.ValueOfList(&_MsgCloseLeaseResponse_3_list{list: &list})
 	default:
 		if fd.IsExtension() {
@@ -4953,7 +4953,7 @@ func (x *fastReflection_MsgCloseLeaseResponse) ProtoMethods() *protoiface.Method
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.TotalSettledAmounts = append(x.TotalSettledAmounts, &types.Coin{})
+				x.TotalSettledAmounts = append(x.TotalSettledAmounts, &v1beta1.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.TotalSettledAmounts[len(x.TotalSettledAmounts)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -5718,7 +5718,7 @@ func (x *fastReflection_MsgWithdraw) ProtoMethods() *protoiface.Methods {
 var _ protoreflect.List = (*_MsgWithdrawResponse_1_list)(nil)
 
 type _MsgWithdrawResponse_1_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta1.Coin
 }
 
 func (x *_MsgWithdrawResponse_1_list) Len() int {
@@ -5734,18 +5734,18 @@ func (x *_MsgWithdrawResponse_1_list) Get(i int) protoreflect.Value {
 
 func (x *_MsgWithdrawResponse_1_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_MsgWithdrawResponse_1_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_MsgWithdrawResponse_1_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -5758,7 +5758,7 @@ func (x *_MsgWithdrawResponse_1_list) Truncate(n int) {
 }
 
 func (x *_MsgWithdrawResponse_1_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -5766,13 +5766,60 @@ func (x *_MsgWithdrawResponse_1_list) IsValid() bool {
 	return x.list != nil
 }
 
+var _ protoreflect.List = (*_MsgWithdrawResponse_6_list)(nil)
+
+type _MsgWithdrawResponse_6_list struct {
+	list *[]string
+}
+
+func (x *_MsgWithdrawResponse_6_list) Len() int {
+	if x.list == nil {
+		return 0
+	}
+	return len(*x.list)
+}
+
+func (x *_MsgWithdrawResponse_6_list) Get(i int) protoreflect.Value {
+	return protoreflect.ValueOfString((*x.list)[i])
+}
+
+func (x *_MsgWithdrawResponse_6_list) Set(i int, value protoreflect.Value) {
+	valueUnwrapped := value.String()
+	concreteValue := valueUnwrapped
+	(*x.list)[i] = concreteValue
+}
+
+func (x *_MsgWithdrawResponse_6_list) Append(value protoreflect.Value) {
+	valueUnwrapped := value.String()
+	concreteValue := valueUnwrapped
+	*x.list = append(*x.list, concreteValue)
+}
+
+func (x *_MsgWithdrawResponse_6_list) AppendMutable() protoreflect.Value {
+	panic(fmt.Errorf("AppendMutable can not be called on message MsgWithdrawResponse at list field FailedLeaseUuids as it is not of Message kind"))
+}
+
+func (x *_MsgWithdrawResponse_6_list) Truncate(n int) {
+	*x.list = (*x.list)[:n]
+}
+
+func (x *_MsgWithdrawResponse_6_list) NewElement() protoreflect.Value {
+	v := ""
+	return protoreflect.ValueOfString(v)
+}
+
+func (x *_MsgWithdrawResponse_6_list) IsValid() bool {
+	return x.list != nil
+}
+
 var (
-	md_MsgWithdrawResponse                  protoreflect.MessageDescriptor
-	fd_MsgWithdrawResponse_total_amounts    protoreflect.FieldDescriptor
-	fd_MsgWithdrawResponse_payout_address   protoreflect.FieldDescriptor
-	fd_MsgWithdrawResponse_withdrawal_count protoreflect.FieldDescriptor
-	fd_MsgWithdrawResponse_has_more         protoreflect.FieldDescriptor
-	fd_MsgWithdrawResponse_next_key         protoreflect.FieldDescriptor
+	md_MsgWithdrawResponse                    protoreflect.MessageDescriptor
+	fd_MsgWithdrawResponse_total_amounts      protoreflect.FieldDescriptor
+	fd_MsgWithdrawResponse_payout_address     protoreflect.FieldDescriptor
+	fd_MsgWithdrawResponse_withdrawal_count   protoreflect.FieldDescriptor
+	fd_MsgWithdrawResponse_has_more           protoreflect.FieldDescriptor
+	fd_MsgWithdrawResponse_next_key           protoreflect.FieldDescriptor
+	fd_MsgWithdrawResponse_failed_lease_uuids protoreflect.FieldDescriptor
 )
 
 func init() {
@@ -5783,6 +5830,7 @@ func init() {
 	fd_MsgWithdrawResponse_withdrawal_count = md_MsgWithdrawResponse.Fields().ByName("withdrawal_count")
 	fd_MsgWithdrawResponse_has_more = md_MsgWithdrawResponse.Fields().ByName("has_more")
 	fd_MsgWithdrawResponse_next_key = md_MsgWithdrawResponse.Fields().ByName("next_key")
+	fd_MsgWithdrawResponse_failed_lease_uuids = md_MsgWithdrawResponse.Fields().ByName("failed_lease_uuids")
 }
 
 var _ protoreflect.Message = (*fastReflection_MsgWithdrawResponse)(nil)
@@ -5880,6 +5928,12 @@ func (x *fastReflection_MsgWithdrawResponse) Range(f func(protoreflect.FieldDesc
 			return
 		}
 	}
+	if len(x.FailedLeaseUuids) != 0 {
+		value := protoreflect.ValueOfList(&_MsgWithdrawResponse_6_list{list: &x.FailedLeaseUuids})
+		if !f(fd_MsgWithdrawResponse_failed_lease_uuids, value) {
+			return
+		}
+	}
 }
 
 // Has reports whether a field is populated.
@@ -5905,6 +5959,8 @@ func (x *fastReflection_MsgWithdrawResponse) Has(fd protoreflect.FieldDescriptor
 		return x.HasMore != false
 	case "liftedinit.billing.v1.MsgWithdrawResponse.next_key":
 		return len(x.NextKey) != 0
+	case "liftedinit.billing.v1.MsgWithdrawResponse.failed_lease_uuids":
+		return len(x.FailedLeaseUuids) != 0
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgWithdrawResponse"))
@@ -5931,6 +5987,8 @@ func (x *fastReflection_MsgWithdrawResponse) Clear(fd protoreflect.FieldDescript
 		x.HasMore = false
 	case "liftedinit.billing.v1.MsgWithdrawResponse.next_key":
 		x.NextKey = nil
+	case "liftedinit.billing.v1.MsgWithdrawResponse.failed_lease_uuids":
+		x.FailedLeaseUuids = nil
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgWithdrawResponse"))
@@ -5965,6 +6023,12 @@ func (x *fastReflection_MsgWithdrawResponse) Get(descriptor protoreflect.FieldDe
 	case "liftedinit.billing.v1.MsgWithdrawResponse.next_key":
 		value := x.NextKey
 		return protoreflect.ValueOfBytes(value)
+	case "liftedinit.billing.v1.MsgWithdrawResponse.failed_lease_uuids":
+		if len(x.FailedLeaseUuids) == 0 {
+			return protoreflect.ValueOfList(&_MsgWithdrawResponse_6_list{})
+		}
+		listValue := &_MsgWithdrawResponse_6_list{list: &x.FailedLeaseUuids}
+		return protoreflect.ValueOfList(listValue)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgWithdrawResponse"))
@@ -5997,6 +6061,10 @@ func (x *fastReflection_MsgWithdrawResponse) Set(fd protoreflect.FieldDescriptor
 		x.HasMore = value.Bool()
 	case "liftedinit.billing.v1.MsgWithdrawResponse.next_key":
 		x.NextKey = value.Bytes()
+	case "liftedinit.billing.v1.MsgWithdrawResponse.failed_lease_uuids":
+		lv := value.List()
+		clv := lv.(*_MsgWithdrawResponse_6_list)
+		x.FailedLeaseUuids = *clv.list
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgWithdrawResponse"))
@@ -6019,9 +6087,15 @@ func (x *fastReflection_MsgWithdrawResponse) Mutable(fd protoreflect.FieldDescri
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgWithdrawResponse.total_amounts":
 		if x.TotalAmounts == nil {
-			x.TotalAmounts = []*types.Coin{}
+			x.TotalAmounts = []*v1beta1.Coin{}
 		}
 		value := &_MsgWithdrawResponse_1_list{list: &x.TotalAmounts}
+		return protoreflect.ValueOfList(value)
+	case "liftedinit.billing.v1.MsgWithdrawResponse.failed_lease_uuids":
+		if x.FailedLeaseUuids == nil {
+			x.FailedLeaseUuids = []string{}
+		}
+		value := &_MsgWithdrawResponse_6_list{list: &x.FailedLeaseUuids}
 		return protoreflect.ValueOfList(value)
 	case "liftedinit.billing.v1.MsgWithdrawResponse.payout_address":
 		panic(fmt.Errorf("field payout_address of message liftedinit.billing.v1.MsgWithdrawResponse is not mutable"))
@@ -6045,7 +6119,7 @@ func (x *fastReflection_MsgWithdrawResponse) Mutable(fd protoreflect.FieldDescri
 func (x *fastReflection_MsgWithdrawResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
 	case "liftedinit.billing.v1.MsgWithdrawResponse.total_amounts":
-		list := []*types.Coin{}
+		list := []*v1beta1.Coin{}
 		return protoreflect.ValueOfList(&_MsgWithdrawResponse_1_list{list: &list})
 	case "liftedinit.billing.v1.MsgWithdrawResponse.payout_address":
 		return protoreflect.ValueOfString("")
@@ -6055,6 +6129,9 @@ func (x *fastReflection_MsgWithdrawResponse) NewField(fd protoreflect.FieldDescr
 		return protoreflect.ValueOfBool(false)
 	case "liftedinit.billing.v1.MsgWithdrawResponse.next_key":
 		return protoreflect.ValueOfBytes(nil)
+	case "liftedinit.billing.v1.MsgWithdrawResponse.failed_lease_uuids":
+		list := []string{}
+		return protoreflect.ValueOfList(&_MsgWithdrawResponse_6_list{list: &list})
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.billing.v1.MsgWithdrawResponse"))
@@ -6144,6 +6221,12 @@ func (x *fastReflection_MsgWithdrawResponse) ProtoMethods() *protoiface.Methods 
 		if l > 0 {
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
+		if len(x.FailedLeaseUuids) > 0 {
+			for _, s := range x.FailedLeaseUuids {
+				l = len(s)
+				n += 1 + l + runtime.Sov(uint64(l))
+			}
+		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
 		}
@@ -6172,6 +6255,15 @@ func (x *fastReflection_MsgWithdrawResponse) ProtoMethods() *protoiface.Methods 
 		if x.unknownFields != nil {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
+		}
+		if len(x.FailedLeaseUuids) > 0 {
+			for iNdEx := len(x.FailedLeaseUuids) - 1; iNdEx >= 0; iNdEx-- {
+				i -= len(x.FailedLeaseUuids[iNdEx])
+				copy(dAtA[i:], x.FailedLeaseUuids[iNdEx])
+				i = runtime.EncodeVarint(dAtA, i, uint64(len(x.FailedLeaseUuids[iNdEx])))
+				i--
+				dAtA[i] = 0x32
+			}
 		}
 		if len(x.NextKey) > 0 {
 			i -= len(x.NextKey)
@@ -6296,7 +6388,7 @@ func (x *fastReflection_MsgWithdrawResponse) ProtoMethods() *protoiface.Methods 
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.TotalAmounts = append(x.TotalAmounts, &types.Coin{})
+				x.TotalAmounts = append(x.TotalAmounts, &v1beta1.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.TotalAmounts[len(x.TotalAmounts)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -6405,6 +6497,38 @@ func (x *fastReflection_MsgWithdrawResponse) ProtoMethods() *protoiface.Methods 
 				if x.NextKey == nil {
 					x.NextKey = []byte{}
 				}
+				iNdEx = postIndex
+			case 6:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field FailedLeaseUuids", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.FailedLeaseUuids = append(x.FailedLeaseUuids, string(dAtA[iNdEx:postIndex]))
 				iNdEx = postIndex
 			default:
 				iNdEx = preIndex
@@ -11428,14 +11552,16 @@ type LeaseItemInput struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// sku_uuid is the UUID of the SKU to lease.
+	// sku_uuid is the SKU's canonical lowercase UUIDv7. Empty, malformed,
+	// uppercase, or non-v7 values fail message validation.
 	SkuUuid string `protobuf:"bytes,1,opt,name=sku_uuid,json=skuUuid,proto3" json:"sku_uuid,omitempty"`
 	// quantity is the number of instances.
 	Quantity uint64 `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	// service_name is an optional DNS-label identifier for this item within a stack deployment.
-	// Must be a valid RFC 1123 DNS label: 1-63 lowercase alphanumeric characters or hyphens,
-	// must not start or end with a hyphen (e.g., "web", "db", "my-service-1").
-	// When used, all items must have a service_name and uniqueness shifts from sku_uuid to service_name.
+	// service_name is an optional DNS-label identifier for this item within a
+	// stack deployment. Must be a valid RFC 1123 DNS label: 1-63 lowercase
+	// alphanumeric characters or hyphens, must not start or end with a hyphen
+	// (e.g., "web", "db", "my-service-1"). When used, all items must have a
+	// service_name and uniqueness shifts from sku_uuid to service_name.
 	ServiceName string `protobuf:"bytes,3,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
 }
 
@@ -11491,7 +11617,7 @@ type MsgFundCredit struct {
 	// tenant is the address of the tenant whose credit account to fund.
 	Tenant string `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	// amount is the amount to fund.
-	Amount *types.Coin `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
+	Amount *v1beta1.Coin `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
 }
 
 func (x *MsgFundCredit) Reset() {
@@ -11528,7 +11654,7 @@ func (x *MsgFundCredit) GetTenant() string {
 	return ""
 }
 
-func (x *MsgFundCredit) GetAmount() *types.Coin {
+func (x *MsgFundCredit) GetAmount() *v1beta1.Coin {
 	if x != nil {
 		return x.Amount
 	}
@@ -11544,7 +11670,7 @@ type MsgFundCreditResponse struct {
 	// credit_address is the derived credit account address.
 	CreditAddress string `protobuf:"bytes,1,opt,name=credit_address,json=creditAddress,proto3" json:"credit_address,omitempty"`
 	// new_balance is the credit account balance after funding.
-	NewBalance *types.Coin `protobuf:"bytes,2,opt,name=new_balance,json=newBalance,proto3" json:"new_balance,omitempty"`
+	NewBalance *v1beta1.Coin `protobuf:"bytes,2,opt,name=new_balance,json=newBalance,proto3" json:"new_balance,omitempty"`
 }
 
 func (x *MsgFundCreditResponse) Reset() {
@@ -11574,7 +11700,7 @@ func (x *MsgFundCreditResponse) GetCreditAddress() string {
 	return ""
 }
 
-func (x *MsgFundCreditResponse) GetNewBalance() *types.Coin {
+func (x *MsgFundCreditResponse) GetNewBalance() *v1beta1.Coin {
 	if x != nil {
 		return x.NewBalance
 	}
@@ -11676,8 +11802,8 @@ func (x *MsgCreateLeaseResponse) GetLeaseUuid() string {
 	return ""
 }
 
-// MsgCreateLeaseForTenant allows authority to create a lease on behalf of a tenant.
-// This is used for migrating off-chain leases to on-chain.
+// MsgCreateLeaseForTenant allows authority to create a lease on behalf of a
+// tenant. This is used for migrating off-chain leases to on-chain.
 type MsgCreateLeaseForTenant struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -11744,7 +11870,8 @@ func (x *MsgCreateLeaseForTenant) GetMetaHash() []byte {
 	return nil
 }
 
-// MsgCreateLeaseForTenantResponse is the response type for MsgCreateLeaseForTenant.
+// MsgCreateLeaseForTenantResponse is the response type for
+// MsgCreateLeaseForTenant.
 type MsgCreateLeaseForTenantResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -11789,12 +11916,14 @@ type MsgCloseLease struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// sender is the address requesting the closure (tenant, provider, or authority).
+	// sender is the address requesting the closure (tenant, provider, or
+	// authority).
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuids are the UUIDs of the leases to close (1-100).
+	// lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+	// malformed, uppercase, or non-v7 values fail message validation.
 	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
 	// reason is an optional explanation for the closure (applied to all leases).
-	// Maximum 256 characters.
+	// Maximum 256 UTF-8 bytes.
 	Reason string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 }
 
@@ -11849,8 +11978,9 @@ type MsgCloseLeaseResponse struct {
 	ClosedAt *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=closed_at,json=closedAt,proto3" json:"closed_at,omitempty"`
 	// closed_count is the number of leases that were closed.
 	ClosedCount uint64 `protobuf:"varint,2,opt,name=closed_count,json=closedCount,proto3" json:"closed_count,omitempty"`
-	// total_settled_amounts is the aggregated amounts settled across all leases (one per denom).
-	TotalSettledAmounts []*types.Coin `protobuf:"bytes,3,rep,name=total_settled_amounts,json=totalSettledAmounts,proto3" json:"total_settled_amounts,omitempty"`
+	// total_settled_amounts is the aggregated amounts settled across all leases
+	// (one per denom).
+	TotalSettledAmounts []*v1beta1.Coin `protobuf:"bytes,3,rep,name=total_settled_amounts,json=totalSettledAmounts,proto3" json:"total_settled_amounts,omitempty"`
 }
 
 func (x *MsgCloseLeaseResponse) Reset() {
@@ -11887,7 +12017,7 @@ func (x *MsgCloseLeaseResponse) GetClosedCount() uint64 {
 	return 0
 }
 
-func (x *MsgCloseLeaseResponse) GetTotalSettledAmounts() []*types.Coin {
+func (x *MsgCloseLeaseResponse) GetTotalSettledAmounts() []*v1beta1.Coin {
 	if x != nil {
 		return x.TotalSettledAmounts
 	}
@@ -11897,8 +12027,11 @@ func (x *MsgCloseLeaseResponse) GetTotalSettledAmounts() []*types.Coin {
 // MsgWithdraw allows a provider to withdraw from leases.
 // Two mutually exclusive modes:
 // 1. Specific leases: provide lease_uuids (1-100 UUIDs)
-// 2. Provider-wide: provide provider_uuid for paginated withdrawal from all leases
-// This is an atomic operation: all withdrawals succeed or all fail.
+// 2. Provider-wide: provide provider_uuid for paginated withdrawal from all
+// leases Specific-lease mode is atomic: all requested withdrawals succeed or
+// all fail. Provider-wide mode is best effort: each lease is isolated in its
+// own cache, failures are reported in response order, and later leases
+// continue.
 type MsgWithdraw struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -11906,12 +12039,15 @@ type MsgWithdraw struct {
 
 	// sender is the provider's address or authority.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuids are the UUIDs of the leases to withdraw from (1-100).
-	// Mutually exclusive with provider_uuid.
+	// lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+	// malformed, uppercase, or non-v7 values fail message validation. Mutually
+	// exclusive with provider_uuid.
 	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
-	// provider_uuid enables provider-wide withdrawal mode.
-	// When set, withdraws from all active leases for this provider with pagination.
-	// Mutually exclusive with lease_uuids.
+	// provider_uuid enables provider-wide withdrawal mode. When present it must
+	// be a canonical lowercase UUIDv7; malformed, uppercase, or non-v7 values
+	// fail message validation.
+	// When set, withdraws from all active leases for this provider with
+	// pagination. Mutually exclusive with lease_uuids.
 	ProviderUuid string `protobuf:"bytes,3,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
 	// limit is the maximum number of leases to process in provider-wide mode.
 	// When 0, defaults to 50. Maximum allowed is 100.
@@ -11985,20 +12121,28 @@ type MsgWithdrawResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// total_amounts is the total amounts withdrawn across all leases (one per denom).
-	TotalAmounts []*types.Coin `protobuf:"bytes,1,rep,name=total_amounts,json=totalAmounts,proto3" json:"total_amounts,omitempty"`
+	// total_amounts is the total amounts withdrawn across all leases (one per
+	// denom).
+	TotalAmounts []*v1beta1.Coin `protobuf:"bytes,1,rep,name=total_amounts,json=totalAmounts,proto3" json:"total_amounts,omitempty"`
 	// payout_address is the address that received the funds.
 	PayoutAddress string `protobuf:"bytes,2,opt,name=payout_address,json=payoutAddress,proto3" json:"payout_address,omitempty"`
-	// withdrawal_count is the number of leases withdrawn from.
+	// withdrawal_count is the number of successfully processed leases, including
+	// successful auto-closes whose final transfer is zero. It excludes failures
+	// and ordinary zero-accrual leases.
 	WithdrawalCount uint64 `protobuf:"varint,3,opt,name=withdrawal_count,json=withdrawalCount,proto3" json:"withdrawal_count,omitempty"`
-	// has_more indicates if there are more leases to process in provider-wide mode.
-	// Always false when using lease_uuids mode.
+	// has_more indicates if there are more leases to process in provider-wide
+	// mode. Always false when using lease_uuids mode.
 	HasMore bool `protobuf:"varint,4,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
 	// next_key is the opaque cursor to pass as MsgWithdraw.key to fetch the next
 	// page in provider-wide mode. It is non-empty if and only if has_more is
 	// true; an empty next_key means there are no more leases. Always empty in
 	// lease_uuids mode.
 	NextKey []byte `protobuf:"bytes,5,opt,name=next_key,json=nextKey,proto3" json:"next_key,omitempty"`
+	// failed_lease_uuids lists provider-wide leases that could not be processed,
+	// in provider index/request processing order. Their per-lease state changes
+	// were discarded and callers may retry them explicitly after correcting the
+	// failure. Always empty in lease_uuids mode because that mode is atomic.
+	FailedLeaseUuids []string `protobuf:"bytes,6,rep,name=failed_lease_uuids,json=failedLeaseUuids,proto3" json:"failed_lease_uuids,omitempty"`
 }
 
 func (x *MsgWithdrawResponse) Reset() {
@@ -12021,7 +12165,7 @@ func (*MsgWithdrawResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *MsgWithdrawResponse) GetTotalAmounts() []*types.Coin {
+func (x *MsgWithdrawResponse) GetTotalAmounts() []*v1beta1.Coin {
 	if x != nil {
 		return x.TotalAmounts
 	}
@@ -12052,6 +12196,13 @@ func (x *MsgWithdrawResponse) GetHasMore() bool {
 func (x *MsgWithdrawResponse) GetNextKey() []byte {
 	if x != nil {
 		return x.NextKey
+	}
+	return nil
+}
+
+func (x *MsgWithdrawResponse) GetFailedLeaseUuids() []string {
+	if x != nil {
+		return x.FailedLeaseUuids
 	}
 	return nil
 }
@@ -12129,9 +12280,13 @@ func (*MsgUpdateParamsResponse) Descriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_tx_proto_rawDescGZIP(), []int{12}
 }
 
-// MsgAcknowledgeLease allows a provider to acknowledge one or more PENDING leases.
-// All leases must belong to the same provider and be in PENDING state.
-// This is an atomic operation: all leases succeed or all fail.
+// MsgAcknowledgeLease allows a provider to acknowledge one or more PENDING
+// leases. All leases must belong to the same provider and be in PENDING state.
+// Every lease must be at or before created_at + the current pending_timeout;
+// block times strictly after that hard deadline are rejected even before
+// EndBlock cleanup. Each tenant's active count after the full batch must be at
+// most max_leases_per_tenant. This is an atomic operation: all gates are
+// validated before any lease, account, or event changes.
 type MsgAcknowledgeLease struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -12139,7 +12294,8 @@ type MsgAcknowledgeLease struct {
 
 	// sender is the provider's address or authority.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuids are the UUIDs of the leases to acknowledge (1-100).
+	// lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+	// malformed, uppercase, or non-v7 values fail message validation.
 	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
 }
 
@@ -12234,10 +12390,11 @@ type MsgRejectLease struct {
 
 	// sender is the provider's address or authority.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuids are the UUIDs of the leases to reject (1-100).
+	// lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+	// malformed, uppercase, or non-v7 values fail message validation.
 	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
-	// reason is an optional explanation for the rejection (applied to all leases).
-	// Maximum 256 characters.
+	// reason is an optional explanation for the rejection (applied to all
+	// leases). Maximum 256 UTF-8 bytes.
 	Reason string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 }
 
@@ -12328,8 +12485,8 @@ func (x *MsgRejectLeaseResponse) GetRejectedCount() uint64 {
 	return 0
 }
 
-// MsgCancelLease allows a tenant to cancel one or more of their own PENDING leases.
-// All leases must belong to the tenant. This is an atomic operation:
+// MsgCancelLease allows a tenant to cancel one or more of their own PENDING
+// leases. All leases must belong to the tenant. This is an atomic operation:
 // all leases succeed or all fail.
 type MsgCancelLease struct {
 	state         protoimpl.MessageState
@@ -12338,7 +12495,8 @@ type MsgCancelLease struct {
 
 	// tenant is the address of the tenant who owns the leases.
 	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	// lease_uuids are the UUIDs of the leases to cancel (1-100).
+	// lease_uuids are 1-100 canonical lowercase lease UUIDv7 values. Empty,
+	// malformed, uppercase, or non-v7 values fail message validation.
 	LeaseUuids []string `protobuf:"bytes,2,rep,name=lease_uuids,json=leaseUuids,proto3" json:"lease_uuids,omitempty"`
 }
 
@@ -12434,7 +12592,8 @@ type MsgSetItemCustomDomain struct {
 	// sender is the address signing the transaction. Must be the lease tenant,
 	// the module authority, or an address in params.allowed_list.
 	Sender string `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	// lease_uuid is the UUID of the lease that owns the target item.
+	// lease_uuid is the lease's canonical lowercase UUIDv7. Empty, malformed,
+	// uppercase, or non-v7 values fail message validation.
 	LeaseUuid string `protobuf:"bytes,2,opt,name=lease_uuid,json=leaseUuid,proto3" json:"lease_uuid,omitempty"`
 	// service_name addresses the target LeaseItem. The keeper finds the unique
 	// item where item.service_name == this value. For a 1-item legacy lease
@@ -12690,7 +12849,7 @@ var file_liftedinit_billing_v1_tx_proto_rawDesc = []byte{
 	0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x03, 0x6b, 0x65, 0x79, 0x3a,
 	0x2a, 0x82, 0xe7, 0xb0, 0x2a, 0x06, 0x73, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x8a, 0xe7, 0xb0, 0x2a,
 	0x1a, 0x6c, 0x69, 0x66, 0x74, 0x65, 0x64, 0x2f, 0x62, 0x69, 0x6c, 0x6c, 0x69, 0x6e, 0x67, 0x2f,
-	0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x22, 0xae, 0x03, 0x0a, 0x13,
+	0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x22, 0xfe, 0x03, 0x0a, 0x13,
 	0x4d, 0x73, 0x67, 0x57, 0x69, 0x74, 0x68, 0x64, 0x72, 0x61, 0x77, 0x52, 0x65, 0x73, 0x70, 0x6f,
 	0x6e, 0x73, 0x65, 0x12, 0x81, 0x01, 0x0a, 0x0d, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x5f, 0x61, 0x6d,
 	0x6f, 0x75, 0x6e, 0x74, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f,
@@ -12717,7 +12876,12 @@ var file_liftedinit_billing_v1_tx_proto_rawDesc = []byte{
 	0x52, 0x07, 0x68, 0x61, 0x73, 0x4d, 0x6f, 0x72, 0x65, 0x12, 0x31, 0x0a, 0x08, 0x6e, 0x65, 0x78,
 	0x74, 0x5f, 0x6b, 0x65, 0x79, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0c, 0x42, 0x16, 0xea, 0xde, 0x1f,
 	0x12, 0x6e, 0x65, 0x78, 0x74, 0x5f, 0x6b, 0x65, 0x79, 0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d,
-	0x70, 0x74, 0x79, 0x52, 0x07, 0x6e, 0x65, 0x78, 0x74, 0x4b, 0x65, 0x79, 0x22, 0xda, 0x01, 0x0a,
+	0x70, 0x74, 0x79, 0x52, 0x07, 0x6e, 0x65, 0x78, 0x74, 0x4b, 0x65, 0x79, 0x12, 0x4e, 0x0a, 0x12,
+	0x66, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75, 0x75, 0x69,
+	0x64, 0x73, 0x18, 0x06, 0x20, 0x03, 0x28, 0x09, 0x42, 0x20, 0xea, 0xde, 0x1f, 0x1c, 0x66, 0x61,
+	0x69, 0x6c, 0x65, 0x64, 0x5f, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x5f, 0x75, 0x75, 0x69, 0x64, 0x73,
+	0x2c, 0x6f, 0x6d, 0x69, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x10, 0x66, 0x61, 0x69, 0x6c,
+	0x65, 0x64, 0x4c, 0x65, 0x61, 0x73, 0x65, 0x55, 0x75, 0x69, 0x64, 0x73, 0x22, 0xda, 0x01, 0x0a,
 	0x0f, 0x4d, 0x73, 0x67, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73,
 	0x12, 0x4d, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x18, 0x01, 0x20,
 	0x01, 0x28, 0x09, 0x42, 0x2f, 0xea, 0xde, 0x1f, 0x13, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69,
@@ -12952,7 +13116,7 @@ var file_liftedinit_billing_v1_tx_proto_goTypes = []interface{}{
 	(*MsgCancelLeaseResponse)(nil),          // 18: liftedinit.billing.v1.MsgCancelLeaseResponse
 	(*MsgSetItemCustomDomain)(nil),          // 19: liftedinit.billing.v1.MsgSetItemCustomDomain
 	(*MsgSetItemCustomDomainResponse)(nil),  // 20: liftedinit.billing.v1.MsgSetItemCustomDomainResponse
-	(*types.Coin)(nil),                      // 21: cosmos.base.v1beta1.Coin
+	(*v1beta1.Coin)(nil),                    // 21: cosmos.base.v1beta1.Coin
 	(*timestamppb.Timestamp)(nil),           // 22: google.protobuf.Timestamp
 	(*Params)(nil),                          // 23: liftedinit.billing.v1.Params
 }
