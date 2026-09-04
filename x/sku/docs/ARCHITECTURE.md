@@ -18,8 +18,17 @@ graph TD
 ```
 
 The SKU module:
-- **Authority**: holds the PoA admin address as its `authority` string (injected in `app.go` via `helpers.GetPoAAdmin()`); it makes no calls into `x/poa`. Authorization is a string compare against that address plus `Params.AllowedList`.
+- **Authority**: holds a constructor-injected Bech32 address. Production's
+  manual `app.go` wiring supplies `helpers.GetPoAAdmin()`; the keeper makes no
+  calls into `x/poa`. Authorization decodes the configured authority, sender,
+  and `Params.AllowedList` entries with the SDK Bech32 parser and compares the
+  resulting account-address bytes.
 - **Depended on by**: `x/billing` for SKU and Provider information
+
+The generic `depinject.go` provider instead supplies the SDK governance module
+address. An application changing from this repository's manual keeper assembly
+to depinject must deliberately preserve its intended authority; the two wiring
+paths are not interchangeable defaults.
 
 ## Data Model
 
@@ -93,6 +102,8 @@ The SKU module supports configurable parameters to control access and behavior:
 ### Parameter Validation
 
 - All addresses in `AllowedList` must be valid Bech32 account addresses.
+- `AllowedList` may contain at most 100 entries. This compile-time bound keeps
+  authorization scans bounded and cannot be raised through `MsgUpdateParams`.
 - No duplicate decoded address identities are allowed; equivalent Bech32
   spellings count as duplicates.
 
@@ -176,8 +187,10 @@ SKU module version is 1. The migration:
 
 1. Canonicalizes and deduplicates `Params.allowed_list` by decoded address bytes,
    preserving first-seen order.
-2. Rewrites Params through the current value codec.
-3. Reads Providers in ascending primary-key pages of 1,000, closes each iterator,
+2. Validates the canonical Params, including the 100-entry hard cap, before any
+   migration write.
+3. Rewrites Params through the current value codec.
+4. Reads Providers in ascending primary-key pages of 1,000, closes each iterator,
    and then rewrites that page through the current value codec.
 
 Provider indexes were already byte-addressed and are left intact. SKU values,
@@ -211,6 +224,9 @@ The module uses deterministic UUIDv7 generation for consensus compatibility:
 - **Format**: Standard UUIDv7 with version 7 and variant bits set correctly
 
 This ensures all validators generate the same UUID for the same transaction.
+Before advancing either Collections sequence, the keeper calls `Peek`. A stored
+value of `math.MaxUint64` returns `ErrSequenceExhausted` without calling `Next`,
+so an imported or corrupt counter cannot wrap to zero or mutate state.
 
 ## Message Flow
 
@@ -224,7 +240,7 @@ sequenceDiagram
     participant Store
 
     User->>MsgServer: MsgCreateProvider
-    MsgServer->>MsgServer: isAuthorizedSender() (GetAuthority string compare + AllowedList params lookup)
+    MsgServer->>MsgServer: isAuthorizedSender() (decoded authority/sender identity + AllowedList lookup)
     alt Not authority AND not in AllowedList
         MsgServer-->>User: Unauthorized
     else Authorized
@@ -250,7 +266,7 @@ sequenceDiagram
     participant Store
 
     User->>MsgServer: MsgCreateSKU
-    MsgServer->>MsgServer: isAuthorizedSender() (GetAuthority string compare + AllowedList params lookup)
+    MsgServer->>MsgServer: isAuthorizedSender() (decoded authority/sender identity + AllowedList lookup)
     alt Not authority AND not in AllowedList
         MsgServer-->>User: Unauthorized
     else Authorized
@@ -283,7 +299,7 @@ sequenceDiagram
     participant Store
 
     User->>MsgServer: MsgUpdateSKU
-    MsgServer->>MsgServer: isAuthorizedSender() (GetAuthority string compare + AllowedList params lookup)
+    MsgServer->>MsgServer: isAuthorizedSender() (decoded authority/sender identity + AllowedList lookup)
     alt Not authority AND not in AllowedList
         MsgServer-->>User: Unauthorized
     else Authorized

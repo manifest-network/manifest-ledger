@@ -1,6 +1,7 @@
 package keeper_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,6 +27,57 @@ func TestStateInvariant(t *testing.T) {
 	message, broken = keeper.StateInvariant(f.App.SKUKeeper)(f.Ctx)
 	require.True(t, broken)
 	require.Contains(t, message, "references non-existent provider")
+}
+
+func TestStateInvariantReportsCorruptParamsWithoutPanicking(t *testing.T) {
+	f := initFixture(t)
+	f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Set(types.ParamsKey.Bytes(), []byte{0xff})
+
+	message, broken := keeper.StateInvariant(f.App.SKUKeeper)(f.Ctx)
+	require.True(t, broken)
+	require.Contains(t, message, "failed to export SKU state")
+	require.Contains(t, message, "read SKU params")
+}
+
+func TestStateInvariantValidatesRawStoredParams(t *testing.T) {
+	tests := []struct {
+		name   string
+		params types.Params
+		want   string
+	}{
+		{
+			name: "duplicate decoded identity",
+			params: func() types.Params {
+				address := sdk.AccAddress([]byte("duplicate-identity__")).String()
+				return types.Params{AllowedList: []string{address, strings.ToUpper(address)}}
+			}(),
+			want: "duplicate address in allowed list",
+		},
+		{
+			name: "over cap equivalent aliases",
+			params: func() types.Params {
+				address := sdk.AccAddress([]byte("over-cap-identity___")).String()
+				allowed := make([]string, types.MaxAllowedListEntries+1)
+				for i := range allowed {
+					allowed[i] = address
+				}
+				return types.Params{AllowedList: allowed}
+			}(),
+			want: "allowed list has 101 entries, maximum allowed is 100",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f := initFixture(t)
+			require.NoError(t, f.App.SKUKeeper.SetParams(f.Ctx, test.params))
+
+			message, broken := keeper.StateInvariant(f.App.SKUKeeper)(f.Ctx)
+			require.True(t, broken)
+			require.Contains(t, message, "invalid stored SKU params")
+			require.Contains(t, message, test.want)
+		})
+	}
 }
 
 func TestStateInvariant_DetectsSecondaryIndexCorruption(t *testing.T) {

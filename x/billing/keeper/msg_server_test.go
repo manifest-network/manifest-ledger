@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"cosmossdk.io/collections"
 	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
 
@@ -5287,13 +5288,13 @@ func TestEndBlockerIteratorDoesNotLoadAll(t *testing.T) {
 // (TestAccs[0]) credit account, plus the given pending timeout, for EndBlocker
 // pending-lease expiration tests. It returns the fixture along with the provider
 // UUID, SKU UUID, denom, and the fixture's base block time.
-func newExpiryFixture(t *testing.T, pendingTimeoutSecs uint64) (*testFixture, string, string, string, time.Time) {
+func newExpiryFixture(t *testing.T) (*testFixture, string, string, string, time.Time) {
 	t.Helper()
 	f := initFixture(t)
 	k := f.App.BillingKeeper
 
 	params := types.DefaultParams()
-	params.PendingTimeout = pendingTimeoutSecs
+	params.PendingTimeout = 60
 	params.MaxPendingLeasesPerTenant = 500
 	require.NoError(t, k.SetParams(f.Ctx, params))
 
@@ -5353,7 +5354,7 @@ func (f *testFixture) setPendingLease(t *testing.T, uuid, providerUUID, skuUUID,
 // ranges over created_at, so a lexicographically-small UUID with a large
 // created_at must not be expired ahead of an older lease with a larger UUID.
 func TestEndBlocker_ExpiresByCreatedAtNotUUIDOrder(t *testing.T) {
-	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t, 60)
+	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t)
 	k := f.App.BillingKeeper
 
 	// UUID string order deliberately DISAGREES with created_at order:
@@ -5384,7 +5385,7 @@ func TestEndBlocker_ExpiresByCreatedAtNotUUIDOrder(t *testing.T) {
 // while one nanosecond past the cutoff is. This locks the EndExclusive upper
 // bound of the range and the blockTime.After(...) check.
 func TestEndBlocker_CutoffBoundaryIsStrict(t *testing.T) {
-	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t, 60)
+	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t)
 	k := f.App.BillingKeeper
 
 	f.setPendingLease(t, "boundary-lease", providerUUID, skuUUID, denom, baseTime)
@@ -5412,7 +5413,7 @@ func TestEndBlocker_CutoffBoundaryIsStrict(t *testing.T) {
 // expired. UUIDs are arranged so the young leases sort before the old ones, to
 // prove the range bounds — not iteration luck — drive the result.
 func TestEndBlocker_YoungBacklogDoesNotBlockExpiry(t *testing.T) {
-	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t, 60)
+	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t)
 	k := f.App.BillingKeeper
 
 	oldUUIDs := make([]string, 5)
@@ -5445,6 +5446,54 @@ func TestEndBlocker_YoungBacklogDoesNotBlockExpiry(t *testing.T) {
 	stillPending, err := k.GetPendingLeases(ctx)
 	require.NoError(t, err)
 	require.Len(t, stillPending, 300, "only the 5 old leases should expire; the 300 young leases remain")
+}
+
+func TestEndBlocker_StaleTerminalIndexRowsDoNotConsumeExpirationLimit(t *testing.T) {
+	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t)
+	k := f.App.BillingKeeper
+	params, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+
+	staleCreatedAt := baseTime.Add(-time.Minute)
+	closedAt := baseTime
+	for i := range types.MaxPendingLeaseExpirationsPerBlock {
+		lease := types.Lease{
+			Uuid:         fmt.Sprintf("stale-terminal-%03d", i),
+			Tenant:       f.TestAccs[0].String(),
+			ProviderUuid: providerUUID,
+			Items: []types.LeaseItem{{
+				SkuUuid:     skuUUID,
+				Quantity:    1,
+				LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1)),
+			}},
+			State:                      types.LEASE_STATE_CLOSED,
+			CreatedAt:                  staleCreatedAt,
+			LastSettledAt:              closedAt,
+			ClosedAt:                   &closedAt,
+			MinLeaseDurationAtCreation: params.MinLeaseDuration,
+			Reservation:                &types.LeaseReservation{RemainingAmounts: sdk.NewCoins()},
+		}
+		require.NoError(t, k.SetLease(f.Ctx, lease))
+
+		stalePendingReference := lease
+		stalePendingReference.State = types.LEASE_STATE_PENDING
+		require.NoError(t, k.Leases.Indexes.StateCreatedAt.Reference(
+			f.Ctx,
+			lease.Uuid,
+			stalePendingReference,
+			func() (types.Lease, error) { return types.Lease{}, collections.ErrNotFound },
+		))
+	}
+
+	const realExpiredUUID = "real-expired-behind-stale-rows"
+	f.setPendingLease(t, realExpiredUUID, providerUUID, skuUUID, denom, baseTime)
+	ctx := f.Ctx.WithBlockTime(baseTime.Add(61 * time.Second))
+	require.NoError(t, k.EndBlocker(ctx))
+
+	lease, err := k.GetLease(ctx, realExpiredUUID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_EXPIRED, lease.State,
+		"stale terminal index rows must not consume the expiration quota")
 }
 
 // TestMsgWithdraw_ProviderWideMode tests the provider-wide withdrawal mode using --provider flag.

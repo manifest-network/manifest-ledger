@@ -23,6 +23,13 @@ exact reservation floor from each live non-legacy lease's stored creation
 duration, without decoding terminal lease history.
 Equivalent allowed-list Bech32 spellings are collapsed by decoded address
 identity while preserving first-seen list order.
+The canonical Params are validated, including the 100-entry allow-list and
+reserved-suffix caps, before the first migration write. An invalid or
+over-limit list aborts the upgrade atomically; the migration never truncates
+authority or domain-policy data. Migration and import preparation may collapse
+more than 100 raw equivalent Bech32 spellings below the cap, while newly
+submitted `MsgUpdateParams` values are capped and must already contain distinct
+decoded identities.
 Fully verifiable accounts, including accounts with only terminal legacy lease
 history, are reconciled exactly to that floor. For an account with a live
 legacy lease, each reservation denomination becomes the maximum of its stored
@@ -234,8 +241,8 @@ manifestd tx billing update-params \
 | `min_lease_duration` | Min seconds credit must cover | 3600 |
 | `max_pending_leases_per_tenant` | Max pending leases per tenant | 10 |
 | `pending_timeout` | Seconds before pending lease expires | 1800 |
-| `allowed_list` | Addresses allowed to create leases for tenants | `[]` |
-| `reserved_domain_suffixes` | DNS suffixes tenants may not claim as a `custom_domain`; each must begin with `.` | empty |
+| `allowed_list` | Up to 100 distinct decoded identities allowed to create leases for tenants | `[]` |
+| `reserved_domain_suffixes` | Up to 100 DNS suffixes tenants may not claim as a `custom_domain`; each must begin with `.` | empty |
 
 **Note:** `--allowed-list` and `--reserved-domain-suffixes` are preserve-on-omit: when the flag is absent the CLI round-trips the current on-chain value, so the bare `update-params 100 20 3600 10 1800` above will not wipe them. Pass the flag with an empty value (e.g. `--reserved-domain-suffixes=""`) to explicitly clear the list.
 
@@ -590,8 +597,12 @@ Mixing present and absent reservation wrappers is rejected.
 
 Validates without blockchain context:
 - Lease UUIDs are valid and unique
+- Every lease has 1–100 items, matching the runtime hard limit
+- `created_at` and `last_settled_at` are non-zero, with
+  `created_at <= last_settled_at`
 - Credit account addresses are correctly derived
 - Required fields are present
+- Canonical allowed lists and reserved-domain suffix lists contain at most 100 entries
 - After import preparation, active and pending lease counts match the imported lease set
 - The lease sequence is at least the total number of imported leases
 - v4 lease tranches are valid and satisfy the exact account invariant, or a complete pre-v4 aggregate-only state can be deterministically reconciled to its statically reconstructible floor
@@ -650,8 +661,8 @@ Validates timestamps against block time during `InitGenesis`:
 
 | Field | Validation |
 |-------|------------|
-| `last_settled_at` | Must not be in the future |
-| `created_at` | Must not be in the future |
+| `last_settled_at` | Must not be in the future (static validation also requires it to be non-zero and no earlier than `created_at`) |
+| `created_at` | Must not be in the future (static validation also requires it to be non-zero) |
 | `closed_at` | Must not be in the future (for CLOSED leases with a non-nil `closed_at`) |
 
 **Note:** `rejected_at`, `expired_at`, and `acknowledged_at` are NOT time-validated at genesis, so a future-dated value in those fields will import silently.

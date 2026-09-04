@@ -50,7 +50,25 @@ func StateInvariant(keeper Keeper) sdk.Invariant {
 			return sdk.FormatInvariant(types.ModuleName, stateInvariantRoute, err.Error()), true
 		}
 
-		if err := keeper.ExportGenesis(ctx).Validate(); err != nil {
+		genesis, err := keeper.exportGenesis(ctx)
+		if err != nil {
+			return sdk.FormatInvariant(
+				types.ModuleName,
+				stateInvariantRoute,
+				fmt.Sprintf("failed to export SKU state: %v", err),
+			), true
+		}
+		// Validate the Params exactly as stored before import-safe genesis
+		// validation canonicalizes historical Bech32 aliases in a copy. Live
+		// duplicate or over-limit Params are corruption and must remain visible.
+		if err := genesis.Params.Validate(); err != nil {
+			return sdk.FormatInvariant(
+				types.ModuleName,
+				stateInvariantRoute,
+				fmt.Sprintf("invalid stored SKU params: %v", err),
+			), true
+		}
+		if err := genesis.Validate(); err != nil {
 			return sdk.FormatInvariant(
 				types.ModuleName,
 				stateInvariantRoute,

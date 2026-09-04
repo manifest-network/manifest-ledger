@@ -72,6 +72,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"cosmossdk.io/collections"
 	sdkmath "cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
@@ -1930,4 +1931,199 @@ func TestParamsAllowedListRemoval(t *testing.T) {
 	_, err = ms.CreateSKU(f.Ctx, createMsg)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "unauthorized")
+}
+
+func TestMsgServerLookupErrorClassification(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+	price := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
+
+	provider := types.Provider{
+		Uuid:          testProviderUUID,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        true,
+	}
+	sku := types.SKU{
+		Uuid:         testSKU1UUID,
+		ProviderUuid: provider.Uuid,
+		Name:         "compute",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    price,
+		Active:       true,
+	}
+
+	providerOperations := func(ctx sdk.Context, ms types.MsgServer) []struct {
+		name string
+		call func() error
+	} {
+		return []struct {
+			name string
+			call func() error
+		}{
+			{
+				name: "update provider",
+				call: func() error {
+					_, err := ms.UpdateProvider(ctx, &types.MsgUpdateProvider{
+						Authority:     authority.String(),
+						Uuid:          provider.Uuid,
+						Address:       provider.Address,
+						PayoutAddress: provider.PayoutAddress,
+						Active:        true,
+					})
+					return err
+				},
+			},
+			{
+				name: "deactivate provider",
+				call: func() error {
+					_, err := ms.DeactivateProvider(ctx, &types.MsgDeactivateProvider{
+						Authority: authority.String(),
+						Uuid:      provider.Uuid,
+					})
+					return err
+				},
+			},
+			{
+				name: "create SKU",
+				call: func() error {
+					_, err := ms.CreateSKU(ctx, &types.MsgCreateSKU{
+						Authority:    authority.String(),
+						ProviderUuid: provider.Uuid,
+						Name:         "storage",
+						Unit:         types.Unit_UNIT_PER_HOUR,
+						BasePrice:    price,
+					})
+					return err
+				},
+			},
+			{
+				name: "update SKU linked provider",
+				call: func() error {
+					_, err := ms.UpdateSKU(ctx, &types.MsgUpdateSKU{
+						Authority:    authority.String(),
+						Uuid:         sku.Uuid,
+						ProviderUuid: provider.Uuid,
+						Name:         sku.Name,
+						Unit:         sku.Unit,
+						BasePrice:    sku.BasePrice,
+						Active:       true,
+					})
+					return err
+				},
+			},
+		}
+	}
+
+	skuOperations := func(ctx sdk.Context, ms types.MsgServer) []struct {
+		name string
+		call func() error
+	} {
+		return []struct {
+			name string
+			call func() error
+		}{
+			{
+				name: "update SKU",
+				call: func() error {
+					_, err := ms.UpdateSKU(ctx, &types.MsgUpdateSKU{
+						Authority:    authority.String(),
+						Uuid:         sku.Uuid,
+						ProviderUuid: provider.Uuid,
+						Name:         sku.Name,
+						Unit:         sku.Unit,
+						BasePrice:    sku.BasePrice,
+						Active:       true,
+					})
+					return err
+				},
+			},
+			{
+				name: "deactivate SKU",
+				call: func() error {
+					_, err := ms.DeactivateSKU(ctx, &types.MsgDeactivateSKU{
+						Authority: authority.String(),
+						Uuid:      sku.Uuid,
+					})
+					return err
+				},
+			},
+		}
+	}
+
+	t.Run("missing records keep domain errors", func(t *testing.T) {
+		t.Run("provider", func(t *testing.T) {
+			f := initFixture(t)
+			k := f.App.SKUKeeper
+			k.SetAuthority(authority.String())
+			require.NoError(t, k.SetSKU(f.Ctx, sku))
+			ms := keeper.NewMsgServerImpl(k)
+
+			for _, operation := range providerOperations(f.Ctx, ms) {
+				t.Run(operation.name, func(t *testing.T) {
+					err := operation.call()
+					require.ErrorIs(t, err, types.ErrProviderNotFound)
+				})
+			}
+		})
+
+		t.Run("SKU", func(t *testing.T) {
+			f := initFixture(t)
+			k := f.App.SKUKeeper
+			k.SetAuthority(authority.String())
+			require.NoError(t, k.SetProvider(f.Ctx, provider))
+			ms := keeper.NewMsgServerImpl(k)
+
+			for _, operation := range skuOperations(f.Ctx, ms) {
+				t.Run(operation.name, func(t *testing.T) {
+					err := operation.call()
+					require.ErrorIs(t, err, types.ErrSKUNotFound)
+				})
+			}
+		})
+	})
+
+	t.Run("corrupt provider record is not reported as missing", func(t *testing.T) {
+		f := initFixture(t)
+		k := f.App.SKUKeeper
+		k.SetAuthority(authority.String())
+		require.NoError(t, k.SetProvider(f.Ctx, provider))
+		require.NoError(t, k.SetSKU(f.Ctx, sku))
+		corruptStringPrimaryRecord(t, f, types.ProviderKey.Bytes(), provider.Uuid)
+		ms := keeper.NewMsgServerImpl(k)
+
+		for _, operation := range providerOperations(f.Ctx, ms) {
+			t.Run(operation.name, func(t *testing.T) {
+				err := operation.call()
+				require.Error(t, err)
+				require.NotErrorIs(t, err, types.ErrProviderNotFound)
+			})
+		}
+	})
+
+	t.Run("corrupt SKU record is not reported as missing", func(t *testing.T) {
+		f := initFixture(t)
+		k := f.App.SKUKeeper
+		k.SetAuthority(authority.String())
+		require.NoError(t, k.SetProvider(f.Ctx, provider))
+		require.NoError(t, k.SetSKU(f.Ctx, sku))
+		corruptStringPrimaryRecord(t, f, types.SKUKey.Bytes(), sku.Uuid)
+		ms := keeper.NewMsgServerImpl(k)
+
+		for _, operation := range skuOperations(f.Ctx, ms) {
+			t.Run(operation.name, func(t *testing.T) {
+				err := operation.call()
+				require.Error(t, err)
+				require.NotErrorIs(t, err, types.ErrSKUNotFound)
+			})
+		}
+	})
+}
+
+func corruptStringPrimaryRecord(t *testing.T, f *testFixture, prefix []byte, uuid string) {
+	t.Helper()
+	key, err := collections.EncodeKeyWithPrefix(prefix, collections.StringKey, uuid)
+	require.NoError(t, err)
+	f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
 }

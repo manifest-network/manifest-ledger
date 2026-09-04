@@ -724,7 +724,9 @@ service Query {
 `Provider.uuid` and `SKU.uuid` preserve direct-lookup behavior. They reject an
 empty field with gRPC `InvalidArgument`, then look up every non-empty key as
 supplied. A malformed, uppercase, non-v7, or unknown canonical value therefore
-returns `NotFound` rather than a UUID-format error.
+returns `NotFound` rather than a UUID-format error. `NotFound` is reserved for
+an absent key; an unexpected primary-store or value-decoding failure returns
+`Internal` so state corruption is not disguised as a missing resource.
 
 #### QueryParams
 
@@ -925,7 +927,8 @@ the route; a trailing empty component does match and maps the handler's
 The direct `/provider/{uuid}` and `/sku/{uuid}` routes map any non-empty key
 that does not exist—including malformed, uppercase, or non-v7 text—to HTTP 404
 / gRPC `NotFound`. Their trailing-empty forms reach the handlers and map
-`uuid cannot be empty` to HTTP 400.
+`uuid cannot be empty` to HTTP 400. An unexpected primary-store or decoding
+failure maps to HTTP 500 / gRPC `Internal`.
 
 ### Examples
 
@@ -1019,6 +1022,9 @@ message Params {
 }
 ```
 
+`allowed_list` is limited to 100 valid, distinct decoded account identities.
+The hard cap bounds authorization scans and cannot be changed by governance.
+
 ---
 
 ## Events
@@ -1066,6 +1072,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrInvalidProvider` | 5 | Invalid provider parameters (includes inactive check) |
 | `ErrProviderNotFound` | 6 | Provider doesn't exist |
 | `ErrInvalidAPIURL` | 7 | Invalid API URL (not HTTPS, too long, contains credentials, etc.) |
+| `ErrSequenceExhausted` | 8 | A deterministic provider or SKU UUID sequence has exhausted its `uint64` range |
 
 **Note:** Active status checks (e.g., "provider is not active", "SKU is not active") are reported via `ErrInvalidProvider` or `ErrInvalidSKU` respectively.
 

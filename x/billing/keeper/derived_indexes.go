@@ -4,19 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"cosmossdk.io/collections"
+	"cosmossdk.io/collections/indexes"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
-// validateDerivedIndexes verifies both directions of every manually managed
-// billing index. Collections-managed indexes are updated atomically by
-// IndexedMap; these maps require explicit reconciliation and therefore an
-// explicit invariant.
+// validateDerivedIndexes verifies both directions of every billing index.
+// Collections-managed indexes are normally updated atomically by IndexedMap,
+// but validating them here makes historical drift and unsafe internal writes
+// observable before an index-backed consensus path such as EndBlock relies on
+// them.
 func (k Keeper) validateDerivedIndexes(ctx context.Context) error {
+	if err := k.validateManagedLeaseIndexes(ctx); err != nil {
+		return err
+	}
 	if err := k.validateCreditAddressIndex(ctx); err != nil {
 		return err
 	}
@@ -24,6 +30,161 @@ func (k Keeper) validateDerivedIndexes(ctx context.Context) error {
 		return err
 	}
 	return k.validateCustomDomainIndex(ctx)
+}
+
+func (k Keeper) validateManagedLeaseIndexes(ctx context.Context) error {
+	var leaseCount uint64
+	if err := k.Leases.Walk(ctx, nil, func(uuid string, lease types.Lease) (bool, error) {
+		if uuid != lease.Uuid {
+			return true, fmt.Errorf("lease key %s does not match stored UUID %s", uuid, lease.Uuid)
+		}
+		leaseCount++
+		return false, nil
+	}); err != nil {
+		return err
+	}
+
+	if err := validateLeaseMultiIndex(
+		ctx,
+		"tenant",
+		leaseCount,
+		k.Leases.Indexes.Tenant,
+		k.Leases.Get,
+		func(lease types.Lease) (sdk.AccAddress, error) {
+			tenant, err := sdk.AccAddressFromBech32(lease.Tenant)
+			if err != nil {
+				return nil, fmt.Errorf("lease %s has invalid tenant: %w", lease.Uuid, err)
+			}
+			return tenant, nil
+		},
+		func(indexed, expected sdk.AccAddress) bool { return indexed.Equals(expected) },
+	); err != nil {
+		return err
+	}
+	if err := validateLeaseMultiIndex(
+		ctx,
+		"provider",
+		leaseCount,
+		k.Leases.Indexes.Provider,
+		k.Leases.Get,
+		func(lease types.Lease) (string, error) { return lease.ProviderUuid, nil },
+		func(indexed, expected string) bool { return indexed == expected },
+	); err != nil {
+		return err
+	}
+	if err := validateLeaseMultiIndex(
+		ctx,
+		"state",
+		leaseCount,
+		k.Leases.Indexes.State,
+		k.Leases.Get,
+		func(lease types.Lease) (int32, error) { return int32(lease.State), nil },
+		func(indexed, expected int32) bool { return indexed == expected },
+	); err != nil {
+		return err
+	}
+	if err := validateLeaseMultiIndex(
+		ctx,
+		"provider-state",
+		leaseCount,
+		k.Leases.Indexes.ProviderState,
+		k.Leases.Get,
+		func(lease types.Lease) (collections.Pair[string, int32], error) {
+			return collections.Join(lease.ProviderUuid, int32(lease.State)), nil
+		},
+		func(indexed, expected collections.Pair[string, int32]) bool {
+			return indexed.K1() == expected.K1() && indexed.K2() == expected.K2()
+		},
+	); err != nil {
+		return err
+	}
+	if err := validateLeaseMultiIndex(
+		ctx,
+		"tenant-state",
+		leaseCount,
+		k.Leases.Indexes.TenantState,
+		k.Leases.Get,
+		func(lease types.Lease) (collections.Pair[sdk.AccAddress, int32], error) {
+			tenant, err := sdk.AccAddressFromBech32(lease.Tenant)
+			if err != nil {
+				return collections.Pair[sdk.AccAddress, int32]{}, fmt.Errorf(
+					"lease %s has invalid tenant: %w",
+					lease.Uuid,
+					err,
+				)
+			}
+			return collections.Join(tenant, int32(lease.State)), nil
+		},
+		func(indexed, expected collections.Pair[sdk.AccAddress, int32]) bool {
+			return indexed.K1().Equals(expected.K1()) && indexed.K2() == expected.K2()
+		},
+	); err != nil {
+		return err
+	}
+	return validateLeaseMultiIndex(
+		ctx,
+		"state-created-at",
+		leaseCount,
+		k.Leases.Indexes.StateCreatedAt,
+		k.Leases.Get,
+		func(lease types.Lease) (collections.Pair[int32, time.Time], error) {
+			return collections.Join(int32(lease.State), lease.CreatedAt), nil
+		},
+		func(indexed, expected collections.Pair[int32, time.Time]) bool {
+			return indexed.K1() == expected.K1() && indexed.K2().Equal(expected.K2())
+		},
+	)
+}
+
+// validateLeaseMultiIndex proves both index directions without materializing
+// or ranging over a Go map. Every row must match its primary lease, and an
+// equal row count then proves that every primary has its unique expected row.
+func validateLeaseMultiIndex[ReferenceKey any](
+	ctx context.Context,
+	name string,
+	expectedCount uint64,
+	index *indexes.Multi[ReferenceKey, string, types.Lease],
+	getLease func(context.Context, string) (types.Lease, error),
+	expectedReference func(types.Lease) (ReferenceKey, error),
+	equal func(ReferenceKey, ReferenceKey) bool,
+) error {
+	var actualCount uint64
+	err := index.Walk(ctx, nil, func(indexedReference ReferenceKey, leaseUUID string) (bool, error) {
+		lease, err := getLease(ctx, leaseUUID)
+		if err != nil {
+			if errors.Is(err, collections.ErrNotFound) {
+				return true, fmt.Errorf("lease %s index references missing primary key %s", name, leaseUUID)
+			}
+			return true, fmt.Errorf("read lease %s index primary key %s: %w", name, leaseUUID, err)
+		}
+		expected, err := expectedReference(lease)
+		if err != nil {
+			return true, err
+		}
+		if !equal(indexedReference, expected) {
+			return true, fmt.Errorf(
+				"lease %s index key %v for primary key %s does not match derived key %v",
+				name,
+				indexedReference,
+				leaseUUID,
+				expected,
+			)
+		}
+		actualCount++
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+	if actualCount != expectedCount {
+		return fmt.Errorf(
+			"lease %s index contains %d entries, expected %d",
+			name,
+			actualCount,
+			expectedCount,
+		)
+	}
+	return nil
 }
 
 func (k Keeper) validateCreditAddressIndex(ctx context.Context) error {

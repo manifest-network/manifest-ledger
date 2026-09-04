@@ -1,6 +1,7 @@
 package types_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -118,6 +119,28 @@ func TestParamsValidate_ReservedDomainSuffixes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParamsValidateReservedDomainSuffixCardinality(t *testing.T) {
+	atLimit := types.DefaultParams()
+	atLimit.ReservedDomainSuffixes = make([]string, types.MaxReservedDomainSuffixEntries)
+	for i := range atLimit.ReservedDomainSuffixes {
+		atLimit.ReservedDomainSuffixes[i] = fmt.Sprintf(".zone-%03d.example.com", i)
+	}
+	require.NoError(t, atLimit.Validate())
+
+	overLimit := types.DefaultParams()
+	overLimit.ReservedDomainSuffixes = append(
+		[]string(nil),
+		atLimit.ReservedDomainSuffixes...,
+	)
+	overLimit.ReservedDomainSuffixes = append(
+		overLimit.ReservedDomainSuffixes,
+		".overflow.example.com",
+	)
+	err := overLimit.Validate()
+	require.ErrorIs(t, err, types.ErrInvalidParams)
+	require.Contains(t, err.Error(), "reserved domain suffix list has 101 entries, maximum allowed is 100")
 }
 
 func TestGenesisValidate_RejectsAmbiguousCustomDomain(t *testing.T) {

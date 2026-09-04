@@ -447,15 +447,19 @@ use EndBlocker to automatically expire PENDING leases after that deadline.
 3. EndBlocker with rate limiting (chosen)
 
 **Rationale:**
-- **Automatic Cleanup:** No manual intervention needed
+- **Automatic Cleanup:** No manual intervention is needed while the derived
+  index remains consistent; the registered invariant exposes corruption that
+  requires operator repair
 - **Predictable:** Consistent behavior based on timeout
-- **Fair to Tenants:** Credit unlocked without waiting indefinitely
-- **DoS Protected:** Rate limited to 100 per block
+- **Fair to Tenants:** In invariant-consistent state, credit is unlocked without
+  waiting indefinitely
+- **DoS Protected:** Successful expiration mutations are rate limited to 100
+  per block and the normal-state scan is time-bounded
 
 **Trade-offs:**
 - EndBlocker overhead (mitigated by rate limiting)
 - Cleanup can lag behind the hard deadline, but overdue PENDING leases cannot be acknowledged while waiting; they can still be rejected or cancelled
-- Range-queries the StateCreatedAt index (prefix 11) for `created_at` before the timeout cutoff (`created_at < blockTime - pending_timeout`), so each block visits only expirable pending leases rather than the full pending set (O(expired) instead of O(total pending)). A manual `collections.Range` over the compound `((state, created_at), uuid)` key is used because collections' `PairRange` helper cannot do partial-prefix ranges on the `Pair[int32, time.Time]` reference key; `sdk.TimeKey`'s sortable encoding makes the byte range match the `created_at` range. Consequence: with >100 expirable leases, the oldest 100 are expired first and the remainder wait for later blocks (rate limit).
+- Range-queries the StateCreatedAt index (prefix 11) for `created_at` before the timeout cutoff (`created_at < blockTime - pending_timeout`), so a consistent store visits only expirable pending leases rather than the full pending set (O(expired) instead of O(total pending)). A manual `collections.Range` over the compound `((state, created_at), uuid)` key is used because collections' `PairRange` helper cannot do partial-prefix ranges on the `Pair[int32, time.Time]` reference key; `sdk.TimeKey`'s sortable encoding makes the byte range match the `created_at` range. Primary UUID, state, and deadline checks skip stale references before they consume the expiration quota. Stale rows can still increase scan work and missing rows remain invisible; neither is auto-repaired, so invariant failures require operator remediation. In consistent state, with >100 expirable leases, the oldest 100 are expired first and the remainder wait for later blocks.
 - Max pending leases per tenant limit needed
 
 ## Decision 18: Tenant Cancellation of Pending Leases

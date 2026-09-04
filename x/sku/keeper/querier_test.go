@@ -3,12 +3,14 @@ package keeper_test
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"cosmossdk.io/collections"
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -997,7 +999,12 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 	q := keeper.NewQuerier(k)
 
 	t.Run("Provider query preserves direct lookup semantics", func(t *testing.T) {
-		for _, providerUUID := range []string{"not-a-valid-uuid", "12345"} {
+		for _, providerUUID := range []string{
+			"not-a-valid-uuid",
+			"12345",
+			strings.ToUpper(testProviderUUID),
+			"01912345-6789-4abc-8def-0123456789ab",
+		} {
 			_, err := q.Provider(f.Ctx, &types.QueryProviderRequest{
 				Uuid: providerUUID,
 			})
@@ -1013,12 +1020,16 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 	})
 
 	t.Run("SKU query preserves direct lookup semantics", func(t *testing.T) {
-		_, err := q.SKU(f.Ctx, &types.QuerySKURequest{
-			Uuid: "invalid-uuid-format",
-		})
-		require.Equal(t, codes.NotFound, status.Code(err))
+		for _, skuUUID := range []string{
+			"invalid-uuid-format",
+			strings.ToUpper(testSKU1UUID),
+			"01912345-6789-4abc-8def-0123456789ab",
+		} {
+			_, err := q.SKU(f.Ctx, &types.QuerySKURequest{Uuid: skuUUID})
+			require.Equal(t, codes.NotFound, status.Code(err), "uuid %q", skuUUID)
+		}
 
-		_, err = q.SKU(f.Ctx, &types.QuerySKURequest{
+		_, err := q.SKU(f.Ctx, &types.QuerySKURequest{
 			Uuid: "",
 		})
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -1032,6 +1043,8 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		}{
 			{providerUUID: "", message: "provider_uuid cannot be empty"},
 			{providerUUID: "bad-uuid", message: "provider_uuid must be a valid UUIDv7"},
+			{providerUUID: strings.ToUpper(testProviderUUID), message: "provider_uuid must be a valid UUIDv7"},
+			{providerUUID: "01912345-6789-4abc-8def-0123456789ab", message: "provider_uuid must be a valid UUIDv7"},
 			{providerUUID: "bad\x00uuid", message: "provider_uuid must be a valid UUIDv7"},
 		} {
 			_, err := q.SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
@@ -1074,4 +1087,49 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		require.NoError(t, err, "should not error for address with no providers")
 		require.Empty(t, resp2.Providers, "should return empty list")
 	})
+}
+
+func TestPointQueriesReturnInternalForCorruptPrimaryRecords(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.SKUKeeper
+	q := keeper.NewQuerier(k)
+	store := f.Ctx.KVStore(f.App.GetKey(types.StoreKey))
+
+	provider := types.Provider{
+		Uuid:          testProviderUUID,
+		Address:       f.TestAccs[0].String(),
+		PayoutAddress: f.TestAccs[1].String(),
+		Active:        true,
+	}
+	require.NoError(t, k.SetProvider(f.Ctx, provider))
+	providerKey, err := collections.EncodeKeyWithPrefix(
+		types.ProviderKey.Bytes(),
+		collections.StringKey,
+		provider.Uuid,
+	)
+	require.NoError(t, err)
+	store.Set(providerKey, []byte{0xff})
+
+	_, err = q.Provider(f.Ctx, &types.QueryProviderRequest{Uuid: provider.Uuid})
+	require.Equal(t, codes.Internal, status.Code(err))
+
+	sku := types.SKU{
+		Uuid:         testSKU1UUID,
+		ProviderUuid: provider.Uuid,
+		Name:         "compute",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    sdk.NewInt64Coin("umfx", 1),
+		Active:       true,
+	}
+	require.NoError(t, k.SetSKU(f.Ctx, sku))
+	skuKey, err := collections.EncodeKeyWithPrefix(
+		types.SKUKey.Bytes(),
+		collections.StringKey,
+		sku.Uuid,
+	)
+	require.NoError(t, err)
+	store.Set(skuKey, []byte{0xff})
+
+	_, err = q.SKU(f.Ctx, &types.QuerySKURequest{Uuid: sku.Uuid})
+	require.Equal(t, codes.Internal, status.Code(err))
 }

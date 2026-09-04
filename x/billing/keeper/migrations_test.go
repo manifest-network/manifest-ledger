@@ -25,6 +25,28 @@ const (
 	testCreditAccountStoragePrefix = "\x00billing/credit-account/v1"
 )
 
+func migrationAllowedList(size int) []string {
+	addresses := make([]string, size)
+	for i := range addresses {
+		addresses[i] = sdk.AccAddress(bytes.Repeat([]byte{byte(i + 1)}, 20)).String()
+	}
+	return addresses
+}
+
+func TestMigratorMigrate2to3RejectsOversizedAllowedListBeforeWrite(t *testing.T) {
+	f := initFixture(t)
+	params := types.DefaultParams()
+	params.AllowedList = migrationAllowedList(types.MaxAllowedListEntries + 1)
+	require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, params))
+
+	store := f.Ctx.KVStore(f.App.GetKey(types.StoreKey))
+	before := bytes.Clone(store.Get(types.ParamsKey.Bytes()))
+	err := keeper.NewMigrator(f.App.BillingKeeper).Migrate2to3(f.Ctx)
+	require.ErrorIs(t, err, types.ErrInvalidParams)
+	require.Contains(t, err.Error(), "allowed list has 101 entries, maximum allowed is 100")
+	require.Equal(t, before, store.Get(types.ParamsKey.Bytes()))
+}
+
 func TestMigratorMigrate2to3RewritesLegacyAddressStrings(t *testing.T) {
 	f := initFixture(t)
 	tenant := f.TestAccs[0]

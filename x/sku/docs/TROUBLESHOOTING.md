@@ -180,6 +180,15 @@ manifestd tx sku create-provider manifest1... manifest1... --api-url https://api
 
 ## Parameter Issues
 
+### "allowed list has ... entries, maximum allowed is 100"
+
+**Cause**: `allowed_list` contains more than 100 addresses. The limit is a
+compile-time safety bound because every authorized SKU write checks this list.
+
+**Solution**: Remove obsolete delegates. If the deployment genuinely needs
+more than 100 managers, redesign authorization around a keyed on-chain
+collection instead of increasing an unpaginated parameter list.
+
 ### "invalid module configuration" (duplicate addresses)
 
 **Error**: `invalid module configuration: invalid params: invalid module configuration: duplicate address in allowed list: {addr}`
@@ -269,7 +278,9 @@ canonical provider UUIDv7 returns an empty SKU page. Direct `query sku provider`
 and `query sku sku` lookups remain unchanged: an empty `uuid` is rejected with
 `InvalidArgument: uuid cannot be empty`; a non-empty malformed or unknown key
 is looked up as-is and returns gRPC `NotFound` with `provider not found` or
-`sku not found`.
+`sku not found`. A stored primary value that cannot be decoded is not treated
+as absent: the point query returns gRPC `Internal`, which requires operator
+investigation.
 
 **Format constraints** (see the UUIDv7 regex): lowercase hex digits only, the version nibble must be `7`, and the variant nibble must be one of `8`, `9`, `a`, or `b`. Uppercase UUIDs are rejected.
 

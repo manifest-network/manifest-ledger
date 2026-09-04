@@ -1,13 +1,23 @@
 package types
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
+
+func deterministicAllowedList(size int) []string {
+	addresses := make([]string, size)
+	for i := range addresses {
+		addresses[i] = sdk.AccAddress(bytes.Repeat([]byte{byte(i + 1)}, 20)).String()
+	}
+	return addresses
+}
 
 func TestParams_Validate(t *testing.T) {
 	_, _, addr1 := testdata.KeyTestPubAddr()
@@ -141,6 +151,17 @@ func TestParams_IsAllowed(t *testing.T) {
 			require.Equal(t, tc.expected, result)
 		})
 	}
+}
+
+func TestParamsValidateAllowedListCardinality(t *testing.T) {
+	atLimit := Params{AllowedList: deterministicAllowedList(MaxAllowedListEntries)}
+	require.NoError(t, atLimit.Validate())
+
+	overLimit := Params{AllowedList: deterministicAllowedList(MaxAllowedListEntries + 1)}
+	err := overLimit.Validate()
+	require.ErrorIs(t, err, ErrInvalidConfig)
+	require.Contains(t, err.Error(), "allowed list has 101 entries, maximum allowed is 100")
+	require.ErrorIs(t, (&GenesisState{Params: overLimit}).Validate(), ErrInvalidConfig)
 }
 
 func TestParamsCanonicalizeAllowedList(t *testing.T) {

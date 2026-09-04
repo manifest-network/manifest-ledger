@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -51,6 +52,7 @@ func TestGenesisJSONRoundTripPreservesEmptyReservationPresence(t *testing.T) {
 func validGenesis(t *testing.T) *types.GenesisState {
 	t.Helper()
 	tenantAddr := sdk.AccAddress([]byte("billing-test-tenant"))
+	now := time.Unix(1, 0).UTC()
 	items := []types.LeaseItem{{
 		SkuUuid:     testSKUUUID,
 		Quantity:    1,
@@ -68,6 +70,8 @@ func validGenesis(t *testing.T) *types.GenesisState {
 			ProviderUuid:               testProviderUUID,
 			Items:                      items,
 			State:                      types.LEASE_STATE_ACTIVE,
+			CreatedAt:                  now,
+			LastSettledAt:              now,
 			MinLeaseDurationAtCreation: types.DefaultMinLeaseDuration,
 		}},
 		CreditAccounts: []types.CreditAccount{{

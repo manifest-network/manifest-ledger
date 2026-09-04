@@ -4,6 +4,8 @@ package keeper
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/collections/indexes"
@@ -280,9 +282,20 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 
 // ExportGenesis exports the module's state to a genesis state.
 func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
-	params, err := k.Params.Get(ctx)
+	genesis, err := k.exportGenesis(ctx)
 	if err != nil {
 		panic(err)
+	}
+	return genesis
+}
+
+// exportGenesis is the error-returning form used by diagnostic paths. The
+// module ExportGenesis interface cannot return an error and therefore retains
+// its conventional panic-on-failure wrapper above.
+func (k *Keeper) exportGenesis(ctx context.Context) (*types.GenesisState, error) {
+	params, err := k.Params.Get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read SKU params: %w", err)
 	}
 
 	var providers []types.Provider
@@ -291,7 +304,7 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		return false, nil
 	})
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("walk providers: %w", err)
 	}
 
 	var skus []types.SKU
@@ -300,16 +313,16 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		return false, nil
 	})
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("walk SKUs: %w", err)
 	}
 
 	providerSeq, err := k.ProviderSequence.Peek(ctx)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("read provider sequence: %w", err)
 	}
 	skuSeq, err := k.SKUSequence.Peek(ctx)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("read SKU sequence: %w", err)
 	}
 
 	return &types.GenesisState{
@@ -318,7 +331,7 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		Skus:             skus,
 		ProviderSequence: providerSeq,
 		SkuSequence:      skuSeq,
-	}
+	}, nil
 }
 
 // Provider operations
@@ -343,7 +356,7 @@ func (k *Keeper) SetProvider(ctx context.Context, provider types.Provider) error
 // GenerateProviderUUID generates a new deterministic UUIDv7 for a provider.
 func (k *Keeper) GenerateProviderUUID(ctx context.Context) (string, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	seq, err := k.ProviderSequence.Next(ctx)
+	seq, err := nextUUIDSequence(ctx, k.ProviderSequence, "provider")
 	if err != nil {
 		return "", err
 	}
@@ -387,11 +400,25 @@ func (k *Keeper) SetSKU(ctx context.Context, sku types.SKU) error {
 // GenerateSKUUUID generates a new deterministic UUIDv7 for a SKU.
 func (k *Keeper) GenerateSKUUUID(ctx context.Context) (string, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	seq, err := k.SKUSequence.Next(ctx)
+	seq, err := nextUUIDSequence(ctx, k.SKUSequence, "SKU")
 	if err != nil {
 		return "", err
 	}
 	return pkguuid.GenerateUUIDv7(sdkCtx, types.ModuleName+"-sku", seq), nil
+}
+
+// nextUUIDSequence prevents collections.Sequence.Next from wrapping its
+// uint64 counter to zero. Sequence exhaustion is practically unreachable, but
+// an imported or corrupted counter must fail closed without mutating state.
+func nextUUIDSequence(ctx context.Context, sequence collections.Sequence, entity string) (uint64, error) {
+	next, err := sequence.Peek(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if next == math.MaxUint64 {
+		return 0, types.ErrSequenceExhausted.Wrap(entity)
+	}
+	return sequence.Next(ctx)
 }
 
 // GetAllSKUs returns all SKUs in the store.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"time"
 
@@ -369,9 +370,20 @@ func (k *Keeper) validateGenesisSKUReferences(ctx context.Context, leases []type
 
 // ExportGenesis exports the module's state to a genesis state.
 func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
-	params, err := k.Params.Get(ctx)
+	genesis, err := k.exportGenesis(ctx)
 	if err != nil {
 		panic(err)
+	}
+	return genesis
+}
+
+// exportGenesis is the error-returning form used by diagnostic paths. The
+// module ExportGenesis interface cannot return an error and therefore retains
+// its conventional panic-on-failure wrapper above.
+func (k *Keeper) exportGenesis(ctx context.Context) (*types.GenesisState, error) {
+	params, err := k.Params.Get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read billing params: %w", err)
 	}
 
 	var leases []types.Lease
@@ -380,7 +392,7 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		return false, nil
 	})
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("walk leases: %w", err)
 	}
 
 	var creditAccounts []types.CreditAccount
@@ -389,12 +401,12 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		return false, nil
 	})
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("walk credit accounts: %w", err)
 	}
 
 	leaseSeq, err := k.LeaseSequence.Peek(ctx)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("read lease sequence: %w", err)
 	}
 
 	return &types.GenesisState{
@@ -402,7 +414,7 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		Leases:         leases,
 		CreditAccounts: creditAccounts,
 		LeaseSequence:  leaseSeq,
-	}
+	}, nil
 }
 
 // Lease operations
@@ -657,6 +669,13 @@ func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Leas
 
 // GetNextLeaseSequence returns the next sequence number for deterministic UUID generation.
 func (k *Keeper) GetNextLeaseSequence(ctx context.Context) (uint64, error) {
+	next, err := k.LeaseSequence.Peek(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if next == math.MaxUint64 {
+		return 0, types.ErrSequenceExhausted
+	}
 	return k.LeaseSequence.Next(ctx)
 }
 
@@ -1506,8 +1525,8 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 }
 
 // EndBlocker processes pending lease expirations.
-// It uses an iterator to process leases one-by-one without loading all into memory,
-// preventing DoS attacks from large numbers of pending leases.
+// It uses an ordered, time-bounded index iterator and only buffers the bounded
+// set of UUIDs selected for expiration, preventing unbounded memory use.
 // Rate limited to MaxPendingLeaseExpirationsPerBlock expirations per block.
 func (k *Keeper) EndBlocker(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -1554,10 +1573,10 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 	}
 
 	// First pass: collect UUIDs of the (already time-bounded) pending leases,
-	// oldest first. The range restricts iteration to created_at < cutoff, so every
-	// visited lease is expirable; the explicit per-lease timeout check below is kept
-	// as defense-in-depth (it must always hold) so a not-yet-expired lease can never
-	// be expired even if the range bounds were ever mis-encoded.
+	// oldest first. In consistent state the range restricts iteration to expirable
+	// PENDING leases. Primary UUID/state and timeout checks remain defense-in-depth:
+	// stale index rows cannot consume the processing quota, and a not-yet-expired
+	// lease cannot be expired even if the range bounds were ever mis-encoded.
 	var expiredUUIDs []string
 	for ; iter.Valid(); iter.Next() {
 		// Rate limit: stop collecting after max expirations to process
@@ -1578,6 +1597,22 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 			k.logger.Error("failed to get lease from storage",
 				"lease_uuid", leaseUUID,
 				"error", err,
+			)
+			continue
+		}
+		if lease.Uuid != leaseUUID {
+			k.logger.Error("pending expiration index references mismatched lease primary",
+				"index_lease_uuid", leaseUUID,
+				"stored_lease_uuid", lease.Uuid,
+			)
+			continue
+		}
+		if lease.State != types.LEASE_STATE_PENDING {
+			// A stale index row must not consume the expiration quota and
+			// indefinitely starve valid pending leases ordered after it.
+			k.logger.Error("pending expiration index references non-pending lease",
+				"lease_uuid", leaseUUID,
+				"lease_state", lease.State.String(),
 			)
 			continue
 		}

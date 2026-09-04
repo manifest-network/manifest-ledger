@@ -241,6 +241,10 @@ fully verifiable reservations to the exact live floor without decoding
 terminal lease history.
 Equivalent allowed-list Bech32 spellings are collapsed by decoded address
 identity while preserving first-seen list order.
+The canonical Params are validated, including both 100-entry list caps, before
+the first migration write. Invalid or over-limit state aborts the upgrade
+atomically; the migration never truncates an allow list or reserved-suffix
+policy.
 For tenants with live legacy leases, it raises only deficient denominations to
 the known non-legacy floor and preserves unknown excess. When no live legacy
 lease remains, the reservation is fully reconstructible and is reconciled
@@ -286,7 +290,7 @@ cutover.
 | `0x04` | LeaseByProvider | Index: provider UUID → lease UUIDs |
 | `0x05` | CreditAccount | Credit accounts (tenant → CreditAccount) |
 | `0x06` | CreditAddressIndex | Reverse lookup: credit address → tenant |
-| `0x07` | LeaseByState | Index: state → lease UUIDs (for pending expiration) |
+| `0x07` | LeaseByState | Index: state → lease UUIDs (for state-filtered queries) |
 | `0x08` | LeaseByProviderState | Compound index: provider+state → lease UUIDs |
 | `0x09` | LeaseByTenantState | Compound index: tenant+state → lease UUIDs |
 | `0x0A` | LeaseBySKU | Many-to-many index: SKU UUID → lease UUIDs |
@@ -296,9 +300,10 @@ cutover.
 `SetLease` atomically reconciles both manually maintained lease projections:
 the SKU membership set and the state-dependent custom-domain claims.
 `SetCreditAccount` maintains the byte-keyed credit-address reverse index. The
-module registers a bidirectional derived-index invariant that rejects missing,
-stale, false, or mismatched entries in any of these three maps; the reservation
-accounting/backing invariant remains a separate route.
+module's bidirectional derived-index invariant covers these three manual maps
+and all six Collections-managed Lease indexes. It also requires every Lease
+key to equal its stored UUID and rejects missing, stale, false, or mismatched
+rows. The reservation accounting/backing invariant remains a separate route.
 
 ### Params
 
@@ -311,8 +316,8 @@ Module parameters stored at key `0x00`:
 | min_lease_duration | uint64 | Minimum lease duration in seconds (default: 3600 = 1 hour) |
 | max_pending_leases_per_tenant | uint64 | Maximum pending leases per tenant (default: 10) |
 | pending_timeout | uint64 | Hard acknowledgement window after `created_at`; exact cutoff is allowed, later block times are rejected (default: 1800 = 30 minutes, min: 60, max: 86400) |
-| allowed_list | []string | List of addresses allowed to create leases on behalf of tenants and to set lease custom_domains |
-| reserved_domain_suffixes | []string | DNS suffixes (each beginning with `.`) that tenants are forbidden from claiming via `set-item-custom-domain`. Used to gate provider wildcard zones. Tunable via governance. |
+| allowed_list | []string | Up to 100 addresses allowed to create leases on behalf of tenants and to set lease custom_domains |
+| reserved_domain_suffixes | []string | Up to 100 DNS suffixes (each beginning with `.`) that tenants are forbidden from claiming via `set-item-custom-domain`. Used to gate provider wildcard zones. Tunable via governance. |
 
 **Validation Constraints:**
 - `max_leases_per_tenant`: Must be > 0 and ≤ 10,000
@@ -320,7 +325,8 @@ Module parameters stored at key `0x00`:
 - `min_lease_duration`: Must be > 0 and ≤ 2,592,000 (30 days)
 - `max_pending_leases_per_tenant`: Must be > 0 and ≤ 1,000
 - `pending_timeout`: Must be between 60 seconds (1 minute) and 86400 seconds (24 hours)
-- `reserved_domain_suffixes`: Each entry must begin with `.`, the substring after the dot must be a valid FQDN, no duplicates
+- `allowed_list`: At most 100 valid, distinct decoded account identities
+- `reserved_domain_suffixes`: At most 100 entries; each must begin with `.`, the substring after the dot must be a valid FQDN, no duplicates
 
 **Note:** There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`, enabling multi-denom billing.
 
@@ -331,6 +337,8 @@ These values are compile-time constants and cannot be changed via governance:
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `MaxItemsPerLeaseHardLimit` | 100 | Absolute maximum items per lease |
+| `MaxAllowedListEntries` | 100 | Maximum delegated-authority addresses; bounds authorization scans |
+| `MaxReservedDomainSuffixEntries` | 100 | Maximum reserved suffixes checked for a custom-domain assignment |
 | `MaxReservedDenomsPerCreditAccount` | 1000 | Maximum aggregate reservation denom cardinality that a new lease may create; historical over-limit accounts remain releasable and cannot grow |
 | `MaxQuantityPerItem` | 1,000,000,000 | Maximum quantity per lease item (1 billion). Defined in `types/errors.go`. |
 | `MaxPendingLeaseExpirationsPerBlock` | 100 | Maximum pending lease expirations processed per block (DoS protection) |
@@ -480,14 +488,18 @@ cannot be acknowledged. Providers may still reject it, and tenants may still can
 
 The EndBlocker automatically expires pending leases that exceed the `pending_timeout`:
 
-1. Query all leases in PENDING state using the state index
-2. For each lease where `now > created_at + pending_timeout`:
+1. Range-query the `StateCreatedAt` index for PENDING candidates with
+   `created_at < now - pending_timeout`, oldest first
+2. Load each primary lease and skip/log stale index references whose UUID or
+   state no longer matches, so corrupt terminal rows do not consume the
+   expiration quota
+3. For each lease where `now > created_at + pending_timeout`:
    - Set lease state to EXPIRED
    - Set expired_at timestamp
    - Decrement pending_lease_count
    - Release the lease's exact remaining reservation tranche
 
-**Rate Limiting:** To prevent DoS attacks, the EndBlocker processes a maximum of **100 lease expirations per block** (`MaxPendingLeaseExpirationsPerBlock`). If more than 100 leases need to expire, the remaining leases are processed in subsequent blocks. This uses a two-pass approach to avoid iterator invalidation during state modification.
+**Rate Limiting:** To prevent DoS attacks, the EndBlocker processes a maximum of **100 lease expirations per block** (`MaxPendingLeaseExpirationsPerBlock`). In invariant-consistent state, if more than 100 leases need to expire, the remaining leases are processed in subsequent blocks. This uses a two-pass approach to avoid iterator invalidation during state modification. Stale index rows do not consume the expiration quota but can add scan work; missing rows are invisible to EndBlock. Neither form of corruption is auto-repaired, and the invariant framework reports both for operator remediation.
 
 `pending_timeout` is a hard acknowledgement deadline independently of this cleanup schedule.
 Acknowledgement succeeds exactly at the cutoff and fails strictly after it, including before
@@ -727,7 +739,7 @@ billing reservation invariant violated: tenant manifest1def... has live reservat
   decoded tenant address identity, before validation and persistence.
   `ValidateStrict()` performs no repair and requires newly authored counts to
   match exactly.
-- **Lease state consistency**: CLOSED leases must have a non-nil, non-zero `closed_at`. At InitGenesis, `created_at`, `last_settled_at`, and `closed_at` must not be after the block time.
+- **Lease state consistency**: Every lease has 1–100 items; `created_at` and `last_settled_at` are non-zero and ordered; CLOSED leases have a non-nil, non-zero `closed_at`. At InitGenesis, `created_at`, `last_settled_at`, and `closed_at` must not be after the block time.
 - **Custom domains**: Claims must remain valid and unambiguous. Imports do not replay the current reserved-suffix policy because a claim may predate a later suffix reservation; `ValidateStrict()` applies that policy to newly authored state.
 - **Parameter validation**: All params must pass validation constraints
 

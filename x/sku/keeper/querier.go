@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -27,6 +28,16 @@ type Querier struct {
 // NewQuerier returns a new Querier instance.
 func NewQuerier(keeper Keeper) Querier {
 	return Querier{k: keeper}
+}
+
+// queryLookupError preserves the distinction between an absent primary key
+// and a store/codec failure. Treating every lookup error as NotFound would hide
+// corrupted state from operators and clients.
+func queryLookupError(err, notFound error) error {
+	if errors.Is(err, notFound) {
+		return status.Error(codes.NotFound, err.Error())
+	}
+	return status.Error(codes.Internal, err.Error())
 }
 
 // Params queries the module parameters.
@@ -55,7 +66,7 @@ func (q Querier) Provider(ctx context.Context, req *types.QueryProviderRequest) 
 
 	provider, err := q.k.GetProvider(ctx, req.Uuid)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
+		return nil, queryLookupError(err, types.ErrProviderNotFound)
 	}
 
 	return &types.QueryProviderResponse{Provider: provider}, nil
@@ -126,7 +137,7 @@ func (q Querier) SKU(ctx context.Context, req *types.QuerySKURequest) (*types.Qu
 
 	sku, err := q.k.GetSKU(ctx, req.Uuid)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
+		return nil, queryLookupError(err, types.ErrSKUNotFound)
 	}
 
 	return &types.QuerySKUResponse{Sku: sku}, nil

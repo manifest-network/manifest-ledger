@@ -43,6 +43,16 @@ const MaxPendingLeasesPerTenantUpperBound = uint64(1_000)
 // actual ACTIVE population remained bounded by the two configured maxima.
 const MaxActiveLeasesPerTenantStateUpperBound = MaxLeasesPerTenantUpperBound + MaxPendingLeasesPerTenantUpperBound
 
+// MaxAllowedListEntries bounds the authorization work performed by billing
+// messages that accept delegated senders. It is a protocol hard limit rather
+// than a governable parameter so an authority update cannot leave subsequent
+// writes with unbounded scans.
+const MaxAllowedListEntries = 100
+
+// MaxReservedDomainSuffixEntries bounds the suffix checks performed when a
+// custom domain is assigned.
+const MaxReservedDomainSuffixEntries = 100
+
 // MaxMinLeaseDuration is the maximum allowed value for min_lease_duration (30 days).
 const MaxMinLeaseDuration = uint64(30 * 24 * 3600)
 
@@ -120,7 +130,15 @@ func (p *Params) Validate() error {
 		return ErrInvalidParams.Wrapf("pending_timeout must be at most %d seconds (24 hours)", MaxPendingTimeout)
 	}
 
-	// Validate allowed list addresses
+	if len(p.AllowedList) > MaxAllowedListEntries {
+		return ErrInvalidParams.Wrapf(
+			"allowed list has %d entries, maximum allowed is %d",
+			len(p.AllowedList),
+			MaxAllowedListEntries,
+		)
+	}
+
+	// Validate allowed list addresses.
 	seen := make(map[string]struct{}, len(p.AllowedList))
 	for _, addr := range p.AllowedList {
 		decoded, err := sdk.AccAddressFromBech32(addr)
@@ -132,6 +150,14 @@ func (p *Params) Validate() error {
 			return ErrInvalidParams.Wrapf("duplicate address in allowed list: %s", addr)
 		}
 		seen[identity] = struct{}{}
+	}
+
+	if len(p.ReservedDomainSuffixes) > MaxReservedDomainSuffixEntries {
+		return ErrInvalidParams.Wrapf(
+			"reserved domain suffix list has %d entries, maximum allowed is %d",
+			len(p.ReservedDomainSuffixes),
+			MaxReservedDomainSuffixEntries,
+		)
 	}
 
 	// Validate reserved domain suffixes: each entry must start with '.' and

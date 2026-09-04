@@ -10,6 +10,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 // SettlementResult contains the results of a settlement operation.
@@ -262,12 +263,15 @@ func (k *Keeper) performSettlementCore(
 	// Get provider payout address
 	provider, err := k.skuKeeper.GetProvider(ctx, lease.ProviderUuid)
 	if err != nil {
+		if !errors.Is(err, skutypes.ErrProviderNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", lease.ProviderUuid)
 	}
 
 	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
 	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
+		return nil, errorsmod.Wrapf(err, "provider %s has invalid payout address", lease.ProviderUuid)
 	}
 	if payoutAddr.Equals(creditAddr) {
 		return nil, types.ErrInvalidCreditOperation.Wrap(

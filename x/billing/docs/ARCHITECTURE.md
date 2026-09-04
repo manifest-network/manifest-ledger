@@ -19,18 +19,25 @@ graph TD
     Billing[x/billing Module]
     SKU[x/sku Module]
     Bank[x/bank Module]
-    POA[x/poa Module]
     
     Billing -->|SKU/Provider lookups| SKU
     Billing -->|token transfers| Bank
-    Billing -->|authority validation| POA
 ```
 
 The Billing module:
 - **Depends on**: 
   - `x/sku` for SKU and Provider information (UUIDs, prices, payout addresses)
   - `x/bank` for token transfers
-  - `x/poa` for authority validation
+- **Authority**: receives a constructor-injected Bech32 address. Production's
+  manual `app.go` wiring supplies `helpers.GetPoAAdmin()`; the keeper does not
+  call `x/poa`. Handlers decode the configured authority and message sender
+  with the SDK Bech32 parser and compare their address bytes. Delegated paths
+  likewise compare `Params.AllowedList` entries by decoded identity.
+
+The generic `depinject.go` provider instead supplies the SDK governance module
+address. An application changing from this repository's manual keeper assembly
+to depinject must deliberately preserve its intended authority; the two wiring
+paths are not interchangeable defaults.
 
 ## Data Model
 
@@ -204,7 +211,7 @@ graph LR
     end
 
     subgraph "Reverse Lookup"
-        CreditReverse[CreditAccountReverse<br/>Map: credit_addr → tenant_addr]
+        CreditReverse[CreditAddressIndex<br/>Map: credit_addr → tenant_addr]
         CustomDomainIdx[CustomDomainIndex<br/>Map: custom_domain → lease_uuid, prefix 0x0C]
     end
 
@@ -216,7 +223,7 @@ graph LR
 | Collection | Key Type | Value Type | Purpose |
 |------------|----------|------------|---------|
 | `CreditAccounts` | `sdk.AccAddress` | `CreditAccount` | Credit account storage |
-| `CreditAccountReverse` | `sdk.AccAddress` | `sdk.AccAddress` | O(1) credit account detection |
+| `CreditAddressIndex` | `sdk.AccAddress` | `sdk.AccAddress` | O(1) credit account detection |
 | `Leases` | `string` (UUID) | `Lease` | Primary lease storage |
 | `LeasesByTenant` | `(AccAddress, string)` | `bool` | Tenant → leases index |
 | `LeasesByProvider` | `(string, string)` | `bool` | Provider UUID → leases index |
@@ -229,12 +236,15 @@ graph LR
 | `LeaseSequence` | - | `uint64` | Monotonic counter feeding deterministic lease UUIDv7 generation |
 | `Params` | - | `Params` | Module parameters |
 
-The manually managed `CreditAccountReverse`, `LeasesBySKU`, and
-`CustomDomainIndex` maps are covered by a registered bidirectional invariant.
-It walks ordered collection keys and verifies both primary→index and
-index→primary membership, so missing and stale entries are detected without
-depending on Go map iteration order. `SetLease` stages its primary record and
-both lease-derived index reconciliations in one `CacheContext`.
+The registered derived-index invariant covers all nine projections: the six
+Collections-managed Lease indexes plus the manually managed
+`CreditAddressIndex`, `LeasesBySKU`, and `CustomDomainIndex` maps. It walks
+ordered collection keys, requires each Lease key to equal the UUID in its
+stored value, and verifies both primary→index and index→primary membership.
+Missing, stale, false, or mismatched rows are therefore detected without
+depending on Go map iteration order. Collections updates its six indexes
+atomically with the Lease primary; `SetLease` stages its primary record and
+both manually maintained lease projections in one `CacheContext`.
 
 ### Storage Versions and Reservation Cutover
 
@@ -244,6 +254,9 @@ identities as raw SDK bytes. The v2→v3 migration rewrites values in ordered,
 bounded pages, canonicalizes the allowed list, rebuilds cached live-lease
 counts from the byte-keyed PENDING then ACTIVE indexes, and repairs the
 provable aggregate reservation floor without changing bank balances.
+It validates canonical Params, including both 100-entry list caps, before its
+first write. An invalid or over-limit list aborts the upgrade atomically; the
+migration never truncates authority or domain-policy data.
 
 Consensus version 4 adds consumable per-lease reservation tranches. The v3→v4
 cutover is deterministic and never mints, burns, or transfers tokens. For each
@@ -875,9 +888,9 @@ func (k Keeper) EndBlocker(ctx context.Context) error {
     // Two-pass approach to avoid iterator invalidation.
     // Pass 1: collect UUIDs of expired pending leases by range-querying the
     // StateCreatedAt index (keyed ((state, created_at), uuid)) for
-    // created_at < now - pendingTimeout, so only expirable leases are visited
-    // (O(expired) instead of O(total pending)). The upper bound is exclusive at
-    // the cutoff because expiry is strict (created_at < cutoff).
+    // created_at < now - pendingTimeout. In consistent state only expirable
+    // leases are visited (O(expired) instead of O(total pending)). The upper
+    // bound is exclusive because expiry is strict (created_at < cutoff).
     cutoff := now.Add(-pendingTimeout)
     pendingState := int32(types.LEASE_STATE_PENDING)
     scanRange := new(collections.Range[collections.Pair[collections.Pair[int32, time.Time], string]]).
@@ -900,6 +913,11 @@ func (k Keeper) EndBlocker(ctx context.Context) error {
         }
         lease, err := k.Leases.Get(ctx, leaseUUID)
         if err != nil {
+            continue
+        }
+        // Corrupt/stale index rows are logged and skipped. In particular, they
+        // do not consume the expiration quota or starve later valid leases.
+        if lease.Uuid != leaseUUID || lease.State != types.LEASE_STATE_PENDING {
             continue
         }
         // Defense-in-depth: the range already guarantees created_at < cutoff.
@@ -930,11 +948,14 @@ func (k Keeper) EndBlocker(ctx context.Context) error {
 
 To prevent DoS attacks where an attacker creates many pending leases to overload the EndBlocker:
 
-1. **Max 100 expirations per block** - Ensures bounded computation
+1. **Max 100 successful expirations per block** - Bounds state mutations and,
+   when indexes are consistent, the number of candidates scanned
 2. **Max pending leases per tenant** (default 10) - Limits spam from individual accounts
-3. **Remaining leases expire in subsequent blocks** - No lease is left indefinitely
-4. **Time-bounded index scan** - The StateCreatedAt index is range-queried for `created_at` before the cutoff (`created_at < blockTime - pending_timeout`), so EndBlocker visits only expirable leases, not all pending ones
-5. **Two-pass approach** - Avoids iterator invalidation during state modification
+3. **Remaining leases expire in subsequent blocks** - In invariant-consistent
+   state, no indexed overdue lease is left indefinitely
+4. **Time-bounded index scan** - The StateCreatedAt index is range-queried for `created_at` before the cutoff (`created_at < blockTime - pending_timeout`), so a consistent store visits only expirable leases, not all pending ones
+5. **Stale-row defense** - Primary UUID/state/deadline checks skip and log corrupt index references before counting them against the 100-expiration quota. Stale rows can still add scan work, and missing rows cannot be discovered by EndBlock; neither condition is auto-repaired. The invariant framework reports both for operator remediation.
+6. **Two-pass approach** - Avoids iterator invalidation during state modification
 
 #### Lease State on Expiration
 
@@ -958,14 +979,16 @@ Credit accounts support multiple token denominations. Since credit accounts are 
 
 ## UUIDv7 Generation
 
-The module uses deterministic UUIDv7 generation for all identifiers (providers, SKUs, leases):
+The module uses deterministic UUIDv7 generation for lease identifiers; provider
+and SKU identifiers are generated by `x/sku` through the same shared helper:
 
 ### Why UUIDv7?
 
 - **Time-ordered**: Embeds millisecond timestamp, enabling natural sorting
 - **Deterministic**: All validators generate identical UUIDs for the same block
 - **Debugging**: Easier to trace and correlate with external systems
-- **Future-proof**: No practical limit vs uint64
+- **Large bounded space**: Uses a `uint64` sequence; exhaustion is practically
+  unreachable but handled explicitly
 
 ### Generation Strategy
 
@@ -987,6 +1010,9 @@ func GenerateUUIDv7(ctx sdk.Context, moduleName string, sequence uint64) string 
 ```
 
 See `pkg/uuid/uuid.go` for the full implementation.
+Before advancing the Collections sequence, the keeper calls `Peek`. A stored
+value of `math.MaxUint64` returns `ErrSequenceExhausted` without calling `Next`,
+so an imported or corrupt counter cannot wrap to zero or mutate state.
 
 ## Accrual Calculation
 
@@ -1091,7 +1117,7 @@ This returns `sdk.Coins` to support multi-denom leases where different SKUs may 
 | GetPendingLeasesByProvider | O(k) | k = pending leases (compound index) |
 | GetLeasesBySKU | O(k) | k = leases containing the SKU (SKU index) |
 | CreditEstimate | O(i log i) | i = active lease items, capped at 100,000; ACTIVE leases are additionally capped at the conservative 11,000-state ceiling and count/index drift fails explicitly |
-| EndBlocker | O(e) | e = expirable pending leases (created_at before cutoff, i.e. older than blockTime − pending_timeout), capped at 100/block via time-bounded StateCreatedAt scan |
+| EndBlocker | O(e) in consistent state | e = expirable pending leases (created_at before cutoff, i.e. older than blockTime − pending_timeout), capped at 100 expirations/block via the time-bounded StateCreatedAt scan; stale index rows are skipped and reported by invariants |
 
 ### Future Improvements
 

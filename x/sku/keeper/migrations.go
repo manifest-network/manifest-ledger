@@ -26,6 +26,7 @@ func NewMigrator(k Keeper) Migrator {
 // bytes instead of Bech32 strings. Provider secondary indexes were already
 // keyed by decoded address bytes and are deliberately left untouched.
 // Equivalent allowed-list spellings are collapsed in first-seen slice order.
+// Canonical Params are validated before any migration write.
 //
 // Pages are read in primary-key order and closed before writes begin, satisfying
 // the KV iterator contract. The migration is idempotent because the value
@@ -38,6 +39,9 @@ func (m Migrator) Migrate1to2(ctx sdk.Context) error {
 	params, err = params.CanonicalizeAllowedList()
 	if err != nil {
 		return fmt.Errorf("canonicalize SKU params allowed list: %w", err)
+	}
+	if err := params.Validate(); err != nil {
+		return fmt.Errorf("validate canonical SKU params: %w", err)
 	}
 	if err := m.keeper.Params.Set(ctx, params); err != nil {
 		return fmt.Errorf("rewrite SKU params: %w", err)

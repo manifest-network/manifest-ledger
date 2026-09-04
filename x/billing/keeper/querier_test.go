@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"cosmossdk.io/collections"
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -37,6 +39,7 @@ import (
 	sharedpagination "github.com/manifest-network/manifest-ledger/pkg/pagination"
 	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 func TestQueryParams(t *testing.T) {
@@ -2909,7 +2912,12 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 	querier := keeper.NewQuerier(k)
 
 	t.Run("Lease query preserves direct lookup semantics", func(t *testing.T) {
-		for _, leaseUUID := range []string{"not-a-valid-uuid", "12345"} {
+		for _, leaseUUID := range []string{
+			"not-a-valid-uuid",
+			"12345",
+			strings.ToUpper(testLeaseUUID1),
+			"01912345-6789-4abc-8def-0123456789ab",
+		} {
 			_, err := querier.Lease(f.Ctx, &types.QueryLeaseRequest{
 				LeaseUuid: leaseUUID,
 			})
@@ -2935,6 +2943,15 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		})
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
 		require.Equal(t, "provider_uuid must be a valid UUIDv7", status.Convert(err).Message())
+		for _, providerUUID := range []string{
+			strings.ToUpper(testProviderUUID),
+			"01912345-6789-4abc-8def-0123456789ab",
+		} {
+			_, err = querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
+				ProviderUuid: providerUUID,
+			})
+			require.Equal(t, codes.InvalidArgument, status.Code(err), "provider_uuid %q", providerUUID)
+		}
 
 		_, err = querier.LeasesByProvider(f.Ctx, &types.QueryLeasesByProviderRequest{
 			ProviderUuid: testProviderUUID + "\x00",
@@ -2957,10 +2974,16 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		require.Equal(t, "lease_uuid cannot be empty", status.Convert(err).Message())
 
 		// Non-empty values are looked up as supplied, without format validation.
-		_, err = querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
-			LeaseUuid: "not-valid",
-		})
-		require.Equal(t, codes.NotFound, status.Code(err))
+		for _, leaseUUID := range []string{
+			"not-valid",
+			strings.ToUpper(testLeaseUUID1),
+			"01912345-6789-4abc-8def-0123456789ab",
+		} {
+			_, err = querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
+				LeaseUuid: leaseUUID,
+			})
+			require.Equal(t, codes.NotFound, status.Code(err), "lease_uuid %q", leaseUUID)
+		}
 	})
 
 	t.Run("ProviderWithdrawable with empty/invalid UUID", func(t *testing.T) {
@@ -2971,11 +2994,18 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
 		require.Equal(t, "provider_uuid cannot be empty", status.Convert(err).Message())
 
-		// Unknown provider identifiers fail before index iteration.
-		_, err = querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
-			ProviderUuid: "bad-uuid",
-		})
-		require.Equal(t, codes.NotFound, status.Code(err))
+		// Unknown provider identifiers fail before index iteration and retain the
+		// direct point-lookup contract rather than collection-filter validation.
+		for _, providerUUID := range []string{
+			"bad-uuid",
+			strings.ToUpper(testProviderUUID),
+			"01912345-6789-4abc-8def-0123456789ab",
+		} {
+			_, err = querier.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
+				ProviderUuid: providerUUID,
+			})
+			require.Equal(t, codes.NotFound, status.Code(err), "provider_uuid %q", providerUUID)
+		}
 	})
 
 	t.Run("LeasesBySKU with empty/invalid UUID", func(t *testing.T) {
@@ -2992,6 +3022,13 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		})
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
 		require.Equal(t, "sku_uuid must be a valid UUIDv7", status.Convert(err).Message())
+		for _, skuUUID := range []string{
+			strings.ToUpper(testSKUUUID),
+			"01912345-6789-4abc-8def-0123456789ab",
+		} {
+			_, err = querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{SkuUuid: skuUUID})
+			require.Equal(t, codes.InvalidArgument, status.Code(err), "sku_uuid %q", skuUUID)
+		}
 
 		_, err = querier.LeasesBySKU(f.Ctx, &types.QueryLeasesBySKURequest{
 			SkuUuid: testSKUUUID + "\x00",
@@ -3011,20 +3048,25 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		_, err := querier.Lease(f.Ctx, &types.QueryLeaseRequest{
 			LeaseUuid: nonExistentUUID,
 		})
-		require.Error(t, err, "should error for non-existent lease")
+		require.Equal(t, codes.NotFound, status.Code(err))
 
 		// Non-existent credit account (valid address but no account)
 		validButNonExistent := f.TestAccs[4].String()
 		_, err = querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
 			Tenant: validButNonExistent,
 		})
-		require.Error(t, err, "should error for non-existent credit account")
+		require.Equal(t, codes.NotFound, status.Code(err))
+
+		_, err = querier.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{
+			Tenant: validButNonExistent,
+		})
+		require.Equal(t, codes.NotFound, status.Code(err))
 
 		// Non-existent lease for withdrawable amount
 		_, err = querier.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{
 			LeaseUuid: nonExistentUUID,
 		})
-		require.Error(t, err, "should error for withdrawable on non-existent lease")
+		require.Equal(t, codes.NotFound, status.Code(err))
 	})
 
 	t.Run("queries with valid but empty results", func(t *testing.T) {
@@ -3050,5 +3092,81 @@ func TestQueryErrorCasesComprehensive(t *testing.T) {
 		})
 		require.NoError(t, err, "should not error for SKU with no leases")
 		require.Empty(t, resp3.Leases, "should return empty list")
+	})
+}
+
+func TestPointQueriesReturnInternalForCorruptPrimaryRecords(t *testing.T) {
+	t.Run("lease", func(t *testing.T) {
+		f := initFixture(t)
+		k := f.App.BillingKeeper
+		q := keeper.NewQuerier(k)
+		lease := types.Lease{
+			Uuid:         testLeaseUUID1,
+			Tenant:       f.TestAccs[0].String(),
+			ProviderUuid: testProviderUUID,
+			State:        types.LEASE_STATE_PENDING,
+			CreatedAt:    f.Ctx.BlockTime(),
+		}
+		require.NoError(t, k.SetLease(f.Ctx, lease))
+		key, err := collections.EncodeKeyWithPrefix(
+			types.LeaseKey.Bytes(),
+			collections.StringKey,
+			lease.Uuid,
+		)
+		require.NoError(t, err)
+		f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
+
+		_, err = q.Lease(f.Ctx, &types.QueryLeaseRequest{LeaseUuid: lease.Uuid})
+		require.Equal(t, codes.Internal, status.Code(err))
+		_, err = q.WithdrawableAmount(f.Ctx, &types.QueryWithdrawableAmountRequest{LeaseUuid: lease.Uuid})
+		require.Equal(t, codes.Internal, status.Code(err))
+	})
+
+	t.Run("credit account", func(t *testing.T) {
+		f := initFixture(t)
+		k := f.App.BillingKeeper
+		q := keeper.NewQuerier(k)
+		tenant := f.TestAccs[0]
+		account := types.CreditAccount{
+			Tenant:        tenant.String(),
+			CreditAddress: types.DeriveCreditAddress(tenant).String(),
+		}
+		require.NoError(t, k.SetCreditAccount(f.Ctx, account))
+		key, err := collections.EncodeKeyWithPrefix(
+			types.CreditAccountKey.Bytes(),
+			sdk.AccAddressKey,
+			tenant,
+		)
+		require.NoError(t, err)
+		f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
+
+		_, err = q.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{Tenant: tenant.String()})
+		require.Equal(t, codes.Internal, status.Code(err))
+		_, err = q.CreditEstimate(f.Ctx, &types.QueryCreditEstimateRequest{Tenant: tenant.String()})
+		require.Equal(t, codes.Internal, status.Code(err))
+	})
+
+	t.Run("provider", func(t *testing.T) {
+		f := initFixture(t)
+		q := keeper.NewQuerier(f.App.BillingKeeper)
+		provider := skutypes.Provider{
+			Uuid:          testProviderUUID,
+			Address:       f.TestAccs[0].String(),
+			PayoutAddress: f.TestAccs[1].String(),
+			Active:        true,
+		}
+		require.NoError(t, f.App.SKUKeeper.SetProvider(f.Ctx, provider))
+		key, err := collections.EncodeKeyWithPrefix(
+			skutypes.ProviderKey.Bytes(),
+			collections.StringKey,
+			provider.Uuid,
+		)
+		require.NoError(t, err)
+		f.Ctx.KVStore(f.App.GetKey(skutypes.StoreKey)).Set(key, []byte{0xff})
+
+		_, err = q.ProviderWithdrawable(f.Ctx, &types.QueryProviderWithdrawableRequest{
+			ProviderUuid: provider.Uuid,
+		})
+		require.Equal(t, codes.Internal, status.Code(err))
 	})
 }

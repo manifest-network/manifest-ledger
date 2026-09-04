@@ -161,6 +161,9 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 	// 1. Get credit account and verify tenant hasn't exceeded max leases (O(1) check)
 	creditAccount, err := ms.k.GetCreditAccount(ctx, tenant)
 	if err != nil {
+		if !errors.Is(err, types.ErrCreditAccountNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrCreditAccountNotFound.Wrapf("tenant %s has no credit account", tenant)
 	}
 
@@ -189,6 +192,9 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 	for i, inputItem := range items {
 		sku, err := ms.k.skuKeeper.GetSKU(ctx, inputItem.SkuUuid)
 		if err != nil {
+			if !errors.Is(err, skutypes.ErrSKUNotFound) {
+				return nil, err
+			}
 			return nil, types.ErrSKUNotFound.Wrapf("sku_uuid %s not found", inputItem.SkuUuid)
 		}
 
@@ -211,8 +217,10 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 		// Lock price from SKU (convert to per-second rate, preserving denom)
 		lockedPricePerSecond, err := ConvertBasePriceToPerSecond(sku.BasePrice, sku.Unit)
 		if err != nil {
-			// This should not happen for valid SKUs (validated at creation time)
-			return nil, types.ErrSKUNotFound.Wrapf("invalid SKU pricing: %s", err)
+			// This should not happen for a SKU admitted by x/sku validation. Keep
+			// the underlying fault visible instead of disguising corrupt state as
+			// a missing SKU.
+			return nil, errorsmod.Wrapf(err, "convert price for sku_uuid %s", inputItem.SkuUuid)
 		}
 
 		// Accumulate total rate for each denom
@@ -236,6 +244,9 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 	// 4. Verify provider is active (only need to check once since all SKUs belong to same provider)
 	provider, err := ms.k.skuKeeper.GetProvider(ctx, providerUUID)
 	if err != nil {
+		if !errors.Is(err, skutypes.ErrProviderNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
 	}
 	if !provider.Active {
@@ -436,6 +447,9 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 	for _, uuid := range msg.LeaseUuids {
 		lease, err := ms.k.GetLease(ctx, uuid)
 		if err != nil {
+			if !errors.Is(err, types.ErrLeaseNotFound) {
+				return nil, err
+			}
 			return nil, types.ErrLeaseNotFound.Wrapf("lease %s not found", uuid)
 		}
 
@@ -517,6 +531,9 @@ func (ms msgServer) CloseLease(ctx context.Context, msg *types.MsgCloseLease) (*
 		if _, exists := creditAccounts[tenantKey]; !exists {
 			creditAccount, err := ms.k.GetCreditAccount(ctx, tenantKey)
 			if err != nil {
+				if !errors.Is(err, types.ErrCreditAccountNotFound) {
+					return nil, err
+				}
 				return nil, types.ErrCreditAccountNotFound.Wrapf(
 					"credit account not found for tenant %s (lease %s): data integrity issue",
 					lease.Tenant,
@@ -782,7 +799,7 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 	}
 	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
 	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
+		return nil, errorsmod.Wrapf(err, "provider %s has invalid payout address", provider.Uuid)
 	}
 	payoutAddress := payoutAddr.String()
 
@@ -952,7 +969,7 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 	}
 	payoutAddr, err := sdk.AccAddressFromBech32(provider.GetPayoutAddress())
 	if err != nil {
-		return nil, types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
+		return nil, errorsmod.Wrapf(err, "provider %s has invalid payout address", provider.GetUuid())
 	}
 	payoutAddress := payoutAddr.String()
 
@@ -1190,6 +1207,9 @@ func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []
 	for _, uuid := range leaseUuids {
 		lease, err := ms.k.GetLease(ctx, uuid)
 		if err != nil {
+			if !errors.Is(err, types.ErrLeaseNotFound) {
+				return nil, err
+			}
 			return nil, types.ErrLeaseNotFound.Wrapf("lease %s not found", uuid)
 		}
 
@@ -1214,6 +1234,9 @@ func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []
 		if _, exists := creditAccounts[tenantKey]; !exists {
 			creditAccount, err := ms.k.GetCreditAccount(ctx, tenantKey)
 			if err != nil {
+				if !errors.Is(err, types.ErrCreditAccountNotFound) {
+					return nil, err
+				}
 				return nil, types.ErrCreditAccountNotFound.Wrapf(
 					"credit account not found for tenant %s (lease %s): data integrity issue",
 					lease.Tenant,
@@ -1243,6 +1266,9 @@ func (ms msgServer) validatePendingLeaseBatch(ctx context.Context, leaseUuids []
 func (ms msgServer) validateProviderAuthorization(ctx context.Context, sender, providerUUID, operation string) (skutypes.Provider, string, error) {
 	provider, err := ms.k.skuKeeper.GetProvider(ctx, providerUUID)
 	if err != nil {
+		if !errors.Is(err, skutypes.ErrProviderNotFound) {
+			return skutypes.Provider{}, "", err
+		}
 		return skutypes.Provider{}, "", types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
 	}
 
@@ -1591,6 +1617,9 @@ func (ms msgServer) CancelLease(ctx context.Context, msg *types.MsgCancelLease) 
 	// Get and cache the tenant's credit account (after ownership validation)
 	creditAccount, err := ms.k.GetCreditAccount(ctx, tenantKey)
 	if err != nil {
+		if !errors.Is(err, types.ErrCreditAccountNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrCreditAccountNotFound.Wrapf(
 			"credit account not found for tenant %s",
 			msg.Tenant,

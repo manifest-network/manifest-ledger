@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
@@ -120,6 +121,9 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 
 	existingProvider, err := ms.k.GetProvider(ctx, req.Uuid)
 	if err != nil {
+		if !errors.Is(err, types.ErrProviderNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.Uuid)
 	}
 
@@ -221,6 +225,9 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 
 	existingProvider, err := ms.k.GetProvider(ctx, req.Uuid)
 	if err != nil {
+		if !errors.Is(err, types.ErrProviderNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.Uuid)
 	}
 
@@ -326,6 +333,9 @@ func (ms msgServer) CreateSKU(ctx context.Context, req *types.MsgCreateSKU) (*ty
 	// Verify provider exists and is active
 	provider, err := ms.k.GetProvider(ctx, req.ProviderUuid)
 	if err != nil {
+		if !errors.Is(err, types.ErrProviderNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", req.ProviderUuid)
 	}
 	if !provider.Active {
@@ -387,6 +397,9 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 
 	existingSKU, err := ms.k.GetSKU(ctx, req.Uuid)
 	if err != nil {
+		if !errors.Is(err, types.ErrSKUNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrSKUNotFound.Wrapf("sku %s not found", req.Uuid)
 	}
 
@@ -397,6 +410,9 @@ func (ms msgServer) UpdateSKU(ctx context.Context, req *types.MsgUpdateSKU) (*ty
 	// Verify provider still exists
 	provider, err := ms.k.GetProvider(ctx, existingSKU.ProviderUuid)
 	if err != nil {
+		if !errors.Is(err, types.ErrProviderNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrProviderNotFound.Wrapf("provider %s not found", existingSKU.ProviderUuid)
 	}
 
@@ -480,6 +496,9 @@ func (ms msgServer) DeactivateSKU(ctx context.Context, req *types.MsgDeactivateS
 
 	existingSKU, err := ms.k.GetSKU(ctx, req.Uuid)
 	if err != nil {
+		if !errors.Is(err, types.ErrSKUNotFound) {
+			return nil, err
+		}
 		return nil, types.ErrSKUNotFound.Wrapf("sku %s not found", req.Uuid)
 	}
 

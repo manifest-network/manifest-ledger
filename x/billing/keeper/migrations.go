@@ -52,6 +52,7 @@ func (m Migrator) Migrate1to2(_ sdk.Context) error {
 // rebuilt by decoded address identity. Collection keys and secondary indexes
 // were already byte-addressed and are deliberately left untouched. Equivalent
 // allowed-list Bech32 spellings are collapsed in first-seen slice order.
+// Canonical Params are validated before any migration write.
 //
 // Pages are read in key order and closed before writes begin, satisfying the KV
 // iterator contract without relying on cache-store behavior. The migration is
@@ -64,6 +65,9 @@ func (m Migrator) Migrate2to3(ctx sdk.Context) error {
 	params.AllowedList, err = types.CanonicalUniqueAddresses(params.AllowedList)
 	if err != nil {
 		return fmt.Errorf("repair billing params allowed list: %w", err)
+	}
+	if err := params.Validate(); err != nil {
+		return fmt.Errorf("validate canonical billing params: %w", err)
 	}
 	if err := m.keeper.Params.Set(ctx, params); err != nil {
 		return fmt.Errorf("rewrite billing params: %w", err)

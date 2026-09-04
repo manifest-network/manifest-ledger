@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"io"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -100,6 +101,41 @@ func TestPaginatedQueryCommandsDecodeBase64PageKey(t *testing.T) {
 			require.NotNil(t, request)
 			require.Equal(t, rawKey, request.Key)
 		})
+	}
+}
+
+func TestUUIDQueryCommandsRejectNonCanonicalIDsLocally(t *testing.T) {
+	server := &paginationCaptureServer{requests: make(chan *query.PageRequest, 1)}
+	clientCtx := newQueryClientContext(t, server)
+	tests := []struct {
+		name       string
+		command    func() *cobra.Command
+		wantPrefix string
+	}{
+		{name: "lease", command: cli.GetLeaseCmd, wantPrefix: "invalid lease_uuid format: "},
+		{name: "leases by provider", command: cli.GetLeasesByProviderCmd, wantPrefix: "invalid provider_uuid format: "},
+		{name: "withdrawable", command: cli.GetWithdrawableAmountCmd, wantPrefix: "invalid lease_uuid format: "},
+		{name: "provider withdrawable", command: cli.GetProviderWithdrawableCmd, wantPrefix: "invalid provider_uuid format: "},
+		{name: "leases by SKU", command: cli.GetLeasesBySKUCmd, wantPrefix: "invalid sku_uuid format: "},
+	}
+	invalidUUIDs := []string{
+		"not-a-uuid",
+		strings.ToUpper(testQueryUUID),
+		"01912345-6789-4abc-8def-0123456789ab",
+	}
+
+	for _, test := range tests {
+		for _, invalidUUID := range invalidUUIDs {
+			t.Run(test.name+"/"+invalidUUID, func(t *testing.T) {
+				cmd := test.command()
+				cmd.SetContext(t.Context())
+				require.NoError(t, client.SetCmdClientContext(cmd, clientCtx))
+				cmd.SetArgs([]string{invalidUUID})
+
+				err := cmd.Execute()
+				require.EqualError(t, err, test.wantPrefix+invalidUUID)
+			})
+		}
 	}
 }
 

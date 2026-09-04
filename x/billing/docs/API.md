@@ -1474,7 +1474,9 @@ By contrast, `Lease.lease_uuid`, `WithdrawableAmount.lease_uuid`, and
 `ProviderWithdrawable.provider_uuid` preserve direct-lookup behavior. They
 reject an empty field with `InvalidArgument`, then look up every non-empty key
 as supplied. A malformed, uppercase, non-v7, or unknown canonical value
-therefore returns gRPC `NotFound` rather than a UUID-format error.
+therefore returns gRPC `NotFound` rather than a UUID-format error. `NotFound`
+is reserved for an absent primary resource; unexpected primary-store or
+value-decoding failures return `Internal` so state corruption remains visible.
 
 **Important Note:** Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement or auto-close. `WithdrawableAmount` calculates the current amount for one lease. `ProviderWithdrawable` dry-runs the current ordered page against page-local virtual tenant state and reports skipped failed simulations in `failed_lease_uuids`, just as provider-wide withdrawal does. Its pages are not additive. Every forward page has a one-transaction analogue because the query limit is capped at the transaction maximum of 100. After commit, advance the query with its prior first-unread cursor and the transaction with its prior last-processed cursor; never interchange them. Settlement (actual token transfer) only happens during write operations (`Withdraw`, `CloseLease`). Only ACTIVE leases accrue charges.
 
@@ -1663,7 +1665,8 @@ The direct-lookup routes `/lease/{lease_uuid}`,
 exist—including malformed, uppercase, or non-v7 text—to HTTP 404 / gRPC
 `NotFound`. `/lease/` reaches the lease handler with an empty value and returns
 HTTP 400; an omitted UUID in either withdrawable route shape does not reach its
-handler.
+handler. An unexpected primary-store or decoding failure maps to HTTP 500 /
+gRPC `Internal`.
 
 ### Examples
 
@@ -1808,10 +1811,10 @@ message Params {
 **Field notes:**
 - `max_leases_per_tenant`: Revalidated when PENDING leases are acknowledged, using each tenant's active count after the complete batch.
 - `pending_timeout`: Defines a hard acknowledgement deadline at `created_at + current pending_timeout`. The exact cutoff is valid; a strictly later block time is rejected even before rate-limited EndBlock cleanup.
-- `allowed_list`: Addresses with privileged authority for `MsgCreateLeaseForTenant` and `MsgSetItemCustomDomain`, in addition to the module authority.
-- `reserved_domain_suffixes`: DNS suffixes (each must begin with `.`) that tenants are forbidden from claiming as a `LeaseItem.custom_domain`. Match is case-insensitive at a label boundary, plus the apex (e.g. `.foo.example` matches both `app.foo.example` and `foo.example`). Each entry's substring after the leading dot must itself be a valid FQDN. Tunable via `MsgUpdateParams`.
+- `allowed_list`: Up to 100 addresses with privileged authority for `MsgCreateLeaseForTenant` and `MsgSetItemCustomDomain`, in addition to the module authority. Addresses must be valid and distinct by decoded identity.
+- `reserved_domain_suffixes`: Up to 100 DNS suffixes (each must begin with `.`) that tenants are forbidden from claiming as a `LeaseItem.custom_domain`. Match is case-insensitive at a label boundary, plus the apex (e.g. `.foo.example` matches both `app.foo.example` and `foo.example`). Each entry's substring after the leading dot must itself be a valid FQDN. Tunable via `MsgUpdateParams`.
 
-**Defaults and validation bounds (numeric params):**
+**Defaults and validation bounds:**
 | Param | Default | Valid range |
 |-------|---------|-------------|
 | `max_leases_per_tenant` | 100 | 1 – 10,000 (`MaxLeasesPerTenantUpperBound`) |
@@ -1819,6 +1822,8 @@ message Params {
 | `min_lease_duration` | 3600 | 1 – 2,592,000 seconds / 30 days (`MaxMinLeaseDuration`) |
 | `max_pending_leases_per_tenant` | 10 | 1 – 1,000 (`MaxPendingLeasesPerTenantUpperBound`) |
 | `pending_timeout` | 1800 | 60 (`MinPendingTimeout`) – 86,400 (`MaxPendingTimeout`) seconds |
+| `allowed_list` | empty | 0 – 100 entries (`MaxAllowedListEntries`) |
+| `reserved_domain_suffixes` | empty | 0 – 100 entries (`MaxReservedDomainSuffixEntries`) |
 
 ---
 
@@ -1940,6 +1945,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrReservationInvariant` | 36 | Stored balance/reservation state violates the consumable reservation invariant |
 | `ErrLeaseQueryLimitExceeded` | 37 | `CreditEstimate` would exceed its conservative ACTIVE-lease or total-item work bound |
 | `ErrReservationDenomLimitExceeded` | 38 | A new lease would increase a credit account's aggregate reservation beyond 1,000 denominations |
+| `ErrSequenceExhausted` | 39 | The deterministic lease UUID sequence has exhausted its `uint64` range |
 
 **Note on Reserved Codes:** Error code 7 is explicitly reserved to maintain stable error code assignments across module versions. Code 20 is active and belongs to `ErrArithmeticOverflow`.
 

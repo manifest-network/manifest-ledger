@@ -53,7 +53,9 @@ manifestd tx sku update-params \
   --chain-id manifest-1
 ```
 
-> **Note:** The allowed list is replaced entirely, so include all addresses you want authorized.
+> **Note:** The allowed list is replaced entirely, so include all addresses you
+> want authorized. It accepts at most 100 valid, distinct decoded account
+> identities; equivalent Bech32 spellings are duplicates.
 
 ## Step 2: Prepare Provider Information
 

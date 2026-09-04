@@ -16,6 +16,7 @@ package keeper_test
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -39,6 +40,27 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
+
+func TestLeaseSequenceExhaustionDoesNotWrap(t *testing.T) {
+	f := initFixture(t)
+	k := f.App.BillingKeeper
+	require.NoError(t, k.LeaseSequence.Set(f.Ctx, math.MaxUint64-1))
+
+	allocated, err := k.GetNextLeaseSequence(f.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(math.MaxUint64-1), allocated)
+
+	next, err := k.LeaseSequence.Peek(f.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(math.MaxUint64), next)
+
+	_, err = k.GetNextLeaseSequence(f.Ctx)
+	require.ErrorIs(t, err, types.ErrSequenceExhausted)
+
+	next, err = k.LeaseSequence.Peek(f.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(math.MaxUint64), next, "failed allocation must not wrap or mutate the sequence")
+}
 
 const (
 	testDenom        = "umfx"
@@ -1414,8 +1436,9 @@ func TestGenesisValidation(t *testing.T) {
 								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
-						State:     types.LEASE_STATE_ACTIVE,
-						CreatedAt: f.Ctx.BlockTime(),
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     f.Ctx.BlockTime(),
+						LastSettledAt: f.Ctx.BlockTime(),
 					},
 				},
 				CreditAccounts: []types.CreditAccount{
@@ -1447,8 +1470,9 @@ func TestGenesisValidation(t *testing.T) {
 								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
-						State:     types.LEASE_STATE_ACTIVE,
-						CreatedAt: f.Ctx.BlockTime(),
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     f.Ctx.BlockTime(),
+						LastSettledAt: f.Ctx.BlockTime(),
 					},
 					{
 						Uuid:         leaseUUID1, // Duplicate UUID
@@ -1461,8 +1485,9 @@ func TestGenesisValidation(t *testing.T) {
 								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
-						State:     types.LEASE_STATE_ACTIVE,
-						CreatedAt: f.Ctx.BlockTime(),
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     f.Ctx.BlockTime(),
+						LastSettledAt: f.Ctx.BlockTime(),
 					},
 				},
 			},
@@ -1484,8 +1509,9 @@ func TestGenesisValidation(t *testing.T) {
 								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
-						State:     types.LEASE_STATE_ACTIVE,
-						CreatedAt: f.Ctx.BlockTime(),
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     f.Ctx.BlockTime(),
+						LastSettledAt: f.Ctx.BlockTime(),
 					},
 				},
 			},
@@ -1507,8 +1533,9 @@ func TestGenesisValidation(t *testing.T) {
 								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
-						State:     types.LEASE_STATE_CLOSED,
-						CreatedAt: f.Ctx.BlockTime(),
+						State:         types.LEASE_STATE_CLOSED,
+						CreatedAt:     f.Ctx.BlockTime(),
+						LastSettledAt: f.Ctx.BlockTime(),
 						// Missing ClosedAt
 					},
 				},
@@ -1531,9 +1558,10 @@ func TestGenesisValidation(t *testing.T) {
 								LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
 							},
 						},
-						State:     types.LEASE_STATE_CLOSED,
-						CreatedAt: f.Ctx.BlockTime(),
-						ClosedAt:  &closedAt,
+						State:         types.LEASE_STATE_CLOSED,
+						CreatedAt:     f.Ctx.BlockTime(),
+						LastSettledAt: f.Ctx.BlockTime(),
+						ClosedAt:      &closedAt,
 					},
 				},
 				LeaseSequence: 1,

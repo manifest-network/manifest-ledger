@@ -230,6 +230,14 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 		if len(lease.Items) == 0 {
 			return ErrInvalidLease.Wrapf("lease %s has no items", lease.Uuid)
 		}
+		if len(lease.Items) > MaxItemsPerLeaseHardLimit {
+			return ErrTooManyLeaseItems.Wrapf(
+				"lease %s has %d items, maximum allowed is %d",
+				lease.Uuid,
+				len(lease.Items),
+				MaxItemsPerLeaseHardLimit,
+			)
+		}
 
 		hasServiceName := 0
 		for i, item := range lease.Items {
@@ -332,6 +340,24 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 			return ErrInvalidLease.Wrapf("lease %s has unspecified state", lease.Uuid)
 		default:
 			return ErrInvalidLease.Wrapf("lease %s has unknown state %d", lease.Uuid, lease.State)
+		}
+
+		// Every lease created by the state machine has a non-zero, monotonic
+		// accrual interval. Enforce the same structural contract on imports so
+		// malformed ACTIVE state cannot accrue from the Go zero time.
+		if lease.CreatedAt.IsZero() {
+			return ErrInvalidLease.Wrapf("lease %s has zero created_at timestamp", lease.Uuid)
+		}
+		if lease.LastSettledAt.IsZero() {
+			return ErrInvalidLease.Wrapf("lease %s has zero last_settled_at timestamp", lease.Uuid)
+		}
+		if lease.LastSettledAt.Before(lease.CreatedAt) {
+			return ErrInvalidLease.Wrapf(
+				"lease %s has last_settled_at (%s) before created_at (%s)",
+				lease.Uuid,
+				lease.LastSettledAt,
+				lease.CreatedAt,
+			)
 		}
 
 		// Validate meta_hash length

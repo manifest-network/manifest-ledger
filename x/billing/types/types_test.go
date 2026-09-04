@@ -10,6 +10,7 @@ Test Coverage:
 package types_test
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
@@ -30,6 +31,14 @@ const (
 	invalidAddr = "invalid-address"
 )
 
+func deterministicAllowedList(size int) []string {
+	addresses := make([]string, size)
+	for i := range addresses {
+		addresses[i] = sdk.AccAddress(bytes.Repeat([]byte{byte(i + 1)}, 20)).String()
+	}
+	return addresses
+}
+
 // generateManyLeaseItems generates n lease items for testing max items limit.
 func generateManyLeaseItems(n uint64) []types.LeaseItemInput {
 	items := make([]types.LeaseItemInput, n)
@@ -37,6 +46,18 @@ func generateManyLeaseItems(n uint64) []types.LeaseItemInput {
 		items[i] = types.LeaseItemInput{
 			SkuUuid:  fmt.Sprintf("01912345-6789-7abc-8def-%012d", i+1),
 			Quantity: 1,
+		}
+	}
+	return items
+}
+
+func generateManyStoredLeaseItems(n uint64) []types.LeaseItem {
+	items := make([]types.LeaseItem, n)
+	for i := uint64(0); i < n; i++ {
+		items[i] = types.LeaseItem{
+			SkuUuid:     fmt.Sprintf("01912345-6789-7abc-8def-%012d", i+1),
+			Quantity:    1,
+			LockedPrice: sdk.NewInt64Coin(testDenom, 1),
 		}
 	}
 	return items
@@ -255,9 +276,31 @@ func TestParams_Validate_DuplicateAllowedListCanonicalIdentity(t *testing.T) {
 	require.Contains(t, err.Error(), "duplicate address in allowed list")
 }
 
+func TestParams_ValidateAllowedListCardinality(t *testing.T) {
+	atLimit := types.DefaultParams()
+	atLimit.AllowedList = deterministicAllowedList(types.MaxAllowedListEntries)
+	require.NoError(t, atLimit.Validate())
+
+	overLimit := types.DefaultParams()
+	overLimit.AllowedList = deterministicAllowedList(types.MaxAllowedListEntries + 1)
+	err := overLimit.Validate()
+	require.ErrorIs(t, err, types.ErrInvalidParams)
+	require.Contains(t, err.Error(), "allowed list has 101 entries, maximum allowed is 100")
+	genesis := types.DefaultGenesis()
+	genesis.Params = overLimit
+	require.ErrorIs(t, genesis.Validate(), types.ErrInvalidParams)
+}
+
 func TestGenesisState_PrepareForImportCanonicalizesAllowedListAliases(t *testing.T) {
 	_, _, addr := testdata.KeyTestPubAddr()
-	original := []string{addr.String(), strings.ToUpper(addr.String()), addr.String()}
+	original := make([]string, types.MaxAllowedListEntries+1)
+	for i := range original {
+		if i%2 == 0 {
+			original[i] = addr.String()
+		} else {
+			original[i] = strings.ToUpper(addr.String())
+		}
+	}
 	genesis := types.DefaultGenesis()
 	genesis.Params.AllowedList = append([]string(nil), original...)
 
@@ -1452,6 +1495,25 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 			errMsg:    "has no items",
 		},
 		{
+			name: "lease with too many items",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{
+					{
+						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:        tenant,
+						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
+						Items:         generateManyStoredLeaseItems(types.MaxItemsPerLeaseHardLimit + 1),
+						State:         types.LEASE_STATE_ACTIVE,
+						CreatedAt:     now,
+						LastSettledAt: now,
+					},
+				},
+			},
+			expectErr: true,
+			errMsg:    "maximum allowed is 100",
+		},
+		{
 			name: "lease item with empty sku_uuid",
 			genesis: &types.GenesisState{
 				Params: types.DefaultParams(),
@@ -1969,12 +2031,13 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
-						Tenant:       tenant,
-						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
-						Items:        []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
-						State:        types.LEASE_STATE_PENDING,
-						CreatedAt:    now,
+						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:        tenant,
+						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
+						Items:         []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
+						State:         types.LEASE_STATE_PENDING,
+						CreatedAt:     now,
+						LastSettledAt: now,
 					},
 				},
 				CreditAccounts: []types.CreditAccount{
@@ -2138,6 +2201,64 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 					}
 				})
 			}
+		})
+	}
+}
+
+func TestGenesisState_ValidateRejectsInvalidCoreChronology(t *testing.T) {
+	_, _, tenantAddr := testdata.KeyTestPubAddr()
+	now := time.Now().UTC()
+	validLease := types.Lease{
+		Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+		Tenant:       tenantAddr.String(),
+		ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+		Items: []types.LeaseItem{{
+			SkuUuid:     "01912345-6789-7abc-8def-0123456789ad",
+			Quantity:    1,
+			LockedPrice: sdk.NewInt64Coin(testDenom, 1),
+		}},
+		State:         types.LEASE_STATE_ACTIVE,
+		CreatedAt:     now,
+		LastSettledAt: now,
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*types.Lease)
+		want   string
+	}{
+		{
+			name:   "zero created_at",
+			mutate: func(lease *types.Lease) { lease.CreatedAt = time.Time{} },
+			want:   "zero created_at",
+		},
+		{
+			name:   "zero last_settled_at",
+			mutate: func(lease *types.Lease) { lease.LastSettledAt = time.Time{} },
+			want:   "zero last_settled_at",
+		},
+		{
+			name: "last_settled_at before created_at",
+			mutate: func(lease *types.Lease) {
+				lease.LastSettledAt = lease.CreatedAt.Add(-time.Second)
+			},
+			want: "before created_at",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			lease := validLease
+			test.mutate(&lease)
+			genesis := &types.GenesisState{
+				Params:        types.DefaultParams(),
+				Leases:        []types.Lease{lease},
+				LeaseSequence: 1,
+			}
+
+			err := genesis.Validate()
+			require.ErrorIs(t, err, types.ErrInvalidLease)
+			require.Contains(t, err.Error(), test.want)
 		})
 	}
 }

@@ -158,11 +158,14 @@ clients do not need a new protobuf field or wire format.
 
 The registered v1→v2 module migration runs automatically through the Cosmos SDK
 module manager. It canonicalizes the allowed list by decoded address identity,
-keeps the first occurrence, rewrites Params, and rewrites Provider values in
-ascending primary-key pages of 1,000. Each iterator is closed before its page is
-written. It does not rebuild indexes, rewrite SKU values or sequences, or move
-bank balances. The migration is idempotent: legacy and current values can both
-be decoded, while every write uses the current raw-byte format.
+keeps the first occurrence, and validates the canonical Params, including the
+100-entry cap, before its first write. Invalid or over-limit state aborts the
+upgrade atomically; the migration never truncates the allow list. It then
+rewrites Params and Provider values in ascending primary-key pages of 1,000.
+Each iterator is closed before its page is written. It does not rebuild
+indexes, rewrite SKU values or sequences, or move bank balances. The migration
+is idempotent: legacy and current values can both be decoded, while every write
+uses the current raw-byte format.
 
 ### Storage Key Prefixes
 
@@ -204,9 +207,9 @@ The module has the following configurable parameters:
 |-----------|------|-------------|
 | `allowed_list` | `[]string` | List of addresses authorized to manage Providers and SKUs |
 
-**Note:** The `allowed_list` must not contain duplicate decoded address
-identities. Equivalent Bech32 spellings are duplicates and cause `UpdateParams`
-validation to fail.
+**Note:** The `allowed_list` is capped at 100 entries and must not contain
+duplicate decoded address identities. Equivalent Bech32 spellings are
+duplicates and cause `UpdateParams` validation to fail.
 
 ## Messages
 
@@ -314,8 +317,8 @@ Genesis remains string-based. Import preparation canonicalizes Provider
 management and payout addresses and collapses equivalent historical
 `allowed_list` spellings in first-seen order before validation and persistence.
 Export renders the stored raw identities as canonical Bech32 strings. Newly
-submitted `MsgUpdateParams` values remain subject to identity-based duplicate
-rejection.
+submitted `MsgUpdateParams` values remain subject to the 100-entry hard cap and
+identity-based duplicate rejection.
 
 ## Simulation Coverage
 

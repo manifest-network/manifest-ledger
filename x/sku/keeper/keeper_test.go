@@ -1,6 +1,7 @@
 package keeper_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,6 +18,62 @@ import (
 	appparams "github.com/manifest-network/manifest-ledger/app/params"
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
+
+func TestUUIDSequenceExhaustionDoesNotWrap(t *testing.T) {
+	tests := []struct {
+		name     string
+		set      func(*app.ManifestApp, sdk.Context, uint64) error
+		generate func(*app.ManifestApp, sdk.Context) (string, error)
+		peek     func(*app.ManifestApp, sdk.Context) (uint64, error)
+	}{
+		{
+			name: "provider",
+			set: func(manifestApp *app.ManifestApp, ctx sdk.Context, value uint64) error {
+				return manifestApp.SKUKeeper.ProviderSequence.Set(ctx, value)
+			},
+			generate: func(manifestApp *app.ManifestApp, ctx sdk.Context) (string, error) {
+				return manifestApp.SKUKeeper.GenerateProviderUUID(ctx)
+			},
+			peek: func(manifestApp *app.ManifestApp, ctx sdk.Context) (uint64, error) {
+				return manifestApp.SKUKeeper.ProviderSequence.Peek(ctx)
+			},
+		},
+		{
+			name: "SKU",
+			set: func(manifestApp *app.ManifestApp, ctx sdk.Context, value uint64) error {
+				return manifestApp.SKUKeeper.SKUSequence.Set(ctx, value)
+			},
+			generate: func(manifestApp *app.ManifestApp, ctx sdk.Context) (string, error) {
+				return manifestApp.SKUKeeper.GenerateSKUUUID(ctx)
+			},
+			peek: func(manifestApp *app.ManifestApp, ctx sdk.Context) (uint64, error) {
+				return manifestApp.SKUKeeper.SKUSequence.Peek(ctx)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f := initFixture(t)
+			require.NoError(t, test.set(f.App, f.Ctx, math.MaxUint64-1))
+
+			generated, err := test.generate(f.App, f.Ctx)
+			require.NoError(t, err)
+			require.NotEmpty(t, generated)
+
+			next, err := test.peek(f.App, f.Ctx)
+			require.NoError(t, err)
+			require.Equal(t, uint64(math.MaxUint64), next)
+
+			_, err = test.generate(f.App, f.Ctx)
+			require.ErrorIs(t, err, types.ErrSequenceExhausted)
+
+			next, err = test.peek(f.App, f.Ctx)
+			require.NoError(t, err)
+			require.Equal(t, uint64(math.MaxUint64), next, "failed allocation must not wrap or mutate the sequence")
+		})
+	}
+}
 
 const (
 	testProviderUUID  = "01912345-6789-7abc-8def-0123456789ab"

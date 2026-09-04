@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 	"math"
 	"slices"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/manifest-network/manifest-ledger/pkg/pagination"
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 var _ types.QueryServer = Querier{}
@@ -33,6 +35,16 @@ type Querier struct {
 // NewQuerier returns a new Querier instance.
 func NewQuerier(keeper Keeper) Querier {
 	return Querier{k: keeper}
+}
+
+// queryLookupError preserves the distinction between an absent primary key
+// and a store/codec failure. Treating every lookup error as NotFound would hide
+// corrupted state from operators and clients.
+func queryLookupError(err, notFound error) error {
+	if errors.Is(err, notFound) {
+		return status.Error(codes.NotFound, err.Error())
+	}
+	return status.Error(codes.Internal, err.Error())
 }
 
 // Params queries the module parameters.
@@ -58,7 +70,7 @@ func (q Querier) Lease(ctx context.Context, req *types.QueryLeaseRequest) (*type
 	// Use simple GetLease for queries - auto-close only happens during transactions
 	lease, err := q.k.GetLease(ctx, req.LeaseUuid)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
+		return nil, queryLookupError(err, types.ErrLeaseNotFound)
 	}
 
 	return &types.QueryLeaseResponse{Lease: lease}, nil
@@ -273,7 +285,7 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 
 	ca, err := q.k.GetCreditAccount(ctx, req.Tenant)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
+		return nil, queryLookupError(err, types.ErrCreditAccountNotFound)
 	}
 
 	pageReqInput := query.PageRequest{Limit: types.DefaultCreditAccountBalanceQueryLimit}
@@ -356,7 +368,7 @@ func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdra
 	// Use simple GetLease for queries - auto-close only happens during transactions
 	lease, err := q.k.GetLease(ctx, req.LeaseUuid)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
+		return nil, queryLookupError(err, types.ErrLeaseNotFound)
 	}
 
 	// Calculate withdrawable amounts based on accrual since last settlement
@@ -390,6 +402,9 @@ func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProvi
 	}
 	provider, err := q.k.skuKeeper.GetProvider(ctx, req.ProviderUuid)
 	if err != nil {
+		if !errors.Is(err, skutypes.ErrProviderNotFound) {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 		return nil, status.Error(codes.NotFound, types.ErrProviderNotFound.Wrapf(
 			"provider_uuid %s not found", req.ProviderUuid,
 		).Error())
@@ -591,7 +606,7 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 	// count remains authoritative when governance lowers the current lease limit.
 	creditAccount, err := q.k.GetCreditAccount(ctx, req.Tenant)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
+		return nil, queryLookupError(err, types.ErrCreditAccountNotFound)
 	}
 
 	// Historical state can exceed the current governance parameter, but not the

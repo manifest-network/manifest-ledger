@@ -547,6 +547,12 @@ instead of server messages. Omitting a required positional argument produces
 Cobra's argument-count error; passing an explicitly empty argument produces the
 local format error.
 
+Direct `Lease`, `WithdrawableAmount`, and `ProviderWithdrawable` RPCs use an
+exact lookup for every non-empty identifier, so malformed and unknown keys both
+return `NotFound`. They do not mask state corruption: an unexpected
+primary-store or value-decoding failure returns gRPC `Internal` and requires
+operator investigation.
+
 **Solution**: Use the canonical lowercase UUIDv7 returned by the SKU module.
 For these two collection queries, an unknown canonical lowercase UUIDv7 is
 valid input and returns an empty page.
@@ -701,7 +707,8 @@ transfer.
 - `max_items_per_lease` must be > 0 and ≤ 100
 - `max_pending_leases_per_tenant` must be > 0 and ≤ 1000
 - `pending_timeout` must be between 60 (1 min) and 86400 (24 hours)
-- `reserved_domain_suffixes`: each entry must start with '.', the part after the dot must be a valid FQDN, and duplicates are rejected
+- `allowed_list` accepts at most 100 valid, distinct decoded account identities
+- `reserved_domain_suffixes` accepts at most 100 entries; each must start with '.', the part after the dot must be a valid FQDN, and duplicates are rejected
 
 **Solution**: Check current params and ensure new values are valid:
 ```bash

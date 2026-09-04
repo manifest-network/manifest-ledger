@@ -167,6 +167,42 @@ Before the upgrade:
 
 - Confirm the proposal name, candidate binary version, artifact checksum, and
   cosmovisor directory name match byte-for-byte.
+- Confirm every validator's service has the same canonical `POA_ADMIN_ADDRESS`
+  before the restart, and record the value with the release artifacts:
+
+  ```bash
+  systemctl show manifestd --property=Environment --value \
+    | tr ' ' '\n' \
+    | grep '^POA_ADMIN_ADDRESS='
+
+  manifest_pid="$(systemctl show manifestd --property=MainPID --value)"
+  sudo xargs -0 -n1 -a "/proc/${manifest_pid}/environ" \
+    | grep '^POA_ADMIN_ADDRESS='
+  ```
+
+  This application wires billing, SKU, and other module authorities from
+  process configuration. The value may be intentionally unset on every
+  validator, which selects the governance module account; a value missing or
+  different on only part of the validator set can make nodes disagree on
+  transaction authorization and therefore consensus state. Do not proceed
+  until the exact set/unset state and value agree across the validator set. The
+  first command checks systemd's directly configured environment; the second checks
+  the effective environment of the running process and also covers values
+  supplied through an environment file. Repeat the effective-process check as
+  soon as the candidate process starts after the upgrade.
+- Confirm the raw control-plane list counts fit the candidate's hard bounds
+  before either in-place migration writes Params. This is deliberately
+  conservative for allow lists: migration canonicalizes equivalent Bech32
+  aliases before applying the limit, so a raw count above 100 requires review
+  in the exact rehearsal even if its distinct decoded identities may fit. Do
+  not truncate these lists during migration: truncating an allow list revokes
+  authority, while truncating reserved suffixes weakens domain policy.
+
+  ```bash
+  manifestd query sku params -o json | jq '.params.allowed_list | length'                 # <= 100
+  manifestd query billing params -o json | jq '.params.allowed_list | length'             # <= 100
+  manifestd query billing params -o json | jq '.params.reserved_domain_suffixes | length' # <= 100
+  ```
 - Confirm the live binary reports `2.2.4` and the candidate reports `2.2.8`
   from `manifestd query wasm libwasmvm-version`. The published archive and
   container embed the v2.2.8 static library. Operators compiling a dynamic
@@ -227,9 +263,14 @@ Before the upgrade:
 - Build and deploy compatible `manifest-admin`, `manifest-mcp-mono`, and Fred
   clients to dev before scheduling the production height. Exercise all billing
   and SKU list screens/resources with both cursor pagination and the bounded
-  SDK-compatible offset/`count_total` path. Offset/exact-total scans fail closed
-  above 20,000 rows, so bulk consumers must always support `next_key`.
-  `CreditAccount` and `ProviderWithdrawable` remain cursor-only.
+  SDK-compatible offset/`count_total` path. Unfiltered compatibility scans fail
+  closed above 20,000 physical rows. The value-filtered `LeasesBySKU --state`
+  and `ProviderByAddress --active-only` paths retain a 1,000-row scan ceiling.
+  Cursor pages on those sparse filters may be short or empty while returning a
+  non-empty `next_key`, so bulk consumers must continue until that cursor is
+  empty. `count_total` remains zero unless requested and, following the SDK
+  contract, is ignored when a page key is present. `CreditAccount` and
+  `ProviderWithdrawable` remain cursor-only.
 - Verify those clients preserve chain-returned identifiers as canonical
   lowercase UUIDv7 values when calling `LeasesByProvider`, `LeasesBySKU`, and
   `SKUsByProvider`. Empty fields keep their distinct `<field> cannot be empty`

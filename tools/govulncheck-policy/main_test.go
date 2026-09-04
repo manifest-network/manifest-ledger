@@ -71,16 +71,43 @@ func TestEvaluate(t *testing.T) {
 			profile: "interchaintest",
 			messages: []string{
 				validConfig,
-				`{"finding":{"osv":"GO-2026-4887","trace":[{"module":"github.com/docker/docker","version":"v27.5.1+incompatible","function":"ContainerList"}]}}`,
+				`{"finding":{"osv":"GO-2026-4887","trace":[{"module":"github.com/docker/docker","version":"v27.5.1+incompatible","package":"github.com/docker/docker/api/types/container","function":"ContainerList"}]}}`,
 			},
 			wantAllowed: 1,
+		},
+		{
+			name:    "Docker plugin daemon package fails closed in interchaintest profile",
+			profile: "interchaintest",
+			messages: []string{
+				validConfig,
+				`{"finding":{"osv":"GO-2026-4883","trace":[{"module":"github.com/docker/docker","version":"v27.5.1+incompatible","package":"github.com/docker/docker/daemon/pkg/plugin","function":"validatePrivileges"}]}}`,
+			},
+			wantBlocked: 1,
+		},
+		{
+			name:    "Moby authorization daemon package fails closed in interchaintest profile",
+			profile: "interchaintest",
+			messages: []string{
+				validConfig,
+				`{"finding":{"osv":"GO-2026-4887","trace":[{"module":"github.com/moby/moby","version":"v27.5.1+incompatible","package":"github.com/moby/moby/pkg/authorization","function":"AuthZRequest"}]}}`,
+			},
+			wantBlocked: 1,
+		},
+		{
+			name:    "Docker finding without package metadata fails closed",
+			profile: "interchaintest",
+			messages: []string{
+				validConfig,
+				`{"finding":{"osv":"GO-2026-4887","trace":[{"module":"github.com/docker/docker","version":"v27.5.1+incompatible","function":"ContainerList"}]}}`,
+			},
+			wantBlocked: 1,
 		},
 		{
 			name:    "Docker client version drift fails closed in the interchaintest graph",
 			profile: "interchaintest",
 			messages: []string{
 				validConfig,
-				`{"finding":{"osv":"GO-2026-4887","trace":[{"module":"github.com/docker/docker","version":"v29.3.1+incompatible","function":"ContainerList"}]}}`,
+				`{"finding":{"osv":"GO-2026-4887","trace":[{"module":"github.com/docker/docker","version":"v29.3.1+incompatible","package":"github.com/docker/docker/api/types/container","function":"ContainerList"}]}}`,
 			},
 			wantBlocked: 1,
 		},
@@ -124,6 +151,16 @@ func TestEvaluate(t *testing.T) {
 			require.Len(t, got.blocked, tc.wantBlocked)
 		})
 	}
+}
+
+func TestValidateProfile(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, validateProfile("", []string{defaultScanPattern}))
+	require.NoError(t, validateProfile(interchaintestProfile, []string{testScanFlag, interchaintestScanPattern}))
+	require.ErrorContains(t, validateProfile(interchaintestProfile, []string{testScanFlag, defaultScanPattern}), "requires exact scanner arguments")
+	require.ErrorContains(t, validateProfile(interchaintestProfile, []string{testScanFlag, interchaintestScanPattern, defaultScanPattern}), "requires exact scanner arguments")
+	require.ErrorContains(t, validateProfile("unknown", []string{defaultScanPattern}), "unknown vulnerability exception profile")
 }
 
 func TestSummarizeIsDeterministicAndDeduplicated(t *testing.T) {
@@ -186,6 +223,6 @@ exit 2
 	require.NoError(t, os.WriteFile(scanner, []byte(script), 0o700)) //nolint:gosec
 
 	var stdout bytes.Buffer
-	require.NoError(t, run(scanner, []string{"./..."}, []string{"GOOS=linux", "GOARCH=arm64"}, "", &stdout, &bytes.Buffer{}))
+	require.NoError(t, run(scanner, []string{defaultScanPattern}, []string{"GOOS=linux", "GOARCH=arm64"}, "", &stdout, &bytes.Buffer{}))
 	require.Contains(t, stdout.String(), "Accepted exact-version vulnerability exceptions:")
 }

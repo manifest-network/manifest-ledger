@@ -11,14 +11,18 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 )
 
 const (
-	protocolVersion       = "v1.0.0"
-	interchaintestProfile = "interchaintest"
-	dockerClientVersion   = "v27.5.1+incompatible"
+	protocolVersion           = "v1.0.0"
+	defaultScanPattern        = "./..."
+	testScanFlag              = "-test"
+	interchaintestScanPattern = "./interchaintest/..."
+	interchaintestProfile     = "interchaintest"
+	dockerClientVersion       = "v27.5.1+incompatible"
 )
 
 type exception struct {
@@ -26,8 +30,20 @@ type exception struct {
 	module  string
 	version string
 	profile string
-	reason  string
-	url     string
+	// packagePrefixes restricts an exception to explicitly reviewed package
+	// families. An empty list permits every package in the exact module version.
+	packagePrefixes []string
+	reason          string
+	url             string
+}
+
+var dockerClientPackagePrefixes = []string{
+	"github.com/docker/docker/api",
+	"github.com/docker/docker/errdefs",
+	"github.com/docker/docker/internal/multierror",
+	"github.com/moby/moby/client",
+	"github.com/moby/moby/errdefs",
+	"github.com/moby/moby/pkg/stdcopy",
 }
 
 var exceptions = []exception{
@@ -46,36 +62,40 @@ var exceptions = []exception{
 		url:     "https://github.com/golang/vulndb/issues/5034",
 	},
 	{
-		id:      "GO-2026-4883",
-		module:  "github.com/docker/docker",
-		version: dockerClientVersion,
-		profile: interchaintestProfile,
-		reason:  "advisory affects Docker Engine plugin validation; this graph imports client code but does not build the daemon",
-		url:     "https://github.com/moby/moby/security/advisories/GHSA-pxq6-2prw-chj9",
+		id:              "GO-2026-4883",
+		module:          "github.com/docker/docker",
+		version:         dockerClientVersion,
+		profile:         interchaintestProfile,
+		packagePrefixes: dockerClientPackagePrefixes,
+		reason:          "advisory affects Docker Engine plugin validation; this graph imports only reviewed client packages, not the daemon",
+		url:             "https://github.com/moby/moby/security/advisories/GHSA-pxq6-2prw-chj9",
 	},
 	{
-		id:      "GO-2026-4883",
-		module:  "github.com/moby/moby",
-		version: dockerClientVersion,
-		profile: interchaintestProfile,
-		reason:  "advisory affects Docker Engine plugin validation; this graph imports client code but does not build the daemon",
-		url:     "https://github.com/moby/moby/security/advisories/GHSA-pxq6-2prw-chj9",
+		id:              "GO-2026-4883",
+		module:          "github.com/moby/moby",
+		version:         dockerClientVersion,
+		profile:         interchaintestProfile,
+		packagePrefixes: dockerClientPackagePrefixes,
+		reason:          "advisory affects Docker Engine plugin validation; this graph imports only reviewed client packages, not the daemon",
+		url:             "https://github.com/moby/moby/security/advisories/GHSA-pxq6-2prw-chj9",
 	},
 	{
-		id:      "GO-2026-4887",
-		module:  "github.com/docker/docker",
-		version: dockerClientVersion,
-		profile: interchaintestProfile,
-		reason:  "advisory affects Docker Engine AuthZ plugins; this graph imports client code but does not build the daemon",
-		url:     "https://github.com/moby/moby/security/advisories/GHSA-x744-4wpc-v9h2",
+		id:              "GO-2026-4887",
+		module:          "github.com/docker/docker",
+		version:         dockerClientVersion,
+		profile:         interchaintestProfile,
+		packagePrefixes: dockerClientPackagePrefixes,
+		reason:          "advisory affects Docker Engine AuthZ plugins; this graph imports only reviewed client packages, not the daemon",
+		url:             "https://github.com/moby/moby/security/advisories/GHSA-x744-4wpc-v9h2",
 	},
 	{
-		id:      "GO-2026-4887",
-		module:  "github.com/moby/moby",
-		version: dockerClientVersion,
-		profile: interchaintestProfile,
-		reason:  "advisory affects Docker Engine AuthZ plugins; this graph imports client code but does not build the daemon",
-		url:     "https://github.com/moby/moby/security/advisories/GHSA-x744-4wpc-v9h2",
+		id:              "GO-2026-4887",
+		module:          "github.com/moby/moby",
+		version:         dockerClientVersion,
+		profile:         interchaintestProfile,
+		packagePrefixes: dockerClientPackagePrefixes,
+		reason:          "advisory affects Docker Engine AuthZ plugins; this graph imports only reviewed client packages, not the daemon",
+		url:             "https://github.com/moby/moby/security/advisories/GHSA-x744-4wpc-v9h2",
 	},
 }
 
@@ -121,7 +141,7 @@ func main() {
 
 	patterns := flag.Args()
 	if len(patterns) == 0 {
-		patterns = []string{"./..."}
+		patterns = []string{defaultScanPattern}
 	}
 
 	var scanEnv []string
@@ -139,6 +159,10 @@ func main() {
 }
 
 func run(govulncheck string, patterns, scanEnv []string, profile string, stdout, stderr io.Writer) error {
+	if err := validateProfile(profile, patterns); err != nil {
+		return err
+	}
+
 	var report bytes.Buffer
 	scanArgs := append([]string{"-format=json"}, patterns...)
 	scan := exec.Command(govulncheck, scanArgs...) // #nosec G204 -- the caller explicitly selects the installed scanner binary.
@@ -176,6 +200,26 @@ func run(govulncheck string, patterns, scanEnv []string, profile string, stdout,
 	}
 
 	return nil
+}
+
+func validateProfile(profile string, patterns []string) error {
+	switch profile {
+	case "":
+		return nil
+	case interchaintestProfile:
+		required := []string{testScanFlag, interchaintestScanPattern}
+		if !slices.Equal(patterns, required) {
+			return fmt.Errorf(
+				"profile %q requires exact scanner arguments %q, got %q",
+				profile,
+				required,
+				patterns,
+			)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown vulnerability exception profile %q", profile)
+	}
 }
 
 func writeAccepted(output io.Writer, findings []acceptedFinding) error {
@@ -260,12 +304,27 @@ func (f finding) acceptedException(profile string) *exception {
 		if candidate.profile != "" && candidate.profile != profile {
 			continue
 		}
-		if f.OSV == candidate.id && vulnerable.Module == candidate.module && vulnerable.Version == candidate.version {
+		if f.OSV == candidate.id &&
+			vulnerable.Module == candidate.module &&
+			vulnerable.Version == candidate.version &&
+			matchesPackagePrefix(vulnerable.Package, candidate.packagePrefixes) {
 			return candidate
 		}
 	}
 
 	return nil
+}
+
+func matchesPackagePrefix(packageName string, prefixes []string) bool {
+	if len(prefixes) == 0 {
+		return true
+	}
+	for _, prefix := range prefixes {
+		if packageName == prefix || strings.HasPrefix(packageName, prefix+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func summarize(findings []finding) []string {

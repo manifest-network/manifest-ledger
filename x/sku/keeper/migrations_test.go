@@ -22,6 +22,27 @@ const (
 	testProviderStoragePrefix = "\x00sku/provider/v1"
 )
 
+func migrationAllowedList(size int) []string {
+	addresses := make([]string, size)
+	for i := range addresses {
+		addresses[i] = sdk.AccAddress(bytes.Repeat([]byte{byte(i + 1)}, 20)).String()
+	}
+	return addresses
+}
+
+func TestMigratorMigrate1to2RejectsOversizedAllowedListBeforeWrite(t *testing.T) {
+	f := initFixture(t)
+	params := types.Params{AllowedList: migrationAllowedList(types.MaxAllowedListEntries + 1)}
+	require.NoError(t, f.App.SKUKeeper.SetParams(f.Ctx, params))
+
+	store := f.Ctx.KVStore(f.App.GetKey(types.StoreKey))
+	before := bytes.Clone(store.Get(types.ParamsKey.Bytes()))
+	err := keeper.NewMigrator(f.App.SKUKeeper).Migrate1to2(f.Ctx)
+	require.ErrorIs(t, err, types.ErrInvalidConfig)
+	require.Contains(t, err.Error(), "allowed list has 101 entries, maximum allowed is 100")
+	require.Equal(t, before, store.Get(types.ParamsKey.Bytes()))
+}
+
 func TestMigratorMigrate1to2RewritesLegacyAddressStrings(t *testing.T) {
 	f := initFixture(t)
 	manager := f.TestAccs[0]

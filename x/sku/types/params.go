@@ -2,6 +2,11 @@ package types
 
 import sdk "github.com/cosmos/cosmos-sdk/types"
 
+// MaxAllowedListEntries bounds the authorization work performed by every SKU
+// write. It is a protocol hard limit rather than a governable parameter so an
+// authority update cannot leave all subsequent writes with unbounded scans.
+const MaxAllowedListEntries = 100
+
 // DefaultParams returns the default module parameters.
 func DefaultParams() Params {
 	return Params{
@@ -11,6 +16,14 @@ func DefaultParams() Params {
 
 // Validate performs basic validation of the module parameters.
 func (p Params) Validate() error {
+	if len(p.AllowedList) > MaxAllowedListEntries {
+		return ErrInvalidConfig.Wrapf(
+			"allowed list has %d entries, maximum allowed is %d",
+			len(p.AllowedList),
+			MaxAllowedListEntries,
+		)
+	}
+
 	seen := make(map[string]struct{}, len(p.AllowedList))
 	for _, addr := range p.AllowedList {
 		decoded, err := sdk.AccAddressFromBech32(addr)
