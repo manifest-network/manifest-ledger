@@ -1,7 +1,10 @@
 package scripts_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/moby/patternmatcher"
+	"github.com/moby/patternmatcher/ignorefile"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,31 +58,137 @@ func TestChecksumManifestBindsExactReleaseArtifactSet(t *testing.T) {
 	}
 }
 
-func TestDockerBuildContextIncludesInternalCollectionsUtility(t *testing.T) {
-	repoRoot := filepath.Clean("..")
-	dockerignore, err := os.ReadFile(filepath.Join(repoRoot, ".dockerignore")) //nolint:gosec
+func TestDockerBuildContextIncludesManifestdCompilerInputs(t *testing.T) {
+	repoRoot, err := filepath.Abs("..")
 	require.NoError(t, err)
-	dockerignoreLines := strings.Split(string(dockerignore), "\n")
+	repoRoot, err = filepath.EvalSymlinks(repoRoot)
+	require.NoError(t, err)
 
-	denyAllCount := 0
-	for _, line := range dockerignoreLines {
-		if line == "**" {
-			denyAllCount++
+	dockerignore, err := os.Open(filepath.Join(repoRoot, ".dockerignore")) //nolint:gosec
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, dockerignore.Close())
+	})
+
+	patterns, err := ignorefile.ReadAll(dockerignore)
+	require.NoError(t, err)
+	matcher, err := patternmatcher.New(patterns)
+	require.NoError(t, err)
+
+	compilerInputs := manifestdCompilerInputs(t, repoRoot)
+	require.NotEmpty(t, compilerInputs)
+	for _, compilerInput := range compilerInputs {
+		excluded, err := matcher.MatchesOrParentMatches(compilerInput)
+		require.NoError(t, err)
+		require.False(t, excluded, "manifestd compiler input is excluded from the Docker context: %s", compilerInput)
+	}
+
+	for _, excludedPath := range []string{
+		".git/config",
+		"internal/unreviewed/secret.go",
+		"local-operator.json",
+	} {
+		excluded, err := matcher.MatchesOrParentMatches(excludedPath)
+		require.NoError(t, err)
+		require.True(t, excluded, "unapproved path is included in the Docker context: %s", excludedPath)
+	}
+}
+
+type listedGoPackage struct {
+	Dir          string
+	Module       *listedGoModule
+	GoFiles      []string
+	CgoFiles     []string
+	CFiles       []string
+	CXXFiles     []string
+	MFiles       []string
+	HFiles       []string
+	FFiles       []string
+	SFiles       []string
+	SwigFiles    []string
+	SwigCXXFiles []string
+	SysoFiles    []string
+	EmbedFiles   []string
+}
+
+type listedGoModule struct {
+	Main bool
+}
+
+func (pkg listedGoPackage) compilerInputFiles() []string {
+	var files []string
+	for _, group := range [][]string{
+		pkg.GoFiles,
+		pkg.CgoFiles,
+		pkg.CFiles,
+		pkg.CXXFiles,
+		pkg.MFiles,
+		pkg.HFiles,
+		pkg.FFiles,
+		pkg.SFiles,
+		pkg.SwigFiles,
+		pkg.SwigCXXFiles,
+		pkg.SysoFiles,
+		pkg.EmbedFiles,
+	} {
+		files = append(files, group...)
+	}
+	return files
+}
+
+func manifestdCompilerInputs(t *testing.T, repoRoot string) []string {
+	t.Helper()
+
+	var compilerInputs []string
+	for _, goarch := range []string{"amd64", "arm64"} {
+		cmd := exec.CommandContext(t.Context(), //nolint:gosec
+			"go", "list",
+			"-mod=readonly",
+			"-tags=netgo,muslc",
+			"-deps",
+			"-json=Dir,Module,GoFiles,CgoFiles,CFiles,CXXFiles,MFiles,HFiles,FFiles,SFiles,SwigFiles,SwigCXXFiles,SysoFiles,EmbedFiles",
+			"./cmd/manifestd",
+		)
+		cmd.Dir = repoRoot
+		cmd.Env = slices.DeleteFunc(os.Environ(), func(environmentEntry string) bool {
+			name, _, _ := strings.Cut(environmentEntry, "=")
+			return name == "CGO_ENABLED" || name == "GOARCH" || name == "GOOS" || name == "GOWORK"
+		})
+		cmd.Env = append(cmd.Env,
+			"CGO_ENABLED=1",
+			"GOARCH="+goarch,
+			"GOOS=linux",
+			"GOWORK=off",
+		)
+
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "list manifestd compiler inputs for linux/%s:\n%s", goarch, output)
+
+		decoder := json.NewDecoder(bytes.NewReader(output))
+		for {
+			var pkg listedGoPackage
+			err := decoder.Decode(&pkg)
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			if pkg.Module == nil || !pkg.Module.Main {
+				continue
+			}
+
+			for _, name := range pkg.compilerInputFiles() {
+				compilerInput, err := filepath.Rel(repoRoot, filepath.Join(pkg.Dir, name))
+				require.NoError(t, err)
+				outsideRepository := compilerInput == ".." || strings.HasPrefix(compilerInput, ".."+string(filepath.Separator))
+				require.False(t, outsideRepository,
+					"main-module compiler input is outside the repository: %s", compilerInput)
+				compilerInputs = append(compilerInputs, filepath.ToSlash(compilerInput))
+			}
 		}
 	}
-	require.Equal(t, 1, denyAllCount, "Docker build context must have one deny-all rule")
-	previousIndex := slices.Index(dockerignoreLines, "**")
-	for _, requiredPath := range []string{
-		"!internal/",
-		"!internal/collectionsutil/",
-		"!internal/collectionsutil/**",
-	} {
-		allowIndex := slices.Index(dockerignoreLines, requiredPath)
-		require.Greater(t, allowIndex, previousIndex, "%s is missing or out of order", requiredPath)
-		previousIndex = allowIndex
-	}
-	require.NotContains(t, dockerignoreLines, "!internal/**",
-		"only explicitly reviewed internal packages may enter the Docker build context")
+
+	slices.Sort(compilerInputs)
+	return slices.Compact(compilerInputs)
 }
 
 func TestContainerizedGoReleaserUsesPinnedOfflineToolchain(t *testing.T) {

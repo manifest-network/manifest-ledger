@@ -11,8 +11,6 @@
 !app/**
 !cmd/
 !cmd/**
-!internal/
-!internal/collectionsutil/
 !internal/collectionsutil/**
 !pkg/
 !pkg/**
