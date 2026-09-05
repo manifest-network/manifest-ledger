@@ -161,8 +161,11 @@ func manifestdCompilerInputs(t *testing.T, repoRoot string) []string {
 			"GOWORK=off",
 		)
 
-		output, err := cmd.CombinedOutput()
-		require.NoError(t, err, "list manifestd compiler inputs for linux/%s:\n%s", goarch, output)
+		// Cold module caches emit download notices on stderr; keep stdout as pure JSON.
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		output, err := cmd.Output()
+		require.NoError(t, err, "list manifestd compiler inputs for linux/%s:\n%s", goarch, stderr.String())
 
 		decoder := json.NewDecoder(bytes.NewReader(output))
 		for {
