@@ -101,9 +101,10 @@ func (gs *GenesisState) validate() error {
 			return ErrInvalidProvider.Wrapf("provider %s has invalid payout address: %s", provider.Uuid, err)
 		}
 
-		// Validate API URL if provided
+		// Preserve historically accepted URL metadata on import and invariant
+		// checks. Newly supplied message URLs use stricter endpoint validation.
 		if provider.ApiUrl != "" {
-			if err := ValidateAPIURL(provider.ApiUrl); err != nil {
+			if _, err := parseAPIURL(provider.ApiUrl); err != nil {
 				return ErrInvalidProvider.Wrapf("provider %s has invalid api_url: %s", provider.Uuid, err)
 			}
 		}

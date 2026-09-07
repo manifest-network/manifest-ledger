@@ -7,14 +7,55 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"cosmossdk.io/collections/colltest"
 	store "cosmossdk.io/core/store"
 	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
 
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
+
+type activeIndexReadFaultStore struct {
+	store.KVStore
+	fault activeIndexErrorStore
+}
+
+func (s activeIndexReadFaultStore) Iterator(start, end []byte) (store.Iterator, error) {
+	return s.fault.Iterator(start, end)
+}
+
+func TestProviderReactivationPreservesIndexErrors(t *testing.T) {
+	for _, operation := range []string{"open", "close"} {
+		t.Run(operation, func(t *testing.T) {
+			service, ctx := colltest.MockStore()
+			fault := activeIndexErrorStore{}
+			if operation == "open" {
+				fault.openErr = errors.New("open failed")
+			} else {
+				fault.closeErr = errors.New("close failed")
+			}
+			encoding := moduletestutil.MakeTestEncodingConfig()
+			address := sdk.AccAddress([]byte("12345678901234567890")).String()
+			k := NewKeeper(encoding.Codec, activeIndexErrorStoreService{
+				store: activeIndexReadFaultStore{KVStore: service.OpenKVStore(ctx), fault: fault},
+			}, log.NewNopLogger(), address, nil, nil)
+			provider := types.Provider{
+				Uuid: "01912345-6789-7abc-8def-0123456789ab", Address: address, PayoutAddress: address,
+			}
+			require.NoError(t, k.SetProvider(ctx, provider))
+			response, err := NewMsgServerImpl(k).UpdateProvider(ctx, types.NewMsgUpdateProvider(address, provider.Uuid, address, address, nil, true, ""))
+			require.Nil(t, response)
+			require.ErrorIs(t, err, types.ErrInternalCorruption)
+			require.ErrorContains(t, err, operation+" failed")
+			stored, err := k.GetProvider(ctx, provider.Uuid)
+			require.NoError(t, err)
+			require.Equal(t, provider, stored)
+		})
+	}
+}
 
 type activeIndexErrorStoreService struct {
 	store store.KVStore

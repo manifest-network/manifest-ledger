@@ -92,9 +92,20 @@ Only the module authority can update the parameters (including the allowed list)
 
 **API URL Requirements:**
 - Must use HTTPS scheme (http:// is rejected)
-- Must have a valid host (empty host is rejected)
+- Must have a nonempty hostname (a port alone, such as `https://:443`, is rejected)
+- An explicit port must be between 1 and 65535; an empty explicit port is rejected
 - Must not contain user credentials (e.g., `https://user:pass@host` is rejected)
 - Must not exceed `MaxAPIURLLength` (2048 UTF-8 bytes)
+
+These endpoint checks apply to newly supplied transaction URLs. Genesis import
+and state invariants retain the historical URL rules so previously accepted
+metadata remains readable. An update may preserve an old URL by omitting it, or
+repair it with a valid replacement or `--clear-api-url`.
+
+Provider creation and updates reject payout addresses blocked by bank policy,
+including protected module accounts. Previously stored payouts can be repaired
+by an authorized update to an allowed address; billing checks payout policy
+again before settlement.
 
 **MetaHash Requirements:**
 - Optional field for both Providers and SKUs
@@ -116,6 +127,7 @@ the existing API URL is preserved for compatibility with existing clients. Set
 - SKUs can only be created for active Providers
 - SKU base price must be exactly divisible by the billing unit's seconds (no rounding)
 - Deactivating a Provider **cascades to deactivate all its SKUs** (one-way cascade). The cascade is paginated: one call deactivates at most `limit` SKUs (default `DefaultDeactivateSKULimit` = 50, max `MaxDeactivateSKULimit` = 100), the provider is marked inactive on the first call only, and the caller must repeat `deactivate-provider` while the response's `has_more` is true. A provider with more SKUs than `limit` is only partially cascaded by a single call, transiently leaving active SKUs under an inactive provider.
+- Provider reactivation is rejected while active SKUs remain from the cascade. Finish deactivation first, reactivate the provider, then reactivate desired SKUs individually.
 - Deactivating a SKU is a soft delete - the SKU remains queryable but cannot be used for new leases
 - Provider and SKU UUIDs are generated deterministically using UUIDv7 format and never reused
 

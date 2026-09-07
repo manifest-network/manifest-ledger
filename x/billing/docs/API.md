@@ -47,6 +47,11 @@ manifestd tx billing fund-credit manifest1abc... 1000000upwr --from mykey
 - Credit accounts support multiple denominations
 - The denomination funded must match what the tenant needs for their target SKUs
 - Creates the credit account if it doesn't exist
+- Checks the bank module's send-enabled policy for the funded denomination;
+  a rejected deposit creates no credit account, transfers no funds, and emits
+  no funding event
+- This deposit check does not change settlement's denomination policy for
+  credit already funded
 
 ---
 
@@ -191,7 +196,7 @@ manifestd tx billing reject-lease [lease-uuid]... [flags]
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --reason | string | Optional rejection reason (max 256 chars, applied to all leases) |
+| --reason | string | Optional rejection reason (max 256 UTF-8 bytes, applied to all leases) |
 
 **Examples:**
 ```bash
@@ -284,9 +289,10 @@ manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab 01912345-6
   - Provider: All leases must belong to that provider
   - Authority: Can close any leases
 - If any lease fails validation, the entire batch fails (no partial closures)
-- Final settlement rejects a provider payout address that SDK-decodes to the
-  target tenant's derived credit address. Equivalent Bech32 casing is the same
-  account; if any target has this configuration, the entire batch is rolled back.
+- Before a nonzero final transfer, settlement rejects a provider payout address
+  blocked by the bank module or equal to the target tenant's derived credit
+  address. Equivalent Bech32 casing is the same account; a rejected transfer
+  rolls back the entire batch.
 - Response includes total_settled_amounts aggregated across all closed leases
 - Emits `batch_closed` event when multiple leases are processed (includes lease_count, closed_by)
 - Transfers `min(accrued, B - (R - A))` to the provider payout address,
@@ -362,10 +368,12 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
   lease's spendable credit `B - (R - A)`
 - Transfers the successful lease-spendable amounts, aggregated by denomination,
   to the provider's payout address
-- Rejects settlement when the provider payout address SDK-decodes to the same
-  account as that tenant's derived credit address; Bech32 text casing does not
-  create a distinct account. Specific-lease batches fail atomically, while
-  provider-wide mode logs and skips only the affected lease.
+- Before a nonzero transfer, rejects a provider payout address blocked by the
+  bank module or equal to that tenant's derived credit address; Bech32 text
+  casing does not create a distinct account. Specific-lease batches fail
+  atomically, while provider-wide mode logs and skips affected leases, listing
+  them in `failed_lease_uuids`. Historical provider configurations must be
+  repaired through `MsgUpdateProvider` before retrying those leases.
 - May trigger auto-close if credit exhausted during withdrawal
 - Response includes `withdrawal_count` and `total_amounts` aggregated across the
   successful leases in this request (the current provider-wide page in mode 2),
@@ -635,8 +643,8 @@ manifestd query billing lease [lease-uuid]
 - `closed_at` is set when lease is closed (CLOSED state)
 - `rejected_at` is set when provider rejects or tenant cancels (REJECTED state)
 - `expired_at` is set when pending lease times out (EXPIRED state)
-- `rejection_reason` contains the provider's reason for rejection (max 256 chars)
-- `closure_reason` contains the reason for closure (max 256 chars)
+- `rejection_reason` contains the provider's reason for rejection (max 256 UTF-8 bytes)
+- `closure_reason` contains the reason for closure (max 256 UTF-8 bytes)
 - `meta_hash` contains the optional hash/reference to off-chain deployment data (max 64 bytes, immutable)
 - `min_lease_duration_at_creation` stores the `min_lease_duration` parameter value at creation time for consistent reservation calculation
 - `reservation.remaining_amounts` is this modern lease's consumable remaining guarantee. It decreases as settlement consumes the tranche and is empty after release. Historical leases use an initialized empty reservation and share the account's `unattributed_reserved_amounts` instead.
@@ -1148,6 +1156,12 @@ service Msg {
 
 Fund a tenant's credit account.
 
+The funded denomination must be send-enabled under the bank module's current
+policy, including its default when no denomination-specific setting exists.
+Rejection leaves bank balances and billing state unchanged. This check applies
+to new deposits; existing lease settlement does not check denomination
+send-enabled status.
+
 **Request:**
 ```protobuf
 message MsgFundCredit {
@@ -1268,7 +1282,7 @@ Provider rejects one or more PENDING leases atomically.
 message MsgRejectLease {
   string sender = 1;               // Provider or authority
   repeated string lease_uuids = 2; // Canonical lowercase lease UUIDv7 values (1-100)
-  string reason = 3;               // Optional reason (max 256 chars, applied to all)
+  string reason = 3;               // Optional reason (max 256 UTF-8 bytes, applied to all)
 }
 ```
 
@@ -1325,7 +1339,7 @@ Close one or more ACTIVE leases atomically.
 message MsgCloseLease {
   string sender = 1;               // Sender (tenant, provider, or authority)
   repeated string lease_uuids = 2; // Canonical lowercase lease UUIDv7 values (1-100)
-  string reason = 3;               // Optional closure reason (max 256 chars, applied to all)
+  string reason = 3;               // Optional closure reason (max 256 UTF-8 bytes, applied to all)
 }
 ```
 
@@ -1713,9 +1727,9 @@ message Lease {
   google.protobuf.Timestamp last_settled_at = 8;
   google.protobuf.Timestamp acknowledged_at = 9;
   google.protobuf.Timestamp rejected_at = 10;
-  string rejection_reason = 11;       // Provider's rejection reason (max 256 chars)
+  string rejection_reason = 11;       // Provider's rejection reason (max 256 UTF-8 bytes)
   google.protobuf.Timestamp expired_at = 12;
-  string closure_reason = 13;         // Closure reason (max 256 chars)
+  string closure_reason = 13;         // Closure reason (max 256 UTF-8 bytes)
   bytes meta_hash = 14;               // Hash/reference to off-chain deployment data (max 64 bytes, immutable)
   uint64 min_lease_duration_at_creation = 15; // Snapshot of min_lease_duration param at creation
   LeaseReservation reservation = 16;  // Remaining guarantee; presence distinguishes pre-v4 (v2/v3) exports
@@ -1875,7 +1889,7 @@ Certain event attributes (like `rejection_reason` and `closure_reason`) are sani
 
 **Sanitization Rules:**
 - Every rune that is not `unicode.IsGraphic` (control characters, including `\n` and `\r`) is removed outright — nothing is substituted in its place
-- No escaping or truncation is performed; reasons longer than 256 chars are rejected at ValidateBasic rather than truncated here
+- No escaping or truncation is performed; reasons longer than 256 UTF-8 bytes are rejected at ValidateBasic rather than truncated here
 
 **Example:**
 ```
@@ -1930,9 +1944,9 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrTooManyLeaseItems` | 21 | Lease exceeds max items |
 | `ErrLeaseNotPending` | 22 | Lease is not in PENDING state |
 | `ErrMaxPendingLeasesReached` | 23 | Tenant at max pending leases |
-| `ErrInvalidRejectionReason` | 24 | Rejection reason too long (max 256 chars) |
+| `ErrInvalidRejectionReason` | 24 | Rejection reason too long (max 256 UTF-8 bytes) |
 | `ErrInvalidRequest` | 25 | Invalid request (e.g., conflicting fields in MsgWithdraw; setting `key` alongside `lease_uuids`; or a `key` longer than `MaxWithdrawCursorLen` = 64 bytes in provider-wide mode) |
-| `ErrInvalidClosureReason` | 26 | Closure reason too long (max 256 chars) |
+| `ErrInvalidClosureReason` | 26 | Closure reason too long (max 256 UTF-8 bytes) |
 | `ErrInvalidMetaHash` | 27 | Meta hash exceeds maximum length (max 64 bytes) |
 | `ErrInvalidServiceName` | 28 | Invalid service name (must be RFC 1123 DNS label: 1-63 lowercase alphanumeric/hyphens, no leading/trailing hyphen) |
 | `ErrInvalidCustomDomain` | 29 | Invalid `LeaseItem.custom_domain` (failed `IsValidFQDN` checks, exceeded 253 bytes, or matched a reserved suffix) |

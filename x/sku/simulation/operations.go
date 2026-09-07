@@ -173,14 +173,18 @@ func SimulateMsgUpdateProvider(txGen client.TxConfig, k keeper.Keeper) simtypes.
 
 		// Determine active status based on current provider state:
 		// - Cannot deactivate via UpdateProvider (must use DeactivateProvider)
-		// - Can reactivate an inactive provider
+		// - Can reactivate an inactive provider after its SKU cascade completes
 		var active bool
 		if provider.Active {
 			// Provider is active: must remain active (deactivation requires DeactivateProvider)
 			active = true
 		} else {
-			// Provider is inactive: can reactivate
-			active = r.Float32() > 0.5 // 50% chance to reactivate
+			active, err = simulationProviderReactivation(r, provider.Uuid, func(providerUUID string) (bool, error) {
+				return k.HasActiveSKUsByProvider(ctx, providerUUID)
+			})
+			if err != nil {
+				return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to inspect provider SKUs"), nil, err
+			}
 		}
 
 		apiURL, clearAPIURL := simulationProviderAPIURLUpdate(r)
@@ -406,6 +410,19 @@ func SimulateMsgDeactivateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.O
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, simAccount, msg, k)
 	}
+}
+
+// simulationProviderReactivation considers reactivation with 50% probability,
+// but preserves the inactive state while a provider's SKU cascade is unfinished.
+func simulationProviderReactivation(r *rand.Rand, providerUUID string, hasActiveSKUs func(string) (bool, error)) (bool, error) {
+	if r.Float32() <= 0.5 {
+		return false, nil
+	}
+	hasActive, err := hasActiveSKUs(providerUUID)
+	if err != nil {
+		return false, err
+	}
+	return !hasActive, nil
 }
 
 func providersRequiringDeactivation(

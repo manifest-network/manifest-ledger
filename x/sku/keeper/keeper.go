@@ -124,8 +124,8 @@ type Keeper struct {
 	storeService storetypes.KVStoreService
 	logger       log.Logger
 
-	// Simulation dependencies are constructor-injected so the module cannot be
-	// wired with a partially initialized keeper.
+	// Bank payout-policy checks and simulation dependencies are constructor-injected
+	// so the module cannot be wired with a partially initialized keeper.
 	accountKeeper types.AccountKeeper
 	bankKeeper    types.BankKeeper
 

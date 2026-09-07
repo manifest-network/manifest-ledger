@@ -237,6 +237,9 @@ func SimulateMsgFundCredit(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper)
 		}
 
 		amount := sdk.NewCoin(denom, randAmount)
+		if err := k.GetBankKeeper().IsSendEnabledCoins(ctx, amount); err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "billing denom transfers are disabled"), nil, nil
+		}
 		fees := sdk.NewCoins(sdk.NewCoin(denom, fixedFee))
 
 		msg := &types.MsgFundCredit{

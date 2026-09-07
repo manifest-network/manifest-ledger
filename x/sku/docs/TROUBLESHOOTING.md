@@ -170,6 +170,33 @@ manifestd tx sku create-provider manifest1... manifest1... --api-url https:///pa
 manifestd tx sku create-provider manifest1... manifest1... --api-url https://api.example.com/path --from authority
 ```
 
+### "api_url port must be between 1 and 65535"
+
+**Cause**: The URL has an empty, zero, or out-of-range explicit port.
+
+**Solution**: Omit the port to use HTTPS's default, or choose a port from 1 to
+65535. For example, use `https://api.example.com:8443` or
+`https://[2001:db8::1]:8443`. A port alone such as `https://:443` also fails because
+it has no hostname.
+
+### "payout address is blocked by bank policy"
+
+**Cause**: The requested payout is a protected bank destination, such as the
+distribution module account.
+
+**Solution**: Supply a permitted account address. To repair a historical blocked
+payout, have an authorized administrator run `update-provider` with the allowed
+replacement and all other provider fields to preserve.
+
+### "cannot reactivate provider: finish deactivating its SKUs first"
+
+**Cause**: An earlier `deactivate-provider` call left active SKUs pending in the
+paginated cascade.
+
+**Solution**: Repeat `deactivate-provider` for the same UUID until the response
+has `has_more=false`. Then reactivate the provider with `update-provider` and
+reactivate desired SKUs individually with `update-sku`.
+
 ### "invalid API URL" (too long)
 
 **Cause**: The API URL exceeds the maximum encoded length of 2048 UTF-8 bytes.

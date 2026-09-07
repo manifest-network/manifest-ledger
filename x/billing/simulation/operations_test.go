@@ -9,11 +9,60 @@ import (
 	"github.com/stretchr/testify/require"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
+	banktestutil "github.com/cosmos/cosmos-sdk/x/bank/testutil"
 
 	"github.com/manifest-network/manifest-ledger/app"
 	billingsimulation "github.com/manifest-network/manifest-ledger/x/billing/simulation"
 	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
+
+func TestSimulateMsgFundCreditSkipsDisabledDenomination(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		denom           string
+		defaultEnabled  bool
+		explicitDisable bool
+	}{
+		{"default disabled", sdk.DefaultBondDenom, false, false},
+		{"fallback denom disabled", sdk.DefaultBondDenom, true, true},
+		{"active SKU denom disabled", "ubilling", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, manifestApp := app.Setup(t)
+			sender := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+			funds := sdk.NewCoins(sdk.NewInt64Coin(tc.denom, 10_000_000))
+			require.NoError(t, banktestutil.FundAccount(ctx, manifestApp.BankKeeper, sender, funds))
+			if tc.denom != sdk.DefaultBondDenom {
+				require.NoError(t, manifestApp.SKUKeeper.SetSKU(ctx, skutypes.SKU{
+					Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+					ProviderUuid: "01912345-6789-7abc-8def-0123456789ba",
+					Active:       true,
+					BasePrice:    sdk.NewInt64Coin(tc.denom, 1),
+				}))
+			}
+
+			params := manifestApp.BankKeeper.GetParams(ctx)
+			params.DefaultSendEnabled = tc.defaultEnabled
+			require.NoError(t, manifestApp.BankKeeper.SetParams(ctx, params))
+			if tc.explicitDisable {
+				manifestApp.BankKeeper.SetSendEnabled(ctx, tc.denom, false)
+			}
+
+			operation := billingsimulation.SimulateMsgFundCredit(nil, manifestApp.BillingKeeper, &manifestApp.SKUKeeper)
+			r := rand.New(rand.NewSource(1)) //nolint:gosec
+			opMsg, futureOps, err := operation(r, nil, ctx, []simtypes.Account{{Address: sender}}, "")
+			require.NoError(t, err)
+			require.Nil(t, futureOps)
+			require.False(t, opMsg.OK)
+			require.Equal(t, "billing denom transfers are disabled", opMsg.Comment)
+			require.Equal(t, funds, manifestApp.BankKeeper.SpendableCoins(ctx, sender))
+			_, err = manifestApp.BillingKeeper.GetCreditAccount(ctx, sender.String())
+			require.ErrorIs(t, err, billingtypes.ErrCreditAccountNotFound)
+		})
+	}
+}
 
 func TestSimulateMsgAcknowledgeLeaseFiltersUnacknowledgeableLeases(t *testing.T) {
 	ctx, manifestApp := app.Setup(t)

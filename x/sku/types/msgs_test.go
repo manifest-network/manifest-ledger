@@ -714,6 +714,22 @@ func TestValidateAPIURL(t *testing.T) {
 			expectErr: false,
 		},
 		{
+			name:   "valid: minimum port",
+			apiURL: "https://example.com:1",
+		},
+		{
+			name:   "valid: maximum port",
+			apiURL: "https://example.com:65535",
+		},
+		{
+			name:   "valid: IPv6 without explicit port",
+			apiURL: "https://[2001:db8::1]/api",
+		},
+		{
+			name:   "valid: IPv6 with explicit port",
+			apiURL: "https://[2001:db8::1]:8443/api",
+		},
+		{
 			name:      "valid: HTTPS URL with query params",
 			apiURL:    "https://example.com/api?version=1",
 			expectErr: false,
@@ -735,6 +751,42 @@ func TestValidateAPIURL(t *testing.T) {
 			apiURL:    "https://",
 			expectErr: true,
 			errMsg:    "must have a valid host",
+		},
+		{
+			name:      "invalid: port without hostname",
+			apiURL:    "https://:443",
+			expectErr: true,
+			errMsg:    "must have a valid host",
+		},
+		{
+			name:      "invalid: empty explicit port",
+			apiURL:    "https://example.com:",
+			expectErr: true,
+			errMsg:    "port must be between 1 and 65535",
+		},
+		{
+			name:      "invalid: zero port",
+			apiURL:    "https://example.com:0",
+			expectErr: true,
+			errMsg:    "port must be between 1 and 65535",
+		},
+		{
+			name:      "invalid: oversized port",
+			apiURL:    "https://example.com:65536",
+			expectErr: true,
+			errMsg:    "port must be between 1 and 65535",
+		},
+		{
+			name:      "invalid: IPv6 with empty explicit port",
+			apiURL:    "https://[2001:db8::1]:",
+			expectErr: true,
+			errMsg:    "port must be between 1 and 65535",
+		},
+		{
+			name:      "invalid: IPv6 with zero port",
+			apiURL:    "https://[2001:db8::1]:0",
+			expectErr: true,
+			errMsg:    "port must be between 1 and 65535",
 		},
 		{
 			name:      "invalid: FTP scheme",

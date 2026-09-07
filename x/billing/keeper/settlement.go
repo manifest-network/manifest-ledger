@@ -278,6 +278,14 @@ func (k *Keeper) performSettlementCore(
 			"provider payout address must not equal tenant credit address",
 		)
 	}
+	// SendCoins is a keeper primitive: unlike bank MsgSend, it does not reject
+	// protected module accounts. Enforce that policy here for every settlement
+	// path, including providers configured before payout validation was added.
+	if k.bankKeeper.BlockedAddr(payoutAddr) {
+		return nil, types.ErrInvalidCreditOperation.Wrapf(
+			"provider payout address %s is blocked from receiving funds", payoutAddr,
+		)
+	}
 
 	// Transfer funds
 	if err := k.bankKeeper.SendCoins(ctx, creditAddr, payoutAddr, transferAmounts); err != nil {

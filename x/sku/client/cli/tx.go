@@ -46,6 +46,7 @@ func MsgCreateProvider() *cobra.Command {
 		Use:   "create-provider [address] [payout-address]",
 		Short: "Create a new provider",
 		Long: `Create a new provider with the given management and payout addresses.
+The payout address must be permitted by bank policy; protected module accounts are rejected.
 
 The api-url is optional and must be a valid HTTPS URL where the provider's
 off-chain API is hosted for tenant authentication and connection details.`,
@@ -98,11 +99,13 @@ func MsgUpdateProvider() *cobra.Command {
 		Long: `Update an existing provider with the given parameters.
 
 Active values:
-  true  - keep active or reactivate an inactive provider
-  false - NOT ALLOWED (use deactivate-provider instead)
+  true  - keep active or reactivate an inactive provider after its SKU cascade completes
+  false - keep an already-inactive provider inactive
 
-Note: To deactivate a provider, use the 'deactivate-provider' command which
+Note: To deactivate an active provider, use the 'deactivate-provider' command which
 properly cascades deactivation to all associated SKUs.
+Finish all cascade pages before reactivating; then reactivate desired SKUs individually.
+The payout address must be permitted by bank policy; protected module accounts are rejected.
 
 The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.
 Omit --api-url to preserve the existing URL, or use --clear-api-url to remove it.
@@ -173,10 +176,11 @@ func MsgDeactivateProvider() *cobra.Command {
 		Use:   "deactivate-provider [uuid]",
 		Short: "Deactivate a provider (soft delete)",
 		Long: fmt.Sprintf(`Deactivate a provider. This is a soft delete - the provider remains in state but is marked inactive.
-Inactive providers cannot create new SKUs but existing SKUs continue to work.
+Inactive providers cannot have new SKUs or leases created. Existing leases continue operating.
 
 SKU deactivation is paginated to prevent gas exhaustion with many SKUs.
 If has_more is true in the response, call again to continue deactivating SKUs.
+The cascade must finish before the provider can be reactivated.
 
 Use --limit to control how many SKUs are deactivated per call (default %d, max %d).`,
 			types.DefaultDeactivateSKULimit, types.MaxDeactivateSKULimit),
@@ -224,8 +228,10 @@ func MsgCreateSKU() *cobra.Command {
 
 Unit values:
   1 = per hour
-  2 = per day`,
-		Example: "create-sku 01912345-6789-7abc-8def-0123456789ab \"Compute Instance\" 1 100umfx --meta-hash deadbeef",
+  2 = per day
+
+Prices must be positive multiples of 3600 (hourly) or 86400 (daily) base units.`,
+		Example: "create-sku 01912345-6789-7abc-8def-0123456789ab \"Compute Instance\" 1 3600umfx --meta-hash deadbeef",
 		Args:    cobra.ExactArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -289,10 +295,11 @@ Unit values:
 
 Active values:
   true  - keep active or reactivate an inactive SKU (requires active provider)
-  false - NOT ALLOWED (use deactivate-sku instead)
+  false - keep an already-inactive SKU inactive
 
-Note: To deactivate a SKU, use the 'deactivate-sku' command.`,
-		Example: "update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab \"Updated Name\" 2 200umfx true --meta-hash deadbeef",
+Note: To deactivate an active SKU, use the 'deactivate-sku' command.
+Prices must be positive multiples of 3600 (hourly) or 86400 (daily) base units.`,
+		Example: "update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab \"Updated Name\" 2 86400umfx true --meta-hash deadbeef",
 		Args:    cobra.ExactArgs(6),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)

@@ -33,7 +33,7 @@ This document records key design decisions made during the development of the x/
 4. UUIDv7 with deterministic generation (chosen)
 
 **Rationale:**
-- **Uniqueness:** UUIDs are globally unique and collision-resistant
+- **Uniqueness:** Block context, module identity, and sequence distinguish generated identifiers
 - **Debuggability:** Easier to trace and reference in logs and UIs
 - **External Integration:** Standard format for external systems
 - **Time-ordering:** UUIDv7 encodes timestamp for natural ordering
@@ -51,7 +51,8 @@ uuid := uuid.GenerateUUIDv7(ctx, moduleName, sequence)
 **Trade-offs:**
 - Slightly larger storage than uint64 (36 chars vs 8 bytes)
 - Requires custom deterministic generation for consensus
-- Cannot be predicted (intentional for security)
+- Inputs are public and deterministic; UUIDs are identifiers, not secrets or authorization tokens
+- The FNV-1a suffix is noncryptographic and does not provide an absolute collision guarantee
 
 ## Decision 3: Soft Delete Pattern
 
@@ -75,6 +76,7 @@ uuid := uuid.GenerateUUIDv7(ctx, moduleName, sequence)
 - Queries must filter by active status
 - No way to reclaim UUIDs (by design)
 - SKUs must be individually reactivated after provider reactivation (cascade is one-way)
+- Provider reactivation requires completing every SKU deactivation page first; an unfinished cascade cannot be canceled by reactivating the provider
 
 **Update vs Deactivate Message Separation:**
 
@@ -89,7 +91,7 @@ The API enforces a clear separation between Update and Deactivate operations:
 This separation exists because:
 - **Deactivation has side effects:** `MsgDeactivateProvider` cascades to deactivate all associated SKUs (with pagination for gas safety). A simple field update would bypass this cascade.
 - **API clarity:** Users must explicitly choose the deactivation path, making the cascade behavior intentional and visible.
-- **Reactivation is simple:** No cascade needed—just flip the flag. For SKUs, reactivation requires the provider to be active.
+- **Reactivation preserves completed deactivation:** A provider can reactivate only when no active SKUs remain. For SKUs, reactivation requires the provider to be active.
 
 ## Decision 4: Authority-Only Access with AllowedList
 

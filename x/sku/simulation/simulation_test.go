@@ -97,6 +97,41 @@ func TestSimulationDeactivateLimitIsBoundedAndExercisesDefault(t *testing.T) {
 	require.True(t, sawExplicit)
 }
 
+func TestSimulationProviderReactivationRespectsCascadeAndErrors(t *testing.T) {
+	var sawReactivation, sawPreserve, sawError bool
+	expectedErr := errors.New("inspect failed")
+	for seed := int64(0); seed < 64; seed++ {
+		for _, hasActive := range []bool{false, true} {
+			active, err := simulationProviderReactivation(rand.New(rand.NewSource(seed)), "provider", func(uuid string) (bool, error) { //nolint:gosec // deterministic simulation PRNG
+				require.Equal(t, "provider", uuid)
+				return hasActive, nil
+			})
+			require.NoError(t, err)
+			switch {
+			case hasActive:
+				require.False(t, active, "unfinished cascades must not produce invalid reactivation messages")
+			case active:
+				sawReactivation = true
+			default:
+				sawPreserve = true
+			}
+		}
+		active, err := simulationProviderReactivation(rand.New(rand.NewSource(seed)), "provider", func(string) (bool, error) { //nolint:gosec // deterministic simulation PRNG
+			return false, expectedErr
+		})
+		require.False(t, active)
+		if err != nil {
+			require.ErrorIs(t, err, expectedErr)
+			sawError = true
+		}
+	}
+	// The guard must preserve both normal branches, and store faults must be
+	// reported when a random reactivation actually requires an index lookup.
+	require.True(t, sawReactivation)
+	require.True(t, sawPreserve)
+	require.True(t, sawError)
+}
+
 func TestSimulationProviderAPIURLUpdateExercisesPresenceModes(t *testing.T) {
 	var sawPreserve, sawSet, sawClear bool
 	for seed := int64(0); seed < 64; seed++ {

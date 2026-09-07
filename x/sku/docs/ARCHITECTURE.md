@@ -24,6 +24,7 @@ The SKU module:
   and `Params.AllowedList` entries with the SDK Bech32 parser and compares the
   resulting account-address bytes.
 - **Depended on by**: `x/billing` for SKU and Provider information
+- **Bank policy**: `CreateProvider` and `UpdateProvider` use `BlockedAddr` to reject protected payout destinations before writing state or advancing a UUID sequence. Historical payouts remain repairable through an update to an allowed address.
 
 The generic `depinject.go` provider instead supplies the SDK governance module
 address. An application changing from this repository's manual keeper assembly
@@ -385,6 +386,7 @@ The divisor comes from the unexported `divisorForUnit(unit)` (3600 for `UNIT_PER
 - Cannot create SKU for inactive provider
 - A SKU cannot be re-parented — `MsgUpdateSKU.provider_uuid` must equal the SKU's existing `provider_uuid`, else `ErrInvalidSKU: provider_uuid mismatch`
 - Deactivating provider cascades to deactivate all its SKUs (paginated for gas safety)
+- Reactivating a provider requires that the cascade has finished: no active SKUs may remain. Metadata updates that keep the current active status do not require this check.
 
 ## Events and Error Codes
 
@@ -413,8 +415,8 @@ Both providers and SKUs use soft delete (active flag):
 ### Input Validation
 
 - SKU names: Max 256 UTF-8 bytes (`MaxSKUNameLength`)
-- API URLs: Max 2048 UTF-8 bytes (`MaxAPIURLLength`), HTTPS required
-- Provider/Payout addresses: Valid bech32 addresses
+- Newly supplied API URLs: Max 2048 UTF-8 bytes (`MaxAPIURLLength`), HTTPS, nonempty hostname, no credentials, and explicit ports in the range 1–65535. Genesis import and state invariants preserve historical URL-validation rules; existing metadata can be preserved, replaced, or cleared.
+- Provider/Payout addresses: Valid bech32 addresses; provider writes reject payout addresses blocked by bank policy
 - Prices: Positive, divisible by unit seconds
 - Meta hash: Optional, max 64 bytes (SHA-256/SHA-512)
 

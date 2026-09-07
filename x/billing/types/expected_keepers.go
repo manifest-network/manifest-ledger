@@ -16,6 +16,8 @@ type AccountKeeper interface {
 
 // BankKeeper defines the bank operations required by the billing module.
 type BankKeeper interface {
+	BlockedAddr(sdk.AccAddress) bool
+	IsSendEnabledCoins(context.Context, ...sdk.Coin) error
 	SendCoins(context.Context, sdk.AccAddress, sdk.AccAddress, sdk.Coins) error
 	GetBalance(context.Context, sdk.AccAddress, string) sdk.Coin
 	SpendableCoins(context.Context, sdk.AccAddress) sdk.Coins

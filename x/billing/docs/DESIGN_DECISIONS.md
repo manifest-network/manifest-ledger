@@ -323,7 +323,7 @@ The provider withdraw batch limits are **not** governance parameters — they ar
 
 ## Decision 14: Minimum Lease Duration
 
-**Decision:** Require tenants to have enough credit to cover a minimum duration before creating a lease.
+**Decision:** Reserve enough credit to cover `min_lease_duration` seconds at the lease's locked rates before creating it. This parameter determines the initial reservation, not a minimum elapsed lease duration or minimum charge.
 
 **Alternatives Considered:**
 1. No minimum (allow immediate exhaustion)
@@ -331,10 +331,15 @@ The provider withdraw batch limits are **not** governance parameters — they ar
 3. Duration-based minimum (chosen)
 
 **Rationale:**
-- **Prevents Spam:** Can't create leases that immediately close
+- **Credit Coverage:** Requires available credit before a lease can be created
 - **Rate-Based:** Adapts to lease cost automatically
-- **User Protection:** Ensures meaningful lease duration
-- **Provider Protection:** Guarantees minimum revenue per lease
+- **Reservation Isolation:** Other leases cannot spend the new lease's initial reservation
+- **Provider Protection:** Backs accrued charges with reserved credit while the lease runs
+
+Tenants may cancel a PENDING lease without a charge or close an ACTIVE lease
+before `min_lease_duration` has elapsed. Closure charges only accrued whole
+seconds and releases the unused reservation, so this policy does not guarantee
+minimum provider revenue or prevent repeated short leases.
 
 **Trade-offs:**
 - More complex lease creation validation

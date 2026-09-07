@@ -70,7 +70,8 @@ ADR-036 ensures compatibility with all major Cosmos wallets:
 
 **Keplr Example (JavaScript):**
 ```js
-const message = `manifest lease access ${leaseUuid} ${Math.floor(Date.now() / 1000)}`;
+const timestamp = Math.floor(Date.now() / 1000);
+const message = `manifest lease access ${leaseUuid} ${timestamp}`;
 
 const signature = await window.keplr.signArbitrary(
   "manifest-1",           // chainId
@@ -81,7 +82,7 @@ const signature = await window.keplr.signArbitrary(
 const authToken = btoa(JSON.stringify({
   tenant: tenantAddress,
   lease_uuid: leaseUuid,
-  timestamp: Math.floor(Date.now() / 1000),
+  timestamp,
   pub_key: signature.pub_key,
   signature: signature.signature
 }));
@@ -90,6 +91,8 @@ fetch(`${providerApiUrl}/v1/leases/${leaseUuid}/connection`, {
   headers: { "Authorization": `Bearer ${authToken}` }
 });
 ```
+
+Capture the timestamp once before requesting the signature and reuse it in the token. Wallet confirmation may take several seconds; recalculating the timestamp afterwards changes the message the provider verifies. If confirmation exceeds the provider's freshness window, request a new signature with a fresh timestamp.
 
 **Note:** The Cosmos SDK does not include a built-in CLI command for ADR-036 signing. For CLI-based signing, use CosmJS or a custom signing tool. Wallet-based signing (Keplr, Leap) is the recommended approach for end users.
 
@@ -293,7 +296,8 @@ const metaHash = Array.from(new Uint8Array(hashBuffer))
   .join('');
 
 // After creating lease with metaHash on-chain...
-const message = `manifest lease data ${leaseUuid} ${metaHash} ${Math.floor(Date.now() / 1000)}`;
+const timestamp = Math.floor(Date.now() / 1000);
+const message = `manifest lease data ${leaseUuid} ${metaHash} ${timestamp}`;
 
 const signature = await window.keplr.signArbitrary("manifest-1", tenantAddress, message);
 
@@ -301,7 +305,7 @@ const authToken = btoa(JSON.stringify({
   tenant: tenantAddress,
   lease_uuid: leaseUuid,
   meta_hash: metaHash,
-  timestamp: Math.floor(Date.now() / 1000),
+  timestamp,
   pub_key: signature.pub_key,
   signature: signature.signature
 }));

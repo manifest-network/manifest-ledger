@@ -11,7 +11,8 @@ type AccountKeeper interface {
 	GetAccount(context.Context, sdk.AccAddress) sdk.AccountI
 }
 
-// BankKeeper defines the bank operation required by SKU simulations.
+// BankKeeper defines payout-policy checks and simulation funding queries.
 type BankKeeper interface {
+	BlockedAddr(sdk.AccAddress) bool
 	SpendableCoins(context.Context, sdk.AccAddress) sdk.Coins
 }

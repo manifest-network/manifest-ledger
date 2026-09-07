@@ -63,10 +63,6 @@ func (ms msgServer) CreateProvider(ctx context.Context, req *types.MsgCreateProv
 		return nil, types.ErrInvalidProvider.Wrapf("invalid create provider message: %s", err)
 	}
 
-	uuid, err := ms.k.GenerateProviderUUID(ctx)
-	if err != nil {
-		return nil, err
-	}
 	address, err := sdk.AccAddressFromBech32(req.Address)
 	if err != nil {
 		return nil, types.ErrInvalidProvider.Wrapf("invalid provider address: %s", err)
@@ -74,6 +70,14 @@ func (ms msgServer) CreateProvider(ctx context.Context, req *types.MsgCreateProv
 	payoutAddress, err := sdk.AccAddressFromBech32(req.PayoutAddress)
 	if err != nil {
 		return nil, types.ErrInvalidProvider.Wrapf("invalid payout address: %s", err)
+	}
+	if ms.k.bankKeeper.BlockedAddr(payoutAddress) {
+		return nil, types.ErrInvalidProvider.Wrap("payout address is blocked by bank policy")
+	}
+
+	uuid, err := ms.k.GenerateProviderUUID(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	provider := types.Provider{
@@ -134,6 +138,15 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 	}
 
 	wasInactive := !existingProvider.Active
+	if wasInactive && req.Active {
+		hasActiveSKUs, err := ms.k.HasActiveSKUsByProvider(ctx, req.Uuid)
+		if err != nil {
+			return nil, err
+		}
+		if hasActiveSKUs {
+			return nil, types.ErrInvalidProvider.Wrap("cannot reactivate provider: finish deactivating its SKUs first")
+		}
+	}
 
 	// Preserve the existing API URL for legacy clients, which omit api_url by
 	// sending its proto3 zero value. New clients can explicitly clear it.
@@ -150,6 +163,9 @@ func (ms msgServer) UpdateProvider(ctx context.Context, req *types.MsgUpdateProv
 	payoutAddress, err := sdk.AccAddressFromBech32(req.PayoutAddress)
 	if err != nil {
 		return nil, types.ErrInvalidProvider.Wrapf("invalid payout address: %s", err)
+	}
+	if ms.k.bankKeeper.BlockedAddr(payoutAddress) {
+		return nil, types.ErrInvalidProvider.Wrap("payout address is blocked by bank policy")
 	}
 
 	provider := types.Provider{

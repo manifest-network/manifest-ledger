@@ -68,6 +68,17 @@ Before creating a provider, gather the following information:
 | **API URL** | HTTPS endpoint where tenants can authenticate to get connection details | `https://api.provider.com` |
 | **Meta Hash** (optional) | Hex-encoded hash of off-chain metadata (e.g., business info, contact details) | `deadbeef` |
 
+The payout address must be allowed by the bank module. Protected module accounts,
+including the distribution account, are rejected on provider creation and update.
+An authorized administrator can repair an existing blocked payout by updating it
+to an allowed address. Billing also checks the destination when settling funds.
+
+API URLs require a nonempty hostname and HTTPS. An explicit port must be between
+1 and 65535; credentials and empty explicit ports are rejected. IPv6 literals use
+brackets, for example `https://[2001:db8::1]:8443`.
+Historical URLs remain importable and may be preserved on an unrelated update;
+newly supplied URLs must satisfy the current checks.
+
 ### About Meta Hash
 
 The `meta_hash` field stores a hash (e.g., SHA256) of off-chain metadata. This allows you to:
@@ -188,7 +199,7 @@ manifestd tx sku update-provider \
 
 > **Important:** `update-provider` is a full overwrite, not a partial update. Every field — `address`, `payout_address`, `meta_hash`, and `active` — must be re-supplied. Omitting `--meta-hash` clears the existing meta_hash; only `--api-url` is preserved when left empty. Use `--clear-api-url` to remove the existing URL. Do not combine it with a non-empty `--api-url`.
 >
-> The `<active>` argument cannot be used to deactivate a currently-active provider: passing `false` on an active provider fails with `cannot deactivate provider via UpdateProvider; use DeactivateProvider instead` — use `deactivate-provider` (Step 6) instead, which cascades to SKUs. Pass `true` to keep the provider active or to reactivate an inactive one. (An already-inactive provider also accepts `false`, leaving it inactive.)
+> The `<active>` argument cannot be used to deactivate a currently-active provider: passing `false` on an active provider fails with `cannot deactivate provider via UpdateProvider; use DeactivateProvider instead` — use `deactivate-provider` (Step 6) instead, which cascades to SKUs. Pass `true` to keep the provider active or to reactivate an inactive one after its SKU cascade finishes. (An already-inactive provider also accepts `false`, leaving it inactive.)
 
 ### Example: Change Payout Address
 
@@ -233,7 +244,7 @@ manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab \
 > - Prevents creation of new SKUs for this provider
 > - Does NOT affect existing leases (billing continues at locked prices)
 > - The provider can still receive withdrawals from active leases
-> - Can be reactivated via `update-provider` with `active=true`
+> - Can be reactivated via `update-provider` with `active=true` only after all cascade pages complete (`has_more=false`)
 > - SKUs must be individually reactivated via `update-sku` after provider reactivation
 
 ## Next Steps
@@ -302,7 +313,7 @@ Once your provider is created, you can:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-> **Note:** When a provider is reactivated, its SKUs remain inactive and must be individually reactivated via `update-sku` with `active=true`.
+> **Note:** Complete all SKU deactivation pages before reactivating the provider; reactivation is rejected while active SKUs remain. After provider reactivation, its SKUs remain inactive and must be individually reactivated via `update-sku` with `active=true`.
 
 ## Related Documentation
 

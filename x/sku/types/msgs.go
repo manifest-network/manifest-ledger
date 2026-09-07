@@ -2,6 +2,8 @@ package types
 
 import (
 	"net/url"
+	"strconv"
+	"strings"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
@@ -321,27 +323,48 @@ func (msg *MsgUpdateParams) Validate() error {
 
 // ValidateAPIURL validates that the API URL is a valid HTTPS URL.
 func ValidateAPIURL(apiURL string) error {
+	parsedURL, err := parseAPIURL(apiURL)
+	if err != nil {
+		return err
+	}
+	if parsedURL.Hostname() == "" {
+		return ErrInvalidAPIURL.Wrap("api_url must have a valid host")
+	}
+	if port := parsedURL.Port(); port != "" {
+		number, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || number == 0 {
+			return ErrInvalidAPIURL.Wrap("api_url port must be between 1 and 65535")
+		}
+	} else if strings.HasSuffix(parsedURL.Host, ":") {
+		return ErrInvalidAPIURL.Wrap("api_url port must be between 1 and 65535")
+	}
+	return nil
+}
+
+// parseAPIURL preserves the URL checks used for historical state. New messages
+// additionally validate the hostname and explicit port through ValidateAPIURL.
+func parseAPIURL(apiURL string) (*url.URL, error) {
 	if len(apiURL) > MaxAPIURLLength {
-		return ErrInvalidAPIURL.Wrapf("api_url exceeds maximum length of %d bytes", MaxAPIURLLength)
+		return nil, ErrInvalidAPIURL.Wrapf("api_url exceeds maximum length of %d bytes", MaxAPIURLLength)
 	}
 
 	parsedURL, err := url.Parse(apiURL)
 	if err != nil {
-		return ErrInvalidAPIURL.Wrapf("failed to parse api_url: %s", err)
+		return nil, ErrInvalidAPIURL.Wrapf("failed to parse api_url: %s", err)
 	}
 
 	if parsedURL.Scheme != "https" {
-		return ErrInvalidAPIURL.Wrap("api_url must use HTTPS scheme")
+		return nil, ErrInvalidAPIURL.Wrap("api_url must use HTTPS scheme")
 	}
 
 	if parsedURL.Host == "" {
-		return ErrInvalidAPIURL.Wrap("api_url must have a valid host")
+		return nil, ErrInvalidAPIURL.Wrap("api_url must have a valid host")
 	}
 
 	// Reject URLs with user info (credentials in URL)
 	if parsedURL.User != nil {
-		return ErrInvalidAPIURL.Wrap("api_url must not contain user credentials")
+		return nil, ErrInvalidAPIURL.Wrap("api_url must not contain user credentials")
 	}
 
-	return nil
+	return parsedURL, nil
 }

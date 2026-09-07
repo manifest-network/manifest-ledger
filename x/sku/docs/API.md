@@ -34,13 +34,17 @@ manifestd tx sku create-provider [address] [payout-address] [flags]
 | Argument | Type | Description |
 |----------|------|-------------|
 | address | string | Bech32 address of the provider (management address) |
-| payout-address | string | Bech32 address where payments will be sent |
+| payout-address | string | Bech32 payout address permitted by bank policy; protected module accounts are rejected |
 
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
 | --api-url | string | HTTPS endpoint for provider's off-chain API (optional) |
 | --meta-hash | string | Hex-encoded hash of off-chain metadata (optional) |
+
+New API URLs require HTTPS, a nonempty hostname, no credentials, and an explicit
+port between 1 and 65535 when supplied. IPv6 literals must be bracketed. An empty
+explicit port is rejected.
 
 **Example:**
 ```bash
@@ -65,7 +69,7 @@ manifestd tx sku update-provider [uuid] [address] [payout-address] [active] [fla
 |----------|------|-------------|
 | uuid | string | Canonical lowercase UUIDv7 of the provider |
 | address | string | New management address |
-| payout-address | string | New payout address |
+| payout-address | string | New payout address permitted by bank policy; may repair a previously blocked payout |
 | active | bool | Whether the provider is active (true/false) |
 
 **Flags:**
@@ -581,8 +585,11 @@ message MsgUpdateProviderResponse {}
   rejected if `api_url` is also non-empty.
 - This is a transaction-only wire addition. Provider storage and genesis are
   unchanged, so no module or store migration is required.
-- **Reactivation is allowed:** Setting `active=true` on an inactive provider will reactivate it.
+- **Reactivation requires a completed cascade:** Setting `active=true` on an inactive provider is rejected while any of its SKUs remain active. Repeat `MsgDeactivateProvider` until `has_more=false`, then reactivate the provider and desired SKUs individually.
 - **Deactivation is forbidden:** Setting `active=false` on an active provider will return an error. Use `MsgDeactivateProvider` instead, which properly cascades deactivation to all associated SKUs.
+- An already-inactive provider accepts `active=false` for metadata updates.
+- Payout addresses must be permitted by bank policy. An existing blocked payout can be repaired by supplying an allowed replacement.
+- Historical API URLs remain importable and are preserved when omitted from an update. Newly supplied URLs must pass the current hostname and port checks.
 
 ---
 

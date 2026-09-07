@@ -63,6 +63,12 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 		return nil, err
 	}
 
+	// Like a bank MsgSend, a user-funded deposit must honor denomination send
+	// restrictions. SendCoins itself does not enforce this policy.
+	if err := ms.k.bankKeeper.IsSendEnabledCoins(ctx, msg.Amount); err != nil {
+		return nil, err
+	}
+
 	// Use CacheContext to ensure atomicity: either all operations succeed
 	// (token transfer + credit account creation) or none do.
 	sdkCtx := sdk.UnwrapSDKContext(ctx)

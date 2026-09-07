@@ -12,6 +12,11 @@ Each tenant has a credit account with a derived address. Credit accounts can hol
 - **Balances**: Current credit balances (supports multiple denominations)
 - **Top-up**: Anyone can fund a tenant's credit account with any token
 
+New `FundCredit` deposits must satisfy the bank module's denomination
+send-enabled policy. Disabling sends for a denomination prevents new deposits
+through billing; settlement of existing credit keeps its existing denomination
+policy and does not apply that send-enabled check.
+
 ### Credit Reservation System
 
 The credit reservation system prevents overbooking by tracking a consumable
@@ -313,7 +318,7 @@ Module parameters stored at key `0x00`:
 |-------|------|-------------|
 | max_leases_per_tenant | uint64 | Maximum active leases per tenant; rechecked against each tenant's post-acknowledgement batch count (must be > 0) |
 | max_items_per_lease | uint64 | Maximum items per lease (default: 20, hard limit: 100) |
-| min_lease_duration | uint64 | Minimum lease duration in seconds (default: 3600 = 1 hour) |
+| min_lease_duration | uint64 | Seconds of credit reserved at lease creation (default: 3600 = 1 hour); does not impose a minimum runtime or charge |
 | max_pending_leases_per_tenant | uint64 | Maximum pending leases per tenant (default: 10) |
 | pending_timeout | uint64 | Hard acknowledgement window after `created_at`; exact cutoff is allowed, later block times are rejected (default: 1800 = 30 minutes, min: 60, max: 86400) |
 | allowed_list | []string | Up to 100 addresses allowed to create leases on behalf of tenants and to set lease custom_domains |
@@ -392,8 +397,8 @@ the disk-only codec persists account identities as raw address bytes.
 | rejected_at | Timestamp | Rejection time |
 | expired_at | Timestamp | Expiration time |
 | last_settled_at | Timestamp | Accrual cursor through which complete seconds have settled; an ACTIVE lease retains any sub-second remainder here, while a CLOSED lease sets it to `closed_at` |
-| rejection_reason | string | Provider's rejection reason (max 256 chars) |
-| closure_reason | string | Closure reason (max 256 chars) |
+| rejection_reason | string | Provider's rejection reason (max 256 UTF-8 bytes) |
+| closure_reason | string | Closure reason (max 256 UTF-8 bytes) |
 | meta_hash | bytes | Hash/reference to off-chain deployment data (max 64 bytes, immutable) |
 | min_lease_duration_at_creation | uint64 | Snapshot of `min_lease_duration` param at creation (for consistent reservation calculation) |
 | reservation | LeaseReservation | Remaining consumable reservation for a modern lease; initialized empty for terminal and historical leases |
@@ -626,6 +631,20 @@ The SKU module remains independent and does not know about the billing module.
 - [Billing Units](../sku/README.md#billing-units) - Per-hour vs per-day pricing
 
 ## Known Limitations
+
+### Protected Payout Addresses
+
+Before transferring funds, settlement rejects a provider payout address blocked
+by the bank module, including protected module accounts, or equal to the source
+tenant's credit address. This also protects leases whose provider configuration
+predates the validation in `x/sku`.
+
+A failed transfer leaves the affected lease's accrued charges and reservation
+unchanged. Specific-lease withdrawal and close batches fail atomically;
+provider-wide withdrawal continues and reports affected leases in
+`failed_lease_uuids`. An authorized operator must update the provider to an
+eligible payout address and explicitly retry those leases. See
+[payout troubleshooting](docs/TROUBLESHOOTING.md#provider-payout-address-is-blocked-from-receiving-funds).
 
 ### Credit Withdrawal Policy
 

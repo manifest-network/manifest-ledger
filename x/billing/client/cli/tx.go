@@ -344,6 +344,9 @@ withdraw --provider 01902a9b-1234-7000-8000-000000000001 --key <base64-next-key>
 
 			// Mode 1: Specific leases
 			if len(args) > 0 {
+				if cmd.Flags().Changed("key") || cmd.Flags().Changed("limit") {
+					return fmt.Errorf("--key and --limit require --provider and cannot be used with lease UUIDs")
+				}
 				if len(args) > types.MaxBatchLeaseSize {
 					return fmt.Errorf("cannot withdraw from more than %d leases at once", types.MaxBatchLeaseSize)
 				}

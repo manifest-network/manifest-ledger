@@ -105,6 +105,9 @@ func initFixture(t *testing.T) *testFixture {
 	// Initialize default params
 	err := s.App.BillingKeeper.SetParams(s.Ctx, types.DefaultParams())
 	require.NoError(t, err)
+	// Explicitly initialize the fixture's bank policy so funding scenarios
+	// start with sends enabled unless a test disables them.
+	require.NoError(t, s.App.BankKeeper.SetParams(s.Ctx, banktypes.DefaultParams()))
 
 	// Set authority
 	s.App.BillingKeeper.SetAuthority(authority.String())

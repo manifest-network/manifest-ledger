@@ -15,6 +15,18 @@ manifestd tx billing fund-credit [tenant-address] [amount] --from [key]
 
 The credit account is created automatically when first funded.
 
+### Funding denomination is send-disabled
+
+**Cause**: `FundCredit` checks the bank module's current send-enabled policy,
+including the default for denominations without an explicit setting. A disabled
+denomination cannot be newly deposited through billing. The rejected deposit
+does not transfer funds, create a credit account, or emit a funding event.
+
+**Solution**: Check the bank send-enabled configuration and contact the
+authorized bank-policy operator if it should change. Existing credit remains
+available for lease settlement, which does not apply this denomination check.
+Funding another denomination only helps leases whose SKUs use that denomination.
+
 ### "insufficient credit balance"
 
 **Cause**: The check is against *available* credit (available = balance − reserved_amounts), not the raw balance. In v4, `reserved_amounts` is the exact remaining aggregate `R = sum(live modern remaining tranches) + unattributed_reserved_amounts`; it is not a fixed sum of original nominal reservations. A tenant whose balance covers the new lease's `min_lease_duration` requirement can still hit this error if existing leases have that credit reserved. The full error text includes both balance and reserved, e.g. `insufficient available credit for denom <denom>: need <x>, have <y> available (balance: <b>, reserved: <r>)`. Check the `available_balances` field of `query billing credit-account` rather than the raw balance.
@@ -353,6 +365,35 @@ manifestd tx sku update-provider [provider-uuid] [provider-address] [new-payout-
 manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 ```
 
+### Provider payout address is blocked from receiving funds
+
+**Cause**: Before transferring a nonzero amount, billing rejects payout
+addresses blocked by the bank module, including protected module accounts.
+New provider create/update messages reject those addresses, but a provider
+stored by an older binary may still need repair. The error identifies the
+blocked payout address.
+
+**What happens**:
+1. A specific-lease withdrawal or `CloseLease` batch fails atomically; accrued
+   charges, reservations, lease state, and balances remain unchanged.
+2. Provider-wide withdrawal continues, reports each failed lease in
+   `failed_lease_uuids`, and advances its cursor past those leases. If every
+   attempted transfer is blocked, the call can succeed with zero withdrawals
+   and a nonempty failure list.
+3. `ProviderWithdrawable` reports the same failures in its discarded simulation.
+   Zero-transfer paths do not attempt a payment to the blocked address.
+
+`WithdrawableAmount` calculates the lease's accrued, spendable-capped amount;
+it does not attempt a transfer or check the payout recipient, so it may still
+return a positive amount for this configuration.
+
+**Solution**: An authorized operator must update the provider's payout address
+to an eligible account, preserving its other settings, then retry each reported
+lease UUID explicitly. Use `query sku provider [provider-uuid]` to inspect the
+current record and `tx sku update-provider --help` for the update syntax. No
+lease recreation or accrual reset is needed. A provider's payout address is
+shared by its leases, so repair it before retrying the remaining pages.
+
 ### Lease not included in provider-wide withdraw results
 
 **Cause**: A provider-wide withdraw processes each lease in its own cached context; if a single lease fails, it is logged and skipped so the rest of the batch still succeeds. Two things determine what appears in the results:
@@ -363,9 +404,9 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
    settlement, or a zero withdrawable amount — and is silent and expected. An
    *error* skip happens when a lease-local settlement or store operation fails
    — for example, a bank transfer failure, malformed stored lease/account data,
-   a payout address equal to that tenant's derived credit address, or a
+   a bank-blocked payout address or one equal to that tenant's derived credit address, or a
    `last_settled_at` after block time — in which case that lease's changes are
-   discarded. Provider lookup, authorization, and payout-address validation are
+   discarded. Provider lookup, authorization, and payout-address decoding are
    request-wide gates and fail the transaction before any page lease runs.
 
 **What happens**:

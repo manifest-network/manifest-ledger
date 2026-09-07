@@ -149,8 +149,8 @@ Leases represent resource rentals with full lifecycle tracking:
 | `rejected_at` | `*Timestamp` | When provider rejected |
 | `expired_at` | `*Timestamp` | When lease expired in PENDING state |
 | `last_settled_at` | `Timestamp` | Accrual cursor through which complete seconds have settled; ACTIVE leases retain a sub-second remainder, while CLOSED leases set it to `closed_at` |
-| `rejection_reason` | `string` | Provider's rejection explanation (max 256 chars) |
-| `closure_reason` | `string` | Explanation for why the lease was closed (max 256 chars) |
+| `rejection_reason` | `string` | Provider's rejection explanation (max 256 UTF-8 bytes) |
+| `closure_reason` | `string` | Explanation for why the lease was closed (max 256 UTF-8 bytes) |
 | `meta_hash` | `bytes` | Optional hash/reference to off-chain deployment data (max 64 bytes, immutable) |
 | `min_lease_duration_at_creation` | `uint64` | The `min_lease_duration` parameter value at lease creation time, for consistent reservation calculation |
 | `reservation` | `*LeaseReservation` | Remaining consumable tranche. Presence is required in persisted v4 state; absence marks a complete pre-v4 aggregate-only (v2/v3) genesis export before normalization. |
@@ -818,11 +818,11 @@ totalAmounts = updatedTotal
 
 **Behavior**:
 - Each lease's settlement is atomic (all-or-nothing)
-- If settlement fails for one lease (e.g., a bank transfer error, a payout
-  address that resolves to that tenant's derived credit address, malformed
+- If settlement fails for one lease (e.g., a bank transfer error, a bank-blocked
+  payout address or one that resolves to that tenant's derived credit address, malformed
   stored lease/account data, or a `last_settled_at` after block time), only that
   lease is logged, reported, and skipped. Provider lookup, authorization, and
-  payout-address validation are request-wide gates and fail before page work.
+  payout-address decoding are request-wide gates and fail before page work.
 - Other leases in the batch are processed normally
 - Failed leases don't affect the success of the overall operation
 - Failed lease UUIDs are returned in provider index order and emitted on the
@@ -835,12 +835,29 @@ totalAmounts = updatedTotal
 
 This pattern ensures that partial failures don't corrupt state while still providing best-effort batch processing.
 
-Settlement compares SDK-decoded address bytes and rejects a provider payout
-address equal to the source tenant credit address. A self-send would leave the
-bank balance unchanged while falsely appearing to settle accrued credit;
-different Bech32 casing therefore cannot bypass this check. Specific-lease
-withdraw and `CloseLease` wrap the whole requested batch in one cached context,
-so this error rolls back every earlier transfer and state update in that batch.
+Before a nonzero bank transfer, settlement compares SDK-decoded address bytes
+and rejects a provider payout address equal to the source tenant credit address
+or blocked by the bank module. A self-send would falsely appear to settle
+credit, while sending to a protected module account could bypass that module's
+accounting. The bank keeper's `SendCoins` primitive does not enforce the blocked
+recipient policy itself, so billing checks it explicitly. Historical providers
+are checked at settlement even if their payout address predates `x/sku`'s
+message validation.
+
+Specific-lease withdraw and `CloseLease` wrap the whole requested batch in one
+cached context, so a rejected transfer rolls back every earlier transfer and
+state update in that batch. Provider-wide withdrawal and `ProviderWithdrawable`
+instead report failed lease UUIDs and continue; the latter commits no state.
+After an authorized `MsgUpdateProvider` repairs the payout address, retry those
+UUIDs explicitly. Failed attempts do not advance their accrual cursor or consume
+their reservation. Zero-transfer paths do not need this recipient check.
+
+New `FundCredit` deposits separately use the bank keeper's
+`IsSendEnabledCoins` policy, covering both denomination-specific settings and
+the bank default. Rejection occurs before a deposit transfer or credit-account
+creation. Existing lease settlement keeps its denomination policy: it does not
+call `IsSendEnabledCoins`, so disabling new sends does not stop payment from
+credit already funded.
 
 ### Auto-Close on Credit Exhaustion
 
@@ -1091,10 +1108,10 @@ This returns `sdk.Coins` to support multi-denom leases where different SKUs may 
 2. **Max pending leases per tenant** - Prevents pending lease spam
 3. **Max items per lease** - Limits computation per lease
 4. **Withdrawal batch size** - Caps provider-wide withdraw iterations (max 100)
-5. **Min lease duration** - Prevents immediate exhaustion
+5. **Initial credit reservation** - Requires credit covering `min_lease_duration` at creation; it does not enforce a minimum elapsed lease duration
 6. **Lazy settlement** - No per-block overhead for accrual calculation
 7. **EndBlocker rate limiting** - Max 100 pending lease expirations per block
-8. **Indexed lookups** - `CreditAddressIndex` (prefix 6) is a maintained reverse index (`credit_address → tenant`) written by `SetCreditAccount`. It is not read anywhere in the current tree, but enables O(1) credit-account detection for future or off-chain consumers
+8. **Indexed lookups** - `CreditAddressIndex` (prefix 6) is a maintained reverse index (`credit_address → tenant`) written by `SetCreditAccount` and checked by the derived-index invariant. No transaction or query currently uses it for credit-account detection
 9. **Same provider requirement** - Simplifies acknowledgement flow
 
 ## Performance Characteristics
@@ -1125,7 +1142,7 @@ The following optimizations have been identified but deferred:
 
 | Index/Feature | Current | Potential | Notes |
 |---------------|---------|-----------|-------|
-| `LeasesBySKU` + State filter | O(k) + post-filter | O(m) direct | Cannot create compound (SKU, State) index due to many-to-many design (leases contain multiple SKUs). Current post-filtering is acceptable since SKU-specific queries are infrequent. |
+| `LeasesBySKU` + State filter | O(k) + post-filter | O(m) direct | A manually maintained `(sku_uuid, state, lease_uuid)` index could support direct filtering. It would add storage and lifecycle update work for each distinct SKU in a lease; the current design uses bounded post-filtering. |
 
 ## Genesis Validation
 
@@ -1196,7 +1213,7 @@ aggregate is not bank-backed.
 - Credit account lifecycle
 - EndBlocker pending expiration
 
-### E2E Tests (`interchaintest/billing_test.go`)
+### E2E Tests (`interchaintest/billing_*_test.go`)
 - Complete billing cycle with PENDING → ACTIVE flow
 - Provider acknowledgement and rejection
 - Tenant lease cancellation
@@ -1284,26 +1301,36 @@ must retain `failed_lease_uuids`, correct each cause, and explicitly retry them.
 
 ### Time Manipulation Considerations
 
-The billing module relies on block timestamps for accrual calculations. Cosmos SDK provides the following guarantees:
+The billing module charges elapsed block time. The pinned CometBFT v0.38.21
+uses [BFT median time](https://docs.cosmos.network/cometbft/v0.38/spec/consensus/BFT-Time):
+after the initial block, a block's timestamp must equal the voting-power-weighted
+median of the previous commit's non-absent vote timestamps and be strictly later
+than the previous block's timestamp. The initial block uses the genesis time.
 
-| Property | Guarantee |
+| Property | Behavior |
 |----------|-----------|
-| Monotonicity | Block time always increases (enforced by CometBFT) |
-| Granularity | Millisecond precision |
-| Drift tolerance | ±1 second per block (CometBFT default) |
+| Monotonicity | Block time strictly increases after the initial block |
+| Precision | Timestamps retain nanosecond precision; billing accrues whole elapsed seconds and preserves the remainder during live settlement |
+| Wall-clock accuracy | Depends on validator clocks and the consensus trust assumptions; validation does not impose a fixed ±1-second wall-clock bound |
 
-**Attack surface analysis:**
+Under BFT time's voting-power assumptions, the median is bounded by honest
+validators' vote timestamps. This does not establish a fixed billing error
+relative to real time. Operators should monitor validator clock synchronization
+and block-time drift. If consensus pauses and resumes at a later timestamp,
+ACTIVE leases accrue across that elapsed interval when next settled; the module
+does not observe whether off-chain service continued during the pause.
 
-1. **Validator timestamp manipulation**: Limited to ±1 second per block. Over 1 hour, maximum drift is ~0.028%. Not economically viable for manipulation.
-
-2. **Network partition attacks**: Timestamps during partitions may differ slightly across chains. Resolved during consensus.
-
-3. **Leap seconds**: Go's time package handles leap seconds transparently.
+Go's [`time` package](https://pkg.go.dev/time) assumes a Gregorian calendar with
+no leap seconds. Billing follows the resulting consensus timestamps; it does
+not implement separate leap-second accounting.
 
 **Mitigations implemented:**
-- `MinLeaseDuration` prevents micro-leases that could amplify timing attacks
-- Per-second billing granularity absorbs small timing variations
-- Price locking means timestamp manipulation only affects billing duration, not rates
+- `MinLeaseDuration` sizes the initial credit reservation. A tenant can cancel
+  a PENDING lease or close an ACTIVE lease earlier, releasing unused reservation;
+  it does not guarantee a minimum charge or prevent short leases
+- Live settlement retains sub-second elapsed time for later accrual; final
+  closure bills only complete elapsed seconds
+- Price locking fixes rates, while elapsed consensus time determines charges
 
 ### Arithmetic Precision
 
