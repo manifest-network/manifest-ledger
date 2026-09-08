@@ -122,7 +122,7 @@ func TestSimulateMsgAcknowledgeLeaseFiltersUnacknowledgeableLeases(t *testing.T)
 
 	require.NoError(t, manifestApp.BillingKeeper.Params.Remove(ctx))
 	opMsg, futureOps, err = operation(r, nil, ctx, nil, "")
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.Nil(t, futureOps)
 	require.False(t, opMsg.OK)
 	require.Equal(t, "failed to get params", opMsg.Comment)

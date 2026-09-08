@@ -1,7 +1,6 @@
 package keeper
 
 import (
-	"bytes"
 	"fmt"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -11,6 +10,7 @@ import (
 	sdkcodec "github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/manifest-network/manifest-ledger/internal/storagecodec"
 	billingstorage "github.com/manifest-network/manifest-ledger/x/billing/internal/types"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
@@ -25,65 +25,13 @@ const (
 	creditAccountStoragePrefix = "\x00billing/credit-account/v1"
 )
 
-type storageValueCodec[T any] struct {
-	wire            collcodec.ValueCodec[T]
-	prefix          string
-	encodeStorage   func(T) ([]byte, error)
-	decodeStorage   func([]byte) (T, error)
-	normalizeLegacy func(T) (T, error)
-}
-
-func (c storageValueCodec[T]) Encode(value T) ([]byte, error) {
-	payload, err := c.encodeStorage(value)
-	if err != nil {
-		return nil, err
-	}
-
-	encoded := make([]byte, len(c.prefix)+len(payload))
-	copy(encoded, c.prefix)
-	copy(encoded[len(c.prefix):], payload)
-	return encoded, nil
-}
-
-func (c storageValueCodec[T]) Decode(encoded []byte) (T, error) {
-	if bytes.HasPrefix(encoded, []byte(c.prefix)) {
-		return c.decodeStorage(encoded[len(c.prefix):])
-	}
-	if len(encoded) > 0 && encoded[0] == 0 {
-		var zero T
-		return zero, fmt.Errorf("unsupported billing storage encoding")
-	}
-
-	value, err := c.wire.Decode(encoded)
-	if err != nil {
-		var zero T
-		return zero, err
-	}
-	return c.normalizeLegacy(value)
-}
-
-func (c storageValueCodec[T]) EncodeJSON(value T) ([]byte, error) {
-	return c.wire.EncodeJSON(value)
-}
-
-func (c storageValueCodec[T]) DecodeJSON(encoded []byte) (T, error) {
-	return c.wire.DecodeJSON(encoded)
-}
-
-func (c storageValueCodec[T]) Stringify(value T) string {
-	return c.wire.Stringify(value)
-}
-
-func (c storageValueCodec[T]) ValueType() string {
-	return c.wire.ValueType()
-}
-
 func newParamsValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Params] {
 	wire := sdkcodec.CollValue[types.Params](cdc)
-	return storageValueCodec[types.Params]{
-		wire:   wire,
-		prefix: paramsStoragePrefix,
-		encodeStorage: func(params types.Params) ([]byte, error) {
+	return storagecodec.Value[types.Params]{
+		Wire:   wire,
+		Module: types.ModuleName,
+		Prefix: paramsStoragePrefix,
+		EncodeStorage: func(params types.Params) ([]byte, error) {
 			allowedAddresses, err := decodeAddressStrings(params.AllowedList)
 			if err != nil {
 				return nil, fmt.Errorf("invalid allowed-list address: %w", err)
@@ -99,7 +47,7 @@ func newParamsValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Pa
 				ReservedDomainSuffixes:    append([]string(nil), params.ReservedDomainSuffixes...),
 			})
 		},
-		decodeStorage: func(encoded []byte) (types.Params, error) {
+		DecodeStorage: func(encoded []byte) (types.Params, error) {
 			var stored billingstorage.Params
 			if err := proto.Unmarshal(encoded, &stored); err != nil {
 				return types.Params{}, err
@@ -119,16 +67,17 @@ func newParamsValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Pa
 				ReservedDomainSuffixes:    append([]string(nil), stored.ReservedDomainSuffixes...),
 			}, nil
 		},
-		normalizeLegacy: normalizeParamsAddresses,
+		NormalizeLegacy: normalizeParamsAddresses,
 	}
 }
 
 func newLeaseValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Lease] {
 	wire := sdkcodec.CollValue[types.Lease](cdc)
-	return storageValueCodec[types.Lease]{
-		wire:   wire,
-		prefix: leaseStoragePrefix,
-		encodeStorage: func(lease types.Lease) ([]byte, error) {
+	return storagecodec.Value[types.Lease]{
+		Wire:   wire,
+		Module: types.ModuleName,
+		Prefix: leaseStoragePrefix,
+		EncodeStorage: func(lease types.Lease) ([]byte, error) {
 			tenantAddr, err := sdk.AccAddressFromBech32(lease.Tenant)
 			if err != nil {
 				return nil, fmt.Errorf("invalid lease tenant address: %w", err)
@@ -153,7 +102,7 @@ func newLeaseValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Lea
 				Reservation:                cloneLeaseReservation(lease.Reservation),
 			})
 		},
-		decodeStorage: func(encoded []byte) (types.Lease, error) {
+		DecodeStorage: func(encoded []byte) (types.Lease, error) {
 			var stored billingstorage.Lease
 			if err := proto.Unmarshal(encoded, &stored); err != nil {
 				return types.Lease{}, err
@@ -182,16 +131,17 @@ func newLeaseValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Lea
 				Reservation:                cloneLeaseReservation(stored.Reservation),
 			}, nil
 		},
-		normalizeLegacy: normalizeLeaseAddresses,
+		NormalizeLegacy: normalizeLeaseAddresses,
 	}
 }
 
 func newCreditAccountValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.CreditAccount] {
 	wire := sdkcodec.CollValue[types.CreditAccount](cdc)
-	return storageValueCodec[types.CreditAccount]{
-		wire:   wire,
-		prefix: creditAccountStoragePrefix,
-		encodeStorage: func(account types.CreditAccount) ([]byte, error) {
+	return storagecodec.Value[types.CreditAccount]{
+		Wire:   wire,
+		Module: types.ModuleName,
+		Prefix: creditAccountStoragePrefix,
+		EncodeStorage: func(account types.CreditAccount) ([]byte, error) {
 			tenantAddr, err := sdk.AccAddressFromBech32(account.Tenant)
 			if err != nil {
 				return nil, fmt.Errorf("invalid credit-account tenant address: %w", err)
@@ -214,7 +164,7 @@ func newCreditAccountValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[t
 				UnattributedLeaseCount: account.UnattributedLeaseCount,
 			})
 		},
-		decodeStorage: func(encoded []byte) (types.CreditAccount, error) {
+		DecodeStorage: func(encoded []byte) (types.CreditAccount, error) {
 			var stored billingstorage.CreditAccount
 			if err := proto.Unmarshal(encoded, &stored); err != nil {
 				return types.CreditAccount{}, err
@@ -242,7 +192,7 @@ func newCreditAccountValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[t
 				UnattributedLeaseCount: stored.UnattributedLeaseCount,
 			}, nil
 		},
-		normalizeLegacy: normalizeCreditAccountAddresses,
+		NormalizeLegacy: normalizeCreditAccountAddresses,
 	}
 }
 

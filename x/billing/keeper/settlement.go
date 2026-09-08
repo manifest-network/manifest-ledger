@@ -145,9 +145,9 @@ func (k *Keeper) performSettlementCore(
 	// Calculate accrued amounts
 	items := LeaseItemsToWithPrice(lease.Items)
 	accruedAmounts, err := calculateTotalAccruedForLeaseSeconds(items, durationSeconds)
-	var accrualOverflow *AccrualOverflowError
+	accrualOverflow, isOverflow := errors.AsType[*AccrualOverflowError](err)
 	if err != nil {
-		if errors.As(err, &accrualOverflow) && silentOnOverflow {
+		if isOverflow && silentOnOverflow {
 			// On overflow, the accrued amount exceeds representable range.
 			// For each affected denom, accrued exceeds every representable bank
 			// balance. Clamp only those denoms to their remaining credit rather

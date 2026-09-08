@@ -348,6 +348,18 @@ sole signer. Parameter validation and update authorization are covered by
 focused type/keeper tests, and randomized genesis supplies bounded valid
 parameters for the state-machine run.
 
+Committed application simulations install the test-only `simulationCommitOpt`
+adapter in [`app/sim_test.go`](../../app/sim_test.go). The pinned SDK simulator
+delivers operations after `FinalizeBlock` has flushed its cache; the adapter
+flushes those later writes before `Commit`, preserving provider and SKU changes
+across blocks and import/export checks. Production application construction does
+not install this hook. See the [billing simulation notes](../billing/docs/ARCHITECTURE.md#simulation-xbillingsimulation)
+for the related withdrawal continuation queue workaround.
+The committed profile excludes all four PoA validator mutation operations because
+the simulator delivers transactions after `EndBlock`; these runs do not establish
+randomized validator-mutation coverage. Restoring that coverage after correcting
+the simulator phase ordering is tracked in [ENG-915](https://linear.app/liftedinit/issue/ENG-915).
+
 ## Client
 
 For complete CLI commands, gRPC endpoints, and REST API documentation, see [API Reference](docs/API.md).

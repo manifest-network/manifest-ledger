@@ -152,7 +152,9 @@ func calculateTotalAccruedForLeaseSeconds(items []LeaseItemWithPrice, durationSe
 			return nil, errorsmod.Wrapf(err, "calculate accrual for sku %s", item.SkuUUID)
 		}
 		if accrued.IsPositive() {
-			totals, err = types.SafeAddCoins(totals, sdk.Coins{accrued})
+			// Keep the previous totals until addition succeeds: an overflow
+			// returns nil and must discard only this item's denomination.
+			nextTotals, err := types.SafeAddCoins(totals, sdk.Coins{accrued})
 			if err != nil {
 				if errors.Is(err, types.ErrArithmeticOverflow) {
 					markOverflow(accrued.Denom)
@@ -160,6 +162,7 @@ func calculateTotalAccruedForLeaseSeconds(items []LeaseItemWithPrice, durationSe
 				}
 				return nil, errorsmod.Wrapf(err, "sum accrued amount for sku %s", item.SkuUUID)
 			}
+			totals = nextTotals
 		}
 	}
 

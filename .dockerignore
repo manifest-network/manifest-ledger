@@ -12,6 +12,7 @@
 !cmd/
 !cmd/**
 !internal/collectionsutil/**
+!internal/storagecodec/**
 !pkg/
 !pkg/**
 !scripts/

@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/cometbft/cometbft/abci/types"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 
 	dbm "github.com/cosmos/cosmos-db"
 
@@ -40,6 +39,8 @@ import (
 	simcli "github.com/cosmos/cosmos-sdk/x/simulation/client/cli"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
 	"github.com/manifest-network/manifest-ledger/app"
 	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
@@ -72,6 +73,17 @@ func fauxMerkleModeOpt(bapp *baseapp.BaseApp) {
 // inter-block write-through cache.
 func interBlockCacheOpt() func(*baseapp.BaseApp) {
 	return baseapp.SetInterBlockCache(store.NewCommitKVStoreCacheManager())
+}
+
+// simulationCommitOpt preserves operations delivered after FinalizeBlock by the
+// pinned SDK simulator. FinalizeBlock flushes its cache before those operations;
+// SDK Commit then commits only the root store and discards the finalize cache.
+// Install this only in simulation apps, before BaseApp is sealed. NewApp has no
+// existing precommitter; if one is added, this hook must run after that hook.
+func simulationCommitOpt(bapp *baseapp.BaseApp) {
+	bapp.SetPrecommiter(func(ctx sdk.Context) {
+		ctx.MultiStore().(storetypes.CacheMultiStore).Write()
+	})
 }
 
 // BenchmarkSimulation run the chain simulation
@@ -113,7 +125,7 @@ func BenchmarkSimulation(b *testing.B) {
 	err = setPOAAdmin(config)
 	require.NoError(b, err)
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), simulationCommitOpt)
 	require.Equal(b, app.AppName, bApp.Name())
 
 	// run randomized simulation
@@ -163,7 +175,7 @@ func TestFullAppSimulation(t *testing.T) {
 	err = setPOAAdmin(config)
 	require.NoError(t, err)
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), simulationCommitOpt)
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// run randomized simulation
@@ -215,7 +227,7 @@ func TestAppImportExport(t *testing.T) {
 	appOptions[flags.FlagHome] = t.TempDir()
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), simulationCommitOpt)
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// Run randomized simulation
@@ -252,12 +264,25 @@ func TestAppImportExport(t *testing.T) {
 	}()
 
 	appOptions[flags.FlagHome] = t.TempDir()
-	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), simulationCommitOpt)
 	require.Equal(t, app.AppName, newApp.Name())
 
-	ctxA := bApp.NewContextLegacy(true, cmtproto.Header{Height: bApp.LastBlockHeight()})
-	ctxB := newApp.NewContextLegacy(true, cmtproto.Header{Height: bApp.LastBlockHeight()})
-	_, err = newApp.InitChainer(ctxB, &abci.RequestInitChain{AppStateBytes: exported.AppState})
+	// Commit retains the latest block header in the CheckTx context. A
+	// height-only header rewinds time to zero, invalidating exported leases
+	// whose settlement timestamps reflect the operations that persisted.
+	exportHeader := bApp.GetContextForCheckTx(nil).BlockHeader()
+	require.False(t, exportHeader.Time.IsZero(), "export must retain the source block time")
+	require.Equal(t, config.ChainID, exportHeader.ChainID)
+	if config.Commit {
+		require.Equal(t, bApp.LastBlockHeight(), exportHeader.Height)
+	}
+	ctxA := bApp.NewContextLegacy(true, exportHeader)
+	ctxB := newApp.NewContextLegacy(true, exportHeader)
+	_, err = newApp.InitChainer(ctxB, &abci.RequestInitChain{
+		AppStateBytes: exported.AppState,
+		Time:          exportHeader.Time,
+		ChainId:       exportHeader.ChainID,
+	})
 	require.NoError(t, err)
 	err = newApp.StoreConsensusParams(ctxB, exported.ConsensusParams)
 	require.NoError(t, err)
@@ -273,6 +298,10 @@ func TestAppImportExport(t *testing.T) {
 		authzkeeper.StoreKey:   {authzkeeper.GrantQueuePrefix},
 		feegrant.StoreKey:      {feegrant.FeeAllowanceQueueKeyPrefix},
 		slashingtypes.StoreKey: {slashingtypes.ValidatorMissedBlockBitmapKeyPrefix},
+		// Match wasmd v0.54.3 app/sim_test.go: CountTXDecorator stores the
+		// current block's height/counter at 0x08, resets it on the next height,
+		// and keeper.ExportGenesis omits it. All other wasm keys are compared.
+		wasmtypes.StoreKey: {wasmtypes.TXCounterPrefix},
 	}
 
 	storeKeys := bApp.GetStoreKeys()
@@ -329,7 +358,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	appOptions[flags.FlagHome] = t.TempDir()
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), simulationCommitOpt)
 	require.Equal(t, app.AppName, bApp.Name())
 
 	var (
@@ -366,6 +395,13 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	require.NotEmpty(t, simulationAccounts, "simulation genesis did not return signing accounts")
 	require.NotEmpty(t, simulationChainID, "simulation genesis did not return a chain ID")
 	require.False(t, simulationGenesisTime.IsZero(), "simulation genesis did not return a timestamp")
+	exportHeader := bApp.GetContextForCheckTx(nil).BlockHeader()
+	require.False(t, exportHeader.Time.IsZero(), "export must retain the source block time")
+	require.Equal(t, simulationChainID, exportHeader.ChainID)
+	require.False(t, exportHeader.Time.Before(simulationGenesisTime), "export must not precede the original genesis")
+	if config.Commit {
+		require.Equal(t, bApp.LastBlockHeight(), exportHeader.Height)
+	}
 
 	if config.Commit {
 		simtestutil.PrintStats(db)
@@ -387,7 +423,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	}()
 
 	appOptions[flags.FlagHome] = t.TempDir()
-	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), simulationCommitOpt)
 	require.Equal(t, app.AppName, newApp.Name())
 
 	importGenesisCalls := 0
@@ -397,14 +433,23 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		_ simulationtypes.Config,
 	) (json.RawMessage, []simulationtypes.Account, string, time.Time) {
 		importGenesisCalls++
-		return slices.Clone(exported.AppState), slices.Clone(simulationAccounts), simulationChainID, simulationGenesisTime
+		// Zero-height export resets heights, not time: leases retain their
+		// creation and settlement timestamps from the committed source chain.
+		return slices.Clone(exported.AppState), slices.Clone(simulationAccounts), exportHeader.ChainID, exportHeader.Time
 	}
+	importConfig := config
+	importConfig.ChainID = exportHeader.ChainID
+	importConfig.InitialBlockHeight = 1 // ExportAppStateAndValidators(true, ...) resets heights.
+	// Exercise a new reproducible history against the imported state. Reusing
+	// the original random stream can recreate persistent identifiers, such as
+	// tokenfactory subdenoms, that were already generated before the export.
+	importConfig.Seed = config.Seed + 1
 
 	stopEarlyAfterImport, _, err := simulateWithBillingCoverage(
 		t,
 		newApp,
 		importGenesisState,
-		config,
+		importConfig,
 	)
 	require.NoError(t, err)
 	require.False(t, stopEarlyAfterImport, "post-import simulation stopped before all configured blocks completed")
@@ -485,6 +530,7 @@ func TestAppStateDeterminism(t *testing.T) {
 				appOptions,
 				interBlockCacheOpt(),
 				baseapp.SetChainID(SimAppChainID),
+				simulationCommitOpt,
 			)
 
 			fmt.Printf(

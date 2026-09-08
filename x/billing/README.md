@@ -785,21 +785,40 @@ billing reservation invariant violated: tenant manifest1def... has live reservat
 ## Simulation Coverage
 
 The state-machine simulator registers bounded operations for `FundCredit`,
-tenant `CreateLease`, `AcknowledgeLease`, `RejectLease`, `CancelLease`,
+tenant `CreateLease`, allowed-list `CreateLeaseForTenant`, `AcknowledgeLease`, `RejectLease`, `CancelLease`,
 `CloseLease`, `Withdraw`, and both set/replace and clear transitions of
 `SetItemCustomDomain`; custom-domain operations exercise both tenant and current
 `allowed_list` signers when available. Candidate lists retain
 collection/simulation-account slice order; maps are used only for lookup and
 are never ranged when building a request.
 
-`CreateLeaseForTenant` is deliberately excluded from randomized transactions.
-It is an administrative migration message whose governance authority has no
-simulation private key. A delayed governance proposal is also unsound for this
-stateful request because its SKU and tenant-credit preconditions can change
-before proposal execution. Dedicated keeper, migration, and end-to-end tests
-cover that path instead.
+Randomized genesis seeds signable accounts into `allowed_list`, allowing
+`CreateLeaseForTenant` to exercise the same current SKU, capacity, and credit
+checks as tenant creation. Acknowledge, reject, cancel, and close operations
+choose batches of up to three compatible leases sharing a tenant and provider;
+acknowledgements also respect the tenant's remaining active-lease capacity.
+Provider withdrawals generate small pages and schedule continuations with the
+transaction's exact `next_key`, obtained by previewing the real withdrawal in a
+discarded cache. Unexpected store and codec failures fail the simulation;
+unavailable business state remains a successful NoOp.
 
-`UpdateParams` is also deliberately excluded. It requires the configured POA
+Committed histories use the test-only `simulationCommitOpt` adapter in
+[`app/sim_test.go`](../../app/sim_test.go). The pinned SDK simulator runs
+`SimDeliver` after `FinalizeBlock` has flushed its cache; the adapter flushes
+those later writes before `Commit` so subsequent blocks retain simulated
+transactions. Production application construction does not install the adapter.
+Withdrawal continuations use the next-block height queue because the SDK's time
+queue loses entries appended to its slice passed by value.
+
+The committed [simulation profile](../../simulation/sim_params.json) also disables
+all four PoA validator mutation weights. Simulated transactions run after
+`EndBlock`, bypassing same-block validator reconciliation; the commit adapter
+does not fix that ordering. Passing profile runs provide no randomized PoA
+validator-mutation coverage. [ENG-915](https://linear.app/liftedinit/issue/ENG-915)
+tracks correcting the simulator and restoring these operations; see the
+[architecture notes](docs/ARCHITECTURE.md#simulation-xbillingsimulation).
+
+`UpdateParams` is deliberately excluded. It requires the configured POA
 authority, which has no simulation private key, while Cosmos SDK governance
 proposal messages must instead have the governance module account as their sole
 signer. Registering either form would only create guaranteed failures. Parameter

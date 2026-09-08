@@ -125,7 +125,7 @@ can change. A bit-reproducible release would require a digest-pinned,
 pre-provisioned toolchain image or immutable package-repository snapshot
 containing the full dependency closure.
 
-The application and release workflows pin Go 1.26.7 as a known-compatible
+The application and release workflows pin Go 1.26.8 as a known-compatible
 baseline on the supported 1.26 release line. Before tagging, compare that pin
 with the latest Go 1.26 patch and update every module, workflow, and builder pin
 when a newer official Alpine image is available. Resolve and review the
@@ -137,7 +137,7 @@ not downgrade the release builder to an end-of-life toolchain merely to
 minimize the binary diff. GoReleaser 2.18 itself requires Go 1.27 to compile,
 but that host-side, checksum-database-verified orchestration binary does not
 compile the application; the application build runs with `GOTOOLCHAIN=local`
-inside the Go 1.26.7 builder.
+inside the Go 1.26.8 builder.
 
 The standalone archive is compiled by the Dockerfile's digest-pinned Alpine
 builder, not the hosted runner's libc toolchain. The release wrapper disables

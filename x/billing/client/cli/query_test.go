@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	query "github.com/cosmos/cosmos-sdk/types/query"
@@ -100,6 +102,35 @@ func TestPaginatedQueryCommandsDecodeBase64PageKey(t *testing.T) {
 			request := <-server.requests
 			require.NotNil(t, request)
 			require.Equal(t, rawKey, request.Key)
+		})
+	}
+}
+
+func TestProviderWithdrawableCommandLimit(t *testing.T) {
+	server := &paginationCaptureServer{requests: make(chan *query.PageRequest, 1)}
+	clientCtx := newQueryClientContext(t, server)
+
+	for _, tc := range []struct {
+		name  string
+		args  []string
+		limit uint64
+	}{
+		{name: "omitted", limit: types.DefaultProviderWithdrawLimit},
+		{name: "explicit zero", args: []string{"--limit", "0"}, limit: 0},
+		{name: "explicit small page", args: []string{"--limit", "7"}, limit: 7},
+		{name: "explicit maximum", args: []string{"--limit", "100"}, limit: 100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := cli.GetProviderWithdrawableCmd()
+			cmd.SetContext(t.Context())
+			require.NoError(t, client.SetCmdClientContext(cmd, clientCtx))
+			cmd.SetArgs(append([]string{testQueryUUID}, tc.args...))
+
+			require.NoError(t, cmd.Execute())
+			request := <-server.requests
+			require.NotNil(t, request)
+			require.Equal(t, tc.limit, request.Limit)
+			require.Equal(t, strconv.FormatUint(types.DefaultProviderWithdrawableQueryLimit, 10), cmd.Flags().Lookup(flags.FlagLimit).DefValue)
 		})
 	}
 }

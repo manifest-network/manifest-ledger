@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 
@@ -161,7 +162,10 @@ func SimulateMsgUpdateProvider(txGen client.TxConfig, k keeper.Keeper) simtypes.
 		}
 
 		allProviders, err := k.GetAllProviders(ctx)
-		if err != nil || len(allProviders) == 0 {
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to read providers"), nil, fmt.Errorf("get sku providers: %w", err)
+		}
+		if len(allProviders) == 0 {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no providers found to update"), nil, nil
 		}
 
@@ -219,7 +223,10 @@ func SimulateMsgDeactivateProvider(txGen client.TxConfig, k keeper.Keeper) simty
 		}
 
 		allProviders, err := k.GetAllProviders(ctx)
-		if err != nil || len(allProviders) == 0 {
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to read providers"), nil, fmt.Errorf("get sku providers: %w", err)
+		}
+		if len(allProviders) == 0 {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no providers found to deactivate"), nil, nil
 		}
 
@@ -265,7 +272,10 @@ func SimulateMsgCreateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 		}
 
 		allProviders, err := k.GetAllProviders(ctx)
-		if err != nil || len(allProviders) == 0 {
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to read providers"), nil, fmt.Errorf("get sku providers: %w", err)
+		}
+		if len(allProviders) == 0 {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no providers found"), nil, nil
 		}
 
@@ -320,7 +330,10 @@ func SimulateMsgUpdateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 		}
 
 		allSKUs, err := k.GetAllSKUs(ctx)
-		if err != nil || len(allSKUs) == 0 {
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to read SKUs"), nil, fmt.Errorf("get SKUs: %w", err)
+		}
+		if len(allSKUs) == 0 {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no SKUs found to update"), nil, nil
 		}
 
@@ -328,8 +341,11 @@ func SimulateMsgUpdateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.Opera
 
 		// Get the provider to check if it's active
 		provider, err := k.GetProvider(ctx, sku.ProviderUuid)
-		if err != nil {
+		if errors.Is(err, types.ErrProviderNotFound) {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "provider not found for SKU"), nil, nil
+		}
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to read provider for SKU"), nil, fmt.Errorf("get provider for SKU %s: %w", sku.Uuid, err)
 		}
 
 		name := skuNames[r.Intn(len(skuNames))]
@@ -385,7 +401,10 @@ func SimulateMsgDeactivateSKU(txGen client.TxConfig, k keeper.Keeper) simtypes.O
 		}
 
 		allSKUs, err := k.GetAllSKUs(ctx)
-		if err != nil || len(allSKUs) == 0 {
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to read SKUs"), nil, fmt.Errorf("get SKUs: %w", err)
+		}
+		if len(allSKUs) == 0 {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no SKUs found to deactivate"), nil, nil
 		}
 

@@ -23,7 +23,9 @@ service Msg {
   rpc UpdateProvider(MsgUpdateProvider) returns (MsgUpdateProviderResponse);
 
   // DeactivateProvider deactivates a provider (soft delete).
-  // Deactivated providers cannot create new SKUs but existing SKUs continue.
+  // Deactivated providers cannot create new SKUs or leases. Existing SKUs are
+  // deactivated in bounded pages; call again while has_more is true. Existing
+  // leases continue at their locked prices.
   rpc DeactivateProvider(MsgDeactivateProvider)
       returns (MsgDeactivateProviderResponse);
 

@@ -641,12 +641,14 @@ sequenceDiagram
 
 ### Purpose
 
-Each `LeaseItem` can carry an optional `custom_domain` — an FQDN the provider routes to that item's container with a TLS cert provisioned via HTTP-01. Domains are claimed and released entirely on-chain: the provider runs `QueryLeaseByCustomDomain` against incoming HTTP host headers and trusts the returned `(lease_uuid, service_name)` as the routing target.
+Each `LeaseItem` can carry an optional `custom_domain` — an FQDN the provider can route to that item's container. The chain records and releases the live domain claim; providers verify the domain off-chain after deployment. `QueryLeaseByCustomDomain` returns the claiming `(lease_uuid, service_name)`, not proof of domain ownership. Before serving traffic, the provider must complete its domain verification and check that the returned lease is ACTIVE and belongs to that provider. TLS certificate provisioning is part of the provider's off-chain workflow.
+
+The chain does not implement ownership proofs or claim expiry. An ownership-based claim/recovery protocol is deferred; existing authority and allowed-list permissions to clear live claims still apply. Post-deployment verification remains an off-chain provider responsibility.
 
 ### State
 
 - `CustomDomainIndex` (collection prefix `0x0C`): `string → CustomDomainTarget{lease_uuid, service_name}`. Keys are the canonical (lower-cased, trimmed) domain. Only PENDING/ACTIVE leases hold entries.
-- The same `custom_domain` string is also stored on `LeaseItem.custom_domain` so the lease record carries the claim independently of the index. `SetLease` reconciles both representations on every write.
+- The same `custom_domain` string is also stored on `LeaseItem.custom_domain` so the lease record carries the claim independently of the index. `SetLease` reconciles both representations on every write. Terminal transitions retain the field as history and release the live index entry, allowing another live lease to claim the domain.
 
 ### Authorisation
 
@@ -1242,9 +1244,31 @@ aggregate is not bank-backed.
 - Withdrawal via group proposals
 
 ### Simulation (`x/billing/simulation/`)
-- Random operations including acknowledge/reject
-- Stress testing
-- State consistency
+- Random tenant operations and `CreateLeaseForTenant` signed by accounts in the billing `allowed_list`.
+- Acknowledge/reject/cancel/close batches of up to three leases sharing a tenant and provider; acknowledgement respects the tenant's remaining active-lease capacity.
+- Provider-wide withdrawal continuation scheduled for subsequent blocks using the previous transaction response's cursor.
+- State consistency and invariant checks across randomized histories; focused keeper tests cover individual error paths.
+
+Committed application simulations require the test-only `simulationCommitOpt`
+adapter in [`app/sim_test.go`](../../../app/sim_test.go). The pinned SDK simulator
+calls `FinalizeBlock`, then `SimDeliver`, then `Commit`; the finalization cache
+has already been flushed before the simulated transactions run. The adapter
+flushes their subsequent writes immediately before commit so later blocks and
+import/export checks observe the operations that actually executed. Production
+application construction does not install this hook. Withdrawal continuations
+use the SDK's block-height queue: its time queue currently appends to a slice
+passed by value and loses newly scheduled entries.
+
+The committed [simulation profile](../../../simulation/sim_params.json) disables
+all four PoA validator mutation weights: set power, remove validator, remove
+pending validator, and create validator, alongside the existing staking
+exclusions. The pinned simulator delivers transactions after `EndBlock`, so PoA
+power-index changes miss the same-block staking reconciliation and can expose
+transient validator entries to the next `BeginBlock`. The commit adapter does
+not correct this phase ordering. These runs exercise committed SKU/billing
+histories but provide no randomized PoA validator-mutation coverage.
+[ENG-915](https://linear.app/liftedinit/issue/ENG-915) tracks correcting the
+simulator ordering and restoring that coverage; production execution is unchanged.
 
 ## Scalability Considerations
 

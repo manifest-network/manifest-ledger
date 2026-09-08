@@ -3,6 +3,7 @@ package cli
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -59,6 +60,7 @@ func GetQueryCmd() *cobra.Command {
 		GetCreditEstimateCmd(),
 		GetWithdrawableAmountCmd(),
 		GetProviderWithdrawableCmd(),
+		GetWithdrawResultCmd(),
 		GetLeaseByCustomDomainCmd(),
 	)
 
@@ -462,6 +464,12 @@ provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100`,
 	}
 
 	flags.AddPaginationFlagsToCmd(cmd, "provider-withdrawable")
+	// Match provider-wide withdrawal's page size in both execution and help.
+	limitFlag := cmd.Flags().Lookup(flags.FlagLimit)
+	limitFlag.DefValue = strconv.FormatUint(types.DefaultProviderWithdrawableQueryLimit, 10)
+	if err := limitFlag.Value.Set(limitFlag.DefValue); err != nil {
+		panic(err) // A formatted uint64 is always valid for the SDK's uint64 flag.
+	}
 	flags.AddQueryFlagsToCmd(cmd)
 
 	return cmd

@@ -400,53 +400,86 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
 
 ##### Provider-Wide Withdraw Workflow
 
-When a provider has many active leases, use provider-wide mode with cursor pagination to withdraw from all. Each response returns an opaque `next_key`; pass it back as `--key` on the next call to advance. Calling again **without** `--key` restarts the scan from the first lease and never gets past `limit`. `next_key` is a `bytes` value, so it appears base64-encoded in the JSON output — pass that string verbatim to `--key` (it is not a raw UUID).
+When a provider has many active leases, use provider-wide mode with cursor pagination. Each **decoded module response** returns `has_more` and an opaque `next_key`. Pass that base64 cursor verbatim as `--key` on the next transaction. Omitting it restarts the scan. Retain every `failed_lease_uuids` entry for explicit retry after correcting the failure, including failures on the final page.
+
+`manifestd tx ... --broadcast-mode sync -o json` prints an SDK transaction admission response (`code`, `txhash`, `raw_log`), not `MsgWithdrawResponse`. Wait for block inclusion, check the execution code, then use [`withdraw-result`](#withdraw-result) to decode the committed response:
 
 ```bash
-# Step 1: Initial withdrawal (processes up to 100 leases), no cursor
-manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --limit 100 --from provider-key
+manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab \
+  --limit 100 --from provider-key --broadcast-mode sync -o json -y
 
-# Response example (MsgWithdrawResponse):
-# {
-#   "total_amounts": [{"denom": "upwr", "amount": "5000000"}],
-#   "payout_address": "manifest1payout...",
-#   "withdrawal_count": "100",
-#   "has_more": true,               <-- More leases remain
-#   "next_key": "MDE5MTIzNDU...",   <-- Opaque cursor for the next page
-#   "failed_lease_uuids": ["019..."] <-- Retain and retry after correcting the failure
-# }
-
-# Step 2: Continue by passing next_key back as --key, until has_more is false
-manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --limit 100 --key MDE5MTIzNDU... --from provider-key
-
-# Response:
-# {
-#   "total_amounts": [{"denom": "upwr", "amount": "2500000"}],
-#   "payout_address": "manifest1payout...",
-#   "withdrawal_count": "50",
-#   "has_more": false,              <-- All leases visited (next_key empty)
-#   "failed_lease_uuids": []
-# }
+# Use the returned txhash; query tx succeeds once the transaction is indexed.
+manifestd query tx "$TXHASH" -o json
+manifestd query billing withdraw-result "$TXHASH" -o json
+# The second query prints MsgWithdrawResponse, including has_more, next_key,
+# withdrawal_count, total_amounts, payout_address, and failed_lease_uuids.
 ```
 
-**Automation Script Example (bash):**
+**Resumable automation example (Bash + jq):**
+
+Use one worker per state directory and keep the same provider and configured chain/RPC when resuming. The script saves the sync response before polling, retains every decoded page as a receipt, and atomically checkpoints the cursor and accumulated failures before submitting the next page. A timeout, execution failure, or undecodable response stops the script with its pending transaction intact. Restarting resumes the lookup of that transaction. If broadcasting itself fails or leaves an incomplete response, resolve whether the transaction was submitted before removing `pending.json`; restarting must not blindly send a replacement.
+
+A committed transaction with a nonzero execution code will remain failed on every lookup. Inspect its `raw_log` and correct the cause, then archive `pending.json` together with `included.json` under that failed transaction's hash. Restart with `pending.json` absent to submit a **new transaction** at the unchanged checkpoint cursor. Do this only after confirming execution failure; a timeout or an ambiguous broadcast is not evidence that the transaction failed.
+
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 PROVIDER_UUID="01912345-6789-7abc-8def-0123456789ab"
-HAS_MORE=true
-KEY=""
+STATE_DIR="./withdraw-state-$PROVIDER_UUID"  # use a separate directory per chain/run
+mkdir -p "$STATE_DIR"
+CHECKPOINT="$STATE_DIR/checkpoint.json"
+PENDING="$STATE_DIR/pending.json"
+if [ ! -f "$CHECKPOINT" ]; then
+  jq -n --arg provider "$PROVIDER_UUID" \
+    '{provider_uuid: $provider, key: "", has_more: true, failed_lease_uuids: [], last_txhash: ""}' \
+    > "$CHECKPOINT"
+fi
+jq -e --arg provider "$PROVIDER_UUID" '.provider_uuid == $provider' "$CHECKPOINT" > /dev/null
 
-while [ "$HAS_MORE" = "true" ]; do
-  KEY_ARG=""
-  [ -n "$KEY" ] && KEY_ARG="--key $KEY"
-  RESULT=$(manifestd tx billing withdraw --provider $PROVIDER_UUID --limit 100 $KEY_ARG --from provider-key -o json -y)
-  HAS_MORE=$(echo $RESULT | jq -r '.has_more')
-  KEY=$(echo $RESULT | jq -r '.next_key // ""')   # pass this back as --key on the next call
-  echo "$RESULT" | jq -r '.failed_lease_uuids[]? | "RETRY: \(.)"'
-  echo "Withdrew from $(echo $RESULT | jq -r '.withdrawal_count') leases, has_more=$HAS_MORE"
+while [ "$(jq -r '.has_more' "$CHECKPOINT")" = true ]; do
+  if [ ! -f "$PENDING" ]; then
+    KEY=$(jq -r '.key' "$CHECKPOINT")
+    # Keep this file even on a broadcast error: submission may be ambiguous.
+    manifestd tx billing withdraw --provider "$PROVIDER_UUID" --limit 100 --key "$KEY" \
+      --from provider-key --broadcast-mode sync -o json -y > "$PENDING"
+  fi
+  jq -e '(.code | tonumber) == 0 and (.txhash | test("^[[:xdigit:]]{64}$"))' "$PENDING" > /dev/null
+  TXHASH=$(jq -r '.txhash' "$PENDING")
+  # A previous run may have checkpointed this page just before it stopped.
+  if [ "$(jq -r '.last_txhash' "$CHECKPOINT")" = "$TXHASH" ]; then
+    rm "$PENDING"
+    continue
+  fi
+
+  INCLUDED=false
+  for ((attempt = 0; attempt < 60; attempt++)); do
+    if manifestd query tx "$TXHASH" -o json > "$STATE_DIR/included.json" 2> "$STATE_DIR/query-error.txt"; then
+      INCLUDED=true
+      break
+    fi
+    sleep 2
+  done
+  if [ "$INCLUDED" != true ]; then
+    echo "Transaction $TXHASH not yet queryable; pending.json retained. Check RPC/indexing and resume." >&2
+    exit 1
+  fi
+  jq -e '(.code | tonumber) == 0 and (.height | tonumber) > 0' "$STATE_DIR/included.json" > /dev/null
+  manifestd query billing withdraw-result "$TXHASH" -o json > "$STATE_DIR/$TXHASH.json"
+  jq --arg hash "$TXHASH" --slurpfile page "$STATE_DIR/$TXHASH.json" '
+    .key = ($page[0].next_key // "") |
+    .has_more = $page[0].has_more |
+    .failed_lease_uuids = ((.failed_lease_uuids + ($page[0].failed_lease_uuids // [])) | unique) |
+    .last_txhash = $hash
+  ' "$CHECKPOINT" > "$CHECKPOINT.tmp"
+  mv "$CHECKPOINT.tmp" "$CHECKPOINT"
+  rm "$PENDING"
+  jq -r '"Withdrew from \(.withdrawal_count) leases; has_more=\(.has_more)"' "$STATE_DIR/$TXHASH.json"
 done
-echo "Pagination complete; correct and explicitly retry every reported RETRY UUID"
+jq -r '.failed_lease_uuids[] | "RETRY AFTER REPAIR: \(.)"' "$CHECKPOINT"
+echo "Pagination complete. Keep receipts and resolve every retained failure before starting a new run."
 ```
+
+After repairing the reported cause, retry each failed lease using specific-leases mode (`manifestd tx billing withdraw "$LEASE_UUID" --from provider-key`). Wait for inclusion and verify execution success for retries too. A completed checkpoint remains completed on restart; use a new state directory for the next scheduled withdrawal sweep.
 
 ---
 
@@ -488,7 +521,7 @@ manifestd tx billing set-item-custom-domain 01902a9b-1234-7000-8000-000000000001
 **Notes:**
 - Emits `lease_custom_domain_set` (with `set_by` ∈ `{tenant, authority, allowed}`) on a successful set, or `lease_custom_domain_cleared` on clear. No event is emitted for an idempotent re-set or a clear of an already-empty domain.
 - The transaction requires lowercase `custom_domain` — `MsgSetItemCustomDomain.ValidateBasic()` rejects mixed case before the keeper runs. Lower-case any user-supplied input client-side. The keeper does its own `strings.ToLower(strings.TrimSpace(...))` as defence-in-depth on the storage path, but you can't rely on it as a normalisation point for input.
-- Closing, rejecting, expiring, or auto-closing the lease frees the index entry automatically.
+- Closing, rejecting, expiring, or auto-closing the lease frees the live index entry automatically. The historical `LeaseItem.custom_domain` value is retained on the terminal lease; use `lease-by-custom-domain` to find the current claim.
 
 ---
 
@@ -872,6 +905,25 @@ remaining tranche (or the explicit historical cohort allocation). The cap
 protects every other lease's reservation. The query is read-only and does NOT
 trigger actual settlement or a token transfer. Only ACTIVE leases accrue new
 charges.
+
+---
+
+#### withdraw-result
+
+Decode the `MsgWithdrawResponse` of a successful committed transaction. This is a local CLI decoder over the CometBFT transaction query; it adds no module gRPC or REST endpoint.
+
+```bash
+manifestd query billing withdraw-result [tx-hash] [flags]
+```
+
+| Argument / flag | Default | Description |
+|-----------------|---------|-------------|
+| `tx-hash` | required | 64-character hexadecimal transaction hash |
+| `--msg-index` | `0` | Zero-based top-level message response index in a multi-message transaction |
+
+The command fails if the transaction is not indexed, has not committed, has a nonzero execution code, or the selected response is missing, malformed, or belongs to another message type. It does not broadcast or poll. Successful JSON output contains the decoded module fields, with `next_key` base64-encoded. Nested authz/group responses require decoding their respective wrappers and are not selected by `--msg-index`.
+
+See the [provider withdrawal workflow](#provider-wide-withdraw-workflow) for inclusion polling, checkpointing, and failed-lease retries.
 
 ---
 
@@ -1793,7 +1845,7 @@ message LeaseItem {
 ```
 
 **Field notes:**
-- `custom_domain`: Optional fully-qualified domain name routed to this item's container by the provider. Set or cleared via `MsgSetItemCustomDomain` (not via lease creation). Validated by `IsValidFQDN` (≤253 bytes, lowercase, ≥1 dot, RFC 1123 labels, non-numeric TLD) and rejected if it matches any `params.reserved_domain_suffixes` entry. Globally unique across PENDING/ACTIVE leases — enforced by the `CustomDomainIndex` reverse-lookup. Cleared automatically when the lease closes/rejects/expires.
+- `custom_domain`: Optional fully-qualified domain name routed to this item's container by the provider after off-chain verification. Set or cleared via `MsgSetItemCustomDomain` (not via lease creation). Validated by `IsValidFQDN` (≤253 bytes, lowercase, ≥1 dot, RFC 1123 labels, non-numeric TLD) and rejected if it matches any `params.reserved_domain_suffixes` entry. Globally unique across PENDING/ACTIVE leases — enforced by the `CustomDomainIndex` reverse-lookup. Closing, rejecting, expiring, or auto-closing the lease releases the live index entry while retaining this field as history. A terminal lease's stored value does not reserve the domain; use `lease-by-custom-domain` and the returned lease state to determine the current claim.
 
 ### CustomDomainTarget
 

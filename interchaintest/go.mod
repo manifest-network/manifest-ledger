@@ -1,6 +1,6 @@
 module github.com/manifest-network/manifest-ledger/interchaintest
 
-go 1.26.7
+go 1.26.8
 
 replace (
 	cosmossdk.io/core => cosmossdk.io/core v0.11.3 // proper SDK v50 version
@@ -297,7 +297,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/arch v0.17.0 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/crypto v0.56.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/mod v0.38.0 // indirect
 	golang.org/x/net v0.57.0 // indirect

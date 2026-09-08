@@ -401,7 +401,7 @@ func TestReleaseWorkflowsUseVerifiedToolsAndCollisionGate(t *testing.T) {
 
 	dockerfile, err := os.ReadFile(filepath.Join(repoRoot, "Dockerfile")) //nolint:gosec
 	require.NoError(t, err)
-	require.Contains(t, string(dockerfile), "FROM golang:1.26.7-alpine3.24@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS go-builder")
+	require.Contains(t, string(dockerfile), "FROM golang:1.26.8-alpine3.24@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628 AS go-builder")
 	require.Contains(t, string(dockerfile), `test "$(/code/build/manifestd version)" = "${VERSION}"`)
 	require.Equal(t, 2, strings.Count(string(dockerfile), "libcrypto3=3.5.8-r0"))
 	require.Equal(t, 2, strings.Count(string(dockerfile), "libssl3=3.5.8-r0"))

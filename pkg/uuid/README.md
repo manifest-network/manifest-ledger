@@ -1,6 +1,6 @@
 # Deterministic UUIDv7 Package
 
-This package provides deterministic UUIDv7 generation for blockchain consensus with cross-chain collision resistance.
+This package provides deterministic UUIDv7 generation for blockchain consensus, incorporating chain and entity inputs to reduce accidental collisions.
 
 ## Why a Custom Implementation?
 
@@ -20,18 +20,14 @@ Our implementation uses only deterministic inputs available to all validators:
 | Input | Source | Purpose |
 |-------|--------|---------|
 | Timestamp | `ctx.BlockTime()` | Time-ordering, same for all validators in a block |
-| Header Hash | `ctx.HeaderHash()` | Cross-chain uniqueness, unpredictable entropy |
+| Header Hash | `ctx.HeaderHash()` | Distinguishes chains and blocks |
 | Chain ID | `ctx.ChainID()` | Multi-chain deployment isolation |
 | Module name | Hardcoded string | Intra-chain module isolation |
 | Sequence | Module's internal counter | Uniqueness within module |
 
 ### Cross-Chain Collision Resistance
 
-By incorporating the **block header hash** and **chain ID** into UUID generation, we ensure that:
-
-1. **Different chains produce different UUIDs** even with identical timestamps and sequences
-2. **Multi-chain deployments are safe** - no UUID collision concerns when running mainnet, testnet, and local chains
-3. **Unpredictable but deterministic** - header hash provides entropy from the previous block
+The **block header hash** and **chain ID** distinguish generation inputs when chains have identical timestamps and sequences. These inputs reduce accidental cross-chain collisions; they do not guarantee uniqueness or cryptographic collision resistance.
 
 This is important because:
 - You may deploy multiple chains (mainnet, testnet, devnet) simultaneously
@@ -65,29 +61,20 @@ We follow the [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562) UUIDv7 specific
 
 ### Hash Function
 
-We use FNV-1a (64-bit) for the node ID derivation because:
+The node ID uses the standard library’s `hash/fnv.New64a` implementation of FNV-1a (64-bit), preserving the original consensus encoding. The input is the concatenation of header hash bytes, chain ID bytes, entity namespace bytes, and the sequence as eight big-endian bytes, with no delimiters. The UUID retains the low 62 hash bits.
 
-1. **Deterministic**: Same inputs always produce same output
-2. **Fast**: Simple operations, no external dependencies
-3. **Well-distributed**: Good avalanche effect for varied inputs
-4. **No crypto dependency**: Avoids `crypto/sha256` which may have platform-specific optimizations
-
-The hash combines all entropy sources in order: header hash → chain ID → module name → sequence
+FNV is fast and deterministic, but it is not a cryptographic hash. Platform optimizations do not make cryptographic hashes such as SHA-256 nondeterministic; changing to one here would change generated identifiers and require a coordinated protocol change. Golden vectors protect the current algorithm, byte order, and framing.
 
 ### Sequence Management
 
-Each module (SKU, Billing) maintains its own sequence counter in state:
+The SKU module maintains separate provider and SKU counters; billing maintains a lease counter. Their namespaces are `sku-provider`, `sku-sku`, and `billing-lease`, respectively:
 
 ```go
-// In module's keeper
-sequence := k.GetNextSequence(ctx)
-uuid := uuid.GenerateUUIDv7(ctx, "sku", sequence)
+// Using a sequence allocated from the provider counter
+id := uuid.GenerateUUIDv7(ctx, "sku-provider", sequence)
 ```
 
-The sequence is incremented atomically and stored in the module's state, ensuring:
-- Uniqueness within the same block (different sequences)
-- Uniqueness across blocks (different timestamps and header hashes)
-- Determinism (sequence comes from consensus state)
+The sequence is incremented atomically and stored in module state. Keepers reject allocations once the uint64 counter is exhausted instead of wrapping it. The low 12 bits are stored directly in the UUID, and the full counter participates in the hash. Sequences beyond 4095 therefore still contribute distinct inputs, though the truncated hash cannot mathematically guarantee unique outputs.
 
 ## Usage
 
@@ -98,7 +85,7 @@ import "github.com/manifest-network/manifest-ledger/pkg/uuid"
 
 // Generate a deterministic UUIDv7 with full entropy
 // Uses block time, header hash, and chain ID from context
-id := uuid.GenerateUUIDv7(ctx, "billing", sequence)
+id := uuid.GenerateUUIDv7(ctx, "billing-lease", sequence)
 ```
 
 ### Testing / Migration
@@ -142,9 +129,10 @@ if uuid.IsValidUUIDv7(id) {
 
 ### Collision Resistance
 
-- **Within a chain**: Guaranteed unique by sequence counter
-- **Across chains**: High collision resistance via header hash + chain ID
-- **Across time**: Timestamp ensures temporal uniqueness
+- **Within a chain**: Separate entity namespaces and persistent counters reduce accidental collisions; the hash does not guarantee uniqueness after the 12-bit sequence field wraps.
+- **Across chains**: Header hash and chain ID distinguish inputs, subject to hash collisions and the existing unframed concatenation.
+- **Across time**: Distinct encoded millisecond timestamps produce distinct UUID prefixes.
+- **Adversarial inputs**: FNV is non-cryptographic. These identifiers are not suitable as authentication tokens or cryptographic commitments.
 
 ## Alternatives Considered
 
@@ -164,8 +152,10 @@ go test -v ./pkg/uuid/...
 
 The tests verify:
 - Format compliance with UUIDv7 specification
+- Fixed golden vectors for all production namespaces, counter wrap at 4096, large counters, and time-only generation
+- Decoded timestamp, version, variant, and sequence bits
 - Determinism (same inputs → same output)
 - Uniqueness (different sequences → different UUIDs)
-- Cross-chain uniqueness (different chains → different UUIDs)
+- Distinct UUIDs for representative cross-chain inputs
 - Multi-chain deployment scenarios
 - Validation of edge cases

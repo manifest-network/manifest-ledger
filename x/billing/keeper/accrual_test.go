@@ -13,6 +13,7 @@ package keeper
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -381,6 +382,37 @@ func TestCalculateAccruedAmount_CheckedBitBoundaries(t *testing.T) {
 	})
 }
 
+func TestCalculateTotalAccruedForLease_SumOverflowPreservesOtherDenoms(t *testing.T) {
+	// Each large item fits individually; only their same-denom sum overflows.
+	// Exercise every position of the two unaffected items, including additional
+	// accrual in the same unaffected denom on both sides of the overflow.
+	for _, otherDenom := range []string{"uok", "zok"} {
+		for first := range 4 {
+			for second := first + 1; second < 4; second++ {
+				t.Run(fmt.Sprintf("%s/unaffected-at-%d-%d", otherDenom, first, second), func(t *testing.T) {
+					items := make([]LeaseItemWithPrice, 4)
+					for i := range items {
+						items[i] = LeaseItemWithPrice{
+							SkuUUID:              fmt.Sprintf("sku-%d", i),
+							Quantity:             1,
+							LockedPricePerSecond: sdk.NewCoin("uoverflow", highBitAccrualInt()),
+						}
+					}
+					items[first].LockedPricePerSecond = sdk.NewInt64Coin("uok", 7)
+					items[second].LockedPricePerSecond = sdk.NewInt64Coin(otherDenom, 11)
+
+					accrued, err := CalculateTotalAccruedForLease(items, time.Second)
+					require.ErrorIs(t, err, billingtypes.ErrArithmeticOverflow)
+					var overflow *AccrualOverflowError
+					require.ErrorAs(t, err, &overflow)
+					require.Equal(t, []string{"uoverflow"}, overflow.Denoms)
+					require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin("uok", 7)).Add(sdk.NewInt64Coin(otherDenom, 11)), accrued)
+				})
+			}
+		}
+	}
+}
+
 func TestAccrualOverflowError_PreservesCosmosErrorIdentity(t *testing.T) {
 	err := errorsmod.Wrap(&AccrualOverflowError{Denoms: []string{testDenom}}, "calculate lease accrual")
 
@@ -494,13 +526,13 @@ func BenchmarkConvertBasePriceToPerSecond(b *testing.B) {
 	basePrice := sdk.NewCoin(testDenom, math.NewInt(3600000))
 
 	b.Run("PerHour", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = ConvertBasePriceToPerSecond(basePrice, skutypes.Unit_UNIT_PER_HOUR)
 		}
 	})
 
 	b.Run("PerDay", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = ConvertBasePriceToPerSecond(basePrice, skutypes.Unit_UNIT_PER_DAY)
 		}
 	})
@@ -510,26 +542,26 @@ func BenchmarkCalculateAccruedAmount(b *testing.B) {
 	pricePerSecond := sdk.NewCoin(testDenom, math.NewInt(1000))
 
 	b.Run("SmallDuration_100s", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = CalculateAccruedAmount(pricePerSecond, 1, 100*time.Second)
 		}
 	})
 
 	b.Run("MediumDuration_1hr", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = CalculateAccruedAmount(pricePerSecond, 10, time.Hour)
 		}
 	})
 
 	b.Run("LargeDuration_1yr", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = CalculateAccruedAmount(pricePerSecond, 100, 365*24*time.Hour)
 		}
 	})
 
 	b.Run("LargePrice_Trillion", func(b *testing.B) {
 		largePrice := sdk.NewCoin(testDenom, math.NewInt(1_000_000_000_000))
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = CalculateAccruedAmount(largePrice, 100, 365*24*time.Hour)
 		}
 	})
@@ -560,19 +592,19 @@ func BenchmarkCalculateTotalAccruedForLease(b *testing.B) {
 	duration := time.Hour
 
 	b.Run("SingleItem", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = CalculateTotalAccruedForLease(singleItem, duration)
 		}
 	})
 
 	b.Run("FiveItems_MultiDenom", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = CalculateTotalAccruedForLease(fiveItems, duration)
 		}
 	})
 
 	b.Run("TwentyItems", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = CalculateTotalAccruedForLease(twentyItems, duration)
 		}
 	})

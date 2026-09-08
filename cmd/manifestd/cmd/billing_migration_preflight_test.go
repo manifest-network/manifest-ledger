@@ -277,9 +277,9 @@ func TestAuditProviderPayoutsUsesBankPolicyAndSourceLeaseStates(t *testing.T) {
 	allowed := sdk.AccAddress(bytes.Repeat([]byte{1}, 20)).String()
 	policy := app.BlockedAddresses()
 	require.True(t, policy[distribution])
-	// The audit follows the application's current map, including governance;
-	// it must not substitute an intended or hand-maintained allowlist.
-	require.True(t, policy[governance])
+	// The audit follows the application's receiving policy, including its
+	// governance exemption, rather than blocking every module account.
+	require.False(t, policy[governance])
 	require.False(t, policy[allowed])
 	providers := []skutypes.Provider{
 		{Uuid: allowedUUID, PayoutAddress: allowed, Active: true},
@@ -298,10 +298,6 @@ func TestAuditProviderPayoutsUsesBankPolicyAndSourceLeaseStates(t *testing.T) {
 		{
 			ProviderUUID: distributionUUID, PayoutAddress: distribution, Active: true,
 			ActiveLeaseUUIDs: []string{leaseUUID1, leaseUUID3}, PendingLeaseUUIDs: []string{leaseUUID2},
-		},
-		{
-			ProviderUUID: governanceUUID, PayoutAddress: governance, Active: false,
-			ActiveLeaseUUIDs: []string{}, PendingLeaseUUIDs: []string{},
 		},
 	}
 	originalProviders := slices.Clone(providers)

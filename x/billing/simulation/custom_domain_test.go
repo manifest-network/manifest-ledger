@@ -15,12 +15,13 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
-func TestWeightedOperationsRegistersDirectMessagesAndExcludesAdminMigration(t *testing.T) {
+func TestWeightedOperationsRegistersDirectMessagesIncludingAllowedAdmin(t *testing.T) {
 	operations := WeightedOperations(simtypes.AppParams{}, nil, nil, keeper.Keeper{}, nil)
-	require.Len(t, operations, 8)
+	require.Len(t, operations, 9)
 	require.Equal(t, []int{
 		DefaultWeightMsgFundCredit,
 		DefaultWeightMsgCreateLease,
+		DefaultWeightMsgCreateLeaseForTenant,
 		DefaultWeightMsgAcknowledgeLease,
 		DefaultWeightMsgRejectLease,
 		DefaultWeightMsgCancelLease,

@@ -2,10 +2,13 @@
 package simulation
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 
 	sdkmath "cosmossdk.io/math"
 
@@ -43,23 +46,25 @@ func randomFundingAmount(r *rand.Rand, minimum, maximum sdkmath.Int) (sdkmath.In
 
 // Billing simulation operation keys and weights configure message frequencies.
 const (
-	OpWeightMsgFundCredit          = "op_weight_msg_billing_fund_credit"            //nolint:gosec
-	OpWeightMsgCreateLease         = "op_weight_msg_billing_create_lease"           //nolint:gosec
-	OpWeightMsgAcknowledgeLease    = "op_weight_msg_billing_acknowledge_lease"      //nolint:gosec
-	OpWeightMsgRejectLease         = "op_weight_msg_billing_reject_lease"           //nolint:gosec
-	OpWeightMsgCancelLease         = "op_weight_msg_billing_cancel_lease"           //nolint:gosec
-	OpWeightMsgCloseLease          = "op_weight_msg_billing_close_lease"            //nolint:gosec
-	OpWeightMsgWithdraw            = "op_weight_msg_billing_withdraw"               //nolint:gosec
-	OpWeightMsgSetItemCustomDomain = "op_weight_msg_billing_set_item_custom_domain" //nolint:gosec
+	OpWeightMsgFundCredit           = "op_weight_msg_billing_fund_credit"             //nolint:gosec
+	OpWeightMsgCreateLease          = "op_weight_msg_billing_create_lease"            //nolint:gosec
+	OpWeightMsgCreateLeaseForTenant = "op_weight_msg_billing_create_lease_for_tenant" //nolint:gosec
+	OpWeightMsgAcknowledgeLease     = "op_weight_msg_billing_acknowledge_lease"       //nolint:gosec
+	OpWeightMsgRejectLease          = "op_weight_msg_billing_reject_lease"            //nolint:gosec
+	OpWeightMsgCancelLease          = "op_weight_msg_billing_cancel_lease"            //nolint:gosec
+	OpWeightMsgCloseLease           = "op_weight_msg_billing_close_lease"             //nolint:gosec
+	OpWeightMsgWithdraw             = "op_weight_msg_billing_withdraw"                //nolint:gosec
+	OpWeightMsgSetItemCustomDomain  = "op_weight_msg_billing_set_item_custom_domain"  //nolint:gosec
 
-	DefaultWeightMsgFundCredit          = 50
-	DefaultWeightMsgCreateLease         = 40
-	DefaultWeightMsgAcknowledgeLease    = 35 // High weight to process pending leases
-	DefaultWeightMsgRejectLease         = 10 // Lower weight for rejections
-	DefaultWeightMsgCancelLease         = 10 // Lower weight for cancellations
-	DefaultWeightMsgCloseLease          = 20
-	DefaultWeightMsgWithdraw            = 30
-	DefaultWeightMsgSetItemCustomDomain = 20
+	DefaultWeightMsgFundCredit           = 50
+	DefaultWeightMsgCreateLease          = 40
+	DefaultWeightMsgCreateLeaseForTenant = 15
+	DefaultWeightMsgAcknowledgeLease     = 35 // High weight to process pending leases
+	DefaultWeightMsgRejectLease          = 10 // Lower weight for rejections
+	DefaultWeightMsgCancelLease          = 10 // Lower weight for cancellations
+	DefaultWeightMsgCloseLease           = 20
+	DefaultWeightMsgWithdraw             = 30
+	DefaultWeightMsgSetItemCustomDomain  = 20
 
 	maxSimulationDomainAttempts = 16
 )
@@ -79,7 +84,7 @@ func WeightedOperations(
 	k keeper.Keeper,
 	sk SKUKeeper,
 ) []simtypes.WeightedOperation {
-	operations := make([]simtypes.WeightedOperation, 0, 8)
+	operations := make([]simtypes.WeightedOperation, 0, 9)
 
 	var weightMsgFundCredit int
 	appParams.GetOrGenerate(OpWeightMsgFundCredit, &weightMsgFundCredit, nil, func(_ *rand.Rand) {
@@ -89,6 +94,10 @@ func WeightedOperations(
 	var weightMsgCreateLease int
 	appParams.GetOrGenerate(OpWeightMsgCreateLease, &weightMsgCreateLease, nil, func(_ *rand.Rand) {
 		weightMsgCreateLease = DefaultWeightMsgCreateLease
+	})
+	var weightMsgCreateLeaseForTenant int
+	appParams.GetOrGenerate(OpWeightMsgCreateLeaseForTenant, &weightMsgCreateLeaseForTenant, nil, func(_ *rand.Rand) {
+		weightMsgCreateLeaseForTenant = DefaultWeightMsgCreateLeaseForTenant
 	})
 
 	var weightMsgAcknowledgeLease int
@@ -130,6 +139,10 @@ func WeightedOperations(
 		weightMsgCreateLease,
 		SimulateMsgCreateLease(txGen, k, sk),
 	))
+	operations = append(operations, simulation.NewWeightedOperation(
+		weightMsgCreateLeaseForTenant,
+		SimulateMsgCreateLeaseForTenant(txGen, k, sk),
+	))
 
 	operations = append(operations, simulation.NewWeightedOperation(
 		weightMsgAcknowledgeLease,
@@ -161,10 +174,6 @@ func WeightedOperations(
 		SimulateMsgSetItemCustomDomain(txGen, k),
 	))
 
-	// MsgCreateLeaseForTenant is an administrative migration message. The
-	// module authority has no simulation private key, and its stateful request
-	// is not safe to delay inside a governance proposal. Dedicated keeper and
-	// migration tests cover it instead.
 	return operations
 }
 
@@ -184,7 +193,10 @@ func SimulateMsgFundCredit(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper)
 		// Default to DefaultBondDenom ("stake") which matches SKU simulation
 		denom := sdk.DefaultBondDenom
 		allSKUs, err := sk.GetAllSKUs(ctx)
-		if err == nil && len(allSKUs) > 0 {
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get SKUs"), nil, err
+		}
+		if len(allSKUs) > 0 {
 			// Use the denom from an existing active SKU
 			for _, sku := range allSKUs {
 				if sku.Active {
@@ -256,13 +268,29 @@ func SimulateMsgFundCredit(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper)
 
 // SimulateMsgCreateLease generates a MsgCreateLease with random values.
 func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper) simtypes.Operation {
+	return simulateMsgCreateLease(txGen, k, sk, false)
+}
+
+// SimulateMsgCreateLeaseForTenant uses signable accounts seeded into the billing
+// allowed list by randomized genesis to create leases on another tenant's behalf.
+func SimulateMsgCreateLeaseForTenant(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper) simtypes.Operation {
+	return simulateMsgCreateLease(txGen, k, sk, true)
+}
+
+func simulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper, forTenant bool) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		msgType := sdk.MsgTypeURL(&types.MsgCreateLease{})
+		if forTenant {
+			msgType = sdk.MsgTypeURL(&types.MsgCreateLeaseForTenant{})
+		}
 
 		// Get all active SKUs
 		allSKUs, err := sk.GetAllSKUs(ctx)
-		if err != nil || len(allSKUs) == 0 {
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get SKUs"), nil, err
+		}
+		if len(allSKUs) == 0 {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no SKUs found"), nil, nil
 		}
 
@@ -271,7 +299,10 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 		for _, sku := range allSKUs {
 			if sku.Active {
 				provider, err := sk.GetProvider(ctx, sku.ProviderUuid)
-				if err == nil && provider.Active {
+				if err != nil {
+					return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get SKU provider"), nil, err
+				}
+				if provider.Active {
 					activeSKUs = append(activeSKUs, sku)
 				}
 			}
@@ -287,8 +318,7 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 
 		// Find a simulation account that has credit in the SKU's denom
 		// Shuffle accounts to add randomness
-		shuffledAccs := make([]simtypes.Account, len(accs))
-		copy(shuffledAccs, accs)
+		shuffledAccs := slices.Clone(accs)
 		r.Shuffle(len(shuffledAccs), func(i, j int) {
 			shuffledAccs[i], shuffledAccs[j] = shuffledAccs[j], shuffledAccs[i]
 		})
@@ -297,7 +327,10 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 		var tenantFound bool
 		for _, acc := range shuffledAccs {
 			creditBalance, err := k.GetCreditBalance(ctx, acc.Address.String(), skuDenom)
-			if err == nil && !creditBalance.Amount.IsZero() {
+			if err != nil {
+				return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get credit balance"), nil, err
+			}
+			if !creditBalance.Amount.IsZero() {
 				tenant = acc
 				tenantFound = true
 				break
@@ -312,11 +345,14 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 		// cap is independent of the active cap and commonly fills first.
 		params, err := k.GetParams(ctx)
 		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, err
 		}
 
 		creditAccount, err := k.GetCreditAccount(ctx, tenant.Address.String())
 		if err != nil {
+			if !errors.Is(err, types.ErrCreditAccountNotFound) {
+				return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get credit account"), nil, err
+			}
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant credit account not found"), nil, nil
 		}
 		if creditAccount.ActiveLeaseCount >= params.MaxLeasesPerTenant {
@@ -351,13 +387,30 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 
 		// Skip if the tenant cannot afford the lease; delivering it would fail with
 		// ErrInsufficientCredit and abort the simulation instead of being a valid NoOp.
-		if !tenantCanAffordLease(ctx, k, tenant.Address.String(), items, providerSKUs[:numItems], params.MinLeaseDuration) {
+		canAfford, err := tenantCanAffordLease(ctx, k, tenant.Address.String(), items, providerSKUs[:numItems], params.MinLeaseDuration)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to check tenant credit"), nil, err
+		}
+		if !canAfford {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant cannot afford lease"), nil, nil
 		}
 
 		msg := &types.MsgCreateLease{
 			Tenant: tenant.Address.String(),
 			Items:  items,
+		}
+		if forTenant {
+			senders := allowedBillingSimulationAccounts(accs, params)
+			if len(senders) == 0 {
+				return simtypes.NoOpMsg(types.ModuleName, msgType, "no allowed simulation account"), nil, nil
+			}
+			sender := senders[r.Intn(len(senders))]
+			adminMsg := &types.MsgCreateLeaseForTenant{
+				Authority: sender.Address.String(),
+				Tenant:    tenant.Address.String(),
+				Items:     items,
+			}
+			return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, adminMsg, k)
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, tenant, msg, k)
@@ -382,7 +435,7 @@ func SimulateMsgAcknowledgeLease(txGen client.TxConfig, k keeper.Keeper, sk SKUK
 
 		params, err := k.GetParams(ctx)
 		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, err
 		}
 
 		// Filter to pending leases that still satisfy the activation gates. Delivering
@@ -403,6 +456,9 @@ func SimulateMsgAcknowledgeLease(txGen client.TxConfig, k keeper.Keeper, sk SKUK
 			if !found {
 				creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
 				if err != nil {
+					if !errors.Is(err, types.ErrCreditAccountNotFound) {
+						return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get credit account"), nil, err
+					}
 					invalidTenants[lease.Tenant] = struct{}{}
 					continue
 				}
@@ -426,7 +482,7 @@ func SimulateMsgAcknowledgeLease(txGen client.TxConfig, k keeper.Keeper, sk SKUK
 		// Get the provider to find the provider address
 		provider, err := sk.GetProvider(ctx, lease.ProviderUuid)
 		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "provider not found"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get provider"), nil, err
 		}
 
 		// Find the provider address account by decoded identity.
@@ -441,7 +497,7 @@ func SimulateMsgAcknowledgeLease(txGen client.TxConfig, k keeper.Keeper, sk SKUK
 
 		msg := &types.MsgAcknowledgeLease{
 			Sender:     sender.Address.String(),
-			LeaseUuids: []string{lease.Uuid},
+			LeaseUuids: simulationLeaseBatch(r, pendingLeases, lease, params.MaxLeasesPerTenant-activeCountsByTenant[lease.Tenant]),
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)
@@ -457,7 +513,10 @@ func SimulateMsgRejectLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 
 		// Get all leases
 		allLeases, err := k.GetAllLeases(ctx)
-		if err != nil || len(allLeases) == 0 {
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get leases"), nil, err
+		}
+		if len(allLeases) == 0 {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no leases found"), nil, nil
 		}
 
@@ -479,7 +538,7 @@ func SimulateMsgRejectLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 		// Get the provider to find the provider address
 		provider, err := sk.GetProvider(ctx, lease.ProviderUuid)
 		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "provider not found"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get provider"), nil, err
 		}
 
 		// Find the provider address account by decoded identity.
@@ -504,7 +563,7 @@ func SimulateMsgRejectLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 
 		msg := &types.MsgRejectLease{
 			Sender:     sender.Address.String(),
-			LeaseUuids: []string{lease.Uuid},
+			LeaseUuids: simulationLeaseBatch(r, pendingLeases, lease, types.MaxBatchLeaseSize),
 			Reason:     reason,
 		}
 
@@ -521,7 +580,10 @@ func SimulateMsgCancelLease(txGen client.TxConfig, k keeper.Keeper) simtypes.Ope
 
 		// Get all leases
 		allLeases, err := k.GetAllLeases(ctx)
-		if err != nil || len(allLeases) == 0 {
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get leases"), nil, err
+		}
+		if len(allLeases) == 0 {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no leases found"), nil, nil
 		}
 
@@ -552,7 +614,7 @@ func SimulateMsgCancelLease(txGen client.TxConfig, k keeper.Keeper) simtypes.Ope
 
 		msg := &types.MsgCancelLease{
 			Tenant:     sender.Address.String(),
-			LeaseUuids: []string{lease.Uuid},
+			LeaseUuids: simulationLeaseBatch(r, pendingLeases, lease, types.MaxBatchLeaseSize),
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)
@@ -567,7 +629,10 @@ func SimulateMsgCloseLease(txGen client.TxConfig, k keeper.Keeper) simtypes.Oper
 
 		// Get all leases
 		allLeases, err := k.GetAllLeases(ctx)
-		if err != nil || len(allLeases) == 0 {
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get leases"), nil, err
+		}
+		if len(allLeases) == 0 {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "no leases found"), nil, nil
 		}
 
@@ -598,7 +663,7 @@ func SimulateMsgCloseLease(txGen client.TxConfig, k keeper.Keeper) simtypes.Oper
 
 		msg := &types.MsgCloseLease{
 			Sender:     sender.Address.String(),
-			LeaseUuids: []string{lease.Uuid},
+			LeaseUuids: simulationLeaseBatch(r, activeLeases, lease, types.MaxBatchLeaseSize),
 		}
 
 		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)
@@ -844,6 +909,34 @@ func simulationLeaseItemCount(r *rand.Rand, configuredMaximum uint64) (int, bool
 	return r.Intn(int(maximum)) + 1, true //nolint:gosec // maximum is bounded to [1, 3]
 }
 
+func allowedBillingSimulationAccounts(accs []simtypes.Account, params types.Params) []simtypes.Account {
+	allowed := make([]simtypes.Account, 0, len(accs))
+	for _, account := range accs {
+		if params.IsAllowed(account.Address.String()) {
+			allowed = append(allowed, account)
+		}
+	}
+	return allowed
+}
+
+// simulationLeaseBatch chooses up to three compatible leases, including the
+// selected seed, to exercise shared-tenant counters and reservation changes.
+// The acknowledge caller additionally caps the batch at the tenant's capacity.
+func simulationLeaseBatch(r *rand.Rand, leases []types.Lease, seed types.Lease, maximum uint64) []string {
+	leaseUUIDs := []string{seed.Uuid}
+	for _, lease := range leases {
+		if lease.Uuid != seed.Uuid && lease.Tenant == seed.Tenant && lease.ProviderUuid == seed.ProviderUuid && lease.State == seed.State {
+			leaseUUIDs = append(leaseUUIDs, lease.Uuid)
+		}
+	}
+	maximum = min(maximum, uint64(len(leaseUUIDs)), 3) //nolint:gosec // len is non-negative
+	if maximum == 0 {
+		return nil
+	}
+	r.Shuffle(len(leaseUUIDs)-1, func(i, j int) { leaseUUIDs[i+1], leaseUUIDs[j+1] = leaseUUIDs[j+1], leaseUUIDs[i+1] })
+	return leaseUUIDs[:r.Intn(int(maximum))+1] //nolint:gosec // maximum is bounded to [1, 3]
+}
+
 // simulateSpecificLeaseWithdraw simulates withdrawal from specific leases.
 func simulateSpecificLeaseWithdraw(
 	r *rand.Rand,
@@ -863,7 +956,7 @@ func simulateSpecificLeaseWithdraw(
 	// Get provider to find the provider address
 	provider, err := sk.GetProvider(ctx, lease.ProviderUuid)
 	if err != nil {
-		return simtypes.NoOpMsg(types.ModuleName, msgType, "provider not found"), nil, nil
+		return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get provider"), nil, err
 	}
 
 	// Find the provider address account by decoded identity.
@@ -935,37 +1028,67 @@ func simulateProviderWideWithdraw(
 
 	providerUUID := uuids[r.Intn(len(uuids))]
 
-	// Get provider to find the provider address
-	provider, err := sk.GetProvider(ctx, providerUUID)
-	if err != nil {
-		return simtypes.NoOpMsg(types.ModuleName, msgType, "provider not found"), nil, nil
-	}
-
-	// Find the provider address account by decoded identity.
-	sender, found, err := simulationAccountForAddress(accs, provider.Address)
-	if err != nil {
-		return simtypes.NoOpMsg(types.ModuleName, msgType, "invalid provider address"), nil, err
-	}
-
-	if !found {
-		return simtypes.NoOpMsg(types.ModuleName, msgType, "provider account not found in simulation"), nil, nil
-	}
-
-	// Random limit: 0 (use default), or 10-100
+	// Small pages make continuation common even in short simulation runs.
+	// Keep the module default and transaction maximum in the generated mix.
 	var limit uint64
-	if r.Intn(2) == 0 {
-		limit = 0 // Use default limit
-	} else {
-		limit = uint64(r.Intn(91)) + 10 //nolint:gosec // r.Intn returns non-negative, result is 10-100
+	switch r.Intn(3) {
+	case 0:
+		limit = uint64(r.Intn(3) + 1) //nolint:gosec // bounded to [1, 3]
+	case 1:
+		limit = types.MaxBatchLeaseSize
 	}
 
 	msg := &types.MsgWithdraw{
-		Sender:       sender.Address.String(),
 		ProviderUuid: providerUUID,
 		Limit:        limit,
 	}
 
-	return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)
+	return simulateProviderWithdrawalPage(txGen, k, sk, msg)(r, app, ctx, accs, ctx.ChainID())
+}
+
+func simulateProviderWithdrawalPage(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper, msg *types.MsgWithdraw) simtypes.Operation {
+	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
+	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
+		// Provider ownership can change while this continuation is queued. Resolve
+		// its current signer at execution time without changing the saved cursor.
+		provider, err := sk.GetProvider(ctx, msg.ProviderUuid)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, sdk.MsgTypeURL(msg), "failed to get provider"), nil, err
+		}
+		sender, found, err := simulationAccountForAddress(accs, provider.Address)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, sdk.MsgTypeURL(msg), "invalid provider address"), nil, err
+		}
+		if !found {
+			return simtypes.NoOpMsg(types.ModuleName, sdk.MsgTypeURL(msg), "provider account not found in simulation"), nil, nil
+		}
+		currentMsg := *msg
+		currentMsg.Sender = sender.Address.String()
+
+		// Derive the transaction cursor using the real lifecycle in an isolated
+		// cache. The SDK simulation helper discards transaction response data.
+		previewCtx, _ := ctx.CacheContext()
+		response, err := keeper.NewMsgServerImpl(k).Withdraw(previewCtx, &currentMsg)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, sdk.MsgTypeURL(msg), "failed to preview provider withdrawal"), nil, err
+		}
+		operation, futureOps, err := genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, &currentMsg, k)
+		if err != nil || !operation.OK || !response.HasMore {
+			return operation, futureOps, err
+		}
+		nextMsg := &types.MsgWithdraw{
+			ProviderUuid: msg.ProviderUuid,
+			Limit:        msg.Limit,
+			Key:          bytes.Clone(response.NextKey),
+		}
+		futureOps = append(futureOps, simtypes.FutureOperation{
+			// The SDK's height queue persists additions through its shared map;
+			// its time queue currently appends to a slice passed by value.
+			BlockHeight: int(ctx.BlockHeight() + 1), //nolint:gosec // simulation block heights fit the SDK's native-int queue
+			Op:          simulateProviderWithdrawalPage(txGen, k, sk, nextMsg),
+		})
+		return operation, futureOps, nil
+	}
 }
 
 func newOperationInput(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, txGen client.TxConfig, simAccount simtypes.Account, msg sdk.Msg, k keeper.Keeper) simulation.OperationInput {
@@ -1022,7 +1145,7 @@ func buildSimLeaseItems(r *rand.Rand, skus []skutypes.SKU) []types.LeaseItemInpu
 // minLeaseDuration. It mirrors the credit check in the CreateLease message handler
 // (msg_server.go), so simulated leases that would be rejected with ErrInsufficientCredit are
 // skipped as a NoOp instead of aborting the whole simulation with a delivery error.
-func tenantCanAffordLease(ctx sdk.Context, k keeper.Keeper, tenant string, items []types.LeaseItemInput, skus []skutypes.SKU, minLeaseDuration uint64) bool {
+func tenantCanAffordLease(ctx sdk.Context, k keeper.Keeper, tenant string, items []types.LeaseItemInput, skus []skutypes.SKU, minLeaseDuration uint64) (bool, error) {
 	skuByUUID := make(map[string]skutypes.SKU, len(skus))
 	for _, s := range skus {
 		skuByUUID[s.Uuid] = s
@@ -1032,44 +1155,44 @@ func tenantCanAffordLease(ctx sdk.Context, k keeper.Keeper, tenant string, items
 	for _, item := range items {
 		s, ok := skuByUUID[item.SkuUuid]
 		if !ok {
-			return false
+			return false, fmt.Errorf("SKU %s missing from simulation catalog", item.SkuUuid)
 		}
 		ratePerSecond, err := keeper.ConvertBasePriceToPerSecond(s.BasePrice, s.Unit)
 		if err != nil {
-			return false
+			return false, err
 		}
 		itemRate, err := types.SafeMultiplyCoin(ratePerSecond, sdkmath.NewIntFromUint64(item.Quantity))
 		if err != nil {
-			return false
+			return false, err
 		}
 		totalRatesPerSecond, err = types.SafeAddCoins(totalRatesPerSecond, sdk.Coins{itemRate})
 		if err != nil {
-			return false
+			return false, err
 		}
 	}
 
 	reservation, err := types.CalculateLeaseReservationFromRates(totalRatesPerSecond, minLeaseDuration)
 	if err != nil {
-		return false
+		return false, err
 	}
 	if reservation.IsZero() {
-		return true
+		return true, nil
 	}
 
 	creditAccount, err := k.GetCreditAccount(ctx, tenant)
 	if err != nil {
-		return false
+		return false, err
 	}
 	balances := sdk.NewCoins()
 	for _, res := range reservation {
 		bal, err := k.GetCreditBalance(ctx, tenant, res.Denom)
 		if err != nil {
-			return false
+			return false, err
 		}
 		if bal.IsPositive() {
 			balances, err = types.SafeAddCoins(balances, sdk.Coins{bal})
 			if err != nil {
-				return false
+				return false, err
 			}
 		}
 	}
@@ -1077,8 +1200,8 @@ func tenantCanAffordLease(ctx sdk.Context, k keeper.Keeper, tenant string, items
 	available := types.GetAvailableCredit(balances, creditAccount.ReservedAmounts)
 	for _, res := range reservation {
 		if available.AmountOf(res.Denom).LT(res.Amount) {
-			return false
+			return false, nil
 		}
 	}
-	return true
+	return true, nil
 }

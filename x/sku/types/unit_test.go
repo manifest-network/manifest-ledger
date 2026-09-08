@@ -212,6 +212,13 @@ func TestValidatePriceAndUnit(t *testing.T) {
 			expectErr: true,
 			errIsZero: true,
 		},
+		{
+			name:      "invalid: zero price preserves zero-rate error",
+			basePrice: sdk.NewCoin(testDenom, math.ZeroInt()),
+			unit:      Unit_UNIT_PER_HOUR,
+			expectErr: true,
+			errIsZero: true,
+		},
 
 		// Invalid cases: not evenly divisible
 		{
@@ -271,8 +278,9 @@ func TestValidatePriceAndUnit(t *testing.T) {
 				require.Error(t, err)
 
 				// Check error type and details
-				var priceErr *PriceValidationError
-				if errors.As(err, &priceErr) {
+				priceErr, isPriceError := errors.AsType[*PriceValidationError](err)
+				require.Equal(t, tc.unit != Unit_UNIT_UNSPECIFIED, isPriceError)
+				if isPriceError {
 					require.Equal(t, tc.errIsZero, priceErr.IsZero, "error IsZero mismatch")
 					if !tc.errIsZero && tc.errRemainder != "" {
 						require.Equal(t, tc.errRemainder, priceErr.Remainder.String(), "remainder mismatch")
@@ -280,6 +288,35 @@ func TestValidatePriceAndUnit(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestPriceHelpersRejectInvalidCoins(t *testing.T) {
+	tests := []struct {
+		name string
+		coin sdk.Coin
+	}{
+		{name: "zero value", coin: sdk.Coin{}},
+		{name: "nil amount", coin: sdk.Coin{Denom: "upwr"}},
+		{name: "negative exact multiple", coin: sdk.Coin{Denom: "upwr", Amount: math.NewInt(-86400)}},
+		{name: "negative nonmultiple", coin: sdk.Coin{Denom: "upwr", Amount: math.NewInt(-86401)}},
+		{name: "zero amount", coin: sdk.NewCoin("upwr", math.ZeroInt())},
+		{name: "empty denom", coin: sdk.Coin{Amount: math.NewInt(86400)}},
+		{name: "invalid denom", coin: sdk.Coin{Denom: "!", Amount: math.NewInt(86400)}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for _, unit := range []Unit{Unit_UNIT_PER_HOUR, Unit_UNIT_PER_DAY} {
+				t.Run(unit.String(), func(t *testing.T) {
+					rate, valid := CalculatePricePerSecond(test.coin, unit)
+					require.False(t, valid)
+					require.True(t, rate.IsZero())
+					err := ValidatePriceAndUnit(test.coin, unit)
+					require.Error(t, err)
+					require.NotEmpty(t, err.Error(), "malformed amounts must also be safe to format")
+				})
 			}
 		})
 	}

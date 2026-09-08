@@ -296,27 +296,13 @@ const withdraw = liftedinit.billing.v1.MessageComposer.encoded.withdraw({
   leaseUuids: [lease1, lease2],
   providerUuid: "",
   limit: 0n,
+  key: new Uint8Array(),
 });
-
-// Mode 2 — provider-wide (paginated). You MUST echo the cursor each round,
-// or the loop restarts from the first ACTIVE lease and never terminates.
-async function withdrawAll(providerUuid: string) {
-  let key = new Uint8Array();                   // empty = start from the beginning
-  while (true) {
-    const msg = liftedinit.billing.v1.MessageComposer.encoded.withdraw({
-      sender: providerKey,
-      leaseUuids: [],
-      providerUuid,
-      limit: 100n,                             // max 100; 0 = default 50
-      key,                                     // opaque cursor from the previous response
-    });
-    const res = await signingClient.signAndBroadcast(providerKey, [msg], "auto");
-    const decoded = liftedinit.billing.v1.MsgWithdrawResponse.decode(res.msgResponses[0].value);
-    if (!decoded.hasMore) return;              // stop when chain says no more
-    key = decoded.nextKey;                     // advance past the last processed lease
-  }
-}
 ```
+
+For provider-wide automation, use the [resumable withdrawal workflow](../x/billing/docs/API.md#provider-wide-withdraw-workflow), including the `withdraw-result` CLI decoder. It waits for inclusion, verifies execution success, and checkpoints both the continuation cursor and failed lease UUIDs.
+
+A TypeScript implementation must follow the same steps: await `signAndBroadcast`, check its execution `code`, select the matching `MsgWithdrawResponse` from `msgResponses`, and decode its protobuf `value`. Persist `nextKey` and **all** `failedLeaseUuids` before advancing, including failures when `hasMore` is false. `signAndBroadcastSync` and the CLI's sync broadcast output only establish admission. Use a generated manifestjs codec that includes `failedLeaseUuids`; older codecs silently discard that protobuf field and cannot support reliable failed-lease retries. The CLI decoder uses this repository's current response schema.
 
 Read-only "what would I withdraw" estimates:
 
@@ -353,11 +339,12 @@ const page = await client.liftedinit.billing.v1.providerWithdrawable({
 After a lease goes ACTIVE, tenants prove ownership using ADR-036 arbitrary-message signing. The full message format, validation steps, and sample verifier code live in [`x/billing/docs/INTEGRATION.md`](../x/billing/docs/INTEGRATION.md). Frontend side, the call is:
 
 ```ts
-const message = `manifest lease access ${leaseUuid} ${Math.floor(Date.now() / 1000)}`;
+const timestamp = Math.floor(Date.now() / 1000);
+const message = `manifest lease access ${leaseUuid} ${timestamp}`;
 const sig = await window.keplr.signArbitrary("manifest-1", tenant, message);
 // Base64-encode the payload and send it as a Bearer token on a GET (not a POST body):
 const authToken = btoa(JSON.stringify({
-  tenant, lease_uuid: leaseUuid, timestamp: Math.floor(Date.now() / 1000),
+  tenant, lease_uuid: leaseUuid, timestamp,
   pub_key: sig.pub_key, signature: sig.signature,
 }));
 await fetch(`${provider.api_url}/v1/leases/${leaseUuid}/connection`, {
@@ -366,6 +353,11 @@ await fetch(`${provider.api_url}/v1/leases/${leaseUuid}/connection`, {
 ```
 
 Use the same recipe with Leap (`window.leap.signArbitrary(...)`) — the API is identical. Web3Auth-derived signers reach this through `OfflineAminoSigner.signAmino`.
+
+Reuse the captured timestamp after wallet confirmation, as in the
+[canonical authentication recipe](../x/billing/docs/INTEGRATION.md#authentication).
+If signing takes longer than the provider's freshness window, request a fresh
+signature; changing only the token timestamp invalidates the existing signature.
 
 ## Querying state — common patterns
 

@@ -984,11 +984,9 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 	// Calculate total accrued with overflow handling
 	items := LeaseItemsToWithPrice(lease.Items)
 	accruedAmounts, err := calculateTotalAccruedForLeaseSeconds(items, durationSeconds)
-	var accrualOverflow *AccrualOverflowError
-	if err != nil {
-		if !errors.As(err, &accrualOverflow) {
-			return nil, errorsmod.Wrapf(err, "calculate withdrawable amount for lease %s", lease.Uuid)
-		}
+	accrualOverflow, isOverflow := errors.AsType[*AccrualOverflowError](err)
+	if err != nil && !isOverflow {
+		return nil, errorsmod.Wrapf(err, "calculate withdrawable amount for lease %s", lease.Uuid)
 	}
 
 	if accruedAmounts.IsZero() && accrualOverflow == nil {
@@ -1109,8 +1107,8 @@ func (k *Keeper) ShouldAutoCloseLease(
 		}
 		accruedAmounts, calcErr := calculateTotalAccruedForLeaseSeconds(items, durationSeconds)
 		if calcErr != nil {
-			var accrualOverflow *AccrualOverflowError
-			if !errors.As(calcErr, &accrualOverflow) {
+			accrualOverflow, isOverflow := errors.AsType[*AccrualOverflowError](calcErr)
+			if !isOverflow {
 				return false, time.Time{}, errorsmod.Wrapf(calcErr, "calculate accrued amount for lease %s", lease.Uuid)
 			}
 			// Overflow in accrual calculation means the accrued amount is extremely large,

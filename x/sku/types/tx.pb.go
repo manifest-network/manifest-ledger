@@ -1020,7 +1020,9 @@ type MsgClient interface {
 	// Use DeactivateProvider to deactivate (ensures proper SKU cascade).
 	UpdateProvider(ctx context.Context, in *MsgUpdateProvider, opts ...grpc.CallOption) (*MsgUpdateProviderResponse, error)
 	// DeactivateProvider deactivates a provider (soft delete).
-	// Deactivated providers cannot create new SKUs but existing SKUs continue.
+	// Deactivated providers cannot create new SKUs or leases. Existing SKUs are
+	// deactivated in bounded pages; call again while has_more is true. Existing
+	// leases continue at their locked prices.
 	DeactivateProvider(ctx context.Context, in *MsgDeactivateProvider, opts ...grpc.CallOption) (*MsgDeactivateProviderResponse, error)
 	// CreateSKU creates a new SKU.
 	CreateSKU(ctx context.Context, in *MsgCreateSKU, opts ...grpc.CallOption) (*MsgCreateSKUResponse, error)
@@ -1116,7 +1118,9 @@ type MsgServer interface {
 	// Use DeactivateProvider to deactivate (ensures proper SKU cascade).
 	UpdateProvider(context.Context, *MsgUpdateProvider) (*MsgUpdateProviderResponse, error)
 	// DeactivateProvider deactivates a provider (soft delete).
-	// Deactivated providers cannot create new SKUs but existing SKUs continue.
+	// Deactivated providers cannot create new SKUs or leases. Existing SKUs are
+	// deactivated in bounded pages; call again while has_more is true. Existing
+	// leases continue at their locked prices.
 	DeactivateProvider(context.Context, *MsgDeactivateProvider) (*MsgDeactivateProviderResponse, error)
 	// CreateSKU creates a new SKU.
 	CreateSKU(context.Context, *MsgCreateSKU) (*MsgCreateSKUResponse, error)

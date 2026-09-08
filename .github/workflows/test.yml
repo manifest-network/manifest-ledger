@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: 1.26.7
+  GO_VERSION: 1.26.8
 
 concurrency:
   group: unit-tests-${{ github.ref }}
@@ -37,3 +37,8 @@ jobs:
 
       - name: unit tests
         run: make test
+
+      - name: documentation examples
+        run: |
+          command -v bash jq
+          node --test scripts/docs_examples.test.mjs

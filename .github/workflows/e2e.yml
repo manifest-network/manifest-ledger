@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: 1.26.7
+  GO_VERSION: 1.26.8
   TAR_PATH: /tmp/manifest-docker-image.tar
   IMAGE_NAME: manifest-docker-image
   E2E_IMAGE_VERSION: e2e-${{ github.sha }}

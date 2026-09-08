@@ -209,7 +209,7 @@ Before the upgrade:
   binary from source must install the exact v2.2.8 shared library before the
   swap; an older host library is not an acceptable fallback.
 - Confirm `manifestd version --long --output json | jq -r .go` reports a Go
-  1.26.7 linux/amd64 build for the published archive. Go 1.25 is no longer a
+  1.26.8 linux/amd64 build for the published archive. Go 1.25 is no longer a
   supported release line and must not be used for an operator-local rebuild.
 - Account for the expected transaction gas-profile change at the coordinated
   upgrade height. Lease, provider, and SKU UUID allocation now reads (`Peek`)

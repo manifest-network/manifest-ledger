@@ -1,7 +1,6 @@
 package keeper
 
 import (
-	"bytes"
 	"fmt"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -11,6 +10,7 @@ import (
 	sdkcodec "github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/manifest-network/manifest-ledger/internal/storagecodec"
 	skustorage "github.com/manifest-network/manifest-ledger/x/sku/internal/types"
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
 )
@@ -25,65 +25,13 @@ const (
 	providerStoragePrefix = "\x00sku/provider/v1"
 )
 
-type storageValueCodec[T any] struct {
-	wire            collcodec.ValueCodec[T]
-	prefix          string
-	encodeStorage   func(T) ([]byte, error)
-	decodeStorage   func([]byte) (T, error)
-	normalizeLegacy func(T) (T, error)
-}
-
-func (c storageValueCodec[T]) Encode(value T) ([]byte, error) {
-	payload, err := c.encodeStorage(value)
-	if err != nil {
-		return nil, err
-	}
-
-	encoded := make([]byte, len(c.prefix)+len(payload))
-	copy(encoded, c.prefix)
-	copy(encoded[len(c.prefix):], payload)
-	return encoded, nil
-}
-
-func (c storageValueCodec[T]) Decode(encoded []byte) (T, error) {
-	if bytes.HasPrefix(encoded, []byte(c.prefix)) {
-		return c.decodeStorage(encoded[len(c.prefix):])
-	}
-	if len(encoded) > 0 && encoded[0] == 0 {
-		var zero T
-		return zero, fmt.Errorf("unsupported SKU storage encoding")
-	}
-
-	value, err := c.wire.Decode(encoded)
-	if err != nil {
-		var zero T
-		return zero, err
-	}
-	return c.normalizeLegacy(value)
-}
-
-func (c storageValueCodec[T]) EncodeJSON(value T) ([]byte, error) {
-	return c.wire.EncodeJSON(value)
-}
-
-func (c storageValueCodec[T]) DecodeJSON(encoded []byte) (T, error) {
-	return c.wire.DecodeJSON(encoded)
-}
-
-func (c storageValueCodec[T]) Stringify(value T) string {
-	return c.wire.Stringify(value)
-}
-
-func (c storageValueCodec[T]) ValueType() string {
-	return c.wire.ValueType()
-}
-
 func newParamsValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Params] {
 	wire := sdkcodec.CollValue[types.Params](cdc)
-	return storageValueCodec[types.Params]{
-		wire:   wire,
-		prefix: paramsStoragePrefix,
-		encodeStorage: func(params types.Params) ([]byte, error) {
+	return storagecodec.Value[types.Params]{
+		Wire:   wire,
+		Module: "SKU",
+		Prefix: paramsStoragePrefix,
+		EncodeStorage: func(params types.Params) ([]byte, error) {
 			allowedAddresses, err := decodeAddressStrings(params.AllowedList)
 			if err != nil {
 				return nil, fmt.Errorf("invalid allowed-list address: %w", err)
@@ -93,7 +41,7 @@ func newParamsValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Pa
 				AllowedAddresses: allowedAddresses,
 			})
 		},
-		decodeStorage: func(encoded []byte) (types.Params, error) {
+		DecodeStorage: func(encoded []byte) (types.Params, error) {
 			var stored skustorage.Params
 			if err := proto.Unmarshal(encoded, &stored); err != nil {
 				return types.Params{}, err
@@ -105,16 +53,17 @@ func newParamsValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Pa
 			}
 			return types.Params{AllowedList: allowedList}, nil
 		},
-		normalizeLegacy: normalizeParamsAddresses,
+		NormalizeLegacy: normalizeParamsAddresses,
 	}
 }
 
 func newProviderValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Provider] {
 	wire := sdkcodec.CollValue[types.Provider](cdc)
-	return storageValueCodec[types.Provider]{
-		wire:   wire,
-		prefix: providerStoragePrefix,
-		encodeStorage: func(provider types.Provider) ([]byte, error) {
+	return storagecodec.Value[types.Provider]{
+		Wire:   wire,
+		Module: "SKU",
+		Prefix: providerStoragePrefix,
+		EncodeStorage: func(provider types.Provider) ([]byte, error) {
 			address, err := sdk.AccAddressFromBech32(provider.Address)
 			if err != nil {
 				return nil, fmt.Errorf("invalid provider address: %w", err)
@@ -133,7 +82,7 @@ func newProviderValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.
 				ApiUrl:        provider.ApiUrl,
 			})
 		},
-		decodeStorage: func(encoded []byte) (types.Provider, error) {
+		DecodeStorage: func(encoded []byte) (types.Provider, error) {
 			var stored skustorage.Provider
 			if err := proto.Unmarshal(encoded, &stored); err != nil {
 				return types.Provider{}, err
@@ -157,7 +106,7 @@ func newProviderValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.
 				ApiUrl:        stored.ApiUrl,
 			}, nil
 		},
-		normalizeLegacy: normalizeProviderAddresses,
+		NormalizeLegacy: normalizeProviderAddresses,
 	}
 }
 

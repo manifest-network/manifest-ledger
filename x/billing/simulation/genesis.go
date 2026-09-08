@@ -46,7 +46,7 @@ func randomParams(r *rand.Rand) types.Params {
 	// Random pending timeout: 1-60 minutes (60-3600 seconds)
 	pendingTimeout := uint64(r.Intn(3541) + 60) //nolint:gosec
 
-	// Empty allowed list for simulation (only authority can create leases for tenants)
+	// RandomizedGenState populates this list with signable simulation accounts.
 	allowedList := []string{}
 
 	params := types.NewParams(maxLeasesPerTenant, allowedList, maxItemsPerLease, minLeaseDuration, maxPendingLeasesPerTenant, pendingTimeout)
