@@ -457,21 +457,32 @@ sender → credit_address
 3. Verify tenant hasn't exceeded max active or pending leases
 4. Verify all SKUs exist, are active, and belong to the same provider (locking per-second prices)
 5. Verify the provider exists and is active
-6. Verify `AvailableCredit >= rate × min_lease_duration` per denom
-7. Initialize the lease's remaining tranche `A` to that nominal amount and add the same coins to aggregate `R`
-8. Create the lease in PENDING state and increment pending_lease_count
+6. Verify the current provider payout is permitted by bank policy and distinct
+   from the tenant's derived credit address, before reserving credit or
+   allocating a lease UUID
+7. Verify `AvailableCredit >= rate × min_lease_duration` per denom
+8. Initialize the lease's remaining tranche `A` to that nominal amount and add the same coins to aggregate `R`
+9. Create the lease in PENDING state and increment pending_lease_count
 
 ### Acknowledge Lease (PENDING → ACTIVE)
 
-1. Provider verifies they own the SKUs in the lease
+1. Verify all requested leases are PENDING and belong to the same provider;
+   authorize the provider's current address or the module authority
 2. Revalidate every lease against the hard deadline: `now <= created_at + current pending_timeout`
 3. Aggregate the entire batch per tenant and verify every post-batch active count is ≤ `max_leases_per_tenant`
-4. After all gates pass, atomically set every lease to ACTIVE
-5. Set acknowledged_at and last_settled_at to current block time (billing starts)
-6. Decrement pending_lease_count and increment active_lease_count
+4. Recheck the current provider payout against bank policy and every tenant's
+   derived credit address in the batch; a blocked payout or an address collision
+   rejects the entire batch before any writes
+5. After all gates pass, atomically set every lease to ACTIVE
+6. Set acknowledged_at and last_settled_at to current block time (billing starts)
+7. Decrement pending_lease_count and increment active_lease_count
 
 An overdue lease can remain stored as PENDING until the rate-limited EndBlocker reaches it, but it
 cannot be acknowledged. Providers may still reject it, and tenants may still cancel it.
+The same recovery paths remain available while a payout requires repair.
+Provider or SKU deactivation alone does not prevent acknowledgement of an
+existing PENDING lease; the payout, deadline, and tenant active-cap gates still
+apply.
 
 ### Reject Lease (PENDING → REJECTED)
 
@@ -515,7 +526,8 @@ EndBlock in the same block and while an overdue lease is waiting behind the expi
 1. Calculate accrued charges since last settlement
 2. Transfer `min(accrued, B - (R - A))` from credit to the provider, consuming
    this lease's tranche before genuinely unreserved credit and preserving every
-   other lease's guarantee
+   other lease's guarantee. Before a nonzero transfer, verify the payout is
+   permitted by bank policy and distinct from the tenant's derived credit address
 3. Set lease state to CLOSED
 4. Record closed_at timestamp
 5. Decrement active_lease_count
@@ -524,7 +536,9 @@ EndBlock in the same block and while an overdue lease is waiting behind the expi
 ### Withdraw
 
 1. Calculate accrued charges since last settlement
-2. Transfer at most this lease's spendable credit `B - (R - A)` to the provider
+2. Transfer at most this lease's spendable credit `B - (R - A)` to the provider;
+   before a nonzero transfer, verify the payout is permitted by bank policy and
+   distinct from the tenant's derived credit address
 3. Auto-close on a shortfall/credit exhaustion; otherwise update
    `last_settled_at` through the complete seconds charged, retaining any
    sub-second remainder
@@ -638,6 +652,11 @@ Before transferring funds, settlement rejects a provider payout address blocked
 by the bank module, including protected module accounts, or equal to the source
 tenant's credit address. This also protects leases whose provider configuration
 predates the validation in `x/sku`.
+
+Both lease-creation entry points enforce those recipient checks before
+reserving credit or allocating a lease UUID. Acknowledgement rechecks the
+current payout for every tenant in its batch before any lease becomes ACTIVE.
+Pending leases remain cancellable or rejectable without a payout transfer.
 
 A failed transfer leaves the affected lease's accrued charges and reservation
 unchanged. Specific-lease withdrawal and close batches fail atomically;

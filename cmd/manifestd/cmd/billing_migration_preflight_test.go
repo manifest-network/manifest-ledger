@@ -443,7 +443,10 @@ func TestAuditProviderCreditCollisionsMatchesProviderAndTenantWithoutMutation(t 
 
 func TestWriteBillingMigrationPreflightRejectsMalformedTenantWithoutPartialAudit(t *testing.T) {
 	encodingConfig := params.MakeEncodingConfig()
-	const providerUUID = "01912345-6789-7abc-8def-0123456789b0"
+	const (
+		providerUUID           = "01912345-6789-7abc-8def-0123456789b0"
+		invalidTenantLeaseUUID = "01912345-6789-7abc-8def-0123456789c1"
+	)
 	tenant := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	skuJSON, err := encodingConfig.Codec.MarshalJSON(&skutypes.GenesisState{
 		Providers: []skutypes.Provider{{Uuid: providerUUID, PayoutAddress: billingtypes.DeriveCreditAddress(tenant).String()}},
@@ -453,7 +456,7 @@ func TestWriteBillingMigrationPreflightRejectsMalformedTenantWithoutPartialAudit
 		t.Run(state.String(), func(t *testing.T) {
 			billingJSON, err := encodingConfig.Codec.MarshalJSON(&billingtypes.GenesisState{Leases: []billingtypes.Lease{
 				{Uuid: "01912345-6789-7abc-8def-0123456789c0", ProviderUuid: providerUUID, Tenant: tenant.String(), State: state},
-				{Uuid: "01912345-6789-7abc-8def-0123456789c1", ProviderUuid: providerUUID, Tenant: "invalid", State: state},
+				{Uuid: invalidTenantLeaseUUID, ProviderUuid: providerUUID, Tenant: "invalid", State: state},
 			}})
 			require.NoError(t, err)
 			document := fmt.Sprintf(
@@ -461,7 +464,7 @@ func TestWriteBillingMigrationPreflightRejectsMalformedTenantWithoutPartialAudit
 			)
 			var output bytes.Buffer
 			err = writeBillingMigrationPreflight(encodingConfig.Codec, strings.NewReader(document), &output)
-			require.ErrorContains(t, err, "has invalid tenant")
+			require.ErrorContains(t, err, fmt.Sprintf("audit provider credit collisions: lease %s has invalid tenant:", invalidTenantLeaseUUID))
 			require.Empty(t, output.String())
 		})
 	}

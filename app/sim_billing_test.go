@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -131,43 +132,79 @@ func TestBillingSimulationCoverage(t *testing.T) {
 }
 
 func TestBillingSimulationResultDiagnostics(t *testing.T) {
-	simulationErr := errors.New("finalize block failed")
+	signalErr := errors.New("exited due to interrupt")
+	finalizeErr := errors.New("finalize block failed")
 	for _, tc := range []struct {
 		name          string
 		stopEarly     bool
 		exportOnly    bool
 		simulationErr error
+		statistics    string
 		fundingOK     int
 		expectedError string
 	}{
 		{name: "stopped run prints statistics without asserting coverage", stopEarly: true},
 		{name: "stopped run honors explicit statistics export", stopEarly: true, exportOnly: true},
+		{name: "signal prints partial statistics and preserves error", stopEarly: true, simulationErr: signalErr},
+		{name: "signal honors explicit statistics export", stopEarly: true, exportOnly: true, simulationErr: signalErr},
 		{name: "completed run prints statistics before coverage failure", expectedError: "no credit deposits after 50 attempts"},
 		{name: "completed run honors explicit statistics export", exportOnly: true, expectedError: "no credit deposits after 50 attempts"},
 		{name: "completed run with coverage prints statistics once", fundingOK: 1},
-		{name: "simulator error without statistics is preserved", stopEarly: true, simulationErr: simulationErr},
+		{name: "simulator error without statistics is preserved", stopEarly: true, simulationErr: finalizeErr, statistics: "missing"},
+		{name: "malformed statistics do not mask simulator error", stopEarly: true, simulationErr: finalizeErr, statistics: "malformed"},
+		{name: "explicit old export is not printed after simulator error", stopEarly: true, exportOnly: true, simulationErr: finalizeErr, statistics: "stale"},
+		{name: "missing statistics without simulator error fail", statistics: "missing", expectedError: "read simulation delivery statistics"},
+		{name: "malformed statistics without simulator error fail", statistics: "malformed", expectedError: "decode simulation delivery statistics"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			config := simulationtypes.Config{
-				Seed:            1729,
-				ExportStatsPath: filepath.Join(t.TempDir(), "simulation-stats.json"),
+			// Exercise the actual stdout selection, rather than supplying the
+			// expected writer ourselves. No subtest runs in parallel.
+			output, err := os.CreateTemp(t.TempDir(), "simulation-stdout-*.log")
+			require.NoError(t, err)
+			originalStdout := os.Stdout
+			os.Stdout = output
+			t.Cleanup(func() {
+				os.Stdout = originalStdout
+				require.NoError(t, output.Close())
+			})
+
+			originalConfig := simulationtypes.Config{Seed: 1729, NumBlocks: 100}
+			if tc.exportOnly {
+				originalConfig.ExportStatsPath = filepath.Join(t.TempDir(), "requested-statistics.json")
 			}
+			config, writer := simulationStatisticsOutput(t, originalConfig)
+			if tc.exportOnly {
+				require.Equal(t, originalConfig.ExportStatsPath, config.ExportStatsPath)
+				require.Nil(t, writer)
+			} else {
+				require.Same(t, output, writer, "default statistics must use the actual stdout writer")
+				require.NotEmpty(t, config.ExportStatsPath)
+				require.NoFileExists(t, config.ExportStatsPath)
+				nextConfig, _ := simulationStatisticsOutput(t, originalConfig)
+				require.NotEqual(t, config.ExportStatsPath, nextConfig.ExportStatsPath, "each run needs a fresh statistics path")
+			}
+			preservedConfig := config
+			preservedConfig.ExportStatsPath = originalConfig.ExportStatsPath
+			require.Equal(t, originalConfig, preservedConfig, "statistics setup must preserve all other simulation flags")
+
 			stats := simulation.EventStats{
 				billingtypes.ModuleName: {
 					sdk.MsgTypeURL(&billingtypes.MsgFundCredit{}): {"ok": tc.fundingOK, "failure": 50},
 				},
 			}
-			// Match the SDK: stopped runs export their partial statistics, while
-			// a genuine error may return before creating the statistics file.
-			if tc.simulationErr == nil {
+			// The SDK exports partial statistics on signals and normal early
+			// stops, but a FinalizeBlock error can return without creating them.
+			switch tc.statistics {
+			case "missing":
+			case "malformed":
+				require.NoError(t, os.WriteFile(config.ExportStatsPath, []byte("invalid JSON"), 0o600))
+			case "stale":
+				oldStats := simulation.EventStats{"prior-run": {"old-operation": {"ok": 999}}}
+				oldStats.ExportJSON(config.ExportStatsPath)
+			default:
 				stats.ExportJSON(config.ExportStatsPath)
 			}
-			var output bytes.Buffer
-			var writer io.Writer = &output
-			if tc.exportOnly {
-				writer = nil
-			}
-			err := checkBillingSimulationResult(writer, config, tc.stopEarly, tc.simulationErr)
+			err = checkBillingSimulationResult(writer, config, tc.stopEarly, tc.simulationErr)
 			switch {
 			case tc.simulationErr != nil:
 				require.Same(t, tc.simulationErr, err)
@@ -176,12 +213,14 @@ func TestBillingSimulationResultDiagnostics(t *testing.T) {
 			default:
 				require.NoError(t, err)
 			}
-			if tc.exportOnly || tc.simulationErr != nil {
-				require.Empty(t, output.String())
+			printedJSON, err := os.ReadFile(output.Name())
+			require.NoError(t, err)
+			if tc.exportOnly || tc.statistics != "" {
+				require.Empty(t, string(printedJSON))
 				return
 			}
 
-			decoder := json.NewDecoder(&output)
+			decoder := json.NewDecoder(bytes.NewReader(printedJSON))
 			var printed simulation.EventStats
 			require.NoError(t, decoder.Decode(&printed))
 			require.Equal(t, stats, printed)

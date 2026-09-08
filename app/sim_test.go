@@ -563,11 +563,7 @@ func simulateWithBillingCoverage(
 	config simulationtypes.Config,
 ) (bool, simulationtypes.Params, error) {
 	tb.Helper()
-	var statsOutput io.Writer
-	if config.ExportStatsPath == "" {
-		config.ExportStatsPath = filepath.Join(tb.TempDir(), "simulation-stats.json")
-		statsOutput = os.Stdout
-	}
+	config, statsOutput := simulationStatisticsOutput(tb, config)
 	stopEarly, params, err := simulation.SimulateFromSeed(
 		tb, os.Stdout, bApp.BaseApp, appStateFn, simulationtypes.RandomAccounts,
 		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
@@ -576,19 +572,36 @@ func simulateWithBillingCoverage(
 	return stopEarly, params, checkBillingSimulationResult(statsOutput, config, stopEarly, err)
 }
 
+func simulationStatisticsOutput(tb testing.TB, config simulationtypes.Config) (simulationtypes.Config, io.Writer) {
+	tb.Helper()
+	var statsOutput io.Writer
+	if config.ExportStatsPath == "" {
+		config.ExportStatsPath = filepath.Join(tb.TempDir(), "simulation-stats.json")
+		statsOutput = os.Stdout
+	}
+	return config, statsOutput
+}
+
 func checkBillingSimulationResult(output io.Writer, config simulationtypes.Config, stopEarly bool, simulationErr error) error {
-	// A real simulator error can return before statistics are exported. Preserve
-	// that error instead of masking it with a missing-file diagnostic.
-	if simulationErr != nil {
+	// The default stdout path is fresh for each run, so available statistics
+	// belong to this run even when a signal also returned an error. An explicit
+	// export may still contain a prior run's file; never read it after an error.
+	if simulationErr != nil && output == nil {
 		return simulationErr
 	}
 
 	statsJSON, err := os.ReadFile(config.ExportStatsPath)
 	if err != nil {
+		if simulationErr != nil {
+			return simulationErr
+		}
 		return fmt.Errorf("read simulation delivery statistics: %w", err)
 	}
 	var stats simulation.EventStats
 	if err := json.Unmarshal(statsJSON, &stats); err != nil {
+		if simulationErr != nil {
+			return simulationErr
+		}
 		return fmt.Errorf("decode simulation delivery statistics: %w", err)
 	}
 	if output != nil {
@@ -596,8 +609,8 @@ func checkBillingSimulationResult(output io.Writer, config simulationtypes.Confi
 	}
 	// The SDK exports statistics even when a run stops early. Keep those
 	// diagnostics, but only require billing coverage from completed runs.
-	if stopEarly {
-		return nil
+	if simulationErr != nil || stopEarly {
+		return simulationErr
 	}
 	if err := billingSimulationCoverageError(stats); err != nil {
 		return fmt.Errorf("billing coverage at seed %d: %w", config.Seed, err)
