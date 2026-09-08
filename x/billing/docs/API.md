@@ -90,6 +90,9 @@ manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1:web 019
 - Credit must cover `min_lease_duration` seconds for each denom used by the SKUs
 - All SKUs must be from the same provider
 - All SKUs must be active
+- The provider must be active and its payout address must be permitted by the
+  bank module; a historical blocked payout must be repaired before new leases
+  can be created
 - Cannot exceed `max_items_per_lease`
 - Cannot exceed `max_leases_per_tenant`
 - Cannot exceed `max_pending_leases_per_tenant`
@@ -139,6 +142,10 @@ manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-6789-7abc-
 ```
 
 **Authorization:** Only module authority or addresses in `allowed_list` param.
+
+The same admission checks as `create-lease` apply, including rejecting a
+provider whose stored payout address is blocked by the bank module. Rejection
+occurs before allocating a lease UUID or reserving tenant credit.
 
 ---
 

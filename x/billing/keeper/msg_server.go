@@ -262,6 +262,15 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 	if !provider.Active {
 		return nil, types.ErrProviderNotActive.Wrapf("provider_uuid %s is not active", providerUUID)
 	}
+	// Historical providers may predate SKU's payout-policy validation. Do not
+	// reserve more tenant credit for a provider that cannot receive settlement.
+	payoutAddress, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
+	if err != nil {
+		return nil, types.ErrInternalCorruption.Wrapf("provider %s has invalid payout address: %v", providerUUID, err)
+	}
+	if ms.k.bankKeeper.BlockedAddr(payoutAddress) {
+		return nil, types.ErrInvalidCreditOperation.Wrapf("provider payout address %s is blocked from receiving funds", payoutAddress)
+	}
 
 	// 5. Calculate reservation and verify tenant has enough AVAILABLE credit
 	// Available credit = balance - already reserved amounts

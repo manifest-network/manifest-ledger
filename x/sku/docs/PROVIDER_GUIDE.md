@@ -71,7 +71,12 @@ Before creating a provider, gather the following information:
 The payout address must be allowed by the bank module. Protected module accounts,
 including the distribution account, are rejected on provider creation and update.
 An authorized administrator can repair an existing blocked payout by updating it
-to an allowed address. Billing also checks the destination when settling funds.
+to an allowed address while preserving the provider's current `active` value.
+An inactive provider can be repaired with `false` even during an unfinished
+deactivation cascade. Billing also checks the destination when settling funds.
+Historical providers remain importable, so operators must perform the
+[provider payout preflight](../../billing/docs/MIGRATION.md#provider-payout-policy-preflight)
+before upgrading.
 
 API URLs require a nonempty hostname and HTTPS. An explicit port must be between
 1 and 65535; credentials and empty explicit ports are rejected. IPv6 literals use

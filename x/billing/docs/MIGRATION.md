@@ -1,6 +1,7 @@
 # Billing Module Migration Guide
 
-This guide is for authority members responsible for migrating existing off-chain leases to the on-chain billing system.
+This guide covers module upgrade preflights and migrating existing off-chain
+leases to the on-chain billing system.
 
 ## Overview
 
@@ -10,6 +11,56 @@ The migration process involves:
 3. Configuring billing parameters (limits, timeouts)
 4. Funding tenant credit accounts
 5. Creating leases on behalf of tenants using `MsgCreateLeaseForTenant`
+
+### Provider payout policy preflight
+
+Before upgrading to a binary that enforces the bank's blocked-recipient policy
+on billing payouts, run the candidate binary's offline preflight against a
+complete height-labelled export. It audits every stored provider, including
+inactive providers, against that binary's complete blocked-address set using
+decoded SDK account-address bytes:
+
+```bash
+manifestd genesis preflight-billing-v4 exported-genesis.json \
+  > billing-v4-preflight.json
+jq '.blocked_providers' billing-v4-preflight.json
+jq -e '.blocked_provider_count == 0' billing-v4-preflight.json
+```
+
+The command succeeds when it finds blocked payouts so that it can report all
+of them. The final `jq -e` check is the separate required upgrade gate. Report
+schema version 2 adds `provider_count`, `blocked_provider_count`, and
+`blocked_providers` (an empty array when there are no findings). Each finding
+records `provider_uuid`, canonical `payout_address`, `active`, and sorted
+`active_lease_uuids` and `pending_lease_uuids`; findings are sorted by provider
+UUID. Lease lists describe the export's source states, not predicted settlement
+or post-migration expiration outcomes.
+
+An authorized SKU administrator must repair each blocked payout to an eligible
+account before the upgrade. Preserve the provider's other settings and current
+`active` value: `false` for an inactive provider, `true` for an active provider.
+Repair with `false` is valid during an unfinished deactivation cascade; changing
+it to `true` requires completing the cascade first. Repeat the audit against
+the final pre-upgrade export and retain the report with the export and candidate
+binary checksum.
+
+Genesis import and SKU's `state` invariant deliberately accept historical
+providers whose payout address is valid Bech32 even when the bank blocks that
+destination. This keeps historical state importable and repairable; neither
+`validate-genesis` nor a passing invariant proves payout eligibility. The
+offline preflight reports payout findings separately from its reservation
+migration predictions.
+
+After upgrade, nonzero settlement to a blocked payout is rejected without
+changing balances, accrual, or reservations. This affects specific-lease
+withdrawal and tenant closure; provider-wide withdrawal reports the affected
+UUIDs in `failed_lease_uuids`. Existing leases require an authorized payout
+repair before those transfers can succeed. Zero-transfer paths remain usable.
+Both lease-creation entry points also reject a provider with a blocked stored
+payout before reserving credit or allocating a lease UUID.
+If a blocked payout is discovered after the upgrade, repair it without changing
+the provider's activation state, then retry each failed lease explicitly. See
+the [payout troubleshooting steps](TROUBLESHOOTING.md#provider-payout-address-is-blocked-from-receiving-funds).
 
 ### Module consensus v2→v3
 
@@ -136,7 +187,7 @@ modern PENDING cohort at cutover; an intervening v2 settlement can consume that
 backing again.
 
 Run the candidate binary's offline preflight against a complete exported
-genesis. It reads the official billing and bank genesis types, uses the export's
+genesis. It reads the official billing, bank, and SKU genesis types, uses the export's
 `genesis_time` only as the planner's simulated timestamp, and writes
 deterministic JSON to standard output without opening or changing application
 state:
@@ -153,6 +204,8 @@ jq '.tenants[] | select(.has_planned_reservation_change)' \
   billing-v4-preflight.json
 jq '.tenants[] | select(.expiring_modern_pending_lease_uuids | length > 0)' \
   billing-v4-preflight.json
+jq '.blocked_providers' billing-v4-preflight.json
+jq -e '.blocked_provider_count == 0' billing-v4-preflight.json
 ```
 
 Archive the export, its committed app hash, the candidate binary checksum, and
@@ -171,8 +224,12 @@ leases.
 cutover planner and `consumable_v4` when the input is already in the new
 representation. Already-v4 input is never repaired: the command fails if its
 reservation aggregate is not fully bank-backed. It also fails closed on a
-missing or malformed billing/bank app state, mixed reservation formats,
+missing or malformed billing/bank/SKU app state, mixed reservation formats,
 duplicate decoded address identities, or any planner invariant failure.
+The provider payout audit rejects invalid or duplicate provider UUIDs and
+invalid payout addresses before emitting a report. Blocked payouts themselves
+are findings in a successful report and must be checked with the separate gate
+above.
 
 `denominations` records the source aggregate, repaired pre-cutover aggregate,
 planned post-cutover aggregate, pre/post opaque unattributed cohort allocation,
@@ -187,9 +244,10 @@ fields alone does not increment it. The two explicitly named PENDING counters
 and `expiring_modern_pending_lease_uuids` describe only tenant-wide PENDING
 expiration.
 
-This command previews billing reservation migration only. It does not run
-`ValidateWithBlockTime`, resolve provider/SKU references from `x/sku`, or
-certify that the document will pass full `InitGenesis`. Use `validate-genesis`
+This command previews billing reservation migration and audits blocked provider
+payouts. It does not run `ValidateWithBlockTime`, resolve lease provider/SKU
+references from `x/sku`, validate every SKU genesis constraint, or certify that
+the document will pass full `InitGenesis`. Use `validate-genesis`
 and an isolated start/import rehearsal for those separate checks. The planner
 timestamp affects the simulated, unreported `expired_at` transition but not
 cohort selection. This remains a snapshot report, not a promise about later

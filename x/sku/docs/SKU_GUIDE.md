@@ -271,8 +271,14 @@ manifestd tx sku create-sku $PROVIDER_UUID "Storage 100GB" 2 86400upwr --from my
 **Cause:** The provider has been deactivated.
 
 **Solution:**
-- Reactivate the provider using `update-provider` with `active=true`
-- Or use a different active provider
+
+- If the inactive provider still has active SKUs, have an authorized user finish
+  its deactivation cascade by repeating `deactivate-provider` until the response
+  reports `has_more=false`.
+- Once all of its SKUs are inactive, reactivate the provider using
+  `update-provider` with `active=true`, then reactivate desired existing SKUs
+  individually with `update-sku` or create new ones.
+- Or use a different active provider.
 
 ### "unauthorized"
 

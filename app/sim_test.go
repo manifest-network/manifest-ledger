@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -27,17 +28,20 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client/flags"
+	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/server"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	simulationtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/simulation"
 	simcli "github.com/cosmos/cosmos-sdk/x/simulation/client/cli"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
 	"github.com/manifest-network/manifest-ledger/app"
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
 const (
@@ -112,16 +116,11 @@ func BenchmarkSimulation(b *testing.B) {
 	require.Equal(b, app.AppName, bApp.Name())
 
 	// run randomized simulation
-	_, simParams, simErr := simulation.SimulateFromSeed(
+	_, simParams, simErr := simulateWithBillingCoverage(
 		b,
-		os.Stdout,
-		bApp.BaseApp,
-		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
-		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
-		app.BlockedAddresses(),
+		bApp,
+		simulationAppStateFn(bApp),
 		config,
-		bApp.AppCodec(),
 	)
 
 	// export state and simParams before the simulation error is checked
@@ -167,16 +166,11 @@ func TestFullAppSimulation(t *testing.T) {
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// run randomized simulation
-	stopEarly, simParams, simErr := simulation.SimulateFromSeed(
+	stopEarly, simParams, simErr := simulateWithBillingCoverage(
 		t,
-		os.Stdout,
-		bApp.BaseApp,
-		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
-		simulationtypes.RandomAccounts, // Replace with own random account function if using keys other than secp256k1
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
-		app.BlockedAddresses(),
+		bApp,
+		simulationAppStateFn(bApp),
 		config,
-		bApp.AppCodec(),
 	)
 
 	// export state and simParams before the simulation error is checked
@@ -224,16 +218,11 @@ func TestAppImportExport(t *testing.T) {
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// Run randomized simulation
-	stopEarly, simParams, simErr := simulation.SimulateFromSeed(
+	stopEarly, simParams, simErr := simulateWithBillingCoverage(
 		t,
-		os.Stdout,
-		bApp.BaseApp,
-		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
-		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
-		app.BlockedAddresses(),
+		bApp,
+		simulationAppStateFn(bApp),
 		config,
-		bApp.AppCodec(),
 	)
 
 	// export state and simParams before the simulation error is checked
@@ -347,7 +336,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		simulationChainID     string
 		simulationGenesisTime time.Time
 	)
-	newGenesisState := simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis())
+	newGenesisState := simulationAppStateFn(bApp)
 	recordGenesisState := func(
 		r *rand.Rand,
 		accounts []simulationtypes.Account,
@@ -361,16 +350,11 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	}
 
 	// Run randomized simulation
-	stopEarly, simParams, simErr := simulation.SimulateFromSeed(
+	stopEarly, simParams, simErr := simulateWithBillingCoverage(
 		t,
-		os.Stdout,
-		bApp.BaseApp,
+		bApp,
 		recordGenesisState,
-		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
-		app.BlockedAddresses(),
 		config,
-		bApp.AppCodec(),
 	)
 
 	// export state and simParams before the simulation error is checked
@@ -415,16 +399,11 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		return slices.Clone(exported.AppState), slices.Clone(simulationAccounts), simulationChainID, simulationGenesisTime
 	}
 
-	stopEarlyAfterImport, _, err := simulation.SimulateFromSeed(
+	stopEarlyAfterImport, _, err := simulateWithBillingCoverage(
 		t,
-		os.Stdout,
-		newApp.BaseApp,
+		newApp,
 		importGenesisState,
-		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(newApp, newApp.AppCodec(), config),
-		app.BlockedAddresses(),
 		config,
-		newApp.AppCodec(),
 	)
 	require.NoError(t, err)
 	require.False(t, stopEarlyAfterImport, "post-import simulation stopped before all configured blocks completed")
@@ -512,20 +491,11 @@ func TestAppStateDeterminism(t *testing.T) {
 				config.Seed, i+1, numSeeds, j+1, numTimesToRunPerSeed,
 			)
 
-			stopEarly, _, err := simulation.SimulateFromSeed(
+			stopEarly, _, err := simulateWithBillingCoverage(
 				t,
-				os.Stdout,
-				bApp.BaseApp,
-				simtestutil.AppStateFn(
-					bApp.AppCodec(),
-					bApp.SimulationManager(),
-					bApp.DefaultGenesis(),
-				),
-				simulationtypes.RandomAccounts,
-				simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
-				app.BlockedAddresses(),
+				bApp,
+				simulationAppStateFn(bApp),
 				config,
-				bApp.AppCodec(),
 			)
 			require.NoError(t, err)
 			require.False(t, stopEarly, "determinism replay stopped before all configured blocks completed")
@@ -546,6 +516,96 @@ func TestAppStateDeterminism(t *testing.T) {
 		}
 	}
 	markSimulationComplete()
+}
+
+// simulationAppStateFn preserves the SDK's randomized genesis except for the
+// explicit send policy needed by SKU prices and billing deposits. A random bank
+// deny otherwise turns every billing operation into a no-op for the entire run.
+func simulationAppStateFn(bApp *app.ManifestApp) simulationtypes.AppStateFn {
+	return simtestutil.AppStateFnWithExtendedCb(
+		bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis(),
+		func(state map[string]json.RawMessage) {
+			enableSimulationBillingTransfers(bApp.AppCodec(), state)
+		},
+	)
+}
+
+func enableSimulationBillingTransfers(cdc codec.JSONCodec, state map[string]json.RawMessage) {
+	var bankGenesis banktypes.GenesisState
+	cdc.MustUnmarshalJSON(state[banktypes.ModuleName], &bankGenesis)
+
+	// SKU simulation prices and billing funding both use DefaultBondDenom.
+	// Set its override explicitly: DefaultSendEnabled does not override a
+	// denomination-specific deny. Leave all other randomized bank policy intact.
+	found := false
+	for i := range bankGenesis.SendEnabled {
+		if bankGenesis.SendEnabled[i].Denom == sdk.DefaultBondDenom {
+			bankGenesis.SendEnabled[i].Enabled = true
+			found = true
+		}
+	}
+	if !found {
+		bankGenesis.SendEnabled = append(bankGenesis.SendEnabled, banktypes.SendEnabled{
+			Denom: sdk.DefaultBondDenom, Enabled: true,
+		})
+	}
+	state[banktypes.ModuleName] = cdc.MustMarshalJSON(&bankGenesis)
+}
+
+// simulateWithBillingCoverage checks actual delivery statistics after every
+// run, including imported-state runs and determinism replays. Invariants over
+// empty billing state must not make a starved simulation look healthy.
+func simulateWithBillingCoverage(
+	tb testing.TB,
+	bApp *app.ManifestApp,
+	appStateFn simulationtypes.AppStateFn,
+	config simulationtypes.Config,
+) (bool, simulationtypes.Params, error) {
+	tb.Helper()
+	printStats := config.ExportStatsPath == ""
+	if printStats {
+		config.ExportStatsPath = filepath.Join(tb.TempDir(), "simulation-stats.json")
+	}
+	stopEarly, params, err := simulation.SimulateFromSeed(
+		tb, os.Stdout, bApp.BaseApp, appStateFn, simulationtypes.RandomAccounts,
+		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
+		app.BlockedAddresses(), config, bApp.AppCodec(),
+	)
+	if err != nil || stopEarly {
+		return stopEarly, params, err
+	}
+
+	statsJSON, err := os.ReadFile(config.ExportStatsPath)
+	if err != nil {
+		return stopEarly, params, fmt.Errorf("read simulation delivery statistics: %w", err)
+	}
+	var stats simulation.EventStats
+	if err := json.Unmarshal(statsJSON, &stats); err != nil {
+		return stopEarly, params, fmt.Errorf("decode simulation delivery statistics: %w", err)
+	}
+	if printStats {
+		stats.Print(os.Stdout)
+	}
+	if err := billingSimulationCoverageError(stats); err != nil {
+		return stopEarly, params, fmt.Errorf("billing coverage at seed %d: %w", config.Seed, err)
+	}
+	return stopEarly, params, nil
+}
+
+func billingSimulationCoverageError(stats simulation.EventStats) error {
+	// Check actual selections, not configured block counts: small smoke runs and
+	// intentionally disabled operation weights need not exercise billing. Twenty
+	// funding/creation selections give normal runs multiple chances to progress.
+	const minimumAttempts = 20
+	funding := stats[billingtypes.ModuleName][sdk.MsgTypeURL(&billingtypes.MsgFundCredit{})]
+	if funding["ok"] == 0 && funding["failure"] >= minimumAttempts {
+		return fmt.Errorf("billing simulation delivered no credit deposits after %d attempts", funding["failure"])
+	}
+	creation := stats[billingtypes.ModuleName][sdk.MsgTypeURL(&billingtypes.MsgCreateLease{})]
+	if funding["ok"] > 0 && creation["ok"] == 0 && creation["failure"] >= minimumAttempts {
+		return fmt.Errorf("billing simulation delivered no lease creations after %d attempts despite successful funding", creation["failure"])
+	}
+	return nil
 }
 
 // requireSimulationCompletion turns the SDK simulator's zero-validator Skip

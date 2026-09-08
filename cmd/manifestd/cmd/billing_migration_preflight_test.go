@@ -2,17 +2,26 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"os"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 
+	"github.com/manifest-network/manifest-ledger/app"
 	"github.com/manifest-network/manifest-ledger/app/params"
 	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 func TestWriteBillingMigrationPreflightHasStableJSON(t *testing.T) {
@@ -24,22 +33,25 @@ func TestWriteBillingMigrationPreflightHasStableJSON(t *testing.T) {
 
 	documents := []string{
 		fmt.Sprintf(
-			`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":%s,"bank":%s}}`,
+			`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":%s,"bank":%s,"sku":{}}}`,
 			billingJSON,
 			bankJSON,
 		),
 		fmt.Sprintf(
-			`{"app_state":{"bank":%s,"billing":%s},"genesis_time":"2030-01-02T03:04:05.000Z","initial_height":4321,"chain_id":"manifest-test"}`,
+			`{"app_state":{"bank":%s,"billing":%s,"sku":{}},"genesis_time":"2030-01-02T03:04:05.000Z","initial_height":4321,"chain_id":"manifest-test"}`,
 			bankJSON,
 			billingJSON,
 		),
 	}
 	const expected = `{
-  "schema_version": 1,
+  "schema_version": 2,
   "source_chain_id": "manifest-test",
   "source_initial_height": 4321,
   "input_genesis_time": "2030-01-02T03:04:05Z",
   "billing_state": "consumable_v4",
+  "provider_count": 0,
+  "blocked_provider_count": 0,
+  "blocked_providers": [],
   "reservation_change_tenant_count": 0,
   "expiring_modern_pending_tenant_count": 0,
   "expiring_modern_pending_lease_count": 0,
@@ -101,7 +113,7 @@ func TestWriteBillingMigrationPreflightHasStableReservationChangeJSON(t *testing
 	bankJSON, err := encodingConfig.Codec.MarshalJSON(bankGenesis)
 	require.NoError(t, err)
 	document := fmt.Sprintf(
-		`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":%s,"bank":%s}}`,
+		`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":%s,"bank":%s,"sku":{}}}`,
 		billingJSON,
 		bankJSON,
 	)
@@ -113,11 +125,14 @@ func TestWriteBillingMigrationPreflightHasStableReservationChangeJSON(t *testing
 		&output,
 	))
 	expected := fmt.Sprintf(`{
-  "schema_version": 1,
+  "schema_version": 2,
   "source_chain_id": "manifest-test",
   "source_initial_height": 4321,
   "input_genesis_time": "2030-01-02T03:04:05Z",
   "billing_state": "pre_v4_aggregate",
+  "provider_count": 0,
+  "blocked_provider_count": 0,
+  "blocked_providers": [],
   "reservation_change_tenant_count": 1,
   "expiring_modern_pending_tenant_count": 0,
   "expiring_modern_pending_lease_count": 0,
@@ -187,6 +202,21 @@ func TestWriteBillingMigrationPreflightFailsClosedOnMissingModules(t *testing.T)
 			contains: `missing "bank" module`,
 		},
 		{
+			name:     "missing sku",
+			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":{},"bank":{}}}`,
+			contains: `missing "sku" module`,
+		},
+		{
+			name:     "null sku",
+			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":{},"bank":{},"sku":null}}`,
+			contains: `missing "sku" module`,
+		},
+		{
+			name:     "malformed sku",
+			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":{},"bank":{},"sku":{"providers":"invalid"}}}`,
+			contains: "decode sku genesis for billing migration preflight",
+		},
+		{
 			name:     "missing chain ID",
 			document: `{"genesis_time":"2030-01-02T03:04:05Z","app_state":{}}`,
 			contains: "missing chain_id",
@@ -205,6 +235,140 @@ func TestWriteBillingMigrationPreflightFailsClosedOnMissingModules(t *testing.T)
 				bytes.NewBufferString(tt.document),
 				&output,
 			)
+			require.ErrorContains(t, err, tt.contains)
+			require.Empty(t, output.String())
+		})
+	}
+}
+
+func TestAuditProviderPayoutsUsesBankPolicyAndSourceLeaseStates(t *testing.T) {
+	const (
+		distributionUUID = "01912345-6789-7abc-8def-0123456789b0"
+		governanceUUID   = "01912345-6789-7abc-8def-0123456789b1"
+		allowedUUID      = "01912345-6789-7abc-8def-0123456789b2"
+		leaseUUID1       = "01912345-6789-7abc-8def-0123456789c0"
+		leaseUUID2       = "01912345-6789-7abc-8def-0123456789c1"
+		leaseUUID3       = "01912345-6789-7abc-8def-0123456789c2"
+	)
+	distribution := authtypes.NewModuleAddress(distrtypes.ModuleName).String()
+	governance := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	allowed := sdk.AccAddress(bytes.Repeat([]byte{1}, 20)).String()
+	policy := app.BlockedAddresses()
+	require.True(t, policy[distribution])
+	// The audit follows the application's current map, including governance;
+	// it must not substitute an intended or hand-maintained allowlist.
+	require.True(t, policy[governance])
+	require.False(t, policy[allowed])
+	providers := []skutypes.Provider{
+		{Uuid: allowedUUID, PayoutAddress: allowed, Active: true},
+		{Uuid: governanceUUID, PayoutAddress: governance, Active: false},
+		{Uuid: distributionUUID, PayoutAddress: strings.ToUpper(distribution), Active: true, ApiUrl: "https://:443"},
+	}
+	leases := []billingtypes.Lease{
+		{Uuid: leaseUUID3, ProviderUuid: distributionUUID, State: billingtypes.LEASE_STATE_ACTIVE},
+		{Uuid: leaseUUID2, ProviderUuid: distributionUUID, State: billingtypes.LEASE_STATE_PENDING},
+		{Uuid: leaseUUID1, ProviderUuid: distributionUUID, State: billingtypes.LEASE_STATE_ACTIVE},
+		{Uuid: "closed", ProviderUuid: distributionUUID, State: billingtypes.LEASE_STATE_CLOSED},
+		{Uuid: "expired", ProviderUuid: distributionUUID, State: billingtypes.LEASE_STATE_EXPIRED},
+		{Uuid: "allowed", ProviderUuid: allowedUUID, State: billingtypes.LEASE_STATE_ACTIVE},
+	}
+	expected := []blockedProviderPayoutPreflight{
+		{
+			ProviderUUID: distributionUUID, PayoutAddress: distribution, Active: true,
+			ActiveLeaseUUIDs: []string{leaseUUID1, leaseUUID3}, PendingLeaseUUIDs: []string{leaseUUID2},
+		},
+		{
+			ProviderUUID: governanceUUID, PayoutAddress: governance, Active: false,
+			ActiveLeaseUUIDs: []string{}, PendingLeaseUUIDs: []string{},
+		},
+	}
+	originalProviders := slices.Clone(providers)
+	originalLeases := slices.Clone(leases)
+	actual, err := auditProviderPayouts(providers, leases)
+	require.NoError(t, err)
+	require.Equal(t, expected, actual)
+	require.Equal(t, originalProviders, providers)
+	require.Equal(t, originalLeases, leases)
+	slices.Reverse(providers)
+	slices.Reverse(leases)
+	actual, err = auditProviderPayouts(providers, leases)
+	require.NoError(t, err)
+	require.Equal(t, expected, actual)
+}
+
+func TestWriteBillingMigrationPreflightReportsBlockedPayoutWithoutChangingExport(t *testing.T) {
+	encodingConfig := params.MakeEncodingConfig()
+	billingJSON, err := encodingConfig.Codec.MarshalJSON(billingtypes.DefaultGenesis())
+	require.NoError(t, err)
+	bankJSON, err := encodingConfig.Codec.MarshalJSON(banktypes.DefaultGenesisState())
+	require.NoError(t, err)
+	distribution := authtypes.NewModuleAddress(distrtypes.ModuleName).String()
+	skuGenesis := skutypes.DefaultGenesis()
+	skuGenesis.Providers = []skutypes.Provider{{
+		Uuid: "01912345-6789-7abc-8def-0123456789b0", Address: sdk.AccAddress(bytes.Repeat([]byte{1}, 20)).String(),
+		PayoutAddress: strings.ToUpper(distribution), Active: false, ApiUrl: "https://:443",
+	}}
+	skuGenesis.ProviderSequence = 1
+	// Both blocked payouts and historical URL metadata remain importable.
+	require.NoError(t, skuGenesis.Validate())
+	skuJSON, err := encodingConfig.Codec.MarshalJSON(skuGenesis)
+	require.NoError(t, err)
+	document := fmt.Sprintf(
+		`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":%s,"bank":%s,"sku":%s}}`,
+		billingJSON, bankJSON, skuJSON,
+	)
+	exportRoot, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, exportRoot.Close()) })
+	require.NoError(t, exportRoot.WriteFile("export.json", []byte(document), 0o600))
+	input, err := exportRoot.Open("export.json")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, input.Close()) })
+	var output bytes.Buffer
+	require.NoError(t, writeBillingMigrationPreflight(encodingConfig.Codec, input, &output))
+	var report billingMigrationPreflightOutput
+	require.NoError(t, json.Unmarshal(output.Bytes(), &report))
+	require.EqualValues(t, 2, report.SchemaVersion)
+	require.EqualValues(t, 1, report.ProviderCount)
+	require.EqualValues(t, 1, report.BlockedProviderCount)
+	require.Equal(t, []blockedProviderPayoutPreflight{{
+		ProviderUUID: skuGenesis.Providers[0].Uuid, PayoutAddress: distribution, Active: false,
+		ActiveLeaseUUIDs: []string{}, PendingLeaseUUIDs: []string{},
+	}}, report.BlockedProviders)
+	unchanged, err := exportRoot.ReadFile("export.json")
+	require.NoError(t, err)
+	require.Equal(t, document, string(unchanged))
+}
+
+func TestWriteBillingMigrationPreflightRejectsAmbiguousPayoutAudit(t *testing.T) {
+	encodingConfig := params.MakeEncodingConfig()
+	provider := skutypes.Provider{
+		Uuid: "01912345-6789-7abc-8def-0123456789b0", PayoutAddress: authtypes.NewModuleAddress(distrtypes.ModuleName).String(),
+	}
+	tests := []struct {
+		name      string
+		providers []skutypes.Provider
+		contains  string
+	}{
+		{name: "duplicate UUID", providers: []skutypes.Provider{provider, provider}, contains: "duplicate provider UUID"},
+		{
+			name: "uppercase UUID", providers: []skutypes.Provider{{Uuid: strings.ToUpper(provider.Uuid), PayoutAddress: provider.PayoutAddress}},
+			contains: "invalid provider UUID",
+		},
+		{
+			name: "invalid payout", providers: []skutypes.Provider{provider, {Uuid: "01912345-6789-7abc-8def-0123456789b1", PayoutAddress: "invalid"}},
+			contains: "invalid payout address",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			skuJSON, err := encodingConfig.Codec.MarshalJSON(&skutypes.GenesisState{Providers: tt.providers})
+			require.NoError(t, err)
+			document := fmt.Sprintf(
+				`{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":{},"bank":{},"sku":%s}}`, skuJSON,
+			)
+			var output bytes.Buffer
+			err = writeBillingMigrationPreflight(encodingConfig.Codec, strings.NewReader(document), &output)
 			require.ErrorContains(t, err, tt.contains)
 			require.Empty(t, output.String())
 		})

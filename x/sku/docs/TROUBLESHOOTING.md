@@ -24,10 +24,19 @@ This guide covers common errors and issues users may encounter when using the SK
    ```bash
    manifestd query sku provider [provider-uuid]
    ```
-2. If the provider is inactive, contact an authorized user (authority or allowed list member) to reactivate it:
+2. If the provider is inactive, contact an authorized user (authority or allowed
+   list member). If any of its SKUs are still active, first finish the
+   deactivation cascade by repeating the following command until the response
+   reports `has_more=false`:
+   ```bash
+   manifestd tx sku deactivate-provider [provider-uuid] --from [authorized-key]
+   ```
+3. After all of its SKUs are inactive, reactivate the provider:
    ```bash
    manifestd tx sku update-provider [provider-uuid] [address] [payout-address] true --from [authorized-key]
    ```
+   Existing SKUs remain inactive and require individual `update-sku` calls to
+   reactivate; new SKUs can now be created.
 
 ### "unauthorized"
 
@@ -186,7 +195,10 @@ distribution module account.
 
 **Solution**: Supply a permitted account address. To repair a historical blocked
 payout, have an authorized administrator run `update-provider` with the allowed
-replacement and all other provider fields to preserve.
+replacement and all other provider fields to preserve. Keep the current
+`active` value: use `false` for an inactive provider, including during an
+unfinished deactivation cascade, or `true` for an active provider. Repairing a
+payout does not require reactivation.
 
 ### "cannot reactivate provider: finish deactivating its SKUs first"
 
@@ -265,18 +277,25 @@ manifestd query sku provider [provider-uuid]
 manifestd query sku sku [sku-uuid]
 ```
 
-**Note**: If idempotent behavior is desired in your application logic, check the `active` field before calling deactivate.
+**Note**: If idempotent behavior is desired in your application logic, check the
+SKU's `active` field before deactivating it. For a provider, also check whether
+active SKUs remain; an inactive provider can still need another cascade call.
 
 ### Cannot create SKU for deactivated provider
 
 **Cause**: Attempting to create a SKU for a provider that is not active.
 
 **Solution**:
-1. Reactivate the provider first:
+1. If the inactive provider still has active SKUs, finish its deactivation
+   cascade. Repeat this command until the response reports `has_more=false`:
+   ```bash
+   manifestd tx sku deactivate-provider [provider-uuid] --from authority
+   ```
+2. Once all of its SKUs are inactive, reactivate the provider:
    ```bash
    manifestd tx sku update-provider [provider-uuid] [address] [payout-address] true --from authority
    ```
-2. Then create the SKU:
+3. Then create the SKU, or reactivate a desired existing SKU with `update-sku`:
    ```bash
    manifestd tx sku create-sku [provider-uuid] "SKU Name" 1 3600upwr --from authority
    ```

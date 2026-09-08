@@ -157,6 +157,16 @@ rejecting missing, stale, or mismatched rows. Collections owns secondary-index
 updates and commits them atomically with each primary record; the explicit
 invariant provides corruption detection beyond that normal-write guarantee.
 
+Genesis validation and the `state` invariant deliberately preserve historical
+providers whose payout is valid Bech32 but is blocked by the bank recipient
+policy. They validate the stored address format, not payment eligibility; the
+new message checks do not make those records unimportable. Billing rejects a
+nonzero settlement to a blocked payout, and an authorized administrator can
+repair it with `UpdateProvider` while preserving the provider's current
+activation state. Operators must complete the
+[provider payout preflight](../../billing/docs/MIGRATION.md#provider-payout-policy-preflight)
+before an upgrade; a successful import or invariant check is not a payout audit.
+
 ### Public Models Versus Stored Values
 
 The `Provider` and `Params` types in the data model are the public protobuf

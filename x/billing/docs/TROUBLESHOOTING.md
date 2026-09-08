@@ -359,11 +359,18 @@ billing rejects this configuration.
    unchanged, and continues with other leases.
 
 **Solution**: Update the provider to use a payout account distinct from every
-tenant-derived credit address, then retry the affected lease explicitly:
+tenant-derived credit address, preserving its current activation state, then
+retry the affected lease explicitly:
 ```bash
-manifestd tx sku update-provider [provider-uuid] [provider-address] [new-payout-address] true --from [authorized-key]
+manifestd query sku provider [provider-uuid]
+manifestd tx sku update-provider [provider-uuid] [provider-address] [new-payout-address] [current-active] --from [authorized-key]
 manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 ```
+
+Replace `[current-active]` with `false` if the provider is inactive or `true` if
+it is active, and preserve its other settings. An inactive provider's payout
+can be repaired with `false` even during a partial deactivation cascade;
+reactivation is a separate action and requires finishing that cascade first.
 
 ### Provider payout address is blocked from receiving funds
 
@@ -371,7 +378,9 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 addresses blocked by the bank module, including protected module accounts.
 New provider create/update messages reject those addresses, but a provider
 stored by an older binary may still need repair. The error identifies the
-blocked payout address.
+blocked payout address. Both `create-lease` and `create-lease-for-tenant` reject
+new leases for such a provider before reserving credit or allocating a lease
+UUID.
 
 **What happens**:
 1. A specific-lease withdrawal or `CloseLease` batch fails atomically; accrued
@@ -393,6 +402,14 @@ lease UUID explicitly. Use `query sku provider [provider-uuid]` to inspect the
 current record and `tx sku update-provider --help` for the update syntax. No
 lease recreation or accrual reset is needed. A provider's payout address is
 shared by its leases, so repair it before retrying the remaining pages.
+Preserve the queried `active` value: `false` repairs an inactive provider
+without reactivating it, including while a deactivation cascade is unfinished.
+Using `true` in that case would reject the repair until the cascade completes.
+
+Genesis import deliberately retains historical providers with valid Bech32
+payout addresses even if the candidate binary's bank policy blocks those
+destinations. Import success does not prove that their leases can settle.
+Operators must [audit and repair provider payouts before the upgrade](MIGRATION.md#provider-payout-policy-preflight).
 
 ### Lease not included in provider-wide withdraw results
 
@@ -458,11 +475,19 @@ manifestd tx billing withdraw [lease-uuid] --from [key]
 manifestd tx billing withdraw --provider [provider-uuid] --from [key]
 ```
 
-### "key (pagination cursor) is only valid in provider-wide mode"
+### "--key and --limit require --provider and cannot be used with lease UUIDs"
 
-**Cause**: `--key` was passed together with positional lease UUIDs. The cursor is only meaningful in provider-wide mode.
+**Cause**: The CLI was given `--key` or `--limit` together with positional lease
+UUIDs. Both flags are restricted to provider-wide mode, including explicitly
+supplied empty `--key` or zero `--limit` values.
 
-**Solution**: Drop `--key`, or drop the lease UUIDs and use provider-wide mode.
+**Solution**: Drop both flags, or drop the lease UUIDs and use `--provider`.
+
+Clients submitting `MsgWithdraw` directly have a distinct compatibility
+contract: a nonempty `key` with `lease_uuids` is rejected by `ValidateBasic` with
+`key (pagination cursor) is only valid in provider-wide mode`; `limit` is
+accepted and ignored in specific-lease mode. The explicit UUID list remains
+bounded to 100 leases. This server behavior is unchanged by the stricter CLI.
 
 ### "key length N exceeds maximum 64"
 

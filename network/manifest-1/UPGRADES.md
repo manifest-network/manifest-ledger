@@ -221,7 +221,7 @@ Before the upgrade:
 - Take and verify a recoverable, height-labelled snapshot before the halt. Record
   the committed height and app hash from more than one validator.
 - Run the candidate binary's deterministic offline
-  [billing migration preflight](../../x/billing/docs/MIGRATION.md), then archive
+  [billing migration and provider payout preflight](../../x/billing/docs/MIGRATION.md), then archive
   the height-labelled export and report together:
 
   ```bash
@@ -231,9 +231,14 @@ Before the upgrade:
     billing-v4-preflight.json
   jq '.tenants[] | select(.expiring_modern_pending_lease_uuids | length > 0)' \
     billing-v4-preflight.json
+  jq '.blocked_providers' billing-v4-preflight.json
+  jq -e '.blocked_provider_count == 0' billing-v4-preflight.json
   ```
 
-  The command uses the same planner as the production migration. Verify its
+  The complete export must include billing, bank, and SKU app state. The
+  command uses the same reservation planner as the production migration and
+  audits provider payouts against the candidate binary's actual blocked-address
+  set. Verify its
   `source_chain_id` and `source_initial_height` against the archived export and
   recorded snapshot: the initial height is normally the committed export height
   plus one (or zero for a zero-height export). `input_genesis_time` is the
@@ -253,10 +258,25 @@ Before the upgrade:
   denomination is short, all modern PENDING leases for that tenant expire
   atomically at the upgrade block. Record the exact sorted lease UUID cohorts so
   clients can be notified. `validate-genesis` cannot perform the bank
-  comparison. Conversely, this reservation preflight does not run block-time or
+  comparison. Conversely, this preflight does not run block-time or full
   cross-module SKU-reference validation and is not a full InitGenesis check.
-- Rerun the preflight against the final pre-upgrade export. Funding, new leases,
-  and settlement after an earlier snapshot can change the result.
+- Require `blocked_provider_count == 0` before the upgrade. The preflight command
+  returns success even when its report contains blocked payouts; the `jq -e`
+  check above is the required gate. Schema version 2 lists affected providers,
+  including inactive ones, in `blocked_providers` with their payout address,
+  current `active` flag, and sorted `active_lease_uuids` and
+  `pending_lease_uuids` from the export's source state. An authorized SKU
+  administrator must repair each payout while preserving the provider's
+  activation state: use `false` for inactive providers, even during a partial
+  deactivation cascade, or `true` for active providers. Historical blocked
+  payouts deliberately remain accepted by genesis import and the SKU state
+  invariant. After upgrade they prevent new lease creation and nonzero
+  settlement, including tenant closure, until repaired; a passing import is
+  not a substitute for this audit.
+- Rerun the preflight and require zero blocked providers against the final
+  pre-upgrade export. Funding, new leases, settlement, and provider updates
+  after an earlier snapshot can change the result. Archive the final export,
+  report, app hash, and candidate binary checksum together.
 - Rehearse the exact source binary, candidate binary, and state snapshot on dev
   or testnet. Include upgrade, module-version checks, representative billing/SKU
   lifecycle tests, load tests, export, `validate-genesis`, and import/re-export.

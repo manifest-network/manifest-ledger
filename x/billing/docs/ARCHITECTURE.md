@@ -842,7 +842,13 @@ credit, while sending to a protected module account could bypass that module's
 accounting. The bank keeper's `SendCoins` primitive does not enforce the blocked
 recipient policy itself, so billing checks it explicitly. Historical providers
 are checked at settlement even if their payout address predates `x/sku`'s
-message validation.
+message validation. Both `CreateLease` and `CreateLeaseForTenant` also reject a
+provider whose stored payout is blocked, before UUID allocation, reservations,
+or other lease-creation writes. This prevents new leases from entering a
+configuration that requires operator repair to settle. Historical state remains
+importable; operators must run the
+[provider payout preflight](MIGRATION.md#provider-payout-policy-preflight)
+before upgrading.
 
 Specific-lease withdraw and `CloseLease` wrap the whole requested batch in one
 cached context, so a rejected transfer rolls back every earlier transfer and
@@ -1275,7 +1281,15 @@ When a provider or SKU is deactivated:
 
 **Cascade behavior**: `DeactivateProvider` deactivates the provider immediately and then deactivates its active SKUs in pages of `limit` (default 50, max 100). If the response's `has_more` is `true`, active SKUs remain and the caller must re-invoke `DeactivateProvider` with the same UUID until `has_more == false`. Until the cascade completes, an inactive provider may transiently still have active SKUs.
 
-**Implementation note**: The billing module queries SKU/provider status at lease creation time. Existing leases store `provider_uuid` and `locked_price`, making them independent of subsequent provider/SKU state changes. Tenants can close their leases at any time, even after provider/SKU deactivation.
+Reactivation is rejected while any SKU remains active under the inactive
+provider. Finish the cascade before reactivating the provider, then reactivate
+desired SKUs individually.
+
+**Implementation note**: The billing module queries SKU/provider status and the
+provider's payout eligibility at lease creation time. Existing leases store
+`provider_uuid` and `locked_price`; deactivation does not change their prices or
+prevent tenant closure. Closure still requires successful settlement, including
+a permitted payout address for any nonzero transfer.
 
 ### Provider-Wide Withdraw Batch Processing
 

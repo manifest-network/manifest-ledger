@@ -1,6 +1,7 @@
 package keeper_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -18,6 +19,88 @@ import (
 	skukeeper "github.com/manifest-network/manifest-ledger/x/sku/keeper"
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
+
+func TestLeaseAdmissionRejectsHistoricalBlockedPayoutBeforeWrites(t *testing.T) {
+	for _, role := range []string{"tenant", "authority", "allowed list"} {
+		t.Run(role, func(t *testing.T) {
+			setup := newAcknowledgementTestSetup(t, 1, func(*types.Params) {})
+			f := setup.f
+			sku, err := f.App.SKUKeeper.GetSKU(f.Ctx, setup.skuUUID)
+			require.NoError(t, err)
+			provider, err := f.App.SKUKeeper.GetProvider(f.Ctx, sku.ProviderUuid)
+			require.NoError(t, err)
+			payout := provider.PayoutAddress
+			provider.PayoutAddress = authtypes.NewModuleAddress(distrtypes.ModuleName).String()
+			require.NoError(t, f.App.SKUKeeper.SetProvider(f.Ctx, provider), "model a historically accepted provider")
+
+			sender := f.Authority
+			if role == "allowed list" {
+				sender = f.TestAccs[3]
+				params, err := f.App.BillingKeeper.GetParams(f.Ctx)
+				require.NoError(t, err)
+				params.AllowedList = []string{sender.String()}
+				require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, params))
+			}
+			ctx := f.Ctx.WithEventManager(sdk.NewEventManager())
+			// Snapshot primary records, derived indexes and UUID sequences, plus
+			// bank state, so rejected admission cannot leave hidden side effects.
+			snapshot := func() map[string]map[string][]byte {
+				stores := make(map[string]map[string][]byte)
+				for _, name := range []string{types.StoreKey, skutypes.StoreKey, banktypes.StoreKey} {
+					iter := ctx.KVStore(f.App.GetKey(name)).Iterator(nil, nil)
+					values := make(map[string][]byte)
+					for ; iter.Valid(); iter.Next() {
+						values[string(iter.Key())] = bytes.Clone(iter.Value())
+					}
+					require.NoError(t, iter.Close())
+					stores[name] = values
+				}
+				return stores
+			}
+			create := func() (string, error) {
+				items := []types.LeaseItemInput{{SkuUuid: setup.skuUUID, Quantity: 1}}
+				if role == "tenant" {
+					response, err := setup.msgServer.CreateLease(ctx, &types.MsgCreateLease{Tenant: setup.tenants[0].String(), Items: items})
+					if err != nil {
+						return "", err
+					}
+					return response.LeaseUuid, nil
+				}
+				response, err := setup.msgServer.CreateLeaseForTenant(ctx, &types.MsgCreateLeaseForTenant{
+					Authority: sender.String(), Tenant: setup.tenants[0].String(), Items: items,
+				})
+				if err != nil {
+					return "", err
+				}
+				return response.LeaseUuid, nil
+			}
+			before := snapshot()
+
+			leaseUUID, err := create()
+
+			require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+			require.ErrorContains(t, err, "blocked from receiving funds")
+			require.Empty(t, leaseUUID)
+			require.Equal(t, before, snapshot())
+			require.Empty(t, ctx.EventManager().Events())
+
+			// Repair through the supported provider update, then retry admission.
+			f.App.SKUKeeper.SetAuthority(f.Authority.String())
+			_, err = skukeeper.NewMsgServerImpl(f.App.SKUKeeper).UpdateProvider(ctx, &skutypes.MsgUpdateProvider{
+				Authority: f.Authority.String(), Uuid: provider.Uuid, Address: provider.Address,
+				PayoutAddress: payout, Active: true,
+			})
+			require.NoError(t, err)
+			leaseUUID, err = create()
+			require.NoError(t, err)
+			lease, err := f.App.BillingKeeper.GetLease(ctx, leaseUUID)
+			require.NoError(t, err)
+			require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
+			message, broken := keeper.ReservationAccountingInvariant(f.App.BillingKeeper)(ctx)
+			require.False(t, broken, message)
+		})
+	}
+}
 
 func TestFundCreditHonorsBankSendRestrictions(t *testing.T) {
 	for _, existing := range []bool{false, true} {
