@@ -368,7 +368,7 @@ Several messages support batch processing of multiple leases in a single transac
 
 | Message | Max Leases | Behavior |
 |---------|------------|----------|
-| `MsgAcknowledgeLease` | 100 | All leases must be PENDING, same provider, within the hard timeout, and within each tenant's post-batch active cap. Atomic. |
+| `MsgAcknowledgeLease` | 100 | All leases must be PENDING, same provider, within the hard timeout, and within each tenant's post-batch active cap. The current provider payout must be permitted by bank policy and distinct from every tenant's derived credit address. Atomic. |
 | `MsgRejectLease` | 100 | All leases must be PENDING, same provider. Atomic. |
 | `MsgCancelLease` | 100 | All leases must be PENDING, same tenant. Atomic. |
 | `MsgCloseLease` | 100 | All leases must be ACTIVE, authorized for sender. Atomic. |

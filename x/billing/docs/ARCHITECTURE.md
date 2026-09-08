@@ -380,6 +380,8 @@ sequenceDiagram
                 MsgServer->>SKU: GetProvider()
                 alt Provider Inactive
                     MsgServer-->>User: Error: provider not active
+                else Payout blocked or equals tenant credit address
+                    MsgServer-->>User: Error: invalid credit operation
                 else Provider Active
                     Note over MsgServer: initial tranche A = total_rate × min_lease_duration
                     alt Available Credit < Reservation
@@ -428,9 +430,10 @@ sequenceDiagram
             Keeper-->>MsgServer: Current params
             MsgServer->>MsgServer: Check every hard deadline
             MsgServer->>MsgServer: Aggregate and check every tenant's post-batch active count
+            MsgServer->>MsgServer: Check current payout against bank policy and every tenant credit address
 
             alt Any activation gate fails
-                MsgServer-->>Provider: Error: deadline exceeded or acknowledgement active cap exceeded
+                MsgServer-->>Provider: Error: deadline, active cap, or payout eligibility
             else All batch-wide gates pass
                 MsgServer->>Store: Apply every lease and account update in CacheContext
                 Store-->>MsgServer: All cached writes succeed
@@ -843,10 +846,15 @@ accounting. The bank keeper's `SendCoins` primitive does not enforce the blocked
 recipient policy itself, so billing checks it explicitly. Historical providers
 are checked at settlement even if their payout address predates `x/sku`'s
 message validation. Both `CreateLease` and `CreateLeaseForTenant` also reject a
-provider whose stored payout is blocked, before UUID allocation, reservations,
-or other lease-creation writes. This prevents new leases from entering a
-configuration that requires operator repair to settle. Historical state remains
-importable; operators must run the
+provider whose stored payout is blocked or equals the target tenant's derived
+credit address, before UUID allocation, reservations, or other lease-creation
+writes. `AcknowledgeLease` rechecks the current payout against both rules for
+every tenant in its batch before any cached writes. This covers historical
+pending leases and payout changes between creation and acknowledgement.
+Failure leaves the entire batch PENDING with its reservations unchanged;
+tenant cancellation, provider rejection, and normal timeout expiry remain
+available to release those reservations without a payout transfer. Historical
+state remains importable; operators must run the
 [provider payout preflight](MIGRATION.md#provider-payout-policy-preflight)
 before upgrading.
 

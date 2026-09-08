@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	billingMigrationPreflightSchemaVersion = 2
+	billingMigrationPreflightSchemaVersion = 3
 	jsonNull                               = "null"
 )
 
@@ -41,6 +41,8 @@ type billingMigrationPreflightOutput struct {
 	ProviderCount                    uint64                                              `json:"provider_count"`
 	BlockedProviderCount             uint64                                              `json:"blocked_provider_count"`
 	BlockedProviders                 []blockedProviderPayoutPreflight                    `json:"blocked_providers"`
+	PayoutCreditCollisionCount       uint64                                              `json:"payout_credit_collision_count"`
+	PayoutCreditCollisions           []providerCreditCollisionPreflight                  `json:"payout_credit_collisions"`
 	ReservationChangeTenantCount     uint64                                              `json:"reservation_change_tenant_count"`
 	ExpiringModernPendingTenantCount uint64                                              `json:"expiring_modern_pending_tenant_count"`
 	ExpiringModernPendingLeaseCount  uint64                                              `json:"expiring_modern_pending_lease_count"`
@@ -57,6 +59,16 @@ type blockedProviderPayoutPreflight struct {
 	PendingLeaseUUIDs []string `json:"pending_lease_uuids"`
 }
 
+// providerCreditCollisionPreflight identifies a live source lease whose payout
+// would send credit back to the same tenant credit account.
+type providerCreditCollisionPreflight struct {
+	LeaseUUID     string `json:"lease_uuid"`
+	ProviderUUID  string `json:"provider_uuid"`
+	Tenant        string `json:"tenant"`
+	CreditAddress string `json:"credit_address"`
+	State         string `json:"state"`
+}
+
 func newBillingMigrationPreflightCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "preflight-billing-v4 [exported-genesis.json]",
@@ -66,11 +78,14 @@ deterministic JSON report of every billing tenant's pre/post aggregates,
 modern ACTIVE allocations, opaque legacy-cohort allocation, and modern PENDING
 lease UUIDs that the v4 reservation migration would expire. The report also
 audits every SKU provider's payout against this binary's blocked bank addresses
-and lists its source-state ACTIVE and PENDING leases when blocked.
+and lists its source-state ACTIVE and PENDING leases when blocked. A separate
+report identifies ACTIVE and PENDING leases whose provider payout equals the
+tenant's derived credit address.
 
 The report is specific to the exported snapshot. The command never writes the
-genesis file or application state. Blocked payouts are reported without failing
-the command: operators must require blocked_provider_count == 0 before upgrade.
+genesis file or application state. Payout findings do not fail the command:
+operators must require both blocked_provider_count == 0 and
+payout_credit_collision_count == 0 before upgrade.
 The report does not certify block-time validation, SKU references, or full
 InitGenesis. Billing, bank, and SKU genesis modules are required.`,
 		Args: cobra.ExactArgs(1),
@@ -157,6 +172,10 @@ func writeBillingMigrationPreflight(cdc codec.JSONCodec, input io.Reader, output
 	if err != nil {
 		return err
 	}
+	creditCollisions, err := auditProviderCreditCollisions(skuGenesis.Providers, billingGenesis.Leases)
+	if err != nil {
+		return err
+	}
 
 	reservationReport, err := billingkeeper.BuildReservationMigrationPreflight(
 		document.GenesisTime,
@@ -176,6 +195,8 @@ func writeBillingMigrationPreflight(cdc codec.JSONCodec, input io.Reader, output
 		ProviderCount:                    uint64(len(skuGenesis.Providers)),
 		BlockedProviderCount:             uint64(len(blockedProviders)),
 		BlockedProviders:                 blockedProviders,
+		PayoutCreditCollisionCount:       uint64(len(creditCollisions)),
+		PayoutCreditCollisions:           creditCollisions,
 		ReservationChangeTenantCount:     reservationReport.ReservationChangeTenantCount,
 		ExpiringModernPendingTenantCount: reservationReport.ExpiringModernPendingTenantCount,
 		ExpiringModernPendingLeaseCount:  reservationReport.ExpiringModernPendingLeaseCount,
@@ -243,4 +264,44 @@ func auditProviderPayouts(providers []skutypes.Provider, leases []billingtypes.L
 		return cmp.Compare(a.ProviderUUID, b.ProviderUUID)
 	})
 	return blocked, nil
+}
+
+func auditProviderCreditCollisions(providers []skutypes.Provider, leases []billingtypes.Lease) ([]providerCreditCollisionPreflight, error) {
+	payoutsByProvider := make(map[string]sdk.AccAddress, len(providers))
+	for _, provider := range providers {
+		payout, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
+		if err != nil {
+			return nil, fmt.Errorf("audit provider credit collisions: provider %s has invalid payout address: %w", provider.Uuid, err)
+		}
+		payoutsByProvider[provider.Uuid] = payout
+	}
+	collisions := make([]providerCreditCollisionPreflight, 0)
+	for _, lease := range leases {
+		if lease.State != billingtypes.LEASE_STATE_ACTIVE && lease.State != billingtypes.LEASE_STATE_PENDING {
+			continue
+		}
+		tenant, err := sdk.AccAddressFromBech32(lease.Tenant)
+		if err != nil {
+			return nil, fmt.Errorf("audit provider credit collisions: lease %s has invalid tenant: %w", lease.Uuid, err)
+		}
+		payout, found := payoutsByProvider[lease.ProviderUuid]
+		if !found {
+			continue
+		}
+		creditAddress := billingtypes.DeriveCreditAddress(tenant)
+		if !creditAddress.Equals(payout) {
+			continue
+		}
+		collisions = append(collisions, providerCreditCollisionPreflight{
+			LeaseUUID:     lease.Uuid,
+			ProviderUUID:  lease.ProviderUuid,
+			Tenant:        tenant.String(),
+			CreditAddress: creditAddress.String(),
+			State:         lease.State.String(),
+		})
+	}
+	slices.SortFunc(collisions, func(a, b providerCreditCollisionPreflight) int {
+		return cmp.Compare(a.LeaseUUID, b.LeaseUUID)
+	})
+	return collisions, nil
 }

@@ -1,7 +1,11 @@
 package app_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,6 +13,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	simulationtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/simulation"
 
@@ -121,6 +126,66 @@ func TestBillingSimulationCoverage(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestBillingSimulationResultDiagnostics(t *testing.T) {
+	simulationErr := errors.New("finalize block failed")
+	for _, tc := range []struct {
+		name          string
+		stopEarly     bool
+		exportOnly    bool
+		simulationErr error
+		fundingOK     int
+		expectedError string
+	}{
+		{name: "stopped run prints statistics without asserting coverage", stopEarly: true},
+		{name: "stopped run honors explicit statistics export", stopEarly: true, exportOnly: true},
+		{name: "completed run prints statistics before coverage failure", expectedError: "no credit deposits after 50 attempts"},
+		{name: "completed run honors explicit statistics export", exportOnly: true, expectedError: "no credit deposits after 50 attempts"},
+		{name: "completed run with coverage prints statistics once", fundingOK: 1},
+		{name: "simulator error without statistics is preserved", stopEarly: true, simulationErr: simulationErr},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := simulationtypes.Config{
+				Seed:            1729,
+				ExportStatsPath: filepath.Join(t.TempDir(), "simulation-stats.json"),
+			}
+			stats := simulation.EventStats{
+				billingtypes.ModuleName: {
+					sdk.MsgTypeURL(&billingtypes.MsgFundCredit{}): {"ok": tc.fundingOK, "failure": 50},
+				},
+			}
+			// Match the SDK: stopped runs export their partial statistics, while
+			// a genuine error may return before creating the statistics file.
+			if tc.simulationErr == nil {
+				stats.ExportJSON(config.ExportStatsPath)
+			}
+			var output bytes.Buffer
+			var writer io.Writer = &output
+			if tc.exportOnly {
+				writer = nil
+			}
+			err := checkBillingSimulationResult(writer, config, tc.stopEarly, tc.simulationErr)
+			switch {
+			case tc.simulationErr != nil:
+				require.Same(t, tc.simulationErr, err)
+			case tc.expectedError != "":
+				require.ErrorContains(t, err, tc.expectedError)
+			default:
+				require.NoError(t, err)
+			}
+			if tc.exportOnly || tc.simulationErr != nil {
+				require.Empty(t, output.String())
+				return
+			}
+
+			decoder := json.NewDecoder(&output)
+			var printed simulation.EventStats
+			require.NoError(t, decoder.Decode(&printed))
+			require.Equal(t, stats, printed)
+			require.ErrorIs(t, decoder.Decode(&printed), io.EOF, "statistics must be printed exactly once")
 		})
 	}
 }

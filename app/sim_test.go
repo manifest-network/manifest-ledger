@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -562,34 +563,46 @@ func simulateWithBillingCoverage(
 	config simulationtypes.Config,
 ) (bool, simulationtypes.Params, error) {
 	tb.Helper()
-	printStats := config.ExportStatsPath == ""
-	if printStats {
+	var statsOutput io.Writer
+	if config.ExportStatsPath == "" {
 		config.ExportStatsPath = filepath.Join(tb.TempDir(), "simulation-stats.json")
+		statsOutput = os.Stdout
 	}
 	stopEarly, params, err := simulation.SimulateFromSeed(
 		tb, os.Stdout, bApp.BaseApp, appStateFn, simulationtypes.RandomAccounts,
 		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
 		app.BlockedAddresses(), config, bApp.AppCodec(),
 	)
-	if err != nil || stopEarly {
-		return stopEarly, params, err
+	return stopEarly, params, checkBillingSimulationResult(statsOutput, config, stopEarly, err)
+}
+
+func checkBillingSimulationResult(output io.Writer, config simulationtypes.Config, stopEarly bool, simulationErr error) error {
+	// A real simulator error can return before statistics are exported. Preserve
+	// that error instead of masking it with a missing-file diagnostic.
+	if simulationErr != nil {
+		return simulationErr
 	}
 
 	statsJSON, err := os.ReadFile(config.ExportStatsPath)
 	if err != nil {
-		return stopEarly, params, fmt.Errorf("read simulation delivery statistics: %w", err)
+		return fmt.Errorf("read simulation delivery statistics: %w", err)
 	}
 	var stats simulation.EventStats
 	if err := json.Unmarshal(statsJSON, &stats); err != nil {
-		return stopEarly, params, fmt.Errorf("decode simulation delivery statistics: %w", err)
+		return fmt.Errorf("decode simulation delivery statistics: %w", err)
 	}
-	if printStats {
-		stats.Print(os.Stdout)
+	if output != nil {
+		stats.Print(output)
+	}
+	// The SDK exports statistics even when a run stops early. Keep those
+	// diagnostics, but only require billing coverage from completed runs.
+	if stopEarly {
+		return nil
 	}
 	if err := billingSimulationCoverageError(stats); err != nil {
-		return stopEarly, params, fmt.Errorf("billing coverage at seed %d: %w", config.Seed, err)
+		return fmt.Errorf("billing coverage at seed %d: %w", config.Seed, err)
 	}
-	return stopEarly, params, nil
+	return nil
 }
 
 func billingSimulationCoverageError(stats simulation.EventStats) error {

@@ -358,7 +358,7 @@ The SKU module manages providers (service entities) and SKUs (Stock Keeping Unit
 
   - Parameters:
     - `address`: The provider's operator address
-    - `payout-address`: Address to receive lease payments
+    - `payout-address`: Address to receive lease payments; protected bank destinations are rejected
   - Flags:
     - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
     - `--api-url`: Provider's HTTPS API endpoint URL (optional)
@@ -386,13 +386,20 @@ The SKU module manages providers (service entities) and SKUs (Stock Keeping Unit
   - Parameters:
     - `uuid`: Provider UUID
     - `address`: The provider's operator address
-    - `payout-address`: Address to receive lease payments
-    - `active`: `true` or `false` (note: `false` is not allowed; use `deactivate-provider` instead)
+    - `payout-address`: Address to receive lease payments; protected bank destinations are rejected
+    - `active`: `true` keeps the provider active or reactivates it after its SKU deactivation cascade is complete. `false` preserves an already-inactive provider; use `deactivate-provider` to deactivate an active one.
   - Flags:
     - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
-    - `--api-url`: Provider's HTTPS API endpoint URL (optional)
+    - `--api-url`: New HTTPS API endpoint URL; omit to preserve the current URL
+    - `--clear-api-url`: Remove the current URL; cannot be combined with a nonempty `--api-url`
 
   **Example:** `manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com --from authority`
+
+  For payout repairs, preserve the provider's current `active` value. An
+  inactive provider can be repaired with `false` during a partial deactivation
+  cascade. Reactivation requires repeating `deactivate-provider` until
+  `has_more=false`, reactivating the provider with `update-provider`, and then
+  reactivating desired SKUs individually.
 
 ##### Update SKU (update-sku):
 
@@ -403,12 +410,12 @@ The SKU module manages providers (service entities) and SKUs (Stock Keeping Unit
     - `provider-uuid`: Provider UUID
     - `name`: Human-readable SKU name
     - `unit`: Pricing unit integer (`1` = per hour, `2` = per day)
-    - `base-price`: Price per unit (e.g., `200umfx`)
-    - `active`: `true` or `false` (note: `false` is not allowed; use `deactivate-sku` instead)
+    - `base-price`: Positive price exactly divisible by the unit's seconds (e.g., `86400umfx` daily for `1umfx` per second)
+    - `active`: `true` keeps the SKU active or reactivates it if its provider is active. `false` preserves an already-inactive SKU; use `deactivate-sku` to deactivate an active one.
   - Flags:
     - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
 
-  **Example:** `manifestd tx sku update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab "Updated Name" 2 200umfx true --meta-hash deadbeef --from authority`
+  **Example:** `manifestd tx sku update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab "Updated Name" 2 86400umfx true --meta-hash deadbeef --from authority`
 
 ##### Deactivate Provider (deactivate-provider):
 
@@ -455,7 +462,7 @@ The Billing module implements a credit-based leasing system for AI infrastructur
 
 #### Lease Lifecycle:
 
-- Two-phase commit: tenant creates (PENDING), provider acknowledges (ACTIVE) only while the hard pending deadline and post-batch tenant active cap still pass
+- Two-phase commit: tenant creates (PENDING), provider acknowledges (ACTIVE) only while the hard pending deadline, post-batch tenant active cap, and current payout eligibility checks still pass
 - Price locking at lease creation for predictable billing
 - Lazy settlement (on-touch) for scalability
 - Auto-close when credit is exhausted
@@ -487,7 +494,11 @@ The Billing module implements a credit-based leasing system for AI infrastructur
     - `--meta-hash`: Optional hex-encoded hash/reference to off-chain deployment data (max 64 bytes)
 
   **Example:** `manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:2 --from tenant`
-  **Example (stack):** `manifestd tx billing create-lease 01912345-...:1:web 01912345-...:1:db --from tenant`
+  **Example (stack):** `manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1:web 01912345-6789-7abc-8def-0123456789ab:1:db --from tenant`
+
+  The provider must be active and its payout must be permitted by bank policy
+  and distinct from this tenant's derived credit address. The same checks apply
+  to `create-lease-for-tenant` before reserving credit or allocating a lease UUID.
 
 ##### Create Lease For Tenant (create-lease-for-tenant):
 
@@ -497,13 +508,17 @@ The Billing module implements a credit-based leasing system for AI infrastructur
     - `tenant`: Bech32 address of the tenant
     - `items`: Space-separated list of `sku-uuid:quantity` or `sku-uuid:quantity:service_name` triples
 
-  **Example:** `manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-...:2 --from authority`
+  **Example:** `manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-6789-7abc-8def-0123456789ab:2 --from authority`
 
 ##### Acknowledge Lease (acknowledge-lease):
 
 - Syntax: `manifestd tx billing acknowledge-lease [lease-uuid...] [flags]`
 
   - Revalidates the current `pending_timeout` as a hard deadline (exact cutoff allowed) and each tenant's `max_leases_per_tenant` against the full batch. Any failure leaves the whole batch unchanged.
+  - Rechecks the current provider payout against bank policy and each tenant's
+    derived credit address before activating any lease. Pending leases can
+    still be cancelled or rejected to release reservations while a payout
+    requires repair.
 
   **Example:** `manifestd tx billing acknowledge-lease 01912345-6789-7abc-8def-0123456789ab --from provider`
 
@@ -512,7 +527,7 @@ The Billing module implements a credit-based leasing system for AI infrastructur
 - Syntax: `manifestd tx billing reject-lease [lease-uuid...] [flags]`
 
   - Parameters:
-    - `--reason`: Optional rejection reason (max 256 chars)
+    - `--reason`: Optional rejection reason (max 256 UTF-8 bytes)
 
   **Example:** `manifestd tx billing reject-lease 01912345-6789-7abc-8def-0123456789ab --reason "insufficient resources" --from provider`
 
@@ -527,7 +542,7 @@ The Billing module implements a credit-based leasing system for AI infrastructur
 - Syntax: `manifestd tx billing close-lease [lease-uuid...] [flags]`
 
   - Parameters:
-    - `--reason`: Optional closure reason (max 256 chars)
+    - `--reason`: Optional closure reason (max 256 UTF-8 bytes)
 
   **Example:** `manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab --from tenant`
 
@@ -535,6 +550,9 @@ The Billing module implements a credit-based leasing system for AI infrastructur
 
 - Syntax: `manifestd tx billing withdraw [lease-uuid...] [flags]`
 - Or: `manifestd tx billing withdraw --provider [provider-uuid] [flags]`
+
+  `--limit` and `--key` are only accepted with `--provider`; the CLI rejects
+  either flag alongside specific lease UUIDs.
 
   **Example:** `manifestd tx billing withdraw 01912345-6789-7abc-8def-0123456789ab --from provider`
 
@@ -564,7 +582,7 @@ service-name mode.
   - Parameters:
     - `max-leases-per-tenant`: Maximum active leases per tenant
     - `max-items-per-lease`: Maximum SKU items per lease
-    - `min-lease-duration`: Minimum lease duration in seconds
+    - `min-lease-duration`: Seconds of billing credit to reserve when creating a lease; does not enforce a minimum elapsed runtime
     - `max-pending-leases-per-tenant`: Maximum pending leases per tenant
     - `pending-timeout`: Pending lease timeout in seconds (60-86400)
   - Flags:

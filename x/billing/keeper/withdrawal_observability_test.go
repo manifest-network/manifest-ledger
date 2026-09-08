@@ -104,6 +104,11 @@ func TestProviderWithdrawable_FailuresAreOrderedObservableAndRetryable(t *testin
 	require.NoError(t, err)
 	require.Len(t, normalLease.Items, 1)
 	skuUUID := normalLease.Items[0].SkuUuid
+	configuredProvider, err := s.f.App.SKUKeeper.GetProvider(s.f.Ctx, normalLease.ProviderUuid)
+	require.NoError(t, err)
+	selfPayout := configuredProvider.PayoutAddress
+	configuredProvider.PayoutAddress = s.providerAddr.String()
+	require.NoError(t, s.f.App.SKUKeeper.SetProvider(s.f.Ctx, configuredProvider))
 
 	// UUIDv7 generation is sequence-backed in tests, so these additions follow
 	// the fixture's normal and first self-payout leases in provider-index order.
@@ -121,6 +126,10 @@ func TestProviderWithdrawable_FailuresAreOrderedObservableAndRetryable(t *testin
 		s.providerAddr,
 		[]types.LeaseItemInput{{SkuUuid: skuUUID, Quantity: 1}},
 	)
+	// Model a payout changed after activation. Admission and acknowledgement
+	// reject self-payouts, while this test exercises settlement failure reporting.
+	configuredProvider.PayoutAddress = selfPayout
+	require.NoError(t, s.f.App.SKUKeeper.SetProvider(s.f.Ctx, configuredProvider))
 	require.Less(t, s.normalLeaseUUID, s.selfLeaseUUID)
 	require.Less(t, s.selfLeaseUUID, secondSelfLeaseUUID)
 	require.Less(t, secondSelfLeaseUUID, tailLeaseUUID)

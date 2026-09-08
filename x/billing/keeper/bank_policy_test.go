@@ -3,6 +3,7 @@ package keeper_test
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,84 +21,204 @@ import (
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
-func TestLeaseAdmissionRejectsHistoricalBlockedPayoutBeforeWrites(t *testing.T) {
-	for _, role := range []string{"tenant", "authority", "allowed list"} {
-		t.Run(role, func(t *testing.T) {
-			setup := newAcknowledgementTestSetup(t, 1, func(*types.Params) {})
-			f := setup.f
-			sku, err := f.App.SKUKeeper.GetSKU(f.Ctx, setup.skuUUID)
-			require.NoError(t, err)
-			provider, err := f.App.SKUKeeper.GetProvider(f.Ctx, sku.ProviderUuid)
-			require.NoError(t, err)
-			payout := provider.PayoutAddress
-			provider.PayoutAddress = authtypes.NewModuleAddress(distrtypes.ModuleName).String()
-			require.NoError(t, f.App.SKUKeeper.SetProvider(f.Ctx, provider), "model a historically accepted provider")
+func TestLeaseAdmissionRejectsIneligiblePayoutBeforeWrites(t *testing.T) {
+	for _, policy := range payoutAdmissionPolicies {
+		t.Run(policy.name, func(t *testing.T) {
+			for _, role := range []string{"tenant", "authority", "allowed list"} {
+				t.Run(role, func(t *testing.T) {
+					setup := newAcknowledgementTestSetup(t, 1, func(*types.Params) {})
+					f := setup.f
+					sku, err := f.App.SKUKeeper.GetSKU(f.Ctx, setup.skuUUID)
+					require.NoError(t, err)
+					provider, err := f.App.SKUKeeper.GetProvider(f.Ctx, sku.ProviderUuid)
+					require.NoError(t, err)
+					payout := provider.PayoutAddress
+					provider.PayoutAddress = policy.payout(setup.tenants[0])
+					require.NoError(t, f.App.SKUKeeper.SetProvider(f.Ctx, provider), "model a historically accepted provider")
 
-			sender := f.Authority
-			if role == "allowed list" {
-				sender = f.TestAccs[3]
-				params, err := f.App.BillingKeeper.GetParams(f.Ctx)
-				require.NoError(t, err)
-				params.AllowedList = []string{sender.String()}
-				require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, params))
-			}
-			ctx := f.Ctx.WithEventManager(sdk.NewEventManager())
-			// Snapshot primary records, derived indexes and UUID sequences, plus
-			// bank state, so rejected admission cannot leave hidden side effects.
-			snapshot := func() map[string]map[string][]byte {
-				stores := make(map[string]map[string][]byte)
-				for _, name := range []string{types.StoreKey, skutypes.StoreKey, banktypes.StoreKey} {
-					iter := ctx.KVStore(f.App.GetKey(name)).Iterator(nil, nil)
-					values := make(map[string][]byte)
-					for ; iter.Valid(); iter.Next() {
-						values[string(iter.Key())] = bytes.Clone(iter.Value())
+					sender := f.Authority
+					if role == "allowed list" {
+						sender = f.TestAccs[3]
+						params, err := f.App.BillingKeeper.GetParams(f.Ctx)
+						require.NoError(t, err)
+						params.AllowedList = []string{sender.String()}
+						require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, params))
 					}
-					require.NoError(t, iter.Close())
-					stores[name] = values
-				}
-				return stores
-			}
-			create := func() (string, error) {
-				items := []types.LeaseItemInput{{SkuUuid: setup.skuUUID, Quantity: 1}}
-				if role == "tenant" {
-					response, err := setup.msgServer.CreateLease(ctx, &types.MsgCreateLease{Tenant: setup.tenants[0].String(), Items: items})
-					if err != nil {
-						return "", err
+					ctx := f.Ctx.WithEventManager(sdk.NewEventManager())
+					snapshot := func() map[string]map[string][]byte {
+						return snapshotPayoutStores(t, f, ctx)
 					}
-					return response.LeaseUuid, nil
-				}
-				response, err := setup.msgServer.CreateLeaseForTenant(ctx, &types.MsgCreateLeaseForTenant{
-					Authority: sender.String(), Tenant: setup.tenants[0].String(), Items: items,
+					create := func() (string, error) {
+						items := []types.LeaseItemInput{{SkuUuid: setup.skuUUID, Quantity: 1}}
+						if role == "tenant" {
+							response, err := setup.msgServer.CreateLease(ctx, &types.MsgCreateLease{Tenant: setup.tenants[0].String(), Items: items})
+							if err != nil {
+								return "", err
+							}
+							return response.LeaseUuid, nil
+						}
+						response, err := setup.msgServer.CreateLeaseForTenant(ctx, &types.MsgCreateLeaseForTenant{
+							Authority: sender.String(), Tenant: setup.tenants[0].String(), Items: items,
+						})
+						if err != nil {
+							return "", err
+						}
+						return response.LeaseUuid, nil
+					}
+					before := snapshot()
+
+					leaseUUID, err := create()
+
+					require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+					require.ErrorContains(t, err, policy.errorText)
+					require.Empty(t, leaseUUID)
+					require.Equal(t, before, snapshot())
+					require.Empty(t, ctx.EventManager().Events())
+
+					// Repair through the supported provider update, then retry admission.
+					f.App.SKUKeeper.SetAuthority(f.Authority.String())
+					_, err = skukeeper.NewMsgServerImpl(f.App.SKUKeeper).UpdateProvider(ctx, &skutypes.MsgUpdateProvider{
+						Authority: f.Authority.String(), Uuid: provider.Uuid, Address: provider.Address,
+						PayoutAddress: payout, Active: true,
+					})
+					require.NoError(t, err)
+					leaseUUID, err = create()
+					require.NoError(t, err)
+					lease, err := f.App.BillingKeeper.GetLease(ctx, leaseUUID)
+					require.NoError(t, err)
+					require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
+					message, broken := keeper.ReservationAccountingInvariant(f.App.BillingKeeper)(ctx)
+					require.False(t, broken, message)
 				})
-				if err != nil {
-					return "", err
-				}
-				return response.LeaseUuid, nil
 			}
-			before := snapshot()
+		})
+	}
+}
 
-			leaseUUID, err := create()
+var payoutAdmissionPolicies = []struct {
+	name      string
+	payout    func(sdk.AccAddress) string
+	errorText string
+}{
+	{
+		name: "blocked module account",
+		payout: func(sdk.AccAddress) string {
+			return authtypes.NewModuleAddress(distrtypes.ModuleName).String()
+		},
+		errorText: "blocked from receiving funds",
+	},
+	{
+		name: "tenant credit address alias",
+		payout: func(tenant sdk.AccAddress) string {
+			return strings.ToUpper(types.DeriveCreditAddress(tenant).String())
+		},
+		errorText: "must not equal tenant credit address",
+	},
+}
 
-			require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
-			require.ErrorContains(t, err, "blocked from receiving funds")
-			require.Empty(t, leaseUUID)
-			require.Equal(t, before, snapshot())
-			require.Empty(t, ctx.EventManager().Events())
+// Snapshot primary records, indexes, sequences, and balances to detect writes
+// that would not appear in a single lease or credit-account assertion.
+func snapshotPayoutStores(t testing.TB, f *testFixture, ctx sdk.Context) map[string]map[string][]byte {
+	t.Helper()
+	stores := make(map[string]map[string][]byte)
+	for _, name := range []string{types.StoreKey, skutypes.StoreKey, banktypes.StoreKey} {
+		iter := ctx.KVStore(f.App.GetKey(name)).Iterator(nil, nil)
+		values := make(map[string][]byte)
+		for ; iter.Valid(); iter.Next() {
+			values[string(iter.Key())] = bytes.Clone(iter.Value())
+		}
+		require.NoError(t, iter.Close())
+		stores[name] = values
+	}
+	return stores
+}
 
-			// Repair through the supported provider update, then retry admission.
-			f.App.SKUKeeper.SetAuthority(f.Authority.String())
-			_, err = skukeeper.NewMsgServerImpl(f.App.SKUKeeper).UpdateProvider(ctx, &skutypes.MsgUpdateProvider{
-				Authority: f.Authority.String(), Uuid: provider.Uuid, Address: provider.Address,
-				PayoutAddress: payout, Active: true,
-			})
-			require.NoError(t, err)
-			leaseUUID, err = create()
-			require.NoError(t, err)
-			lease, err := f.App.BillingKeeper.GetLease(ctx, leaseUUID)
-			require.NoError(t, err)
-			require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
-			message, broken := keeper.ReservationAccountingInvariant(f.App.BillingKeeper)(ctx)
-			require.False(t, broken, message)
+func TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites(t *testing.T) {
+	for _, policy := range payoutAdmissionPolicies {
+		t.Run(policy.name, func(t *testing.T) {
+			for _, role := range []string{"provider", "authority"} {
+				t.Run(role, func(t *testing.T) {
+					setup := newAcknowledgementTestSetup(t, 2, func(*types.Params) {})
+					f := setup.f
+					leases := []string{
+						setup.createPendingLease(t, setup.tenants[0]),
+						setup.createPendingLease(t, setup.tenants[1]),
+						setup.createPendingLease(t, setup.tenants[1]),
+						setup.createPendingLease(t, setup.tenants[1]),
+					}
+					sku, err := f.App.SKUKeeper.GetSKU(f.Ctx, setup.skuUUID)
+					require.NoError(t, err)
+					provider, err := f.App.SKUKeeper.GetProvider(f.Ctx, sku.ProviderUuid)
+					require.NoError(t, err)
+					originalPayout := provider.PayoutAddress
+					// Later leases in the batch belong to the affected tenant.
+					// Earlier valid leases must not become ACTIVE on its failure.
+					provider.PayoutAddress = policy.payout(setup.tenants[1])
+					require.NoError(t, f.App.SKUKeeper.SetProvider(f.Ctx, provider), "model historical state or a payout changed after admission")
+					sender := setup.providerAddr
+					if role == "authority" {
+						sender = f.Authority
+					}
+					ctx := f.Ctx.WithEventManager(sdk.NewEventManager())
+					before := snapshotPayoutStores(t, f, ctx)
+
+					response, err := setup.msgServer.AcknowledgeLease(ctx, &types.MsgAcknowledgeLease{
+						Sender: sender.String(), LeaseUuids: leases,
+					})
+
+					require.ErrorIs(t, err, types.ErrInvalidCreditOperation)
+					require.ErrorContains(t, err, policy.errorText)
+					require.Nil(t, response)
+					require.Equal(t, before, snapshotPayoutStores(t, f, ctx))
+					require.Empty(t, ctx.EventManager().Events())
+
+					// Pending leases retain both unilateral tenant cancellation and
+					// provider rejection while the payout still needs repair.
+					_, err = setup.msgServer.CancelLease(ctx, &types.MsgCancelLease{
+						Tenant: setup.tenants[1].String(), LeaseUuids: []string{leases[1]},
+					})
+					require.NoError(t, err)
+					_, err = setup.msgServer.RejectLease(ctx, &types.MsgRejectLease{
+						Sender: setup.providerAddr.String(), LeaseUuids: []string{leases[2]}, Reason: "payout awaiting repair",
+					})
+					require.NoError(t, err)
+					account, err := f.App.BillingKeeper.GetCreditAccount(ctx, setup.tenants[1].String())
+					require.NoError(t, err)
+					require.EqualValues(t, 1, account.PendingLeaseCount)
+					require.Zero(t, account.ActiveLeaseCount)
+					remaining, err := f.App.BillingKeeper.GetLease(ctx, leases[3])
+					require.NoError(t, err)
+					require.Equal(t, remaining.Reservation.RemainingAmounts, account.ReservedAmounts)
+
+					f.App.SKUKeeper.SetAuthority(f.Authority.String())
+					_, err = skukeeper.NewMsgServerImpl(f.App.SKUKeeper).UpdateProvider(ctx, &skutypes.MsgUpdateProvider{
+						Authority: f.Authority.String(), Uuid: provider.Uuid, Address: provider.Address,
+						PayoutAddress: originalPayout, Active: true,
+					})
+					require.NoError(t, err)
+					ctx = ctx.WithBlockTime(ctx.BlockTime().Add(time.Second))
+					response, err = setup.msgServer.AcknowledgeLease(ctx, &types.MsgAcknowledgeLease{
+						Sender: sender.String(), LeaseUuids: []string{leases[3]},
+					})
+					require.NoError(t, err)
+					require.EqualValues(t, 1, response.AcknowledgedCount)
+					lease, err := f.App.BillingKeeper.GetLease(ctx, leases[3])
+					require.NoError(t, err)
+					require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+					require.Equal(t, ctx.BlockTime(), lease.LastSettledAt)
+					_, err = setup.msgServer.CloseLease(ctx.WithBlockTime(ctx.BlockTime().Add(time.Second)), &types.MsgCloseLease{
+						Sender: setup.tenants[1].String(), LeaseUuids: []string{leases[3]}, Reason: "payout repaired",
+					})
+					require.NoError(t, err)
+					account, err = f.App.BillingKeeper.GetCreditAccount(ctx, setup.tenants[1].String())
+					require.NoError(t, err)
+					require.Zero(t, account.PendingLeaseCount)
+					require.Zero(t, account.ActiveLeaseCount)
+					require.True(t, account.ReservedAmounts.IsZero())
+					message, broken := keeper.ReservationAccountingInvariant(f.App.BillingKeeper)(ctx)
+					require.False(t, broken, message)
+				})
+			}
 		})
 	}
 }

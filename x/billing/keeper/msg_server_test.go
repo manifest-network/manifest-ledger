@@ -1259,7 +1259,7 @@ func TestMsgWithdraw_RejectsPayoutToTenantCreditAddressWithoutStateChange(t *tes
 	decodedPayout, err := sdk.AccAddressFromBech32(payoutAddress)
 	require.NoError(t, err)
 	require.True(t, decodedPayout.Equals(creditAddr))
-	provider := f.createTestProvider(t, providerAddr.String(), payoutAddress)
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
 	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 per hour = 1 per second
 
 	initialBalance := sdk.NewCoin(testDenom, sdkmath.NewInt(100_000_000))
@@ -1273,6 +1273,10 @@ func TestMsgWithdraw_RejectsPayoutToTenantCreditAddressWithoutStateChange(t *tes
 		SkuUuid:  sku.Uuid,
 		Quantity: 1,
 	}})
+	// Model a payout changed after activation; admission and acknowledgement
+	// now reject self-payout before an ACTIVE lease can be created.
+	provider.PayoutAddress = payoutAddress
+	require.NoError(t, f.App.SKUKeeper.SetProvider(f.Ctx, provider))
 	leaseBefore, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
 	require.NoError(t, err)
 
@@ -1323,7 +1327,7 @@ func newSelfPayoutBatchFixture(t *testing.T) *selfPayoutBatchFixture {
 	decodedPayout, err := sdk.AccAddressFromBech32(payoutAddress)
 	require.NoError(t, err)
 	require.True(t, decodedPayout.Equals(selfCreditAddr))
-	provider := f.createTestProvider(t, providerAddr.String(), payoutAddress)
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
 	sku := f.createTestSKU(t, provider.Uuid, 3600) // 3600 per hour = 1 per second
 
 	initialCreditCoin := sdk.NewCoin(testDenom, sdkmath.NewInt(100_000_000))
@@ -1350,6 +1354,9 @@ func newSelfPayoutBatchFixture(t *testing.T) *selfPayoutBatchFixture {
 		SkuUuid:  sku.Uuid,
 		Quantity: 1,
 	}})
+	// Settlement must still defend against provider changes after activation.
+	provider.PayoutAddress = payoutAddress
+	require.NoError(t, f.App.SKUKeeper.SetProvider(f.Ctx, provider))
 
 	return &selfPayoutBatchFixture{
 		f:                 f,

@@ -273,18 +273,8 @@ func (k *Keeper) performSettlementCore(
 	if err != nil {
 		return nil, err
 	}
-	if payoutAddr.Equals(creditAddr) {
-		return nil, types.ErrInvalidCreditOperation.Wrap(
-			"provider payout address must not equal tenant credit address",
-		)
-	}
-	// SendCoins is a keeper primitive: unlike bank MsgSend, it does not reject
-	// protected module accounts. Enforce that policy here for every settlement
-	// path, including providers configured before payout validation was added.
-	if k.bankKeeper.BlockedAddr(payoutAddr) {
-		return nil, types.ErrInvalidCreditOperation.Wrapf(
-			"provider payout address %s is blocked from receiving funds", payoutAddr,
-		)
+	if err := k.validatePayoutRecipient(payoutAddr, creditAddr); err != nil {
+		return nil, err
 	}
 
 	// Transfer funds
@@ -306,6 +296,23 @@ func (k *Keeper) performSettlementCore(
 		AccrualOverflow:    overflowDenoms,
 		SettledThrough:     accrualCursor,
 	}, nil
+}
+
+// validatePayoutRecipient applies the same recipient policy before admission,
+// activation, and nonzero settlement. SendCoins does not enforce blocked
+// recipients itself, and a self-transfer cannot consume tenant credit.
+func (k *Keeper) validatePayoutRecipient(payoutAddr, creditAddr sdk.AccAddress) error {
+	if payoutAddr.Equals(creditAddr) {
+		return types.ErrInvalidCreditOperation.Wrap(
+			"provider payout address must not equal tenant credit address",
+		)
+	}
+	if k.bankKeeper.BlockedAddr(payoutAddr) {
+		return types.ErrInvalidCreditOperation.Wrapf(
+			"provider payout address %s is blocked from receiving funds", payoutAddr,
+		)
+	}
+	return nil
 }
 
 // storedProviderPayoutAddress converts the wire-facing provider address into

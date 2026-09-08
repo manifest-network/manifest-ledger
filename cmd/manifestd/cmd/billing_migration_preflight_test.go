@@ -44,7 +44,7 @@ func TestWriteBillingMigrationPreflightHasStableJSON(t *testing.T) {
 		),
 	}
 	const expected = `{
-  "schema_version": 2,
+  "schema_version": 3,
   "source_chain_id": "manifest-test",
   "source_initial_height": 4321,
   "input_genesis_time": "2030-01-02T03:04:05Z",
@@ -52,6 +52,8 @@ func TestWriteBillingMigrationPreflightHasStableJSON(t *testing.T) {
   "provider_count": 0,
   "blocked_provider_count": 0,
   "blocked_providers": [],
+  "payout_credit_collision_count": 0,
+  "payout_credit_collisions": [],
   "reservation_change_tenant_count": 0,
   "expiring_modern_pending_tenant_count": 0,
   "expiring_modern_pending_lease_count": 0,
@@ -69,7 +71,7 @@ func TestWriteBillingMigrationPreflightHasStableJSON(t *testing.T) {
 	}
 }
 
-func TestWriteBillingMigrationPreflightHasStableReservationChangeJSON(t *testing.T) {
+func TestWriteBillingMigrationPreflightHasStableReservationChangeAndCreditCollisionJSON(t *testing.T) {
 	encodingConfig := params.MakeEncodingConfig()
 	plannerTime := time.Date(2030, time.January, 2, 3, 4, 5, 0, time.UTC)
 	tenant := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
@@ -83,7 +85,7 @@ func TestWriteBillingMigrationPreflightHasStableReservationChangeJSON(t *testing
 		Params: billingtypes.DefaultParams(),
 		Leases: []billingtypes.Lease{{
 			Uuid:         leaseUUID,
-			Tenant:       tenant.String(),
+			Tenant:       strings.ToUpper(tenant.String()),
 			ProviderUuid: providerUUID,
 			Items: []billingtypes.LeaseItem{{
 				SkuUuid:     skuUUID,
@@ -112,10 +114,20 @@ func TestWriteBillingMigrationPreflightHasStableReservationChangeJSON(t *testing
 	require.NoError(t, err)
 	bankJSON, err := encodingConfig.Codec.MarshalJSON(bankGenesis)
 	require.NoError(t, err)
+	skuGenesis := skutypes.DefaultGenesis()
+	skuGenesis.Providers = []skutypes.Provider{{
+		Uuid: providerUUID, Address: sdk.AccAddress(bytes.Repeat([]byte{2}, 20)).String(),
+		PayoutAddress: strings.ToUpper(creditAddress.String()), Active: true,
+	}}
+	skuGenesis.ProviderSequence = 1
+	require.NoError(t, skuGenesis.Validate())
+	skuJSON, err := encodingConfig.Codec.MarshalJSON(skuGenesis)
+	require.NoError(t, err)
 	document := fmt.Sprintf(
-		`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":%s,"bank":%s,"sku":{}}}`,
+		`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":%s,"bank":%s,"sku":%s}}`,
 		billingJSON,
 		bankJSON,
+		skuJSON,
 	)
 
 	var output bytes.Buffer
@@ -125,14 +137,24 @@ func TestWriteBillingMigrationPreflightHasStableReservationChangeJSON(t *testing
 		&output,
 	))
 	expected := fmt.Sprintf(`{
-  "schema_version": 2,
+  "schema_version": 3,
   "source_chain_id": "manifest-test",
   "source_initial_height": 4321,
   "input_genesis_time": "2030-01-02T03:04:05Z",
   "billing_state": "pre_v4_aggregate",
-  "provider_count": 0,
+  "provider_count": 1,
   "blocked_provider_count": 0,
   "blocked_providers": [],
+  "payout_credit_collision_count": 1,
+  "payout_credit_collisions": [
+    {
+      "lease_uuid": %q,
+      "provider_uuid": %q,
+      "tenant": %q,
+      "credit_address": %q,
+      "state": "LEASE_STATE_ACTIVE"
+    }
+  ],
   "reservation_change_tenant_count": 1,
   "expiring_modern_pending_tenant_count": 0,
   "expiring_modern_pending_lease_count": 0,
@@ -175,7 +197,7 @@ func TestWriteBillingMigrationPreflightHasStableReservationChangeJSON(t *testing
       "expiring_modern_pending_lease_uuids": []
     }
   ]
-}`, tenant.String(), creditAddress.String(), leaseUUID) + "\n"
+}`, leaseUUID, providerUUID, tenant.String(), creditAddress.String(), tenant.String(), creditAddress.String(), leaseUUID) + "\n"
 	require.Equal(t, expected, output.String())
 }
 
@@ -328,7 +350,7 @@ func TestWriteBillingMigrationPreflightReportsBlockedPayoutWithoutChangingExport
 	require.NoError(t, writeBillingMigrationPreflight(encodingConfig.Codec, input, &output))
 	var report billingMigrationPreflightOutput
 	require.NoError(t, json.Unmarshal(output.Bytes(), &report))
-	require.EqualValues(t, 2, report.SchemaVersion)
+	require.EqualValues(t, 3, report.SchemaVersion)
 	require.EqualValues(t, 1, report.ProviderCount)
 	require.EqualValues(t, 1, report.BlockedProviderCount)
 	require.Equal(t, []blockedProviderPayoutPreflight{{
@@ -370,6 +392,76 @@ func TestWriteBillingMigrationPreflightRejectsAmbiguousPayoutAudit(t *testing.T)
 			var output bytes.Buffer
 			err = writeBillingMigrationPreflight(encodingConfig.Codec, strings.NewReader(document), &output)
 			require.ErrorContains(t, err, tt.contains)
+			require.Empty(t, output.String())
+		})
+	}
+}
+
+func TestAuditProviderCreditCollisionsMatchesProviderAndTenantWithoutMutation(t *testing.T) {
+	const (
+		providerUUID1 = "01912345-6789-7abc-8def-0123456789b0"
+		providerUUID2 = "01912345-6789-7abc-8def-0123456789b1"
+		leaseUUID1    = "01912345-6789-7abc-8def-0123456789c0"
+		leaseUUID2    = "01912345-6789-7abc-8def-0123456789c1"
+	)
+	tenant1 := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	tenant2 := sdk.AccAddress(bytes.Repeat([]byte{2}, 20))
+	credit1 := billingtypes.DeriveCreditAddress(tenant1)
+	providers := []skutypes.Provider{
+		{Uuid: providerUUID2, PayoutAddress: tenant2.String(), Active: true},
+		{Uuid: providerUUID1, PayoutAddress: strings.ToUpper(credit1.String()), Active: false},
+	}
+	leases := []billingtypes.Lease{
+		{Uuid: leaseUUID2, ProviderUuid: providerUUID1, Tenant: tenant1.String(), State: billingtypes.LEASE_STATE_PENDING},
+		{Uuid: leaseUUID1, ProviderUuid: providerUUID1, Tenant: strings.ToUpper(tenant1.String()), State: billingtypes.LEASE_STATE_ACTIVE},
+		{Uuid: "other-tenant", ProviderUuid: providerUUID1, Tenant: tenant2.String(), State: billingtypes.LEASE_STATE_ACTIVE},
+		{Uuid: "other-provider", ProviderUuid: providerUUID2, Tenant: tenant1.String(), State: billingtypes.LEASE_STATE_ACTIVE},
+	}
+	for _, state := range []billingtypes.LeaseState{
+		billingtypes.LEASE_STATE_CLOSED, billingtypes.LEASE_STATE_EXPIRED,
+		billingtypes.LEASE_STATE_REJECTED,
+	} {
+		leases = append(leases, billingtypes.Lease{Uuid: state.String(), ProviderUuid: providerUUID1, Tenant: tenant1.String(), State: state})
+	}
+	expected := []providerCreditCollisionPreflight{
+		{LeaseUUID: leaseUUID1, ProviderUUID: providerUUID1, Tenant: tenant1.String(), CreditAddress: credit1.String(), State: "LEASE_STATE_ACTIVE"},
+		{LeaseUUID: leaseUUID2, ProviderUUID: providerUUID1, Tenant: tenant1.String(), CreditAddress: credit1.String(), State: "LEASE_STATE_PENDING"},
+	}
+	originalProviders := slices.Clone(providers)
+	originalLeases := slices.Clone(leases)
+	actual, err := auditProviderCreditCollisions(providers, leases)
+	require.NoError(t, err)
+	require.Equal(t, expected, actual)
+	require.Equal(t, originalProviders, providers)
+	require.Equal(t, originalLeases, leases)
+	slices.Reverse(providers)
+	slices.Reverse(leases)
+	actual, err = auditProviderCreditCollisions(providers, leases)
+	require.NoError(t, err)
+	require.Equal(t, expected, actual)
+}
+
+func TestWriteBillingMigrationPreflightRejectsMalformedTenantWithoutPartialAudit(t *testing.T) {
+	encodingConfig := params.MakeEncodingConfig()
+	const providerUUID = "01912345-6789-7abc-8def-0123456789b0"
+	tenant := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	skuJSON, err := encodingConfig.Codec.MarshalJSON(&skutypes.GenesisState{
+		Providers: []skutypes.Provider{{Uuid: providerUUID, PayoutAddress: billingtypes.DeriveCreditAddress(tenant).String()}},
+	})
+	require.NoError(t, err)
+	for _, state := range []billingtypes.LeaseState{billingtypes.LEASE_STATE_ACTIVE, billingtypes.LEASE_STATE_PENDING} {
+		t.Run(state.String(), func(t *testing.T) {
+			billingJSON, err := encodingConfig.Codec.MarshalJSON(&billingtypes.GenesisState{Leases: []billingtypes.Lease{
+				{Uuid: "01912345-6789-7abc-8def-0123456789c0", ProviderUuid: providerUUID, Tenant: tenant.String(), State: state},
+				{Uuid: "01912345-6789-7abc-8def-0123456789c1", ProviderUuid: providerUUID, Tenant: "invalid", State: state},
+			}})
+			require.NoError(t, err)
+			document := fmt.Sprintf(
+				`{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":%s,"bank":{},"sku":%s}}`, billingJSON, skuJSON,
+			)
+			var output bytes.Buffer
+			err = writeBillingMigrationPreflight(encodingConfig.Codec, strings.NewReader(document), &output)
+			require.ErrorContains(t, err, "has invalid tenant")
 			require.Empty(t, output.String())
 		})
 	}

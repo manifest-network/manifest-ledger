@@ -351,10 +351,14 @@ bank self-send would leave credit in place while appearing to settle it, so
 billing rejects this configuration.
 
 **What happens**:
-1. A specific-lease `Withdraw` or `CloseLease` batch fails atomically: no
+1. `create-lease` and `create-lease-for-tenant` reject the configuration before
+   reserving credit or allocating a lease UUID. `acknowledge-lease` rechecks
+   the current payout for every tenant in the batch; one collision rejects the
+   entire batch before any lease becomes ACTIVE or any reservation changes.
+2. A specific-lease `Withdraw` or `CloseLease` batch fails atomically: no
    transfer, lease timestamp/state, count, reservation, or event from any lease
    in that batch is committed.
-2. Provider-wide withdraw is best-effort per lease: it logs and skips the
+3. Provider-wide withdraw is best-effort per lease: it logs and skips the
    affected lease, returns its UUID in `failed_lease_uuids`, leaves that lease
    unchanged, and continues with other leases.
 
@@ -372,6 +376,13 @@ it is active, and preserve its other settings. An inactive provider's payout
 can be repaired with `false` even during a partial deactivation cascade;
 reactivation is a separate action and requires finishing that cascade first.
 
+For a PENDING lease, the tenant can cancel or the provider can reject it to
+release its reservation without transferring funds. Alternatively, retry
+`acknowledge-lease` after repair while its deadline and tenant active cap still
+allow activation. Pending timeout expiry also remains available. Historical
+genesis import deliberately accepts these records, so operators must
+[audit live lease payout collisions before upgrading](MIGRATION.md#provider-payout-policy-preflight).
+
 ### Provider payout address is blocked from receiving funds
 
 **Cause**: Before transferring a nonzero amount, billing rejects payout
@@ -380,7 +391,9 @@ New provider create/update messages reject those addresses, but a provider
 stored by an older binary may still need repair. The error identifies the
 blocked payout address. Both `create-lease` and `create-lease-for-tenant` reject
 new leases for such a provider before reserving credit or allocating a lease
-UUID.
+UUID. `acknowledge-lease` also checks the current payout, including for a
+PENDING lease created before the upgrade or before a payout update. Rejection
+leaves the whole batch PENDING and its reservations unchanged.
 
 **What happens**:
 1. A specific-lease withdrawal or `CloseLease` batch fails atomically; accrued
@@ -405,6 +418,10 @@ shared by its leases, so repair it before retrying the remaining pages.
 Preserve the queried `active` value: `false` repairs an inactive provider
 without reactivating it, including while a deactivation cascade is unfinished.
 Using `true` in that case would reject the repair until the cascade completes.
+For PENDING leases, cancellation and provider rejection still release the
+reservation without a payment, and normal timeout expiry remains available.
+Retry acknowledgement after repair only if its deadline and active-cap checks
+still pass.
 
 Genesis import deliberately retains historical providers with valid Bech32
 payout addresses even if the candidate binary's bank policy blocks those

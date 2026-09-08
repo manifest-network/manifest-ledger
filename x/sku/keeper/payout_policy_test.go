@@ -3,6 +3,7 @@ package keeper_test
 import (
 	"bytes"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -93,30 +94,34 @@ func TestProviderPayoutPolicy(t *testing.T) {
 }
 
 func TestHistoricalBlockedPayoutImportAndInvariantCompatibility(t *testing.T) {
-	f := initFixture(t)
-	blocked := authtypes.NewModuleAddress(distrtypes.ModuleName)
-	genesis := &types.GenesisState{
-		Params: types.DefaultParams(),
-		Providers: []types.Provider{{
-			Uuid: testProviderUUID, Address: f.TestAccs[0].String(),
-			PayoutAddress: blocked.String(), Active: false,
-		}},
-		ProviderSequence: 1,
-	}
-	require.True(t, f.App.BankKeeper.BlockedAddr(blocked))
-	require.NoError(t, genesis.Validate(), "historical payout policy must not prevent importing otherwise valid state")
-	require.NoError(t, f.App.SKUKeeper.InitGenesis(f.Ctx, genesis))
-	message, broken := keeper.StateInvariant(f.App.SKUKeeper)(f.Ctx)
-	require.False(t, broken, message)
-	exported := f.App.SKUKeeper.ExportGenesis(f.Ctx)
-	require.Equal(t, blocked.String(), exported.Providers[0].PayoutAddress)
+	for _, active := range []bool{false, true} {
+		t.Run(strconv.FormatBool(active), func(t *testing.T) {
+			f := initFixture(t)
+			blocked := authtypes.NewModuleAddress(distrtypes.ModuleName)
+			genesis := &types.GenesisState{
+				Params: types.DefaultParams(),
+				Providers: []types.Provider{{
+					Uuid: testProviderUUID, Address: f.TestAccs[0].String(),
+					PayoutAddress: blocked.String(), Active: active,
+				}},
+				ProviderSequence: 1,
+			}
+			require.True(t, f.App.BankKeeper.BlockedAddr(blocked))
+			require.NoError(t, genesis.Validate(), "historical payout policy must not prevent importing otherwise valid state")
+			require.NoError(t, f.App.SKUKeeper.InitGenesis(f.Ctx, genesis))
+			message, broken := keeper.StateInvariant(f.App.SKUKeeper)(f.Ctx)
+			require.False(t, broken, message)
+			exported := f.App.SKUKeeper.ExportGenesis(f.Ctx)
+			require.Equal(t, blocked.String(), exported.Providers[0].PayoutAddress)
 
-	reimported := initFixture(t)
-	require.NoError(t, reimported.App.SKUKeeper.InitGenesis(reimported.Ctx, exported))
-	provider, err := reimported.App.SKUKeeper.GetProvider(reimported.Ctx, testProviderUUID)
-	require.NoError(t, err)
-	require.Equal(t, blocked.String(), provider.PayoutAddress)
-	require.False(t, provider.Active)
-	message, broken = keeper.StateInvariant(reimported.App.SKUKeeper)(reimported.Ctx)
-	require.False(t, broken, message)
+			reimported := initFixture(t)
+			require.NoError(t, reimported.App.SKUKeeper.InitGenesis(reimported.Ctx, exported))
+			provider, err := reimported.App.SKUKeeper.GetProvider(reimported.Ctx, testProviderUUID)
+			require.NoError(t, err)
+			require.Equal(t, blocked.String(), provider.PayoutAddress)
+			require.Equal(t, active, provider.Active)
+			message, broken = keeper.StateInvariant(reimported.App.SKUKeeper)(reimported.Ctx)
+			require.False(t, broken, message)
+		})
+	}
 }

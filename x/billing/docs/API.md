@@ -91,8 +91,8 @@ manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1:web 019
 - All SKUs must be from the same provider
 - All SKUs must be active
 - The provider must be active and its payout address must be permitted by the
-  bank module; a historical blocked payout must be repaired before new leases
-  can be created
+  bank module and distinct from this tenant's derived credit address; repair
+  an ineligible payout before creating a lease
 - Cannot exceed `max_items_per_lease`
 - Cannot exceed `max_leases_per_tenant`
 - Cannot exceed `max_pending_leases_per_tenant`
@@ -144,8 +144,9 @@ manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-6789-7abc-
 **Authorization:** Only module authority or addresses in `allowed_list` param.
 
 The same admission checks as `create-lease` apply, including rejecting a
-provider whose stored payout address is blocked by the bank module. Rejection
-occurs before allocating a lease UUID or reserving tenant credit.
+provider whose stored payout address is blocked by the bank module or equals
+the target tenant's derived credit address. Rejection occurs before allocating
+a lease UUID or reserving tenant credit.
 
 ---
 
@@ -179,8 +180,17 @@ manifestd tx billing acknowledge-lease uuid1 uuid2 uuid3 --from provider-key
 - All leases must belong to the same provider
 - Block time must be at or before each lease's `created_at + current pending_timeout`; the exact cutoff is valid
 - Each tenant's active count after applying the whole batch must be ≤ `max_leases_per_tenant`
+- The current provider payout must be permitted by bank policy and distinct
+  from every tenant's derived credit address in the batch
+- Provider or SKU deactivation alone does not prevent acknowledgement of an
+  existing PENDING lease; the payout, deadline, and tenant active-cap gates
+  still apply
 - Maximum 100 leases per transaction
-- Atomic operation: all timeout and per-tenant cap gates pass before any lease, count, timestamp, reservation, or event changes
+- Atomic operation: all timeout, per-tenant cap, and payout gates pass before
+  any lease, count, timestamp, reservation, or event changes
+- A rejected acknowledgement leaves leases PENDING; tenants can cancel or
+  providers can reject them to release reservations without a payout transfer,
+  or retry acknowledgement after payout repair if the other gates still pass
 - Billing starts from the acknowledgement timestamp
 - Emits `lease_acknowledged` event for each lease
 - Emits `batch_acknowledged` event when multiple leases are processed (includes lease_count, provider_uuid, acknowledged_by)
@@ -495,7 +505,7 @@ manifestd tx billing update-params [max-leases-per-tenant] [max-items-per-lease]
 |----------|------|-------------|
 | max-leases-per-tenant | uint64 | Max active leases per tenant |
 | max-items-per-lease | uint64 | Max items per lease |
-| min-lease-duration | uint64 | Minimum lease duration in seconds |
+| min-lease-duration | uint64 | Seconds of credit reserved at lease creation; does not enforce a minimum elapsed runtime |
 | max-pending-leases-per-tenant | uint64 | Max pending leases per tenant |
 | pending-timeout | uint64 | Pending lease timeout in seconds |
 
@@ -1196,6 +1206,10 @@ message MsgFundCreditResponse {
 
 Create a lease for the sender (tenant). Lease starts in PENDING state.
 
+The provider must be active. Its payout must be permitted by bank policy and
+distinct from the tenant's derived credit address; these checks precede credit
+reservation and lease UUID allocation.
+
 **Request:**
 ```protobuf
 message MsgCreateLease {
@@ -1224,6 +1238,9 @@ message MsgCreateLeaseResponse {
 
 Create a lease on behalf of a tenant (authority/allowed only). Lease starts in PENDING state.
 
+The same provider and payout eligibility checks as `MsgCreateLease` apply to
+the target tenant.
+
 **Request:**
 ```protobuf
 message MsgCreateLeaseForTenant {
@@ -1247,7 +1264,9 @@ message MsgCreateLeaseForTenantResponse {
 
 Provider acknowledges one or more PENDING leases atomically, transitioning them to ACTIVE.
 All leases must belong to the same provider, be in PENDING state, be no later than their hard
-pending deadline, and fit within each tenant's post-batch active cap.
+pending deadline, and fit within each tenant's post-batch active cap. The current
+provider payout must be permitted by bank policy and distinct from every
+tenant's derived credit address in the batch.
 
 **Request:**
 ```protobuf
@@ -1270,8 +1289,13 @@ message MsgAcknowledgeLeaseResponse {
 - All leases must be in PENDING state
 - Block time must be ≤ `created_at + current pending_timeout` for every lease; strictly later acknowledgements fail even if EndBlock has not yet expired the lease
 - Each tenant's active count after the entire batch must be ≤ `max_leases_per_tenant`
+- The current provider payout must be permitted by bank policy and must not
+  equal any batch tenant's derived credit address; payout updates after lease
+  creation are checked again here
 - Maximum 100 leases per call
 - Atomic: all activation gates pass before any state, aggregate, timestamp, reservation, or event changes
+- Pending leases with an ineligible payout remain cancellable/rejectable
+  without a transfer; repair the payout before retrying acknowledgement
 
 **CLI:**
 ```bash

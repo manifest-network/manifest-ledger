@@ -264,12 +264,16 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 	}
 	// Historical providers may predate SKU's payout-policy validation. Do not
 	// reserve more tenant credit for a provider that cannot receive settlement.
-	payoutAddress, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
+	payoutAddress, err := storedProviderPayoutAddress(provider)
 	if err != nil {
-		return nil, types.ErrInternalCorruption.Wrapf("provider %s has invalid payout address: %v", providerUUID, err)
+		return nil, err
 	}
-	if ms.k.bankKeeper.BlockedAddr(payoutAddress) {
-		return nil, types.ErrInvalidCreditOperation.Wrapf("provider payout address %s is blocked from receiving funds", payoutAddress)
+	creditAddress, err := types.DeriveCreditAddressFromBech32(tenant)
+	if err != nil {
+		return nil, err
+	}
+	if err := ms.k.validatePayoutRecipient(payoutAddress, creditAddress); err != nil {
+		return nil, err
 	}
 
 	// 5. Calculate reservation and verify tenant has enough AVAILABLE credit
@@ -1360,7 +1364,8 @@ func validateLeaseActivationGates(blockTime time.Time, params types.Params, vali
 
 // AcknowledgeLease allows a provider to acknowledge one or more PENDING leases.
 // This transitions the leases to ACTIVE state and starts billing after revalidating
-// the hard pending deadline and each tenant's post-batch active lease count.
+// the hard pending deadline, each tenant's post-batch active lease count, and
+// payout eligibility for every tenant in the batch.
 // All leases must belong to the same provider. This is an atomic operation:
 // all leases succeed or all fail.
 func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowledgeLease) (*types.MsgAcknowledgeLeaseResponse, error) {
@@ -1377,7 +1382,7 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 		return nil, err
 	}
 
-	_, acknowledgedBy, err := ms.validateProviderAuthorization(ctx, msg.Sender, validated.providerUUID, "acknowledge")
+	provider, acknowledgedBy, err := ms.validateProviderAuthorization(ctx, msg.Sender, validated.providerUUID, "acknowledge")
 	if err != nil {
 		return nil, err
 	}
@@ -1389,6 +1394,23 @@ func (ms msgServer) AcknowledgeLease(ctx context.Context, msg *types.MsgAcknowle
 
 	if err := validateLeaseActivationGates(blockTime, params, validated); err != nil {
 		return nil, err
+	}
+
+	// Pending leases may predate payout validation, and provider settings can
+	// change after admission. Recheck before accrual starts; cancel and reject
+	// remain available while an ineligible payout is awaiting repair.
+	payoutAddress, err := storedProviderPayoutAddress(provider)
+	if err != nil {
+		return nil, err
+	}
+	for _, tenant := range validated.tenantOrder {
+		creditAddress, err := types.DeriveCreditAddressFromBech32(tenant)
+		if err != nil {
+			return nil, err
+		}
+		if err := ms.k.validatePayoutRecipient(payoutAddress, creditAddress); err != nil {
+			return nil, err
+		}
 	}
 
 	leases := validated.leases

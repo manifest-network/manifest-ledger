@@ -232,13 +232,16 @@ Before the upgrade:
   jq '.tenants[] | select(.expiring_modern_pending_lease_uuids | length > 0)' \
     billing-v4-preflight.json
   jq '.blocked_providers' billing-v4-preflight.json
-  jq -e '.blocked_provider_count == 0' billing-v4-preflight.json
+  jq '.payout_credit_collisions' billing-v4-preflight.json
+  jq -e '.blocked_provider_count == 0 and .payout_credit_collision_count == 0' \
+    billing-v4-preflight.json
   ```
 
   The complete export must include billing, bank, and SKU app state. The
   command uses the same reservation planner as the production migration and
   audits provider payouts against the candidate binary's actual blocked-address
-  set. Verify its
+  set and each source ACTIVE/PENDING lease's derived tenant credit address.
+  Verify its
   `source_chain_id` and `source_initial_height` against the archived export and
   recorded snapshot: the initial height is normally the committed export height
   plus one (or zero for a zero-height export). `input_genesis_time` is the
@@ -260,21 +263,30 @@ Before the upgrade:
   clients can be notified. `validate-genesis` cannot perform the bank
   comparison. Conversely, this preflight does not run block-time or full
   cross-module SKU-reference validation and is not a full InitGenesis check.
-- Require `blocked_provider_count == 0` before the upgrade. The preflight command
-  returns success even when its report contains blocked payouts; the `jq -e`
-  check above is the required gate. Schema version 2 lists affected providers,
+- Require `blocked_provider_count == 0` and `payout_credit_collision_count == 0`
+  before the upgrade. The preflight command returns success even when its
+  report contains ineligible payouts; the `jq -e` check above is the required
+  gate. Schema version 3 lists bank-blocked providers,
   including inactive ones, in `blocked_providers` with their payout address,
   current `active` flag, and sorted `active_lease_uuids` and
-  `pending_lease_uuids` from the export's source state. An authorized SKU
-  administrator must repair each payout while preserving the provider's
+  `pending_lease_uuids` from the export's source state. It separately lists live
+  leases whose payout equals their tenant's derived credit address in
+  `payout_credit_collisions`, sorted by `lease_uuid`, with `provider_uuid`,
+  canonical `tenant` and `credit_address`, and source `state`. These are existing
+  ACTIVE/PENDING leases, not predicted future tenants or migration outcomes.
+  An authorized SKU administrator must repair each payout while preserving the provider's
   activation state: use `false` for inactive providers, even during a partial
   deactivation cascade, or `true` for active providers. Historical blocked
-  payouts deliberately remain accepted by genesis import and the SKU state
-  invariant. After upgrade they prevent new lease creation and nonzero
-  settlement, including tenant closure, until repaired; a passing import is
-  not a substitute for this audit.
-- Rerun the preflight and require zero blocked providers against the final
-  pre-upgrade export. Funding, new leases, settlement, and provider updates
+  payouts and historical tenant-credit collisions deliberately remain importable.
+  A passing genesis or state-invariant check is not a substitute for this audit.
+  After upgrade either configuration prevents new lease creation,
+  acknowledgement, and nonzero settlement for affected tenants until repaired.
+  Pending leases can still be cancelled or rejected to release reservations
+  without a transfer; existing ACTIVE leases require payout repair before a
+  nonzero closing settlement can succeed.
+- Rerun the preflight and require zero blocked providers and zero tenant-credit
+  collisions against the final pre-upgrade export. Funding, new leases,
+  settlement, and provider updates
   after an earlier snapshot can change the result. Archive the final export,
   report, app hash, and candidate binary checksum together.
 - Rehearse the exact source binary, candidate binary, and state snapshot on dev

@@ -431,7 +431,10 @@ the tranche.
 
 **Implementation:**
 - Create → PENDING (credit locked)
-- AcknowledgeLease revalidates every lease's hard timeout and every tenant's post-batch active cap before any writes
+- AcknowledgeLease revalidates every lease's hard timeout, every tenant's
+  post-batch active cap, and the current payout's eligibility before any writes.
+  The payout must be permitted by bank policy and distinct from every batch
+  tenant's derived credit address.
 - AcknowledgeLease → ACTIVE (billing starts) only when `blockTime <= created_at + current pending_timeout`
 - RejectLease → REJECTED (credit unlocked)
 - EndBlocker expiration → EXPIRED (credit unlocked)
