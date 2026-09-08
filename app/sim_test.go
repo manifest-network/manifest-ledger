@@ -583,13 +583,8 @@ func simulationStatisticsOutput(tb testing.TB, config simulationtypes.Config) (s
 }
 
 func checkBillingSimulationResult(output io.Writer, config simulationtypes.Config, stopEarly bool, simulationErr error) error {
-	// The default stdout path is fresh for each run, so available statistics
-	// belong to this run even when a signal also returned an error. An explicit
-	// export may still contain a prior run's file; never read it after an error.
-	if simulationErr != nil && output == nil {
-		return simulationErr
-	}
-
+	// A signal can return an error along with exported partial statistics.
+	// Read available diagnostics without masking the original simulator error.
 	statsJSON, err := os.ReadFile(config.ExportStatsPath)
 	if err != nil {
 		if simulationErr != nil {

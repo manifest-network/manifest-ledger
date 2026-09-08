@@ -152,7 +152,6 @@ func TestBillingSimulationResultDiagnostics(t *testing.T) {
 		{name: "completed run with coverage prints statistics once", fundingOK: 1},
 		{name: "simulator error without statistics is preserved", stopEarly: true, simulationErr: finalizeErr, statistics: "missing"},
 		{name: "malformed statistics do not mask simulator error", stopEarly: true, simulationErr: finalizeErr, statistics: "malformed"},
-		{name: "explicit old export is not printed after simulator error", stopEarly: true, exportOnly: true, simulationErr: finalizeErr, statistics: "stale"},
 		{name: "missing statistics without simulator error fail", statistics: "missing", expectedError: "read simulation delivery statistics"},
 		{name: "malformed statistics without simulator error fail", statistics: "malformed", expectedError: "decode simulation delivery statistics"},
 	} {
@@ -198,9 +197,6 @@ func TestBillingSimulationResultDiagnostics(t *testing.T) {
 			case "missing":
 			case "malformed":
 				require.NoError(t, os.WriteFile(config.ExportStatsPath, []byte("invalid JSON"), 0o600))
-			case "stale":
-				oldStats := simulation.EventStats{"prior-run": {"old-operation": {"ok": 999}}}
-				oldStats.ExportJSON(config.ExportStatsPath)
 			default:
 				stats.ExportJSON(config.ExportStatsPath)
 			}

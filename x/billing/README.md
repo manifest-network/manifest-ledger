@@ -486,7 +486,8 @@ apply.
 
 ### Reject Lease (PENDING → REJECTED)
 
-1. Provider verifies they own the SKUs in the lease
+1. Verify all requested leases are PENDING and belong to the same provider;
+   authorize the provider's current address or the module authority
 2. Set lease state to REJECTED
 3. Set rejected_at and rejection_reason
 4. Decrement pending_lease_count
