@@ -158,7 +158,7 @@ This model separates operational control (billing) from administrative control (
 - Must use specific price values (multiples of 3600 for hourly, 86400 for daily)
 - Harder to express "nice" prices
 
-**Implementation:** The rate is computed by `skutypes.CalculatePricePerSecond(basePrice, unit)` (x/sku/types/unit.go), which divides `basePrice.Amount` by 3600 (`UNIT_PER_HOUR`) or 86400 (`UNIT_PER_DAY`) and fails if the result is zero or the division leaves a remainder. x/billing wraps it as `ConvertBasePriceToPerSecond` at lease creation.
+**Implementation:** `skutypes.CalculatePricePerSecond(basePrice, unit)` validates the unit and Coin before calculating the rate. It returns an initialized zero with `false` for an unsupported unit, invalid Coin, zero per-second rate, or inexact division. `ValidatePriceAndUnit` shares the same checks and exposes error details; see the [exported helper contract](ARCHITECTURE.md#price-divisibility). x/billing wraps conversion as `ConvertBasePriceToPerSecond` at lease creation.
 
 ## Decision 6: Unit Enum vs Seconds Storage
 

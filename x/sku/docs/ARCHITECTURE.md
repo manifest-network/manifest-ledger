@@ -354,41 +354,32 @@ sequenceDiagram
 
 SKU prices must be evenly divisible by their unit's seconds to ensure exact per-second rate calculations. See [Pricing and Exact Divisibility](../README.md#pricing-and-exact-divisibility) for the user-facing explanation.
 
-**Implementation** (`x/sku/types/unit.go`):
-```go
-func ValidatePriceAndUnit(basePrice sdk.Coin, unit Unit) error {
-    divisor, ok := divisorForUnit(unit)
-    if !ok {
-        return fmt.Errorf("invalid unit: %s", unit)
-    }
+**Exported helper contract** ([`types/unit.go`](../types/unit.go)):
 
-    perSecond := basePrice.Amount.Quo(divisor)
+Both `ValidatePriceAndUnit(basePrice, unit)` and
+`CalculatePricePerSecond(basePrice, unit)` validate the unit and `sdk.Coin`
+before dividing. Callers do not need to prevalidate the Coin. Supported units
+are `UNIT_PER_HOUR` (3600 seconds) and `UNIT_PER_DAY` (86400 seconds); a valid
+price must produce a positive, exact integer per-second rate.
 
-    // Check if per-second rate is zero (would result in free usage)
-    if perSecond.IsZero() {
-        return &PriceValidationError{
-            BasePrice: basePrice,
-            Unit:      unit,
-            IsZero:    true,
-        }
-    }
+`ValidatePriceAndUnit` returns `nil` on success. Its failures are:
 
-    // Check if division is exact (no remainder)
-    remainder := basePrice.Amount.Mod(divisor)
-    if !remainder.IsZero() {
-        return &PriceValidationError{
-            BasePrice: basePrice,
-            Unit:      unit,
-            IsZero:    false,
-            Remainder: remainder,
-        }
-    }
+| Input | Error contract |
+|-------|----------------|
+| Unsupported or unspecified unit | An ordinary error beginning `invalid unit:` |
+| Invalid denomination, uninitialized amount, or negative amount | An error beginning `invalid base price:`, wrapping the underlying Coin validation error |
+| Valid Coin whose amount is zero or smaller than the unit's seconds | `*PriceValidationError` with `IsZero=true`, indicating a zero per-second rate |
+| Positive quotient with a nonzero division remainder | `*PriceValidationError` with `IsZero=false` and the exact `Remainder` |
 
-    return nil
-}
-```
+Unit validation precedes Coin validation. Only the two rate-calculation failures
+use `*PriceValidationError`; callers must also handle the ordinary validation
+errors. `BasePrice` and `Unit` identify the rejected input in either structured
+error case.
 
-The divisor comes from the unexported `divisorForUnit(unit)` (3600 for `UNIT_PER_HOUR`, 86400 for `UNIT_PER_DAY`). On failure the function returns a `*PriceValidationError` with two modes: `IsZero=true` ("results in zero per-second rate") when the price truncates to a zero rate, and `IsZero=false` ("not evenly divisible ... remainder: %s") when division leaves a remainder.
+`CalculatePricePerSecond` applies the same validation and returns the calculated
+`math.Int` with `true` on success. On any failure it returns an initialized zero
+`math.Int` with `false`; use `ValidatePriceAndUnit` when the error details are
+needed. Both exported helpers share the same internal validation/conversion path.
 
 ### Provider State Validation
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"slices"
 	"strings"
 	"testing"
 
@@ -35,6 +34,22 @@ func (rpc *withdrawResultRPC) Tx(_ context.Context, hash []byte, _ bool) (*coret
 }
 
 func TestWithdrawResultCmd(t *testing.T) {
+	const pageJSON = `{
+		"total_amounts": [{"denom": "umfx", "amount": "123"}],
+		"payout_address": "manifest1payout",
+		"withdrawal_count": "2",
+		"has_more": true,
+		"next_key": "AP8B",
+		"failed_lease_uuids": ["01902a9b-1234-7000-8000-000000000001"]
+	}`
+	const finalPageJSON = `{
+		"total_amounts": [],
+		"payout_address": "",
+		"withdrawal_count": "0",
+		"has_more": false,
+		"next_key": null,
+		"failed_lease_uuids": []
+	}`
 	want := &types.MsgWithdrawResponse{
 		TotalAmounts:     sdk.NewCoins(sdk.NewInt64Coin("umfx", 123)),
 		PayoutAddress:    "manifest1payout",
@@ -59,16 +74,16 @@ func TestWithdrawResultCmd(t *testing.T) {
 	hash := strings.Repeat("AB", 32)
 
 	for _, tc := range []struct {
-		name   string
-		result *coretypes.ResultTx
-		err    error
-		args   []string
-		want   *types.MsgWithdrawResponse
-		errMsg string
+		name     string
+		result   *coretypes.ResultTx
+		err      error
+		args     []string
+		wantJSON string
+		errMsg   string
 	}{
-		{name: "decoded module response preserves cursor and failures", result: committed(data(withdrawal)), want: want},
-		{name: "explicit second message", result: committed(data(other, withdrawal)), args: []string{"--msg-index=1"}, want: want},
-		{name: "empty final page", result: committed(data(&codectypes.Any{TypeUrl: withdrawal.TypeUrl})), want: &types.MsgWithdrawResponse{}},
+		{name: "decoded module response preserves cursor and failures", result: committed(data(withdrawal)), wantJSON: pageJSON},
+		{name: "explicit second message", result: committed(data(other, withdrawal)), args: []string{"--msg-index=1"}, wantJSON: pageJSON},
+		{name: "empty final page", result: committed(data(&codectypes.Any{TypeUrl: withdrawal.TypeUrl})), wantJSON: finalPageJSON},
 		{name: "not yet indexed", err: errors.New("tx not found"), errMsg: "query committed transaction: tx not found"},
 		{name: "sync admission is not execution", result: &coretypes.ResultTx{}, errMsg: "not been included"},
 		{name: "nil result", errMsg: "not been included"},
@@ -92,14 +107,10 @@ func TestWithdrawResultCmd(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, strings.ToLower(hash), hex.EncodeToString(rpc.hash))
-			var decoded types.MsgWithdrawResponse
-			require.NoError(t, encoding.Codec.UnmarshalJSON(out.Bytes(), &decoded))
-			require.Equal(t, tc.want.WithdrawalCount, decoded.WithdrawalCount)
-			require.Equal(t, tc.want.HasMore, decoded.HasMore)
-			require.Equal(t, tc.want.NextKey, decoded.NextKey)
-			require.True(t, slices.Equal(tc.want.FailedLeaseUuids, decoded.FailedLeaseUuids))
-			require.Equal(t, tc.want.TotalAmounts.String(), decoded.TotalAmounts.String())
-			require.Equal(t, tc.want.PayoutAddress, decoded.PayoutAddress)
+			// The operator recipe consumes these exact snake_case keys, JSON
+			// types, and final-page defaults. A protobuf round trip also accepts
+			// camelCase aliases and omitted defaults, hiding breaking CLI changes.
+			require.JSONEq(t, tc.wantJSON, out.String())
 		})
 	}
 }

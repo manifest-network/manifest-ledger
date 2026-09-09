@@ -40,5 +40,7 @@ jobs:
 
       - name: documentation examples
         run: |
-          command -v bash jq
+          for tool in bash jq; do
+            command -v "$tool" || exit 1
+          done
           node --test scripts/docs_examples.test.mjs

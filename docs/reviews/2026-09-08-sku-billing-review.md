@@ -261,9 +261,26 @@ All four corrected committed application simulations pass with 100 blocks per ru
 
 These results supersede the initial simulation evidence for persistent histories. They retain the explicit PoA validator-mutation exclusion described in R15 and do not close the tokenfactory generator's arbitrary-collision gap in R16. Reproduce with the earlier separate-process commands and `GOTOOLCHAIN=go1.26.8`; the import test derives its continuation seed internally.
 
+## PR review follow-up — 2026-09-09
+
+[Claude's review of `aebd057`](https://github.com/manifest-network/manifest-ledger/pull/179#issuecomment-5603383436) identified four remaining gaps. Each was confirmed against the source; none requires changing production UUID generation or pricing behavior.
+
+| Gap | Confidence | Correction |
+| --- | --- | --- |
+| Billing golden vectors and examples used `billing-lease`, while the keeper uses `billing` | 100% | Use the production module constants in external golden-vector tests; capture expectations from the original manual implementation at `85d1602`; pin two real keeper-created lease UUIDs across sequences 4095–4096. |
+| The combined `command -v bash jq` CI guard succeeds when only one tool is available | 100% | Check each tool separately and exit immediately if either is missing. |
+| Re-decoding CLI JSON through protobuf accepts aliases and omitted defaults, leaving the operator recipe's field names untested | 100% | Assert literal CLI JSON for populated and final pages, including snake_case keys, string counts, base64 cursors, and false/null/empty-array defaults. |
+| SKU architecture documentation copied the old pricing helper and omitted Coin validation failures | 100% | Replace the copied implementation with the exported contract and align the design-decision summary. |
+
+Follow-up validation with Go 1.26.8 passed the complete UUID package, the real keeper UUID regression, and the withdrawal-result CLI tests. A temporary Go source overlay substituting the incorrect `billing-lease` namespace at the keeper call site caused the new regression to fail on the expected literal UUID, demonstrating that it detects namespace drift. The overlay did not modify the production source.
+
+All seven executable documentation tests passed with zero skips. The workflow dependency guard succeeded with both Bash and jq available and failed when either was individually missing. Scoped lint for UUID, billing CLI, and billing keeper reported **0 issues**. Evidence: UUID tests (`/tmp/manifest-pr179-uuid-package.log`, local evidence), namespace mutation check (`/tmp/manifest-pr179-uuid-namespace-mutation.log`, local evidence), documentation tests (`/tmp/manifest-pr179-doc-tests.log`, local evidence), lint (`/tmp/manifest-pr179-review-lint.log`, local evidence).
+
+GitHub reported all 31 checks successful for `aebd057`, including the interchaintest matrix, container/build checks, simulations, and vulnerability analysis. That evidence applies to the preceding head; this follow-up receives its own CI run.
+
 ## Limits and remaining questions
 
-No deployed provider, live-chain state, or production price catalog was inspected. Docker interchaintests, a fuzz campaign, release-tagged binaries, and all platform/build-tag vulnerability graphs were not rerun. CI definitions and relevant test sources were inspected, but that is not a claim that those jobs passed here. The remediated simulation profile excludes randomized validator mutations pending ENG-915.
+No deployed provider, live-chain state, or production price catalog was inspected. Docker interchaintests, a fuzz campaign, release-tagged binaries, and all platform/build-tag vulnerability graphs were not rerun locally. The subsequent successful CI checks for `aebd057` are recorded above and do not certify later commits. The remediated simulation profile excludes randomized validator mutations pending ENG-915.
 
 The remaining decisions are:
 

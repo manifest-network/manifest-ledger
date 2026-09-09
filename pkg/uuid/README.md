@@ -67,7 +67,7 @@ FNV is fast and deterministic, but it is not a cryptographic hash. Platform opti
 
 ### Sequence Management
 
-The SKU module maintains separate provider and SKU counters; billing maintains a lease counter. Their namespaces are `sku-provider`, `sku-sku`, and `billing-lease`, respectively:
+The SKU module maintains separate provider and SKU counters; billing maintains a lease counter. Their namespaces are `sku-provider`, `sku-sku`, and `billing`, respectively. These strings participate in consensus-visible identifier generation and must match the keeper call sites:
 
 ```go
 // Using a sequence allocated from the provider counter
@@ -81,11 +81,14 @@ The sequence is incremented atomically and stored in module state. Keepers rejec
 ### Standard Usage (Recommended)
 
 ```go
-import "github.com/manifest-network/manifest-ledger/pkg/uuid"
+import (
+    "github.com/manifest-network/manifest-ledger/pkg/uuid"
+    billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
+)
 
 // Generate a deterministic UUIDv7 with full entropy
 // Uses block time, header hash, and chain ID from context
-id := uuid.GenerateUUIDv7(ctx, "billing-lease", sequence)
+id := uuid.GenerateUUIDv7(ctx, billingtypes.ModuleName, sequence)
 ```
 
 ### Testing / Migration
@@ -148,11 +151,13 @@ if uuid.IsValidUUIDv7(id) {
 
 ```bash
 go test -v ./pkg/uuid/...
+go test ./x/billing/keeper -run '^TestCreateLeaseUUIDContract$'
 ```
 
 The tests verify:
 - Format compliance with UUIDv7 specification
-- Fixed golden vectors for all production namespaces, counter wrap at 4096, large counters, and time-only generation
+- Fixed golden vectors, captured from the manual implementation at `85d1602`, for all production namespaces, 12-bit sequence-field rollover at 4096, large counters, and time-only generation
+- A billing keeper regression that pins lease UUIDs from actual lease creation across sequences 4095 and 4096
 - Decoded timestamp, version, variant, and sequence bits
 - Determinism (same inputs → same output)
 - Uniqueness (different sequences → different UUIDs)

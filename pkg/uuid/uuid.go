@@ -68,7 +68,7 @@ func GenerateUUIDv7(ctx sdk.Context, moduleName string, sequence uint64) string 
 //   - t: timestamp for the UUID (typically block time)
 //   - headerHash: block header hash to distinguish chains and blocks (can be nil for testing)
 //   - chainID: chain identifier to distinguish chains
-//   - moduleName: entity namespace ("sku-provider", "sku-sku", or "billing-lease")
+//   - moduleName: entity namespace ("sku-provider", "sku-sku", or "billing")
 //   - sequence: monotonically increasing sequence within the module
 func GenerateUUIDv7WithEntropy(t time.Time, headerHash []byte, chainID, moduleName string, sequence uint64) string {
 	// Get milliseconds since Unix epoch
