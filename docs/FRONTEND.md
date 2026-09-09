@@ -336,7 +336,7 @@ const page = await client.liftedinit.billing.v1.providerWithdrawable({
 
 ### Tenant authentication to your provider API
 
-After a lease goes ACTIVE, tenants prove ownership using ADR-036 arbitrary-message signing. The full message format, validation steps, and sample verifier code live in [`x/billing/docs/INTEGRATION.md`](../x/billing/docs/INTEGRATION.md). Frontend side, the call is:
+After a lease goes ACTIVE, tenants prove ownership using ADR-036 arbitrary-message signing. The following is the **legacy v1** call, for providers explicitly configured to accept v1. It lacks signed chain/provider/API audience binding. The [integration guide](../x/billing/docs/INTEGRATION.md#authentication) records that limitation; the proposed [v2 profile and rollout requirements](../x/billing/docs/AUTHENTICATION_V2.md) cover the coordinated client/verifier update. Do not silently downgrade a failed v2 request to v1.
 
 ```ts
 const timestamp = Math.floor(Date.now() / 1000);

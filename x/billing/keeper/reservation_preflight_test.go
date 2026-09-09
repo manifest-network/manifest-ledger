@@ -102,6 +102,7 @@ func TestBuildReservationMigrationPreflightIsDeterministicAndReadOnly(t *testing
 	require.Equal(t, originalBankJSON, actualBankJSON)
 	require.Equal(t, ReservationMigrationPreflight{
 		BillingState:                     ReservationPreflightStatePreV4,
+		MigrationPath:                    ReservationPreflightPathV2ToV4,
 		ReservationChangeTenantCount:     1,
 		ExpiringModernPendingTenantCount: 1,
 		ExpiringModernPendingLeaseCount:  2,
@@ -217,6 +218,14 @@ func TestBuildReservationMigrationPreflightRejectsUnderbackedV4State(t *testing.
 	require.ErrorIs(t, err, types.ErrReservationInvariant)
 	require.ErrorContains(t, err, "consumable v4 billing state")
 	require.ErrorContains(t, err, "is under-backed")
+
+	bankGenesis.Balances[0].Coins = sdk.NewCoins(sdk.NewInt64Coin("ualpha", 5))
+	report, err := BuildReservationMigrationPreflight(cutoverTime, billingGenesis, bankGenesis)
+	require.NoError(t, err)
+	require.Equal(t, ReservationPreflightStateV4, report.BillingState)
+	require.Equal(t, ReservationPreflightPathNone, report.MigrationPath)
+	require.Zero(t, report.ReservationChangeTenantCount)
+	require.Zero(t, report.ExpiringModernPendingLeaseCount)
 }
 
 func TestBuildReservationMigrationPreflightReportsOpaqueLegacyCohort(t *testing.T) {

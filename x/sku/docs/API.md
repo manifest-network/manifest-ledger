@@ -102,7 +102,13 @@ preserved. Use `--clear-api-url` to remove it. Supplying both
 
 Deactivate a provider (soft delete). The provider remains in state but is marked inactive. Inactive providers cannot have new SKUs created for them.
 
-SKU deactivation is paginated to prevent gas exhaustion with many SKUs. If `has_more` is true in the response, call again to continue deactivating SKUs.
+SKU deactivation is paginated to prevent gas exhaustion with many SKUs. Each
+committed call deactivates up to the requested limit. The CLI prints an SDK
+transaction response, so its output does not expose the module
+`MsgDeactivateProviderResponse.has_more` field. After successful execution,
+query `skus-by-provider UUID --active-only --limit 1` at that transaction height.
+Repeat deactivation while the query returns a SKU; an empty result means the
+cascade is complete. The provider itself becomes inactive on the first call.
 
 ```bash
 manifestd tx sku deactivate-provider [uuid] [flags]
@@ -123,6 +129,81 @@ manifestd tx sku deactivate-provider [uuid] [flags]
 manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab --from authority
 manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab --limit 100 --from authority
 ```
+
+
+##### Complete a provider deactivation cascade
+
+This Bash + jq example handles more than one page and waits for committed
+success before querying the remaining active SKUs. Configure the chain, RPC,
+provider, and authority first. Use one worker per state directory; keep the
+same configuration when resuming. A timeout retains the transaction for lookup
+on restart. An ambiguous broadcast must be investigated before replacing
+`pending.json`; for a confirmed nonzero execution code, correct the cause and
+archive the pending and included receipts before submitting a replacement.
+The state query is pinned to the committed transaction height. If that height
+has been pruned before a restart, use an archive RPC for the same chain to
+resolve the retained receipt and query; do not submit another transaction just
+because historical state is unavailable. Update the saved RPC entry in the
+plan only after verifying the replacement endpoint serves that chain.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+PROVIDER_UUID="01912345-6789-7abc-8def-0123456789ab"
+CHAIN_ID="replace-with-chain-id"
+NODE="https://replace-with-rpc"
+AUTHORITY_KEY="authority"
+STATE_DIR="./deactivate-state-$PROVIDER_UUID"
+mkdir -p "$STATE_DIR"
+jq -n --args '$ARGS.positional' "$PROVIDER_UUID" "$CHAIN_ID" "$NODE" "$AUTHORITY_KEY" \
+  > "$STATE_DIR/plan.expected.json"
+if [ -f "$STATE_DIR/plan.json" ]; then
+  cmp "$STATE_DIR/plan.expected.json" "$STATE_DIR/plan.json"
+else
+  mv "$STATE_DIR/plan.expected.json" "$STATE_DIR/plan.json"
+fi
+while true; do
+  if [ ! -f "$STATE_DIR/pending.json" ]; then
+    manifestd tx sku deactivate-provider "$PROVIDER_UUID" --limit 50 \
+      --from "$AUTHORITY_KEY" --chain-id "$CHAIN_ID" --node "$NODE" \
+      --broadcast-mode sync --output json -y --gas auto --gas-adjustment 1.5 \
+      > "$STATE_DIR/pending.json"
+  fi
+  jq -e '(.code | tonumber) == 0 and (.txhash | test("^[[:xdigit:]]{64}$"))' \
+    "$STATE_DIR/pending.json" > /dev/null
+  TXHASH=$(jq -r '.txhash' "$STATE_DIR/pending.json")
+  INCLUDED=false
+  for ((attempt = 0; attempt < 60; attempt++)); do
+    if manifestd query tx "$TXHASH" --node "$NODE" --output json \
+      > "$STATE_DIR/included.json" 2> "$STATE_DIR/query-error.txt"; then
+      INCLUDED=true
+      break
+    fi
+    sleep 2
+  done
+  if [ "$INCLUDED" != true ]; then
+    echo "Transaction $TXHASH not yet queryable; retain pending.json and resume." >&2
+    exit 1
+  fi
+  jq -e --arg hash "$TXHASH" \
+    '(.code | tonumber) == 0 and (.height | tonumber) > 0 and .txhash == $hash' \
+    "$STATE_DIR/included.json" > /dev/null
+  cp "$STATE_DIR/included.json" "$STATE_DIR/$TXHASH.json"
+  HEIGHT=$(jq -r '.height' "$STATE_DIR/included.json")
+  manifestd query sku skus-by-provider "$PROVIDER_UUID" --active-only --limit 1 \
+    --height "$HEIGHT" --node "$NODE" --output json > "$STATE_DIR/active.json"
+  jq -e '.skus | type == "array"' "$STATE_DIR/active.json" > /dev/null
+  if [ "$(jq '.skus | length' "$STATE_DIR/active.json")" -eq 0 ]; then
+    break
+  fi
+  rm "$STATE_DIR/pending.json"
+done
+echo "Provider deactivation complete; no active SKUs remain."
+```
+
+The final pending receipt remains as a completion checkpoint: restarting the
+same run verifies its historical result without sending another transaction.
+Use a new state directory for a later deactivation after reactivation.
 
 ---
 
@@ -1056,14 +1137,17 @@ SKU names are sanitized before being emitted in events to prevent log injection 
 
 ### Querying Events
 
-Events can be queried from transaction results:
+Query the committed transaction and verify `code == 0` before extracting events.
+Sync broadcast responses have no execution events. For transactions with multiple
+messages, additionally filter events by their `msg_index` attribute to select the
+intended message; the examples below assume a single creation message:
 
 ```bash
 # Query events for a specific transaction
 manifestd query tx [txhash] --output json | jq '.events'
 
 # Example: Extract provider_uuid from a provider creation
-manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.type=="provider_created") | .attributes[] | select(.key=="provider_uuid") | .value'
+manifestd query tx [txhash] --output json | jq -er 'select((.code | tonumber) == 0 and (.height | tonumber) > 0) | .events[] | select(.type=="provider_created") | .attributes[] | select(.key=="provider_uuid") | .value'
 ```
 
 ---

@@ -220,10 +220,10 @@ other leases remain protected. This happens through **lazy evaluation**
 A consumer that subscribes only to `lease_auto_closed` will miss credit-exhaustion closures triggered via `MsgCloseLease` or specific-lease `MsgWithdraw`.
 
 **Design rationale:**
-- **O(1) per lease check**: Instead of O(n) scanning all leases in EndBlock
-- **Scalability**: Supports millions of leases without performance degradation
+- **Bounded selection**: Only selected leases are checked; each check depends on its items, denominations, and store access
+- **Scalability**: Settlement touches selected leases rather than scanning all active leases each block; [production capacity budgets remain to be measured](docs/CAPABILITIES.md#lazy-evaluation)
 - **On-demand**: Only processes leases when they're actually used
-- **No consensus overhead**: EndBlock remains lightweight
+- **No per-block settlement scan**: EndBlock still performs bounded pending-lease expiration
 - **Transaction safety**: Auto-close only happens in transactions where state changes are committed
 
 **Note**: Queries (`QueryLease`, `QueryLeases`, etc.) do NOT trigger auto-close. They return the stored state. Auto-close only happens during write operations (Withdraw, CloseLease) to ensure state changes are properly committed.
@@ -669,6 +669,8 @@ eligible payout address and explicitly retry those leases. See
 ### Credit Withdrawal Policy
 
 There is no mechanism to withdraw unused credit from a credit account. Once tokens are funded, they can only be spent on leases. This mimics typical cloud providers (AWS credits, etc.) and prevents gaming of the system. Unused credit remains available for future leases.
+
+The application also rejects tokenfactory `BurnFrom` and `ForceTransfer` debits from every registered billing credit account, including its unreserved balance. Denomination administrators retain those powers over ordinary wallets. Deposits, minting into credit, and normal billing settlement and payouts remain available. This deliberately makes billing credit an exception to issuer clawback: deposited tokens are protected until billing pays them out to an ordinary account. Protection uses the existing credit-address reverse index; an arbitrary derived address that has not been registered as a credit account is not protected. See [the design decision](docs/DESIGN_DECISIONS.md#decision-1-pre-funded-credit-account-model).
 
 ### Provider/SKU Deactivation
 

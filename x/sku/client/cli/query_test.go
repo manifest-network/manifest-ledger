@@ -1,7 +1,9 @@
 package cli_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"strings"
@@ -12,6 +14,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
+
+	abci "github.com/cometbft/cometbft/abci/types"
+	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
+	rpcclient "github.com/cometbft/cometbft/rpc/client"
+	coretypes "github.com/cometbft/cometbft/rpc/core/types"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -80,6 +87,53 @@ func TestUUIDQueryCommandsForwardNonCanonicalIDs(t *testing.T) {
 			})
 		}
 	}
+}
+
+type activeSKUQueryRPC struct {
+	client.CometRPC
+	request types.QuerySKUsByProviderRequest
+	height  int64
+	path    string
+}
+
+func (s *activeSKUQueryRPC) ABCIQueryWithOptions(_ context.Context, path string, data cmtbytes.HexBytes, options rpcclient.ABCIQueryOptions) (*coretypes.ResultABCIQuery, error) {
+	if err := s.request.Unmarshal(data); err != nil {
+		return nil, err
+	}
+	s.height = options.Height
+	s.path = path
+	response, err := (&types.QuerySKUsByProviderResponse{}).Marshal()
+	if err != nil {
+		return nil, err
+	}
+	return &coretypes.ResultABCIQuery{Response: abci.ResponseQuery{Value: response, Height: options.Height}}, nil
+}
+
+func TestSKUsByProviderCascadeCompletionQuery(t *testing.T) {
+	const providerUUID = "01902a9b-1234-7000-8000-000000000003"
+	server := &activeSKUQueryRPC{}
+	var out bytes.Buffer
+	clientCtx := client.Context{}.
+		WithCodec(codec.NewProtoCodec(codectypes.NewInterfaceRegistry())).
+		WithClient(server).
+		WithOutput(&out).
+		WithOutputFormat("json")
+	cmd := cli.GetCmdQuerySKUsByProvider()
+	cmd.SetContext(t.Context())
+	require.NoError(t, client.SetCmdClientContext(cmd, clientCtx))
+	cmd.SetArgs([]string{providerUUID, "--active-only", "--limit", "1", "--height", "42", "-o", "json"})
+	require.NoError(t, cmd.Execute())
+	require.Equal(t, providerUUID, server.request.ProviderUuid)
+	require.True(t, server.request.ActiveOnly)
+	require.Equal(t, uint64(1), server.request.Pagination.Limit)
+	require.Equal(t, int64(42), server.height)
+	require.Equal(t, "/liftedinit.sku.v1.Query/SKUsByProvider", server.path)
+	var decoded struct {
+		SKUs []json.RawMessage `json:"skus"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &decoded))
+	require.NotNil(t, decoded.SKUs, "the documented jq stop condition requires an empty array")
+	require.Empty(t, decoded.SKUs)
 }
 
 func newQueryClientContext(t *testing.T, queryServer types.QueryServer) client.Context {

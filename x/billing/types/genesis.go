@@ -49,6 +49,22 @@ func (gs *GenesisState) Validate() error {
 	return err
 }
 
+// ValidateCurrentState checks current consensus state exactly as stored. Unlike
+// Validate, it never repairs import-only drift or accepts the pre-v4 reservation
+// format. Unlike ValidateStrict, it preserves historical authoring policies
+// (such as domains registered before a suffix became reserved).
+func (gs *GenesisState) ValidateCurrentState() error {
+	for i := range gs.Leases {
+		if gs.Leases[i].Reservation == nil {
+			return ErrReservationInvariant.Wrapf(
+				"lease %s has no initialized reservation in current billing state",
+				gs.Leases[i].Uuid,
+			)
+		}
+	}
+	return gs.validate(genesisValidationOptions{})
+}
+
 // PrepareForImport returns an import-safe copy. It canonicalizes equivalent
 // Bech32 allowed-list spellings, reconstructs cached live-lease counts, and
 // reconciles a complete pre-v4 aggregate-only export to the reservation floor

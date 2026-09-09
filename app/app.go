@@ -610,7 +610,10 @@ func NewApp(
 		app.keys[tokenfactorytypes.StoreKey],
 		maccPerms,
 		app.AccountKeeper,
-		app.BankKeeper,
+		tokenFactoryBankKeeper{
+			BankKeeper:      app.BankKeeper,
+			creditAddresses: app.BillingKeeper.CreditAddressIndex,
+		},
 		app.DistrKeeper,
 		tokenFactoryCapabilities,
 		app.POAKeeper.IsAdmin,

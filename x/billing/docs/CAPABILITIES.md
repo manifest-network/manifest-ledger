@@ -79,9 +79,11 @@ Settlement is performed **on-touch**, not per-block:
 - When checking for auto-close during withdrawal
 
 This design enables:
-- O(1) operations per lease
+- Settlement work proportional to the selected lease's items and denominations
 - No EndBlocker overhead for settlement
-- Supports millions of leases without performance degradation
+- No per-block settlement scan across all active leases
+
+This describes the algorithm, not a measured capacity guarantee. Store access, batch sizes, denomination counts, pending expiration, and import/migration all affect runtime and gas. Production workload envelopes and reference-hardware budgets remain tracked in [ENG-890](https://linear.app/liftedinit/issue/ENG-890); the current unit tests and short simulations do not establish support for millions of leases without degradation.
 
 ### Overdraw Handling
 

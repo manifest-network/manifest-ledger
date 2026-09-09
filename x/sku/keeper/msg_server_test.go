@@ -78,6 +78,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/query"
 
 	"github.com/manifest-network/manifest-ledger/x/sku/keeper"
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
@@ -838,9 +839,9 @@ func TestDeactivateProviderPagination(t *testing.T) {
 	err := k.SetProvider(f.Ctx, provider)
 	require.NoError(t, err)
 
-	// Create 10 active SKUs (more than our test limit of 3)
-	const totalSKUs = 10
-	const testLimit uint64 = 3
+	// Exercise more than three default-size CLI cascade pages.
+	const totalSKUs = 151
+	const testLimit = types.DefaultDeactivateSKULimit
 
 	for i := 0; i < totalSKUs; i++ {
 		sku := types.SKU{
@@ -855,16 +856,30 @@ func TestDeactivateProviderPagination(t *testing.T) {
 		require.NoError(t, err)
 	}
 
+	// This is the documented CLI stop condition: query one active SKU after
+	// each successful transaction instead of expecting a decoded has_more field.
+	queryActive := func(wantRemaining bool) {
+		t.Helper()
+		response, err := keeper.NewQuerier(k).SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: providerUUID,
+			ActiveOnly:   true,
+			Pagination:   &query.PageRequest{Limit: 1},
+		})
+		require.NoError(t, err)
+		require.Equal(t, wantRemaining, len(response.Skus) > 0)
+	}
+
 	// First call: should deactivate provider and first batch of SKUs
 	msg := &types.MsgDeactivateProvider{
 		Authority: authority.String(),
 		Uuid:      providerUUID,
-		Limit:     testLimit,
+		Limit:     0, // use the default, just like the CLI without --limit
 	}
 	resp, err := ms.DeactivateProvider(f.Ctx, msg)
 	require.NoError(t, err)
 	require.Equal(t, testLimit, resp.DeactivatedSkuCount, "first call should deactivate limit SKUs")
 	require.True(t, resp.HasMore, "should have more SKUs to deactivate")
+	queryActive(true)
 
 	// Verify provider is now inactive
 	provider, err = k.GetProvider(f.Ctx, providerUUID)
@@ -876,18 +891,21 @@ func TestDeactivateProviderPagination(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, testLimit, resp.DeactivatedSkuCount, "second call should deactivate limit SKUs")
 	require.True(t, resp.HasMore, "should still have more SKUs to deactivate")
+	queryActive(true)
 
 	// Third call: should deactivate another batch
 	resp, err = ms.DeactivateProvider(f.Ctx, msg)
 	require.NoError(t, err)
 	require.Equal(t, testLimit, resp.DeactivatedSkuCount, "third call should deactivate limit SKUs")
 	require.True(t, resp.HasMore, "should still have more SKUs to deactivate")
+	queryActive(true)
 
-	// Fourth call: should deactivate the remaining SKU (10 - 3*3 = 1)
+	// Fourth call: should deactivate the remaining SKU (151 - 3*50 = 1)
 	resp, err = ms.DeactivateProvider(f.Ctx, msg)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), resp.DeactivatedSkuCount, "fourth call should deactivate remaining SKU")
 	require.False(t, resp.HasMore, "should have no more SKUs to deactivate")
+	queryActive(false)
 
 	// Fifth call: should fail because provider and all SKUs are already inactive
 	_, err = ms.DeactivateProvider(f.Ctx, msg)

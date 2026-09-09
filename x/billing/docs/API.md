@@ -521,7 +521,7 @@ manifestd tx billing set-item-custom-domain 01902a9b-1234-7000-8000-000000000001
 **Notes:**
 - Emits `lease_custom_domain_set` (with `set_by` ∈ `{tenant, authority, allowed}`) on a successful set, or `lease_custom_domain_cleared` on clear. No event is emitted for an idempotent re-set or a clear of an already-empty domain.
 - The transaction requires lowercase `custom_domain` — `MsgSetItemCustomDomain.ValidateBasic()` rejects mixed case before the keeper runs. Lower-case any user-supplied input client-side. The keeper does its own `strings.ToLower(strings.TrimSpace(...))` as defence-in-depth on the storage path, but you can't rely on it as a normalisation point for input.
-- Closing, rejecting, expiring, or auto-closing the lease frees the live index entry automatically. The historical `LeaseItem.custom_domain` value is retained on the terminal lease; use `lease-by-custom-domain` to find the current claim.
+- Closing, rejecting, expiring, or auto-closing the lease frees the live index entry automatically. The historical `LeaseItem.custom_domain` value is retained on the terminal lease; use `lease-by-domain` to find the current claim.
 
 ---
 
@@ -1845,7 +1845,7 @@ message LeaseItem {
 ```
 
 **Field notes:**
-- `custom_domain`: Optional fully-qualified domain name routed to this item's container by the provider after off-chain verification. Set or cleared via `MsgSetItemCustomDomain` (not via lease creation). Validated by `IsValidFQDN` (≤253 bytes, lowercase, ≥1 dot, RFC 1123 labels, non-numeric TLD) and rejected if it matches any `params.reserved_domain_suffixes` entry. Globally unique across PENDING/ACTIVE leases — enforced by the `CustomDomainIndex` reverse-lookup. Closing, rejecting, expiring, or auto-closing the lease releases the live index entry while retaining this field as history. A terminal lease's stored value does not reserve the domain; use `lease-by-custom-domain` and the returned lease state to determine the current claim.
+- `custom_domain`: Optional fully-qualified domain name routed to this item's container by the provider after off-chain verification. Set or cleared via `MsgSetItemCustomDomain` (not via lease creation). Validated by `IsValidFQDN` (≤253 bytes, lowercase, ≥1 dot, RFC 1123 labels, non-numeric TLD) and rejected if it matches any `params.reserved_domain_suffixes` entry. Globally unique across PENDING/ACTIVE leases — enforced by the `CustomDomainIndex` reverse-lookup. Closing, rejecting, expiring, or auto-closing the lease releases the live index entry while retaining this field as history. A terminal lease's stored value does not reserve the domain; use `lease-by-domain` and the returned lease state to determine the current claim.
 
 ### CustomDomainTarget
 
@@ -1988,14 +1988,17 @@ rejection_reason: "Invalid configSee logs for details"
 
 ### Querying Events
 
-Events can be queried from transaction results:
+Query the committed transaction and verify `code == 0` before extracting events.
+Sync broadcast responses have no execution events. For transactions with multiple
+messages, additionally filter events by their `msg_index` attribute to select the
+intended message; the examples below assume a single creation message:
 
 ```bash
 # Query events for a specific transaction
 manifestd query tx [txhash] --output json | jq '.events'
 
 # Example: Extract lease_uuid from a lease creation
-manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.type=="lease_created") | .attributes[] | select(.key=="lease_uuid") | .value'
+manifestd query tx [txhash] --output json | jq -er 'select((.code | tonumber) == 0 and (.height | tonumber) > 0) | .events[] | select(.type=="lease_created") | .attributes[] | select(.key=="lease_uuid") | .value'
 ```
 
 ---

@@ -31,7 +31,7 @@ jq -e '.blocked_provider_count == 0 and .payout_credit_collision_count == 0' \
 
 The command succeeds when it finds ineligible payouts so that it can report all
 of them. The final `jq -e` check is the separate required upgrade gate: both
-counts must be zero. Report schema version 3 includes `provider_count`,
+counts must be zero. Report schema version 4 includes `provider_count`,
 `blocked_provider_count`, and `blocked_providers` (an empty array when there are
 no findings). Each blocked-provider finding records `provider_uuid`, canonical
 `payout_address`, `active`, and sorted
@@ -39,7 +39,7 @@ no findings). Each blocked-provider finding records `provider_uuid`, canonical
 UUID. Lease lists describe the export's source states, not predicted settlement
 or post-migration expiration outcomes.
 
-Schema version 3 also adds `payout_credit_collision_count` and
+The report also includes `payout_credit_collision_count` and
 `payout_credit_collisions`. Each collision records one source live lease's
 `lease_uuid`, `provider_uuid`, canonical `tenant`, canonical `credit_address`
 (equal to the provider payout), and `state` (`LEASE_STATE_ACTIVE` or
@@ -242,10 +242,18 @@ upgrade-block time. Cohort selection does not depend on that timestamp in v4;
 the real migration writes the actual upgrade block time to newly expired
 leases.
 
-`billing_state` is `pre_v4_aggregate` when the command actually applies the
-cutover planner and `consumable_v4` when the input is already in the new
-representation. Already-v4 input is never repaired: the command fails if its
-reservation aggregate is not fully bank-backed. It also fails closed on a
+`billing_state` is `pre_v4_aggregate` when the command applies the cutover
+planner. In that case schema version 4 reports
+`migration_path: "v2_to_v3_to_v4"`: it first performs the v2→v3 aggregate repair
+and then plans the v3→v4 allocation. This is the supported upgrade path; billing
+consensus v3 has not been deployed. The report does **not** predict a direct
+v3→v4 upgrade from an arbitrary stored v3 aggregate. A future direct-v3 upgrade
+would need a separate preflight mode and parity tests before use.
+
+For an input already in the new representation, `billing_state` is
+`consumable_v4` and `migration_path` is `none`. Already-v4 input is never
+repaired: the command fails if its reservation aggregate is not fully
+bank-backed. It also fails closed on a
 missing or malformed billing/bank/SKU app state, mixed reservation formats,
 duplicate decoded address identities, or any planner invariant failure.
 The provider payout audit rejects invalid or duplicate provider UUIDs, invalid
@@ -452,59 +460,97 @@ manifestd tx billing create-lease-for-tenant manifest1abc... <sku-uuid-1>:1 <sku
 
 ### Batch Migration Script Example
 
-For migrating many leases, consider a script that creates and acknowledges:
+This Bash + jq example waits for successful execution of **every** funding,
+creation, and acknowledgement transaction. Run one worker per state directory.
+Set the chain/RPC and replace the example migrations before running it; the
+saved plan prevents accidental reuse with different inputs. Keep the directory
+and restart the same script after an inclusion timeout: completed stages are
+not resubmitted, and a pending stage resumes the original transaction lookup.
+
+A broadcast error can leave submission ambiguous. An empty or incomplete
+`pending.json` deliberately stops restarts; investigate whether it reached the
+chain before changing the receipt. A nonzero committed `code` is a permanent
+failure. Correct its cause, then archive **only that failed stage's directory**
+to permit a new attempt, preserving successful earlier stages (especially
+funding). Missing or ambiguous creation events also stop the script; recover
+the actual lease UUID from the receipt before acknowledging anything.
 
 ```bash
-#!/bin/bash
-# migration_script.sh
-
+#!/usr/bin/env bash
+set -euo pipefail
 AUTHORITY_KEY="authority"
 PROVIDER_KEY="provider"
-DENOM="upwr"  # or your factory denom
+DENOM="upwr"
+CHAIN_ID="replace-with-chain-id"
+NODE="https://replace-with-rpc"
+STATE_DIR="./migration-state"  # a separate directory per chain/run
 
-# Array of tenant migrations: "address|sku_items|credit_amount"
+# Each row is "address|sku_items|credit_amount". Item arguments are split on spaces.
 MIGRATIONS=(
   "manifest1abc...|<sku-uuid>:2|100000000"
   "manifest1def...|<sku-uuid-1>:1 <sku-uuid-2>:1|50000000"
   "manifest1ghi...|<sku-uuid-3>:5|200000000"
 )
+mkdir -p "$STATE_DIR"
+jq -n --args '$ARGS.positional' "$CHAIN_ID" "$NODE" "$AUTHORITY_KEY" \
+  "$PROVIDER_KEY" "$DENOM" "${MIGRATIONS[@]}" > "$STATE_DIR/plan.expected.json"
+if [ -f "$STATE_DIR/plan.json" ]; then
+  cmp "$STATE_DIR/plan.expected.json" "$STATE_DIR/plan.json"
+else
+  mv "$STATE_DIR/plan.expected.json" "$STATE_DIR/plan.json"
+fi
 
-for migration in "${MIGRATIONS[@]}"; do
-  IFS='|' read -r tenant items credit <<< "$migration"
-  
+# Save admission before polling. Each stage retains both admission and execution.
+submit_committed() {
+  local stage="$1" hash included=false
+  shift
+  mkdir -p "$stage"
+  if [ ! -f "$stage/pending.json" ]; then
+    manifestd tx billing "$@" --chain-id "$CHAIN_ID" --node "$NODE" \
+      --broadcast-mode sync --output json -y --gas auto --gas-adjustment 1.5 \
+      > "$stage/pending.json"
+  fi
+  jq -e '(.code | tonumber) == 0 and (.txhash | test("^[[:xdigit:]]{64}$"))' \
+    "$stage/pending.json" > /dev/null
+  hash=$(jq -r '.txhash' "$stage/pending.json")
+  if [ ! -f "$stage/included.json" ]; then
+    for ((attempt = 0; attempt < 60; attempt++)); do
+      if manifestd query tx "$hash" --node "$NODE" --output json \
+        > "$stage/included.tmp" 2> "$stage/query-error.txt"; then
+        mv "$stage/included.tmp" "$stage/included.json"
+        included=true
+        break
+      fi
+      sleep 2
+    done
+    if [ "$included" != true ]; then
+      echo "Transaction $hash not yet queryable; retain $stage and resume." >&2
+      exit 1
+    fi
+  fi
+  jq -e --arg hash "$hash" \
+    '(.code | tonumber) == 0 and (.height | tonumber) > 0 and .txhash == $hash' \
+    "$stage/included.json" > /dev/null
+}
+
+for i in "${!MIGRATIONS[@]}"; do
+  IFS='|' read -r tenant items credit <<< "${MIGRATIONS[$i]}"
+  read -r -a item_args <<< "$items"
+  row="$STATE_DIR/$i"
   echo "Processing tenant: $tenant"
-  
-  # Fund credit account
-  echo "  Funding ${credit}${DENOM}..."
-  manifestd tx billing fund-credit "$tenant" "${credit}${DENOM}" \
-    --from "$AUTHORITY_KEY" -y --gas auto --gas-adjustment 1.5
-  
-  sleep 6  # Wait for block
-  
-  # Create lease (starts in PENDING state)
-  echo "  Creating lease with items: $items..."
-  RESULT=$(manifestd tx billing create-lease-for-tenant "$tenant" $items \
-    --from "$AUTHORITY_KEY" -y --gas auto --gas-adjustment 1.5 --output json)
-  
-  # In sync broadcast mode the tx response carries only code/txhash/raw_log and no
-  # events, so capture the txhash, wait a block, then query the tx for its events.
-  TXHASH=$(echo "$RESULT" | jq -r '.txhash')
-  
-  sleep 6  # Wait for block
-  
-  LEASE_UUID=$(manifestd query tx "$TXHASH" --output json | jq -r '.events[] | select(.type=="lease_created") | .attributes[] | select(.key=="lease_uuid") | .value')
-  
-  # Acknowledge lease (transitions to ACTIVE, billing starts)
-  echo "  Acknowledging lease $LEASE_UUID..."
-  manifestd tx billing acknowledge-lease "$LEASE_UUID" \
-    --from "$PROVIDER_KEY" -y --gas auto --gas-adjustment 1.5
-  
-  sleep 6  # Wait for block
-  
-  echo "  Done!"
+  submit_committed "$row/fund" fund-credit "$tenant" "${credit}${DENOM}" --from "$AUTHORITY_KEY"
+  submit_committed "$row/create" create-lease-for-tenant "$tenant" "${item_args[@]}" --from "$AUTHORITY_KEY"
+  LEASE_UUID=$(jq -er '
+    [.events[]? | select(.type == "lease_created") | .attributes[]? |
+      select(.key == "lease_uuid") | .value] |
+    if length == 1 and (.[0] | test("^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"))
+    then .[0] else error("expected exactly one canonical lease UUID") end
+  ' "$row/create/included.json")
+  submit_committed "$row/ack" acknowledge-lease "$LEASE_UUID" --from "$PROVIDER_KEY"
+  echo "Tenant $tenant: lease $LEASE_UUID acknowledged successfully."
 done
 
-echo "Migration complete!"
+echo "Migration complete! All transactions committed successfully; retain the receipts."
 ```
 
 ## Step 5: Verify Migration

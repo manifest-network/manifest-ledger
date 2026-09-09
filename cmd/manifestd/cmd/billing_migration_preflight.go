@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	billingMigrationPreflightSchemaVersion = 3
+	billingMigrationPreflightSchemaVersion = 4
 	jsonNull                               = "null"
 )
 
@@ -38,6 +38,7 @@ type billingMigrationPreflightOutput struct {
 	SourceInitialHeight              int64                                               `json:"source_initial_height"`
 	InputGenesisTime                 string                                              `json:"input_genesis_time"`
 	BillingState                     string                                              `json:"billing_state"`
+	MigrationPath                    string                                              `json:"migration_path"`
 	ProviderCount                    uint64                                              `json:"provider_count"`
 	BlockedProviderCount             uint64                                              `json:"blocked_provider_count"`
 	BlockedProviders                 []blockedProviderPayoutPreflight                    `json:"blocked_providers"`
@@ -72,7 +73,7 @@ type providerCreditCollisionPreflight struct {
 func newBillingMigrationPreflightCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "preflight-billing-v4 [exported-genesis.json]",
-		Short: "Predict the billing v4 reservation cutover from an exported genesis",
+		Short: "Preview the sequential billing v2-to-v4 reservation upgrade",
 		Long: `Read an exported genesis without opening application state and emit a
 deterministic JSON report of every billing tenant's pre/post aggregates,
 modern ACTIVE allocations, opaque legacy-cohort allocation, and modern PENDING
@@ -81,6 +82,12 @@ audits every SKU provider's payout against this binary's blocked bank addresses
 and lists its source-state ACTIVE and PENDING leases when blocked. A separate
 report identifies ACTIVE and PENDING leases whose provider payout equals the
 tenant's derived credit address.
+
+Aggregate-only exports are interpreted as billing v2 state and preview the
+sequential v2-to-v3 repair followed by the v3-to-v4 cutover. The JSON
+migration_path is v2_to_v3_to_v4. This command does not preview a direct v3-to-v4
+upgrade: v2 and v3 exports have the same format but different repair semantics.
+Already-v4 reservations are audited without migration (migration_path: none).
 
 The report is specific to the exported snapshot. The command never writes the
 genesis file or application state. Payout findings do not fail the command:
@@ -192,6 +199,7 @@ func writeBillingMigrationPreflight(cdc codec.JSONCodec, input io.Reader, output
 		SourceInitialHeight:              document.InitialHeight,
 		InputGenesisTime:                 document.GenesisTime.UTC().Format(time.RFC3339Nano),
 		BillingState:                     reservationReport.BillingState,
+		MigrationPath:                    reservationReport.MigrationPath,
 		ProviderCount:                    uint64(len(skuGenesis.Providers)),
 		BlockedProviderCount:             uint64(len(blockedProviders)),
 		BlockedProviders:                 blockedProviders,

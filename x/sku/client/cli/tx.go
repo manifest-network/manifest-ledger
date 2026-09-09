@@ -179,7 +179,12 @@ func MsgDeactivateProvider() *cobra.Command {
 Inactive providers cannot have new SKUs or leases created. Existing leases continue operating.
 
 SKU deactivation is paginated to prevent gas exhaustion with many SKUs.
-If has_more is true in the response, call again to continue deactivating SKUs.
+After each transaction is committed successfully, query:
+  manifestd query sku skus-by-provider [uuid] --active-only --limit 1 -o json
+Repeat deactivation while the query returns any SKUs. Use the same RPC and query
+at the committed transaction height or later. Sync broadcast output contains an
+SDK admission response, not the module's has_more field; check the committed
+transaction's code before continuing.
 The cascade must finish before the provider can be reactivated.
 
 Use --limit to control how many SKUs are deactivated per call (default %d, max %d).`,

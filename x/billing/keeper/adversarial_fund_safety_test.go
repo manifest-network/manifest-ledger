@@ -255,10 +255,11 @@ func TestAdversarial_CreditExhaustedDuringSettlement(t *testing.T) {
 	_ = resp
 }
 
-// TestAdversarial_ManualTransferDrainsCredit tests that an impossible
-// post-v4 under-backed reservation fails closed. Credit addresses cannot sign
-// on-chain transactions; this direct bank write models store corruption or a
-// privileged module violating the billing invariant.
+// TestAdversarial_ManualTransferDrainsCredit tests that an under-backed
+// reservation fails closed. Credit addresses cannot sign transactions and the
+// app blocks tokenfactory administrator debits from registered credit accounts.
+// A direct bank write still models corruption or another privileged module
+// violating the billing invariant.
 func TestAdversarial_ManualTransferDrainsCredit(t *testing.T) {
 	f := initFixture(t)
 	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)

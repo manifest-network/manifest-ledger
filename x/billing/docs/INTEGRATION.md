@@ -14,7 +14,11 @@ Providers expose a REST API for tenants to retrieve connection details after lea
 
 ### Authentication
 
-Authentication uses [ADR-036](https://docs.cosmos.network/main/build/architecture/adr-036-arbitrary-signature) signature verification without on-chain challenge storage. The tenant proves lease ownership by signing a message containing the lease UUID and timestamp:
+The examples below document the **legacy v1 profile**. They do not bind a token to a chain, provider, or API audience. A timestamp limits its lifetime but does not prevent replay against another accepting deployment with the same lease identity. The wallet's chain selector is not a signed audience: [ADR-036](https://github.com/cosmos/cosmos-sdk/blob/main/docs/architecture/adr-036-arbitrary-signature.md) requires an empty sign-document `chain_id`.
+
+The proposed [v2 authentication profile](AUTHENTICATION_V2.md) binds the network, provider, API base URL, operation, and expiry in the signed message. Its provider/client rollout is tracked in [ENG-925](https://linear.app/liftedinit/issue/ENG-925); this ledger repository does not implement or deploy the off-chain verifier. Use v1 only for a provider explicitly configured to accept it. Do not silently fall back to v1 when a v2 request fails.
+
+Legacy authentication uses ADR-036 signature verification without on-chain challenge storage. The tenant proves lease ownership by signing a message containing the lease UUID and timestamp:
 
 **Message format:**
 ```
@@ -159,14 +163,15 @@ When a lease is created in service-name mode (`sku-uuid:quantity:service_name`),
 
 | Risk | Mitigation |
 |------|------------|
-| Replay attacks | Timestamp validation (±5 min window), HTTPS required |
+| Token replay within the same audience | v1 tokens are reusable bearer credentials within the ±5 min timestamp window; HTTPS protects transport, not a stolen token |
+| Replay across networks/providers/endpoints | v1 has no audience binding; migrate clients and verifiers together to the [v2 profile](AUTHENTICATION_V2.md) |
 | Provider API spoofing | Tenants verify `api_url` from on-chain provider record |
 | Clock skew | 5-minute tolerance, NTP recommended |
 | Signature reuse | Message includes lease-specific UUID |
 
 ## Deployment Data Upload (POST) - Optional
 
-Tenants can optionally upload deployment data to providers using the same ADR-036 authentication pattern used for connection info retrieval. The on-chain lease stores only a hash of the deployment data (`meta_hash`), while the actual payload is transmitted off-chain.
+Tenants can optionally upload deployment data to providers using the same ADR-036 authentication pattern used for connection info retrieval. These examples also use the legacy v1 profile and share its audience-binding limitation. The on-chain lease stores only a hash of the deployment data (`meta_hash`), while the actual payload is transmitted off-chain.
 
 ### When to Use
 

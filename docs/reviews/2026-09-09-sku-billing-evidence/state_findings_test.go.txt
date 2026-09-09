@@ -1,0 +1,73 @@
+package keeper_test
+
+import (
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
+	"github.com/manifest-network/manifest-ledger/x/billing/types"
+	"github.com/stretchr/testify/require"
+	"testing"
+	"time"
+)
+
+func TestReviewV3PreflightMismatch(t *testing.T) {
+	for _, state := range []types.LeaseState{types.LEASE_STATE_ACTIVE, types.LEASE_STATE_PENDING} {
+		t.Run(state.String(), func(t *testing.T) {
+			f := initFixture(t)
+			tenant := f.TestAccs[0]
+			credit := types.DeriveCreditAddress(tenant)
+			now := f.Ctx.BlockTime()
+			lease := types.Lease{Uuid: testLeaseUUID1, Tenant: tenant.String(), ProviderUuid: testProviderUUID, Items: []types.LeaseItem{{SkuUuid: testSKUUUID, Quantity: 1, LockedPrice: sdk.NewInt64Coin(testDenom, 10)}}, State: state, CreatedAt: now, LastSettledAt: now, MinLeaseDurationAtCreation: 1}
+			account := types.CreditAccount{Tenant: tenant.String(), CreditAddress: credit.String(), ReservedAmounts: sdk.NewCoins(sdk.NewInt64Coin(testDenom, 5))}
+			if state == types.LEASE_STATE_ACTIVE {
+				account.ActiveLeaseCount = 1
+			} else {
+				account.PendingLeaseCount = 1
+			}
+			gs := &types.GenesisState{Params: types.DefaultParams(), Leases: []types.Lease{lease}, CreditAccounts: []types.CreditAccount{account}, LeaseSequence: 1}
+			bank := banktypes.DefaultGenesisState()
+			bank.Balances = []banktypes.Balance{{Address: credit.String(), Coins: sdk.NewCoins(sdk.NewInt64Coin(testDenom, 10))}}
+			report, err := keeper.BuildReservationMigrationPreflight(now, gs, bank)
+			require.NoError(t, err)
+			require.Equal(t, "10", report.Tenants[0].Denominations[0].PostCutoverReservationAggregate)
+			require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+			require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, account))
+			f.fundAccount(t, credit, bank.Balances[0].Coins)
+			err = keeper.NewMigrator(f.App.BillingKeeper).Migrate3to4(f.Ctx)
+			if state == types.LEASE_STATE_PENDING {
+				require.ErrorContains(t, err, "old aggregate cannot fully back exact PENDING")
+				t.Logf("preflight predicted 10; direct v3 migration rejected: %v", err)
+			} else {
+				require.NoError(t, err)
+				got, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+				require.NoError(t, err)
+				require.Equal(t, "5", got.ReservedAmounts.AmountOf(testDenom).String())
+				t.Log("preflight predicted 10; direct v3 migration allocated 5")
+			}
+		})
+	}
+}
+
+func TestReviewInvariantAcceptsMissingReservation(t *testing.T) {
+	f := initFixture(t)
+	msg := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+	credit := types.DeriveCreditAddress(tenant)
+	f.fundAccount(t, credit, sdk.NewCoins(sdk.NewInt64Coin(testDenom, 1000000)))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{Tenant: tenant.String(), CreditAddress: credit.String()}))
+	uuid := f.createAndAcknowledgeLease(t, msg, tenant, providerAddr, []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}})
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, uuid)
+	require.NoError(t, err)
+	lease.Reservation = nil
+	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+	message, broken := keeper.ReservationAccountingInvariant(f.App.BillingKeeper)(f.Ctx)
+	require.False(t, broken, message)
+	message, broken = keeper.DerivedIndexesInvariant(f.App.BillingKeeper)(f.Ctx)
+	require.False(t, broken, message)
+	_, err = msg.Withdraw(f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(time.Minute)), &types.MsgWithdraw{Sender: providerAddr.String(), LeaseUuids: []string{uuid}})
+	require.ErrorContains(t, err, "no initialized reservation")
+	t.Logf("both invariants passed; withdrawal rejected: %v", err)
+}

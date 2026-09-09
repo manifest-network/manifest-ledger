@@ -22,6 +22,10 @@ This document records key design decisions made during the development of the x/
 - Unused credits locked in account (no withdrawal mechanism)
 - Requires monitoring for low balance
 
+**Issuer debit policy (2026-09-09):** The entire balance of every registered billing credit account is protected from tokenfactory administrator burn-from and force-transfer operations. Protecting only reserved amounts would permit administrator-assisted withdrawal of otherwise nonrefundable credit; lazy settlement can also make unreserved funds payable for accrued service. Issuer powers over ordinary wallets remain available. Deposits and minting into credit remain allowed, and billing retains its normal settlement/payout bank dependency.
+
+The application injects a bank adapter only into the tokenfactory keeper. It checks the existing credit-address reverse index before a source debit and rejects the operation on lookup failure. This needs no tokenfactory fork or new state migration. Validators must activate the consensus behavior with the coordinated application upgrade. The tradeoff is an explicit clawback exception: tokens placed into registered billing credit cannot be seized by their issuer until they leave through billing payout. Registration is the boundary; simply calculating or sending to an unregistered derived address does not establish protection.
+
 ## Decision 2: Lazy Settlement vs Per-Block Processing
 
 **Decision:** Settle leases lazily during write operations (withdrawal, close) rather than every block.
@@ -32,8 +36,8 @@ This document records key design decisions made during the development of the x/
 3. Lazy settlement on write operations (chosen)
 
 **Rationale:**
-- **Chain Performance:** No EndBlocker overhead regardless of lease count
-- **Scalability:** Supports millions of leases without block time impact
+- **Chain Performance:** Settlement does not scan all active leases each block; bounded pending-lease expiration still runs in EndBlock
+- **Scalability:** Settlement touches the requested leases and their items/denominations; production capacity still requires measured workload and hardware budgets
 - **Gas Efficiency:** Settlement cost paid by user who triggers it
 - **Simplicity:** No background job management
 

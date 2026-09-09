@@ -23,6 +23,10 @@ const (
 	// ReservationPreflightStateV4 identifies billing state that already has
 	// consumable per-lease reservations and therefore will not be migrated.
 	ReservationPreflightStateV4 = "consumable_v4"
+	// ReservationPreflightPathV2ToV4 is the supported sequential upgrade path.
+	ReservationPreflightPathV2ToV4 = "v2_to_v3_to_v4"
+	// ReservationPreflightPathNone identifies current state that is only audited.
+	ReservationPreflightPathNone = "none"
 )
 
 // ReservationMigrationPreflight is the deterministic, reservation-specific
@@ -32,6 +36,7 @@ const (
 // It is operator tooling, not consensus state or a wire-protocol type.
 type ReservationMigrationPreflight struct {
 	BillingState                     string                                `json:"billing_state"`
+	MigrationPath                    string                                `json:"migration_path"`
 	ReservationChangeTenantCount     uint64                                `json:"reservation_change_tenant_count"`
 	ExpiringModernPendingTenantCount uint64                                `json:"expiring_modern_pending_tenant_count"`
 	ExpiringModernPendingLeaseCount  uint64                                `json:"expiring_modern_pending_lease_count"`
@@ -89,13 +94,17 @@ type reservationMigrationPreflightAccount struct {
 	records               []reservationMigrationLease
 }
 
-// BuildReservationMigrationPreflight applies the production reservation
-// planner to an exported billing and bank genesis without mutating either input
+// BuildReservationMigrationPreflight previews the supported sequential billing
+// v2→v3→v4 upgrade from an exported billing and bank genesis without mutating either input
 // or writing state. The narrow exported API exists for offline operator tooling;
 // consensus code continues to call the unexported planner directly.
 //
-// Pre-v4 input first goes through the same import preparation that mirrors the
-// v2→v3 derived-state repair. Already-v4 input is not replanned and fails if
+// Aggregate-only input is assumed to come from v2 and first goes through the
+// import preparation that mirrors the v2→v3 derived-state repair. This API does
+// not preview a direct v3→v4 upgrade: v2 and v3 have indistinguishable exported
+// reservation formats, but direct v3 migration uses the stored aggregate without
+// v2 repair. MigrationPath makes this assumption explicit in every report.
+// Already-v4 input is not replanned and fails if
 // its reservation aggregate is not fully bank-backed. An exported genesis does
 // not carry collection indexes, so this preview assumes the source node's
 // indexes agree with the exported primary records.
@@ -130,8 +139,10 @@ func BuildReservationMigrationPreflight(
 	}
 	if legacy {
 		report.BillingState = ReservationPreflightStatePreV4
+		report.MigrationPath = ReservationPreflightPathV2ToV4
 	} else {
 		report.BillingState = ReservationPreflightStateV4
+		report.MigrationPath = ReservationPreflightPathNone
 	}
 
 	bankBalancesByAddress := make(map[string]sdk.Coins, len(bankGenesis.Balances))

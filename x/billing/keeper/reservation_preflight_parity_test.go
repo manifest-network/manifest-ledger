@@ -63,6 +63,7 @@ func TestReservationMigrationPreflightMatchesSequentialActiveHaircut(t *testing.
 	)
 	require.NoError(t, err)
 	require.Equal(t, keeper.ReservationPreflightStatePreV4, report.BillingState)
+	require.Equal(t, keeper.ReservationPreflightPathV2ToV4, report.MigrationPath)
 	require.Equal(t, uint64(1), report.ReservationChangeTenantCount)
 	require.Zero(t, report.ExpiringModernPendingTenantCount)
 	require.Zero(t, report.ExpiringModernPendingLeaseCount)
@@ -129,4 +130,57 @@ func TestReservationMigrationPreflightMatchesSequentialActiveHaircut(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, sdkmath.NewInt(5), migratedAccount.ReservedAmounts.AmountOf(testDenom))
 	require.True(t, migratedAccount.UnattributedReservedAmounts.IsZero())
+}
+
+func TestReservationMigrationPreflightLabelsSequentialAggregateRepair(t *testing.T) {
+	for _, state := range []types.LeaseState{types.LEASE_STATE_ACTIVE, types.LEASE_STATE_PENDING} {
+		t.Run(state.String(), func(t *testing.T) {
+			f := initFixture(t)
+			tenant := f.TestAccs[0]
+			creditAddress := types.DeriveCreditAddress(tenant)
+			now := f.Ctx.BlockTime()
+			lease := types.Lease{
+				Uuid: testLeaseUUID1, Tenant: tenant.String(), ProviderUuid: testProviderUUID,
+				Items: []types.LeaseItem{{
+					SkuUuid: testSKUUUID, Quantity: 1, LockedPrice: sdk.NewInt64Coin(testDenom, 10),
+				}},
+				State: state, CreatedAt: now, LastSettledAt: now, MinLeaseDurationAtCreation: 1,
+			}
+			account := types.CreditAccount{
+				Tenant: tenant.String(), CreditAddress: creditAddress.String(),
+				ReservedAmounts: sdk.NewCoins(sdk.NewInt64Coin(testDenom, 5)),
+			}
+			if state == types.LEASE_STATE_ACTIVE {
+				account.ActiveLeaseCount = 1
+			} else {
+				account.PendingLeaseCount = 1
+			}
+			genesis := &types.GenesisState{
+				Params: types.DefaultParams(), Leases: []types.Lease{lease},
+				CreditAccounts: []types.CreditAccount{account}, LeaseSequence: 1,
+			}
+			bankGenesis := banktypes.DefaultGenesisState()
+			bankGenesis.Balances = []banktypes.Balance{{
+				Address: creditAddress.String(), Coins: sdk.NewCoins(sdk.NewInt64Coin(testDenom, 10)),
+			}}
+			report, err := keeper.BuildReservationMigrationPreflight(now, genesis, bankGenesis)
+			require.NoError(t, err)
+			require.Equal(t, keeper.ReservationPreflightPathV2ToV4, report.MigrationPath)
+			require.Equal(t, "5", report.Tenants[0].Denominations[0].SourceReservationAggregate)
+			require.Equal(t, "10", report.Tenants[0].Denominations[0].PreCutoverReservationAggregate)
+			require.Equal(t, "10", report.Tenants[0].Denominations[0].PostCutoverReservationAggregate)
+			require.Zero(t, report.ExpiringModernPendingLeaseCount)
+
+			require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+			require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, account))
+			f.fundAccount(t, creditAddress, bankGenesis.Balances[0].Coins)
+			migrator := keeper.NewMigrator(f.App.BillingKeeper)
+			require.NoError(t, migrator.Migrate2to3(f.Ctx))
+			require.NoError(t, migrator.Migrate3to4(f.Ctx))
+			migrated, err := f.App.BillingKeeper.GetLease(f.Ctx, lease.Uuid)
+			require.NoError(t, err)
+			require.Equal(t, state, migrated.State)
+			require.Equal(t, sdkmath.NewInt(10), migrated.Reservation.RemainingAmounts.AmountOf(testDenom))
+		})
+	}
 }

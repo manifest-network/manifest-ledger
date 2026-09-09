@@ -245,11 +245,11 @@ manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab \
 ```
 
 > **Important:** Deactivating a provider:
-> - **Cascades to deactivate the provider's SKUs, up to `--limit` per call** (default 50, max 100). If `has_more` is `true` in the response, run the command again with the same UUID to continue; the provider itself is deactivated on the first call only.
+> - **Cascades to deactivate the provider's SKUs, up to `--limit` per call** (default 50, max 100). After each committed transaction succeeds, query `manifestd query sku skus-by-provider UUID --active-only --limit 1 -o json` at the transaction height. Repeat while it returns a SKU; the provider itself is deactivated on the first call only. See the [complete CLI workflow](API.md#complete-a-provider-deactivation-cascade), including transaction confirmation and restart handling.
 > - Prevents creation of new SKUs for this provider
 > - Does NOT affect existing leases (billing continues at locked prices)
 > - The provider can still receive withdrawals from active leases
-> - Can be reactivated via `update-provider` with `active=true` only after all cascade pages complete (`has_more=false`)
+> - Can be reactivated via `update-provider` with `active=true` only after all cascade pages complete (no active SKUs remain)
 > - SKUs must be individually reactivated via `update-sku` after provider reactivation
 
 ## Next Steps
@@ -305,7 +305,7 @@ Once your provider is created, you can:
 │                       v                  v                      │
 │                  SKUs active       SKUs cascade to INACTIVE     │
 │                                    (paginated; repeat while     │
-│                                     has_more)                   │
+│                                     SKUs remain)                │
 │                       │                  │                      │
 │                       v                  v                      │
 │                  Existing leases   Existing leases              │

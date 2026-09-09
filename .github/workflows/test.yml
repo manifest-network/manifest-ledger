@@ -43,4 +43,4 @@ jobs:
           for tool in bash jq; do
             command -v "$tool" || exit 1
           done
-          node --test scripts/docs_examples.test.mjs
+          node --test scripts/docs_examples.test.mjs scripts/provider_auth_examples.test.mjs

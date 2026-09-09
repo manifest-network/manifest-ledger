@@ -34,7 +34,7 @@ Akash is a decentralized cloud compute marketplace with on-chain order matching 
 
 | Benefit | Description |
 |---------|-------------|
-| **Scalability** | Supports millions of leases without EndBlocker performance degradation |
+| **Scalability** | No EndBlock scan of active leases for settlement; [capacity depends on measured workload and hardware budgets](CAPABILITIES.md#lazy-evaluation) |
 | **Simpler UX** | No bidding complexity - tenants select SKUs directly |
 | **Predictable Pricing** | Prices locked at lease creation, no auction dynamics |
 | **Lower Gas Costs** | Fewer transactions per lease lifecycle |

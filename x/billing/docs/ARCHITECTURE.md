@@ -1281,11 +1281,11 @@ The billing module uses **lazy settlement** (on-touch evaluation) instead of per
 | Approach | Complexity | Trade-offs |
 |----------|------------|------------|
 | Per-block settlement | O(n) per block | Simple but doesn't scale; EndBlocker grows with lease count |
-| Lazy settlement | O(1) per operation | Scales to millions of leases; settlement only when touched |
+| Lazy settlement | Proportional to selected items and denominations, plus store access | Settlement only when touched; [production capacity remains to be measured](CAPABILITIES.md#lazy-evaluation) |
 
 **Why lazy settlement works:**
 - Settlement cost is paid by the party initiating the operation (withdraw, close)
-- No per-block overhead regardless of total lease count
+- No per-block settlement scan; bounded pending-lease expiration still runs in EndBlock
 - Credit balance reflects unspent funds accurately since accrual is calculated on-demand
 - Provider incentivized to withdraw regularly (they bear the risk of tenant credit exhaustion)
 

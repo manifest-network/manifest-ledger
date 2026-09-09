@@ -44,7 +44,7 @@ func TestReservationAccountingInvariant(t *testing.T) {
 	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, account))
 	message, broken = keeper.ReservationAccountingInvariant(f.App.BillingKeeper)(f.Ctx)
 	require.True(t, broken)
-	require.Contains(t, message, "invalid credit-account lease counts")
+	require.Contains(t, message, "invalid reservation state")
 	require.Contains(t, message, "active_lease_count 0 but has 1 active leases")
 
 	account.ActiveLeaseCount = 1
@@ -85,6 +85,46 @@ func TestReservationAccountingInvariantReportsCorruptParamsWithoutPanicking(t *t
 	require.True(t, broken)
 	require.Contains(t, message, "failed to export billing state")
 	require.Contains(t, message, "read billing params")
+}
+
+func TestReservationAccountingInvariantRejectsMissingCurrentReservationWrappers(t *testing.T) {
+	for _, missingCount := range []int{1, 2} {
+		t.Run(fmt.Sprintf("missing %d of two wrappers", missingCount), func(t *testing.T) {
+			f := initFixture(t)
+			msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+			tenant, providerAddress := f.TestAccs[0], f.TestAccs[1]
+			provider := f.createTestProvider(t, providerAddress.String(), providerAddress.String())
+			sku := f.createTestSKU(t, provider.Uuid, 3600)
+			creditAddress := types.DeriveCreditAddress(tenant)
+			f.fundAccount(t, creditAddress, sdk.NewCoins(sdk.NewInt64Coin(testDenom, 1_000_000)))
+			require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+				Tenant: tenant.String(), CreditAddress: creditAddress.String(),
+			}))
+			leases := make([]types.Lease, 2)
+			for i := range leases {
+				uuid := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddress, []types.LeaseItemInput{{
+					SkuUuid: sku.Uuid, Quantity: 1,
+				}})
+				var err error
+				leases[i], err = f.App.BillingKeeper.GetLease(f.Ctx, uuid)
+				require.NoError(t, err)
+			}
+			message, broken := keeper.ReservationAccountingInvariant(f.App.BillingKeeper)(f.Ctx)
+			require.False(t, broken, message)
+
+			for i := range missingCount {
+				leases[i].Reservation = nil
+				require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, leases[i]))
+			}
+			message, broken = keeper.ReservationAccountingInvariant(f.App.BillingKeeper)(f.Ctx)
+			require.True(t, broken)
+			require.Contains(t, message, "has no initialized reservation in current billing state")
+			// Primary records still have consistent indexes. Only accounting's
+			// current-format validation can detect the all-absent legacy lookalike.
+			message, broken = keeper.DerivedIndexesInvariant(f.App.BillingKeeper)(f.Ctx)
+			require.False(t, broken, message)
+		})
+	}
 }
 
 func TestReservationAccountingInvariantReportsCorruptPrimaryRowWithContext(t *testing.T) {
@@ -171,7 +211,7 @@ func TestReservationAccountingInvariantValidatesRawStoredParams(t *testing.T) {
 
 			message, broken := keeper.ReservationAccountingInvariant(f.App.BillingKeeper)(f.Ctx)
 			require.True(t, broken)
-			require.Contains(t, message, "invalid stored billing params")
+			require.Contains(t, message, "invalid reservation state")
 			require.Contains(t, message, test.want)
 		})
 	}

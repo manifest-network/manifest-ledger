@@ -226,7 +226,7 @@ manifestd tx sku deactivate-sku 01912345-6789-7abc-8def-0123456789cd \
 > - Can be reactivated later via `update-sku` with `active=true`
 > - The provider must also be active for the SKU to be usable in new leases
 >
-> **Note:** Deactivating a **provider** cascades to deactivate its SKUs, but the cascade is paginated. Each `deactivate-provider` call deactivates up to `--limit` SKUs (default 50, max 100) and returns `has_more`; repeat the call while `has_more: true` to deactivate the remaining SKUs. See [Provider Guide](PROVIDER_GUIDE.md#step-6-deactivate-provider-if-needed) for details.
+> **Note:** Deactivating a **provider** cascades to deactivate its SKUs, but the cascade is paginated. Each `deactivate-provider` call deactivates up to `--limit` SKUs (default 50, max 100) per committed transaction. After successful execution, query `skus-by-provider UUID --active-only --limit 1` at that transaction height and repeat deactivation while it returns any SKUs. The CLI transaction envelope does not contain the module response's `has_more` field. See [Provider Guide](PROVIDER_GUIDE.md#step-6-deactivate-provider-if-needed) for details.
 
 ## Creating Multiple SKUs
 
@@ -273,8 +273,8 @@ manifestd tx sku create-sku $PROVIDER_UUID "Storage 100GB" 2 86400upwr --from my
 **Solution:**
 
 - If the inactive provider still has active SKUs, have an authorized user finish
-  its deactivation cascade by repeating `deactivate-provider` until the response
-  reports `has_more=false`.
+  its deactivation cascade using the [confirmed transaction and active-SKU
+  query workflow](API.md#complete-a-provider-deactivation-cascade).
 - Once all of its SKUs are inactive, reactivate the provider using
   `update-provider` with `active=true`, then reactivate desired existing SKUs
   individually with `update-sku` or create new ones.

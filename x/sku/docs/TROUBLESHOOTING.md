@@ -26,8 +26,10 @@ This guide covers common errors and issues users may encounter when using the SK
    ```
 2. If the provider is inactive, contact an authorized user (authority or allowed
    list member). If any of its SKUs are still active, first finish the
-   deactivation cascade by repeating the following command until the response
-   reports `has_more=false`:
+   deactivation cascade with the following command. Confirm successful committed
+   execution after every page, then query `skus-by-provider UUID --active-only
+   --limit 1` at that height; repeat while any SKUs remain. See the
+   [complete CLI workflow](API.md#complete-a-provider-deactivation-cascade):
    ```bash
    manifestd tx sku deactivate-provider [provider-uuid] --from [authorized-key]
    ```
@@ -205,8 +207,10 @@ payout does not require reactivation.
 **Cause**: An earlier `deactivate-provider` call left active SKUs pending in the
 paginated cascade.
 
-**Solution**: Repeat `deactivate-provider` for the same UUID until the response
-has `has_more=false`. Then reactivate the provider with `update-provider` and
+**Solution**: Follow the [complete CLI workflow](API.md#complete-a-provider-deactivation-cascade):
+repeat `deactivate-provider` for the same UUID, confirm successful execution,
+and query `skus-by-provider UUID --active-only --limit 1` at that transaction
+height until no active SKUs remain. Then reactivate the provider with `update-provider` and
 reactivate desired SKUs individually with `update-sku`.
 
 ### "invalid API URL" (too long)
@@ -266,7 +270,7 @@ manifestd tx sku update-params --allowed-list "manifest1abc..." --from authority
 - Provider (only when all SKUs are already inactive): `invalid provider: provider {uuid} and all its SKUs are already inactive`
 - SKU: `invalid sku: sku {uuid} is already inactive`
 
-**Note**: `DeactivateProvider` deactivates a provider's SKUs in pages (`DefaultDeactivateSKULimit` = 50, `MaxDeactivateSKULimit` = 100). When the response reports `has_more` = true, the provider is already inactive but SKUs remain; you must **re-invoke** `DeactivateProvider` while `has_more` is true. Re-invocation on an already-inactive provider is the normal, expected flow and is **not** an error condition.
+**Note**: `DeactivateProvider` deactivates a provider's SKUs in pages (`DefaultDeactivateSKULimit` = 50, `MaxDeactivateSKULimit` = 100). The decoded module response uses `has_more`; ordinary CLI transaction output does not expose it. After each successful committed call, query `skus-by-provider UUID --active-only --limit 1` at that transaction height and **re-invoke** `DeactivateProvider` while a SKU remains. Re-invocation on an already-inactive provider is the normal, expected flow and is **not** an error condition.
 
 **Solution**: Check the provider/SKU status before deactivation:
 ```bash
@@ -287,7 +291,9 @@ active SKUs remain; an inactive provider can still need another cascade call.
 
 **Solution**:
 1. If the inactive provider still has active SKUs, finish its deactivation
-   cascade. Repeat this command until the response reports `has_more=false`:
+   cascade. Repeat this command after confirming successful committed execution
+   while `skus-by-provider UUID --active-only --limit 1` at that height returns
+   any SKUs (see the [CLI workflow](API.md#complete-a-provider-deactivation-cascade)):
    ```bash
    manifestd tx sku deactivate-provider [provider-uuid] --from authority
    ```

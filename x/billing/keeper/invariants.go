@@ -58,27 +58,10 @@ func ReservationAccountingInvariant(keeper Keeper) sdk.Invariant {
 				fmt.Sprintf("failed to export billing state: %v", err),
 			), true
 		}
-		// Runtime invariants must inspect the stored aggregate counts exactly as
-		// exported. Validate repairs historical import-only count drift in a copy,
-		// which is appropriate at InitGenesis but would mask live corruption here.
-		if err := genesis.ValidateCreditAccountLeaseCounts(); err != nil {
-			return sdk.FormatInvariant(
-				types.ModuleName,
-				reservationInvariantRoute,
-				fmt.Sprintf("invalid credit-account lease counts: %v", err),
-			), true
-		}
-		// Validate the Params exactly as stored before import-safe genesis
-		// validation canonicalizes historical Bech32 aliases in a copy. Live
-		// duplicate or over-limit Params are corruption and must remain visible.
-		if err := genesis.Params.Validate(); err != nil {
-			return sdk.FormatInvariant(
-				types.ModuleName,
-				reservationInvariantRoute,
-				fmt.Sprintf("invalid stored billing params: %v", err),
-			), true
-		}
-		if err := genesis.Validate(); err != nil {
+		// Import validation repairs legacy derived state in a copy. Runtime
+		// validation must instead require the current representation and inspect
+		// stored counts, params, and reservation aggregates without any repair.
+		if err := genesis.ValidateCurrentState(); err != nil {
 			return sdk.FormatInvariant(
 				types.ModuleName,
 				reservationInvariantRoute,
