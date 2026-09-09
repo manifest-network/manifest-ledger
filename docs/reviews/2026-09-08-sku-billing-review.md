@@ -278,6 +278,14 @@ All seven executable documentation tests passed with zero skips. The workflow de
 
 GitHub reported all 31 checks successful for `aebd057`, including the interchaintest matrix, container/build checks, simulations, and vulnerability analysis. That evidence applies to the preceding head; this follow-up receives its own CI run.
 
+### SKU keeper UUID follow-up
+
+[Claude's review of `45935ac`](https://github.com/manifest-network/manifest-ledger/pull/179#issuecomment-5603917373) confirmed the four corrections above and identified one remaining low-severity test-assurance gap: the SKU keeper's provider and SKU namespace call sites were not pinned by literal creation tests. The utility golden vectors alone cannot detect a call site changing its namespace argument. Confidence: **100%** for the confirmed coverage gap; current production UUID generation is correct.
+
+`TestCreateProviderUUIDContract` and `TestCreateSKUUUIDContract` now create records through the real message server using the fixed golden-vector block context. Each pins the original implementation's literal UUIDs at sequences 4095 and 4096, verifies the stored identity, and checks that the next sequence is 4097. Together with the billing regression, these tests cover all three production namespace call sites. Tracking remains in ENG-905.
+
+Both new tests pass under Go 1.26.8 (`go test -p 2 ./x/sku/keeper -run '^TestCreate(Provider|SKU)UUIDContract$' -count=1`). Independent temporary source overlays changing `sku-provider` to `sku-prov` and `sku-sku` to `sku-skuu` each fail the corresponding test at its literal UUID assertion. No production source was modified. Scoped SKU keeper lint reports **0 issues**, and a separate final diff review found no remaining actionable concern. Evidence: provider mutation (`/tmp/manifest-pr179-provider-uuid-mutation.log`, local evidence), SKU mutation (`/tmp/manifest-pr179-sku-uuid-mutation.log`, local evidence), lint (`/tmp/manifest-pr179-sku-uuid-lint.log`, local evidence).
+
 ## Limits and remaining questions
 
 No deployed provider, live-chain state, or production price catalog was inspected. Docker interchaintests, a fuzz campaign, release-tagged binaries, and all platform/build-tag vulnerability graphs were not rerun locally. The subsequent successful CI checks for `aebd057` are recorded above and do not certify later commits. The remediated simulation profile excludes randomized validator mutations pending ENG-915.

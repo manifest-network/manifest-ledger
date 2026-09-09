@@ -152,12 +152,13 @@ if uuid.IsValidUUIDv7(id) {
 ```bash
 go test -v ./pkg/uuid/...
 go test ./x/billing/keeper -run '^TestCreateLeaseUUIDContract$'
+go test ./x/sku/keeper -run '^TestCreate(Provider|SKU)UUIDContract$'
 ```
 
 The tests verify:
 - Format compliance with UUIDv7 specification
 - Fixed golden vectors, captured from the manual implementation at `85d1602`, for all production namespaces, 12-bit sequence-field rollover at 4096, large counters, and time-only generation
-- A billing keeper regression that pins lease UUIDs from actual lease creation across sequences 4095 and 4096
+- Keeper regressions that pin lease, provider, and SKU UUIDs from actual creation across sequences 4095 and 4096, including stored identities and sequence advancement
 - Decoded timestamp, version, variant, and sequence bits
 - Determinism (same inputs → same output)
 - Uniqueness (different sequences → different UUIDs)
