@@ -99,8 +99,8 @@ message MsgUpdateProvider {
   // payout_address is the address where payments are sent.
   string payout_address = 4 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // meta_hash replaces the hash of off-chain metadata. An empty value clears it;
-  // clients must resend the current bytes when preserving the hash.
+  // meta_hash replaces the hash of off-chain metadata. An empty value clears
+  // it; clients must resend the current bytes when preserving the hash.
   bytes meta_hash = 5;
 
   // active indicates whether the provider is active.

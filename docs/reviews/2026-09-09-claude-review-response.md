@@ -89,6 +89,10 @@ SKU 30.4%, so generated-transaction/error matrices remain a specific follow-up.
 This default package coverage profile does not include cross-package execution
 of dependency code or merge the separate simulation/race/fuzz campaigns.
 
-The two failed CI jobs on `0307b4b` were independently inspected: Build Manifest failed reading a sum.golang.org tile for Consul SDK, and arm64 E2E image build failed downloading tokenfactory from proxy.golang.org; both reported HTTP/2 INTERNAL_ERROR from the peer. These are external download failures, not passing build evidence. The new PR head must run its own CI.
+The two failed CI jobs on `0307b4b` were independently inspected: Build Manifest failed reading a sum.golang.org tile for Consul SDK, and arm64 E2E image build failed downloading tokenfactory from proxy.golang.org; both reported HTTP/2 INTERNAL_ERROR from the peer. These are external download failures, not passing build evidence. The new PR head must run its own CI. The first follow-up `ad85c7b` exposed
+comment-format drift because the local generator check omitted CI's preceding
+formatter. A comment-only correction runs the full `make proto-all` workflow
+and verifies its repeated output is unchanged; no executable or wire change
+was needed. This distinction is recorded in the validation notes.
 
 Outstanding deployment gates remain: production-sized migration/query/invariant timing and cardinality (ENG-890), broader behavioral/fuzz infrastructure (ENG-869), domain ownership verification (deferred ENG-62), real provider/wallet authentication-v2 rollout (ENG-925), simulator phase/time-queue limitations (ENG-914/ENG-915), and consumer/client compatibility. No live-chain policy audit, release deployment, or proof of complete vulnerability absence is claimed. Billing v3 is not deployed; arbitrary direct-v3 upgrade semantics are outside the supported migration path.

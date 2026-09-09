@@ -11804,7 +11804,8 @@ func (x *MsgCreateLeaseResponse) GetLeaseUuid() string {
 }
 
 // MsgCreateLeaseForTenant allows the module authority or a billing allowed_list
-// member to create a lease on behalf of a tenant, including off-chain migrations.
+// member to create a lease on behalf of a tenant, including off-chain
+// migrations.
 type MsgCreateLeaseForTenant struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

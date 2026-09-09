@@ -23,8 +23,9 @@ service Msg {
   rpc CreateLease(MsgCreateLease) returns (MsgCreateLeaseResponse);
 
   // CreateLeaseForTenant allows the module authority or a billing allowed_list
-  // member to create a lease on behalf of a tenant. This is used for migrating off-chain leases to on-chain. The lease
-  // starts in PENDING state awaiting provider acknowledgement.
+  // member to create a lease on behalf of a tenant. This is used for migrating
+  // off-chain leases to on-chain. The lease starts in PENDING state awaiting
+  // provider acknowledgement.
   rpc CreateLeaseForTenant(MsgCreateLeaseForTenant)
       returns (MsgCreateLeaseForTenantResponse);
 
@@ -146,7 +147,8 @@ message MsgCreateLeaseResponse {
 }
 
 // MsgCreateLeaseForTenant allows the module authority or a billing allowed_list
-// member to create a lease on behalf of a tenant, including off-chain migrations.
+// member to create a lease on behalf of a tenant, including off-chain
+// migrations.
 message MsgCreateLeaseForTenant {
   option (cosmos.msg.v1.signer) = "authority";
   option (amino.name) = "lifted/billing/MsgCreateLeaseForTenant";

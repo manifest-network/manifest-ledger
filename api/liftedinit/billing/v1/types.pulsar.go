@@ -5033,8 +5033,8 @@ func (LeaseState) EnumDescriptor() ([]byte, []int) {
 	return file_liftedinit_billing_v1_types_proto_rawDescGZIP(), []int{0}
 }
 
-// Params defines the parameters for the billing module. MsgUpdateParams replaces
-// the complete value; omitted repeated fields become empty lists.
+// Params defines the parameters for the billing module. MsgUpdateParams
+// replaces the complete value; omitted repeated fields become empty lists.
 type Params struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -5081,7 +5081,8 @@ type Params struct {
 	// dot; a single-label zone such as `.internal` is valid. DNS labels are
 	// 1-63 lowercase ASCII alphanumerics or hyphens, with alphanumeric ends. The
 	// zone is at most 253 bytes and its final label cannot be all digits.
-	// Omission in MsgUpdateParams clears the list; no execution-time merge occurs.
+	// Omission in MsgUpdateParams clears the list; no execution-time merge
+	// occurs.
 	ReservedDomainSuffixes []string `protobuf:"bytes,7,rep,name=reserved_domain_suffixes,json=reservedDomainSuffixes,proto3" json:"reserved_domain_suffixes,omitempty"`
 }
 

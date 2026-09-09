@@ -433,8 +433,8 @@ message QueryCreditEstimateRequest {
 // QueryCreditEstimateResponse is the response type for the Query/CreditEstimate
 // RPC method.
 message QueryCreditEstimateResponse {
-  // current_balance is the tenant's spendable bank balance for denominations used by
-  // active leases.
+  // current_balance is the tenant's spendable bank balance for denominations
+  // used by active leases.
   repeated cosmos.base.v1beta1.Coin current_balance = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",

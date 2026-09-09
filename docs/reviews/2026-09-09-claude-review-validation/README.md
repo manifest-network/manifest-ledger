@@ -2,6 +2,18 @@
 
 This directory records validation for the [PR179 review response](../2026-09-09-claude-review-response.md). Tests ran in the isolated `codex/sku-billing-review-20260909` worktree with Go 1.26.8, golangci-lint 2.12.2 and Node 24.15.0. SDK app fixtures required localhost sockets; Bash/jq recipes required subprocess access. A workspace TMPDIR avoided the nearly full system temporary partition. Archived logs normalize carriage-return progress lines and trailing whitespace; result text is preserved.
 
+## CI formatter correction
+
+The first pushed head `ad85c7b` passed local generation-only checks but failed
+CI's preceding clang-format step on new protobuf comments. The follow-up uses
+the complete `make proto-all` workflow (format, lint, generation, module tidy).
+A second complete run is idempotent across every tracked file; see
+`feedback-proto-all-repeat.log`. The correction changes comments only, verified
+by comparing source and generated files with comment lines removed. Go.mod,
+Go.sum, descriptors, fields and executable code are unchanged. The Go, race,
+fuzz, documentation and simulation results below apply to the same executable
+code; they were not redundantly rerun for comment wrapping.
+
 ## Final checks
 
 ```bash
@@ -11,6 +23,7 @@ mkdir -p "$TMPDIR"
 
 go test -p 2 ./x/sku/... ./x/billing/... ./pkg/... ./internal/... ./app/... ./cmd/manifestd/cmd \
   -count=1 -timeout=10m -coverprofile=.review-tmp/feedback-final.cover
+make proto-all
 golangci-lint run --concurrency 2 ./x/sku/... ./x/billing/... ./pkg/... ./internal/... ./app/... ./cmd/manifestd/cmd
 node --test --test-reporter=tap scripts/docs_examples.test.mjs scripts/provider_auth_examples.test.mjs
 
@@ -36,7 +49,8 @@ Lint additionally set GOROOT and PATH to the cached Go 1.26.8 toolchain because 
 | `feedback-docs-final.log` | All 39 executable documentation tests passed, no skips |
 | `feedback-vesting-race.log` | Focused vesting/credit/import-migration regressions under the race detector |
 | `feedback-storage-fuzz.log` | Native byte-codec fuzz engine results; current/legacy representations and fixed points |
-| `feedback-proto-recheck.log` | Independent pinned regeneration comparison |
+| `feedback-proto-recheck.log` | Initial generation-only comparison, preceding the formatter correction |
+| `feedback-proto-all-repeat.log` | Complete CI protobuf workflow, repeated with no tracked-file drift |
 | `feedback-json.log` | Actual SDK default proto-JSON versus standard Go JSON for an unset Provider |
 | `simulation-claude-seed-*.log` | Two fresh committed 100-block runs, invariant period 5; each delivered all 10 billing and 7 SKU message types successfully |
 

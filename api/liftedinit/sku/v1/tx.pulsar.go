@@ -7525,8 +7525,8 @@ type MsgUpdateProvider struct {
 	Address string `protobuf:"bytes,3,opt,name=address,proto3" json:"address,omitempty"`
 	// payout_address is the address where payments are sent.
 	PayoutAddress string `protobuf:"bytes,4,opt,name=payout_address,json=payoutAddress,proto3" json:"payout_address,omitempty"`
-	// meta_hash replaces the hash of off-chain metadata. An empty value clears it;
-	// clients must resend the current bytes when preserving the hash.
+	// meta_hash replaces the hash of off-chain metadata. An empty value clears
+	// it; clients must resend the current bytes when preserving the hash.
 	MetaHash []byte `protobuf:"bytes,5,opt,name=meta_hash,json=metaHash,proto3" json:"meta_hash,omitempty"`
 	// active indicates whether the provider is active.
 	Active bool `protobuf:"varint,6,opt,name=active,proto3" json:"active,omitempty"`

@@ -340,7 +340,8 @@ func (m *MsgCreateLeaseResponse) GetLeaseUuid() string {
 }
 
 // MsgCreateLeaseForTenant allows the module authority or a billing allowed_list
-// member to create a lease on behalf of a tenant, including off-chain migrations.
+// member to create a lease on behalf of a tenant, including off-chain
+// migrations.
 type MsgCreateLeaseForTenant struct {
 	// authority is the module authority or a billing allowed_list member.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
@@ -1522,8 +1523,9 @@ type MsgClient interface {
 	// The lease starts in PENDING state awaiting provider acknowledgement.
 	CreateLease(ctx context.Context, in *MsgCreateLease, opts ...grpc.CallOption) (*MsgCreateLeaseResponse, error)
 	// CreateLeaseForTenant allows the module authority or a billing allowed_list
-	// member to create a lease on behalf of a tenant. This is used for migrating off-chain leases to on-chain. The lease
-	// starts in PENDING state awaiting provider acknowledgement.
+	// member to create a lease on behalf of a tenant. This is used for migrating
+	// off-chain leases to on-chain. The lease starts in PENDING state awaiting
+	// provider acknowledgement.
 	CreateLeaseForTenant(ctx context.Context, in *MsgCreateLeaseForTenant, opts ...grpc.CallOption) (*MsgCreateLeaseForTenantResponse, error)
 	// AcknowledgeLease allows a provider to acknowledge PENDING leases.
 	// Before atomically transitioning them to ACTIVE, it revalidates the hard
@@ -1657,8 +1659,9 @@ type MsgServer interface {
 	// The lease starts in PENDING state awaiting provider acknowledgement.
 	CreateLease(context.Context, *MsgCreateLease) (*MsgCreateLeaseResponse, error)
 	// CreateLeaseForTenant allows the module authority or a billing allowed_list
-	// member to create a lease on behalf of a tenant. This is used for migrating off-chain leases to on-chain. The lease
-	// starts in PENDING state awaiting provider acknowledgement.
+	// member to create a lease on behalf of a tenant. This is used for migrating
+	// off-chain leases to on-chain. The lease starts in PENDING state awaiting
+	// provider acknowledgement.
 	CreateLeaseForTenant(context.Context, *MsgCreateLeaseForTenant) (*MsgCreateLeaseForTenantResponse, error)
 	// AcknowledgeLease allows a provider to acknowledge PENDING leases.
 	// Before atomically transitioning them to ACTIVE, it revalidates the hard

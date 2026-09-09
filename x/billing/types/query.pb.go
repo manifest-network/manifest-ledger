@@ -1345,8 +1345,8 @@ func (m *QueryCreditEstimateRequest) GetTenant() string {
 // QueryCreditEstimateResponse is the response type for the Query/CreditEstimate
 // RPC method.
 type QueryCreditEstimateResponse struct {
-	// current_balance is the tenant's spendable bank balance for denominations used by
-	// active leases.
+	// current_balance is the tenant's spendable bank balance for denominations
+	// used by active leases.
 	CurrentBalance github_com_cosmos_cosmos_sdk_types.Coins `protobuf:"bytes,1,rep,name=current_balance,json=currentBalance,proto3,castrepeated=github.com/cosmos/cosmos-sdk/types.Coins" json:"current_balance"`
 	// total_rate_per_second is the combined rate of all active leases (per
 	// denom).

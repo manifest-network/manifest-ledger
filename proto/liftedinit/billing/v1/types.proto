@@ -9,8 +9,8 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/manifest-network/manifest-ledger/x/billing/types";
 
-// Params defines the parameters for the billing module. MsgUpdateParams replaces
-// the complete value; omitted repeated fields become empty lists.
+// Params defines the parameters for the billing module. MsgUpdateParams
+// replaces the complete value; omitted repeated fields become empty lists.
 message Params {
   option (amino.name) = "lifted/billing/Params";
   option (gogoproto.equal) = true;
@@ -71,7 +71,8 @@ message Params {
   // dot; a single-label zone such as `.internal` is valid. DNS labels are
   // 1-63 lowercase ASCII alphanumerics or hyphens, with alphanumeric ends. The
   // zone is at most 253 bytes and its final label cannot be all digits.
-  // Omission in MsgUpdateParams clears the list; no execution-time merge occurs.
+  // Omission in MsgUpdateParams clears the list; no execution-time merge
+  // occurs.
   repeated string reserved_domain_suffixes = 7
       [ (gogoproto.jsontag) = "reserved_domain_suffixes,omitempty" ];
 }

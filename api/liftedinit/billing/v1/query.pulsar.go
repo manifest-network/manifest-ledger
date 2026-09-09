@@ -14562,8 +14562,8 @@ type QueryCreditEstimateResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// current_balance is the tenant's spendable bank balance for denominations used by
-	// active leases.
+	// current_balance is the tenant's spendable bank balance for denominations
+	// used by active leases.
 	CurrentBalance []*v1beta11.Coin `protobuf:"bytes,1,rep,name=current_balance,json=currentBalance,proto3" json:"current_balance,omitempty"`
 	// total_rate_per_second is the combined rate of all active leases (per
 	// denom).
