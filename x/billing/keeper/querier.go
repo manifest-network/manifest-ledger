@@ -319,7 +319,17 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 	// descending coin slice. GetAvailableCredit operates on canonical ascending
 	// sdk.Coins, so normalize only the page view and restore the requested order
 	// in the response. The bank response itself remains untouched.
-	availablePage := bankResponse.Balances
+	// Preserve the bank page cursor/order while excluding locked vesting coins
+	// from billing credit. Pages containing only locked denoms may be empty;
+	// callers must follow next_key rather than infer completion from coin count.
+	locked := q.k.bankKeeper.LockedCoins(ctx, creditAddr)
+	spendablePage := make(sdk.Coins, 0, len(bankResponse.Balances))
+	for _, balance := range bankResponse.Balances {
+		if coin := creditCoinAfterLocks(balance, locked); coin.IsPositive() {
+			spendablePage = append(spendablePage, coin)
+		}
+	}
+	availablePage := spendablePage
 	if pageReq.Reverse {
 		availablePage = slices.Clone(availablePage)
 		slices.Reverse(availablePage)
@@ -331,7 +341,7 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 
 	return &types.QueryCreditAccountResponse{
 		CreditAccount:     ca,
-		Balances:          bankResponse.Balances,
+		Balances:          spendablePage,
 		AvailableBalances: availableBalances,
 		Pagination:        bankResponse.Pagination,
 	}, nil

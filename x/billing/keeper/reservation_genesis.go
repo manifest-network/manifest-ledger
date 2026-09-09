@@ -126,11 +126,12 @@ func (k *Keeper) validateGenesisReservationBacking(ctx sdk.Context, gs *types.Ge
 				"decode genesis credit address for tenant %q: %s", account.Tenant, err,
 			)
 		}
+		locked := k.bankKeeper.LockedCoins(ctx, creditAddress)
 		for _, reserved := range account.ReservedAmounts {
-			balance := k.bankKeeper.GetBalance(ctx, creditAddress, reserved.Denom)
+			balance := creditCoinAfterLocks(k.bankKeeper.GetBalance(ctx, creditAddress, reserved.Denom), locked)
 			if balance.Amount.LT(reserved.Amount) {
 				return types.ErrReservationInvariant.Wrapf(
-					"credit account for %s has bank balance %s below reservation %s%s",
+					"credit account for %s has spendable bank balance %s below reservation %s%s",
 					account.Tenant,
 					balance.String(),
 					reserved.Amount.String(),

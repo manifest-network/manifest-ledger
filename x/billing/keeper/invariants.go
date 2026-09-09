@@ -47,7 +47,7 @@ func DerivedIndexesInvariant(keeper Keeper) sdk.Invariant {
 }
 
 // ReservationAccountingInvariant verifies the exact v4 lease/account identity
-// and that every aggregate reservation remains fully bank-backed.
+// and that every aggregate reservation is backed by spendable bank funds.
 func ReservationAccountingInvariant(keeper Keeper) sdk.Invariant {
 	return func(ctx sdk.Context) (string, bool) {
 		genesis, err := keeper.exportGenesis(ctx)

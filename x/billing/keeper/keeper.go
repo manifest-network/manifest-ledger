@@ -913,7 +913,8 @@ func (k *Keeper) countLeasesByTenantAndStateScan(ctx context.Context, tenant str
 	return count, nil
 }
 
-// GetCreditBalance returns the credit balance for a specific denom from the bank module for a tenant.
+// GetCreditBalance returns spendable credit for one denomination. Bank-locked
+// vesting funds cannot back billing reservations or provider payments.
 func (k *Keeper) GetCreditBalance(ctx context.Context, tenant string, denom string) (sdk.Coin, error) {
 	if err := sdk.ValidateDenom(denom); err != nil {
 		return sdk.Coin{}, types.ErrInvalidCreditOperation.Wrapf("invalid credit balance denom %q: %s", denom, err)
@@ -922,16 +923,17 @@ func (k *Keeper) GetCreditBalance(ctx context.Context, tenant string, denom stri
 	if err != nil {
 		return sdk.Coin{}, err
 	}
-	return k.bankKeeper.GetBalance(ctx, creditAddr, denom), nil
+	return k.spendableCreditCoin(ctx, creditAddr, denom), nil
 }
 
-// getCreditBalancesForDenoms returns credit balances for only the specified denoms,
-// using per-denom GetBalance to avoid loading dust from unrelated token sends.
+// getCreditBalancesForDenoms returns spendable credit for only the requested
+// denoms without loading balances from unrelated token sends.
 func (k *Keeper) getCreditBalancesForDenoms(ctx context.Context, tenant string, denoms []string) (sdk.Coins, error) {
 	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant)
 	if err != nil {
 		return nil, err
 	}
+	locked := k.bankKeeper.LockedCoins(ctx, creditAddr)
 	orderedDenoms := slices.Clone(denoms)
 	slices.Sort(orderedDenoms)
 	coins := make(sdk.Coins, 0, len(orderedDenoms))
@@ -942,7 +944,7 @@ func (k *Keeper) getCreditBalancesForDenoms(ctx context.Context, tenant string, 
 		if err := sdk.ValidateDenom(denom); err != nil {
 			return nil, types.ErrInvalidCreditOperation.Wrapf("invalid credit balance denom %q: %s", denom, err)
 		}
-		bal := k.bankKeeper.GetBalance(ctx, creditAddr, denom)
+		bal := creditCoinAfterLocks(k.bankKeeper.GetBalance(ctx, creditAddr, denom), locked)
 		if bal.IsPositive() {
 			coins = append(coins, bal)
 		}
@@ -962,15 +964,18 @@ func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.
 	// Identify the settlement interval without time.Time.Sub, whose duration
 	// result saturates for intervals beyond roughly 292 years.
 	var settleTime time.Time
-	if lease.State == types.LEASE_STATE_ACTIVE {
+	switch lease.State {
+	case types.LEASE_STATE_ACTIVE:
 		settleTime = blockTime
-	} else {
-		// For inactive leases, calculate from last settled to closed
+	case types.LEASE_STATE_CLOSED:
+		// Only CLOSED leases can have an unsettled terminal service interval.
 		if lease.ClosedAt != nil {
 			settleTime = *lease.ClosedAt
 		} else {
 			return sdk.NewCoins(), nil
 		}
+	default:
+		return sdk.NewCoins(), nil
 	}
 
 	if !settleTime.After(lease.LastSettledAt) {
@@ -1537,7 +1542,7 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 // EndBlocker processes pending lease expirations.
 // It uses an ordered, time-bounded index iterator and only buffers the bounded
 // set of UUIDs selected for expiration, preventing unbounded memory use.
-// Rate limited to MaxPendingLeaseExpirationsPerBlock expirations per block.
+// Rate limited to MaxPendingLeaseExpirationsPerBlock successful expirations per block.
 func (k *Keeper) EndBlocker(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
@@ -1550,7 +1555,7 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 	// Get pending timeout duration.
 	pendingTimeout := params.PendingTimeoutDuration()
 
-	// Collect pending lease UUIDs that need expiration first, then process them.
+	// Collect a bounded page of pending lease UUIDs, close its iterator, then expire them.
 	// This two-pass approach avoids iterator invalidation: when ExpirePendingLease
 	// changes a lease's state from PENDING to EXPIRED, the index is modified, and
 	// mutating an index while iterating over it can cause undefined behavior.
@@ -1577,117 +1582,136 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 		StartInclusive(collections.Join(collections.Join(pendingState, time.Time{}), "")).
 		EndExclusive(collections.Join(collections.Join(pendingState, expiredCutoff), ""))
 
-	iter, err := k.Leases.Indexes.StateCreatedAt.Iterate(ctx, scanRange)
-	if err != nil {
-		return err
-	}
+	var cursor collections.Pair[collections.Pair[int32, time.Time], string]
+	expiredCount, collectedCount := 0, 0
+	for expiredCount < types.MaxPendingLeaseExpirationsPerBlock {
+		remaining := types.MaxPendingLeaseExpirationsPerBlock - expiredCount
+		iter, err := k.Leases.Indexes.StateCreatedAt.Iterate(ctx, scanRange)
+		if err != nil {
+			return err
+		}
 
-	// First pass: collect UUIDs of the (already time-bounded) pending leases,
-	// oldest first. In consistent state the range restricts iteration to expirable
-	// PENDING leases. Primary UUID/state and timeout checks remain defense-in-depth:
-	// stale index rows cannot consume the processing quota, and a not-yet-expired
-	// lease cannot be expired even if the range bounds were ever mis-encoded.
-	//
-	// Corrupt rows are logged and skipped instead of halting consensus. The number
-	// of rows visited is deliberately not capped separately from successful
-	// expirations: without a repair or persisted cursor, a fixed visit cap would
-	// let the same oldest stale rows permanently starve every valid row after them.
-	// Normal writes maintain this index atomically; the registered invariant is the
-	// operator-facing mechanism for detecting corruption that violates that bound.
-	var expiredUUIDs []string
-	for ; iter.Valid(); iter.Next() {
-		// Rate limit: stop collecting after max expirations to process
-		if len(expiredUUIDs) >= types.MaxPendingLeaseExpirationsPerBlock {
+		// Read a bounded page: collect UUIDs of the (already time-bounded) pending leases,
+		// oldest first. In consistent state the range restricts iteration to expirable
+		// PENDING leases. Primary UUID/state and timeout checks remain defense-in-depth:
+		// stale index rows cannot consume the processing quota, and a not-yet-expired
+		// lease cannot be expired even if the range bounds were ever mis-encoded.
+		//
+		// Corrupt rows are logged and skipped instead of halting consensus. The number
+		// of rows visited is deliberately not capped separately from successful
+		// expirations: without a repair or persisted cursor, a fixed visit cap would
+		// let the same oldest stale rows permanently starve every valid row after them.
+		// Normal writes maintain this index atomically; the registered invariant is the
+		// operator-facing mechanism for detecting corruption that violates that bound.
+		expiredUUIDs := make([]string, 0, remaining)
+		for ; iter.Valid(); iter.Next() {
+			// Rate limit: stop collecting after max expirations to process
+			if len(expiredUUIDs) >= remaining {
+				break
+			}
+
+			fullKey, err := iter.FullKey()
+			if err != nil {
+				k.logger.Error("failed to get lease key from iterator",
+					"error", err,
+				)
+				continue
+			}
+
+			cursor = fullKey
+			leaseUUID := fullKey.K2()
+
+			lease, err := k.Leases.Get(ctx, leaseUUID)
+			if err != nil {
+				if errors.Is(err, collections.ErrNotFound) {
+					k.logger.Error("pending expiration index references missing lease",
+						"lease_uuid", leaseUUID,
+					)
+				} else {
+					k.logger.Error("pending expiration index references unreadable lease",
+						"lease_uuid", leaseUUID,
+						"error", err,
+					)
+				}
+				continue
+			}
+			if lease.Uuid != leaseUUID {
+				k.logger.Error("pending expiration index references mismatched lease primary",
+					"index_lease_uuid", leaseUUID,
+					"stored_lease_uuid", lease.Uuid,
+				)
+				continue
+			}
+			if lease.State != types.LEASE_STATE_PENDING {
+				// A stale index row must not consume the expiration quota and
+				// indefinitely starve valid pending leases ordered after it.
+				k.logger.Error("pending expiration index references non-pending lease",
+					"lease_uuid", leaseUUID,
+					"lease_state", lease.State.String(),
+				)
+				continue
+			}
+
+			// Check if lease has exceeded pending timeout (defense-in-depth; the range
+			// bound already guarantees this).
+			if params.PendingLeaseDeadlineExceeded(blockTime, lease.CreatedAt) {
+				expiredUUIDs = append(expiredUUIDs, leaseUUID)
+			}
+		}
+
+		exhausted := !iter.Valid()
+
+		// Close iterator before modifying state to avoid iterator invalidation
+		if err := iter.Close(); err != nil {
+			return fmt.Errorf("close pending-lease expiration iterator: %w", err)
+		}
+
+		collectedCount += len(expiredUUIDs)
+
+		// Second pass: expire the collected leases
+		for _, leaseUUID := range expiredUUIDs {
+			lease, err := k.Leases.Get(ctx, leaseUUID)
+			if err != nil {
+				if errors.Is(err, collections.ErrNotFound) {
+					k.logger.Error("collected pending lease is missing before expiration",
+						"lease_uuid", leaseUUID,
+					)
+				} else {
+					k.logger.Error("collected pending lease is unreadable before expiration",
+						"lease_uuid", leaseUUID,
+						"error", err,
+					)
+				}
+				continue
+			}
+
+			if err := k.ExpirePendingLease(ctx, &lease); err != nil {
+				k.logger.Error("failed to expire pending lease",
+					"lease_uuid", lease.Uuid,
+					"error", err,
+				)
+				continue
+			}
+			expiredCount++
+		}
+
+		if exhausted {
 			break
 		}
-
-		leaseUUID, err := iter.PrimaryKey()
-		if err != nil {
-			k.logger.Error("failed to get lease UUID from iterator",
-				"error", err,
-			)
-			continue
-		}
-
-		lease, err := k.Leases.Get(ctx, leaseUUID)
-		if err != nil {
-			if errors.Is(err, collections.ErrNotFound) {
-				k.logger.Error("pending expiration index references missing lease",
-					"lease_uuid", leaseUUID,
-				)
-			} else {
-				k.logger.Error("pending expiration index references unreadable lease",
-					"lease_uuid", leaseUUID,
-					"error", err,
-				)
-			}
-			continue
-		}
-		if lease.Uuid != leaseUUID {
-			k.logger.Error("pending expiration index references mismatched lease primary",
-				"index_lease_uuid", leaseUUID,
-				"stored_lease_uuid", lease.Uuid,
-			)
-			continue
-		}
-		if lease.State != types.LEASE_STATE_PENDING {
-			// A stale index row must not consume the expiration quota and
-			// indefinitely starve valid pending leases ordered after it.
-			k.logger.Error("pending expiration index references non-pending lease",
-				"lease_uuid", leaseUUID,
-				"lease_state", lease.State.String(),
-			)
-			continue
-		}
-
-		// Check if lease has exceeded pending timeout (defense-in-depth; the range
-		// bound already guarantees this).
-		if params.PendingLeaseDeadlineExceeded(blockTime, lease.CreatedAt) {
-			expiredUUIDs = append(expiredUUIDs, leaseUUID)
-		}
-	}
-
-	// Close iterator before modifying state to avoid iterator invalidation
-	if err := iter.Close(); err != nil {
-		return fmt.Errorf("close pending-lease expiration iterator: %w", err)
-	}
-
-	// Second pass: expire the collected leases
-	expiredCount := 0
-	for _, leaseUUID := range expiredUUIDs {
-		lease, err := k.Leases.Get(ctx, leaseUUID)
-		if err != nil {
-			if errors.Is(err, collections.ErrNotFound) {
-				k.logger.Error("collected pending lease is missing before expiration",
-					"lease_uuid", leaseUUID,
-				)
-			} else {
-				k.logger.Error("collected pending lease is unreadable before expiration",
-					"lease_uuid", leaseUUID,
-					"error", err,
-				)
-			}
-			continue
-		}
-
-		if err := k.ExpirePendingLease(ctx, &lease); err != nil {
-			k.logger.Error("failed to expire pending lease",
-				"lease_uuid", lease.Uuid,
-				"error", err,
-			)
-			continue
-		}
-		expiredCount++
+		// A failed expiration keeps its index row. Resume strictly after the
+		// page's final key so persistent failures cannot starve later tenants.
+		// This cursor is local to the block: failures are retried next block.
+		scanRange = scanRange.StartExclusive(cursor)
 	}
 
 	if expiredCount > 0 {
 		k.logger.Info("expired pending leases in EndBlocker",
 			"expired_count", expiredCount,
-			"collected_count", len(expiredUUIDs),
+			"collected_count", collectedCount,
 		)
 	}
 
-	if len(expiredUUIDs) >= types.MaxPendingLeaseExpirationsPerBlock {
+	if expiredCount >= types.MaxPendingLeaseExpirationsPerBlock {
 		k.logger.Warn("reached max pending lease expirations per block",
 			"limit", types.MaxPendingLeaseExpirationsPerBlock,
 		)

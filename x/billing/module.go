@@ -13,6 +13,7 @@ import (
 
 	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
 	"cosmossdk.io/client/v2/autocli"
+	"cosmossdk.io/core/appmodule"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -42,6 +43,7 @@ var (
 	_ module.AppModuleGenesis    = AppModule{}
 	_ module.AppModule           = AppModule{}
 	_ module.AppModuleSimulation = AppModule{}
+	_ appmodule.HasEndBlocker    = AppModule{}
 
 	_ autocli.HasAutoCLIConfig      = AppModule{}
 	_ autocli.HasCustomQueryCommand = AppModule{}

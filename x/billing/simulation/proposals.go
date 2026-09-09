@@ -4,10 +4,10 @@ import (
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 )
 
-// ProposalMsgs is empty because MsgUpdateParams requires the configured POA
-// authority, while Cosmos SDK proposal messages must be signed by the gov
-// module account. Neither account has a simulation private key, so registering
-// the message as a direct operation or governance proposal would be unsound.
+// ProposalMsgs is empty because governance proposal messages must use the gov
+// module signer, which can differ from the configured POA authority. The full-app
+// harness gives that authority a simulation key; SimulateMsgUpdateParams covers
+// direct authorized updates and skips imports whose authority is not signable.
 func ProposalMsgs() []simtypes.WeightedProposalMsg {
 	return nil
 }

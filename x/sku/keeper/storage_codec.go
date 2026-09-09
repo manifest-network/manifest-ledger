@@ -27,17 +27,17 @@ const (
 
 func newParamsValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Params] {
 	wire := sdkcodec.CollValue[types.Params](cdc)
-	return storagecodec.Value[types.Params]{
+	return storagecodec.New(storagecodec.Config[types.Params]{
 		Wire:   wire,
 		Module: "SKU",
 		Prefix: paramsStoragePrefix,
 		EncodeStorage: func(params types.Params) ([]byte, error) {
-			allowedAddresses, err := decodeAddressStrings(params.AllowedList)
+			allowedAddresses, err := storagecodec.DecodeAddressStrings(params.AllowedList)
 			if err != nil {
 				return nil, fmt.Errorf("invalid allowed-list address: %w", err)
 			}
 
-			return marshalStorage(&skustorage.Params{
+			return storagecodec.Marshal(&skustorage.Params{
 				AllowedAddresses: allowedAddresses,
 			})
 		},
@@ -47,19 +47,19 @@ func newParamsValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Pa
 				return types.Params{}, err
 			}
 
-			allowedList, err := encodeAddressBytes(stored.AllowedAddresses)
+			allowedList, err := storagecodec.EncodeAddressBytes(stored.AllowedAddresses)
 			if err != nil {
 				return types.Params{}, fmt.Errorf("invalid stored allowed-list address: %w", err)
 			}
 			return types.Params{AllowedList: allowedList}, nil
 		},
 		NormalizeLegacy: normalizeParamsAddresses,
-	}
+	})
 }
 
 func newProviderValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.Provider] {
 	wire := sdkcodec.CollValue[types.Provider](cdc)
-	return storagecodec.Value[types.Provider]{
+	return storagecodec.New(storagecodec.Config[types.Provider]{
 		Wire:   wire,
 		Module: "SKU",
 		Prefix: providerStoragePrefix,
@@ -73,7 +73,7 @@ func newProviderValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.
 				return nil, fmt.Errorf("invalid provider payout address: %w", err)
 			}
 
-			return marshalStorage(&skustorage.Provider{
+			return storagecodec.Marshal(&skustorage.Provider{
 				Uuid:          provider.Uuid,
 				Address:       append([]byte(nil), address.Bytes()...),
 				PayoutAddress: append([]byte(nil), payoutAddress.Bytes()...),
@@ -88,11 +88,11 @@ func newProviderValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.
 				return types.Provider{}, err
 			}
 
-			address, err := accountAddressString(stored.Address)
+			address, err := storagecodec.AccountAddressString(stored.Address)
 			if err != nil {
 				return types.Provider{}, fmt.Errorf("invalid stored provider address: %w", err)
 			}
-			payoutAddress, err := accountAddressString(stored.PayoutAddress)
+			payoutAddress, err := storagecodec.AccountAddressString(stored.PayoutAddress)
 			if err != nil {
 				return types.Provider{}, fmt.Errorf("invalid stored provider payout address: %w", err)
 			}
@@ -107,31 +107,15 @@ func newProviderValueCodec(cdc sdkcodec.BinaryCodec) collcodec.ValueCodec[types.
 			}, nil
 		},
 		NormalizeLegacy: normalizeProviderAddresses,
-	}
-}
-
-type storageMessage interface {
-	proto.Message
-	Marshal() ([]byte, error)
-}
-
-// marshalStorage uses generated field-order marshaling. The disk-only messages
-// deliberately contain no maps and repeated addresses preserve slice order, so
-// the generated encoding is deterministic.
-func marshalStorage(message storageMessage) ([]byte, error) {
-	encoded, err := message.Marshal()
-	if err != nil {
-		return nil, err
-	}
-	return append([]byte(nil), encoded...), nil
+	})
 }
 
 func normalizeParamsAddresses(params types.Params) (types.Params, error) {
-	allowedAddresses, err := decodeAddressStrings(params.AllowedList)
+	allowedAddresses, err := storagecodec.DecodeAddressStrings(params.AllowedList)
 	if err != nil {
 		return types.Params{}, fmt.Errorf("invalid legacy allowed-list address: %w", err)
 	}
-	params.AllowedList, err = encodeAddressBytes(allowedAddresses)
+	params.AllowedList, err = storagecodec.EncodeAddressBytes(allowedAddresses)
 	return params, err
 }
 
@@ -147,35 +131,4 @@ func normalizeProviderAddresses(provider types.Provider) (types.Provider, error)
 	provider.Address = address.String()
 	provider.PayoutAddress = payoutAddress.String()
 	return provider, nil
-}
-
-func decodeAddressStrings(addresses []string) ([][]byte, error) {
-	decoded := make([][]byte, 0, len(addresses))
-	for _, address := range addresses {
-		addr, err := sdk.AccAddressFromBech32(address)
-		if err != nil {
-			return nil, err
-		}
-		decoded = append(decoded, append([]byte(nil), addr.Bytes()...))
-	}
-	return decoded, nil
-}
-
-func encodeAddressBytes(addresses [][]byte) ([]string, error) {
-	encoded := make([]string, 0, len(addresses))
-	for _, address := range addresses {
-		addressString, err := accountAddressString(address)
-		if err != nil {
-			return nil, err
-		}
-		encoded = append(encoded, addressString)
-	}
-	return encoded, nil
-}
-
-func accountAddressString(address []byte) (string, error) {
-	if err := sdk.VerifyAddressFormat(address); err != nil {
-		return "", err
-	}
-	return sdk.AccAddress(address).String(), nil
 }

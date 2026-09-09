@@ -311,6 +311,12 @@ func (m *MsgCancelLease) ValidateBasic() error {
 // label (1-63 alphanum + hyphen, no leading/trailing hyphen), the TLD label has
 // at least one non-digit character (rejects raw IPs).
 func IsValidFQDN(domain string) error {
+	return validateDNSName(domain, true)
+}
+
+// validateDNSName shares label validation between tenant FQDNs and reserved
+// zones. Reserved zones may be a single label (for example, .internal).
+func validateDNSName(domain string, requireSeparator bool) error {
 	n := len(domain)
 	if n == 0 {
 		return ErrInvalidCustomDomain.Wrap("empty domain")
@@ -338,7 +344,7 @@ func IsValidFQDN(domain string) error {
 	}
 
 	labels := strings.Split(domain, ".")
-	if len(labels) < 2 {
+	if requireSeparator && len(labels) < 2 {
 		return ErrInvalidCustomDomain.Wrap("domain must contain at least one '.' separator")
 	}
 	for i, label := range labels {

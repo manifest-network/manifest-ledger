@@ -172,7 +172,7 @@ func TestStateInvariant_DetectsSecondaryIndexCorruption(t *testing.T) {
 					func() (types.Provider, error) { return provider, nil },
 				))
 			},
-			contains: "provider address index contains 0 entries, expected 1",
+			contains: "provider address index is missing derived key",
 		},
 		{
 			name: "missing provider active row",
@@ -183,7 +183,7 @@ func TestStateInvariant_DetectsSecondaryIndexCorruption(t *testing.T) {
 					func() (types.Provider, error) { return provider, nil },
 				))
 			},
-			contains: "provider active index contains 0 entries, expected 1",
+			contains: "provider active index is missing derived key",
 		},
 		{
 			name: "missing SKU provider row",
@@ -194,7 +194,7 @@ func TestStateInvariant_DetectsSecondaryIndexCorruption(t *testing.T) {
 					func() (types.SKU, error) { return sku, nil },
 				))
 			},
-			contains: "SKU provider index contains 0 entries, expected 1",
+			contains: "SKU provider index is missing derived key",
 		},
 		{
 			name: "missing SKU active row",
@@ -205,7 +205,7 @@ func TestStateInvariant_DetectsSecondaryIndexCorruption(t *testing.T) {
 					func() (types.SKU, error) { return sku, nil },
 				))
 			},
-			contains: "SKU active index contains 0 entries, expected 1",
+			contains: "SKU active index is missing derived key",
 		},
 		{
 			name: "missing SKU provider-active row",
@@ -216,7 +216,7 @@ func TestStateInvariant_DetectsSecondaryIndexCorruption(t *testing.T) {
 					func() (types.SKU, error) { return sku, nil },
 				))
 			},
-			contains: "SKU provider-active index contains 0 entries, expected 1",
+			contains: "SKU provider-active index is missing derived key",
 		},
 		{
 			name: "corrupt provider active marker",
@@ -270,6 +270,11 @@ func TestStateInvariant_DetectsSecondaryIndexCorruption(t *testing.T) {
 			message, broken = keeper.StateInvariant(f.App.SKUKeeper)(f.Ctx)
 			require.True(t, broken)
 			require.Contains(t, message, test.contains)
+			if strings.HasPrefix(test.name, "missing provider") {
+				require.Contains(t, message, "for primary key "+provider.Uuid)
+			} else if strings.HasPrefix(test.name, "missing SKU") {
+				require.Contains(t, message, "for primary key "+sku.Uuid)
+			}
 		})
 	}
 }

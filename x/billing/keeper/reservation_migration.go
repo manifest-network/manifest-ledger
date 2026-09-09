@@ -581,11 +581,12 @@ func (m Migrator) reservationMigrationBankBalances(
 	creditAddress sdk.AccAddress,
 	oldAggregate sdk.Coins,
 ) (sdk.Coins, error) {
+	locked := m.keeper.bankKeeper.LockedCoins(ctx, creditAddress)
 	return reservationMigrationBankBalancesForAggregate(
 		creditAddress,
 		oldAggregate,
 		func(denom string) sdk.Coin {
-			return m.keeper.bankKeeper.GetBalance(ctx, creditAddress, denom)
+			return creditCoinAfterLocks(m.keeper.bankKeeper.GetBalance(ctx, creditAddress, denom), locked)
 		},
 	)
 }
@@ -791,17 +792,10 @@ func positiveCoinDifference(left, right sdk.Coins) sdk.Coins {
 }
 
 func (m Migrator) initializeTerminalReservationWrappers(ctx sdk.Context) error {
-	var (
-		lastKey  string
-		hasStart bool
-	)
+	var keyRange collections.Ranger[string]
 	store := m.keeper.storeService.OpenKVStore(ctx)
 
 	for {
-		var keyRange collections.Ranger[string]
-		if hasStart {
-			keyRange = new(collections.Range[string]).StartExclusive(lastKey)
-		}
 		iterator, err := m.keeper.Leases.Iterate(ctx, keyRange)
 		if err != nil {
 			return fmt.Errorf("iterate billing leases for terminal reservation initialization: %w", err)
@@ -861,7 +855,6 @@ func (m Migrator) initializeTerminalReservationWrappers(ctx sdk.Context) error {
 		if !hasMore {
 			return nil
 		}
-		lastKey = entries[len(entries)-1].key
-		hasStart = true
+		keyRange = new(collections.Range[string]).StartExclusive(entries[len(entries)-1].key)
 	}
 }

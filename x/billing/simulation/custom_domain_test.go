@@ -17,7 +17,7 @@ import (
 
 func TestWeightedOperationsRegistersDirectMessagesIncludingAllowedAdmin(t *testing.T) {
 	operations := WeightedOperations(simtypes.AppParams{}, nil, nil, keeper.Keeper{}, nil)
-	require.Len(t, operations, 9)
+	require.Len(t, operations, 10)
 	require.Equal(t, []int{
 		DefaultWeightMsgFundCredit,
 		DefaultWeightMsgCreateLease,
@@ -28,6 +28,7 @@ func TestWeightedOperationsRegistersDirectMessagesIncludingAllowedAdmin(t *testi
 		DefaultWeightMsgCloseLease,
 		DefaultWeightMsgWithdraw,
 		DefaultWeightMsgSetItemCustomDomain,
+		DefaultWeightMsgUpdateParams,
 	}, billingWeightedOperationWeights(operations))
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 
+	"github.com/manifest-network/manifest-ledger/pkg/pagination"
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
@@ -304,7 +305,7 @@ func GetCreditAccountCmd() *cobra.Command {
 		Long: `Query a tenant's credit-account metadata and one bank-balance page.
 
 Balance pagination defaults to 100 entries and is capped at 1000. Cursor flags
-(--page-key, --limit, and --reverse) are supported; non-zero --offset and
+(--page-key, --limit, and --reverse) are supported; --page greater than 1, non-zero --offset and
 --count-total are rejected so each request remains bounded.`,
 		Example: `credit-account manifest1abc...`,
 		Args:    cobra.ExactArgs(1),
@@ -313,6 +314,16 @@ Balance pagination defaults to 100 entries and is capped at 1000. Cursor flags
 			if err != nil {
 				return err
 			}
+			// Check the page itself before SDK offset arithmetic: --limit=0
+			// (or uint64 multiplication overflow) can disguise page > 1 as offset 0.
+			page, err := cmd.Flags().GetUint64(flags.FlagPage)
+			if err != nil {
+				return err
+			}
+			if page > 1 {
+				return fmt.Errorf("use --page-key for continuation; --page greater than 1 is unsupported")
+			}
+
 			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
 			if err != nil {
 				return err
@@ -321,6 +332,10 @@ Balance pagination defaults to 100 entries and is capped at 1000. Cursor flags
 			pageReq, err := client.ReadPageRequest(flagSet)
 			if err != nil {
 				return err
+			}
+
+			if _, err := pagination.CursorPageRequest(pageReq); err != nil {
+				return fmt.Errorf("use --page-key for continuation; --page > 1, nonzero --offset and --count-total are unsupported: %w", err)
 			}
 
 			queryClient := types.NewQueryClient(clientCtx)
@@ -340,6 +355,11 @@ Balance pagination defaults to 100 entries and is capped at 1000. Cursor flags
 	flags.AddQueryFlagsToCmd(cmd)
 	flags.AddPaginationFlagsToCmd(cmd, "balances")
 
+	for _, name := range []string{flags.FlagPage, flags.FlagOffset, flags.FlagCountTotal} {
+		if err := cmd.Flags().MarkHidden(name); err != nil {
+			panic(err)
+		}
+	}
 	return cmd
 }
 
@@ -423,7 +443,7 @@ additive. Every forward page is directly comparable to a single provider-wide
 withdrawal because the query limit is capped at the transaction maximum of 100.
 Keep the query's next_key for the next query and the transaction's next_key for
 the next transaction; the two cursor formats are not interchangeable. Cursor
-flags (--page-key, --limit, and --reverse) are supported; non-zero --offset and
+flags (--page-key, --limit, and --reverse) are supported; --page greater than 1, non-zero --offset and
 --count-total are rejected.`,
 		Example: `provider-withdrawable 01902a9b-1234-7000-8000-000000000001
 provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100`,
@@ -439,6 +459,16 @@ provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100`,
 				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
 			}
 
+			// Check the page itself before SDK offset arithmetic: --limit=0
+			// (or uint64 multiplication overflow) can disguise page > 1 as offset 0.
+			page, err := cmd.Flags().GetUint64(flags.FlagPage)
+			if err != nil {
+				return err
+			}
+			if page > 1 {
+				return fmt.Errorf("use --page-key for continuation; --page greater than 1 is unsupported")
+			}
+
 			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
 			if err != nil {
 				return err
@@ -447,6 +477,10 @@ provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100`,
 			pageReq, err := client.ReadPageRequest(flagSet)
 			if err != nil {
 				return err
+			}
+
+			if _, err := pagination.CursorPageRequest(pageReq); err != nil {
+				return fmt.Errorf("use --page-key for continuation; --page > 1, nonzero --offset and --count-total are unsupported: %w", err)
 			}
 
 			queryClient := types.NewQueryClient(clientCtx)
@@ -472,6 +506,11 @@ provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100`,
 	}
 	flags.AddQueryFlagsToCmd(cmd)
 
+	for _, name := range []string{flags.FlagPage, flags.FlagOffset, flags.FlagCountTotal} {
+		if err := cmd.Flags().MarkHidden(name); err != nil {
+			panic(err)
+		}
+	}
 	return cmd
 }
 

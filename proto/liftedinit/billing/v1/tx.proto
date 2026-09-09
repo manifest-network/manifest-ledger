@@ -22,8 +22,8 @@ service Msg {
   // The lease starts in PENDING state awaiting provider acknowledgement.
   rpc CreateLease(MsgCreateLease) returns (MsgCreateLeaseResponse);
 
-  // CreateLeaseForTenant allows authority to create a lease on behalf of a
-  // tenant. This is used for migrating off-chain leases to on-chain. The lease
+  // CreateLeaseForTenant allows the module authority or a billing allowed_list
+  // member to create a lease on behalf of a tenant. This is used for migrating off-chain leases to on-chain. The lease
   // starts in PENDING state awaiting provider acknowledgement.
   rpc CreateLeaseForTenant(MsgCreateLeaseForTenant)
       returns (MsgCreateLeaseForTenantResponse);
@@ -111,7 +111,8 @@ message MsgFundCreditResponse {
     (gogoproto.jsontag) = "credit_address,omitempty"
   ];
 
-  // new_balance is the credit account balance after funding.
+  // new_balance is the spendable credit account balance after funding,
+  // excluding vesting locked coins at the current block time.
   cosmos.base.v1beta1.Coin new_balance = 2
       [ (gogoproto.nullable) = false, (gogoproto.jsontag) = "new_balance" ];
 }
@@ -144,13 +145,13 @@ message MsgCreateLeaseResponse {
   string lease_uuid = 1 [ (gogoproto.jsontag) = "lease_uuid,omitempty" ];
 }
 
-// MsgCreateLeaseForTenant allows authority to create a lease on behalf of a
-// tenant. This is used for migrating off-chain leases to on-chain.
+// MsgCreateLeaseForTenant allows the module authority or a billing allowed_list
+// member to create a lease on behalf of a tenant, including off-chain migrations.
 message MsgCreateLeaseForTenant {
   option (cosmos.msg.v1.signer) = "authority";
   option (amino.name) = "lifted/billing/MsgCreateLeaseForTenant";
 
-  // authority is the module authority address.
+  // authority is the module authority or a billing allowed_list member.
   string authority = 1 [
     (cosmos_proto.scalar) = "cosmos.AddressString",
     (gogoproto.jsontag) = "authority,omitempty"
@@ -319,7 +320,9 @@ message MsgUpdateParams {
     (gogoproto.jsontag) = "authority,omitempty"
   ];
 
-  // params are the new parameters.
+  // params replaces all module parameters. Every numeric field must satisfy
+  // its documented bounds. Omitted allowed_list or reserved_domain_suffixes
+  // clears that list; no execution-time merge or preservation occurs.
   Params params = 2
       [ (gogoproto.nullable) = false, (gogoproto.jsontag) = "params" ];
 }

@@ -65,7 +65,7 @@ type QueryClient interface {
 	CreditAccounts(ctx context.Context, in *QueryCreditAccountsRequest, opts ...grpc.CallOption) (*QueryCreditAccountsResponse, error)
 	// LeasesBySKU queries leases by SKU UUID.
 	LeasesBySKU(ctx context.Context, in *QueryLeasesBySKURequest, opts ...grpc.CallOption) (*QueryLeasesBySKUResponse, error)
-	// CreditEstimate reports gross raw-bank-balance runway at a tenant's current
+	// CreditEstimate reports gross spendable-balance runway at a tenant's current
 	// aggregate ACTIVE lease rate. It is not reservation-aware or an auto-close
 	// forecast. Requests above 11,000 ACTIVE leases or 100,000 total lease items
 	// fail with ResourceExhausted instead of returning a partial result.
@@ -231,7 +231,7 @@ type QueryServer interface {
 	CreditAccounts(context.Context, *QueryCreditAccountsRequest) (*QueryCreditAccountsResponse, error)
 	// LeasesBySKU queries leases by SKU UUID.
 	LeasesBySKU(context.Context, *QueryLeasesBySKURequest) (*QueryLeasesBySKUResponse, error)
-	// CreditEstimate reports gross raw-bank-balance runway at a tenant's current
+	// CreditEstimate reports gross spendable-balance runway at a tenant's current
 	// aggregate ACTIVE lease rate. It is not reservation-aware or an auto-close
 	// forecast. Requests above 11,000 ACTIVE leases or 100,000 total lease items
 	// fail with ResourceExhausted instead of returning a partial result.

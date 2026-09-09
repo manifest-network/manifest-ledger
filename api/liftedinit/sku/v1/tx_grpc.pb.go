@@ -35,7 +35,8 @@ type MsgClient interface {
 	// CreateProvider creates a new provider.
 	CreateProvider(ctx context.Context, in *MsgCreateProvider, opts ...grpc.CallOption) (*MsgCreateProviderResponse, error)
 	// UpdateProvider updates an existing provider.
-	// Can reactivate an inactive provider but cannot deactivate an active one.
+	// Can reactivate an inactive provider only after no active SKUs remain.
+	// Cannot deactivate an active provider.
 	// Use DeactivateProvider to deactivate (ensures proper SKU cascade).
 	UpdateProvider(ctx context.Context, in *MsgUpdateProvider, opts ...grpc.CallOption) (*MsgUpdateProviderResponse, error)
 	// DeactivateProvider deactivates a provider (soft delete).
@@ -135,7 +136,8 @@ type MsgServer interface {
 	// CreateProvider creates a new provider.
 	CreateProvider(context.Context, *MsgCreateProvider) (*MsgCreateProviderResponse, error)
 	// UpdateProvider updates an existing provider.
-	// Can reactivate an inactive provider but cannot deactivate an active one.
+	// Can reactivate an inactive provider only after no active SKUs remain.
+	// Cannot deactivate an active provider.
 	// Use DeactivateProvider to deactivate (ensures proper SKU cascade).
 	UpdateProvider(context.Context, *MsgUpdateProvider) (*MsgUpdateProviderResponse, error)
 	// DeactivateProvider deactivates a provider (soft delete).

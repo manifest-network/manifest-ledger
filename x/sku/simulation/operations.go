@@ -49,7 +49,7 @@ func WeightedOperations(
 	txGen client.TxConfig,
 	k keeper.Keeper,
 ) []simtypes.WeightedOperation {
-	operations := make([]simtypes.WeightedOperation, 0, 6)
+	operations := make([]simtypes.WeightedOperation, 0, 7)
 
 	var weightMsgCreateProvider int
 	appParams.GetOrGenerate(OpWeightMsgCreateProvider, &weightMsgCreateProvider, nil, func(_ *rand.Rand) {
@@ -110,6 +110,12 @@ func WeightedOperations(
 		weightMsgDeactivateSKU,
 		SimulateMsgDeactivateSKU(txGen, k),
 	))
+
+	var weightMsgUpdateParams int
+	appParams.GetOrGenerate(OpWeightMsgUpdateParams, &weightMsgUpdateParams, nil, func(_ *rand.Rand) {
+		weightMsgUpdateParams = DefaultWeightMsgUpdateParams
+	})
+	operations = append(operations, simulation.NewWeightedOperation(weightMsgUpdateParams, SimulateMsgUpdateParams(txGen, k)))
 
 	return operations
 }

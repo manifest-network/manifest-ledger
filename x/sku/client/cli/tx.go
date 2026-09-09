@@ -404,8 +404,9 @@ func MsgUpdateParams() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update-params",
 		Short: "Update the module parameters",
-		Long: `Update the module parameters including the allowed list.
-Only the module authority can execute this command.`,
+		Long: `Replace the module parameters. Only the module authority can execute this command.
+--allowed-list is required. Pass an empty value (--allowed-list="") to explicitly
+clear the list; omitting the flag never clears existing permissions.`,
 		Example: "update-params --allowed-list manifest1abc...,manifest1def...",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -437,6 +438,9 @@ Only the module authority can execute this command.`,
 	}
 
 	cmd.Flags().String("allowed-list", "", "Comma-separated list of addresses allowed to manage SKUs")
+	if err := cmd.MarkFlagRequired("allowed-list"); err != nil {
+		panic(err)
+	}
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }

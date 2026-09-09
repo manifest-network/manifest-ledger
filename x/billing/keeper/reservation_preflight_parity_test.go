@@ -60,6 +60,7 @@ func TestReservationMigrationPreflightMatchesSequentialActiveHaircut(t *testing.
 		now,
 		billingGenesis,
 		bankGenesis,
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, keeper.ReservationPreflightStatePreV4, report.BillingState)
@@ -79,6 +80,7 @@ func TestReservationMigrationPreflightMatchesSequentialActiveHaircut(t *testing.
 			PreCutoverUnattributedReservation:  "0",
 			PostCutoverUnattributedReservation: "0",
 			BankBalance:                        "5",
+			SpendableBalance:                   "5",
 			ModernPendingRequired:              "0",
 			ModernPendingShortfall:             "0",
 		}},
@@ -163,7 +165,7 @@ func TestReservationMigrationPreflightLabelsSequentialAggregateRepair(t *testing
 			bankGenesis.Balances = []banktypes.Balance{{
 				Address: creditAddress.String(), Coins: sdk.NewCoins(sdk.NewInt64Coin(testDenom, 10)),
 			}}
-			report, err := keeper.BuildReservationMigrationPreflight(now, genesis, bankGenesis)
+			report, err := keeper.BuildReservationMigrationPreflight(now, genesis, bankGenesis, nil)
 			require.NoError(t, err)
 			require.Equal(t, keeper.ReservationPreflightPathV2ToV4, report.MigrationPath)
 			require.Equal(t, "5", report.Tenants[0].Denominations[0].SourceReservationAggregate)

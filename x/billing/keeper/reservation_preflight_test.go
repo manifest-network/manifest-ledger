@@ -92,7 +92,7 @@ func TestBuildReservationMigrationPreflightIsDeterministicAndReadOnly(t *testing
 	originalBankJSON, err := json.Marshal(bankGenesis)
 	require.NoError(t, err)
 
-	report, err := BuildReservationMigrationPreflight(cutoverTime, billingGenesis, bankGenesis)
+	report, err := BuildReservationMigrationPreflight(cutoverTime, billingGenesis, bankGenesis, nil)
 	require.NoError(t, err)
 	actualBillingJSON, err := json.Marshal(billingGenesis)
 	require.NoError(t, err)
@@ -120,6 +120,7 @@ func TestBuildReservationMigrationPreflightIsDeterministicAndReadOnly(t *testing
 						PreCutoverUnattributedReservation:  "0",
 						PostCutoverUnattributedReservation: "0",
 						BankBalance:                        "5",
+						SpendableBalance:                   "5",
 						ModernPendingRequired:              "5",
 						ModernPendingShortfall:             "0",
 					},
@@ -131,6 +132,7 @@ func TestBuildReservationMigrationPreflightIsDeterministicAndReadOnly(t *testing
 						PreCutoverUnattributedReservation:  "0",
 						PostCutoverUnattributedReservation: "0",
 						BankBalance:                        "6",
+						SpendableBalance:                   "6",
 						ModernPendingRequired:              "7",
 						ModernPendingShortfall:             "1",
 					},
@@ -167,6 +169,7 @@ func TestBuildReservationMigrationPreflightIsDeterministicAndReadOnly(t *testing
 		cutoverTime,
 		&reorderedBilling,
 		&reorderedBank,
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, report, reorderedReport)
@@ -214,13 +217,13 @@ func TestBuildReservationMigrationPreflightRejectsUnderbackedV4State(t *testing.
 		Coins:   sdk.NewCoins(sdk.NewInt64Coin("ualpha", 4)),
 	}}
 
-	_, err := BuildReservationMigrationPreflight(cutoverTime, billingGenesis, bankGenesis)
+	_, err := BuildReservationMigrationPreflight(cutoverTime, billingGenesis, bankGenesis, nil)
 	require.ErrorIs(t, err, types.ErrReservationInvariant)
 	require.ErrorContains(t, err, "consumable v4 billing state")
 	require.ErrorContains(t, err, "is under-backed")
 
 	bankGenesis.Balances[0].Coins = sdk.NewCoins(sdk.NewInt64Coin("ualpha", 5))
-	report, err := BuildReservationMigrationPreflight(cutoverTime, billingGenesis, bankGenesis)
+	report, err := BuildReservationMigrationPreflight(cutoverTime, billingGenesis, bankGenesis, nil)
 	require.NoError(t, err)
 	require.Equal(t, ReservationPreflightStateV4, report.BillingState)
 	require.Equal(t, ReservationPreflightPathNone, report.MigrationPath)
@@ -280,6 +283,7 @@ func TestBuildReservationMigrationPreflightReportsOpaqueLegacyCohort(t *testing.
 		plannerTime,
 		billingGenesis,
 		bankGenesis,
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), report.ReservationChangeTenantCount)
@@ -293,6 +297,7 @@ func TestBuildReservationMigrationPreflightReportsOpaqueLegacyCohort(t *testing.
 		PreCutoverUnattributedReservation:  "7",
 		PostCutoverUnattributedReservation: "5",
 		BankBalance:                        "7",
+		SpendableBalance:                   "7",
 		ModernPendingRequired:              "0",
 		ModernPendingShortfall:             "0",
 	}}, report.Tenants[0].Denominations)
@@ -320,6 +325,7 @@ func TestBuildReservationMigrationPreflightRejectsDuplicateBankByteIdentity(t *t
 		cutoverTime,
 		types.DefaultGenesis(),
 		bankGenesis,
+		nil,
 	)
 	require.ErrorContains(t, err, "duplicate decoded address identity")
 }

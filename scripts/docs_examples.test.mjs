@@ -152,9 +152,11 @@ const log = path.join(root, "calls.jsonl");
 fs.appendFileSync(log, JSON.stringify(args) + "\\n");
 const emit = value => process.stdout.write(JSON.stringify(value));
 const statePath = path.join(root, "chain.json");
-const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath)) : { txs: {}, active: 151 };
+const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath)) : { txs: {}, active: 151, providerActive: true };
 const save = () => fs.writeFileSync(statePath, JSON.stringify(state));
-if (args[0] === "tx") {
+if (args[0] === "status") {
+  emit({ node_info: { network: "replace-with-chain-id" }, sync_info: { catching_up: false, latest_block_height: "1000" } });
+} else if (args[0] === "tx") {
   if (args[args.indexOf("--broadcast-mode") + 1] !== "sync") throw new Error("expected sync");
   const stage = ({ "fund-credit": "fund", "create-lease-for-tenant": "create", "acknowledge-lease": "ack", "deactivate-provider": "deactivate" })[args[2]];
   if (!stage) throw new Error("unexpected command");
@@ -174,7 +176,7 @@ if (args[0] === "tx") {
   if (mode === "timeout" || (mode === "delayed" && tx.queries < 3)) process.exit(1);
   if (!tx.committed) {
     tx.committed = true;
-    if (!tx.failed && tx.stage === "deactivate") state.active = Math.max(0, state.active - 50);
+    if (!tx.failed && tx.stage === "deactivate") { state.active = Math.max(0, state.active - 50); state.providerActive = false; }
     tx.active = state.active;
     save();
   }
@@ -184,13 +186,16 @@ if (args[0] === "tx") {
   if (mode === "missing-event") events.length = 0;
   if (mode === "ambiguous-event" && tx.stage === "create") events.push(events[0]);
   emit({ code: tx.failed ? 17 : 0, height: String(42 + tx.sequence), txhash: hash, events, logs: [] });
+} else if (args[1] === "sku" && args[2] === "provider") {
+  if (args[args.indexOf("--height") + 1] !== "1000") throw new Error("expected current committed height");
+  emit({ provider: { active: state.providerActive } });
 } else if (args[1] === "sku" && args[2] === "skus-by-provider") {
   if (!args.includes("--active-only") || args[args.indexOf("--limit") + 1] !== "1") throw new Error("expected bounded active query");
   const height = Number(args[args.indexOf("--height") + 1]);
   const tx = Object.values(state.txs).find(tx => tx.sequence + 42 === height && tx.committed);
-  if (!tx) throw new Error("query must use the committed height");
+  if (!tx && height !== 1000) throw new Error("query must use a committed height");
   if (mode === "query-error") process.exit(1);
-  emit({ skus: tx.active ? [{ uuid: "remaining-active-sku" }] : [], pagination: {} });
+  emit({ skus: (height === 1000 ? state.active : tx.active) ? [{ uuid: "remaining-active-sku" }] : [], pagination: {} });
 } else throw new Error("unexpected command " + JSON.stringify(args));
 `;
 
@@ -301,4 +306,25 @@ test("domain lookup documentation uses the registered billing command", () => {
   assert.doesNotMatch(doc, /lease-by-custom-domain/);
   assert.match(commands, /Use:\s+"lease-by-domain \[domain\]"/);
   assert.match(doc, /use `lease-by-domain`/);
+});
+
+
+test("deactivation restart rejects a provider reactivated after its saved receipt", {
+  skip: !hasShellDependencies && "Bash and jq are required by the documented recipe",
+}, async (t) => {
+  for (const active of [0, 3]) {
+    await t.test(`${active} active SKUs`, () => operationalFixture("../x/sku/docs/API.md", "##### Complete a provider deactivation cascade", ({ root, run, calls }) => {
+      assert.equal(run("success").status, 0);
+      const statePath = join(root, "chain.json");
+      const state = JSON.parse(readFileSync(statePath, "utf8"));
+      state.providerActive = true;
+      state.active = active;
+      writeFileSync(statePath, JSON.stringify(state));
+      const result = run("success");
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /new state directory/);
+      assert.doesNotMatch(result.stdout, /deactivation complete/);
+      assert.equal(calls().filter(args => args[0] === "tx").length, 4, "a historical receipt cannot authorize a new cascade");
+    }));
+  }
 });

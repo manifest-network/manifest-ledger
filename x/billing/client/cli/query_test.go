@@ -200,3 +200,20 @@ func newQueryClientContext(t *testing.T, queryServer types.QueryServer) client.C
 		WithOutput(io.Discard).
 		WithOutputFormat("json")
 }
+
+func TestCursorOnlyCommandsRejectOffsetModesLocally(t *testing.T) {
+	for _, factory := range []func() *cobra.Command{cli.GetCreditAccountCmd, cli.GetProviderWithdrawableCmd} {
+		for _, args := range [][]string{{"--page=2"}, {"--page=2", "--limit=0"}, {"--page=9223372036854775809", "--limit=2"}, {"--offset=1"}, {"--count-total"}} {
+			cmd := factory()
+			t.Run(cmd.Name()+"/"+strings.Join(args, ","), func(t *testing.T) {
+				cmd.SetContext(t.Context())
+				require.NoError(t, client.SetCmdClientContext(cmd, client.Context{}))
+				cmd.SetArgs(append([]string{"01902a9b-1234-7000-8000-000000000003"}, args...))
+				require.ErrorContains(t, cmd.Execute(), "use --page-key")
+				for _, hidden := range []string{"page", "offset", "count-total"} {
+					require.True(t, cmd.Flags().Lookup(hidden).Hidden)
+				}
+			})
+		}
+	}
+}

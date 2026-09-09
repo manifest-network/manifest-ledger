@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
@@ -33,20 +35,21 @@ func TestWriteBillingMigrationPreflightHasStableJSON(t *testing.T) {
 
 	documents := []string{
 		fmt.Sprintf(
-			`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":%s,"bank":%s,"sku":{}}}`,
+			`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"auth":{},"billing":%s,"bank":%s,"sku":{}}}`,
 			billingJSON,
 			bankJSON,
 		),
 		fmt.Sprintf(
-			`{"app_state":{"bank":%s,"billing":%s,"sku":{}},"genesis_time":"2030-01-02T03:04:05.000Z","initial_height":4321,"chain_id":"manifest-test"}`,
+			`{"app_state":{"auth":{},"bank":%s,"billing":%s,"sku":{}},"genesis_time":"2030-01-02T03:04:05.000Z","initial_height":4321,"chain_id":"manifest-test"}`,
 			bankJSON,
 			billingJSON,
 		),
 	}
 	const expected = `{
-  "schema_version": 4,
+  "schema_version": 5,
   "source_chain_id": "manifest-test",
   "source_initial_height": 4321,
+  "planner_time": "2030-01-02T03:04:05Z",
   "input_genesis_time": "2030-01-02T03:04:05Z",
   "billing_state": "consumable_v4",
   "migration_path": "none",
@@ -63,7 +66,7 @@ func TestWriteBillingMigrationPreflightHasStableJSON(t *testing.T) {
 `
 	for _, document := range documents {
 		var output bytes.Buffer
-		require.NoError(t, writeBillingMigrationPreflight(
+		require.NoError(t, writeTestBillingMigrationPreflight(
 			encodingConfig.Codec,
 			bytes.NewBufferString(document),
 			&output,
@@ -125,22 +128,23 @@ func TestWriteBillingMigrationPreflightHasStableReservationChangeAndCreditCollis
 	skuJSON, err := encodingConfig.Codec.MarshalJSON(skuGenesis)
 	require.NoError(t, err)
 	document := fmt.Sprintf(
-		`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":%s,"bank":%s,"sku":%s}}`,
+		`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"auth":{},"billing":%s,"bank":%s,"sku":%s}}`,
 		billingJSON,
 		bankJSON,
 		skuJSON,
 	)
 
 	var output bytes.Buffer
-	require.NoError(t, writeBillingMigrationPreflight(
+	require.NoError(t, writeTestBillingMigrationPreflight(
 		encodingConfig.Codec,
 		bytes.NewBufferString(document),
 		&output,
 	))
 	expected := fmt.Sprintf(`{
-  "schema_version": 4,
+  "schema_version": 5,
   "source_chain_id": "manifest-test",
   "source_initial_height": 4321,
+  "planner_time": "2030-01-02T03:04:05Z",
   "input_genesis_time": "2030-01-02T03:04:05Z",
   "billing_state": "pre_v4_aggregate",
   "migration_path": "v2_to_v3_to_v4",
@@ -174,6 +178,7 @@ func TestWriteBillingMigrationPreflightHasStableReservationChangeAndCreditCollis
           "pre_cutover_unattributed_reservation": "0",
           "post_cutover_unattributed_reservation": "0",
           "bank_balance": "5",
+          "spendable_balance": "5",
           "modern_pending_required": "0",
           "modern_pending_shortfall": "0"
         }
@@ -217,44 +222,44 @@ func TestWriteBillingMigrationPreflightFailsClosedOnMissingModules(t *testing.T)
 		},
 		{
 			name:     "missing billing",
-			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"bank":{}}}`,
+			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"auth":{},"bank":{}}}`,
 			contains: `missing "billing" module`,
 		},
 		{
 			name:     "missing bank",
-			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":{}}}`,
+			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"auth":{},"billing":{}}}`,
 			contains: `missing "bank" module`,
 		},
 		{
 			name:     "missing sku",
-			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":{},"bank":{}}}`,
+			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"auth":{},"billing":{},"bank":{}}}`,
 			contains: `missing "sku" module`,
 		},
 		{
 			name:     "null sku",
-			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":{},"bank":{},"sku":null}}`,
+			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"auth":{},"billing":{},"bank":{},"sku":null}}`,
 			contains: `missing "sku" module`,
 		},
 		{
 			name:     "malformed sku",
-			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":{},"bank":{},"sku":{"providers":"invalid"}}}`,
+			document: `{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"auth":{},"billing":{},"bank":{},"sku":{"providers":"invalid"}}}`,
 			contains: "decode sku genesis for billing migration preflight",
 		},
 		{
 			name:     "missing chain ID",
-			document: `{"genesis_time":"2030-01-02T03:04:05Z","app_state":{}}`,
+			document: `{"genesis_time":"2030-01-02T03:04:05Z","app_state":{"auth":{}}}`,
 			contains: "missing chain_id",
 		},
 		{
 			name:     "negative initial height",
-			document: `{"chain_id":"manifest-test","initial_height":-1,"genesis_time":"2030-01-02T03:04:05Z","app_state":{}}`,
+			document: `{"chain_id":"manifest-test","initial_height":-1,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"auth":{}}}`,
 			contains: "negative initial_height",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var output bytes.Buffer
-			err := writeBillingMigrationPreflight(
+			err := writeTestBillingMigrationPreflight(
 				encodingConfig.Codec,
 				bytes.NewBufferString(tt.document),
 				&output,
@@ -334,7 +339,7 @@ func TestWriteBillingMigrationPreflightReportsBlockedPayoutWithoutChangingExport
 	skuJSON, err := encodingConfig.Codec.MarshalJSON(skuGenesis)
 	require.NoError(t, err)
 	document := fmt.Sprintf(
-		`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":%s,"bank":%s,"sku":%s}}`,
+		`{"chain_id":"manifest-test","initial_height":4321,"genesis_time":"2030-01-02T03:04:05Z","app_state":{"auth":{},"billing":%s,"bank":%s,"sku":%s}}`,
 		billingJSON, bankJSON, skuJSON,
 	)
 	exportRoot, err := os.OpenRoot(t.TempDir())
@@ -345,10 +350,10 @@ func TestWriteBillingMigrationPreflightReportsBlockedPayoutWithoutChangingExport
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, input.Close()) })
 	var output bytes.Buffer
-	require.NoError(t, writeBillingMigrationPreflight(encodingConfig.Codec, input, &output))
+	require.NoError(t, writeTestBillingMigrationPreflight(encodingConfig.Codec, input, &output))
 	var report billingMigrationPreflightOutput
 	require.NoError(t, json.Unmarshal(output.Bytes(), &report))
-	require.EqualValues(t, 4, report.SchemaVersion)
+	require.EqualValues(t, 5, report.SchemaVersion)
 	require.EqualValues(t, 1, report.ProviderCount)
 	require.EqualValues(t, 1, report.BlockedProviderCount)
 	require.Equal(t, []blockedProviderPayoutPreflight{{
@@ -385,10 +390,10 @@ func TestWriteBillingMigrationPreflightRejectsAmbiguousPayoutAudit(t *testing.T)
 			skuJSON, err := encodingConfig.Codec.MarshalJSON(&skutypes.GenesisState{Providers: tt.providers})
 			require.NoError(t, err)
 			document := fmt.Sprintf(
-				`{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":{},"bank":{},"sku":%s}}`, skuJSON,
+				`{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"auth":{},"billing":{},"bank":{},"sku":%s}}`, skuJSON,
 			)
 			var output bytes.Buffer
-			err = writeBillingMigrationPreflight(encodingConfig.Codec, strings.NewReader(document), &output)
+			err = writeTestBillingMigrationPreflight(encodingConfig.Codec, strings.NewReader(document), &output)
 			require.ErrorContains(t, err, tt.contains)
 			require.Empty(t, output.String())
 		})
@@ -458,12 +463,18 @@ func TestWriteBillingMigrationPreflightRejectsMalformedTenantWithoutPartialAudit
 			}})
 			require.NoError(t, err)
 			document := fmt.Sprintf(
-				`{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"billing":%s,"bank":{},"sku":%s}}`, billingJSON, skuJSON,
+				`{"chain_id":"manifest-test","genesis_time":"2030-01-02T03:04:05Z","app_state":{"auth":{},"billing":%s,"bank":{},"sku":%s}}`, billingJSON, skuJSON,
 			)
 			var output bytes.Buffer
-			err = writeBillingMigrationPreflight(encodingConfig.Codec, strings.NewReader(document), &output)
+			err = writeTestBillingMigrationPreflight(encodingConfig.Codec, strings.NewReader(document), &output)
 			require.ErrorContains(t, err, fmt.Sprintf("audit provider credit collisions: lease %s has invalid tenant:", invalidTenantLeaseUUID))
 			require.Empty(t, output.String())
 		})
 	}
+}
+
+// Existing fixtures use a fixed explicit cutover time independent of the input
+// genesis timestamp. Production callers must supply --at.
+func writeTestBillingMigrationPreflight(cdc codec.JSONCodec, input io.Reader, output io.Writer) error {
+	return writeBillingMigrationPreflight(cdc, input, output, time.Date(2030, time.January, 2, 3, 4, 5, 0, time.UTC))
 }

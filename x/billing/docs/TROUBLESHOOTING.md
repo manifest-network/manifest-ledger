@@ -367,12 +367,16 @@ tenant-derived credit address, preserving its current activation state, then
 retry the affected lease explicitly:
 ```bash
 manifestd query sku provider [provider-uuid]
-manifestd tx sku update-provider [provider-uuid] [provider-address] [new-payout-address] [current-active] --from [authorized-key]
+manifestd tx sku update-provider [provider-uuid] [provider-address] [new-payout-address] [current-active] --meta-hash [current-meta-hash-hex] --from [authorized-key]
 manifestd tx billing withdraw [lease-uuid] --from [provider-key]
 ```
 
 Replace `[current-active]` with `false` if the provider is inactive or `true` if
-it is active, and preserve its other settings. An inactive provider's payout
+it is active, and preserve its other settings. Query `meta_hash` is base64;
+convert those bytes to hex for `--meta-hash`, or explicitly use an empty value
+only when clearing it. Changing the payout redirects all unsettled accrual to
+the new recipient. An ordinary payout rotation should withdraw first when
+possible; a blocked recipient requires repair first. An inactive provider's payout
 can be repaired with `false` even during a partial deactivation cascade;
 reactivation is a separate action and requires finishing that cascade first.
 
@@ -791,7 +795,7 @@ transfer.
 - `max_pending_leases_per_tenant` must be > 0 and ≤ 1000
 - `pending_timeout` must be between 60 (1 min) and 86400 (24 hours)
 - `allowed_list` accepts at most 100 valid, distinct decoded account identities
-- `reserved_domain_suffixes` accepts at most 100 entries; each must start with '.', the part after the dot must be a valid FQDN, and duplicates are rejected
+- `reserved_domain_suffixes` accepts at most 100 entries; each must start with '.', the part after the dot must be a lowercase DNS zone (including a single-label zone such as `.internal`), and duplicates are rejected
 
 **Solution**: Check current params and ensure new values are valid:
 ```bash

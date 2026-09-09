@@ -24,6 +24,16 @@ This document records key design decisions made during the development of the x/
 
 **Issuer debit policy (2026-09-09):** The entire balance of every registered billing credit account is protected from tokenfactory administrator burn-from and force-transfer operations. Protecting only reserved amounts would permit administrator-assisted withdrawal of otherwise nonrefundable credit; lazy settlement can also make unreserved funds payable for accrued service. Issuer powers over ordinary wallets remain available. Deposits and minting into credit remain allowed, and billing retains its normal settlement/payout bank dependency.
 
+**Vesting credit:** Billing values credit by per-denomination spendable bank
+balance at block time, excluding locked coins. A vesting account pre-created
+at a derived address remains fundable; unlocked top-ups are usable. Rejecting
+all vesting account types would let address pre-creation disable funding, while
+creating accounts inside a read-only address query would violate query semantics.
+Strict reservation backing remains mandatory: arbitrary shortfalls cannot be
+clamped in a way that silently spends sibling guarantees. The offline migration
+preflight requires auth state and an explicit valuation time for the same rule.
+
+
 The application injects a bank adapter only into the tokenfactory keeper. It checks the existing credit-address reverse index before a source debit and rejects the operation on lookup failure. This needs no tokenfactory fork or new state migration. Validators must activate the consensus behavior with the coordinated application upgrade. The tradeoff is an explicit clawback exception: tokens placed into registered billing credit cannot be seized by their issuer until they leave through billing payout. Registration is the boundary; simply calculating or sending to an unregistered derived address does not establish protection.
 
 ## Decision 2: Lazy Settlement vs Per-Block Processing
@@ -471,7 +481,7 @@ use EndBlocker to automatically expire PENDING leases after that deadline.
 **Trade-offs:**
 - EndBlocker overhead (mitigated by rate limiting)
 - Cleanup can lag behind the hard deadline, but overdue PENDING leases cannot be acknowledged while waiting; they can still be rejected or cancelled
-- Range-queries the StateCreatedAt index (prefix 11) for `created_at` before the timeout cutoff (`created_at < blockTime - pending_timeout`), so a consistent store visits only expirable pending leases rather than the full pending set (O(expired) instead of O(total pending)). A manual `collections.Range` over the compound `((state, created_at), uuid)` key is used because collections' `PairRange` helper cannot do partial-prefix ranges on the `Pair[int32, time.Time]` reference key; `sdk.TimeKey`'s sortable encoding makes the byte range match the `created_at` range. Primary UUID, state, and deadline checks skip stale references before they consume the expiration quota and missing versus unreadable primaries produce distinct diagnostics. Stale rows can still increase scan work and missing rows remain invisible; neither is auto-repaired, so invariant failures require operator remediation. A separate visit cap is intentionally avoided until repair or a persisted cursor exists, because an oldest corrupt prefix would otherwise permanently starve valid expirations. In consistent state, with >100 expirable leases, the oldest 100 are expired first and the remainder wait for later blocks.
+- Range-queries the StateCreatedAt index (prefix 11) for `created_at` before the timeout cutoff (`created_at < blockTime - pending_timeout`), so a consistent store visits only expirable pending leases rather than the full pending set (O(expired) instead of O(total pending)). A manual `collections.Range` over the compound `((state, created_at), uuid)` key is used because collections' `PairRange` helper cannot do partial-prefix ranges on the `Pair[int32, time.Time]` reference key; `sdk.TimeKey`'s sortable encoding makes the byte range match the `created_at` range. Primary UUID, state, and deadline checks skip stale references before they consume the expiration quota and missing versus unreadable primaries produce distinct diagnostics. Stale rows can still increase scan work and missing rows remain invisible; neither is auto-repaired, so invariant failures require operator remediation. Candidate pages close their iterator before expiring leases. A cursor local to the block resumes strictly after the last candidate key; failed expirations do not consume the successful-expiration quota, and their unchanged rows are retried next block. A separate total visit cap is intentionally avoided because an oldest corrupt or failing prefix would otherwise permanently starve valid expirations. In consistent state, with >100 expirable leases, the oldest 100 are expired first and the remainder wait for later blocks.
 - Max pending leases per tenant limit needed
 
 ## Decision 18: Tenant Cancellation of Pending Leases

@@ -62,6 +62,10 @@ func (ms msgServer) CreateProvider(ctx context.Context, req *types.MsgCreateProv
 	if err := req.Validate(); err != nil {
 		return nil, types.ErrInvalidProvider.Wrapf("invalid create provider message: %s", err)
 	}
+	signer, err := sdk.AccAddressFromBech32(req.Authority)
+	if err != nil {
+		return nil, err
+	}
 
 	address, err := sdk.AccAddressFromBech32(req.Address)
 	if err != nil {
@@ -100,7 +104,7 @@ func (ms msgServer) CreateProvider(ctx context.Context, req *types.MsgCreateProv
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, uuid),
 			sdk.NewAttribute(types.AttributeKeyAddress, address.String()),
 			sdk.NewAttribute(types.AttributeKeyPayoutAddress, payoutAddress.String()),
-			sdk.NewAttribute(types.AttributeKeyCreatedBy, req.Authority),
+			sdk.NewAttribute(types.AttributeKeyCreatedBy, signer.String()),
 		),
 	})
 
@@ -238,6 +242,10 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 	if err := req.Validate(); err != nil {
 		return nil, types.ErrInvalidProvider.Wrapf("invalid deactivate provider message: %s", err)
 	}
+	signer, err := sdk.AccAddressFromBech32(req.Authority)
+	if err != nil {
+		return nil, err
+	}
 
 	existingProvider, err := ms.k.GetProvider(ctx, req.Uuid)
 	if err != nil {
@@ -272,7 +280,7 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 			sdk.NewEvent(
 				types.EventTypeProviderDeactivated,
 				sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
-				sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
+				sdk.NewAttribute(types.AttributeKeyDeactivatedBy, signer.String()),
 			),
 		})
 	}
@@ -306,7 +314,7 @@ func (ms msgServer) DeactivateProvider(ctx context.Context, req *types.MsgDeacti
 				types.EventTypeSKUDeactivated,
 				sdk.NewAttribute(types.AttributeKeySKUUUID, sku.Uuid),
 				sdk.NewAttribute(types.AttributeKeyProviderUUID, req.Uuid),
-				sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
+				sdk.NewAttribute(types.AttributeKeyDeactivatedBy, signer.String()),
 			),
 		})
 	}
@@ -344,6 +352,10 @@ func (ms msgServer) CreateSKU(ctx context.Context, req *types.MsgCreateSKU) (*ty
 
 	if err := req.Validate(); err != nil {
 		return nil, types.ErrInvalidSKU.Wrapf("invalid create sku message: %s", err)
+	}
+	signer, err := sdk.AccAddressFromBech32(req.Authority)
+	if err != nil {
+		return nil, err
 	}
 
 	// Verify provider exists and is active
@@ -388,7 +400,7 @@ func (ms msgServer) CreateSKU(ctx context.Context, req *types.MsgCreateSKU) (*ty
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, req.ProviderUuid),
 			sdk.NewAttribute(types.AttributeKeyName, sanitizedName),
 			sdk.NewAttribute(types.AttributeKeyBasePrice, req.BasePrice.String()),
-			sdk.NewAttribute(types.AttributeKeyCreatedBy, req.Authority),
+			sdk.NewAttribute(types.AttributeKeyCreatedBy, signer.String()),
 		),
 	})
 
@@ -509,6 +521,10 @@ func (ms msgServer) DeactivateSKU(ctx context.Context, req *types.MsgDeactivateS
 	if err := req.Validate(); err != nil {
 		return nil, types.ErrInvalidSKU.Wrapf("invalid deactivate sku message: %s", err)
 	}
+	signer, err := sdk.AccAddressFromBech32(req.Authority)
+	if err != nil {
+		return nil, err
+	}
 
 	existingSKU, err := ms.k.GetSKU(ctx, req.Uuid)
 	if err != nil {
@@ -533,7 +549,7 @@ func (ms msgServer) DeactivateSKU(ctx context.Context, req *types.MsgDeactivateS
 			types.EventTypeSKUDeactivated,
 			sdk.NewAttribute(types.AttributeKeySKUUUID, req.Uuid),
 			sdk.NewAttribute(types.AttributeKeyProviderUUID, existingSKU.ProviderUuid),
-			sdk.NewAttribute(types.AttributeKeyDeactivatedBy, req.Authority),
+			sdk.NewAttribute(types.AttributeKeyDeactivatedBy, signer.String()),
 		),
 	})
 

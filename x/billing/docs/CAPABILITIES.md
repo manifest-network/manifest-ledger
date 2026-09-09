@@ -136,9 +136,9 @@ it in O(1) and release the exact remaining `U` when it reaches zero.
 | `LeasesByTenant` | All leases for a tenant (with state filter) |
 | `LeasesByProvider` | All leases for a provider (with state filter) |
 | `LeasesBySKU` | All leases using a specific SKU |
-| `CreditAccount` | Account state plus a cursor-paginated page of all bank balances and page-aligned available balances |
+| `CreditAccount` | Account state plus a cursor-paginated page of spendable bank balances and page-aligned available balances |
 | `CreditAccounts` | List all credit accounts |
-| `CreditEstimate` | Gross raw-bank-balance runway at the aggregate ACTIVE rate; not a reservation-aware auto-close forecast |
+| `CreditEstimate` | Gross spendable-balance runway at the aggregate ACTIVE rate; not a reservation-aware auto-close forecast |
 | `CreditAddress` | Derive credit address for a tenant |
 | `WithdrawableAmount` | Current `min(accrued, B - (R - A))` for a specific lease |
 | `ProviderWithdrawable` | Ordered best-effort execution estimate for the current ACTIVE-lease page. Failed lease simulations are discarded and reported in `failed_lease_uuids`; successful virtual effects feed later leases and no query state commits. Shared tenant credit is counted once within the page, and pages are not additive. Every forward page is comparable to one provider withdrawal because the query limit is capped at the transaction maximum of 100. After commit, advance the query with its prior first-unread cursor and the transaction with its prior last-processed cursor; never interchange them. |

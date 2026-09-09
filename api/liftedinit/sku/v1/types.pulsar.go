@@ -2089,14 +2089,17 @@ func (Unit) EnumDescriptor() ([]byte, []int) {
 	return file_liftedinit_sku_v1_types_proto_rawDescGZIP(), []int{0}
 }
 
-// Params defines the parameters for the sku module.
+// Params defines the parameters for the sku module. MsgUpdateParams replaces
+// the complete value.
 type Params struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
 	// allowed_list is the list of addresses allowed to manage SKUs
-	// in addition to the module authority.
+	// and providers in addition to the module authority. At most 100 valid
+	// account addresses, unique by decoded identity. Omission in MsgUpdateParams
+	// clears this list; it is not merged with the stored value.
 	AllowedList []string `protobuf:"bytes,1,rep,name=allowed_list,json=allowedList,proto3" json:"allowed_list,omitempty"`
 }
 
@@ -2137,7 +2140,8 @@ type Provider struct {
 	Uuid string `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	// address is the management address of the provider.
 	Address string `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
-	// payout_address is the address where payments are sent.
+	// payout_address is the current recipient for settlement of existing accrued
+	// charges and future charges. Leases do not snapshot this address.
 	PayoutAddress string `protobuf:"bytes,3,opt,name=payout_address,json=payoutAddress,proto3" json:"payout_address,omitempty"`
 	// meta_hash is a hash of the off-chain metadata (name, description, etc.).
 	MetaHash []byte `protobuf:"bytes,4,opt,name=meta_hash,json=metaHash,proto3" json:"meta_hash,omitempty"`

@@ -341,12 +341,11 @@ current authorized signer by decoded address identity and preserve the input
 account slice order. Provider updates cover API URL preserve, set/replace, and
 explicit-clear modes. Provider deactivation uses bounded pages and includes
 already-inactive providers with an unfinished SKU cascade, exercising the
-`has_more` continuation state. `UpdateParams` is deliberately excluded: it
-requires the configured POA authority (which has no simulation private key),
-while Cosmos SDK proposal messages require the governance module account as the
-sole signer. Parameter validation and update authorization are covered by
-focused type/keeper tests, and randomized genesis supplies bounded valid
-parameters for the state-machine run.
+`has_more` continuation state. `UpdateParams` rotates delegated managers using the configured authority when
+its private key is present in the simulation account set. Fresh app simulations
+select a signable PoA admin; an unavailable imported authority produces a NoOp.
+This covers direct parameter messages, not real group voting or governance
+proposal execution.
 
 Committed application simulations install the test-only `simulationCommitOpt`
 adapter in [`app/sim_test.go`](../../app/sim_test.go). The pinned SDK simulator

@@ -18,7 +18,7 @@ import (
 
 func TestWeightedOperationsRegistersEveryDirectSKUMessage(t *testing.T) {
 	operations := WeightedOperations(simtypes.AppParams{}, nil, nil, keeper.Keeper{})
-	require.Len(t, operations, 6)
+	require.Len(t, operations, 7)
 	require.Equal(t, []int{
 		DefaultWeightMsgCreateProvider,
 		DefaultWeightMsgUpdateProvider,
@@ -26,6 +26,7 @@ func TestWeightedOperationsRegistersEveryDirectSKUMessage(t *testing.T) {
 		DefaultWeightMsgCreateSKU,
 		DefaultWeightMsgUpdateSKU,
 		DefaultWeightMsgDeactivateSKU,
+		DefaultWeightMsgUpdateParams,
 	}, weightedOperationWeights(operations))
 }
 

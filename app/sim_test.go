@@ -610,12 +610,47 @@ func simulateWithBillingCoverage(
 ) (bool, simulationtypes.Params, error) {
 	tb.Helper()
 	config, statsOutput := simulationStatisticsOutput(tb, config)
+	// The SDK can call Skip/Fatalf before exporting statistics. Keep a separate
+	// operation tally so Goexit still leaves useful delivery diagnostics.
+	observed := simulation.NewEventStats()
+	operations := simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config)
+	for i, operation := range operations {
+		operations[i] = simulation.NewWeightedOperation(operation.Weight(), observeSimulationOperation(operation.Op(), observed))
+	}
+	returned := false
+	defer func() {
+		if !returned {
+			tb.Logf("simulation interrupted at seed %d, last committed height %d; partial operation statistics follow", config.Seed, bApp.LastBlockHeight())
+			observed.Print(os.Stdout)
+			statsJSON, err := json.MarshalIndent(observed, "", " ")
+			if err == nil {
+				err = os.WriteFile(config.ExportStatsPath, statsJSON, 0o600)
+			}
+			if err != nil {
+				tb.Logf("could not export interrupted simulation statistics: %v", err)
+			}
+		}
+	}()
 	stopEarly, params, err := simulation.SimulateFromSeed(
 		tb, os.Stdout, bApp.BaseApp, appStateFn, simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
-		app.BlockedAddresses(), config, bApp.AppCodec(),
+		operations, app.BlockedAddresses(), config, bApp.AppCodec(),
 	)
+	returned = true
 	return stopEarly, params, checkBillingSimulationResult(statsOutput, config, stopEarly, err)
+}
+
+// observeSimulationOperation also wraps queued continuations without consuming
+// PRNG state or changing their schedule, results, or errors.
+func observeSimulationOperation(operation simulationtypes.Operation, stats simulation.EventStats) simulationtypes.Operation {
+	return func(r *rand.Rand, bApp *baseapp.BaseApp, ctx sdk.Context, accounts []simulationtypes.Account, chainID string) (simulationtypes.OperationMsg, []simulationtypes.FutureOperation, error) {
+		msg, future, err := operation(r, bApp, ctx, accounts, chainID)
+		msg.LogEvent(stats.Tally)
+		future = slices.Clone(future)
+		for i := range future {
+			future[i].Op = observeSimulationOperation(future[i].Op, stats)
+		}
+		return msg, future, err
+	}
 }
 
 func simulationStatisticsOutput(tb testing.TB, config simulationtypes.Config) (simulationtypes.Config, io.Writer) {
@@ -660,9 +695,16 @@ func checkBillingSimulationResult(output io.Writer, config simulationtypes.Confi
 }
 
 func billingSimulationCoverageError(stats simulation.EventStats) error {
-	// Check actual selections, not configured block counts: small smoke runs and
-	// intentionally disabled operation weights need not exercise billing. Twenty
-	// funding/creation selections give normal runs multiple chances to progress.
+	// Every run of this billing validation suite must select billing operations.
+	// A zero-selection run provides no billing assurance, even if all invariants
+	// over empty state pass. Per-operation thresholds still allow short smoke runs.
+	attempts := 0
+	for _, results := range stats[billingtypes.ModuleName] {
+		attempts += results["ok"] + results["failure"]
+	}
+	if attempts == 0 {
+		return fmt.Errorf("no billing operations selected; enable billing operation weights and run enough blocks")
+	}
 	const minimumAttempts = 20
 	funding := stats[billingtypes.ModuleName][sdk.MsgTypeURL(&billingtypes.MsgFundCredit{})]
 	if funding["ok"] == 0 && funding["failure"] >= minimumAttempts {

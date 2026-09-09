@@ -25,7 +25,7 @@ import (
 func TestSimulationLeaseReadFailuresAreNotSuccessfulNoOps(t *testing.T) {
 	for _, build := range []func(client.TxConfig, keeper.Keeper) simtypes.Operation{
 		SimulateMsgCancelLease,
-		SimulateMsgCloseLease,
+		func(tx client.TxConfig, k keeper.Keeper) simtypes.Operation { return SimulateMsgCloseLease(tx, k, nil) },
 		SimulateMsgSetItemCustomDomain,
 		func(tx client.TxConfig, k keeper.Keeper) simtypes.Operation {
 			return SimulateMsgAcknowledgeLease(tx, k, nil)

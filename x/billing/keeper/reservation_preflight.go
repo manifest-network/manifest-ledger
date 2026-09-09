@@ -11,6 +11,8 @@ import (
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	vestingexported "github.com/cosmos/cosmos-sdk/x/auth/vesting/exported"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
@@ -82,6 +84,7 @@ type ReservationMigrationDenomPreflight struct {
 	PreCutoverUnattributedReservation  string `json:"pre_cutover_unattributed_reservation"`
 	PostCutoverUnattributedReservation string `json:"post_cutover_unattributed_reservation"`
 	BankBalance                        string `json:"bank_balance"`
+	SpendableBalance                   string `json:"spendable_balance"`
 	ModernPendingRequired              string `json:"modern_pending_required"`
 	ModernPendingShortfall             string `json:"modern_pending_shortfall"`
 }
@@ -95,8 +98,8 @@ type reservationMigrationPreflightAccount struct {
 }
 
 // BuildReservationMigrationPreflight previews the supported sequential billing
-// v2→v3→v4 upgrade from an exported billing and bank genesis without mutating either input
-// or writing state. The narrow exported API exists for offline operator tooling;
+// v2→v3→v4 upgrade from exported billing, bank, and decoded auth genesis
+// without mutating any input or writing state. The narrow exported API exists for offline operator tooling;
 // consensus code continues to call the unexported planner directly.
 //
 // Aggregate-only input is assumed to come from v2 and first goes through the
@@ -105,13 +108,17 @@ type reservationMigrationPreflightAccount struct {
 // reservation formats, but direct v3 migration uses the stored aggregate without
 // v2 repair. MigrationPath makes this assumption explicit in every report.
 // Already-v4 input is not replanned and fails if
-// its reservation aggregate is not fully bank-backed. An exported genesis does
-// not carry collection indexes, so this preview assumes the source node's
+// its reservation aggregate is not fully backed by spendable bank funds.
+// plannerTime is an explicit valuation time, not the original chain genesis
+// time. Vesting locks are evaluated at that time, as in the bank send path.
+// An exported genesis does not carry collection indexes, so this preview
+// assumes the source node's
 // indexes agree with the exported primary records.
 func BuildReservationMigrationPreflight(
 	plannerTime time.Time,
 	billingGenesis *types.GenesisState,
 	bankGenesis *banktypes.GenesisState,
+	authAccounts authtypes.GenesisAccounts,
 ) (ReservationMigrationPreflight, error) {
 	report := ReservationMigrationPreflight{
 		Tenants: []ReservationMigrationTenantPreflight{},
@@ -127,6 +134,11 @@ func BuildReservationMigrationPreflight(
 	}
 	if err := bankGenesis.Validate(); err != nil {
 		return report, fmt.Errorf("validate bank genesis for billing reservation migration preflight: %w", err)
+	}
+
+	lockedByAddress, err := reservationPreflightAuthLocks(authAccounts, plannerTime)
+	if err != nil {
+		return report, err
 	}
 
 	legacy, err := billingGenesis.HasLegacyReservationState()
@@ -241,7 +253,7 @@ func BuildReservationMigrationPreflight(
 			entry.creditAddress,
 			oldAggregate,
 			func(denom string) sdk.Coin {
-				return sdk.NewCoin(denom, allBankBalances.AmountOf(denom))
+				return creditCoinAfterLocks(sdk.NewCoin(denom, allBankBalances.AmountOf(denom)), lockedByAddress[string(entry.creditAddress.Bytes())])
 			},
 		)
 		if err != nil {
@@ -277,7 +289,7 @@ func BuildReservationMigrationPreflight(
 			}
 		} else if _, err := types.SafeSubtractCoins(bankBalances, oldAggregate); err != nil {
 			return report, types.ErrReservationInvariant.Wrapf(
-				"consumable v4 billing state for tenant %q is under-backed: bank %s, reservations %s: %s",
+				"consumable v4 billing state for tenant %q is under-backed: spendable bank %s, reservations %s: %s",
 				entry.tenant.String(),
 				bankBalances.String(),
 				oldAggregate.String(),
@@ -332,6 +344,7 @@ func BuildReservationMigrationPreflight(
 			preCutoverUnattributed,
 			legacyAllocation,
 			allBankBalances,
+			lockedByAddress[string(entry.creditAddress.Bytes())],
 			pending,
 		)
 		if err != nil {
@@ -566,6 +579,7 @@ func reservationMigrationDenomPreflights(
 	preCutoverUnattributed,
 	postCutoverUnattributed,
 	allBankBalances,
+	lockedCoins,
 	modernPending sdk.Coins,
 ) ([]ReservationMigrationDenomPreflight, error) {
 	denoms := make([]string, 0,
@@ -595,11 +609,12 @@ func reservationMigrationDenomPreflights(
 	denominations := make([]ReservationMigrationDenomPreflight, 0, len(denoms))
 	for _, denom := range denoms {
 		bankBalance := allBankBalances.AmountOf(denom)
+		spendableBalance := creditCoinAfterLocks(sdk.NewCoin(denom, bankBalance), lockedCoins).Amount
 		pendingRequired := modernPending.AmountOf(denom)
 		shortfall := sdkmath.ZeroInt()
-		if pendingRequired.GT(bankBalance) {
+		if pendingRequired.GT(spendableBalance) {
 			var err error
-			shortfall, err = pendingRequired.SafeSub(bankBalance)
+			shortfall, err = pendingRequired.SafeSub(spendableBalance)
 			if err != nil {
 				return nil, types.ErrArithmeticOverflow.Wrapf(
 					"subtract %s modern PENDING bank balance",
@@ -615,9 +630,37 @@ func reservationMigrationDenomPreflights(
 			PreCutoverUnattributedReservation:  preCutoverUnattributed.AmountOf(denom).String(),
 			PostCutoverUnattributedReservation: postCutoverUnattributed.AmountOf(denom).String(),
 			BankBalance:                        bankBalance.String(),
+			SpendableBalance:                   spendableBalance.String(),
 			ModernPendingRequired:              pendingRequired.String(),
 			ModernPendingShortfall:             shortfall.String(),
 		})
 	}
 	return denominations, nil
+}
+
+// reservationPreflightAuthLocks is an offline input-validation boundary. Some
+// SDK account Validate/LockedCoins methods panic on malformed exported account
+// structures or overflowing vesting schedules. Convert only those SDK parsing
+// failures into an error; consensus paths still use the bank keeper normally.
+func reservationPreflightAuthLocks(accounts authtypes.GenesisAccounts, at time.Time) (locks map[string]sdk.Coins, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			locks = nil
+			err = fmt.Errorf("invalid auth account data for billing reservation migration preflight: %v", recovered)
+		}
+	}()
+	if err := authtypes.ValidateGenAccounts(accounts); err != nil {
+		return nil, fmt.Errorf("validate auth accounts for billing reservation migration preflight: %w", err)
+	}
+	locks = make(map[string]sdk.Coins, len(accounts))
+	for _, account := range accounts {
+		if vesting, ok := account.(vestingexported.VestingAccount); ok {
+			locked := vesting.LockedCoins(at)
+			if err := locked.Validate(); err != nil {
+				return nil, fmt.Errorf("invalid vesting locks for account %s: %w", account.GetAddress(), err)
+			}
+			locks[string(account.GetAddress().Bytes())] = locked
+		}
+	}
+	return locks, nil
 }

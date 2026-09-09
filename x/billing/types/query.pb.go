@@ -637,8 +637,10 @@ func (m *QueryCreditAccountRequest) GetPagination() *query.PageRequest {
 type QueryCreditAccountResponse struct {
 	// credit_account is the tenant's credit account.
 	CreditAccount CreditAccount `protobuf:"bytes,1,opt,name=credit_account,json=creditAccount,proto3" json:"credit_account"`
-	// balances is one page of all current balances at the credit address,
-	// fetched through the bank module's canonical balance query. Reverse pages
+	// balances is one bank-denomination page of spendable credit at the queried
+	// block time: max(0, total balance - vesting locked coins). Fully locked
+	// denominations are omitted, so an empty result may still have next_key.
+	// Follow pagination.next_key until empty. Reverse pages
 	// follow x/bank and use descending denomination order; Go callers must call
 	// Sort before using sdk.Coins operations that require canonical order.
 	Balances github_com_cosmos_cosmos_sdk_types.Coins `protobuf:"bytes,2,rep,name=balances,proto3,castrepeated=github.com/cosmos/cosmos-sdk/types.Coins" json:"balances"`
@@ -1343,7 +1345,7 @@ func (m *QueryCreditEstimateRequest) GetTenant() string {
 // QueryCreditEstimateResponse is the response type for the Query/CreditEstimate
 // RPC method.
 type QueryCreditEstimateResponse struct {
-	// current_balance is the tenant's raw bank balance for denominations used by
+	// current_balance is the tenant's spendable bank balance for denominations used by
 	// active leases.
 	CurrentBalance github_com_cosmos_cosmos_sdk_types.Coins `protobuf:"bytes,1,rep,name=current_balance,json=currentBalance,proto3,castrepeated=github.com/cosmos/cosmos-sdk/types.Coins" json:"current_balance"`
 	// total_rate_per_second is the combined rate of all active leases (per
@@ -1706,7 +1708,7 @@ type QueryClient interface {
 	CreditAccounts(ctx context.Context, in *QueryCreditAccountsRequest, opts ...grpc.CallOption) (*QueryCreditAccountsResponse, error)
 	// LeasesBySKU queries leases by SKU UUID.
 	LeasesBySKU(ctx context.Context, in *QueryLeasesBySKURequest, opts ...grpc.CallOption) (*QueryLeasesBySKUResponse, error)
-	// CreditEstimate reports gross raw-bank-balance runway at a tenant's current
+	// CreditEstimate reports gross spendable-balance runway at a tenant's current
 	// aggregate ACTIVE lease rate. It is not reservation-aware or an auto-close
 	// forecast. Requests above 11,000 ACTIVE leases or 100,000 total lease items
 	// fail with ResourceExhausted instead of returning a partial result.
@@ -1870,7 +1872,7 @@ type QueryServer interface {
 	CreditAccounts(context.Context, *QueryCreditAccountsRequest) (*QueryCreditAccountsResponse, error)
 	// LeasesBySKU queries leases by SKU UUID.
 	LeasesBySKU(context.Context, *QueryLeasesBySKURequest) (*QueryLeasesBySKUResponse, error)
-	// CreditEstimate reports gross raw-bank-balance runway at a tenant's current
+	// CreditEstimate reports gross spendable-balance runway at a tenant's current
 	// aggregate ACTIVE lease rate. It is not reservation-aware or an auto-close
 	// forecast. Requests above 11,000 ACTIVE leases or 100,000 total lease items
 	// fail with ResourceExhausted instead of returning a partial result.

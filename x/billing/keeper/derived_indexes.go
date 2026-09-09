@@ -225,7 +225,7 @@ func validateLeaseMultiIndex[ReferenceKey any](
 		if err != nil {
 			return err
 		}
-		indexed, err := leaseMultiIndexContains(ctx, index, expected, leaseUUID)
+		indexed, err := collectionsutil.MultiIndexContains(ctx, index, expected, leaseUUID)
 		if err != nil {
 			return fmt.Errorf(
 				"inspect lease %s index key %s for primary key %s: %w",
@@ -254,32 +254,6 @@ func validateLeaseMultiIndex[ReferenceKey any](
 		actualCount,
 		expectedCount,
 	)
-}
-
-func leaseMultiIndexContains[ReferenceKey any](
-	ctx context.Context,
-	index *indexes.Multi[ReferenceKey, string, types.Lease],
-	reference ReferenceKey,
-	leaseUUID string,
-) (found bool, err error) {
-	iterator, err := index.MatchExact(ctx, reference)
-	if err != nil {
-		return false, err
-	}
-	defer func() {
-		err = errors.Join(err, iterator.Close())
-	}()
-
-	for ; iterator.Valid(); iterator.Next() {
-		indexedUUID, err := iterator.PrimaryKey()
-		if err != nil {
-			return false, err
-		}
-		if indexedUUID == leaseUUID {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 func (k Keeper) validateCreditAddressIndex(ctx context.Context) error {
@@ -369,6 +343,7 @@ func (k Keeper) validateCreditAddressIndex(ctx context.Context) error {
 }
 
 func (k Keeper) validateLeaseBySKUIndex(ctx context.Context) error {
+	var expectedCount uint64
 	_, err := collectionsutil.ValidateMap(
 		ctx,
 		"lease collection",
@@ -378,7 +353,14 @@ func (k Keeper) validateLeaseBySKUIndex(ctx context.Context) error {
 			if lease.Uuid != uuid {
 				return fmt.Errorf("lease key %s does not match stored UUID %s", uuid, lease.Uuid)
 			}
+			// Named services may reuse one SKU, but share a single index row.
+			seenSKUs := make(map[string]struct{}, len(lease.Items))
 			for _, item := range lease.Items {
+				if _, seen := seenSKUs[item.SkuUuid]; seen {
+					continue
+				}
+				seenSKUs[item.SkuUuid] = struct{}{}
+				expectedCount++
 				indexed, err := k.LeaseBySKUIndex.Get(ctx, collections.Join(item.SkuUuid, uuid))
 				if err != nil {
 					if errors.Is(err, collections.ErrNotFound) {
@@ -396,6 +378,29 @@ func (k Keeper) validateLeaseBySKUIndex(ctx context.Context) error {
 		return err
 	}
 
+	// Each distinct primary-derived key was verified above. If the number of
+	// decoded index rows matches, there can be no extra row; this avoids
+	// decoding a complete lease again for every indexed SKU on healthy state.
+	actualCount, err := collectionsutil.ValidateMap(
+		ctx,
+		"lease-by-SKU reverse index",
+		k.LeaseBySKUIndex.Iterate,
+		func(key collections.Pair[string, string]) string {
+			return fmt.Sprintf("(%q, %q)", key.K1(), key.K2())
+		},
+		func(key collections.Pair[string, string], indexed bool) error {
+			if !indexed {
+				return fmt.Errorf("lease %s SKU %s has a false SKU-index marker", key.K2(), key.K1())
+			}
+			return nil
+		},
+	)
+	if err != nil || actualCount == expectedCount {
+		return err
+	}
+
+	// A surplus row is corruption. Resolve it to its primary only on this
+	// diagnostic path, preserving the specific missing/wrong-target error.
 	_, err = collectionsutil.ValidateMap(
 		ctx,
 		"lease-by-SKU reverse index",
@@ -426,6 +431,7 @@ func (k Keeper) validateLeaseBySKUIndex(ctx context.Context) error {
 }
 
 func (k Keeper) validateCustomDomainIndex(ctx context.Context) error {
+	var expectedCount uint64
 	_, err := collectionsutil.ValidateMap(
 		ctx,
 		"lease collection",
@@ -433,9 +439,16 @@ func (k Keeper) validateCustomDomainIndex(ctx context.Context) error {
 		strconv.Quote,
 		func(uuid string, lease types.Lease) error {
 			editable := lease.State == types.LEASE_STATE_PENDING || lease.State == types.LEASE_STATE_ACTIVE
+			seenDomains := make(map[string]struct{}, len(lease.Items))
 			for _, item := range lease.Items {
 				if item.CustomDomain == "" {
 					continue
+				}
+				if editable {
+					if _, seen := seenDomains[item.CustomDomain]; !seen {
+						seenDomains[item.CustomDomain] = struct{}{}
+						expectedCount++
+					}
 				}
 				target, err := k.CustomDomainIndex.Get(ctx, item.CustomDomain)
 				switch {
@@ -480,6 +493,21 @@ func (k Keeper) validateCustomDomainIndex(ctx context.Context) error {
 		return err
 	}
 
+	// Every editable claim above resolves to its exact lease/item target.
+	// Count equality proves there are no surplus claims. Terminal claims are
+	// excluded because their domains may be legitimately reclaimed.
+	actualCount, err := collectionsutil.ValidateMap(
+		ctx,
+		"custom-domain reverse index",
+		k.CustomDomainIndex.Iterate,
+		strconv.Quote,
+		func(string, types.CustomDomainTarget) error { return nil },
+	)
+	if err != nil || actualCount == expectedCount {
+		return err
+	}
+
+	// Only corrupted state needs the more expensive reverse-target diagnosis.
 	_, err = collectionsutil.ValidateMap(
 		ctx,
 		"custom-domain reverse index",

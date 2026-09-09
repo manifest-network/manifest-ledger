@@ -206,6 +206,12 @@ manifestd tx sku update-provider \
 >
 > The `<active>` argument cannot be used to deactivate a currently-active provider: passing `false` on an active provider fails with `cannot deactivate provider via UpdateProvider; use DeactivateProvider instead` — use `deactivate-provider` (Step 6) instead, which cascades to SKUs. Pass `true` to keep the provider active or to reactivate an inactive one after its SKU cascade finishes. (An already-inactive provider also accepts `false`, leaving it inactive.)
 
+Payout changes apply to all existing unsettled accrual as well as future charges.
+Withdraw before updating if the old recipient should receive that accrual. If
+the old payout is blocked or collides with a paying tenant's credit address,
+repair it first and withdraw to the new recipient. SKU allowed-list members
+have the same provider-management powers as the authority.
+
 ### Example: Change Payout Address
 
 ```bash
@@ -229,6 +235,7 @@ manifestd tx sku update-provider \
   manifest1payoutaddr987654321fedcba \
   true \
   --clear-api-url \
+  --meta-hash [current-meta-hash-hex] \
   --from mykey \
   --chain-id manifest-1
 ```

@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -100,7 +103,7 @@ func TestBillingSimulationCoverage(t *testing.T) {
 		creationNoOp  int
 		expectedError string
 	}{
-		{name: "empty or billing-disabled run"},
+		{name: "empty or billing-disabled run", expectedError: "no billing operations selected"},
 		{name: "tiny run can select only no-ops", fundingNoOp: 19, creationNoOp: 19},
 		{name: "pinned-seed all-no-op regression", fundingNoOp: 50, creationNoOp: 21, expectedError: "no credit deposits after 50 attempts"},
 		{name: "funding starvation threshold", fundingNoOp: 20, expectedError: "no credit deposits after 20 attempts"},
@@ -223,4 +226,42 @@ func TestBillingSimulationResultDiagnostics(t *testing.T) {
 			require.ErrorIs(t, decoder.Decode(&printed), io.EOF, "statistics must be printed exactly once")
 		})
 	}
+}
+
+func TestSimulationOperationObserverPreservesQueuedWorkAndErrors(t *testing.T) {
+	stats := simulation.NewEventStats()
+	operationErr := errors.New("queued operation failed")
+	messageType := sdk.MsgTypeURL(&billingtypes.MsgWithdraw{})
+	queuedTime := time.Unix(1_700_000_000, 0).UTC()
+	queued := simulationtypes.FutureOperation{
+		BlockHeight: 123, BlockTime: queuedTime,
+		Op: func(r *rand.Rand, _ *baseapp.BaseApp, _ sdk.Context, accounts []simulationtypes.Account, chainID string) (simulationtypes.OperationMsg, []simulationtypes.FutureOperation, error) {
+			require.Equal(t, rand.New(rand.NewSource(9)).Int63(), r.Int63()) //nolint:gosec // deterministic simulation PRNG
+			require.Equal(t, "observer-chain", chainID)
+			require.Len(t, accounts, 1)
+			return simulationtypes.NoOpMsg(billingtypes.ModuleName, messageType, "queued failure"), nil, operationErr
+		},
+	}
+	operation := func(r *rand.Rand, _ *baseapp.BaseApp, _ sdk.Context, _ []simulationtypes.Account, _ string) (simulationtypes.OperationMsg, []simulationtypes.FutureOperation, error) {
+		require.Equal(t, rand.New(rand.NewSource(7)).Int63(), r.Int63()) //nolint:gosec // deterministic simulation PRNG
+		return simulationtypes.NewOperationMsgBasic(billingtypes.ModuleName, messageType, "first page", true, nil), []simulationtypes.FutureOperation{queued}, nil
+	}
+	wrapped := observeSimulationOperation(operation, stats)
+	_, future, err := wrapped(rand.New(rand.NewSource(7)), nil, sdk.Context{}, nil, "observer-chain") //nolint:gosec // deterministic simulation PRNG
+	require.NoError(t, err)
+	require.Equal(t, 1, stats[billingtypes.ModuleName][messageType]["ok"])
+	require.Len(t, future, 1)
+	require.Equal(t, queued.BlockHeight, future[0].BlockHeight)
+	require.Equal(t, queued.BlockTime, future[0].BlockTime)
+	msg, after, err := future[0].Op(rand.New(rand.NewSource(9)), nil, sdk.Context{}, []simulationtypes.Account{{}}, "observer-chain") //nolint:gosec // deterministic simulation PRNG
+	require.Same(t, operationErr, err)
+	require.False(t, msg.OK)
+	require.Equal(t, "queued failure", msg.Comment)
+	require.Empty(t, after)
+	require.Equal(t, 1, stats[billingtypes.ModuleName][messageType]["failure"])
+}
+
+func TestBillingSimulationCoverageCannotBeSatisfiedByOtherModules(t *testing.T) {
+	stats := simulation.EventStats{"bank": {"send": {"ok": 10_000}}}
+	require.ErrorContains(t, billingSimulationCoverageError(stats), "no billing operations selected")
 }

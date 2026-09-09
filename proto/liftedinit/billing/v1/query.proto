@@ -85,7 +85,7 @@ service Query {
         "/liftedinit/billing/v1/leases/sku/{sku_uuid}";
   }
 
-  // CreditEstimate reports gross raw-bank-balance runway at a tenant's current
+  // CreditEstimate reports gross spendable-balance runway at a tenant's current
   // aggregate ACTIVE lease rate. It is not reservation-aware or an auto-close
   // forecast. Requests above 11,000 ACTIVE leases or 100,000 total lease items
   // fail with ResourceExhausted instead of returning a partial result.
@@ -236,8 +236,10 @@ message QueryCreditAccountResponse {
   CreditAccount credit_account = 1
       [ (gogoproto.nullable) = false, (gogoproto.jsontag) = "credit_account" ];
 
-  // balances is one page of all current balances at the credit address,
-  // fetched through the bank module's canonical balance query. Reverse pages
+  // balances is one bank-denomination page of spendable credit at the queried
+  // block time: max(0, total balance - vesting locked coins). Fully locked
+  // denominations are omitted, so an empty result may still have next_key.
+  // Follow pagination.next_key until empty. Reverse pages
   // follow x/bank and use descending denomination order; Go callers must call
   // Sort before using sdk.Coins operations that require canonical order.
   repeated cosmos.base.v1beta1.Coin balances = 2 [
@@ -431,7 +433,7 @@ message QueryCreditEstimateRequest {
 // QueryCreditEstimateResponse is the response type for the Query/CreditEstimate
 // RPC method.
 message QueryCreditEstimateResponse {
-  // current_balance is the tenant's raw bank balance for denominations used by
+  // current_balance is the tenant's spendable bank balance for denominations used by
   // active leases.
   repeated cosmos.base.v1beta1.Coin current_balance = 1 [
     (gogoproto.nullable) = false,

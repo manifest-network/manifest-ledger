@@ -40,8 +40,8 @@ type MsgClient interface {
 	// CreateLease creates a new lease for the tenant.
 	// The lease starts in PENDING state awaiting provider acknowledgement.
 	CreateLease(ctx context.Context, in *MsgCreateLease, opts ...grpc.CallOption) (*MsgCreateLeaseResponse, error)
-	// CreateLeaseForTenant allows authority to create a lease on behalf of a
-	// tenant. This is used for migrating off-chain leases to on-chain. The lease
+	// CreateLeaseForTenant allows the module authority or a billing allowed_list
+	// member to create a lease on behalf of a tenant. This is used for migrating off-chain leases to on-chain. The lease
 	// starts in PENDING state awaiting provider acknowledgement.
 	CreateLeaseForTenant(ctx context.Context, in *MsgCreateLeaseForTenant, opts ...grpc.CallOption) (*MsgCreateLeaseForTenantResponse, error)
 	// AcknowledgeLease allows a provider to acknowledge PENDING leases.
@@ -177,8 +177,8 @@ type MsgServer interface {
 	// CreateLease creates a new lease for the tenant.
 	// The lease starts in PENDING state awaiting provider acknowledgement.
 	CreateLease(context.Context, *MsgCreateLease) (*MsgCreateLeaseResponse, error)
-	// CreateLeaseForTenant allows authority to create a lease on behalf of a
-	// tenant. This is used for migrating off-chain leases to on-chain. The lease
+	// CreateLeaseForTenant allows the module authority or a billing allowed_list
+	// member to create a lease on behalf of a tenant. This is used for migrating off-chain leases to on-chain. The lease
 	// starts in PENDING state awaiting provider acknowledgement.
 	CreateLeaseForTenant(context.Context, *MsgCreateLeaseForTenant) (*MsgCreateLeaseForTenantResponse, error)
 	// AcknowledgeLease allows a provider to acknowledge PENDING leases.

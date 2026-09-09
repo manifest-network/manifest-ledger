@@ -13962,8 +13962,10 @@ type QueryCreditAccountResponse struct {
 
 	// credit_account is the tenant's credit account.
 	CreditAccount *CreditAccount `protobuf:"bytes,1,opt,name=credit_account,json=creditAccount,proto3" json:"credit_account,omitempty"`
-	// balances is one page of all current balances at the credit address,
-	// fetched through the bank module's canonical balance query. Reverse pages
+	// balances is one bank-denomination page of spendable credit at the queried
+	// block time: max(0, total balance - vesting locked coins). Fully locked
+	// denominations are omitted, so an empty result may still have next_key.
+	// Follow pagination.next_key until empty. Reverse pages
 	// follow x/bank and use descending denomination order; Go callers must call
 	// Sort before using sdk.Coins operations that require canonical order.
 	Balances []*v1beta11.Coin `protobuf:"bytes,2,rep,name=balances,proto3" json:"balances,omitempty"`
@@ -14560,7 +14562,7 @@ type QueryCreditEstimateResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// current_balance is the tenant's raw bank balance for denominations used by
+	// current_balance is the tenant's spendable bank balance for denominations used by
 	// active leases.
 	CurrentBalance []*v1beta11.Coin `protobuf:"bytes,1,rep,name=current_balance,json=currentBalance,proto3" json:"current_balance,omitempty"`
 	// total_rate_per_second is the combined rate of all active leases (per

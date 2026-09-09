@@ -168,7 +168,7 @@ If the PoA admin decides they no longer wish for a validator to be signing block
 
 ## Token Factory Module
 
-The Token Factory module as it is implemented on the Manifest Network, allows any user to have granular control over the creation and management of tokens on the Manifest Network. The creator can mint, burn, edit, and transfer tokens to other accounts from any account.
+The Token Factory module as it is implemented on the Manifest Network, allows any user to have granular control over the creation and management of tokens on the Manifest Network. The creator can mint, burn, edit, and force-transfer its denomination, subject to application bank policy. Manifest rejects tokenfactory `BurnFrom` and `ForceTransfer` debits from every registered billing credit address, including unreserved credit. Ordinary wallets retain issuer clawback exposure; funding, minting into credit, and authorized billing payouts continue.
 
 > _note:_ The module is designed to work with tokens created by the module itself.
 
@@ -393,12 +393,13 @@ The SKU module manages providers (service entities) and SKUs (Stock Keeping Unit
     - `--api-url`: New HTTPS API endpoint URL; omit to preserve the current URL
     - `--clear-api-url`: Remove the current URL; cannot be combined with a nonempty `--api-url`
 
-  **Example:** `manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com --from authority`
+  **Example:** `manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com --meta-hash [current-meta-hash-hex] --from authority`
 
   For payout repairs, preserve the provider's current `active` value. An
   inactive provider can be repaired with `false` during a partial deactivation
   cascade. Reactivation requires repeating `deactivate-provider` until
-  `has_more=false`, reactivating the provider with `update-provider`, and then
+  a committed-height `skus-by-provider --active-only --limit 1` query is empty,
+  reactivating the provider with `update-provider`, and then
   reactivating desired SKUs individually.
 
 ##### Update SKU (update-sku):
@@ -424,7 +425,7 @@ The SKU module manages providers (service entities) and SKUs (Stock Keeping Unit
   - Parameters:
     - `uuid`: Provider UUID
   - Flags:
-    - `--limit`: Maximum SKUs to deactivate per call (default 50, max 100). If `has_more` is true in the response, call again to continue deactivating remaining SKUs.
+    - `--limit`: Maximum SKUs to deactivate per call (default 50, max 100). After committed success, query `skus-by-provider --active-only --limit 1` at that height and repeat while the result is nonempty; the CLI does not print the protobuf `has_more` response. See the [resumable cascade recipe](x/sku/docs/API.md#complete-a-provider-deactivation-cascade).
 
   **Example:** `manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab --limit 50 --from authority`
 
@@ -586,8 +587,13 @@ service-name mode.
     - `max-pending-leases-per-tenant`: Maximum pending leases per tenant
     - `pending-timeout`: Pending lease timeout in seconds (60-86400)
   - Flags:
-    - `--allowed-list`: Comma-separated list of addresses allowed to create leases for tenants. **Preserve-on-omit**: when the flag is not provided, the current on-chain value is queried and re-submitted unchanged. Pass an empty value (`--allowed-list=""`) to explicitly clear it.
-    - `--reserved-domain-suffixes`: Comma-separated list of reserved domain suffixes (each must begin with `.`). Used to gate `set-item-custom-domain`. Same **preserve-on-omit** semantics as `--allowed-list`.
+    - `--allowed-list`: Comma-separated list of addresses allowed to create leases for tenants. When omitted, the value is queried at construction time and embedded in the transaction. Pass an empty value (`--allowed-list=""`) to explicitly clear it.
+    - `--reserved-domain-suffixes`: Comma-separated list of reserved domain suffixes (each must begin with `.`). Used to gate `set-item-custom-domain`. Same construction-time snapshot semantics as `--allowed-list`.
 
-  **Example (numeric only, lists preserved):** `manifestd tx billing update-params 100 20 3600 10 1800 --from authority`
+  Omitted lists are snapshots, not preservation at execution. Use `--height`
+  to pin the query (0 means latest); the CLI prints resolved lists to stderr.
+  Governance execution replaces every parameter. Recheck all fields and
+  rebuild a stale proposal if another parameter change lands while voting.
+
+  **Example (numeric only, omitted lists snapshotted):** `manifestd tx billing update-params 100 20 3600 10 1800 --from authority`
   **Example (set reserved suffixes):** `manifestd tx billing update-params 100 20 3600 10 1800 --reserved-domain-suffixes ".manifest.network,.lifted.app" --from authority`

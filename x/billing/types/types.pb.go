@@ -81,28 +81,31 @@ func (LeaseState) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_9636bb21eb29c389, []int{0}
 }
 
-// Params defines the parameters for the billing module.
+// Params defines the parameters for the billing module. MsgUpdateParams replaces
+// the complete value; omitted repeated fields become empty lists.
 type Params struct {
 	// max_leases_per_tenant is the maximum number of active leases a tenant can
 	// have. Lease creation and acknowledgement both enforce this limit;
 	// acknowledgement evaluates each tenant's active count after applying the
-	// entire batch. Must be greater than zero.
+	// entire batch. Must be between 1 and 10000.
 	MaxLeasesPerTenant uint64 `protobuf:"varint,1,opt,name=max_leases_per_tenant,json=maxLeasesPerTenant,proto3" json:"max_leases_per_tenant,omitempty,string"`
 	// allowed_list is the list of addresses allowed to create leases on behalf of
-	// tenants in addition to the module authority.
+	// tenants in addition to the module authority. At most 100 valid account
+	// addresses, unique by decoded identity. Omission in MsgUpdateParams clears
+	// this list; it is not merged with the stored value.
 	AllowedList []string `protobuf:"bytes,2,rep,name=allowed_list,json=allowedList,proto3" json:"allowed_list,omitempty"`
 	// max_items_per_lease is the maximum number of items (SKUs) allowed in a
-	// single lease. Must be greater than zero. Prevents excessive gas consumption
+	// single lease. Must be between 1 and 100. Prevents excessive gas consumption
 	// from large leases.
 	MaxItemsPerLease uint64 `protobuf:"varint,3,opt,name=max_items_per_lease,json=maxItemsPerLease,proto3" json:"max_items_per_lease,omitempty,string"`
 	// min_lease_duration is the minimum duration (in seconds) that a tenant's
 	// credit balance must be able to cover when creating a lease. This prevents
 	// tenants from creating leases that would immediately exhaust their credit.
-	// Default is 3600 (1 hour).
+	// Must be between 1 and 2592000 (30 days). Default is 3600 (1 hour).
 	MinLeaseDuration uint64 `protobuf:"varint,4,opt,name=min_lease_duration,json=minLeaseDuration,proto3" json:"min_lease_duration,omitempty,string"`
 	// max_pending_leases_per_tenant is the maximum number of PENDING leases a
 	// tenant can have. Prevents spam attacks where tenants create many leases
-	// that providers must process. Default is 10.
+	// that providers must process. Must be between 1 and 1000. Default is 10.
 	MaxPendingLeasesPerTenant uint64 `protobuf:"varint,5,opt,name=max_pending_leases_per_tenant,json=maxPendingLeasesPerTenant,proto3" json:"max_pending_leases_per_tenant,omitempty,string"`
 	// pending_timeout is the current duration in seconds that defines a PENDING
 	// lease's hard acknowledgement deadline at created_at + pending_timeout.
@@ -118,7 +121,11 @@ type Params struct {
 	// cert. The match is a case-insensitive label-boundary suffix check and also
 	// covers the apex (e.g. `barney0.manifest0.net` itself). Tunable via
 	// MsgUpdateParams so new provider zones can be reserved without a chain
-	// upgrade.
+	// upgrade. At most 100 unique lowercase DNS zones, each prefixed with a
+	// dot; a single-label zone such as `.internal` is valid. DNS labels are
+	// 1-63 lowercase ASCII alphanumerics or hyphens, with alphanumeric ends. The
+	// zone is at most 253 bytes and its final label cannot be all digits.
+	// Omission in MsgUpdateParams clears the list; no execution-time merge occurs.
 	ReservedDomainSuffixes []string `protobuf:"bytes,7,rep,name=reserved_domain_suffixes,json=reservedDomainSuffixes,proto3" json:"reserved_domain_suffixes,omitempty"`
 }
 

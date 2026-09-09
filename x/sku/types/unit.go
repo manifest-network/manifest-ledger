@@ -17,6 +17,12 @@ const SecondsPerDay = 86400
 
 // MarshalJSON implements the json.Marshaler interface for Unit.
 func (u Unit) MarshalJSON() ([]byte, error) {
+	// Proto enums preserve unknown numeric values for forward compatibility.
+	// Emitting their decimal String as a JSON string would not round-trip through
+	// UnmarshalJSON, which correctly rejects unrecognized enum names.
+	if _, known := Unit_name[int32(u)]; !known {
+		return json.Marshal(int32(u))
+	}
 	return json.Marshal(u.String())
 }
 

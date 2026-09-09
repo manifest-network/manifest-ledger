@@ -21,7 +21,8 @@ checks each source ACTIVE or PENDING lease for a payout equal to its tenant's
 derived credit address. Both checks compare decoded SDK account-address bytes:
 
 ```bash
-manifestd genesis preflight-billing-v4 exported-genesis.json \
+CUTOVER_TIME="2026-09-09T16:00:00Z" # Replace with the intended upgrade/simulation time.
+manifestd genesis preflight-billing-v4 exported-genesis.json --at "$CUTOVER_TIME" \
   > billing-v4-preflight.json
 jq '.blocked_providers' billing-v4-preflight.json
 jq '.payout_credit_collisions' billing-v4-preflight.json
@@ -31,7 +32,7 @@ jq -e '.blocked_provider_count == 0 and .payout_credit_collision_count == 0' \
 
 The command succeeds when it finds ineligible payouts so that it can report all
 of them. The final `jq -e` check is the separate required upgrade gate: both
-counts must be zero. Report schema version 4 includes `provider_count`,
+counts must be zero. Report schema version 5 includes `provider_count`,
 `blocked_provider_count`, and `blocked_providers` (an empty array when there are
 no findings). Each blocked-provider finding records `provider_uuid`, canonical
 `payout_address`, `active`, and sorted
@@ -141,14 +142,14 @@ Terminal and historical leases receive initialized empty lease-side
 reservation wrappers.
 
 For each denomination, the migration's maximum allocation budget is
-`min(v3 reserved_amounts, bank balance)`. It then:
+`min(v3 reserved_amounts, spendable bank balance)`. It then:
 
 1. Calculates every modern live lease's nominal creation-time claim.
 2. Requires the v3 aggregate to cover the tenant's complete modern PENDING
    nominal sum in every denomination. A short aggregate is not a reachable
    bank-underbacking case; it indicates corrupt reservation or index state and
    halts the migration.
-3. Compares the tenant's bank balances with that PENDING sum as one cohort. If
+3. Compares the tenant's spendable bank balances with that PENDING sum as one cohort. If
    every denomination is fully backed, every modern PENDING lease keeps its
    exact nominal claim. If any denomination is short, every modern PENDING lease
    for that tenant expires atomically at the upgrade block and receives an empty
@@ -207,13 +208,15 @@ modern PENDING cohort at cutover; an intervening v2 settlement can consume that
 backing again.
 
 Run the candidate binary's offline preflight against a complete exported
-genesis. It reads the official billing, bank, and SKU genesis types, uses the export's
-`genesis_time` only as the planner's simulated timestamp, and writes
+genesis. It reads the official auth, billing, bank, and SKU genesis types,
+including vesting accounts. The required `--at` RFC3339 timestamp determines
+spendable credit and planned expiration times. It writes
 deterministic JSON to standard output without opening or changing application
 state:
 
 ```bash
-manifestd genesis preflight-billing-v4 exported-genesis.json \
+CUTOVER_TIME="2026-09-09T16:00:00Z" # Replace with the intended upgrade/simulation time.
+manifestd genesis preflight-billing-v4 exported-genesis.json --at "$CUTOVER_TIME" \
   > billing-v4-preflight.json
 
 jq '.reservation_change_tenant_count,
@@ -237,13 +240,14 @@ or wrong-height report. `source_initial_height` is the export's restart height
 (normally the committed export height plus one, or zero for a zero-height
 export), not the last committed block height itself. `input_genesis_time` is
 also copied and normalized to UTC. Cosmos SDK export preserves the chain's
-original genesis timestamp, so this field is provenance—not the future
-upgrade-block time. Cohort selection does not depend on that timestamp in v4;
-the real migration writes the actual upgrade block time to newly expired
-leases.
+original genesis timestamp, so `input_genesis_time` is provenance. The separate
+`planner_time` records `--at`. Vesting unlocks can change cohort selection as time
+advances; use the intended cutover time and rerun against the final export.
+The real migration uses its actual block time for both spendable credit and
+new expiration timestamps.
 
 `billing_state` is `pre_v4_aggregate` when the command applies the cutover
-planner. In that case schema version 4 reports
+planner. In that case schema version 5 reports
 `migration_path: "v2_to_v3_to_v4"`: it first performs the v2→v3 aggregate repair
 and then plans the v3→v4 allocation. This is the supported upgrade path; billing
 consensus v3 has not been deployed. The report does **not** predict a direct
@@ -253,8 +257,8 @@ would need a separate preflight mode and parity tests before use.
 For an input already in the new representation, `billing_state` is
 `consumable_v4` and `migration_path` is `none`. Already-v4 input is never
 repaired: the command fails if its reservation aggregate is not fully
-bank-backed. It also fails closed on a
-missing or malformed billing/bank/SKU app state, mixed reservation formats,
+spendable-bank-backed at `--at`. It also fails closed on a
+missing or malformed auth/billing/bank/SKU app state, mixed reservation formats,
 duplicate decoded address identities, or any planner invariant failure.
 The provider payout audit rejects invalid or duplicate provider UUIDs, invalid
 payout addresses, and malformed live-lease tenants before emitting a report.
@@ -263,7 +267,8 @@ report and must be checked with the separate gate above.
 
 `denominations` records the source aggregate, repaired pre-cutover aggregate,
 planned post-cutover aggregate, pre/post opaque unattributed cohort allocation,
-bank balance, complete modern PENDING requirement, and shortfall as base-10
+total `bank_balance`, `spendable_balance` after vesting locks at `--at`,
+complete modern PENDING requirement, and shortfall as base-10
 integer strings. `modern_active_leases` is sorted by UUID and records each
 modern ACTIVE lease's nominal and planned remaining denomination amounts;
 legacy leases remain one opaque aggregate cohort and are never assigned
@@ -333,7 +338,7 @@ manifestd tx billing update-params \
 | `allowed_list` | Up to 100 distinct decoded identities allowed to create leases for tenants | `[]` |
 | `reserved_domain_suffixes` | Up to 100 DNS suffixes tenants may not claim as a `custom_domain`; each must begin with `.` | empty |
 
-**Note:** `--allowed-list` and `--reserved-domain-suffixes` are preserve-on-omit: when the flag is absent the CLI round-trips the current on-chain value, so the bare `update-params 100 20 3600 10 1800` above will not wipe them. Pass the flag with an empty value (e.g. `--reserved-domain-suffixes=""`) to explicitly clear the list.
+**Note:** Omitted `--allowed-list` and `--reserved-domain-suffixes` values are queried and embedded at transaction construction. Use `--height` to pin that snapshot; the resolved lists are printed to stderr. Execution replaces all fields and can overwrite changes made during governance voting. Recheck the current params before approval and rebuild stale proposals. Pass an empty flag value to explicitly clear a list.
 
 **Note:** There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`, enabling multi-denom billing.
 
@@ -807,7 +812,7 @@ During `InitGenesis`, the module additionally performs cross-module checks again
 - The lease's provider must exist (`skuKeeper.GetProvider`)
 - Every item's SKU must exist (`skuKeeper.GetSKU`)
 - Each SKU's `provider_uuid` must match the lease's `provider_uuid`
-- Each prepared v4 reservation aggregate must be backed by the derived credit address's bank balance
+- Each prepared v4 reservation aggregate must be backed by the derived credit address's spendable bank balance at the import block time
 - A bank-underbacked modern PENDING cohort is expired tenant-wide before final
   counts, indexes, and consumable allocations are persisted
 

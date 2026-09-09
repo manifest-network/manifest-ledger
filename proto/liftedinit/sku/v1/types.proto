@@ -18,13 +18,16 @@ enum Unit {
   UNIT_PER_DAY = 2;
 }
 
-// Params defines the parameters for the sku module.
+// Params defines the parameters for the sku module. MsgUpdateParams replaces
+// the complete value.
 message Params {
   option (amino.name) = "lifted/sku/Params";
   option (gogoproto.equal) = true;
 
   // allowed_list is the list of addresses allowed to manage SKUs
-  // in addition to the module authority.
+  // and providers in addition to the module authority. At most 100 valid
+  // account addresses, unique by decoded identity. Omission in MsgUpdateParams
+  // clears this list; it is not merged with the stored value.
   repeated string allowed_list = 1
       [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 }
@@ -42,7 +45,8 @@ message Provider {
     (gogoproto.jsontag) = "address,omitempty"
   ];
 
-  // payout_address is the address where payments are sent.
+  // payout_address is the current recipient for settlement of existing accrued
+  // charges and future charges. Leases do not snapshot this address.
   string payout_address = 3 [
     (cosmos_proto.scalar) = "cosmos.AddressString",
     (gogoproto.jsontag) = "payout_address,omitempty"

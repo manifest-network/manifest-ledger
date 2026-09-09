@@ -380,15 +380,24 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 		if len(lease.MetaHash) > MaxMetaHashLength {
 			return ErrInvalidMetaHash.Wrapf("lease %s has meta_hash exceeding maximum length of %d bytes", lease.Uuid, MaxMetaHashLength)
 		}
+		if len(lease.RejectionReason) > MaxRejectionReasonLength {
+			return ErrInvalidRejectionReason.Wrapf("lease %s has rejection_reason exceeding maximum length of %d bytes", lease.Uuid, MaxRejectionReasonLength)
+		}
+		if len(lease.ClosureReason) > MaxClosureReasonLength {
+			return ErrInvalidClosureReason.Wrapf("lease %s has closure_reason exceeding maximum length of %d bytes", lease.Uuid, MaxClosureReasonLength)
+		}
 
 		// Note: min_lease_duration_at_creation is a uint64 and doesn't require validation.
 		// Zero value is valid for legacy leases (will fall back to current param).
 
-		// For inactive leases, validate closed_at is set
+		// Only CLOSED leases have a final billable interval. Rejected and expired
+		// pending leases never rendered service and use their own timestamps.
 		if lease.State == LEASE_STATE_CLOSED {
 			if lease.ClosedAt == nil || lease.ClosedAt.IsZero() {
 				return ErrInvalidLease.Wrapf("lease %s is closed but has no closed_at timestamp", lease.Uuid)
 			}
+		} else if lease.ClosedAt != nil {
+			return ErrInvalidLease.Wrapf("lease %s has closed_at timestamp in non-closed state %s", lease.Uuid, lease.State)
 		}
 	}
 

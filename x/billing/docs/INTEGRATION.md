@@ -4,7 +4,7 @@ This guide covers how tenants authenticate to provider off-chain APIs after leas
 
 ## Provider Off-Chain API Integration
 
-Providers expose a REST API for tenants to retrieve connection details after lease acknowledgement. The API endpoint URL is stored on-chain in the `Provider.api_url` field. This field is optional: it is a proto3 `string` with `omitempty`, so a provider that never set one leaves it as the empty string, omitted from JSON output (a `jq -r '.provider.api_url'` prints `null` for the missing key — it is never a literal JSON `null` value). Tenants and clients must handle this absent case, in which the provider has no off-chain API registered.
+Providers expose a REST API for tenants to retrieve connection details after lease acknowledgement. The API endpoint URL is stored on-chain in the `Provider.api_url` field. This field is optional. An unset proto3 string is empty: the SDK's default proto-JSON output (REST and CLI) emits `"api_url": ""`; Go's standard `encoding/json` honors `omitempty` and can omit it. Clients must treat both an absent field and an empty string as no registered API endpoint, and avoid making a request until a nonempty URL is present.
 
 ### Tenant Flow
 

@@ -225,7 +225,8 @@ Before the upgrade:
   the height-labelled export and report together:
 
   ```bash
-  manifestd genesis preflight-billing-v4 exported-genesis.json \
+  CUTOVER_TIME="2026-09-09T16:00:00Z" # Replace with the intended upgrade time.
+  manifestd genesis preflight-billing-v4 exported-genesis.json --at "$CUTOVER_TIME" \
     > billing-v4-preflight.json
   jq '.tenants[] | select(.has_planned_reservation_change)' \
     billing-v4-preflight.json
@@ -237,7 +238,7 @@ Before the upgrade:
     billing-v4-preflight.json
   ```
 
-  The complete export must include billing, bank, and SKU app state. The
+  The complete export must include auth (including vesting accounts), billing, bank, and SKU app state. The
   command uses the same reservation planner as the production migration and
   audits provider payouts against the candidate binary's actual blocked-address
   set and each source ACTIVE/PENDING lease's derived tenant credit address.
@@ -246,7 +247,9 @@ Before the upgrade:
   recorded snapshot: the initial height is normally the committed export height
   plus one (or zero for a zero-height export). `input_genesis_time` is the
   original chain genesis timestamp preserved by SDK export, not the future
-  upgrade time. For every tenant and denomination the report includes source,
+  upgrade time. Schema 5 records the explicit `--at` value as `planner_time`;
+  vesting locks at that time determine `spendable_balance`. Recompute the
+  preflight against the final export and cutover time. For every tenant and denomination the report includes source,
   repaired pre-cutover, and planned post-cutover aggregates; pre/post opaque
   legacy-cohort allocations; and every modern ACTIVE lease's sorted
   nominal/planned amounts. Review every tenant with

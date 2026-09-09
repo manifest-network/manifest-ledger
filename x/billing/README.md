@@ -331,7 +331,7 @@ Module parameters stored at key `0x00`:
 - `max_pending_leases_per_tenant`: Must be > 0 and ≤ 1,000
 - `pending_timeout`: Must be between 60 seconds (1 minute) and 86400 seconds (24 hours)
 - `allowed_list`: At most 100 valid, distinct decoded account identities
-- `reserved_domain_suffixes`: At most 100 entries; each must begin with `.`, the substring after the dot must be a valid FQDN, no duplicates
+- `reserved_domain_suffixes`: At most 100 entries; each must begin with `.`, the substring after the dot must be a lowercase DNS zone (a single-label zone such as `.internal` is valid), no duplicates
 
 **Note:** There is no global `denom` parameter. Each SKU defines its own denomination in its `base_price`, enabling multi-denom billing.
 
@@ -360,7 +360,7 @@ These values are compile-time constants and cannot be changed via governance:
 | `MaxProviderWithdrawableQueryLimit` | 100 | Maximum page size for the ProviderWithdrawable query (`pagination.limit` is clamped to the transaction batch ceiling) |
 | `MaxCreditEstimateLeaseItems` | 100,000 | Maximum active lease items aggregated by one unpaginated `CreditEstimate` request |
 
-> **CreditEstimate iteration** follows the ACTIVE count stored on the tenant's credit account rather than the current governance limit. It enforces the conservative 11,000 ACTIVE bound, a 100,000-item work bound, and exact count/index agreement. `CreditAccount` does not scan leases: it returns all bank balances through bounded cursor pages (default 100, max 1000). Both queries reject rather than silently truncate work outside their documented contracts.
+> **CreditEstimate iteration** follows the ACTIVE count stored on the tenant's credit account rather than the current governance limit. It enforces the conservative 11,000 ACTIVE bound, a 100,000-item work bound, and exact count/index agreement. `CreditAccount` does not scan leases: it returns spendable bank balances through bounded cursor pages (default 100, max 1000). Both queries reject rather than silently truncate work outside their documented contracts.
 
 ### Batch Operations
 
@@ -372,10 +372,10 @@ Several messages support batch processing of multiple leases in a single transac
 | `MsgRejectLease` | 100 | All leases must be PENDING, same provider. Atomic. |
 | `MsgCancelLease` | 100 | All leases must be PENDING, same tenant. Atomic. |
 | `MsgCloseLease` | 100 | All leases must be ACTIVE, authorized for sender. Atomic. |
-| `MsgWithdraw` (specific) | 100 | All leases must be ACTIVE, same provider. Atomic. |
+| `MsgWithdraw` (specific) | 100 | Same provider and authorized sender required. ACTIVE leases accrue; historical CLOSED leases settle through `closed_at`; other states have zero accrual. Atomic; zero-accrual entries are skipped. |
 | `MsgWithdraw` (provider-wide) | 50 (default), 100 (max) | Ordered best effort per lease; pass `next_key` back as `--key` until `has_more` is false and retry every UUID reported in `failed_lease_uuids`. |
 
-**Atomic Batch Operations:** When providing specific lease UUIDs, the operation is atomic—all leases succeed or all fail. If any lease fails validation (wrong state, unauthorized, etc.), the entire transaction is rejected.
+**Atomic Batch Operations:** When providing specific lease UUIDs, the operation is atomic—all leases succeed or all fail. If any lease fails its message-specific validation or settlement, the entire transaction is rejected. Specific withdrawal does not reject a lease solely for being non-ACTIVE; it skips zero accrual and returns `ErrNoWithdrawableAmount` if nothing can be withdrawn.
 
 **Provider-Wide Withdraw:** Unlike specific-lease operations, provider-wide withdraw is paginated and best effort per lease. It processes up to `--limit` leases (default 50, max 100) and returns `has_more: true` plus an opaque `next_key` cursor if more remain. Pass `next_key` back as `--key` on the next call and repeat until `has_more: false`; calling again without `--key` restarts from the first lease. Only ACTIVE leases are considered — CLOSED leases are already fully settled at close and are skipped, so every page is dense with ACTIVE leases. Leases are processed in ascending UUID order; `next_key` is the last lease UUID of the page and the next call resumes strictly after it. Failed lease caches are discarded and their UUIDs are returned in that same order in `failed_lease_uuids`; retain and retry those UUIDs because the next cursor resumes after them.
 
@@ -573,9 +573,9 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 | LeasesByTenant | List leases for a tenant |
 | LeasesByProvider | List leases for a provider (use `--state pending` filter for pending leases) |
 | LeasesBySKU | List leases using a specific SKU |
-| CreditAccount | Get a tenant's credit account plus one cursor-paginated page of all bank balances and page-aligned available balances |
+| CreditAccount | Get a tenant's credit account plus one cursor-paginated page of spendable bank balances and page-aligned available balances |
 | CreditAccounts | List all credit accounts |
-| CreditEstimate | Report gross raw-bank-balance runway at the aggregate ACTIVE rate (not reservation-aware or an auto-close forecast) |
+| CreditEstimate | Report gross spendable-balance runway at the aggregate ACTIVE rate (not reservation-aware or an auto-close forecast) |
 | CreditAddress | Derive credit address for a tenant |
 | WithdrawableAmount | Get withdrawable amount for a lease |
 | ProviderWithdrawable | Ordered best-effort dry-run of the current ACTIVE-lease page. Failed lease simulations are discarded and reported in `failed_lease_uuids`; successful virtual effects feed later leases, while no query state commits. The page is an execution estimate, not an additive snapshot. Every forward page is comparable to one provider-wide withdrawal because the query limit is capped at the transaction maximum of 100. After it commits, query the next segment with the prior query `pagination.next_key` and withdraw it with the prior transaction `next_key`; the two cursor contracts are not interchangeable. `lease_count` and `failed_lease_uuids` match the comparable transaction, including successful zero-transfer auto-closes in the count. |
@@ -666,11 +666,30 @@ provider-wide withdrawal continues and reports affected leases in
 eligible payout address and explicitly retry those leases. See
 [payout troubleshooting](docs/TROUBLESHOOTING.md#provider-payout-address-is-blocked-from-receiving-funds).
 
+Provider payout addresses are resolved at settlement. An authorized SKU
+administrator (authority or SKU allowed-list member) can change the recipient
+of both existing unsettled accrual and future charges. To pay accrued earnings
+to the old recipient, withdraw before changing it. If that recipient is blocked
+or collides with the paying tenant's credit address, update first and retry;
+those accrued charges then go to the repaired recipient.
+
 ### Credit Withdrawal Policy
 
 There is no mechanism to withdraw unused credit from a credit account. Once tokens are funded, they can only be spent on leases. This mimics typical cloud providers (AWS credits, etc.) and prevents gaming of the system. Unused credit remains available for future leases.
 
-The application also rejects tokenfactory `BurnFrom` and `ForceTransfer` debits from every registered billing credit account, including its unreserved balance. Denomination administrators retain those powers over ordinary wallets. Deposits, minting into credit, and normal billing settlement and payouts remain available. This deliberately makes billing credit an exception to issuer clawback: deposited tokens are protected until billing pays them out to an ordinary account. Protection uses the existing credit-address reverse index; an arbitrary derived address that has not been registered as a credit account is not protected. See [the design decision](docs/DESIGN_DECISIONS.md#decision-1-pre-funded-credit-account-model).
+The application also rejects tokenfactory `BurnFrom` and `ForceTransfer` debits from every registered billing credit account, including its unreserved balance. Denomination administrators retain those powers over ordinary wallets. Deposits, minting into credit, and normal billing settlement and payouts remain available. This deliberately makes billing credit an exception to issuer clawback: deposited tokens remain protected while held by any registered billing credit account. A provider may select another tenant's credit address as its payout; those payments become that tenant's non-withdrawable credit and retain issuer-debit protection. Select an ordinary wallet to receive freely transferable payouts. Protection uses the existing credit-address reverse index; an arbitrary derived address that has not been registered as a credit account is not protected. See [the design decision](docs/DESIGN_DECISIONS.md#decision-1-pre-funded-credit-account-model).
+
+### Vesting at credit addresses
+
+A third party can create a vesting account at a prospective derived credit
+address. Billing uses spendable credit at the current block time, computed per
+denomination as `max(0, bank balance - vesting locked coins)`. Locked coins do
+not fund guarantees or payouts; ordinary unlocked top-ups remain usable. This
+applies to admission, settlement, balance queries, invariants, genesis import,
+and migration. Account type alone does not block funding. `CreditAccount`
+paginates bank denominations and filters fully locked balances, so keep following
+`pagination.next_key` even when a page's coin arrays are empty. Gross credit
+estimates exclude currently locked funds but do not forecast future unlocks.
 
 ### Provider/SKU Deactivation
 
@@ -788,7 +807,7 @@ billing reservation invariant violated: tenant manifest1def... has live reservat
 
 The state-machine simulator registers bounded operations for `FundCredit`,
 tenant `CreateLease`, allowed-list `CreateLeaseForTenant`, `AcknowledgeLease`, `RejectLease`, `CancelLease`,
-`CloseLease`, `Withdraw`, and both set/replace and clear transitions of
+`CloseLease`, `Withdraw`, authority-signed `UpdateParams`, and both set/replace and clear transitions of
 `SetItemCustomDomain`; custom-domain operations exercise both tenant and current
 `allowed_list` signers when available. Candidate lists retain
 collection/simulation-account slice order; maps are used only for lookup and
@@ -820,12 +839,20 @@ validator-mutation coverage. [ENG-915](https://linear.app/liftedinit/issue/ENG-9
 tracks correcting the simulator and restoring these operations; see the
 [architecture notes](docs/ARCHITECTURE.md#simulation-xbillingsimulation).
 
-`UpdateParams` is deliberately excluded. It requires the configured POA
-authority, which has no simulation private key, while Cosmos SDK governance
-proposal messages must instead have the governance module account as their sole
-signer. Registering either form would only create guaranteed failures. Parameter
-validation and update authorization remain covered by focused keeper/type tests;
-randomized genesis supplies bounded valid parameter combinations to simulation.
+`UpdateParams` uses the configured authority when that identity has a simulation
+private key. Fresh application simulations deliberately select a signable PoA
+admin; an imported authority unavailable in the account set produces a NoOp.
+Billing varies bounded numeric params while retaining the current allowed list
+and reserved suffixes; SKU rotates delegated managers. CloseLease chooses among
+the tenant, provider, and signable authority. These are direct message tests,
+not coverage of real group voting or Cosmos SDK governance proposal execution.
+
+The profile pins `min_signed_per_window` to zero only for simulation genesis,
+so missed-block tracking continues without downtime jailing draining the fixed
+validator set. Production slashing params are unchanged. Completed validation
+runs must select billing operations; partial delivery diagnostics survive SDK
+Skip/Fatalf exits. Every message's attempt/success counts remain visible, but
+short stochastic runs do not guarantee every message or authorization branch.
 
 ## Additional Documentation
 

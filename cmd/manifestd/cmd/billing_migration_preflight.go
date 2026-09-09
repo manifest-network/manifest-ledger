@@ -14,6 +14,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
 
@@ -25,7 +26,7 @@ import (
 )
 
 const (
-	billingMigrationPreflightSchemaVersion = 4
+	billingMigrationPreflightSchemaVersion = 5
 	jsonNull                               = "null"
 )
 
@@ -36,6 +37,7 @@ type billingMigrationPreflightOutput struct {
 	SchemaVersion                    uint32                                              `json:"schema_version"`
 	SourceChainID                    string                                              `json:"source_chain_id"`
 	SourceInitialHeight              int64                                               `json:"source_initial_height"`
+	PlannerTime                      string                                              `json:"planner_time"`
 	InputGenesisTime                 string                                              `json:"input_genesis_time"`
 	BillingState                     string                                              `json:"billing_state"`
 	MigrationPath                    string                                              `json:"migration_path"`
@@ -94,7 +96,15 @@ genesis file or application state. Payout findings do not fail the command:
 operators must require both blocked_provider_count == 0 and
 payout_credit_collision_count == 0 before upgrade.
 The report does not certify block-time validation, SKU references, or full
-InitGenesis. Billing, bank, and SKU genesis modules are required.`,
+InitGenesis. Billing, bank, auth, and SKU genesis modules are required.
+
+--at is required and specifies the RFC3339 time at which to evaluate the cutover
+and vesting locks. Use the intended cutover block time, or the exported block's
+time for a snapshot audit. The document's genesis_time may be the original
+chain start time and is not used as the valuation time. bank_balance is total
+bank funds; spendable_balance excludes coins still locked at --at and is the
+reservation planner's backing input. Vesting schedules can change the result
+at a later cutover time.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx := client.GetClientContextFromCmd(cmd)
@@ -108,13 +118,26 @@ InitGenesis. Billing, bank, and SKU genesis modules are required.`,
 			}
 			defer func() { _ = file.Close() }()
 
-			return writeBillingMigrationPreflight(clientCtx.Codec, file, cmd.OutOrStdout())
+			at, err := cmd.Flags().GetString("at")
+			if err != nil {
+				return err
+			}
+			plannerTime, err := time.Parse(time.RFC3339Nano, at)
+			if err != nil || plannerTime.IsZero() {
+				return fmt.Errorf("--at requires a non-zero RFC3339 cutover or snapshot time")
+			}
+			return writeBillingMigrationPreflight(clientCtx.Codec, file, cmd.OutOrStdout(), plannerTime)
 		},
 	}
+	cmd.Flags().String("at", "", "RFC3339 cutover or snapshot time for reservation and vesting-lock evaluation (required)")
+	_ = cmd.MarkFlagRequired("at")
 	return cmd
 }
 
-func writeBillingMigrationPreflight(cdc codec.JSONCodec, input io.Reader, output io.Writer) error {
+func writeBillingMigrationPreflight(cdc codec.JSONCodec, input io.Reader, output io.Writer, plannerTime time.Time) error {
+	if plannerTime.IsZero() {
+		return fmt.Errorf("billing migration preflight requires an explicit non-zero planner time")
+	}
 	decoder := json.NewDecoder(input)
 	var document genutiltypes.AppGenesis
 	if err := decoder.Decode(&document); err != nil {
@@ -163,6 +186,11 @@ func writeBillingMigrationPreflight(cdc codec.JSONCodec, input io.Reader, output
 		return fmt.Errorf("exported genesis app_state has missing %q module", skutypes.ModuleName)
 	}
 
+	authJSON, ok := appState[authtypes.ModuleName]
+	if !ok || len(authJSON) == 0 || string(authJSON) == jsonNull {
+		return fmt.Errorf("exported genesis app_state has missing %q module", authtypes.ModuleName)
+	}
+
 	var billingGenesis billingtypes.GenesisState
 	if err := cdc.UnmarshalJSON(billingJSON, &billingGenesis); err != nil {
 		return fmt.Errorf("decode billing genesis for migration preflight: %w", err)
@@ -175,6 +203,11 @@ func writeBillingMigrationPreflight(cdc codec.JSONCodec, input io.Reader, output
 	if err := cdc.UnmarshalJSON(skuJSON, &skuGenesis); err != nil {
 		return fmt.Errorf("decode sku genesis for billing migration preflight: %w", err)
 	}
+	authAccounts, err := decodePreflightAuthAccounts(cdc, authJSON)
+	if err != nil {
+		return err
+	}
+
 	blockedProviders, err := auditProviderPayouts(skuGenesis.Providers, billingGenesis.Leases)
 	if err != nil {
 		return err
@@ -185,9 +218,10 @@ func writeBillingMigrationPreflight(cdc codec.JSONCodec, input io.Reader, output
 	}
 
 	reservationReport, err := billingkeeper.BuildReservationMigrationPreflight(
-		document.GenesisTime,
+		plannerTime,
 		&billingGenesis,
 		&bankGenesis,
+		authAccounts,
 	)
 	if err != nil {
 		return err
@@ -197,6 +231,7 @@ func writeBillingMigrationPreflight(cdc codec.JSONCodec, input io.Reader, output
 		SchemaVersion:                    billingMigrationPreflightSchemaVersion,
 		SourceChainID:                    document.ChainID,
 		SourceInitialHeight:              document.InitialHeight,
+		PlannerTime:                      plannerTime.UTC().Format(time.RFC3339Nano),
 		InputGenesisTime:                 document.GenesisTime.UTC().Format(time.RFC3339Nano),
 		BillingState:                     reservationReport.BillingState,
 		MigrationPath:                    reservationReport.MigrationPath,
@@ -312,4 +347,30 @@ func auditProviderCreditCollisions(providers []skutypes.Provider, leases []billi
 		return cmp.Compare(a.LeaseUUID, b.LeaseUUID)
 	})
 	return collisions, nil
+}
+
+// decodePreflightAuthAccounts contains SDK Any decoding at an offline input
+// boundary. Null or structurally incomplete accounts must fail the report rather
+// than crash the command; this recovery never runs in consensus message paths.
+func decodePreflightAuthAccounts(cdc codec.JSONCodec, input []byte) (accounts authtypes.GenesisAccounts, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			accounts = nil
+			err = fmt.Errorf("invalid auth genesis for billing migration preflight: %v", recovered)
+		}
+	}()
+	var genesis authtypes.GenesisState
+	if err := cdc.UnmarshalJSON(input, &genesis); err != nil {
+		return nil, fmt.Errorf("decode auth genesis for billing migration preflight: %w", err)
+	}
+	for index, account := range genesis.Accounts {
+		if account == nil {
+			return nil, fmt.Errorf("auth genesis contains null account at index %d", index)
+		}
+	}
+	accounts, err = authtypes.UnpackAccounts(genesis.Accounts)
+	if err != nil {
+		return nil, fmt.Errorf("unpack auth accounts for billing migration preflight: %w", err)
+	}
+	return accounts, nil
 }

@@ -170,6 +170,18 @@ func TestProviderWithdrawable_FailuresAreOrderedObservableAndRetryable(t *testin
 	require.True(t, firstPage.HasMore)
 	require.Equal(t, []byte(secondSelfLeaseUUID), firstPage.NextKey,
 		"transaction cursors identify the last processed lease, including failures")
+	// Each successful payout identifies its lease; failed per-lease caches
+	// must not emit a payout that indexers could mistake for committed value.
+	payoutEvents := 0
+	for _, event := range settleCtx.EventManager().Events() {
+		if event.Type == types.EventTypeProviderWithdraw {
+			payoutEvents++
+			require.Equal(t, s.normalLeaseUUID, attrValue(t, event, types.AttributeKeyLeaseUUID))
+			require.Equal(t, firstPage.TotalAmounts.String(), attrValue(t, event, types.AttributeKeyAmount))
+			require.Equal(t, firstPage.PayoutAddress, attrValue(t, event, types.AttributeKeyPayoutAddress))
+		}
+	}
+	require.Equal(t, 1, payoutEvents)
 
 	batchEvent := findEvent(t, settleCtx, types.EventTypeBatchWithdraw)
 	require.Equal(t, "2", attrValue(t, batchEvent, types.AttributeKeyFailedLeaseCount))
@@ -282,6 +294,10 @@ func TestMsgWithdraw_AutoCloseEventsReportPositiveTransfer(t *testing.T) {
 			require.Equal(t, funding, response.TotalAmounts)
 			require.Equal(t, uint64(1), response.WithdrawalCount)
 			require.Empty(t, response.FailedLeaseUuids)
+			payoutEvent := findEvent(t, f.Ctx, types.EventTypeProviderWithdraw)
+			require.Equal(t, leaseUUID, attrValue(t, payoutEvent, types.AttributeKeyLeaseUUID))
+			require.Equal(t, funding.String(), attrValue(t, payoutEvent, types.AttributeKeyAmount))
+			require.Equal(t, "true", attrValue(t, payoutEvent, types.AttributeKeyAutoClosed))
 
 			event := findEvent(t, f.Ctx, tc.eventType)
 			require.Equal(t, leaseUUID, attrValue(t, event, types.AttributeKeyLeaseUUID))

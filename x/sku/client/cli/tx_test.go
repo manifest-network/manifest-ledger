@@ -61,3 +61,40 @@ func TestMsgUpdateProviderClearAPIURL(t *testing.T) {
 		})
 	}
 }
+
+func TestMsgUpdateParamsRequiresExplicitAllowedList(t *testing.T) {
+	sender := sdk.AccAddress("sku-params-authority").String()
+	allowed := sdk.AccAddress("sku-params-operator").String()
+	encoding := moduletestutil.MakeTestEncodingConfig()
+	types.RegisterInterfaces(encoding.InterfaceRegistry)
+	clientCtx := client.Context{}.WithCodec(encoding.Codec).
+		WithInterfaceRegistry(encoding.InterfaceRegistry).WithTxConfig(encoding.TxConfig).
+		WithLegacyAmino(encoding.Amino)
+	for _, tc := range []struct {
+		name string
+		args []string
+		want []string
+		err  bool
+	}{
+		{name: "omitted list cannot erase permissions", err: true},
+		{name: "explicit empty list", args: []string{"--allowed-list="}},
+		{name: "explicit replacement", args: []string{"--allowed-list=" + allowed}, want: []string{allowed}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			args := slices.Concat(tc.args, []string{"--from", sender, "--generate-only", "--offline", "--account-number=0", "--sequence=0"})
+			out, err := clitestutil.ExecTestCLICmd(clientCtx, MsgUpdateParams(), args)
+			if tc.err {
+				require.ErrorContains(t, err, `required flag(s) "allowed-list" not set`)
+				require.NotContains(t, out.String(), `"messages"`)
+				return
+			}
+			require.NoError(t, err)
+			txn, err := encoding.TxConfig.TxJSONDecoder()(out.Bytes())
+			require.NoError(t, err)
+			require.Len(t, txn.GetMsgs(), 1)
+			msg := txn.GetMsgs()[0].(*types.MsgUpdateParams)
+			require.Equal(t, sender, msg.Authority)
+			require.Equal(t, tc.want, msg.Params.AllowedList)
+		})
+	}
+}

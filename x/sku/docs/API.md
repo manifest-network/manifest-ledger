@@ -58,7 +58,12 @@ manifestd tx sku create-provider manifest1provider... manifest1payout... \
 
 #### update-provider
 
-Update an existing provider.
+Update an existing provider. Resend the current `--meta-hash` as hex to preserve
+it; omitting the flag or passing an empty value clears it. Query responses
+encode nonempty hashes as base64, so decode and convert before resubmitting.
+A payout change redirects existing unsettled accrual and future charges;
+withdraw first if the old recipient should receive existing earnings. A blocked
+payout must be repaired first, then withdrawn to the new recipient.
 
 ```bash
 manifestd tx sku update-provider [uuid] [address] [payout-address] [active] [flags]
@@ -89,6 +94,7 @@ manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1p
 # Clear the stored API URL while updating the other required fields:
 manifestd tx sku update-provider 01912345-6789-7abc-8def-0123456789ab manifest1provider... manifest1payout... true \
   --clear-api-url \
+  --meta-hash [current-meta-hash-hex] \
   --from authority
 ```
 
@@ -194,6 +200,20 @@ while true; do
     --height "$HEIGHT" --node "$NODE" --output json > "$STATE_DIR/active.json"
   jq -e '.skus | type == "array"' "$STATE_DIR/active.json" > /dev/null
   if [ "$(jq '.skus | length' "$STATE_DIR/active.json")" -eq 0 ]; then
+    # A retained receipt proves the earlier cascade, not the provider's state now.
+    manifestd status --node "$NODE" --output json > "$STATE_DIR/status.json"
+    CURRENT_HEIGHT=$(jq -er --arg chain "$CHAIN_ID" \
+      'select(.node_info.network == $chain and .sync_info.catching_up == false) |
+       .sync_info.latest_block_height | select(test("^[1-9][0-9]*$"))' "$STATE_DIR/status.json")
+    manifestd query sku provider "$PROVIDER_UUID" --height "$CURRENT_HEIGHT" \
+      --node "$NODE" --output json > "$STATE_DIR/current-provider.json"
+    manifestd query sku skus-by-provider "$PROVIDER_UUID" --active-only --limit 1 \
+      --height "$CURRENT_HEIGHT" --node "$NODE" --output json > "$STATE_DIR/current-active.json"
+    if ! jq -e '.provider.active == false' "$STATE_DIR/current-provider.json" > /dev/null ||
+       ! jq -e '(.skus | type == "array") and (.skus | length == 0)' "$STATE_DIR/current-active.json" > /dev/null; then
+      echo "The provider changed after this checkpoint. Use a new state directory for a new cascade." >&2
+      exit 1
+    fi
     break
   fi
   rm "$STATE_DIR/pending.json"
@@ -202,8 +222,11 @@ echo "Provider deactivation complete; no active SKUs remain."
 ```
 
 The final pending receipt remains as a completion checkpoint: restarting the
-same run verifies its historical result without sending another transaction.
-Use a new state directory for a later deactivation after reactivation.
+same run verifies its historical result and checks the provider and active SKUs
+at one current committed height without sending another transaction. A changed
+provider fails the restart; use a new state directory for a later deactivation
+after reactivation. Completion describes the checked height; later authorized
+updates can reactivate the provider.
 
 ---
 
@@ -308,11 +331,11 @@ manifestd tx sku update-params [flags]
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --allowed-list | string | Comma-separated list of addresses allowed to manage SKUs |
+| --allowed-list | string | Required: replacement list of addresses allowed to manage SKUs and providers. Pass an explicit empty value to clear; omission is rejected. |
 
 **Example:**
 ```bash
-# Add addresses to the allowed list
+# Replace the complete allowed list (include every address to retain)
 manifestd tx sku update-params \
   --allowed-list "manifest1abc...,manifest1def..." \
   --from authority
@@ -406,7 +429,7 @@ manifestd query sku provider [uuid]
     "address": "manifest1provider...",
     "payout_address": "manifest1payout...",
     "api_url": "https://api.provider.com",
-    "meta_hash": "",
+    "meta_hash": null,
     "active": true
   }
 }
@@ -449,7 +472,7 @@ manifestd query sku provider-by-address manifest1abc... --active-only --limit 10
       "address": "manifest1provider...",
       "payout_address": "manifest1payout...",
       "api_url": "https://api.provider.com",
-      "meta_hash": "",
+      "meta_hash": null,
       "active": true
     }
   ],
@@ -494,7 +517,7 @@ manifestd query sku providers --active-only --limit 10 --count-total
       "address": "manifest1provider...",
       "payout_address": "manifest1payout...",
       "api_url": "https://api.provider.com",
-      "meta_hash": "",
+      "meta_hash": null,
       "active": true
     }
   ],
@@ -532,7 +555,7 @@ manifestd query sku sku [uuid]
       "denom": "upwr",
       "amount": "3600000"
     },
-    "meta_hash": "",
+    "meta_hash": null,
     "active": true
   }
 }

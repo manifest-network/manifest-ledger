@@ -11669,7 +11669,8 @@ type MsgFundCreditResponse struct {
 
 	// credit_address is the derived credit account address.
 	CreditAddress string `protobuf:"bytes,1,opt,name=credit_address,json=creditAddress,proto3" json:"credit_address,omitempty"`
-	// new_balance is the credit account balance after funding.
+	// new_balance is the spendable credit account balance after funding,
+	// excluding vesting locked coins at the current block time.
 	NewBalance *v1beta1.Coin `protobuf:"bytes,2,opt,name=new_balance,json=newBalance,proto3" json:"new_balance,omitempty"`
 }
 
@@ -11802,14 +11803,14 @@ func (x *MsgCreateLeaseResponse) GetLeaseUuid() string {
 	return ""
 }
 
-// MsgCreateLeaseForTenant allows authority to create a lease on behalf of a
-// tenant. This is used for migrating off-chain leases to on-chain.
+// MsgCreateLeaseForTenant allows the module authority or a billing allowed_list
+// member to create a lease on behalf of a tenant, including off-chain migrations.
 type MsgCreateLeaseForTenant struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// authority is the module authority address.
+	// authority is the module authority or a billing allowed_list member.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
 	// tenant is the address of the tenant for whom the lease is created.
 	Tenant string `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
@@ -12215,7 +12216,9 @@ type MsgUpdateParams struct {
 
 	// authority is the address of the module authority.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	// params are the new parameters.
+	// params replaces all module parameters. Every numeric field must satisfy
+	// its documented bounds. Omitted allowed_list or reserved_domain_suffixes
+	// clears that list; no execution-time merge or preservation occurs.
 	Params *Params `protobuf:"bytes,2,opt,name=params,proto3" json:"params,omitempty"`
 }
 

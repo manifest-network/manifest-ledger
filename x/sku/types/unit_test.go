@@ -445,3 +445,17 @@ func TestUnitJSONUnmarshal(t *testing.T) {
 		})
 	}
 }
+
+func TestUnknownUnitJSONRoundTrip(t *testing.T) {
+	for _, unit := range []Unit{-1, 3, 99, 2147483647} {
+		encoded, err := json.Marshal(unit)
+		require.NoError(t, err)
+		var numeric int32
+		require.NoError(t, json.Unmarshal(encoded, &numeric), "unknown values must remain JSON numbers")
+		require.Equal(t, int32(unit), numeric)
+		var decoded Unit
+		require.NoError(t, json.Unmarshal(encoded, &decoded))
+		require.Equal(t, unit, decoded)
+		require.Error(t, ValidatePriceAndUnit(sdk.NewInt64Coin("umfx", 3600), decoded), "serialization compatibility does not admit unsupported billing units")
+	}
+}

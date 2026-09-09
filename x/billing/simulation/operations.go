@@ -84,7 +84,7 @@ func WeightedOperations(
 	k keeper.Keeper,
 	sk SKUKeeper,
 ) []simtypes.WeightedOperation {
-	operations := make([]simtypes.WeightedOperation, 0, 9)
+	operations := make([]simtypes.WeightedOperation, 0, 10)
 
 	var weightMsgFundCredit int
 	appParams.GetOrGenerate(OpWeightMsgFundCredit, &weightMsgFundCredit, nil, func(_ *rand.Rand) {
@@ -161,7 +161,7 @@ func WeightedOperations(
 
 	operations = append(operations, simulation.NewWeightedOperation(
 		weightMsgCloseLease,
-		SimulateMsgCloseLease(txGen, k),
+		SimulateMsgCloseLease(txGen, k, sk),
 	))
 
 	operations = append(operations, simulation.NewWeightedOperation(
@@ -173,6 +173,12 @@ func WeightedOperations(
 		weightMsgSetItemCustomDomain,
 		SimulateMsgSetItemCustomDomain(txGen, k),
 	))
+
+	var weightMsgUpdateParams int
+	appParams.GetOrGenerate(OpWeightMsgUpdateParams, &weightMsgUpdateParams, nil, func(_ *rand.Rand) {
+		weightMsgUpdateParams = DefaultWeightMsgUpdateParams
+	})
+	operations = append(operations, simulation.NewWeightedOperation(weightMsgUpdateParams, SimulateMsgUpdateParams(txGen, k)))
 
 	return operations
 }
@@ -622,7 +628,7 @@ func SimulateMsgCancelLease(txGen client.TxConfig, k keeper.Keeper) simtypes.Ope
 }
 
 // SimulateMsgCloseLease generates a MsgCloseLease with random values.
-func SimulateMsgCloseLease(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
+func SimulateMsgCloseLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		msgType := sdk.MsgTypeURL(&types.MsgCloseLease{})
@@ -651,15 +657,26 @@ func SimulateMsgCloseLease(txGen client.TxConfig, k keeper.Keeper) simtypes.Oper
 		// Pick a random active lease
 		lease := activeLeases[r.Intn(len(activeLeases))]
 
-		// Find the tenant account by decoded identity.
-		sender, found, err := simulationAccountForAddress(accs, lease.Tenant)
+		provider, err := sk.GetProvider(ctx, lease.ProviderUuid)
 		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "invalid tenant address"), nil, err
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get provider"), nil, err
 		}
-
-		if !found {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant account not found in simulation"), nil, nil
+		// Exercise all signable roles. The configured group authority normally
+		// has no simulation private key; never impersonate it with a tenant key.
+		var signers []simtypes.Account
+		for _, address := range []string{lease.Tenant, provider.Address, k.GetAuthority()} {
+			signer, found, err := simulationAccountForAddress(accs, address)
+			if err != nil {
+				return simtypes.NoOpMsg(types.ModuleName, msgType, "invalid close signer address"), nil, err
+			}
+			if found && !slices.ContainsFunc(signers, func(existing simtypes.Account) bool { return existing.Address.Equals(signer.Address) }) {
+				signers = append(signers, signer)
+			}
 		}
+		if len(signers) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no authorized close signer in simulation"), nil, nil
+		}
+		sender := signers[r.Intn(len(signers))]
 
 		msg := &types.MsgCloseLease{
 			Sender:     sender.Address.String(),

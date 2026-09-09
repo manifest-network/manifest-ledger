@@ -165,6 +165,8 @@ func (m *MsgCreateProviderResponse) GetUuid() string {
 // MsgUpdateProvider is the Msg/UpdateProvider request type.
 // Note: Setting active=false on an active provider will fail.
 // Use MsgDeactivateProvider instead to ensure proper SKU cascade.
+// Reactivation requires completing the cascade: no active SKUs may remain.
+// Payout changes apply to already-accrued unsettled charges and future charges.
 type MsgUpdateProvider struct {
 	// authority is the address of the controlling account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
@@ -175,7 +177,8 @@ type MsgUpdateProvider struct {
 	Address string `protobuf:"bytes,3,opt,name=address,proto3" json:"address,omitempty"`
 	// payout_address is the address where payments are sent.
 	PayoutAddress string `protobuf:"bytes,4,opt,name=payout_address,json=payoutAddress,proto3" json:"payout_address,omitempty"`
-	// meta_hash is a hash of the off-chain metadata.
+	// meta_hash replaces the hash of off-chain metadata. An empty value clears it;
+	// clients must resend the current bytes when preserving the hash.
 	MetaHash []byte `protobuf:"bytes,5,opt,name=meta_hash,json=metaHash,proto3" json:"meta_hash,omitempty"`
 	// active indicates whether the provider is active.
 	Active bool `protobuf:"varint,6,opt,name=active,proto3" json:"active,omitempty"`
@@ -826,7 +829,8 @@ var xxx_messageInfo_MsgDeactivateSKUResponse proto.InternalMessageInfo
 type MsgUpdateParams struct {
 	// authority is the address of the governance account.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	// params defines the module parameters to update.
+	// params replaces all module parameters. Omitted allowed_list clears it;
+	// no execution-time merge or preservation occurs.
 	Params Params `protobuf:"bytes,2,opt,name=params,proto3" json:"params"`
 }
 
@@ -1016,7 +1020,8 @@ type MsgClient interface {
 	// CreateProvider creates a new provider.
 	CreateProvider(ctx context.Context, in *MsgCreateProvider, opts ...grpc.CallOption) (*MsgCreateProviderResponse, error)
 	// UpdateProvider updates an existing provider.
-	// Can reactivate an inactive provider but cannot deactivate an active one.
+	// Can reactivate an inactive provider only after no active SKUs remain.
+	// Cannot deactivate an active provider.
 	// Use DeactivateProvider to deactivate (ensures proper SKU cascade).
 	UpdateProvider(ctx context.Context, in *MsgUpdateProvider, opts ...grpc.CallOption) (*MsgUpdateProviderResponse, error)
 	// DeactivateProvider deactivates a provider (soft delete).
@@ -1114,7 +1119,8 @@ type MsgServer interface {
 	// CreateProvider creates a new provider.
 	CreateProvider(context.Context, *MsgCreateProvider) (*MsgCreateProviderResponse, error)
 	// UpdateProvider updates an existing provider.
-	// Can reactivate an inactive provider but cannot deactivate an active one.
+	// Can reactivate an inactive provider only after no active SKUs remain.
+	// Cannot deactivate an active provider.
 	// Use DeactivateProvider to deactivate (ensures proper SKU cascade).
 	UpdateProvider(context.Context, *MsgUpdateProvider) (*MsgUpdateProviderResponse, error)
 	// DeactivateProvider deactivates a provider (soft delete).

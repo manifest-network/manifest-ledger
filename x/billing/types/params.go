@@ -161,13 +161,14 @@ func (p *Params) Validate() error {
 	}
 
 	// Validate reserved domain suffixes: each entry must start with '.' and
-	// the substring after the dot must be a valid FQDN. Duplicates rejected.
+	// the substring after the dot must be a valid DNS zone, including a
+	// single-label zone such as .internal. Duplicates rejected.
 	seenSuffix := make(map[string]bool)
 	for _, s := range p.ReservedDomainSuffixes {
 		if len(s) < 2 || s[0] != '.' {
 			return ErrInvalidParams.Wrapf("reserved domain suffix must begin with '.': %q", s)
 		}
-		if err := IsValidFQDN(s[1:]); err != nil {
+		if err := validateDNSName(s[1:], false); err != nil {
 			return ErrInvalidParams.Wrapf("invalid reserved domain suffix %q: %s", s, err)
 		}
 		if seenSuffix[s] {

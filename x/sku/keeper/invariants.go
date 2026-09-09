@@ -98,6 +98,7 @@ func (k Keeper) validateSecondaryIndexes(ctx context.Context, providerCount, sku
 		providerCount,
 		k.Providers.Indexes.Address,
 		k.Providers.Get,
+		k.Providers.Iterate,
 		func(provider types.Provider) (sdk.AccAddress, error) {
 			address, err := sdk.AccAddressFromBech32(provider.Address)
 			if err != nil {
@@ -116,6 +117,7 @@ func (k Keeper) validateSecondaryIndexes(ctx context.Context, providerCount, sku
 		providerCount,
 		k.Providers.Indexes.Active,
 		k.Providers.Get,
+		k.Providers.Iterate,
 		func(provider types.Provider) (bool, error) { return provider.Active, nil },
 		func(indexed, expected bool) bool { return indexed == expected },
 		func(reference bool) string { return fmt.Sprintf("%t", reference) },
@@ -128,6 +130,7 @@ func (k Keeper) validateSecondaryIndexes(ctx context.Context, providerCount, sku
 		skuCount,
 		k.SKUs.Indexes.Provider,
 		k.SKUs.Get,
+		k.SKUs.Iterate,
 		func(sku types.SKU) (string, error) { return sku.ProviderUuid, nil },
 		func(indexed, expected string) bool { return indexed == expected },
 		func(reference string) string { return fmt.Sprintf("%q", reference) },
@@ -140,6 +143,7 @@ func (k Keeper) validateSecondaryIndexes(ctx context.Context, providerCount, sku
 		skuCount,
 		k.SKUs.Indexes.Active,
 		k.SKUs.Get,
+		k.SKUs.Iterate,
 		func(sku types.SKU) (bool, error) { return sku.Active, nil },
 		func(indexed, expected bool) bool { return indexed == expected },
 		func(reference bool) string { return fmt.Sprintf("%t", reference) },
@@ -152,6 +156,7 @@ func (k Keeper) validateSecondaryIndexes(ctx context.Context, providerCount, sku
 		skuCount,
 		k.SKUs.Indexes.ProviderActive,
 		k.SKUs.Get,
+		k.SKUs.Iterate,
 		func(sku types.SKU) (collections.Pair[string, bool], error) {
 			return collections.Join(sku.ProviderUuid, sku.Active), nil
 		},
@@ -174,6 +179,7 @@ func validateMultiIndex[ReferenceKey, Value any](
 	expectedCount uint64,
 	index *indexes.Multi[ReferenceKey, string, Value],
 	getValue func(context.Context, string) (Value, error),
+	iterateValues func(context.Context, collections.Ranger[string]) (collections.Iterator[string, Value], error),
 	expectedReference func(Value) (ReferenceKey, error),
 	equal func(ReferenceKey, ReferenceKey) bool,
 	formatReference func(ReferenceKey) string,
@@ -207,6 +213,27 @@ func validateMultiIndex[ReferenceKey, Value any](
 		return err
 	}
 	if actualCount != expectedCount {
+		// Valid rows are unique by (derived reference, primary). A count
+		// shortfall therefore means a missing row: identify its exact entity
+		// with bounded membership probes, including low-cardinality indexes.
+		_, err := collectionsutil.ValidateMap(ctx, name+" primary collection", iterateValues, strconv.Quote,
+			func(primaryKey string, value Value) error {
+				expected, err := expectedReference(value)
+				if err != nil {
+					return err
+				}
+				found, err := collectionsutil.MultiIndexContains(ctx, index, expected, primaryKey)
+				if err != nil {
+					return fmt.Errorf("inspect %s index for primary key %s: %w", name, primaryKey, err)
+				}
+				if !found {
+					return fmt.Errorf("%s index is missing derived key %s for primary key %s", name, formatReference(expected), primaryKey)
+				}
+				return nil
+			})
+		if err != nil {
+			return err
+		}
 		return fmt.Errorf(
 			"%s index contains %d entries, expected %d",
 			name,

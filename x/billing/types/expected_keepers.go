@@ -20,6 +20,7 @@ type BankKeeper interface {
 	IsSendEnabledCoins(context.Context, ...sdk.Coin) error
 	SendCoins(context.Context, sdk.AccAddress, sdk.AccAddress, sdk.Coins) error
 	GetBalance(context.Context, sdk.AccAddress, string) sdk.Coin
+	LockedCoins(context.Context, sdk.AccAddress) sdk.Coins
 	SpendableCoins(context.Context, sdk.AccAddress) sdk.Coins
 	AllBalances(context.Context, *banktypes.QueryAllBalancesRequest) (*banktypes.QueryAllBalancesResponse, error)
 }

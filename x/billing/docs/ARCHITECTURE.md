@@ -682,7 +682,7 @@ The keeper resolves the target item by `service_name`:
 | Multi-item, service-name mode | `service_name == "web"` | the unique item with that name |
 | Multi-item legacy (no service_names) | any value | rejected with `ErrAmbiguousLeaseItem` — recreate in service-name mode |
 
-The lookup is wrapped in a defensive guard: even though `ValidateLeaseItems` and the genesis check prevent multi-item legacy leases from existing, the keeper rejects them at the lookup site rather than relying on construction-time invariants.
+Multi-item legacy leases with distinct SKUs are valid and remain billable. Their unnamed items cannot be addressed unambiguously by `service_name`, so custom-domain assignment rejects that shape. Create a lease in service-name mode when item-specific domain routing is needed.
 
 ### Set / clear flow (`MsgSetItemCustomDomain`)
 
@@ -1108,7 +1108,9 @@ coin addition so the SDK's fixed 256-bit integer limit returns a module error
 instead of triggering `math.Int`/`sdk.Coins` panics:
 
 ```go
-totals, err := CalculateTotalAccruedForLease(items, duration)
+// Runtime settlement derives whole seconds from timestamps without
+// time.Duration saturation, then uses the shared checked accrual core.
+totals, err := calculateTotalAccruedForLeaseSeconds(items, elapsedSeconds)
 var overflow *AccrualOverflowError
 if errors.As(err, &overflow) {
     // totals remains exact for unaffected denoms; overflow.Denoms is in
@@ -1126,8 +1128,8 @@ This returns `sdk.Coins` to support multi-denom leases where different SKUs may 
 4. **Withdrawal batch size** - Caps provider-wide withdraw iterations (max 100)
 5. **Initial credit reservation** - Requires credit covering `min_lease_duration` at creation; it does not enforce a minimum elapsed lease duration
 6. **Lazy settlement** - No per-block overhead for accrual calculation
-7. **EndBlocker rate limiting** - Max 100 pending lease expirations per block
-8. **Indexed lookups** - `CreditAddressIndex` (prefix 6) is a maintained reverse index (`credit_address → tenant`) written by `SetCreditAccount` and checked by the derived-index invariant. No transaction or query currently uses it for credit-account detection
+7. **EndBlocker rate limiting** - Max 100 successful pending lease expirations per block; candidate pages advance past failures, which are retried next block. Corruption scans have no separate visit cap.
+8. **Indexed lookups** - `CreditAddressIndex` (prefix 6) is a maintained reverse index (`credit_address → tenant`) written by `SetCreditAccount` and checked by the derived-index invariant. The application tokenfactory bank adapter uses it to reject issuer debits from registered credit accounts
 9. **Same provider requirement** - Simplifies acknowledgement flow
 
 ## Performance Characteristics
@@ -1246,6 +1248,7 @@ aggregate is not bank-backed.
 ### Simulation (`x/billing/simulation/`)
 - Random tenant operations and `CreateLeaseForTenant` signed by accounts in the billing `allowed_list`.
 - Acknowledge/reject/cancel/close batches of up to three leases sharing a tenant and provider; acknowledgement respects the tenant's remaining active-lease capacity.
+- Close batches select tenant, provider, or signable authority; low-weight authority parameter updates vary valid numeric bounds and retain current lists.
 - Provider-wide withdrawal continuation scheduled for subsequent blocks using the previous transaction response's cursor.
 - State consistency and invariant checks across randomized histories; focused keeper tests cover individual error paths.
 
@@ -1269,6 +1272,11 @@ not correct this phase ordering. These runs exercise committed SKU/billing
 histories but provide no randomized PoA validator-mutation coverage.
 [ENG-915](https://linear.app/liftedinit/issue/ENG-915) tracks correcting the
 simulator ordering and restoring that coverage; production execution is unchanged.
+The simulation-only slashing profile pins `min_signed_per_window=0` so downtime
+jailing cannot exhaust the fixed validator set. The coverage gate rejects zero
+billing selections, and independent tallies retain partial diagnostics even if
+the SDK exits with Skip/Fatalf. Direct authority parameter updates run when the
+authority is signable; group voting remains outside this simulation.
 
 ## Scalability Considerations
 

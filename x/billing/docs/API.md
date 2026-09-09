@@ -545,12 +545,13 @@ manifestd tx billing update-params [max-leases-per-tenant] [max-items-per-lease]
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --allowed-list | string | Comma-separated addresses with privileged authority for `create-lease-for-tenant` and `set-item-custom-domain`. **Preserve-on-omit**: omit the flag to round-trip the current on-chain value unchanged. Pass `--allowed-list=""` to explicitly clear. |
-| --reserved-domain-suffixes | string | Comma-separated DNS suffixes (each beginning with `.`) that tenants are forbidden from claiming via `set-item-custom-domain`. Same **preserve-on-omit** semantics as `--allowed-list`. |
+| --allowed-list | string | Comma-separated addresses with privileged authority for `create-lease-for-tenant` and `set-item-custom-domain`. Omit the flag to snapshot the on-chain value at construction time. Pass `--allowed-list=""` to explicitly clear. |
+| --reserved-domain-suffixes | string | Comma-separated DNS suffixes (each beginning with `.`) that tenants are forbidden from claiming via `set-item-custom-domain`. Same construction-time snapshot semantics as `--allowed-list`. |
+| --height | int64 | Height used when querying omitted lists (0 = latest). The CLI prints resolved lists to stderr. |
 
 **Examples:**
 ```bash
-# Update only numeric params; allowed_list and reserved_domain_suffixes are preserved unchanged.
+# Update only numeric params; snapshot allowed_list and reserved_domain_suffixes from the chain.
 manifestd tx billing update-params \
   100 20 3600 10 1800 \
   --from authority
@@ -562,14 +563,19 @@ manifestd tx billing update-params \
   --reserved-domain-suffixes ".barney0.manifest0.net,.lifted.app" \
   --from authority
 
-# Explicitly clear reserved_domain_suffixes (numeric-only updates would preserve it).
+# Explicitly clear reserved_domain_suffixes (numeric-only updates snapshot its current value).
 manifestd tx billing update-params \
   100 20 3600 10 1800 \
   --reserved-domain-suffixes="" \
   --from authority
 ```
 
-**Reserved-suffix validation:** each entry must begin with `.`, the substring after the dot must be a valid FQDN, and duplicates are rejected.
+This only snapshots lists at transaction construction. Governance execution
+replaces every parameter, so a delayed proposal can overwrite intervening
+changes. Recheck all fields before approval and rebuild stale proposals;
+`--height` does not add an execution-time conflict check.
+
+**Reserved-suffix validation:** each entry must begin with `.`, the substring after the dot must be a lowercase DNS zone (single-label zones such as `.internal` are valid), and duplicates are rejected.
 
 ---
 
@@ -837,7 +843,7 @@ descending denomination order. Go callers must call `Sort()` before using
 - `credit_account.reserved_amounts`: Exact aggregate of every live modern lease's `reservation.remaining_amounts` plus `unattributed_reserved_amounts`. New leases start with `rate_per_second × min_lease_duration`, but settlement consumes that tranche, so this is not a fixed nominal sum.
 - `credit_account.unattributed_reserved_amounts`: Subset of `reserved_amounts` allocated to the live historical cohort whose individual reservations cannot be reconstructed. It is normally empty on newly created state.
 - `credit_account.unattributed_lease_count`: Exact number of live historical leases sharing that cohort, including when its remaining amount is zero. Terminal transitions decrement it in O(1) and release the exact remaining `unattributed_reserved_amounts` when it reaches zero.
-- `balances`: One ordered page of all bank balances at the credit address. Follow `pagination.next_key` to read every funded denom.
+- `balances`: One ordered page of spendable bank balances at the credit address. Vesting locked coins are excluded. Fully locked denominations are omitted; follow `pagination.next_key` until empty even when the coin arrays are empty.
 - `available_balances`: Credit available for new leases (`balances - reserved_amounts`) for the same denom page. New leases can only be created if the full account covers the required reservation.
 - `pagination`: The SDK bank-balance cursor. Offset and total-count scans are intentionally unsupported.
 
@@ -1138,11 +1144,11 @@ manifestd query billing credit-estimate manifest1abc...
 |-------|-------------|
 | `current_balance` | Tenant's current credit balance for denominations used by active leases |
 | `total_rate_per_second` | Combined burn rate of all active leases (per denom) |
-| `estimated_duration_seconds` | Gross `min(raw bank balance / active rate)` runway across active denoms |
+| `estimated_duration_seconds` | Gross `min(spendable bank balance / active rate)` runway across active denoms |
 | `active_lease_count` | Number of currently active leases |
 
 **Notes:**
-- The estimate is calculated in real-time from raw bank balances and active lease rates
+- The estimate is calculated in real-time from spendable bank balances and active lease rates
 - If no active leases exist, `estimated_duration_seconds` will be `0` and `total_rate_per_second` will be empty
 - With multi-denom support, the estimate returns the minimum duration across all denominations (the limiting factor)
 - A quotient at or above `18,446,744,073,709,551,615` seconds is saturated to that maximum `uint64` value; it is not reported as zero
@@ -1909,7 +1915,7 @@ message Params {
 - `max_leases_per_tenant`: Revalidated when PENDING leases are acknowledged, using each tenant's active count after the complete batch.
 - `pending_timeout`: Defines a hard acknowledgement deadline at `created_at + current pending_timeout`. The exact cutoff is valid; a strictly later block time is rejected even before rate-limited EndBlock cleanup.
 - `allowed_list`: Up to 100 addresses with privileged authority for `MsgCreateLeaseForTenant` and `MsgSetItemCustomDomain`, in addition to the module authority. Addresses must be valid and distinct by decoded identity.
-- `reserved_domain_suffixes`: Up to 100 DNS suffixes (each must begin with `.`) that tenants are forbidden from claiming as a `LeaseItem.custom_domain`. Match is case-insensitive at a label boundary, plus the apex (e.g. `.foo.example` matches both `app.foo.example` and `foo.example`). Each entry's substring after the leading dot must itself be a valid FQDN. Tunable via `MsgUpdateParams`.
+- `reserved_domain_suffixes`: Up to 100 DNS suffixes (each must begin with `.`) that tenants are forbidden from claiming as a `LeaseItem.custom_domain`. Match is case-insensitive at a label boundary, plus the apex (e.g. `.foo.example` matches both `app.foo.example` and `foo.example`). Each entry's substring after the leading dot must be a lowercase DNS zone; a single-label zone such as `.internal` is valid. Tunable via `MsgUpdateParams`.
 
 **Defaults and validation bounds:**
 | Param | Default | Valid range |
@@ -1931,7 +1937,7 @@ The billing module emits the following events for state changes:
 | Event | Attributes | Description |
 |-------|------------|-------------|
 | `credit_funded` | tenant, credit_address, sender, amount, new_balance | Credit account funded |
-| `lease_created` | lease_uuid, tenant, provider_uuid, item_count, total_rate_per_second, pending_lease_count, created_by, meta_hash (optional, hex-encoded) | Lease created in PENDING state |
+| `lease_created` | lease_uuid, tenant, provider_uuid, item_count, total_rate_per_second, pending_lease_count, created_by, sender, meta_hash (optional, hex-encoded) | Lease created in PENDING state |
 | `lease_acknowledged` | lease_uuid, tenant, provider_uuid, acknowledged_by | Provider acknowledged lease (→ ACTIVE) |
 | `batch_acknowledged` | lease_count, provider_uuid, acknowledged_by | Batch summary when multiple leases acknowledged |
 | `lease_rejected` | lease_uuid, tenant, provider_uuid, rejected_by, rejection_reason | Provider rejected lease |
@@ -1942,11 +1948,15 @@ The billing module emits the following events for state changes:
 | `lease_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, closed_by, duration_seconds, active_lease_count, closure_reason (optional) | Lease closed (manually, or auto-closed on credit exhaustion) |
 | `batch_closed` | lease_count, closed_by, settled_amounts | Batch summary when multiple leases closed |
 | `lease_auto_closed` | lease_uuid, tenant, provider_uuid, amount, payout_address, reason | Lease auto-closed by provider-wide withdrawal; amount is the actual final transfer |
-| `provider_withdraw` | lease_uuid, amount, provider_uuid, payout_address, auto_closed (auto-close only) | Provider withdrawal from a specific lease; amount is the actual transfer |
+| `provider_withdraw` | lease_uuid, amount, provider_uuid, payout_address, auto_closed (auto-close only) | One committed lease withdrawal in either specific or provider-wide mode; amount is the actual transfer |
 | `batch_withdraw` | lease_count, provider_uuid, amount, payout_address; provider-wide also: auto_closed, failed_lease_count, failed_lease_uuids | Specific-UUID batch summary when more than one lease is requested; provider-wide summary on every call, including zero-success calls. Provider-wide failed UUIDs are comma-separated in processing order. |
 | `params_updated` | | Module parameters updated |
 | `lease_custom_domain_set` | lease_uuid, tenant, provider_uuid, service_name, custom_domain, set_by | `LeaseItem.custom_domain` set or changed (v2.1.0+; `provider_uuid` added v2.2.0+) |
 | `lease_custom_domain_cleared` | lease_uuid, tenant, provider_uuid, service_name, custom_domain (previous value), set_by | `LeaseItem.custom_domain` cleared (v2.1.0+; `provider_uuid` added v2.2.0+) |
+
+**Lease creation:** `created_by` records `tenant`, `authority`, or `allowed`;
+`sender` is the canonical signer address. Allowed-list creation no longer
+mislabels the role as authority. Indexers should use `sender` for identity.
 
 **Custom-domain `set_by` attribute:** records the role under which the call was authorised. One of `tenant`, `authority`, `allowed`. No event is emitted for an idempotent re-set or a clear of an already-empty domain.
 
@@ -1958,9 +1968,15 @@ leases, and `failed_lease_uuids` is their comma-separated processing-order
 list (empty when none). Specific-lease batches emit none of these three
 provider-wide summary attributes.
 
-**Credit-exhaustion auto-close emits three events by path:** the same logical outcome surfaces as `lease_closed` (`closed_by=credit_exhaustion`) from the close path, `provider_withdraw` (`auto_closed="true"`) from specific-lease `MsgWithdraw`, and `lease_auto_closed` (`reason=credit_exhausted`) from provider-wide `MsgWithdraw`.
+**Credit-exhaustion events:** close emits `lease_closed` with
+`closed_by=credit_exhaustion`. Both withdrawal modes emit one `provider_withdraw`
+per committed withdrawal, with `auto_closed="true"` for exhaustion. Provider-wide
+withdrawal also retains `lease_auto_closed` (`reason=credit_exhausted`) as
+lifecycle information. That event and `batch_withdraw` describe the same
+transfers; do not add their amounts to `provider_withdraw` totals. Failed or
+zero-accrual skipped leases emit no payout event.
 
-**Special Case - Withdrawal Auto-Close:** When a specific-lease `MsgWithdraw`
+**Special Case - Withdrawal Auto-Close:** When a `MsgWithdraw`
 finds accrued charges meet or exceed the lease's spendable credit
 `B - (R - A)`, it settles and automatically closes the lease. Its
 `provider_withdraw` event uses `auto_closed: "true"`; `amount` is the actual

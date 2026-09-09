@@ -31,16 +31,6 @@ func NewMsgServerImpl(keeper Keeper) types.MsgServer {
 	return &msgServer{k: keeper}
 }
 
-// isAuthorizedForTenantLeaseCreation checks if the sender is the authority or in the allowed list.
-// Thin wrapper over the keeper's shared HasAdminPrivileges helper.
-func (ms msgServer) isAuthorizedForTenantLeaseCreation(ctx context.Context, sender string) (bool, error) {
-	role, err := ms.k.HasAdminPrivileges(ctx, sender)
-	if err != nil {
-		return false, err
-	}
-	return role != "", nil
-}
-
 // FundCredit funds a tenant's credit account.
 func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*types.MsgFundCreditResponse, error) {
 	if err := msg.ValidateBasic(); err != nil {
@@ -107,8 +97,8 @@ func (ms msgServer) FundCredit(ctx context.Context, msg *types.MsgFundCredit) (*
 	// All operations succeeded - commit atomically
 	writeCache()
 
-	// Get the new balance from the bank module for the funded denom (after commit)
-	newBalance := ms.k.bankKeeper.GetBalance(ctx, creditAddr, msg.Amount.Denom)
+	// Return usable credit after bank vesting locks (after commit).
+	newBalance := ms.k.spendableCreditCoin(ctx, creditAddr, msg.Amount.Denom)
 
 	// Emit the funding event after commit so it includes the final balance.
 	sdkCtx.EventManager().EmitEvent(
@@ -375,7 +365,7 @@ func (ms msgServer) createLeaseInternal(ctx context.Context, tenant string, item
 }
 
 // emitLeaseCreatedEvent emits a lease_created event with the given parameters.
-func emitLeaseCreatedEvent(ctx sdk.Context, result *leaseCreationResult, createdBy string) {
+func emitLeaseCreatedEvent(ctx sdk.Context, result *leaseCreationResult, createdBy, sender string) {
 	eventAttrs := []sdk.Attribute{
 		sdk.NewAttribute(types.AttributeKeyLeaseUUID, result.leaseUUID),
 		sdk.NewAttribute(types.AttributeKeyTenant, result.tenant),
@@ -384,6 +374,7 @@ func emitLeaseCreatedEvent(ctx sdk.Context, result *leaseCreationResult, created
 		sdk.NewAttribute(types.AttributeKeyTotalRate, result.totalRates.String()),
 		sdk.NewAttribute(types.AttributeKeyPendingLeaseCount, strconv.FormatUint(result.pendingLeases, 10)),
 		sdk.NewAttribute(types.AttributeKeyCreatedBy, createdBy),
+		sdk.NewAttribute(types.AttributeKeySender, sender),
 	}
 	if len(result.metaHash) > 0 {
 		eventAttrs = append(eventAttrs, sdk.NewAttribute(types.AttributeKeyMetaHash, hex.EncodeToString(result.metaHash)))
@@ -402,7 +393,7 @@ func (ms msgServer) CreateLease(ctx context.Context, msg *types.MsgCreateLease) 
 		return nil, err
 	}
 
-	emitLeaseCreatedEvent(sdk.UnwrapSDKContext(ctx), result, "tenant")
+	emitLeaseCreatedEvent(sdk.UnwrapSDKContext(ctx), result, types.AttributeValueRoleTenant, result.tenant)
 
 	return &types.MsgCreateLeaseResponse{
 		LeaseUuid: result.leaseUUID,
@@ -417,20 +408,24 @@ func (ms msgServer) CreateLeaseForTenant(ctx context.Context, msg *types.MsgCrea
 	}
 
 	// Verify sender is authorized (authority or in allowed list)
-	authorized, err := ms.isAuthorizedForTenantLeaseCreation(ctx, msg.Authority)
+	role, err := ms.k.HasAdminPrivileges(ctx, msg.Authority)
 	if err != nil {
 		return nil, types.ErrUnauthorized.Wrapf("failed to check authorization: %s", err)
 	}
-	if !authorized {
+	if role == "" {
 		return nil, types.ErrUnauthorized.Wrapf("%s is not the authority or in the allowed list", msg.Authority)
 	}
 
+	sender, err := sdk.AccAddressFromBech32(msg.Authority)
+	if err != nil {
+		return nil, err
+	}
 	result, err := ms.createLeaseInternal(ctx, msg.Tenant, msg.Items, msg.MetaHash)
 	if err != nil {
 		return nil, err
 	}
 
-	emitLeaseCreatedEvent(sdk.UnwrapSDKContext(ctx), result, "authority")
+	emitLeaseCreatedEvent(sdk.UnwrapSDKContext(ctx), result, role, sender.String())
 
 	return &types.MsgCreateLeaseForTenantResponse{
 		LeaseUuid: result.leaseUUID,
@@ -778,7 +773,6 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 	tenantOrder := make([]string, 0)
 	var provider skutypes.Provider
 	var providerUUID string
-	var err error
 
 	for i, leaseUUID := range msg.LeaseUuids {
 		// Get lease
@@ -869,7 +863,7 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 		switch {
 		case lease.State == types.LEASE_STATE_ACTIVE:
 			settleTime = blockTime
-		case lease.ClosedAt != nil:
+		case lease.State == types.LEASE_STATE_CLOSED && lease.ClosedAt != nil:
 			settleTime = *lease.ClosedAt
 		default:
 			settleTime = lease.LastSettledAt // No duration, will return zero
@@ -930,31 +924,9 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 
 	for i := range leases {
 		lease := &leases[i]
-		_, wasAutoClosed := autoClosedSet[lease.Uuid]
-
-		if wasAutoClosed {
-			amounts := leaseAmounts[lease.Uuid]
-			sdkCtx.EventManager().EmitEvent(
-				sdk.NewEvent(
-					types.EventTypeProviderWithdraw,
-					sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
-					sdk.NewAttribute(types.AttributeKeyAmount, amounts.String()),
-					sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
-					sdk.NewAttribute(types.AttributeKeyPayoutAddress, payoutAddress),
-					sdk.NewAttribute(types.AttributeKeyAutoClosed, "true"),
-				),
-			)
-		} else if amounts, ok := leaseAmounts[lease.Uuid]; ok {
-			// Only emit for leases that had a non-zero withdrawal
-			sdkCtx.EventManager().EmitEvent(
-				sdk.NewEvent(
-					types.EventTypeProviderWithdraw,
-					sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
-					sdk.NewAttribute(types.AttributeKeyAmount, amounts.String()),
-					sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
-					sdk.NewAttribute(types.AttributeKeyPayoutAddress, payoutAddress),
-				),
-			)
+		if amounts, ok := leaseAmounts[lease.Uuid]; ok {
+			_, wasAutoClosed := autoClosedSet[lease.Uuid]
+			emitProviderWithdrawalEvent(sdkCtx, lease, amounts, payoutAddress, wasAutoClosed)
 		}
 	}
 
@@ -977,6 +949,21 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 		WithdrawalCount: withdrawalCount,
 		HasMore:         false, // Never has more in specific lease mode
 	}, nil
+}
+
+// emitProviderWithdrawalEvent attributes each committed payout to its lease in
+// both withdrawal modes. Failed or skipped per-lease caches emit no payout event.
+func emitProviderWithdrawalEvent(ctx sdk.Context, lease *types.Lease, amounts sdk.Coins, payoutAddress string, autoClosed bool) {
+	attributes := []sdk.Attribute{
+		sdk.NewAttribute(types.AttributeKeyLeaseUUID, lease.Uuid),
+		sdk.NewAttribute(types.AttributeKeyAmount, amounts.String()),
+		sdk.NewAttribute(types.AttributeKeyProviderUUID, lease.ProviderUuid),
+		sdk.NewAttribute(types.AttributeKeyPayoutAddress, payoutAddress),
+	}
+	if autoClosed {
+		attributes = append(attributes, sdk.NewAttribute(types.AttributeKeyAutoClosed, "true"))
+	}
+	ctx.EventManager().EmitEvent(sdk.NewEvent(types.EventTypeProviderWithdraw, attributes...))
 }
 
 // withdrawFromProvider handles paginated withdrawal from all leases for a provider.
@@ -1103,6 +1090,7 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 
 		write()
 
+		emitProviderWithdrawalEvent(sdkCtx, &lease, result.transferAmounts, payoutAddress, result.autoClosed)
 		if result.autoClosed {
 			sdkCtx.EventManager().EmitEvent(
 				sdk.NewEvent(

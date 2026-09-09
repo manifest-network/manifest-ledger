@@ -99,17 +99,10 @@ type leaseMigrationEntry struct {
 }
 
 func (m Migrator) rewriteLeaseValues(ctx sdk.Context) error {
-	var (
-		lastKey  string
-		hasStart bool
-	)
+	var keyRange collections.Ranger[string]
 	store := m.keeper.storeService.OpenKVStore(ctx)
 
 	for {
-		var keyRange collections.Ranger[string]
-		if hasStart {
-			keyRange = new(collections.Range[string]).StartExclusive(lastKey)
-		}
 		iterator, err := m.keeper.Leases.Iterate(ctx, keyRange)
 		if err != nil {
 			return fmt.Errorf("iterate billing leases: %w", err)
@@ -147,8 +140,7 @@ func (m Migrator) rewriteLeaseValues(ctx sdk.Context) error {
 		if !hasMore {
 			return nil
 		}
-		lastKey = entries[len(entries)-1].key
-		hasStart = true
+		keyRange = new(collections.Range[string]).StartExclusive(entries[len(entries)-1].key)
 	}
 }
 
