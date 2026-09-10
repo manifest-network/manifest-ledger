@@ -6,6 +6,10 @@ findings are low-severity correctness, documentation, and test-assurance issues.
 Confidence describes confidence in each disposition, not a guarantee that no
 other vulnerabilities exist.
 
+The [subsequent export/runbook response](2026-09-10-claude-export-runbook-response.md)
+clarifies the pre-first-Commit API boundary and export file-output command, and
+replaces the three incomplete mutant logs with reproducible exact-baseline reruns.
+
 ## Findings and dispositions
 
 | Finding | Disposition | Confidence |

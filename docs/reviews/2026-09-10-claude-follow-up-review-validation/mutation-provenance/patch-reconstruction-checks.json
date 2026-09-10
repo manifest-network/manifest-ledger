@@ -1,0 +1,62 @@
+[
+  {
+    "run": "withdrawal-original-mutant",
+    "fixture_git_init_argv": [
+      "git",
+      "init",
+      "--quiet",
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-patch-check-final/withdrawal-original-mutant"
+    ],
+    "argv": [
+      "git",
+      "-C",
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-patch-check-final/withdrawal-original-mutant",
+      "apply",
+      "--unidiff-zero",
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-original.patch"
+    ],
+    "exit_status": 0,
+    "reconstructed_sha256": "e1d875a223a36b73f95f65c068eb2ac13a73114a55b33a3f7c72372f3543a92d",
+    "matches_recorded_mutant": true
+  },
+  {
+    "run": "withdrawal-shallow-mutant",
+    "fixture_git_init_argv": [
+      "git",
+      "init",
+      "--quiet",
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-patch-check-final/withdrawal-shallow-mutant"
+    ],
+    "argv": [
+      "git",
+      "-C",
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-patch-check-final/withdrawal-shallow-mutant",
+      "apply",
+      "--unidiff-zero",
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-shallow.patch"
+    ],
+    "exit_status": 0,
+    "reconstructed_sha256": "c2a56e24051ad1ff7f7d64c98f58eb56c155c9659e3ab3ab4abdcaf2cf2930b0",
+    "matches_recorded_mutant": true
+  },
+  {
+    "run": "export-stale-header-mutant",
+    "fixture_git_init_argv": [
+      "git",
+      "init",
+      "--quiet",
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-patch-check-final/export-stale-header-mutant"
+    ],
+    "argv": [
+      "git",
+      "-C",
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-patch-check-final/export-stale-header-mutant",
+      "apply",
+      "--unidiff-zero",
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/export-stale-header.patch"
+    ],
+    "exit_status": 0,
+    "reconstructed_sha256": "ff42a24fe733c859b973e488e662ea5d1e2f7321a19f8714435a441d573f8c53",
+    "matches_recorded_mutant": true
+  }
+]

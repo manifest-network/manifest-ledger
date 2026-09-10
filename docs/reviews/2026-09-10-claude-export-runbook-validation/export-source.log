@@ -1,0 +1,170 @@
+Source-only evidence; exact SDK replacement from go.mod. No shared SDK file was changed.
+The export contract intentionally requires a committed source block. No unsupported pre-commit clock fallback was restored.
+
+InitialHeight=0 defaults the first block to 1.
+File: /home/fmorency/go/pkg/mod/github.com/manifest-network/cosmos-sdk@v0.50.14-liftedinit.1.0.20260831215405-b62c931f451a/baseapp/abci.go
+SHA256: aa00f7353c666d2ec72b1c7ad093cc9dffe2a7293116d399e54dedd36c17170d
+39: func (app *BaseApp) InitChain(req *abci.RequestInitChain) (*abci.ResponseInitChain, error) {
+40:     if req.ChainId != app.chainID {
+41:         return nil, fmt.Errorf("invalid chain-id on InitChain; expected: %s, got: %s", app.chainID, req.ChainId)
+42:     }
+43:
+44:     // On a new chain, we consider the init chain block height as 0, even though
+45:     // req.InitialHeight is 1 by default.
+46:     initHeader := cmtproto.Header{ChainID: req.ChainId, Time: req.Time}
+47:     app.logger.Info("InitChain", "initialHeight", req.InitialHeight, "chainID", req.ChainId)
+48:
+49:     // Set the initial height, which will be used to determine if we are proposing
+50:     // or processing the first block or not.
+51:     app.initialHeight = req.InitialHeight
+52:     if app.initialHeight == 0 { // If initial height is 0, set it to 1
+53:         app.initialHeight = 1
+54:     }
+55:
+56:     // if req.InitialHeight is > 1, then we set the initial version on all stores
+57:     if req.InitialHeight > 1 {
+58:         initHeader.Height = req.InitialHeight
+59:         if err := app.cms.SetInitialVersion(req.InitialHeight); err != nil {
+60:             return nil, err
+61:         }
+62:     }
+63:
+64:     // initialize states with a correct header
+65:     app.setState(execModeFinalize, initHeader)
+66:     app.setState(execModeCheck, initHeader)
+
+InitChain defers the raw request InitialHeight into both context headers.
+File: /home/fmorency/go/pkg/mod/github.com/manifest-network/cosmos-sdk@v0.50.14-liftedinit.1.0.20260831215405-b62c931f451a/baseapp/abci.go
+SHA256: aa00f7353c666d2ec72b1c7ad093cc9dffe2a7293116d399e54dedd36c17170d
+78:     defer func() {
+79:         // InitChain represents the state of the application BEFORE the first block,
+80:         // i.e. the genesis block. This means that when processing the app's InitChain
+81:         // handler, the block height is zero by default. However, after Commit is called
+82:         // the height needs to reflect the true block height.
+83:         initHeader.Height = req.InitialHeight
+84:         app.checkState.SetContext(app.checkState.Context().WithBlockHeader(initHeader).
+85:             WithHeaderInfo(coreheader.Info{
+86:                 ChainID: req.ChainId,
+87:                 Height:  req.InitialHeight,
+88:                 Time:    req.Time,
+89:             }))
+90:         app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithBlockHeader(initHeader).
+91:             WithHeaderInfo(coreheader.Info{
+92:                 ChainID: req.ChainId,
+93:                 Height:  req.InitialHeight,
+94:                 Time:    req.Time,
+95:             }))
+96:     }()
+97:
+98:     if app.initChainer == nil {
+99:         return &abci.ResponseInitChain{}, nil
+
+FinalizeBlock updates its own block header; CheckTx retains its previous clock and height.
+File: /home/fmorency/go/pkg/mod/github.com/manifest-network/cosmos-sdk@v0.50.14-liftedinit.1.0.20260831215405-b62c931f451a/baseapp/abci.go
+SHA256: aa00f7353c666d2ec72b1c7ad093cc9dffe2a7293116d399e54dedd36c17170d
+721:    if app.finalizeBlockState == nil {
+722:        app.setState(execModeFinalize, header)
+723:    }
+724:
+725:    // Context is now updated with Header information.
+726:    app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().
+727:        WithBlockHeader(header).
+728:        WithHeaderHash(req.Hash).
+729:        WithHeaderInfo(coreheader.Info{
+730:            ChainID: app.chainID,
+731:            Height:  req.Height,
+732:            Time:    req.Time,
+733:            Hash:    req.Hash,
+734:            AppHash: app.LastCommitID().Hash,
+735:        }).
+736:        WithConsensusParams(app.GetConsensusParams(app.finalizeBlockState.Context())).
+737:        WithVoteInfos(req.DecidedLastCommit.Votes).
+738:        WithExecMode(sdk.ExecModeFinalize).
+739:        WithCometInfo(cometInfo{
+740:            Misbehavior:     req.Misbehavior,
+741:            ValidatorsHash:  req.NextValidatorsHash,
+742:            ProposerAddress: req.ProposerAddress,
+743:            LastCommit:      req.DecidedLastCommit,
+744:        }))
+745:
+746:    // GasMeter must be set after we get a context with updated consensus params.
+747:    gasMeter := app.getBlockGasMeter(app.finalizeBlockState.Context())
+748:    app.finalizeBlockState.SetContext(app.finalizeBlockState.Context().WithBlockGasMeter(gasMeter))
+749:
+750:    if app.checkState != nil {
+751:        app.checkState.SetContext(app.checkState.Context().
+752:            WithBlockGasMeter(gasMeter).
+753:            WithHeaderHash(req.Hash))
+754:    }
+
+Commit sets the commit header, commits the CMS, and resets CheckTx to the committed header.
+File: /home/fmorency/go/pkg/mod/github.com/manifest-network/cosmos-sdk@v0.50.14-liftedinit.1.0.20260831215405-b62c931f451a/baseapp/abci.go
+SHA256: aa00f7353c666d2ec72b1c7ad093cc9dffe2a7293116d399e54dedd36c17170d
+920: func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
+921:    header := app.finalizeBlockState.Context().BlockHeader()
+922:    retainHeight := app.GetBlockRetentionHeight(header.Height)
+923:
+924:    if app.precommiter != nil {
+925:        app.precommiter(app.finalizeBlockState.Context())
+926:    }
+927:
+928:    rms, ok := app.cms.(*rootmulti.Store)
+929:    if ok {
+930:        rms.SetCommitHeader(header)
+931:    }
+932:
+933:    app.cms.Commit()
+934:
+935:    resp := &abci.ResponseCommit{
+936:        RetainHeight: retainHeight,
+937:    }
+938:
+939:    abciListeners := app.streamingManager.ABCIListeners
+940:    if len(abciListeners) > 0 {
+941:        ctx := app.finalizeBlockState.Context()
+942:        blockHeight := ctx.BlockHeight()
+943:        changeSet := app.cms.PopStateCache()
+944:
+945:        for _, abciListener := range abciListeners {
+946:            if err := abciListener.ListenCommit(ctx, *resp, changeSet); err != nil {
+947:                app.logger.Error("Commit listening hook failed", "height", blockHeight, "err", err)
+948:            }
+949:        }
+950:    }
+951:
+952:    // Reset the CheckTx state to the latest committed.
+953:    //
+954:    // NOTE: This is safe because CometBFT holds a lock on the mempool for
+955:    // Commit. Use the header from this latest block.
+956:    app.setState(execModeCheck, header)
+957:
+958:    app.finalizeBlockState = nil
+
+FinalizeBlock workingHash flushes its branch before the actual CMS commit.
+File: /home/fmorency/go/pkg/mod/github.com/manifest-network/cosmos-sdk@v0.50.14-liftedinit.1.0.20260831215405-b62c931f451a/baseapp/abci.go
+SHA256: aa00f7353c666d2ec72b1c7ad093cc9dffe2a7293116d399e54dedd36c17170d
+971: // These writes will be persisted to the root multi-store (app.cms) and flushed to
+972: // disk in the Commit phase. This means when the ABCI client requests Commit(), the application
+973: // state transitions will be flushed to disk and as a result, but we already have
+974: // an application Merkle root.
+975: func (app *BaseApp) workingHash() []byte {
+976:    // Write the FinalizeBlock state into branched storage and commit the MultiStore.
+977:    // The write to the FinalizeBlock state writes all state transitions to the root
+978:    // MultiStore (app.cms) so when Commit() is called it persists those values.
+979:    app.finalizeBlockState.ms.Write()
+980:
+981:    // Get the hash of all writes in order to return the apphash to the comet in finalizeBlock.
+982:    commitHash := app.cms.WorkingHash()
+
+LastBlockHeight reads LastCommitID.Version.
+File: /home/fmorency/go/pkg/mod/github.com/manifest-network/cosmos-sdk@v0.50.14-liftedinit.1.0.20260831215405-b62c931f451a/baseapp/baseapp.go
+SHA256: 9b113250597bc408a8ab21d682b3d56897e8bfe8bff9487abbb47c58b6c24eff
+395:
+396: // LastBlockHeight returns the last committed block height.
+397: func (app *BaseApp) LastBlockHeight() int64 {
+398:    return app.cms.LastCommitID().Version
+399: }
+400:
+
+Shipped CLI path: cmd/manifestd/cmd/commands.go appExport creates a fresh app and optionally loads a historical height; it does not call InitChain.
+Fixed test command (exit 0): GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR="$PWD/.review-tmp/build" go test -p 2 ./app -run '^TestZeroHeight' -count=1 -v > .review-tmp/round70-export-tests.log 2>&1

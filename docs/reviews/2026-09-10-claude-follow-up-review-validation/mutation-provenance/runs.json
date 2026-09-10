@@ -1,0 +1,259 @@
+{
+  "started_at_utc": "2026-09-10T18:59:41.690713+00:00",
+  "baseline_commit": "b4d8403977b8f18eeaad699239e9661efa2a4a8a",
+  "previous_commit": "4b89fdacb8d840b074ffda3e64efb34f5a4b71b3",
+  "baseline_git_archive_sha256": "235e4171af8b0581fff909ac1613efef183ef1fad78b3fcfc5c81d566e4130ef",
+  "snapshot_directory": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline",
+  "source_repository": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "environment_overrides": {
+    "GOTOOLCHAIN": "go1.26.8",
+    "GOMAXPROCS": "4",
+    "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline/.review-tmp/build",
+    "GOWORK": "off",
+    "GOFLAGS": "-mod=readonly"
+  },
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_paths": {
+    "GOCACHE": "/home/fmorency/.cache/go-build",
+    "GOMODCACHE": "/home/fmorency/go/pkg/mod",
+    "GOROOT": "/home/fmorency/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.8.linux-amd64"
+  },
+  "driver_sha256": "760449899c84bfaea18b78427797ee237a08cecd960896bb643004181e0c7c29",
+  "test_source_sha256": {
+    "go.mod": "5b9e467e5816f015cc94cb1cf9f567b94f6cc51d890b232624cfcb31fef465ca",
+    "go.sum": "48659d7d23c50077a81d452aec65fd1655fc45e602f85c4750545d5537b3aee2",
+    "x/billing/keeper/export_test.go": "e621f23c934588102f6eca2e4f9e3c1aa43e43f770d694296e03c3610c9a839e",
+    "x/billing/keeper/provider_withdrawal_atomicity_test.go": "59632fbcdcdea5e30f0d736a9327015854a86d95834403b1f398b79207c60cf2",
+    "app/export_billing_test.go": "ab455b2da685dbebaf21e92af61f5906402849fcd0d6484ccd32ac60865a2caf"
+  },
+  "runs": [
+    {
+      "name": "withdrawal-baseline-rerun",
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "./x/billing/keeper",
+        "-run",
+        "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+        "-count=1",
+        "-timeout=180s",
+        "-v"
+      ],
+      "exact_shell_command": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/raw-output/withdrawal-baseline-rerun.log 2>&1",
+      "log": "withdrawal-baseline-rerun.log",
+      "started_at_utc": "2026-09-10T18:59:41.695116+00:00",
+      "raw_stdout_stderr_path": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/raw-output/withdrawal-baseline-rerun.log",
+      "raw_archive": "mutation-provenance/withdrawal-baseline-rerun-raw.json",
+      "display_log_normalization": "UTF-8 decode; splitlines(); expandtabs(8) then rstrip() per line; join with LF and append final LF",
+      "expected_exit_status": 0,
+      "exit_status": 0,
+      "finished_at_utc": "2026-09-10T18:59:50.930535+00:00",
+      "log_sha256": "0e64472a6f2fa68fcd24811d4b753596aec412a648b7a22d5c8349a26532c878",
+      "raw_stdout_stderr_sha256": "174653587f38c9690ad0ba57423568228fd9c458c26d6569bc7c775a0cf013b3",
+      "raw_archive_sha256": "b649d9f4d06d703abeba84a514371114ab67eec4673624872bc75ec1cccaa2e0",
+      "tests_run": [
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller",
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller/lease_persistence",
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller/credit_account_persistence",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/live_settlement",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/auto_close"
+      ],
+      "tests_failed": []
+    },
+    {
+      "name": "export-baseline-rerun",
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "./app",
+        "-run",
+        "^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$",
+        "-count=1",
+        "-timeout=180s",
+        "-v"
+      ],
+      "exact_shell_command": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./app -run '^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/raw-output/export-baseline-rerun.log 2>&1",
+      "log": "export-baseline-rerun.log",
+      "started_at_utc": "2026-09-10T18:59:50.931252+00:00",
+      "raw_stdout_stderr_path": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/raw-output/export-baseline-rerun.log",
+      "raw_archive": "mutation-provenance/export-baseline-rerun-raw.json",
+      "display_log_normalization": "UTF-8 decode; splitlines(); expandtabs(8) then rstrip() per line; join with LF and append final LF",
+      "expected_exit_status": 0,
+      "exit_status": 0,
+      "finished_at_utc": "2026-09-10T18:59:58.022696+00:00",
+      "log_sha256": "8b864201cd7611184b6a8e2d921e9c65bdac680d18fee203ee604d8f2a2a108d",
+      "raw_stdout_stderr_sha256": "bad269179a796b82cde58d631a32a654eb58b1dbff9a08f8c17d62ad8d1f852d",
+      "raw_archive_sha256": "2ed04e9046904238e26bf4160dcc60460a09ecb79f6860651ecdb3e7bcd32e6c",
+      "tests_run": [
+        "TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback"
+      ],
+      "tests_failed": []
+    },
+    {
+      "name": "withdrawal-original-mutant",
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-overlay",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-original-overlay.json",
+        "./x/billing/keeper",
+        "-run",
+        "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+        "-count=1",
+        "-timeout=180s",
+        "-v"
+      ],
+      "exact_shell_command": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-original-overlay.json ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/raw-output/withdrawal-original-mutant.log 2>&1",
+      "log": "withdrawal-original-mutant.log",
+      "started_at_utc": "2026-09-10T18:59:58.024225+00:00",
+      "raw_stdout_stderr_path": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/raw-output/withdrawal-original-mutant.log",
+      "raw_archive": "mutation-provenance/withdrawal-original-mutant-raw.json",
+      "display_log_normalization": "UTF-8 decode; splitlines(); expandtabs(8) then rstrip() per line; join with LF and append final LF",
+      "expected_exit_status": 1,
+      "mutation": {
+        "description": "entire source file from 4b89fdacb8d840b074ffda3e64efb34f5a4b71b3",
+        "source_path": "x/billing/keeper/provider_withdrawal.go",
+        "baseline_sha256": "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+        "mutant_sha256": "e1d875a223a36b73f95f65c068eb2ac13a73114a55b33a3f7c72372f3543a92d",
+        "patch": "withdrawal-original.patch",
+        "patch_sha256": "c83560dacd69fd5765527148201b6681d99e21fb4a921af882a00b676b995307",
+        "overlay": "withdrawal-original-overlay.json",
+        "overlay_sha256": "cd63e91e7d9c2e9679247ef9f2ceefa5cf4c2091d792bad8ca05f514f8d373a5"
+      },
+      "exit_status": 1,
+      "finished_at_utc": "2026-09-10T19:00:06.395445+00:00",
+      "log_sha256": "69fecf7be4bb3f53eb073b8421169b74f9ab87913317e2260a5d862c33884f2f",
+      "raw_stdout_stderr_sha256": "0f0d7eea7135eebf7c318803b50d3653a29a2c3a1725c495a1a4a5b79d3f255a",
+      "raw_archive_sha256": "11f712d4624916e01b0cfeb9896ae479f051a371628eaea6a83f9bbd17d6dc7c",
+      "tests_run": [
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller",
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller/lease_persistence",
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller/credit_account_persistence",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/live_settlement",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/auto_close"
+      ],
+      "tests_failed": [
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller",
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller/lease_persistence",
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller/credit_account_persistence",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/live_settlement"
+      ]
+    },
+    {
+      "name": "withdrawal-shallow-mutant",
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-overlay",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-shallow-overlay.json",
+        "./x/billing/keeper",
+        "-run",
+        "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+        "-count=1",
+        "-timeout=180s",
+        "-v"
+      ],
+      "exact_shell_command": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-shallow-overlay.json ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/raw-output/withdrawal-shallow-mutant.log 2>&1",
+      "log": "withdrawal-shallow-mutant.log",
+      "started_at_utc": "2026-09-10T19:00:06.398020+00:00",
+      "raw_stdout_stderr_path": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/raw-output/withdrawal-shallow-mutant.log",
+      "raw_archive": "mutation-provenance/withdrawal-shallow-mutant-raw.json",
+      "display_log_normalization": "UTF-8 decode; splitlines(); expandtabs(8) then rstrip() per line; join with LF and append final LF",
+      "expected_exit_status": 1,
+      "mutation": {
+        "description": "delete only the reservation clone assignment from the baseline",
+        "source_path": "x/billing/keeper/provider_withdrawal.go",
+        "baseline_sha256": "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+        "mutant_sha256": "c2a56e24051ad1ff7f7d64c98f58eb56c155c9659e3ab3ab4abdcaf2cf2930b0",
+        "patch": "withdrawal-shallow.patch",
+        "patch_sha256": "583677bda4e4a4c10a4cf8189b5ea06944e0812c0ced8ef906f09144c2e3cdfe",
+        "overlay": "withdrawal-shallow-overlay.json",
+        "overlay_sha256": "1159f7fc101984209f3acbdbf9dfcdad77d6fda0742b182ebe42d6cdfa8e5991"
+      },
+      "exit_status": 1,
+      "finished_at_utc": "2026-09-10T19:00:17.232688+00:00",
+      "log_sha256": "e02432b1d141df483c8cce1092b966ee463a3b3cd8913c9d9698323d7b7e7648",
+      "raw_stdout_stderr_sha256": "132b4cd3f1f20032eb72dfe142758799067ddada3d92a8623c20c129467407ea",
+      "raw_archive_sha256": "4d258b0d0826d0a316ad550e45227ed947137ddda38235439af69169d6a11eb3",
+      "tests_run": [
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller",
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller/lease_persistence",
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller/credit_account_persistence",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/live_settlement",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/auto_close"
+      ],
+      "tests_failed": [
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller",
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller/lease_persistence",
+        "TestProviderLeaseWithdrawalLateFailurePreservesCaller/credit_account_persistence",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership",
+        "TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/live_settlement"
+      ]
+    },
+    {
+      "name": "export-stale-header-mutant",
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-overlay",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/export-stale-header-overlay.json",
+        "./app",
+        "-run",
+        "^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$",
+        "-count=1",
+        "-timeout=180s",
+        "-v"
+      ],
+      "exact_shell_command": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/export-stale-header-overlay.json ./app -run '^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/raw-output/export-stale-header-mutant.log 2>&1",
+      "log": "export-stale-header-mutant.log",
+      "started_at_utc": "2026-09-10T19:00:17.235621+00:00",
+      "raw_stdout_stderr_path": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/raw-output/export-stale-header-mutant.log",
+      "raw_archive": "mutation-provenance/export-stale-header-mutant-raw.json",
+      "display_log_normalization": "UTF-8 decode; splitlines(); expandtabs(8) then rstrip() per line; join with LF and append final LF",
+      "expected_exit_status": 1,
+      "mutation": {
+        "description": "entire source file from 4b89fdacb8d840b074ffda3e64efb34f5a4b71b3",
+        "source_path": "app/export.go",
+        "baseline_sha256": "3fe40a00d95435d5c55047587e21514b32e2004e19d5261bf02c9cb1c4fce340",
+        "mutant_sha256": "ff42a24fe733c859b973e488e662ea5d1e2f7321a19f8714435a441d573f8c53",
+        "patch": "export-stale-header.patch",
+        "patch_sha256": "bc392a4707c7b0ffdffa360da526683e9e705358b9ae6631800f7abef114c42f",
+        "overlay": "export-stale-header-overlay.json",
+        "overlay_sha256": "2a1dbc65c9e70a9c3e1cb66e18bd5edb70ce3431497d4088ce9af5e607c7b634"
+      },
+      "exit_status": 1,
+      "finished_at_utc": "2026-09-10T19:00:27.583248+00:00",
+      "log_sha256": "6c05002eeabaf04ba272fb5869f853441e32a5bd57e7a9b9a73d36a2af49b32c",
+      "raw_stdout_stderr_sha256": "1591a8586cd73044f149c0763f0e7e9b1b4dd5d80d1f82f9d9d5eb7bdcc77605",
+      "raw_archive_sha256": "cf240c30421654f16bbf7226d16c4a07edf3eb310afac3287ebb5061150ef7e1",
+      "tests_run": [
+        "TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback"
+      ],
+      "tests_failed": [
+        "TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback"
+      ]
+    }
+  ],
+  "source_files_checked_unchanged": 483,
+  "source_files_changed": [],
+  "finished_at_utc": "2026-09-10T19:00:27.652795+00:00"
+}

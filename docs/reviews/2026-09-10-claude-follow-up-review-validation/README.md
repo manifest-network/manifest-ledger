@@ -1,10 +1,16 @@
 # PR179 follow-up validation — 2026-09-10
 
-Baseline: `4b89fda`. Commands used Go 1.26.8 with `GOMAXPROCS=4`, `-p 2`
+The original review comparison baseline was `4b89fda`; those checks tested the
+follow-up changes in the working tree, with later test-only reruns noted below.
+Commands used Go 1.26.8 with `GOMAXPROCS=4`, `-p 2`
 where shown, and a workspace-local `TMPDIR`. Lint used golangci-lint 2.12.2,
 with `GOROOT` and `PATH` pointing to Go 1.26.8 and an isolated lint cache.
-Archived whitespace is normalized; the simulation summary omits parameter
-dumps and per-operation progress.
+Historical archived whitespace is normalized; the simulation summary omits
+parameter dumps and per-operation progress. The three mutation logs explicitly
+identified below were replaced by verbose reruns against exact commit
+`b4d8403977b8f18eeaad699239e9661efa2a4a8a` on 2026-09-10.
+Their display logs use the whitespace normalization recorded by the driver;
+exact raw output is retained separately as JSON with its own hashes.
 
 ## Whole-root checks
 
@@ -33,6 +39,12 @@ node --test --test-reporter=tap scripts/docs_examples.test.mjs scripts/provider_
 
 ## Regression and mutation checks
 
+The commands in this block describe the original focused baseline checks,
+not the mutation invocations. For the three replaced export/withdrawal logs,
+exact mutation commands, filters, patches, overlay maps, source hashes, and exit statuses are recorded in the
+[reproduction manifest](mutation-provenance/runs.json) and
+[reproduction instructions](mutation-provenance/README.md).
+
 ```bash
 go test -p 2 ./app -run 'TestZeroHeight' -count=1 -v
 go test -p 2 ./x/billing/keeper -run 'TestProviderLeaseWithdrawal|TestAutoCloseLeaseFailureLeavesCallerUnchanged' -count=1 -v
@@ -42,14 +54,23 @@ go test -p 2 ./scripts -run '^TestContainerizedGoReleaserUsesPinnedOfflineToolch
 
 - [Export tests](export-tests.log) pass for in-process, reopened latest,
   selected historical, vesting, restart-time, and rollback cases. Restoring
-  only baseline `app/export.go` via a read-only overlay makes the new
+  only `app/export.go` from `4b89fdacb8d840b074ffda3e64efb34f5a4b71b3`
+  via a read-only overlay makes the new
   rollback-without-reopen regression [fail as expected](export-stale-header-mutant.log):
   the old implementation returns no error with a stale height-3 clock for
-  selected height 2.
+  selected height 2. This log is the 2026-09-10 provenance rerun; its
+  [unmodified b4d8403 control](export-baseline-rerun.log) passes the identical
+  verbose filter.
 - [Withdrawal tests](withdrawal-tests.log) preserve caller state and aliases
   after actual reserved-fund transfers followed by two different persistence
-  failures. Both the [baseline helper](withdrawal-original-mutant.log) and a
-  [shallow-copy-only helper](withdrawal-shallow-mutant.log) fail the new tests.
+  failures. Both the [4b89fda helper](withdrawal-original-mutant.log) and a
+  [shallow-copy-only helper](withdrawal-shallow-mutant.log) fail the two late
+  persistence subtests and the successful live-settlement alias check; the
+  auto-close success subtest passes. These two logs were regenerated on
+  2026-09-10 with `-v` and both withdrawal test functions selected. Their
+  [unmodified b4d8403 control](withdrawal-baseline-rerun.log) passes that exact
+  filter. The previous, narrower non-verbose mutant logs are superseded;
+  they did not run the successful live-settlement test.
   Read-only overlays never reverted the working implementation. Success cases
   cover fractional settlement, auto-close, address aliases, and caller-owned
   cache commit. The early AutoClose case checks error propagation; late writes

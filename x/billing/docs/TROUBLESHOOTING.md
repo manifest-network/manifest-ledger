@@ -78,7 +78,7 @@ PENDING cohort atomically.
    the remaining bank-backed historical budget across ACTIVE and historical
    claims with Hamilton's largest-remainder method.
 
-The static `validate-genesis` command cannot detect a bank shortfall because it
+The static genesis validation command cannot detect a bank shortfall because it
 has no bank keeper context; successful static validation does not replace this
 preflight and does not guarantee that pre-v4 PENDING leases remain pending.
 Tenant-wide expiration is only a pre-v4 cutover policy. An already-v4

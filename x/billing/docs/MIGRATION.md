@@ -72,7 +72,7 @@ Genesis import and SKU's `state` invariant deliberately accept historical
 providers whose payout address is valid Bech32 even when the bank blocks that
 destination. Historical lease imports also remain valid when the provider's
 payout equals the tenant's derived credit address. This keeps historical state
-importable and repairable; neither `validate-genesis` nor a passing invariant
+importable and repairable; neither static genesis validation nor a passing invariant
 proves payout eligibility. The
 offline preflight reports payout findings separately from its reservation
 migration predictions.
@@ -313,7 +313,8 @@ This command previews billing reservation migration and audits blocked provider
 payouts and live-lease tenant-credit collisions. It does not run
 `ValidateWithBlockTime`, resolve lease provider/SKU references from `x/sku`,
 validate every SKU genesis constraint, or certify that
-the document will pass full `InitGenesis`. Use `validate-genesis`
+the document will pass full `InitGenesis`. Use
+`manifestd genesis validate /path/to/restart-genesis.json`
 and an isolated start/import rehearsal for those separate checks. The planner
 timestamp sets the simulated, unreported `expired_at` transition and values
 vesting locks. Changing it can therefore change spendable backing, PENDING
@@ -770,7 +771,8 @@ Validates without blockchain context:
 - The lease sequence is at least the total number of imported leases
 - v4 lease tranches are valid and satisfy the exact account invariant, or a complete pre-v4 aggregate-only state can be deterministically reconciled to its statically reconstructible floor
 
-The `validate-genesis` CLI and `InitGenesis` use the same import-safe
+The `manifestd genesis validate /path/to/genesis.json` command and `InitGenesis`
+use the same import-safe
 `GenesisState.Validate()` contract. For v4 state, modern PENDING tranches must
 equal nominal, modern ACTIVE tranches must not exceed nominal, terminal and
 historical lease tranches must be empty, and `U` may exist only with a live
@@ -785,7 +787,7 @@ Existing custom-domain claims are likewise not rechecked against the current
 reserved-suffix list because a claim may predate a later reservation. For newly
 authored state, `ValidateStrict()` opts into both present-day policy checks.
 
-Static `validate-genesis` has no bank keeper and therefore cannot prove that a
+Static genesis validation has no bank keeper and therefore cannot prove that a
 pre-v4 aggregate is actually bank-backed. Import preparation first mirrors the
 v2→v3 repair by reconstructing each tenant's modern live floor. With a live
 zero-duration lease it keeps the per-denomination maximum of the exported
@@ -801,7 +803,7 @@ preparation expires all of that tenant's modern PENDING leases atomically at the
 genesis block time, recomputes the resulting counts, and allocates the
 bank-backed budget only among modern ACTIVE claims and the live historical
 cohort. `InitGenesis` subsequently builds indexes from those normalized lease
-states. Therefore a successful static `validate-genesis` does not promise that
+states. Therefore a successful static genesis validation does not promise that
 pre-v4 PENDING leases will remain pending after import. An already-v4
 consumable import is not re-planned: `InitGenesis` rejects it before billing
 writes if its aggregate is not bank-backed.
@@ -840,6 +842,20 @@ lease abc123 has last_settled_at (2025-01-08T00:00:00Z) in the future relative t
 
 ### Restart an isolated node from an export
 
+Export from a stopped copy of the node home at the chosen committed height.
+Zero-height export requires at least one committed block:
+
+```bash
+manifestd export --home /path/to/stopped-node-copy --height [source-height] \
+  --for-zero-height --output-document /path/to/exported-genesis.json
+```
+
+Use `--output-document` to write the genesis file. Export logs, including
+zero-height invariant messages, can also go to stdout, so redirecting stdout
+with `>` can produce a file that contains logs before the JSON. Check the
+command's exit status before using the output. Omit `--for-zero-height` when
+preserving normal export heights; retain the same file-output flag.
+
 The application uses the selected source height's committed timestamp for
 export invariant checks, including after reopening the database. SDK snapshot
 restore and rollback can omit that timestamp metadata. If no source time is
@@ -854,7 +870,7 @@ Export resets heights when `--for-zero-height` is used; it does not reset lease
 timestamps. The SDK export command also retains the source genesis file's
 original `genesis_time`. If that time predates any exported creation, settlement,
 or closure, starting directly from that document fails `InitGenesis` even when
-static `validate-genesis` succeeds. An old timestamp can also relock vesting
+static genesis validation succeeds. An old timestamp can also relock vesting
 credit and fail reservation backing before the timestamp diagnostic is reached.
 
 For an isolated import rehearsal, retain the untouched export as evidence and

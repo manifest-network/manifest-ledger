@@ -1,34 +1,56 @@
---- FAIL: TestProviderLeaseWithdrawalLateFailurePreservesCaller (0.62s)
-    --- FAIL: TestProviderLeaseWithdrawalLateFailurePreservesCaller/lease_persistence (0.39s)
-        provider_withdrawal_atomicity_test.go:55:
-                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/provider_withdrawal_atomicity_test.go:55
+=== RUN   TestProviderLeaseWithdrawalLateFailurePreservesCaller
+=== RUN   TestProviderLeaseWithdrawalLateFailurePreservesCaller/lease_persistence
+    provider_withdrawal_atomicity_test.go:55:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline/x/billing/keeper/provider_withdrawal_atomicity_test.go:55
                 Error:          Not equal:
-                                expected: "uuid:\"01a08c3c-ac17-7000-9568-034892a7910a\" tenant:\"manifest13w84uz0r2jef3cysrn3w39a66yh697egx0peww\" provider_uuid:\"01a08c3c-ac17-7000-8d37-cc9b911a8a8a\" items:<sku_uuid:\"01a08c3c-ac17-7000-bfe6-1539384e3b34\" quantity:1 locked_price:<denom:\"umfx\" amount:\"1\" > custom_domain:\"withdrawal-atomicity.example.com\" > state:LEASE_STATE_ACTIVE created_at:<seconds:1789059181 nanos:591595863 > last_settled_at:<seconds:1789059181 nanos:591595863 > acknowledged_at:<seconds:1789059181 nanos:591595863 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:\"umfx\" amount:\"3600\" > > "
-                                actual  : "uuid:\"01a08c3c-ac17-7000-9568-034892a7910a\" tenant:\"manifest13w84uz0r2jef3cysrn3w39a66yh697egx0peww\" provider_uuid:\"01a08c3c-ac17-7000-8d37-cc9b911a8a8a\" items:<sku_uuid:\"01a08c3c-ac17-7000-bfe6-1539384e3b34\" quantity:1 locked_price:<denom:\"umfx\" amount:\"1\" > custom_domain:\"withdrawal-atomicity.example.com\" > state:LEASE_STATE_ACTIVE created_at:<seconds:1789059181 nanos:591595863 > last_settled_at:<seconds:1789059181 nanos:591595863 > acknowledged_at:<seconds:1789059181 nanos:591595863 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:\"umfx\" amount:\"3500\" > > "
+                                expected: "uuid:\"01a08cb1-2c32-7000-9568-034892a7910a\" tenant:\"manifest1duwfy60hlkpum29wpesuxske5226ycn7dgrpar\" provider_uuid:\"01a08cb1-2c32-7000-8d37-cc9b911a8a8a\" items:<sku_uuid:\"01a08cb1-2c32-7000-bfe6-1539384e3b34\" quantity:1 locked_price:<denom:\"umfx\" amount:\"1\" > custom_domain:\"withdrawal-atomicity.example.com\" > state:LEASE_STATE_ACTIVE created_at:<seconds:1789066816 nanos:562076443 > last_settled_at:<seconds:1789066816 nanos:562076443 > acknowledged_at:<seconds:1789066816 nanos:562076443 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:\"umfx\" amount:\"3600\" > > "
+                                actual  : "uuid:\"01a08cb1-2c32-7000-9568-034892a7910a\" tenant:\"manifest1duwfy60hlkpum29wpesuxske5226ycn7dgrpar\" provider_uuid:\"01a08cb1-2c32-7000-8d37-cc9b911a8a8a\" items:<sku_uuid:\"01a08cb1-2c32-7000-bfe6-1539384e3b34\" quantity:1 locked_price:<denom:\"umfx\" amount:\"1\" > custom_domain:\"withdrawal-atomicity.example.com\" > state:LEASE_STATE_ACTIVE created_at:<seconds:1789066816 nanos:562076443 > last_settled_at:<seconds:1789066816 nanos:562076443 > acknowledged_at:<seconds:1789066816 nanos:562076443 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:\"umfx\" amount:\"3500\" > > "
 
                                 Diff:
                                 --- Expected
                                 +++ Actual
                                 @@ -1 +1 @@
-                                -uuid:"01a08c3c-ac17-7000-9568-034892a7910a" tenant:"manifest13w84uz0r2jef3cysrn3w39a66yh697egx0peww" provider_uuid:"01a08c3c-ac17-7000-8d37-cc9b911a8a8a" items:<sku_uuid:"01a08c3c-ac17-7000-bfe6-1539384e3b34" quantity:1 locked_price:<denom:"umfx" amount:"1" > custom_domain:"withdrawal-atomicity.example.com" > state:LEASE_STATE_ACTIVE created_at:<seconds:1789059181 nanos:591595863 > last_settled_at:<seconds:1789059181 nanos:591595863 > acknowledged_at:<seconds:1789059181 nanos:591595863 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:"umfx" amount:"3600" > >
-                                +uuid:"01a08c3c-ac17-7000-9568-034892a7910a" tenant:"manifest13w84uz0r2jef3cysrn3w39a66yh697egx0peww" provider_uuid:"01a08c3c-ac17-7000-8d37-cc9b911a8a8a" items:<sku_uuid:"01a08c3c-ac17-7000-bfe6-1539384e3b34" quantity:1 locked_price:<denom:"umfx" amount:"1" > custom_domain:"withdrawal-atomicity.example.com" > state:LEASE_STATE_ACTIVE created_at:<seconds:1789059181 nanos:591595863 > last_settled_at:<seconds:1789059181 nanos:591595863 > acknowledged_at:<seconds:1789059181 nanos:591595863 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:"umfx" amount:"3500" > >
+                                -uuid:"01a08cb1-2c32-7000-9568-034892a7910a" tenant:"manifest1duwfy60hlkpum29wpesuxske5226ycn7dgrpar" provider_uuid:"01a08cb1-2c32-7000-8d37-cc9b911a8a8a" items:<sku_uuid:"01a08cb1-2c32-7000-bfe6-1539384e3b34" quantity:1 locked_price:<denom:"umfx" amount:"1" > custom_domain:"withdrawal-atomicity.example.com" > state:LEASE_STATE_ACTIVE created_at:<seconds:1789066816 nanos:562076443 > last_settled_at:<seconds:1789066816 nanos:562076443 > acknowledged_at:<seconds:1789066816 nanos:562076443 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:"umfx" amount:"3600" > >
+                                +uuid:"01a08cb1-2c32-7000-9568-034892a7910a" tenant:"manifest1duwfy60hlkpum29wpesuxske5226ycn7dgrpar" provider_uuid:"01a08cb1-2c32-7000-8d37-cc9b911a8a8a" items:<sku_uuid:"01a08cb1-2c32-7000-bfe6-1539384e3b34" quantity:1 locked_price:<denom:"umfx" amount:"1" > custom_domain:"withdrawal-atomicity.example.com" > state:LEASE_STATE_ACTIVE created_at:<seconds:1789066816 nanos:562076443 > last_settled_at:<seconds:1789066816 nanos:562076443 > acknowledged_at:<seconds:1789066816 nanos:562076443 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:"umfx" amount:"3500" > >
                 Test:           TestProviderLeaseWithdrawalLateFailurePreservesCaller/lease_persistence
                 Messages:       failed persistence must preserve the caller's accrual cursor and remaining reservation
-    --- FAIL: TestProviderLeaseWithdrawalLateFailurePreservesCaller/credit_account_persistence (0.23s)
-        provider_withdrawal_atomicity_test.go:55:
-                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/provider_withdrawal_atomicity_test.go:55
+=== RUN   TestProviderLeaseWithdrawalLateFailurePreservesCaller/credit_account_persistence
+    provider_withdrawal_atomicity_test.go:55:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline/x/billing/keeper/provider_withdrawal_atomicity_test.go:55
                 Error:          Not equal:
-                                expected: "uuid:\"01a08c3c-ad0d-7000-9568-034892a7910a\" tenant:\"manifest19fmq7wfu53l2j4mkqr0xe9dty0yh4nfc3j0pv7\" provider_uuid:\"01a08c3c-ad0d-7000-8d37-cc9b911a8a8a\" items:<sku_uuid:\"01a08c3c-ad0d-7000-bfe6-1539384e3b34\" quantity:1 locked_price:<denom:\"umfx\" amount:\"1\" > > state:LEASE_STATE_ACTIVE created_at:<seconds:1789059181 nanos:837353230 > last_settled_at:<seconds:1789059181 nanos:837353230 > acknowledged_at:<seconds:1789059181 nanos:837353230 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:\"umfx\" amount:\"3600\" > > "
-                                actual  : "uuid:\"01a08c3c-ad0d-7000-9568-034892a7910a\" tenant:\"manifest19fmq7wfu53l2j4mkqr0xe9dty0yh4nfc3j0pv7\" provider_uuid:\"01a08c3c-ad0d-7000-8d37-cc9b911a8a8a\" items:<sku_uuid:\"01a08c3c-ad0d-7000-bfe6-1539384e3b34\" quantity:1 locked_price:<denom:\"umfx\" amount:\"1\" > > state:LEASE_STATE_ACTIVE created_at:<seconds:1789059181 nanos:837353230 > last_settled_at:<seconds:1789059181 nanos:837353230 > acknowledged_at:<seconds:1789059181 nanos:837353230 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:\"umfx\" amount:\"3500\" > > "
+                                expected: "uuid:\"01a08cb1-2cd3-7000-9568-034892a7910a\" tenant:\"manifest1sz484xhyf4ehqrha0etzd6c2j798huq23ujkqs\" provider_uuid:\"01a08cb1-2cd3-7000-8d37-cc9b911a8a8a\" items:<sku_uuid:\"01a08cb1-2cd3-7000-bfe6-1539384e3b34\" quantity:1 locked_price:<denom:\"umfx\" amount:\"1\" > > state:LEASE_STATE_ACTIVE created_at:<seconds:1789066816 nanos:723131767 > last_settled_at:<seconds:1789066816 nanos:723131767 > acknowledged_at:<seconds:1789066816 nanos:723131767 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:\"umfx\" amount:\"3600\" > > "
+                                actual  : "uuid:\"01a08cb1-2cd3-7000-9568-034892a7910a\" tenant:\"manifest1sz484xhyf4ehqrha0etzd6c2j798huq23ujkqs\" provider_uuid:\"01a08cb1-2cd3-7000-8d37-cc9b911a8a8a\" items:<sku_uuid:\"01a08cb1-2cd3-7000-bfe6-1539384e3b34\" quantity:1 locked_price:<denom:\"umfx\" amount:\"1\" > > state:LEASE_STATE_ACTIVE created_at:<seconds:1789066816 nanos:723131767 > last_settled_at:<seconds:1789066816 nanos:723131767 > acknowledged_at:<seconds:1789066816 nanos:723131767 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:\"umfx\" amount:\"3500\" > > "
 
                                 Diff:
                                 --- Expected
                                 +++ Actual
                                 @@ -1 +1 @@
-                                -uuid:"01a08c3c-ad0d-7000-9568-034892a7910a" tenant:"manifest19fmq7wfu53l2j4mkqr0xe9dty0yh4nfc3j0pv7" provider_uuid:"01a08c3c-ad0d-7000-8d37-cc9b911a8a8a" items:<sku_uuid:"01a08c3c-ad0d-7000-bfe6-1539384e3b34" quantity:1 locked_price:<denom:"umfx" amount:"1" > > state:LEASE_STATE_ACTIVE created_at:<seconds:1789059181 nanos:837353230 > last_settled_at:<seconds:1789059181 nanos:837353230 > acknowledged_at:<seconds:1789059181 nanos:837353230 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:"umfx" amount:"3600" > >
-                                +uuid:"01a08c3c-ad0d-7000-9568-034892a7910a" tenant:"manifest19fmq7wfu53l2j4mkqr0xe9dty0yh4nfc3j0pv7" provider_uuid:"01a08c3c-ad0d-7000-8d37-cc9b911a8a8a" items:<sku_uuid:"01a08c3c-ad0d-7000-bfe6-1539384e3b34" quantity:1 locked_price:<denom:"umfx" amount:"1" > > state:LEASE_STATE_ACTIVE created_at:<seconds:1789059181 nanos:837353230 > last_settled_at:<seconds:1789059181 nanos:837353230 > acknowledged_at:<seconds:1789059181 nanos:837353230 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:"umfx" amount:"3500" > >
+                                -uuid:"01a08cb1-2cd3-7000-9568-034892a7910a" tenant:"manifest1sz484xhyf4ehqrha0etzd6c2j798huq23ujkqs" provider_uuid:"01a08cb1-2cd3-7000-8d37-cc9b911a8a8a" items:<sku_uuid:"01a08cb1-2cd3-7000-bfe6-1539384e3b34" quantity:1 locked_price:<denom:"umfx" amount:"1" > > state:LEASE_STATE_ACTIVE created_at:<seconds:1789066816 nanos:723131767 > last_settled_at:<seconds:1789066816 nanos:723131767 > acknowledged_at:<seconds:1789066816 nanos:723131767 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:"umfx" amount:"3600" > >
+                                +uuid:"01a08cb1-2cd3-7000-9568-034892a7910a" tenant:"manifest1sz484xhyf4ehqrha0etzd6c2j798huq23ujkqs" provider_uuid:"01a08cb1-2cd3-7000-8d37-cc9b911a8a8a" items:<sku_uuid:"01a08cb1-2cd3-7000-bfe6-1539384e3b34" quantity:1 locked_price:<denom:"umfx" amount:"1" > > state:LEASE_STATE_ACTIVE created_at:<seconds:1789066816 nanos:723131767 > last_settled_at:<seconds:1789066816 nanos:723131767 > acknowledged_at:<seconds:1789066816 nanos:723131767 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:"umfx" amount:"3500" > >
                 Test:           TestProviderLeaseWithdrawalLateFailurePreservesCaller/credit_account_persistence
                 Messages:       failed persistence must preserve the caller's accrual cursor and remaining reservation
+--- FAIL: TestProviderLeaseWithdrawalLateFailurePreservesCaller (0.34s)
+    --- FAIL: TestProviderLeaseWithdrawalLateFailurePreservesCaller/lease_persistence (0.18s)
+    --- FAIL: TestProviderLeaseWithdrawalLateFailurePreservesCaller/credit_account_persistence (0.16s)
+=== RUN   TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership
+=== RUN   TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/live_settlement
+    provider_withdrawal_atomicity_test.go:98:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline/x/billing/keeper/provider_withdrawal_atomicity_test.go:98
+                Error:          Not equal:
+                                expected: "remaining_amounts:<denom:\"umfx\" amount:\"3600\" > "
+                                actual  : "remaining_amounts:<denom:\"umfx\" amount:\"3500\" > "
+
+                                Diff:
+                                --- Expected
+                                +++ Actual
+                                @@ -1 +1 @@
+                                -remaining_amounts:<denom:"umfx" amount:"3600" >
+                                +remaining_amounts:<denom:"umfx" amount:"3500" >
+                Test:           TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/live_settlement
+=== RUN   TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/auto_close
+--- FAIL: TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership (0.35s)
+    --- FAIL: TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/live_settlement (0.18s)
+    --- PASS: TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/auto_close (0.17s)
 FAIL
-FAIL    github.com/manifest-network/manifest-ledger/x/billing/keeper    0.737s
+FAIL    github.com/manifest-network/manifest-ledger/x/billing/keeper    0.807s
 FAIL

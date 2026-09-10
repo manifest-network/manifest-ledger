@@ -1,0 +1,4 @@
+{
+  "encoding": "utf-8",
+  "stdout_stderr": "=== RUN   TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback\n    export_billing_test.go:152: \n        \tError Trace:\t/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline/app/export_billing_test.go:152\n        \tError:      \tAn error is expected but got nil.\n        \tTest:       \tTestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback\n--- FAIL: TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback (0.13s)\nFAIL\nFAIL\tgithub.com/manifest-network/manifest-ledger/app\t0.249s\nFAIL\n"
+}

@@ -40,7 +40,6 @@ the intended network (supply your normal `--node` and network settings):
 manifestd query consensus params --height [audit-height] --output json
 manifestd query circuit disabled-list --height [audit-height] --output json
 manifestd query circuit accounts --height [audit-height] --page-limit 100 --output json
-manifestd query circuit account [operator-address] --height [audit-height] --output json
 ```
 
 Pin the state queries to the same committed audit height with `--height`.
@@ -54,6 +53,19 @@ module authority can change grants. The authority itself is not necessarily
 listed among grantees: audit the deployed authority/governance policy and any
 authz delegations that can execute circuit messages too. Recheck the disabled
 list and grants before relying on the control throughout the exposure window.
+
+To inspect a particular operator, optionally query its explicit permission record:
+
+```bash
+manifestd query circuit account [operator-address] --height [audit-height] --output json
+```
+
+An address with no explicit record produces a nonzero exit status, reported as
+`InvalidArgument`. Record "no explicit grant" only when the error identifies a
+missing permission record and the complete same-height `accounts` inventory
+confirms its absence. `InvalidArgument` alone is not proof of absence; other
+query, transport, decoding, or unavailable-height errors leave the audit
+incomplete. An absent explicit record does not rule out module-authority powers.
 
 Also inspect the effective `minimum-gas-prices`, `inv-check-period`, and
 `wasm.simulation_gas_limit`, including launch-time overrides. Inspect every

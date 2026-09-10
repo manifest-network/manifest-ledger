@@ -63,6 +63,54 @@ func TestZeroHeightExportRetainsBillingBlockTime(t *testing.T) {
 	}
 }
 
+func TestZeroHeightExportRequiresFirstCommit(t *testing.T) {
+	for _, initialHeight := range []int64{0, 1} {
+		t.Run(fmt.Sprintf("initial height %d", initialHeight), func(t *testing.T) {
+			appparams.SetAddressPrefixes()
+			manifest := newBillingExportApp(t, dbm.NewMemDB(), true)
+			validatorKey := tmed25519.GenPrivKey()
+			validator := tmtypes.NewValidator(validatorKey.PubKey(), 1)
+			owner := authtypes.NewBaseAccountWithAddress(sdk.AccAddress(validatorKey.PubKey().Address()))
+			state := genesisStateWithValSet(t, manifest, manifest.DefaultGenesis(),
+				tmtypes.NewValidatorSet([]*tmtypes.Validator{validator}), []authtypes.GenesisAccount{owner})
+			genesis, err := json.Marshal(state)
+			require.NoError(t, err)
+			genesisTime := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+			_, err = manifest.InitChain(&abci.RequestInitChain{
+				ChainId: SimAppChainID, InitialHeight: initialHeight, Time: genesisTime,
+				ConsensusParams: DefaultConsensusParams, AppStateBytes: genesis,
+			})
+			require.NoError(t, err)
+			checkHeader := manifest.GetContextForCheckTx(nil).BlockHeader()
+			require.Equal(t, initialHeight, checkHeader.Height)
+			require.Equal(t, genesisTime, checkHeader.Time)
+
+			// Both SDK initialization spellings start block 1, but only an
+			// explicit InitialHeight=1 makes the pre-commit header mismatch.
+			// Neither genesis clock establishes a committed export snapshot.
+			for _, stage := range []string{"after InitChain", "after first FinalizeBlock"} {
+				if stage == "after first FinalizeBlock" {
+					_, err = manifest.FinalizeBlock(&abci.RequestFinalizeBlock{Height: 1, Time: genesisTime.Add(time.Second)})
+					require.NoError(t, err)
+				}
+				require.Zero(t, manifest.LastBlockHeight())
+				require.Equal(t, checkHeader, manifest.GetContextForCheckTx(nil).BlockHeader())
+				before := manifest.BillingKeeper.ExportGenesis(manifest.GetContextForFinalizeBlock(nil)).String()
+				exported, err := manifest.ExportAppStateAndValidators(true, nil, nil)
+				require.ErrorContains(t, err, "a committed source block is required", stage)
+				require.Empty(t, exported.AppState)
+				require.Equal(t, before, manifest.BillingKeeper.ExportGenesis(manifest.GetContextForFinalizeBlock(nil)).String())
+			}
+
+			_, err = manifest.Commit()
+			require.NoError(t, err)
+			require.Equal(t, int64(1), manifest.LastBlockHeight())
+			_, err = manifest.ExportAppStateAndValidators(true, nil, nil)
+			require.NoError(t, err, "completing the first block establishes a usable source snapshot")
+		})
+	}
+}
+
 func TestZeroHeightExportStillRejectsFutureBillingTimestamp(t *testing.T) {
 	manifest, _, sourceTime := setupBillingExportApp(t, "reopened historical height")
 	ctx := manifest.GetContextForCheckTx(nil)

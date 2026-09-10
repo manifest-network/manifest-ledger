@@ -17,10 +17,12 @@ import (
 )
 
 // ExportAppStateAndValidators exports the state of the application for a genesis
-// file. Zero-height preparation requires the selected source block's timestamp;
-// restored or rolled-back state without a known source time returns an error instead
-// of evaluating time-dependent invariants at an unknown time. Ordinary export
-// remains available. The SDK's outer genesis_time is not changed by this method.
+// file. Zero-height preparation requires a committed source block and its timestamp.
+// It is unsupported before the first Commit, including after InitChain or the first
+// FinalizeBlock. Restored or rolled-back state without a known source time returns
+// an error instead of evaluating time-dependent invariants at an unknown time.
+// These zero-height requirements do not apply to ordinary export. The SDK's outer
+// genesis_time is not changed by this method.
 func (app *ManifestApp) ExportAppStateAndValidators(forZeroHeight bool, jailAllowedAddrs, modulesToExport []string) (servertypes.ExportedApp, error) {
 	// In-process exports retain the last block header in CheckTx state. A
 	// reopened app has only its configured chain ID there, so recover the time
@@ -28,6 +30,12 @@ func (app *ManifestApp) ExportAppStateAndValidators(forZeroHeight bool, jailAllo
 	// Zero-height export resets heights, not billing or vesting timestamps.
 	header := app.GetContextForCheckTx(nil).BlockHeader()
 	sourceHeight := app.LastBlockHeight()
+	if forZeroHeight && sourceHeight <= 0 {
+		return servertypes.ExportedApp{}, fmt.Errorf(
+			"cannot prepare zero-height export at height %d: a committed source block is required; complete the first FinalizeBlock and Commit before exporting",
+			sourceHeight,
+		)
+	}
 	if header.Height != sourceHeight {
 		// An in-process rollback can retain the old CheckTx header after the
 		// store moves to an earlier height. Its clock is not a valid fallback.

@@ -271,7 +271,7 @@ Before the upgrade:
   bank-only shortfall is reachable under v2 settlement and does not halt: if any
   denomination is short, all modern PENDING leases for that tenant expire
   atomically at the upgrade block. Record the exact sorted lease UUID cohorts so
-  clients can be notified. `validate-genesis` cannot perform the bank
+  clients can be notified. Static genesis validation cannot perform the bank
   comparison. Conversely, this preflight does not run block-time or full
   cross-module SKU-reference validation and is not a full InitGenesis check.
 - Require `blocked_provider_count == 0` and `payout_credit_collision_count == 0`
@@ -302,7 +302,8 @@ Before the upgrade:
   report, app hash, and candidate binary checksum together.
 - Rehearse the exact source binary, candidate binary, and state snapshot on dev
   or testnet. Include upgrade, module-version checks, representative billing/SKU
-  lifecycle tests, load tests, export, `validate-genesis`, and import/re-export.
+  lifecycle tests, load tests, export with `--output-document`,
+  `manifestd genesis validate /path/to/restart-genesis.json`, and import/re-export.
   Store, instantiate, and execute a contract before the halt, then query and
   execute that same contract after the upgrade before uploading fresh code.
   This exercises wasmvm v2.2.4→v2.2.8 compiled-cache replacement and state
@@ -368,7 +369,9 @@ After the upgrade:
   `reserved_amounts = sum(live modern lease remaining_amounts) +
   unattributed_reserved_amounts`; live lease counts, historical cohort counts,
   bank backing, and secondary indexes must agree with primary state.
-- From a stopped copy of the post-upgrade state, export genesis and prepare a
+- From a stopped copy of the post-upgrade state, export genesis using
+  `manifestd export --home /path/to/stopped-node-copy --height [source-height] --for-zero-height --output-document /path/to/exported-genesis.json`.
+  Use the file-output flag so stdout logs cannot contaminate the JSON. Prepare a
   separate restart copy at the source block time as described in the
   [billing restart guide](../../x/billing/docs/MIGRATION.md#restart-an-isolated-node-from-an-export).
   SDK export preserves the original `genesis_time`; updating the restart copy

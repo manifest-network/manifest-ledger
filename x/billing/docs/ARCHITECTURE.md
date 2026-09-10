@@ -1203,7 +1203,7 @@ The module also validates credit accounts:
 A complete pre-v4 aggregate-only (v2/v3) export is accepted as a compatibility
 format. Before any billing store write, import preparation applies the same
 derived-count and aggregate repair as v2→v3, then converts the repaired state in
-memory with the v3→v4 no-mint planner. Static `validate-genesis` cannot inspect
+memory with the v3→v4 no-mint planner. Static genesis validation cannot inspect
 bank balances. If the bank balance is short in any modern PENDING denomination,
 `InitGenesis` expires that tenant's complete modern PENDING cohort and continues
 with the remaining bank-backed allocation; it does not create a partial claim
