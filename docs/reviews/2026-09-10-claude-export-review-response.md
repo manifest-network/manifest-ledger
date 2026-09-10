@@ -7,6 +7,10 @@ entrypoint introduced by F55; both CI failures independently confirm that
 regression. This round includes the previously failing normal and
 coverage-instrumented import simulations.
 
+The [subsequent review response](2026-09-10-claude-follow-up-review-response.md)
+corrects stale in-process rollback time, runbook command spelling, and the
+simulation state observer, and verifies the historical store timestamp support.
+
 Confidence describes confidence in the disposition, not exploit probability
 or a guarantee that the code contains no other vulnerabilities.
 

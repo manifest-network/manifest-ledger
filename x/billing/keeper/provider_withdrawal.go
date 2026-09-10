@@ -24,6 +24,7 @@ type providerLeaseWithdrawalResult struct {
 // ACTIVE lease. The caller must provide a per-lease CacheContext and decides
 // whether to commit it, which lets MsgWithdraw commit successful leases while
 // ProviderWithdrawable commits them only into a discarded page simulation.
+// Caller-owned lease values and reservation aliases remain unchanged on error.
 //
 // The method deliberately owns the complete per-lease transition so the query
 // and transaction cannot drift on auto-close, settlement, reservation, or
@@ -74,7 +75,9 @@ func (k *Keeper) executeProviderLeaseWithdrawal(
 		return providerLeaseWithdrawalResult{}, nil
 	}
 
-	result, err := k.PerformSettlementSilent(ctx, lease, &creditAccount, blockTime)
+	settledLease := *lease
+	settledLease.Reservation = cloneLeaseReservation(lease.Reservation)
+	result, err := k.PerformSettlementSilent(ctx, &settledLease, &creditAccount, blockTime)
 	if err != nil {
 		return providerLeaseWithdrawalResult{}, errorsmod.Wrapf(
 			err,
@@ -88,8 +91,8 @@ func (k *Keeper) executeProviderLeaseWithdrawal(
 
 	// Advance only through charged whole seconds. The retained sub-second
 	// remainder participates in the next live settlement.
-	lease.LastSettledAt = result.SettledThrough
-	if err := k.SetLease(ctx, *lease); err != nil {
+	settledLease.LastSettledAt = result.SettledThrough
+	if err := k.SetLease(ctx, settledLease); err != nil {
 		return providerLeaseWithdrawalResult{}, errorsmod.Wrapf(
 			err,
 			"persist provider withdrawal lease %s",
@@ -104,6 +107,7 @@ func (k *Keeper) executeProviderLeaseWithdrawal(
 		)
 	}
 
+	*lease = settledLease
 	return providerLeaseWithdrawalResult{
 		transferAmounts: result.TransferAmounts,
 		counted:         true,

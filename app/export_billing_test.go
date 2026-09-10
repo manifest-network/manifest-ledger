@@ -115,6 +115,44 @@ func TestZeroHeightExportRequiresSourceTimeAfterRollback(t *testing.T) {
 	require.NoError(t, err, "ordinary export remains available without guessing a valuation time")
 }
 
+func TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback(t *testing.T) {
+	manifest, _, laterTime := setupBillingExportApp(t, "in process")
+	checkCtx := manifest.GetContextForCheckTx(nil)
+	require.Equal(t, int64(3), checkCtx.BlockHeight())
+	require.Equal(t, laterTime, checkCtx.BlockTime())
+	store, ok := manifest.CommitMultiStore().(*rootmulti.Store)
+	require.True(t, ok)
+	sourceInfo, err := store.GetCommitInfo(2)
+	require.NoError(t, err)
+	require.True(t, sourceInfo.Timestamp.Before(laterTime))
+
+	require.NoError(t, store.RollbackToVersion(2))
+	require.Equal(t, int64(2), manifest.LastBlockHeight())
+	require.Equal(t, int64(3), manifest.GetContextForCheckTx(nil).BlockHeight(), "rollback does not refresh BaseApp's CheckTx header")
+	rolledBackInfo, err := store.GetCommitInfo(2)
+	require.NoError(t, err)
+	require.True(t, rolledBackInfo.Timestamp.IsZero(), "rollback also removes the matching commit timestamp")
+
+	// A timestamp accepted by the stale header must not make the selected
+	// height's export look valid. Keep structural/accounting checks satisfied
+	// so only the missing source clock separates this state from acceptance.
+	genesis := manifest.BillingKeeper.ExportGenesis(checkCtx)
+	lease := genesis.Leases[0]
+	lease.LastSettledAt = laterTime
+	if lease.State == billingtypes.LEASE_STATE_CLOSED {
+		lease.ClosedAt = &lease.LastSettledAt
+	}
+	require.NoError(t, manifest.BillingKeeper.SetLease(checkCtx, lease))
+	genesis = manifest.BillingKeeper.ExportGenesis(checkCtx)
+	require.NoError(t, genesis.ValidateCurrentState())
+	require.NoError(t, genesis.ValidateWithBlockTime(laterTime))
+	require.ErrorContains(t, genesis.ValidateWithBlockTime(sourceInfo.Timestamp), "in the future relative to block time")
+	before := genesis.String()
+	_, err = manifest.ExportAppStateAndValidators(true, nil, nil)
+	require.ErrorContains(t, err, "height 2: source block time is unavailable")
+	require.Equal(t, before, manifest.BillingKeeper.ExportGenesis(checkCtx).String())
+}
+
 func requireBillingExportPanic(t *testing.T, expected string, operation func()) {
 	t.Helper()
 	var recovered any

@@ -866,9 +866,11 @@ export mode and the rest of the genesis fields. For a network restart, all
 validators must agree on the same restart document and timestamp.
 
 Use the restart timestamp for preflight `--at`, rerun the preflight and
-`validate-genesis` on the restart copy, then start it in a separate home and
-verify import/re-export. A later restart time changes vesting spendability,
-pending deadlines, and subsequent accrual; it is not a formatting-only edit.
+`manifestd genesis validate /path/to/restart-genesis.json` on the restart copy,
+then start it in a separate home and verify import/re-export. Always supply
+the file path; omitting it validates the default-home genesis. A later restart
+time changes vesting spendability, pending deadlines, and subsequent accrual;
+it is not a formatting-only edit.
 Do not rewrite historical lease timestamps to make an old genesis time pass.
 An ordinary in-place binary upgrade does not use this restart-from-export step.
 

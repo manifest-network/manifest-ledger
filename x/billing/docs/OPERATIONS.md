@@ -37,15 +37,16 @@ Record the chain ID, height, candidate binary, and these read-only results from
 the intended network (supply your normal `--node` and network settings):
 
 ```bash
-manifestd query consensus params --output json
-manifestd query circuit disabled-list --output json
-manifestd query circuit accounts --height [audit-height] --limit 100 --output json
+manifestd query consensus params --height [audit-height] --output json
+manifestd query circuit disabled-list --height [audit-height] --output json
+manifestd query circuit accounts --height [audit-height] --page-limit 100 --output json
 manifestd query circuit account [operator-address] --height [audit-height] --output json
 ```
 
 Pin the state queries to the same committed audit height with `--height`.
 The `accounts` response is paginated: while `pagination.next_key` is nonempty,
 repeat the command with `--page-key [pagination.next_key]` at that same height.
+Circuit's generated CLI uses `--page-limit`, unlike billing's custom `--limit`.
 Inspect every grantee, not only the intended operator. `LEVEL_SUPER_ADMIN` and
 `LEVEL_ALL_MSGS` can reset this circuit; `LEVEL_SOME_MSGS` can also reset it when
 its `limit_type_urls` includes the exact crisis type URL. Super admins and the

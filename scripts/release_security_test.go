@@ -209,7 +209,6 @@ func TestContainerizedGoReleaserUsesPinnedOfflineToolchain(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(repository, "go.mod"), []byte("module example.com/release-fixture\n"), 0o600))
 
-	dockerLog := filepath.Join(testDir, "docker-arguments.txt")
 	fakeDocker := filepath.Join(testDir, "docker")
 	const fakeDockerSource = `#!/bin/sh
 set -eu
@@ -224,31 +223,62 @@ printf '%s\n' "$@" > "$FAKE_DOCKER_LOG"
 	require.NoError(t, os.WriteFile(goreleaser, []byte("tool"), 0o600))
 	require.NoError(t, os.Chmod(goreleaser, 0o500)) //nolint:gosec // Owner execution is required by the wrapper fixture.
 
-	cmd := exec.Command( //nolint:gosec
-		"sh", wrapper,
-		"manifest-release-builder:test", syft, goreleaser,
-		"release", "--snapshot", "--clean", "--skip=publish",
-	)
-	cmd.Dir = repository
-	cmd.Env = []string{
-		"PATH=" + testDir + ":" + os.Getenv("PATH"),
-		"LC_ALL=C",
-		"FAKE_DOCKER_LOG=" + dockerLog,
-	}
-	output, err = cmd.CombinedOutput()
-	require.NoError(t, err, string(output))
+	linkedRepository := filepath.Join(testDir, "linked-repository")
+	require.NoError(t, os.Symlink(repository, linkedRepository))
+	nestedDirectory := filepath.Join(linkedRepository, "nested")
+	require.NoError(t, os.Mkdir(nestedDirectory, 0o700))
+	gitStubDirectory := filepath.Join(testDir, "git-stub")
+	require.NoError(t, os.Mkdir(gitStubDirectory, 0o700))
+	// Current Git versions canonicalize this path themselves. Supply a valid
+	// logical path explicitly to exercise the wrapper's own physical-path
+	// contract, even when launched below the repository root.
+	const fakeGitSource = `#!/bin/sh
+set -eu
+[ "$#" -eq 2 ]
+[ "$1" = rev-parse ]
+[ "$2" = --show-toplevel ]
+printf '%s\n' "$FAKE_GIT_TOPLEVEL"
+`
+	require.NoError(t, os.WriteFile(filepath.Join(gitStubDirectory, "git"), []byte(fakeGitSource), 0o700)) //nolint:gosec
 
-	arguments, err := os.ReadFile(dockerLog) //nolint:gosec
-	require.NoError(t, err)
-	invocation := string(arguments)
-	require.Contains(t, invocation, "GOPROXY=off\n")
-	require.Contains(t, invocation, "GOTOOLCHAIN=local\n")
-	require.Contains(t, invocation, "GOWORK=off\n")
-	require.Contains(t, invocation, "--volume\n"+repository+":/workspace\n")
-	require.Contains(t, invocation, syft+":/usr/local/bin/syft:ro\n")
-	require.Contains(t, invocation, goreleaser+":/usr/local/bin/goreleaser:ro\n")
-	require.Contains(t, invocation, "manifest-release-builder:test\n")
-	require.Contains(t, invocation, "release\n--snapshot\n--clean\n--skip=publish\n")
+	for _, test := range []struct {
+		name      string
+		directory string
+		path      string
+	}{
+		{name: "standalone repository", directory: repository, path: testDir + ":" + os.Getenv("PATH")},
+		{name: "logical root from nested directory", directory: nestedDirectory, path: gitStubDirectory + ":" + testDir + ":" + os.Getenv("PATH")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dockerLog := filepath.Join(t.TempDir(), "docker-arguments.txt")
+			cmd := exec.Command( //nolint:gosec
+				"sh", wrapper,
+				"manifest-release-builder:test", syft, goreleaser,
+				"release", "--snapshot", "--clean", "--skip=publish",
+			)
+			cmd.Dir = test.directory
+			cmd.Env = []string{
+				"PATH=" + test.path,
+				"LC_ALL=C",
+				"FAKE_DOCKER_LOG=" + dockerLog,
+				"FAKE_GIT_TOPLEVEL=" + linkedRepository,
+			}
+			output, err := cmd.CombinedOutput()
+			require.NoError(t, err, string(output))
+
+			arguments, err := os.ReadFile(dockerLog) //nolint:gosec
+			require.NoError(t, err)
+			invocation := string(arguments)
+			require.Contains(t, invocation, "GOPROXY=off\n")
+			require.Contains(t, invocation, "GOTOOLCHAIN=local\n")
+			require.Contains(t, invocation, "GOWORK=off\n")
+			require.Contains(t, invocation, "--volume\n"+repository+":/workspace\n")
+			require.Contains(t, invocation, syft+":/usr/local/bin/syft:ro\n")
+			require.Contains(t, invocation, goreleaser+":/usr/local/bin/goreleaser:ro\n")
+			require.Contains(t, invocation, "manifest-release-builder:test\n")
+			require.Contains(t, invocation, "release\n--snapshot\n--clean\n--skip=publish\n")
+		})
+	}
 }
 
 func TestReleaseSourceVulnerabilityScansUseStandaloneModuleGraph(t *testing.T) {

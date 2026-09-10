@@ -93,9 +93,15 @@ func TestCrisisSimulationHonorsNodeGasAndCircuitControls(t *testing.T) {
 			require.NotNil(t, handler)
 			requestBytes, err := (&txtypes.SimulateRequest{TxBytes: txBytes}).Marshal()
 			require.NoError(t, err)
-			billingBefore := manifest.BillingKeeper.ExportGenesis(ctx)
+			// Simulate branches from the CheckTx cache. Observe that cache,
+			// rather than the CMS used to seed this fixture, so leaked writes
+			// from a simulation branch would be visible to these assertions.
+			stateCtx := manifest.GetContextForCheckTx(nil)
+			billingBefore := manifest.BillingKeeper.ExportGenesis(stateCtx)
 			collector := manifest.AccountKeeper.GetModuleAddress(authtypes.FeeCollectorName)
-			collectorBefore := manifest.BankKeeper.GetBalance(ctx, collector, "umfx")
+			senderBefore := manifest.BankKeeper.GetBalance(stateCtx, sender, "umfx")
+			collectorBefore := manifest.BankKeeper.GetBalance(stateCtx, collector, "umfx")
+			sequenceBefore := manifest.AccountKeeper.GetAccount(stateCtx, sender).GetSequence()
 			response, err := handler(ctx, &abci.RequestQuery{Path: path, Data: requestBytes})
 			if test.wantError != "" {
 				require.ErrorContains(t, err, test.wantError)
@@ -112,10 +118,11 @@ func TestCrisisSimulationHonorsNodeGasAndCircuitControls(t *testing.T) {
 			if test.trip {
 				require.False(t, called, "the circuit must reject before billing state is scanned")
 			}
-			require.Equal(t, funds.AmountOf("umfx"), manifest.BankKeeper.GetBalance(ctx, sender, "umfx").Amount)
-			require.Equal(t, collectorBefore, manifest.BankKeeper.GetBalance(ctx, collector, "umfx"))
-			require.Equal(t, account.GetSequence(), manifest.AccountKeeper.GetAccount(ctx, sender).GetSequence())
-			require.Equal(t, billingBefore, manifest.BillingKeeper.ExportGenesis(ctx))
+			stateCtx = manifest.GetContextForCheckTx(nil)
+			require.Equal(t, senderBefore, manifest.BankKeeper.GetBalance(stateCtx, sender, "umfx"))
+			require.Equal(t, collectorBefore, manifest.BankKeeper.GetBalance(stateCtx, collector, "umfx"))
+			require.Equal(t, sequenceBefore, manifest.AccountKeeper.GetAccount(stateCtx, sender).GetSequence())
+			require.Equal(t, billingBefore, manifest.BillingKeeper.ExportGenesis(stateCtx))
 		})
 	}
 }

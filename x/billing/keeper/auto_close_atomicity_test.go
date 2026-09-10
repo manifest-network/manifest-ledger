@@ -15,7 +15,7 @@ import (
 )
 
 func TestAutoCloseLeaseFailureLeavesCallerUnchanged(t *testing.T) {
-	for _, failure := range []string{"settlement", "lease persistence", "credit account persistence"} {
+	for _, failure := range []string{"early settlement error propagation", "lease persistence", "credit account persistence"} {
 		t.Run(failure, func(t *testing.T) {
 			s := setupCustomDomain(t)
 			f, k := s.f, s.f.App.BillingKeeper
@@ -28,7 +28,9 @@ func TestAutoCloseLeaseFailureLeavesCallerUnchanged(t *testing.T) {
 			closeTime := f.Ctx.BlockTime().Add(200_000_000 * time.Second)
 			expectedError := types.ErrReservationInvariant
 			switch failure {
-			case "settlement":
+			case "early settlement error propagation":
+				// This case pins early error propagation; the two late write
+				// failures below exercise AutoCloseLease's copy staging.
 				account.ReservedAmounts = sdk.NewCoins()
 			case "lease persistence":
 				key, err := collections.EncodeKeyWithPrefix(types.CustomDomainIndexKey.Bytes(), collections.StringKey, domain)
@@ -58,7 +60,7 @@ func TestAutoCloseLeaseFailureLeavesCallerUnchanged(t *testing.T) {
 			require.Equal(t, reservationBefore, reservationAlias.String(), "a shallow lease copy must not mutate its shared reservation wrapper")
 			require.Equal(t, accountCoinsBefore, accountCoinsAlias.String())
 			require.Equal(t, storesBefore, snapshotPayoutStores(t, f, f.Ctx), "discarding the caller's cache must preserve committed stores")
-			if failure != "settlement" {
+			if failure != "early settlement error propagation" {
 				creditAddress := types.DeriveCreditAddress(s.tenant)
 				require.True(t, f.App.BankKeeper.GetBalance(cacheCtx, creditAddress, testDenom).IsZero(), "late failure must occur after a real settlement transfer in the discarded cache")
 			}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"cosmossdk.io/store/rootmulti"
 	storetypes "cosmossdk.io/store/types"
@@ -26,7 +27,13 @@ func (app *ManifestApp) ExportAppStateAndValidators(forZeroHeight bool, jailAllo
 	// for the selected committed height from the multistore metadata instead.
 	// Zero-height export resets heights, not billing or vesting timestamps.
 	header := app.GetContextForCheckTx(nil).BlockHeader()
-	header.Height = app.LastBlockHeight()
+	sourceHeight := app.LastBlockHeight()
+	if header.Height != sourceHeight {
+		// An in-process rollback can retain the old CheckTx header after the
+		// store moves to an earlier height. Its clock is not a valid fallback.
+		header.Time = time.Time{}
+	}
+	header.Height = sourceHeight
 	if store, ok := app.CommitMultiStore().(*rootmulti.Store); ok && header.Height > 0 {
 		commitInfo, err := store.GetCommitInfo(header.Height)
 		if err != nil {

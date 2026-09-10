@@ -368,12 +368,15 @@ After the upgrade:
   `reserved_amounts = sum(live modern lease remaining_amounts) +
   unattributed_reserved_amounts`; live lease counts, historical cohort counts,
   bank backing, and secondary indexes must agree with primary state.
-- From a stopped copy of the post-upgrade state, export genesis, run
-  `manifestd validate-genesis`, import it into an isolated home, and confirm the
-  imported node starts and re-exports successfully. SDK export preserves the
-  original `genesis_time`; prepare a separate restart copy at the source block
-  time as described in the [billing restart guide](../../x/billing/docs/MIGRATION.md#restart-an-isolated-node-from-an-export),
-  so retained lease timestamps do not appear to be in the future.
+- From a stopped copy of the post-upgrade state, export genesis and prepare a
+  separate restart copy at the source block time as described in the
+  [billing restart guide](../../x/billing/docs/MIGRATION.md#restart-an-isolated-node-from-an-export).
+  SDK export preserves the original `genesis_time`; updating the restart copy
+  keeps retained lease timestamps from appearing to be in the future. Run
+  `manifestd genesis validate /path/to/restart-genesis.json`, import that same
+  document into an isolated home, and confirm the imported node starts and
+  re-exports successfully. Supply the file path explicitly; omitting it validates
+  the default-home genesis instead of the restart copy.
 
 If migration fails, no upgrade block has committed. Keep the network halted and
 follow the aborted-upgrade recovery procedure below; do not let individual
