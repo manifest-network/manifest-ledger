@@ -218,6 +218,12 @@ Before the upgrade:
   transaction result hashes) relative to v2.3.1. All validators must activate
   it together; update fixed-gas clients and pre-upgrade gas baselines rather
   than expecting byte-identical execution results across the boundary.
+- Audit public crisis invocation, including unsigned transaction simulation,
+  using the [invariant operations guide](../../x/billing/docs/OPERATIONS.md).
+  Record current consensus gas, all circuit grantees and authority controls,
+  and each RPC node's simulation limit. Apply the selected controls before
+  exposing production billing state; a crisis ConstantFee or local gas price
+  alone does not bound all invocation paths.
 - Take and verify a recoverable, height-labelled snapshot before the halt. Record
   the committed height and app hash from more than one validator.
 - Run the candidate binary's deterministic offline
@@ -247,8 +253,10 @@ Before the upgrade:
   recorded snapshot: the initial height is normally the committed export height
   plus one (or zero for a zero-height export). `input_genesis_time` is the
   original chain genesis timestamp preserved by SDK export, not the future
-  upgrade time. Schema 5 records the explicit `--at` value as `planner_time`;
-  vesting locks at that time determine `spendable_balance`. Recompute the
+  upgrade time. Schema 6 records the explicit `--at` value as `planner_time`;
+  vesting locks at that time determine `spendable_balance`. Lease-free state
+  reports `billing_state: "lease_free"` rather than inferring a module version;
+  nonzero orphan accounting remains a preflight error. Recompute the
   preflight against the final export and cutover time. For every tenant and denomination the report includes source,
   repaired pre-cutover, and planned post-cutover aggregates; pre/post opaque
   legacy-cohort allocations; and every modern ACTIVE lease's sorted
@@ -362,7 +370,10 @@ After the upgrade:
   bank backing, and secondary indexes must agree with primary state.
 - From a stopped copy of the post-upgrade state, export genesis, run
   `manifestd validate-genesis`, import it into an isolated home, and confirm the
-  imported node starts and re-exports successfully.
+  imported node starts and re-exports successfully. SDK export preserves the
+  original `genesis_time`; prepare a separate restart copy at the source block
+  time as described in the [billing restart guide](../../x/billing/docs/MIGRATION.md#restart-an-isolated-node-from-an-export),
+  so retained lease timestamps do not appear to be in the future.
 
 If migration fails, no upgrade block has committed. Keep the network halted and
 follow the aborted-upgrade recovery procedure below; do not let individual

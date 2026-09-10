@@ -196,6 +196,19 @@ func manifestdCompilerInputs(t *testing.T, repoRoot string) []string {
 
 func TestContainerizedGoReleaserUsesPinnedOfflineToolchain(t *testing.T) {
 	testDir := t.TempDir()
+	wrapper, err := filepath.Abs("./run-goreleaser-in-container.sh")
+	require.NoError(t, err)
+	// The container mounts a complete checkout; linked worktrees have a .git
+	// file pointing outside that mount. Give the wrapper its own ordinary repo.
+	repository := filepath.Join(testDir, "repository")
+	gitInit := exec.CommandContext(t.Context(), "git", "init", "--quiet", repository) //nolint:gosec
+	gitInit.Env = []string{"PATH=" + os.Getenv("PATH"), "LC_ALL=C"}
+	output, err := gitInit.CombinedOutput()
+	require.NoError(t, err, string(output))
+	repository, err = filepath.EvalSymlinks(repository)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(repository, "go.mod"), []byte("module example.com/release-fixture\n"), 0o600))
+
 	dockerLog := filepath.Join(testDir, "docker-arguments.txt")
 	fakeDocker := filepath.Join(testDir, "docker")
 	const fakeDockerSource = `#!/bin/sh
@@ -212,17 +225,17 @@ printf '%s\n' "$@" > "$FAKE_DOCKER_LOG"
 	require.NoError(t, os.Chmod(goreleaser, 0o500)) //nolint:gosec // Owner execution is required by the wrapper fixture.
 
 	cmd := exec.Command( //nolint:gosec
-		"sh", "./run-goreleaser-in-container.sh",
+		"sh", wrapper,
 		"manifest-release-builder:test", syft, goreleaser,
 		"release", "--snapshot", "--clean", "--skip=publish",
 	)
-	cmd.Dir = "."
+	cmd.Dir = repository
 	cmd.Env = []string{
 		"PATH=" + testDir + ":" + os.Getenv("PATH"),
 		"LC_ALL=C",
 		"FAKE_DOCKER_LOG=" + dockerLog,
 	}
-	output, err := cmd.CombinedOutput()
+	output, err = cmd.CombinedOutput()
 	require.NoError(t, err, string(output))
 
 	arguments, err := os.ReadFile(dockerLog) //nolint:gosec
@@ -231,6 +244,7 @@ printf '%s\n' "$@" > "$FAKE_DOCKER_LOG"
 	require.Contains(t, invocation, "GOPROXY=off\n")
 	require.Contains(t, invocation, "GOTOOLCHAIN=local\n")
 	require.Contains(t, invocation, "GOWORK=off\n")
+	require.Contains(t, invocation, "--volume\n"+repository+":/workspace\n")
 	require.Contains(t, invocation, syft+":/usr/local/bin/syft:ro\n")
 	require.Contains(t, invocation, goreleaser+":/usr/local/bin/goreleaser:ro\n")
 	require.Contains(t, invocation, "manifest-release-builder:test\n")

@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
-
+	"cosmossdk.io/store/rootmulti"
 	storetypes "cosmossdk.io/store/types"
 
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
@@ -17,10 +16,33 @@ import (
 )
 
 // ExportAppStateAndValidators exports the state of the application for a genesis
-// file.
+// file. Zero-height preparation requires the selected source block's timestamp;
+// restored or rolled-back state without a known source time returns an error instead
+// of evaluating time-dependent invariants at an unknown time. Ordinary export
+// remains available. The SDK's outer genesis_time is not changed by this method.
 func (app *ManifestApp) ExportAppStateAndValidators(forZeroHeight bool, jailAllowedAddrs, modulesToExport []string) (servertypes.ExportedApp, error) {
-	// as if they could withdraw from the start of the next block
-	ctx := app.NewContextLegacy(true, cmtproto.Header{Height: app.LastBlockHeight()})
+	// In-process exports retain the last block header in CheckTx state. A
+	// reopened app has only its configured chain ID there, so recover the time
+	// for the selected committed height from the multistore metadata instead.
+	// Zero-height export resets heights, not billing or vesting timestamps.
+	header := app.GetContextForCheckTx(nil).BlockHeader()
+	header.Height = app.LastBlockHeight()
+	if store, ok := app.CommitMultiStore().(*rootmulti.Store); ok && header.Height > 0 {
+		commitInfo, err := store.GetCommitInfo(header.Height)
+		if err != nil {
+			return servertypes.ExportedApp{}, fmt.Errorf("load export block time at height %d: %w", header.Height, err)
+		}
+		if !commitInfo.Timestamp.IsZero() {
+			header.Time = commitInfo.Timestamp
+		}
+	}
+	if forZeroHeight && header.Time.IsZero() {
+		return servertypes.ExportedApp{}, fmt.Errorf(
+			"cannot prepare zero-height export at height %d: source block time is unavailable; snapshot restore or rollback may omit commit timestamps, and time-dependent invariant checks require a known source block time",
+			header.Height,
+		)
+	}
+	ctx := app.NewContextLegacy(true, header)
 
 	// We export at last height + 1, because that's the height at which
 	// CometBFT will start InitChain.

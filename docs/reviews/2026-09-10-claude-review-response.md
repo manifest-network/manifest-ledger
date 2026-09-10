@@ -17,7 +17,7 @@ claim that no vulnerabilities remain.
 | CLOSED timestamps may precede creation or settlement | **Fixed; low, defense in depth.** All static/import/current-state paths require `closed_at >= created_at` and `closed_at >= last_settled_at`; equality and historical partial settlement remain valid. This is separate from the completed original F07 fix; no fund loss was demonstrated. | 99% |
 | F52 failed expiration mutates the caller's lease/reservation | **Fixed; low.** Expiration works on copied lease/reservation values and assigns the caller only after cached writes commit. Missing credit, release failure, and late domain-index failure leave both caller memory and stored state unchanged. Success still updates the caller. | 100% |
 | F59 overdue PENDING lease can claim or renew a domain | **Fixed; low.** Nonempty claims and idempotent re-sets use the current hard pending deadline and existing `ErrLeaseAcknowledgementDeadlineExceeded` (code 34). Equality is allowed; empty clears remain available until terminal state. | 100% |
-| F55 runtime invariant omits block-time validation | **Fixed; low.** Reservation accounting now reuses `ValidateWithBlockTime` after strict current-state validation. Future creation, settlement, and close timestamps break the invariant; equality passes. This does not add new checks for acknowledged/rejected/expired timestamps. | 99% |
+| F55 runtime invariant omits block-time validation | **Fixed; low.** Reservation accounting now reuses `ValidateWithBlockTime` after strict current-state validation. Future creation, settlement, and close timestamps break the invariant; equality passes. This does not add new checks for acknowledged/rejected/expired timestamps. **Subsequent correction:** this exposed a zero-height export context with no time; see the [export follow-up](2026-09-10-claude-export-review-response.md). | 99% |
 | F56 lease-free preflight claims source format is v4 | **Fixed; low.** Schema 6 introduces `lease_free`/`none` for strictly valid zero-claim state, including funded accounts. Nonzero orphaned reservations, counts, or cohorts fail with an explicit ambiguity error. The tool cannot infer consensus version without lease format markers and does not guess a repair. | 99% |
 | F48 genesis duplicates lease-item shape validation | **Simplified.** Genesis projects bounded item inputs through the shared shape validator; persisted pricing and domain validation remain separate. Error wording now comes from the shared validator. | 99% |
 | F63 allowed-list authorization repeatedly decodes stored members | **Simplified.** Decode the candidate once, then use standard-library `slices.Contains` on canonical or all-uppercase encodings. Preserve SDK identity behavior for public raw Params values; no global cache or extra dependency. | 99% |
@@ -56,6 +56,8 @@ the remaining block budget before that charge. Nonzero validator
 minimum gas prices affect local CheckTx only and are not a consensus fee floor;
 Manifest's ProcessProposal handler currently accepts proposals without that
 price check. Raising the crisis ConstantFee alone is not sufficient.
+
+A [subsequent review](2026-09-10-claude-export-review-response.md) also identified the unsigned Simulate path and qualified circuit-only protection for composed simulations.
 
 No live policy was changed. Selecting and deploying an appropriate control,
 measuring production-size invariant work, and any streaming redesign remain

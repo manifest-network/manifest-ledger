@@ -838,6 +838,40 @@ lease abc123 has last_settled_at (2025-01-08T00:00:00Z) in the future relative t
 
 **Resolution:** Ensure all timestamps in genesis state are at or before the genesis block time.
 
+### Restart an isolated node from an export
+
+The application uses the selected source height's committed timestamp for
+export invariant checks, including after reopening the database. SDK snapshot
+restore and rollback can omit that timestamp metadata. If no source time is
+available, zero-height export returns an explicit error before invariant checks;
+it does not guess a wall-clock time or skip time-dependent backing checks.
+Ordinary export remains available at the retained height. For zero-height
+preparation, use a source copy retaining timestamp metadata, or a later normally
+committed height when the network's recovery procedure permits it. A restored
+or rolled-back state is not automatically safe to advance independently.
+
+Export resets heights when `--for-zero-height` is used; it does not reset lease
+timestamps. The SDK export command also retains the source genesis file's
+original `genesis_time`. If that time predates any exported creation, settlement,
+or closure, starting directly from that document fails `InitGenesis` even when
+static `validate-genesis` succeeds. An old timestamp can also relock vesting
+credit and fail reservation backing before the timestamp diagnostic is reached.
+
+For an isolated import rehearsal, retain the untouched export as evidence and
+prepare a separate restart copy whose `genesis_time` is the selected source
+block's timestamp (or an explicitly agreed later restart time). Obtain that
+timestamp from the height-labelled source block, not the original genesis or
+the local wall clock. Preserve `initial_height` from the chosen normal/zero-height
+export mode and the rest of the genesis fields. For a network restart, all
+validators must agree on the same restart document and timestamp.
+
+Use the restart timestamp for preflight `--at`, rerun the preflight and
+`validate-genesis` on the restart copy, then start it in a separate home and
+verify import/re-export. A later restart time changes vesting spendability,
+pending deadlines, and subsequent accrual; it is not a formatting-only edit.
+Do not rewrite historical lease timestamps to make an old genesis time pass.
+An ordinary in-place binary upgrade does not use this restart-from-export step.
+
 ### Phase 3: Cross-Module Validation (`InitGenesis`)
 
 During `InitGenesis`, the module additionally performs cross-module checks against the SKU module:

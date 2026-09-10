@@ -202,7 +202,7 @@ manifestd tx billing create-lease <sku-uuid>:2:web <sku-uuid>:3:db --from tenant
 manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1 --from tenant
 ```
 
-## Lease Acknowledgement Issues
+## Lease Acknowledgement and Pending Domain Issues
 
 ### "lease not in pending state"
 
@@ -217,13 +217,26 @@ Only PENDING leases can be acknowledged/rejected by providers or cancelled by te
 
 ### "lease acknowledgement deadline exceeded"
 
-**Cause**: The acknowledgement block time is strictly after
-`lease.created_at + current pending_timeout`. This is a hard gate even when the lease still appears
-PENDING because the rate-limited EndBlocker has not expired it yet. The exact cutoff remains valid.
+**Cause**: Block time is strictly after
+`lease.created_at + current pending_timeout`. Error code 34 applies to both
+acknowledgement and nonempty `set-item-custom-domain` calls on PENDING leases,
+including an idempotent re-set of the existing domain. This is a hard gate even
+when the lease still appears PENDING because EndBlock has not expired it yet.
+The exact cutoff remains valid.
 
-**Solution**: Do not retry acknowledgement. The provider can reject the overdue lease, the tenant
-can cancel it while it remains PENDING, or either party can wait for EndBlock expiration and then
-the tenant can create a replacement lease.
+**Solution**: With unchanged timeout parameters, retrying acknowledgement or
+a nonempty domain claim will still fail. The provider can reject the overdue
+lease, the tenant can cancel it while it remains PENDING, or either party can
+wait for EndBlock expiration before the tenant creates a replacement lease.
+To release an existing domain immediately, an authorized editor can clear it
+while the lease remains PENDING:
+
+```bash
+manifestd tx billing set-item-custom-domain [lease-uuid] [service-name] "" --from [authorized-key]
+```
+
+Clearing does not reactivate the lease or extend its deadline. Terminal leases
+are immutable; their live domain claim has already been released.
 
 ### "lease acknowledgement active cap exceeded"
 

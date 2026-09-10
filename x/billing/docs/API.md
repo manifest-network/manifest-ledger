@@ -2058,7 +2058,7 @@ manifestd query tx [txhash] --output json | jq -er 'select((.code | tonumber) ==
 | `ErrLeaseNotEditable` | 31 | Lease is not in PENDING or ACTIVE state — `custom_domain` cannot be edited on closed/rejected/expired leases |
 | `ErrLeaseItemNotFound` | 32 | No lease item matched the supplied `service_name` |
 | `ErrAmbiguousLeaseItem` | 33 | Lookup by `service_name` matched more than one item — happens for multi-item legacy leases (no `service_name`s); recreate the lease in service-name mode |
-| `ErrLeaseAcknowledgementDeadlineExceeded` | 34 | Acknowledgement block time is strictly after a lease's hard pending deadline |
+| `ErrLeaseAcknowledgementDeadlineExceeded` | 34 | Block time is strictly after a PENDING lease's current hard deadline when acknowledging it or setting/re-setting a nonempty custom domain; empty domain clears remain available |
 | `ErrLeaseAcknowledgementActiveCapExceeded` | 35 | Acknowledgement would exceed a tenant's post-batch active cap |
 | `ErrReservationInvariant` | 36 | Stored balance/reservation state violates the consumable reservation invariant |
 | `ErrLeaseQueryLimitExceeded` | 37 | `CreditEstimate` would exceed its conservative ACTIVE-lease or total-item work bound |

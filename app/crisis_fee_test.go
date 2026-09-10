@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -16,9 +17,11 @@ import (
 	dbm "github.com/cosmos/cosmos-db"
 
 	"cosmossdk.io/log"
+	storetypes "cosmossdk.io/store/types"
 	circuittypes "cosmossdk.io/x/circuit/types"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
+	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/testutil/sims"
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -28,6 +31,8 @@ import (
 	crisistypes "github.com/cosmos/cosmos-sdk/x/crisis/types"
 
 	appparams "github.com/manifest-network/manifest-ledger/app/params"
+	billingkeeper "github.com/manifest-network/manifest-ledger/x/billing/keeper"
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
 func TestCrisisFeeRollsBackAfterFailingMessageButAnteFeeRemains(t *testing.T) {
@@ -161,11 +166,20 @@ func TestCrisisCircuitBreakerBlocksDirectAndNestedRoutes(t *testing.T) {
 
 func setupCrisisApp(t *testing.T) (sdk.Context, *ManifestApp) {
 	t.Helper()
+	return setupCrisisAppWithGas(t, DefaultConsensusParams.Block.MaxGas, nil)
+}
+
+func setupCrisisAppWithGas(t *testing.T, maxBlockGas int64, simulationGasLimit *uint64) (sdk.Context, *ManifestApp) {
+	t.Helper()
 	appparams.SetAddressPrefixes()
 	db := dbm.NewMemDB()
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	options := sims.AppOptionsMap{flags.FlagHome: t.TempDir()}
+	if simulationGasLimit != nil {
+		options["wasm.simulation_gas_limit"] = *simulationGasLimit
+	}
 	manifest := NewApp(log.NewNopLogger(), db, nil, true, DefaultCommissionRateMinMax,
-		sims.NewAppOptionsWithFlagHome(t.TempDir()), baseapp.SetChainID(SimAppChainID), baseapp.SetMinGasPrices("0.001umfx"))
+		options, baseapp.SetChainID(SimAppChainID), baseapp.SetMinGasPrices("0.001umfx"))
 	validatorKey := tmed25519.GenPrivKey()
 	validator := tmtypes.NewValidator(validatorKey.PubKey(), 1)
 	valSet := tmtypes.NewValidatorSet([]*tmtypes.Validator{validator})
@@ -174,9 +188,13 @@ func setupCrisisApp(t *testing.T) (sdk.Context, *ManifestApp) {
 	genesis, err := json.Marshal(genesisState)
 	require.NoError(t, err)
 	blockTime := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	consensusParams := *DefaultConsensusParams
+	blockParams := *consensusParams.Block
+	blockParams.MaxGas = maxBlockGas
+	consensusParams.Block = &blockParams
 	_, err = manifest.InitChain(&abci.RequestInitChain{
 		ChainId: SimAppChainID, InitialHeight: 1, Time: blockTime,
-		ConsensusParams: DefaultConsensusParams, AppStateBytes: genesis,
+		ConsensusParams: &consensusParams, AppStateBytes: genesis,
 	})
 	require.NoError(t, err)
 	// FinalizeBlock flushes genesis writes before Commit, as it does on chain.
@@ -188,4 +206,36 @@ func setupCrisisApp(t *testing.T) (sdk.Context, *ManifestApp) {
 		ChainID: SimAppChainID, Height: 1, Time: blockTime,
 	})
 	return ctx, manifest
+}
+
+func TestBillingInvariantChargesCallerGasForStateReads(t *testing.T) {
+	ctx, manifest := setupCrisisApp(t)
+	invariant := billingkeeper.ReservationAccountingInvariant(manifest.BillingKeeper)
+	measure := func() uint64 {
+		meter := storetypes.NewGasMeter(1_000_000)
+		message, broken := invariant(ctx.WithGasMeter(meter))
+		require.False(t, broken, message)
+		return meter.GasConsumed()
+	}
+	emptyGas := measure()
+	require.Positive(t, emptyGas, "invariant reads must charge the supplied meter, independently of ante overhead")
+	const accounts = 16
+	addCrisisBillingAccounts(t, ctx, manifest, accounts)
+	populatedGas := measure()
+	require.Greater(t, populatedGas, emptyGas)
+	require.GreaterOrEqual(t, populatedGas-emptyGas, uint64(accounts)*storetypes.KVGasConfig().IterNextCostFlat,
+		"reading each added account must contribute to caller gas")
+	require.Panics(t, func() {
+		invariant(ctx.WithGasMeter(storetypes.NewGasMeter(emptyGas)))
+	}, "a budget sufficient for empty state must stop the larger bounded fixture")
+}
+
+func addCrisisBillingAccounts(t *testing.T, ctx sdk.Context, manifest *ManifestApp, count int) {
+	t.Helper()
+	for i := range count {
+		tenant := sdk.AccAddress(fmt.Appendf(nil, "crisis-account-%05d", i))
+		require.NoError(t, manifest.BillingKeeper.SetCreditAccount(ctx, billingtypes.CreditAccount{
+			Tenant: tenant.String(), CreditAddress: billingtypes.DeriveCreditAddress(tenant).String(),
+		}))
+	}
 }

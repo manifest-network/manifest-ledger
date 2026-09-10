@@ -1163,6 +1163,7 @@ type AutoCloseLeaseResult struct {
 // AutoCloseLease performs the auto-close sequence for a lease with exhausted credit.
 // It settles the lease, updates its state to CLOSED, decrements the active lease count,
 // and releases the reservation. All changes are applied to the provided context.
+// Caller-owned lease and credit-account values are updated only on success.
 // The caller is responsible for CacheContext management and event emission.
 func (k *Keeper) AutoCloseLease(
 	ctx context.Context,
@@ -1170,28 +1171,33 @@ func (k *Keeper) AutoCloseLease(
 	creditAccount *types.CreditAccount,
 	closeTime time.Time,
 ) (*AutoCloseLeaseResult, error) {
-	result, err := k.PerformSettlementSilent(ctx, lease, creditAccount, closeTime)
+	closedLease := *lease
+	closedLease.Reservation = cloneLeaseReservation(lease.Reservation)
+	closedAccount := *creditAccount
+	result, err := k.PerformSettlementSilent(ctx, &closedLease, &closedAccount, closeTime)
 	if err != nil {
 		return nil, err
 	}
 
-	lease.State = types.LEASE_STATE_CLOSED
-	lease.ClosedAt = &closeTime
-	lease.LastSettledAt = closeTime
-	lease.ClosureReason = types.ClosureReasonCreditExhausted
+	closedLease.State = types.LEASE_STATE_CLOSED
+	closedLease.ClosedAt = &closeTime
+	closedLease.LastSettledAt = closeTime
+	closedLease.ClosureReason = types.ClosureReasonCreditExhausted
 
-	k.DecrementActiveLeaseCount(creditAccount, lease.Uuid)
-	if err := k.ReleaseLeaseReservation(ctx, creditAccount, lease); err != nil {
+	k.DecrementActiveLeaseCount(&closedAccount, closedLease.Uuid)
+	if err := k.ReleaseLeaseReservation(ctx, &closedAccount, &closedLease); err != nil {
 		return nil, err
 	}
 
-	if err := k.SetLease(ctx, *lease); err != nil {
+	if err := k.SetLease(ctx, closedLease); err != nil {
 		return nil, err
 	}
-	if err := k.SetCreditAccount(ctx, *creditAccount); err != nil {
+	if err := k.SetCreditAccount(ctx, closedAccount); err != nil {
 		return nil, err
 	}
 
+	*lease = closedLease
+	*creditAccount = closedAccount
 	return &AutoCloseLeaseResult{TransferAmounts: result.TransferAmounts}, nil
 }
 

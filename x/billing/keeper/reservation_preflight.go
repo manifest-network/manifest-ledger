@@ -153,7 +153,14 @@ func BuildReservationMigrationPreflight(
 		// There is no wire-format discriminator without a lease. Do not apply
 		// legacy repair to a nonzero orphaned aggregate: it could instead be
 		// corrupted current state whose backing audit must fail closed.
-		if err := billingGenesis.ValidateCurrentState(); err != nil {
+		// Allowed-list aliases are import-safe independently of accounting;
+		// normalize only those before auditing the original counts and claims.
+		audit := *billingGenesis
+		audit.Params.AllowedList, err = types.CanonicalUniqueAddresses(billingGenesis.Params.AllowedList)
+		if err != nil {
+			return report, fmt.Errorf("normalize billing allowed list for lease-free migration preflight: %w", err)
+		}
+		if err := audit.ValidateCurrentState(); err != nil {
 			return report, fmt.Errorf("lease-free billing state has no reservation format marker; cannot infer legacy repair versus a current-state audit: %w", err)
 		}
 	}

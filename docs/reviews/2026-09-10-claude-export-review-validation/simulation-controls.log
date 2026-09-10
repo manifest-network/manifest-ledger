@@ -1,0 +1,18 @@
+=== RUN   TestBillingInvariantChargesCallerGasForStateReads
+--- PASS: TestBillingInvariantChargesCallerGasForStateReads (0.07s)
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls/positive_block_fallback
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_positive_node_limit
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_node_limit_exhaustion
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls/block_fallback_exhaustion
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_node_limit_overrides_smaller_block_limit
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls/circuit_rejects_before_invariant_work
+--- PASS: TestCrisisSimulationHonorsNodeGasAndCircuitControls (0.30s)
+    --- PASS: TestCrisisSimulationHonorsNodeGasAndCircuitControls/positive_block_fallback (0.05s)
+    --- PASS: TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_positive_node_limit (0.05s)
+    --- PASS: TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_node_limit_exhaustion (0.05s)
+    --- PASS: TestCrisisSimulationHonorsNodeGasAndCircuitControls/block_fallback_exhaustion (0.05s)
+    --- PASS: TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_node_limit_overrides_smaller_block_limit (0.05s)
+    --- PASS: TestCrisisSimulationHonorsNodeGasAndCircuitControls/circuit_rejects_before_invariant_work (0.05s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/app 0.453s
