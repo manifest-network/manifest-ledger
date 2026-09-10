@@ -137,3 +137,99 @@ Rolling back a finalised upgrade is **not** safe — the chain has already produ
 - For a post-finalisation rollback (catastrophic bug): you are in chain-halt territory. Coordinate on Discord — this needs a multi-validator restore from a pre-upgrade snapshot under a new upgrade proposal.
 
 Always test upgrades on a local chain (`make local-image` + `make ictest-chain-upgrade`) or testnet first.
+
+## Rehearsing against a copy of chain state
+
+`manifestd in-place-testnet <new-chain-id> <operator-account-address>` converts a
+disposable copy of a stopped node into a single-validator testnet and starts it.
+It preserves application stores directly, so migration tests can exercise legacy
+encodings and orphaned application records that a genesis export may normalize.
+This is the ledger wiring for [ENG-879](https://linear.app/liftedinit/issue/ENG-879)
+and [ENG-886](https://linear.app/liftedinit/issue/ENG-886). Four-validator promotion
+and the deployment playbooks are separate follow-ups.
+
+**SDK prerequisite:** the currently pinned SDK, `v0.50.14-liftedinit.1`, does not
+rewrite extended commits. A source chain with vote extensions enabled (including
+mainnet) fails during the fork's initial consensus startup. The SDK fix tracked
+in [ENG-885](https://linear.app/liftedinit/issue/ENG-885) must be published, pinned,
+and verified before using this command with mainnet state. Disabling extensions
+only in CometBFT state is not a workaround: application consensus parameters would
+conflict on the next block. The SDK also retains the source chain ID in its cached
+genesis document; that must be corrected by the SDK fix.
+
+Prepare the copied home before running the command:
+
+1. Use a fork base whose state transitions match the source binary. Changes on
+   `main` are not automatically compatible with a released source chain. Build
+   with `make build VERSION=<last-completed-upgrade-name>` and verify
+   `build/manifestd version`. The source mainnet contract for this work is
+   `v2.3.1`; recheck the last completed upgrade before each rehearsal. Merely
+   setting the version does not establish state compatibility. The version must
+   register that completed upgrade handler or x/upgrade's downgrade check rejects
+   the first replayed block. A bare `go build` omits the required version ldflags.
+2. Copy a stopped node's state, or state-sync a disposable node and allow it to
+   block-sync several more blocks before stopping. The SDK needs a local full
+   block and seen commit; a snapshot alone is insufficient. Keep a backup of the
+   copied home so a failed conversion can be retried from the original copy.
+   Include the source's `wasm/` bytecode: this application does not currently
+   register the Wasm snapshot extension.
+3. Generate a fresh local consensus key. Never use a production
+   `priv_validator_key.json`. Reset the copied `priv_validator_state.json` to
+   height `"0"`, round `0`, step `0`, and remove the copied consensus WAL.
+   Use a fresh node key as well. Do this only in the stopped, disposable fork
+   home.
+4. Give the fork a distinct chain ID, clear `persistent_peers` and `seeds`, disable
+   peer exchange and state sync, and isolate its P2P network from production.
+   The SDK clears the address book but does not clear configured peers or seeds.
+5. Set `POA_ADMIN_ADDRESS` to the local operator's **account** address before
+   startup. Use that byte-identical value on every eventual fork node. This sets
+   POA and upgrade authority; it does not transfer the PWR tokenfactory denom's
+   group-policy authority. Ensure the operator's signing key is available locally.
+
+With the SDK prerequisite satisfied and the copied home prepared:
+
+```bash
+export POA_ADMIN_ADDRESS=<local-manifest-account-address>
+build/manifestd in-place-testnet manifest-ledger-fork-1 "$POA_ADMIN_ADDRESS" \
+  --home <copied-fork-home> --skip-confirmation --minimum-gas-prices 0umfx
+```
+
+The initializer replaces all source validators, including jailed/unbonded records,
+consensus and power indices, delegation records and unbonding/redelegation queues.
+It clears POA pending validators and update caches, then installs the local key
+with distribution/slashing records and a synthetic self-delegation. Staking pools
+and bank supply are adjusted through the bank keeper. Removed validators' rewards
+are reassigned to the community pool and their distribution histories are cleared.
+The operator receives
+`1000000000000umfx` through a transfer that also creates its x/auth account.
+Other application state is retained; this is intentionally a modified staking
+environment, not a reproduction of the source validator/delegator economics.
+
+Initial voting power is `900000000000000`, matching the SDK's CometBFT replacement
+set; staking tokens include the chain's power reduction factor. Before adding
+more validators, normalize the local validator using the POA admin's
+`tx poa set-power <local-valoper> 1000000 --unsafe` (shares, equal to one consensus
+power with the usual `1000000` reduction). Do not pass the initial token amount
+to that command: it exceeds the CLI's uint64 share range. Verify the resulting
+CometBFT power before promoting other validators.
+
+Wait for committed height to advance at least two blocks beyond the copied
+height. Check the new network ID, a single expected validator, an existing
+`query auth account <operator>` result and funded bank balance. After a clean
+stop, use ordinary `manifestd start --home <copied-fork-home>` and verify further
+block progression. Run `in-place-testnet` only once per copied home; the first
+fork block persists the application rewrite.
+
+For an in-process migration test, append
+`--trigger-testnet-upgrade <handler-name>` to schedule the handler at copied height
++ 1. With a handler present in the binary, it runs on the first fork block without
+a cosmovisor swap. To rehearse the real halt and swap, omit that flag, stage the
+target binary, and submit a real `MsgSoftwareUpgrade` signed by the fork operator.
+The target binary's version must match the plan name. Ensure
+`manifestd status --home <copied-fork-home>` reaches the fork RPC through
+`config/client.toml`: cosmovisor uses that command without an explicit `--node`.
+
+Regression entry points are `go test ./cmd/manifestd/cmd`,
+`make local-image && make ictest-in-place-testnet`, and
+`make ictest-poa-unjail-dup`. The consensus fork test includes vote extensions and
+therefore requires the fixed SDK dependency described above.

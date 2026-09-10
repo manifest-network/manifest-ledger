@@ -135,6 +135,9 @@ ictest-cosmwasm:
 ictest-chain-upgrade:
 	cd interchaintest && go test -race -v -run TestBasicManifestUpgrade . -count=1
 
+ictest-in-place-testnet:
+	cd interchaintest && go test -timeout 20m -race -v -run '^TestInPlaceTestnet$$' . -count=1
+
 ictest-group:
 	cd interchaintest && go test -race -v -run TestGroupMetadataLimits . -count=1
 
@@ -167,7 +170,7 @@ ictest-billing-upgrade:
 ictest-billing-reservation:
 	cd interchaintest && go test -race -v -timeout 45m -run TestBillingReservation . -count=1
 
-.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-poa-unjail-dup ictest-poa-unjail-dup-bug ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku ictest-billing ictest-billing-extra ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-upgrade ictest-billing-reservation
+.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-poa-unjail-dup ictest-poa-unjail-dup-bug ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-in-place-testnet ictest-group ictest-sku ictest-billing ictest-billing-extra ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-upgrade ictest-billing-reservation
 
 ###############################################################################
 ###                                Build Image                              ###
