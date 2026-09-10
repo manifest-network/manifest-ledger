@@ -513,6 +513,7 @@ manifestd tx billing set-item-custom-domain 01902a9b-1234-7000-8000-000000000001
 **Constraints:**
 - Sender must be the lease tenant, the module authority, or an address in `params.allowed_list`.
 - Lease must be in `PENDING` or `ACTIVE` state. Closed/rejected/expired leases are immutable.
+- A nonempty claim on a PENDING lease must pass the current hard pending deadline, including an idempotent re-set. The exact deadline is allowed; later claims return `ErrLeaseAcknowledgementDeadlineExceeded`. Clearing a domain remains available after the deadline until the lease becomes terminal.
 - Multi-item legacy leases (no `service_name`s) cannot set `custom_domain` — recreate in service-name mode.
 - Domain must pass `IsValidFQDN`: 1–253 bytes, lowercase, ≥ 1 dot separator, each label is RFC 1123 (1–63 alphanumerics + hyphens, no leading/trailing hyphen), TLD has at least one non-digit, no scheme/path/whitespace/`@`/`*`/`?`/`#`/leading or trailing dot.
 - Domain must not match any entry in `params.reserved_domain_suffixes` (case-insensitive, label-boundary suffix check; entries also match their apex).
@@ -696,7 +697,7 @@ manifestd query billing lease [lease-uuid]
 **Notes:**
 - `locked_price` is a Coin with denom and amount, representing the per-second rate
 - `acknowledged_at` is set when provider acknowledges (ACTIVE state)
-- `closed_at` is set when lease is closed (CLOSED state)
+- `closed_at` is set when lease is closed (CLOSED state), and must be no earlier than `created_at` or `last_settled_at`
 - `rejected_at` is set when provider rejects or tenant cancels (REJECTED state)
 - `expired_at` is set when pending lease times out (EXPIRED state)
 - `rejection_reason` contains the provider's reason for rejection (max 256 UTF-8 bytes)
@@ -1528,6 +1529,7 @@ message MsgSetItemCustomDomainResponse {}
 
 **Behaviour notes:**
 - Lease state must be `PENDING` or `ACTIVE` (`ErrLeaseNotEditable` otherwise).
+- Nonempty PENDING claims, including idempotent re-sets, fail with `ErrLeaseAcknowledgementDeadlineExceeded` after the current hard pending deadline. Equality is allowed. Empty clears remain available while the lease is PENDING.
 - Multi-item legacy leases (no `service_name`s) cannot use `custom_domain` (`ErrAmbiguousLeaseItem`).
 - Empty `custom_domain` clears the field and removes the `CustomDomainIndex` entry.
 - `custom_domain` is normalised on write (`strings.ToLower` + `TrimSpace`).

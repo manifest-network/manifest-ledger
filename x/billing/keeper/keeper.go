@@ -1472,7 +1472,7 @@ func (k *Keeper) GetLeasesBySKU(ctx context.Context, skuUUID string) (leases []t
 
 // ExpirePendingLease expires a pending lease, unlocking the tenant's credit.
 // This is called by the EndBlocker when a lease exceeds the pending timeout.
-// Uses CacheContext for atomicity - if any state update fails, no changes are committed.
+// Store changes and the caller's lease are updated only after every write succeeds.
 func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
@@ -1485,9 +1485,15 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 	// Use CacheContext for atomic state changes
 	cacheCtx, write := sdkCtx.CacheContext()
 
-	// Update lease state to EXPIRED
-	lease.State = types.LEASE_STATE_EXPIRED
-	lease.ExpiredAt = &blockTime
+	// Reservation release replaces RemainingAmounts, so copy its wrapper too.
+	// A failed lookup, release, or index write must leave the caller unchanged.
+	expiredLease := *lease
+	if lease.Reservation != nil {
+		reservation := *lease.Reservation
+		expiredLease.Reservation = &reservation
+	}
+	expiredLease.State = types.LEASE_STATE_EXPIRED
+	expiredLease.ExpiredAt = &blockTime
 
 	// Decrement pending lease count and release reservation in credit account
 	creditAccount, err := k.GetCreditAccount(cacheCtx, lease.Tenant)
@@ -1505,10 +1511,10 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 	k.DecrementPendingLeaseCount(&creditAccount, lease.Uuid)
 
 	// Release reservation for this lease (PENDING leases have reservations)
-	if err := k.ReleaseLeaseReservation(cacheCtx, &creditAccount, lease); err != nil {
+	if err := k.ReleaseLeaseReservation(cacheCtx, &creditAccount, &expiredLease); err != nil {
 		return err
 	}
-	if err := k.SetLease(cacheCtx, *lease); err != nil {
+	if err := k.SetLease(cacheCtx, expiredLease); err != nil {
 		return err
 	}
 
@@ -1518,6 +1524,7 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 
 	// Commit all state changes atomically
 	write()
+	*lease = expiredLease
 
 	// Emit event (after commit, events are not part of CacheContext)
 	sdkCtx.EventManager().EmitEvent(

@@ -109,3 +109,38 @@ func TestGenesisReasonsEnforceMessageByteLimits(t *testing.T) {
 		})
 	}
 }
+
+func TestGenesisClosedTimestampCannotPrecedeService(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		settled   time.Duration
+		closed    time.Duration
+		errorText string
+	}{
+		{name: "same block close"},
+		{name: "settled at close", settled: time.Hour, closed: time.Hour},
+		{name: "historical partial settlement", settled: time.Minute, closed: time.Hour},
+		{name: "before creation", closed: -time.Nanosecond, errorText: "closed_at before created_at"},
+		{name: "before settlement", settled: time.Hour, closed: time.Hour - time.Nanosecond, errorText: "closed_at before last_settled_at"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			genesis := lifecycleGenesis(types.LEASE_STATE_CLOSED)
+			lease := &genesis.Leases[0]
+			lease.LastSettledAt = lease.CreatedAt.Add(tc.settled)
+			closedAt := lease.CreatedAt.Add(tc.closed)
+			lease.ClosedAt = &closedAt
+			assertLifecycleValidation(t, genesis, tc.errorText)
+
+			// Complete pre-v4 exports omit per-lease reservations. Import must
+			// retain reachable partially settled history but reject backwards time.
+			lease.Reservation = nil
+			for _, validate := range []func() error{genesis.Validate, genesis.ValidateStrict} {
+				if tc.errorText == "" {
+					require.NoError(t, validate())
+				} else {
+					require.ErrorContains(t, validate(), tc.errorText)
+				}
+			}
+		})
+	}
+}

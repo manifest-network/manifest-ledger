@@ -12,13 +12,24 @@ The migration process involves:
 4. Funding tenant credit accounts
 5. Creating leases on behalf of tenants using `MsgCreateLeaseForTenant`
 
+### Invariant execution policy preflight
+
+Before the upgrade, audit live consensus gas limits, validator fee settings,
+and public crisis-message access using the [invariant operations guide](OPERATIONS.md).
+The crisis ConstantFee can roll back after invariant execution when a later
+message fails; it is not a reliable execution price. Record the selected
+controls alongside the production-size migration and invariant rehearsal.
+
 ### Provider payout policy preflight
 
 Before upgrading, run the candidate binary's offline preflight against a
 complete height-labelled export. It audits every stored provider, including
 inactive providers, against that binary's complete blocked-address set and
 checks each source ACTIVE or PENDING lease for a payout equal to its tenant's
-derived credit address. Both checks compare decoded SDK account-address bytes:
+derived credit address. Both checks compare decoded SDK account-address bytes.
+The governance (`gov`) module account is the sole module account exempt from
+the app bank receiving blocklist; other module accounts remain blocked. This
+is a receiving policy, not permission to execute governance actions:
 
 ```bash
 CUTOVER_TIME="2026-09-09T16:00:00Z" # Replace with the intended upgrade/simulation time.
@@ -32,7 +43,7 @@ jq -e '.blocked_provider_count == 0 and .payout_credit_collision_count == 0' \
 
 The command succeeds when it finds ineligible payouts so that it can report all
 of them. The final `jq -e` check is the separate required upgrade gate: both
-counts must be zero. Report schema version 5 includes `provider_count`,
+counts must be zero. Report schema version 6 includes `provider_count`,
 `blocked_provider_count`, and `blocked_providers` (an empty array when there are
 no findings). Each blocked-provider finding records `provider_uuid`, canonical
 `payout_address`, `active`, and sorted
@@ -247,19 +258,29 @@ The real migration uses its actual block time for both spendable credit and
 new expiration timestamps.
 
 `billing_state` is `pre_v4_aggregate` when the command applies the cutover
-planner. In that case schema version 5 reports
+planner. In that case schema version 6 reports
 `migration_path: "v2_to_v3_to_v4"`: it first performs the v2→v3 aggregate repair
 and then plans the v3→v4 allocation. This is the supported upgrade path; billing
 consensus v3 has not been deployed. The report does **not** predict a direct
 v3→v4 upgrade from an arbitrary stored v3 aggregate. A future direct-v3 upgrade
 would need a separate preflight mode and parity tests before use.
 
-For an input already in the new representation, `billing_state` is
-`consumable_v4` and `migration_path` is `none`. Already-v4 input is never
-repaired: the command fails if its reservation aggregate is not fully
+For an input with leases already in the new representation, `billing_state` is
+`consumable_v4` and `migration_path` is `none`. Already-v4 reservations are never
+reallocated; import preparation still canonicalizes allowed-list addresses and
+reconstructs cached ACTIVE/PENDING lease counts. The command fails if its reservation aggregate is not fully
 spendable-bank-backed at `--at`. It also fails closed on a
 missing or malformed auth/billing/bank/SKU app state, mixed reservation formats,
 duplicate decoded address identities, or any planner invariant failure.
+When there are no leases, no reservation wrapper identifies the source
+consensus version. Schema 6 reports `billing_state: "lease_free"` and
+`migration_path: "none"` only for valid zero-claim accounting: reservations,
+lease counts, and unattributed cohorts must all be zero. Funded credit accounts
+are permitted. Nonzero orphaned accounting fails with an ambiguity error; the
+command does not guess whether to repair legacy state or reject corrupt v4
+state. `lease_free` does not assert that the source module is already v4.
+Consumers must accept this new `billing_state` value when upgrading from schema 5.
+
 The provider payout audit rejects invalid or duplicate provider UUIDs, invalid
 payout addresses, and malformed live-lease tenants before emitting a report.
 Blocked payouts and tenant-credit collisions are findings in a successful
@@ -279,14 +300,24 @@ fields alone does not increment it. The two explicitly named PENDING counters
 and `expiring_modern_pending_lease_uuids` describe only tenant-wide PENDING
 expiration.
 
+**Go tooling compatibility:** `keeper.BuildReservationMigrationPreflight` now
+requires decoded `authtypes.GenesisAccounts` as its fourth argument, alongside
+planner time, billing genesis, and bank genesis. This intentionally breaks the
+previous three-argument operator API so callers must supply auth state for
+vesting-aware spendable balances. Do not substitute empty accounts when the
+export contains vesting accounts. The CLI decodes the complete auth genesis
+and requires an explicit `--at`; consensus and protobuf state formats are
+unchanged by this API change.
+
 This command previews billing reservation migration and audits blocked provider
 payouts and live-lease tenant-credit collisions. It does not run
 `ValidateWithBlockTime`, resolve lease provider/SKU references from `x/sku`,
 validate every SKU genesis constraint, or certify that
 the document will pass full `InitGenesis`. Use `validate-genesis`
 and an isolated start/import rehearsal for those separate checks. The planner
-timestamp affects the simulated, unreported `expired_at` transition but not
-cohort selection. This remains a snapshot report, not a promise about later
+timestamp sets the simulated, unreported `expired_at` transition and values
+vesting locks. Changing it can therefore change spendable backing, PENDING
+expiry decisions, and ACTIVE or legacy-cohort allocations. This remains a snapshot report, not a promise about later
 chain state: rerun it on the final height-labelled export immediately before
 the upgrade and compare that final report with the post-upgrade queries.
 
@@ -789,13 +820,14 @@ same initial in-place repair.
 
 ### Phase 2: Time-Based Validation (`ValidateWithBlockTime`)
 
-Validates timestamps against block time during `InitGenesis`:
+Validates timestamps against block time during `InitGenesis`. The runtime
+`billing/reservation-accounting` invariant also performs these checks:
 
 | Field | Validation |
 |-------|------------|
 | `last_settled_at` | Must not be in the future (static validation also requires it to be non-zero and no earlier than `created_at`) |
 | `created_at` | Must not be in the future (static validation also requires it to be non-zero) |
-| `closed_at` | Must not be in the future (for CLOSED leases with a non-nil `closed_at`) |
+| `closed_at` | Only valid on CLOSED leases; must be no earlier than `created_at` or `last_settled_at`, and no later than block time |
 
 **Note:** `rejected_at`, `expired_at`, and `acknowledged_at` are NOT time-validated at genesis, so a future-dated value in those fields will import silently.
 

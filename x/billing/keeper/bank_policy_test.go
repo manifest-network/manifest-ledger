@@ -206,7 +206,9 @@ func TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites(t *testing.T) {
 					require.NoError(t, err)
 					require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
 					require.Equal(t, ctx.BlockTime(), lease.LastSettledAt)
-					_, err = setup.msgServer.CloseLease(ctx.WithBlockTime(ctx.BlockTime().Add(time.Second)), &types.MsgCloseLease{
+					// Retain the close block time for subsequent state validation.
+					ctx = ctx.WithBlockTime(ctx.BlockTime().Add(time.Second))
+					_, err = setup.msgServer.CloseLease(ctx, &types.MsgCloseLease{
 						Sender: setup.tenants[1].String(), LeaseUuids: []string{leases[3]}, Reason: "payout repaired",
 					})
 					require.NoError(t, err)

@@ -342,6 +342,32 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
    ```
 2. Use a valid provider UUID.
 
+### Rotate an eligible provider payout address
+
+Payout addresses are live: updating one redirects all unsettled accrual,
+including charges earned before the update, to the new recipient. For an
+ordinary rotation where the old recipient can still receive funds:
+
+1. Query the provider and preserve its address, activation state, and metadata.
+2. Withdraw to the old recipient first. Follow the
+   [provider withdrawal checkpoint workflow](API.md#withdraw) through every page,
+   wait for execution success, and retry all `failed_lease_uuids` before proceeding.
+3. Update the payout, preserving the other fields:
+   ```bash
+   manifestd query sku provider [provider-uuid]
+   manifestd tx sku update-provider [provider-uuid] [current-provider-address] [new-payout-address] [current-active] --meta-hash [current-meta-hash-hex] --from [authorized-key]
+   ```
+4. Wait for execution success and query the provider to verify the new payout.
+
+Query `meta_hash` is base64; convert its bytes to hex for `--meta-hash`.
+Withdrawal and update in separate transactions are not an atomic cutover:
+charges accruing between the last withdrawal and the update go to the new
+recipient. Agree on that boundary with both recipients before rotating.
+
+If the old payout is blocked or equals a tenant's own credit address, withdrawal
+cannot repair it. Use the repair-first procedures below, which deliberately
+send previously unsettled accrual to the corrected recipient.
+
 ### "provider payout address must not equal tenant credit address"
 
 **Cause**: The provider's payout address SDK-decodes to the same account as the
@@ -391,6 +417,9 @@ genesis import deliberately accepts these records, so operators must
 
 **Cause**: Before transferring a nonzero amount, billing rejects payout
 addresses blocked by the bank module, including protected module accounts.
+The governance (`gov`) module account is the sole module-account receiving
+exemption in this app; receiving funds gives it no additional signing or
+governance authority.
 New provider create/update messages reject those addresses, but a provider
 stored by an older binary may still need repair. The error identifies the
 blocked payout address. Both `create-lease` and `create-lease-for-tenant` reject

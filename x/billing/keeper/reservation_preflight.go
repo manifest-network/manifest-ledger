@@ -25,6 +25,10 @@ const (
 	// ReservationPreflightStateV4 identifies billing state that already has
 	// consumable per-lease reservations and therefore will not be migrated.
 	ReservationPreflightStateV4 = "consumable_v4"
+	// ReservationPreflightStateLeaseFree identifies a valid state without lease
+	// format markers. Its source consensus version cannot be inferred; empty
+	// accounting needs no reservation cutover.
+	ReservationPreflightStateLeaseFree = "lease_free"
 	// ReservationPreflightPathV2ToV4 is the supported sequential upgrade path.
 	ReservationPreflightPathV2ToV4 = "v2_to_v3_to_v4"
 	// ReservationPreflightPathNone identifies current state that is only audited.
@@ -145,14 +149,26 @@ func BuildReservationMigrationPreflight(
 	if err != nil {
 		return report, fmt.Errorf("detect billing reservation format for migration preflight: %w", err)
 	}
+	if len(billingGenesis.Leases) == 0 {
+		// There is no wire-format discriminator without a lease. Do not apply
+		// legacy repair to a nonzero orphaned aggregate: it could instead be
+		// corrupted current state whose backing audit must fail closed.
+		if err := billingGenesis.ValidateCurrentState(); err != nil {
+			return report, fmt.Errorf("lease-free billing state has no reservation format marker; cannot infer legacy repair versus a current-state audit: %w", err)
+		}
+	}
 	prepared, err := billingGenesis.PrepareForImport()
 	if err != nil {
 		return report, fmt.Errorf("prepare billing genesis for reservation migration preflight: %w", err)
 	}
-	if legacy {
+	switch {
+	case legacy:
 		report.BillingState = ReservationPreflightStatePreV4
 		report.MigrationPath = ReservationPreflightPathV2ToV4
-	} else {
+	case len(billingGenesis.Leases) == 0:
+		report.BillingState = ReservationPreflightStateLeaseFree
+		report.MigrationPath = ReservationPreflightPathNone
+	default:
 		report.BillingState = ReservationPreflightStateV4
 		report.MigrationPath = ReservationPreflightPathNone
 	}

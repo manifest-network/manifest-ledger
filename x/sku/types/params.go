@@ -1,6 +1,11 @@
 package types
 
-import sdk "github.com/cosmos/cosmos-sdk/types"
+import (
+	"slices"
+	"strings"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
+)
 
 // MaxAllowedListEntries bounds the authorization work performed by every SKU
 // write. It is a protocol hard limit rather than a governable parameter so an
@@ -45,13 +50,11 @@ func (p Params) IsAllowed(addr string) bool {
 	if err != nil {
 		return false
 	}
-	for _, allowed := range p.AllowedList {
-		allowedAddress, err := sdk.AccAddressFromBech32(allowed)
-		if err == nil && candidate.Equals(allowedAddress) {
-			return true
-		}
-	}
-	return false
+	// Storage returns canonical entries. Retain support for raw all-uppercase
+	// lists, while rejecting invalid mixed-case strings without decoding every
+	// list entry again on each authorization check.
+	canonical := candidate.String()
+	return slices.Contains(p.AllowedList, canonical) || slices.Contains(p.AllowedList, strings.ToUpper(canonical))
 }
 
 // CanonicalizeAllowedList returns params with equivalent Bech32 spellings

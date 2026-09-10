@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	billingMigrationPreflightSchemaVersion = 5
+	billingMigrationPreflightSchemaVersion = 6
 	jsonNull                               = "null"
 )
 

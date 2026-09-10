@@ -68,6 +68,15 @@ func ReservationAccountingInvariant(keeper Keeper) sdk.Invariant {
 				fmt.Sprintf("invalid reservation state: %v", err),
 			), true
 		}
+		// Keep live state within the same timestamp bounds required at import.
+		// Current-state validation above remains strict and performs no repair.
+		if err := genesis.ValidateWithBlockTime(ctx.BlockTime()); err != nil {
+			return sdk.FormatInvariant(
+				types.ModuleName,
+				reservationInvariantRoute,
+				fmt.Sprintf("invalid billing timestamps: %v", err),
+			), true
+		}
 		if err := keeper.validateGenesisReservationBacking(ctx, genesis); err != nil {
 			return sdk.FormatInvariant(
 				types.ModuleName,

@@ -7,11 +7,213 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"cosmossdk.io/collections"
+	storetypes "cosmossdk.io/store/types"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
+
+func TestEndBlockerAdvancesPastFailedPageBoundary(t *testing.T) {
+	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t)
+	k := f.App.BillingKeeper
+	const failedIndex = types.MaxPendingLeaseExpirationsPerBlock - 1
+	const candidateCount = types.MaxPendingLeaseExpirationsPerBlock + 1
+	for i := range candidateCount {
+		uuid := fmt.Sprintf("exclusive-boundary-%03d", i)
+		f.setPendingLease(t, uuid, providerUUID, skuUUID, denom, baseTime)
+		if i == failedIndex {
+			lease, err := k.GetLease(f.Ctx, uuid)
+			require.NoError(t, err)
+			lease.Reservation = nil
+			require.NoError(t, k.SetLease(f.Ctx, lease))
+		}
+	}
+
+	// The first page makes 99 successful expirations, then fails at its last
+	// row. The next page has room for one candidate: an inclusive cursor would
+	// retry the same failure forever. A finite meter turns that regression into
+	// a prompt test failure without a watchdog goroutine surviving the test.
+	ctx := f.Ctx.WithBlockTime(baseTime.Add(61 * time.Second)).
+		WithGasMeter(storetypes.NewGasMeter(20_000_000))
+	require.NotPanics(t, func() { require.NoError(t, k.EndBlocker(ctx)) })
+	t.Logf("expiration gas used: %d", ctx.GasMeter().GasConsumed())
+
+	for i := range candidateCount {
+		lease, err := k.GetLease(f.Ctx, fmt.Sprintf("exclusive-boundary-%03d", i))
+		require.NoError(t, err)
+		if i == failedIndex {
+			require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
+			require.Nil(t, lease.ExpiredAt)
+		} else {
+			require.Equal(t, types.LEASE_STATE_EXPIRED, lease.State)
+			require.Equal(t, ctx.BlockTime(), *lease.ExpiredAt)
+		}
+	}
+	account, err := k.GetCreditAccount(f.Ctx, f.TestAccs[0].String())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), account.PendingLeaseCount)
+	params, err := k.GetParams(f.Ctx)
+	require.NoError(t, err)
+	require.Equal(t, fmt.Sprint(params.MinLeaseDuration), account.ReservedAmounts.AmountOf(denom).String())
+}
+
+func TestExpirePendingLeaseFailureLeavesCallerAndStoreUnchanged(t *testing.T) {
+	for _, failure := range []string{"credit lookup", "reservation release", "index write after reservation release"} {
+		t.Run(failure, func(t *testing.T) {
+			f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t)
+			k := f.App.BillingKeeper
+			const uuid = "expiry-atomicity"
+			f.setPendingLease(t, uuid, providerUUID, skuUUID, denom, baseTime)
+			lease, err := k.GetLease(f.Ctx, uuid)
+			require.NoError(t, err)
+			switch failure {
+			case "credit lookup":
+				require.NoError(t, k.CreditAccounts.Remove(f.Ctx, f.TestAccs[0]))
+			case "reservation release":
+				lease.Reservation = nil
+				require.NoError(t, k.SetLease(f.Ctx, lease))
+			case "index write after reservation release":
+				const domain = "expiry-atomicity.example.com"
+				lease.Items[0].CustomDomain = domain
+				require.NoError(t, k.SetLease(f.Ctx, lease))
+				key, err := collections.EncodeKeyWithPrefix(types.CustomDomainIndexKey.Bytes(), collections.StringKey, domain)
+				require.NoError(t, err)
+				f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
+			}
+			before := lease.String()
+			accountBefore, accountErr := k.GetCreditAccount(f.Ctx, lease.Tenant)
+			ctx := f.Ctx.WithBlockTime(baseTime.Add(61 * time.Second)).WithEventManager(sdk.NewEventManager())
+
+			err = k.ExpirePendingLease(ctx, &lease)
+			require.Error(t, err)
+			if failure == "index write after reservation release" {
+				require.ErrorIs(t, err, types.ErrInternalCorruption)
+			}
+			require.Equal(t, before, lease.String(), "caller must retain its state, timestamps, and reservation on failure")
+			stored, err := k.GetLease(ctx, uuid)
+			require.NoError(t, err)
+			require.Equal(t, before, stored.String())
+			accountAfter, err := k.GetCreditAccount(ctx, lease.Tenant)
+			if accountErr != nil {
+				require.ErrorIs(t, err, types.ErrCreditAccountNotFound)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, accountBefore, accountAfter)
+			}
+			require.Empty(t, ctx.EventManager().Events())
+		})
+	}
+}
+
+func TestExpirePendingLeaseSuccessUpdatesCallerAfterCommit(t *testing.T) {
+	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t)
+	k := f.App.BillingKeeper
+	const uuid = "expiry-success"
+	f.setPendingLease(t, uuid, providerUUID, skuUUID, denom, baseTime)
+	lease, err := k.GetLease(f.Ctx, uuid)
+	require.NoError(t, err)
+	ctx := f.Ctx.WithBlockTime(baseTime.Add(61 * time.Second)).WithEventManager(sdk.NewEventManager())
+	require.NoError(t, k.ExpirePendingLease(ctx, &lease))
+	require.Equal(t, types.LEASE_STATE_EXPIRED, lease.State)
+	require.Equal(t, ctx.BlockTime(), *lease.ExpiredAt)
+	require.Empty(t, lease.Reservation.RemainingAmounts)
+	stored, err := k.GetLease(ctx, uuid)
+	require.NoError(t, err)
+	require.Equal(t, lease.String(), stored.String())
+	account, err := k.GetCreditAccount(ctx, lease.Tenant)
+	require.NoError(t, err)
+	require.Zero(t, account.PendingLeaseCount)
+	require.Empty(t, account.ReservedAmounts)
+	require.Len(t, ctx.EventManager().Events(), 1)
+	require.Equal(t, types.EventTypeLeaseExpired, ctx.EventManager().Events()[0].Type)
+}
+
+func TestClosedLifecycleTimestampsRemainValid(t *testing.T) {
+	for _, elapsed := range []time.Duration{0, time.Hour + 500*time.Millisecond} {
+		t.Run(elapsed.String(), func(t *testing.T) {
+			f, _, skuUUID, _, baseTime := newExpiryFixture(t)
+			k := f.App.BillingKeeper
+			ms := keeper.NewMsgServerImpl(k)
+			uuid := f.createAndAcknowledgeLease(t, ms, f.TestAccs[0], f.TestAccs[1],
+				[]types.LeaseItemInput{{SkuUuid: skuUUID, Quantity: 1}})
+			ctx := f.Ctx.WithBlockTime(baseTime.Add(elapsed))
+			_, err := ms.CloseLease(ctx, &types.MsgCloseLease{Sender: f.TestAccs[0].String(), LeaseUuids: []string{uuid}})
+			require.NoError(t, err)
+			lease, err := k.GetLease(ctx, uuid)
+			require.NoError(t, err)
+			require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+			require.False(t, lease.ClosedAt.Before(lease.CreatedAt))
+			require.False(t, lease.ClosedAt.Before(lease.LastSettledAt))
+			genesis := k.ExportGenesis(ctx)
+			require.NoError(t, genesis.ValidateCurrentState())
+			require.NoError(t, genesis.Validate())
+		})
+	}
+}
+
+func TestCancelLeasePreservesTenantBatchValidationContract(t *testing.T) {
+	t.Run("multiple providers and request order", func(t *testing.T) {
+		f, _, firstSKU, _, _ := newExpiryFixture(t)
+		k := f.App.BillingKeeper
+		ms := keeper.NewMsgServerImpl(k)
+		otherProvider := f.createTestProvider(t, f.TestAccs[3].String(), f.TestAccs[2].String())
+		otherSKU := f.createTestSKU(t, otherProvider.Uuid, 3600)
+		uuidOrder := make([]string, 0, 2)
+		for _, skuUUID := range []string{firstSKU, otherSKU.Uuid} {
+			response, err := ms.CreateLease(f.Ctx, &types.MsgCreateLease{
+				Tenant: f.TestAccs[0].String(), Items: []types.LeaseItemInput{{SkuUuid: skuUUID, Quantity: 1}},
+			})
+			require.NoError(t, err)
+			uuidOrder = append(uuidOrder, response.LeaseUuid)
+		}
+		uuidOrder[0], uuidOrder[1] = uuidOrder[1], uuidOrder[0]
+		ctx := f.Ctx.WithEventManager(sdk.NewEventManager())
+		response, err := ms.CancelLease(ctx, &types.MsgCancelLease{Tenant: f.TestAccs[0].String(), LeaseUuids: uuidOrder})
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), response.CancelledCount)
+		var eventOrder []string
+		for _, event := range ctx.EventManager().Events() {
+			if event.Type != types.EventTypeLeaseCancelled {
+				continue
+			}
+			for _, attribute := range event.Attributes {
+				if attribute.Key == types.AttributeKeyLeaseUUID {
+					eventOrder = append(eventOrder, attribute.Value)
+				}
+			}
+		}
+		require.Equal(t, uuidOrder, eventOrder)
+		for _, uuid := range uuidOrder {
+			lease, err := k.GetLease(ctx, uuid)
+			require.NoError(t, err)
+			require.Equal(t, types.LEASE_STATE_REJECTED, lease.State)
+			require.Equal(t, types.RejectionReasonCancelledByTenant, lease.RejectionReason)
+			require.Empty(t, lease.Reservation.RemainingAmounts)
+		}
+		require.NoError(t, k.ExportGenesis(ctx).ValidateCurrentState())
+	})
+
+	t.Run("ownership precedes state and credit lookup", func(t *testing.T) {
+		f, _, skuUUID, _, _ := newExpiryFixture(t)
+		k := f.App.BillingKeeper
+		ms := keeper.NewMsgServerImpl(k)
+		uuid := f.createAndAcknowledgeLease(t, ms, f.TestAccs[0], f.TestAccs[1],
+			[]types.LeaseItemInput{{SkuUuid: skuUUID, Quantity: 1}})
+		require.NoError(t, k.CreditAccounts.Remove(f.Ctx, f.TestAccs[0]))
+		before, err := k.GetLease(f.Ctx, uuid)
+		require.NoError(t, err)
+		ctx := f.Ctx.WithEventManager(sdk.NewEventManager())
+		_, err = ms.CancelLease(ctx, &types.MsgCancelLease{Tenant: f.TestAccs[3].String(), LeaseUuids: []string{uuid}})
+		require.ErrorIs(t, err, types.ErrUnauthorized)
+		after, err := k.GetLease(ctx, uuid)
+		require.NoError(t, err)
+		require.Equal(t, before, after)
+		require.Empty(t, ctx.EventManager().Events())
+	})
+}
 
 func TestEndBlockerFailedExpirationsDoNotConsumeSuccessQuota(t *testing.T) {
 	f, providerUUID, skuUUID, denom, baseTime := newExpiryFixture(t)

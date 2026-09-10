@@ -218,6 +218,14 @@ func (k *Keeper) SetItemCustomDomain(ctx context.Context, sender, leaseUUID, ser
 	if err != nil {
 		return "", err
 	}
+	// Cleanup can lag behind the hard acknowledgement deadline. Such a
+	// PENDING lease can release a claim via the clear branch above, but cannot
+	// acquire or renew one while it is no longer eligible for activation.
+	if lease.State == types.LEASE_STATE_PENDING && params.PendingLeaseDeadlineExceeded(sdkCtx.BlockTime(), lease.CreatedAt) {
+		return "", types.ErrLeaseAcknowledgementDeadlineExceeded.Wrapf(
+			"lease %s cannot claim a custom domain after its acknowledgement deadline", lease.Uuid,
+		)
+	}
 	if types.MatchesReservedSuffix(domain, params.ReservedDomainSuffixes) {
 		return "", types.ErrInvalidCustomDomain.Wrapf("domain %q matches a reserved provider suffix", domain)
 	}

@@ -46,12 +46,12 @@ func TestWriteBillingMigrationPreflightHasStableJSON(t *testing.T) {
 		),
 	}
 	const expected = `{
-  "schema_version": 5,
+  "schema_version": 6,
   "source_chain_id": "manifest-test",
   "source_initial_height": 4321,
   "planner_time": "2030-01-02T03:04:05Z",
   "input_genesis_time": "2030-01-02T03:04:05Z",
-  "billing_state": "consumable_v4",
+  "billing_state": "lease_free",
   "migration_path": "none",
   "provider_count": 0,
   "blocked_provider_count": 0,
@@ -141,7 +141,7 @@ func TestWriteBillingMigrationPreflightHasStableReservationChangeAndCreditCollis
 		&output,
 	))
 	expected := fmt.Sprintf(`{
-  "schema_version": 5,
+  "schema_version": 6,
   "source_chain_id": "manifest-test",
   "source_initial_height": 4321,
   "planner_time": "2030-01-02T03:04:05Z",
@@ -353,7 +353,7 @@ func TestWriteBillingMigrationPreflightReportsBlockedPayoutWithoutChangingExport
 	require.NoError(t, writeTestBillingMigrationPreflight(encodingConfig.Codec, input, &output))
 	var report billingMigrationPreflightOutput
 	require.NoError(t, json.Unmarshal(output.Bytes(), &report))
-	require.EqualValues(t, 5, report.SchemaVersion)
+	require.EqualValues(t, 6, report.SchemaVersion)
 	require.EqualValues(t, 1, report.ProviderCount)
 	require.EqualValues(t, 1, report.BlockedProviderCount)
 	require.Equal(t, []blockedProviderPayoutPreflight{{

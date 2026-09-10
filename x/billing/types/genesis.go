@@ -255,46 +255,22 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 			)
 		}
 
-		hasServiceName := 0
+		// Persisted prices have a separate contract, while UUID, quantity,
+		// service-name mode and uniqueness use the same bounded item shape
+		// validator as creation messages. No protocol fields are added here.
+		itemInputs := make([]LeaseItemInput, len(lease.Items))
 		for i, item := range lease.Items {
-			if item.SkuUuid == "" {
-				return ErrInvalidLease.Wrapf("lease %s item %d has empty sku_uuid", lease.Uuid, i)
-			}
-			if !pkguuid.IsValidUUID(item.SkuUuid) {
-				return ErrInvalidLease.Wrapf("lease %s item %d has invalid sku_uuid format: %s", lease.Uuid, i, item.SkuUuid)
-			}
 			if err := ValidateLeaseItemPricing(item.LockedPrice, item.Quantity); err != nil {
 				return ErrInvalidLease.Wrapf("lease %s item %d has invalid pricing: %s", lease.Uuid, i, err)
 			}
-			if item.ServiceName != "" {
-				hasServiceName++
+			itemInputs[i] = LeaseItemInput{
+				SkuUuid:     item.SkuUuid,
+				Quantity:    item.Quantity,
+				ServiceName: item.ServiceName,
 			}
 		}
-
-		// Validate service_name consistency: all-or-nothing
-		if hasServiceName > 0 && hasServiceName != len(lease.Items) {
-			return ErrInvalidServiceName.Wrapf("lease %s: all items must have service_name or none", lease.Uuid)
-		}
-		if hasServiceName > 0 {
-			seenNames := make(map[string]bool, len(lease.Items))
-			for i, item := range lease.Items {
-				if !IsValidDNSLabel(item.ServiceName) {
-					return ErrInvalidServiceName.Wrapf("lease %s item %d has invalid service_name: %q", lease.Uuid, i, item.ServiceName)
-				}
-				if seenNames[item.ServiceName] {
-					return ErrInvalidServiceName.Wrapf("lease %s has duplicate service_name %q", lease.Uuid, item.ServiceName)
-				}
-				seenNames[item.ServiceName] = true
-			}
-		} else {
-			// Legacy mode: enforce sku_uuid uniqueness.
-			seenSKUs := make(map[string]bool, len(lease.Items))
-			for _, item := range lease.Items {
-				if seenSKUs[item.SkuUuid] {
-					return ErrDuplicateSKU.Wrapf("lease %s has duplicate sku_uuid %s", lease.Uuid, item.SkuUuid)
-				}
-				seenSKUs[item.SkuUuid] = true
-			}
+		if err := ValidateLeaseItems(itemInputs); err != nil {
+			return errorsmod.Wrapf(err, "lease %s", lease.Uuid)
 		}
 
 		// Defensive: any item carrying a custom_domain must (1) be a valid FQDN,
@@ -395,6 +371,12 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 		if lease.State == LEASE_STATE_CLOSED {
 			if lease.ClosedAt == nil || lease.ClosedAt.IsZero() {
 				return ErrInvalidLease.Wrapf("lease %s is closed but has no closed_at timestamp", lease.Uuid)
+			}
+			if lease.ClosedAt.Before(lease.CreatedAt) {
+				return ErrInvalidLease.Wrapf("lease %s has closed_at before created_at", lease.Uuid)
+			}
+			if lease.ClosedAt.Before(lease.LastSettledAt) {
+				return ErrInvalidLease.Wrapf("lease %s has closed_at before last_settled_at", lease.Uuid)
 			}
 		} else if lease.ClosedAt != nil {
 			return ErrInvalidLease.Wrapf("lease %s has closed_at timestamp in non-closed state %s", lease.Uuid, lease.State)

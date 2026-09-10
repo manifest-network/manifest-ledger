@@ -1263,7 +1263,9 @@ type MsgSetItemCustomDomain struct {
 	// (item.service_name == ""), pass "". Multi-item legacy leases cannot use
 	// custom_domain because the lookup would be ambiguous.
 	ServiceName string `protobuf:"bytes,3,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
-	// custom_domain is the FQDN to assign. An empty string clears the field
+	// custom_domain is the FQDN to assign. Nonempty PENDING claims, including
+	// idempotent re-sets, must pass the current hard pending deadline. Equality
+	// is allowed. An empty string clears the field even after that deadline
 	// and removes any existing reverse-index entry.
 	CustomDomain string `protobuf:"bytes,4,opt,name=custom_domain,json=customDomain,proto3" json:"custom_domain,omitempty"`
 }
@@ -1548,7 +1550,8 @@ type MsgClient interface {
 	// SetItemCustomDomain sets or clears the custom_domain on a specific
 	// LeaseItem, identified by service_name. Authorised senders: the lease's
 	// tenant, the module authority, or any address in params.allowed_list. The
-	// lease must be in PENDING or ACTIVE state; an empty custom_domain clears
+	// lease must be in PENDING or ACTIVE state. Nonempty PENDING claims must
+	// pass the current hard pending deadline; an empty custom_domain clears
 	// the field and frees the index entry.
 	SetItemCustomDomain(ctx context.Context, in *MsgSetItemCustomDomain, opts ...grpc.CallOption) (*MsgSetItemCustomDomainResponse, error)
 }
@@ -1684,7 +1687,8 @@ type MsgServer interface {
 	// SetItemCustomDomain sets or clears the custom_domain on a specific
 	// LeaseItem, identified by service_name. Authorised senders: the lease's
 	// tenant, the module authority, or any address in params.allowed_list. The
-	// lease must be in PENDING or ACTIVE state; an empty custom_domain clears
+	// lease must be in PENDING or ACTIVE state. Nonempty PENDING claims must
+	// pass the current hard pending deadline; an empty custom_domain clears
 	// the field and frees the index entry.
 	SetItemCustomDomain(context.Context, *MsgSetItemCustomDomain) (*MsgSetItemCustomDomainResponse, error)
 }

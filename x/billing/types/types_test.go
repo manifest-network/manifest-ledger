@@ -2175,7 +2175,7 @@ func TestGenesisState_ValidateStructuralInvariants(t *testing.T) {
 				CreditAccounts: []types.CreditAccount{validCreditAccount},
 			},
 			expectErr: true,
-			errMsg:    "duplicate sku_uuid",
+			errMsg:    types.ErrDuplicateSKU.Error(),
 		},
 	}
 

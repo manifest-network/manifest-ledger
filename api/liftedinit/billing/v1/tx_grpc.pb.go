@@ -66,7 +66,8 @@ type MsgClient interface {
 	// SetItemCustomDomain sets or clears the custom_domain on a specific
 	// LeaseItem, identified by service_name. Authorised senders: the lease's
 	// tenant, the module authority, or any address in params.allowed_list. The
-	// lease must be in PENDING or ACTIVE state; an empty custom_domain clears
+	// lease must be in PENDING or ACTIVE state. Nonempty PENDING claims must
+	// pass the current hard pending deadline; an empty custom_domain clears
 	// the field and frees the index entry.
 	SetItemCustomDomain(ctx context.Context, in *MsgSetItemCustomDomain, opts ...grpc.CallOption) (*MsgSetItemCustomDomainResponse, error)
 }
@@ -204,7 +205,8 @@ type MsgServer interface {
 	// SetItemCustomDomain sets or clears the custom_domain on a specific
 	// LeaseItem, identified by service_name. Authorised senders: the lease's
 	// tenant, the module authority, or any address in params.allowed_list. The
-	// lease must be in PENDING or ACTIVE state; an empty custom_domain clears
+	// lease must be in PENDING or ACTIVE state. Nonempty PENDING claims must
+	// pass the current hard pending deadline; an empty custom_domain clears
 	// the field and frees the index entry.
 	SetItemCustomDomain(context.Context, *MsgSetItemCustomDomain) (*MsgSetItemCustomDomainResponse, error)
 	mustEmbedUnimplementedMsgServer()

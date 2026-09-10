@@ -358,7 +358,7 @@ The SKU module manages providers (service entities) and SKUs (Stock Keeping Unit
 
   - Parameters:
     - `address`: The provider's operator address
-    - `payout-address`: Address to receive lease payments; protected bank destinations are rejected
+    - `payout-address`: Address to receive lease payments; protected bank destinations are rejected. The governance (`gov`) module account is the sole module-account receiving exemption.
   - Flags:
     - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
     - `--api-url`: Provider's HTTPS API endpoint URL (optional)
@@ -386,7 +386,7 @@ The SKU module manages providers (service entities) and SKUs (Stock Keeping Unit
   - Parameters:
     - `uuid`: Provider UUID
     - `address`: The provider's operator address
-    - `payout-address`: Address to receive lease payments; protected bank destinations are rejected
+    - `payout-address`: Address to receive lease payments; protected bank destinations are rejected. The governance (`gov`) module account is the sole module-account receiving exemption.
     - `active`: `true` keeps the provider active or reactivates it after its SKU deactivation cascade is complete. `false` preserves an already-inactive provider; use `deactivate-provider` to deactivate an active one.
   - Flags:
     - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)

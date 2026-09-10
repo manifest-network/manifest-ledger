@@ -1,0 +1,15 @@
+=== RUN   TestCrisisFeeRollsBackAfterFailingMessageButAnteFeeRemains
+=== RUN   TestCrisisFeeRollsBackAfterFailingMessageButAnteFeeRemains/successful_verification_pays_crisis_and_ante_fees
+    crisis_fee_test.go:109: tx gas=87907 paid=1017umfx failing_tail=false
+=== RUN   TestCrisisFeeRollsBackAfterFailingMessageButAnteFeeRemains/failed_tail_refunds_crisis_fee_only
+    crisis_fee_test.go:109: tx gas=96058 paid=17umfx failing_tail=true
+=== RUN   TestCrisisFeeRollsBackAfterFailingMessageButAnteFeeRemains/failed_tail_with_zero_ante_fee_costs_no_tokens
+    crisis_fee_test.go:109: tx gas=78633 paid=0umfx failing_tail=true
+--- PASS: TestCrisisFeeRollsBackAfterFailingMessageButAnteFeeRemains (0.66s)
+    --- PASS: TestCrisisFeeRollsBackAfterFailingMessageButAnteFeeRemains/successful_verification_pays_crisis_and_ante_fees (0.40s)
+    --- PASS: TestCrisisFeeRollsBackAfterFailingMessageButAnteFeeRemains/failed_tail_refunds_crisis_fee_only (0.15s)
+    --- PASS: TestCrisisFeeRollsBackAfterFailingMessageButAnteFeeRemains/failed_tail_with_zero_ante_fee_costs_no_tokens (0.11s)
+=== RUN   TestCrisisCircuitBreakerBlocksDirectAndNestedRoutes
+--- PASS: TestCrisisCircuitBreakerBlocksDirectAndNestedRoutes (0.28s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/app 1.163s

@@ -1,6 +1,8 @@
 package types
 
 import (
+	"slices"
+	"strings"
 	"time"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -207,13 +209,11 @@ func (p Params) IsAllowed(addr string) bool {
 	if err != nil {
 		return false
 	}
-	for _, allowed := range p.AllowedList {
-		allowedAddress, err := sdk.AccAddressFromBech32(allowed)
-		if err == nil && candidate.Equals(allowedAddress) {
-			return true
-		}
-	}
-	return false
+	// Storage returns canonical entries. Retain the public Params method's
+	// support for valid raw uppercase lists without re-decoding each address;
+	// mixed-case spellings still never match either valid encoding.
+	canonical := candidate.String()
+	return slices.Contains(p.AllowedList, canonical) || slices.Contains(p.AllowedList, strings.ToUpper(canonical))
 }
 
 // PendingTimeoutDuration returns the validated pending timeout as a duration.
