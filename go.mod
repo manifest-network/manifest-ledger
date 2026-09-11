@@ -6,9 +6,8 @@ replace (
 	// core v0.12 was tagged wrong (SDK v51)
 	cosmossdk.io/core => cosmossdk.io/core v0.11.3
 
-	// go list -m github.com/manifest-network/cosmos-sdk@aef2f6d97fa0611cd51334d9665d6f363867b89b
-	// https://github.com/manifest-network/cosmos-sdk/pull/1
-	github.com/cosmos/cosmos-sdk => github.com/manifest-network/cosmos-sdk v0.50.14-liftedinit.1
+	// https://github.com/manifest-network/cosmos-sdk/pull/4
+	github.com/cosmos/cosmos-sdk => github.com/manifest-network/cosmos-sdk v0.50.14-liftedinit.2
 
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides
