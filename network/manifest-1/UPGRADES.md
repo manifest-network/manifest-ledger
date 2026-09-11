@@ -186,7 +186,9 @@ Prepare the copied home before running the command:
 5. Set `POA_ADMIN_ADDRESS` to the local operator's **account** address before
    startup. Use that byte-identical value on every eventual fork node. This sets
    POA and upgrade authority; it does not transfer the PWR tokenfactory denom's
-   group-policy authority. Ensure the operator's signing key is available locally.
+   group-policy authority. The command rejects an operator that does not match
+   the configured authority before opening the copied application. Ensure the
+   operator's signing key is available locally.
 
 With the SDK prerequisite satisfied and the copied home prepared:
 
@@ -208,19 +210,22 @@ Other application state is retained; this is intentionally a modified staking
 environment, not a reproduction of the source validator/delegator economics.
 
 Initial voting power is `900000000000000`, matching the SDK's CometBFT replacement
-set; staking tokens include the chain's power reduction factor. Before adding
-more validators, normalize the local validator using the POA admin's
-`tx poa set-power <local-valoper> 1000000 --unsafe` (shares, equal to one consensus
-power with the usual `1000000` reduction). Do not pass the initial token amount
-to that command: it exceeds the CLI's uint64 share range. Verify the resulting
-CometBFT power before promoting other validators.
+set; staking tokens include the chain's power reduction factor. Keep this power
+unchanged for the supported single-validator rehearsal. The pinned POA module's
+unsafe power-reduction path leaves a stale power index and surplus bonded-pool
+tokens, so it cannot safely normalize this validator. Multi-validator promotion
+requires the accounting repair and transition checks tracked in
+[ENG-945](https://linear.app/liftedinit/issue/ENG-945).
 
 Wait for committed height to advance at least two blocks beyond the copied
 height. Check the new network ID, a single expected validator, an existing
-`query auth account <operator>` result and funded bank balance. After a clean
-stop, use ordinary `manifestd start --home <copied-fork-home>` and verify further
-block progression. Run `in-place-testnet` only once per copied home; the first
-fork block persists the application rewrite.
+`query auth account <operator>` result and funded bank balance. Verify that
+`query staking pool` reports bonded tokens equal to the validator's tokens and
+zero unbonded tokens, and that the operator's sole self-delegation has matching
+shares and balance. After a clean stop, use ordinary
+`manifestd start --home <copied-fork-home>` and verify further block progression.
+Run `in-place-testnet` only once per copied home; the first fork block persists
+the application rewrite.
 
 For an in-process migration test, append
 `--trigger-testnet-upgrade <handler-name>` to schedule the handler at copied height

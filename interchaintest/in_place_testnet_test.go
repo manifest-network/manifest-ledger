@@ -167,21 +167,22 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 
 	operatorValAddress, err := sdk.Bech32ifyAddressBytes(cfg.Bech32Prefix+"valoper", operator.Address())
 	require.NoError(t, err)
-	expectedPower := int64(900_000_000_000_000)
+	const expectedPower int64 = 900_000_000_000_000
 	assertForkState := func(rpc *rpchttp.HTTP) {
 		t.Helper()
 		genesis, err := rpc.Genesis(ctx)
 		require.NoError(t, err)
 		require.Equal(t, forkChainID, genesis.Genesis.ChainID, "CometBFT's cached genesis still names the source chain")
 		validatorJSON := queryInPlaceTestnet(t, ctx, node, "staking", "validators")
-		// The staking CLI renders consensus keys using CometBFT's type/value
-		// JSON representation rather than protobuf Any's @type/key fields.
+		// AutoCLI uses aminojson: consensus keys use type/value, and the auth
+		// account below exposes its address under account.value.
 		var stakingValidators struct {
 			Validators []struct {
-				OperatorAddress string      `json:"operator_address"`
-				Status          string      `json:"status"`
-				Jailed          bool        `json:"jailed"`
-				Tokens          sdkmath.Int `json:"tokens"`
+				OperatorAddress string            `json:"operator_address"`
+				Status          string            `json:"status"`
+				Jailed          bool              `json:"jailed"`
+				Tokens          sdkmath.Int       `json:"tokens"`
+				DelegatorShares sdkmath.LegacyDec `json:"delegator_shares"`
 				ConsensusPubkey struct {
 					Type  string `json:"type"`
 					Value string `json:"value"`
@@ -205,6 +206,19 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 		require.Equal(t, freshPV.Key.PubKey.Address(), cometValidators.Validators[0].Address)
 		require.Equal(t, expectedPower, cometValidators.Validators[0].VotingPower)
 		require.Equal(t, validator.Tokens.Quo(sdk.DefaultPowerReduction).Int64(), cometValidators.Validators[0].VotingPower)
+		require.True(t, validator.DelegatorShares.Equal(sdkmath.LegacyNewDecFromInt(validator.Tokens)))
+		var poolResponse stakingtypes.QueryPoolResponse
+		require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "staking", "pool"), &poolResponse))
+		require.True(t, poolResponse.Pool.BondedTokens.Equal(validator.Tokens), "bonded pool must back the seeded validator")
+		require.True(t, poolResponse.Pool.NotBondedTokens.IsZero(), "source unbonded stake remains")
+		var delegationsResponse stakingtypes.QueryDelegatorDelegationsResponse
+		require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "staking", "delegations", operator.FormattedAddress()), &delegationsResponse))
+		require.Len(t, delegationsResponse.DelegationResponses, 1)
+		delegation := delegationsResponse.DelegationResponses[0]
+		require.Equal(t, operator.FormattedAddress(), delegation.Delegation.DelegatorAddress)
+		require.Equal(t, operatorValAddress, delegation.Delegation.ValidatorAddress)
+		require.True(t, delegation.Delegation.Shares.Equal(validator.DelegatorShares))
+		require.True(t, delegation.Balance.Amount.Equal(validator.Tokens))
 		var authResponse struct {
 			Account struct {
 				Value struct {
@@ -248,14 +262,6 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 	forkHeight = waitForInPlaceTestnetHeight(t, ctx, rpc, forkChainID, status.SyncInfo.LatestBlockHeight+3)
 	require.Equal(t, preservedBalance.AddRaw(1), inPlaceTestnetBalance(t, ctx, node, existingUser.FormattedAddress(), cfg.Denom))
 
-	// The initial power matches SDK testnetify. A local PoA authority must be
-	// able to reduce it to one consensus power before adding more validators.
-	sendInPlaceTestnetTx(t, ctx, node, operator.KeyName(), forkChainID,
-		"poa", "set-power", operatorValAddress, "1000000", "--unsafe")
-	status, err = rpc.Status(ctx)
-	require.NoError(t, err)
-	forkHeight = waitForInPlaceTestnetHeight(t, ctx, rpc, forkChainID, status.SyncInfo.LatestBlockHeight+5)
-	expectedPower = 1
 	assertForkState(rpc)
 
 	require.NoError(t, fork.StopContainer(ctx))

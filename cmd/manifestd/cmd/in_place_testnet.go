@@ -29,6 +29,7 @@ import (
 	poakeeper "github.com/strangelove-ventures/poa/keeper"
 
 	"github.com/manifest-network/manifest-ledger/app"
+	"github.com/manifest-network/manifest-ledger/app/helpers"
 	"github.com/manifest-network/manifest-ledger/app/params"
 	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
@@ -57,12 +58,26 @@ func newTestnetApp(logger log.Logger, db dbm.DB, traceStore io.Writer, appOpts s
 	if !ok {
 		panic("in-place-testnet: expected operator account address as string")
 	}
+	operator, err := sdk.AccAddressFromBech32(newOperatorAddress)
+	if err != nil {
+		panic(fmt.Errorf("decode operator account address: %w", err))
+	}
+	if err := validateTestnetAuthority(operator, helpers.GetPoAAdmin()); err != nil {
+		panic(fmt.Errorf("initialize in-place testnet: %w", err))
+	}
 
 	chainApp := newApp(logger, db, traceStore, appOpts).(*app.ManifestApp)
 	if err := initAppForTestnet(chainApp, newValAddr, newValPubKey, newOperatorAddress, cast.ToString(appOpts.Get(server.KeyTriggerTestnetUpgrade))); err != nil {
 		panic(fmt.Errorf("initialize in-place testnet: %w", err))
 	}
 	return chainApp
+}
+
+func validateTestnetAuthority(operator sdk.AccAddress, authority string) error {
+	if operator.String() != authority {
+		return fmt.Errorf("operator account %s does not match configured POA admin %s; set POA_ADMIN_ADDRESS to the operator before starting", operator, authority)
+	}
+	return nil
 }
 
 // initAppForTestnet replaces the source chain's validator state on a disposable
@@ -87,7 +102,11 @@ func initAppForTestnet(chainApp *app.ManifestApp, newValAddr cmtbytes.HexBytes, 
 
 	// Keep a failed app rewrite atomic. NewContext writes only to the check
 	// cache; NewUncachedContext is required for the first FinalizeBlock to see it.
-	ctx, write := chainApp.NewUncachedContext(true, cmtproto.Header{Height: chainApp.LastBlockHeight()}).CacheContext()
+	ctx := chainApp.NewUncachedContext(true, cmtproto.Header{Height: chainApp.LastBlockHeight()})
+	if err := validateTestnetAuthority(operator, chainApp.POAKeeper.GetAdmin(ctx)); err != nil {
+		return err
+	}
+	ctx, write := ctx.CacheContext()
 	valAddr := sdk.ValAddress(operator)
 	validator, err := stakingtypes.NewValidator(valAddr.String(), pubKey, stakingtypes.Description{Moniker: "Testnet Validator"})
 	if err != nil {

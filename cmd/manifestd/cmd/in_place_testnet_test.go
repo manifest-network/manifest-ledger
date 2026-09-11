@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -21,6 +24,7 @@ import (
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
+	"github.com/cosmos/cosmos-sdk/client/flags"
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
 	"github.com/cosmos/cosmos-sdk/server"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
@@ -35,6 +39,7 @@ import (
 	poakeeper "github.com/strangelove-ventures/poa/keeper"
 
 	"github.com/manifest-network/manifest-ledger/app"
+	"github.com/manifest-network/manifest-ledger/app/helpers"
 	appparams "github.com/manifest-network/manifest-ledger/app/params"
 	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
@@ -115,7 +120,7 @@ func TestInitAppForTestnetReplacesSourceValidatorState(t *testing.T) {
 	poolTokensBefore := chainApp.BankKeeper.GetBalance(ctx, bondedAddr, bondDenom).Amount.Add(chainApp.BankKeeper.GetBalance(ctx, notBondedAddr, bondDenom).Amount)
 	supplyBefore := chainApp.BankKeeper.GetSupply(ctx, bondDenom).Amount
 	feeSupplyBefore := chainApp.BankKeeper.GetSupply(ctx, appparams.BondDenom).Amount
-	operator := sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address())
+	operator := sdk.MustAccAddressFromBech32(chainApp.POAKeeper.GetAdmin(ctx))
 	newPubKey := ed25519.GenPrivKey().PubKey()
 
 	require.NoError(t, initAppForTestnet(chainApp, newPubKey.Address(), newPubKey, operator.String(), ""))
@@ -249,6 +254,17 @@ func TestInitAppForTestnetReplacesSourceValidatorState(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, vals, committedVals)
 	require.Equal(t, sdk.NewInt64Coin(appparams.BondDenom, testnetOperatorFunds), chainApp.BankKeeper.GetBalance(committedCtx, operator, appparams.BondDenom))
+	message, broken = stakingkeeper.AllInvariants(chainApp.StakingKeeper)(committedCtx)
+	require.False(t, broken, message)
+	totalPower, err = chainApp.StakingKeeper.GetLastTotalPower(committedCtx)
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(inPlaceTestnetPower), totalPower)
+	powerIndices := storetypes.KVStorePrefixIterator(committedCtx.KVStore(chainApp.GetKey(stakingtypes.StoreKey)), stakingtypes.ValidatorsByPowerIndexKey)
+	require.True(t, powerIndices.Valid())
+	require.Equal(t, []byte(valAddr), powerIndices.Value())
+	powerIndices.Next()
+	require.False(t, powerIndices.Valid(), "exactly one committed power index must remain")
+	require.NoError(t, powerIndices.Close())
 }
 
 func seedSourceTestnetValidator(t *testing.T, ctx sdk.Context, chainApp *app.ManifestApp, jailed bool) stakingtypes.Validator {
@@ -267,7 +283,7 @@ func seedSourceTestnetValidator(t *testing.T, ctx sdk.Context, chainApp *app.Man
 
 func TestInitAppForTestnetSchedulesUpgrade(t *testing.T) {
 	ctx, chainApp := setupInPlaceTestnet(t)
-	operator := sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address())
+	operator := sdk.MustAccAddressFromBech32(chainApp.POAKeeper.GetAdmin(ctx))
 	pubKey := ed25519.GenPrivKey().PubKey()
 	existing := sdk.NewCoins(sdk.NewInt64Coin(appparams.BondDenom, 57))
 	require.NoError(t, chainApp.BankKeeper.MintCoins(ctx, manifesttypes.ModuleName, existing))
@@ -285,7 +301,7 @@ func TestInitAppForTestnetSchedulesUpgrade(t *testing.T) {
 func TestInitAppForTestnetRejectsInvalidIdentity(t *testing.T) {
 	ctx, chainApp := setupInPlaceTestnet(t)
 	pubKey := ed25519.GenPrivKey().PubKey()
-	operator := sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address()).String()
+	operator := chainApp.POAKeeper.GetAdmin(ctx)
 	validatorsBefore, err := chainApp.StakingKeeper.GetAllValidators(ctx)
 	require.NoError(t, err)
 	supplyBefore := chainApp.BankKeeper.GetSupply(ctx, appparams.BondDenom)
@@ -314,7 +330,7 @@ func TestInitAppForTestnetRollsBackFailedUpgrade(t *testing.T) {
 	ctx, chainApp := setupInPlaceTestnet(t)
 	seedSourceTestnetValidator(t, ctx, chainApp, false)
 	pubKey := ed25519.GenPrivKey().PubKey()
-	operator := sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address())
+	operator := sdk.MustAccAddressFromBech32(chainApp.POAKeeper.GetAdmin(ctx))
 	validatorsBefore, err := chainApp.StakingKeeper.GetAllValidators(ctx)
 	require.NoError(t, err)
 	delegationsBefore, err := chainApp.StakingKeeper.GetAllDelegations(ctx)
@@ -335,6 +351,74 @@ func TestInitAppForTestnetRollsBackFailedUpgrade(t *testing.T) {
 	require.Nil(t, chainApp.AccountKeeper.GetAccount(ctx, operator))
 	require.True(t, chainApp.BankKeeper.GetBalance(ctx, operator, appparams.BondDenom).IsZero())
 	require.Equal(t, []byte{0xff}, upgradeStore.Get(upgradetypes.PlanKey()))
+}
+
+func TestInitAppForTestnetRequiresConfiguredAuthority(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		mismatch    bool
+		environment string
+	}{
+		{name: "mismatch with omitted environment", mismatch: true},
+		{name: "mismatch despite matching environment", mismatch: true, environment: "operator"},
+		{name: "match with omitted environment"},
+		{name: "match despite changed environment", environment: "other"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, chainApp := setupInPlaceTestnet(t)
+			operator := sdk.MustAccAddressFromBech32(chainApp.POAKeeper.GetAdmin(ctx))
+			if tc.mismatch {
+				operator = sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address())
+				require.NoError(t, chainApp.UpgradeKeeper.ScheduleUpgrade(ctx, upgradetypes.Plan{
+					Name: "source-upgrade", Height: chainApp.LastBlockHeight() + 50,
+				}))
+			}
+			// The keeper has already captured its authority. Changing or omitting
+			// the environment afterwards must neither grant nor revoke that authority.
+			switch tc.environment {
+			case "operator":
+				t.Setenv("POA_ADMIN_ADDRESS", operator.String())
+			case "other":
+				t.Setenv("POA_ADMIN_ADDRESS", sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address()).String())
+			default:
+				require.NoError(t, os.Unsetenv("POA_ADMIN_ADDRESS"))
+			}
+			before := snapshotInPlaceTestnetStores(t, ctx, chainApp)
+			pubKey := ed25519.GenPrivKey().PubKey()
+			err := initAppForTestnet(chainApp, pubKey.Address(), pubKey, operator.String(), "authority-rehearsal")
+			if tc.mismatch {
+				require.ErrorContains(t, err, "does not match configured POA admin")
+				require.Equal(t, before, snapshotInPlaceTestnetStores(t, ctx, chainApp))
+				require.Nil(t, chainApp.AccountKeeper.GetAccount(ctx, operator))
+				require.True(t, chainApp.BankKeeper.GetBalance(ctx, operator, appparams.BondDenom).IsZero())
+				plan, err := chainApp.UpgradeKeeper.GetUpgradePlan(ctx)
+				require.NoError(t, err)
+				require.Equal(t, "source-upgrade", plan.Name)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, operator.String(), chainApp.POAKeeper.GetAdmin(ctx))
+			require.Equal(t, sdk.NewInt64Coin(appparams.BondDenom, testnetOperatorFunds), chainApp.BankKeeper.GetBalance(ctx, operator, appparams.BondDenom))
+			plan, err := chainApp.UpgradeKeeper.GetUpgradePlan(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "authority-rehearsal", plan.Name)
+		})
+	}
+}
+
+func snapshotInPlaceTestnetStores(t *testing.T, ctx sdk.Context, chainApp *app.ManifestApp) map[string]map[string][]byte {
+	t.Helper()
+	stores := make(map[string]map[string][]byte)
+	for _, key := range chainApp.GetStoreKeys() {
+		contents := make(map[string][]byte)
+		iterator := ctx.KVStore(key).Iterator(nil, nil)
+		for ; iterator.Valid(); iterator.Next() {
+			contents[string(iterator.Key())] = bytes.Clone(iterator.Value())
+		}
+		require.NoError(t, iterator.Close())
+		stores[key.Name()] = contents
+	}
+	return stores
 }
 
 // Commit must follow FinalizeBlock, which flushes the genesis cache to the root
@@ -390,6 +474,43 @@ func TestNewTestnetAppRejectsIncorrectOptionTypes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.PanicsWithValue(t, tc.message, func() { newTestnetApp(log.NewNopLogger(), nil, nil, tc.options) })
+		})
+	}
+}
+
+func TestNewTestnetAppRejectsMismatchedAuthorityBeforeConstruction(t *testing.T) {
+	for _, name := range []string{"omitted environment", "different environment"} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("POA_ADMIN_ADDRESS", "")
+			if name == "omitted environment" {
+				require.NoError(t, os.Unsetenv("POA_ADMIN_ADDRESS"))
+			} else {
+				t.Setenv("POA_ADMIN_ADDRESS", sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address()).String())
+			}
+			pubKey := ed25519.GenPrivKey().PubKey()
+			operator := sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address())
+			db := dbm.NewMemDB()
+			t.Cleanup(func() { require.NoError(t, db.Close()) })
+			require.NoError(t, db.Set([]byte("source-state"), []byte("unchanged")))
+			home := t.TempDir()
+			options := simtestutil.AppOptionsMap{
+				server.KeyNewValAddr: pubKey.Address(), server.KeyUserPubKey: pubKey,
+				server.KeyNewOpAddr: operator.String(), server.KeyTriggerTestnetUpgrade: "must-not-schedule",
+				flags.FlagHome: home,
+			}
+			message := fmt.Sprintf("initialize in-place testnet: operator account %s does not match configured POA admin %s; set POA_ADMIN_ADDRESS to the operator before starting", operator, helpers.GetPoAAdmin())
+			require.PanicsWithError(t, message, func() { newTestnetApp(log.NewNopLogger(), db, nil, options) })
+			iterator, err := db.Iterator(nil, nil)
+			require.NoError(t, err)
+			require.True(t, iterator.Valid())
+			require.Equal(t, []byte("source-state"), iterator.Key())
+			require.Equal(t, []byte("unchanged"), iterator.Value())
+			iterator.Next()
+			require.False(t, iterator.Valid(), "real app construction must not initialize any stores")
+			require.NoError(t, iterator.Close())
+			entries, err := os.ReadDir(home)
+			require.NoError(t, err)
+			require.Empty(t, entries, "real app construction must not create application files")
 		})
 	}
 }
