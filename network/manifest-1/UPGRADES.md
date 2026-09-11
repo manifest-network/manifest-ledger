@@ -148,14 +148,15 @@ This is the ledger wiring for [ENG-879](https://linear.app/liftedinit/issue/ENG-
 and [ENG-886](https://linear.app/liftedinit/issue/ENG-886). Four-validator promotion
 and the deployment playbooks are separate follow-ups.
 
-**SDK prerequisite:** the currently pinned SDK, `v0.50.14-liftedinit.1`, does not
-rewrite extended commits. A source chain with vote extensions enabled (including
-mainnet) fails during the fork's initial consensus startup. The SDK fix tracked
-in [ENG-885](https://linear.app/liftedinit/issue/ENG-885) must be published, pinned,
-and verified before using this command with mainnet state. Disabling extensions
-only in CometBFT state is not a workaround: application consensus parameters would
-conflict on the next block. The SDK also retains the source chain ID in its cached
-genesis document; that must be corrected by the SDK fix.
+This branch pins [SDK `v0.50.14-liftedinit.2`](https://github.com/manifest-network/cosmos-sdk/releases/tag/v0.50.14-liftedinit.2),
+which includes the [ENG-885 fix](https://github.com/manifest-network/cosmos-sdk/pull/4)
+for extended commits and the cached genesis chain ID. The older
+`v0.50.14-liftedinit.1` lacks these fixes and cannot start a fork with vote
+extensions enabled. Keep extensions enabled and follow the
+[SDK operator preparation instructions](https://github.com/manifest-network/cosmos-sdk/blob/v0.50.14-liftedinit.2/docs/docs/user/run-node/05-run-testnet.md),
+including redirecting configured absolute paths into the disposable copy and
+choosing a separate, writable address-book path. The fixed SDK does not establish
+the fork binary's state compatibility with the source chain; verify that separately.
 
 Prepare the copied home before running the command:
 
@@ -173,11 +174,12 @@ Prepare the copied home before running the command:
    copied home so a failed conversion can be retried from the original copy.
    Include the source's `wasm/` bytecode: this application does not currently
    register the Wasm snapshot extension.
-3. Generate a fresh local consensus key. Never use a production
-   `priv_validator_key.json`. Reset the copied `priv_validator_state.json` to
-   height `"0"`, round `0`, step `0`, and remove the copied consensus WAL.
-   Use a fresh node key as well. Do this only in the stopped, disposable fork
-   home.
+3. Install a complete, freshly generated local consensus key. Never use a
+   production `priv_validator_key.json`. Keep the signing-state file present and
+   replace its contents with `{"height":"0","round":0,"step":0}`. Use a fresh node
+   key as well. Do this only in the stopped, disposable fork home. After preflight,
+   the SDK removes the configured consensus WAL and its numbered rotations and
+   clears pending source-chain evidence, preserving committed evidence history.
 4. Give the fork a distinct chain ID, clear `persistent_peers` and `seeds`, disable
    peer exchange and state sync, and isolate its P2P network from production.
    The SDK clears the address book but does not clear configured peers or seeds.
