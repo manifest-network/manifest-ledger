@@ -1,4 +1,8 @@
 {
+  "evidence_scope": "historical",
+  "historical_commit": "8492a4ad18996d0877a7425b8039ed355cc94726",
+  "scope_note": "All original timestamps, outcomes and hash values below describe artifacts as recorded at commit 8492a4a. The bundled driver, logs and overlays were subsequently refreshed; use current_verification for their updated hashes.",
+  "current_verification": "../2026-09-11-claude-hygiene-validation/integrity/artifact-checks.json",
   "verified_at_utc": "2026-09-11T14:07:12.893183+00:00",
   "runs": 5,
   "baseline_files_unchanged": 483,

@@ -1003,8 +1003,9 @@ func (ms msgServer) withdrawFromProvider(ctx context.Context, msg *types.MsgWith
 	// the indexed map updates its indexes. Modifying indexes while iterating over them
 	// can cause undefined behavior. This matches the pattern used in EndBlocker.
 	//
-	// Collect only ACTIVE leases. CLOSED leases are already fully settled at close
-	// (LastSettledAt == ClosedAt), so collecting them only burns cap slots + gas.
+	// Collect only ACTIVE leases. Normal close paths finalize LastSettledAt at
+	// ClosedAt. Historical CLOSED imports can retain a final interval; those
+	// require specific-UUID withdrawal and do not consume provider-wide page slots.
 	//
 	// The cursor (msg.Key) is the last lease UUID returned by the previous call's
 	// next_key. StartExclusive seeks past it at the store level (O(log n)) and is

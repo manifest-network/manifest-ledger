@@ -82,7 +82,7 @@ manifestd tx sku update-provider [uuid] [address] [payout-address] [active] [fla
 |------|------|-------------|
 | --api-url | string | HTTPS endpoint for provider's off-chain API (optional) |
 | --clear-api-url | bool | Clear the stored API URL; cannot be combined with a non-empty `--api-url` |
-| --meta-hash | string | Hex-encoded hash of off-chain metadata (optional) |
+| --meta-hash | string | Hex-encoded metadata hash; omitted or empty clears it. Resend the current hex value to preserve it. |
 
 **Example:**
 ```bash
@@ -670,7 +670,7 @@ message MsgUpdateProvider {
   string uuid = 2;            // Canonical lowercase provider UUIDv7
   string address = 3;         // New management address
   string payout_address = 4;  // New payout address
-  bytes meta_hash = 5;        // New metadata hash
+  bytes meta_hash = 5;        // Replacement metadata hash; empty clears
   bool active = 6;            // Active status
   string api_url = 7;         // HTTPS endpoint for off-chain API
   bool clear_api_url = 8;     // Explicitly clear the stored API URL
@@ -683,6 +683,9 @@ message MsgUpdateProviderResponse {}
 ```
 
 **Notes:**
+- Each update replaces `meta_hash`. Resend the current bytes to preserve it;
+  an empty or omitted value clears it. JSON encodes nonempty bytes as base64,
+  while the CLI's `--meta-hash` flag accepts hex.
 - If `api_url` is empty and `clear_api_url` is false, the existing API URL is
   preserved. This retains the behavior of clients built before tag 8 existed.
 - If `clear_api_url` is true, the stored API URL is cleared. The request is
@@ -1097,7 +1100,7 @@ message Provider {
 ```
 
 **Field Notes:**
-- `meta_hash`: Optional hash or reference linking to off-chain metadata (e.g., provider description, terms of service, contact info). Maximum 64 bytes to accommodate SHA-256 or SHA-512 hashes. This value is mutable and can be updated via `MsgUpdateProvider`.
+- `meta_hash`: Optional hash or reference linking to off-chain metadata (e.g., provider description, terms of service, contact info). Maximum 64 bytes to accommodate SHA-256 or SHA-512 hashes. Each `MsgUpdateProvider` replaces this value: resend the current bytes to preserve it; an empty or omitted value clears it.
 
 ### SKU
 

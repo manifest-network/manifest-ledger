@@ -13,6 +13,9 @@ import tempfile
 import time
 import urllib.request
 
+if sys.flags.optimize:
+    raise SystemExit("This fixture uses test assertions; run Python without -O/-OO or PYTHONOPTIMIZE.")
+
 binary = str(Path(sys.argv[1]).resolve())
 evidence_file = Path(sys.argv[2]).resolve()
 scratch = Path(os.environ.get("TMPDIR", tempfile.gettempdir()))

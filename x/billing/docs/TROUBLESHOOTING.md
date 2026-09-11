@@ -321,9 +321,9 @@ manifestd query billing lease [lease-uuid]
 
 **Cause**: 
 1. The lease is in PENDING state (billing hasn't started), OR
-2. The lease has no accrued charges yet (just acknowledged or just settled), OR
-3. The lease is not active (closed), OR
-4. The provider already withdrew recently
+2. The ACTIVE lease has no accrued charges yet (just acknowledged or recently withdrawn), OR
+3. The CLOSED lease's final interval is already finalized (`last_settled_at == closed_at`), OR
+4. The lease is REJECTED or EXPIRED and has no billable interval
 
 **Solution**: 
 1. Check the lease state and withdrawable amount:
@@ -333,7 +333,14 @@ manifestd query billing lease [lease-uuid]
    ```
 2. For PENDING leases, wait for acknowledgement or acknowledge it first
 3. For ACTIVE leases, wait for more time to pass for charges to accrue
-4. For closed leases, you cannot withdraw (settlement happened during close)
+4. Normal close paths finalize the cursor at `closed_at`, leaving nothing more
+   to withdraw. An imported CLOSED lease can instead have
+   `last_settled_at < closed_at`; use its explicit UUID to finalize that interval
+   once. Payment is capped by lease-spendable credit, and any shortfall is
+   written off. Zero payment still commits the final cursor with no payout
+   count/event; later funding cannot revive the interval. See the
+   [withdrawal API](API.md#withdraw).
+5. REJECTED and EXPIRED leases have no charges to withdraw.
 
 ### "unauthorized"
 
@@ -478,7 +485,7 @@ Operators must [audit and repair provider payouts before the upgrade](MIGRATION.
 
 **Cause**: A provider-wide withdraw processes each lease in its own cached context; if a single lease fails, it is logged and skipped so the rest of the batch still succeeds. Two things determine what appears in the results:
 
-1. **Only ACTIVE leases are considered.** Provider-wide withdraw iterates the provider's ACTIVE leases only — CLOSED leases are already fully settled at close and never appear.
+1. **Only ACTIVE leases are considered.** CLOSED leases never appear in provider-wide pages. Normal close paths finalize their settlement cursor; historical CLOSED imports may retain a final interval that must be finalized separately with an explicit lease UUID.
 2. **Leases are skipped for two different reasons.** A *normal* skip happens
    when the lease has nothing to settle — no elapsed time since the last
    settlement, or a zero withdrawable amount — and is silent and expected. An

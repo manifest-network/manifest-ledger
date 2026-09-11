@@ -1,0 +1,248 @@
+TAP version 13
+# Subtest: frontend authentication survives wallet confirmation across second boundaries
+ok 1 - frontend authentication survives wallet confirmation across second boundaries
+  ---
+  duration_ms: 3.830859
+  type: 'test'
+  ...
+# Subtest: documented withdrawal workflow handles committed SDK envelopes and restart checkpoints
+    # Subtest: success
+    ok 1 - success
+      ---
+      duration_ms: 556.941244
+      type: 'test'
+      ...
+    # Subtest: timeout
+    ok 2 - timeout
+      ---
+      duration_ms: 4749.071888
+      type: 'test'
+      ...
+    # Subtest: execution-error
+    ok 3 - execution-error
+      ---
+      duration_ms: 1061.173082
+      type: 'test'
+      ...
+    # Subtest: decode-error
+    ok 4 - decode-error
+      ---
+      duration_ms: 1252.655692
+      type: 'test'
+      ...
+    # Subtest: broadcast-error
+    ok 5 - broadcast-error
+      ---
+      duration_ms: 155.066976
+      type: 'test'
+      ...
+    1..5
+ok 2 - documented withdrawal workflow handles committed SDK envelopes and restart checkpoints
+  ---
+  duration_ms: 7776.484955
+  type: 'test'
+  ...
+# Subtest: migration recipe confirms every stage and resumes without duplicate funding or leases
+    # Subtest: success
+    ok 1 - success
+      ---
+      duration_ms: 2416.853862
+      type: 'test'
+      ...
+    # Subtest: delayed
+    ok 2 - delayed
+      ---
+      duration_ms: 3716.534029
+      type: 'test'
+      ...
+    # Subtest: timeout
+    ok 3 - timeout
+      ---
+      duration_ms: 7937.909164
+      type: 'test'
+      ...
+    # Subtest: missing-event
+    ok 4 - missing-event
+      ---
+      duration_ms: 810.449682
+      type: 'test'
+      ...
+    # Subtest: ambiguous-event
+    ok 5 - ambiguous-event
+      ---
+      duration_ms: 738.205588
+      type: 'test'
+      ...
+    # Subtest: fund-broadcast-error
+    ok 6 - fund-broadcast-error
+      ---
+      duration_ms: 184.458877
+      type: 'test'
+      ...
+    # Subtest: fund-broadcast-rejection
+    ok 7 - fund-broadcast-rejection
+      ---
+      duration_ms: 217.914089
+      type: 'test'
+      ...
+    # Subtest: fund-execution-error
+    ok 8 - fund-execution-error
+      ---
+      duration_ms: 364.191821
+      type: 'test'
+      ...
+    # Subtest: create-broadcast-error
+    ok 9 - create-broadcast-error
+      ---
+      duration_ms: 598.303364
+      type: 'test'
+      ...
+    # Subtest: create-broadcast-rejection
+    ok 10 - create-broadcast-rejection
+      ---
+      duration_ms: 397.691577
+      type: 'test'
+      ...
+    # Subtest: create-execution-error
+    ok 11 - create-execution-error
+      ---
+      duration_ms: 504.353981
+      type: 'test'
+      ...
+    # Subtest: ack-broadcast-error
+    ok 12 - ack-broadcast-error
+      ---
+      duration_ms: 677.123042
+      type: 'test'
+      ...
+    # Subtest: ack-broadcast-rejection
+    ok 13 - ack-broadcast-rejection
+      ---
+      duration_ms: 839.821532
+      type: 'test'
+      ...
+    # Subtest: ack-execution-error
+    ok 14 - ack-execution-error
+      ---
+      duration_ms: 995.885694
+      type: 'test'
+      ...
+    1..14
+ok 3 - migration recipe confirms every stage and resumes without duplicate funding or leases
+  ---
+  duration_ms: 20408.82085
+  type: 'test'
+  ...
+# Subtest: deactivation recipe completes 151 SKUs using committed receipts and bounded state queries
+    # Subtest: success
+    ok 1 - success
+      ---
+      duration_ms: 2260.47115
+      type: 'test'
+      ...
+    # Subtest: delayed
+    ok 2 - delayed
+      ---
+      duration_ms: 2724.915652
+      type: 'test'
+      ...
+    # Subtest: timeout
+    ok 3 - timeout
+      ---
+      duration_ms: 6159.131823
+      type: 'test'
+      ...
+    # Subtest: deactivate-execution-error
+    ok 4 - deactivate-execution-error
+      ---
+      duration_ms: 347.077509
+      type: 'test'
+      ...
+    # Subtest: deactivate-broadcast-rejection
+    ok 5 - deactivate-broadcast-rejection
+      ---
+      duration_ms: 253.874786
+      type: 'test'
+      ...
+    # Subtest: deactivate-broadcast-error
+    ok 6 - deactivate-broadcast-error
+      ---
+      duration_ms: 133.456359
+      type: 'test'
+      ...
+    # Subtest: query-error
+    ok 7 - query-error
+      ---
+      duration_ms: 1834.708066
+      type: 'test'
+      ...
+    1..7
+ok 4 - deactivation recipe completes 151 SKUs using committed receipts and bounded state queries
+  ---
+  duration_ms: 13715.5048
+  type: 'test'
+  ...
+# Subtest: UUID extraction recipes use committed SDK events with empty legacy logs
+ok 5 - UUID extraction recipes use committed SDK events with empty legacy logs
+  ---
+  duration_ms: 66.000599
+  type: 'test'
+  ...
+# Subtest: domain lookup documentation uses the registered billing command
+ok 6 - domain lookup documentation uses the registered billing command
+  ---
+  duration_ms: 5.526034
+  type: 'test'
+  ...
+# Subtest: deactivation restart rejects a provider reactivated after its saved receipt
+    # Subtest: 0 active SKUs
+    ok 1 - 0 active SKUs
+      ---
+      duration_ms: 2381.986329
+      type: 'test'
+      ...
+    # Subtest: 3 active SKUs
+    ok 2 - 3 active SKUs
+      ---
+      duration_ms: 2573.647586
+      type: 'test'
+      ...
+    1..2
+ok 7 - deactivation restart rejects a provider reactivated after its saved receipt
+  ---
+  duration_ms: 4956.230924
+  type: 'test'
+  ...
+# Subtest: provider auth v2 matches the fixed canonical message vector
+ok 8 - provider auth v2 matches the fixed canonical message vector
+  ---
+  duration_ms: 1.864765
+  type: 'test'
+  ...
+# Subtest: provider auth v2 rejects replay into another trusted context
+ok 9 - provider auth v2 rejects replay into another trusted context
+  ---
+  duration_ms: 2.854516
+  type: 'test'
+  ...
+# Subtest: provider auth v2 pins expiration, future skew, hash and version rules
+ok 10 - provider auth v2 pins expiration, future skew, hash and version rules
+  ---
+  duration_ms: 1.328374
+  type: 'test'
+  ...
+# Subtest: provider auth v2 includes a canonical HTTPS API base path
+ok 11 - provider auth v2 includes a canonical HTTPS API base path
+  ---
+  duration_ms: 0.428569
+  type: 'test'
+  ...
+1..11
+# tests 39
+# suites 0
+# pass 39
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 47214.864683

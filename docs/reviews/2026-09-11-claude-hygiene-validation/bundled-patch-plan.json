@@ -1,0 +1,244 @@
+{
+  "records": [
+    {
+      "source_path": "x/billing/keeper/provider_withdrawal.go",
+      "baseline_sha256": "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+      "patch": "withdrawal-original.patch",
+      "patch_sha256": "c83560dacd69fd5765527148201b6681d99e21fb4a921af882a00b676b995307",
+      "mutant_sha256": "e1d875a223a36b73f95f65c068eb2ac13a73114a55b33a3f7c72372f3543a92d",
+      "name": "withdrawal-original-mutant",
+      "baseline": {
+        "kind": "archive",
+        "path": "inputs/baseline-b4d8403.tar.gz",
+        "archive_sha256": "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+        "archive_uncompressed_sha256": "235e4171af8b0581fff909ac1613efef183ef1fad78b3fcfc5c81d566e4130ef"
+      },
+      "steps": [
+        {
+          "name": "init",
+          "portable_argv": [
+            "git",
+            "init",
+            "--quiet",
+            "{work}/withdrawal-original-mutant"
+          ]
+        },
+        {
+          "name": "seed-baseline",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "seed",
+            "--archive",
+            "{evidence}/inputs/baseline-b4d8403.tar.gz",
+            "--archive-sha256",
+            "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+            "--member",
+            "x/billing/keeper/provider_withdrawal.go",
+            "--sha256",
+            "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+            "--destination",
+            "{work}/withdrawal-original-mutant/x/billing/keeper/provider_withdrawal.go"
+          ]
+        },
+        {
+          "name": "verify-patch",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{evidence}/withdrawal-original.patch",
+            "c83560dacd69fd5765527148201b6681d99e21fb4a921af882a00b676b995307"
+          ]
+        },
+        {
+          "name": "apply-patch",
+          "portable_argv": [
+            "git",
+            "-C",
+            "{work}/withdrawal-original-mutant",
+            "apply",
+            "--unidiff-zero",
+            "{evidence}/withdrawal-original.patch"
+          ]
+        },
+        {
+          "name": "verify-result",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{work}/withdrawal-original-mutant/x/billing/keeper/provider_withdrawal.go",
+            "e1d875a223a36b73f95f65c068eb2ac13a73114a55b33a3f7c72372f3543a92d"
+          ]
+        }
+      ]
+    },
+    {
+      "source_path": "x/billing/keeper/provider_withdrawal.go",
+      "baseline_sha256": "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+      "patch": "withdrawal-shallow.patch",
+      "patch_sha256": "583677bda4e4a4c10a4cf8189b5ea06944e0812c0ced8ef906f09144c2e3cdfe",
+      "mutant_sha256": "c2a56e24051ad1ff7f7d64c98f58eb56c155c9659e3ab3ab4abdcaf2cf2930b0",
+      "name": "withdrawal-shallow-mutant",
+      "baseline": {
+        "kind": "archive",
+        "path": "inputs/baseline-b4d8403.tar.gz",
+        "archive_sha256": "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+        "archive_uncompressed_sha256": "235e4171af8b0581fff909ac1613efef183ef1fad78b3fcfc5c81d566e4130ef"
+      },
+      "steps": [
+        {
+          "name": "init",
+          "portable_argv": [
+            "git",
+            "init",
+            "--quiet",
+            "{work}/withdrawal-shallow-mutant"
+          ]
+        },
+        {
+          "name": "seed-baseline",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "seed",
+            "--archive",
+            "{evidence}/inputs/baseline-b4d8403.tar.gz",
+            "--archive-sha256",
+            "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+            "--member",
+            "x/billing/keeper/provider_withdrawal.go",
+            "--sha256",
+            "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+            "--destination",
+            "{work}/withdrawal-shallow-mutant/x/billing/keeper/provider_withdrawal.go"
+          ]
+        },
+        {
+          "name": "verify-patch",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{evidence}/withdrawal-shallow.patch",
+            "583677bda4e4a4c10a4cf8189b5ea06944e0812c0ced8ef906f09144c2e3cdfe"
+          ]
+        },
+        {
+          "name": "apply-patch",
+          "portable_argv": [
+            "git",
+            "-C",
+            "{work}/withdrawal-shallow-mutant",
+            "apply",
+            "--unidiff-zero",
+            "{evidence}/withdrawal-shallow.patch"
+          ]
+        },
+        {
+          "name": "verify-result",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{work}/withdrawal-shallow-mutant/x/billing/keeper/provider_withdrawal.go",
+            "c2a56e24051ad1ff7f7d64c98f58eb56c155c9659e3ab3ab4abdcaf2cf2930b0"
+          ]
+        }
+      ]
+    },
+    {
+      "source_path": "app/export.go",
+      "baseline_sha256": "3fe40a00d95435d5c55047587e21514b32e2004e19d5261bf02c9cb1c4fce340",
+      "patch": "export-stale-header.patch",
+      "patch_sha256": "bc392a4707c7b0ffdffa360da526683e9e705358b9ae6631800f7abef114c42f",
+      "mutant_sha256": "ff42a24fe733c859b973e488e662ea5d1e2f7321a19f8714435a441d573f8c53",
+      "name": "export-stale-header-mutant",
+      "baseline": {
+        "kind": "archive",
+        "path": "inputs/baseline-b4d8403.tar.gz",
+        "archive_sha256": "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+        "archive_uncompressed_sha256": "235e4171af8b0581fff909ac1613efef183ef1fad78b3fcfc5c81d566e4130ef"
+      },
+      "steps": [
+        {
+          "name": "init",
+          "portable_argv": [
+            "git",
+            "init",
+            "--quiet",
+            "{work}/export-stale-header-mutant"
+          ]
+        },
+        {
+          "name": "seed-baseline",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "seed",
+            "--archive",
+            "{evidence}/inputs/baseline-b4d8403.tar.gz",
+            "--archive-sha256",
+            "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+            "--member",
+            "app/export.go",
+            "--sha256",
+            "3fe40a00d95435d5c55047587e21514b32e2004e19d5261bf02c9cb1c4fce340",
+            "--destination",
+            "{work}/export-stale-header-mutant/app/export.go"
+          ]
+        },
+        {
+          "name": "verify-patch",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{evidence}/export-stale-header.patch",
+            "bc392a4707c7b0ffdffa360da526683e9e705358b9ae6631800f7abef114c42f"
+          ]
+        },
+        {
+          "name": "apply-patch",
+          "portable_argv": [
+            "git",
+            "-C",
+            "{work}/export-stale-header-mutant",
+            "apply",
+            "--unidiff-zero",
+            "{evidence}/export-stale-header.patch"
+          ]
+        },
+        {
+          "name": "verify-result",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{work}/export-stale-header-mutant/app/export.go",
+            "ff42a24fe733c859b973e488e662ea5d1e2f7321a19f8714435a441d573f8c53"
+          ]
+        }
+      ]
+    }
+  ]
+}

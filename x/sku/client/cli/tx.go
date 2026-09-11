@@ -107,11 +107,14 @@ properly cascades deactivation to all associated SKUs.
 Finish all cascade pages before reactivating; then reactivate desired SKUs individually.
 The payout address must be permitted by bank policy; protected module accounts are rejected.
 
+Each update replaces the metadata hash. Resend its current hex value with
+--meta-hash to preserve it; omitting the flag or passing an empty value clears it.
+
 The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.
 Omit --api-url to preserve the existing URL, or use --clear-api-url to remove it.
 --clear-api-url cannot be combined with a non-empty --api-url.`,
-		Example: `update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com
-update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --clear-api-url`,
+		Example: `update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com --meta-hash [current-meta-hash-hex]
+update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --clear-api-url --meta-hash [current-meta-hash-hex]`,
 		Args: cobra.ExactArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -163,7 +166,7 @@ update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1de
 		},
 	}
 
-	cmd.Flags().String("meta-hash", "", "Hex-encoded hash of off-chain metadata")
+	cmd.Flags().String("meta-hash", "", "Hex-encoded metadata hash (empty clears; resend current value to preserve)")
 	cmd.Flags().String("api-url", "", "HTTPS endpoint where the provider's off-chain API is hosted (empty preserves the existing URL)")
 	cmd.Flags().Bool("clear-api-url", false, "Clear the provider's existing API URL (cannot be combined with a non-empty --api-url)")
 	flags.AddTxFlagsToCmd(cmd)

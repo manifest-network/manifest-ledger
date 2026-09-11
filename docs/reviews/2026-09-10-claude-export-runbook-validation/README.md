@@ -82,3 +82,5 @@ generated bindings, live policy, or deployment changed. The new commit must
 run its own CI.
 
 The historical `export-cli.log` contains illustrative command labels, not exact argv. Its `cli-provenance.log` identifies the old driver at `9d25368`. The enhanced [driver](verify_export_cli.py) now derives every command line from the actual subprocess arguments and emits a JSON manifest. See the [September 11 exact-argv rerun](../2026-09-11-claude-review-validation/README.md) for current evidence.
+
+The subsequent [hygiene follow-up](../2026-09-11-claude-hygiene-validation/README.md) records the driver's optimization guard and latest successful CLI run. Earlier driver hashes belong to their explicitly historical commits.

@@ -1,0 +1,27 @@
+{
+  "archive": "docs/reviews/2026-09-11-claude-review-validation/interchain-expiration/docker-context.tar.gz",
+  "archive_sha256": "744c32de2902755b2b2d3b1595d5bee5c412597bf4d7c1854bd28d029d4446c4",
+  "required_inputs": [
+    {
+      "member": "x/billing/keeper/msg_server.go",
+      "sha256": "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+      "matches_terminal_input": true
+    },
+    {
+      "member": "x/billing/keeper/terminal_withdrawal_test.go",
+      "sha256": "2d96c5a9b3db94e7f9127a73939092c32b0dee4261c18617bc81900b1a900a3a",
+      "matches_terminal_input": true
+    },
+    {
+      "member": "go.mod",
+      "sha256": "5b9e467e5816f015cc94cb1cf9f567b94f6cc51d890b232624cfcb31fef465ca",
+      "matches_terminal_input": true
+    },
+    {
+      "member": "go.sum",
+      "sha256": "48659d7d23c50077a81d452aec65fd1655fc45e602f85c4750545d5537b3aee2",
+      "matches_terminal_input": true
+    }
+  ],
+  "scope": "Only archive member bytes and the four terminal input hashes verified; no Go tests rerun."
+}

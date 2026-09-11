@@ -9,6 +9,13 @@ All display logs in this directory expand tabs to eight-column stops and trim
 trailing whitespace before archiving, unless their own manifest states otherwise.
 Raw mutation output is retained in the corresponding JSON archives.
 
+Subsequent [review hygiene fixes](../2026-09-11-claude-hygiene-response.md)
+refresh the bundled mutation and patch transcripts and add an optimization guard
+to the CLI driver. This directory's CLI manifest records the driver at `8492a4a`;
+[the latest CLI evidence](../2026-09-11-claude-hygiene-validation/README.md)
+records its guarded version. The later CI evidence also closes the expiration
+assertion execution gap described below; the local failure remains historical.
+
 ## Local checks
 
 All commands below run from the review checkout. The Go toolchain is pinned to
@@ -117,14 +124,18 @@ source hashes and relevant line excerpts at billing-v2 introduction and the
 pre-PR merge base. It supports compatibility and terminal write-off semantics,
 not a claim about any live database.
 
-The earlier [export/withdrawal mutation suite](../2026-09-10-claude-follow-up-review-validation/mutation-provenance/README.md)
-was rerun using `--bundled`: both controls exit 0, all three mutants exit 1,
-and all 483 archived baseline files remain unchanged. Its exact 1.4 MB source
+At `8492a4a`, the earlier [export/withdrawal mutation suite](../2026-09-10-claude-follow-up-review-validation/mutation-provenance/README.md)
+was rerun using `--bundled`: both controls exited 0, all three mutants exited 1,
+and all 483 archived baseline files remained unchanged. Its exact 1.4 MB source
 archive and historical replacement files are checked in with hashes, so a
 squash merge does not require retaining the old branch. All three zero-context
 patches were independently applied and matched their expected mutant hashes.
-The [hash verification](bundled-hash-verification.json) also checked driver,
-source/dependency, overlay, patch, raw/display log and input hashes.
+The [historical hash verification](bundled-hash-verification.json) checked
+driver, source/dependency, overlay, patch, raw/display log and input hashes
+as recorded at `8492a4a`; its original values are preserved. The
+[updated artifact verification](../2026-09-11-claude-hygiene-validation/integrity/artifact-checks.json)
+covers the refreshed bundled driver, logs, overlays and input manifests now
+linked by the suite.
 
 ## Scope and outstanding checks
 

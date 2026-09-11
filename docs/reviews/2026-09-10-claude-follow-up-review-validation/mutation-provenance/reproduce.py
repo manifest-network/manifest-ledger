@@ -40,6 +40,12 @@ def utc_now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
+def require(condition, message):
+    # Integrity and outcome checks must also run under python -O.
+    if not condition:
+        raise SystemExit(message)
+
+
 def main():
     if len(sys.argv) != 4:
         raise SystemExit(__doc__)
@@ -57,29 +63,35 @@ def main():
     if bundled:
         inputs = Path(__file__).resolve().parent / "inputs"
         input_manifest = json.loads((inputs / "manifest.json").read_text())
-        assert input_manifest["baseline_commit"] == BASELINE
-        assert input_manifest["previous_commit"] == PREVIOUS
+        require(input_manifest["baseline_commit"] == BASELINE,
+                "Bundled baseline commit does not match the pinned commit")
+        require(input_manifest["previous_commit"] == PREVIOUS,
+                "Bundled previous commit does not match the pinned commit")
         archive_info = input_manifest["baseline_archive"]
         compressed = (inputs / archive_info["file"]).read_bytes()
-        assert sha256(compressed) == archive_info["sha256"]
+        require(sha256(compressed) == archive_info["sha256"],
+                "Bundled compressed archive hash mismatch")
         archive = gzip.decompress(compressed)
-        assert sha256(archive) == archive_info["uncompressed_sha256"]
+        require(sha256(archive) == archive_info["uncompressed_sha256"],
+                "Bundled uncompressed archive hash mismatch")
 
         def previous_file(relative):
             entry = input_manifest["previous_files"][relative]
             data = (inputs / entry["file"]).read_bytes()
-            assert sha256(data) == entry["sha256"]
+            require(sha256(data) == entry["sha256"],
+                    f"Bundled historical source hash mismatch: {relative}")
             return data
     else:
         for commit in (BASELINE, PREVIOUS):
-            assert git("rev-parse", commit).decode().strip() == commit
+            require(git("rev-parse", commit).decode().strip() == commit,
+                    f"Git revision does not match the pinned commit: {commit}")
         archive = git("archive", "--format=tar", BASELINE)
 
         def previous_file(relative):
             return git("show", f"{PREVIOUS}:{relative}")
     snapshot = work / "baseline"
     snapshot.mkdir()
-    # Only an explicitly pinned, locally available Git commit is extracted.
+    # Only the pinned Git archive or hash-checked bundled snapshot is extracted.
     with tarfile.open(fileobj=io.BytesIO(archive)) as source:
         source.extractall(snapshot, filter="data")
     original_hashes = {
@@ -87,6 +99,25 @@ def main():
         for path in snapshot.rglob("*")
         if path.is_file()
     }
+    # Validate every mutation input before invoking Go, including go version.
+    baseline_withdrawal = (snapshot / WITHDRAWAL_FILE).read_bytes()
+    clone_line = b"\tsettledLease.Reservation = cloneLeaseReservation(lease.Reservation)\n"
+    require(baseline_withdrawal.count(clone_line) == 1,
+            "Expected exactly one reservation clone assignment in the baseline")
+    variants = [
+        ("withdrawal-original", WITHDRAWAL_FILE,
+         previous_file(WITHDRAWAL_FILE),
+         f"entire source file from {PREVIOUS}",
+         "./x/billing/keeper", WITHDRAWAL_FILTER),
+        ("withdrawal-shallow", WITHDRAWAL_FILE,
+         baseline_withdrawal.replace(clone_line, b""),
+         "delete only the reservation clone assignment from the baseline",
+         "./x/billing/keeper", WITHDRAWAL_FILTER),
+        ("export-stale-header", EXPORT_FILE,
+         previous_file(EXPORT_FILE),
+         f"entire source file from {PREVIOUS}",
+         "./app", EXPORT_FILTER),
+    ]
     temporary = snapshot / ".review-tmp" / "build"
     temporary.mkdir(parents=True)
     raw_output = work / "raw-output"
@@ -108,23 +139,6 @@ def main():
         cwd=snapshot, env=environment, text=True,
     ))
 
-    baseline_withdrawal = (snapshot / WITHDRAWAL_FILE).read_bytes()
-    clone_line = b"\tsettledLease.Reservation = cloneLeaseReservation(lease.Reservation)\n"
-    assert baseline_withdrawal.count(clone_line) == 1
-    variants = [
-        ("withdrawal-original", WITHDRAWAL_FILE,
-         previous_file(WITHDRAWAL_FILE),
-         f"entire source file from {PREVIOUS}",
-         "./x/billing/keeper", WITHDRAWAL_FILTER),
-        ("withdrawal-shallow", WITHDRAWAL_FILE,
-         baseline_withdrawal.replace(clone_line, b""),
-         "delete only the reservation clone assignment from the baseline",
-         "./x/billing/keeper", WITHDRAWAL_FILTER),
-        ("export-stale-header", EXPORT_FILE,
-         previous_file(EXPORT_FILE),
-         f"entire source file from {PREVIOUS}",
-         "./app", EXPORT_FILTER),
-    ]
     manifest = {
         "started_at_utc": utc_now(),
         "baseline_commit": BASELINE,
@@ -137,6 +151,11 @@ def main():
         "go_version": toolchain,
         "go_paths": go_paths,
         "driver_sha256": sha256(Path(__file__).read_bytes()),
+        "driver_sys_argv": list(sys.argv),
+        "driver_cwd": str(Path.cwd()),
+        "python_executable": sys.executable,
+        "python_version": sys.version,
+        "python_optimize": sys.flags.optimize,
         "test_source_sha256": {
             name: original_hashes[name] for name in (
                 "go.mod", "go.sum", "x/billing/keeper/export_test.go",
@@ -248,6 +267,8 @@ def main():
     persist()
     if changed:
         raise SystemExit(f"Snapshot files unexpectedly changed: {changed}")
+    require(sha256(Path(__file__).read_bytes()) == manifest["driver_sha256"],
+            "Reproduction driver changed during execution")
     print(f"All {len(original_hashes)} archived source files remained unchanged.", flush=True)
 
 

@@ -148,7 +148,7 @@ Leases represent resource rentals with full lifecycle tracking:
 | `closed_at` | `*Timestamp` | When lease was closed |
 | `rejected_at` | `*Timestamp` | When provider rejected |
 | `expired_at` | `*Timestamp` | When lease expired in PENDING state |
-| `last_settled_at` | `Timestamp` | Accrual cursor through which complete seconds have settled; ACTIVE leases retain a sub-second remainder, while CLOSED leases set it to `closed_at` |
+| `last_settled_at` | `Timestamp` | Accrual cursor through which complete seconds have settled; ACTIVE leases retain a sub-second remainder. Normal close paths finalize it at `closed_at`; historical CLOSED imports can retain a final interval for specific-UUID withdrawal. |
 | `rejection_reason` | `string` | Provider's rejection explanation (max 256 UTF-8 bytes) |
 | `closure_reason` | `string` | Explanation for why the lease was closed (max 256 UTF-8 bytes) |
 | `meta_hash` | `bytes` | Optional hash/reference to off-chain deployment data (max 64 bytes, immutable) |
@@ -620,16 +620,16 @@ sequenceDiagram
                 MsgServer->>Keeper: ShouldAutoCloseLease + AutoCloseLease
                 Note over Keeper: settle to close time, auto-close lease
             else Settle by state
-                Note over Keeper: ACTIVE → settle to blockTime<br/>closed_at != nil → settle to closed_at<br/>otherwise → settle to last_settled_at (zero duration)
+                Note over Keeper: ACTIVE → settle to blockTime<br/>CLOSED → settle to closed_at<br/>otherwise → settle to last_settled_at (zero duration)
                 MsgServer->>Keeper: PerformSettlement()
-                Note over Keeper: Skip lease if zero accrued
+                Note over Keeper: Finalize remaining CLOSED interval even with zero payment<br/>Otherwise skip zero-payment leases
             end
         end
         
-        alt No lease withdrew or auto-closed
+        alt No payout, no auto-close, and no terminal finalization
             MsgServer-->>Provider: Error: no withdrawable amount
-        else Has Settlement
-            MsgServer->>MsgServer: Emit Event
+        else State changed
+            MsgServer->>MsgServer: Commit state and emit applicable events
             MsgServer-->>Provider: Success + Amounts
         end
     end

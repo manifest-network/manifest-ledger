@@ -46,6 +46,25 @@ python3 docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/repr
   . .review-tmp/reproduce-terminal-mutations .review-tmp/reproduced-terminal-evidence
 ```
 
+Later comment or help changes can make the current checkout differ from those
+historical input hashes. The existing [Docker source snapshot](../interchain-expiration/docker-context.tar.gz)
+contains the exact required implementation, test, `go.mod` and `go.sum` bytes;
+all four member hashes were [verified independently](../../2026-09-11-claude-hygiene-validation/terminal-archive-input-checks.json).
+Use that snapshot as the source tree without requiring old Git objects:
+
+```bash
+mkdir -p .review-tmp
+mkdir .review-tmp/terminal-historical-source
+tar -xzf docs/reviews/2026-09-11-claude-review-validation/interchain-expiration/docker-context.tar.gz \
+  -C .review-tmp/terminal-historical-source
+python3 docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/reproduce.py \
+  .review-tmp/terminal-historical-source .review-tmp/reproduce-terminal-history \
+  .review-tmp/reproduced-terminal-history
+```
+
+This fallback was checked against the four required archive member hashes;
+the Go regression suite was not rerun for this transcript correction.
+
 The driver reads the archived [original implementation](original.go.txt),
 so neither its historical commit nor the PR branch must survive a squash merge.
 It generates the other two mutants from the matching fixed source and uses

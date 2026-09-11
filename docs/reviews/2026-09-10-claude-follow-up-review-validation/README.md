@@ -9,10 +9,15 @@ Historical archived whitespace is normalized; the simulation summary omits
 parameter dumps and per-operation progress. The three mutation logs explicitly
 identified below and their controls were replaced by verbose bundled reruns
 against the source snapshot of exact commit
-`b4d8403977b8f18eeaad699239e9661efa2a4a8a` on 2026-09-11. The bundled inputs
+`b4d8403977b8f18eeaad699239e9661efa2a4a8a` on 2026-09-11. The latest rerun
+uses `python3 -O` with explicit input/outcome/integrity checks; optimization no
+longer removes validation. The bundled inputs
 preserve reproduction after a squash merge without retaining the PR branch.
 Their display logs use the whitespace normalization recorded by the driver;
 exact raw output is retained separately as JSON with its own hashes.
+The [integrity checks](../2026-09-11-claude-hygiene-validation/integrity/checks.json)
+separately record 24 normal/optimized-Python rejection cases using a local Go
+stub, including seven altered-input cases per mode rejected before Go runs.
 
 ## Whole-root checks
 

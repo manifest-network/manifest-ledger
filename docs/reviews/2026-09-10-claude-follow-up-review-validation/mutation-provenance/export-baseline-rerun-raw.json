@@ -1,4 +1,4 @@
 {
   "encoding": "utf-8",
-  "stdout_stderr": "=== RUN   TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback\n--- PASS: TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback (0.13s)\nPASS\nok  \tgithub.com/manifest-network/manifest-ledger/app\t0.264s\n"
+  "stdout_stderr": "=== RUN   TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback\n--- PASS: TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback (0.57s)\nPASS\nok  \tgithub.com/manifest-network/manifest-ledger/app\t0.659s\n"
 }

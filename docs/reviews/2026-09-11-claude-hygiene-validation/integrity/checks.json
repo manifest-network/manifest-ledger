@@ -1,0 +1,1169 @@
+{
+  "started_at_utc": "2026-09-11T17:28:29.204595+00:00",
+  "driver_sha256": "6dee5712386b548817238e0daf1559841c2ee0f98ede9c633b182a0a3d35b60e",
+  "check_driver_sha256": "74374d9b6a73cfc5bd6289a3d60794bc0b933e40bfe663a5cbebe790dd4a7cdb",
+  "check_driver_sys_argv": [
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/check_integrity.py",
+    ".review-tmp/hygiene-integrity-checks",
+    "docs/reviews/2026-09-11-claude-hygiene-validation/integrity"
+  ],
+  "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "python_executable": "/usr/sbin/python3",
+  "python_version": "3.14.7 (main, Aug 14 2026, 06:38:32) [GCC 16.2.1 20260810]",
+  "go_is_stubbed": true,
+  "runs": [
+    {
+      "case": "baseline_commit",
+      "optimized": false,
+      "argv": [
+        "/usr/sbin/python3",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-yr9bqre4/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-yr9bqre4/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-yr9bqre4/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-yr9bqre4",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-yr9bqre4/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-yr9bqre4/go-calls.jsonl",
+        "STUB_MODE": "baseline_commit",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-yr9bqre4/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Bundled baseline commit does not match the pinned commit\n",
+      "expected_diagnostic": "Bundled baseline commit",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "aa550d6359b02e7d346b124ee73f2143a39edafb73c9f0298931df41569a34da"
+    },
+    {
+      "case": "previous_commit",
+      "optimized": false,
+      "argv": [
+        "/usr/sbin/python3",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-hnc6u0op/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-hnc6u0op/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-hnc6u0op/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-hnc6u0op",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-hnc6u0op/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-hnc6u0op/go-calls.jsonl",
+        "STUB_MODE": "previous_commit",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-hnc6u0op/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Bundled previous commit does not match the pinned commit\n",
+      "expected_diagnostic": "Bundled previous commit",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "cfce79c21b8011868f615ad75331b5341842041d8a1c3249b128c9798040a931"
+    },
+    {
+      "case": "compressed_archive",
+      "optimized": false,
+      "argv": [
+        "/usr/sbin/python3",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-pyul8jm1/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-pyul8jm1/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-pyul8jm1/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-pyul8jm1",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-pyul8jm1/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-pyul8jm1/go-calls.jsonl",
+        "STUB_MODE": "compressed_archive",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-pyul8jm1/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Bundled compressed archive hash mismatch\n",
+      "expected_diagnostic": "Bundled compressed archive hash mismatch",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "uncompressed_archive",
+      "optimized": false,
+      "argv": [
+        "/usr/sbin/python3",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-yd457nue/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-yd457nue/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-yd457nue/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-yd457nue",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-yd457nue/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-yd457nue/go-calls.jsonl",
+        "STUB_MODE": "uncompressed_archive",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-yd457nue/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Bundled uncompressed archive hash mismatch\n",
+      "expected_diagnostic": "Bundled uncompressed archive hash mismatch",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "de822a261bc7b37734ad4cc262b0e117e659b32e51890c58e90e5b9a1770be17"
+    },
+    {
+      "case": "previous_withdrawal",
+      "optimized": false,
+      "argv": [
+        "/usr/sbin/python3",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-31h1e64o/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-31h1e64o/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-31h1e64o/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-31h1e64o",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-31h1e64o/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-31h1e64o/go-calls.jsonl",
+        "STUB_MODE": "previous_withdrawal",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-31h1e64o/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Bundled historical source hash mismatch: x/billing/keeper/provider_withdrawal.go\n",
+      "expected_diagnostic": "Bundled historical source hash mismatch: x/billing/keeper/provider_withdrawal.go",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "previous_export",
+      "optimized": false,
+      "argv": [
+        "/usr/sbin/python3",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-12u7d87v/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-12u7d87v/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-12u7d87v/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-12u7d87v",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-12u7d87v/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-12u7d87v/go-calls.jsonl",
+        "STUB_MODE": "previous_export",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-12u7d87v/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Bundled historical source hash mismatch: app/export.go\n",
+      "expected_diagnostic": "Bundled historical source hash mismatch: app/export.go",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "clone_assignment",
+      "optimized": false,
+      "argv": [
+        "/usr/sbin/python3",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-h77sr1jo/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-h77sr1jo/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-h77sr1jo/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-h77sr1jo",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-h77sr1jo/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-h77sr1jo/go-calls.jsonl",
+        "STUB_MODE": "clone_assignment",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-h77sr1jo/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Expected exactly one reservation clone assignment in the baseline\n",
+      "expected_diagnostic": "Expected exactly one reservation clone assignment",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "8ff255d6822207d10d8a2d050b96d5858ca07be4bbc27d33f82d34bb90d4b5ba"
+    },
+    {
+      "case": "bad_exit",
+      "optimized": false,
+      "argv": [
+        "/usr/sbin/python3",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-nwucnxb5/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-nwucnxb5/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-nwucnxb5/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-nwucnxb5",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-nwucnxb5/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-nwucnxb5/go-calls.jsonl",
+        "STUB_MODE": "bad_exit",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-nwucnxb5/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-nwucnxb5/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-nwucnxb5/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-nwucnxb5/work/raw-output/withdrawal-baseline-rerun.log 2>&1\nwithdrawal-baseline-rerun: exit 22\n",
+      "stderr": "Unexpected result; inspect /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-nwucnxb5/evidence/withdrawal-baseline-rerun.log\n",
+      "expected_diagnostic": "Unexpected result",
+      "go_invocations": [
+        [
+          "version"
+        ],
+        [
+          "env",
+          "-json",
+          "GOCACHE",
+          "GOMODCACHE",
+          "GOROOT"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ]
+      ],
+      "rejected_before_go": false,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "no_tests",
+      "optimized": false,
+      "argv": [
+        "/usr/sbin/python3",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-bb95mdmq/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-bb95mdmq/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-bb95mdmq/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-bb95mdmq",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-bb95mdmq/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-bb95mdmq/go-calls.jsonl",
+        "STUB_MODE": "no_tests",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-bb95mdmq/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-bb95mdmq/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-bb95mdmq/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-bb95mdmq/work/raw-output/withdrawal-baseline-rerun.log 2>&1\nwithdrawal-baseline-rerun: exit 0\n",
+      "stderr": "No expected test execution/failure evidence; inspect /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-bb95mdmq/evidence/withdrawal-baseline-rerun.log\n",
+      "expected_diagnostic": "No expected test execution/failure evidence",
+      "go_invocations": [
+        [
+          "version"
+        ],
+        [
+          "env",
+          "-json",
+          "GOCACHE",
+          "GOMODCACHE",
+          "GOROOT"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ]
+      ],
+      "rejected_before_go": false,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "no_mutant_failure",
+      "optimized": false,
+      "argv": [
+        "/usr/sbin/python3",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/go-calls.jsonl",
+        "STUB_MODE": "no_mutant_failure",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/work/raw-output/withdrawal-baseline-rerun.log 2>&1\nwithdrawal-baseline-rerun: exit 0\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./app -run '^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/work/raw-output/export-baseline-rerun.log 2>&1\nexport-baseline-rerun: exit 0\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/evidence/mutation-provenance/withdrawal-original-overlay.json ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/work/raw-output/withdrawal-original-mutant.log 2>&1\nwithdrawal-original-mutant: exit 1\n",
+      "stderr": "No expected test execution/failure evidence; inspect /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/evidence/withdrawal-original-mutant.log\n",
+      "expected_diagnostic": "No expected test execution/failure evidence",
+      "go_invocations": [
+        [
+          "version"
+        ],
+        [
+          "env",
+          "-json",
+          "GOCACHE",
+          "GOMODCACHE",
+          "GOROOT"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./app",
+          "-run",
+          "^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-fypxdn74/evidence/mutation-provenance/withdrawal-original-overlay.json",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ]
+      ],
+      "rejected_before_go": false,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "source_changed",
+      "optimized": false,
+      "argv": [
+        "/usr/sbin/python3",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/go-calls.jsonl",
+        "STUB_MODE": "source_changed",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/raw-output/withdrawal-baseline-rerun.log 2>&1\nwithdrawal-baseline-rerun: exit 0\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./app -run '^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/raw-output/export-baseline-rerun.log 2>&1\nexport-baseline-rerun: exit 0\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/evidence/mutation-provenance/withdrawal-original-overlay.json ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/raw-output/withdrawal-original-mutant.log 2>&1\nwithdrawal-original-mutant: exit 1\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/evidence/mutation-provenance/withdrawal-shallow-overlay.json ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/raw-output/withdrawal-shallow-mutant.log 2>&1\nwithdrawal-shallow-mutant: exit 1\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/evidence/mutation-provenance/export-stale-header-overlay.json ./app -run '^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/work/raw-output/export-stale-header-mutant.log 2>&1\nexport-stale-header-mutant: exit 1\n",
+      "stderr": "Snapshot files unexpectedly changed: ['README.md']\n",
+      "expected_diagnostic": "Snapshot files unexpectedly changed",
+      "go_invocations": [
+        [
+          "version"
+        ],
+        [
+          "env",
+          "-json",
+          "GOCACHE",
+          "GOMODCACHE",
+          "GOROOT"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./app",
+          "-run",
+          "^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/evidence/mutation-provenance/withdrawal-original-overlay.json",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/evidence/mutation-provenance/withdrawal-shallow-overlay.json",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-92qpwdk5/evidence/mutation-provenance/export-stale-header-overlay.json",
+          "./app",
+          "-run",
+          "^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ]
+      ],
+      "rejected_before_go": false,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "driver_changed",
+      "optimized": false,
+      "argv": [
+        "/usr/sbin/python3",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/go-calls.jsonl",
+        "STUB_MODE": "driver_changed",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/raw-output/withdrawal-baseline-rerun.log 2>&1\nwithdrawal-baseline-rerun: exit 0\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./app -run '^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/raw-output/export-baseline-rerun.log 2>&1\nexport-baseline-rerun: exit 0\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/evidence/mutation-provenance/withdrawal-original-overlay.json ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/raw-output/withdrawal-original-mutant.log 2>&1\nwithdrawal-original-mutant: exit 1\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/evidence/mutation-provenance/withdrawal-shallow-overlay.json ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/raw-output/withdrawal-shallow-mutant.log 2>&1\nwithdrawal-shallow-mutant: exit 1\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/evidence/mutation-provenance/export-stale-header-overlay.json ./app -run '^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/work/raw-output/export-stale-header-mutant.log 2>&1\nexport-stale-header-mutant: exit 1\n",
+      "stderr": "Reproduction driver changed during execution\n",
+      "expected_diagnostic": "Reproduction driver changed during execution",
+      "go_invocations": [
+        [
+          "version"
+        ],
+        [
+          "env",
+          "-json",
+          "GOCACHE",
+          "GOMODCACHE",
+          "GOROOT"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./app",
+          "-run",
+          "^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/evidence/mutation-provenance/withdrawal-original-overlay.json",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/evidence/mutation-provenance/withdrawal-shallow-overlay.json",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-p16bz0_m/evidence/mutation-provenance/export-stale-header-overlay.json",
+          "./app",
+          "-run",
+          "^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ]
+      ],
+      "rejected_before_go": false,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "baseline_commit",
+      "optimized": true,
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-loapo2qw/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-loapo2qw/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-loapo2qw/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-loapo2qw",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-loapo2qw/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-loapo2qw/go-calls.jsonl",
+        "STUB_MODE": "baseline_commit",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/baseline_commit-loapo2qw/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Bundled baseline commit does not match the pinned commit\n",
+      "expected_diagnostic": "Bundled baseline commit",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "aa550d6359b02e7d346b124ee73f2143a39edafb73c9f0298931df41569a34da"
+    },
+    {
+      "case": "previous_commit",
+      "optimized": true,
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-_wp3_9xi/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-_wp3_9xi/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-_wp3_9xi/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-_wp3_9xi",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-_wp3_9xi/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-_wp3_9xi/go-calls.jsonl",
+        "STUB_MODE": "previous_commit",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_commit-_wp3_9xi/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Bundled previous commit does not match the pinned commit\n",
+      "expected_diagnostic": "Bundled previous commit",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "cfce79c21b8011868f615ad75331b5341842041d8a1c3249b128c9798040a931"
+    },
+    {
+      "case": "compressed_archive",
+      "optimized": true,
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-nkwy63cf/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-nkwy63cf/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-nkwy63cf/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-nkwy63cf",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-nkwy63cf/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-nkwy63cf/go-calls.jsonl",
+        "STUB_MODE": "compressed_archive",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/compressed_archive-nkwy63cf/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Bundled compressed archive hash mismatch\n",
+      "expected_diagnostic": "Bundled compressed archive hash mismatch",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "uncompressed_archive",
+      "optimized": true,
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-lqenny9f/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-lqenny9f/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-lqenny9f/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-lqenny9f",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-lqenny9f/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-lqenny9f/go-calls.jsonl",
+        "STUB_MODE": "uncompressed_archive",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/uncompressed_archive-lqenny9f/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Bundled uncompressed archive hash mismatch\n",
+      "expected_diagnostic": "Bundled uncompressed archive hash mismatch",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "de822a261bc7b37734ad4cc262b0e117e659b32e51890c58e90e5b9a1770be17"
+    },
+    {
+      "case": "previous_withdrawal",
+      "optimized": true,
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-ro7u4mj4/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-ro7u4mj4/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-ro7u4mj4/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-ro7u4mj4",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-ro7u4mj4/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-ro7u4mj4/go-calls.jsonl",
+        "STUB_MODE": "previous_withdrawal",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_withdrawal-ro7u4mj4/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Bundled historical source hash mismatch: x/billing/keeper/provider_withdrawal.go\n",
+      "expected_diagnostic": "Bundled historical source hash mismatch: x/billing/keeper/provider_withdrawal.go",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "previous_export",
+      "optimized": true,
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-0omf06zx/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-0omf06zx/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-0omf06zx/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-0omf06zx",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-0omf06zx/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-0omf06zx/go-calls.jsonl",
+        "STUB_MODE": "previous_export",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/previous_export-0omf06zx/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Bundled historical source hash mismatch: app/export.go\n",
+      "expected_diagnostic": "Bundled historical source hash mismatch: app/export.go",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "clone_assignment",
+      "optimized": true,
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-ktw85vo2/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-ktw85vo2/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-ktw85vo2/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-ktw85vo2",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-ktw85vo2/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-ktw85vo2/go-calls.jsonl",
+        "STUB_MODE": "clone_assignment",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/clone_assignment-ktw85vo2/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "Expected exactly one reservation clone assignment in the baseline\n",
+      "expected_diagnostic": "Expected exactly one reservation clone assignment",
+      "go_invocations": [],
+      "rejected_before_go": true,
+      "tampered_input_manifest_sha256": "8ff255d6822207d10d8a2d050b96d5858ca07be4bbc27d33f82d34bb90d4b5ba"
+    },
+    {
+      "case": "bad_exit",
+      "optimized": true,
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-tjxnpoo_/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-tjxnpoo_/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-tjxnpoo_/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-tjxnpoo_",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-tjxnpoo_/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-tjxnpoo_/go-calls.jsonl",
+        "STUB_MODE": "bad_exit",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-tjxnpoo_/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-tjxnpoo_/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-tjxnpoo_/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-tjxnpoo_/work/raw-output/withdrawal-baseline-rerun.log 2>&1\nwithdrawal-baseline-rerun: exit 22\n",
+      "stderr": "Unexpected result; inspect /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/bad_exit-tjxnpoo_/evidence/withdrawal-baseline-rerun.log\n",
+      "expected_diagnostic": "Unexpected result",
+      "go_invocations": [
+        [
+          "version"
+        ],
+        [
+          "env",
+          "-json",
+          "GOCACHE",
+          "GOMODCACHE",
+          "GOROOT"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ]
+      ],
+      "rejected_before_go": false,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "no_tests",
+      "optimized": true,
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-hha7ifys/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-hha7ifys/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-hha7ifys/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-hha7ifys",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-hha7ifys/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-hha7ifys/go-calls.jsonl",
+        "STUB_MODE": "no_tests",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-hha7ifys/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-hha7ifys/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-hha7ifys/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-hha7ifys/work/raw-output/withdrawal-baseline-rerun.log 2>&1\nwithdrawal-baseline-rerun: exit 0\n",
+      "stderr": "No expected test execution/failure evidence; inspect /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_tests-hha7ifys/evidence/withdrawal-baseline-rerun.log\n",
+      "expected_diagnostic": "No expected test execution/failure evidence",
+      "go_invocations": [
+        [
+          "version"
+        ],
+        [
+          "env",
+          "-json",
+          "GOCACHE",
+          "GOMODCACHE",
+          "GOROOT"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ]
+      ],
+      "rejected_before_go": false,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "no_mutant_failure",
+      "optimized": true,
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/go-calls.jsonl",
+        "STUB_MODE": "no_mutant_failure",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/work/raw-output/withdrawal-baseline-rerun.log 2>&1\nwithdrawal-baseline-rerun: exit 0\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./app -run '^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/work/raw-output/export-baseline-rerun.log 2>&1\nexport-baseline-rerun: exit 0\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/evidence/mutation-provenance/withdrawal-original-overlay.json ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/work/raw-output/withdrawal-original-mutant.log 2>&1\nwithdrawal-original-mutant: exit 1\n",
+      "stderr": "No expected test execution/failure evidence; inspect /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/evidence/withdrawal-original-mutant.log\n",
+      "expected_diagnostic": "No expected test execution/failure evidence",
+      "go_invocations": [
+        [
+          "version"
+        ],
+        [
+          "env",
+          "-json",
+          "GOCACHE",
+          "GOMODCACHE",
+          "GOROOT"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./app",
+          "-run",
+          "^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/no_mutant_failure-redhjs_a/evidence/mutation-provenance/withdrawal-original-overlay.json",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ]
+      ],
+      "rejected_before_go": false,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "source_changed",
+      "optimized": true,
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/go-calls.jsonl",
+        "STUB_MODE": "source_changed",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/raw-output/withdrawal-baseline-rerun.log 2>&1\nwithdrawal-baseline-rerun: exit 0\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./app -run '^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/raw-output/export-baseline-rerun.log 2>&1\nexport-baseline-rerun: exit 0\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/evidence/mutation-provenance/withdrawal-original-overlay.json ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/raw-output/withdrawal-original-mutant.log 2>&1\nwithdrawal-original-mutant: exit 1\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/evidence/mutation-provenance/withdrawal-shallow-overlay.json ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/raw-output/withdrawal-shallow-mutant.log 2>&1\nwithdrawal-shallow-mutant: exit 1\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/evidence/mutation-provenance/export-stale-header-overlay.json ./app -run '^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/work/raw-output/export-stale-header-mutant.log 2>&1\nexport-stale-header-mutant: exit 1\n",
+      "stderr": "Snapshot files unexpectedly changed: ['README.md']\n",
+      "expected_diagnostic": "Snapshot files unexpectedly changed",
+      "go_invocations": [
+        [
+          "version"
+        ],
+        [
+          "env",
+          "-json",
+          "GOCACHE",
+          "GOMODCACHE",
+          "GOROOT"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./app",
+          "-run",
+          "^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/evidence/mutation-provenance/withdrawal-original-overlay.json",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/evidence/mutation-provenance/withdrawal-shallow-overlay.json",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/source_changed-9xhdmkhb/evidence/mutation-provenance/export-stale-header-overlay.json",
+          "./app",
+          "-run",
+          "^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ]
+      ],
+      "rejected_before_go": false,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    },
+    {
+      "case": "driver_changed",
+      "optimized": true,
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/reproduce.py",
+        "--bundled",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/evidence"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam",
+      "environment_overrides": {
+        "PATH": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/bin:/home/fmorency/.codex/tmp/arg0/codex-arg0Lh2i5D:/home/fmorency/.local/bin:/home/fmorency/.local/share/nvm/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl",
+        "GO_CALL_LOG": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/go-calls.jsonl",
+        "STUB_MODE": "driver_changed",
+        "TARGET_DRIVER": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/reproduce.py"
+      },
+      "environment_removed": [
+        "PYTHONOPTIMIZE"
+      ],
+      "exit_status": 1,
+      "stdout": "cd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/raw-output/withdrawal-baseline-rerun.log 2>&1\nwithdrawal-baseline-rerun: exit 0\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 ./app -run '^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/raw-output/export-baseline-rerun.log 2>&1\nexport-baseline-rerun: exit 0\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/evidence/mutation-provenance/withdrawal-original-overlay.json ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/raw-output/withdrawal-original-mutant.log 2>&1\nwithdrawal-original-mutant: exit 1\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/evidence/mutation-provenance/withdrawal-shallow-overlay.json ./x/billing/keeper -run '^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/raw-output/withdrawal-shallow-mutant.log 2>&1\nwithdrawal-shallow-mutant: exit 1\ncd /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/baseline && env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/baseline/.review-tmp/build GOWORK=off GOFLAGS=-mod=readonly go test -p 2 -overlay /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/evidence/mutation-provenance/export-stale-header-overlay.json ./app -run '^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$' -count=1 -timeout=180s -v > /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/work/raw-output/export-stale-header-mutant.log 2>&1\nexport-stale-header-mutant: exit 1\n",
+      "stderr": "Reproduction driver changed during execution\n",
+      "expected_diagnostic": "Reproduction driver changed during execution",
+      "go_invocations": [
+        [
+          "version"
+        ],
+        [
+          "env",
+          "-json",
+          "GOCACHE",
+          "GOMODCACHE",
+          "GOROOT"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "./app",
+          "-run",
+          "^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/evidence/mutation-provenance/withdrawal-original-overlay.json",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/evidence/mutation-provenance/withdrawal-shallow-overlay.json",
+          "./x/billing/keeper",
+          "-run",
+          "^TestProviderLeaseWithdrawal(LateFailurePreservesCaller|SuccessPreservesLifecycleAndCacheOwnership)$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ],
+        [
+          "test",
+          "-p",
+          "2",
+          "-overlay",
+          "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-integrity-checks/driver_changed-t33i0zam/evidence/mutation-provenance/export-stale-header-overlay.json",
+          "./app",
+          "-run",
+          "^TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback$",
+          "-count=1",
+          "-timeout=180s",
+          "-v"
+        ]
+      ],
+      "rejected_before_go": false,
+      "tampered_input_manifest_sha256": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327"
+    }
+  ],
+  "finished_at_utc": "2026-09-11T17:28:38.358878+00:00"
+}
