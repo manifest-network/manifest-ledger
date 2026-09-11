@@ -9,8 +9,8 @@ replace (
 	github.com/ChainSafe/go-schnorrkel => github.com/ChainSafe/go-schnorrkel v0.0.0-20200405005733-88cbf1b4c40d
 	github.com/ChainSafe/go-schnorrkel/1 => github.com/ChainSafe/go-schnorrkel v1.0.0
 
-	// https://github.com/manifest-network/cosmos-sdk/pull/1
-	github.com/cosmos/cosmos-sdk => github.com/manifest-network/cosmos-sdk v0.50.14-liftedinit.1
+	// https://github.com/manifest-network/cosmos-sdk/pull/4
+	github.com/cosmos/cosmos-sdk => github.com/manifest-network/cosmos-sdk v0.50.14-liftedinit.2
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/manifest-network/manifest-ledger => ../
 	github.com/strangelove-ventures/interchaintest/v8 => github.com/strangelove-ventures/interchaintest/v8 v8.8.2-0.20250401215817-34a13b0e5f11
