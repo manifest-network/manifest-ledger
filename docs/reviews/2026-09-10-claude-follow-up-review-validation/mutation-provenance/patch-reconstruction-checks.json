@@ -5,19 +5,24 @@
       "git",
       "init",
       "--quiet",
-      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-patch-check-final/withdrawal-original-mutant"
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-bundled-patch-check-6o5yl36i/withdrawal-original-mutant"
     ],
     "argv": [
       "git",
       "-C",
-      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-patch-check-final/withdrawal-original-mutant",
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-bundled-patch-check-6o5yl36i/withdrawal-original-mutant",
       "apply",
       "--unidiff-zero",
       "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-original.patch"
     ],
     "exit_status": 0,
+    "baseline_archive_sha256": "235e4171af8b0581fff909ac1613efef183ef1fad78b3fcfc5c81d566e4130ef",
+    "baseline_sha256": "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+    "patch_sha256": "c83560dacd69fd5765527148201b6681d99e21fb4a921af882a00b676b995307",
     "reconstructed_sha256": "e1d875a223a36b73f95f65c068eb2ac13a73114a55b33a3f7c72372f3543a92d",
-    "matches_recorded_mutant": true
+    "matches_recorded_mutant": true,
+    "stdout": "",
+    "stderr": ""
   },
   {
     "run": "withdrawal-shallow-mutant",
@@ -25,19 +30,24 @@
       "git",
       "init",
       "--quiet",
-      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-patch-check-final/withdrawal-shallow-mutant"
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-bundled-patch-check-6o5yl36i/withdrawal-shallow-mutant"
     ],
     "argv": [
       "git",
       "-C",
-      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-patch-check-final/withdrawal-shallow-mutant",
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-bundled-patch-check-6o5yl36i/withdrawal-shallow-mutant",
       "apply",
       "--unidiff-zero",
       "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-shallow.patch"
     ],
     "exit_status": 0,
+    "baseline_archive_sha256": "235e4171af8b0581fff909ac1613efef183ef1fad78b3fcfc5c81d566e4130ef",
+    "baseline_sha256": "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+    "patch_sha256": "583677bda4e4a4c10a4cf8189b5ea06944e0812c0ced8ef906f09144c2e3cdfe",
     "reconstructed_sha256": "c2a56e24051ad1ff7f7d64c98f58eb56c155c9659e3ab3ab4abdcaf2cf2930b0",
-    "matches_recorded_mutant": true
+    "matches_recorded_mutant": true,
+    "stdout": "",
+    "stderr": ""
   },
   {
     "run": "export-stale-header-mutant",
@@ -45,18 +55,23 @@
       "git",
       "init",
       "--quiet",
-      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-patch-check-final/export-stale-header-mutant"
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-bundled-patch-check-6o5yl36i/export-stale-header-mutant"
     ],
     "argv": [
       "git",
       "-C",
-      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-patch-check-final/export-stale-header-mutant",
+      "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-bundled-patch-check-6o5yl36i/export-stale-header-mutant",
       "apply",
       "--unidiff-zero",
       "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/export-stale-header.patch"
     ],
     "exit_status": 0,
+    "baseline_archive_sha256": "235e4171af8b0581fff909ac1613efef183ef1fad78b3fcfc5c81d566e4130ef",
+    "baseline_sha256": "3fe40a00d95435d5c55047587e21514b32e2004e19d5261bf02c9cb1c4fce340",
+    "patch_sha256": "bc392a4707c7b0ffdffa360da526683e9e705358b9ae6631800f7abef114c42f",
     "reconstructed_sha256": "ff42a24fe733c859b973e488e662ea5d1e2f7321a19f8714435a441d573f8c53",
-    "matches_recorded_mutant": true
+    "matches_recorded_mutant": true,
+    "stdout": "",
+    "stderr": ""
   }
 ]

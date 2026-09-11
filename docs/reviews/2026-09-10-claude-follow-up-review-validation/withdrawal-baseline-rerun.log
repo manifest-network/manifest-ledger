@@ -1,14 +1,14 @@
 === RUN   TestProviderLeaseWithdrawalLateFailurePreservesCaller
 === RUN   TestProviderLeaseWithdrawalLateFailurePreservesCaller/lease_persistence
 === RUN   TestProviderLeaseWithdrawalLateFailurePreservesCaller/credit_account_persistence
---- PASS: TestProviderLeaseWithdrawalLateFailurePreservesCaller (0.24s)
+--- PASS: TestProviderLeaseWithdrawalLateFailurePreservesCaller (0.25s)
     --- PASS: TestProviderLeaseWithdrawalLateFailurePreservesCaller/lease_persistence (0.13s)
     --- PASS: TestProviderLeaseWithdrawalLateFailurePreservesCaller/credit_account_persistence (0.11s)
 === RUN   TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership
 === RUN   TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/live_settlement
 === RUN   TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/auto_close
---- PASS: TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership (0.20s)
-    --- PASS: TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/live_settlement (0.10s)
+--- PASS: TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership (0.21s)
+    --- PASS: TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/live_settlement (0.11s)
     --- PASS: TestProviderLeaseWithdrawalSuccessPreservesLifecycleAndCacheOwnership/auto_close (0.10s)
 PASS
-ok      github.com/manifest-network/manifest-ledger/x/billing/keeper    0.517s
+ok      github.com/manifest-network/manifest-ledger/x/billing/keeper    0.606s

@@ -1,0 +1,71 @@
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment
+    terminal_withdrawal_test.go:78:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:78
+                Error:          Expected error with "no withdrawable amount" in chain but got nil.
+                Test:           TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment
+                Messages:       retry response: total_amounts:<denom:"umfx" amount:"3600" > payout_address:"manifest1zw79ydrpufa8p9253pd3sjpuqf324u6j4dajzq" withdrawal_count:1
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment
+    terminal_withdrawal_test.go:78:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:78
+                Error:          Expected error with "no withdrawable amount" in chain but got nil.
+                Test:           TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment
+                Messages:       retry response: total_amounts:<denom:"umfx" amount:"3600" > payout_address:"manifest1dzdkgp5ywhkzyy8ywhfmsev46a7u375gxfzx2x" withdrawal_count:1
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/full_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full
+    terminal_withdrawal_test.go:78:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:78
+                Error:          Expected error with "no withdrawable amount" in chain but got nil.
+                Test:           TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full
+                Messages:       retry response: total_amounts:<denom:"umfx" amount:"3600" > total_amounts:<denom:"upwr" amount:"7200" > payout_address:"manifest1zu4qw9xahpufukkmytg8yyaegkyn5p2wcc6ewa" withdrawal_count:1
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid
+    terminal_withdrawal_test.go:78:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:78
+                Error:          Expected error with "no withdrawable amount" in chain but got nil.
+                Test:           TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid
+                Messages:       retry response: total_amounts:<denom:"umfx" amount:"3600" > total_amounts:<denom:"upwr" amount:"7200" > payout_address:"manifest16um3x3dz9fm4r0mscrpyefe5svv8gn74sd9gvw" withdrawal_count:1
+--- FAIL: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt (1.13s)
+    --- FAIL: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment (0.27s)
+    --- FAIL: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment (0.24s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/full_payment (0.19s)
+    --- FAIL: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full (0.22s)
+    --- FAIL: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid (0.21s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch
+    terminal_withdrawal_test.go:114:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:114
+                Error:          Not equal:
+                                expected: time.Date(2026, time.September, 11, 14, 16, 45, 398444158, time.UTC)
+                                actual  : time.Date(2026, time.September, 11, 13, 16, 45, 398444158, time.UTC)
+
+                                Diff:
+                                --- Expected
+                                +++ Actual
+                                @@ -1,2 +1,2 @@
+                                -(time.Time) 2026-09-11 14:16:45.398444158 +0000 UTC
+                                +(time.Time) 2026-09-11 13:16:45.398444158 +0000 UTC
+
+                Test:           TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch
+    terminal_withdrawal_test.go:114:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:114
+                Error:          Not equal:
+                                expected: time.Date(2026, time.September, 11, 14, 16, 45, 605342996, time.UTC)
+                                actual  : time.Date(2026, time.September, 11, 13, 16, 45, 605342996, time.UTC)
+
+                                Diff:
+                                --- Expected
+                                +++ Actual
+                                @@ -1,2 +1,2 @@
+                                -(time.Time) 2026-09-11 14:16:45.605342996 +0000 UTC
+                                +(time.Time) 2026-09-11 13:16:45.605342996 +0000 UTC
+
+                Test:           TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch
+--- FAIL: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts (0.41s)
+    --- FAIL: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch (0.19s)
+    --- FAIL: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch (0.22s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder
+--- PASS: TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder (0.21s)
+FAIL
+FAIL    github.com/manifest-network/manifest-ledger/x/billing/keeper    1.888s
+FAIL

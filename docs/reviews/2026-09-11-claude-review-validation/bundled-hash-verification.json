@@ -1,0 +1,42 @@
+{
+  "verified_at_utc": "2026-09-11T14:07:12.893183+00:00",
+  "runs": 5,
+  "baseline_files_unchanged": 483,
+  "patch_reconstructions": 3,
+  "hashes": {
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/reproduce.py": "b4e4b58d6687c6633a1a913048118fcaea6b19a3560a9de625e2467d5bab6b17",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/inputs/baseline-b4d8403.tar.gz": "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/inputs/previous-export.go.txt": "ff42a24fe733c859b973e488e662ea5d1e2f7321a19f8714435a441d573f8c53",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/inputs/previous-provider-withdrawal.go.txt": "e1d875a223a36b73f95f65c068eb2ac13a73114a55b33a3f7c72372f3543a92d",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/inputs/manifest.json": "631fdbf88ed3b60360508f4d9c7ae6b034a69c2ed43916bd48891f9a541e8327",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/withdrawal-baseline-rerun.log": "948b48ad94e4f69b68282880130267e14d10e89d87d877104e54e8bb15e41125",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-baseline-rerun-raw.json": "57a7efad95dba8d88b8a63c37033af4e12e31794b03cab2cfe4eb15c28d1ae4f",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/export-baseline-rerun.log": "d144bfb43cb75669fb618e05e89ef845bcc2c0d52011c73c243f5d8e7da608bc",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/export-baseline-rerun-raw.json": "f4432de2bfd724bc69f550efa0e7f0fb9dd1a2b2f285650c67747af42f22d51b",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/withdrawal-original-mutant.log": "ad1f55b16a3844b963804d0b6be13e4bdbf506463e39143d1033e42beb7013c9",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-original-mutant-raw.json": "b1ca3a96c2cabf87feb057637ce1acab93779c710403aa9c4de3baf70adc7518",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-original.patch": "c83560dacd69fd5765527148201b6681d99e21fb4a921af882a00b676b995307",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-original-overlay.json": "07b309f5fac4420a2c54accfaa572e796d33f593e5f3691db77db7ee064ba3e1",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/withdrawal-shallow-mutant.log": "b2c546a73ce5e7ea89a65a9eb581a34ea388b0a91d40d7a959533db35e05201e",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-shallow-mutant-raw.json": "dbaa79f803d3b02739204ec39063749de5b333b9e721116f7059e540066cbf0e",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-shallow.patch": "583677bda4e4a4c10a4cf8189b5ea06944e0812c0ced8ef906f09144c2e3cdfe",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-shallow-overlay.json": "e3634b46abd4aaac27acac437f9d2cd07b3c794536e9fe8dbefc5072236c6405",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/export-stale-header-mutant.log": "587dabc9e4ce11fd16f2c485eef02e38344c266db9a9e0613b549dbea97b47a2",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/export-stale-header-mutant-raw.json": "628279805e1fa1e9ffa71c1aa5f3b659076150acf7a263ca30f3d94dc8a4f718",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/export-stale-header.patch": "bc392a4707c7b0ffdffa360da526683e9e705358b9ae6631800f7abef114c42f",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/export-stale-header-overlay.json": "42969f6776d8ed7b599ddca91b153e62f934765e99ef8413191fc93de4433112"
+  },
+  "compressed_archive_bytes": 1454723,
+  "uncompressed_archive_sha256": "235e4171af8b0581fff909ac1613efef183ef1fad78b3fcfc5c81d566e4130ef",
+  "checks": [
+    "driver",
+    "input archive and historical files",
+    "test sources",
+    "display logs",
+    "raw JSON and original raw output",
+    "recorded commands",
+    "test names and outcomes",
+    "overlays and mutant bytes",
+    "patches and independent reconstruction"
+  ]
+}

@@ -369,6 +369,16 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
   - If any lease fails validation or settlement, the entire batch fails and all
     earlier transfers and timestamp updates in that batch are rolled back
   - `has_more` is always false in this mode
+  - Imported CLOSED leases may have `last_settled_at < closed_at`. An explicit
+    withdrawal settles that final interval once, capped by lease-spendable
+    credit, then advances the cursor to `closed_at`. Any unpaid shortfall is
+    written off; a later deposit cannot revive it. This preserves the module's
+    existing no-debt policy and import compatibility.
+  - Finalizing a CLOSED interval with no transfer succeeds with
+    `withdrawal_count = 0`, empty `total_amounts`, and no `provider_withdraw`
+    payout event for that lease. A positive partial or full transfer counts
+    once. A call that only skips unchanged leases still returns
+    `ErrNoWithdrawableAmount`.
 - **Mode 2 (Provider-wide):**
   - Processes up to `limit` active leases
   - Processes each lease in its own cached context. A lease-level settlement or
@@ -397,6 +407,10 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
   plus ordered `failed_lease_uuids` in provider-wide mode
 - Emits `batch_withdraw` for a specific-UUID batch with more than one requested
   lease, and for every provider-wide request (including zero successful leases)
+  - A successful specific-UUID batch that only finalizes unpaid CLOSED intervals
+    emits this summary with `lease_count = 0` and an empty amount. Successful
+    ACTIVE auto-closes retain their existing count and event behavior, including
+    when their transfer is zero.
 
 ##### Provider-Wide Withdraw Workflow
 
@@ -1963,6 +1977,12 @@ mislabels the role as authority. Indexers should use `sender` for identity.
 **Custom-domain `set_by` attribute:** records the role under which the call was authorised. One of `tenant`, `authority`, `allowed`. No event is emitted for an idempotent re-set or a clear of an already-empty domain.
 
 **`lease_closed` `closed_by` attribute:** records who closed the lease. One of `tenant`, `authority`, `provider`, or `credit_exhaustion`. `credit_exhaustion` is the auto-close sentinel set when lazy settlement finds the credit exhausted.
+
+**`lease_closed` `duration_seconds` attribute:** records the whole-second final
+settlement interval from the lease's pre-close `last_settled_at` to `closed_at`.
+Earlier withdrawals advance that starting cursor, so this is not the total
+lease lifetime. The interval can include unpaid accrual when credit is exhausted;
+`settled_amounts` reports the actual transfer.
 
 **Provider-wide `batch_withdraw` attributes:** `auto_closed` is an integer count
 of auto-closed leases. `failed_lease_count` is the number of error-skipped

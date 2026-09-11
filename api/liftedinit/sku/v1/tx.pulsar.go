@@ -7891,7 +7891,8 @@ type MsgUpdateSKU struct {
 	Unit Unit `protobuf:"varint,5,opt,name=unit,proto3,enum=liftedinit.sku.v1.Unit" json:"unit,omitempty"`
 	// base_price is the base price for the SKU.
 	BasePrice *v1beta1.Coin `protobuf:"bytes,6,opt,name=base_price,json=basePrice,proto3" json:"base_price,omitempty"`
-	// meta_hash is a hash of the off-chain metadata.
+	// meta_hash replaces the hash of off-chain metadata. An empty value clears
+	// it; clients must resend the current bytes when preserving the hash.
 	MetaHash []byte `protobuf:"bytes,7,opt,name=meta_hash,json=metaHash,proto3" json:"meta_hash,omitempty"`
 	// active indicates whether the SKU is active.
 	Active bool `protobuf:"varint,8,opt,name=active,proto3" json:"active,omitempty"`

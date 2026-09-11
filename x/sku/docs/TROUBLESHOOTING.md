@@ -82,12 +82,14 @@ This guide covers common errors and issues users may encounter when using the SK
 **Solution**:
 1. Check the SKU's status:
    ```bash
-   manifestd query sku sku [sku-uuid]
+   manifestd query sku sku [sku-uuid] --output json
    ```
-2. If the SKU is inactive, contact an authorized user (authority or allowed list member) to reactivate it:
+2. If the SKU is inactive, contact an authorized user (authority or allowed list member) to reactivate it using its current provider, name, unit, price, and metadata hash:
    ```bash
-   manifestd tx sku update-sku [sku-uuid] [provider-uuid] [name] [unit] [base-price] true --from [authorized-key]
+   manifestd tx sku update-sku [sku-uuid] [provider-uuid] [name] [unit] [base-price] true \
+     --meta-hash [current-meta-hash-hex] --from [authorized-key]
    ```
+   Updates replace the metadata hash. Convert the JSON response's base64-encoded `meta_hash` bytes to hex for `--meta-hash`; use `--meta-hash ""` if the current hash is empty. Omitting the flag clears the hash.
 
 ### "invalid sku" (price not divisible)
 

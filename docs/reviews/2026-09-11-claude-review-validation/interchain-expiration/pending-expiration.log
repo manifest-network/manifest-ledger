@@ -1,0 +1,26 @@
+=== RUN   TestBillingState
+    logger.go:146: 2026-09-11T10:14:47.967-0400 INFO    Using embedded configured chains
+    logger.go:146: 2026-09-11T10:14:49.405-0400 ERROR   Failed to pull image    {"error": "Error response from daemon: pull access denied for manifest, repository does not exist or may require 'docker login'", "repository": "manifest", "tag": "review-pr179-sep11-9d25368"}
+    logger.go:146: 2026-09-11T10:15:03.510-0400 INFO    Exec    {"validator": true, "i": 0, "chain_id": "manifest-2", "test": "TestBillingState", "image": "manifest:review-pr179-sep11-9d25368", "test_name": "TestBillingState", "command": "manifestd keys add faucet --coin-type 118 --keyring-backend test --home /var/cosmos-chain/billing-state-test", "hostname": "TestBillingState-nywffj", "container": "TestBillingState-nywffj"}
+    billing_state_test.go:26:
+                Error Trace:    /home/fmorency/go/pkg/mod/github.com/strangelove-ventures/interchaintest/v8@v8.8.2-0.20250401215817-34a13b0e5f11/interchain_builder.go:122
+                                                        /home/fmorency/go/pkg/mod/github.com/strangelove-ventures/interchaintest/v8@v8.8.2-0.20250401215817-34a13b0e5f11/interchain_builder.go:139
+                                                        /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/interchaintest/billing_common_test.go:63
+                                                        /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/interchaintest/billing_state_test.go:26
+                Error:          Received unexpected error:
+                                failed to create faucet accounts: failed to create common account with name faucet: failed to create key with name "faucet" on chain billing-state-test: image manifest:review-pr179-sep11-9d25368: start container TestBillingState-nywffj: Error response from daemon: failed to set up container networking: driver failed programming external connectivity on endpoint TestBillingState-nywffj (c1fcc75193a40389d05cfe0cc9ee7558a5d5a544f6c3b9b91198c918e20639de): Unable to enable DNAT rule:  (iptables failed: iptables --wait -t nat -A DOCKER -p tcp -d 0/0 --dport 32775 -j DNAT --to-destination 172.0.0.2:1317 ! -i br-5074cb377f7b: Warning: Extension DNAT revision 0 not supported, missing kernel module?
+                                iptables v1.8.13 (nf_tables):  RULE_APPEND failed (No such file or directory): rule in chain DOCKER
+                                 (exit status 4))
+                Test:           TestBillingState
+    setup.go:216:
+
+        Container logs - {/TestBillingState-nywffj}
+    setup.go:239: Error while waiting for container 445b2861bac685a68326cf828ff6b56e0e27e8460d0b70d5449c0d940653ec4c during docker cleanup: failed to set up container networking: driver failed programming external connectivity on endpoint TestBillingState-nywffj (c1fcc75193a40389d05cfe0cc9ee7558a5d5a544f6c3b9b91198c918e20639de): Unable to enable DNAT rule:  (iptables failed: iptables --wait -t nat -A DOCKER -p tcp -d 0/0 --dport 32775 -j DNAT --to-destination 172.0.0.2:1317 ! -i br-5074cb377f7b: Warning: Extension DNAT revision 0 not supported, missing kernel module?
+        iptables v1.8.13 (nf_tables):  RULE_APPEND failed (No such file or directory): rule in chain DOCKER
+         (exit status 4))
+    setup.go:299: Pruned 2 volumes, reclaiming approximately 0.0 MB
+    setup.go:330: Pruned unused networks: [interchaintest-bknfrlww]
+--- FAIL: TestBillingState (29.20s)
+FAIL
+FAIL    github.com/manifest-network/manifest-ledger/interchaintest      30.290s
+FAIL

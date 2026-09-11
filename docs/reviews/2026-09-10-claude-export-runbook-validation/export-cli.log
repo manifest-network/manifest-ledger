@@ -1,3 +1,6 @@
+HISTORICAL DISPLAY SUMMARY — the $ manifestd lines below omit fixture-specific arguments and are not exact executed argv.
+Superseded by ../2026-09-11-claude-review-validation/export-cli.log and export-cli.json, generated from actual subprocess argument arrays.
+
 Isolated single-validator fixture; no peers or public listener.
 Selected committed height: 3
 Source block time: 2026-09-10T18:56:41.015225824Z

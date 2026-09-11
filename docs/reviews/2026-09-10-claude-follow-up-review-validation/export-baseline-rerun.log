@@ -1,4 +1,4 @@
 === RUN   TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback
---- PASS: TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback (0.10s)
+--- PASS: TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback (0.13s)
 PASS
-ok      github.com/manifest-network/manifest-ledger/app 0.187s
+ok      github.com/manifest-network/manifest-ledger/app 0.264s

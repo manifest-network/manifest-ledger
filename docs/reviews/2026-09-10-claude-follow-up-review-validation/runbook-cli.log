@@ -1,3 +1,6 @@
+HISTORICAL DISPLAY SUMMARY — the $ manifestd lines below are illustrative, not exact executed argv.
+Superseded by ../2026-09-11-claude-review-validation/export-cli.log and export-cli.json, generated from actual subprocess argument arrays.
+
 $ manifestd query consensus params --help
 Query the current consensus parameters
 

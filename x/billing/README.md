@@ -219,6 +219,10 @@ other leases remain protected. This happens through **lazy evaluation**
 
 A consumer that subscribes only to `lease_auto_closed` will miss credit-exhaustion closures triggered via `MsgCloseLease` or specific-lease `MsgWithdraw`.
 
+The `lease_closed.duration_seconds` attribute measures the whole-second final
+settlement interval from the pre-close `last_settled_at` to `closed_at`, not the
+lease lifetime. See the [event reference](docs/API.md#events) for transfer semantics.
+
 **Design rationale:**
 - **Bounded selection**: Only selected leases are checked; each check depends on its items, denominations, and store access
 - **Scalability**: Settlement touches selected leases rather than scanning all active leases each block; [production capacity budgets remain to be measured](docs/CAPABILITIES.md#lazy-evaluation)

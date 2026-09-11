@@ -230,21 +230,23 @@ manifestd tx sku deactivate-sku 01912345-6789-7abc-8def-0123456789cd \
 
 ## Creating Multiple SKUs
 
-For a typical service offering, you might create several SKUs:
+For a typical service offering, you might create several SKUs. These examples
+assume an illustrative rate of 3600 `upwr` per dollar; the module does not set or
+enforce a fiat exchange rate:
 
 ```bash
 PROVIDER_UUID="01912345-6789-7abc-8def-0123456789ab"
 
-# Small instance - $1/hour (3600 tokens/hour)
+# Small instance - $1/hour (3600 upwr/hour)
 manifestd tx sku create-sku $PROVIDER_UUID "Compute Small" 1 3600upwr --from mykey --chain-id manifest-1
 
-# Medium instance - $2/hour (7200 tokens/hour)
+# Medium instance - $2/hour (7200 upwr/hour)
 manifestd tx sku create-sku $PROVIDER_UUID "Compute Medium" 1 7200upwr --from mykey --chain-id manifest-1
 
-# Large instance - $5/hour (18000 tokens/hour)
+# Large instance - $5/hour (18000 upwr/hour)
 manifestd tx sku create-sku $PROVIDER_UUID "Compute Large" 1 18000upwr --from mykey --chain-id manifest-1
 
-# Storage - $1/day (86400 tokens/day)
+# Storage - $24/day (86400 upwr/day)
 manifestd tx sku create-sku $PROVIDER_UUID "Storage 100GB" 2 86400upwr --from mykey --chain-id manifest-1
 ```
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reproduce the three PR179 mutation checks without editing a checkout.
 
-Usage: python3 reproduce.py REPOSITORY NEW_WORK_DIRECTORY EVIDENCE_DIRECTORY
+Usage: python3 reproduce.py (--bundled | REPOSITORY) NEW_WORK_DIRECTORY EVIDENCE_DIRECTORY
 The work directory must not exist. The evidence directory receives logs,
 patches, overlay maps, hashes, exact commands, and exit statuses.
 """
@@ -9,6 +9,7 @@ patches, overlay maps, hashes, exact commands, and exit statuses.
 import datetime
 import difflib
 import hashlib
+import gzip
 import io
 import json
 import os
@@ -42,7 +43,9 @@ def utc_now():
 def main():
     if len(sys.argv) != 4:
         raise SystemExit(__doc__)
-    repository, work, evidence = (Path(value).resolve() for value in sys.argv[1:])
+    bundled = sys.argv[1] == "--bundled"
+    repository = None if bundled else Path(sys.argv[1]).resolve()
+    work, evidence = (Path(value).resolve() for value in sys.argv[2:])
     work.mkdir(parents=True, exist_ok=False)
     evidence.mkdir(parents=True, exist_ok=True)
     provenance = evidence / "mutation-provenance"
@@ -51,9 +54,29 @@ def main():
     def git(*arguments):
         return subprocess.check_output(["git", "-C", str(repository), *arguments])
 
-    for commit in (BASELINE, PREVIOUS):
-        assert git("rev-parse", commit).decode().strip() == commit
-    archive = git("archive", "--format=tar", BASELINE)
+    if bundled:
+        inputs = Path(__file__).resolve().parent / "inputs"
+        input_manifest = json.loads((inputs / "manifest.json").read_text())
+        assert input_manifest["baseline_commit"] == BASELINE
+        assert input_manifest["previous_commit"] == PREVIOUS
+        archive_info = input_manifest["baseline_archive"]
+        compressed = (inputs / archive_info["file"]).read_bytes()
+        assert sha256(compressed) == archive_info["sha256"]
+        archive = gzip.decompress(compressed)
+        assert sha256(archive) == archive_info["uncompressed_sha256"]
+
+        def previous_file(relative):
+            entry = input_manifest["previous_files"][relative]
+            data = (inputs / entry["file"]).read_bytes()
+            assert sha256(data) == entry["sha256"]
+            return data
+    else:
+        for commit in (BASELINE, PREVIOUS):
+            assert git("rev-parse", commit).decode().strip() == commit
+        archive = git("archive", "--format=tar", BASELINE)
+
+        def previous_file(relative):
+            return git("show", f"{PREVIOUS}:{relative}")
     snapshot = work / "baseline"
     snapshot.mkdir()
     # Only an explicitly pinned, locally available Git commit is extracted.
@@ -90,7 +113,7 @@ def main():
     assert baseline_withdrawal.count(clone_line) == 1
     variants = [
         ("withdrawal-original", WITHDRAWAL_FILE,
-         git("show", f"{PREVIOUS}:{WITHDRAWAL_FILE}"),
+         previous_file(WITHDRAWAL_FILE),
          f"entire source file from {PREVIOUS}",
          "./x/billing/keeper", WITHDRAWAL_FILTER),
         ("withdrawal-shallow", WITHDRAWAL_FILE,
@@ -98,7 +121,7 @@ def main():
          "delete only the reservation clone assignment from the baseline",
          "./x/billing/keeper", WITHDRAWAL_FILTER),
         ("export-stale-header", EXPORT_FILE,
-         git("show", f"{PREVIOUS}:{EXPORT_FILE}"),
+         previous_file(EXPORT_FILE),
          f"entire source file from {PREVIOUS}",
          "./app", EXPORT_FILTER),
     ]
@@ -108,7 +131,8 @@ def main():
         "previous_commit": PREVIOUS,
         "baseline_git_archive_sha256": sha256(archive),
         "snapshot_directory": str(snapshot),
-        "source_repository": str(repository),
+        "source_repository": str(repository) if repository is not None else None,
+        "source_mode": "bundled" if bundled else "git",
         "environment_overrides": overrides,
         "go_version": toolchain,
         "go_paths": go_paths,

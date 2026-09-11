@@ -289,7 +289,7 @@ manifestd tx sku update-sku [uuid] [provider-uuid] [name] [unit] [base-price] [a
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --meta-hash | string | Hex-encoded hash of off-chain metadata (optional) |
+| --meta-hash | string | Hex-encoded metadata hash; omitted or empty clears it. Resend the current hex value to preserve it. |
 
 **Example:**
 ```bash
@@ -761,7 +761,7 @@ message MsgUpdateSKU {
   string name = 4;                         // SKU name
   Unit unit = 5;                           // Billing unit
   cosmos.base.v1beta1.Coin base_price = 6; // Base price
-  bytes meta_hash = 7;                     // Metadata hash
+  bytes meta_hash = 7;                     // Replacement metadata hash; empty clears
   bool active = 8;                         // Active status
 }
 ```
@@ -772,6 +772,7 @@ message MsgUpdateSKUResponse {}
 ```
 
 **Notes:**
+- Each update replaces `meta_hash`. Resend the current bytes to preserve it; an empty or omitted value clears it.
 - **Reactivation is allowed:** Setting `active=true` on an inactive SKU will reactivate it (requires the provider to be active).
 - **Deactivation is forbidden:** Setting `active=false` on an active SKU will return an error. Use `MsgDeactivateSKU` instead.
 
@@ -1113,7 +1114,7 @@ message SKU {
 ```
 
 **Field Notes:**
-- `meta_hash`: Optional hash or reference linking to off-chain metadata (e.g., detailed specifications, SLA terms, resource configurations). Maximum 64 bytes to accommodate SHA-256 or SHA-512 hashes. This value is mutable and can be updated via `MsgUpdateSKU`.
+- `meta_hash`: Optional hash or reference linking to off-chain metadata (e.g., detailed specifications, SLA terms, resource configurations). Maximum 64 bytes to accommodate SHA-256 or SHA-512 hashes. Each `MsgUpdateSKU` replaces this value: resend the current bytes to preserve it; an empty or omitted value clears it.
 
 ### Unit
 

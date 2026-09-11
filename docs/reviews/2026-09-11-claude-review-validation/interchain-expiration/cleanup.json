@@ -1,0 +1,45 @@
+{
+  "checks": [
+    {
+      "argv": [
+        "docker",
+        "container",
+        "inspect",
+        "445b2861bac685a68326cf828ff6b56e0e27e8460d0b70d5449c0d940653ec4c"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "completed_at_utc": "2026-09-11T14:18:01.063686+00:00",
+      "exit_status": 1,
+      "combined_output": "[]\nError response from daemon: No such container: 445b2861bac685a68326cf828ff6b56e0e27e8460d0b70d5449c0d940653ec4c\n",
+      "combined_output_sha256": "95ce96043744f2e477e47ff26e1445cce7ce0cebac000f7d1914ff1b292b2b37"
+    },
+    {
+      "argv": [
+        "docker",
+        "network",
+        "inspect",
+        "5074cb377f7b"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "completed_at_utc": "2026-09-11T14:18:01.075814+00:00",
+      "exit_status": 1,
+      "combined_output": "[]\nError response from daemon: network 5074cb377f7b not found\n",
+      "combined_output_sha256": "8b80e7a374113651ae5edaa3fc8440484cb1142473e591e8c9a230347a50b285"
+    },
+    {
+      "argv": [
+        "docker",
+        "image",
+        "inspect",
+        "manifest:local",
+        "--format",
+        "{{.Id}}"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "completed_at_utc": "2026-09-11T14:18:01.345915+00:00",
+      "exit_status": 0,
+      "combined_output": "sha256:2e1835724b286e76b48dd6caa495ea23e6b11b271a9c4f0182abe41894b6aed5\n",
+      "combined_output_sha256": "2a2b37983de4da2eabd73061dac15b80b6361a32f407c719ed7d6189d4af2960"
+    }
+  ]
+}

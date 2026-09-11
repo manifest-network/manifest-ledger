@@ -303,7 +303,10 @@ Active values:
   false - keep an already-inactive SKU inactive
 
 Note: To deactivate an active SKU, use the 'deactivate-sku' command.
-Prices must be positive multiples of 3600 (hourly) or 86400 (daily) base units.`,
+Prices must be positive multiples of 3600 (hourly) or 86400 (daily) base units.
+
+Each update replaces the metadata hash. Resend its current hex value with
+--meta-hash to preserve it; omitting the flag or passing an empty value clears it.`,
 		Example: "update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab \"Updated Name\" 2 86400umfx true --meta-hash deadbeef",
 		Args:    cobra.ExactArgs(6),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -358,7 +361,7 @@ Prices must be positive multiples of 3600 (hourly) or 86400 (daily) base units.`
 		},
 	}
 
-	cmd.Flags().String("meta-hash", "", "Hex-encoded hash of off-chain metadata")
+	cmd.Flags().String("meta-hash", "", "Hex-encoded metadata hash (empty clears; resend current value to preserve)")
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }

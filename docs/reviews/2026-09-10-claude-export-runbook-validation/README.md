@@ -1,5 +1,7 @@
 # Export/runbook follow-up validation — 2026-09-10
 
+Historical run: see the [September 11 response](../2026-09-11-claude-review-response.md) for newer dispositions. The eight broader sweeps and their execution follow-up are now reported complete by Claude; they were outstanding when this evidence was recorded.
+
 Baseline: `b4d8403`, plus this round's first-Commit guard, tests, and docs.
 The only production change is the explicit guard in `app/export.go`.
 
@@ -78,3 +80,5 @@ coverage pipeline, race/fuzz campaign, Docker/interchain rehearsal, live audit,
 or completion of the eight broader review passes. No dependencies, protobuf,
 generated bindings, live policy, or deployment changed. The new commit must
 run its own CI.
+
+The historical `export-cli.log` contains illustrative command labels, not exact argv. Its `cli-provenance.log` identifies the old driver at `9d25368`. The enhanced [driver](verify_export_cli.py) now derives every command line from the actual subprocess arguments and emits a JSON manifest. See the [September 11 exact-argv rerun](../2026-09-11-claude-review-validation/README.md) for current evidence.

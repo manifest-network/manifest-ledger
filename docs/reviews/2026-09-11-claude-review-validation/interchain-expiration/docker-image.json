@@ -1,0 +1,51 @@
+[
+    {
+        "Architecture": "amd64",
+        "Config": {
+            "Cmd": [
+                "/usr/bin/manifestd",
+                "version"
+            ],
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "ExposedPorts": {
+                "1317/tcp": {},
+                "26656/tcp": {},
+                "26657/tcp": {}
+            },
+            "Shell": [
+                "/bin/sh",
+                "-ec"
+            ],
+            "WorkingDir": "/opt"
+        },
+        "Created": "2026-09-11T10:10:56.596762386-04:00",
+        "Descriptor": {
+            "digest": "sha256:ef27053903b57024add946164a57512d4560dfc1f583346c477b9a30da31fcd4",
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "size": 974
+        },
+        "Id": "sha256:ef27053903b57024add946164a57512d4560dfc1f583346c477b9a30da31fcd4",
+        "Metadata": {
+            "LastTagTime": "2026-09-11T14:10:58.298860024Z"
+        },
+        "Os": "linux",
+        "Parent": "sha256:5db0488aeb2a3f756379e9b5f12af1a8343eb17d0d1b584800cec13fd2710d61",
+        "RepoDigests": [
+            "manifest@sha256:ef27053903b57024add946164a57512d4560dfc1f583346c477b9a30da31fcd4"
+        ],
+        "RepoTags": [
+            "manifest:review-pr179-sep11-9d25368"
+        ],
+        "RootFS": {
+            "Layers": [
+                "sha256:6f09edfb3f6d7173733adc8eec8ea00626550dc6fc2dcf07d40e13f5c1e907c4",
+                "sha256:01b7657bbb2a68b3ad7e2be1c462d515cbced91a9132502e597590ea5d0b0384",
+                "sha256:ba2cf8fdbc9a0882c83af718e21ac77f47dfd9456ac8c8823dce478bc69719db"
+            ],
+            "Type": "layers"
+        },
+        "Size": 89548777
+    }
+]

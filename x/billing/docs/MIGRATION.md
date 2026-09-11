@@ -840,10 +840,23 @@ lease abc123 has last_settled_at (2025-01-08T00:00:00Z) in the future relative t
 
 **Resolution:** Ensure all timestamps in genesis state are at or before the genesis block time.
 
+Imports continue to accept CLOSED leases with `last_settled_at < closed_at`.
+Normal close paths already settle through `closed_at`, but historical genesis
+validation allowed a remaining interval. Specific-UUID withdrawal finalizes
+that interval once using available lease-spendable credit and writes off any
+shortfall. A zero transfer still commits the final cursor, with no payout count
+or payout event; later funding cannot make that interval collectible again.
+This does not introduce debt or tighten the accepted historical import shape.
+See the [withdrawal API](API.md#withdraw) for response and batch-event semantics.
+
 ### Restart an isolated node from an export
 
-Export from a stopped copy of the node home at the chosen committed height.
-Zero-height export requires at least one committed block:
+Export from a stopped copy of the node home at a retained committed height.
+Confirm the database still contains the selected state version. Setting
+`pruning = "nothing"` preserves versions going forward; it cannot restore
+already-pruned heights. Select a retained height or use an archived node copy
+that still holds the required version. Zero-height export requires at least
+one committed block:
 
 ```bash
 manifestd export --home /path/to/stopped-node-copy --height [source-height] \

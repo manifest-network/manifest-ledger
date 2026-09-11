@@ -7,8 +7,10 @@ where shown, and a workspace-local `TMPDIR`. Lint used golangci-lint 2.12.2,
 with `GOROOT` and `PATH` pointing to Go 1.26.8 and an isolated lint cache.
 Historical archived whitespace is normalized; the simulation summary omits
 parameter dumps and per-operation progress. The three mutation logs explicitly
-identified below were replaced by verbose reruns against exact commit
-`b4d8403977b8f18eeaad699239e9661efa2a4a8a` on 2026-09-10.
+identified below and their controls were replaced by verbose bundled reruns
+against the source snapshot of exact commit
+`b4d8403977b8f18eeaad699239e9661efa2a4a8a` on 2026-09-11. The bundled inputs
+preserve reproduction after a squash merge without retaining the PR branch.
 Their display logs use the whitespace normalization recorded by the driver;
 exact raw output is retained separately as JSON with its own hashes.
 
@@ -58,7 +60,7 @@ go test -p 2 ./scripts -run '^TestContainerizedGoReleaserUsesPinnedOfflineToolch
   via a read-only overlay makes the new
   rollback-without-reopen regression [fail as expected](export-stale-header-mutant.log):
   the old implementation returns no error with a stale height-3 clock for
-  selected height 2. This log is the 2026-09-10 provenance rerun; its
+  selected height 2. This log is the 2026-09-11 bundled provenance rerun; its
   [unmodified b4d8403 control](export-baseline-rerun.log) passes the identical
   verbose filter.
 - [Withdrawal tests](withdrawal-tests.log) preserve caller state and aliases
@@ -67,7 +69,7 @@ go test -p 2 ./scripts -run '^TestContainerizedGoReleaserUsesPinnedOfflineToolch
   [shallow-copy-only helper](withdrawal-shallow-mutant.log) fail the two late
   persistence subtests and the successful live-settlement alias check; the
   auto-close success subtest passes. These two logs were regenerated on
-  2026-09-10 with `-v` and both withdrawal test functions selected. Their
+  2026-09-11 from bundled inputs with `-v` and both withdrawal test functions selected. Their
   [unmodified b4d8403 control](withdrawal-baseline-rerun.log) passes that exact
   filter. The previous, narrower non-verbose mutant logs are superseded;
   they did not run the successful live-settlement test.
@@ -99,8 +101,14 @@ go test -p 2 ./scripts -run '^TestContainerizedGoReleaserUsesPinnedOfflineToolch
 
 ## CLI and historical source verification
 
-A freshly built `manifestd` was used for the [runbook command checks](runbook-cli.log).
-Help confirms the actual command paths and pagination flags. Corrected read-only
+The historical [runbook command notes](runbook-cli.log) contain illustrative
+command summaries, not the exact executed argument arrays. The replacement
+[September 11 CLI log](../2026-09-11-claude-review-validation/export-cli.log) and
+[structured invocation records](../2026-09-11-claude-review-validation/export-cli.json)
+record the exact executed commands and results.
+
+The historical checks used a freshly built `manifestd`. Help confirmed the
+actual command paths and pagination flags. Corrected read-only
 queries, including a continuation key, parse and reach a closed loopback port;
 connection refusal is expected, and no live node was contacted. A temporary
 `init` fixture supplies a valid restart genesis. Explicit-path validation passes

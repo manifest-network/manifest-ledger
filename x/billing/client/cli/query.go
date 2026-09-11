@@ -625,14 +625,14 @@ func GetCreditEstimateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "credit-estimate [tenant]",
 		Short: "Report a tenant's gross credit runway",
-		Long: `Report gross raw-bank-balance runway at the tenant's current aggregate ACTIVE lease rate.
+		Long: `Report gross runway from spendable bank balance at the tenant's current aggregate ACTIVE lease rate.
 
 This coarse funding metric does not subtract reservations or unsettled accrued
 charges and is not a prediction of lease auto-close timing. The unpaginated
 query rejects state above 11,000 ACTIVE leases or 100,000 total lease items.
 
 Returns:
-  - Raw bank balance for denominations used by ACTIVE leases
+  - Spendable bank balance for denominations used by ACTIVE leases
   - Total burn rate per second across all active leases
   - Gross balance/rate runway in seconds
   - Number of active leases`,

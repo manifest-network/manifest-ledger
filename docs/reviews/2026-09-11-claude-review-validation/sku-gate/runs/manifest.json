@@ -1,0 +1,236 @@
+{
+  "driver_argv": [
+    "/usr/sbin/python3",
+    "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/sku-gate/reproduce.py",
+    "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+    "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-display-final",
+    "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/sku-gate/runs"
+  ],
+  "driver_sha256": "49976802b4f9f189c2230fbbfc2ee758d133e097780483acf33b6172373a5c60",
+  "inputs_manifest_sha256": "52985edd0a1a78489c23d287e53e8239efebcaa657ac0b0affc6208933406361",
+  "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "environment_overrides": {
+    "GOTOOLCHAIN": "go1.26.8",
+    "GOMAXPROCS": "4",
+    "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-display-final/build",
+    "GOWORK": "off",
+    "GOFLAGS": "-mod=readonly"
+  },
+  "environment_note": "Other normal host environment entries are inherited; credentials are not archived. Go workspace and module-write behavior are explicitly controlled.",
+  "source_sha256": {
+    "x/sku/module.go": "c6e2f80e56608a8904acfa76ee4efd873de730de68c8fb14cd42b7d5382e0be3",
+    "x/sku/module_test.go": "50911c00cb37041412d26fab2167ddff20f026ac3a3813b1d27be6e63bd73822",
+    "go.mod": "5b9e467e5816f015cc94cb1cf9f567b94f6cc51d890b232624cfcb31fef465ca",
+    "go.sum": "48659d7d23c50077a81d452aec65fd1655fc45e602f85c4750545d5537b3aee2"
+  },
+  "archived_sha256": {
+    "module-fixed.go.txt": "c6e2f80e56608a8904acfa76ee4efd873de730de68c8fb14cd42b7d5382e0be3",
+    "module-skip-validation.go.txt": "b490afd490b2e43a67f2717c2a4bb81ca38f69f2680487047d25da99a3bf7de3",
+    "module-test.go.txt": "50911c00cb37041412d26fab2167ddff20f026ac3a3813b1d27be6e63bd73822",
+    "skip-validation.patch": "f00ec82fe4d4ab6fcd6d949e0bd898f06ec098a840c1f8f63c8afdf8a5ded95a"
+  },
+  "runs": [
+    {
+      "name": "go-version",
+      "argv": [
+        "go",
+        "version"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {
+        "GOTOOLCHAIN": "go1.26.8",
+        "GOMAXPROCS": "4",
+        "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-display-final/build",
+        "GOWORK": "off",
+        "GOFLAGS": "-mod=readonly"
+      },
+      "started_at_utc": "2026-09-11T14:29:15.732217+00:00",
+      "completed_at_utc": "2026-09-11T14:29:15.789612+00:00",
+      "exit_status": 0,
+      "expected_exit_status": 0,
+      "raw_output": "go-version-raw.json",
+      "raw_output_file_sha256": "bc0cd082caa99ebec0f9f2899b42d4e2dee958ff950972acb2dc3aacf0631db5",
+      "display_output": "go-version.log",
+      "display_output_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00",
+      "display_normalization": "Tabs expanded at 8-column stops, line endings normalized, trailing whitespace and EOF blank lines removed, one final LF; exact captured bytes are retained in raw_output.",
+      "combined_output_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00",
+      "combined_output_bytes": 32
+    },
+    {
+      "name": "go-paths",
+      "argv": [
+        "go",
+        "env",
+        "-json",
+        "GOCACHE",
+        "GOMODCACHE",
+        "GOROOT"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {
+        "GOTOOLCHAIN": "go1.26.8",
+        "GOMAXPROCS": "4",
+        "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-display-final/build",
+        "GOWORK": "off",
+        "GOFLAGS": "-mod=readonly"
+      },
+      "started_at_utc": "2026-09-11T14:29:15.789773+00:00",
+      "completed_at_utc": "2026-09-11T14:29:15.796160+00:00",
+      "exit_status": 0,
+      "expected_exit_status": 0,
+      "raw_output": "go-paths-raw.json",
+      "raw_output_file_sha256": "b651bdaf819832b02f11144e75f168e7a471fe05e08e182a4a173410179b3d26",
+      "display_output": "go-paths.log",
+      "display_output_sha256": "89346bf47830ff104811efb4dcf994b9510c04ee5a3a28a61f31b2da8b8857da",
+      "display_normalization": "Tabs expanded at 8-column stops, line endings normalized, trailing whitespace and EOF blank lines removed, one final LF; exact captured bytes are retained in raw_output.",
+      "combined_output_sha256": "837ff14525cb5c9a2c1d67222d01f73b0eb8978dd358bf1875f132e11e94d606",
+      "combined_output_bytes": 182
+    },
+    {
+      "name": "fixed",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-overlay",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/sku-gate/runs/fixed-overlay.json",
+        "./x/sku",
+        "-run",
+        "^TestAppModuleBasicValidateGenesis",
+        "-count=1",
+        "-v",
+        "-timeout=120s"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {
+        "GOTOOLCHAIN": "go1.26.8",
+        "GOMAXPROCS": "4",
+        "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-display-final/build",
+        "GOWORK": "off",
+        "GOFLAGS": "-mod=readonly"
+      },
+      "started_at_utc": "2026-09-11T14:29:15.796573+00:00",
+      "completed_at_utc": "2026-09-11T14:29:21.198568+00:00",
+      "exit_status": 0,
+      "expected_exit_status": 0,
+      "raw_output": "fixed-raw.json",
+      "raw_output_file_sha256": "206ea1fe17684890fe59dcb864921ce734365894e026c1772a7b1297eca056b9",
+      "display_output": "fixed.log",
+      "display_output_sha256": "ab3311a387a8bf242ef2a779157084046c8449525e90ca1789b82ddbdcbb4291",
+      "display_normalization": "Tabs expanded at 8-column stops, line endings normalized, trailing whitespace and EOF blank lines removed, one final LF; exact captured bytes are retained in raw_output.",
+      "combined_output_sha256": "8aac10d61b8b415f17351e00945b6caa995c5d295d98b5377f4cca2ee28714b8",
+      "combined_output_bytes": 2703,
+      "overlay": "fixed-overlay.json",
+      "overlay_sha256": "8237810b2f0d568677b66544b4bbab3d3261b226b550284b8e0be88584d5d07f",
+      "replacement_source": "module-fixed.go.txt",
+      "replacement_sha256": "c6e2f80e56608a8904acfa76ee4efd873de730de68c8fb14cd42b7d5382e0be3"
+    },
+    {
+      "name": "skip-validation",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-overlay",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/sku-gate/runs/skip-validation-overlay.json",
+        "./x/sku",
+        "-run",
+        "^TestAppModuleBasicValidateGenesis",
+        "-count=1",
+        "-v",
+        "-timeout=120s"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {
+        "GOTOOLCHAIN": "go1.26.8",
+        "GOMAXPROCS": "4",
+        "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-display-final/build",
+        "GOWORK": "off",
+        "GOFLAGS": "-mod=readonly"
+      },
+      "started_at_utc": "2026-09-11T14:29:21.200765+00:00",
+      "completed_at_utc": "2026-09-11T14:29:26.370715+00:00",
+      "exit_status": 1,
+      "expected_exit_status": 1,
+      "raw_output": "skip-validation-raw.json",
+      "raw_output_file_sha256": "b79104aa4a3e0fc3f27203983c5f907bf01317cfae3893782e0df395a0332499",
+      "display_output": "skip-validation.log",
+      "display_output_sha256": "5fd80009edf13729aa9e61cdc99b07394d8a247be45265d1972e51d4b08234bf",
+      "display_normalization": "Tabs expanded at 8-column stops, line endings normalized, trailing whitespace and EOF blank lines removed, one final LF; exact captured bytes are retained in raw_output.",
+      "combined_output_sha256": "136c97eb9187c39804924777eaec77842d4347834b43d8ee76b779e797f815f0",
+      "combined_output_bytes": 4698,
+      "overlay": "skip-validation-overlay.json",
+      "overlay_sha256": "f2e1b81ff54be2ee4d66c6299ad24e2e29b69e9c4550476a11d6b5384d3e9f4d",
+      "replacement_source": "module-skip-validation.go.txt",
+      "replacement_sha256": "b490afd490b2e43a67f2717c2a4bb81ca38f69f2680487047d25da99a3bf7de3"
+    },
+    {
+      "name": "fixed-coverage",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "./x/sku",
+        "-run",
+        "^TestAppModuleBasicValidateGenesis",
+        "-count=1",
+        "-v",
+        "-coverprofile=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/sku-gate/runs/fixed-coverage.out",
+        "-timeout=120s"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {
+        "GOTOOLCHAIN": "go1.26.8",
+        "GOMAXPROCS": "4",
+        "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-display-final/build",
+        "GOWORK": "off",
+        "GOFLAGS": "-mod=readonly"
+      },
+      "started_at_utc": "2026-09-11T14:29:26.372363+00:00",
+      "completed_at_utc": "2026-09-11T14:29:29.951481+00:00",
+      "exit_status": 0,
+      "expected_exit_status": 0,
+      "raw_output": "fixed-coverage-raw.json",
+      "raw_output_file_sha256": "b07e47e92d38c0c8895c384bfbeaca321a231eb737cc77dc1d12e7cbdd2bbc8c",
+      "display_output": "fixed-coverage.log",
+      "display_output_sha256": "a7b10bd00a595510aa6541758880fc730c52751eb6ec45fb8584a51920174081",
+      "display_normalization": "Tabs expanded at 8-column stops, line endings normalized, trailing whitespace and EOF blank lines removed, one final LF; exact captured bytes are retained in raw_output.",
+      "combined_output_sha256": "13b4f519fb824a23790d37568691323538fb5de45819acc7b5ffcb2c07914d0a",
+      "combined_output_bytes": 2763,
+      "coverage_profile": "fixed-coverage.out",
+      "coverage_profile_sha256": "c2941fc63ae1b1dae3d46a043c9e5597d6239b16b61bf9a48739021f4e875e92"
+    },
+    {
+      "name": "fixed-coverage-functions",
+      "argv": [
+        "go",
+        "tool",
+        "cover",
+        "-func=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/sku-gate/runs/fixed-coverage.out"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {
+        "GOTOOLCHAIN": "go1.26.8",
+        "GOMAXPROCS": "4",
+        "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-display-final/build",
+        "GOWORK": "off",
+        "GOFLAGS": "-mod=readonly"
+      },
+      "started_at_utc": "2026-09-11T14:29:29.952207+00:00",
+      "completed_at_utc": "2026-09-11T14:29:30.662969+00:00",
+      "exit_status": 0,
+      "expected_exit_status": 0,
+      "raw_output": "fixed-coverage-functions-raw.json",
+      "raw_output_file_sha256": "bd07deb726e569ed76847fc47d7101df9c0f1b983fffc5bf1378d777121eafbf",
+      "display_output": "fixed-coverage-functions.log",
+      "display_output_sha256": "5e95f0622b9d691fd90922467dcf18f253440715b6a820d26be1cfc457e2fd32",
+      "display_normalization": "Tabs expanded at 8-column stops, line endings normalized, trailing whitespace and EOF blank lines removed, one final LF; exact captured bytes are retained in raw_output.",
+      "combined_output_sha256": "0ebfea1abc7f258417d30557263134c3fd68e202f80f8dc420f1eab2b52ae332",
+      "combined_output_bytes": 2235
+    }
+  ],
+  "all_expected_statuses_observed": true
+}

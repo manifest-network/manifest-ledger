@@ -1,9 +1,9 @@
 === RUN   TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback
     export_billing_test.go:152:
-                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/round70-mutation-evidence/baseline/app/export_billing_test.go:152
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-bundled-reproduction/baseline/app/export_billing_test.go:152
                 Error:          An error is expected but got nil.
                 Test:           TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback
---- FAIL: TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback (0.13s)
+--- FAIL: TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback (0.21s)
 FAIL
-FAIL    github.com/manifest-network/manifest-ledger/app 0.249s
+FAIL    github.com/manifest-network/manifest-ledger/app 0.320s
 FAIL

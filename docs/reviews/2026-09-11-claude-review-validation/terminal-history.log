@@ -1,0 +1,295 @@
+Read-only historical evidence. Billing v2 first appears at 575e2b2; 9b14229 is the PR merge-base.
+Both snapshots close active leases by assigning LastSettledAt and ClosedAt to the same close instant. Their terminal withdraw branch already accepted imported lagging cursors and finalized the entire interval independent of payment.
+The v2 static validator required nonzero ClosedAt but did not require cursor equality; block-time validation separately prohibited future timestamps. This establishes historical import compatibility, not the contents of deployed state.
+
+argv=['git', 'show', '575e2b214d35f4c0ab12fc2aa765f28855cf2567:x/billing/keeper/msg_server.go']
+sha256=e98a96367c8375df9785a2c482ddba2b0eeeeacf87030783b797744f632c0e70
+507:            if shouldAutoClose {
+508:                    // Lease should be auto-closed due to credit exhaustion.
+509:                    closeTime = autoCloseTime
+510:
+511:                    // Calculate duration for event (before updating LastSettledAt)
+512:                    duration = closeTime.Sub(leases[i].LastSettledAt)
+513:
+514:                    // Perform settlement using silent mode (doesn't fail on overflow)
+515:                    result, err := ms.k.PerformSettlementSilent(cacheCtx, &leases[i], closeTime)
+516:                    if err != nil {
+517:                            return nil, err
+518:                    }
+519:                    settledAmounts = result.TransferAmounts
+520:
+521:                    // Update lease state
+522:                    leases[i].State = types.LEASE_STATE_CLOSED
+523:                    leases[i].ClosedAt = &closeTime
+524:                    leases[i].LastSettledAt = closeTime
+525:                    leases[i].ClosureReason = types.ClosureReasonCreditExhausted
+526:
+527:                    leaseClosedBy = "credit_exhaustion"
+528:            } else {
+529:                    // Normal close - use block time
+530:                    closeTime = blockTime
+531:
+532:                    // Calculate duration for event
+533:                    duration = closeTime.Sub(leases[i].LastSettledAt)
+534:
+535:                    // Settle accrued charges
+536:                    settledAmounts, err = ms.settleLease(cacheCtx, &leases[i], closeTime)
+537:                    if err != nil {
+538:                            return nil, err
+539:                    }
+540:
+541:                    // Update lease state to inactive
+542:                    leases[i].State = types.LEASE_STATE_CLOSED
+543:                    leases[i].ClosedAt = &closeTime
+544:                    leases[i].ClosureReason = msg.Reason
+545:            }
+
+717:            // Determine settlement time based on lease state
+718:            var settleTime time.Time
+719:            switch {
+720:            case lease.State == types.LEASE_STATE_ACTIVE:
+721:                    settleTime = blockTime
+722:            case lease.ClosedAt != nil:
+723:                    settleTime = *lease.ClosedAt
+724:            default:
+725:                    settleTime = lease.LastSettledAt // No duration, will return zero
+726:            }
+727:
+728:            // Perform settlement
+729:            result, err := ms.k.PerformSettlement(cacheCtx, lease, settleTime)
+730:            if err != nil {
+731:                    return nil, err
+732:            }
+733:
+734:            // Skip leases with zero withdrawable amount (don't fail, just skip)
+735:            if result.AccruedAmounts.IsZero() {
+736:                    continue
+737:            }
+738:
+739:            // Update last_settled_at to prevent re-settlement of the same period
+740:            lease.LastSettledAt = settleTime
+741:            if err := ms.k.SetLease(cacheCtx, *lease); err != nil {
+742:                    return nil, err
+743:            }
+744:
+745:            totalAmounts = totalAmounts.Add(result.TransferAmounts...)
+746:            leaseAmounts[lease.Uuid] = result.TransferAmounts
+747:            withdrawalCount++
+748:    }
+749:
+750:    // Check if there was nothing to withdraw from any lease
+751:    if withdrawalCount == 0 && len(autoClosedLeases) == 0 {
+752:            return nil, types.ErrNoWithdrawableAmount
+753:    }
+
+1038: // to the provider's payout address. Returns the amounts settled (one per denom).
+1039: func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleTime time.Time) (sdk.Coins, error) {
+1040:   result, err := ms.k.PerformSettlement(ctx, lease, settleTime)
+1041:   if err != nil {
+1042:           return sdk.NewCoins(), err
+1043:   }
+1044:
+1045:   // Update last_settled_at
+1046:   lease.LastSettledAt = settleTime
+1047:
+1048:   return result.TransferAmounts, nil
+1049: }
+1050:
+
+argv=['git', 'show', '575e2b214d35f4c0ab12fc2aa765f28855cf2567:x/billing/keeper/keeper.go']
+sha256=4d0529e0b3d32b8df1a273306a25e609d8e7ed3be44f9f1ce5f60637f09bd60a
+840: // It settles the lease, updates its state to CLOSED, decrements the active lease count,
+841: // and releases the reservation. All changes are applied to the provided context.
+842: // The caller is responsible for CacheContext management and event emission.
+843: func (k *Keeper) AutoCloseLease(ctx context.Context, lease *types.Lease, closeTime time.Time, minLeaseDuration uint64) (*AutoCloseLeaseResult, error) {
+844:    result, err := k.PerformSettlementSilent(ctx, lease, closeTime)
+845:    if err != nil {
+846:            return nil, err
+847:    }
+848:
+849:    lease.State = types.LEASE_STATE_CLOSED
+850:    lease.ClosedAt = &closeTime
+851:    lease.LastSettledAt = closeTime
+852:    lease.ClosureReason = types.ClosureReasonCreditExhausted
+853:
+854:    if err := k.SetLease(ctx, *lease); err != nil {
+855:            return nil, err
+856:    }
+857:
+858:    creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
+859:    if err != nil {
+860:            return nil, err
+861:    }
+862:
+863:    k.DecrementActiveLeaseCount(&creditAccount, lease.Uuid)
+864:    k.ReleaseLeaseReservation(&creditAccount, lease, minLeaseDuration)
+865:
+866:    if err := k.SetCreditAccount(ctx, creditAccount); err != nil {
+867:            return nil, err
+868:    }
+
+argv=['git', 'show', '575e2b214d35f4c0ab12fc2aa765f28855cf2567:x/billing/types/genesis.go']
+sha256=639fc1fade0f278593af900d27aa250364f441c2581ae89667857b488cf7bc18
+125:            // Note: min_lease_duration_at_creation is a uint64 and doesn't require validation.
+126:            // Zero value is valid for legacy leases (will fall back to current param).
+127:
+128:            // For inactive leases, validate closed_at is set
+129:            if lease.State == LEASE_STATE_CLOSED {
+130:                    if lease.ClosedAt == nil || lease.ClosedAt.IsZero() {
+131:                            return ErrInvalidLease.Wrapf("lease %s is closed but has no closed_at timestamp", lease.Uuid)
+132:                    }
+133:            }
+134:    }
+
+243: // This is called during InitGenesis when block time is available.
+244: // It validates that LastSettledAt timestamps are not in the future relative to block time.
+245: func (gs *GenesisState) ValidateWithBlockTime(blockTime time.Time) error {
+246:    for _, lease := range gs.Leases {
+247:            // Validate LastSettledAt is not in the future
+248:            if lease.LastSettledAt.After(blockTime) {
+249:                    return ErrInvalidLease.Wrapf(
+250:                            "lease %s has last_settled_at (%s) in the future relative to block time (%s)",
+251:                            lease.Uuid,
+252:                            lease.LastSettledAt.String(),
+253:                            blockTime.String(),
+254:                    )
+255:            }
+256:
+257:            // Validate CreatedAt is not in the future
+258:            if lease.CreatedAt.After(blockTime) {
+259:                    return ErrInvalidLease.Wrapf(
+260:                            "lease %s has created_at (%s) in the future relative to block time (%s)",
+261:                            lease.Uuid,
+262:                            lease.CreatedAt.String(),
+263:                            blockTime.String(),
+264:                    )
+265:            }
+266:
+267:            // For inactive leases, validate ClosedAt is not in the future
+268:            if lease.State == LEASE_STATE_CLOSED && lease.ClosedAt != nil {
+269:                    if lease.ClosedAt.After(blockTime) {
+270:                            return ErrInvalidLease.Wrapf(
+271:                                    "lease %s has closed_at (%s) in the future relative to block time (%s)",
+272:                                    lease.Uuid,
+273:                                    lease.ClosedAt.String(),
+274:                                    blockTime.String(),
+275:                            )
+276:                    }
+277:            }
+
+argv=['git', 'show', '9b14229c445298df026b04eac9f76e5689667a9d:x/billing/keeper/msg_server.go']
+sha256=ae4e9aad730fcf62ab9a494fa995e7c1ab3c3662b31ea1873a310095363b799d
+507:            if shouldAutoClose {
+508:                    // Lease should be auto-closed due to credit exhaustion.
+509:                    closeTime = autoCloseTime
+510:
+511:                    // Calculate duration for event (before updating LastSettledAt)
+512:                    duration = closeTime.Sub(leases[i].LastSettledAt)
+513:
+514:                    // Perform settlement using silent mode (doesn't fail on overflow)
+515:                    result, err := ms.k.PerformSettlementSilent(cacheCtx, &leases[i], closeTime)
+516:                    if err != nil {
+517:                            return nil, err
+518:                    }
+519:                    settledAmounts = result.TransferAmounts
+520:
+521:                    // Update lease state
+522:                    leases[i].State = types.LEASE_STATE_CLOSED
+523:                    leases[i].ClosedAt = &closeTime
+524:                    leases[i].LastSettledAt = closeTime
+525:
+526:                    // ShouldAutoCloseLease uses a GTE boundary (accrued >= balance), so it
+527:                    // also fires when the tenant's credit EXACTLY covers the accrued
+528:                    // charges — and in a batch an earlier lease's settlement can drain the
+529:                    // shared credit balance so a later, fully-paid lease trips the boundary
+530:                    // with nothing left unpaid. That is a full payment (the credit did its
+531:                    // job), not exhaustion, so the caller-supplied reason and role are
+532:                    // preserved (ENG-577).
+533:                    //
+534:                    // Keep the caller's reason ONLY when a positive accrued charge was
+535:                    // settled in full. Everything else ShouldAutoCloseLease flags is genuine
+536:                    // exhaustion and keeps the credit_exhausted label:
+537:                    //   - overflow: PerformSettlementSilent clamps AccruedAmounts to the
+538:                    //     remaining balance and transfers it all, so `unpaid` reads zero;
+539:                    //     detect it via the same duration threshold the accrual layer uses.
+540:                    //   - partial settlement: the transfer fell short of the accrued amount.
+541:                    //   - zero-balance / zero-duration: a required denom balance is already
+542:                    //     zero with nothing accrued this instant (AccruedAmounts empty) — the
+543:                    //     credit is exhausted even though there is no unpaid remainder.
+544:                    overflowed := int64(duration/time.Second) > MaxDurationSeconds
+545:                    unpaid := result.AccruedAmounts.Sub(result.TransferAmounts...)
+546:                    if overflowed || !unpaid.IsZero() || result.AccruedAmounts.IsZero() {
+547:                            leases[i].ClosureReason = types.ClosureReasonCreditExhausted
+548:                            leaseClosedBy = "credit_exhaustion"
+549:                    } else {
+550:                            leases[i].ClosureReason = msg.Reason
+551:                    }
+552:            } else {
+553:                    // Normal close - use block time
+554:                    closeTime = blockTime
+555:
+556:                    // Calculate duration for event
+557:                    duration = closeTime.Sub(leases[i].LastSettledAt)
+558:
+559:                    // Settle accrued charges
+560:                    settledAmounts, err = ms.settleLease(cacheCtx, &leases[i], closeTime)
+561:                    if err != nil {
+562:                            return nil, err
+563:                    }
+564:
+565:                    // Update lease state to inactive
+566:                    leases[i].State = types.LEASE_STATE_CLOSED
+567:                    leases[i].ClosedAt = &closeTime
+568:                    leases[i].ClosureReason = msg.Reason
+569:            }
+
+743:            // Determine settlement time based on lease state
+744:            var settleTime time.Time
+745:            switch {
+746:            case lease.State == types.LEASE_STATE_ACTIVE:
+747:                    settleTime = blockTime
+748:            case lease.ClosedAt != nil:
+749:                    settleTime = *lease.ClosedAt
+750:            default:
+751:                    settleTime = lease.LastSettledAt // No duration, will return zero
+752:            }
+753:
+754:            // Perform settlement
+755:            result, err := ms.k.PerformSettlement(cacheCtx, lease, settleTime)
+756:            if err != nil {
+757:                    return nil, err
+758:            }
+759:
+760:            // Skip leases with zero withdrawable amount (don't fail, just skip)
+761:            if result.AccruedAmounts.IsZero() {
+762:                    continue
+763:            }
+764:
+765:            // Update last_settled_at to prevent re-settlement of the same period
+766:            lease.LastSettledAt = settleTime
+767:            if err := ms.k.SetLease(cacheCtx, *lease); err != nil {
+768:                    return nil, err
+769:            }
+770:
+771:            totalAmounts = totalAmounts.Add(result.TransferAmounts...)
+772:            leaseAmounts[lease.Uuid] = result.TransferAmounts
+773:            withdrawalCount++
+774:    }
+775:
+776:    // Check if there was nothing to withdraw from any lease
+777:    if withdrawalCount == 0 && len(autoClosedLeases) == 0 {
+778:            return nil, types.ErrNoWithdrawableAmount
+
+1083: // settleLease calculates and transfers accrued charges from tenant's credit account
+1084: // to the provider's payout address. Returns the amounts settled (one per denom).
+1085: func (ms msgServer) settleLease(ctx context.Context, lease *types.Lease, settleTime time.Time) (sdk.Coins, error) {
+1086:   result, err := ms.k.PerformSettlement(ctx, lease, settleTime)
+1087:   if err != nil {
+1088:           return sdk.NewCoins(), err
+1089:   }
+1090:
+1091:   // Update last_settled_at
+1092:   lease.LastSettledAt = settleTime
+1093:
+1094:   return result.TransferAmounts, nil
+1095: }

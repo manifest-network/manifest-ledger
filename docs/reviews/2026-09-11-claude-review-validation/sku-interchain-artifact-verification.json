@@ -1,0 +1,30 @@
+{
+  "sku_driver_exit_status": 0,
+  "sku_driver_sha256": "49976802b4f9f189c2230fbbfc2ee758d133e097780483acf33b6172373a5c60",
+  "sku_runs": {
+    "go-version": 0,
+    "go-paths": 0,
+    "fixed": 0,
+    "skip-validation": 1,
+    "fixed-coverage": 0,
+    "fixed-coverage-functions": 0
+  },
+  "sku_semantic_mutant_failures": 6,
+  "coverage": "ValidateGenesis 100.0%; DefaultGenesis 100.0%; focused package 24.3%",
+  "e2e_build_exit_status": 0,
+  "e2e_test_exit_status": 1,
+  "e2e_outcome": "Blocked before assertions by Docker DNAT failure",
+  "docker_context_files_verified": 293,
+  "interchain_inputs_verified": 31,
+  "all_recorded_artifact_hashes_verified": true,
+  "all_display_logs_match_normalized_raw_bytes": true,
+  "display_normalization": "splitlines + expandtabs(8) + per-line rstrip + overall rstrip + one LF",
+  "whitespace_check_argv": [
+    "git",
+    "diff",
+    "HEAD",
+    "--check"
+  ],
+  "whitespace_check_cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "whitespace_check_exit_status": 0
+}

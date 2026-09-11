@@ -371,6 +371,9 @@ After the upgrade:
   bank backing, and secondary indexes must agree with primary state.
 - From a stopped copy of the post-upgrade state, export genesis using
   `manifestd export --home /path/to/stopped-node-copy --height [source-height] --for-zero-height --output-document /path/to/exported-genesis.json`.
+  Choose a retained committed source height. Setting `pruning = "nothing"`
+  cannot restore already-pruned versions; use a retained height or an archived
+  node copy that still holds the required state.
   Use the file-output flag so stdout logs cannot contaminate the JSON. Prepare a
   separate restart copy at the source block time as described in the
   [billing restart guide](../../x/billing/docs/MIGRATION.md#restart-an-isolated-node-from-an-export).

@@ -220,7 +220,8 @@ message MsgUpdateSKU {
     (gogoproto.casttype) = "github.com/cosmos/cosmos-sdk/types.Coin"
   ];
 
-  // meta_hash is a hash of the off-chain metadata.
+  // meta_hash replaces the hash of off-chain metadata. An empty value clears
+  // it; clients must resend the current bytes when preserving the hash.
   bytes meta_hash = 7;
 
   // active indicates whether the SKU is active.
