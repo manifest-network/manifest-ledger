@@ -8,38 +8,42 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cosmos/cosmos-sdk/x/group"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cosmos/cosmos-sdk/x/group"
 )
+
+const groupModule = "group"
 
 // SubmitGroupProposal submits a group proposal to the chain.
 // TODO: This function should be part of `interchaintest`
 // See https://github.com/strangelove-ventures/interchaintest/issues/1138
 func SubmitGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, keyName string, prop *group.MsgSubmitProposal) (string, error) {
 	file := "proposal.json"
-	propJson, err := json.MarshalIndent(prop, "", " ")
+	propJSON, err := json.MarshalIndent(prop, "", " ")
 	require.NoError(t, err)
 
 	tn := chain.GetNode()
 
 	fw := dockerutil.NewFileWriter(nil, tn.DockerClient, tn.TestName)
-	err = fw.WriteFile(ctx, tn.VolumeName, file, propJson)
+	err = fw.WriteFile(ctx, tn.VolumeName, file, propJSON)
 	require.NoError(t, err)
 
 	submitCommand := []string{
-		"group", "submit-proposal",
+		groupModule, "submit-proposal",
 		path.Join(tn.HomeDir(), file),
-		"--gas", "8000000",
-		"--gas-adjustment", "2.0",
+		cliGasFlag, "8000000",
+		gasAdjustmentFlag, gasAdjustment,
 	}
 
 	return exec(ctx, chain, config, tn.TxCommand(keyName, submitCommand...))
 }
 
+// CreateGroupWithMetadata creates a single-member group with the supplied metadata.
 func CreateGroupWithMetadata(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, keyName, metadata string) (string, error) {
 	file := "members.json"
 
@@ -56,74 +60,46 @@ func CreateGroupWithMetadata(ctx context.Context, t *testing.T, chain *cosmos.Co
 			},
 		},
 	}
-	membersJson, err := json.MarshalIndent(members, "", " ")
+	membersJSON, err := json.MarshalIndent(members, "", " ")
 	require.NoError(t, err)
 
 	tn := chain.GetNode()
 
 	fw := dockerutil.NewFileWriter(nil, tn.DockerClient, tn.TestName)
-	err = fw.WriteFile(ctx, tn.VolumeName, file, membersJson)
+	err = fw.WriteFile(ctx, tn.VolumeName, file, membersJSON)
 	require.NoError(t, err)
 
 	createCommand := []string{
-		"group", "create-group",
+		groupModule, "create-group",
 		keyName, metadata,
 		path.Join(tn.HomeDir(), file),
-		"--gas", "20000000",
-		"--gas-adjustment", "2.0",
+		cliGasFlag, "20000000",
+		gasAdjustmentFlag, gasAdjustment,
 	}
 
 	return tn.ExecTx(ctx, keyName, createCommand...)
 }
 
-//// QueryGroupProposal queries a group proposal on the chain.
-//// TODO: This function should be part of `interchaintest`
-//// See https://github.com/strangelove-ventures/interchaintest/issues/1138
-//func QueryGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposalId string) (string, error) {
-//	query := []string{
-//		"group", "proposal", proposalId,
-//	}
-//
-//	tn := chain.GetNode()
-//
-//	o, _, err := tn.Exec(ctx, tn.QueryCommand(query...), config.Env)
-//	if err != nil {
-//		return "", errors.WithMessage(err, "failed to query group proposal")
-//	}
-//
-//	var data interface{}
-//	if err := json.Unmarshal([]byte(o), &data); err != nil {
-//		return "", errors.WithMessage(err, "failed to unmarshal group proposal")
-//
-//	}
-//
-//	prettyJSON, err := json.MarshalIndent(data, "", "  ")
-//	if err != nil {
-//		return "", errors.WithMessage(err, "failed to marshal group proposal")
-//	}
-//
-//	return string(prettyJSON), nil
-//}
-
 // VoteGroupProposal votes on a group proposal on the chain.
 // TODO: This function should be part of `interchaintest`
 // See https://github.com/strangelove-ventures/interchaintest/issues/1138
-func VoteGroupProposal(ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposalId, accAddr, vote, metadata string) (string, error) {
+func VoteGroupProposal(ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, proposalID, accAddr, vote, metadata string) (string, error) {
 	voteCommand := []string{
-		"group", "vote", proposalId, accAddr, vote, metadata,
-		"--gas", "1000000",
-		"--gas-adjustment", "2.0",
+		groupModule, "vote", proposalID, accAddr, vote, metadata,
+		cliGasFlag, "1000000",
+		gasAdjustmentFlag, gasAdjustment,
 	}
 	return exec(ctx, chain, config, chain.GetNode().TxCommand(accAddr, voteCommand...))
 }
 
-func ExecGroupProposal(ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr, proposalId string) (string, error) {
+// ExecGroupProposal executes an accepted group proposal on the chain.
+func ExecGroupProposal(ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfig, accAddr, proposalID string) (string, error) {
 	tn := chain.GetNode()
 
 	execCommand := []string{
-		"group", "exec", proposalId,
-		"--gas", "20000000",
-		"--gas-adjustment", "2.0",
+		groupModule, "exec", proposalID,
+		cliGasFlag, "20000000",
+		gasAdjustmentFlag, gasAdjustment,
 	}
 	return exec(ctx, chain, config, tn.TxCommand(accAddr, execCommand...))
 }
@@ -137,7 +113,7 @@ func exec(ctx context.Context, chain *cosmos.CosmosChain, config *ibc.ChainConfi
 	}
 
 	output := cosmos.CosmosTx{}
-	if err := json.Unmarshal([]byte(o), &output); err != nil {
+	if err := json.Unmarshal(o, &output); err != nil {
 		return "", errors.WithMessage(err, "failed to unmarshal group proposal")
 	}
 

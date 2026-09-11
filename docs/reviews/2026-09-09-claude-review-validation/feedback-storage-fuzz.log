@@ -1,0 +1,10 @@
+fuzz: elapsed: 0s, gathering baseline coverage: 0/58 completed
+fuzz: elapsed: 3s, gathering baseline coverage: 20/58 completed
+fuzz: elapsed: 6s, gathering baseline coverage: 38/58 completed
+fuzz: elapsed: 8s, gathering baseline coverage: 58/58 completed, now fuzzing with 2 workers
+fuzz: elapsed: 9s, execs: 81 (14/sec), new interesting: 0 (total: 58)
+fuzz: elapsed: 12s, execs: 897 (272/sec), new interesting: 1 (total: 59)
+fuzz: elapsed: 15s, execs: 2358 (487/sec), new interesting: 2 (total: 60)
+fuzz: elapsed: 16s, execs: 2358 (0/sec), new interesting: 2 (total: 60)
+PASS
+ok  	github.com/manifest-network/manifest-ledger/x/billing/keeper	16.305s

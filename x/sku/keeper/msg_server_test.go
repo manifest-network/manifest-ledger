@@ -72,10 +72,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"cosmossdk.io/collections"
+	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/query"
 
 	"github.com/manifest-network/manifest-ledger/x/sku/keeper"
 	"github.com/manifest-network/manifest-ledger/x/sku/types"
@@ -262,6 +265,84 @@ func TestUpdateProvider(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, c.payoutAddress, provider.PayoutAddress)
 			require.Equal(t, c.active, provider.Active)
+		})
+	}
+}
+
+func TestUpdateProviderAPIURLPatchSemantics(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+
+	f := initFixture(t)
+	k := f.App.SKUKeeper
+	k.SetAuthority(authority.String())
+	ms := keeper.NewMsgServerImpl(k)
+
+	const existingAPIURL = "https://old.provider.example"
+	tests := []struct {
+		name        string
+		apiURL      string
+		clearAPIURL bool
+		wantAPIURL  string
+		wantErr     string
+	}{
+		{
+			name:       "legacy omitted value preserves",
+			wantAPIURL: existingAPIURL,
+		},
+		{
+			name:       "explicit empty value preserves",
+			apiURL:     "",
+			wantAPIURL: existingAPIURL,
+		},
+		{
+			name:       "non-empty value replaces",
+			apiURL:     "https://new.provider.example",
+			wantAPIURL: "https://new.provider.example",
+		},
+		{
+			name:        "clear flag removes",
+			clearAPIURL: true,
+			wantAPIURL:  "",
+		},
+		{
+			name:        "set and clear is rejected without mutation",
+			apiURL:      "https://new.provider.example",
+			clearAPIURL: true,
+			wantAPIURL:  existingAPIURL,
+			wantErr:     "clear_api_url cannot be true when api_url is non-empty",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, k.SetProvider(f.Ctx, types.Provider{
+				Uuid:          testProviderUUID,
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				Active:        true,
+				ApiUrl:        existingAPIURL,
+			}))
+
+			_, err := ms.UpdateProvider(f.Ctx, &types.MsgUpdateProvider{
+				Authority:     authority.String(),
+				Uuid:          testProviderUUID,
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				Active:        true,
+				ApiUrl:        tc.apiURL,
+				ClearApiUrl:   tc.clearAPIURL,
+			})
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+
+			provider, err := k.GetProvider(f.Ctx, testProviderUUID)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantAPIURL, provider.ApiUrl)
 		})
 	}
 }
@@ -758,9 +839,9 @@ func TestDeactivateProviderPagination(t *testing.T) {
 	err := k.SetProvider(f.Ctx, provider)
 	require.NoError(t, err)
 
-	// Create 10 active SKUs (more than our test limit of 3)
-	const totalSKUs = 10
-	const testLimit uint64 = 3
+	// Exercise more than three default-size CLI cascade pages.
+	const totalSKUs = 151
+	const testLimit = types.DefaultDeactivateSKULimit
 
 	for i := 0; i < totalSKUs; i++ {
 		sku := types.SKU{
@@ -775,16 +856,30 @@ func TestDeactivateProviderPagination(t *testing.T) {
 		require.NoError(t, err)
 	}
 
+	// This is the documented CLI stop condition: query one active SKU after
+	// each successful transaction instead of expecting a decoded has_more field.
+	queryActive := func(wantRemaining bool) {
+		t.Helper()
+		response, err := keeper.NewQuerier(k).SKUsByProvider(f.Ctx, &types.QuerySKUsByProviderRequest{
+			ProviderUuid: providerUUID,
+			ActiveOnly:   true,
+			Pagination:   &query.PageRequest{Limit: 1},
+		})
+		require.NoError(t, err)
+		require.Equal(t, wantRemaining, len(response.Skus) > 0)
+	}
+
 	// First call: should deactivate provider and first batch of SKUs
 	msg := &types.MsgDeactivateProvider{
 		Authority: authority.String(),
 		Uuid:      providerUUID,
-		Limit:     testLimit,
+		Limit:     0, // use the default, just like the CLI without --limit
 	}
 	resp, err := ms.DeactivateProvider(f.Ctx, msg)
 	require.NoError(t, err)
 	require.Equal(t, testLimit, resp.DeactivatedSkuCount, "first call should deactivate limit SKUs")
 	require.True(t, resp.HasMore, "should have more SKUs to deactivate")
+	queryActive(true)
 
 	// Verify provider is now inactive
 	provider, err = k.GetProvider(f.Ctx, providerUUID)
@@ -796,18 +891,21 @@ func TestDeactivateProviderPagination(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, testLimit, resp.DeactivatedSkuCount, "second call should deactivate limit SKUs")
 	require.True(t, resp.HasMore, "should still have more SKUs to deactivate")
+	queryActive(true)
 
 	// Third call: should deactivate another batch
 	resp, err = ms.DeactivateProvider(f.Ctx, msg)
 	require.NoError(t, err)
 	require.Equal(t, testLimit, resp.DeactivatedSkuCount, "third call should deactivate limit SKUs")
 	require.True(t, resp.HasMore, "should still have more SKUs to deactivate")
+	queryActive(true)
 
-	// Fourth call: should deactivate the remaining SKU (10 - 3*3 = 1)
+	// Fourth call: should deactivate the remaining SKU (151 - 3*50 = 1)
 	resp, err = ms.DeactivateProvider(f.Ctx, msg)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), resp.DeactivatedSkuCount, "fourth call should deactivate remaining SKU")
 	require.False(t, resp.HasMore, "should have no more SKUs to deactivate")
+	queryActive(false)
 
 	// Fifth call: should fail because provider and all SKUs are already inactive
 	_, err = ms.DeactivateProvider(f.Ctx, msg)
@@ -1852,4 +1950,250 @@ func TestParamsAllowedListRemoval(t *testing.T) {
 	_, err = ms.CreateSKU(f.Ctx, createMsg)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "unauthorized")
+}
+
+func TestMsgServerLookupErrorClassification(t *testing.T) {
+	_, _, authority := testdata.KeyTestPubAddr()
+	_, _, providerAddr := testdata.KeyTestPubAddr()
+	_, _, payoutAddr := testdata.KeyTestPubAddr()
+	price := sdk.NewCoin("umfx", sdkmath.NewInt(3600))
+
+	provider := types.Provider{
+		Uuid:          testProviderUUID,
+		Address:       providerAddr.String(),
+		PayoutAddress: payoutAddr.String(),
+		Active:        true,
+	}
+	sku := types.SKU{
+		Uuid:         testSKU1UUID,
+		ProviderUuid: provider.Uuid,
+		Name:         "compute",
+		Unit:         types.Unit_UNIT_PER_HOUR,
+		BasePrice:    price,
+		Active:       true,
+	}
+
+	providerOperations := func(ctx sdk.Context, ms types.MsgServer) []struct {
+		name string
+		call func() error
+	} {
+		return []struct {
+			name string
+			call func() error
+		}{
+			{
+				name: "update provider",
+				call: func() error {
+					_, err := ms.UpdateProvider(ctx, &types.MsgUpdateProvider{
+						Authority:     authority.String(),
+						Uuid:          provider.Uuid,
+						Address:       provider.Address,
+						PayoutAddress: provider.PayoutAddress,
+						Active:        true,
+					})
+					return err
+				},
+			},
+			{
+				name: "deactivate provider",
+				call: func() error {
+					_, err := ms.DeactivateProvider(ctx, &types.MsgDeactivateProvider{
+						Authority: authority.String(),
+						Uuid:      provider.Uuid,
+					})
+					return err
+				},
+			},
+			{
+				name: "create SKU",
+				call: func() error {
+					_, err := ms.CreateSKU(ctx, &types.MsgCreateSKU{
+						Authority:    authority.String(),
+						ProviderUuid: provider.Uuid,
+						Name:         "storage",
+						Unit:         types.Unit_UNIT_PER_HOUR,
+						BasePrice:    price,
+					})
+					return err
+				},
+			},
+			{
+				name: "update SKU linked provider",
+				call: func() error {
+					_, err := ms.UpdateSKU(ctx, &types.MsgUpdateSKU{
+						Authority:    authority.String(),
+						Uuid:         sku.Uuid,
+						ProviderUuid: provider.Uuid,
+						Name:         sku.Name,
+						Unit:         sku.Unit,
+						BasePrice:    sku.BasePrice,
+						Active:       true,
+					})
+					return err
+				},
+			},
+		}
+	}
+
+	skuOperations := func(ctx sdk.Context, ms types.MsgServer) []struct {
+		name string
+		call func() error
+	} {
+		return []struct {
+			name string
+			call func() error
+		}{
+			{
+				name: "update SKU",
+				call: func() error {
+					_, err := ms.UpdateSKU(ctx, &types.MsgUpdateSKU{
+						Authority:    authority.String(),
+						Uuid:         sku.Uuid,
+						ProviderUuid: provider.Uuid,
+						Name:         sku.Name,
+						Unit:         sku.Unit,
+						BasePrice:    sku.BasePrice,
+						Active:       true,
+					})
+					return err
+				},
+			},
+			{
+				name: "deactivate SKU",
+				call: func() error {
+					_, err := ms.DeactivateSKU(ctx, &types.MsgDeactivateSKU{
+						Authority: authority.String(),
+						Uuid:      sku.Uuid,
+					})
+					return err
+				},
+			},
+		}
+	}
+
+	t.Run("missing records keep domain errors", func(t *testing.T) {
+		t.Run("provider", func(t *testing.T) {
+			f := initFixture(t)
+			k := f.App.SKUKeeper
+			k.SetAuthority(authority.String())
+			require.NoError(t, k.SetSKU(f.Ctx, sku))
+			ms := keeper.NewMsgServerImpl(k)
+
+			for _, operation := range providerOperations(f.Ctx, ms) {
+				t.Run(operation.name, func(t *testing.T) {
+					err := operation.call()
+					require.ErrorIs(t, err, types.ErrProviderNotFound)
+				})
+			}
+		})
+
+		t.Run("SKU", func(t *testing.T) {
+			f := initFixture(t)
+			k := f.App.SKUKeeper
+			k.SetAuthority(authority.String())
+			require.NoError(t, k.SetProvider(f.Ctx, provider))
+			ms := keeper.NewMsgServerImpl(k)
+
+			for _, operation := range skuOperations(f.Ctx, ms) {
+				t.Run(operation.name, func(t *testing.T) {
+					err := operation.call()
+					require.ErrorIs(t, err, types.ErrSKUNotFound)
+				})
+			}
+		})
+	})
+
+	t.Run("corrupt provider record is not reported as missing", func(t *testing.T) {
+		f := initFixture(t)
+		k := f.App.SKUKeeper
+		k.SetAuthority(authority.String())
+		require.NoError(t, k.SetProvider(f.Ctx, provider))
+		require.NoError(t, k.SetSKU(f.Ctx, sku))
+		corruptStringPrimaryRecord(t, f, types.ProviderKey.Bytes(), provider.Uuid)
+		ms := keeper.NewMsgServerImpl(k)
+
+		for _, operation := range providerOperations(f.Ctx, ms) {
+			t.Run(operation.name, func(t *testing.T) {
+				err := operation.call()
+				require.Error(t, err)
+				require.NotErrorIs(t, err, types.ErrProviderNotFound)
+				require.ErrorIs(t, err, types.ErrInternalCorruption)
+				codespace, code, _ := errorsmod.ABCIInfo(err, false)
+				require.Equal(t, types.ModuleName, codespace)
+				require.Equal(t, uint32(9), code)
+			})
+		}
+	})
+
+	t.Run("corrupt SKU record is not reported as missing", func(t *testing.T) {
+		f := initFixture(t)
+		k := f.App.SKUKeeper
+		k.SetAuthority(authority.String())
+		require.NoError(t, k.SetProvider(f.Ctx, provider))
+		require.NoError(t, k.SetSKU(f.Ctx, sku))
+		corruptStringPrimaryRecord(t, f, types.SKUKey.Bytes(), sku.Uuid)
+		ms := keeper.NewMsgServerImpl(k)
+
+		for _, operation := range skuOperations(f.Ctx, ms) {
+			t.Run(operation.name, func(t *testing.T) {
+				err := operation.call()
+				require.Error(t, err)
+				require.NotErrorIs(t, err, types.ErrSKUNotFound)
+				require.ErrorIs(t, err, types.ErrInternalCorruption)
+				codespace, code, _ := errorsmod.ABCIInfo(err, false)
+				require.Equal(t, types.ModuleName, codespace)
+				require.Equal(t, uint32(9), code)
+			})
+		}
+	})
+
+	t.Run("provider cascade classifies corrupt indexed SKU", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			corrupt func(*testing.T, *testFixture)
+		}{
+			{
+				name: "unreadable primary",
+				corrupt: func(t *testing.T, f *testFixture) {
+					corruptStringPrimaryRecord(t, f, types.SKUKey.Bytes(), sku.Uuid)
+				},
+			},
+			{
+				name: "missing primary",
+				corrupt: func(t *testing.T, f *testFixture) {
+					key, err := collections.EncodeKeyWithPrefix(types.SKUKey.Bytes(), collections.StringKey, sku.Uuid)
+					require.NoError(t, err)
+					f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Delete(key)
+				},
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				f := initFixture(t)
+				k := f.App.SKUKeeper
+				k.SetAuthority(authority.String())
+				require.NoError(t, k.SetProvider(f.Ctx, provider))
+				require.NoError(t, k.SetSKU(f.Ctx, sku))
+				test.corrupt(t, f)
+
+				_, err := keeper.NewMsgServerImpl(k).DeactivateProvider(f.Ctx, &types.MsgDeactivateProvider{
+					Authority: authority.String(),
+					Uuid:      provider.Uuid,
+				})
+				require.ErrorIs(t, err, types.ErrInternalCorruption)
+				require.NotErrorIs(t, err, types.ErrSKUNotFound)
+				codespace, code, _ := errorsmod.ABCIInfo(err, false)
+				require.Equal(t, types.ModuleName, codespace)
+				require.Equal(t, uint32(9), code)
+			})
+		}
+	})
+}
+
+func corruptStringPrimaryRecord(t *testing.T, f *testFixture, prefix []byte, uuid string) {
+	t.Helper()
+	key, err := collections.EncodeKeyWithPrefix(prefix, collections.StringKey, uuid)
+	require.NoError(t, err)
+	f.Ctx.KVStore(f.App.GetKey(types.StoreKey)).Set(key, []byte{0xff})
 }

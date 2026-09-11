@@ -1,0 +1,12 @@
+Excerpt: simulator parameter dumps and operation progress omitted.
+--> Running app after import simulation (blocks: 100, commit: true, period: 5, seed: 2507940531156952020, params: /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/simulation/sim_params.json
+=== RUN   TestAppSimulationAfterImport
+Starting SimulateFromSeed with randomness created with seed 2507940531156952020
+Starting the simulation from time Tue Jun 11 20:43:13 UTC 2075 (unixtime 3327511393)
+exporting genesis...
+importing genesis...
+Starting SimulateFromSeed with randomness created with seed 2507940531156952021
+Starting the simulation from time Thu Jun 20 10:28:42 UTC 2075 (unixtime 3328252122)
+--- PASS: TestAppSimulationAfterImport (109.48s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/app 109.719s

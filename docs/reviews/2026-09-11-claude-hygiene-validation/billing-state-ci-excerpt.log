@@ -1,0 +1,12 @@
+Selected CI checkout and pending-expiration RUN/PASS lines only. Full job linked in ci-status.json.
+e2e-tests (ictest-billing-state)        UNKNOWN STEP    2026-09-11T14:36:39.4206394Z HEAD is now at 6bd1d06 Merge 8492a4ad18996d0877a7425b8039ed355cc94726 into 9b14229c445298df026b04eac9f76e5689667a9d
+e2e-tests (ictest-billing-state)        UNKNOWN STEP    2026-09-11T14:39:56.5167562Z === RUN   TestBillingState/PendingLeaseExpiration
+e2e-tests (ictest-billing-state)        UNKNOWN STEP    2026-09-11T14:40:43.2914541Z === RUN   TestBillingState/PendingLeaseExpiration/success:_all_pending_leases_expire_after_timeout_via_iterator-based_EndBlocker
+e2e-tests (ictest-billing-state)        UNKNOWN STEP    2026-09-11T14:43:32.0665010Z === RUN   TestBillingState/PendingLeaseExpiration/success:_expiration_releases_reserved_credit_without_charging_the_tenant
+e2e-tests (ictest-billing-state)        UNKNOWN STEP    2026-09-11T14:43:32.4044510Z === RUN   TestBillingState/PendingLeaseExpiration/success:_EndBlocker_expires_past-timeout_leases_but_not_younger_pending_leases
+e2e-tests (ictest-billing-state)        UNKNOWN STEP    2026-09-11T14:45:47.5213789Z === RUN   TestBillingState/PendingLeaseExpiration/cleanup:_restore_original_pending_timeout
+e2e-tests (ictest-billing-state)        UNKNOWN STEP    2026-09-11T14:54:33.5151014Z     --- PASS: TestBillingState/PendingLeaseExpiration (354.64s)
+e2e-tests (ictest-billing-state)        UNKNOWN STEP    2026-09-11T14:54:33.5151677Z         --- PASS: TestBillingState/PendingLeaseExpiration/success:_all_pending_leases_expire_after_timeout_via_iterator-based_EndBlocker (168.77s)
+e2e-tests (ictest-billing-state)        UNKNOWN STEP    2026-09-11T14:54:33.5152452Z         --- PASS: TestBillingState/PendingLeaseExpiration/success:_expiration_releases_reserved_credit_without_charging_the_tenant (0.34s)
+e2e-tests (ictest-billing-state)        UNKNOWN STEP    2026-09-11T14:54:33.5163378Z         --- PASS: TestBillingState/PendingLeaseExpiration/success:_EndBlocker_expires_past-timeout_leases_but_not_younger_pending_leases (135.12s)
+e2e-tests (ictest-billing-state)        UNKNOWN STEP    2026-09-11T14:54:33.5164344Z         --- PASS: TestBillingState/PendingLeaseExpiration/cleanup:_restore_original_pending_timeout (3.63s)

@@ -1,0 +1,8 @@
+=== RUN   TestContainerizedGoReleaserUsesPinnedOfflineToolchain
+=== RUN   TestContainerizedGoReleaserUsesPinnedOfflineToolchain/standalone_repository
+=== RUN   TestContainerizedGoReleaserUsesPinnedOfflineToolchain/logical_root_from_nested_directory
+--- PASS: TestContainerizedGoReleaserUsesPinnedOfflineToolchain (0.03s)
+    --- PASS: TestContainerizedGoReleaserUsesPinnedOfflineToolchain/standalone_repository (0.01s)
+    --- PASS: TestContainerizedGoReleaserUsesPinnedOfflineToolchain/logical_root_from_nested_directory (0.01s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/scripts 0.054s

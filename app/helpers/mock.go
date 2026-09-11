@@ -1,3 +1,4 @@
+// Package helpers provides application test doubles.
 package helpers
 
 import (
@@ -18,6 +19,7 @@ type PV struct {
 	PrivKey cryptotypes.PrivKey
 }
 
+// NewPV creates an in-memory private validator for tests.
 func NewPV() PV {
 	return PV{ed25519.GenPrivKey()}
 }

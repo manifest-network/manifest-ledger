@@ -1,7 +1,9 @@
 package uuid
 
 import (
+	"encoding/binary"
 	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
 
@@ -280,9 +282,10 @@ func TestTimestampExtraction(t *testing.T) {
 	testTime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
 	uuid := GenerateUUIDv7FromTime(testTime, "test", 1)
 
-	// The first 12 hex characters (48 bits) should encode the timestamp
-	// This is a simple sanity check that the timestamp is embedded
-	require.True(t, IsValidUUIDv7(uuid))
+	// Decode the first 48 bits instead of only comparing generated strings.
+	decoded, err := hex.DecodeString(strings.ReplaceAll(uuid, "-", ""))
+	require.NoError(t, err)
+	require.Equal(t, uint64(testTime.UnixMilli()), binary.BigEndian.Uint64(decoded[:8])>>16) //nolint:gosec // fixed positive test timestamp
 
 	// Generate at different times (1 hour later to ensure timestamp differs significantly)
 	otherTime := time.Date(2024, 6, 15, 13, 0, 0, 0, time.UTC) // 1 hour later

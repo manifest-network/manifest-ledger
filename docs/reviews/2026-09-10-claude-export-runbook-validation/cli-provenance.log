@@ -1,0 +1,11 @@
+HISTORICAL PROVENANCE for the driver at commit 9d253689dfbac54009dcbbed7c0345ab0cd05b44, not the subsequently enhanced driver in this tree.
+Current driver and binary hashes are recorded in ../2026-09-11-claude-review-validation/export-cli.json.
+
+Baseline repository commit: b4d8403977b8f18eeaad699239e9661efa2a4a8a plus reviewed first-Commit export guard.
+Build: GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR="$PWD/.review-tmp/build" go build -p 2 -o .review-tmp/round70-manifestd ./cmd/manifestd
+Run: TMPDIR="$PWD/.review-tmp/build" python3 .review-tmp/round70_verify_export.py .review-tmp/round70-manifestd .review-tmp/round70-export-cli.log
+Exit status: 0
+Candidate binary SHA-256: 62d65720f5133a512c52848a62bf8f61b89ba28dacbe417b80ecd15b07e74e63
+app/export.go SHA-256: eeb45938b657b20320e95596b4d71783c0bd31028ee4f0f2b9e2cca2b215a7f7
+verify_export_cli.py SHA-256: 842412a284c44cf58f37c25941174ee55e8b7a2e1c0f910176bdf43d401b2679
+Display log normalization: expand tabs to 4 spaces; strip line-ending whitespace; fixture paths replaced with /fixture by driver.

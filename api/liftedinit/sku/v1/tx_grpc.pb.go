@@ -35,20 +35,24 @@ type MsgClient interface {
 	// CreateProvider creates a new provider.
 	CreateProvider(ctx context.Context, in *MsgCreateProvider, opts ...grpc.CallOption) (*MsgCreateProviderResponse, error)
 	// UpdateProvider updates an existing provider.
-	// Can reactivate an inactive provider but cannot deactivate an active one.
+	// Can reactivate an inactive provider only after no active SKUs remain.
+	// Cannot deactivate an active provider.
 	// Use DeactivateProvider to deactivate (ensures proper SKU cascade).
 	UpdateProvider(ctx context.Context, in *MsgUpdateProvider, opts ...grpc.CallOption) (*MsgUpdateProviderResponse, error)
 	// DeactivateProvider deactivates a provider (soft delete).
-	// Deactivated providers cannot create new SKUs but existing SKUs continue.
+	// Deactivated providers cannot create new SKUs or leases. Existing SKUs are
+	// deactivated in bounded pages; call again while has_more is true. Existing
+	// leases continue at their locked prices.
 	DeactivateProvider(ctx context.Context, in *MsgDeactivateProvider, opts ...grpc.CallOption) (*MsgDeactivateProviderResponse, error)
 	// CreateSKU creates a new SKU.
 	CreateSKU(ctx context.Context, in *MsgCreateSKU, opts ...grpc.CallOption) (*MsgCreateSKUResponse, error)
 	// UpdateSKU updates an existing SKU.
-	// Can reactivate an inactive SKU (if provider is active) but cannot deactivate an active one.
-	// Use DeactivateSKU to deactivate.
+	// Can reactivate an inactive SKU (if provider is active) but cannot
+	// deactivate an active one. Use DeactivateSKU to deactivate.
 	UpdateSKU(ctx context.Context, in *MsgUpdateSKU, opts ...grpc.CallOption) (*MsgUpdateSKUResponse, error)
 	// DeactivateSKU deactivates a SKU (soft delete).
-	// Deactivated SKUs cannot be used for new leases but existing leases continue.
+	// Deactivated SKUs cannot be used for new leases but existing leases
+	// continue.
 	DeactivateSKU(ctx context.Context, in *MsgDeactivateSKU, opts ...grpc.CallOption) (*MsgDeactivateSKUResponse, error)
 	// UpdateParams updates the module parameters.
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
@@ -132,20 +136,24 @@ type MsgServer interface {
 	// CreateProvider creates a new provider.
 	CreateProvider(context.Context, *MsgCreateProvider) (*MsgCreateProviderResponse, error)
 	// UpdateProvider updates an existing provider.
-	// Can reactivate an inactive provider but cannot deactivate an active one.
+	// Can reactivate an inactive provider only after no active SKUs remain.
+	// Cannot deactivate an active provider.
 	// Use DeactivateProvider to deactivate (ensures proper SKU cascade).
 	UpdateProvider(context.Context, *MsgUpdateProvider) (*MsgUpdateProviderResponse, error)
 	// DeactivateProvider deactivates a provider (soft delete).
-	// Deactivated providers cannot create new SKUs but existing SKUs continue.
+	// Deactivated providers cannot create new SKUs or leases. Existing SKUs are
+	// deactivated in bounded pages; call again while has_more is true. Existing
+	// leases continue at their locked prices.
 	DeactivateProvider(context.Context, *MsgDeactivateProvider) (*MsgDeactivateProviderResponse, error)
 	// CreateSKU creates a new SKU.
 	CreateSKU(context.Context, *MsgCreateSKU) (*MsgCreateSKUResponse, error)
 	// UpdateSKU updates an existing SKU.
-	// Can reactivate an inactive SKU (if provider is active) but cannot deactivate an active one.
-	// Use DeactivateSKU to deactivate.
+	// Can reactivate an inactive SKU (if provider is active) but cannot
+	// deactivate an active one. Use DeactivateSKU to deactivate.
 	UpdateSKU(context.Context, *MsgUpdateSKU) (*MsgUpdateSKUResponse, error)
 	// DeactivateSKU deactivates a SKU (soft delete).
-	// Deactivated SKUs cannot be used for new leases but existing leases continue.
+	// Deactivated SKUs cannot be used for new leases but existing leases
+	// continue.
 	DeactivateSKU(context.Context, *MsgDeactivateSKU) (*MsgDeactivateSKUResponse, error)
 	// UpdateParams updates the module parameters.
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)

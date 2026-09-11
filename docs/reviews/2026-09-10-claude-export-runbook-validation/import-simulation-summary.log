@@ -1,0 +1,8 @@
+Excerpt: parameter dumps and per-operation progress omitted.
+Starting SimulateFromSeed with randomness created with seed 2507940531156952020
+Starting the simulation from time Tue Jun 11 20:43:13 UTC 2075 (unixtime 3327511393)
+Starting SimulateFromSeed with randomness created with seed 2507940531156952021
+Starting the simulation from time Thu Jun 20 10:28:42 UTC 2075 (unixtime 3328252122)
+--- PASS: TestAppSimulationAfterImport (143.28s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/app 143.490s

@@ -34,6 +34,7 @@ manifestd tx billing fund-credit [tenant] [amount] [flags]
 | Argument | Type | Description |
 |----------|------|-------------|
 | tenant | string | Bech32 address of the tenant |
+
 | amount | coin | Amount to fund (e.g., `1000000upwr`) |
 
 **Example:**
@@ -46,6 +47,11 @@ manifestd tx billing fund-credit manifest1abc... 1000000upwr --from mykey
 - Credit accounts support multiple denominations
 - The denomination funded must match what the tenant needs for their target SKUs
 - Creates the credit account if it doesn't exist
+- Checks the bank module's send-enabled policy for the funded denomination;
+  a rejected deposit creates no credit account, transfers no funds, and emits
+  no funding event
+- This deposit check does not change settlement's denomination policy for
+  credit already funded
 
 ---
 
@@ -84,6 +90,9 @@ manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1:web 019
 - Credit must cover `min_lease_duration` seconds for each denom used by the SKUs
 - All SKUs must be from the same provider
 - All SKUs must be active
+- The provider must be active and its payout address must be permitted by the
+  bank module and distinct from this tenant's derived credit address; repair
+  an ineligible payout before creating a lease
 - Cannot exceed `max_items_per_lease`
 - Cannot exceed `max_leases_per_tenant`
 - Cannot exceed `max_pending_leases_per_tenant`
@@ -134,11 +143,17 @@ manifestd tx billing create-lease-for-tenant manifest1abc... 01912345-6789-7abc-
 
 **Authorization:** Only module authority or addresses in `allowed_list` param.
 
+The same admission checks as `create-lease` apply, including rejecting a
+provider whose stored payout address is blocked by the bank module or equals
+the target tenant's derived credit address. Rejection occurs before allocating
+a lease UUID or reserving tenant credit.
+
 ---
 
 #### acknowledge-lease
 
-Acknowledge one or more PENDING leases atomically (provider only). Transitions leases to ACTIVE and starts billing.
+Acknowledge one or more PENDING leases atomically (provider or module authority). After revalidating activation
+gates, transitions leases to ACTIVE and starts billing.
 
 ```bash
 manifestd tx billing acknowledge-lease [lease-uuid]... [flags]
@@ -147,7 +162,7 @@ manifestd tx billing acknowledge-lease [lease-uuid]... [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string (repeated) | UUIDs of leases to acknowledge (1-100) |
+| lease-uuid | string (repeated) | Canonical lowercase UUIDv7 values of leases to acknowledge (1-100) |
 
 **Examples:**
 ```bash
@@ -163,8 +178,19 @@ manifestd tx billing acknowledge-lease uuid1 uuid2 uuid3 --from provider-key
 **Notes:**
 - Only PENDING leases can be acknowledged
 - All leases must belong to the same provider
+- Block time must be at or before each lease's `created_at + current pending_timeout`; the exact cutoff is valid
+- Each tenant's active count after applying the whole batch must be ≤ `max_leases_per_tenant`
+- The current provider payout must be permitted by bank policy and distinct
+  from every tenant's derived credit address in the batch
+- Provider or SKU deactivation alone does not prevent acknowledgement of an
+  existing PENDING lease; the payout, deadline, and tenant active-cap gates
+  still apply
 - Maximum 100 leases per transaction
-- Atomic operation: all succeed or all fail
+- Atomic operation: all timeout, per-tenant cap, and payout gates pass before
+  any lease, count, timestamp, reservation, or event changes
+- A rejected acknowledgement leaves leases PENDING; tenants can cancel or
+  providers can reject them to release reservations without a payout transfer,
+  or retry acknowledgement after payout repair if the other gates still pass
 - Billing starts from the acknowledgement timestamp
 - Emits `lease_acknowledged` event for each lease
 - Emits `batch_acknowledged` event when multiple leases are processed (includes lease_count, provider_uuid, acknowledged_by)
@@ -182,12 +208,12 @@ manifestd tx billing reject-lease [lease-uuid]... [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID(s) of leases to reject (1-100) |
+| lease-uuid | string | Canonical lowercase UUIDv7 values of leases to reject (1-100) |
 
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --reason | string | Optional rejection reason (max 256 chars, applied to all leases) |
+| --reason | string | Optional rejection reason (max 256 UTF-8 bytes, applied to all leases) |
 
 **Examples:**
 ```bash
@@ -219,7 +245,7 @@ manifestd tx billing cancel-lease [lease-uuid]... [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID(s) of leases to cancel (1-100) |
+| lease-uuid | string | Canonical lowercase UUIDv7 values of leases to cancel (1-100) |
 
 **Examples:**
 ```bash
@@ -253,12 +279,12 @@ manifestd tx billing close-lease [lease-uuid]... [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID(s) of leases to close (1-100) |
+| lease-uuid | string | Canonical lowercase UUIDv7 values of leases to close (1-100) |
 
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --reason | string | Reason for closing the leases (max 256 characters, applied to all) |
+| --reason | string | Reason for closing the leases (max 256 UTF-8 bytes, applied to all) |
 
 **Examples:**
 ```bash
@@ -280,9 +306,14 @@ manifestd tx billing close-lease 01912345-6789-7abc-8def-0123456789ab 01912345-6
   - Provider: All leases must belong to that provider
   - Authority: Can close any leases
 - If any lease fails validation, the entire batch fails (no partial closures)
+- Before a nonzero final transfer, settlement rejects a provider payout address
+  blocked by the bank module or equal to the target tenant's derived credit
+  address. Equivalent Bech32 casing is the same account; a rejected transfer
+  rolls back the entire batch.
 - Response includes total_settled_amounts aggregated across all closed leases
 - Emits `batch_closed` event when multiple leases are processed (includes lease_count, closed_by)
-- Transfers accrued amount to provider payout address
+- Transfers `min(accrued, B - (R - A))` to the provider payout address,
+  preserving every other lease's reservation
 - Sets lease state to CLOSED
 - **Auto-close**: When a lease is automatically closed due to credit exhaustion (lazy settlement), the closure_reason is automatically set to "credit exhausted"
 
@@ -306,12 +337,12 @@ manifestd tx billing withdraw --provider [provider-uuid] [flags]
 **Arguments (Mode 1):**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID(s) of leases to withdraw from (1-100) |
+| lease-uuid | string | Canonical lowercase UUIDv7 values of leases to withdraw from (1-100) |
 
 **Flags:**
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| --provider | string | - | Provider UUID for provider-wide withdrawal |
+| --provider | string | - | Canonical lowercase provider UUIDv7 for provider-wide withdrawal |
 | --limit | uint64 | 50 | Maximum leases to process in provider mode (max 100) |
 | --key | string | "" | Base64 `next_key` from the previous provider-wide withdraw response; continues paging. Rejected in specific-leases mode. |
 
@@ -335,66 +366,134 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
 **Notes:**
 - **Mode 1 (Specific leases):**
   - All leases must belong to the same provider
-  - If any lease fails validation, the entire batch fails (no partial withdrawals)
+  - If any lease fails validation or settlement, the entire batch fails and all
+    earlier transfers and timestamp updates in that batch are rolled back
   - `has_more` is always false in this mode
+  - Imported CLOSED leases may have `last_settled_at < closed_at`. An explicit
+    withdrawal settles that final interval once, capped by lease-spendable
+    credit, then advances the cursor to `closed_at`. Any unpaid shortfall is
+    written off; a later deposit cannot revive it. This preserves the module's
+    existing no-debt policy and import compatibility.
+  - Finalizing a CLOSED interval with no transfer succeeds with
+    `withdrawal_count = 0`, empty `total_amounts`, and no `provider_withdraw`
+    payout event for that lease. A positive partial or full transfer counts
+    once. A call that only skips unchanged leases still returns
+    `ErrNoWithdrawableAmount`.
 - **Mode 2 (Provider-wide):**
   - Processes up to `limit` active leases
+  - Processes each lease in its own cached context. A lease-level settlement or
+    store error is logged and skipped without failing successful leases in the
+    same call; the failed lease remains unchanged and can be retried explicitly.
+  - Returns every error-skipped lease in ordered `failed_lease_uuids`. Retain
+    this list before advancing the cursor: `next_key` resumes after the full
+    processed page, including failed leases.
   - Response includes `has_more` and an opaque `next_key` cursor if more leases remain
   - Pass the returned `next_key` back as `--key` on the next call and repeat until `has_more` is false. Calling again *without* `--key` restarts from the first lease and never advances past `limit`.
   - `--key` is only valid in provider-wide mode (setting it alongside lease UUIDs is rejected) and the decoded cursor may not exceed 64 bytes (`MaxWithdrawCursorLen`).
   - See [Provider-Wide Withdraw Workflow](#provider-wide-withdraw-workflow) below for example
-- Settles accrued amount since last settlement for each lease
-- Transfers aggregated amounts to provider's payout address
+- Calculates accrued amount since last settlement and settles at most each
+  lease's spendable credit `B - (R - A)`
+- Transfers the successful lease-spendable amounts, aggregated by denomination,
+  to the provider's payout address
+- Before a nonzero transfer, rejects a provider payout address blocked by the
+  bank module or equal to that tenant's derived credit address; Bech32 text
+  casing does not create a distinct account. Specific-lease batches fail
+  atomically, while provider-wide mode logs and skips affected leases, listing
+  them in `failed_lease_uuids`. Historical provider configurations must be
+  repaired through `MsgUpdateProvider` before retrying those leases.
 - May trigger auto-close if credit exhausted during withdrawal
-- Response includes withdrawal_count and total_amounts aggregated across all leases
-- Emits `batch_withdraw` event when multiple leases are processed
+- Response includes `withdrawal_count` and `total_amounts` aggregated across the
+  successful leases in this request (the current provider-wide page in mode 2),
+  plus ordered `failed_lease_uuids` in provider-wide mode
+- Emits `batch_withdraw` for a specific-UUID batch with more than one requested
+  lease, and for every provider-wide request (including zero successful leases)
+  - A successful specific-UUID batch that only finalizes unpaid CLOSED intervals
+    emits this summary with `lease_count = 0` and an empty amount. Successful
+    ACTIVE auto-closes retain their existing count and event behavior, including
+    when their transfer is zero.
 
 ##### Provider-Wide Withdraw Workflow
 
-When a provider has many active leases, use provider-wide mode with cursor pagination to withdraw from all. Each response returns an opaque `next_key`; pass it back as `--key` on the next call to advance. Calling again **without** `--key` restarts the scan from the first lease and never gets past `limit`. `next_key` is a `bytes` value, so it appears base64-encoded in the JSON output — pass that string verbatim to `--key` (it is not a raw UUID).
+When a provider has many active leases, use provider-wide mode with cursor pagination. Each **decoded module response** returns `has_more` and an opaque `next_key`. Pass that base64 cursor verbatim as `--key` on the next transaction. Omitting it restarts the scan. Retain every `failed_lease_uuids` entry for explicit retry after correcting the failure, including failures on the final page.
+
+`manifestd tx ... --broadcast-mode sync -o json` prints an SDK transaction admission response (`code`, `txhash`, `raw_log`), not `MsgWithdrawResponse`. Wait for block inclusion, check the execution code, then use [`withdraw-result`](#withdraw-result) to decode the committed response:
 
 ```bash
-# Step 1: Initial withdrawal (processes up to 100 leases), no cursor
-manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --limit 100 --from provider-key
+manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab \
+  --limit 100 --from provider-key --broadcast-mode sync -o json -y
 
-# Response example (MsgWithdrawResponse):
-# {
-#   "total_amounts": [{"denom": "upwr", "amount": "5000000"}],
-#   "payout_address": "manifest1payout...",
-#   "withdrawal_count": "100",
-#   "has_more": true,               <-- More leases remain
-#   "next_key": "MDE5MTIzNDU..."    <-- Opaque cursor for the next page
-# }
-
-# Step 2: Continue by passing next_key back as --key, until has_more is false
-manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --limit 100 --key MDE5MTIzNDU... --from provider-key
-
-# Response:
-# {
-#   "total_amounts": [{"denom": "upwr", "amount": "2500000"}],
-#   "payout_address": "manifest1payout...",
-#   "withdrawal_count": "50",
-#   "has_more": false               <-- All leases processed (next_key empty)
-# }
+# Use the returned txhash; query tx succeeds once the transaction is indexed.
+manifestd query tx "$TXHASH" -o json
+manifestd query billing withdraw-result "$TXHASH" -o json
+# The second query prints MsgWithdrawResponse, including has_more, next_key,
+# withdrawal_count, total_amounts, payout_address, and failed_lease_uuids.
 ```
 
-**Automation Script Example (bash):**
+**Resumable automation example (Bash + jq):**
+
+Use one worker per state directory and keep the same provider and configured chain/RPC when resuming. The script saves the sync response before polling, retains every decoded page as a receipt, and atomically checkpoints the cursor and accumulated failures before submitting the next page. A timeout, execution failure, or undecodable response stops the script with its pending transaction intact. Restarting resumes the lookup of that transaction. If broadcasting itself fails or leaves an incomplete response, resolve whether the transaction was submitted before removing `pending.json`; restarting must not blindly send a replacement.
+
+A committed transaction with a nonzero execution code will remain failed on every lookup. Inspect its `raw_log` and correct the cause, then archive `pending.json` together with `included.json` under that failed transaction's hash. Restart with `pending.json` absent to submit a **new transaction** at the unchanged checkpoint cursor. Do this only after confirming execution failure; a timeout or an ambiguous broadcast is not evidence that the transaction failed.
+
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 PROVIDER_UUID="01912345-6789-7abc-8def-0123456789ab"
-HAS_MORE=true
-KEY=""
+STATE_DIR="./withdraw-state-$PROVIDER_UUID"  # use a separate directory per chain/run
+mkdir -p "$STATE_DIR"
+CHECKPOINT="$STATE_DIR/checkpoint.json"
+PENDING="$STATE_DIR/pending.json"
+if [ ! -f "$CHECKPOINT" ]; then
+  jq -n --arg provider "$PROVIDER_UUID" \
+    '{provider_uuid: $provider, key: "", has_more: true, failed_lease_uuids: [], last_txhash: ""}' \
+    > "$CHECKPOINT"
+fi
+jq -e --arg provider "$PROVIDER_UUID" '.provider_uuid == $provider' "$CHECKPOINT" > /dev/null
 
-while [ "$HAS_MORE" = "true" ]; do
-  KEY_ARG=""
-  [ -n "$KEY" ] && KEY_ARG="--key $KEY"
-  RESULT=$(manifestd tx billing withdraw --provider $PROVIDER_UUID --limit 100 $KEY_ARG --from provider-key -o json -y)
-  HAS_MORE=$(echo $RESULT | jq -r '.has_more')
-  KEY=$(echo $RESULT | jq -r '.next_key // ""')   # pass this back as --key on the next call
-  echo "Withdrew from $(echo $RESULT | jq -r '.withdrawal_count') leases, has_more=$HAS_MORE"
+while [ "$(jq -r '.has_more' "$CHECKPOINT")" = true ]; do
+  if [ ! -f "$PENDING" ]; then
+    KEY=$(jq -r '.key' "$CHECKPOINT")
+    # Keep this file even on a broadcast error: submission may be ambiguous.
+    manifestd tx billing withdraw --provider "$PROVIDER_UUID" --limit 100 --key "$KEY" \
+      --from provider-key --broadcast-mode sync -o json -y > "$PENDING"
+  fi
+  jq -e '(.code | tonumber) == 0 and (.txhash | test("^[[:xdigit:]]{64}$"))' "$PENDING" > /dev/null
+  TXHASH=$(jq -r '.txhash' "$PENDING")
+  # A previous run may have checkpointed this page just before it stopped.
+  if [ "$(jq -r '.last_txhash' "$CHECKPOINT")" = "$TXHASH" ]; then
+    rm "$PENDING"
+    continue
+  fi
+
+  INCLUDED=false
+  for ((attempt = 0; attempt < 60; attempt++)); do
+    if manifestd query tx "$TXHASH" -o json > "$STATE_DIR/included.json" 2> "$STATE_DIR/query-error.txt"; then
+      INCLUDED=true
+      break
+    fi
+    sleep 2
+  done
+  if [ "$INCLUDED" != true ]; then
+    echo "Transaction $TXHASH not yet queryable; pending.json retained. Check RPC/indexing and resume." >&2
+    exit 1
+  fi
+  jq -e '(.code | tonumber) == 0 and (.height | tonumber) > 0' "$STATE_DIR/included.json" > /dev/null
+  manifestd query billing withdraw-result "$TXHASH" -o json > "$STATE_DIR/$TXHASH.json"
+  jq --arg hash "$TXHASH" --slurpfile page "$STATE_DIR/$TXHASH.json" '
+    .key = ($page[0].next_key // "") |
+    .has_more = $page[0].has_more |
+    .failed_lease_uuids = ((.failed_lease_uuids + ($page[0].failed_lease_uuids // [])) | unique) |
+    .last_txhash = $hash
+  ' "$CHECKPOINT" > "$CHECKPOINT.tmp"
+  mv "$CHECKPOINT.tmp" "$CHECKPOINT"
+  rm "$PENDING"
+  jq -r '"Withdrew from \(.withdrawal_count) leases; has_more=\(.has_more)"' "$STATE_DIR/$TXHASH.json"
 done
-echo "All withdrawals complete"
+jq -r '.failed_lease_uuids[] | "RETRY AFTER REPAIR: \(.)"' "$CHECKPOINT"
+echo "Pagination complete. Keep receipts and resolve every retained failure before starting a new run."
 ```
+
+After repairing the reported cause, retry each failed lease using specific-leases mode (`manifestd tx billing withdraw "$LEASE_UUID" --from provider-key`). Wait for inclusion and verify execution success for retries too. A completed checkpoint remains completed on restart; use a new state directory for the next scheduled withdrawal sweep.
 
 ---
 
@@ -409,7 +508,7 @@ manifestd tx billing set-item-custom-domain [lease-uuid] [service-name] [domain]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID of the lease that owns the target item |
+| lease-uuid | string | Canonical lowercase UUIDv7 of the lease that owns the target item |
 | service-name | string | `service_name` of the target item; pass `""` for a 1-item legacy lease |
 | domain | string | FQDN to set, or `""` to clear |
 
@@ -428,6 +527,7 @@ manifestd tx billing set-item-custom-domain 01902a9b-1234-7000-8000-000000000001
 **Constraints:**
 - Sender must be the lease tenant, the module authority, or an address in `params.allowed_list`.
 - Lease must be in `PENDING` or `ACTIVE` state. Closed/rejected/expired leases are immutable.
+- A nonempty claim on a PENDING lease must pass the current hard pending deadline, including an idempotent re-set. The exact deadline is allowed; later claims return `ErrLeaseAcknowledgementDeadlineExceeded`. Clearing a domain remains available after the deadline until the lease becomes terminal.
 - Multi-item legacy leases (no `service_name`s) cannot set `custom_domain` — recreate in service-name mode.
 - Domain must pass `IsValidFQDN`: 1–253 bytes, lowercase, ≥ 1 dot separator, each label is RFC 1123 (1–63 alphanumerics + hyphens, no leading/trailing hyphen), TLD has at least one non-digit, no scheme/path/whitespace/`@`/`*`/`?`/`#`/leading or trailing dot.
 - Domain must not match any entry in `params.reserved_domain_suffixes` (case-insensitive, label-boundary suffix check; entries also match their apex).
@@ -436,7 +536,7 @@ manifestd tx billing set-item-custom-domain 01902a9b-1234-7000-8000-000000000001
 **Notes:**
 - Emits `lease_custom_domain_set` (with `set_by` ∈ `{tenant, authority, allowed}`) on a successful set, or `lease_custom_domain_cleared` on clear. No event is emitted for an idempotent re-set or a clear of an already-empty domain.
 - The transaction requires lowercase `custom_domain` — `MsgSetItemCustomDomain.ValidateBasic()` rejects mixed case before the keeper runs. Lower-case any user-supplied input client-side. The keeper does its own `strings.ToLower(strings.TrimSpace(...))` as defence-in-depth on the storage path, but you can't rely on it as a normalisation point for input.
-- Closing, rejecting, expiring, or auto-closing the lease frees the index entry automatically.
+- Closing, rejecting, expiring, or auto-closing the lease frees the live index entry automatically. The historical `LeaseItem.custom_domain` value is retained on the terminal lease; use `lease-by-domain` to find the current claim.
 
 ---
 
@@ -453,19 +553,20 @@ manifestd tx billing update-params [max-leases-per-tenant] [max-items-per-lease]
 |----------|------|-------------|
 | max-leases-per-tenant | uint64 | Max active leases per tenant |
 | max-items-per-lease | uint64 | Max items per lease |
-| min-lease-duration | uint64 | Minimum lease duration in seconds |
+| min-lease-duration | uint64 | Seconds of credit reserved at lease creation; does not enforce a minimum elapsed runtime |
 | max-pending-leases-per-tenant | uint64 | Max pending leases per tenant |
 | pending-timeout | uint64 | Pending lease timeout in seconds |
 
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
-| --allowed-list | string | Comma-separated addresses with privileged authority for `create-lease-for-tenant` and `set-item-custom-domain`. **Preserve-on-omit**: omit the flag to round-trip the current on-chain value unchanged. Pass `--allowed-list=""` to explicitly clear. |
-| --reserved-domain-suffixes | string | Comma-separated DNS suffixes (each beginning with `.`) that tenants are forbidden from claiming via `set-item-custom-domain`. Same **preserve-on-omit** semantics as `--allowed-list`. |
+| --allowed-list | string | Comma-separated addresses with privileged authority for `create-lease-for-tenant` and `set-item-custom-domain`. Omit the flag to snapshot the on-chain value at construction time. Pass `--allowed-list=""` to explicitly clear. |
+| --reserved-domain-suffixes | string | Comma-separated DNS suffixes (each beginning with `.`) that tenants are forbidden from claiming via `set-item-custom-domain`. Same construction-time snapshot semantics as `--allowed-list`. |
+| --height | int64 | Height used when querying omitted lists (0 = latest). The CLI prints resolved lists to stderr. |
 
 **Examples:**
 ```bash
-# Update only numeric params; allowed_list and reserved_domain_suffixes are preserved unchanged.
+# Update only numeric params; snapshot allowed_list and reserved_domain_suffixes from the chain.
 manifestd tx billing update-params \
   100 20 3600 10 1800 \
   --from authority
@@ -477,18 +578,58 @@ manifestd tx billing update-params \
   --reserved-domain-suffixes ".barney0.manifest0.net,.lifted.app" \
   --from authority
 
-# Explicitly clear reserved_domain_suffixes (numeric-only updates would preserve it).
+# Explicitly clear reserved_domain_suffixes (numeric-only updates snapshot its current value).
 manifestd tx billing update-params \
   100 20 3600 10 1800 \
   --reserved-domain-suffixes="" \
   --from authority
 ```
 
-**Reserved-suffix validation:** each entry must begin with `.`, the substring after the dot must be a valid FQDN, and duplicates are rejected.
+This only snapshots lists at transaction construction. Governance execution
+replaces every parameter, so a delayed proposal can overwrite intervening
+changes. Recheck all fields before approval and rebuild stale proposals;
+`--height` does not add an execution-time conflict check.
+
+**Reserved-suffix validation:** each entry must begin with `.`, the substring after the dot must be a lowercase DNS zone (single-label zones such as `.internal` are valid), and duplicates are rejected.
 
 ---
 
 ### Query Commands
+
+**Query cursor contract:** Standard query `pagination.next_key` values are opaque
+`bytes`. JSON and CLI output encode them as base64; pass that string verbatim to
+`--page-key`. Do not decode it in the shell or treat it as a lease UUID.
+Programmatic gRPC clients pass the decoded bytes in `PageRequest.key`. The
+cursor identifies the first unread row, and the next scan resumes inclusively
+at that key. `--reverse` may be combined with a query cursor and resumes in the
+same direction. General billing list queries use the SDK default page size of
+100 and clamp oversized `limit` values to 1000. Cursor pages do work
+proportional to that bounded page size. Value-filtered cursor pages inspect at
+most 1000 physical index rows and can therefore be short or empty while still
+returning a non-empty `next_key`; continue until that cursor is empty.
+
+The five billing collection/index list queries support the standard SDK
+`--offset`, `--page`, and `--count-total` compatibility modes. Unfiltered
+compatibility requests may inspect at most 20,000 physical rows. Value-filtered
+requests retain the 1000-row ceiling in every mode; currently this applies to
+`LeasesBySKU --state`. A request that cannot return an exact page or total
+within its ceiling fails with gRPC `ResourceExhausted` rather than returning a
+partial result. Cursor pagination remains the efficient, unbounded-history
+path. An omitted or zero limit defaults to 100 without implicitly enabling
+`count_total`; request the total explicitly when needed. A request that combines
+a page key with a nonzero offset fails with gRPC `InvalidArgument`; as in the
+SDK, `count_total` is ignored when a page key is present. The `CreditAccount`
+and `ProviderWithdrawable` queries remain cursor-only because they respectively
+traverse bank balances and simulate the settlement lifecycle. Query cursors are
+not interchangeable with provider-wide `MsgWithdrawResponse.next_key`, whose
+separate contract is described below.
+
+The five UUID-taking billing query commands validate locally before constructing
+an RPC. `lease` and `withdrawable` report `invalid lease_uuid format: {uuid}`;
+`leases-by-provider` and `provider-withdrawable` report
+`invalid provider_uuid format: {uuid}`; and `leases-by-sku` reports
+`invalid sku_uuid format: {uuid}`. Each requires canonical lowercase UUIDv7
+input.
 
 #### params
 
@@ -528,7 +669,7 @@ manifestd query billing lease [lease-uuid]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID of the lease |
+| lease-uuid | string | Canonical lowercase UUIDv7 of the lease |
 
 **Response:**
 ```json
@@ -557,7 +698,12 @@ manifestd query billing lease [lease-uuid]
     "rejection_reason": "",
     "closure_reason": "",
     "meta_hash": "a1b2c3d4...",
-    "min_lease_duration_at_creation": "3600"
+    "min_lease_duration_at_creation": "3600",
+    "reservation": {
+      "remaining_amounts": [
+        {"denom": "upwr", "amount": "340000"}
+      ]
+    }
   }
 }
 ```
@@ -565,13 +711,14 @@ manifestd query billing lease [lease-uuid]
 **Notes:**
 - `locked_price` is a Coin with denom and amount, representing the per-second rate
 - `acknowledged_at` is set when provider acknowledges (ACTIVE state)
-- `closed_at` is set when lease is closed (CLOSED state)
+- `closed_at` is set when lease is closed (CLOSED state), and must be no earlier than `created_at` or `last_settled_at`
 - `rejected_at` is set when provider rejects or tenant cancels (REJECTED state)
 - `expired_at` is set when pending lease times out (EXPIRED state)
-- `rejection_reason` contains the provider's reason for rejection (max 256 chars)
-- `closure_reason` contains the reason for closure (max 256 chars)
+- `rejection_reason` contains the provider's reason for rejection (max 256 UTF-8 bytes)
+- `closure_reason` contains the reason for closure (max 256 UTF-8 bytes)
 - `meta_hash` contains the optional hash/reference to off-chain deployment data (max 64 bytes, immutable)
 - `min_lease_duration_at_creation` stores the `min_lease_duration` parameter value at creation time for consistent reservation calculation
+- `reservation.remaining_amounts` is this modern lease's consumable remaining guarantee. It decreases as settlement consumes the tranche and is empty after release. Historical leases use an initialized empty reservation and share the account's `unattributed_reserved_amounts` instead.
 
 ---
 
@@ -588,7 +735,7 @@ manifestd query billing leases [flags]
 |------|------|-------------|
 | --state | string | Filter by state (pending, active, closed, rejected, expired) |
 | --limit | uint64 | Pagination limit |
-| --page-key | string | Pagination key |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
 
 **Example:**
 ```bash
@@ -614,6 +761,8 @@ manifestd query billing leases-by-tenant [tenant] [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | --state | string | Filter by state (pending, active, closed, rejected, expired) |
+| --limit | uint64 | Pagination limit |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
 
 ---
 
@@ -628,12 +777,14 @@ manifestd query billing leases-by-provider [provider-uuid] [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-uuid | string | UUID of the provider |
+| provider-uuid | string | Canonical lowercase UUIDv7 of the provider |
 
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
 | --state | string | Filter by state (pending, active, closed, rejected, expired) |
+| --limit | uint64 | Pagination limit |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
 
 ---
 
@@ -650,6 +801,15 @@ manifestd query billing credit-account [tenant]
 |----------|------|-------------|
 | tenant | string | Bech32 address of the tenant |
 
+**Flags:** cursor pagination over bank balances (`--page-key`, `--limit`,
+`--reverse`). The default limit is 100 and the maximum is 1000. `--offset` and
+`--count-total` are rejected so bank-store iteration remains page-bounded. Pass
+the prior response's base64 `pagination.next_key` verbatim to `--page-key`.
+Reverse pages follow `x/bank` and return `balances` and `available_balances` in
+descending denomination order. Go callers must call `Sort()` before using
+`sdk.Coins` operations that require canonical ascending order (including
+`AmountOf`, `Add`, and `Validate`).
+
 **Response:**
 ```json
 {
@@ -663,7 +823,9 @@ manifestd query billing credit-account [tenant]
         "denom": "upwr",
         "amount": "360000"
       }
-    ]
+    ],
+    "unattributed_reserved_amounts": [],
+    "unattributed_lease_count": "0"
   },
   "balances": [
     {
@@ -684,14 +846,28 @@ manifestd query billing credit-account [tenant]
       "denom": "umfx",
       "amount": "500000000"
     }
-  ]
+  ],
+  "pagination": {
+    "next_key": null,
+    "total": "0"
+  }
 }
 ```
 
 **Response Fields:**
-- `credit_account.reserved_amounts`: Credit reserved by active and pending leases. Each lease reserves `rate_per_second × min_lease_duration` per denom.
-- `balances`: Total credit balance at the credit address (from bank module).
-- `available_balances`: Credit available for new leases (`balances - reserved_amounts`). New leases can only be created if this covers the required reservation.
+- `credit_account.reserved_amounts`: Exact aggregate of every live modern lease's `reservation.remaining_amounts` plus `unattributed_reserved_amounts`. New leases start with `rate_per_second × min_lease_duration`, but settlement consumes that tranche, so this is not a fixed nominal sum.
+- `credit_account.unattributed_reserved_amounts`: Subset of `reserved_amounts` allocated to the live historical cohort whose individual reservations cannot be reconstructed. It is normally empty on newly created state.
+- `credit_account.unattributed_lease_count`: Exact number of live historical leases sharing that cohort, including when its remaining amount is zero. Terminal transitions decrement it in O(1) and release the exact remaining `unattributed_reserved_amounts` when it reaches zero.
+- `balances`: One ordered page of spendable bank balances at the credit address. Vesting locked coins are excluded. Fully locked denominations are omitted; follow `pagination.next_key` until empty even when the coin arrays are empty.
+- `available_balances`: Credit available for new leases (`balances - reserved_amounts`) for the same denom page. New leases can only be created if the full account covers the required reservation.
+- `pagination`: The SDK bank-balance cursor. Offset and total-count scans are intentionally unsupported.
+
+The embedded `credit_account` record is returned whole. New lease creation may
+increase reservation-denom cardinality only when the resulting set contains at
+most 1,000 denominations. Historical v2 accounts already above that limit
+remain readable and releasable; a new lease may use denoms already present but
+cannot introduce another denom until the account falls below the cap. Their
+one-time account decode can therefore be larger than a balance page.
 
 ---
 
@@ -719,7 +895,8 @@ manifestd query billing credit-address [tenant]
 
 #### withdrawable
 
-Query withdrawable amount for a lease. **This query calculates real-time accrued amounts.**
+Query the amount one lease could transfer now. **This query calculates current
+accrual and applies the lease's reservation-safe spend cap.**
 
 ```bash
 manifestd query billing withdrawable [lease-uuid]
@@ -728,7 +905,7 @@ manifestd query billing withdrawable [lease-uuid]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| lease-uuid | string | UUID of the lease |
+| lease-uuid | string | Canonical lowercase UUIDv7 of the lease |
 
 **Response:**
 ```json
@@ -742,27 +919,60 @@ manifestd query billing withdrawable [lease-uuid]
 }
 ```
 
-**Note:** This calculates the real-time withdrawable amount based on time elapsed since `last_settled_at`. It is a read-only query and does NOT trigger actual settlement (no token transfer occurs). Only ACTIVE leases accrue charges.
+**Note:** For each denomination, the result is
+`min(accrued_since_last_settlement, B - (R - A))`, where `B` is the tenant's
+credit balance, `R` is its aggregate reservation, and `A` is this lease's
+remaining tranche (or the explicit historical cohort allocation). The cap
+protects every other lease's reservation. The query is read-only and does NOT
+trigger actual settlement or a token transfer. Only ACTIVE leases accrue new
+charges.
+
+---
+
+#### withdraw-result
+
+Decode the `MsgWithdrawResponse` of a successful committed transaction. This is a local CLI decoder over the CometBFT transaction query; it adds no module gRPC or REST endpoint.
+
+```bash
+manifestd query billing withdraw-result [tx-hash] [flags]
+```
+
+| Argument / flag | Default | Description |
+|-----------------|---------|-------------|
+| `tx-hash` | required | 64-character hexadecimal transaction hash |
+| `--msg-index` | `0` | Zero-based top-level message response index in a multi-message transaction |
+
+The command fails if the transaction is not indexed, has not committed, has a nonzero execution code, or the selected response is missing, malformed, or belongs to another message type. It does not broadcast or poll. Successful JSON output contains the decoded module fields, with `next_key` base64-encoded. Nested authz/group responses require decoding their respective wrappers and are not selected by `--msg-index`.
+
+See the [provider withdrawal workflow](#provider-wide-withdraw-workflow) for inclusion polling, checkpointing, and failed-lease retries.
 
 ---
 
 #### provider-withdrawable
 
-Query withdrawable amounts for a provider across the provider's ACTIVE leases, one page at a time. **This query calculates real-time accrued amounts.**
+Dry-run a withdrawal of one ordered page of the provider's ACTIVE leases.
+**This query calculates a page-local execution estimate against shared tenant
+balances and reservations.**
 
 ```bash
 manifestd query billing provider-withdrawable [provider-uuid]
 
-# With custom limit (default: 100, max: 1000)
-manifestd query billing provider-withdrawable [provider-uuid] --limit 500
+# Forward page comparable to one provider-wide MsgWithdraw (transaction max: 100)
+manifestd query billing provider-withdrawable [provider-uuid] --limit 100
 ```
 
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| provider-uuid | string | UUID of the provider |
+| provider-uuid | string | Canonical lowercase UUIDv7 of the provider |
 
-**Flags:** standard pagination flags (`--page-key`, `--limit`, `--offset`, `--count-total`, `--reverse`). Page size defaults to 100, capped at 1000. Iterates the provider's active leases.
+**Flags:** cursor pagination (`--page-key`, `--limit`) plus `--reverse`. Pass the
+prior query response's base64 `pagination.next_key` verbatim to `--page-key`.
+Page size defaults to 50 and is capped at 100. Non-zero `--offset` and
+`--count-total` are rejected so query work remains page-bounded. The query
+iterates the provider's active leases. Reverse pages are useful for read-only
+inspection, but no provider-wide `MsgWithdraw` call mirrors them; the
+transaction is forward-only and capped at 100 leases.
 
 **Response:**
 ```json
@@ -774,6 +984,7 @@ manifestd query billing provider-withdrawable [provider-uuid] --limit 500
     }
   ],
   "lease_count": "10",
+  "failed_lease_uuids": [],
   "pagination": {
     "next_key": null,
     "total": "0"
@@ -781,9 +992,34 @@ manifestd query billing provider-withdrawable [provider-uuid] --limit 500
 }
 ```
 
-When `pagination.next_key` is non-empty, `amounts` is a partial total: re-query passing it as `--page-key` and sum the per-page `amounts` until `next_key` is empty. This is the read-only complement to provider-wide `MsgWithdraw`.
+Leases are evaluated in the returned index order. Within the page, earlier
+leases consume a virtual copy of their tenant's balance and their own
+reservation tranche before later leases are estimated, so shared unreserved
+credit is counted only once. Each lease is simulated in its own nested cache,
+matching provider-wide withdrawal's best-effort behavior: a lease-level failure
+is discarded, skipped, and listed in ordered `failed_lease_uuids`, while
+successful virtual effects are visible to later leases in the page. The outer
+query cache is never committed to chain state.
+`lease_count` matches the comparable provider-wide transaction's
+`withdrawal_count`: it includes successful zero-transfer auto-closes, but not
+failed simulations or ordinary zero-accrual leases. At identical state and
+block time, `failed_lease_uuids` also matches that transaction's failure list.
 
-**Note:** This calculates the real-time total withdrawable amount across all active leases for the provider. It is a read-only query and does NOT trigger actual settlement. For providers with many leases, paginate as shown above (thread `pagination.next_key` via `--page-key`) to process in batches.
+**Do not sum independently queried pages.** Each page begins from current chain
+state, so pages that contain leases for the same tenant can count the same
+balance. Every forward query page is comparable to one provider-wide withdrawal
+over the same current segment because the query limit is capped at the
+transaction maximum of 100. Submit the transaction and wait for it to commit.
+Query the next segment with the prior query response's `pagination.next_key`;
+withdraw the next segment with the prior transaction response's `next_key`.
+
+Query and transaction cursors are different contracts: the query's
+`pagination.next_key` identifies its first unread index entry, while
+`MsgWithdrawResponse.next_key` identifies the last processed lease and resumes
+strictly after it. Never pass a query cursor as `MsgWithdraw.key` (or vice
+versa). Reverse query pages are estimates only, not one-transaction previews;
+offset and count-total requests are rejected. The query itself is read-only and
+transfers no tokens.
 
 ---
 
@@ -799,11 +1035,12 @@ manifestd query billing credit-accounts [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | --limit | uint64 | Pagination limit |
-| --page-key | string | Pagination key |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
+| --count-total | bool | Return the exact total when it can be computed within the applicable scan ceiling |
 
 **Example:**
 ```bash
-manifestd query billing credit-accounts --limit 10
+manifestd query billing credit-accounts --limit 10 --count-total
 ```
 
 **Response:**
@@ -839,18 +1076,19 @@ manifestd query billing leases-by-sku [sku-uuid] [flags]
 **Arguments:**
 | Argument | Type | Description |
 |----------|------|-------------|
-| sku-uuid | string | UUID of the SKU |
+| sku-uuid | string | Canonical lowercase UUIDv7 of the SKU |
 
 **Flags:**
 | Flag | Type | Description |
 |------|------|-------------|
 | --state | string | Filter by state (pending, active, closed, rejected, expired) |
 | --limit | uint64 | Pagination limit |
-| --page-key | string | Pagination key |
+| --page-key | string | Base64 `pagination.next_key` from the previous response |
+| --count-total | bool | Return the exact total when it can be computed within the applicable scan ceiling |
 
 **Example:**
 ```bash
-manifestd query billing leases-by-sku 01912345-6789-7abc-8def-0123456789ab --state active
+manifestd query billing leases-by-sku 01912345-6789-7abc-8def-0123456789ab --state active --count-total
 ```
 
 **Response:**
@@ -879,7 +1117,8 @@ manifestd query billing leases-by-sku 01912345-6789-7abc-8def-0123456789ab --sta
 
 #### credit-estimate
 
-Estimate how long a tenant's credit balance will last based on current active leases.
+Report the tenant's gross bank-balance runway at the aggregate current ACTIVE
+lease rate. This is a coarse funding metric, not an auto-close forecast.
 
 ```bash
 manifestd query billing credit-estimate [tenant]
@@ -918,19 +1157,22 @@ manifestd query billing credit-estimate manifest1abc...
 **Fields:**
 | Field | Description |
 |-------|-------------|
-| `current_balance` | Tenant's current credit balance (all denominations) |
+| `current_balance` | Tenant's current credit balance for denominations used by active leases |
 | `total_rate_per_second` | Combined burn rate of all active leases (per denom) |
-| `estimated_duration_seconds` | Seconds until credit exhaustion (minimum across all denoms) |
+| `estimated_duration_seconds` | Gross `min(spendable bank balance / active rate)` runway across active denoms |
 | `active_lease_count` | Number of currently active leases |
 
 **Notes:**
-- The estimate is calculated in real-time based on current balances and active lease rates
+- The estimate is calculated in real-time from spendable bank balances and active lease rates
 - If no active leases exist, `estimated_duration_seconds` will be `0` and `total_rate_per_second` will be empty
 - With multi-denom support, the estimate returns the minimum duration across all denominations (the limiting factor)
+- A quotient at or above `18,446,744,073,709,551,615` seconds is saturated to that maximum `uint64` value; it is not reported as zero
 
 **Limitations:**
-- **Bounded lease iteration**: The active-lease iteration is bounded by `max_leases_per_tenant + max_pending_leases_per_tenant` — a safe upper bound on the reachable active-lease count, clamped to the params' upper bounds (10,000 / 1,000) as a hard DoS ceiling. This covers every legitimately-reachable state, so `total_rate_per_second` and `active_lease_count` reflect all of a tenant's active leases and are not truncated at a fixed 100.
-- **Does not account for pending withdrawals**: The estimate uses current balance, not accounting for any unsettled accrued amounts from existing leases.
+- **Bounded work**: Active iteration uses the credit account's stored `active_lease_count`, not the current governance limit, so parameter reductions remain represented. `CreditEstimate` enforces the conservative ceiling of 11,000 ACTIVE leases (the exact v2 reachable maximum is 10,999) and 100,000 decoded lease items. Either work-bound violation returns `ErrLeaseQueryLimitExceeded` as gRPC `ResourceExhausted` instead of truncating the result. If an index contains more or fewer entries than its stored count, the query returns gRPC `Internal` with `ErrReservationInvariant`; it never returns a partial estimate. `CreditAccount` is independently cursor-paginated over bank balances and does not scan leases.
+- **Not reservation-aware**: The quotient does not subtract PENDING or other-lease reservations. Those funds can be unavailable to a particular ACTIVE lease under the isolation invariant.
+- **Does not account for pending withdrawals**: The estimate does not subtract unsettled accrued amounts from existing leases.
+- **Not an auto-close prediction**: Per-lease tranche ownership, settlement timing, and rate changes can make lifecycle transitions happen earlier or later than the gross quotient.
 - **Assumes constant rate**: The estimate assumes all current leases continue at their current rates. Actual duration may differ if leases are closed or new leases are created.
 
 ---
@@ -976,6 +1218,10 @@ manifestd query billing lease-by-domain app.example.com
 
 ## gRPC API
 
+The generated embedded descriptors omit protobuf `SourceCodeInfo`, so runtime
+reflection exposes the schema but not source comments. Use this API reference
+for the documented validation and error semantics.
+
 ### Msg Service
 
 The Msg service handles all state-changing operations.
@@ -1000,6 +1246,12 @@ service Msg {
 
 Fund a tenant's credit account.
 
+The funded denomination must be send-enabled under the bank module's current
+policy, including its default when no denomination-specific setting exists.
+Rejection leaves bank balances and billing state unchanged. This check applies
+to new deposits; existing lease settlement does not check denomination
+send-enabled status.
+
 **Request:**
 ```protobuf
 message MsgFundCredit {
@@ -1017,13 +1269,19 @@ message MsgFundCreditResponse {
 }
 ```
 
-> **Note:** `new_balance` returns only the balance for the funded denomination, not all denominations in the credit account. To query all balances, use the `CreditAccount` query which includes full balance information.
+> **Note:** `new_balance` returns only the funded denomination. Use the
+> cursor-paginated `CreditAccount` query and follow `pagination.next_key` to
+> read every denomination held by the credit account.
 
 ---
 
 #### MsgCreateLease
 
 Create a lease for the sender (tenant). Lease starts in PENDING state.
+
+The provider must be active. Its payout must be permitted by bank policy and
+distinct from the tenant's derived credit address; these checks precede credit
+reservation and lease UUID allocation.
 
 **Request:**
 ```protobuf
@@ -1034,7 +1292,7 @@ message MsgCreateLease {
 }
 
 message LeaseItemInput {
-  string sku_uuid = 1;      // UUIDv7 of SKU
+  string sku_uuid = 1;      // Canonical lowercase SKU UUIDv7
   uint64 quantity = 2;
   string service_name = 3;  // Optional RFC 1123 DNS label for stack deployments
 }
@@ -1052,6 +1310,9 @@ message MsgCreateLeaseResponse {
 #### MsgCreateLeaseForTenant
 
 Create a lease on behalf of a tenant (authority/allowed only). Lease starts in PENDING state.
+
+The same provider and payout eligibility checks as `MsgCreateLease` apply to
+the target tenant.
 
 **Request:**
 ```protobuf
@@ -1075,13 +1336,16 @@ message MsgCreateLeaseForTenantResponse {
 #### MsgAcknowledgeLease
 
 Provider acknowledges one or more PENDING leases atomically, transitioning them to ACTIVE.
-All leases must belong to the same provider and be in PENDING state.
+All leases must belong to the same provider, be in PENDING state, be no later than their hard
+pending deadline, and fit within each tenant's post-batch active cap. The current
+provider payout must be permitted by bank policy and distinct from every
+tenant's derived credit address in the batch.
 
 **Request:**
 ```protobuf
 message MsgAcknowledgeLease {
   string sender = 1;               // Provider or authority
-  repeated string lease_uuids = 2; // Leases to acknowledge (1-100)
+  repeated string lease_uuids = 2; // Canonical lowercase lease UUIDv7 values (1-100)
 }
 ```
 
@@ -1096,8 +1360,15 @@ message MsgAcknowledgeLeaseResponse {
 **Constraints:**
 - All leases must belong to the same provider
 - All leases must be in PENDING state
+- Block time must be ≤ `created_at + current pending_timeout` for every lease; strictly later acknowledgements fail even if EndBlock has not yet expired the lease
+- Each tenant's active count after the entire batch must be ≤ `max_leases_per_tenant`
+- The current provider payout must be permitted by bank policy and must not
+  equal any batch tenant's derived credit address; payout updates after lease
+  creation are checked again here
 - Maximum 100 leases per call
-- Atomic: all succeed or all fail
+- Atomic: all activation gates pass before any state, aggregate, timestamp, reservation, or event changes
+- Pending leases with an ineligible payout remain cancellable/rejectable
+  without a transfer; repair the payout before retrying acknowledgement
 
 **CLI:**
 ```bash
@@ -1114,8 +1385,8 @@ Provider rejects one or more PENDING leases atomically.
 ```protobuf
 message MsgRejectLease {
   string sender = 1;               // Provider or authority
-  repeated string lease_uuids = 2; // Leases to reject (1-100)
-  string reason = 3;               // Optional reason (max 256 chars, applied to all)
+  repeated string lease_uuids = 2; // Canonical lowercase lease UUIDv7 values (1-100)
+  string reason = 3;               // Optional reason (max 256 UTF-8 bytes, applied to all)
 }
 ```
 
@@ -1143,7 +1414,7 @@ Tenant cancels one or more of their own PENDING leases atomically.
 ```protobuf
 message MsgCancelLease {
   string tenant = 1;               // Tenant (must own all leases)
-  repeated string lease_uuids = 2; // Leases to cancel (1-100)
+  repeated string lease_uuids = 2; // Canonical lowercase lease UUIDv7 values (1-100)
 }
 ```
 
@@ -1171,8 +1442,8 @@ Close one or more ACTIVE leases atomically.
 ```protobuf
 message MsgCloseLease {
   string sender = 1;               // Sender (tenant, provider, or authority)
-  repeated string lease_uuids = 2; // Leases to close (1-100)
-  string reason = 3;               // Optional closure reason (max 256 chars, applied to all)
+  repeated string lease_uuids = 2; // Canonical lowercase lease UUIDv7 values (1-100)
+  string reason = 3;               // Optional closure reason (max 256 UTF-8 bytes, applied to all)
 }
 ```
 
@@ -1204,8 +1475,8 @@ Withdraw from leases. Supports two mutually exclusive modes:
 ```protobuf
 message MsgWithdraw {
   string sender = 1;               // Provider or authority
-  repeated string lease_uuids = 2; // Mode 1: specific lease UUIDs (1-100)
-  string provider_uuid = 3;        // Mode 2: provider UUID for provider-wide withdrawal
+  repeated string lease_uuids = 2; // Mode 1: canonical lowercase lease UUIDv7 values (1-100)
+  string provider_uuid = 3;        // Mode 2: canonical lowercase provider UUIDv7
   uint64 limit = 4;                // Max leases in provider mode (default 50, max 100)
   bytes key = 5;                   // Mode 2: opaque cursor from the previous response's next_key; base64 in JSON. Must be empty in mode 1.
 }
@@ -1218,11 +1489,15 @@ message MsgWithdraw {
 message MsgWithdrawResponse {
   repeated cosmos.base.v1beta1.Coin total_amounts = 1;  // Total withdrawn per denom
   string payout_address = 2;        // Destination address
-  uint64 withdrawal_count = 3;      // Number of leases processed
+  uint64 withdrawal_count = 3;      // Successful leases, including zero-transfer auto-closes
   bool has_more = 4;                // More leases remain (only true in provider-wide mode)
   bytes next_key = 5;               // Opaque cursor; pass as MsgWithdraw.key for the next page. Non-empty iff has_more is true; always empty in lease_uuids mode.
+  repeated string failed_lease_uuids = 6; // Ordered provider-wide failures; empty in atomic specific-lease mode.
 }
 ```
+
+`failed_lease_uuids` is an additive response-only wire field. It is not stored
+and requires no billing store or consensus-version migration.
 
 ---
 
@@ -1255,7 +1530,7 @@ Set or clear `custom_domain` on a specific lease item identified by `service_nam
 ```protobuf
 message MsgSetItemCustomDomain {
   string sender = 1;        // Tenant, authority, or allowed_list member
-  string lease_uuid = 2;    // Target lease (must be PENDING or ACTIVE)
+  string lease_uuid = 2;    // Canonical lowercase UUIDv7 of target PENDING/ACTIVE lease
   string service_name = 3;  // Item addressing key; "" for a 1-item legacy lease
   string custom_domain = 4; // FQDN to set, or "" to clear
 }
@@ -1268,6 +1543,7 @@ message MsgSetItemCustomDomainResponse {}
 
 **Behaviour notes:**
 - Lease state must be `PENDING` or `ACTIVE` (`ErrLeaseNotEditable` otherwise).
+- Nonempty PENDING claims, including idempotent re-sets, fail with `ErrLeaseAcknowledgementDeadlineExceeded` after the current hard pending deadline. Equality is allowed. Empty clears remain available while the lease is PENDING.
 - Multi-item legacy leases (no `service_name`s) cannot use `custom_domain` (`ErrAmbiguousLeaseItem`).
 - Empty `custom_domain` clears the field and removes the `CustomDomainIndex` entry.
 - `custom_domain` is normalised on write (`strings.ToLower` + `TrimSpace`).
@@ -1306,7 +1582,22 @@ service Query {
 }
 ```
 
-**Important Note:** Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement or auto-close. However, `WithdrawableAmount` and `ProviderWithdrawable` queries calculate real-time accrued amounts based on elapsed time. Settlement (actual token transfer) only happens during write operations (Withdraw, CloseLease). Only ACTIVE leases accrue charges.
+`LeasesByProvider.provider_uuid` and `LeasesBySKU.sku_uuid` must be non-empty
+canonical lowercase UUIDv7 values. Empty fields fail with gRPC
+`InvalidArgument` and `<field> cannot be empty`. Non-empty malformed, uppercase,
+or non-v7 values fail with `InvalidArgument` and
+`<field> must be a valid UUIDv7`. An unknown canonical lowercase UUIDv7 is
+valid input and returns an empty page.
+
+By contrast, `Lease.lease_uuid`, `WithdrawableAmount.lease_uuid`, and
+`ProviderWithdrawable.provider_uuid` preserve direct-lookup behavior. They
+reject an empty field with `InvalidArgument`, then look up every non-empty key
+as supplied. A malformed, uppercase, non-v7, or unknown canonical value
+therefore returns gRPC `NotFound` rather than a UUID-format error. `NotFound`
+is reserved for an absent primary resource; unexpected primary-store or
+value-decoding failures return `Internal` so state corruption remains visible.
+
+**Important Note:** Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement or auto-close. `WithdrawableAmount` calculates the current amount for one lease. `ProviderWithdrawable` dry-runs the current ordered page against page-local virtual tenant state and reports skipped failed simulations in `failed_lease_uuids`, just as provider-wide withdrawal does. Its pages are not additive. Every forward page has a one-transaction analogue because the query limit is capped at the transaction maximum of 100. After commit, advance the query with its prior first-unread cursor and the transaction with its prior last-processed cursor; never interchange them. Settlement (actual token transfer) only happens during write operations (`Withdraw`, `CloseLease`). Only ACTIVE leases accrue charges.
 
 #### QueryParams
 
@@ -1373,7 +1664,7 @@ message QueryLeasesResponse {
 
 #### QueryCreditAccount
 
-Get a tenant's credit account with balance.
+Get a tenant's credit-account metadata plus one bounded bank-balance page.
 
 **Endpoint:** `liftedinit.billing.v1.Query/CreditAccount`
 
@@ -1381,6 +1672,7 @@ Get a tenant's credit account with balance.
 ```protobuf
 message QueryCreditAccountRequest {
   string tenant = 1;
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
 }
 ```
 
@@ -1388,10 +1680,16 @@ message QueryCreditAccountRequest {
 ```protobuf
 message QueryCreditAccountResponse {
   CreditAccount credit_account = 1;
-  repeated cosmos.base.v1beta1.Coin balances = 2;  // All token balances at credit address
-  repeated cosmos.base.v1beta1.Coin available_balances = 3;  // Available for new leases (balances - reserved_amounts)
+  repeated cosmos.base.v1beta1.Coin balances = 2;  // Current bank-balance page
+  repeated cosmos.base.v1beta1.Coin available_balances = 3;  // Same page minus reserved_amounts
+  cosmos.base.query.v1beta1.PageResponse pagination = 4;
 }
 ```
+
+Reverse pages follow `x/bank` and return both coin lists in descending
+denomination order. Go callers must call `Sort()` before using `sdk.Coins`
+operations that require canonical ascending order (including `AmountOf`, `Add`,
+and `Validate`).
 
 ---
 
@@ -1470,8 +1768,24 @@ http://localhost:1317/liftedinit/billing/v1
 | GET | `/credit/{tenant}/estimate` | Estimate credit duration |
 | GET | `/credit-address/{tenant}` | Derive credit address |
 | GET | `/lease/{lease_uuid}/withdrawable` | Get withdrawable amount |
-| GET | `/provider/{provider_uuid}/withdrawable` | Get provider total withdrawable |
+| GET | `/provider/{provider_uuid}/withdrawable` | Best-effort estimate for the current ordered page; every forward page mirrors one provider transaction because the query limit is capped at 100, after which clients re-query rather than summing pages |
 | GET | `/lease/by-domain/{custom_domain}` | Look up lease by custom domain (v2.1.0+) |
+
+The `/leases/provider/{provider_uuid}` and `/leases/sku/{sku_uuid}` routes apply
+the same canonical lowercase UUIDv7 validation as their gRPC methods. A
+non-empty malformed, uppercase, or non-v7 path value maps to HTTP 400 / gRPC
+`InvalidArgument`; an unknown canonical value returns an empty page. A missing
+path component does not match these routes; a trailing empty component does
+match and maps the handler's `<field> cannot be empty` response to HTTP 400.
+
+The direct-lookup routes `/lease/{lease_uuid}`,
+`/lease/{lease_uuid}/withdrawable`, and
+`/provider/{provider_uuid}/withdrawable` map any non-empty key that does not
+exist—including malformed, uppercase, or non-v7 text—to HTTP 404 / gRPC
+`NotFound`. `/lease/` reaches the lease handler with an empty value and returns
+HTTP 400; an omitted UUID in either withdrawable route shape does not reach its
+handler. An unexpected primary-store or decoding failure maps to HTTP 500 /
+gRPC `Internal`.
 
 ### Examples
 
@@ -1518,19 +1832,27 @@ message Lease {
   google.protobuf.Timestamp last_settled_at = 8;
   google.protobuf.Timestamp acknowledged_at = 9;
   google.protobuf.Timestamp rejected_at = 10;
-  string rejection_reason = 11;       // Provider's rejection reason (max 256 chars)
+  string rejection_reason = 11;       // Provider's rejection reason (max 256 UTF-8 bytes)
   google.protobuf.Timestamp expired_at = 12;
-  string closure_reason = 13;         // Closure reason (max 256 chars)
+  string closure_reason = 13;         // Closure reason (max 256 UTF-8 bytes)
   bytes meta_hash = 14;               // Hash/reference to off-chain deployment data (max 64 bytes, immutable)
   uint64 min_lease_duration_at_creation = 15; // Snapshot of min_lease_duration param at creation
+  LeaseReservation reservation = 16;  // Remaining guarantee; presence distinguishes pre-v4 (v2/v3) exports
 }
 ```
 
 **Field Notes:**
-- `rejection_reason`: Set when a provider rejects a PENDING lease via `MsgRejectLease`. Contains the provider's explanation for rejecting the lease (e.g., "resources unavailable", "invalid configuration"). Maximum 256 characters. Only present when `state` is `LEASE_STATE_REJECTED`.
-- `closure_reason`: Set when a lease is closed via `MsgCloseLease` with a reason, or automatically set to `"credit exhausted"` when a lease is auto-closed due to insufficient credit during settlement. Maximum 256 characters. Only present when `state` is `LEASE_STATE_CLOSED`.
+- `rejection_reason`: Set when a provider rejects a PENDING lease via `MsgRejectLease`. Contains the provider's explanation for rejecting the lease (e.g., "resources unavailable", "invalid configuration"). Maximum 256 UTF-8 bytes. Only present when `state` is `LEASE_STATE_REJECTED`.
+- `closure_reason`: Set when a lease is closed via `MsgCloseLease` with a reason, or automatically set to `"credit exhausted"` when a lease is auto-closed due to insufficient credit during settlement. Maximum 256 UTF-8 bytes. Only present when `state` is `LEASE_STATE_CLOSED`.
 - `meta_hash`: Optional immutable hash or reference linking to off-chain deployment data (e.g., deployment manifest hash, configuration reference). Set at lease creation and cannot be modified afterward. Maximum 64 bytes to accommodate SHA-256 or SHA-512 hashes.
 - `min_lease_duration_at_creation`: Snapshot of the `min_lease_duration` parameter at the time this lease was created. Used to calculate consistent credit reservations (`reservation = sum(locked_price × quantity) × min_lease_duration_at_creation`) regardless of subsequent governance changes to the parameter. This ensures existing reservations remain valid when parameters are updated.
+- `reservation`: Nullable only as a pre-v4 (v2/v3) genesis-format marker. Persisted v4 leases always initialize it. A modern live lease stores its remaining tranche; terminal and historical leases store an empty tranche.
+
+```protobuf
+message LeaseReservation {
+  repeated Coin remaining_amounts = 1;
+}
+```
 
 ### LeaseItem
 
@@ -1545,7 +1867,7 @@ message LeaseItem {
 ```
 
 **Field notes:**
-- `custom_domain`: Optional fully-qualified domain name routed to this item's container by the provider. Set or cleared via `MsgSetItemCustomDomain` (not via lease creation). Validated by `IsValidFQDN` (≤253 bytes, lowercase, ≥1 dot, RFC 1123 labels, non-numeric TLD) and rejected if it matches any `params.reserved_domain_suffixes` entry. Globally unique across PENDING/ACTIVE leases — enforced by the `CustomDomainIndex` reverse-lookup. Cleared automatically when the lease closes/rejects/expires.
+- `custom_domain`: Optional fully-qualified domain name routed to this item's container by the provider after off-chain verification. Set or cleared via `MsgSetItemCustomDomain` (not via lease creation). Validated by `IsValidFQDN` (≤253 bytes, lowercase, ≥1 dot, RFC 1123 labels, non-numeric TLD) and rejected if it matches any `params.reserved_domain_suffixes` entry. Globally unique across PENDING/ACTIVE leases — enforced by the `CustomDomainIndex` reverse-lookup. Closing, rejecting, expiring, or auto-closing the lease releases the live index entry while retaining this field as history. A terminal lease's stored value does not reserve the domain; use `lease-by-domain` and the returned lease state to determine the current claim.
 
 ### CustomDomainTarget
 
@@ -1579,12 +1901,17 @@ message CreditAccount {
   string credit_address = 2;      // Derived credit account address
   uint64 active_lease_count = 3;  // Number of ACTIVE leases
   uint64 pending_lease_count = 4; // Number of PENDING leases
-  repeated Coin reserved_amounts = 5; // Credit reserved by active/pending leases
+  repeated Coin reserved_amounts = 5; // R = sum(live modern remaining tranches) + U
+  repeated Coin unattributed_reserved_amounts = 6; // U: shared live historical cohort
+  uint64 unattributed_lease_count = 7; // Exact live historical cohort size
 }
 ```
 
 **Field Notes:**
-- `reserved_amounts`: Sum of credit reservations for all PENDING and ACTIVE leases. Each lease reserves `rate_per_second × min_lease_duration` per denom. This prevents overbooking by ensuring credit availability before lease creation. Available credit = balances - reserved_amounts.
+- `reserved_amounts`: Exact remaining reservation aggregate. For each tenant, `R = sum(Lease.reservation.remaining_amounts for live modern leases) + U`. Available credit for creating new leases is `balances - R`.
+- `unattributed_reserved_amounts`: The explicit `U` subset reserved for live leases that predate reconstructible per-lease guarantees. It is consumed as a shared cohort and cleared when its last live member terminates.
+- `unattributed_lease_count`: Exact number of live historical leases sharing `U`, even when `U` is empty. This makes terminal release O(1): decrement the count and, when it reaches zero, subtract exactly the remaining `U` from `R`.
+- Settlement protects every other reservation. A lease with allocation `A`, balance `B`, and aggregate `R` can transfer at most `B - (R - A)`; the amount funded by `A` is subtracted from both `A` and `R`. Modern terminal transitions release exactly the remaining `A`.
 
 ### Params
 
@@ -1601,10 +1928,12 @@ message Params {
 ```
 
 **Field notes:**
-- `allowed_list`: Addresses with privileged authority for `MsgCreateLeaseForTenant` and `MsgSetItemCustomDomain`, in addition to the module authority.
-- `reserved_domain_suffixes`: DNS suffixes (each must begin with `.`) that tenants are forbidden from claiming as a `LeaseItem.custom_domain`. Match is case-insensitive at a label boundary, plus the apex (e.g. `.foo.example` matches both `app.foo.example` and `foo.example`). Each entry's substring after the leading dot must itself be a valid FQDN. Tunable via `MsgUpdateParams`.
+- `max_leases_per_tenant`: Revalidated when PENDING leases are acknowledged, using each tenant's active count after the complete batch.
+- `pending_timeout`: Defines a hard acknowledgement deadline at `created_at + current pending_timeout`. The exact cutoff is valid; a strictly later block time is rejected even before rate-limited EndBlock cleanup.
+- `allowed_list`: Up to 100 addresses with privileged authority for `MsgCreateLeaseForTenant` and `MsgSetItemCustomDomain`, in addition to the module authority. Addresses must be valid and distinct by decoded identity.
+- `reserved_domain_suffixes`: Up to 100 DNS suffixes (each must begin with `.`) that tenants are forbidden from claiming as a `LeaseItem.custom_domain`. Match is case-insensitive at a label boundary, plus the apex (e.g. `.foo.example` matches both `app.foo.example` and `foo.example`). Each entry's substring after the leading dot must be a lowercase DNS zone; a single-label zone such as `.internal` is valid. Tunable via `MsgUpdateParams`.
 
-**Defaults and validation bounds (numeric params):**
+**Defaults and validation bounds:**
 | Param | Default | Valid range |
 |-------|---------|-------------|
 | `max_leases_per_tenant` | 100 | 1 – 10,000 (`MaxLeasesPerTenantUpperBound`) |
@@ -1612,6 +1941,8 @@ message Params {
 | `min_lease_duration` | 3600 | 1 – 2,592,000 seconds / 30 days (`MaxMinLeaseDuration`) |
 | `max_pending_leases_per_tenant` | 10 | 1 – 1,000 (`MaxPendingLeasesPerTenantUpperBound`) |
 | `pending_timeout` | 1800 | 60 (`MinPendingTimeout`) – 86,400 (`MaxPendingTimeout`) seconds |
+| `allowed_list` | empty | 0 – 100 entries (`MaxAllowedListEntries`) |
+| `reserved_domain_suffixes` | empty | 0 – 100 entries (`MaxReservedDomainSuffixEntries`) |
 
 ---
 
@@ -1622,7 +1953,7 @@ The billing module emits the following events for state changes:
 | Event | Attributes | Description |
 |-------|------------|-------------|
 | `credit_funded` | tenant, credit_address, sender, amount, new_balance | Credit account funded |
-| `lease_created` | lease_uuid, tenant, provider_uuid, item_count, total_rate_per_second, pending_lease_count, created_by, meta_hash (optional, hex-encoded) | Lease created in PENDING state |
+| `lease_created` | lease_uuid, tenant, provider_uuid, item_count, total_rate_per_second, pending_lease_count, created_by, sender, meta_hash (optional, hex-encoded) | Lease created in PENDING state |
 | `lease_acknowledged` | lease_uuid, tenant, provider_uuid, acknowledged_by | Provider acknowledged lease (→ ACTIVE) |
 | `batch_acknowledged` | lease_count, provider_uuid, acknowledged_by | Batch summary when multiple leases acknowledged |
 | `lease_rejected` | lease_uuid, tenant, provider_uuid, rejected_by, rejection_reason | Provider rejected lease |
@@ -1632,22 +1963,46 @@ The billing module emits the following events for state changes:
 | `lease_expired` | lease_uuid, tenant, provider_uuid, reason | Pending lease expired |
 | `lease_closed` | lease_uuid, tenant, provider_uuid, settled_amounts, closed_by, duration_seconds, active_lease_count, closure_reason (optional) | Lease closed (manually, or auto-closed on credit exhaustion) |
 | `batch_closed` | lease_count, closed_by, settled_amounts | Batch summary when multiple leases closed |
-| `lease_auto_closed` | lease_uuid, tenant, provider_uuid, reason | Lease auto-closed due to credit exhaustion |
-| `provider_withdraw` | lease_uuid, amount, provider_uuid, payout_address | Provider withdrawal from single lease |
-| `batch_withdraw` | lease_count, provider_uuid, amount, payout_address, auto_closed | Batch summary when multiple leases withdrawn from |
+| `lease_auto_closed` | lease_uuid, tenant, provider_uuid, amount, payout_address, reason | Lease auto-closed by provider-wide withdrawal; amount is the actual final transfer |
+| `provider_withdraw` | lease_uuid, amount, provider_uuid, payout_address, auto_closed (auto-close only) | One committed lease withdrawal in either specific or provider-wide mode; amount is the actual transfer |
+| `batch_withdraw` | lease_count, provider_uuid, amount, payout_address; provider-wide also: auto_closed, failed_lease_count, failed_lease_uuids | Specific-UUID batch summary when more than one lease is requested; provider-wide summary on every call, including zero-success calls. Provider-wide failed UUIDs are comma-separated in processing order. |
 | `params_updated` | | Module parameters updated |
 | `lease_custom_domain_set` | lease_uuid, tenant, provider_uuid, service_name, custom_domain, set_by | `LeaseItem.custom_domain` set or changed (v2.1.0+; `provider_uuid` added v2.2.0+) |
 | `lease_custom_domain_cleared` | lease_uuid, tenant, provider_uuid, service_name, custom_domain (previous value), set_by | `LeaseItem.custom_domain` cleared (v2.1.0+; `provider_uuid` added v2.2.0+) |
+
+**Lease creation:** `created_by` records `tenant`, `authority`, or `allowed`;
+`sender` is the canonical signer address. Allowed-list creation no longer
+mislabels the role as authority. Indexers should use `sender` for identity.
 
 **Custom-domain `set_by` attribute:** records the role under which the call was authorised. One of `tenant`, `authority`, `allowed`. No event is emitted for an idempotent re-set or a clear of an already-empty domain.
 
 **`lease_closed` `closed_by` attribute:** records who closed the lease. One of `tenant`, `authority`, `provider`, or `credit_exhaustion`. `credit_exhaustion` is the auto-close sentinel set when lazy settlement finds the credit exhausted.
 
-**`batch_withdraw` `auto_closed` attribute:** emitted **only** in provider-wide mode, where it is an integer **count** of leases auto-closed during the batch (not a boolean). The specific-lease-UUID `batch_withdraw` path emits no `auto_closed` attribute.
+**`lease_closed` `duration_seconds` attribute:** records the whole-second final
+settlement interval from the lease's pre-close `last_settled_at` to `closed_at`.
+Earlier withdrawals advance that starting cursor, so this is not the total
+lease lifetime. The interval can include unpaid accrual when credit is exhausted;
+`settled_amounts` reports the actual transfer.
 
-**Credit-exhaustion auto-close emits three events by path:** the same logical outcome surfaces as `lease_closed` (`closed_by=credit_exhaustion`) from the close path, `provider_withdraw` (`auto_closed="true"`) from specific-lease `MsgWithdraw`, and `lease_auto_closed` (`reason=credit_exhausted`) from provider-wide `MsgWithdraw`.
+**Provider-wide `batch_withdraw` attributes:** `auto_closed` is an integer count
+of auto-closed leases. `failed_lease_count` is the number of error-skipped
+leases, and `failed_lease_uuids` is their comma-separated processing-order
+list (empty when none). Specific-lease batches emit none of these three
+provider-wide summary attributes.
 
-**Special Case - Withdrawal Auto-Close:** When a `MsgWithdraw` operation discovers the lease's credit is exhausted (balance = 0), it automatically closes the lease. In this case, the `provider_withdraw` event includes an additional `auto_closed: "true"` attribute and `amount: "0"` to indicate no funds were transferred. Note that the `payout_address` attribute is omitted in this case since no transfer occurred.
+**Credit-exhaustion events:** close emits `lease_closed` with
+`closed_by=credit_exhaustion`. Both withdrawal modes emit one `provider_withdraw`
+per committed withdrawal, with `auto_closed="true"` for exhaustion. Provider-wide
+withdrawal also retains `lease_auto_closed` (`reason=credit_exhausted`) as
+lifecycle information. That event and `batch_withdraw` describe the same
+transfers; do not add their amounts to `provider_withdraw` totals. Failed or
+zero-accrual skipped leases emit no payout event.
+
+**Special Case - Withdrawal Auto-Close:** When a `MsgWithdraw`
+finds accrued charges meet or exceed the lease's spendable credit
+`B - (R - A)`, it settles and automatically closes the lease. Its
+`provider_withdraw` event uses `auto_closed: "true"`; `amount` is the actual
+final transfer (which may be zero) and `payout_address` is always present.
 
 ### Event Attribute Sanitization
 
@@ -1655,7 +2010,7 @@ Certain event attributes (like `rejection_reason` and `closure_reason`) are sani
 
 **Sanitization Rules:**
 - Every rune that is not `unicode.IsGraphic` (control characters, including `\n` and `\r`) is removed outright — nothing is substituted in its place
-- No escaping or truncation is performed; reasons longer than 256 chars are rejected at ValidateBasic rather than truncated here
+- No escaping or truncation is performed; reasons longer than 256 UTF-8 bytes are rejected at ValidateBasic rather than truncated here
 
 **Example:**
 ```
@@ -1671,14 +2026,17 @@ rejection_reason: "Invalid configSee logs for details"
 
 ### Querying Events
 
-Events can be queried from transaction results:
+Query the committed transaction and verify `code == 0` before extracting events.
+Sync broadcast responses have no execution events. For transactions with multiple
+messages, additionally filter events by their `msg_index` attribute to select the
+intended message; the examples below assume a single creation message:
 
 ```bash
 # Query events for a specific transaction
 manifestd query tx [txhash] --output json | jq '.events'
 
 # Example: Extract lease_uuid from a lease creation
-manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.type=="lease_created") | .attributes[] | select(.key=="lease_uuid") | .value'
+manifestd query tx [txhash] --output json | jq -er 'select((.code | tonumber) == 0 and (.height | tonumber) > 0) | .events[] | select(.type=="lease_created") | .attributes[] | select(.key=="lease_uuid") | .value'
 ```
 
 ---
@@ -1691,7 +2049,7 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrLeaseNotFound` | 2 | Lease doesn't exist |
 | `ErrLeaseNotActive` | 3 | Lease is not in ACTIVE state |
 | `ErrInsufficientCredit` | 4 | Not enough credit balance |
-| `ErrMaxLeasesReached` | 5 | Tenant at max active leases |
+| `ErrMaxLeasesReached` | 5 | Lease creation is blocked because the tenant is already at its active cap |
 | `ErrUnauthorized` | 6 | Sender not authorized |
 | `ErrReserved7` | 7 | Reserved for future use |
 | `ErrCreditAccountNotFound` | 8 | Credit account doesn't exist |
@@ -1706,13 +2064,13 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrInvalidQuantity` | 17 | Item quantity is zero, or exceeds `MaxQuantityPerItem` (1,000,000,000) |
 | `ErrDuplicateSKU` | 18 | Same SKU appears multiple times |
 | `ErrInvalidCreditOperation` | 19 | Credit operation failed |
-| `ErrReserved20` | 20 | Reserved for future use |
+| `ErrArithmeticOverflow` | 20 | Billing arithmetic cannot be represented safely |
 | `ErrTooManyLeaseItems` | 21 | Lease exceeds max items |
 | `ErrLeaseNotPending` | 22 | Lease is not in PENDING state |
 | `ErrMaxPendingLeasesReached` | 23 | Tenant at max pending leases |
-| `ErrInvalidRejectionReason` | 24 | Rejection reason too long (max 256 chars) |
+| `ErrInvalidRejectionReason` | 24 | Rejection reason too long (max 256 UTF-8 bytes) |
 | `ErrInvalidRequest` | 25 | Invalid request (e.g., conflicting fields in MsgWithdraw; setting `key` alongside `lease_uuids`; or a `key` longer than `MaxWithdrawCursorLen` = 64 bytes in provider-wide mode) |
-| `ErrInvalidClosureReason` | 26 | Closure reason too long (max 256 chars) |
+| `ErrInvalidClosureReason` | 26 | Closure reason too long (max 256 UTF-8 bytes) |
 | `ErrInvalidMetaHash` | 27 | Meta hash exceeds maximum length (max 64 bytes) |
 | `ErrInvalidServiceName` | 28 | Invalid service name (must be RFC 1123 DNS label: 1-63 lowercase alphanumeric/hyphens, no leading/trailing hyphen) |
 | `ErrInvalidCustomDomain` | 29 | Invalid `LeaseItem.custom_domain` (failed `IsValidFQDN` checks, exceeded 253 bytes, or matched a reserved suffix) |
@@ -1720,15 +2078,22 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | `ErrLeaseNotEditable` | 31 | Lease is not in PENDING or ACTIVE state — `custom_domain` cannot be edited on closed/rejected/expired leases |
 | `ErrLeaseItemNotFound` | 32 | No lease item matched the supplied `service_name` |
 | `ErrAmbiguousLeaseItem` | 33 | Lookup by `service_name` matched more than one item — happens for multi-item legacy leases (no `service_name`s); recreate the lease in service-name mode |
+| `ErrLeaseAcknowledgementDeadlineExceeded` | 34 | Block time is strictly after a PENDING lease's current hard deadline when acknowledging it or setting/re-setting a nonempty custom domain; empty domain clears remain available |
+| `ErrLeaseAcknowledgementActiveCapExceeded` | 35 | Acknowledgement would exceed a tenant's post-batch active cap |
+| `ErrReservationInvariant` | 36 | Stored balance/reservation state violates the consumable reservation invariant |
+| `ErrLeaseQueryLimitExceeded` | 37 | `CreditEstimate` would exceed its conservative ACTIVE-lease or total-item work bound |
+| `ErrReservationDenomLimitExceeded` | 38 | A new lease would increase a credit account's aggregate reservation beyond 1,000 denominations |
+| `ErrSequenceExhausted` | 39 | The deterministic lease UUID sequence has exhausted its `uint64` range |
+| `ErrInternalCorruption` | 40 | A stored billing record exists but cannot be decoded; distinct from a missing record |
 
-**Note on Reserved Codes:** Error codes 7 and 20 are explicitly reserved to maintain stable error code assignments across module versions.
+**Note on Reserved Codes:** Error code 7 is explicitly reserved to maintain stable error code assignments across module versions. Code 20 is active and belongs to `ErrArithmeticOverflow`.
 
-**Why reserve codes?** During development, some error types were removed or consolidated (e.g., separate errors that were merged into a single error). Rather than renumbering all subsequent codes (which would break client error handling that relies on specific codes), the removed codes are marked as reserved. This ensures:
+**Why reserve a code?** During development, an error type was removed or consolidated. Rather than renumbering subsequent codes (which would break client error handling that relies on specific codes), its code remains reserved. This ensures:
 - Existing client code that handles specific error codes continues to work after upgrades
 - Error codes in logs and metrics remain comparable across versions
 - New errors get the next number after the highest assigned code rather than reusing gaps
 
-**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code (currently 33).
+**For developers:** Never assign new errors to reserved codes. Always use the next sequential number after the highest assigned code (currently 40).
 
 ---
 

@@ -1,0 +1,146 @@
+HISTORICAL DISPLAY SUMMARY — the $ manifestd lines below are illustrative, not exact executed argv.
+Superseded by ../2026-09-11-claude-review-validation/export-cli.log and export-cli.json, generated from actual subprocess argument arrays.
+
+$ manifestd query consensus params --help
+Query the current consensus parameters
+
+Usage:
+  manifestd query consensus params [flags]
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for params
+      --no-indent          Do not indent JSON output
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+
+Global Flags:
+      --home string         directory for config and data (default "/home/fmorency/.manifest")
+      --log_format string   The logging format (json|plain) (default "plain")
+      --log_level string    The logging level (trace|debug|info|warn|error|fatal|panic|disabled or '*:<level>,<key>:<level>') (default "info")
+      --log_no_color        Disable colored logs
+      --trace               print out full stack trace on errors
+$ manifestd query circuit disabled-list --help
+Query a list of all disabled message types
+
+Usage:
+  manifestd query circuit disabled-list [flags]
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for disabled-list
+      --no-indent          Do not indent JSON output
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+
+Global Flags:
+      --home string         directory for config and data (default "/home/fmorency/.manifest")
+      --log_format string   The logging format (json|plain) (default "plain")
+      --log_level string    The logging level (trace|debug|info|warn|error|fatal|panic|disabled or '*:<level>,<key>:<level>') (default "info")
+      --log_no_color        Disable colored logs
+      --trace               print out full stack trace on errors
+$ manifestd query circuit accounts --help
+Query all account permissions
+
+Usage:
+  manifestd query circuit accounts [flags]
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for accounts
+      --no-indent          Do not indent JSON output
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-count-total
+      --page-key binary
+      --page-limit uint
+      --page-offset uint
+      --page-reverse
+
+Global Flags:
+      --home string         directory for config and data (default "/home/fmorency/.manifest")
+      --log_format string   The logging format (json|plain) (default "plain")
+      --log_level string    The logging level (trace|debug|info|warn|error|fatal|panic|disabled or '*:<level>,<key>:<level>') (default "info")
+      --log_no_color        Disable colored logs
+      --trace               print out full stack trace on errors
+$ manifestd query circuit account --help
+Query a specific account's permissions
+
+Usage:
+  manifestd query circuit account [address] [flags]
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for account
+      --no-indent          Do not indent JSON output
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+
+Global Flags:
+      --home string         directory for config and data (default "/home/fmorency/.manifest")
+      --log_format string   The logging format (json|plain) (default "plain")
+      --log_level string    The logging level (trace|debug|info|warn|error|fatal|panic|disabled or '*:<level>,<key>:<level>') (default "info")
+      --log_no_color        Disable colored logs
+      --trace               print out full stack trace on errors
+$ manifestd genesis validate --help
+Validates the genesis file at the default location or at the location passed as an arg
+
+Usage:
+  manifestd genesis validate [file] [flags]
+
+Aliases:
+  validate, validate-genesis
+
+Flags:
+  -h, --help   help for validate
+
+Global Flags:
+      --home string         directory for config and data (default "/home/fmorency/.manifest")
+      --log_format string   The logging format (json|plain) (default "plain")
+      --log_level string    The logging level (trace|debug|info|warn|error|fatal|panic|disabled or '*:<level>,<key>:<level>') (default "info")
+      --log_no_color        Disable colored logs
+      --trace               print out full stack trace on errors
+$ manifestd query consensus params --height 2 --output json --node tcp://127.0.0.1:1
+exit: 1
+post failed: Post "http://127.0.0.1:1": dial tcp 127.0.0.1:1: connect: connection refused
+$ manifestd query circuit disabled-list --height 2 --output json --node tcp://127.0.0.1:1
+exit: 1
+post failed: Post "http://127.0.0.1:1": dial tcp 127.0.0.1:1: connect: connection refused
+$ manifestd query circuit accounts --page-limit 100 --height 2 --output json --node tcp://127.0.0.1:1
+exit: 1
+post failed: Post "http://127.0.0.1:1": dial tcp 127.0.0.1:1: connect: connection refused
+$ manifestd query circuit accounts --page-limit 100 --page-key AQ== --height 2 --output json --node tcp://127.0.0.1:1
+exit: 1
+post failed: Post "http://127.0.0.1:1": dial tcp 127.0.0.1:1: connect: connection refused
+$ manifestd genesis validate /fixture/restart-genesis.json --home /fixture/node
+default-home genesis deliberately invalid; supplied copy is valid
+exit: 0
+File at /fixture/restart-genesis.json is a valid genesis file
+
+$ manifestd genesis validate --home /fixture/node
+exit: 1
+Usage:
+  manifestd genesis validate [file] [flags]
+
+Aliases:
+  validate, validate-genesis
+
+Flags:
+  -h, --help   help for validate
+
+Global Flags:
+      --home string         directory for config and data (default "/home/fmorency/.manifest")
+      --log_format string   The logging format (json|plain) (default "plain")
+      --log_level string    The logging level (trace|debug|info|warn|error|fatal|panic|disabled or '*:<level>,<key>:<level>') (default "info")
+      --log_no_color        Disable colored logs
+      --trace               print out full stack trace on errors
+
+error at offset 1: invalid character 'i' looking for beginning of value

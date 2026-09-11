@@ -1,0 +1,8 @@
+ok  	github.com/manifest-network/manifest-ledger/app	0.757s
+?   	github.com/manifest-network/manifest-ledger/app/apptesting	[no test files]
+ok  	github.com/manifest-network/manifest-ledger/app/decorators	0.423s
+?   	github.com/manifest-network/manifest-ledger/app/helpers	[no test files]
+?   	github.com/manifest-network/manifest-ledger/app/params	[no test files]
+?   	github.com/manifest-network/manifest-ledger/app/upgrades	[no test files]
+?   	github.com/manifest-network/manifest-ledger/app/upgrades/next	[no test files]
+ok  	github.com/manifest-network/manifest-ledger/cmd/manifestd/cmd	0.954s

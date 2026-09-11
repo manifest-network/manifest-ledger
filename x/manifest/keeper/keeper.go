@@ -1,3 +1,4 @@
+// Package keeper implements manifest module state transitions and queries.
 package keeper
 
 import (
@@ -17,6 +18,7 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
+// Keeper manages manifest module state and dependencies.
 type Keeper struct {
 	cdc codec.BinaryCodec
 
@@ -65,6 +67,7 @@ func NewKeeper(
 	return k
 }
 
+// Logger returns the module-scoped logger.
 func (k *Keeper) Logger() log.Logger {
 	return k.logger
 }
@@ -74,22 +77,27 @@ func (k *Keeper) SetAuthority(authority string) {
 	k.authority = authority
 }
 
+// GetAuthority returns the address authorized to execute privileged messages.
 func (k *Keeper) GetAuthority() string {
 	return k.authority
 }
 
+// GetBankKeeper returns the module's bank keeper.
 func (k *Keeper) GetBankKeeper() bankkeeper.Keeper {
 	return k.bankKeeper
 }
 
+// SetTestAccountKeeper sets the account keeper used by simulations and tests.
 func (k *Keeper) SetTestAccountKeeper(ak accountkeeper.AccountKeeper) {
 	k.accountKeeper = ak
 }
 
+// GetTestAccountKeeper returns the account keeper used by simulations and tests.
 func (k *Keeper) GetTestAccountKeeper() accountkeeper.AccountKeeper {
 	return k.accountKeeper
 }
 
+// InitGenesis initializes the manifest module's genesis state.
 func (k *Keeper) InitGenesis(_ context.Context, _ *types.GenesisState) error {
 	return nil
 }

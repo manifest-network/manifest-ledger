@@ -20,6 +20,7 @@ import (
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/query"
 
 	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
@@ -216,36 +217,38 @@ func TestSecurity_AccrualOverflowProtection(t *testing.T) {
 	require.NoError(t, err)
 	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000_000_000))))
 
-	// Create lease with normal price
+	// Create a lease whose stored price × quantity exceeds math.Int.
 	now := f.Ctx.BlockTime()
 	lease := types.Lease{
 		Uuid:         "01912345-6789-7abc-8def-0123456789ab",
 		Tenant:       tenant.String(),
 		ProviderUuid: provider.Uuid,
 		Items: []types.LeaseItem{
-			{SkuUuid: "01912345-6789-7abc-8def-0123456789ae", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1000))},
+			{SkuUuid: "01912345-6789-7abc-8def-0123456789ae", Quantity: 2, LockedPrice: sdk.NewCoin(testDenom, highBitBillingTestInt())},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  now,
+		LastSettledAt:              now,
+		MinLeaseDurationAtCreation: 1,
+		Reservation: &types.LeaseReservation{
+			RemainingAmounts: sdk.NewCoins(),
+		},
 	}
 	err = k.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
-	// Try to settle for an extremely long duration (>100 years)
-	veryFarFuture := now.Add(101 * 365 * 24 * time.Hour)
-
 	// PerformSettlement should error on overflow
-	_, err = k.PerformSettlement(f.Ctx, &lease, veryFarFuture)
+	_, err = k.PerformSettlement(f.Ctx, &lease, f.creditAccountForLease(t, &lease), now.Add(time.Second))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "overflow")
 
 	// PerformSettlementSilent should NOT error (silently handles overflow)
-	result, err := k.PerformSettlementSilent(f.Ctx, &lease, veryFarFuture)
+	result, err := k.PerformSettlementSilent(f.Ctx, &lease, f.creditAccountForLease(t, &lease), now.Add(time.Second))
 	require.NoError(t, err)
 	// On overflow, all remaining credit should be transferred to the provider
 	require.Equal(t, int64(1_000_000_000_000), result.AccruedAmounts.AmountOf(testDenom).Int64())
 	require.Equal(t, int64(1_000_000_000_000), result.TransferAmounts.AmountOf(testDenom).Int64())
+	require.Equal(t, []string{testDenom}, result.AccrualOverflow)
 }
 
 func TestSecurity_ExtremeQuantityValues(t *testing.T) {
@@ -777,9 +780,13 @@ func TestSecurity_DenomSpamDoesNotAffectAutoClose(t *testing.T) {
 		Items: []types.LeaseItem{
 			{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		LastSettledAt:              f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 1,
+		Reservation: &types.LeaseReservation{
+			RemainingAmounts: sdk.NewCoins(),
+		},
 	}
 	err = f.App.BillingKeeper.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
@@ -789,14 +796,14 @@ func TestSecurity_DenomSpamDoesNotAffectAutoClose(t *testing.T) {
 
 	// Auto-close should trigger based on the lease's denom (umfx), not be
 	// confused by the large balances in spam denoms.
-	shouldClose, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease)
+	shouldClose, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease, f.creditAccountForLease(t, &lease))
 	require.NoError(t, err)
 	require.True(t, shouldClose, "lease should auto-close: real denom exhausted despite large dust balances")
 }
 
-// TestSecurity_DenomSpamDoesNotLeakOnOverflow verifies that when accrual
-// overflows (duration > ~100 years) and PerformSettlementSilent transfers
-// all remaining credit, only the lease's denoms are transferred — not dust.
+// TestSecurity_DenomSpamDoesNotLeakOnOverflow verifies that when an accrued
+// amount exceeds math.Int and PerformSettlementSilent clamps the affected
+// denom, unrelated dust denoms remain untouched.
 func TestSecurity_DenomSpamDoesNotLeakOnOverflow(t *testing.T) {
 	f := initFixture(t)
 
@@ -830,20 +837,23 @@ func TestSecurity_DenomSpamDoesNotLeakOnOverflow(t *testing.T) {
 		Tenant:       tenant.String(),
 		ProviderUuid: provider.Uuid,
 		Items: []types.LeaseItem{
-			{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
+			{SkuUuid: sku.Uuid, Quantity: 2, LockedPrice: sdk.NewCoin(testDenom, highBitBillingTestInt())},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
+		State:                      types.LEASE_STATE_ACTIVE,
+		CreatedAt:                  f.Ctx.BlockTime(),
+		LastSettledAt:              f.Ctx.BlockTime(),
+		MinLeaseDurationAtCreation: 1,
+		Reservation: &types.LeaseReservation{
+			RemainingAmounts: sdk.NewCoins(),
+		},
 	}
 	err = f.App.BillingKeeper.SetLease(f.Ctx, lease)
 	require.NoError(t, err)
 
-	// Settle with a time > 100 years in the future to trigger accrual overflow.
-	// PerformSettlementSilent handles overflow by transferring all remaining
-	// credit rather than returning an error.
-	overflowTime := f.Ctx.BlockTime().Add(101 * 365 * 24 * time.Hour)
-	result, err := f.App.BillingKeeper.PerformSettlementSilent(f.Ctx, &lease, overflowTime)
+	// Trigger a representational overflow. Silent settlement transfers only the
+	// remaining credit in the affected denom rather than returning an error.
+	overflowTime := f.Ctx.BlockTime().Add(time.Second)
+	result, err := f.App.BillingKeeper.PerformSettlementSilent(f.Ctx, &lease, f.creditAccountForLease(t, &lease), overflowTime)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -852,6 +862,7 @@ func TestSecurity_DenomSpamDoesNotLeakOnOverflow(t *testing.T) {
 	require.Equal(t, testDenom, result.TransferAmounts[0].Denom)
 	require.Equal(t, sdkmath.NewInt(5000), result.TransferAmounts[0].Amount,
 		"overflow settlement should transfer all remaining credit in the lease's denom")
+	require.Equal(t, []string{testDenom}, result.AccrualOverflow)
 
 	// Verify: provider received none of the dust denoms
 	payoutAddr := sdk.MustAccAddressFromBech32(provider.PayoutAddress)
@@ -868,10 +879,10 @@ func TestSecurity_DenomSpamDoesNotLeakOnOverflow(t *testing.T) {
 	}
 }
 
-// TestSecurity_DenomSpamDoesNotAffectCreditAccountQuery verifies that the CreditAccount
-// query uses per-denom balance fetching rather than GetAllBalances, so denom-spam on the
-// credit address does not cause the query to load thousands of irrelevant balances.
-func TestSecurity_DenomSpamDoesNotAffectCreditAccountQuery(t *testing.T) {
+// TestSecurity_DenomSpamCreditAccountQueryIsPaginated verifies that arbitrary
+// bank denoms remain observable without making one CreditAccount request load
+// an unbounded balance set.
+func TestSecurity_DenomSpamCreditAccountQueryIsPaginated(t *testing.T) {
 	f := initFixture(t)
 
 	tenant := f.TestAccs[0]
@@ -912,19 +923,34 @@ func TestSecurity_DenomSpamDoesNotAffectCreditAccountQuery(t *testing.T) {
 		f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(dustDenoms[i], sdkmath.NewInt(1))))
 	}
 
-	// Query CreditAccount — should only return the relevant denom (testDenom), not dust
+	// Traverse bounded bank-balance pages. Every funded denom is represented,
+	// while each request performs work proportional to its page limit.
 	querier := keeper.NewQuerier(f.App.BillingKeeper)
-	resp, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
-		Tenant: tenant.String(),
-	})
-	require.NoError(t, err)
+	seen := make(map[string]sdkmath.Int, len(dustDenoms)+1)
+	var key []byte
+	for pages := 0; ; pages++ {
+		require.Less(t, pages, 10, "balance cursor must terminate")
+		resp, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
+			Tenant: tenant.String(),
+			Pagination: &query.PageRequest{
+				Key:   key,
+				Limit: 10,
+			},
+		})
+		require.NoError(t, err)
+		require.LessOrEqual(t, len(resp.Balances), 10)
+		for _, coin := range resp.Balances {
+			seen[coin.Denom] = coin.Amount
+		}
+		if len(resp.Pagination.NextKey) == 0 {
+			break
+		}
+		key = resp.Pagination.NextKey
+	}
 
-	// The response should contain testDenom but NOT any dust denoms
-	require.True(t, resp.Balances.AmountOf(testDenom).IsPositive(),
-		"should contain the real denom balance")
+	require.Equal(t, sdkmath.NewInt(1_000_000), seen[testDenom])
 	for _, denom := range dustDenoms {
-		require.True(t, resp.Balances.AmountOf(denom).IsZero(),
-			"dust denom %s should not appear in CreditAccount query response", denom)
+		require.Equal(t, sdkmath.OneInt(), seen[denom])
 	}
 }
 

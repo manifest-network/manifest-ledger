@@ -372,6 +372,9 @@ func TestAdversarial_GenesisValidationRejectsMismatchedReservations(t *testing.T
 				CreatedAt:                  f.Ctx.BlockTime(),
 				LastSettledAt:              f.Ctx.BlockTime(),
 				MinLeaseDurationAtCreation: 3600,
+				Reservation: &types.LeaseReservation{
+					RemainingAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(360000))),
+				},
 			},
 		},
 		CreditAccounts: []types.CreditAccount{
@@ -383,16 +386,22 @@ func TestAdversarial_GenesisValidationRejectsMismatchedReservations(t *testing.T
 				ReservedAmounts: sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(999))),
 			},
 		},
+		LeaseSequence: 1,
 	}
 
+	err = gs.ValidateStrict()
+	require.Error(t, err, "strict validation should reject mismatched current-format reservations")
+	require.Contains(t, err.Error(), "reserved_amounts")
+
 	err = gs.Validate()
-	require.Error(t, err, "genesis with mismatched reservations should be rejected")
+	require.Error(t, err, "import must reject mismatched current-format reservations")
 	require.Contains(t, err.Error(), "reserved_amounts")
 }
 
-// TestAdversarial_GenesisValidationRejectsMismatchedCounts tests that genesis
-// validation catches active/pending lease count mismatches.
-func TestAdversarial_GenesisValidationRejectsMismatchedCounts(t *testing.T) {
+// TestAdversarial_GenesisStrictRejectsAndImportRepairsMismatchedCounts pins the
+// two intentional contracts: authored state is rejected, while historical
+// imports deterministically rebuild derived counts from authoritative leases.
+func TestAdversarial_GenesisStrictRejectsAndImportRepairsMismatchedCounts(t *testing.T) {
 	f := initFixture(t)
 
 	tenant := f.TestAccs[0]
@@ -426,11 +435,17 @@ func TestAdversarial_GenesisValidationRejectsMismatchedCounts(t *testing.T) {
 				ReservedAmounts:  sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(360000))),
 			},
 		},
+		LeaseSequence: 1,
 	}
 
-	err = gs.Validate()
-	require.Error(t, err, "genesis with wrong active_lease_count should be rejected")
+	err = gs.ValidateStrict()
+	require.Error(t, err, "strict validation should reject an authored active_lease_count mismatch")
 	require.Contains(t, err.Error(), "active_lease_count")
+
+	prepared, err := gs.PrepareForImport()
+	require.NoError(t, err, "historical imports repair cached lease counts from primary lease state")
+	require.Equal(t, uint64(1), prepared.CreditAccounts[0].ActiveLeaseCount)
+	require.Equal(t, uint64(5), gs.CreditAccounts[0].ActiveLeaseCount, "preparation must not mutate its input")
 }
 
 // TestAdversarial_GenesisRejectsDuplicateLeaseUUID tests that genesis rejects
@@ -560,6 +575,42 @@ func TestAdversarial_LeaseBySKUIndexConsistencyAfterClose(t *testing.T) {
 	require.Len(t, leases, 1)
 	require.Equal(t, leaseID, leases[0].Uuid)
 	require.Equal(t, types.LEASE_STATE_CLOSED, leases[0].State)
+}
+
+func TestAdversarial_SetLeaseReconcilesChangedSKUIndex(t *testing.T) {
+	f := initFixture(t)
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	oldSKU := f.createTestSKU(t, provider.Uuid, 3600)
+	newSKU := f.createTestSKU(t, provider.Uuid, 7200)
+	lease := types.Lease{
+		Uuid:         testLeaseUUID1,
+		Tenant:       tenant.String(),
+		ProviderUuid: provider.Uuid,
+		Items: []types.LeaseItem{{
+			SkuUuid:     oldSKU.Uuid,
+			Quantity:    1,
+			LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+		}},
+		State:         types.LEASE_STATE_PENDING,
+		CreatedAt:     f.Ctx.BlockTime(),
+		LastSettledAt: f.Ctx.BlockTime(),
+	}
+	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+
+	lease.Items[0].SkuUuid = newSKU.Uuid
+	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+
+	oldLeases, err := f.App.BillingKeeper.GetLeasesBySKU(f.Ctx, oldSKU.Uuid)
+	require.NoError(t, err)
+	require.Empty(t, oldLeases)
+
+	newLeases, err := f.App.BillingKeeper.GetLeasesBySKU(f.Ctx, newSKU.Uuid)
+	require.NoError(t, err)
+	require.Len(t, newLeases, 1)
+	require.Equal(t, lease.Uuid, newLeases[0].Uuid)
 }
 
 // =============================================================================

@@ -7,41 +7,56 @@ import (
 	"strings"
 	"time"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
 	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
+)
+
+const (
+	billingModule     = "billing"
+	closeLeaseCommand = "close-lease"
 )
 
 // LeaseItemJSON is a JSON-compatible version of LeaseItem.
 // Quantity is a string in CLI JSON output.
 type LeaseItemJSON struct {
-	SkuUuid      string   `json:"sku_uuid,omitempty"`
+	SkuUUID      string   `json:"sku_uuid,omitempty"`
 	Quantity     string   `json:"quantity,omitempty"`
 	LockedPrice  sdk.Coin `json:"locked_price"`
 	ServiceName  string   `json:"service_name,omitempty"`
 	CustomDomain string   `json:"custom_domain,omitempty"`
 }
 
+// LeaseReservationJSON is the JSON representation of a consumable v4 lease
+// reservation. Its presence distinguishes initialized v4 state from v2/v3
+// aggregate-only state.
+type LeaseReservationJSON struct {
+	RemainingAmounts sdk.Coins `json:"remaining_amounts"`
+}
+
 // LeaseJSON is a JSON-compatible version of Lease.
 // State is output as a string by the CLI (e.g., "LEASE_STATE_ACTIVE"),
 // not as the numeric enum value that the proto type expects.
 type LeaseJSON struct {
-	Uuid            string          `json:"uuid,omitempty"`
-	Tenant          string          `json:"tenant,omitempty"`
-	ProviderUuid    string          `json:"provider_uuid,omitempty"`
-	Items           []LeaseItemJSON `json:"items"`
-	State           string          `json:"state,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
-	ClosedAt        *time.Time      `json:"closed_at,omitempty"`
-	LastSettledAt   time.Time       `json:"last_settled_at"`
-	AcknowledgedAt  *time.Time      `json:"acknowledged_at,omitempty"`
-	RejectedAt      *time.Time      `json:"rejected_at,omitempty"`
-	RejectionReason string          `json:"rejection_reason,omitempty"`
-	ExpiredAt       *time.Time      `json:"expired_at,omitempty"`
-	ClosureReason   string          `json:"closure_reason,omitempty"`
-	MetaHash        []byte          `json:"meta_hash,omitempty"`
+	UUID                       string                `json:"uuid,omitempty"`
+	Tenant                     string                `json:"tenant,omitempty"`
+	ProviderUUID               string                `json:"provider_uuid,omitempty"`
+	Items                      []LeaseItemJSON       `json:"items"`
+	State                      string                `json:"state,omitempty"`
+	CreatedAt                  time.Time             `json:"created_at"`
+	ClosedAt                   *time.Time            `json:"closed_at,omitempty"`
+	LastSettledAt              time.Time             `json:"last_settled_at"`
+	AcknowledgedAt             *time.Time            `json:"acknowledged_at,omitempty"`
+	RejectedAt                 *time.Time            `json:"rejected_at,omitempty"`
+	RejectionReason            string                `json:"rejection_reason,omitempty"`
+	ExpiredAt                  *time.Time            `json:"expired_at,omitempty"`
+	ClosureReason              string                `json:"closure_reason,omitempty"`
+	MetaHash                   []byte                `json:"meta_hash,omitempty"`
+	MinLeaseDurationAtCreation string                `json:"min_lease_duration_at_creation,omitempty"`
+	Reservation                *LeaseReservationJSON `json:"reservation,omitempty"`
 }
 
 // GetState returns the LeaseState enum value from the string state.
@@ -71,14 +86,14 @@ func (l *LeaseJSON) GetClosureReason() string {
 
 // BillingFundCredit funds a tenant's credit account.
 func BillingFundCredit(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, tenant, amount string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "fund-credit", tenant, amount}
+	cmd := []string{"tx", billingModule, "fund-credit", tenant, amount}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
 // BillingCreateLease creates a new lease with the specified SKU items.
 // items should be in the format "sku_uuid:quantity[:service_name]" (e.g., "uuid1:2", "uuid2:1:web")
 func BillingCreateLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, items []string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "create-lease"}
+	cmd := []string{"tx", billingModule, "create-lease"}
 	cmd = append(cmd, items...)
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
@@ -87,7 +102,7 @@ func BillingCreateLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 // items should be in the format "sku_uuid:quantity[:service_name]" (e.g., "uuid1:2", "uuid2:1:web")
 // metaHash should be a hex-encoded string (e.g., "a1b2c3d4...")
 func BillingCreateLeaseWithMetaHash(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, items []string, metaHash string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "create-lease"}
+	cmd := []string{"tx", billingModule, "create-lease"}
 	cmd = append(cmd, items...)
 	if metaHash != "" {
 		cmd = append(cmd, "--meta-hash", metaHash)
@@ -98,20 +113,20 @@ func BillingCreateLeaseWithMetaHash(ctx context.Context, chain *cosmos.CosmosCha
 // BillingCreateLeaseForTenant creates a new lease on behalf of a tenant (authority only).
 // items should be in the format "sku_uuid:quantity[:service_name]" (e.g., "uuid1:2", "uuid2:1:web")
 func BillingCreateLeaseForTenant(ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet, tenant string, items []string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "create-lease-for-tenant", tenant}
+	cmd := []string{"tx", billingModule, "create-lease-for-tenant", tenant}
 	cmd = append(cmd, items...)
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, authority.KeyName(), flags...))
 }
 
 // BillingCloseLease closes an active lease.
 func BillingCloseLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseID string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "close-lease", leaseID}
+	cmd := []string{"tx", billingModule, closeLeaseCommand, leaseID}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
 // BillingCloseLeaseWithReason closes an active lease with a closure reason.
 func BillingCloseLeaseWithReason(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseID, reason string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "close-lease", leaseID}
+	cmd := []string{"tx", billingModule, closeLeaseCommand, leaseID}
 	if reason != "" {
 		cmd = append(cmd, "--reason", reason)
 	}
@@ -120,34 +135,35 @@ func BillingCloseLeaseWithReason(ctx context.Context, chain *cosmos.CosmosChain,
 
 // BillingCloseLeases closes multiple active leases atomically.
 func BillingCloseLeases(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUIDs []string, flags ...string) (sdk.TxResponse, error) {
-	cmd := append([]string{"tx", "billing", "close-lease"}, leaseUUIDs...)
+	cmd := append([]string{"tx", billingModule, closeLeaseCommand}, leaseUUIDs...)
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
 // BillingCloseLeasesWithReason closes multiple active leases atomically with a closure reason.
 func BillingCloseLeasesWithReason(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUIDs []string, reason string, flags ...string) (sdk.TxResponse, error) {
-	cmd := append([]string{"tx", "billing", "close-lease"}, leaseUUIDs...)
+	cmd := append([]string{"tx", billingModule, closeLeaseCommand}, leaseUUIDs...)
 	if reason != "" {
 		cmd = append(cmd, "--reason", reason)
 	}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
-// BillingAcknowledgeLease acknowledges a pending lease (provider only).
+// BillingAcknowledgeLease acknowledges a pending lease (provider or module authority).
 func BillingAcknowledgeLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "acknowledge-lease", leaseUUID}
+	cmd := []string{"tx", billingModule, "acknowledge-lease", leaseUUID}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
-// BillingAcknowledgeLeases acknowledges multiple pending leases atomically (provider only).
+// BillingAcknowledgeLeases acknowledges multiple pending leases atomically.
+// The provider or module authority may submit the acknowledgement.
 func BillingAcknowledgeLeases(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUIDs []string, flags ...string) (sdk.TxResponse, error) {
-	cmd := append([]string{"tx", "billing", "acknowledge-lease"}, leaseUUIDs...)
+	cmd := append([]string{"tx", billingModule, "acknowledge-lease"}, leaseUUIDs...)
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
 // BillingRejectLease rejects a pending lease (provider only).
 func BillingRejectLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID string, reason string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "reject-lease", leaseUUID}
+	cmd := []string{"tx", billingModule, "reject-lease", leaseUUID}
 	if reason != "" {
 		cmd = append(cmd, "--reason", reason)
 	}
@@ -156,7 +172,7 @@ func BillingRejectLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 
 // BillingRejectLeases rejects multiple pending leases atomically (provider only).
 func BillingRejectLeases(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUIDs []string, reason string, flags ...string) (sdk.TxResponse, error) {
-	cmd := append([]string{"tx", "billing", "reject-lease"}, leaseUUIDs...)
+	cmd := append([]string{"tx", billingModule, "reject-lease"}, leaseUUIDs...)
 	if reason != "" {
 		cmd = append(cmd, "--reason", reason)
 	}
@@ -165,7 +181,7 @@ func BillingRejectLeases(ctx context.Context, chain *cosmos.CosmosChain, user ib
 
 // BillingCancelLease cancels a pending lease (tenant only).
 func BillingCancelLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "cancel-lease", leaseUUID}
+	cmd := []string{"tx", billingModule, "cancel-lease", leaseUUID}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
@@ -174,7 +190,7 @@ func BillingCancelLease(ctx context.Context, chain *cosmos.CosmosChain, user ibc
 // An empty domain clears the field; sender must be tenant, authority, or
 // in params.allowed_list.
 func BillingSetItemCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUID, serviceName, domain string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "set-item-custom-domain", leaseUUID, serviceName, domain}
+	cmd := []string{"tx", billingModule, "set-item-custom-domain", leaseUUID, serviceName, domain}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
@@ -221,7 +237,7 @@ func BillingCreateAndAcknowledgeLease(ctx context.Context, chain *cosmos.CosmosC
 
 // BillingWithdraw withdraws accrued funds from a specific lease.
 func BillingWithdraw(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseID string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "withdraw", leaseID}
+	cmd := []string{"tx", billingModule, "withdraw", leaseID}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
@@ -229,9 +245,9 @@ func BillingWithdraw(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wa
 // Uses the --provider flag for provider-wide withdrawal mode.
 // limit=0 uses the default limit (50).
 func BillingWithdrawByProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, providerUUID string, limit uint64, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "withdraw", "--provider", providerUUID}
+	cmd := []string{"tx", billingModule, "withdraw", "--provider", providerUUID}
 	if limit > 0 {
-		cmd = append(cmd, "--limit", strconv.FormatUint(limit, 10))
+		cmd = append(cmd, limitFlag, strconv.FormatUint(limit, 10))
 	}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
@@ -255,7 +271,7 @@ func BillingUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ib
 //     → CLI sets the value (an empty []string{} explicitly clears).
 func BillingUpdateParamsFull(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, maxLeasesPerTenant uint64, maxItemsPerLease uint64, minLeaseDuration uint64, maxPendingLeasesPerTenant uint64, pendingTimeout uint64, allowedList []string, reservedDomainSuffixes []string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{
-		"tx", "billing", "update-params",
+		"tx", billingModule, "update-params",
 		strconv.FormatUint(maxLeasesPerTenant, 10),
 		strconv.FormatUint(maxItemsPerLease, 10),
 		strconv.FormatUint(minLeaseDuration, 10),
@@ -296,7 +312,7 @@ type LeaseByCustomDomainResponseJSON struct {
 // BillingQueryParams queries the billing module parameters.
 func BillingQueryParams(ctx context.Context, chain *cosmos.CosmosChain) (*billingtypes.QueryParamsResponse, error) {
 	var res billingtypes.QueryParamsResponse
-	cmd := []string{"query", "billing", "params"}
+	cmd := []string{queryCommand, billingModule, "params"}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -306,7 +322,7 @@ func BillingQueryParams(ctx context.Context, chain *cosmos.CosmosChain) (*billin
 // BillingQueryLease queries a lease by UUID.
 func BillingQueryLease(ctx context.Context, chain *cosmos.CosmosChain, leaseUUID string) (*LeaseResponseJSON, error) {
 	var res LeaseResponseJSON
-	cmd := []string{"query", "billing", "lease", leaseUUID}
+	cmd := []string{queryCommand, billingModule, "lease", leaseUUID}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -317,7 +333,7 @@ func BillingQueryLease(ctx context.Context, chain *cosmos.CosmosChain, leaseUUID
 // for a given custom_domain.
 func BillingQueryLeaseByCustomDomain(ctx context.Context, chain *cosmos.CosmosChain, domain string) (*LeaseByCustomDomainResponseJSON, error) {
 	var res LeaseByCustomDomainResponseJSON
-	cmd := []string{"query", "billing", "lease-by-domain", domain}
+	cmd := []string{queryCommand, billingModule, "lease-by-domain", domain}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -329,7 +345,7 @@ func BillingQueryLeaseByCustomDomain(ctx context.Context, chain *cosmos.CosmosCh
 // Empty string returns all leases.
 func BillingQueryLeases(ctx context.Context, chain *cosmos.CosmosChain, state string) (*LeasesResponseJSON, error) {
 	var res LeasesResponseJSON
-	cmd := []string{"query", "billing", "leases"}
+	cmd := []string{queryCommand, billingModule, "leases"}
 	if state != "" {
 		cmd = append(cmd, "--state", state)
 	}
@@ -342,7 +358,7 @@ func BillingQueryLeases(ctx context.Context, chain *cosmos.CosmosChain, state st
 // BillingQueryLeasesByTenant queries leases by tenant address with optional state filter.
 func BillingQueryLeasesByTenant(ctx context.Context, chain *cosmos.CosmosChain, tenant, state string) (*LeasesResponseJSON, error) {
 	var res LeasesResponseJSON
-	cmd := []string{"query", "billing", "leases-by-tenant", tenant}
+	cmd := []string{queryCommand, billingModule, "leases-by-tenant", tenant}
 	if state != "" {
 		cmd = append(cmd, "--state", state)
 	}
@@ -355,7 +371,7 @@ func BillingQueryLeasesByTenant(ctx context.Context, chain *cosmos.CosmosChain, 
 // BillingQueryLeasesByProvider queries leases by provider UUID with optional state filter.
 func BillingQueryLeasesByProvider(ctx context.Context, chain *cosmos.CosmosChain, providerUUID, state string) (*LeasesResponseJSON, error) {
 	var res LeasesResponseJSON
-	cmd := []string{"query", "billing", "leases-by-provider", providerUUID}
+	cmd := []string{queryCommand, billingModule, "leases-by-provider", providerUUID}
 	if state != "" {
 		cmd = append(cmd, "--state", state)
 	}
@@ -376,7 +392,7 @@ func (r *LeasesResponseJSON) GetNextKeyString() string {
 // BillingQueryLeasesPaginated queries leases with pagination.
 func BillingQueryLeasesPaginated(ctx context.Context, chain *cosmos.CosmosChain, state string, limit uint64, key string) (*LeasesResponseJSON, string, error) {
 	var res LeasesResponseJSON
-	cmd := []string{"query", "billing", "leases", "--limit", strconv.FormatUint(limit, 10)}
+	cmd := []string{queryCommand, billingModule, "leases", limitFlag, strconv.FormatUint(limit, 10)}
 	if state != "" {
 		cmd = append(cmd, "--state", state)
 	}
@@ -392,7 +408,7 @@ func BillingQueryLeasesPaginated(ctx context.Context, chain *cosmos.CosmosChain,
 // BillingQueryLeasesByTenantPaginated queries leases by tenant with pagination.
 func BillingQueryLeasesByTenantPaginated(ctx context.Context, chain *cosmos.CosmosChain, tenant, state string, limit uint64, key string) (*LeasesResponseJSON, string, error) {
 	var res LeasesResponseJSON
-	cmd := []string{"query", "billing", "leases-by-tenant", tenant, "--limit", strconv.FormatUint(limit, 10)}
+	cmd := []string{queryCommand, billingModule, "leases-by-tenant", tenant, limitFlag, strconv.FormatUint(limit, 10)}
 	if state != "" {
 		cmd = append(cmd, "--state", state)
 	}
@@ -408,7 +424,7 @@ func BillingQueryLeasesByTenantPaginated(ctx context.Context, chain *cosmos.Cosm
 // BillingQueryLeasesByProviderPaginated queries leases by provider with pagination.
 func BillingQueryLeasesByProviderPaginated(ctx context.Context, chain *cosmos.CosmosChain, providerUUID, state string, limit uint64, key string) (*LeasesResponseJSON, string, error) {
 	var res LeasesResponseJSON
-	cmd := []string{"query", "billing", "leases-by-provider", providerUUID, "--limit", strconv.FormatUint(limit, 10)}
+	cmd := []string{queryCommand, billingModule, "leases-by-provider", providerUUID, limitFlag, strconv.FormatUint(limit, 10)}
 	if state != "" {
 		cmd = append(cmd, "--state", state)
 	}
@@ -421,10 +437,20 @@ func BillingQueryLeasesByProviderPaginated(ctx context.Context, chain *cosmos.Co
 	return &res, res.GetNextKeyString(), nil
 }
 
+// CreditAccountResponseJSON wraps a credit-account query. CLI protobuf JSON
+// renders pagination.total as a quoted uint64, which cannot be decoded into the
+// SDK's query.PageResponse by encoding/json.
+type CreditAccountResponseJSON struct {
+	CreditAccount     billingtypes.CreditAccount `json:"credit_account"`
+	Balances          sdk.Coins                  `json:"balances"`
+	AvailableBalances sdk.Coins                  `json:"available_balances"`
+	Pagination        *PageResponseJSON          `json:"pagination,omitempty"`
+}
+
 // BillingQueryCreditAccount queries a tenant's credit account.
-func BillingQueryCreditAccount(ctx context.Context, chain *cosmos.CosmosChain, tenant string) (*billingtypes.QueryCreditAccountResponse, error) {
-	var res billingtypes.QueryCreditAccountResponse
-	cmd := []string{"query", "billing", "credit-account", tenant}
+func BillingQueryCreditAccount(ctx context.Context, chain *cosmos.CosmosChain, tenant string) (*CreditAccountResponseJSON, error) {
+	var res CreditAccountResponseJSON
+	cmd := []string{queryCommand, billingModule, "credit-account", tenant}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -434,7 +460,7 @@ func BillingQueryCreditAccount(ctx context.Context, chain *cosmos.CosmosChain, t
 // BillingQueryCreditAddress derives the credit address for a tenant.
 func BillingQueryCreditAddress(ctx context.Context, chain *cosmos.CosmosChain, tenant string) (*billingtypes.QueryCreditAddressResponse, error) {
 	var res billingtypes.QueryCreditAddressResponse
-	cmd := []string{"query", "billing", "credit-address", tenant}
+	cmd := []string{queryCommand, billingModule, "credit-address", tenant}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -444,7 +470,7 @@ func BillingQueryCreditAddress(ctx context.Context, chain *cosmos.CosmosChain, t
 // BillingQueryWithdrawable queries the withdrawable amount for a lease.
 func BillingQueryWithdrawable(ctx context.Context, chain *cosmos.CosmosChain, leaseUUID string) (*billingtypes.QueryWithdrawableAmountResponse, error) {
 	var res billingtypes.QueryWithdrawableAmountResponse
-	cmd := []string{"query", "billing", "withdrawable", leaseUUID}
+	cmd := []string{queryCommand, billingModule, "withdrawable", leaseUUID}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -457,15 +483,16 @@ func BillingQueryWithdrawable(ctx context.Context, chain *cosmos.CosmosChain, le
 // that via encoding/json, so we use PageResponseJSON here (same reason the leases
 // and credit-account paginated helpers do).
 type ProviderWithdrawableResponseJSON struct {
-	Amounts    sdk.Coins         `json:"amounts"`
-	LeaseCount uint64            `json:"lease_count,omitempty,string"`
-	Pagination *PageResponseJSON `json:"pagination,omitempty"`
+	Amounts          sdk.Coins         `json:"amounts"`
+	LeaseCount       uint64            `json:"lease_count,omitempty,string"`
+	Pagination       *PageResponseJSON `json:"pagination,omitempty"`
+	FailedLeaseUUIDs []string          `json:"failed_lease_uuids,omitempty"`
 }
 
 // BillingQueryProviderWithdrawable queries the total withdrawable amount for a provider.
 func BillingQueryProviderWithdrawable(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string) (*ProviderWithdrawableResponseJSON, error) {
 	var res ProviderWithdrawableResponseJSON
-	cmd := []string{"query", "billing", "provider-withdrawable", providerUUID}
+	cmd := []string{queryCommand, billingModule, "provider-withdrawable", providerUUID}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -481,7 +508,7 @@ type CreditAccountsResponseJSON struct {
 // BillingQueryCreditAccounts queries all credit accounts with pagination.
 func BillingQueryCreditAccounts(ctx context.Context, chain *cosmos.CosmosChain) (*CreditAccountsResponseJSON, error) {
 	var res CreditAccountsResponseJSON
-	cmd := []string{"query", "billing", "credit-accounts"}
+	cmd := []string{queryCommand, billingModule, "credit-accounts"}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -491,7 +518,7 @@ func BillingQueryCreditAccounts(ctx context.Context, chain *cosmos.CosmosChain) 
 // BillingQueryCreditAccountsPaginated queries all credit accounts with pagination.
 func BillingQueryCreditAccountsPaginated(ctx context.Context, chain *cosmos.CosmosChain, limit uint64, key string) (*CreditAccountsResponseJSON, string, error) {
 	var res CreditAccountsResponseJSON
-	cmd := []string{"query", "billing", "credit-accounts", "--limit", strconv.FormatUint(limit, 10)}
+	cmd := []string{queryCommand, billingModule, "credit-accounts", limitFlag, strconv.FormatUint(limit, 10)}
 	if key != "" {
 		cmd = append(cmd, "--page-key", key)
 	}
@@ -508,7 +535,7 @@ func BillingQueryCreditAccountsPaginated(ctx context.Context, chain *cosmos.Cosm
 // BillingQueryLeasesBySKU queries leases by SKU UUID with optional state filter.
 func BillingQueryLeasesBySKU(ctx context.Context, chain *cosmos.CosmosChain, skuUUID, state string) (*LeasesResponseJSON, error) {
 	var res LeasesResponseJSON
-	cmd := []string{"query", "billing", "leases-by-sku", skuUUID}
+	cmd := []string{queryCommand, billingModule, "leases-by-sku", skuUUID}
 	if state != "" {
 		cmd = append(cmd, "--state", state)
 	}
@@ -521,7 +548,7 @@ func BillingQueryLeasesBySKU(ctx context.Context, chain *cosmos.CosmosChain, sku
 // BillingQueryLeasesBySKUPaginated queries leases by SKU UUID with pagination.
 func BillingQueryLeasesBySKUPaginated(ctx context.Context, chain *cosmos.CosmosChain, skuUUID, state string, limit uint64, key string) (*LeasesResponseJSON, string, error) {
 	var res LeasesResponseJSON
-	cmd := []string{"query", "billing", "leases-by-sku", skuUUID, "--limit", strconv.FormatUint(limit, 10)}
+	cmd := []string{queryCommand, billingModule, "leases-by-sku", skuUUID, limitFlag, strconv.FormatUint(limit, 10)}
 	if state != "" {
 		cmd = append(cmd, "--state", state)
 	}
@@ -537,7 +564,7 @@ func BillingQueryLeasesBySKUPaginated(ctx context.Context, chain *cosmos.CosmosC
 // BillingQueryCreditEstimate queries the credit estimate for a tenant.
 func BillingQueryCreditEstimate(ctx context.Context, chain *cosmos.CosmosChain, tenant string) (*billingtypes.QueryCreditEstimateResponse, error) {
 	var res billingtypes.QueryCreditEstimateResponse
-	cmd := []string{"query", "billing", "credit-estimate", tenant}
+	cmd := []string{queryCommand, billingModule, "credit-estimate", tenant}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}

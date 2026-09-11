@@ -46,6 +46,7 @@ func MsgCreateProvider() *cobra.Command {
 		Use:   "create-provider [address] [payout-address]",
 		Short: "Create a new provider",
 		Long: `Create a new provider with the given management and payout addresses.
+The payout address must be permitted by bank policy; protected module accounts are rejected.
 
 The api-url is optional and must be a valid HTTPS URL where the provider's
 off-chain API is hosted for tenant authentication and connection details.`,
@@ -98,15 +99,23 @@ func MsgUpdateProvider() *cobra.Command {
 		Long: `Update an existing provider with the given parameters.
 
 Active values:
-  true  - keep active or reactivate an inactive provider
-  false - NOT ALLOWED (use deactivate-provider instead)
+  true  - keep active or reactivate an inactive provider after its SKU cascade completes
+  false - keep an already-inactive provider inactive
 
-Note: To deactivate a provider, use the 'deactivate-provider' command which
+Note: To deactivate an active provider, use the 'deactivate-provider' command which
 properly cascades deactivation to all associated SKUs.
+Finish all cascade pages before reactivating; then reactivate desired SKUs individually.
+The payout address must be permitted by bank policy; protected module accounts are rejected.
 
-The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.`,
-		Example: "update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com",
-		Args:    cobra.ExactArgs(4),
+Each update replaces the metadata hash. Resend its current hex value with
+--meta-hash to preserve it; omitting the flag or passing an empty value clears it.
+
+The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.
+Omit --api-url to preserve the existing URL, or use --clear-api-url to remove it.
+--clear-api-url cannot be combined with a non-empty --api-url.`,
+		Example: `update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --api-url https://api.provider.com --meta-hash [current-meta-hash-hex]
+update-provider 01912345-6789-7abc-8def-0123456789ab manifest1abc... manifest1def... true --clear-api-url --meta-hash [current-meta-hash-hex]`,
+		Args: cobra.ExactArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
@@ -129,7 +138,14 @@ The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.`
 				return err
 			}
 
-			apiURL, _ := cmd.Flags().GetString("api-url")
+			apiURL, err := cmd.Flags().GetString("api-url")
+			if err != nil {
+				return err
+			}
+			clearAPIURL, err := cmd.Flags().GetBool("clear-api-url")
+			if err != nil {
+				return err
+			}
 
 			msg := types.NewMsgUpdateProvider(
 				authority.String(),
@@ -140,6 +156,7 @@ The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.`
 				active,
 				apiURL,
 			)
+			msg.ClearApiUrl = clearAPIURL
 
 			if err := msg.Validate(); err != nil {
 				return err
@@ -149,8 +166,9 @@ The api-url is the HTTPS endpoint where the provider's off-chain API is hosted.`
 		},
 	}
 
-	cmd.Flags().String("meta-hash", "", "Hex-encoded hash of off-chain metadata")
-	cmd.Flags().String("api-url", "", "HTTPS endpoint where the provider's off-chain API is hosted")
+	cmd.Flags().String("meta-hash", "", "Hex-encoded metadata hash (empty clears; resend current value to preserve)")
+	cmd.Flags().String("api-url", "", "HTTPS endpoint where the provider's off-chain API is hosted (empty preserves the existing URL)")
+	cmd.Flags().Bool("clear-api-url", false, "Clear the provider's existing API URL (cannot be combined with a non-empty --api-url)")
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }
@@ -161,10 +179,16 @@ func MsgDeactivateProvider() *cobra.Command {
 		Use:   "deactivate-provider [uuid]",
 		Short: "Deactivate a provider (soft delete)",
 		Long: fmt.Sprintf(`Deactivate a provider. This is a soft delete - the provider remains in state but is marked inactive.
-Inactive providers cannot create new SKUs but existing SKUs continue to work.
+Inactive providers cannot have new SKUs or leases created. Existing leases continue operating.
 
 SKU deactivation is paginated to prevent gas exhaustion with many SKUs.
-If has_more is true in the response, call again to continue deactivating SKUs.
+After each transaction is committed successfully, query:
+  manifestd query sku skus-by-provider [uuid] --active-only --limit 1 -o json
+Repeat deactivation while the query returns any SKUs. Use the same RPC and query
+at the committed transaction height or later. Sync broadcast output contains an
+SDK admission response, not the module's has_more field; check the committed
+transaction's code before continuing.
+The cascade must finish before the provider can be reactivated.
 
 Use --limit to control how many SKUs are deactivated per call (default %d, max %d).`,
 			types.DefaultDeactivateSKULimit, types.MaxDeactivateSKULimit),
@@ -212,8 +236,10 @@ func MsgCreateSKU() *cobra.Command {
 
 Unit values:
   1 = per hour
-  2 = per day`,
-		Example: "create-sku 01912345-6789-7abc-8def-0123456789ab \"Compute Instance\" 1 100umfx --meta-hash deadbeef",
+  2 = per day
+
+Prices must be positive multiples of 3600 (hourly) or 86400 (daily) base units.`,
+		Example: "create-sku 01912345-6789-7abc-8def-0123456789ab \"Compute Instance\" 1 3600umfx --meta-hash deadbeef",
 		Args:    cobra.ExactArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -277,10 +303,14 @@ Unit values:
 
 Active values:
   true  - keep active or reactivate an inactive SKU (requires active provider)
-  false - NOT ALLOWED (use deactivate-sku instead)
+  false - keep an already-inactive SKU inactive
 
-Note: To deactivate a SKU, use the 'deactivate-sku' command.`,
-		Example: "update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab \"Updated Name\" 2 200umfx true --meta-hash deadbeef",
+Note: To deactivate an active SKU, use the 'deactivate-sku' command.
+Prices must be positive multiples of 3600 (hourly) or 86400 (daily) base units.
+
+Each update replaces the metadata hash. Resend its current hex value with
+--meta-hash to preserve it; omitting the flag or passing an empty value clears it.`,
+		Example: "update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab \"Updated Name\" 2 86400umfx true --meta-hash deadbeef",
 		Args:    cobra.ExactArgs(6),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -334,7 +364,7 @@ Note: To deactivate a SKU, use the 'deactivate-sku' command.`,
 		},
 	}
 
-	cmd.Flags().String("meta-hash", "", "Hex-encoded hash of off-chain metadata")
+	cmd.Flags().String("meta-hash", "", "Hex-encoded metadata hash (empty clears; resend current value to preserve)")
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }
@@ -380,8 +410,9 @@ func MsgUpdateParams() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update-params",
 		Short: "Update the module parameters",
-		Long: `Update the module parameters including the allowed list.
-Only the module authority can execute this command.`,
+		Long: `Replace the module parameters. Only the module authority can execute this command.
+--allowed-list is required. Pass an empty value (--allowed-list="") to explicitly
+clear the list; omitting the flag never clears existing permissions.`,
 		Example: "update-params --allowed-list manifest1abc...,manifest1def...",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -413,6 +444,9 @@ Only the module authority can execute this command.`,
 	}
 
 	cmd.Flags().String("allowed-list", "", "Comma-separated list of addresses allowed to manage SKUs")
+	if err := cmd.MarkFlagRequired("allowed-list"); err != nil {
+		panic(err)
+	}
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }

@@ -1,0 +1,702 @@
+{
+  "driver_argv": [
+    "python3",
+    "-O",
+    "docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+    "replay",
+    "docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/verification.json",
+    "docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+    ".review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay",
+    "docs/reviews/2026-09-11-claude-hygiene-validation/terminal-patch-literal-replay.json"
+  ],
+  "python_executable": "/usr/sbin/python3",
+  "python_version": "3.14.7 (main, Aug 14 2026, 06:38:32) [GCC 16.2.1 20260810]",
+  "driver_sha256": "ca45bdf3641f74fb3aded2993bea2c268c98be6bd071139cfbdb01e6cd44f0de",
+  "driver_cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "replayed_transcript": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/verification.json",
+  "replayed_transcript_sha256": "a07fae31fc2f2cc445a57cc702aab78007f2a09e350ed4dfbbba207f488d9146",
+  "bindings": {
+    "python": "/usr/sbin/python3",
+    "verifier": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+    "evidence": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+    "work": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay"
+  },
+  "environment_overrides": {
+    "LC_ALL": "C",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_GLOBAL": "/dev/null"
+  },
+  "environment_note": "Other host environment entries are inherited. Git system/global config is disabled; no credentials are archived.",
+  "display_normalization": "splitlines + expandtabs(8) + per-line rstrip + overall rstrip + one LF",
+  "started_at_utc": "2026-09-11T17:35:20.694394+00:00",
+  "records": [
+    {
+      "source_path": "x/billing/keeper/msg_server.go",
+      "baseline_sha256": "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+      "patch": "original.patch",
+      "patch_sha256": "6361963001276f46ed6e7e7b73457846cded1ca833e0909d0caca4e89ae93273",
+      "mutant_sha256": "ac6768d1d77d60e8ce516bd81338a29d31a8e00ff9c842a5907d5a747f665a0e",
+      "name": "original",
+      "baseline": {
+        "kind": "file",
+        "path": "fixed.go.txt"
+      },
+      "steps": [
+        {
+          "name": "init",
+          "portable_argv": [
+            "git",
+            "init",
+            "--quiet",
+            "{work}/original"
+          ],
+          "argv": [
+            "git",
+            "init",
+            "--quiet",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/original"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:20.694471+00:00",
+          "finished_at_utc": "2026-09-11T17:35:20.697942+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "seed-baseline",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "seed",
+            "--file",
+            "{evidence}/fixed.go.txt",
+            "--sha256",
+            "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+            "--destination",
+            "{work}/original/x/billing/keeper/msg_server.go"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "seed",
+            "--file",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/fixed.go.txt",
+            "--sha256",
+            "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+            "--destination",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/original/x/billing/keeper/msg_server.go"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:20.698000+00:00",
+          "finished_at_utc": "2026-09-11T17:35:20.750997+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJzZWVkZWRfcGF0aCI6ICIvaG9tZS9mbW9yZW5jeS9kZXYvbWFuaWZlc3QtbGVkZ2VyLy5yZXZpZXctd29ya3RyZWVzL3NrdS1iaWxsaW5nLTIwMjYwOTA5Ly5yZXZpZXctdG1wL3NlcDExLXBhdGNoLXJlY29uc3RydWN0aW9uLWNvbXBsZXRlL3Rlcm1pbmFsLWZpbmFsLWxpdGVyYWwtcmVwbGF5L29yaWdpbmFsL3gvYmlsbGluZy9rZWVwZXIvbXNnX3NlcnZlci5nbyIsICJiYXNlbGluZV9zaGEyNTYiOiAiMDRlMjNjYmJkYTg2ZTcyYjRlYWFjNjhlZDE0ZTI1Y2Q4YzI2NzJiOTczOGNlNTU3MzYyNjliNjBiMWZhZDAxZiJ9Cg==",
+            "raw_sha256": "97d6d2d6bc2799fc9a1fd40afceab7c09d7dc6a4a3a99a2283bb6e5b7a0f7fff",
+            "raw_bytes": 298,
+            "display": "{\"seeded_path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/original/x/billing/keeper/msg_server.go\", \"baseline_sha256\": \"04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f\"}\n",
+            "display_sha256": "97d6d2d6bc2799fc9a1fd40afceab7c09d7dc6a4a3a99a2283bb6e5b7a0f7fff"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "verify-patch",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{evidence}/original.patch",
+            "6361963001276f46ed6e7e7b73457846cded1ca833e0909d0caca4e89ae93273"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "hash",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/original.patch",
+            "6361963001276f46ed6e7e7b73457846cded1ca833e0909d0caca4e89ae93273"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:20.751053+00:00",
+          "finished_at_utc": "2026-09-11T17:35:20.805196+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJwYXRoIjogIi9ob21lL2Ztb3JlbmN5L2Rldi9tYW5pZmVzdC1sZWRnZXIvLnJldmlldy13b3JrdHJlZXMvc2t1LWJpbGxpbmctMjAyNjA5MDkvZG9jcy9yZXZpZXdzLzIwMjYtMDktMTEtY2xhdWRlLXJldmlldy12YWxpZGF0aW9uL3Rlcm1pbmFsLW11dGF0aW9ucy9vcmlnaW5hbC5wYXRjaCIsICJzaGEyNTYiOiAiNjM2MTk2MzAwMTI3NmY0NmVkNmU3ZTdiNzM0NTc4NDZjZGVkMWNhODMzZTA5MDlkMGNhY2E0ZTg5YWU5MzI3MyIsICJtYXRjaGVzIjogdHJ1ZX0K",
+            "raw_sha256": "f5157447ee948fef1d4c4ac113d2c2bb08aeecf83a3ffc3c8a6cdb90f9a62490",
+            "raw_bytes": 264,
+            "display": "{\"path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/original.patch\", \"sha256\": \"6361963001276f46ed6e7e7b73457846cded1ca833e0909d0caca4e89ae93273\", \"matches\": true}\n",
+            "display_sha256": "f5157447ee948fef1d4c4ac113d2c2bb08aeecf83a3ffc3c8a6cdb90f9a62490"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "apply-patch",
+          "portable_argv": [
+            "git",
+            "-C",
+            "{work}/original",
+            "apply",
+            "--unidiff-zero",
+            "{evidence}/original.patch"
+          ],
+          "argv": [
+            "git",
+            "-C",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/original",
+            "apply",
+            "--unidiff-zero",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/original.patch"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:20.805257+00:00",
+          "finished_at_utc": "2026-09-11T17:35:20.807150+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "verify-result",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{work}/original/x/billing/keeper/msg_server.go",
+            "ac6768d1d77d60e8ce516bd81338a29d31a8e00ff9c842a5907d5a747f665a0e"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "hash",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/original/x/billing/keeper/msg_server.go",
+            "ac6768d1d77d60e8ce516bd81338a29d31a8e00ff9c842a5907d5a747f665a0e"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:20.807178+00:00",
+          "finished_at_utc": "2026-09-11T17:35:20.857802+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJwYXRoIjogIi9ob21lL2Ztb3JlbmN5L2Rldi9tYW5pZmVzdC1sZWRnZXIvLnJldmlldy13b3JrdHJlZXMvc2t1LWJpbGxpbmctMjAyNjA5MDkvLnJldmlldy10bXAvc2VwMTEtcGF0Y2gtcmVjb25zdHJ1Y3Rpb24tY29tcGxldGUvdGVybWluYWwtZmluYWwtbGl0ZXJhbC1yZXBsYXkvb3JpZ2luYWwveC9iaWxsaW5nL2tlZXBlci9tc2dfc2VydmVyLmdvIiwgInNoYTI1NiI6ICJhYzY3NjhkMWQ3N2Q2MGU4Y2U1MTZiZDgxMzM4YTI5ZDMxYThlMDBmZjljODQyYTU5MDdkNWE3NDdmNjY1YTBlIiwgIm1hdGNoZXMiOiB0cnVlfQo=",
+            "raw_sha256": "c515c35e2f00ebcc6ee03c1ffdc94ac2452322e852afc96f93070ccc52e6e869",
+            "raw_bytes": 299,
+            "display": "{\"path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/original/x/billing/keeper/msg_server.go\", \"sha256\": \"ac6768d1d77d60e8ce516bd81338a29d31a8e00ff9c842a5907d5a747f665a0e\", \"matches\": true}\n",
+            "display_sha256": "c515c35e2f00ebcc6ee03c1ffdc94ac2452322e852afc96f93070ccc52e6e869"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      ],
+      "reconstructed_sha256": "ac6768d1d77d60e8ce516bd81338a29d31a8e00ff9c842a5907d5a747f665a0e",
+      "matches_recorded_mutant": true,
+      "exit_status": 0
+    },
+    {
+      "source_path": "x/billing/keeper/msg_server.go",
+      "baseline_sha256": "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+      "patch": "retained-cursor.patch",
+      "patch_sha256": "8d0010b714cc3b8b37f02aaab296f75380d24681c208fd5d47aa3a8d0d292777",
+      "mutant_sha256": "e5d987868623487cb18b86ab2bbca1b96a8b319075d54c505adee4d8b9a95117",
+      "name": "retained-cursor",
+      "baseline": {
+        "kind": "file",
+        "path": "fixed.go.txt"
+      },
+      "steps": [
+        {
+          "name": "init",
+          "portable_argv": [
+            "git",
+            "init",
+            "--quiet",
+            "{work}/retained-cursor"
+          ],
+          "argv": [
+            "git",
+            "init",
+            "--quiet",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/retained-cursor"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:20.858057+00:00",
+          "finished_at_utc": "2026-09-11T17:35:20.861520+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "seed-baseline",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "seed",
+            "--file",
+            "{evidence}/fixed.go.txt",
+            "--sha256",
+            "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+            "--destination",
+            "{work}/retained-cursor/x/billing/keeper/msg_server.go"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "seed",
+            "--file",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/fixed.go.txt",
+            "--sha256",
+            "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+            "--destination",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/retained-cursor/x/billing/keeper/msg_server.go"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:20.861570+00:00",
+          "finished_at_utc": "2026-09-11T17:35:20.917583+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJzZWVkZWRfcGF0aCI6ICIvaG9tZS9mbW9yZW5jeS9kZXYvbWFuaWZlc3QtbGVkZ2VyLy5yZXZpZXctd29ya3RyZWVzL3NrdS1iaWxsaW5nLTIwMjYwOTA5Ly5yZXZpZXctdG1wL3NlcDExLXBhdGNoLXJlY29uc3RydWN0aW9uLWNvbXBsZXRlL3Rlcm1pbmFsLWZpbmFsLWxpdGVyYWwtcmVwbGF5L3JldGFpbmVkLWN1cnNvci94L2JpbGxpbmcva2VlcGVyL21zZ19zZXJ2ZXIuZ28iLCAiYmFzZWxpbmVfc2hhMjU2IjogIjA0ZTIzY2JiZGE4NmU3MmI0ZWFhYzY4ZWQxNGUyNWNkOGMyNjcyYjk3MzhjZTU1NzM2MjY5YjYwYjFmYWQwMWYifQo=",
+            "raw_sha256": "cde78c7e7831de42414acfe703a61719bb8f2c90f188371bce43ea28ce03a8aa",
+            "raw_bytes": 305,
+            "display": "{\"seeded_path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/retained-cursor/x/billing/keeper/msg_server.go\", \"baseline_sha256\": \"04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f\"}\n",
+            "display_sha256": "cde78c7e7831de42414acfe703a61719bb8f2c90f188371bce43ea28ce03a8aa"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "verify-patch",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{evidence}/retained-cursor.patch",
+            "8d0010b714cc3b8b37f02aaab296f75380d24681c208fd5d47aa3a8d0d292777"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "hash",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/retained-cursor.patch",
+            "8d0010b714cc3b8b37f02aaab296f75380d24681c208fd5d47aa3a8d0d292777"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:20.917644+00:00",
+          "finished_at_utc": "2026-09-11T17:35:20.970797+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJwYXRoIjogIi9ob21lL2Ztb3JlbmN5L2Rldi9tYW5pZmVzdC1sZWRnZXIvLnJldmlldy13b3JrdHJlZXMvc2t1LWJpbGxpbmctMjAyNjA5MDkvZG9jcy9yZXZpZXdzLzIwMjYtMDktMTEtY2xhdWRlLXJldmlldy12YWxpZGF0aW9uL3Rlcm1pbmFsLW11dGF0aW9ucy9yZXRhaW5lZC1jdXJzb3IucGF0Y2giLCAic2hhMjU2IjogIjhkMDAxMGI3MTRjYzNiOGIzN2YwMmFhYWIyOTZmNzUzODBkMjQ2ODFjMjA4ZmQ1ZDQ3YWEzYThkMGQyOTI3NzciLCAibWF0Y2hlcyI6IHRydWV9Cg==",
+            "raw_sha256": "5583eaf6c9b5150bc32bb0471116e07d91f5bd41ea9544352dc3ce985d40c8ca",
+            "raw_bytes": 271,
+            "display": "{\"path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/retained-cursor.patch\", \"sha256\": \"8d0010b714cc3b8b37f02aaab296f75380d24681c208fd5d47aa3a8d0d292777\", \"matches\": true}\n",
+            "display_sha256": "5583eaf6c9b5150bc32bb0471116e07d91f5bd41ea9544352dc3ce985d40c8ca"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "apply-patch",
+          "portable_argv": [
+            "git",
+            "-C",
+            "{work}/retained-cursor",
+            "apply",
+            "--unidiff-zero",
+            "{evidence}/retained-cursor.patch"
+          ],
+          "argv": [
+            "git",
+            "-C",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/retained-cursor",
+            "apply",
+            "--unidiff-zero",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/retained-cursor.patch"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:20.970851+00:00",
+          "finished_at_utc": "2026-09-11T17:35:20.972536+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "verify-result",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{work}/retained-cursor/x/billing/keeper/msg_server.go",
+            "e5d987868623487cb18b86ab2bbca1b96a8b319075d54c505adee4d8b9a95117"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "hash",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/retained-cursor/x/billing/keeper/msg_server.go",
+            "e5d987868623487cb18b86ab2bbca1b96a8b319075d54c505adee4d8b9a95117"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:20.972560+00:00",
+          "finished_at_utc": "2026-09-11T17:35:21.026638+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJwYXRoIjogIi9ob21lL2Ztb3JlbmN5L2Rldi9tYW5pZmVzdC1sZWRnZXIvLnJldmlldy13b3JrdHJlZXMvc2t1LWJpbGxpbmctMjAyNjA5MDkvLnJldmlldy10bXAvc2VwMTEtcGF0Y2gtcmVjb25zdHJ1Y3Rpb24tY29tcGxldGUvdGVybWluYWwtZmluYWwtbGl0ZXJhbC1yZXBsYXkvcmV0YWluZWQtY3Vyc29yL3gvYmlsbGluZy9rZWVwZXIvbXNnX3NlcnZlci5nbyIsICJzaGEyNTYiOiAiZTVkOTg3ODY4NjIzNDg3Y2IxOGI4NmFiMmJiY2ExYjk2YThiMzE5MDc1ZDU0YzUwNWFkZWU0ZDhiOWE5NTExNyIsICJtYXRjaGVzIjogdHJ1ZX0K",
+            "raw_sha256": "4283e204bd823747e4f94c3b65fc6c3587569116a1331f739d39d26ece3f9811",
+            "raw_bytes": 306,
+            "display": "{\"path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/retained-cursor/x/billing/keeper/msg_server.go\", \"sha256\": \"e5d987868623487cb18b86ab2bbca1b96a8b319075d54c505adee4d8b9a95117\", \"matches\": true}\n",
+            "display_sha256": "4283e204bd823747e4f94c3b65fc6c3587569116a1331f739d39d26ece3f9811"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      ],
+      "reconstructed_sha256": "e5d987868623487cb18b86ab2bbca1b96a8b319075d54c505adee4d8b9a95117",
+      "matches_recorded_mutant": true,
+      "exit_status": 0
+    },
+    {
+      "source_path": "x/billing/keeper/msg_server.go",
+      "baseline_sha256": "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+      "patch": "skipped-zero.patch",
+      "patch_sha256": "35286acd651758b344af6aee80a19410a838935c72bc7a656f168042630b3c01",
+      "mutant_sha256": "7a9ff9dc06e9b1ca968d6e11f1e6f225f858048de574059973ba7d303cbf0a50",
+      "name": "skipped-zero",
+      "baseline": {
+        "kind": "file",
+        "path": "fixed.go.txt"
+      },
+      "steps": [
+        {
+          "name": "init",
+          "portable_argv": [
+            "git",
+            "init",
+            "--quiet",
+            "{work}/skipped-zero"
+          ],
+          "argv": [
+            "git",
+            "init",
+            "--quiet",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/skipped-zero"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:21.026985+00:00",
+          "finished_at_utc": "2026-09-11T17:35:21.030358+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "seed-baseline",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "seed",
+            "--file",
+            "{evidence}/fixed.go.txt",
+            "--sha256",
+            "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+            "--destination",
+            "{work}/skipped-zero/x/billing/keeper/msg_server.go"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "seed",
+            "--file",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/fixed.go.txt",
+            "--sha256",
+            "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+            "--destination",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/skipped-zero/x/billing/keeper/msg_server.go"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:21.030397+00:00",
+          "finished_at_utc": "2026-09-11T17:35:21.079782+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJzZWVkZWRfcGF0aCI6ICIvaG9tZS9mbW9yZW5jeS9kZXYvbWFuaWZlc3QtbGVkZ2VyLy5yZXZpZXctd29ya3RyZWVzL3NrdS1iaWxsaW5nLTIwMjYwOTA5Ly5yZXZpZXctdG1wL3NlcDExLXBhdGNoLXJlY29uc3RydWN0aW9uLWNvbXBsZXRlL3Rlcm1pbmFsLWZpbmFsLWxpdGVyYWwtcmVwbGF5L3NraXBwZWQtemVyby94L2JpbGxpbmcva2VlcGVyL21zZ19zZXJ2ZXIuZ28iLCAiYmFzZWxpbmVfc2hhMjU2IjogIjA0ZTIzY2JiZGE4NmU3MmI0ZWFhYzY4ZWQxNGUyNWNkOGMyNjcyYjk3MzhjZTU1NzM2MjY5YjYwYjFmYWQwMWYifQo=",
+            "raw_sha256": "b7a919507327f2ce76a347376503d15dec302092e377bc3a37e9b705630e3bfc",
+            "raw_bytes": 302,
+            "display": "{\"seeded_path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/skipped-zero/x/billing/keeper/msg_server.go\", \"baseline_sha256\": \"04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f\"}\n",
+            "display_sha256": "b7a919507327f2ce76a347376503d15dec302092e377bc3a37e9b705630e3bfc"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "verify-patch",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{evidence}/skipped-zero.patch",
+            "35286acd651758b344af6aee80a19410a838935c72bc7a656f168042630b3c01"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "hash",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/skipped-zero.patch",
+            "35286acd651758b344af6aee80a19410a838935c72bc7a656f168042630b3c01"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:21.079833+00:00",
+          "finished_at_utc": "2026-09-11T17:35:21.132089+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJwYXRoIjogIi9ob21lL2Ztb3JlbmN5L2Rldi9tYW5pZmVzdC1sZWRnZXIvLnJldmlldy13b3JrdHJlZXMvc2t1LWJpbGxpbmctMjAyNjA5MDkvZG9jcy9yZXZpZXdzLzIwMjYtMDktMTEtY2xhdWRlLXJldmlldy12YWxpZGF0aW9uL3Rlcm1pbmFsLW11dGF0aW9ucy9za2lwcGVkLXplcm8ucGF0Y2giLCAic2hhMjU2IjogIjM1Mjg2YWNkNjUxNzU4YjM0NGFmNmFlZTgwYTE5NDEwYTgzODkzNWM3MmJjN2E2NTZmMTY4MDQyNjMwYjNjMDEiLCAibWF0Y2hlcyI6IHRydWV9Cg==",
+            "raw_sha256": "49932c025db5e9bf4d5e0ccda7d498052e5c8a41463c9b85e6e9702c5e4f2ee3",
+            "raw_bytes": 268,
+            "display": "{\"path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/skipped-zero.patch\", \"sha256\": \"35286acd651758b344af6aee80a19410a838935c72bc7a656f168042630b3c01\", \"matches\": true}\n",
+            "display_sha256": "49932c025db5e9bf4d5e0ccda7d498052e5c8a41463c9b85e6e9702c5e4f2ee3"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "apply-patch",
+          "portable_argv": [
+            "git",
+            "-C",
+            "{work}/skipped-zero",
+            "apply",
+            "--unidiff-zero",
+            "{evidence}/skipped-zero.patch"
+          ],
+          "argv": [
+            "git",
+            "-C",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/skipped-zero",
+            "apply",
+            "--unidiff-zero",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/skipped-zero.patch"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:21.132136+00:00",
+          "finished_at_utc": "2026-09-11T17:35:21.133874+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "verify-result",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{work}/skipped-zero/x/billing/keeper/msg_server.go",
+            "7a9ff9dc06e9b1ca968d6e11f1e6f225f858048de574059973ba7d303cbf0a50"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "hash",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/skipped-zero/x/billing/keeper/msg_server.go",
+            "7a9ff9dc06e9b1ca968d6e11f1e6f225f858048de574059973ba7d303cbf0a50"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations",
+          "started_at_utc": "2026-09-11T17:35:21.133901+00:00",
+          "finished_at_utc": "2026-09-11T17:35:21.184682+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJwYXRoIjogIi9ob21lL2Ztb3JlbmN5L2Rldi9tYW5pZmVzdC1sZWRnZXIvLnJldmlldy13b3JrdHJlZXMvc2t1LWJpbGxpbmctMjAyNjA5MDkvLnJldmlldy10bXAvc2VwMTEtcGF0Y2gtcmVjb25zdHJ1Y3Rpb24tY29tcGxldGUvdGVybWluYWwtZmluYWwtbGl0ZXJhbC1yZXBsYXkvc2tpcHBlZC16ZXJvL3gvYmlsbGluZy9rZWVwZXIvbXNnX3NlcnZlci5nbyIsICJzaGEyNTYiOiAiN2E5ZmY5ZGMwNmU5YjFjYTk2OGQ2ZTExZjFlNmYyMjVmODU4MDQ4ZGU1NzQwNTk5NzNiYTdkMzAzY2JmMGE1MCIsICJtYXRjaGVzIjogdHJ1ZX0K",
+            "raw_sha256": "b19779a892c6428c4bbf7c98c5f3d0d05a7fd6c9c69e8c50b11eb83c8356fda0",
+            "raw_bytes": 303,
+            "display": "{\"path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-final-literal-replay/skipped-zero/x/billing/keeper/msg_server.go\", \"sha256\": \"7a9ff9dc06e9b1ca968d6e11f1e6f225f858048de574059973ba7d303cbf0a50\", \"matches\": true}\n",
+            "display_sha256": "b19779a892c6428c4bbf7c98c5f3d0d05a7fd6c9c69e8c50b11eb83c8356fda0"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      ],
+      "reconstructed_sha256": "7a9ff9dc06e9b1ca968d6e11f1e6f225f858048de574059973ba7d303cbf0a50",
+      "matches_recorded_mutant": true,
+      "exit_status": 0
+    }
+  ],
+  "finished_at_utc": "2026-09-11T17:35:21.184923+00:00",
+  "all_reconstructions_match": true
+}

@@ -1,0 +1,6 @@
+=== RUN   TestReviewProbeOriginalLockedCreditAndRecovery
+    zz_review_locked_close_probe_test.go:29: Reproduced original close failure: failed to transfer: spendable balance 7200umfx is smaller than 7201umfx: insufficient funds: invalid credit operation [/home/fmorency/go/pkg/mod/cosmossdk.io/errors@v1.0.2/errors.go:155]
+    zz_review_locked_close_probe_test.go:37: Original implementation can close after an unlocked top-up covers accrued service; forever/permanent irrecoverability is refuted
+--- PASS: TestReviewProbeOriginalLockedCreditAndRecovery (0.14s)
+PASS
+ok  	github.com/manifest-network/manifest-ledger/x/billing/keeper	0.218s

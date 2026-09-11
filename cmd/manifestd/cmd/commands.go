@@ -1,3 +1,4 @@
+// Package cmd defines manifestd's command-line interface.
 package cmd
 
 import (
@@ -132,7 +133,7 @@ func initRootCmd(
 	// add keybase, auxiliary RPC, query, genesis, and tx child commands
 	rootCmd.AddCommand(
 		server.StatusCommand(),
-		genesisCommand(txConfig, basicManager),
+		genesisCommand(txConfig, basicManager, newBillingMigrationPreflightCmd()),
 		queryCommand(),
 		txCommand(),
 		keys.Commands(),
@@ -260,9 +261,7 @@ func appExport(
 var tempDir = func() string {
 	dir, err := os.MkdirTemp("", "manifest")
 	if err != nil {
-		dir = app.DefaultNodeHome
+		panic("failed to create temporary application home: " + err.Error())
 	}
-	defer os.RemoveAll(dir)
-
 	return dir
 }

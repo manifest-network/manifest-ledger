@@ -1,0 +1,44 @@
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment
+    terminal_withdrawal_test.go:64:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:64
+                Error:          Should be zero, but was 1
+                Test:           TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/full_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid
+--- FAIL: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt (0.56s)
+    --- FAIL: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment (0.13s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment (0.12s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/full_payment (0.10s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full (0.11s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid (0.11s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch
+    terminal_withdrawal_test.go:109:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:109
+                Error:          Not equal:
+                                expected: 0x0
+                                actual  : 0x2
+                Test:           TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch
+    terminal_withdrawal_test.go:109:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:109
+                Error:          Not equal:
+                                expected: 0x1
+                                actual  : 0x2
+                Test:           TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch
+--- FAIL: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts (0.20s)
+    --- FAIL: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch (0.10s)
+    --- FAIL: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch (0.10s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder
+    terminal_withdrawal_test.go:147:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:147
+                Error:          Received unexpected error:
+                                no withdrawable amount
+                Test:           TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder
+--- FAIL: TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder (0.10s)
+FAIL
+FAIL    github.com/manifest-network/manifest-ledger/x/billing/keeper    1.009s
+FAIL

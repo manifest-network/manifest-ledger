@@ -38,6 +38,7 @@ var (
 	SKUByProviderActiveIndexKey = collections.NewPrefix(9)
 )
 
+// Module identity constants define the SKU store and legacy query route.
 const (
 	ModuleName = "sku"
 

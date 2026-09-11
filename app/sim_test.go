@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
-	"runtime/debug"
-	"strings"
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -16,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/cometbft/cometbft/abci/types"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 
 	dbm "github.com/cosmos/cosmos-db"
 
@@ -28,17 +28,22 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client/flags"
+	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/server"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	simulationtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/simulation"
 	simcli "github.com/cosmos/cosmos-sdk/x/simulation/client/cli"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+
 	"github.com/manifest-network/manifest-ledger/app"
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
 const (
@@ -68,6 +73,17 @@ func fauxMerkleModeOpt(bapp *baseapp.BaseApp) {
 // inter-block write-through cache.
 func interBlockCacheOpt() func(*baseapp.BaseApp) {
 	return baseapp.SetInterBlockCache(store.NewCommitKVStoreCacheManager())
+}
+
+// simulationCommitOpt preserves operations delivered after FinalizeBlock by the
+// pinned SDK simulator. FinalizeBlock flushes its cache before those operations;
+// SDK Commit then commits only the root store and discards the finalize cache.
+// Install this only in simulation apps, before BaseApp is sealed. NewApp has no
+// existing precommitter; if one is added, this hook must run after that hook.
+func simulationCommitOpt(bapp *baseapp.BaseApp) {
+	bapp.SetPrecommiter(func(ctx sdk.Context) {
+		ctx.MultiStore().(storetypes.CacheMultiStore).Write()
+	})
 }
 
 // BenchmarkSimulation run the chain simulation
@@ -109,20 +125,15 @@ func BenchmarkSimulation(b *testing.B) {
 	err = setPOAAdmin(config)
 	require.NoError(b, err)
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), simulationCommitOpt)
 	require.Equal(b, app.AppName, bApp.Name())
 
 	// run randomized simulation
-	_, simParams, simErr := simulation.SimulateFromSeed(
+	_, simParams, simErr := simulateWithBillingCoverage(
 		b,
-		os.Stdout,
-		bApp.BaseApp,
-		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
-		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
-		app.BlockedAddresses(),
+		bApp,
+		simulationAppStateFn(bApp),
 		config,
-		bApp.AppCodec(),
 	)
 
 	// export state and simParams before the simulation error is checked
@@ -144,6 +155,7 @@ func TestFullAppSimulation(t *testing.T) {
 		t.Skip("skipping application simulation")
 	}
 	require.NoError(t, err, "simulation setup failed")
+	markSimulationComplete := requireSimulationCompletion(t)
 
 	defer func() {
 		require.NoError(t, db.Close())
@@ -163,30 +175,27 @@ func TestFullAppSimulation(t *testing.T) {
 	err = setPOAAdmin(config)
 	require.NoError(t, err)
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), simulationCommitOpt)
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// run randomized simulation
-	_, simParams, simErr := simulation.SimulateFromSeed(
+	stopEarly, simParams, simErr := simulateWithBillingCoverage(
 		t,
-		os.Stdout,
-		bApp.BaseApp,
-		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
-		simulationtypes.RandomAccounts, // Replace with own random account function if using keys other than secp256k1
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
-		app.BlockedAddresses(),
+		bApp,
+		simulationAppStateFn(bApp),
 		config,
-		bApp.AppCodec(),
 	)
 
 	// export state and simParams before the simulation error is checked
 	err = simtestutil.CheckExportSimulation(bApp, config, simParams)
 	require.NoError(t, err)
 	require.NoError(t, simErr)
+	require.False(t, stopEarly, "simulation stopped before all configured blocks completed")
 
 	if config.Commit {
 		simtestutil.PrintStats(db)
 	}
+	markSimulationComplete()
 }
 
 func TestAppImportExport(t *testing.T) {
@@ -198,6 +207,7 @@ func TestAppImportExport(t *testing.T) {
 		t.Skip("skipping application import/export simulation")
 	}
 	require.NoError(t, err, "simulation setup failed")
+	markSimulationComplete := requireSimulationCompletion(t)
 
 	cfg := sdk.GetConfig()
 	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
@@ -217,26 +227,22 @@ func TestAppImportExport(t *testing.T) {
 	appOptions[flags.FlagHome] = t.TempDir()
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), simulationCommitOpt)
 	require.Equal(t, app.AppName, bApp.Name())
 
 	// Run randomized simulation
-	_, simParams, simErr := simulation.SimulateFromSeed(
+	stopEarly, simParams, simErr := simulateWithBillingCoverage(
 		t,
-		os.Stdout,
-		bApp.BaseApp,
-		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
-		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
-		app.BlockedAddresses(),
+		bApp,
+		simulationAppStateFn(bApp),
 		config,
-		bApp.AppCodec(),
 	)
 
 	// export state and simParams before the simulation error is checked
 	err = simtestutil.CheckExportSimulation(bApp, config, simParams)
 	require.NoError(t, err)
 	require.NoError(t, simErr)
+	require.False(t, stopEarly, "simulation stopped before all configured blocks completed")
 
 	if config.Commit {
 		simtestutil.PrintStats(db)
@@ -258,23 +264,25 @@ func TestAppImportExport(t *testing.T) {
 	}()
 
 	appOptions[flags.FlagHome] = t.TempDir()
-	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), simulationCommitOpt)
 	require.Equal(t, app.AppName, newApp.Name())
 
-	var genesisState app.GenesisState
-	err = json.Unmarshal(exported.AppState, &genesisState)
-	require.NoError(t, err)
-
-	ctxA := bApp.NewContextLegacy(true, cmtproto.Header{Height: bApp.LastBlockHeight()})
-	ctxB := newApp.NewContextLegacy(true, cmtproto.Header{Height: bApp.LastBlockHeight()})
-	_, err = newApp.ModuleManager.InitGenesis(ctxB, bApp.AppCodec(), genesisState)
-	if err != nil {
-		if strings.Contains(err.Error(), "validator set is empty after InitGenesis") {
-			logger.Info("Skipping simulation as all validators have been unbonded")
-			logger.Info("err", err, "stacktrace", string(debug.Stack()))
-			return
-		}
+	// Commit retains the latest block header in the CheckTx context. A
+	// height-only header rewinds time to zero, invalidating exported leases
+	// whose settlement timestamps reflect the operations that persisted.
+	exportHeader := bApp.GetContextForCheckTx(nil).BlockHeader()
+	require.False(t, exportHeader.Time.IsZero(), "export must retain the source block time")
+	require.Equal(t, config.ChainID, exportHeader.ChainID)
+	if config.Commit {
+		require.Equal(t, bApp.LastBlockHeight(), exportHeader.Height)
 	}
+	ctxA := bApp.NewContextLegacy(true, exportHeader)
+	ctxB := newApp.NewContextLegacy(true, exportHeader)
+	_, err = newApp.InitChainer(ctxB, &abci.RequestInitChain{
+		AppStateBytes: exported.AppState,
+		Time:          exportHeader.Time,
+		ChainId:       exportHeader.ChainID,
+	})
 	require.NoError(t, err)
 	err = newApp.StoreConsensusParams(ctxB, exported.ConsensusParams)
 	require.NoError(t, err)
@@ -290,6 +298,10 @@ func TestAppImportExport(t *testing.T) {
 		authzkeeper.StoreKey:   {authzkeeper.GrantQueuePrefix},
 		feegrant.StoreKey:      {feegrant.FeeAllowanceQueueKeyPrefix},
 		slashingtypes.StoreKey: {slashingtypes.ValidatorMissedBlockBitmapKeyPrefix},
+		// Match wasmd v0.54.3 app/sim_test.go: CountTXDecorator stores the
+		// current block's height/counter at 0x08, resets it on the next height,
+		// and keeper.ExportGenesis omits it. All other wasm keys are compared.
+		wasmtypes.StoreKey: {wasmtypes.TXCounterPrefix},
 	}
 
 	storeKeys := bApp.GetStoreKeys()
@@ -314,6 +326,7 @@ func TestAppImportExport(t *testing.T) {
 
 		require.Equal(t, 0, len(failedKVAs), simtestutil.GetSimulationLog(keyName, bApp.SimulationManager().StoreDecoders, failedKVAs, failedKVBs))
 	}
+	markSimulationComplete()
 }
 
 func TestAppSimulationAfterImport(t *testing.T) {
@@ -334,6 +347,7 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		t.Skip("skipping application simulation after import")
 	}
 	require.NoError(t, err, "simulation setup failed")
+	markSimulationComplete := requireSimulationCompletion(t)
 
 	defer func() {
 		require.NoError(t, db.Close())
@@ -344,34 +358,53 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	appOptions[flags.FlagHome] = t.TempDir()
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
-	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	bApp := app.NewApp(logger, db, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), simulationCommitOpt)
 	require.Equal(t, app.AppName, bApp.Name())
 
+	var (
+		simulationAccounts    []simulationtypes.Account
+		simulationChainID     string
+		simulationGenesisTime time.Time
+	)
+	newGenesisState := simulationAppStateFn(bApp)
+	recordGenesisState := func(
+		r *rand.Rand,
+		accounts []simulationtypes.Account,
+		config simulationtypes.Config,
+	) (json.RawMessage, []simulationtypes.Account, string, time.Time) {
+		appState, accounts, chainID, genesisTime := newGenesisState(r, accounts, config)
+		simulationAccounts = slices.Clone(accounts)
+		simulationChainID = chainID
+		simulationGenesisTime = genesisTime
+		return appState, accounts, chainID, genesisTime
+	}
+
 	// Run randomized simulation
-	stopEarly, simParams, simErr := simulation.SimulateFromSeed(
+	stopEarly, simParams, simErr := simulateWithBillingCoverage(
 		t,
-		os.Stdout,
-		bApp.BaseApp,
-		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
-		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
-		app.BlockedAddresses(),
+		bApp,
+		recordGenesisState,
 		config,
-		bApp.AppCodec(),
 	)
 
 	// export state and simParams before the simulation error is checked
 	err = simtestutil.CheckExportSimulation(bApp, config, simParams)
 	require.NoError(t, err)
 	require.NoError(t, simErr)
+	require.False(t, stopEarly, "simulation stopped before all configured blocks completed")
+	require.NotEmpty(t, simulationAccounts, "simulation genesis did not return signing accounts")
+	require.NotEmpty(t, simulationChainID, "simulation genesis did not return a chain ID")
+	require.False(t, simulationGenesisTime.IsZero(), "simulation genesis did not return a timestamp")
+	exportHeader := bApp.GetContextForCheckTx(nil).BlockHeader()
+	require.False(t, exportHeader.Time.IsZero(), "export must retain the source block time")
+	require.Equal(t, simulationChainID, exportHeader.ChainID)
+	require.False(t, exportHeader.Time.Before(simulationGenesisTime), "export must not precede the original genesis")
+	if config.Commit {
+		require.Equal(t, bApp.LastBlockHeight(), exportHeader.Height)
+	}
 
 	if config.Commit {
 		simtestutil.PrintStats(db)
-	}
-
-	if stopEarly {
-		fmt.Println("can't export or import a zero-validator genesis, exiting test...")
-		return
 	}
 
 	fmt.Printf("exporting genesis...\n")
@@ -390,33 +423,45 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	}()
 
 	appOptions[flags.FlagHome] = t.TempDir()
-	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID))
+	newApp := app.NewApp(log.NewNopLogger(), newDB, nil, true, SimulatorCommissionRateMinMax, appOptions, fauxMerkleModeOpt, baseapp.SetChainID(SimAppChainID), simulationCommitOpt)
 	require.Equal(t, app.AppName, newApp.Name())
 
-	_, err = newApp.InitChain(&abci.RequestInitChain{
-		AppStateBytes: exported.AppState,
-		ChainId:       SimAppChainID,
-	})
-	require.NoError(t, err)
+	importGenesisCalls := 0
+	importGenesisState := func(
+		_ *rand.Rand,
+		_ []simulationtypes.Account,
+		_ simulationtypes.Config,
+	) (json.RawMessage, []simulationtypes.Account, string, time.Time) {
+		importGenesisCalls++
+		// Zero-height export resets heights, not time: leases retain their
+		// creation and settlement timestamps from the committed source chain.
+		return slices.Clone(exported.AppState), slices.Clone(simulationAccounts), exportHeader.ChainID, exportHeader.Time
+	}
+	importConfig := config
+	importConfig.ChainID = exportHeader.ChainID
+	importConfig.InitialBlockHeight = 1 // ExportAppStateAndValidators(true, ...) resets heights.
+	// Exercise a new reproducible history against the imported state. Reusing
+	// the original random stream can recreate persistent identifiers, such as
+	// tokenfactory subdenoms, that were already generated before the export.
+	importConfig.Seed = config.Seed + 1
 
-	_, _, err = simulation.SimulateFromSeed(
+	stopEarlyAfterImport, _, err := simulateWithBillingCoverage(
 		t,
-		os.Stdout,
-		newApp.BaseApp,
-		simtestutil.AppStateFn(bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis()),
-		simulationtypes.RandomAccounts,
-		simtestutil.SimulationOperations(newApp, newApp.AppCodec(), config),
-		app.BlockedAddresses(),
-		config,
-		bApp.AppCodec(),
+		newApp,
+		importGenesisState,
+		importConfig,
 	)
 	require.NoError(t, err)
+	require.False(t, stopEarlyAfterImport, "post-import simulation stopped before all configured blocks completed")
+	require.Equal(t, 1, importGenesisCalls, "post-import simulation must initialize exactly once from exported state")
+	markSimulationComplete()
 }
 
 func TestAppStateDeterminism(t *testing.T) {
 	if !simcli.FlagEnabledValue {
 		t.Skip("skipping application simulation")
 	}
+	markSimulationComplete := requireSimulationCompletion(t)
 
 	cfg := sdk.GetConfig()
 	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
@@ -485,6 +530,7 @@ func TestAppStateDeterminism(t *testing.T) {
 				appOptions,
 				interBlockCacheOpt(),
 				baseapp.SetChainID(SimAppChainID),
+				simulationCommitOpt,
 			)
 
 			fmt.Printf(
@@ -492,22 +538,14 @@ func TestAppStateDeterminism(t *testing.T) {
 				config.Seed, i+1, numSeeds, j+1, numTimesToRunPerSeed,
 			)
 
-			_, _, err = simulation.SimulateFromSeed(
+			stopEarly, _, err := simulateWithBillingCoverage(
 				t,
-				os.Stdout,
-				bApp.BaseApp,
-				simtestutil.AppStateFn(
-					bApp.AppCodec(),
-					bApp.SimulationManager(),
-					bApp.DefaultGenesis(),
-				),
-				simulationtypes.RandomAccounts,
-				simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config),
-				app.BlockedAddresses(),
+				bApp,
+				simulationAppStateFn(bApp),
 				config,
-				bApp.AppCodec(),
 			)
 			require.NoError(t, err)
+			require.False(t, stopEarly, "determinism replay stopped before all configured blocks completed")
 
 			if config.Commit {
 				simtestutil.PrintStats(db)
@@ -523,6 +561,175 @@ func TestAppStateDeterminism(t *testing.T) {
 				)
 			}
 		}
+	}
+	markSimulationComplete()
+}
+
+// simulationAppStateFn preserves the SDK's randomized genesis except for the
+// explicit send policy needed by SKU prices and billing deposits. A random bank
+// deny otherwise turns every billing operation into a no-op for the entire run.
+func simulationAppStateFn(bApp *app.ManifestApp) simulationtypes.AppStateFn {
+	return simtestutil.AppStateFnWithExtendedCb(
+		bApp.AppCodec(), bApp.SimulationManager(), bApp.DefaultGenesis(),
+		func(state map[string]json.RawMessage) {
+			enableSimulationBillingTransfers(bApp.AppCodec(), state)
+		},
+	)
+}
+
+func enableSimulationBillingTransfers(cdc codec.JSONCodec, state map[string]json.RawMessage) {
+	var bankGenesis banktypes.GenesisState
+	cdc.MustUnmarshalJSON(state[banktypes.ModuleName], &bankGenesis)
+
+	// SKU simulation prices and billing funding both use DefaultBondDenom.
+	// Set its override explicitly: DefaultSendEnabled does not override a
+	// denomination-specific deny. Leave all other randomized bank policy intact.
+	found := false
+	for i := range bankGenesis.SendEnabled {
+		if bankGenesis.SendEnabled[i].Denom == sdk.DefaultBondDenom {
+			bankGenesis.SendEnabled[i].Enabled = true
+			found = true
+		}
+	}
+	if !found {
+		bankGenesis.SendEnabled = append(bankGenesis.SendEnabled, banktypes.SendEnabled{
+			Denom: sdk.DefaultBondDenom, Enabled: true,
+		})
+	}
+	state[banktypes.ModuleName] = cdc.MustMarshalJSON(&bankGenesis)
+}
+
+// simulateWithBillingCoverage checks actual delivery statistics after every
+// run, including imported-state runs and determinism replays. Invariants over
+// empty billing state must not make a starved simulation look healthy.
+func simulateWithBillingCoverage(
+	tb testing.TB,
+	bApp *app.ManifestApp,
+	appStateFn simulationtypes.AppStateFn,
+	config simulationtypes.Config,
+) (bool, simulationtypes.Params, error) {
+	tb.Helper()
+	config, statsOutput := simulationStatisticsOutput(tb, config)
+	// The SDK can call Skip/Fatalf before exporting statistics. Keep a separate
+	// operation tally so Goexit still leaves useful delivery diagnostics.
+	observed := simulation.NewEventStats()
+	operations := simtestutil.SimulationOperations(bApp, bApp.AppCodec(), config)
+	for i, operation := range operations {
+		operations[i] = simulation.NewWeightedOperation(operation.Weight(), observeSimulationOperation(operation.Op(), observed))
+	}
+	returned := false
+	defer func() {
+		if !returned {
+			tb.Logf("simulation interrupted at seed %d, last committed height %d; partial operation statistics follow", config.Seed, bApp.LastBlockHeight())
+			observed.Print(os.Stdout)
+			statsJSON, err := json.MarshalIndent(observed, "", " ")
+			if err == nil {
+				err = os.WriteFile(config.ExportStatsPath, statsJSON, 0o600)
+			}
+			if err != nil {
+				tb.Logf("could not export interrupted simulation statistics: %v", err)
+			}
+		}
+	}()
+	stopEarly, params, err := simulation.SimulateFromSeed(
+		tb, os.Stdout, bApp.BaseApp, appStateFn, simulationtypes.RandomAccounts,
+		operations, app.BlockedAddresses(), config, bApp.AppCodec(),
+	)
+	returned = true
+	return stopEarly, params, checkBillingSimulationResult(statsOutput, config, stopEarly, err)
+}
+
+// observeSimulationOperation also wraps queued continuations without consuming
+// PRNG state or changing their schedule, results, or errors.
+func observeSimulationOperation(operation simulationtypes.Operation, stats simulation.EventStats) simulationtypes.Operation {
+	return func(r *rand.Rand, bApp *baseapp.BaseApp, ctx sdk.Context, accounts []simulationtypes.Account, chainID string) (simulationtypes.OperationMsg, []simulationtypes.FutureOperation, error) {
+		msg, future, err := operation(r, bApp, ctx, accounts, chainID)
+		msg.LogEvent(stats.Tally)
+		future = slices.Clone(future)
+		for i := range future {
+			future[i].Op = observeSimulationOperation(future[i].Op, stats)
+		}
+		return msg, future, err
+	}
+}
+
+func simulationStatisticsOutput(tb testing.TB, config simulationtypes.Config) (simulationtypes.Config, io.Writer) {
+	tb.Helper()
+	var statsOutput io.Writer
+	if config.ExportStatsPath == "" {
+		config.ExportStatsPath = filepath.Join(tb.TempDir(), "simulation-stats.json")
+		statsOutput = os.Stdout
+	}
+	return config, statsOutput
+}
+
+func checkBillingSimulationResult(output io.Writer, config simulationtypes.Config, stopEarly bool, simulationErr error) error {
+	// A signal can return an error along with exported partial statistics.
+	// Read available diagnostics without masking the original simulator error.
+	statsJSON, err := os.ReadFile(config.ExportStatsPath)
+	if err != nil {
+		if simulationErr != nil {
+			return simulationErr
+		}
+		return fmt.Errorf("read simulation delivery statistics: %w", err)
+	}
+	var stats simulation.EventStats
+	if err := json.Unmarshal(statsJSON, &stats); err != nil {
+		if simulationErr != nil {
+			return simulationErr
+		}
+		return fmt.Errorf("decode simulation delivery statistics: %w", err)
+	}
+	if output != nil {
+		stats.Print(output)
+	}
+	// The SDK exports statistics even when a run stops early. Keep those
+	// diagnostics, but only require billing coverage from completed runs.
+	if simulationErr != nil || stopEarly {
+		return simulationErr
+	}
+	if err := billingSimulationCoverageError(stats); err != nil {
+		return fmt.Errorf("billing coverage at seed %d: %w", config.Seed, err)
+	}
+	return nil
+}
+
+func billingSimulationCoverageError(stats simulation.EventStats) error {
+	// Every run of this billing validation suite must select billing operations.
+	// A zero-selection run provides no billing assurance, even if all invariants
+	// over empty state pass. Per-operation thresholds still allow short smoke runs.
+	attempts := 0
+	for _, results := range stats[billingtypes.ModuleName] {
+		attempts += results["ok"] + results["failure"]
+	}
+	if attempts == 0 {
+		return fmt.Errorf("no billing operations selected; enable billing operation weights and run enough blocks")
+	}
+	const minimumAttempts = 20
+	funding := stats[billingtypes.ModuleName][sdk.MsgTypeURL(&billingtypes.MsgFundCredit{})]
+	if funding["ok"] == 0 && funding["failure"] >= minimumAttempts {
+		return fmt.Errorf("billing simulation delivered no credit deposits after %d attempts", funding["failure"])
+	}
+	creation := stats[billingtypes.ModuleName][sdk.MsgTypeURL(&billingtypes.MsgCreateLease{})]
+	if funding["ok"] > 0 && creation["ok"] == 0 && creation["failure"] >= minimumAttempts {
+		return fmt.Errorf("billing simulation delivered no lease creations after %d attempts despite successful funding", creation["failure"])
+	}
+	return nil
+}
+
+// requireSimulationCompletion turns the SDK simulator's zero-validator Skip
+// into a failure after a simulation has been explicitly enabled. Release gates
+// must not report success when they did not execute every configured block.
+func requireSimulationCompletion(t *testing.T) func() {
+	t.Helper()
+	completed := false
+	t.Cleanup(func() {
+		if !completed && !t.Failed() {
+			t.Error("simulation exited before completing its configured validation")
+		}
+	})
+	return func() {
+		completed = true
 	}
 }
 

@@ -21,6 +21,7 @@ import (
 type GenesisState map[string]json.RawMessage
 
 // NewDefaultGenesisState generates the default state for the application.
+//
 // Deprecated: use wasmApp.DefaultGenesis() instead
 func NewDefaultGenesisState(t *testing.T) GenesisState {
 	t.Helper()

@@ -1,0 +1,10 @@
+=== RUN   TestBillingInvariantChargesCallerGasForStateReads
+    crisis_fee_test.go:221:
+            Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/app/crisis_fee_test.go:221
+            Error:          "0" is not positive
+            Test:           TestBillingInvariantChargesCallerGasForStateReads
+            Messages:       invariant reads must charge the supplied meter, independently of ante overhead
+--- FAIL: TestBillingInvariantChargesCallerGasForStateReads (0.06s)
+FAIL
+FAIL    github.com/manifest-network/manifest-ledger/app 0.149s
+FAIL

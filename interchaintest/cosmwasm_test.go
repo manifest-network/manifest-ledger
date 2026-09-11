@@ -64,24 +64,23 @@ func TestCosmWasm(t *testing.T) {
 	require.NoError(t, err)
 
 	var contractAddr string
-	var codeId string
+	var codeID string
 
 	// Test contract upload & instantiation
 	t.Run("upload contract", func(t *testing.T) {
 		// Store contract directly using local file path
-		wasmFile := "../scripts/cw_template.wasm"
 		t.Logf("Storing contract from local path: %s", wasmFile)
-		codeIdStr, err := chain.GetNode().StoreContract(ctx, user1Wallet.KeyName(), wasmFile)
-		codeId = codeIdStr
+		codeIDStr, err := chain.GetNode().StoreContract(ctx, user1Wallet.KeyName(), wasmFile)
+		codeID = codeIDStr
 		require.NoError(t, err)
-		t.Logf("Received code ID: %s", codeId)
+		t.Logf("Received code ID: %s", codeID)
 	})
 
 	t.Run("instantiate contract", func(t *testing.T) {
 		contractAddr, err = chain.GetNode().InstantiateContract(
 			ctx,
 			user1Wallet.KeyName(),
-			codeId,
+			codeID,
 			`{"count":1}`,
 			true,
 		)

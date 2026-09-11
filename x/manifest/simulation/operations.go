@@ -1,3 +1,4 @@
+// Package simulation defines manifest module simulation operations.
 package simulation
 
 import (
@@ -16,6 +17,7 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
+// Manifest simulation operation keys and weights configure message frequencies.
 const (
 	OpWeightMsgPayout                  = "op_weight_msg_manifest_payout"            // nolint: gosec
 	OpWeightMsgBurnHeldBalance         = "op_weight_msg_manifest_burn_held_balance" // nolint: gosec
@@ -54,6 +56,7 @@ func WeightedOperations(appParams simtypes.AppParams,
 	return operations
 }
 
+// SimulateMsgPayout creates a randomized payout operation.
 func SimulateMsgPayout(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
@@ -107,6 +110,7 @@ func SimulateMsgPayout(txGen client.TxConfig, k keeper.Keeper) simtypes.Operatio
 	}
 }
 
+// SimulateMsgBurnHeldBalance creates a randomized held-balance burn operation.
 func SimulateMsgBurnHeldBalance(txGen client.TxConfig, k keeper.Keeper) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {

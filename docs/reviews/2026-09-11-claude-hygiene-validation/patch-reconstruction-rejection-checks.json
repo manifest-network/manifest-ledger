@@ -1,0 +1,80 @@
+{
+  "driver_sha256": "ca45bdf3641f74fb3aded2993bea2c268c98be6bd071139cfbdb01e6cd44f0de",
+  "purpose": "Both archive-member and standalone-file seeding reject an incorrect baseline hash before creating the destination, including under Python -O.",
+  "records": [
+    {
+      "suite": "bundled",
+      "argv": [
+        "/usr/sbin/python3",
+        "-I",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+        "seed",
+        "--archive",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/inputs/baseline-b4d8403.tar.gz",
+        "--archive-sha256",
+        "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+        "--member",
+        "x/billing/keeper/provider_withdrawal.go",
+        "--sha256",
+        "0000000000000000000000000000000000000000000000000000000000000000",
+        "--destination",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-wrong-baseline/withdrawal-original-mutant/x/billing/keeper/provider_withdrawal.go"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "completed_at_utc": "2026-09-11T17:34:52.642544+00:00",
+      "exit_status": 1,
+      "expected_exit_status": 1,
+      "destination_created": false,
+      "stdout": {
+        "raw_encoding": "base64",
+        "raw": "",
+        "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "display": "",
+        "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "raw_encoding": "base64",
+        "raw": "QmFzZWxpbmUgYXJjaGl2ZSBtZW1iZXIgU0hBLTI1NiBtaXNtYXRjaAo=",
+        "raw_sha256": "d5c5211dce5f0130b1444d17b6df7c4ab9bb89a773fa4e654f2fd68adb294983",
+        "display": "Baseline archive member SHA-256 mismatch\n",
+        "display_sha256": "d5c5211dce5f0130b1444d17b6df7c4ab9bb89a773fa4e654f2fd68adb294983"
+      }
+    },
+    {
+      "suite": "terminal",
+      "argv": [
+        "/usr/sbin/python3",
+        "-I",
+        "-O",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+        "seed",
+        "--file",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/fixed.go.txt",
+        "--sha256",
+        "0000000000000000000000000000000000000000000000000000000000000000",
+        "--destination",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/terminal-wrong-baseline/original/x/billing/keeper/msg_server.go"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "completed_at_utc": "2026-09-11T17:34:52.704007+00:00",
+      "exit_status": 1,
+      "expected_exit_status": 1,
+      "destination_created": false,
+      "stdout": {
+        "raw_encoding": "base64",
+        "raw": "",
+        "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "display": "",
+        "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "raw_encoding": "base64",
+        "raw": "U0hBLTI1NiBtaXNtYXRjaDogL2hvbWUvZm1vcmVuY3kvZGV2L21hbmlmZXN0LWxlZGdlci8ucmV2aWV3LXdvcmt0cmVlcy9za3UtYmlsbGluZy0yMDI2MDkwOS9kb2NzL3Jldmlld3MvMjAyNi0wOS0xMS1jbGF1ZGUtcmV2aWV3LXZhbGlkYXRpb24vdGVybWluYWwtbXV0YXRpb25zL2ZpeGVkLmdvLnR4dAo=",
+        "raw_sha256": "fb202f0c888fd4c82ff97ae7ae7a26388747a84e72bfb81943698716da07d953",
+        "display": "SHA-256 mismatch: /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/fixed.go.txt\n",
+        "display_sha256": "fb202f0c888fd4c82ff97ae7ae7a26388747a84e72bfb81943698716da07d953"
+      }
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+// Package apptesting provides shared application test helpers.
 package apptesting
 
 import (

@@ -1,0 +1,34 @@
+--- FAIL: TestAppModuleBasicValidateGenesisRetainsImportInvariants (0.00s)
+    --- FAIL: TestAppModuleBasicValidateGenesisRetainsImportInvariants/invalid_allowed_address (0.00s)
+        module_test.go:139:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/sku/module_test.go:139
+                Error:          Expected error with "invalid module configuration" in chain but got nil.
+                Test:           TestAppModuleBasicValidateGenesisRetainsImportInvariants/invalid_allowed_address
+    --- FAIL: TestAppModuleBasicValidateGenesisRetainsImportInvariants/invalid_provider_payout_address (0.00s)
+        module_test.go:139:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/sku/module_test.go:139
+                Error:          Expected error with "invalid provider" in chain but got nil.
+                Test:           TestAppModuleBasicValidateGenesisRetainsImportInvariants/invalid_provider_payout_address
+    --- FAIL: TestAppModuleBasicValidateGenesisRetainsImportInvariants/missing_SKU_provider (0.00s)
+        module_test.go:139:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/sku/module_test.go:139
+                Error:          Expected error with "invalid sku" in chain but got nil.
+                Test:           TestAppModuleBasicValidateGenesisRetainsImportInvariants/missing_SKU_provider
+    --- FAIL: TestAppModuleBasicValidateGenesisRetainsImportInvariants/nonintegral_per-second_price (0.00s)
+        module_test.go:139:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/sku/module_test.go:139
+                Error:          Expected error with "invalid sku" in chain but got nil.
+                Test:           TestAppModuleBasicValidateGenesisRetainsImportInvariants/nonintegral_per-second_price
+    --- FAIL: TestAppModuleBasicValidateGenesisRetainsImportInvariants/low_provider_sequence (0.00s)
+        module_test.go:139:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/sku/module_test.go:139
+                Error:          Expected error with "invalid provider" in chain but got nil.
+                Test:           TestAppModuleBasicValidateGenesisRetainsImportInvariants/low_provider_sequence
+    --- FAIL: TestAppModuleBasicValidateGenesisRetainsImportInvariants/low_SKU_sequence (0.00s)
+        module_test.go:139:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/sku/module_test.go:139
+                Error:          Expected error with "invalid sku" in chain but got nil.
+                Test:           TestAppModuleBasicValidateGenesisRetainsImportInvariants/low_SKU_sequence
+FAIL
+FAIL    github.com/manifest-network/manifest-ledger/x/sku       0.064s
+FAIL

@@ -8,11 +8,13 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/tx"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	grpctypes "github.com/cosmos/cosmos-sdk/types/grpc"
 
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
@@ -190,9 +192,9 @@ create-lease 01902a9b-1234-7000-8000-000000000001:1 --meta-hash a1b2c3d4e5f6... 
 func NewCreateLeaseForTenantCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create-lease-for-tenant [tenant] [sku-uuid:quantity[:service_name]] ...",
-		Short: "Create a new lease on behalf of a tenant (authority only)",
-		Long: `Create a new lease on behalf of a tenant. This command is used by the authority
-to migrate off-chain leases to on-chain. Each item is specified as sku_uuid:quantity
+		Short: "Create a new lease on behalf of a tenant (authority or allowed list)",
+		Long: `Create a new lease on behalf of a tenant. The module authority or a billing
+allowed_list member may sign, including to migrate off-chain leases to on-chain. Each item is specified as sku_uuid:quantity
 or sku_uuid:quantity:service_name for stack deployments. When service_name is used, all items
 must have one and the same SKU may appear multiple times with different service names.
 All SKUs must belong to the same provider. The tenant's credit account must be pre-funded.
@@ -282,7 +284,7 @@ close-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-0000000
 		},
 	}
 
-	cmd.Flags().String("reason", "", "Reason for closing the leases (max 256 characters, applied to all)")
+	cmd.Flags().String("reason", "", "Reason for closing the leases (max 256 UTF-8 bytes, applied to all)")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd
@@ -344,6 +346,9 @@ withdraw --provider 01902a9b-1234-7000-8000-000000000001 --key <base64-next-key>
 
 			// Mode 1: Specific leases
 			if len(args) > 0 {
+				if cmd.Flags().Changed("key") || cmd.Flags().Changed("limit") {
+					return fmt.Errorf("--key and --limit require --provider and cannot be used with lease UUIDs")
+				}
 				if len(args) > types.MaxBatchLeaseSize {
 					return fmt.Errorf("cannot withdraw from more than %d leases at once", types.MaxBatchLeaseSize)
 				}
@@ -403,15 +408,16 @@ func NewUpdateParamsCmd() *cobra.Command {
 		Long: `Update the billing module parameters. Only the module authority can execute this command.
 All numeric parameters must be provided.
 
---allowed-list and --reserved-domain-suffixes are PRESERVE-on-omit: when the flag
-is not provided on the command line, the current on-chain value is queried and
-re-submitted unchanged so existing operator workflows (e.g. bumping a numeric
-param) cannot accidentally wipe seeded entries. Pass the flag with an empty
-value (e.g. --reserved-domain-suffixes="") to explicitly clear the list.
+When --allowed-list or --reserved-domain-suffixes is omitted, its value is copied
+from the chain while this transaction is constructed. Use --height to pin that
+query; zero means latest. The resolved lists are printed to stderr for review.
+This is a snapshot, not preservation at execution: a delayed governance proposal
+can overwrite intervening list changes. Recheck every field before approval and
+rebuild stale proposals. Pass an empty flag value to explicitly clear a list.
 
 min-lease-duration is in seconds (e.g., 3600 for 1 hour).
 pending-timeout is the duration in seconds that a lease can remain in PENDING state (60-86400).`,
-		Example: `# Update only numeric params (allowed_list and reserved_domain_suffixes preserved):
+		Example: `# Update only numeric params (snapshot omitted lists from the chain):
 update-params 100 20 3600 10 1800 --from authority
 
 # Update numeric params and overwrite allowed_list:
@@ -459,11 +465,27 @@ update-params 100 20 3600 10 1800 --reserved-domain-suffixes="" --from authority
 				allowedList      []string
 				reservedSuffixes []string
 				preservedParams  *types.Params
+				snapshotHeight   int64
 			)
 			needsPreservedParams := !cmd.Flags().Changed("allowed-list") || !cmd.Flags().Changed("reserved-domain-suffixes")
 			if needsPreservedParams {
-				queryClient := types.NewQueryClient(clientCtx)
-				res, err := queryClient.Params(cmd.Context(), &types.QueryParamsRequest{})
+				queryHeight, err := cmd.Flags().GetInt64(flags.FlagHeight)
+				if err != nil {
+					return err
+				}
+				if queryHeight < 0 {
+					return fmt.Errorf("parameter snapshot height must not be negative")
+				}
+				snapshotHeight = queryHeight
+				// SDK client.Context.Height pins ABCI queries, but direct gRPC
+				// forwards only outgoing metadata. Set both on the query itself;
+				// account/sequence lookups for broadcasting still use current state.
+				queryClient := types.NewQueryClient(clientCtx.WithHeight(queryHeight))
+				queryMetadata, _ := metadata.FromOutgoingContext(cmd.Context())
+				queryMetadata = queryMetadata.Copy()
+				queryMetadata.Set(grpctypes.GRPCBlockHeightHeader, strconv.FormatInt(queryHeight, 10))
+				queryCtx := metadata.NewOutgoingContext(cmd.Context(), queryMetadata)
+				res, err := queryClient.Params(queryCtx, &types.QueryParamsRequest{})
 				if err != nil {
 					return fmt.Errorf("query current params to preserve omitted list flags: %w", err)
 				}
@@ -487,6 +509,11 @@ update-params 100 20 3600 10 1800 --reserved-domain-suffixes="" --from authority
 			} else {
 				reservedSuffixes = preservedParams.ReservedDomainSuffixes
 			}
+			if needsPreservedParams {
+				if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "Parameter snapshot at query height %d (0 means latest): allowed_list=%q reserved_domain_suffixes=%q. Recheck before governance approval; execution replaces both lists.\n", snapshotHeight, allowedList, reservedSuffixes); err != nil {
+					return fmt.Errorf("write parameter snapshot for review: %w", err)
+				}
+			}
 
 			msg := &types.MsgUpdateParams{
 				Authority: clientCtx.GetFromAddress().String(),
@@ -505,8 +532,9 @@ update-params 100 20 3600 10 1800 --reserved-domain-suffixes="" --from authority
 		},
 	}
 
-	cmd.Flags().String("allowed-list", "", "Comma-separated list of addresses allowed to create leases for tenants. Omit to preserve current; pass empty string to clear.")
-	cmd.Flags().String("reserved-domain-suffixes", "", "Comma-separated list of reserved domain suffixes (each must begin with '.'). Omit to preserve current; pass empty string to clear.")
+	cmd.Flags().String("allowed-list", "", "Comma-separated list of addresses allowed to create leases for tenants. Omit to snapshot at query height; pass empty string to clear.")
+	cmd.Flags().String("reserved-domain-suffixes", "", "Comma-separated list of reserved domain suffixes (each must begin with '.'). Omit to snapshot at query height; pass empty string to clear.")
+	cmd.Flags().Int64(flags.FlagHeight, 0, "Query height for omitted-list snapshots (0 = latest); does not prevent changes before proposal execution")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd
@@ -532,10 +560,12 @@ func splitAndTrim(s string) []string {
 func NewAcknowledgeLeaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "acknowledge-lease [lease-uuid]...",
-		Short: "Acknowledge one or more pending leases (provider only)",
+		Short: "Acknowledge one or more pending leases (provider or module authority)",
 		Long: `Acknowledge one or more pending leases to transition them to active state.
 Only the provider of the leases or the module authority can acknowledge.
 All leases must belong to the same provider and be in PENDING state.
+Every lease must be at or before its pending-timeout deadline, and each tenant's
+post-batch active lease count must remain within max_leases_per_tenant.
 This is an atomic operation: all leases succeed or all fail.
 Billing starts from the acknowledgement time.`,
 		Example: `# Acknowledge a single lease
@@ -613,7 +643,7 @@ reject-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000
 		},
 	}
 
-	cmd.Flags().String("reason", "", "Reason for rejecting the leases (max 256 characters, applied to all)")
+	cmd.Flags().String("reason", "", "Reason for rejecting the leases (max 256 UTF-8 bytes, applied to all)")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd

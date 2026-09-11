@@ -1,0 +1,38 @@
+{
+  "verifier_sha256": "ca45bdf3641f74fb3aded2993bea2c268c98be6bd071139cfbdb01e6cd44f0de",
+  "checks": [
+    {
+      "suite": "bundled",
+      "report": "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/patch-reconstruction-checks.json",
+      "report_sha256": "b4d1ebe542f01606e15cc79bab928ad10d69c73f7542bd666e5a42e528f50492",
+      "records_verified": 3,
+      "steps_verified": 15
+    },
+    {
+      "suite": "terminal",
+      "report": "docs/reviews/2026-09-11-claude-review-validation/terminal-mutations/verification.json",
+      "report_sha256": "a07fae31fc2f2cc445a57cc702aab78007f2a09e350ed4dfbbba207f488d9146",
+      "records_verified": 3,
+      "steps_verified": 15
+    },
+    {
+      "suite": "bundled",
+      "report": "docs/reviews/2026-09-11-claude-hygiene-validation/bundled-patch-literal-replay.json",
+      "report_sha256": "7a0388099be80ac9026166f304868879a61c8173c86f75f9e0b4a27f23bee076",
+      "records_verified": 3,
+      "steps_verified": 15
+    },
+    {
+      "suite": "terminal",
+      "report": "docs/reviews/2026-09-11-claude-hygiene-validation/terminal-patch-literal-replay.json",
+      "report_sha256": "1a5123cb3494778f0694d3238d96fb9dc0931c6f322920195470f1cab26f7a36",
+      "records_verified": 3,
+      "steps_verified": 15
+    }
+  ],
+  "all_recorded_steps_replayed": true,
+  "all_baseline_patch_and_mutant_hashes_match_final_manifests": true,
+  "wrong_baseline_rejections": 2,
+  "go_tests_rerun": false,
+  "new_archives_created": false
+}

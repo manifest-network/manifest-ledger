@@ -28,8 +28,8 @@ func TestBillingCustomDomain(t *testing.T) {
 	testProviderUUID = tc.providerUUID
 	testSKUUUID = tc.skuUUID
 
-	fundTenantCredit(t, ctx, tc, tc.tenant1, 100_000_000)
-	fundTenantCredit(t, ctx, tc, tc.tenant2, 100_000_000)
+	fundTenantCredit(ctx, t, tc, tc.tenant1)
+	fundTenantCredit(ctx, t, tc, tc.tenant2)
 
 	// Multi-item service-mode lease for tenant1: web + db.
 	multiItems := []string{
@@ -62,12 +62,12 @@ func TestBillingCustomDomain(t *testing.T) {
 		// Reverse-query both, verify service_name attribution.
 		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "web.example.com")
 		require.NoError(t, err)
-		require.Equal(t, multiLease, got.Lease.Uuid)
+		require.Equal(t, multiLease, got.Lease.UUID)
 		require.Equal(t, "web", got.ServiceName)
 
 		got, err = helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "db.example.com")
 		require.NoError(t, err)
-		require.Equal(t, multiLease, got.Lease.Uuid)
+		require.Equal(t, multiLease, got.Lease.UUID)
 		require.Equal(t, "db", got.ServiceName)
 	})
 
@@ -80,7 +80,7 @@ func TestBillingCustomDomain(t *testing.T) {
 
 		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "legacy.example.com")
 		require.NoError(t, err)
-		require.Equal(t, legacyLease, got.Lease.Uuid)
+		require.Equal(t, legacyLease, got.Lease.UUID)
 		require.Equal(t, "", got.ServiceName, "1-item legacy lease returns empty service_name")
 	})
 
@@ -105,7 +105,7 @@ func TestBillingCustomDomain(t *testing.T) {
 
 		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "ops.example.com")
 		require.NoError(t, err)
-		require.Equal(t, multiLease, got.Lease.Uuid)
+		require.Equal(t, multiLease, got.Lease.UUID)
 		require.Equal(t, "db", got.ServiceName)
 	})
 
@@ -122,7 +122,7 @@ func TestBillingCustomDomain(t *testing.T) {
 
 		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "ops.example.com")
 		require.NoError(t, err)
-		require.Equal(t, multiLease, got.Lease.Uuid)
+		require.Equal(t, multiLease, got.Lease.UUID)
 		require.Equal(t, "db", got.ServiceName)
 	})
 
@@ -143,7 +143,7 @@ func TestBillingCustomDomain(t *testing.T) {
 
 		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "allowed.example.com")
 		require.NoError(t, err)
-		require.Equal(t, multiLease, got.Lease.Uuid)
+		require.Equal(t, multiLease, got.Lease.UUID)
 		require.Equal(t, "web", got.ServiceName)
 	})
 
@@ -200,7 +200,7 @@ func TestBillingCustomDomain(t *testing.T) {
 
 		got, err := helpers.BillingQueryLeaseByCustomDomain(ctx, tc.chain, "allowed.example.com")
 		require.NoError(t, err)
-		require.Equal(t, newLease, got.Lease.Uuid)
+		require.Equal(t, newLease, got.Lease.UUID)
 		require.Equal(t, "web", got.ServiceName)
 	})
 }

@@ -1,3 +1,4 @@
+// Package types defines the billing module's messages and state types.
 package types
 
 import (

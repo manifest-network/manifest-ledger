@@ -1,0 +1,5 @@
+--- a/x/billing/keeper/msg_server.go
++++ b/x/billing/keeper/msg_server.go
+@@ -883 +883 @@
+-		if result.TransferAmounts.IsZero() && !finalizeClosedInterval {
++		if result.TransferAmounts.IsZero() {

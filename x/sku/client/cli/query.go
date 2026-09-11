@@ -1,3 +1,4 @@
+// Package cli defines SKU module command-line commands.
 package cli
 
 import (

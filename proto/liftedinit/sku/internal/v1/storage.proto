@@ -1,0 +1,19 @@
+syntax = "proto3";
+package liftedinit.sku.internal.v1;
+
+option go_package = "github.com/manifest-network/manifest-ledger/x/sku/internal/types";
+
+// Params is the disk-only representation of SKU parameters. Account
+// identities are raw bytes; public APIs use liftedinit.sku.v1.Params.
+message Params { repeated bytes allowed_addresses = 1; }
+
+// Provider is the disk-only representation of a SKU provider. Account
+// identities are raw bytes; public APIs use liftedinit.sku.v1.Provider.
+message Provider {
+  string uuid = 1;
+  bytes address = 2;
+  bytes payout_address = 3;
+  bytes meta_hash = 4;
+  bool active = 5;
+  string api_url = 6;
+}

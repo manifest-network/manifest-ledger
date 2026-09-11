@@ -1,0 +1,45 @@
+=== RUN   TestEndBlockerAdvancesPastFailedPageBoundary
+    lifecycle_safety_test.go:41:
+            Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/lifecycle_safety_test.go:41
+            Error:          func (assert.PanicTestFunc)(0x39a4860) should not panic
+                                Panic value:    {ReadPerByte}
+                                Panic stack:    goroutine 66 [running]:
+                            runtime/debug.Stack()
+                                /home/fmorency/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.8.linux-amd64/src/runtime/debug/stack.go:26 +0x5e
+                            github.com/stretchr/testify/assert.didPanic.func1()
+                                /home/fmorency/go/pkg/mod/github.com/stretchr/testify@v1.11.1/assert/assertions.go:1286 +0x67
+                            panic({0x40cb960?, 0x2ecb16893180?})
+                                /home/fmorency/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.8.linux-amd64/src/runtime/panic.go:860 +0x13a
+                            cosmossdk.io/store/types.(*basicGasMeter).ConsumeGas(0x2ecb17bd8300?, 0x2ecb17bc6c78?, {0x47682d4?, 0x15?})
+                                /home/fmorency/go/pkg/mod/cosmossdk.io/store@v1.1.1/types/gas.go:116 +0x58
+                            cosmossdk.io/store/gaskv.(*Store).Get(0x2ecb17b91260, {0x2ecb17bc6c78, 0x15, 0x15})
+                                /home/fmorency/go/pkg/mod/cosmossdk.io/store@v1.1.1/gaskv/store.go:41 +0xcd
+                            github.com/cosmos/cosmos-sdk/runtime.coreKVStore.Get(...)
+                                /home/fmorency/go/pkg/mod/github.com/manifest-network/cosmos-sdk@v0.50.14-liftedinit.1.0.20260831215405-b62c931f451a/runtime/store.go:65
+                            cosmossdk.io/collections.Map[...].Get(0x0?, {0x5083070, 0x2ecb17bc9c08}, {0x2ecb17bc6c60, 0x14, 0x15})
+                                /home/fmorency/go/pkg/mod/cosmossdk.io/collections@v0.4.0/map.go:81 +0x114
+                            github.com/manifest-network/manifest-ledger/x/billing/keeper.(*Keeper).GetCreditAccount(0x2ecb1744e008, {0x5083070, 0x2ecb17bc9c08}, {0x2ecb16fca540?, 0x0?})
+                                /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/keeper.go:810 +0x1e5
+                            github.com/manifest-network/manifest-ledger/x/billing/keeper.(*Keeper).ExpirePendingLease(0x2ecb1744e008, {0x5083070?, 0x2ecb17d11888?}, 0x2ecb17f0a2c0)
+                                /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/keeper.go:1499 +0x69a
+                            github.com/manifest-network/manifest-ledger/x/billing/keeper.(*Keeper).EndBlocker(0x2ecb1744e008, {0x5083070, 0x2ecb17d11888?})
+                                /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/keeper.go:1695 +0x1bbf
+                            github.com/manifest-network/manifest-ledger/x/billing/keeper_test.TestEndBlockerAdvancesPastFailedPageBoundary.func1()
+                                /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/lifecycle_safety_test.go:41 +0x45
+                            github.com/stretchr/testify/assert.didPanic(0x7f18df0?)
+                                /home/fmorency/go/pkg/mod/github.com/stretchr/testify@v1.11.1/assert/assertions.go:1291 +0x70
+                            github.com/stretchr/testify/assert.NotPanics({0x7f84b08a5628, 0x2ecb1570cb48}, 0x2ecb17cdc920, {0x0, 0x0, 0x0})
+                                /home/fmorency/go/pkg/mod/github.com/stretchr/testify@v1.11.1/assert/assertions.go:1362 +0x7e
+                            github.com/stretchr/testify/require.NotPanics({0x504a0c8, 0x2ecb1570cb48}, 0x2ecb17cdc920, {0x0, 0x0, 0x0})
+                                /home/fmorency/go/pkg/mod/github.com/stretchr/testify@v1.11.1/require/require.go:1711 +0xa6
+                            github.com/manifest-network/manifest-ledger/x/billing/keeper_test.TestEndBlockerAdvancesPastFailedPageBoundary(0x2ecb1570cb48)
+                                /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/lifecycle_safety_test.go:41 +0x811
+                            testing.tRunner(0x2ecb1570cb48, 0x4fee6f8)
+                                /home/fmorency/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.8.linux-amd64/src/testing/testing.go:2036 +0xea
+                            created by testing.(*T).Run in goroutine 1
+                                /home/fmorency/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.8.linux-amd64/src/testing/testing.go:2101 +0x4c5
+            Test:           TestEndBlockerAdvancesPastFailedPageBoundary
+--- FAIL: TestEndBlockerAdvancesPastFailedPageBoundary (0.35s)
+FAIL
+FAIL    github.com/manifest-network/manifest-ledger/x/billing/keeper    0.421s
+FAIL

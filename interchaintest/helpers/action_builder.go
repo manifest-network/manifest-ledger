@@ -5,13 +5,22 @@ import (
 	"encoding/json"
 	"fmt"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
-
-	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
+
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
+const (
+	queryCommand      = "query"
+	cliGasFlag        = "--gas"
+	gasAdjustmentFlag = "--gas-adjustment"
+	gasAdjustment     = "2.0"
+	limitFlag         = "--limit"
+)
+
+// ExecuteQuery executes a CLI query and decodes its JSON response into result.
 func ExecuteQuery(ctx context.Context, chain *cosmos.CosmosChain, cmd []string, i interface{}, extraFlags ...string) {
 	flags := []string{
 		"--node", chain.GetRPCAddress(),
@@ -21,6 +30,8 @@ func ExecuteQuery(ctx context.Context, chain *cosmos.CosmosChain, cmd []string, 
 
 	ExecuteExec(ctx, chain, cmd, i, flags...)
 }
+
+// ExecuteExec executes a CLI command and decodes its JSON response into result.
 func ExecuteExec(ctx context.Context, chain *cosmos.CosmosChain, cmd []string, i interface{}, extraFlags ...string) {
 	command := []string{chain.Config().Bin}
 	command = append(command, cmd...)
@@ -38,7 +49,7 @@ func ExecuteExec(ctx context.Context, chain *cosmos.CosmosChain, cmd []string, i
 	}
 }
 
-// Executes a command from CommandBuilder
+// ExecuteTransaction executes a transaction command and waits for it to be included in a block.
 func ExecuteTransaction(ctx context.Context, chain *cosmos.CosmosChain, cmd []string) (sdk.TxResponse, error) {
 	var err error
 	var stdout []byte
@@ -60,11 +71,13 @@ func ExecuteTransaction(ctx context.Context, chain *cosmos.CosmosChain, cmd []st
 	return res, err
 }
 
-func TxCommandBuilder(ctx context.Context, chain *cosmos.CosmosChain, cmd []string, fromUser string, extraFlags ...string) []string {
-	return TxCommandBuilderNode(ctx, chain.GetNode(), cmd, fromUser, extraFlags...)
+// TxCommandBuilder builds a transaction command for the chain's default node.
+func TxCommandBuilder(_ context.Context, chain *cosmos.CosmosChain, cmd []string, fromUser string, extraFlags ...string) []string {
+	return TxCommandBuilderNode(chain.GetNode(), cmd, fromUser, extraFlags...)
 }
 
-func TxCommandBuilderNode(ctx context.Context, node *cosmos.ChainNode, cmd []string, fromUser string, extraFlags ...string) []string {
+// TxCommandBuilderNode builds a transaction command for a specific chain node.
+func TxCommandBuilderNode(node *cosmos.ChainNode, cmd []string, fromUser string, extraFlags ...string) []string {
 	command := []string{node.Chain.Config().Bin}
 	command = append(command, cmd...)
 	command = append(command, "--node", node.Chain.GetRPCAddress())
@@ -75,15 +88,15 @@ func TxCommandBuilderNode(ctx context.Context, node *cosmos.ChainNode, cmd []str
 	command = append(command, "--output=json")
 	command = append(command, "--yes")
 
-	gasFlag := false
+	hasGasFlag := false
 	for _, flag := range extraFlags {
-		if flag == "--gas" {
-			gasFlag = true
+		if flag == cliGasFlag {
+			hasGasFlag = true
 		}
 	}
 
-	if !gasFlag {
-		command = append(command, "--gas", "500000")
+	if !hasGasFlag {
+		command = append(command, cliGasFlag, "500000")
 	}
 
 	command = append(command, extraFlags...)

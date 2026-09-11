@@ -4,7 +4,7 @@ This guide covers how tenants authenticate to provider off-chain APIs after leas
 
 ## Provider Off-Chain API Integration
 
-Providers expose a REST API for tenants to retrieve connection details after lease acknowledgement. The API endpoint URL is stored on-chain in the `Provider.api_url` field. This field is optional: it is a proto3 `string` with `omitempty`, so a provider that never set one leaves it as the empty string, omitted from JSON output (a `jq -r '.provider.api_url'` prints `null` for the missing key — it is never a literal JSON `null` value). Tenants and clients must handle this absent case, in which the provider has no off-chain API registered.
+Providers expose a REST API for tenants to retrieve connection details after lease acknowledgement. The API endpoint URL is stored on-chain in the `Provider.api_url` field. This field is optional. An unset proto3 string is empty: the SDK's default proto-JSON output (REST and CLI) emits `"api_url": ""`; Go's standard `encoding/json` honors `omitempty` and can omit it. Clients must treat both an absent field and an empty string as no registered API endpoint, and avoid making a request until a nonempty URL is present.
 
 ### Tenant Flow
 
@@ -14,7 +14,11 @@ Providers expose a REST API for tenants to retrieve connection details after lea
 
 ### Authentication
 
-Authentication uses [ADR-036](https://docs.cosmos.network/main/build/architecture/adr-036-arbitrary-signature) signature verification without on-chain challenge storage. The tenant proves lease ownership by signing a message containing the lease UUID and timestamp:
+The examples below document the **legacy v1 profile**. They do not bind a token to a chain, provider, or API audience. A timestamp limits its lifetime but does not prevent replay against another accepting deployment with the same lease identity. The wallet's chain selector is not a signed audience: [ADR-036](https://github.com/cosmos/cosmos-sdk/blob/main/docs/architecture/adr-036-arbitrary-signature.md) requires an empty sign-document `chain_id`.
+
+The proposed [v2 authentication profile](AUTHENTICATION_V2.md) binds the network, provider, API base URL, operation, and expiry in the signed message. Its provider/client rollout is tracked in [ENG-925](https://linear.app/liftedinit/issue/ENG-925); this ledger repository does not implement or deploy the off-chain verifier. Use v1 only for a provider explicitly configured to accept it. Do not silently fall back to v1 when a v2 request fails.
+
+Legacy authentication uses ADR-036 signature verification without on-chain challenge storage. The tenant proves lease ownership by signing a message containing the lease UUID and timestamp:
 
 **Message format:**
 ```
@@ -70,7 +74,8 @@ ADR-036 ensures compatibility with all major Cosmos wallets:
 
 **Keplr Example (JavaScript):**
 ```js
-const message = `manifest lease access ${leaseUuid} ${Math.floor(Date.now() / 1000)}`;
+const timestamp = Math.floor(Date.now() / 1000);
+const message = `manifest lease access ${leaseUuid} ${timestamp}`;
 
 const signature = await window.keplr.signArbitrary(
   "manifest-1",           // chainId
@@ -81,7 +86,7 @@ const signature = await window.keplr.signArbitrary(
 const authToken = btoa(JSON.stringify({
   tenant: tenantAddress,
   lease_uuid: leaseUuid,
-  timestamp: Math.floor(Date.now() / 1000),
+  timestamp,
   pub_key: signature.pub_key,
   signature: signature.signature
 }));
@@ -90,6 +95,8 @@ fetch(`${providerApiUrl}/v1/leases/${leaseUuid}/connection`, {
   headers: { "Authorization": `Bearer ${authToken}` }
 });
 ```
+
+Capture the timestamp once before requesting the signature and reuse it in the token. Wallet confirmation may take several seconds; recalculating the timestamp afterwards changes the message the provider verifies. If confirmation exceeds the provider's freshness window, request a new signature with a fresh timestamp.
 
 **Note:** The Cosmos SDK does not include a built-in CLI command for ADR-036 signing. For CLI-based signing, use CosmJS or a custom signing tool. Wallet-based signing (Keplr, Leap) is the recommended approach for end users.
 
@@ -156,14 +163,15 @@ When a lease is created in service-name mode (`sku-uuid:quantity:service_name`),
 
 | Risk | Mitigation |
 |------|------------|
-| Replay attacks | Timestamp validation (±5 min window), HTTPS required |
+| Token replay within the same audience | v1 tokens are reusable bearer credentials within the ±5 min timestamp window; HTTPS protects transport, not a stolen token |
+| Replay across networks/providers/endpoints | v1 has no audience binding; migrate clients and verifiers together to the [v2 profile](AUTHENTICATION_V2.md) |
 | Provider API spoofing | Tenants verify `api_url` from on-chain provider record |
 | Clock skew | 5-minute tolerance, NTP recommended |
 | Signature reuse | Message includes lease-specific UUID |
 
 ## Deployment Data Upload (POST) - Optional
 
-Tenants can optionally upload deployment data to providers using the same ADR-036 authentication pattern used for connection info retrieval. The on-chain lease stores only a hash of the deployment data (`meta_hash`), while the actual payload is transmitted off-chain.
+Tenants can optionally upload deployment data to providers using the same ADR-036 authentication pattern used for connection info retrieval. These examples also use the legacy v1 profile and share its audience-binding limitation. The on-chain lease stores only a hash of the deployment data (`meta_hash`), while the actual payload is transmitted off-chain.
 
 ### When to Use
 
@@ -191,7 +199,7 @@ For providers with fixed SKUs (pre-configured resources), tenants create leases 
 
 **Important**: Upload deployment data BEFORE the provider acknowledges. This allows the provider to validate the manifest and provision resources before committing to the lease.
 
-**Pending timeout**: The entire upload → validate → provision → acknowledge sequence must complete within `params.pending_timeout` (default 1800s = 30 minutes; configurable 60..86400 seconds via `MsgUpdateParams`). If the provider does not acknowledge before the lease's `created_at + pending_timeout`, the EndBlocker transitions the lease to `LEASE_STATE_EXPIRED` and releases the tenant's credit reservation. The tenant must then create a new lease (and re-upload the deployment data); any payload already uploaded to the provider is orphaned.
+**Pending timeout**: The entire upload → validate → provision → acknowledge sequence must complete no later than `lease.created_at + the current params.pending_timeout` (default 1800s = 30 minutes; configurable 60..86400 seconds via `MsgUpdateParams`). Acknowledgement is valid exactly at that cutoff and rejected at strictly later block times, even if rate-limited EndBlock cleanup has not yet changed the lease from PENDING to EXPIRED. EndBlock eventually releases the tenant's credit reservation; the tenant must then create a new lease (and re-upload the deployment data), and any payload already uploaded to the provider is orphaned.
 
 ### On-Chain Storage
 
@@ -293,7 +301,8 @@ const metaHash = Array.from(new Uint8Array(hashBuffer))
   .join('');
 
 // After creating lease with metaHash on-chain...
-const message = `manifest lease data ${leaseUuid} ${metaHash} ${Math.floor(Date.now() / 1000)}`;
+const timestamp = Math.floor(Date.now() / 1000);
+const message = `manifest lease data ${leaseUuid} ${metaHash} ${timestamp}`;
 
 const signature = await window.keplr.signArbitrary("manifest-1", tenantAddress, message);
 
@@ -301,7 +310,7 @@ const authToken = btoa(JSON.stringify({
   tenant: tenantAddress,
   lease_uuid: leaseUuid,
   meta_hash: metaHash,
-  timestamp: Math.floor(Date.now() / 1000),
+  timestamp,
   pub_key: signature.pub_key,
   signature: signature.signature
 }));

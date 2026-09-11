@@ -84,17 +84,28 @@ Only the module authority can update the parameters (including the allowed list)
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `MaxSKUNameLength` | 256 | Maximum length of SKU name in characters |
-| `MaxAPIURLLength` | 2048 | Maximum length of provider API URL in characters |
+| `MaxSKUNameLength` | 256 | Maximum encoded length of SKU name in UTF-8 bytes |
+| `MaxAPIURLLength` | 2048 | Maximum encoded length of provider API URL in UTF-8 bytes |
 | `MaxMetaHashLength` | 64 | Maximum length of meta_hash field in bytes (accommodates SHA-512) |
 | `DefaultDeactivateSKULimit` | 50 | SKUs deactivated per `DeactivateProvider` call when `limit` is unset (0) |
 | `MaxDeactivateSKULimit` | 100 | Maximum SKUs deactivatable in a single `DeactivateProvider` call |
 
 **API URL Requirements:**
 - Must use HTTPS scheme (http:// is rejected)
-- Must have a valid host (empty host is rejected)
+- Must have a nonempty hostname (a port alone, such as `https://:443`, is rejected)
+- An explicit port must be between 1 and 65535; an empty explicit port is rejected
 - Must not contain user credentials (e.g., `https://user:pass@host` is rejected)
-- Must not exceed `MaxAPIURLLength` (2048 characters)
+- Must not exceed `MaxAPIURLLength` (2048 UTF-8 bytes)
+
+These endpoint checks apply to newly supplied transaction URLs. Genesis import
+and state invariants retain the historical URL rules so previously accepted
+metadata remains readable. An update may preserve an old URL by omitting it, or
+repair it with a valid replacement or `--clear-api-url`.
+
+Provider creation and updates reject payout addresses blocked by bank policy,
+including protected module accounts. Previously stored payouts can be repaired
+by an authorized update to an allowed address; billing checks payout policy
+again before settlement.
 
 **MetaHash Requirements:**
 - Optional field for both Providers and SKUs
@@ -102,7 +113,10 @@ Only the module authority can update the parameters (including the allowed list)
 - Typically contains a hash reference to off-chain metadata (e.g., IPFS CID, SHA-256/SHA-512 hash)
 - Stored unchanged in state; validated only for length
 
-**Note on MsgUpdateProvider**: If `api_url` is an empty string during an update, the existing API URL is preserved rather than being cleared. This allows updating other fields without accidentally removing the API URL.
+**Note on MsgUpdateProvider**: If `api_url` is an empty string during an update,
+the existing API URL is preserved for compatibility with existing clients. Set
+`clear_api_url=true` to remove the stored URL. A request with
+`clear_api_url=true` and a non-empty `api_url` is rejected as ambiguous.
 
 ### Security
 
@@ -113,6 +127,7 @@ Only the module authority can update the parameters (including the allowed list)
 - SKUs can only be created for active Providers
 - SKU base price must be exactly divisible by the billing unit's seconds (no rounding)
 - Deactivating a Provider **cascades to deactivate all its SKUs** (one-way cascade). The cascade is paginated: one call deactivates at most `limit` SKUs (default `DefaultDeactivateSKULimit` = 50, max `MaxDeactivateSKULimit` = 100), the provider is marked inactive on the first call only, and the caller must repeat `deactivate-provider` while the response's `has_more` is true. A provider with more SKUs than `limit` is only partially cascaded by a single call, transiently leaving active SKUs under an inactive provider.
+- Provider reactivation is rejected while active SKUs remain from the cascade. Finish deactivation first, reactivate the provider, then reactivate desired SKUs individually.
 - Deactivating a SKU is a soft delete - the SKU remains queryable but cannot be used for new leases
 - Provider and SKU UUIDs are generated deterministically using UUIDv7 format and never reused
 
@@ -135,6 +150,34 @@ When a Provider or SKU is deactivated, **existing active leases continue to oper
 This soft-delete approach maintains billing integrity and allows graceful phase-out of services.
 
 ## State
+
+### Public Address Fields and Disk Encoding
+
+SKU transaction, query, and genesis protobufs intentionally expose account
+addresses as Bech32 strings. That is the public wire format, not the persistent
+representation. Since module consensus version 2, the keeper's custom value
+codecs store `Params.allowed_list`, `Provider.address`, and
+`Provider.payout_address` as raw SDK account-address bytes. The
+`ProviderByAddress` index was already keyed by `AccAddress` bytes; UUID, boolean,
+and sequence keys are unchanged. `SKU` values contain no account address and
+continue to use the public protobuf encoding.
+
+The stored Params and Provider payloads have explicit disk-format tags
+(`\x00sku/params/v1` and `\x00sku/provider/v1`). These are value-format
+discriminators, not collection-key prefixes or module consensus versions.
+Queries and exports decode the internal values back to canonical Bech32, so API
+clients do not need a new protobuf field or wire format.
+
+The registered v1→v2 module migration runs automatically through the Cosmos SDK
+module manager. It canonicalizes the allowed list by decoded address identity,
+keeps the first occurrence, and validates the canonical Params, including the
+100-entry cap, before its first write. Invalid or over-limit state aborts the
+upgrade atomically; the migration never truncates the allow list. It then
+rewrites Params and Provider values in ascending primary-key pages of 1,000.
+Each iterator is closed before its page is written. It does not rebuild
+indexes, rewrite SKU values or sequences, or move bank balances. The migration
+is idempotent: legacy and current values can both be decoded, while every write
+uses the current raw-byte format.
 
 ### Storage Key Prefixes
 
@@ -161,6 +204,13 @@ This soft-delete approach maintains billing integrity and allows graceful phase-
 | `SKUs` | `string` (UUID) | `SKU` | Primary SKU storage |
 | `SKUSequence` | - | `uint64` | Sequence for deterministic UUID generation |
 
+The module registers a runtime state invariant that validates the complete
+exported provider/SKU graph, UUID sequences, API URLs, pricing, and parameters,
+requires every collection key to equal the UUID in its stored value, and
+bidirectionally verifies all five provider/SKU secondary indexes. Collections
+maintains those indexes atomically during normal writes; the invariant also
+detects missing, stale, or mismatched rows if state is corrupted.
+
 ## Parameters
 
 The module has the following configurable parameters:
@@ -169,7 +219,9 @@ The module has the following configurable parameters:
 |-----------|------|-------------|
 | `allowed_list` | `[]string` | List of addresses authorized to manage Providers and SKUs |
 
-**Note:** The `allowed_list` must not contain duplicate addresses. Duplicate addresses will cause parameter validation to fail during `UpdateParams`.
+**Note:** The `allowed_list` is capped at 100 entries and must not contain
+duplicate decoded address identities. Equivalent Bech32 spellings are
+duplicates and cause `UpdateParams` validation to fail.
 
 ## Messages
 
@@ -198,6 +250,15 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 | SKU | Get a SKU by UUID |
 | SKUs | List all SKUs (supports `--active-only` filter) |
 | SKUsByProvider | List SKUs for a specific provider |
+
+List-query pages default to 100 rows and are capped at 1000 rows. Oversized
+limits are clamped, and bulk consumers continue with the opaque
+`pagination.next_key` cursor. SDK-compatible offset and explicitly requested
+exact-total queries are supported. Unfiltered requests may inspect at most
+20,000 physical rows; `ProviderByAddress` requests with `active_only` retain a
+1,000-row ceiling in every pagination mode. Requests that cannot produce an
+exact page or total within the applicable ceiling fail. An omitted or zero
+limit does not implicitly request a total; larger histories must use cursors.
 
 For detailed query documentation with response formats, see [API Reference](docs/API.md#query-commands).
 
@@ -263,6 +324,40 @@ Example genesis configuration:
 - Provider API URLs are validated if provided (must be HTTPS, no credentials)
 - No duplicate provider or SKU UUIDs allowed
 - `provider_sequence` must be >= `len(providers)` and `sku_sequence` >= `len(skus)` (omitted counters default to 0, which fails validation when any provider/sku is listed)
+
+Genesis remains string-based. Import preparation canonicalizes Provider
+management and payout addresses and collapses equivalent historical
+`allowed_list` spellings in first-seen order before validation and persistence.
+Export renders the stored raw identities as canonical Bech32 strings. Newly
+submitted `MsgUpdateParams` values remain subject to the 100-entry hard cap and
+identity-based duplicate rejection.
+
+## Simulation Coverage
+
+Randomized genesis selects one to three simulation accounts for the SKU
+`allowed_list`, so the governance module account does not need a private key for
+ordinary simulation transactions. All six provider/SKU CRUD messages select a
+current authorized signer by decoded address identity and preserve the input
+account slice order. Provider updates cover API URL preserve, set/replace, and
+explicit-clear modes. Provider deactivation uses bounded pages and includes
+already-inactive providers with an unfinished SKU cascade, exercising the
+`has_more` continuation state. `UpdateParams` rotates delegated managers using the configured authority when
+its private key is present in the simulation account set. Fresh app simulations
+select a signable PoA admin; an unavailable imported authority produces a NoOp.
+This covers direct parameter messages, not real group voting or governance
+proposal execution.
+
+Committed application simulations install the test-only `simulationCommitOpt`
+adapter in [`app/sim_test.go`](../../app/sim_test.go). The pinned SDK simulator
+delivers operations after `FinalizeBlock` has flushed its cache; the adapter
+flushes those later writes before `Commit`, preserving provider and SKU changes
+across blocks and import/export checks. Production application construction does
+not install this hook. See the [billing simulation notes](../billing/docs/ARCHITECTURE.md#simulation-xbillingsimulation)
+for the related withdrawal continuation queue workaround.
+The committed profile excludes all four PoA validator mutation operations because
+the simulator delivers transactions after `EndBlock`; these runs do not establish
+randomized validator-mutation coverage. Restoring that coverage after correcting
+the simulator phase ordering is tracked in [ENG-915](https://linear.app/liftedinit/issue/ENG-915).
 
 ## Client
 

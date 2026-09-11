@@ -1,0 +1,53 @@
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment
+    terminal_withdrawal_test.go:40:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:40
+                Error:          Received unexpected error:
+                                no withdrawable amount
+                Test:           TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment
+                Messages:       a terminal interval can be finalized even when no unreserved credit is available
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/full_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid
+--- FAIL: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt (0.91s)
+    --- FAIL: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment (0.25s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment (0.20s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/full_payment (0.17s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full (0.15s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid (0.13s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch
+    terminal_withdrawal_test.go:108:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:108
+                Error:          Received unexpected error:
+                                no withdrawable amount
+                Test:           TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch
+    terminal_withdrawal_test.go:114:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:114
+                Error:          Not equal:
+                                expected: time.Date(2026, time.September, 11, 14, 17, 3, 202915757, time.UTC)
+                                actual  : time.Date(2026, time.September, 11, 13, 17, 3, 202915757, time.UTC)
+
+                                Diff:
+                                --- Expected
+                                +++ Actual
+                                @@ -1,2 +1,2 @@
+                                -(time.Time) 2026-09-11 14:17:03.202915757 +0000 UTC
+                                +(time.Time) 2026-09-11 13:17:03.202915757 +0000 UTC
+
+                Test:           TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch
+--- FAIL: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts (0.41s)
+    --- FAIL: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch (0.23s)
+    --- FAIL: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch (0.18s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder
+    terminal_withdrawal_test.go:147:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/terminal_withdrawal_test.go:147
+                Error:          Received unexpected error:
+                                no withdrawable amount
+                Test:           TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder
+--- FAIL: TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder (0.17s)
+FAIL
+FAIL    github.com/manifest-network/manifest-ledger/x/billing/keeper    1.620s
+FAIL

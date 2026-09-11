@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	sdkmath "cosmossdk.io/math"
-	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
@@ -18,6 +16,10 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
+
+	sdkmath "cosmossdk.io/math"
+
+	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 )
@@ -171,7 +173,7 @@ func TestPOAUnjailDup(t *testing.T) {
 	// query node, so if we pause Validators[0] every poll/height read would hit a frozen node and
 	// the test would stall (not because of the bug). Pick the victim as the operator backed by a
 	// node OTHER than Validators[0]; pausing it leaves the query/RPC node (Validators[0]) healthy.
-	victim, victimNode := selectVictim(t, ctx, chain)
+	victim, victimNode := selectVictim(ctx, t, chain)
 	t.Logf("victim valoper=%s resolved to node %s (query node=%s)", victim, victimNode.Name(), chain.Validators[0].Name())
 
 	// === Step 1: bump victim to a high distinct power (registers power-index key K1). ===
@@ -189,13 +191,13 @@ func TestPOAUnjailDup(t *testing.T) {
 	// that pausing the victim (step 3) does NOT stall consensus — otherwise the chain freezes and
 	// the test hangs at waitForJailed instead of reproducing the bug. Fail fast if that invariant
 	// is ever broken by a future tweak to the power constants / self-bond / vals.
-	assertVictimNotQuorumCritical(t, ctx, chain, victim)
+	assertVictimNotQuorumCritical(ctx, t, chain, victim)
 
 	// === Step 3: jail the victim via downtime. ===
 	t.Log("step 3: pause victim node to trigger downtime jailing")
 	require.NoError(t, victimNode.PauseContainer(ctx))
 
-	consAddr := waitForJailed(t, ctx, chain, victim)
+	consAddr := waitForJailed(ctx, t, chain, victim)
 	t.Logf("victim jailed; consAddr=%s", consAddr)
 
 	// Unpause the node so it can sign again and self-unjail. (PauseContainer/UnpauseContainer
@@ -206,11 +208,11 @@ func TestPOAUnjailDup(t *testing.T) {
 
 	// === Step 4: wait for JailedUntil to elapse so unjail is permitted. ===
 	t.Log("step 4: wait for JailedUntil to elapse")
-	waitForJailExpiry(t, ctx, chain, consAddr)
+	waitForJailExpiry(ctx, t, chain, consAddr)
 
 	// === Step 5: unjail -> on the buggy image this emits a duplicate validator update. ===
 	t.Log("step 5: self-unjail victim")
-	startHeight := heightWithin(t, ctx, chain, 15*time.Second)
+	startHeight := heightWithin(ctx, t, chain, 15*time.Second)
 	require.Greater(t, startHeight, int64(0), "could not read start height before unjail")
 
 	// Broadcast the self-unjail WITHOUT waiting for block inclusion. The interchaintest
@@ -233,7 +235,7 @@ func TestPOAUnjailDup(t *testing.T) {
 	// deadline. Instead we poll the height ourselves with a per-read timeout and a hard
 	// wall-clock budget, treating "no advancement within the budget" as a halt. Each read is
 	// independently bounded, so a wedged RPC can never hang the test.
-	advanced := waitForProgressOrHalt(t, ctx, chain, startHeight, progressBlocks, progressBudget)
+	advanced := waitForProgressOrHalt(ctx, t, chain, startHeight, progressBlocks, progressBudget)
 
 	if isBuggyImage() {
 		require.Less(t, advanced, int64(progressBlocks),
@@ -244,7 +246,7 @@ func TestPOAUnjailDup(t *testing.T) {
 		// every validator that applies the offending block panics, so scan all node logs.
 		dupConfirmed := false
 		for _, n := range chain.Validators {
-			if nodeLogContains(t, ctx, n, "duplicate entry") {
+			if nodeLogContains(ctx, t, n, "duplicate entry") {
 				dupConfirmed = true
 				t.Logf("confirmed CometBFT duplicate-entry panic in node %s logs", n.Name())
 				break
@@ -268,7 +270,7 @@ func TestPOAUnjailDup(t *testing.T) {
 // gentx self-bond, or `vals` violates that, the chain would stall on the pause and this test would
 // hang at waitForJailed instead of reproducing the bug; this guard turns that silent hang into a
 // clear failure. Voting power is proportional to bonded Tokens, so we compare Tokens.
-func assertVictimNotQuorumCritical(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, victim string) {
+func assertVictimNotQuorumCritical(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, victim string) {
 	t.Helper()
 	bctx, bcancel := context.WithTimeout(ctx, queryTimeout)
 	bonded, err := chain.StakingQueryValidators(bctx, stakingtypes.Bonded.String())
@@ -297,10 +299,12 @@ func assertVictimNotQuorumCritical(t *testing.T, ctx context.Context, chain *cos
 // exited/panicked containers too. The call is bounded by a timeout: it runs exactly when the chain
 // is halted, so the anti-hang assertions must not themselves be able to hang on a wedged daemon. A
 // fetch error/timeout is logged and treated as "not found".
-func nodeLogContains(t *testing.T, ctx context.Context, node *cosmos.ChainNode, needle string) bool {
+func nodeLogContains(ctx context.Context, t *testing.T, node *cosmos.ChainNode, needle string) bool {
 	t.Helper()
 	cctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
+	// The executable is fixed, and ContainerID is created by the test harness.
+	//nolint:gosec // Test-only Docker inspection requires the harness-provided dynamic container ID.
 	out, err := exec.CommandContext(cctx, "docker", "logs", node.ContainerID()).CombinedOutput()
 	if err != nil {
 		if cctx.Err() == context.DeadlineExceeded {
@@ -315,7 +319,7 @@ func nodeLogContains(t *testing.T, ctx context.Context, node *cosmos.ChainNode, 
 
 // waitOneBlockBounded advances the chain by one block but fails fast (instead of hanging) if block
 // production stalls — keeping the no-hang guarantee inside the jail-polling loops.
-func waitOneBlockBounded(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain) {
+func waitOneBlockBounded(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain) {
 	t.Helper()
 	wbctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
@@ -330,7 +334,7 @@ func waitOneBlockBounded(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 // a failed/timed-out read is treated as "no new height" and the loop keeps sampling until the
 // budget is spent. On a healthy chain this returns as soon as want blocks are produced; on a
 // halted chain it returns ~0 after the budget.
-func waitForProgressOrHalt(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, start, want int64, budget time.Duration) int64 {
+func waitForProgressOrHalt(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, start, want int64, budget time.Duration) int64 {
 	t.Helper()
 	deadline := time.Now().Add(budget)
 	var advanced int64
@@ -340,7 +344,7 @@ func waitForProgressOrHalt(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 	consecutiveTimeouts := 0
 	const maxConsecutiveTimeouts = 3
 	for time.Now().Before(deadline) {
-		h := heightWithin(t, ctx, chain, 8*time.Second)
+		h := heightWithin(ctx, t, chain, 8*time.Second)
 		if h == 0 {
 			consecutiveTimeouts++
 			if consecutiveTimeouts >= maxConsecutiveTimeouts {
@@ -371,7 +375,7 @@ func waitForProgressOrHalt(t *testing.T, ctx context.Context, chain *cosmos.Cosm
 // without honoring the request context — so we run the read in a goroutine and race it against a
 // hard timer. A timed-out or failed read returns 0; the caller compares start vs end heights, so
 // a halt naturally shows as little/no advancement, which the buggy-branch assertion requires.
-func heightWithin(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, d time.Duration) int64 {
+func heightWithin(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, d time.Duration) int64 {
 	t.Helper()
 	hctx, cancel := context.WithTimeout(ctx, d)
 	defer cancel()
@@ -405,7 +409,7 @@ func heightWithin(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, 
 // pausing the victim would freeze all chain queries. Each node's valoper is resolved from its
 // own validator key (`keys show validator --bech val`) so we never rely on the Validators slice
 // order matching the StakingQueryValidators order.
-func selectVictim(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain) (string, *cosmos.ChainNode) {
+func selectVictim(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain) (string, *cosmos.ChainNode) {
 	t.Helper()
 	queryNode := chain.Validators[0]
 	for _, node := range chain.Validators {
@@ -423,7 +427,7 @@ func selectVictim(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain) 
 
 // waitForJailed polls until the victim validator reports Jailed=true, then returns its
 // consensus address (for slashing signing-info queries). The poll is bounded.
-func waitForJailed(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, victim string) string {
+func waitForJailed(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, victim string) string {
 	t.Helper()
 
 	const maxBlocks = 40
@@ -432,9 +436,9 @@ func waitForJailed(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 		val, err := chain.StakingQueryValidator(qctx, victim)
 		cancel()
 		if err == nil && val.Jailed {
-			return victimConsAddr(t, ctx, chain, victim)
+			return victimConsAddr(ctx, t, chain, victim)
 		}
-		waitOneBlockBounded(t, ctx, chain)
+		waitOneBlockBounded(ctx, t, chain)
 	}
 	t.Fatalf("victim %s was not jailed within %d blocks", victim, maxBlocks)
 	return ""
@@ -443,7 +447,7 @@ func waitForJailed(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain,
 // victimConsAddr returns the consensus address of the victim by scanning all slashing signing
 // infos and matching against the one belonging to the jailed validator. With a 2-val chain
 // where validators[0] stays healthy, the jailed signing info uniquely identifies the victim.
-func victimConsAddr(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, victim string) string {
+func victimConsAddr(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, victim string) string {
 	t.Helper()
 
 	ictx, icancel := context.WithTimeout(ctx, queryTimeout)
@@ -469,7 +473,7 @@ func victimConsAddr(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain
 // waitForJailExpiry polls SlashingQuerySigningInfo until JailedUntil has elapsed, compared against
 // local wall-clock (which closely tracks block time on same-host docker), so the self-unjail tx is
 // accepted by the time it lands in a block.
-func waitForJailExpiry(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, consAddr string) {
+func waitForJailExpiry(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, consAddr string) {
 	t.Helper()
 
 	const maxBlocks = 40
@@ -481,7 +485,7 @@ func waitForJailExpiry(t *testing.T, ctx context.Context, chain *cosmos.CosmosCh
 		if time.Now().After(info.JailedUntil) {
 			return
 		}
-		waitOneBlockBounded(t, ctx, chain)
+		waitOneBlockBounded(ctx, t, chain)
 	}
 	t.Fatalf("jail did not expire within %d blocks for cons %s", maxBlocks, consAddr)
 }

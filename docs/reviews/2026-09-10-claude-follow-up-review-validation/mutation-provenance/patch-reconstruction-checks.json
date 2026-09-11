@@ -1,0 +1,732 @@
+{
+  "driver_argv": [
+    "python3",
+    "-O",
+    "docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+    "replay",
+    "docs/reviews/2026-09-11-claude-hygiene-validation/bundled-patch-plan.json",
+    "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+    ".review-tmp/sep11-patch-reconstruction-complete/bundled-final-first",
+    ".review-tmp/sep11-patch-reconstruction-complete/bundled-final-first.json"
+  ],
+  "python_executable": "/usr/sbin/python3",
+  "python_version": "3.14.7 (main, Aug 14 2026, 06:38:32) [GCC 16.2.1 20260810]",
+  "driver_sha256": "ca45bdf3641f74fb3aded2993bea2c268c98be6bd071139cfbdb01e6cd44f0de",
+  "driver_cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "replayed_transcript": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/bundled-patch-plan.json",
+  "replayed_transcript_sha256": "a2ef27dee58efe64aebdacd18f7f4755b065d6dae149761972fdcccc9f7ed2a8",
+  "bindings": {
+    "python": "/usr/sbin/python3",
+    "verifier": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+    "evidence": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+    "work": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first"
+  },
+  "environment_overrides": {
+    "LC_ALL": "C",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_GLOBAL": "/dev/null"
+  },
+  "environment_note": "Other host environment entries are inherited. Git system/global config is disabled; no credentials are archived.",
+  "display_normalization": "splitlines + expandtabs(8) + per-line rstrip + overall rstrip + one LF",
+  "started_at_utc": "2026-09-11T17:33:28.861116+00:00",
+  "records": [
+    {
+      "source_path": "x/billing/keeper/provider_withdrawal.go",
+      "baseline_sha256": "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+      "patch": "withdrawal-original.patch",
+      "patch_sha256": "c83560dacd69fd5765527148201b6681d99e21fb4a921af882a00b676b995307",
+      "mutant_sha256": "e1d875a223a36b73f95f65c068eb2ac13a73114a55b33a3f7c72372f3543a92d",
+      "name": "withdrawal-original-mutant",
+      "baseline": {
+        "kind": "archive",
+        "path": "inputs/baseline-b4d8403.tar.gz",
+        "archive_sha256": "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+        "archive_uncompressed_sha256": "235e4171af8b0581fff909ac1613efef183ef1fad78b3fcfc5c81d566e4130ef"
+      },
+      "steps": [
+        {
+          "name": "init",
+          "portable_argv": [
+            "git",
+            "init",
+            "--quiet",
+            "{work}/withdrawal-original-mutant"
+          ],
+          "argv": [
+            "git",
+            "init",
+            "--quiet",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/withdrawal-original-mutant"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:28.861224+00:00",
+          "finished_at_utc": "2026-09-11T17:33:28.874989+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "seed-baseline",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "seed",
+            "--archive",
+            "{evidence}/inputs/baseline-b4d8403.tar.gz",
+            "--archive-sha256",
+            "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+            "--member",
+            "x/billing/keeper/provider_withdrawal.go",
+            "--sha256",
+            "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+            "--destination",
+            "{work}/withdrawal-original-mutant/x/billing/keeper/provider_withdrawal.go"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "seed",
+            "--archive",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/inputs/baseline-b4d8403.tar.gz",
+            "--archive-sha256",
+            "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+            "--member",
+            "x/billing/keeper/provider_withdrawal.go",
+            "--sha256",
+            "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+            "--destination",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/withdrawal-original-mutant/x/billing/keeper/provider_withdrawal.go"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:28.875057+00:00",
+          "finished_at_utc": "2026-09-11T17:33:29.018591+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJzZWVkZWRfcGF0aCI6ICIvaG9tZS9mbW9yZW5jeS9kZXYvbWFuaWZlc3QtbGVkZ2VyLy5yZXZpZXctd29ya3RyZWVzL3NrdS1iaWxsaW5nLTIwMjYwOTA5Ly5yZXZpZXctdG1wL3NlcDExLXBhdGNoLXJlY29uc3RydWN0aW9uLWNvbXBsZXRlL2J1bmRsZWQtZmluYWwtZmlyc3Qvd2l0aGRyYXdhbC1vcmlnaW5hbC1tdXRhbnQveC9iaWxsaW5nL2tlZXBlci9wcm92aWRlcl93aXRoZHJhd2FsLmdvIiwgImJhc2VsaW5lX3NoYTI1NiI6ICI3NTQxOGQxYWZhMTA5ZDU3ZTJkYjFmMTdjMGFmNjk0ZDU3ZjAzMDhjM2I1MzhhMWRmODM5ZGU1MWI5MDc4YTJiIn0K",
+            "raw_sha256": "884e022be21ddb9211bd3ce4bba5dad9218a4fb2100264e35609ce253aaf550c",
+            "raw_bytes": 315,
+            "display": "{\"seeded_path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/withdrawal-original-mutant/x/billing/keeper/provider_withdrawal.go\", \"baseline_sha256\": \"75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b\"}\n",
+            "display_sha256": "884e022be21ddb9211bd3ce4bba5dad9218a4fb2100264e35609ce253aaf550c"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "verify-patch",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{evidence}/withdrawal-original.patch",
+            "c83560dacd69fd5765527148201b6681d99e21fb4a921af882a00b676b995307"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "hash",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-original.patch",
+            "c83560dacd69fd5765527148201b6681d99e21fb4a921af882a00b676b995307"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:29.018699+00:00",
+          "finished_at_utc": "2026-09-11T17:33:29.181897+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJwYXRoIjogIi9ob21lL2Ztb3JlbmN5L2Rldi9tYW5pZmVzdC1sZWRnZXIvLnJldmlldy13b3JrdHJlZXMvc2t1LWJpbGxpbmctMjAyNjA5MDkvZG9jcy9yZXZpZXdzLzIwMjYtMDktMTAtY2xhdWRlLWZvbGxvdy11cC1yZXZpZXctdmFsaWRhdGlvbi9tdXRhdGlvbi1wcm92ZW5hbmNlL3dpdGhkcmF3YWwtb3JpZ2luYWwucGF0Y2giLCAic2hhMjU2IjogImM4MzU2MGRhY2Q2OWZkNTc2NTUyNzE0ODIwMWI2NjgxZDk5ZTIxZmI0YTkyMWFmODgyYTAwYjY3NmI5OTUzMDciLCAibWF0Y2hlcyI6IHRydWV9Cg==",
+            "raw_sha256": "ebd9f40df24851c11cb44e228a2b88e61dce6d0e5baab8197273d445ed1f3e03",
+            "raw_bytes": 286,
+            "display": "{\"path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-original.patch\", \"sha256\": \"c83560dacd69fd5765527148201b6681d99e21fb4a921af882a00b676b995307\", \"matches\": true}\n",
+            "display_sha256": "ebd9f40df24851c11cb44e228a2b88e61dce6d0e5baab8197273d445ed1f3e03"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "apply-patch",
+          "portable_argv": [
+            "git",
+            "-C",
+            "{work}/withdrawal-original-mutant",
+            "apply",
+            "--unidiff-zero",
+            "{evidence}/withdrawal-original.patch"
+          ],
+          "argv": [
+            "git",
+            "-C",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/withdrawal-original-mutant",
+            "apply",
+            "--unidiff-zero",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-original.patch"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:29.181997+00:00",
+          "finished_at_utc": "2026-09-11T17:33:29.189289+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "verify-result",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{work}/withdrawal-original-mutant/x/billing/keeper/provider_withdrawal.go",
+            "e1d875a223a36b73f95f65c068eb2ac13a73114a55b33a3f7c72372f3543a92d"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "hash",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/withdrawal-original-mutant/x/billing/keeper/provider_withdrawal.go",
+            "e1d875a223a36b73f95f65c068eb2ac13a73114a55b33a3f7c72372f3543a92d"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:29.189383+00:00",
+          "finished_at_utc": "2026-09-11T17:33:29.331661+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJwYXRoIjogIi9ob21lL2Ztb3JlbmN5L2Rldi9tYW5pZmVzdC1sZWRnZXIvLnJldmlldy13b3JrdHJlZXMvc2t1LWJpbGxpbmctMjAyNjA5MDkvLnJldmlldy10bXAvc2VwMTEtcGF0Y2gtcmVjb25zdHJ1Y3Rpb24tY29tcGxldGUvYnVuZGxlZC1maW5hbC1maXJzdC93aXRoZHJhd2FsLW9yaWdpbmFsLW11dGFudC94L2JpbGxpbmcva2VlcGVyL3Byb3ZpZGVyX3dpdGhkcmF3YWwuZ28iLCAic2hhMjU2IjogImUxZDg3NWEyMjNhMzZiNzNmOTVmNjVjMDY4ZWIyYWMxM2E3MzExNGE1NWIzM2EzZjdjNzIzNzJmMzU0M2E5MmQiLCAibWF0Y2hlcyI6IHRydWV9Cg==",
+            "raw_sha256": "a5957ceaa1cfad8be0a151a5b4341e5011cf9b632de8c36198e1b4f8fa540a14",
+            "raw_bytes": 316,
+            "display": "{\"path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/withdrawal-original-mutant/x/billing/keeper/provider_withdrawal.go\", \"sha256\": \"e1d875a223a36b73f95f65c068eb2ac13a73114a55b33a3f7c72372f3543a92d\", \"matches\": true}\n",
+            "display_sha256": "a5957ceaa1cfad8be0a151a5b4341e5011cf9b632de8c36198e1b4f8fa540a14"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      ],
+      "reconstructed_sha256": "e1d875a223a36b73f95f65c068eb2ac13a73114a55b33a3f7c72372f3543a92d",
+      "matches_recorded_mutant": true,
+      "exit_status": 0
+    },
+    {
+      "source_path": "x/billing/keeper/provider_withdrawal.go",
+      "baseline_sha256": "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+      "patch": "withdrawal-shallow.patch",
+      "patch_sha256": "583677bda4e4a4c10a4cf8189b5ea06944e0812c0ced8ef906f09144c2e3cdfe",
+      "mutant_sha256": "c2a56e24051ad1ff7f7d64c98f58eb56c155c9659e3ab3ab4abdcaf2cf2930b0",
+      "name": "withdrawal-shallow-mutant",
+      "baseline": {
+        "kind": "archive",
+        "path": "inputs/baseline-b4d8403.tar.gz",
+        "archive_sha256": "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+        "archive_uncompressed_sha256": "235e4171af8b0581fff909ac1613efef183ef1fad78b3fcfc5c81d566e4130ef"
+      },
+      "steps": [
+        {
+          "name": "init",
+          "portable_argv": [
+            "git",
+            "init",
+            "--quiet",
+            "{work}/withdrawal-shallow-mutant"
+          ],
+          "argv": [
+            "git",
+            "init",
+            "--quiet",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/withdrawal-shallow-mutant"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:29.331976+00:00",
+          "finished_at_utc": "2026-09-11T17:33:29.337177+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "seed-baseline",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "seed",
+            "--archive",
+            "{evidence}/inputs/baseline-b4d8403.tar.gz",
+            "--archive-sha256",
+            "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+            "--member",
+            "x/billing/keeper/provider_withdrawal.go",
+            "--sha256",
+            "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+            "--destination",
+            "{work}/withdrawal-shallow-mutant/x/billing/keeper/provider_withdrawal.go"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "seed",
+            "--archive",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/inputs/baseline-b4d8403.tar.gz",
+            "--archive-sha256",
+            "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+            "--member",
+            "x/billing/keeper/provider_withdrawal.go",
+            "--sha256",
+            "75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b",
+            "--destination",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/withdrawal-shallow-mutant/x/billing/keeper/provider_withdrawal.go"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:29.337246+00:00",
+          "finished_at_utc": "2026-09-11T17:33:29.489090+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJzZWVkZWRfcGF0aCI6ICIvaG9tZS9mbW9yZW5jeS9kZXYvbWFuaWZlc3QtbGVkZ2VyLy5yZXZpZXctd29ya3RyZWVzL3NrdS1iaWxsaW5nLTIwMjYwOTA5Ly5yZXZpZXctdG1wL3NlcDExLXBhdGNoLXJlY29uc3RydWN0aW9uLWNvbXBsZXRlL2J1bmRsZWQtZmluYWwtZmlyc3Qvd2l0aGRyYXdhbC1zaGFsbG93LW11dGFudC94L2JpbGxpbmcva2VlcGVyL3Byb3ZpZGVyX3dpdGhkcmF3YWwuZ28iLCAiYmFzZWxpbmVfc2hhMjU2IjogIjc1NDE4ZDFhZmExMDlkNTdlMmRiMWYxN2MwYWY2OTRkNTdmMDMwOGMzYjUzOGExZGY4MzlkZTUxYjkwNzhhMmIifQo=",
+            "raw_sha256": "47633d7ca0f0572057dc55ed95f6f832a2f33c6d1e835ceb8e96b2ddb42de8c8",
+            "raw_bytes": 314,
+            "display": "{\"seeded_path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/withdrawal-shallow-mutant/x/billing/keeper/provider_withdrawal.go\", \"baseline_sha256\": \"75418d1afa109d57e2db1f17c0af694d57f0308c3b538a1df839de51b9078a2b\"}\n",
+            "display_sha256": "47633d7ca0f0572057dc55ed95f6f832a2f33c6d1e835ceb8e96b2ddb42de8c8"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "verify-patch",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{evidence}/withdrawal-shallow.patch",
+            "583677bda4e4a4c10a4cf8189b5ea06944e0812c0ced8ef906f09144c2e3cdfe"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "hash",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-shallow.patch",
+            "583677bda4e4a4c10a4cf8189b5ea06944e0812c0ced8ef906f09144c2e3cdfe"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:29.489160+00:00",
+          "finished_at_utc": "2026-09-11T17:33:29.601871+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJwYXRoIjogIi9ob21lL2Ztb3JlbmN5L2Rldi9tYW5pZmVzdC1sZWRnZXIvLnJldmlldy13b3JrdHJlZXMvc2t1LWJpbGxpbmctMjAyNjA5MDkvZG9jcy9yZXZpZXdzLzIwMjYtMDktMTAtY2xhdWRlLWZvbGxvdy11cC1yZXZpZXctdmFsaWRhdGlvbi9tdXRhdGlvbi1wcm92ZW5hbmNlL3dpdGhkcmF3YWwtc2hhbGxvdy5wYXRjaCIsICJzaGEyNTYiOiAiNTgzNjc3YmRhNGU0YTRjMTBhNGNmODE4OWI1ZWEwNjk0NGUwODEyYzBjZWQ4ZWY5MDZmMDkxNDRjMmUzY2RmZSIsICJtYXRjaGVzIjogdHJ1ZX0K",
+            "raw_sha256": "7249312381339f46fd094fa5dde869158a450f92165e6eded58cc49d24c4b669",
+            "raw_bytes": 285,
+            "display": "{\"path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-shallow.patch\", \"sha256\": \"583677bda4e4a4c10a4cf8189b5ea06944e0812c0ced8ef906f09144c2e3cdfe\", \"matches\": true}\n",
+            "display_sha256": "7249312381339f46fd094fa5dde869158a450f92165e6eded58cc49d24c4b669"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "apply-patch",
+          "portable_argv": [
+            "git",
+            "-C",
+            "{work}/withdrawal-shallow-mutant",
+            "apply",
+            "--unidiff-zero",
+            "{evidence}/withdrawal-shallow.patch"
+          ],
+          "argv": [
+            "git",
+            "-C",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/withdrawal-shallow-mutant",
+            "apply",
+            "--unidiff-zero",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/withdrawal-shallow.patch"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:29.601955+00:00",
+          "finished_at_utc": "2026-09-11T17:33:29.611157+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "verify-result",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{work}/withdrawal-shallow-mutant/x/billing/keeper/provider_withdrawal.go",
+            "c2a56e24051ad1ff7f7d64c98f58eb56c155c9659e3ab3ab4abdcaf2cf2930b0"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "hash",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/withdrawal-shallow-mutant/x/billing/keeper/provider_withdrawal.go",
+            "c2a56e24051ad1ff7f7d64c98f58eb56c155c9659e3ab3ab4abdcaf2cf2930b0"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:29.611226+00:00",
+          "finished_at_utc": "2026-09-11T17:33:29.723681+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJwYXRoIjogIi9ob21lL2Ztb3JlbmN5L2Rldi9tYW5pZmVzdC1sZWRnZXIvLnJldmlldy13b3JrdHJlZXMvc2t1LWJpbGxpbmctMjAyNjA5MDkvLnJldmlldy10bXAvc2VwMTEtcGF0Y2gtcmVjb25zdHJ1Y3Rpb24tY29tcGxldGUvYnVuZGxlZC1maW5hbC1maXJzdC93aXRoZHJhd2FsLXNoYWxsb3ctbXV0YW50L3gvYmlsbGluZy9rZWVwZXIvcHJvdmlkZXJfd2l0aGRyYXdhbC5nbyIsICJzaGEyNTYiOiAiYzJhNTZlMjQwNTFhZDFmZjdmN2Q2NGM5OGY1OGViNTZjMTU1Yzk2NTllM2FiM2FiNGFiZGNhZjJjZjI5MzBiMCIsICJtYXRjaGVzIjogdHJ1ZX0K",
+            "raw_sha256": "342b4f790eface2b566f5556925ee6b1167118eb2b612e40ceaf8ed0a6622b12",
+            "raw_bytes": 315,
+            "display": "{\"path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/withdrawal-shallow-mutant/x/billing/keeper/provider_withdrawal.go\", \"sha256\": \"c2a56e24051ad1ff7f7d64c98f58eb56c155c9659e3ab3ab4abdcaf2cf2930b0\", \"matches\": true}\n",
+            "display_sha256": "342b4f790eface2b566f5556925ee6b1167118eb2b612e40ceaf8ed0a6622b12"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      ],
+      "reconstructed_sha256": "c2a56e24051ad1ff7f7d64c98f58eb56c155c9659e3ab3ab4abdcaf2cf2930b0",
+      "matches_recorded_mutant": true,
+      "exit_status": 0
+    },
+    {
+      "source_path": "app/export.go",
+      "baseline_sha256": "3fe40a00d95435d5c55047587e21514b32e2004e19d5261bf02c9cb1c4fce340",
+      "patch": "export-stale-header.patch",
+      "patch_sha256": "bc392a4707c7b0ffdffa360da526683e9e705358b9ae6631800f7abef114c42f",
+      "mutant_sha256": "ff42a24fe733c859b973e488e662ea5d1e2f7321a19f8714435a441d573f8c53",
+      "name": "export-stale-header-mutant",
+      "baseline": {
+        "kind": "archive",
+        "path": "inputs/baseline-b4d8403.tar.gz",
+        "archive_sha256": "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+        "archive_uncompressed_sha256": "235e4171af8b0581fff909ac1613efef183ef1fad78b3fcfc5c81d566e4130ef"
+      },
+      "steps": [
+        {
+          "name": "init",
+          "portable_argv": [
+            "git",
+            "init",
+            "--quiet",
+            "{work}/export-stale-header-mutant"
+          ],
+          "argv": [
+            "git",
+            "init",
+            "--quiet",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/export-stale-header-mutant"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:29.723936+00:00",
+          "finished_at_utc": "2026-09-11T17:33:29.739474+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "seed-baseline",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "seed",
+            "--archive",
+            "{evidence}/inputs/baseline-b4d8403.tar.gz",
+            "--archive-sha256",
+            "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+            "--member",
+            "app/export.go",
+            "--sha256",
+            "3fe40a00d95435d5c55047587e21514b32e2004e19d5261bf02c9cb1c4fce340",
+            "--destination",
+            "{work}/export-stale-header-mutant/app/export.go"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "seed",
+            "--archive",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/inputs/baseline-b4d8403.tar.gz",
+            "--archive-sha256",
+            "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+            "--member",
+            "app/export.go",
+            "--sha256",
+            "3fe40a00d95435d5c55047587e21514b32e2004e19d5261bf02c9cb1c4fce340",
+            "--destination",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/export-stale-header-mutant/app/export.go"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:29.739536+00:00",
+          "finished_at_utc": "2026-09-11T17:33:29.921097+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJzZWVkZWRfcGF0aCI6ICIvaG9tZS9mbW9yZW5jeS9kZXYvbWFuaWZlc3QtbGVkZ2VyLy5yZXZpZXctd29ya3RyZWVzL3NrdS1iaWxsaW5nLTIwMjYwOTA5Ly5yZXZpZXctdG1wL3NlcDExLXBhdGNoLXJlY29uc3RydWN0aW9uLWNvbXBsZXRlL2J1bmRsZWQtZmluYWwtZmlyc3QvZXhwb3J0LXN0YWxlLWhlYWRlci1tdXRhbnQvYXBwL2V4cG9ydC5nbyIsICJiYXNlbGluZV9zaGEyNTYiOiAiM2ZlNDBhMDBkOTU0MzVkNWM1NTA0NzU4N2UyMTUxNGIzMmUyMDA0ZTE5ZDUyNjFiZjAyYzljYjFjNGZjZTM0MCJ9Cg==",
+            "raw_sha256": "742214301010b4a2e48b8db5b634527940c502ad588a48a2e197793ada5d15d2",
+            "raw_bytes": 289,
+            "display": "{\"seeded_path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/export-stale-header-mutant/app/export.go\", \"baseline_sha256\": \"3fe40a00d95435d5c55047587e21514b32e2004e19d5261bf02c9cb1c4fce340\"}\n",
+            "display_sha256": "742214301010b4a2e48b8db5b634527940c502ad588a48a2e197793ada5d15d2"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "verify-patch",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{evidence}/export-stale-header.patch",
+            "bc392a4707c7b0ffdffa360da526683e9e705358b9ae6631800f7abef114c42f"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "hash",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/export-stale-header.patch",
+            "bc392a4707c7b0ffdffa360da526683e9e705358b9ae6631800f7abef114c42f"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:29.921176+00:00",
+          "finished_at_utc": "2026-09-11T17:33:30.045864+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJwYXRoIjogIi9ob21lL2Ztb3JlbmN5L2Rldi9tYW5pZmVzdC1sZWRnZXIvLnJldmlldy13b3JrdHJlZXMvc2t1LWJpbGxpbmctMjAyNjA5MDkvZG9jcy9yZXZpZXdzLzIwMjYtMDktMTAtY2xhdWRlLWZvbGxvdy11cC1yZXZpZXctdmFsaWRhdGlvbi9tdXRhdGlvbi1wcm92ZW5hbmNlL2V4cG9ydC1zdGFsZS1oZWFkZXIucGF0Y2giLCAic2hhMjU2IjogImJjMzkyYTQ3MDdjN2IwZmZkZmZhMzYwZGE1MjY2ODNlOWU3MDUzNThiOWFlNjYzMTgwMGY3YWJlZjExNGM0MmYiLCAibWF0Y2hlcyI6IHRydWV9Cg==",
+            "raw_sha256": "265f14aa173924548a7518eb212dca69aaa27fab979478fad0f47daccf7d0b78",
+            "raw_bytes": 286,
+            "display": "{\"path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/export-stale-header.patch\", \"sha256\": \"bc392a4707c7b0ffdffa360da526683e9e705358b9ae6631800f7abef114c42f\", \"matches\": true}\n",
+            "display_sha256": "265f14aa173924548a7518eb212dca69aaa27fab979478fad0f47daccf7d0b78"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "apply-patch",
+          "portable_argv": [
+            "git",
+            "-C",
+            "{work}/export-stale-header-mutant",
+            "apply",
+            "--unidiff-zero",
+            "{evidence}/export-stale-header.patch"
+          ],
+          "argv": [
+            "git",
+            "-C",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/export-stale-header-mutant",
+            "apply",
+            "--unidiff-zero",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/export-stale-header.patch"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:30.045924+00:00",
+          "finished_at_utc": "2026-09-11T17:33:30.096867+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "name": "verify-result",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{work}/export-stale-header-mutant/app/export.go",
+            "ff42a24fe733c859b973e488e662ea5d1e2f7321a19f8714435a441d573f8c53"
+          ],
+          "argv": [
+            "/usr/sbin/python3",
+            "-I",
+            "-O",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-hygiene-validation/verify_patch_reconstruction.py",
+            "hash",
+            "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/export-stale-header-mutant/app/export.go",
+            "ff42a24fe733c859b973e488e662ea5d1e2f7321a19f8714435a441d573f8c53"
+          ],
+          "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance",
+          "started_at_utc": "2026-09-11T17:33:30.096941+00:00",
+          "finished_at_utc": "2026-09-11T17:33:30.189097+00:00",
+          "exit_status": 0,
+          "stdout": {
+            "raw_encoding": "base64",
+            "raw": "eyJwYXRoIjogIi9ob21lL2Ztb3JlbmN5L2Rldi9tYW5pZmVzdC1sZWRnZXIvLnJldmlldy13b3JrdHJlZXMvc2t1LWJpbGxpbmctMjAyNjA5MDkvLnJldmlldy10bXAvc2VwMTEtcGF0Y2gtcmVjb25zdHJ1Y3Rpb24tY29tcGxldGUvYnVuZGxlZC1maW5hbC1maXJzdC9leHBvcnQtc3RhbGUtaGVhZGVyLW11dGFudC9hcHAvZXhwb3J0LmdvIiwgInNoYTI1NiI6ICJmZjQyYTI0ZmU3MzNjODU5Yjk3M2U0ODhlNjYyZWE1ZDFlMmY3MzIxYTE5Zjg3MTQ0MzVhNDQxZDU3M2Y4YzUzIiwgIm1hdGNoZXMiOiB0cnVlfQo=",
+            "raw_sha256": "a3824286601fa1bd632b778d3cb6c84282d89e651af4d267332d9bffb8574238",
+            "raw_bytes": 290,
+            "display": "{\"path\": \"/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-patch-reconstruction-complete/bundled-final-first/export-stale-header-mutant/app/export.go\", \"sha256\": \"ff42a24fe733c859b973e488e662ea5d1e2f7321a19f8714435a441d573f8c53\", \"matches\": true}\n",
+            "display_sha256": "a3824286601fa1bd632b778d3cb6c84282d89e651af4d267332d9bffb8574238"
+          },
+          "stderr": {
+            "raw_encoding": "base64",
+            "raw": "",
+            "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "raw_bytes": 0,
+            "display": "",
+            "display_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      ],
+      "reconstructed_sha256": "ff42a24fe733c859b973e488e662ea5d1e2f7321a19f8714435a441d573f8c53",
+      "matches_recorded_mutant": true,
+      "exit_status": 0
+    }
+  ],
+  "finished_at_utc": "2026-09-11T17:33:30.189285+00:00",
+  "all_reconstructions_match": true
+}

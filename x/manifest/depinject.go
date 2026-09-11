@@ -1,3 +1,4 @@
+// Package module wires the manifest module into the application.
 package module
 
 import (
@@ -54,6 +55,7 @@ type ModuleOutputs struct {
 	Keeper keeper.Keeper
 }
 
+// ProvideModule constructs the manifest module and keeper for dependency injection.
 func ProvideModule(in ModuleInputs) ModuleOutputs {
 	k := keeper.NewKeeper(in.Cdc, in.StoreService, in.MintKeeper, in.BankKeeper, log.NewLogger(os.Stderr), authtypes.NewModuleAddress(govtypes.ModuleName).String())
 	m := NewAppModule(in.Cdc, k, in.MintKeeper)

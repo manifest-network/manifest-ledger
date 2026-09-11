@@ -32,6 +32,7 @@ The chain runs Proof of Authority (`x/poa`) consensus, with plans to evolve towa
 - [System Requirements](#system-requirements)
 - [Installation](#install--run)
 - [Testing](#testing)
+- [Release engineering](./docs/RELEASE.md)
 - [Helper](#helper)
 - [Modules](./MODULE.md)
 - [Validators](./network/manifest-1/POST_GENESIS.md)
@@ -243,8 +244,13 @@ make ictest-group-poa
 **To test the chain upgrade run:**
 
 ```bash
-make ictest-chain-upgrade
+make ictest-chain-upgrade-local
 ```
+
+This target rebuilds `manifest:local` from the current working tree and verifies
+the embedded version and commit before starting the pinned v2.3.1 upgrade
+rehearsal. `ictest-chain-upgrade` is reserved for CI, where it verifies the
+separately built Docker artifact instead of rebuilding it.
 
 **To Test cosmwasm functionality run:**
 
@@ -272,6 +278,12 @@ make ictest-billing
 make sim-full-app
 ```
 
+**To verify simulation state across export and import:**
+
+```bash
+make sim-import-export
+```
+
 **To execute the application simulation after state import run:**
 
 ```bash
@@ -284,7 +296,11 @@ make sim-after-import
 make sim-app-determinism
 ```
 
-Append `-random` to the end of the commands above to run the simulation with a random seed, e.g., `make sim-full-app-random`.
+These targets use the fixed, non-sentinel seed
+`SIM_SEED=2507940531156952020` by default so their
+results are reproducible across invocations. Cosmos SDK reserves seed `42` as
+its default sentinel, so do not use it for reproducible determinism runs. Append
+`-random` to run with a random seed, for example `make sim-full-app-random`.
 
 ## Coverage
 

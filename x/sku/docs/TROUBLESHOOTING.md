@@ -24,10 +24,21 @@ This guide covers common errors and issues users may encounter when using the SK
    ```bash
    manifestd query sku provider [provider-uuid]
    ```
-2. If the provider is inactive, contact an authorized user (authority or allowed list member) to reactivate it:
+2. If the provider is inactive, contact an authorized user (authority or allowed
+   list member). If any of its SKUs are still active, first finish the
+   deactivation cascade with the following command. Confirm successful committed
+   execution after every page, then query `skus-by-provider UUID --active-only
+   --limit 1` at that height; repeat while any SKUs remain. See the
+   [complete CLI workflow](API.md#complete-a-provider-deactivation-cascade):
+   ```bash
+   manifestd tx sku deactivate-provider [provider-uuid] --from [authorized-key]
+   ```
+3. After all of its SKUs are inactive, reactivate the provider:
    ```bash
    manifestd tx sku update-provider [provider-uuid] [address] [payout-address] true --from [authorized-key]
    ```
+   Existing SKUs remain inactive and require individual `update-sku` calls to
+   reactivate; new SKUs can now be created.
 
 ### "unauthorized"
 
@@ -71,12 +82,14 @@ This guide covers common errors and issues users may encounter when using the SK
 **Solution**:
 1. Check the SKU's status:
    ```bash
-   manifestd query sku sku [sku-uuid]
+   manifestd query sku sku [sku-uuid] --output json
    ```
-2. If the SKU is inactive, contact an authorized user (authority or allowed list member) to reactivate it:
+2. If the SKU is inactive, contact an authorized user (authority or allowed list member) to reactivate it using its current provider, name, unit, price, and metadata hash:
    ```bash
-   manifestd tx sku update-sku [sku-uuid] [provider-uuid] [name] [unit] [base-price] true --from [authorized-key]
+   manifestd tx sku update-sku [sku-uuid] [provider-uuid] [name] [unit] [base-price] true \
+     --meta-hash [current-meta-hash-hex] --from [authorized-key]
    ```
+   Updates replace the metadata hash. Convert the JSON response's base64-encoded `meta_hash` bytes to hex for `--meta-hash`; use `--meta-hash ""` if the current hash is empty. Omitting the flag clears the hash.
 
 ### "invalid sku" (price not divisible)
 
@@ -121,6 +134,14 @@ or simply raise the price.
 
 ## API URL Issues
 
+### "clear_api_url cannot be true when api_url is non-empty"
+
+**Cause**: An update requested two conflicting operations: set the URL and
+clear it.
+
+**Solution**: Use exactly one of `--api-url <https-url>` or
+`--clear-api-url`. Omit both to preserve the existing URL.
+
 ### "invalid API URL" (not HTTPS)
 
 **Cause**: The API URL doesn't use HTTPS scheme.
@@ -162,15 +183,56 @@ manifestd tx sku create-provider manifest1... manifest1... --api-url https:///pa
 manifestd tx sku create-provider manifest1... manifest1... --api-url https://api.example.com/path --from authority
 ```
 
+### "api_url port must be between 1 and 65535"
+
+**Cause**: The URL has an empty, zero, or out-of-range explicit port.
+
+**Solution**: Omit the port to use HTTPS's default, or choose a port from 1 to
+65535. For example, use `https://api.example.com:8443` or
+`https://[2001:db8::1]:8443`. A port alone such as `https://:443` also fails because
+it has no hostname.
+
+### "payout address is blocked by bank policy"
+
+**Cause**: The requested payout is a protected bank destination, such as the
+distribution module account.
+
+**Solution**: Supply a permitted account address. To repair a historical blocked
+payout, have an authorized administrator run `update-provider` with the allowed
+replacement and all other provider fields to preserve. Keep the current
+`active` value: use `false` for an inactive provider, including during an
+unfinished deactivation cascade, or `true` for an active provider. Repairing a
+payout does not require reactivation.
+
+### "cannot reactivate provider: finish deactivating its SKUs first"
+
+**Cause**: An earlier `deactivate-provider` call left active SKUs pending in the
+paginated cascade.
+
+**Solution**: Follow the [complete CLI workflow](API.md#complete-a-provider-deactivation-cascade):
+repeat `deactivate-provider` for the same UUID, confirm successful execution,
+and query `skus-by-provider UUID --active-only --limit 1` at that transaction
+height until no active SKUs remain. Then reactivate the provider with `update-provider` and
+reactivate desired SKUs individually with `update-sku`.
+
 ### "invalid API URL" (too long)
 
-**Cause**: The API URL exceeds the maximum length of 2048 characters.
+**Cause**: The API URL exceeds the maximum encoded length of 2048 UTF-8 bytes.
 
 **Solution**: Use a shorter URL. Consider using a URL shortener service or a shorter domain/path.
 
 ---
 
 ## Parameter Issues
+
+### "allowed list has ... entries, maximum allowed is 100"
+
+**Cause**: `allowed_list` contains more than 100 addresses. The limit is a
+compile-time safety bound because every authorized SKU write checks this list.
+
+**Solution**: Remove obsolete delegates. If the deployment genuinely needs
+more than 100 managers, redesign authorization around a keyed on-chain
+collection instead of increasing an unpaginated parameter list.
 
 ### "invalid module configuration" (duplicate addresses)
 
@@ -210,7 +272,7 @@ manifestd tx sku update-params --allowed-list "manifest1abc..." --from authority
 - Provider (only when all SKUs are already inactive): `invalid provider: provider {uuid} and all its SKUs are already inactive`
 - SKU: `invalid sku: sku {uuid} is already inactive`
 
-**Note**: `DeactivateProvider` deactivates a provider's SKUs in pages (`DefaultDeactivateSKULimit` = 50, `MaxDeactivateSKULimit` = 100). When the response reports `has_more` = true, the provider is already inactive but SKUs remain; you must **re-invoke** `DeactivateProvider` while `has_more` is true. Re-invocation on an already-inactive provider is the normal, expected flow and is **not** an error condition.
+**Note**: `DeactivateProvider` deactivates a provider's SKUs in pages (`DefaultDeactivateSKULimit` = 50, `MaxDeactivateSKULimit` = 100). The decoded module response uses `has_more`; ordinary CLI transaction output does not expose it. After each successful committed call, query `skus-by-provider UUID --active-only --limit 1` at that transaction height and **re-invoke** `DeactivateProvider` while a SKU remains. Re-invocation on an already-inactive provider is the normal, expected flow and is **not** an error condition.
 
 **Solution**: Check the provider/SKU status before deactivation:
 ```bash
@@ -221,18 +283,27 @@ manifestd query sku provider [provider-uuid]
 manifestd query sku sku [sku-uuid]
 ```
 
-**Note**: If idempotent behavior is desired in your application logic, check the `active` field before calling deactivate.
+**Note**: If idempotent behavior is desired in your application logic, check the
+SKU's `active` field before deactivating it. For a provider, also check whether
+active SKUs remain; an inactive provider can still need another cascade call.
 
 ### Cannot create SKU for deactivated provider
 
 **Cause**: Attempting to create a SKU for a provider that is not active.
 
 **Solution**:
-1. Reactivate the provider first:
+1. If the inactive provider still has active SKUs, finish its deactivation
+   cascade. Repeat this command after confirming successful committed execution
+   while `skus-by-provider UUID --active-only --limit 1` at that height returns
+   any SKUs (see the [CLI workflow](API.md#complete-a-provider-deactivation-cascade)):
+   ```bash
+   manifestd tx sku deactivate-provider [provider-uuid] --from authority
+   ```
+2. Once all of its SKUs are inactive, reactivate the provider:
    ```bash
    manifestd tx sku update-provider [provider-uuid] [address] [payout-address] true --from authority
    ```
-2. Then create the SKU:
+3. Then create the SKU, or reactivate a desired existing SKU with `update-sku`:
    ```bash
    manifestd tx sku create-sku [provider-uuid] "SKU Name" 1 3600upwr --from authority
    ```
@@ -241,11 +312,29 @@ manifestd query sku sku [sku-uuid]
 
 ## UUID Format Issues
 
-### "invalid UUIDv7 format"
+### "invalid UUIDv7 format" / "provider_uuid must be a valid UUIDv7"
 
-**Error**: `invalid UUIDv7 format: {uuid}` (typically surfaced wrapped, e.g. `invalid provider: invalid uuid: invalid UUIDv7 format: ...`)
+**Errors**:
 
-**Cause**: The UUID is not in valid UUIDv7 format. This error is raised only by **transactions** (update/deactivate provider or SKU, and create-sku's `provider_uuid`) during message validation — **not** by queries. Queries do not validate UUID format: a malformed UUID passed to `query sku provider` / `query sku sku` is looked up as-is and returns `provider not found` / `sku not found` instead.
+- Transactions with an empty UUID field include `uuid cannot be empty`, wrapped
+  with the field and module-error context.
+- Transactions with a non-empty invalid UUID: `invalid UUIDv7 format: {uuid}`
+  appears inside the field- and module-specific error.
+- `skus-by-provider` with an empty value: `provider_uuid cannot be empty`.
+- `skus-by-provider` with a non-empty invalid value:
+  `provider_uuid must be a valid UUIDv7`.
+
+**Cause**: The UUID is not in valid UUIDv7 format. Transactions validate UUIDs
+during message validation. The `query sku skus-by-provider` collection query
+also requires a canonical lowercase provider UUIDv7 and returns gRPC
+`InvalidArgument` for malformed, uppercase, or non-v7 input. An unknown
+canonical provider UUIDv7 returns an empty SKU page. Direct `query sku provider`
+and `query sku sku` lookups remain unchanged: an empty `uuid` is rejected with
+`InvalidArgument: uuid cannot be empty`; a non-empty malformed or unknown key
+is looked up as-is and returns gRPC `NotFound` with `provider not found` or
+`sku not found`. A stored primary value that cannot be decoded is not treated
+as absent: the point query returns gRPC `Internal`, which requires operator
+investigation.
 
 **Format constraints** (see the UUIDv7 regex): lowercase hex digits only, the version nibble must be `7`, and the variant nibble must be one of `8`, `9`, `a`, or `b`. Uppercase UUIDs are rejected.
 

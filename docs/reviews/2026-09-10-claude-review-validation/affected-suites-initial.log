@@ -1,0 +1,55 @@
+ok      github.com/manifest-network/manifest-ledger/x/billing   0.215s
+ok      github.com/manifest-network/manifest-ledger/x/billing/client/cli    0.370s
+?       github.com/manifest-network/manifest-ledger/x/billing/internal/types    [no test files]
+--- FAIL: TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites (0.59s)
+    --- FAIL: TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites/blocked_module_account (0.30s)
+        --- FAIL: TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites/blocked_module_account/provider (0.14s)
+            bank_policy_test.go:219:
+                    Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/bank_policy_test.go:219
+                    Error:          Should be false
+                    Test:           TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites/blocked_module_account/provider
+                    Messages:       billing: reservation-accounting invariant
+                                    invalid billing timestamps: lease 01a08b54-67a8-7003-9568-024892a78f57 has last_settled_at (2026-09-10 12:39:21.720455911 +0000 UTC) in the future relative to block time (2026-09-10 12:39:20.720455911 +0000 UTC): invalid lease [/home/fmorency/go/pkg/mod/cosmossdk.io/errors@v1.0.2/errors.go:155]
+        --- FAIL: TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites/blocked_module_account/authority (0.15s)
+            bank_policy_test.go:219:
+                    Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/bank_policy_test.go:219
+                    Error:          Should be false
+                    Test:           TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites/blocked_module_account/authority
+                    Messages:       billing: reservation-accounting invariant
+                                    invalid billing timestamps: lease 01a08b54-6840-7003-9568-024892a78f57 has last_settled_at (2026-09-10 12:39:21.872683583 +0000 UTC) in the future relative to block time (2026-09-10 12:39:20.872683583 +0000 UTC): invalid lease [/home/fmorency/go/pkg/mod/cosmossdk.io/errors@v1.0.2/errors.go:155]
+    --- FAIL: TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites/tenant_credit_address_alias (0.30s)
+        --- FAIL: TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites/tenant_credit_address_alias/provider (0.16s)
+            bank_policy_test.go:219:
+                    Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/bank_policy_test.go:219
+                    Error:          Should be false
+                    Test:           TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites/tenant_credit_address_alias/provider
+                    Messages:       billing: reservation-accounting invariant
+                                    invalid billing timestamps: lease 01a08b54-68dc-7003-9568-024892a78f57 has last_settled_at (2026-09-10 12:39:22.028216935 +0000 UTC) in the future relative to block time (2026-09-10 12:39:21.028216935 +0000 UTC): invalid lease [/home/fmorency/go/pkg/mod/cosmossdk.io/errors@v1.0.2/errors.go:155]
+        --- FAIL: TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites/tenant_credit_address_alias/authority (0.14s)
+            bank_policy_test.go:219:
+                    Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/bank_policy_test.go:219
+                    Error:          Should be false
+                    Test:           TestLeaseAcknowledgementRejectsIneligiblePayoutBeforeWrites/tenant_credit_address_alias/authority
+                    Messages:       billing: reservation-accounting invariant
+                                    invalid billing timestamps: lease 01a08b54-6968-7003-9568-024892a78f57 has last_settled_at (2026-09-10 12:39:22.168026938 +0000 UTC) in the future relative to block time (2026-09-10 12:39:21.168026938 +0000 UTC): invalid lease [/home/fmorency/go/pkg/mod/cosmossdk.io/errors@v1.0.2/errors.go:155]
+FAIL
+FAIL    github.com/manifest-network/manifest-ledger/x/billing/keeper    85.782s
+ok      github.com/manifest-network/manifest-ledger/x/billing/simulation    1.310s
+ok      github.com/manifest-network/manifest-ledger/x/billing/types 0.346s
+ok      github.com/manifest-network/manifest-ledger/x/sku   0.086s
+ok      github.com/manifest-network/manifest-ledger/x/sku/client/cli    0.077s
+?       github.com/manifest-network/manifest-ledger/x/sku/internal/types    [no test files]
+ok      github.com/manifest-network/manifest-ledger/x/sku/keeper    18.091s
+ok      github.com/manifest-network/manifest-ledger/x/sku/simulation    0.173s
+ok      github.com/manifest-network/manifest-ledger/x/sku/types 0.115s
+ok      github.com/manifest-network/manifest-ledger/app 0.713s
+?       github.com/manifest-network/manifest-ledger/app/apptesting  [no test files]
+ok      github.com/manifest-network/manifest-ledger/app/decorators  0.049s
+?       github.com/manifest-network/manifest-ledger/app/helpers [no test files]
+?       github.com/manifest-network/manifest-ledger/app/params  [no test files]
+?       github.com/manifest-network/manifest-ledger/app/upgrades    [no test files]
+?       github.com/manifest-network/manifest-ledger/app/upgrades/next   [no test files]
+ok      github.com/manifest-network/manifest-ledger/cmd/manifestd/cmd   0.182s
+ok      github.com/manifest-network/manifest-ledger/internal/collectionsutil    0.011s
+ok      github.com/manifest-network/manifest-ledger/internal/storagecodec   0.023s
+FAIL

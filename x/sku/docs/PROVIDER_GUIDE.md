@@ -53,7 +53,9 @@ manifestd tx sku update-params \
   --chain-id manifest-1
 ```
 
-> **Note:** The allowed list is replaced entirely, so include all addresses you want authorized.
+> **Note:** The allowed list is replaced entirely, so include all addresses you
+> want authorized. It accepts at most 100 valid, distinct decoded account
+> identities; equivalent Bech32 spellings are duplicates.
 
 ## Step 2: Prepare Provider Information
 
@@ -65,6 +67,22 @@ Before creating a provider, gather the following information:
 | **Payout Address** | Where earned tokens will be sent during withdrawals | `manifest1payout...` |
 | **API URL** | HTTPS endpoint where tenants can authenticate to get connection details | `https://api.provider.com` |
 | **Meta Hash** (optional) | Hex-encoded hash of off-chain metadata (e.g., business info, contact details) | `deadbeef` |
+
+The payout address must be allowed by the bank module. Protected module accounts,
+including the distribution account, are rejected on provider creation and update.
+An authorized administrator can repair an existing blocked payout by updating it
+to an allowed address while preserving the provider's current `active` value.
+An inactive provider can be repaired with `false` even during an unfinished
+deactivation cascade. Billing also checks the destination when settling funds.
+Historical providers remain importable, so operators must perform the
+[provider payout preflight](../../billing/docs/MIGRATION.md#provider-payout-policy-preflight)
+before upgrading.
+
+API URLs require a nonempty hostname and HTTPS. An explicit port must be between
+1 and 65535; credentials and empty explicit ports are rejected. IPv6 literals use
+brackets, for example `https://[2001:db8::1]:8443`.
+Historical URLs remain importable and may be preserved on an unrelated update;
+newly supplied URLs must satisfy the current checks.
 
 ### About Meta Hash
 
@@ -184,9 +202,15 @@ manifestd tx sku update-provider \
   --chain-id manifest-1
 ```
 
-> **Important:** `update-provider` is a full overwrite, not a partial update. Every field — `address`, `payout_address`, `meta_hash`, and `active` — must be re-supplied. Omitting `--meta-hash` clears the existing meta_hash; only `--api-url` is preserved when left empty.
+> **Important:** `update-provider` is a full overwrite, not a partial update. Every field — `address`, `payout_address`, `meta_hash`, and `active` — must be re-supplied. Omitting `--meta-hash` clears the existing meta_hash; only `--api-url` is preserved when left empty. Use `--clear-api-url` to remove the existing URL. Do not combine it with a non-empty `--api-url`.
 >
-> The `<active>` argument cannot be used to deactivate a currently-active provider: passing `false` on an active provider fails with `cannot deactivate provider via UpdateProvider; use DeactivateProvider instead` — use `deactivate-provider` (Step 6) instead, which cascades to SKUs. Pass `true` to keep the provider active or to reactivate an inactive one. (An already-inactive provider also accepts `false`, leaving it inactive.)
+> The `<active>` argument cannot be used to deactivate a currently-active provider: passing `false` on an active provider fails with `cannot deactivate provider via UpdateProvider; use DeactivateProvider instead` — use `deactivate-provider` (Step 6) instead, which cascades to SKUs. Pass `true` to keep the provider active or to reactivate an inactive one after its SKU cascade finishes. (An already-inactive provider also accepts `false`, leaving it inactive.)
+
+Payout changes apply to all existing unsettled accrual as well as future charges.
+Withdraw before updating if the old recipient should receive that accrual. If
+the old payout is blocked or collides with a paying tenant's credit address,
+repair it first and withdraw to the new recipient. SKU allowed-list members
+have the same provider-management powers as the authority.
 
 ### Example: Change Payout Address
 
@@ -198,6 +222,20 @@ manifestd tx sku update-provider \
   true \
   --api-url https://api.myprovider.com \
   --meta-hash a1b2c3d4e5f6 \
+  --from mykey \
+  --chain-id manifest-1
+```
+
+### Clear the API URL
+
+```bash
+manifestd tx sku update-provider \
+  01912345-6789-7abc-8def-0123456789ab \
+  manifest1provideraddr123456789abcdef \
+  manifest1payoutaddr987654321fedcba \
+  true \
+  --clear-api-url \
+  --meta-hash [current-meta-hash-hex] \
   --from mykey \
   --chain-id manifest-1
 ```
@@ -214,11 +252,11 @@ manifestd tx sku deactivate-provider 01912345-6789-7abc-8def-0123456789ab \
 ```
 
 > **Important:** Deactivating a provider:
-> - **Cascades to deactivate the provider's SKUs, up to `--limit` per call** (default 50, max 100). If `has_more` is `true` in the response, run the command again with the same UUID to continue; the provider itself is deactivated on the first call only.
+> - **Cascades to deactivate the provider's SKUs, up to `--limit` per call** (default 50, max 100). After each committed transaction succeeds, query `manifestd query sku skus-by-provider UUID --active-only --limit 1 -o json` at the transaction height. Repeat while it returns a SKU; the provider itself is deactivated on the first call only. See the [complete CLI workflow](API.md#complete-a-provider-deactivation-cascade), including transaction confirmation and restart handling.
 > - Prevents creation of new SKUs for this provider
 > - Does NOT affect existing leases (billing continues at locked prices)
 > - The provider can still receive withdrawals from active leases
-> - Can be reactivated via `update-provider` with `active=true`
+> - Can be reactivated via `update-provider` with `active=true` only after all cascade pages complete (no active SKUs remain)
 > - SKUs must be individually reactivated via `update-sku` after provider reactivation
 
 ## Next Steps
@@ -274,7 +312,7 @@ Once your provider is created, you can:
 │                       v                  v                      │
 │                  SKUs active       SKUs cascade to INACTIVE     │
 │                                    (paginated; repeat while     │
-│                                     has_more)                   │
+│                                     SKUs remain)                │
 │                       │                  │                      │
 │                       v                  v                      │
 │                  Existing leases   Existing leases              │
@@ -287,7 +325,7 @@ Once your provider is created, you can:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-> **Note:** When a provider is reactivated, its SKUs remain inactive and must be individually reactivated via `update-sku` with `active=true`.
+> **Note:** Complete all SKU deactivation pages before reactivating the provider; reactivation is rejected while active SKUs remain. After provider reactivation, its SKUs remain inactive and must be individually reactivated via `update-sku` with `active=true`.
 
 ## Related Documentation
 
