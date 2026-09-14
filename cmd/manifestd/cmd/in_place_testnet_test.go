@@ -48,7 +48,16 @@ import (
 )
 
 func TestInitAppForTestnetReplacesSourceValidatorState(t *testing.T) {
-	ctx, chainApp := setupInPlaceTestnet(t)
+	for _, bondDenom := range []string{appparams.BondDenom, "upoa"} {
+		t.Run(bondDenom, func(t *testing.T) {
+			testInitAppForTestnetReplacesSourceValidatorState(t, bondDenom)
+		})
+	}
+}
+
+func testInitAppForTestnetReplacesSourceValidatorState(t *testing.T, fixtureBondDenom string) {
+	t.Helper()
+	ctx, chainApp := setupInPlaceTestnetWithDB(t, dbm.NewMemDB(), t.TempDir(), fixtureBondDenom)
 	oldVal := seedSourceTestnetValidator(t, ctx, chainApp, false)
 	oldValAddr, err := sdk.ValAddressFromBech32(oldVal.OperatorAddress)
 	require.NoError(t, err)
@@ -112,6 +121,7 @@ func TestInitAppForTestnetReplacesSourceValidatorState(t *testing.T) {
 	// Exercise surplus burning in both pools while preserving unrelated denoms.
 	bondDenom, err := chainApp.StakingKeeper.BondDenom(ctx)
 	require.NoError(t, err)
+	require.Equal(t, fixtureBondDenom, bondDenom)
 	wantTokens := sdkmath.NewInt(inPlaceTestnetPower).Mul(chainApp.StakingKeeper.PowerReduction(ctx))
 	for _, pool := range []string{stakingtypes.BondedPoolName, stakingtypes.NotBondedPoolName} {
 		funds := sdk.NewCoins(sdk.NewCoin(bondDenom, wantTokens.AddRaw(17)), sdk.NewInt64Coin("unrelated", 23))
@@ -222,7 +232,7 @@ func TestInitAppForTestnetReplacesSourceValidatorState(t *testing.T) {
 	require.Zero(t, changedPower)
 
 	require.NotNil(t, chainApp.AccountKeeper.GetAccount(ctx, operator))
-	require.Equal(t, sdk.NewInt64Coin(appparams.BondDenom, testnetOperatorFunds), chainApp.BankKeeper.GetBalance(ctx, operator, appparams.BondDenom))
+	require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin(appparams.BondDenom, testnetOperatorFunds)), chainApp.BankKeeper.GetAllBalances(ctx, operator))
 	isOperator, err := chainApp.POAKeeper.IsSenderValidator(ctx, operator.String(), valAddr.String())
 	require.NoError(t, err)
 	require.True(t, isOperator)
@@ -278,7 +288,7 @@ func TestInitAppForTestnetReplacesSourceValidatorState(t *testing.T) {
 	committedVals, err := chainApp.StakingKeeper.GetAllValidators(committedCtx)
 	require.NoError(t, err)
 	require.Equal(t, vals, committedVals)
-	require.Equal(t, sdk.NewInt64Coin(appparams.BondDenom, testnetOperatorFunds), chainApp.BankKeeper.GetBalance(committedCtx, operator, appparams.BondDenom))
+	require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin(appparams.BondDenom, testnetOperatorFunds)), chainApp.BankKeeper.GetAllBalances(committedCtx, operator))
 	message, broken = stakingkeeper.AllInvariants(chainApp.StakingKeeper)(committedCtx)
 	require.False(t, broken, message)
 	totalPower, err = chainApp.StakingKeeper.GetLastTotalPower(committedCtx)
@@ -451,18 +461,19 @@ func TestInitAppForTestnetRequiresConfiguredAuthority(t *testing.T) {
 func TestInitAppForTestnetRejectsUnusableAuthority(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		blocked bool
+		module  string
 		message string
 	}{
 		{name: "noncanonical authority", message: "is not canonical; use"},
-		{name: "blocked operator", blocked: true, message: "is blocked from receiving funds"},
+		{name: "blocked operator", module: govtypes.ModuleName, message: "is blocked from receiving funds"},
+		{name: "blocked bonded pool", module: stakingtypes.BondedPoolName, message: "is blocked from receiving funds"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, chainApp := setupInPlaceTestnet(t)
 			operator := sdk.MustAccAddressFromBech32(chainApp.POAKeeper.GetAdmin(ctx))
 			authority := strings.ToUpper(operator.String())
-			if tc.blocked {
-				operator = authtypes.NewModuleAddress(govtypes.ModuleName)
+			if tc.module != "" {
+				operator = authtypes.NewModuleAddress(tc.module)
 				authority = operator.String()
 			}
 			chainApp.POAKeeper.SetTestAuthority(authority)
@@ -493,10 +504,10 @@ func snapshotInPlaceTestnetStores(t *testing.T, ctx sdk.Context, chainApp *app.M
 // multistore. Calling Commit directly after InitChain loses initialized stores.
 func setupInPlaceTestnet(t *testing.T) (sdk.Context, *app.ManifestApp) {
 	t.Helper()
-	return setupInPlaceTestnetWithDB(t, dbm.NewMemDB(), t.TempDir())
+	return setupInPlaceTestnetWithDB(t, dbm.NewMemDB(), t.TempDir(), appparams.BondDenom)
 }
 
-func setupInPlaceTestnetWithDB(t *testing.T, db dbm.DB, home string) (sdk.Context, *app.ManifestApp) {
+func setupInPlaceTestnetWithDB(t *testing.T, db dbm.DB, home, bondDenom string) (sdk.Context, *app.ManifestApp) {
 	t.Helper()
 	t.Setenv("POA_ADMIN_ADDRESS", sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address()).String())
 	chainApp := app.NewApp(log.NewNopLogger(), db, nil, true, app.DefaultCommissionRateMinMax,
@@ -511,12 +522,12 @@ func setupInPlaceTestnetWithDB(t *testing.T, db dbm.DB, home string) (sdk.Contex
 	validator.Tokens = sdk.DefaultPowerReduction
 	validator.DelegatorShares = sdkmath.LegacyNewDecFromInt(validator.Tokens)
 	stakingParams := stakingtypes.DefaultParams()
-	stakingParams.BondDenom = appparams.BondDenom
+	stakingParams.BondDenom = bondDenom
 	genesis[stakingtypes.ModuleName] = chainApp.AppCodec().MustMarshalJSON(stakingtypes.NewGenesisState(stakingParams,
 		[]stakingtypes.Validator{validator}, []stakingtypes.Delegation{stakingtypes.NewDelegation(operator.String(), validator.OperatorAddress, validator.DelegatorShares)}))
 	genesis[authtypes.ModuleName] = chainApp.AppCodec().MustMarshalJSON(authtypes.NewGenesisState(authtypes.DefaultParams(),
 		[]authtypes.GenesisAccount{authtypes.NewBaseAccount(operator, nil, 0, 0)}))
-	bondedCoins := sdk.NewCoins(sdk.NewCoin(appparams.BondDenom, validator.Tokens))
+	bondedCoins := sdk.NewCoins(sdk.NewCoin(bondDenom, validator.Tokens))
 	genesis[banktypes.ModuleName] = chainApp.AppCodec().MustMarshalJSON(banktypes.NewGenesisState(banktypes.DefaultParams(),
 		[]banktypes.Balance{{Address: authtypes.NewModuleAddress(stakingtypes.BondedPoolName).String(), Coins: bondedCoins}}, bondedCoins, nil, nil))
 	genesisJSON, err := json.Marshal(genesis)
@@ -558,19 +569,20 @@ func TestNewTestnetAppRejectsMismatchedAuthorityBeforeConstruction(t *testing.T)
 		omitEnvironment   bool
 		matchingAuthority bool
 		uppercase         bool
-		moduleOperator    bool
+		operatorModule    string
 		message           string
 	}{
 		{name: "omitted environment", omitEnvironment: true, message: mismatchMessage},
 		{name: "different environment", message: mismatchMessage},
 		{name: "noncanonical authority", matchingAuthority: true, uppercase: true, message: "initialize in-place testnet: configured POA admin %[2]s is not canonical; use %[1]s"},
-		{name: "default module authority", omitEnvironment: true, moduleOperator: true, message: "initialize in-place testnet: operator account %[1]s is blocked from receiving funds; use a non-module account"},
+		{name: "default module authority", omitEnvironment: true, operatorModule: govtypes.ModuleName, message: "initialize in-place testnet: operator account %[1]s is blocked from receiving funds; use a non-module account"},
+		{name: "bonded pool authority", matchingAuthority: true, operatorModule: stakingtypes.BondedPoolName, message: "initialize in-place testnet: operator account %[1]s is blocked from receiving funds; use a non-module account"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pubKey := ed25519.GenPrivKey().PubKey()
 			operator := sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address())
-			if tc.moduleOperator {
-				operator = authtypes.NewModuleAddress(govtypes.ModuleName)
+			if tc.operatorModule != "" {
+				operator = authtypes.NewModuleAddress(tc.operatorModule)
 			}
 			authority := sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address()).String()
 			if tc.matchingAuthority {
@@ -616,7 +628,7 @@ func inPlaceTestnetAppOptions(home string, pubKey crypto.PubKey, operator sdk.Ac
 
 func TestNewTestnetAppLoadsCommittedStateAndConverts(t *testing.T) {
 	db := dbm.NewMemDB()
-	sourceCtx, source := setupInPlaceTestnetWithDB(t, db, t.TempDir())
+	sourceCtx, source := setupInPlaceTestnetWithDB(t, db, t.TempDir(), appparams.BondDenom)
 	operator := sdk.MustAccAddressFromBech32(source.POAKeeper.GetAdmin(sourceCtx))
 	pubKey := ed25519.GenPrivKey().PubKey()
 	// Reopen committed state in a separate fork home; the source VM still owns

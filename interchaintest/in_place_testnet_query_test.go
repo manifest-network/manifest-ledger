@@ -7,17 +7,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	sdkmath "cosmossdk.io/math"
+
+	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
 func TestInPlaceTestnetStakingQueryJSON(t *testing.T) {
-	// Captured from the fork's AutoCLI queries. Keep the quoted pagination total:
-	// decoding this response into the generated protobuf type fails on that field.
+	// Captured from the fork's AutoCLI queries.
 	const poolJSON = `{
 		"pool": {
 			"not_bonded_tokens": "0",
 			"bonded_tokens": "900000000000000000000"
 		}
 	}`
+	// Keep the quoted pagination total: it reproduces the generated decoder failure.
 	const delegationsJSON = `{
 		"delegation_responses": [{
 			"delegation": {
@@ -31,13 +33,21 @@ func TestInPlaceTestnetStakingQueryJSON(t *testing.T) {
 	}`
 	tokens, ok := sdkmath.NewIntFromString("900000000000000000000")
 	require.True(t, ok)
-	var pool inPlaceTestnetPoolResponse
-	require.NoError(t, json.Unmarshal([]byte(poolJSON), &pool))
+	pool, err := decodeInPlaceTestnetPool([]byte(poolJSON))
+	require.NoError(t, err)
 	require.True(t, pool.Pool.BondedTokens.Equal(tokens))
 	require.True(t, pool.Pool.NotBondedTokens.IsZero())
 
-	var delegations inPlaceTestnetDelegationsResponse
-	require.NoError(t, json.Unmarshal([]byte(delegationsJSON), &delegations))
+	var generated stakingtypes.QueryDelegatorDelegationsResponse
+	err = json.Unmarshal([]byte(delegationsJSON), &generated)
+	var typeError *json.UnmarshalTypeError
+	require.ErrorAs(t, err, &typeError)
+	require.Equal(t, "pagination.total", typeError.Field)
+	require.Equal(t, "string", typeError.Value)
+	require.Equal(t, "uint64", typeError.Type.String())
+
+	delegations, err := decodeInPlaceTestnetDelegations([]byte(delegationsJSON))
+	require.NoError(t, err)
 	require.Len(t, delegations.DelegationResponses, 1)
 	delegation := delegations.DelegationResponses[0]
 	require.Equal(t, "manifest1wvukf0r4neq257fvl52jphhfus5mj4m7vxadtj", delegation.Delegation.DelegatorAddress)

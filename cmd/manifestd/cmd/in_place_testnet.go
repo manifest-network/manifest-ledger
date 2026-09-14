@@ -181,6 +181,8 @@ func initAppForTestnet(chainApp *app.ManifestApp, newValAddr cmtbytes.HexBytes, 
 		return err
 	}
 
+	// Fund rehearsal transactions in the fee denomination (umfx), which can
+	// differ from the staking bondDenom (upoa on manifest-1).
 	funds := sdk.NewCoins(sdk.NewInt64Coin(params.BondDenom, testnetOperatorFunds))
 	if err := chainApp.BankKeeper.MintCoins(ctx, manifesttypes.ModuleName, funds); err != nil {
 		return err

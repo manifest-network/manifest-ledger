@@ -207,12 +207,12 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 		require.Equal(t, expectedPower, cometValidators.Validators[0].VotingPower)
 		require.Equal(t, validator.Tokens.Quo(sdk.DefaultPowerReduction).Int64(), cometValidators.Validators[0].VotingPower)
 		require.True(t, validator.DelegatorShares.Equal(sdkmath.LegacyNewDecFromInt(validator.Tokens)))
-		var poolResponse inPlaceTestnetPoolResponse
-		require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "staking", "pool"), &poolResponse))
+		poolResponse, err := decodeInPlaceTestnetPool(queryInPlaceTestnet(t, ctx, node, "staking", "pool"))
+		require.NoError(t, err)
 		require.True(t, poolResponse.Pool.BondedTokens.Equal(validator.Tokens), "bonded pool must back the seeded validator")
 		require.True(t, poolResponse.Pool.NotBondedTokens.IsZero(), "source unbonded stake remains")
-		var delegationsResponse inPlaceTestnetDelegationsResponse
-		require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "staking", "delegations", operator.FormattedAddress()), &delegationsResponse))
+		delegationsResponse, err := decodeInPlaceTestnetDelegations(queryInPlaceTestnet(t, ctx, node, "staking", "delegations", operator.FormattedAddress()))
+		require.NoError(t, err)
 		require.Len(t, delegationsResponse.DelegationResponses, 1)
 		delegation := delegationsResponse.DelegationResponses[0]
 		require.Equal(t, operator.FormattedAddress(), delegation.Delegation.DelegatorAddress)
@@ -292,9 +292,7 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 	assertForkState(rpc)
 }
 
-// These structs project the AutoCLI JSON fields used by the assertions. Generated
-// protobuf query responses cannot be decoded with encoding/json when pagination
-// is present: AutoCLI quotes pagination.total, but PageResponse.Total is uint64.
+// inPlaceTestnetPoolResponse projects the staking pool's quoted token amounts.
 type inPlaceTestnetPoolResponse struct {
 	Pool struct {
 		BondedTokens    sdkmath.Int `json:"bonded_tokens"`
@@ -302,6 +300,8 @@ type inPlaceTestnetPoolResponse struct {
 	} `json:"pool"`
 }
 
+// inPlaceTestnetDelegationsResponse omits unused AutoCLI pagination. The generated
+// PageResponse.Total uint64 cannot decode AutoCLI's quoted total with encoding/json.
 type inPlaceTestnetDelegationsResponse struct {
 	DelegationResponses []struct {
 		Delegation struct {
@@ -311,6 +311,18 @@ type inPlaceTestnetDelegationsResponse struct {
 		} `json:"delegation"`
 		Balance sdk.Coin `json:"balance"`
 	} `json:"delegation_responses"`
+}
+
+func decodeInPlaceTestnetPool(data []byte) (inPlaceTestnetPoolResponse, error) {
+	var response inPlaceTestnetPoolResponse
+	err := json.Unmarshal(data, &response)
+	return response, err
+}
+
+func decodeInPlaceTestnetDelegations(data []byte) (inPlaceTestnetDelegationsResponse, error) {
+	var response inPlaceTestnetDelegationsResponse
+	err := json.Unmarshal(data, &response)
+	return response, err
 }
 
 func waitForInPlaceTestnetHeight(t *testing.T, ctx context.Context, rpc *rpchttp.HTTP, chainID string, target int64) int64 {

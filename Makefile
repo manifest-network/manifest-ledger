@@ -108,6 +108,10 @@ build-vendored:
 ###                          INTERCHAINTEST (ictest)                        ###
 ###############################################################################
 
+.PHONY: ictest-unit
+ictest-unit:
+	cd interchaintest && go test -short -v -run '^TestInPlaceTestnetStakingQueryJSON$$' . -count=1
+
 ictest-ibc:
 	cd interchaintest && go test -race -v -run TestIBC . -count=1
 

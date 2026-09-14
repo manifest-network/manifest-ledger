@@ -293,24 +293,104 @@ above under the compatible source version, without the trigger flag. Build the
 target code in a separate checkout with
 `make build VERSION=<unused-target-upgrade-name>` and pre-stage that binary in
 the fork's `cosmovisor/upgrades/<unused-target-upgrade-name>/bin/` directory, or
-keep it separately for a manual swap. While the source binary is still running,
-submit a transaction signed by the fork operator containing:
+keep it separately for a manual swap.
 
-```json
-{
-  "@type": "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
-  "authority": "<local-manifest-account-address>",
-  "plan": {
-    "name": "<unused-target-upgrade-name>",
-    "height": "<future-fork-height>",
-    "info": "fork upgrade rehearsal"
-  }
-}
+The pinned SDK's `tx upgrade software-upgrade` helper creates a governance
+`MsgSubmitProposal`, including with `--generate-only`; it does not submit a direct
+`MsgSoftwareUpgrade`. The direct AutoCLI command is disabled. With the fork
+operator as upgrade authority, use the complete transaction recipe below while
+the source binary is still running. It requires Bash and `jq`.
+
+Set these values to the running fork and its existing operator key. The `test`
+keyring backend below is for the disposable test key; select the backend that
+actually holds that key. Zero fees match this runbook's `0umfx` minimum gas price;
+set a sufficient nonzero fee if the fork requires one. Fees and gas are encoded
+in the unsigned transaction.
+
+```bash
+MANIFESTD="$(pwd)/build/manifestd"
+FORK_HOME="/absolute/path/to/copied-fork-home"
+FORK_CHAIN_ID="manifest-ledger-fork-1"
+FORK_RPC="tcp://127.0.0.1:26657"
+OPERATOR_KEY="fork-operator"
+KEYRING_BACKEND="test"
+UPGRADE_NAME="eng-879-swap-rehearsal-1" # unused name matching the staged target binary
+FEE_DENOM="umfx"
+FEE_AMOUNT="0"
+GAS_LIMIT="200000"
+export POA_ADMIN_ADDRESS="<same-local-manifest-account-address>"
 ```
 
-Use the fork chain ID and RPC when signing/broadcasting, and choose a future
-height with enough time to verify `query upgrade plan`. The source binary must
-not register the target handler: it halts at that height and writes
+The following signs online, fetching the account number and sequence from the
+fork RPC. Do not send another transaction from this key between signing and
+broadcasting. The example schedules 100 blocks ahead; pre-stage the target
+first and increase that interval if needed. `--output-document` keeps the signed
+JSON separate from console diagnostics.
+
+```bash
+set -euo pipefail
+OPERATOR_ADDRESS=$("$MANIFESTD" keys show "$OPERATOR_KEY" -a \
+  --home "$FORK_HOME" --keyring-backend "$KEYRING_BACKEND")
+test "$OPERATOR_ADDRESS" = "$POA_ADMIN_ADDRESS"
+"$MANIFESTD" query upgrade authority --home "$FORK_HOME" --node "$FORK_RPC" --output json \
+  | jq -e --arg authority "$POA_ADMIN_ADDRESS" '.address == $authority'
+"$MANIFESTD" query upgrade applied "$UPGRADE_NAME" --home "$FORK_HOME" --node "$FORK_RPC" --output json \
+  | jq -e '((.height // "0") | tonumber) == 0'
+CURRENT_HEIGHT=$("$MANIFESTD" status --home "$FORK_HOME" --node "$FORK_RPC" \
+  | jq -r '.sync_info.latest_block_height // .SyncInfo.latest_block_height')
+UPGRADE_HEIGHT=$((CURRENT_HEIGHT + 100))
+TX_DIR=$(mktemp -d "$FORK_HOME/upgrade-tx.XXXXXX")
+
+jq -n --arg authority "$POA_ADMIN_ADDRESS" --arg name "$UPGRADE_NAME" \
+  --arg height "$UPGRADE_HEIGHT" --arg denom "$FEE_DENOM" \
+  --arg amount "$FEE_AMOUNT" --arg gas "$GAS_LIMIT" '{
+    body: {
+      messages: [{
+        "@type": "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+        authority: $authority,
+        plan: {name: $name, height: $height, info: "fork upgrade rehearsal"}
+      }],
+      memo: "", timeout_height: "0",
+      extension_options: [], non_critical_extension_options: []
+    },
+    auth_info: {
+      signer_infos: [],
+      fee: {
+        amount: (if $amount == "0" then [] else [{denom: $denom, amount: $amount}] end),
+        gas_limit: $gas, payer: "", granter: ""
+      }
+    },
+    signatures: []
+  }' > "$TX_DIR/unsigned.json"
+
+"$MANIFESTD" tx sign "$TX_DIR/unsigned.json" \
+  --home "$FORK_HOME" --from "$OPERATOR_KEY" --keyring-backend "$KEYRING_BACKEND" \
+  --chain-id "$FORK_CHAIN_ID" --node "$FORK_RPC" --sign-mode direct \
+  --output-document "$TX_DIR/signed.json"
+"$MANIFESTD" tx broadcast "$TX_DIR/signed.json" \
+  --home "$FORK_HOME" --chain-id "$FORK_CHAIN_ID" --node "$FORK_RPC" \
+  --broadcast-mode sync --output json > "$TX_DIR/broadcast.json"
+jq -e '.code == 0' "$TX_DIR/broadcast.json"
+TX_HASH=$(jq -r '.txhash' "$TX_DIR/broadcast.json")
+
+# Sync broadcast only checks admission; verify the committed execution result.
+for attempt in {1..30}; do
+  if "$MANIFESTD" query tx "$TX_HASH" --home "$FORK_HOME" --node "$FORK_RPC" \
+    --output json > "$TX_DIR/committed.json" 2> "$TX_DIR/query-tx.err"; then
+    break
+  fi
+  sleep 1
+done
+test -s "$TX_DIR/committed.json"
+jq -e --arg hash "$TX_HASH" \
+  '.txhash == $hash and .code == 0 and ((.height | tonumber) > 0)' "$TX_DIR/committed.json"
+"$MANIFESTD" query upgrade plan --home "$FORK_HOME" --node "$FORK_RPC" --output json \
+  > "$TX_DIR/plan.json"
+jq -e --arg name "$UPGRADE_NAME" --arg height "$UPGRADE_HEIGHT" \
+  '.plan.name == $name and (.plan.height | tostring) == $height' "$TX_DIR/plan.json"
+```
+
+The source binary must not register the target handler: it halts at that height and writes
 `data/upgrade-info.json`. Start the pre-staged target binary only at this halt;
 its version must equal the plan name. Starting it early fails the upgrade
 checks. After the swap, verify the applied height, block progression and upgrade

@@ -32,3 +32,5 @@ jobs:
 
       - name: unit tests
         run: make test
+      - name: interchaintest unit tests
+        run: make ictest-unit
