@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	upgradetypes "cosmossdk.io/x/upgrade/types"
-	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	"github.com/docker/docker/api/types/container"
 	dockerclient "github.com/moby/moby/client"
 	"github.com/strangelove-ventures/interchaintest/v8"
@@ -20,6 +18,10 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/stretchr/testify/require"
+
+	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
+
+	upgradetypes "cosmossdk.io/x/upgrade/types"
 )
 
 const inPlaceTestnetFixtureVersion = "eng879-test-upgrade"
@@ -56,15 +58,10 @@ func seedInPlaceTestnetReleasedState(t *testing.T, ctx context.Context, chain *c
 	require.Equal(t, accAddr, authority.FormattedAddress())
 	rpc, err := rpchttp.NewWithClient(chain.GetHostRPCAddress(), "/websocket", &http.Client{Timeout: 5 * time.Second})
 	require.NoError(t, err)
-	height, err := chain.Height(ctx)
-	require.NoError(t, err)
-	completedHeight := height + 15
-	scheduleInPlaceTestnetUpgrade(t, ctx, node, authority, chain.Config().ChainID, "v2.3.1", completedHeight, rpc)
-	waitForInPlaceTestnetHeight(t, ctx, rpc, chain.Config().ChainID, completedHeight+3)
-	require.Equal(t, completedHeight, inPlaceTestnetAppliedHeight(t, ctx, node, "v2.3.1"))
+	completedHeight := completeInPlaceTestnetSourceUpgrade(t, ctx, node, authority, chain.Config().ChainID, rpc)
 	// Keep a genuinely pending source plan across conversion. It is rescheduled
 	// near the fork tip only after ordinary restart and authority checks succeed.
-	height, err = chain.Height(ctx)
+	height, err := chain.Height(ctx)
 	require.NoError(t, err)
 	scheduleInPlaceTestnetUpgrade(t, ctx, node, authority, chain.Config().ChainID, inPlaceTestnetFixtureVersion, height+1000, rpc)
 	state := &inPlaceTestnetReleasedState{
@@ -114,6 +111,36 @@ func (state *inPlaceTestnetReleasedState) assertPreserved(t *testing.T, ctx cont
 	if !migrated {
 		require.JSONEq(t, string(state.pendingPlan), string(queryInPlaceTestnet(t, ctx, node, "upgrade", "plan")))
 	}
+}
+
+// A binary must not contain a handler for a plan that is still in the future
+// at PreBlock. With stored tip H, a plan for H+2 can first be included at H+1;
+// its next PreBlock is then due. If CLI latency makes it stale, the keeper rejects
+// it without installing a plan. Retry only that explicit rejection.
+func completeInPlaceTestnetSourceUpgrade(t *testing.T, ctx context.Context, node *cosmos.ChainNode, authority ibc.Wallet, chainID string, rpc *rpchttp.HTTP) int64 {
+	t.Helper()
+	for attempt := 0; attempt < 5; attempt++ {
+		status, err := rpc.Status(ctx)
+		require.NoError(t, err)
+		response := broadcastInPlaceTestnetMessage(t, ctx, node, authority.KeyName(), chainID, &upgradetypes.MsgSoftwareUpgrade{
+			Authority: authority.FormattedAddress(), Plan: upgradetypes.Plan{Name: "v2.3.1", Height: status.SyncInfo.LatestBlockHeight + 2},
+		})
+		if response.Code == 0 {
+			status, err = rpc.Status(ctx)
+			require.NoError(t, err)
+			waitForInPlaceTestnetHeight(t, ctx, rpc, chainID, status.SyncInfo.LatestBlockHeight+3)
+			require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "tx", response.TxHash), &response))
+		}
+		if response.Code != 0 {
+			require.Contains(t, response.RawLog, "upgrade cannot be scheduled in the past")
+			continue
+		}
+		applied := inPlaceTestnetAppliedHeight(t, ctx, node, "v2.3.1")
+		require.Equal(t, response.Height+1, applied)
+		return applied
+	}
+	require.FailNow(t, "could not commit source upgrade plan before it became stale")
+	return 0
 }
 
 func scheduleInPlaceTestnetUpgrade(t *testing.T, ctx context.Context, node *cosmos.ChainNode, authority ibc.Wallet, chainID, name string, height int64, rpc *rpchttp.HTTP) {

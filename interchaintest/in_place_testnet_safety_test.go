@@ -8,15 +8,19 @@ import (
 	"testing"
 	"time"
 
-	sdkmath "cosmossdk.io/math"
-	circuittypes "cosmossdk.io/x/circuit/types"
-	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
-	sdked25519 "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
-	poa "github.com/strangelove-ventures/poa"
 	"github.com/stretchr/testify/require"
+
+	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
+
+	sdkmath "cosmossdk.io/math"
+	circuittypes "cosmossdk.io/x/circuit/types"
+
+	sdked25519 "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	poa "github.com/strangelove-ventures/poa"
 )
 
 // The snapshot excludes Go coverage output, which each CLI process may emit even
@@ -78,6 +82,7 @@ func assertInPlaceTestnetCircuit(t *testing.T, ctx context.Context, node *cosmos
 }
 
 type inPlaceTestnetTxResponse struct {
+	Height int64  `json:"height,string"`
 	Code   uint32 `json:"code"`
 	TxHash string `json:"txhash"`
 	RawLog string `json:"raw_log"`

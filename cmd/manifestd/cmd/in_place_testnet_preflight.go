@@ -46,8 +46,9 @@ import (
 )
 
 const (
-	inPlaceTestnetMarker = "in-place-testnet.json"
-	poaSimulationBypass  = "POA_BYPASS_ADMIN_CHECK_FOR_SIMULATION_TESTING_ONLY"
+	inPlaceTestnetCommandName = "in-place-testnet"
+	inPlaceTestnetMarker      = "in-place-testnet.json"
+	poaSimulationEnvVar       = "POA_BYPASS_ADMIN_CHECK_FOR_SIMULATION_TESTING_ONLY"
 )
 
 type testnetPreflightContextKey struct{}
@@ -84,8 +85,8 @@ func testnetAppCommand(cmd *cobra.Command) bool {
 }
 
 func rejectSimulationAdminBypass() error {
-	if os.Getenv(poaSimulationBypass) != "" {
-		return fmt.Errorf("%s must be unset when running manifestd", poaSimulationBypass)
+	if os.Getenv(poaSimulationEnvVar) != "" {
+		return fmt.Errorf("%s must be unset when running manifestd", poaSimulationEnvVar)
 	}
 	return nil
 }
@@ -96,7 +97,7 @@ func preflightTestnetCommand(cmd *cobra.Command, args []string) error {
 	if err := rejectSimulationAdminBypass(); err != nil {
 		return err
 	}
-	conversion := cmd.Name() == "in-place-testnet"
+	conversion := cmd.Name() == inPlaceTestnetCommandName
 	if !conversion && !testnetAppCommand(cmd) {
 		return nil
 	}
@@ -214,7 +215,7 @@ func readTestnetConfig(cmd *cobra.Command) (*viper.Viper, *cmtcfg.Config, error)
 	v.AutomaticEnv()
 	// The SDK selects Comet's root before reading either configuration file.
 	home := v.GetString(flags.FlagHome)
-	protected := cmd.Name() == "in-place-testnet" || testnetMarkerExists(home)
+	protected := cmd.Name() == inPlaceTestnetCommandName || testnetMarkerExists(home)
 	if protected {
 		if err := inspectTestnetTree(home); err != nil {
 			return nil, nil, err
@@ -426,7 +427,7 @@ func validateTestnetHome(home string, cfg *cmtcfg.Config, v *viper.Viper) error 
 	}
 	for _, listener := range []string{cfg.RPC.ListenAddress, cfg.ProxyApp, cfg.P2P.ListenAddress, v.GetString("grpc.address"), v.GetString("api.address")} {
 		if strings.HasPrefix(listener, "unix:") {
-			return fmt.Errorf("Unix socket listeners are unsupported for in-place testnet homes")
+			return fmt.Errorf("unix socket listeners are unsupported for in-place testnet homes")
 		}
 	}
 	return nil
@@ -695,7 +696,7 @@ func writeTestnetJournal(home string, journal testnetJournal, create bool) error
 	if !create {
 		name += ".next"
 	}
-	file, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	file, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
@@ -722,7 +723,7 @@ func writeTestnetJournal(home string, journal testnetJournal, create bool) error
 // delegate conversion/startup to its existing command implementation.
 func protectInPlaceTestnetCommand(root *cobra.Command) {
 	for _, cmd := range root.Commands() {
-		if cmd.Name() != "in-place-testnet" {
+		if cmd.Name() != inPlaceTestnetCommandName {
 			continue
 		}
 		run := cmd.RunE

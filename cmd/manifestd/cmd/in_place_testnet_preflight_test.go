@@ -26,9 +26,12 @@ import (
 	cmtstate "github.com/cometbft/cometbft/state"
 	cmttypes "github.com/cometbft/cometbft/types"
 
+	dbm "github.com/cosmos/cosmos-db"
+	gogotypes "github.com/cosmos/gogoproto/types"
+
 	"cosmossdk.io/log"
 	storetypes "cosmossdk.io/store/types"
-	dbm "github.com/cosmos/cosmos-db"
+
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/server"
@@ -36,7 +39,6 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/version"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
-	gogotypes "github.com/cosmos/gogoproto/types"
 )
 
 type testnetPreflightFixture struct {
@@ -53,14 +55,14 @@ func newTestnetPreflightFixture(t *testing.T) *testnetPreflightFixture {
 	home := t.TempDir()
 	cfg := cmtcfg.DefaultConfig().SetRoot(home)
 	cfg.P2P.PexReactor = false
-	require.NoError(t, os.MkdirAll(filepath.Join(home, "config"), 0700))
-	require.NoError(t, os.MkdirAll(filepath.Join(home, "data", "cs.wal"), 0700))
+	require.NoError(t, os.MkdirAll(filepath.Join(home, "config"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(home, "data", "cs.wal"), 0o700))
 	cmtcfg.WriteConfigFile(filepath.Join(home, "config", "config.toml"), cfg)
-	require.NoError(t, os.WriteFile(filepath.Join(home, "config", "app.toml"), []byte("minimum-gas-prices = '0umfx'\n"), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(home, "config", "client.toml"), []byte("chain-id = 'source'\nkeyring-backend = 'test'\n"), 0600))
-	require.NoError(t, os.WriteFile(cfg.P2P.AddrBookFile(), []byte("{\"source\":true}"), 0600))
-	require.NoError(t, os.WriteFile(cfg.Consensus.WalFile(), []byte("source consensus WAL"), 0600))
-	require.NoError(t, os.WriteFile(cfg.Consensus.WalFile()+".000", []byte("source rotated WAL"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(home, "config", "app.toml"), []byte("minimum-gas-prices = '0umfx'\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(home, "config", "client.toml"), []byte("chain-id = 'source'\nkeyring-backend = 'test'\n"), 0o600))
+	require.NoError(t, os.WriteFile(cfg.P2P.AddrBookFile(), []byte("{\"source\":true}"), 0o600))
+	require.NoError(t, os.WriteFile(cfg.Consensus.WalFile(), []byte("source consensus WAL"), 0o600))
+	require.NoError(t, os.WriteFile(cfg.Consensus.WalFile()+".000", []byte("source rotated WAL"), 0o600))
 	key := privval.NewFilePV(ed25519.GenPrivKey(), cfg.PrivValidatorKeyFile(), cfg.PrivValidatorStateFile())
 	key.Save()
 	sourceKey := ed25519.GenPrivKey()
@@ -84,7 +86,7 @@ func newTestnetPreflightFixture(t *testing.T) *testnetPreflightFixture {
 	f := &testnetPreflightFixture{home: home, config: cfg, key: key, sourceKey: sourceKey, operator: sdk.AccAddress(bytes.Repeat([]byte{7}, 20)).String(), state: state}
 	f.saveState(t)
 	t.Setenv("POA_ADMIN_ADDRESS", f.operator)
-	t.Setenv(poaSimulationBypass, "")
+	t.Setenv(poaSimulationEnvVar, "")
 	return f
 }
 
@@ -169,13 +171,13 @@ func TestTestnetCommandPreflightRejectsWithoutWrites(t *testing.T) {
 			f.saveState(t)
 		}},
 		{"signed source", "must be reset", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
-			require.NoError(t, os.WriteFile(f.config.PrivValidatorStateFile(), []byte(`{"height":"3","round":0,"step":2}`), 0600))
+			require.NoError(t, os.WriteFile(f.config.PrivValidatorStateFile(), []byte(`{"height":"3","round":0,"step":2}`), 0o600))
 		}},
 		{"empty signing state", "explicit non-null", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
-			require.NoError(t, os.WriteFile(f.config.PrivValidatorStateFile(), []byte(`{}`), 0600))
+			require.NoError(t, os.WriteFile(f.config.PrivValidatorStateFile(), []byte(`{}`), 0o600))
 		}},
 		{"null signing height", "explicit non-null", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
-			require.NoError(t, os.WriteFile(f.config.PrivValidatorStateFile(), []byte(`{"height":null,"round":0,"step":0}`), 0600))
+			require.NoError(t, os.WriteFile(f.config.PrivValidatorStateFile(), []byte(`{"height":null,"round":0,"step":0}`), 0o600))
 		}},
 		{"external address book", "inside the fork home", func(_ *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
 			f.config.P2P.AddrBook = filepath.Join(filepath.Dir(f.home), "external-addrbook.json")
@@ -306,7 +308,7 @@ func TestTestnetCommandPreflightAndJournalRestart(t *testing.T) {
 func TestTestnetCosmovisorBinaryLink(t *testing.T) {
 	f := newTestnetPreflightFixture(t)
 	dir := filepath.Join(f.home, "cosmovisor", "genesis", "bin")
-	require.NoError(t, os.MkdirAll(dir, 0700))
+	require.NoError(t, os.MkdirAll(dir, 0o700))
 	require.NoError(t, os.Symlink("genesis", filepath.Join(f.home, "cosmovisor", "current")))
 	require.NoError(t, preflightTestnetCommand(f.command(t, "in-place-testnet"), []string{"fork", f.operator}))
 	f.config.P2P.AddrBook = filepath.Join(f.home, "cosmovisor", "current", "addrbook.json")
@@ -315,13 +317,13 @@ func TestTestnetCosmovisorBinaryLink(t *testing.T) {
 }
 
 func TestTestnetBypassRejectedBeforeRootConstruction(t *testing.T) {
-	t.Setenv(poaSimulationBypass, "not_for-production")
+	t.Setenv(poaSimulationEnvVar, "not_for-production")
 	cmd := NewRootCmd()
 	cmd.SetArgs([]string{"start", "--home", t.TempDir()})
-	require.ErrorContains(t, cmd.Execute(), poaSimulationBypass+" must be unset")
+	require.ErrorContains(t, cmd.Execute(), poaSimulationEnvVar+" must be unset")
 	for _, name := range []string{"export", "snapshots", "init"} {
 		cmd.SetArgs([]string{name})
-		require.ErrorContains(t, cmd.Execute(), poaSimulationBypass+" must be unset")
+		require.ErrorContains(t, cmd.Execute(), poaSimulationEnvVar+" must be unset")
 	}
 }
 
@@ -336,6 +338,7 @@ func (app *testnetCommitRecorder) Commit() (*abci.ResponseCommit, error) {
 	app.commits++
 	return &abci.ResponseCommit{}, app.err
 }
+
 func (app *testnetCommitRecorder) Info(*abci.RequestInfo) (*abci.ResponseInfo, error) {
 	return &abci.ResponseInfo{LastBlockHeight: app.height}, nil
 }
@@ -407,10 +410,10 @@ func TestTestnetHomeMutationPaths(t *testing.T) {
 func TestTestnetSigningStateAndJournalMalformed(t *testing.T) {
 	f := newTestnetPreflightFixture(t)
 	for _, data := range []string{"{", `{"height":"0","round":0,"step":0,"signature":"AQ=="}`} {
-		require.NoError(t, os.WriteFile(f.config.PrivValidatorStateFile(), []byte(data), 0600))
+		require.NoError(t, os.WriteFile(f.config.PrivValidatorStateFile(), []byte(data), 0o600))
 		require.Error(t, validateTestnetSigningState(f.config.PrivValidatorStateFile()))
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(f.home, inPlaceTestnetMarker), []byte(`{}`), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(f.home, inPlaceTestnetMarker), []byte(`{}`), 0o600))
 	_, err := readTestnetJournal(f.home)
 	require.ErrorContains(t, err, "invalid")
 	keyJSON, err := cmtjson.Marshal(f.key.Key)
@@ -420,7 +423,7 @@ func TestTestnetSigningStateAndJournalMalformed(t *testing.T) {
 	delete(fields, "pub_key")
 	keyJSON, err = json.Marshal(fields)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(f.config.PrivValidatorKeyFile(), keyJSON, 0600))
+	require.NoError(t, os.WriteFile(f.config.PrivValidatorKeyFile(), keyJSON, 0o600))
 	_, err = readTestnetKey(f.config.PrivValidatorKeyFile())
 	require.ErrorContains(t, err, "complete ed25519")
 }
@@ -434,7 +437,7 @@ func TestTestnetConfigCannotOverrideDefaultHome(t *testing.T) {
 			path := filepath.Join(f.home, "config", name)
 			original, err := os.ReadFile(path)
 			require.NoError(t, err)
-			require.NoError(t, os.WriteFile(path, append([]byte("home = '/outside-fork-home'\n"), original...), 0600))
+			require.NoError(t, os.WriteFile(path, append([]byte("home = '/outside-fork-home'\n"), original...), 0o600))
 			before := snapshotTestnetFiles(t, f.home)
 			require.ErrorContains(t, preflightTestnetCommand(cmd, []string{"fork", f.operator}), "overrides the selected fork home")
 			require.Equal(t, before, snapshotTestnetFiles(t, f.home))
@@ -500,7 +503,7 @@ func TestTestnetRestartRedirectCannotSkipJournal(t *testing.T) {
 				path := filepath.Join(ordinary.home, "config", source)
 				config, err := os.ReadFile(path)
 				require.NoError(t, err)
-				require.NoError(t, os.WriteFile(path, append([]byte(fmt.Sprintf("home = %q\n", fork.home)), config...), 0600))
+				require.NoError(t, os.WriteFile(path, append([]byte(fmt.Sprintf("home = %q\n", fork.home)), config...), 0o600))
 			}
 			before := snapshotTestnetFiles(t, fork.home)
 			ordinaryBefore := snapshotTestnetFiles(t, ordinary.home)
@@ -515,7 +518,7 @@ func TestTestnetVerifiedChainIDOverridesMergedGenesis(t *testing.T) {
 	f := newTestnetPreflightFixture(t)
 	other := cmttypes.GenesisDoc{ChainID: "other-source", InitialHeight: 1, ConsensusParams: cmttypes.DefaultConsensusParams()}
 	require.NoError(t, other.SaveAs(filepath.Join(f.home, "config", "other-genesis.json")))
-	require.NoError(t, os.WriteFile(filepath.Join(f.home, "config", "app.toml"), []byte("genesis_file = 'config/other-genesis.json'\n"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(f.home, "config", "app.toml"), []byte("genesis_file = 'config/other-genesis.json'\n"), 0o600))
 	cmd := f.command(t, "in-place-testnet")
 	require.NoError(t, preflightTestnetCommand(cmd, []string{"fork", f.operator}))
 	preflight := cmd.Context().Value(testnetPreflightContextKey{}).(*testnetPreflight)
@@ -539,7 +542,7 @@ func TestTestnetJournalUpdateFailureRemainsIncomplete(t *testing.T) {
 	require.NoError(t, preflightTestnetCommand(cmd, []string{"fork", f.operator}))
 	preflight := cmd.Context().Value(testnetPreflightContextKey{}).(*testnetPreflight)
 	require.NoError(t, writeTestnetJournal(f.home, preflight.journal, true))
-	require.NoError(t, os.WriteFile(filepath.Join(f.home, inPlaceTestnetMarker+".next"), []byte("interrupted journal update"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(f.home, inPlaceTestnetMarker+".next"), []byte("interrupted journal update"), 0o600))
 	application := &journaledTestnetApp{Application: &testnetCommitRecorder{height: 4}, home: f.home, journal: preflight.journal}
 	for attempt := 0; attempt < 2; attempt++ {
 		_, err := application.Commit()

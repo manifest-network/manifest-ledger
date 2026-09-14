@@ -30,8 +30,10 @@ import (
 // main function.
 func NewRootCmd() *cobra.Command {
 	if err := rejectSimulationAdminBypass(); err != nil {
-		return &cobra.Command{Use: "manifestd", SilenceUsage: true, DisableFlagParsing: true,
-			RunE: func(_ *cobra.Command, _ []string) error { return err }}
+		return &cobra.Command{
+			Use: "manifestd", SilenceUsage: true, DisableFlagParsing: true,
+			RunE: func(_ *cobra.Command, _ []string) error { return err },
+		}
 	}
 	cfg := sdk.GetConfig()
 	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
