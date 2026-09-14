@@ -4969,20 +4969,23 @@ const (
 	// LEASE_STATE_UNSPECIFIED is the default value.
 	LeaseState_LEASE_STATE_UNSPECIFIED LeaseState = 0
 	// LEASE_STATE_PENDING indicates the lease is awaiting provider
-	// acknowledgement. Credit is locked but billing has not started.
+	// acknowledgement. Credit is reserved but billing has not started.
 	LeaseState_LEASE_STATE_PENDING LeaseState = 1
-	// LEASE_STATE_ACTIVE indicates the lease is active and accruing charges.
-	// Provider has acknowledged and resources are provisioned.
+	// LEASE_STATE_ACTIVE indicates acknowledgement has started billing and the
+	// lease is accruing charges. On-chain state does not verify provisioning.
 	LeaseState_LEASE_STATE_ACTIVE LeaseState = 2
-	// LEASE_STATE_CLOSED indicates the lease has been closed normally.
-	// Final settlement has occurred.
+	// LEASE_STATE_CLOSED indicates the lease is closed. Normal close paths
+	// finalize settlement; historical CLOSED imports can retain a final interval
+	// for specific-UUID withdrawal.
 	LeaseState_LEASE_STATE_CLOSED LeaseState = 3
-	// LEASE_STATE_REJECTED indicates the provider rejected the lease.
-	// Credit has been unlocked and returned to tenant.
+	// LEASE_STATE_REJECTED indicates a PENDING lease was rejected by the provider
+	// or authority, or cancelled by its tenant. Billing did not start. Released
+	// credit remains in the tenant's billing credit account.
 	LeaseState_LEASE_STATE_REJECTED LeaseState = 4
-	// LEASE_STATE_EXPIRED indicates the lease expired while in PENDING state.
-	// Provider did not acknowledge within the timeout period.
-	// Credit has been unlocked and returned to tenant.
+	// LEASE_STATE_EXPIRED indicates the lease expired while PENDING, either after
+	// its acknowledgement deadline or because migration could not back all
+	// pending reservations. Billing did not start. Released credit remains in
+	// the tenant's billing credit account.
 	LeaseState_LEASE_STATE_EXPIRED LeaseState = 5
 )
 

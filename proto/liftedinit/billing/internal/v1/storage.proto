@@ -33,8 +33,9 @@ message Lease {
       [ (gogoproto.nullable) = false, (gogoproto.stdtime) = true ];
   google.protobuf.Timestamp closed_at = 7 [ (gogoproto.stdtime) = true ];
   // Accrual cursor through which complete per-second charges have settled.
-  // ACTIVE rows retain any sub-second remainder in this timestamp; CLOSED rows
-  // set it to closed_at.
+  // ACTIVE rows retain any sub-second remainder in this timestamp. Normal close
+  // paths finalize it at closed_at; historical CLOSED imports can retain a
+  // final interval for specific-UUID withdrawal.
   google.protobuf.Timestamp last_settled_at = 8
       [ (gogoproto.nullable) = false, (gogoproto.stdtime) = true ];
   google.protobuf.Timestamp acknowledged_at = 9 [ (gogoproto.stdtime) = true ];

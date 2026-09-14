@@ -1,0 +1,62 @@
+=== RUN   TestStorageValueCodecsPersistRawAddressBytes
+=== RUN   TestStorageValueCodecsPersistRawAddressBytes/params
+=== RUN   TestStorageValueCodecsPersistRawAddressBytes/lease
+=== RUN   TestStorageValueCodecsPersistRawAddressBytes/credit_account
+--- PASS: TestStorageValueCodecsPersistRawAddressBytes (0.00s)
+    --- PASS: TestStorageValueCodecsPersistRawAddressBytes/params (0.00s)
+    --- PASS: TestStorageValueCodecsPersistRawAddressBytes/lease (0.00s)
+    --- PASS: TestStorageValueCodecsPersistRawAddressBytes/credit_account (0.00s)
+=== RUN   TestLeaseStorageValueCodecPreservesReservationPresence
+=== RUN   TestLeaseStorageValueCodecPreservesReservationPresence/historical_absence
+=== RUN   TestLeaseStorageValueCodecPreservesReservationPresence/initialized_empty
+=== RUN   TestLeaseStorageValueCodecPreservesReservationPresence/initialized_nonempty
+--- PASS: TestLeaseStorageValueCodecPreservesReservationPresence (0.00s)
+    --- PASS: TestLeaseStorageValueCodecPreservesReservationPresence/historical_absence (0.00s)
+    --- PASS: TestLeaseStorageValueCodecPreservesReservationPresence/initialized_empty (0.00s)
+    --- PASS: TestLeaseStorageValueCodecPreservesReservationPresence/initialized_nonempty (0.00s)
+=== RUN   TestStorageValueCodecsCanonicalizeEquivalentBech32
+--- PASS: TestStorageValueCodecsCanonicalizeEquivalentBech32 (0.00s)
+=== RUN   TestStorageValueCodecsDecodeLegacyAndRejectCorruptVersionedValues
+=== RUN   TestStorageValueCodecsDecodeLegacyAndRejectCorruptVersionedValues/params
+=== RUN   TestStorageValueCodecsDecodeLegacyAndRejectCorruptVersionedValues/lease
+=== RUN   TestStorageValueCodecsDecodeLegacyAndRejectCorruptVersionedValues/credit_account
+--- PASS: TestStorageValueCodecsDecodeLegacyAndRejectCorruptVersionedValues (0.00s)
+    --- PASS: TestStorageValueCodecsDecodeLegacyAndRejectCorruptVersionedValues/params (0.00s)
+    --- PASS: TestStorageValueCodecsDecodeLegacyAndRejectCorruptVersionedValues/lease (0.00s)
+    --- PASS: TestStorageValueCodecsDecodeLegacyAndRejectCorruptVersionedValues/credit_account (0.00s)
+=== RUN   TestMigrate2to3Then3to4ExpiresReachableUnderbackedPendingLease
+--- PASS: TestMigrate2to3Then3to4ExpiresReachableUnderbackedPendingLease (0.13s)
+=== RUN   TestMigrate3to4ExpiresAllModernPendingWhenOneDenomIsUnderbacked
+--- PASS: TestMigrate3to4ExpiresAllModernPendingWhenOneDenomIsUnderbacked (0.12s)
+=== RUN   TestReservationLifecycleReleasesExactRemainingTranche
+=== RUN   TestReservationLifecycleReleasesExactRemainingTranche/close_after_partial_accrual
+=== RUN   TestReservationLifecycleReleasesExactRemainingTranche/provider_rejection
+=== RUN   TestReservationLifecycleReleasesExactRemainingTranche/tenant_cancellation
+=== RUN   TestReservationLifecycleReleasesExactRemainingTranche/pending_expiration
+--- PASS: TestReservationLifecycleReleasesExactRemainingTranche (0.45s)
+    --- PASS: TestReservationLifecycleReleasesExactRemainingTranche/close_after_partial_accrual (0.12s)
+    --- PASS: TestReservationLifecycleReleasesExactRemainingTranche/provider_rejection (0.12s)
+    --- PASS: TestReservationLifecycleReleasesExactRemainingTranche/tenant_cancellation (0.11s)
+    --- PASS: TestReservationLifecycleReleasesExactRemainingTranche/pending_expiration (0.11s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/full_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid
+--- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt (0.66s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment (0.13s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment (0.13s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/full_payment (0.15s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full (0.14s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid (0.12s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch
+--- PASS: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts (0.23s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch (0.12s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch (0.11s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder
+--- PASS: TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder (0.10s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/x/billing/keeper    1.792s

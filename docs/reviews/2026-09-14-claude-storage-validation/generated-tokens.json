@@ -1,0 +1,78 @@
+{
+  "baseline_commit": "fe6ccd30f8f3df3bbf2e3a108c581fe2f2e59cd7",
+  "baseline_seeds": [
+    {
+      "argv": [
+        "git",
+        "show",
+        "fe6ccd30f8f3df3bbf2e3a108c581fe2f2e59cd7:x/billing/internal/types/storage.pb.go"
+      ],
+      "exit_status": 0,
+      "stdout_written_to": ".review-tmp/sep14-storage-comment-check/before-0.go",
+      "sha256": "6241a8b1ef223bedbf8aafbd9aa2400d00b7e19b54cf276f2f87d217481388ff",
+      "current_path": "x/billing/internal/types/storage.pb.go"
+    },
+    {
+      "argv": [
+        "git",
+        "show",
+        "fe6ccd30f8f3df3bbf2e3a108c581fe2f2e59cd7:api/liftedinit/billing/internal/v1/storage.pulsar.go"
+      ],
+      "exit_status": 0,
+      "stdout_written_to": ".review-tmp/sep14-storage-comment-check/before-1.go",
+      "sha256": "c34f522ccec8e613d98e19c98a2b02f32e55211eb8e36186188d2b838114b6be",
+      "current_path": "api/liftedinit/billing/internal/v1/storage.pulsar.go"
+    },
+    {
+      "argv": [
+        "git",
+        "show",
+        "fe6ccd30f8f3df3bbf2e3a108c581fe2f2e59cd7:x/billing/types/types.pb.go"
+      ],
+      "exit_status": 0,
+      "stdout_written_to": ".review-tmp/sep14-storage-comment-check/before-2.go",
+      "sha256": "42485ddec83c2c0863a32ddde1ea6dab1faacddbb71e7b66191bef158808ba14",
+      "current_path": "x/billing/types/types.pb.go"
+    },
+    {
+      "argv": [
+        "git",
+        "show",
+        "fe6ccd30f8f3df3bbf2e3a108c581fe2f2e59cd7:api/liftedinit/billing/v1/types.pulsar.go"
+      ],
+      "exit_status": 0,
+      "stdout_written_to": ".review-tmp/sep14-storage-comment-check/before-3.go",
+      "sha256": "605ff0ec341b6a6ec11fcb074e591b0ce944c8828dd6b41d387e779d65c84e19",
+      "current_path": "api/liftedinit/billing/v1/types.pulsar.go"
+    }
+  ],
+  "verifier_source": "docs/reviews/2026-09-14-claude-docs-validation/generated-token-check.go.txt",
+  "verifier_destination": ".review-tmp/sep14-storage-comment-check/token-check.go",
+  "verifier_sha256": "86760403ed5aa2d456a311cea61aed3204818074db9c8e5411799332f60f73a7",
+  "argv": [
+    "go",
+    "run",
+    "-p",
+    "2",
+    ".review-tmp/sep14-storage-comment-check/token-check.go",
+    "--",
+    ".review-tmp/sep14-storage-comment-check/before-0.go",
+    "x/billing/internal/types/storage.pb.go",
+    ".review-tmp/sep14-storage-comment-check/before-1.go",
+    "api/liftedinit/billing/internal/v1/storage.pulsar.go",
+    ".review-tmp/sep14-storage-comment-check/before-2.go",
+    "x/billing/types/types.pb.go",
+    ".review-tmp/sep14-storage-comment-check/before-3.go",
+    "api/liftedinit/billing/v1/types.pulsar.go"
+  ],
+  "environment_overrides": {
+    "GOTOOLCHAIN": "go1.26.8",
+    "GOMAXPROCS": "4",
+    "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build"
+  },
+  "exit_status": 0,
+  "stdout": "[\n  {\n    \"before\": \".review-tmp/sep14-storage-comment-check/before-0.go\",\n    \"after\": \"x/billing/internal/types/storage.pb.go\",\n    \"token_count\": 12987,\n    \"before_noncomment_token_sha256\": \"ad79b17ae5965112accf9d78796e2d5168d98255ba6e1dc8af63f0c710e2d9ef\",\n    \"after_noncomment_token_sha256\": \"ad79b17ae5965112accf9d78796e2d5168d98255ba6e1dc8af63f0c710e2d9ef\",\n    \"noncomment_tokens_equal\": true\n  },\n  {\n    \"before\": \".review-tmp/sep14-storage-comment-check/before-1.go\",\n    \"after\": \"api/liftedinit/billing/internal/v1/storage.pulsar.go\",\n    \"token_count\": 28776,\n    \"before_noncomment_token_sha256\": \"fa2e05d107665be110e54d96ea0a96a8de485b67f0fbb8b56210dfb348b27079\",\n    \"after_noncomment_token_sha256\": \"fa2e05d107665be110e54d96ea0a96a8de485b67f0fbb8b56210dfb348b27079\",\n    \"noncomment_tokens_equal\": true\n  },\n  {\n    \"before\": \".review-tmp/sep14-storage-comment-check/before-2.go\",\n    \"after\": \"x/billing/types/types.pb.go\",\n    \"token_count\": 18992,\n    \"before_noncomment_token_sha256\": \"43a9c3656f1d072ed389edf4506638f9c74eaaa2977a5dd3db0f1d28e3e8697e\",\n    \"after_noncomment_token_sha256\": \"43a9c3656f1d072ed389edf4506638f9c74eaaa2977a5dd3db0f1d28e3e8697e\",\n    \"noncomment_tokens_equal\": true\n  },\n  {\n    \"before\": \".review-tmp/sep14-storage-comment-check/before-3.go\",\n    \"after\": \"api/liftedinit/billing/v1/types.pulsar.go\",\n    \"token_count\": 43253,\n    \"before_noncomment_token_sha256\": \"83c7e962378a085b0db626e9204c183bcfdaad30e8d7470880b279a66c307bb2\",\n    \"after_noncomment_token_sha256\": \"83c7e962378a085b0db626e9204c183bcfdaad30e8d7470880b279a66c307bb2\",\n    \"noncomment_tokens_equal\": true\n  }\n]\n",
+  "stderr": "",
+  "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "directory_setup": "Create a new empty .review-tmp/sep14-storage-comment-check directory; write each git show stdout to its recorded path, then copy verifier_source to verifier_destination."
+}

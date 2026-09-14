@@ -1,0 +1,14 @@
+[
+  {
+    "file": "proto/liftedinit/billing/internal/v1/storage.proto",
+    "before_sha256": "a3f5d37a6a0bc773c366c77c28e805dc165cfb7aa2363813f072375805936b74",
+    "after_sha256": "7c6a9c2f9ff9092c67d67dc889d9d2b1b69f8f23528a5c5c06c8d7e21d5ab3b6",
+    "noncomment_lines_identical": true
+  },
+  {
+    "file": "proto/liftedinit/billing/v1/types.proto",
+    "before_sha256": "330ef8b3531103e27071e90c1b2f0566e99c9a3134117a861ae6d6db8f26f797",
+    "after_sha256": "34ac3a48fd1940ac8b6a3882a49d08914712f725fb2034076283e8c02dd0349f",
+    "noncomment_lines_identical": true
+  }
+]

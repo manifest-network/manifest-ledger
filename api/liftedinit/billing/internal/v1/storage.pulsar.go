@@ -3414,8 +3414,9 @@ type Lease struct {
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	ClosedAt      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=closed_at,json=closedAt,proto3" json:"closed_at,omitempty"`
 	// Accrual cursor through which complete per-second charges have settled.
-	// ACTIVE rows retain any sub-second remainder in this timestamp; CLOSED rows
-	// set it to closed_at.
+	// ACTIVE rows retain any sub-second remainder in this timestamp. Normal close
+	// paths finalize it at closed_at; historical CLOSED imports can retain a
+	// final interval for specific-UUID withdrawal.
 	LastSettledAt              *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=last_settled_at,json=lastSettledAt,proto3" json:"last_settled_at,omitempty"`
 	AcknowledgedAt             *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=acknowledged_at,json=acknowledgedAt,proto3" json:"acknowledged_at,omitempty"`
 	RejectedAt                 *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=rejected_at,json=rejectedAt,proto3" json:"rejected_at,omitempty"`
