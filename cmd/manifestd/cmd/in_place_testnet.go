@@ -74,6 +74,16 @@ func newTestnetApp(logger log.Logger, db dbm.DB, traceStore io.Writer, appOpts s
 }
 
 func validateTestnetAuthority(operator sdk.AccAddress, authority string) error {
+	admin, err := sdk.AccAddressFromBech32(authority)
+	if err != nil {
+		return fmt.Errorf("decode configured POA admin: %w", err)
+	}
+	if canonical := admin.String(); authority != canonical {
+		return fmt.Errorf("configured POA admin %s is not canonical; use %s", authority, canonical)
+	}
+	if app.BlockedAddresses()[operator.String()] {
+		return fmt.Errorf("operator account %s is blocked from receiving funds; use a non-module account", operator)
+	}
 	if operator.String() != authority {
 		return fmt.Errorf("operator account %s does not match configured POA admin %s; set POA_ADMIN_ADDRESS to the operator before starting", operator, authority)
 	}
@@ -148,9 +158,6 @@ func initAppForTestnet(chainApp *app.ManifestApp, newValAddr cmtbytes.HexBytes, 
 		return err
 	}
 	consAddr := sdk.ConsAddress(newValAddr)
-	if err := chainApp.SlashingKeeper.DeleteMissedBlockBitmap(ctx, consAddr); err != nil {
-		return err
-	}
 	if err := chainApp.SlashingKeeper.SetValidatorSigningInfo(ctx, consAddr, slashingtypes.ValidatorSigningInfo{
 		Address: consAddr.String(), StartHeight: chainApp.LastBlockHeight() - 1,
 	}); err != nil {
@@ -215,6 +222,18 @@ func clearTestnetValidatorState(ctx sdk.Context, chainApp *app.ManifestApp) erro
 		distrtypes.ValidatorAccumulatedCommissionPrefix, distrtypes.ValidatorSlashEventPrefix,
 	} {
 		if err := deleteTestnetPrefix(distrStore, key); err != nil {
+			return err
+		}
+	}
+	// Removed validators and orphaned consensus keys must not retain downtime
+	// history. The fork validator's creation hook registers its fresh pubkey.
+	slashingStore := ctx.KVStore(chainApp.GetKey(slashingtypes.StoreKey))
+	for _, key := range [][]byte{
+		slashingtypes.ValidatorSigningInfoKeyPrefix,
+		slashingtypes.ValidatorMissedBlockBitmapKeyPrefix,
+		slashingtypes.AddrPubkeyRelationKeyPrefix,
+	} {
+		if err := deleteTestnetPrefix(slashingStore, key); err != nil {
 			return err
 		}
 	}

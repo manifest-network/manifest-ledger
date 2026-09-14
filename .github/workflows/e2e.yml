@@ -72,6 +72,7 @@ jobs:
           - "ictest-group"
           - "ictest-cosmwasm"
           - "ictest-chain-upgrade"
+          - "ictest-in-place-testnet"
           - "ictest-sku"
           - "ictest-billing"
           - "ictest-billing-extra"

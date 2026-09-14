@@ -136,7 +136,7 @@ ictest-chain-upgrade:
 	cd interchaintest && go test -race -v -run TestBasicManifestUpgrade . -count=1
 
 ictest-in-place-testnet:
-	cd interchaintest && go test -timeout 20m -race -v -run '^TestInPlaceTestnet$$' . -count=1
+	cd interchaintest && go test -timeout 20m -race -v -run '^TestInPlaceTestnet' . -count=1
 
 ictest-group:
 	cd interchaintest && go test -race -v -run TestGroupMetadataLimits . -count=1
@@ -216,7 +216,7 @@ coverage: ## Run coverage report
 	@echo "  --> Running App State Determinism Simulation"
 	@${COV_SIM_CMD} -test.run TestAppStateDeterminism ${COV_SIM_COMMON} > /dev/null 2>&1
 	@echo "--> Running unit & e2e tests coverage"
-	@go test -p 1 -timeout 90m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
+	@go test -p 1 -timeout 150m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
 	@echo "--> Merging coverage reports"
 	@go tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_ROOT}
 	@echo "--> Converting binary coverage report to text format"

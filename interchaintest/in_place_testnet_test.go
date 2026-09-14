@@ -207,11 +207,11 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 		require.Equal(t, expectedPower, cometValidators.Validators[0].VotingPower)
 		require.Equal(t, validator.Tokens.Quo(sdk.DefaultPowerReduction).Int64(), cometValidators.Validators[0].VotingPower)
 		require.True(t, validator.DelegatorShares.Equal(sdkmath.LegacyNewDecFromInt(validator.Tokens)))
-		var poolResponse stakingtypes.QueryPoolResponse
+		var poolResponse inPlaceTestnetPoolResponse
 		require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "staking", "pool"), &poolResponse))
 		require.True(t, poolResponse.Pool.BondedTokens.Equal(validator.Tokens), "bonded pool must back the seeded validator")
 		require.True(t, poolResponse.Pool.NotBondedTokens.IsZero(), "source unbonded stake remains")
-		var delegationsResponse stakingtypes.QueryDelegatorDelegationsResponse
+		var delegationsResponse inPlaceTestnetDelegationsResponse
 		require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "staking", "delegations", operator.FormattedAddress()), &delegationsResponse))
 		require.Len(t, delegationsResponse.DelegationResponses, 1)
 		delegation := delegationsResponse.DelegationResponses[0]
@@ -274,6 +274,43 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 	waitForInPlaceTestnetHeight(t, ctx, rpc, forkChainID, forkHeight+5)
 	assertForkState(rpc)
 	require.Equal(t, preservedBalance.AddRaw(1), inPlaceTestnetBalance(t, ctx, node, existingUser.FormattedAddress(), cfg.Denom))
+
+	// Payout checks the manifest keeper's authority, so a committed payout proves
+	// that the replacement operator retains admin access after ordinary restart.
+	payoutHash := sendInPlaceTestnetTx(t, ctx, node, operator.KeyName(), forkChainID,
+		"manifest", "payout", existingUser.FormattedAddress()+":1"+cfg.Denom)
+	status, err = rpc.Status(ctx)
+	require.NoError(t, err)
+	forkHeight = waitForInPlaceTestnetHeight(t, ctx, rpc, forkChainID, status.SyncInfo.LatestBlockHeight+3)
+	var payoutResponse struct {
+		Code   uint32 `json:"code"`
+		RawLog string `json:"raw_log"`
+	}
+	require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "tx", payoutHash), &payoutResponse))
+	require.Zero(t, payoutResponse.Code, "%s", payoutResponse.RawLog)
+	require.Equal(t, preservedBalance.AddRaw(2), inPlaceTestnetBalance(t, ctx, node, existingUser.FormattedAddress(), cfg.Denom))
+	assertForkState(rpc)
+}
+
+// These structs project the AutoCLI JSON fields used by the assertions. Generated
+// protobuf query responses cannot be decoded with encoding/json when pagination
+// is present: AutoCLI quotes pagination.total, but PageResponse.Total is uint64.
+type inPlaceTestnetPoolResponse struct {
+	Pool struct {
+		BondedTokens    sdkmath.Int `json:"bonded_tokens"`
+		NotBondedTokens sdkmath.Int `json:"not_bonded_tokens"`
+	} `json:"pool"`
+}
+
+type inPlaceTestnetDelegationsResponse struct {
+	DelegationResponses []struct {
+		Delegation struct {
+			DelegatorAddress string            `json:"delegator_address"`
+			ValidatorAddress string            `json:"validator_address"`
+			Shares           sdkmath.LegacyDec `json:"shares"`
+		} `json:"delegation"`
+		Balance sdk.Coin `json:"balance"`
+	} `json:"delegation_responses"`
 }
 
 func waitForInPlaceTestnetHeight(t *testing.T, ctx context.Context, rpc *rpchttp.HTTP, chainID string, target int64) int64 {
@@ -300,7 +337,7 @@ func waitForInPlaceTestnetHeight(t *testing.T, ctx context.Context, rpc *rpchttp
 	}
 }
 
-func sendInPlaceTestnetTx(t *testing.T, ctx context.Context, node *cosmos.ChainNode, keyName, chainID string, command ...string) {
+func sendInPlaceTestnetTx(t *testing.T, ctx context.Context, node *cosmos.ChainNode, keyName, chainID string, command ...string) string {
 	t.Helper()
 	command = append([]string{"tx"}, command...)
 	command = append(command, "--from", keyName, "--chain-id", chainID, "--keyring-backend", "test",
@@ -315,6 +352,7 @@ func sendInPlaceTestnetTx(t *testing.T, ctx context.Context, node *cosmos.ChainN
 	require.NoError(t, json.Unmarshal(stdout, &response))
 	require.Zero(t, response.Code, "%s", response.RawLog)
 	require.NotEmpty(t, response.TxHash)
+	return response.TxHash
 }
 
 func queryInPlaceTestnet(t *testing.T, ctx context.Context, node *cosmos.ChainNode, command ...string) []byte {

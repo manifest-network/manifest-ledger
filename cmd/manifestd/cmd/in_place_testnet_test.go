@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +34,8 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	distrkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
@@ -122,6 +125,13 @@ func TestInitAppForTestnetReplacesSourceValidatorState(t *testing.T) {
 	feeSupplyBefore := chainApp.BankKeeper.GetSupply(ctx, appparams.BondDenom).Amount
 	operator := sdk.MustAccAddressFromBech32(chainApp.POAKeeper.GetAdmin(ctx))
 	newPubKey := ed25519.GenPrivKey().PubKey()
+	sourcePubKey, err := cryptocodec.ToCmtPubKeyInterface(oldPubKey)
+	require.NoError(t, err)
+	seedInPlaceTestnetSlashing(t, ctx, chainApp, sourcePubKey)
+	orphan := seedInPlaceTestnetSlashing(t, ctx, chainApp, ed25519.GenPrivKey().PubKey())
+	seedInPlaceTestnetSlashing(t, ctx, chainApp, newPubKey)
+	slashingParams, err := chainApp.SlashingKeeper.GetParams(ctx)
+	require.NoError(t, err)
 
 	require.NoError(t, initAppForTestnet(chainApp, newPubKey.Address(), newPubKey, operator.String(), ""))
 	valAddr := sdk.ValAddress(operator)
@@ -171,6 +181,21 @@ func TestInitAppForTestnetReplacesSourceValidatorState(t *testing.T) {
 	registeredKey, err := chainApp.SlashingKeeper.GetPubkey(ctx, newPubKey.Address())
 	require.NoError(t, err)
 	require.Equal(t, newPubKey.Bytes(), registeredKey.Bytes())
+	for _, removed := range []sdk.ConsAddress{oldConsAddr, orphan} {
+		_, err := chainApp.SlashingKeeper.GetValidatorSigningInfo(ctx, removed)
+		require.ErrorIs(t, err, slashingtypes.ErrNoSigningInfoFound)
+		_, err = chainApp.SlashingKeeper.GetPubkey(ctx, removed.Bytes())
+		require.Error(t, err)
+		missed, err := chainApp.SlashingKeeper.GetMissedBlockBitmapValue(ctx, removed, 3)
+		require.NoError(t, err)
+		require.False(t, missed)
+	}
+	exportedSlashing := chainApp.SlashingKeeper.ExportGenesis(ctx)
+	require.Equal(t, slashingParams, exportedSlashing.Params)
+	require.Equal(t, []slashingtypes.SigningInfo{{Address: signingInfo.Address, ValidatorSigningInfo: signingInfo}}, exportedSlashing.SigningInfos)
+	require.Len(t, exportedSlashing.MissedBlocks, 1)
+	require.Equal(t, signingInfo.Address, exportedSlashing.MissedBlocks[0].Address)
+	require.Empty(t, exportedSlashing.MissedBlocks[0].MissedBlocks)
 
 	store := ctx.KVStore(chainApp.GetKey(stakingtypes.StoreKey))
 	for _, prefix := range [][]byte{
@@ -281,6 +306,20 @@ func seedSourceTestnetValidator(t *testing.T, ctx sdk.Context, chainApp *app.Man
 	return validator
 }
 
+func seedInPlaceTestnetSlashing(t *testing.T, ctx sdk.Context, chainApp *app.ManifestApp, pubKey crypto.PubKey) sdk.ConsAddress {
+	t.Helper()
+	key, err := cryptocodec.FromCmtPubKeyInterface(pubKey)
+	require.NoError(t, err)
+	address := sdk.ConsAddress(pubKey.Address())
+	require.NoError(t, chainApp.SlashingKeeper.AddPubkey(ctx, key))
+	require.NoError(t, chainApp.SlashingKeeper.SetValidatorSigningInfo(ctx, address, slashingtypes.ValidatorSigningInfo{
+		Address: address.String(), StartHeight: 1, IndexOffset: 4,
+		JailedUntil: ctx.BlockTime().Add(time.Hour), Tombstoned: true, MissedBlocksCounter: 1,
+	}))
+	require.NoError(t, chainApp.SlashingKeeper.SetMissedBlockBitmapValue(ctx, address, 3, true))
+	return address
+}
+
 func TestInitAppForTestnetSchedulesUpgrade(t *testing.T) {
 	ctx, chainApp := setupInPlaceTestnet(t)
 	operator := sdk.MustAccAddressFromBech32(chainApp.POAKeeper.GetAdmin(ctx))
@@ -329,6 +368,7 @@ func TestInitAppForTestnetRejectsInvalidIdentity(t *testing.T) {
 func TestInitAppForTestnetRollsBackFailedUpgrade(t *testing.T) {
 	ctx, chainApp := setupInPlaceTestnet(t)
 	seedSourceTestnetValidator(t, ctx, chainApp, false)
+	seedInPlaceTestnetSlashing(t, ctx, chainApp, ed25519.GenPrivKey().PubKey())
 	pubKey := ed25519.GenPrivKey().PubKey()
 	operator := sdk.MustAccAddressFromBech32(chainApp.POAKeeper.GetAdmin(ctx))
 	validatorsBefore, err := chainApp.StakingKeeper.GetAllValidators(ctx)
@@ -340,7 +380,9 @@ func TestInitAppForTestnetRollsBackFailedUpgrade(t *testing.T) {
 	// and funding. No portion of the attempted rewrite may reach the root store.
 	upgradeStore := ctx.KVStore(chainApp.GetKey(upgradetypes.StoreKey))
 	upgradeStore.Set(upgradetypes.PlanKey(), []byte{0xff})
+	storesBefore := snapshotInPlaceTestnetStores(t, ctx, chainApp)
 	require.ErrorContains(t, initAppForTestnet(chainApp, pubKey.Address(), pubKey, operator.String(), "rehearsal-upgrade"), "schedule testnet upgrade")
+	require.Equal(t, storesBefore, snapshotInPlaceTestnetStores(t, ctx, chainApp), "failed upgrades must restore slashing records and every other store")
 	validatorsAfter, err := chainApp.StakingKeeper.GetAllValidators(ctx)
 	require.NoError(t, err)
 	require.Equal(t, validatorsBefore, validatorsAfter)
@@ -406,6 +448,32 @@ func TestInitAppForTestnetRequiresConfiguredAuthority(t *testing.T) {
 	}
 }
 
+func TestInitAppForTestnetRejectsUnusableAuthority(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		blocked bool
+		message string
+	}{
+		{name: "noncanonical authority", message: "is not canonical; use"},
+		{name: "blocked operator", blocked: true, message: "is blocked from receiving funds"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, chainApp := setupInPlaceTestnet(t)
+			operator := sdk.MustAccAddressFromBech32(chainApp.POAKeeper.GetAdmin(ctx))
+			authority := strings.ToUpper(operator.String())
+			if tc.blocked {
+				operator = authtypes.NewModuleAddress(govtypes.ModuleName)
+				authority = operator.String()
+			}
+			chainApp.POAKeeper.SetTestAuthority(authority)
+			before := snapshotInPlaceTestnetStores(t, ctx, chainApp)
+			pubKey := ed25519.GenPrivKey().PubKey()
+			require.ErrorContains(t, initAppForTestnet(chainApp, pubKey.Address(), pubKey, operator.String(), "must-not-schedule"), tc.message)
+			require.Equal(t, before, snapshotInPlaceTestnetStores(t, ctx, chainApp))
+		})
+	}
+}
+
 func snapshotInPlaceTestnetStores(t *testing.T, ctx sdk.Context, chainApp *app.ManifestApp) map[string]map[string][]byte {
 	t.Helper()
 	stores := make(map[string]map[string][]byte)
@@ -425,9 +493,14 @@ func snapshotInPlaceTestnetStores(t *testing.T, ctx sdk.Context, chainApp *app.M
 // multistore. Calling Commit directly after InitChain loses initialized stores.
 func setupInPlaceTestnet(t *testing.T) (sdk.Context, *app.ManifestApp) {
 	t.Helper()
+	return setupInPlaceTestnetWithDB(t, dbm.NewMemDB(), t.TempDir())
+}
+
+func setupInPlaceTestnetWithDB(t *testing.T, db dbm.DB, home string) (sdk.Context, *app.ManifestApp) {
+	t.Helper()
 	t.Setenv("POA_ADMIN_ADDRESS", sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address()).String())
-	chainApp := app.NewApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true, app.DefaultCommissionRateMinMax,
-		simtestutil.NewAppOptionsWithFlagHome(t.TempDir()), baseapp.SetChainID(app.SimAppChainID))
+	chainApp := app.NewApp(log.NewNopLogger(), db, nil, true, app.DefaultCommissionRateMinMax,
+		simtestutil.NewAppOptionsWithFlagHome(home), baseapp.SetChainID(app.SimAppChainID))
 	genesis := chainApp.DefaultGenesis()
 	pubKey, err := cryptocodec.FromCmtPubKeyInterface(ed25519.GenPrivKey().PubKey())
 	require.NoError(t, err)
@@ -479,26 +552,43 @@ func TestNewTestnetAppRejectsIncorrectOptionTypes(t *testing.T) {
 }
 
 func TestNewTestnetAppRejectsMismatchedAuthorityBeforeConstruction(t *testing.T) {
-	for _, name := range []string{"omitted environment", "different environment"} {
-		t.Run(name, func(t *testing.T) {
-			t.Setenv("POA_ADMIN_ADDRESS", "")
-			if name == "omitted environment" {
-				require.NoError(t, os.Unsetenv("POA_ADMIN_ADDRESS"))
-			} else {
-				t.Setenv("POA_ADMIN_ADDRESS", sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address()).String())
-			}
+	const mismatchMessage = "initialize in-place testnet: operator account %[1]s does not match configured POA admin %[2]s; set POA_ADMIN_ADDRESS to the operator before starting"
+	for _, tc := range []struct {
+		name              string
+		omitEnvironment   bool
+		matchingAuthority bool
+		uppercase         bool
+		moduleOperator    bool
+		message           string
+	}{
+		{name: "omitted environment", omitEnvironment: true, message: mismatchMessage},
+		{name: "different environment", message: mismatchMessage},
+		{name: "noncanonical authority", matchingAuthority: true, uppercase: true, message: "initialize in-place testnet: configured POA admin %[2]s is not canonical; use %[1]s"},
+		{name: "default module authority", omitEnvironment: true, moduleOperator: true, message: "initialize in-place testnet: operator account %[1]s is blocked from receiving funds; use a non-module account"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			pubKey := ed25519.GenPrivKey().PubKey()
 			operator := sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address())
+			if tc.moduleOperator {
+				operator = authtypes.NewModuleAddress(govtypes.ModuleName)
+			}
+			authority := sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address()).String()
+			if tc.matchingAuthority {
+				authority = operator.String()
+			}
+			if tc.uppercase {
+				authority = strings.ToUpper(authority)
+			}
+			t.Setenv("POA_ADMIN_ADDRESS", authority)
+			if tc.omitEnvironment {
+				require.NoError(t, os.Unsetenv("POA_ADMIN_ADDRESS"))
+			}
 			db := dbm.NewMemDB()
 			t.Cleanup(func() { require.NoError(t, db.Close()) })
 			require.NoError(t, db.Set([]byte("source-state"), []byte("unchanged")))
 			home := t.TempDir()
-			options := simtestutil.AppOptionsMap{
-				server.KeyNewValAddr: pubKey.Address(), server.KeyUserPubKey: pubKey,
-				server.KeyNewOpAddr: operator.String(), server.KeyTriggerTestnetUpgrade: "must-not-schedule",
-				flags.FlagHome: home,
-			}
-			message := fmt.Sprintf("initialize in-place testnet: operator account %s does not match configured POA admin %s; set POA_ADMIN_ADDRESS to the operator before starting", operator, helpers.GetPoAAdmin())
+			options := inPlaceTestnetAppOptions(home, pubKey, operator)
+			message := fmt.Sprintf(tc.message, operator, helpers.GetPoAAdmin())
 			require.PanicsWithError(t, message, func() { newTestnetApp(log.NewNopLogger(), db, nil, options) })
 			iterator, err := db.Iterator(nil, nil)
 			require.NoError(t, err)
@@ -513,4 +603,41 @@ func TestNewTestnetAppRejectsMismatchedAuthorityBeforeConstruction(t *testing.T)
 			require.Empty(t, entries, "real app construction must not create application files")
 		})
 	}
+}
+
+func inPlaceTestnetAppOptions(home string, pubKey crypto.PubKey, operator sdk.AccAddress) simtestutil.AppOptionsMap {
+	return simtestutil.AppOptionsMap{
+		server.KeyNewValAddr: pubKey.Address(), server.KeyUserPubKey: pubKey,
+		server.KeyNewOpAddr: operator.String(), server.KeyTriggerTestnetUpgrade: "callback-upgrade",
+		flags.FlagHome: home, flags.FlagChainID: app.SimAppChainID,
+		server.FlagPruning: "nothing",
+	}
+}
+
+func TestNewTestnetAppLoadsCommittedStateAndConverts(t *testing.T) {
+	db := dbm.NewMemDB()
+	sourceCtx, source := setupInPlaceTestnetWithDB(t, db, t.TempDir())
+	operator := sdk.MustAccAddressFromBech32(source.POAKeeper.GetAdmin(sourceCtx))
+	pubKey := ed25519.GenPrivKey().PubKey()
+	// Reopen committed state in a separate fork home; the source VM still owns
+	// its directory lock, and this fixture has no compiled Wasm code to copy.
+	options := inPlaceTestnetAppOptions(t.TempDir(), pubKey, operator)
+	fork := newTestnetApp(log.NewNopLogger(), db, nil, options).(*app.ManifestApp)
+	t.Cleanup(func() { require.NoError(t, fork.Close()) })
+	require.Equal(t, source.LastBlockHeight(), fork.LastBlockHeight())
+	ctx := fork.NewUncachedContext(true, sourceCtx.BlockHeader())
+	validators, err := fork.StakingKeeper.GetAllValidators(ctx)
+	require.NoError(t, err)
+	require.Len(t, validators, 1)
+	require.Equal(t, sdk.ValAddress(operator).String(), validators[0].OperatorAddress)
+	consensusAddress, err := validators[0].GetConsAddr()
+	require.NoError(t, err)
+	require.Equal(t, []byte(pubKey.Address()), consensusAddress)
+	require.Equal(t, sdk.NewInt64Coin(appparams.BondDenom, testnetOperatorFunds), fork.BankKeeper.GetBalance(ctx, operator, appparams.BondDenom))
+	plan, err := fork.UpgradeKeeper.GetUpgradePlan(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "callback-upgrade", plan.Name)
+	require.Equal(t, fork.LastBlockHeight()+testnetUpgradeDelay, plan.Height)
+	message, broken := stakingkeeper.AllInvariants(fork.StakingKeeper)(ctx)
+	require.False(t, broken, message)
 }

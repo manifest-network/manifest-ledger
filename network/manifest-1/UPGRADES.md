@@ -161,13 +161,12 @@ the fork binary's state compatibility with the source chain; verify that separat
 Prepare the copied home before running the command:
 
 1. Use a fork base whose state transitions match the source binary. Changes on
-   `main` are not automatically compatible with a released source chain. Build
-   with `make build VERSION=<last-completed-upgrade-name>` and verify
-   `build/manifestd version`. The source mainnet contract for this work is
-   `v2.3.1`; recheck the last completed upgrade before each rehearsal. Merely
-   setting the version does not establish state compatibility. The version must
-   register that completed upgrade handler or x/upgrade's downgrade check rejects
-   the first replayed block. A bare `go build` omits the required version ldflags.
+   `main` are not automatically compatible with a released source chain. Choose
+   the build version for the rehearsal mode below and verify
+   `build/manifestd version`. The source baseline for this work is `v2.3.1`;
+   recheck the source's last completed upgrade and any pending plan before each
+   rehearsal. Merely setting the version does not establish state compatibility.
+   A bare `go build` omits the required version ldflags.
 2. Copy a stopped node's state, or state-sync a disposable node and allow it to
    block-sync several more blocks before stopping. The SDK needs a local full
    block and seen commit; a snapshot alone is insufficient. Keep a backup of the
@@ -183,26 +182,46 @@ Prepare the copied home before running the command:
 4. Give the fork a distinct chain ID, clear `persistent_peers` and `seeds`, disable
    peer exchange and state sync, and isolate its P2P network from production.
    The SDK clears the address book but does not clear configured peers or seeds.
-5. Set `POA_ADMIN_ADDRESS` to the local operator's **account** address before
-   startup. Use that byte-identical value on every eventual fork node. This sets
-   POA and upgrade authority; it does not transfer the PWR tokenfactory denom's
-   group-policy authority. The command rejects an operator that does not match
-   the configured authority before opening the copied application. Ensure the
-   operator's signing key is available locally.
+5. Set `POA_ADMIN_ADDRESS` to the local operator's canonical lowercase **account**
+   address before startup. Use an account with a local signing key; module
+   accounts cannot serve as the funded operator. Retain that byte-identical value
+   for **every ordinary restart, service/container launch and cosmovisor binary
+   swap**, on every fork node.
+   It is read when the application is constructed, not saved as a fork setting;
+   omitting it restores the governance module account as the authority. The
+   command rejects an operator that does not match the configured authority
+   before opening the copied application.
 
-With the SDK prerequisite satisfied and the copied home prepared:
+`POA_ADMIN_ADDRESS` supplies keeper authority for POA, upgrades, consensus
+parameters, auth/bank, staking/mint/distribution/slashing, governance/crisis/circuit,
+IBC core/transfers/interchain accounts, Wasm/tokenfactory, and Manifest/SKU/billing.
+It changes their authority-gated administration; it does not transfer the PWR
+tokenfactory denom's stored group-policy authority or rewrite group membership.
+
+For an **ordinary fork replay**, build the compatible source-state binary with
+the source's last completed upgrade name and omit `--trigger-testnet-upgrade`:
 
 ```bash
+make build VERSION=<last-completed-upgrade-name>
+build/manifestd version
 export POA_ADMIN_ADDRESS=<local-manifest-account-address>
 build/manifestd in-place-testnet manifest-ledger-fork-1 "$POA_ADMIN_ADDRESS" \
   --home <copied-fork-home> --skip-confirmation --minimum-gas-prices 0umfx
 ```
 
+In a normal daemon process, this application's sole upgrade handler is named
+after its build version. Unless an upgrade is due on the first fork block,
+`x/upgrade` requires a handler for the last completed upgrade during its startup
+check. An ordinary replay retains any pending source plan; account for its halt
+height when choosing the copied state and planning the rehearsal.
+
 The initializer replaces all source validators, including jailed/unbonded records,
 consensus and power indices, delegation records and unbonding/redelegation queues.
-It clears POA pending validators and update caches, then installs the local key
-with distribution/slashing records and a synthetic self-delegation. Staking pools
-and bank supply are adjusted through the bank keeper. Removed validators' rewards
+It clears POA pending validators and update caches, and removes source validators'
+slashing records, missed-block bitmaps and public-key mappings while preserving
+slashing parameters. It then installs the local key with fresh distribution/slashing
+records and a synthetic self-delegation. Staking pools and bank supply are adjusted
+through the bank keeper. Removed validators' rewards
 are reassigned to the community pool and their distribution histories are cleared.
 The operator receives
 `1000000000000umfx` through a transfer that also creates its x/auth account.
@@ -222,17 +241,80 @@ height. Check the new network ID, a single expected validator, an existing
 `query auth account <operator>` result and funded bank balance. Verify that
 `query staking pool` reports bonded tokens equal to the validator's tokens and
 zero unbonded tokens, and that the operator's sole self-delegation has matching
-shares and balance. After a clean stop, use ordinary
-`manifestd start --home <copied-fork-home>` and verify further block progression.
-Run `in-place-testnet` only once per copied home; the first fork block persists
-the application rewrite.
+shares and balance. After a clean stop, restart with the same binary and authority:
 
-For an in-process migration test, append
-`--trigger-testnet-upgrade <handler-name>` to schedule the handler at copied height
-+ 1. With a handler present in the binary, it runs on the first fork block without
-a cosmovisor swap. To rehearse the real halt and swap, omit that flag, stage the
-target binary, and submit a real `MsgSoftwareUpgrade` signed by the fork operator.
-The target binary's version must match the plan name. Ensure
+```bash
+export POA_ADMIN_ADDRESS=<same-local-manifest-account-address>
+build/manifestd start --home <copied-fork-home> --minimum-gas-prices 0umfx
+```
+
+In another terminal, verify further block progression and run
+`build/manifestd query upgrade authority --node <fork-rpc-url>`; the returned
+address must still equal the fork operator. Put `POA_ADMIN_ADDRESS` in the
+service's persistent environment as well, rather than relying on an earlier
+interactive shell export. Repeat the authority query after every restart or
+binary swap. Run `in-place-testnet` only once per copied home; the first fork
+block persists the application rewrite.
+
+For a **forced first-block migration**, start from a fresh prepared copy and
+build the target migration code under an upgrade name that has **never completed
+in that copied state**. For example, after confirming the following rehearsal
+name is unused:
+
+```bash
+TARGET_UPGRADE=eng-879-migration-rehearsal-1
+make build VERSION="$TARGET_UPGRADE"
+build/manifestd version
+export POA_ADMIN_ADDRESS=<local-manifest-account-address>
+build/manifestd in-place-testnet manifest-ledger-fork-1 "$POA_ADMIN_ADDRESS" \
+  --home <fresh-copied-fork-home> --skip-confirmation --minimum-gas-prices 0umfx \
+  --trigger-testnet-upgrade "$TARGET_UPGRADE"
+```
+
+The flag and binary version must match. Reusing the last completed upgrade name
+fails with `upgrade with name ... has already been completed`; choosing a name
+without a handler causes an upgrade halt. The initializer schedules the new plan
+at copied application height + 1, replacing any pending source plan. Because it
+is due on the first fork block, `x/upgrade` skips the old completed-handler check
+and executes the target handler. Do not mark that height in
+`--unsafe-skip-upgrades`. Verify `query upgrade applied "$TARGET_UPGRADE"` at the
+fork RPC reports the expected height, and retain the target-version binary for
+ordinary restarts after the migration.
+
+This executes the target code's module migrations against the copied module
+version map; changing the version label alone does not add a migration. The
+target application must load the source stores before the initializer can
+schedule anything. The flag cannot repair incompatible state encodings or
+substitute for startup store-loader work needed by added, deleted or renamed
+stores. Rehearse those changes with their required store loader and binary swap.
+
+For a **real halt and binary swap**, first establish the ordinary fork replay
+above under the compatible source version, without the trigger flag. Build the
+target code in a separate checkout with
+`make build VERSION=<unused-target-upgrade-name>` and pre-stage that binary in
+the fork's `cosmovisor/upgrades/<unused-target-upgrade-name>/bin/` directory, or
+keep it separately for a manual swap. While the source binary is still running,
+submit a transaction signed by the fork operator containing:
+
+```json
+{
+  "@type": "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+  "authority": "<local-manifest-account-address>",
+  "plan": {
+    "name": "<unused-target-upgrade-name>",
+    "height": "<future-fork-height>",
+    "info": "fork upgrade rehearsal"
+  }
+}
+```
+
+Use the fork chain ID and RPC when signing/broadcasting, and choose a future
+height with enough time to verify `query upgrade plan`. The source binary must
+not register the target handler: it halts at that height and writes
+`data/upgrade-info.json`. Start the pre-staged target binary only at this halt;
+its version must equal the plan name. Starting it early fails the upgrade
+checks. After the swap, verify the applied height, block progression and upgrade
+authority, keeping the same `POA_ADMIN_ADDRESS` throughout. Ensure
 `manifestd status --home <copied-fork-home>` reaches the fork RPC through
 `config/client.toml`: cosmovisor uses that command without an explicit `--node`.
 
