@@ -35,6 +35,7 @@ import (
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/version"
+	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
 	gogotypes "github.com/cosmos/gogoproto/types"
 )
 
@@ -559,4 +560,33 @@ func TestTestnetIncompleteJournalPrecedesMixedStateDecoding(t *testing.T) {
 	before := snapshotTestnetFiles(t, f.home)
 	require.ErrorContains(t, preflightTestnetCommand(f.command(t, "start"), nil), "conversion is incomplete; create a fresh disposable copy")
 	require.Equal(t, before, snapshotTestnetFiles(t, f.home))
+}
+
+func TestTestnetPreflightSupportsSDKAndCometGenesisFiles(t *testing.T) {
+	for _, format := range []string{"sdk_app_genesis", "legacy_comet_genesis"} {
+		t.Run(format, func(t *testing.T) {
+			f := newTestnetPreflightFixture(t)
+			if format == "sdk_app_genesis" {
+				genesis, err := genutiltypes.AppGenesisFromFile(f.config.GenesisFile())
+				require.NoError(t, err)
+				genesis.AppName = "manifestd"
+				genesis.AppVersion = "v2.3.1"
+				genesis.AppState = json.RawMessage(`{"bank":{"balances":[],"supply":[]}}`)
+				require.NoError(t, genesis.SaveAs(f.config.GenesisFile()))
+				contents, err := os.ReadFile(f.config.GenesisFile())
+				require.NoError(t, err)
+				var fields map[string]json.RawMessage
+				require.NoError(t, json.Unmarshal(contents, &fields))
+				require.JSONEq(t, `1`, string(fields["initial_height"]))
+				require.Contains(t, fields, "consensus")
+			}
+			// The cached record retains Comet's encoding in both cases, just as
+			// it does after ordinary SDK init followed by Comet startup.
+			before := snapshotTestnetFiles(t, f.home)
+			require.ErrorContains(t, preflightTestnetCommand(f.command(t, "in-place-testnet"), []string{"source", f.operator}), "requires a new chain ID different from source chain")
+			require.Equal(t, before, snapshotTestnetFiles(t, f.home))
+			require.NoError(t, preflightTestnetCommand(f.command(t, "in-place-testnet"), []string{"fork", f.operator}))
+			require.Equal(t, before, snapshotTestnetFiles(t, f.home))
+		})
+	}
 }

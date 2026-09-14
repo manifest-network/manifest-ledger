@@ -42,6 +42,7 @@ import (
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/version"
+	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
 )
 
 const (
@@ -553,9 +554,12 @@ func readTestnetCometState(cfg *cmtcfg.Config) (_ *cmtstate.State, err error) {
 	if err != nil {
 		return nil, err
 	}
-	var doc cmttypes.GenesisDoc
-	if err := cmtjson.Unmarshal(genesis, &doc); err != nil {
-		return nil, err
+	// SDK genesis files use AppGenesis (numeric initial_height and a nested
+	// consensus object). Its reader also supports legacy Comet genesis files.
+	// The cached genesis below remains Comet's own JSON representation.
+	doc, err := genutiltypes.AppGenesisFromReader(bytes.NewReader(genesis))
+	if err != nil {
+		return nil, fmt.Errorf("read application genesis: %w", err)
 	}
 	if doc.ChainID != state.ChainID {
 		return nil, fmt.Errorf("genesis and persisted Comet chain IDs disagree")
