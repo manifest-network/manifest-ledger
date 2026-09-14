@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"cosmossdk.io/log"
 	sdkmath "cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
+	circuittypes "cosmossdk.io/x/circuit/types"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
@@ -30,6 +32,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/server"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/module"
+	"github.com/cosmos/cosmos-sdk/version"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	distrkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
@@ -39,6 +43,7 @@ import (
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
+	"github.com/strangelove-ventures/poa"
 	poakeeper "github.com/strangelove-ventures/poa/keeper"
 
 	"github.com/manifest-network/manifest-ledger/app"
@@ -508,10 +513,23 @@ func setupInPlaceTestnet(t *testing.T) (sdk.Context, *app.ManifestApp) {
 }
 
 func setupInPlaceTestnetWithDB(t *testing.T, db dbm.DB, home, bondDenom string) (sdk.Context, *app.ManifestApp) {
+	return setupInPlaceTestnetWithOptions(t, db, home, bondDenom, nil)
+}
+
+func setupInPlaceTestnetWithOptions(t *testing.T, db dbm.DB, home, bondDenom string, overrides simtestutil.AppOptionsMap) (sdk.Context, *app.ManifestApp) {
 	t.Helper()
 	t.Setenv("POA_ADMIN_ADDRESS", sdk.AccAddress(ed25519.GenPrivKey().PubKey().Address()).String())
+	options := simtestutil.NewAppOptionsWithFlagHome(home).(simtestutil.AppOptionsMap)
+	for key, value := range overrides {
+		options[key] = value
+	}
 	chainApp := app.NewApp(log.NewNopLogger(), db, nil, true, app.DefaultCommissionRateMinMax,
-		simtestutil.NewAppOptionsWithFlagHome(home), baseapp.SetChainID(app.SimAppChainID))
+		options, baseapp.SetChainID(app.SimAppChainID))
+	for _, name := range []string{"rehearsal-upgrade", "authority-rehearsal"} {
+		chainApp.UpgradeKeeper.SetUpgradeHandler(name, func(_ context.Context, _ upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) {
+			return vm, nil
+		})
+	}
 	genesis := chainApp.DefaultGenesis()
 	pubKey, err := cryptocodec.FromCmtPubKeyInterface(ed25519.GenPrivKey().PubKey())
 	require.NoError(t, err)
@@ -627,6 +645,9 @@ func inPlaceTestnetAppOptions(home string, pubKey crypto.PubKey, operator sdk.Ac
 }
 
 func TestNewTestnetAppLoadsCommittedStateAndConverts(t *testing.T) {
+	previousVersion := version.Version
+	version.Version = "callback-upgrade"
+	t.Cleanup(func() { version.Version = previousVersion })
 	db := dbm.NewMemDB()
 	sourceCtx, source := setupInPlaceTestnetWithDB(t, db, t.TempDir(), appparams.BondDenom)
 	operator := sdk.MustAccAddressFromBech32(source.POAKeeper.GetAdmin(sourceCtx))
@@ -652,4 +673,104 @@ func TestNewTestnetAppLoadsCommittedStateAndConverts(t *testing.T) {
 	require.Equal(t, fork.LastBlockHeight()+testnetUpgradeDelay, plan.Height)
 	message, broken := stakingkeeper.AllInvariants(fork.StakingKeeper)(ctx)
 	require.False(t, broken, message)
+}
+
+func TestInitAppForTestnetPreflightsUpgrade(t *testing.T) {
+	for _, tc := range []struct {
+		name, trigger, want string
+		skipped             bool
+	}{
+		{name: "unknown handler", trigger: "not-registered", want: "is not registered"},
+		{name: "skipped height", trigger: "rehearsal-upgrade", skipped: true, want: "is in --unsafe-skip-upgrades"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := simtestutil.AppOptionsMap{}
+			if tc.skipped {
+				opts[server.FlagUnsafeSkipUpgrades] = []int{2}
+			}
+			ctx, chainApp := setupInPlaceTestnetWithOptions(t, dbm.NewMemDB(), t.TempDir(), "upoa", opts)
+			operator := chainApp.POAKeeper.GetAdmin(ctx)
+			require.NoError(t, chainApp.UpgradeKeeper.ScheduleUpgrade(ctx, upgradetypes.Plan{Name: "pending-source", Height: 100}))
+			before := snapshotInPlaceTestnetStores(t, ctx, chainApp)
+			key := ed25519.GenPrivKey().PubKey()
+			require.ErrorContains(t, initAppForTestnet(chainApp, key.Address(), key, operator, tc.trigger), tc.want)
+			require.Equal(t, before, snapshotInPlaceTestnetStores(t, ctx, chainApp))
+		})
+	}
+}
+
+func TestInitAppForTestnetPreservesOrReplacesPendingPlan(t *testing.T) {
+	for _, trigger := range []string{"", "rehearsal-upgrade"} {
+		t.Run("trigger="+trigger, func(t *testing.T) {
+			ctx, chainApp := setupInPlaceTestnet(t)
+			pending := upgradetypes.Plan{Name: "pending-source", Height: 100}
+			require.NoError(t, chainApp.UpgradeKeeper.ScheduleUpgrade(ctx, pending))
+			key := ed25519.GenPrivKey().PubKey()
+			require.NoError(t, initAppForTestnet(chainApp, key.Address(), key, chainApp.POAKeeper.GetAdmin(ctx), trigger))
+			plan, err := chainApp.UpgradeKeeper.GetUpgradePlan(ctx)
+			require.NoError(t, err)
+			if trigger == "" {
+				require.Equal(t, pending, plan)
+			} else {
+				require.Equal(t, trigger, plan.Name)
+				require.Equal(t, int64(2), plan.Height)
+			}
+		})
+	}
+}
+
+func TestInitAppForTestnetRequiresCommittedHeight(t *testing.T) {
+	chainApp := app.NewApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true, app.DefaultCommissionRateMinMax,
+		simtestutil.NewAppOptionsWithFlagHome(t.TempDir()), baseapp.SetChainID(app.SimAppChainID))
+	t.Cleanup(func() { require.NoError(t, chainApp.Close()) })
+	key := ed25519.GenPrivKey().PubKey()
+	require.ErrorContains(t, initAppForTestnet(chainApp, key.Address(), key, sdk.AccAddress(key.Address()).String(), ""), "requires committed source chain state")
+}
+
+func TestInitAppForTestnetFreezesValidatorLifecycle(t *testing.T) {
+	ctx, chainApp := setupInPlaceTestnet(t)
+	operator := chainApp.POAKeeper.GetAdmin(ctx)
+	key := ed25519.GenPrivKey().PubKey()
+	blocked := []sdk.Msg{
+		&poa.MsgSetPower{}, &poa.MsgRemoveValidator{}, &poa.MsgCreateValidator{},
+		&circuittypes.MsgResetCircuitBreaker{},
+	}
+	for _, msg := range blocked {
+		allowed, err := chainApp.CircuitKeeper.IsAllowed(ctx, sdk.MsgTypeURL(msg))
+		require.NoError(t, err)
+		require.True(t, allowed, "source chain behavior must remain unchanged")
+	}
+	require.NoError(t, initAppForTestnet(chainApp, key.Address(), key, operator, ""))
+	before := snapshotInPlaceTestnetStores(t, ctx, chainApp)
+	for _, msg := range blocked {
+		// Router rejection protects direct and nested authz/group dispatch, before
+		// any PoA narrowing, validator writes, or circuit reset can execute.
+		handler := chainApp.MsgServiceRouter().Handler(msg)
+		require.NotNil(t, handler)
+		_, err := handler(ctx, msg)
+		require.ErrorContains(t, err, "circuit breaker disables execution of this message")
+	}
+	require.Equal(t, before, snapshotInPlaceTestnetStores(t, ctx, chainApp))
+	allowed, err := chainApp.CircuitKeeper.IsAllowed(ctx, sdk.MsgTypeURL(&upgradetypes.MsgSoftwareUpgrade{}))
+	require.NoError(t, err)
+	require.True(t, allowed, "upgrade rehearsals remain available")
+}
+
+func TestDeleteTestnetPrefixAcrossBatches(t *testing.T) {
+	ctx, chainApp := setupInPlaceTestnet(t)
+	store := ctx.KVStore(chainApp.GetKey(slashingtypes.StoreKey))
+	prefix := []byte{0xee}
+	store.Set([]byte{0xed, 0xff}, []byte("before"))
+	store.Set([]byte{0xef}, []byte("after"))
+	for i := range 700 {
+		key := append(bytes.Clone(prefix), byte(i>>8), byte(i))
+		store.Set(key, []byte("delete"))
+		store.Set(append(bytes.Clone(key), 0), []byte("delete extension"))
+	}
+	require.NoError(t, deleteTestnetPrefix(store, prefix))
+	iterator := storetypes.KVStorePrefixIterator(store, prefix)
+	require.False(t, iterator.Valid())
+	require.NoError(t, iterator.Close())
+	require.Equal(t, []byte("before"), store.Get([]byte{0xed, 0xff}))
+	require.Equal(t, []byte("after"), store.Get([]byte{0xef}))
 }

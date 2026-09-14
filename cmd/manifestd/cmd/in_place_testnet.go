@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	stdmath "math"
 
 	"github.com/spf13/cast"
 
@@ -16,6 +17,7 @@ import (
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
+	circuittypes "cosmossdk.io/x/circuit/types"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
@@ -26,6 +28,7 @@ import (
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
+	"github.com/strangelove-ventures/poa"
 	poakeeper "github.com/strangelove-ventures/poa/keeper"
 
 	"github.com/manifest-network/manifest-ledger/app"
@@ -116,6 +119,17 @@ func initAppForTestnet(chainApp *app.ManifestApp, newValAddr cmtbytes.HexBytes, 
 	if err := validateTestnetAuthority(operator, chainApp.POAKeeper.GetAdmin(ctx)); err != nil {
 		return err
 	}
+	if upgradeToTrigger != "" {
+		if !chainApp.UpgradeKeeper.HasHandler(upgradeToTrigger) {
+			return fmt.Errorf("testnet upgrade handler %q is not registered in this binary", upgradeToTrigger)
+		}
+		if chainApp.LastBlockHeight() > stdmath.MaxInt64-testnetUpgradeDelay {
+			return fmt.Errorf("testnet upgrade height overflows int64")
+		}
+		if height := chainApp.LastBlockHeight() + testnetUpgradeDelay; chainApp.UpgradeKeeper.IsSkipHeight(height) {
+			return fmt.Errorf("testnet upgrade height %d is in --unsafe-skip-upgrades", height)
+		}
+	}
 	ctx, write := ctx.CacheContext()
 	valAddr := sdk.ValAddress(operator)
 	validator, err := stakingtypes.NewValidator(valAddr.String(), pubKey, stakingtypes.Description{Moniker: "Testnet Validator"})
@@ -179,6 +193,19 @@ func initAppForTestnet(chainApp *app.ManifestApp, newValAddr cmtbytes.HexBytes, 
 	}
 	if err := chainApp.POAKeeper.SetAbsoluteChangedInBlockPower(ctx, 0); err != nil {
 		return err
+	}
+	// The SDK's fixed power exceeds PoA's removal arithmetic, and nonzero
+	// changes leave inconsistent power indexes/pool accounting in this PoA
+	// version. These forks therefore keep one immutable validator until ENG-945.
+	// The router's circuit check also covers messages dispatched by authz/group.
+	// Disable reset itself so an authority transaction cannot remove this guard.
+	for _, msg := range []sdk.Msg{
+		&poa.MsgSetPower{}, &poa.MsgRemoveValidator{}, &poa.MsgCreateValidator{},
+		&circuittypes.MsgResetCircuitBreaker{},
+	} {
+		if err := chainApp.CircuitKeeper.DisableList.Set(ctx, sdk.MsgTypeURL(msg)); err != nil {
+			return fmt.Errorf("freeze testnet validator changes: %w", err)
+		}
 	}
 
 	// Fund rehearsal transactions in the fee denomination (umfx), which can
@@ -264,18 +291,29 @@ func clearTestnetValidatorState(ctx sdk.Context, chainApp *app.ManifestApp) erro
 }
 
 func deleteTestnetPrefix(store storetypes.KVStore, prefix []byte) error {
-	iterator := storetypes.KVStorePrefixIterator(store, prefix)
-	var keys [][]byte
-	for ; iterator.Valid(); iterator.Next() {
-		keys = append(keys, bytes.Clone(iterator.Key()))
+	// Close each iterator before deleting, retaining at most one batch of key
+	// copies. CacheContext still retains the complete rewrite until write().
+	const batchSize = 256
+	start, end := prefix, storetypes.PrefixEndBytes(prefix)
+	for {
+		iterator := store.Iterator(start, end)
+		keys := make([][]byte, 0, batchSize)
+		for ; iterator.Valid() && len(keys) < batchSize; iterator.Next() {
+			keys = append(keys, bytes.Clone(iterator.Key()))
+		}
+		if err := iterator.Close(); err != nil {
+			return err
+		}
+		if len(keys) == 0 {
+			return nil
+		}
+		for _, key := range keys {
+			store.Delete(key)
+		}
+		// Appending a zero byte advances past this exact key while retaining
+		// every lexicographically later key, including keys extending it.
+		start = append(bytes.Clone(keys[len(keys)-1]), 0)
 	}
-	if err := iterator.Close(); err != nil {
-		return err
-	}
-	for _, key := range keys {
-		store.Delete(key)
-	}
-	return nil
 }
 
 // Adjust only the staking denomination, using bank APIs to keep supply and

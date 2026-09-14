@@ -3,3 +3,4 @@
 \.pb\.gw\.go
 \.pulsar\.go
 /testnet\.go
+/app/upgrades/next/handler_fixture\.go

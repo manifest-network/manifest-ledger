@@ -21,6 +21,8 @@ env:
   GO_VERSION: 1.25.9
   TAR_PATH: /tmp/manifest-docker-image.tar
   IMAGE_NAME: manifest-docker-image
+  UPGRADE_TAR_PATH: /tmp/manifest-testnet-upgrade-image.tar
+  UPGRADE_IMAGE_NAME: manifest-testnet-upgrade-image
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -48,13 +50,30 @@ jobs:
           tags: manifest:local
           outputs: type=docker,dest=${{ env.TAR_PATH }}
           build-args: |
-            BUILD_CMD=build
+            BUILD_CMD=build-coverage
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.IMAGE_NAME }}
           path: ${{ env.TAR_PATH }}
+
+      - name: Build and export test-only upgrade image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          tags: manifest-testnet-upgrade:local
+          outputs: type=docker,dest=${{ env.UPGRADE_TAR_PATH }}
+          build-args: |
+            BUILD_CMD=build-coverage
+            BUILD_TAGS=muslc testnet_upgrade_fixture
+            VERSION=eng879-test-upgrade
+
+      - name: Upload test-only upgrade image
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.UPGRADE_IMAGE_NAME }}
+          path: ${{ env.UPGRADE_TAR_PATH }}
 
   e2e-tests:
     needs: build-docker
@@ -98,6 +117,17 @@ jobs:
         run: |
           docker image load -i ${{ env.TAR_PATH }}
           docker image ls -a
+
+      - name: Download test-only upgrade image
+        if: matrix.test == 'ictest-in-place-testnet'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.UPGRADE_IMAGE_NAME }}
+          path: /tmp
+
+      - name: Load test-only upgrade image
+        if: matrix.test == 'ictest-in-place-testnet'
+        run: docker image load -i ${{ env.UPGRADE_TAR_PATH }}
 
       - name: Run Test
         run: make ${{ matrix.test }}

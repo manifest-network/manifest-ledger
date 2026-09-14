@@ -82,27 +82,29 @@ BUILD_FLAGS := -tags "$(build_tags_comma_sep)" -ldflags '$(ldflags)' -trimpath
 
 all: install
 
-install:
+build-coverage install-coverage: COVERAGE_FLAGS = -cover -covermode=atomic -coverpkg=github.com/manifest-network/manifest-ledger/...
+
+install install-coverage:
 	@echo "--> ensure dependencies have not been modified"
 	@go mod verify
-	@echo "--> installing manifestd instrumented for coverage"
-	@go install $(BUILD_FLAGS) -cover -covermode=atomic -mod=readonly -coverpkg=github.com/manifest-network/manifest-ledger/... ./cmd/manifestd
+	@echo "--> installing manifestd"
+	@go install $(BUILD_FLAGS) $(COVERAGE_FLAGS) -mod=readonly ./cmd/manifestd
 
 init:
 	./scripts/init.sh
 
-build:
+build build-coverage:
 ifeq ($(OS),Windows_NT)
 	$(error demo server not supported)
 	exit 1
 else
-	go build -mod=readonly $(BUILD_FLAGS) -cover -covermode=atomic -coverpkg=github.com/manifest-network/manifest-ledger/... -o $(BUILD_DIR)/manifestd ./cmd/manifestd
+	go build -mod=readonly $(BUILD_FLAGS) $(COVERAGE_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 endif
 
 build-vendored:
 	go build -mod=vendor $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 
-.PHONY: all build build-linux install init lint build-vendored
+.PHONY: all build build-coverage build-linux install install-coverage init lint build-vendored
 
 ###############################################################################
 ###                          INTERCHAINTEST (ictest)                        ###
@@ -184,7 +186,17 @@ local-image:
 	@echo "--> Building local image"
 	docker build . -t manifest:local
 
-.PHONY: local-image
+local-image-coverage:
+	@echo "--> Building local image with coverage"
+	docker build . --build-arg BUILD_CMD=build-coverage -t manifest:local
+
+local-image-testnet-upgrade:
+	@echo "--> Building test-only upgrade image with coverage"
+	docker build . --build-arg BUILD_CMD=build-coverage \
+		--build-arg BUILD_TAGS='muslc testnet_upgrade_fixture' \
+		--build-arg VERSION=eng879-test-upgrade -t manifest-testnet-upgrade:local
+
+.PHONY: local-image local-image-coverage local-image-testnet-upgrade
 
 #################
 ###   Test    ###

@@ -23,6 +23,8 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	cmtjson "github.com/cometbft/cometbft/libs/json"
@@ -30,8 +32,10 @@ import (
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 
 	sdkmath "cosmossdk.io/math"
+	circuittypes "cosmossdk.io/x/circuit/types"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
@@ -45,24 +49,29 @@ func TestInPlaceTestnet(t *testing.T) {
 
 	for _, triggerUpgrade := range []bool{false, true} {
 		t.Run(fmt.Sprintf("trigger_upgrade=%t", triggerUpgrade), func(t *testing.T) {
-			testInPlaceTestnet(t, triggerUpgrade)
+			testInPlaceTestnet(t, triggerUpgrade, false)
 		})
 	}
+	t.Run("released_source_upgrade", func(t *testing.T) { testInPlaceTestnet(t, false, true) })
 }
 
-func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
+func testInPlaceTestnet(t *testing.T, triggerUpgrade, releasedSource bool) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 	logger := zaptest.NewLogger(t)
 	cfg := LocalChainConfig
 	cfg.Name = "in-place-testnet"
 	cfg.Env = append([]string(nil), cfg.Env...)
-	if ref := os.Getenv("IN_PLACE_TESTNET_IMAGE"); ref != "" {
-		separator := strings.LastIndex(ref, ":")
-		require.Greater(t, separator, strings.LastIndex(ref, "/"), "IN_PLACE_TESTNET_IMAGE must be repository:tag")
-		require.Less(t, separator, len(ref)-1, "IN_PLACE_TESTNET_IMAGE requires a tag")
-		cfg.Images = []ibc.DockerImage{{Repository: ref[:separator], Version: ref[separator+1:], UIDGID: "1025:1025"}}
+	targetImage := inPlaceTestnetImage(t, "IN_PLACE_TESTNET_IMAGE", "manifest:local")
+	cfg.Images = []ibc.DockerImage{targetImage}
+	cfg.EncodingConfig = AppEncoding()
+	circuittypes.RegisterInterfaces(cfg.EncodingConfig.InterfaceRegistry)
+	cfg.WithCodeCoverage()
+	if releasedSource {
+		// This is synthetic state produced by the published release, not a mainnet snapshot.
+		cfg.Images[0] = ibc.DockerImage{Repository: "ghcr.io/manifest-network/manifest-ledger", Version: "2.3.1", UIDGID: "1025:1025"}
+		cfg.Env[len(cfg.Env)-1] = "GOCOVERDIR=" // Do not mix released-binary counters into PR coverage.
 	}
 	validatorCount, fullNodeCount := 2, 0
 	chains, err := interchaintest.NewBuiltinChainFactory(logger, []*interchaintest.ChainSpec{{
@@ -90,11 +99,22 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 	require.NoError(t, err)
 	// Building the key must not create or fund an on-chain auth account. The fork
 	// is responsible for making this new account usable.
-	_, _, err = node.ExecQuery(ctx, "auth", "account", operator.FormattedAddress())
-	require.Error(t, err)
+	_, err = authtypes.NewQueryClient(node.GrpcConn).Account(ctx, &authtypes.QueryAccountRequest{Address: operator.FormattedAddress()})
+	require.Equal(t, codes.NotFound, grpcstatus.Code(err))
+	require.Equal(t, "account "+operator.FormattedAddress()+" not found", grpcstatus.Convert(err).Message())
+	var released *inPlaceTestnetReleasedState
+	if releasedSource {
+		released = seedInPlaceTestnetReleasedState(t, ctx, chain, existingUser)
+	}
 	validators, err := chain.StakingQueryValidators(ctx, stakingtypes.Bonded.String())
 	require.NoError(t, err)
 	require.Len(t, validators, 2)
+	sourceValidators, err := node.Client.Validators(ctx, nil, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, 2, sourceValidators.Total)
+	sourceConsensus, err := node.Client.ConsensusParams(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), sourceConsensus.ConsensusParams.ABCI.VoteExtensionsEnableHeight)
 	sourceHeight, err := chain.Height(ctx)
 	require.NoError(t, err)
 	require.Greater(t, sourceHeight, int64(1))
@@ -104,15 +124,25 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 	require.NotEmpty(t, upgradeName)
 
 	require.NoError(t, chain.StopAllNodes(ctx))
+	if !releasedSource {
+		for _, sourceNode := range chain.Validators {
+			dockerutil.CopyCoverageFromContainer(ctx, t, client, sourceNode.ContainerID(), sourceNode.HomeDir(), ExternalGoCoverDir)
+		}
+	}
 	require.NoError(t, node.RemoveContainer(ctx))
+	node.Image = targetImage
+	chain.Config().Images[0] = targetImage
 	// Config returns the environment slice used by CreateNodeContainer as well,
 	// so persist the local authority for both this boot and ordinary restarts.
 	forkEnv := chain.Config().Env
-	require.Len(t, forkEnv, 1)
+	require.Len(t, forkEnv, 2)
 	forkEnv[0] = "POA_ADMIN_ADDRESS=" + operator.FormattedAddress()
+	forkEnv[1] = "GOCOVERDIR=" + node.HomeDir()
 	// Use only the stopped local test chain's data volume. Replace consensus
-	// signing identity/state and remove peer discovery and the old consensus WAL
-	// before the SDK rewrites the application and CometBFT databases.
+	// signing identity/state and remove peer discovery. Keep the copied WAL so
+	// negative preflight snapshots cover it and successful conversion cleans it.
+	sourceKeyJSON, err := node.ReadFile(ctx, "config/priv_validator_key.json")
+	require.NoError(t, err)
 	freshPV := privval.NewFilePV(ed25519.GenPrivKey(), "", "")
 	keyJSON, err := cmtjson.Marshal(freshPV.Key)
 	require.NoError(t, err)
@@ -120,7 +150,7 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 	require.NoError(t, node.WriteFile(ctx, []byte(`{"height":"0","round":0,"step":0}`), "data/priv_validator_state.json"))
 	_, stderr, err = node.Exec(ctx, []string{
 		"rm", "-rf", path.Join(node.HomeDir(), "config/addrbook.json"),
-		path.Join(node.HomeDir(), "config/node_key.json"), path.Join(node.HomeDir(), "data/cs.wal"),
+		path.Join(node.HomeDir(), "config/node_key.json"),
 	}, cfg.Env)
 	require.NoError(t, err, "%s", stderr)
 	require.NoError(t, testutil.ModifyTomlConfigFile(ctx, logger, client, t.Name(), node.VolumeName, "config/config.toml", testutil.Toml{
@@ -131,6 +161,7 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 	}))
 
 	forkChainID := "manifest-in-place-testnet"
+	assertInPlaceTestnetPreflight(t, ctx, node, forkChainID, operator.FormattedAddress(), sourceKeyJSON, keyJSON)
 	command := node.BinCommand("in-place-testnet", forkChainID, operator.FormattedAddress(), "--skip-confirmation")
 	if triggerUpgrade {
 		command = append(command, "--trigger-testnet-upgrade", upgradeName)
@@ -156,6 +187,7 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 			}
 		}
 		_ = fork.StopContainer(cleanupCtx)
+		dockerutil.CopyCoverageFromContainer(cleanupCtx, t, client, fork.ContainerID(), node.HomeDir(), ExternalGoCoverDir)
 		_ = fork.RemoveContainer(cleanupCtx)
 	})
 	require.NoError(t, fork.StartContainer(ctx))
@@ -168,6 +200,7 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 	operatorValAddress, err := sdk.Bech32ifyAddressBytes(cfg.Bech32Prefix+"valoper", operator.Address())
 	require.NoError(t, err)
 	const expectedPower int64 = 900_000_000_000_000
+	expectedOperatorFunds := sdkmath.NewInt(1_000_000_000_000)
 	assertForkState := func(rpc *rpchttp.HTTP) {
 		t.Helper()
 		genesis, err := rpc.Genesis(ctx)
@@ -228,7 +261,8 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 		}
 		require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "auth", "account", operator.FormattedAddress()), &authResponse))
 		require.Equal(t, operator.FormattedAddress(), authResponse.Account.Value.Address)
-		require.True(t, inPlaceTestnetBalance(t, ctx, node, operator.FormattedAddress(), cfg.Denom).IsPositive())
+		require.True(t, expectedOperatorFunds.Equal(inPlaceTestnetBalance(t, ctx, node, operator.FormattedAddress(), cfg.Denom)), "operator funding changed unexpectedly")
+		assertInPlaceTestnetCircuit(t, ctx, node)
 		var authorityResponse struct {
 			Address string `json:"address"`
 		}
@@ -244,6 +278,9 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 		}
 	}
 	assertForkState(rpc)
+	if released != nil {
+		released.assertPreserved(t, ctx, node, false)
+	}
 	require.Equal(t, preservedBalance, inPlaceTestnetBalance(t, ctx, node, existingUser.FormattedAddress(), cfg.Denom))
 	genesisJSON, err := node.GenesisFileContent(ctx)
 	require.NoError(t, err)
@@ -262,11 +299,19 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 	forkHeight = waitForInPlaceTestnetHeight(t, ctx, rpc, forkChainID, status.SyncInfo.LatestBlockHeight+3)
 	require.Equal(t, preservedBalance.AddRaw(1), inPlaceTestnetBalance(t, ctx, node, existingUser.FormattedAddress(), cfg.Denom))
 
+	expectedOperatorFunds = expectedOperatorFunds.SubRaw(1)
 	assertForkState(rpc)
 
 	require.NoError(t, fork.StopContainer(ctx))
+	dockerutil.CopyCoverageFromContainer(ctx, t, client, fork.ContainerID(), node.HomeDir(), ExternalGoCoverDir)
 	require.NoError(t, fork.RemoveContainer(ctx))
 	forkRemoved = true
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		_ = node.StopContainer(cleanupCtx)
+		dockerutil.CopyCoverageFromContainer(cleanupCtx, t, client, node.ContainerID(), node.HomeDir(), ExternalGoCoverDir)
+	})
 	require.NoError(t, node.CreateNodeContainer(ctx))
 	require.NoError(t, node.StartContainer(ctx))
 	rpc, err = rpchttp.NewWithClient(chain.GetHostRPCAddress(), "/websocket", &http.Client{Timeout: 5 * time.Second})
@@ -290,6 +335,24 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade bool) {
 	require.Zero(t, payoutResponse.Code, "%s", payoutResponse.RawLog)
 	require.Equal(t, preservedBalance.AddRaw(2), inPlaceTestnetBalance(t, ctx, node, existingUser.FormattedAddress(), cfg.Denom))
 	assertForkState(rpc)
+	assertInPlaceTestnetLifecycleBlocked(t, ctx, node, operator, operatorValAddress, forkChainID, rpc)
+	assertForkState(rpc)
+	if released != nil {
+		released.assertPreserved(t, ctx, node, false)
+		runInPlaceTestnetReleasedUpgrade(t, ctx, chain, client, operator, forkChainID, released, assertForkState)
+	}
+}
+
+func inPlaceTestnetImage(t *testing.T, variable, fallback string) ibc.DockerImage {
+	t.Helper()
+	ref := os.Getenv(variable)
+	if ref == "" {
+		ref = fallback
+	}
+	separator := strings.LastIndex(ref, ":")
+	require.Greater(t, separator, strings.LastIndex(ref, "/"), "%s must be repository:tag", variable)
+	require.Less(t, separator, len(ref)-1, "%s requires a tag", variable)
+	return ibc.DockerImage{Repository: ref[:separator], Version: ref[separator+1:], UIDGID: "1025:1025"}
 }
 
 // inPlaceTestnetPoolResponse projects the staking pool's quoted token amounts.
@@ -300,8 +363,8 @@ type inPlaceTestnetPoolResponse struct {
 	} `json:"pool"`
 }
 
-// inPlaceTestnetDelegationsResponse omits unused AutoCLI pagination. The generated
-// PageResponse.Total uint64 cannot decode AutoCLI's quoted total with encoding/json.
+// inPlaceTestnetDelegationsResponse projects the fields asserted by this test
+// without coupling the query decoder to unused pagination or generated JSON tags.
 type inPlaceTestnetDelegationsResponse struct {
 	DelegationResponses []struct {
 		Delegation struct {
