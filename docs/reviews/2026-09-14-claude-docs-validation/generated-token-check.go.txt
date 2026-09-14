@@ -1,0 +1,100 @@
+package main
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"go/scanner"
+	"go/token"
+	"os"
+	"slices"
+)
+
+type scannedToken struct {
+	Kind    string `json:"kind"`
+	Literal string `json:"literal"`
+}
+
+type result struct {
+	Before string `json:"before"`
+	After string `json:"after"`
+	TokenCount int `json:"token_count"`
+	BeforeSHA256 string `json:"before_noncomment_token_sha256"`
+	AfterSHA256 string `json:"after_noncomment_token_sha256"`
+	Equal bool `json:"noncomment_tokens_equal"`
+}
+
+func scan(path string) ([]scannedToken, string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", err
+	}
+	files := token.NewFileSet()
+	file := files.AddFile(path, files.Base(), len(data))
+	var lexer scanner.Scanner
+	var scanErr error
+	lexer.Init(file, data, func(position token.Position, message string) {
+		if scanErr == nil {
+			scanErr = fmt.Errorf("%s: %s", position, message)
+		}
+	}, 0)
+	var tokens []scannedToken
+	for {
+		_, kind, literal := lexer.Scan()
+		if kind == token.EOF {
+			break
+		}
+		tokens = append(tokens, scannedToken{Kind: kind.String(), Literal: literal})
+	}
+	if scanErr != nil {
+		return nil, "", scanErr
+	}
+	encoded, err := json.Marshal(tokens)
+	if err != nil {
+		return nil, "", err
+	}
+	hash := sha256.Sum256(encoded)
+	return tokens, hex.EncodeToString(hash[:]), nil
+}
+
+func run() error {
+	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "--" {
+		args = args[1:]
+	}
+	if len(args) == 0 || len(args)%2 != 0 {
+		return fmt.Errorf("usage: token-check [--] BEFORE AFTER [BEFORE AFTER...]")
+	}
+	var results []result
+	allEqual := true
+	for i := 0; i < len(args); i += 2 {
+		before, beforeHash, err := scan(args[i])
+		if err != nil {
+			return err
+		}
+		after, afterHash, err := scan(args[i+1])
+		if err != nil {
+			return err
+		}
+		equal := slices.Equal(before, after)
+		allEqual = allEqual && equal
+		results = append(results, result{Before: args[i], After: args[i+1], TokenCount: len(before), BeforeSHA256: beforeHash, AfterSHA256: afterHash, Equal: equal})
+	}
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(results); err != nil {
+		return err
+	}
+	if !allEqual {
+		return fmt.Errorf("generated non-comment tokens changed")
+	}
+	return nil
+}
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}

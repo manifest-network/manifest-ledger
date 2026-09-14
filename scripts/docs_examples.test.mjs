@@ -43,6 +43,66 @@ test("frontend authentication survives wallet confirmation across second boundar
   assert.equal(request.url, `https://provider.example/v1/leases/${token.lease_uuid}/connection`);
 });
 
+test("frontend provider API URL clearing preserves the queried provider fields", async (t) => {
+  const code = example("../docs/FRONTEND.md", "### Set, preserve, or clear a provider API URL", "ts");
+  const providerUuid = "01902a9b-1234-7000-8000-000000000002";
+  for (const fixture of [
+    { name: "active provider with binary metadata", active: true, metadata: [0, 255, 128, 222, 173, 190, 239] },
+    { name: "inactive provider with binary metadata", active: false, metadata: [222, 173, 190, 239] },
+    { name: "provider with intentionally empty metadata", active: true, metadata: [] },
+  ]) {
+    await t.test(fixture.name, async () => {
+      const provider = {
+        uuid: providerUuid,
+        address: "manifest1currentmanager",
+        payoutAddress: "manifest1currentpayout",
+        metaHash: new Uint8Array(fixture.metadata),
+        active: fixture.active,
+        apiUrl: "https://provider.example",
+      };
+      const queryRequests = [];
+      const messages = [];
+      const encodedMessage = { typeUrl: "/liftedinit.sku.v1.MsgUpdateProvider", value: new Uint8Array([1]) };
+      const result = await runInNewContext(`(async () => {\n${code}\nreturn clearProviderAPIURL;\n})()`, {
+        Uint8Array,
+        authority: "manifest1authority",
+        providerUuid,
+        // Stale form fields must not replace the fresh query snapshot.
+        providerAddress: "manifest1stalecontroller",
+        payoutAddress: "manifest1stalepayout",
+        client: { liftedinit: { sku: { v1: { provider: async (request) => {
+          queryRequests.push(request.uuid);
+          return { provider };
+        } } } } },
+        // Capture the exact composer input; this tests the executable recipe,
+        // while protobuf encoding and on-chain update semantics have Go tests.
+        liftedinit: { sku: { v1: { MessageComposer: { encoded: { updateProvider: (message) => {
+          messages.push(message);
+          return encodedMessage;
+        } } } } } },
+      });
+      assert.deepEqual(queryRequests, [providerUuid]);
+      assert.equal(messages.length, 1);
+      assert.equal(result, encodedMessage);
+      assert.ok(messages[0].metaHash instanceof Uint8Array);
+      assert.deepEqual({ ...messages[0], metaHash: Array.from(messages[0].metaHash) }, {
+        authority: "manifest1authority",
+        uuid: providerUuid,
+        address: provider.address,
+        payoutAddress: provider.payoutAddress,
+        metaHash: fixture.metadata,
+        active: fixture.active,
+        apiUrl: "",
+        clearApiUrl: true,
+      });
+      // Clearing the URL must not become the explicit-empty metadata update
+      // that would erase a nonempty stored hash, nor mutate the query result.
+      assert.deepEqual(Array.from(provider.metaHash), fixture.metadata);
+      assert.equal(provider.apiUrl, "https://provider.example");
+    });
+  }
+});
+
 const mockManifestd = `#!/usr/bin/env node
 const fs = require("node:fs");
 const path = require("node:path");

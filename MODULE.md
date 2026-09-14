@@ -389,7 +389,7 @@ The SKU module manages providers (service entities) and SKUs (Stock Keeping Unit
     - `payout-address`: Address to receive lease payments; protected bank destinations are rejected. The governance (`gov`) module account is the sole module-account receiving exemption.
     - `active`: `true` keeps the provider active or reactivates it after its SKU deactivation cascade is complete. `false` preserves an already-inactive provider; use `deactivate-provider` to deactivate an active one.
   - Flags:
-    - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
+    - `--meta-hash`: Hex-encoded metadata hash; omitted or empty clears it. Resend the current hex value to preserve it.
     - `--api-url`: New HTTPS API endpoint URL; omit to preserve the current URL
     - `--clear-api-url`: Remove the current URL; cannot be combined with a nonempty `--api-url`
 
@@ -414,7 +414,7 @@ The SKU module manages providers (service entities) and SKUs (Stock Keeping Unit
     - `base-price`: Positive price exactly divisible by the unit's seconds (e.g., `86400umfx` daily for `1umfx` per second)
     - `active`: `true` keeps the SKU active or reactivates it if its provider is active. `false` preserves an already-inactive SKU; use `deactivate-sku` to deactivate an active one.
   - Flags:
-    - `--meta-hash`: Hex-encoded hash of off-chain metadata (optional)
+    - `--meta-hash`: Hex-encoded metadata hash; omitted or empty clears it. Resend the current hex value to preserve it.
 
   **Example:** `manifestd tx sku update-sku 01912345-6789-7abc-8def-0123456789ab 01912345-6789-7abc-8def-0123456789ab "Updated Name" 2 86400umfx true --meta-hash deadbeef --from authority`
 

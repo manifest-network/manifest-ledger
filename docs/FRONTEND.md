@@ -51,10 +51,11 @@ const credit = await client.liftedinit.billing.v1.creditAccount({
   tenant: "manifest1...",
   pagination: { key: new Uint8Array(), limit: 100n },
 });
-// credit.balances           — one cursor page of all bank balances
-// credit.availableBalances  — the same page minus reserved_amounts
-// Follow credit.pagination.nextKey to read the next page. Offset/countTotal
-// are intentionally rejected so each request stays bounded.
+// credit.balances           — spendable amounts in one bank-balance cursor page
+// credit.availableBalances  — those spendable amounts minus reserved_amounts
+// Fully locked denoms are omitted, so balances can be empty with a nextKey.
+// Follow credit.pagination.nextKey until empty. Offset/countTotal are
+// intentionally rejected so each request stays bounded.
 // credit.creditAccount.reservedAmounts — R = live modern remaining tranches + U
 // credit.creditAccount.unattributedReservedAmounts — U, shared live historical cohort
 // credit.creditAccount.unattributedLeaseCount — exact live historical cohort size
@@ -148,20 +149,36 @@ preserves the stored URL. New clients clear it explicitly with
 `clearApiUrl: true`. A non-empty `apiUrl` and `clearApiUrl: true` are mutually
 exclusive and the chain rejects that combination.
 
+This example requires a client generated from matching chain protos that include
+`clearApiUrl`. Older clients cannot encode that flag; sending only an empty
+`apiUrl` preserves the stored URL.
+
+The other mutable fields are replaced, including `metaHash`: empty bytes clear
+the metadata hash. To clear only the API URL, query a fresh provider snapshot
+and resend its other fields, including its active state. The typed RPC client
+returns `metaHash` as a `Uint8Array`; pass those bytes directly, without decoding
+them as the base64 string used by REST JSON. Review the snapshot before signing
+if another administrator may have updated the provider meanwhile.
+
 ```ts
+const { provider: currentProvider } = await client.liftedinit.sku.v1.provider({
+  uuid: providerUuid,
+});
+
 const clearProviderAPIURL = liftedinit.sku.v1.MessageComposer.encoded.updateProvider({
   authority,
-  uuid: providerUuid,
-  address: providerAddress,
-  payoutAddress,
-  metaHash: new Uint8Array(),
-  active: true,
+  uuid: currentProvider.uuid,
+  address: currentProvider.address,
+  payoutAddress: currentProvider.payoutAddress,
+  metaHash: currentProvider.metaHash,
+  active: currentProvider.active,
   apiUrl: "",
   clearApiUrl: true,
 });
 
 // To preserve the current URL while updating other fields, leave both values
 // at their protobuf defaults: apiUrl: "", clearApiUrl: false.
+// To deliberately clear metadata too, set metaHash: new Uint8Array().
 ```
 
 ### Fund a tenant's credit account (`MsgFundCredit`)

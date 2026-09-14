@@ -400,7 +400,7 @@ the disk-only codec persists account identities as raw address bytes.
 | closed_at | Timestamp | Closure time |
 | rejected_at | Timestamp | Rejection time |
 | expired_at | Timestamp | Expiration time |
-| last_settled_at | Timestamp | Accrual cursor through which complete seconds have settled; an ACTIVE lease retains any sub-second remainder here, while a CLOSED lease sets it to `closed_at` |
+| last_settled_at | Timestamp | Accrual cursor through which complete seconds have settled; ACTIVE leases retain a sub-second remainder. Normal close paths finalize it at `closed_at`; historical CLOSED imports can retain a final interval for specific-UUID withdrawal. |
 | rejection_reason | string | Provider's rejection reason (max 256 UTF-8 bytes) |
 | closure_reason | string | Closure reason (max 256 UTF-8 bytes) |
 | meta_hash | bytes | Hash/reference to off-chain deployment data (max 64 bytes, immutable) |

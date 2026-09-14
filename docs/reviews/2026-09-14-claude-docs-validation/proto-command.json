@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "make",
+    "proto-all"
+  ],
+  "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "environment_overrides": {
+    "GOTOOLCHAIN": "go1.26.8",
+    "GOMAXPROCS": "4",
+    "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build"
+  },
+  "display_command": "env GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build make proto-all",
+  "started_at_utc": "2026-09-14T13:19:03.194597+00:00",
+  "exit_status": 0,
+  "finished_at_utc": "2026-09-14T13:19:15.045217+00:00",
+  "combined_output": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep14-proto-all.log",
+  "combined_output_sha256": "9b218b522ea111fd418c6a76afc78d9351b617b9bdfdd282ede9f029059841de"
+}

@@ -1,0 +1,89 @@
+TAP version 13
+# Subtest: frontend provider API URL clearing preserves the queried provider fields
+    # Subtest: active provider with binary metadata
+    ok 1 - active provider with binary metadata
+      ---
+      duration_ms: 4.648196
+      type: 'test'
+      ...
+    # Subtest: inactive provider with binary metadata
+    not ok 2 - inactive provider with binary metadata
+      ---
+      duration_ms: 3.521904
+      type: 'test'
+      location: '/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep14-front-active-mutant/scripts/docs_examples.test.mjs:54:13'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly deep-equal:
+        + actual - expected
+
+          {
+        +   active: true,
+        -   active: false,
+            address: 'manifest1currentmanager',
+            apiUrl: '',
+            authority: 'manifest1authority',
+            clearApiUrl: true,
+            metaHash: [
+
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        authority: 'manifest1authority'
+        uuid: '01902a9b-1234-7000-8000-000000000002'
+        address: 'manifest1currentmanager'
+        payoutAddress: 'manifest1currentpayout'
+        metaHash:
+          0: 222
+          1: 173
+          2: 190
+          3: 239
+        active: false
+        apiUrl: ''
+        clearApiUrl: true
+      actual:
+        authority: 'manifest1authority'
+        uuid: '01902a9b-1234-7000-8000-000000000002'
+        address: 'manifest1currentmanager'
+        payoutAddress: 'manifest1currentpayout'
+        metaHash:
+          0: 222
+          1: 173
+          2: 190
+          3: 239
+        active: true
+        apiUrl: ''
+        clearApiUrl: true
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep14-front-active-mutant/scripts/docs_examples.test.mjs:88:14)
+        async Test.run (node:internal/test_runner/test:1208:7)
+        async TestContext.<anonymous> (file:///home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep14-front-active-mutant/scripts/docs_examples.test.mjs:54:5)
+        async Test.run (node:internal/test_runner/test:1208:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+      ...
+    # Subtest: provider with intentionally empty metadata
+    ok 3 - provider with intentionally empty metadata
+      ---
+      duration_ms: 1.288527
+      type: 'test'
+      ...
+    1..3
+not ok 1 - frontend provider API URL clearing preserves the queried provider fields
+  ---
+  duration_ms: 12.464283
+  type: 'test'
+  location: '/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep14-front-active-mutant/scripts/docs_examples.test.mjs:46:1'
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 4
+# suites 0
+# pass 2
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 107.84686

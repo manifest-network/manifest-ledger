@@ -388,7 +388,9 @@ type Lease struct {
 	// last_settled_at is the accrual cursor through which complete per-second
 	// charges have settled. For an ACTIVE lease it can precede the latest
 	// withdrawal time by less than one second so that fractional elapsed time is
-	// carried into the next settlement. A CLOSED lease sets it to closed_at.
+	// carried into the next settlement. Normal close paths finalize it at
+	// closed_at; historical CLOSED imports can retain a final interval for
+	// specific-UUID withdrawal.
 	LastSettledAt time.Time `protobuf:"bytes,8,opt,name=last_settled_at,json=lastSettledAt,proto3,stdtime" json:"last_settled_at"`
 	// acknowledged_at is the timestamp when the provider acknowledged the lease.
 	// Only set when state transitions from PENDING to ACTIVE.

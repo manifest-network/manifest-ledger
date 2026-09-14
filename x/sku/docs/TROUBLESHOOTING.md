@@ -22,7 +22,7 @@ This guide covers common errors and issues users may encounter when using the SK
 **Solution**:
 1. Check the provider's status:
    ```bash
-   manifestd query sku provider [provider-uuid]
+   manifestd query sku provider [provider-uuid] --output json
    ```
 2. If the provider is inactive, contact an authorized user (authority or allowed
    list member). If any of its SKUs are still active, first finish the
@@ -33,10 +33,12 @@ This guide covers common errors and issues users may encounter when using the SK
    ```bash
    manifestd tx sku deactivate-provider [provider-uuid] --from [authorized-key]
    ```
-3. After all of its SKUs are inactive, reactivate the provider:
+3. After all of its SKUs are inactive, reactivate the provider using its current address, payout address, and metadata hash:
    ```bash
-   manifestd tx sku update-provider [provider-uuid] [address] [payout-address] true --from [authorized-key]
+   manifestd tx sku update-provider [provider-uuid] [address] [payout-address] true \
+     --meta-hash [current-meta-hash-hex] --from [authorized-key]
    ```
+   Updates replace the metadata hash. Convert the JSON response's base64-encoded `meta_hash` bytes to hex for `--meta-hash`; use `--meta-hash ""` if the current hash is empty. Omitting the flag clears the hash.
    Existing SKUs remain inactive and require individual `update-sku` calls to
    reactivate; new SKUs can now be created.
 
@@ -299,10 +301,13 @@ active SKUs remain; an inactive provider can still need another cascade call.
    ```bash
    manifestd tx sku deactivate-provider [provider-uuid] --from authority
    ```
-2. Once all of its SKUs are inactive, reactivate the provider:
+2. Once all of its SKUs are inactive, query the provider and reactivate it using its current address, payout address, and metadata hash:
    ```bash
-   manifestd tx sku update-provider [provider-uuid] [address] [payout-address] true --from authority
+   manifestd query sku provider [provider-uuid] --output json
+   manifestd tx sku update-provider [provider-uuid] [address] [payout-address] true \
+     --meta-hash [current-meta-hash-hex] --from authority
    ```
+   Updates replace the metadata hash. Convert the JSON response's base64-encoded `meta_hash` bytes to hex for `--meta-hash`; use `--meta-hash ""` if the current hash is empty. Omitting the flag clears the hash.
 3. Then create the SKU, or reactivate a desired existing SKU with `update-sku`:
    ```bash
    manifestd tx sku create-sku [provider-uuid] "SKU Name" 1 3600upwr --from authority

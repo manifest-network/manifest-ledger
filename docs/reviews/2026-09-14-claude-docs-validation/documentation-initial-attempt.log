@@ -1,0 +1,325 @@
+TAP version 13
+# Subtest: frontend authentication survives wallet confirmation across second boundaries
+ok 1 - frontend authentication survives wallet confirmation across second boundaries
+  ---
+  duration_ms: 2.800867
+  type: 'test'
+  ...
+# Subtest: frontend provider API URL clearing preserves the queried provider fields
+    # Subtest: active provider with binary metadata
+    not ok 1 - active provider with binary metadata
+      ---
+      duration_ms: 0.992542
+      type: 'test'
+      location: '/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/scripts/docs_examples.test.mjs:54:13'
+      failureType: 'testCodeFailure'
+      error: 'Unexpected end of input'
+      code: 'ERR_TEST_FAILURE'
+      name: 'SyntaxError'
+      stack: |-
+        new Script (node:vm:117:7)
+        createScript (node:vm:269:10)
+        runInNewContext (node:vm:310:10)
+        TestContext.<anonymous> (file:///home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/scripts/docs_examples.test.mjs:66:28)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1201:25)
+        Test.start (node:internal/test_runner/test:1096:17)
+        TestContext.test (node:internal/test_runner/test:377:20)
+        TestContext.<anonymous> (file:///home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/scripts/docs_examples.test.mjs:54:13)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+      ...
+    # Subtest: inactive provider with binary metadata
+    not ok 2 - inactive provider with binary metadata
+      ---
+      duration_ms: 0.566878
+      type: 'test'
+      location: '/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/scripts/docs_examples.test.mjs:54:13'
+      failureType: 'testCodeFailure'
+      error: 'Unexpected end of input'
+      code: 'ERR_TEST_FAILURE'
+      name: 'SyntaxError'
+      stack: |-
+        new Script (node:vm:117:7)
+        createScript (node:vm:269:10)
+        runInNewContext (node:vm:310:10)
+        TestContext.<anonymous> (file:///home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/scripts/docs_examples.test.mjs:66:28)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1201:25)
+        Test.start (node:internal/test_runner/test:1096:17)
+        TestContext.test (node:internal/test_runner/test:377:20)
+        TestContext.<anonymous> (file:///home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/scripts/docs_examples.test.mjs:54:13)
+        async Test.run (node:internal/test_runner/test:1208:7)
+      ...
+    # Subtest: provider with intentionally empty metadata
+    not ok 3 - provider with intentionally empty metadata
+      ---
+      duration_ms: 0.574421
+      type: 'test'
+      location: '/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/scripts/docs_examples.test.mjs:54:13'
+      failureType: 'testCodeFailure'
+      error: 'Unexpected end of input'
+      code: 'ERR_TEST_FAILURE'
+      name: 'SyntaxError'
+      stack: |-
+        new Script (node:vm:117:7)
+        createScript (node:vm:269:10)
+        runInNewContext (node:vm:310:10)
+        TestContext.<anonymous> (file:///home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/scripts/docs_examples.test.mjs:66:28)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1201:25)
+        Test.start (node:internal/test_runner/test:1096:17)
+        TestContext.test (node:internal/test_runner/test:377:20)
+        TestContext.<anonymous> (file:///home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/scripts/docs_examples.test.mjs:54:13)
+        async Test.run (node:internal/test_runner/test:1208:7)
+      ...
+    1..3
+not ok 2 - frontend provider API URL clearing preserves the queried provider fields
+  ---
+  duration_ms: 2.914284
+  type: 'test'
+  location: '/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/scripts/docs_examples.test.mjs:46:1'
+  failureType: 'subtestsFailed'
+  error: '3 subtests failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: documented withdrawal workflow handles committed SDK envelopes and restart checkpoints
+    # Subtest: success
+    ok 1 - success
+      ---
+      duration_ms: 206.897089
+      type: 'test'
+      ...
+    # Subtest: timeout
+    ok 2 - timeout
+      ---
+      duration_ms: 1523.691056
+      type: 'test'
+      ...
+    # Subtest: execution-error
+    ok 3 - execution-error
+      ---
+      duration_ms: 315.506658
+      type: 'test'
+      ...
+    # Subtest: decode-error
+    ok 4 - decode-error
+      ---
+      duration_ms: 265.973047
+      type: 'test'
+      ...
+    # Subtest: broadcast-error
+    ok 5 - broadcast-error
+      ---
+      duration_ms: 42.259683
+      type: 'test'
+      ...
+    1..5
+ok 3 - documented withdrawal workflow handles committed SDK envelopes and restart checkpoints
+  ---
+  duration_ms: 2355.321472
+  type: 'test'
+  ...
+# Subtest: migration recipe confirms every stage and resumes without duplicate funding or leases
+    # Subtest: success
+    ok 1 - success
+      ---
+      duration_ms: 568.975526
+      type: 'test'
+      ...
+    # Subtest: delayed
+    ok 2 - delayed
+      ---
+      duration_ms: 946.664875
+      type: 'test'
+      ...
+    # Subtest: timeout
+    ok 3 - timeout
+      ---
+      duration_ms: 1804.302501
+      type: 'test'
+      ...
+    # Subtest: missing-event
+    ok 4 - missing-event
+      ---
+      duration_ms: 128.460645
+      type: 'test'
+      ...
+    # Subtest: ambiguous-event
+    ok 5 - ambiguous-event
+      ---
+      duration_ms: 143.75141
+      type: 'test'
+      ...
+    # Subtest: fund-broadcast-error
+    ok 6 - fund-broadcast-error
+      ---
+      duration_ms: 41.802531
+      type: 'test'
+      ...
+    # Subtest: fund-broadcast-rejection
+    ok 7 - fund-broadcast-rejection
+      ---
+      duration_ms: 40.656553
+      type: 'test'
+      ...
+    # Subtest: fund-execution-error
+    ok 8 - fund-execution-error
+      ---
+      duration_ms: 70.989874
+      type: 'test'
+      ...
+    # Subtest: create-broadcast-error
+    ok 9 - create-broadcast-error
+      ---
+      duration_ms: 102.897989
+      type: 'test'
+      ...
+    # Subtest: create-broadcast-rejection
+    ok 10 - create-broadcast-rejection
+      ---
+      duration_ms: 125.881384
+      type: 'test'
+      ...
+    # Subtest: create-execution-error
+    ok 11 - create-execution-error
+      ---
+      duration_ms: 159.236825
+      type: 'test'
+      ...
+    # Subtest: ack-broadcast-error
+    ok 12 - ack-broadcast-error
+      ---
+      duration_ms: 202.509318
+      type: 'test'
+      ...
+    # Subtest: ack-broadcast-rejection
+    ok 13 - ack-broadcast-rejection
+      ---
+      duration_ms: 189.828063
+      type: 'test'
+      ...
+    # Subtest: ack-execution-error
+    ok 14 - ack-execution-error
+      ---
+      duration_ms: 217.791772
+      type: 'test'
+      ...
+    1..14
+ok 4 - migration recipe confirms every stage and resumes without duplicate funding or leases
+  ---
+  duration_ms: 4746.460043
+  type: 'test'
+  ...
+# Subtest: deactivation recipe completes 151 SKUs using committed receipts and bounded state queries
+    # Subtest: success
+    ok 1 - success
+      ---
+      duration_ms: 552.806962
+      type: 'test'
+      ...
+    # Subtest: delayed
+    ok 2 - delayed
+      ---
+      duration_ms: 727.573505
+      type: 'test'
+      ...
+    # Subtest: timeout
+    ok 3 - timeout
+      ---
+      duration_ms: 1868.249523
+      type: 'test'
+      ...
+    # Subtest: deactivate-execution-error
+    ok 4 - deactivate-execution-error
+      ---
+      duration_ms: 105.420445
+      type: 'test'
+      ...
+    # Subtest: deactivate-broadcast-rejection
+    ok 5 - deactivate-broadcast-rejection
+      ---
+      duration_ms: 41.823288
+      type: 'test'
+      ...
+    # Subtest: deactivate-broadcast-error
+    ok 6 - deactivate-broadcast-error
+      ---
+      duration_ms: 39.318324
+      type: 'test'
+      ...
+    # Subtest: query-error
+    ok 7 - query-error
+      ---
+      duration_ms: 461.459293
+      type: 'test'
+      ...
+    1..7
+ok 5 - deactivation recipe completes 151 SKUs using committed receipts and bounded state queries
+  ---
+  duration_ms: 3797.972404
+  type: 'test'
+  ...
+# Subtest: UUID extraction recipes use committed SDK events with empty legacy logs
+ok 6 - UUID extraction recipes use committed SDK events with empty legacy logs
+  ---
+  duration_ms: 15.470534
+  type: 'test'
+  ...
+# Subtest: domain lookup documentation uses the registered billing command
+ok 7 - domain lookup documentation uses the registered billing command
+  ---
+  duration_ms: 1.433713
+  type: 'test'
+  ...
+# Subtest: deactivation restart rejects a provider reactivated after its saved receipt
+    # Subtest: 0 active SKUs
+    ok 1 - 0 active SKUs
+      ---
+      duration_ms: 649.145849
+      type: 'test'
+      ...
+    # Subtest: 3 active SKUs
+    ok 2 - 3 active SKUs
+      ---
+      duration_ms: 544.160786
+      type: 'test'
+      ...
+    1..2
+ok 8 - deactivation restart rejects a provider reactivated after its saved receipt
+  ---
+  duration_ms: 1193.664628
+  type: 'test'
+  ...
+# Subtest: provider auth v2 matches the fixed canonical message vector
+ok 9 - provider auth v2 matches the fixed canonical message vector
+  ---
+  duration_ms: 1.415554
+  type: 'test'
+  ...
+# Subtest: provider auth v2 rejects replay into another trusted context
+ok 10 - provider auth v2 rejects replay into another trusted context
+  ---
+  duration_ms: 1.494959
+  type: 'test'
+  ...
+# Subtest: provider auth v2 pins expiration, future skew, hash and version rules
+ok 11 - provider auth v2 pins expiration, future skew, hash and version rules
+  ---
+  duration_ms: 0.853704
+  type: 'test'
+  ...
+# Subtest: provider auth v2 includes a canonical HTTPS API base path
+ok 12 - provider auth v2 includes a canonical HTTPS API base path
+  ---
+  duration_ms: 0.303588
+  type: 'test'
+  ...
+1..12
+# tests 43
+# suites 0
+# pass 39
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12194.325011

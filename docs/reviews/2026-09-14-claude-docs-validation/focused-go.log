@@ -1,0 +1,96 @@
+=== RUN   TestUpdateProvider
+=== RUN   TestUpdateProvider/success;_update_provider
+=== RUN   TestUpdateProvider/fail;_unauthorized_sender
+=== RUN   TestUpdateProvider/fail;_provider_not_found
+=== RUN   TestUpdateProvider/fail;_empty_uuid
+=== RUN   TestUpdateProvider/fail;_cannot_deactivate_via_UpdateProvider
+--- PASS: TestUpdateProvider (0.15s)
+    --- PASS: TestUpdateProvider/success;_update_provider (0.00s)
+    --- PASS: TestUpdateProvider/fail;_unauthorized_sender (0.00s)
+    --- PASS: TestUpdateProvider/fail;_provider_not_found (0.00s)
+    --- PASS: TestUpdateProvider/fail;_empty_uuid (0.00s)
+    --- PASS: TestUpdateProvider/fail;_cannot_deactivate_via_UpdateProvider (0.00s)
+=== RUN   TestUpdateProviderAPIURLPatchSemantics
+=== RUN   TestUpdateProviderAPIURLPatchSemantics/legacy_omitted_value_preserves
+=== RUN   TestUpdateProviderAPIURLPatchSemantics/explicit_empty_value_preserves
+=== RUN   TestUpdateProviderAPIURLPatchSemantics/non-empty_value_replaces
+=== RUN   TestUpdateProviderAPIURLPatchSemantics/clear_flag_removes
+=== RUN   TestUpdateProviderAPIURLPatchSemantics/set_and_clear_is_rejected_without_mutation
+--- PASS: TestUpdateProviderAPIURLPatchSemantics (0.12s)
+    --- PASS: TestUpdateProviderAPIURLPatchSemantics/legacy_omitted_value_preserves (0.00s)
+    --- PASS: TestUpdateProviderAPIURLPatchSemantics/explicit_empty_value_preserves (0.00s)
+    --- PASS: TestUpdateProviderAPIURLPatchSemantics/non-empty_value_replaces (0.00s)
+    --- PASS: TestUpdateProviderAPIURLPatchSemantics/clear_flag_removes (0.00s)
+    --- PASS: TestUpdateProviderAPIURLPatchSemantics/set_and_clear_is_rejected_without_mutation (0.00s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/x/sku/keeper        0.379s
+=== RUN   TestMsgUpdateProviderValidate
+=== RUN   TestMsgUpdateProviderValidate/valid
+=== RUN   TestMsgUpdateProviderValidate/invalid:_zero_ID
+=== RUN   TestMsgUpdateProviderValidate/invalid:_meta_hash_exceeds_max_length
+=== RUN   TestMsgUpdateProviderValidate/valid:_meta_hash_at_max_length
+--- PASS: TestMsgUpdateProviderValidate (0.01s)
+    --- PASS: TestMsgUpdateProviderValidate/valid (0.00s)
+    --- PASS: TestMsgUpdateProviderValidate/invalid:_zero_ID (0.00s)
+    --- PASS: TestMsgUpdateProviderValidate/invalid:_meta_hash_exceeds_max_length (0.00s)
+    --- PASS: TestMsgUpdateProviderValidate/valid:_meta_hash_at_max_length (0.00s)
+=== RUN   TestMsgUpdateProviderValidateNewFields
+=== RUN   TestMsgUpdateProviderValidateNewFields/valid:_with_api_url
+=== RUN   TestMsgUpdateProviderValidateNewFields/valid:_without_optional_fields_(keep_existing)
+=== RUN   TestMsgUpdateProviderValidateNewFields/valid:_explicitly_clear_api_url
+=== RUN   TestMsgUpdateProviderValidateNewFields/invalid:_set_and_clear_api_url
+=== RUN   TestMsgUpdateProviderValidateNewFields/invalid:_HTTP_API_URL
+--- PASS: TestMsgUpdateProviderValidateNewFields (0.00s)
+    --- PASS: TestMsgUpdateProviderValidateNewFields/valid:_with_api_url (0.00s)
+    --- PASS: TestMsgUpdateProviderValidateNewFields/valid:_without_optional_fields_(keep_existing) (0.00s)
+    --- PASS: TestMsgUpdateProviderValidateNewFields/valid:_explicitly_clear_api_url (0.00s)
+    --- PASS: TestMsgUpdateProviderValidateNewFields/invalid:_set_and_clear_api_url (0.00s)
+    --- PASS: TestMsgUpdateProviderValidateNewFields/invalid:_HTTP_API_URL (0.00s)
+=== RUN   TestMsgUpdateProviderAdditiveWireCompatibility
+--- PASS: TestMsgUpdateProviderAdditiveWireCompatibility (0.00s)
+=== RUN   TestMsgUpdateProviderJSONCompatibility
+--- PASS: TestMsgUpdateProviderJSONCompatibility (0.00s)
+=== RUN   TestMsgUpdateProviderLegacyAminoCompatibility
+--- PASS: TestMsgUpdateProviderLegacyAminoCompatibility (0.00s)
+=== RUN   TestMsgUpdateProviderAdditivePulsarCompatibility
+--- PASS: TestMsgUpdateProviderAdditivePulsarCompatibility (0.00s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/x/sku/types 0.064s
+=== RUN   TestMsgUpdateProviderClearAPIURL
+=== RUN   TestMsgUpdateProviderClearAPIURL/omitted_URL_preserves_existing_value
+=== RUN   TestMsgUpdateProviderClearAPIURL/explicit_empty_URL_preserves_existing_value
+=== RUN   TestMsgUpdateProviderClearAPIURL/clear_URL
+=== RUN   TestMsgUpdateProviderClearAPIURL/clear_with_empty_URL
+=== RUN   TestMsgUpdateProviderClearAPIURL/replace_URL
+=== RUN   TestMsgUpdateProviderClearAPIURL/conflicting_flags
+--- PASS: TestMsgUpdateProviderClearAPIURL (0.02s)
+    --- PASS: TestMsgUpdateProviderClearAPIURL/omitted_URL_preserves_existing_value (0.01s)
+    --- PASS: TestMsgUpdateProviderClearAPIURL/explicit_empty_URL_preserves_existing_value (0.00s)
+    --- PASS: TestMsgUpdateProviderClearAPIURL/clear_URL (0.00s)
+    --- PASS: TestMsgUpdateProviderClearAPIURL/clear_with_empty_URL (0.00s)
+    --- PASS: TestMsgUpdateProviderClearAPIURL/replace_URL (0.00s)
+    --- PASS: TestMsgUpdateProviderClearAPIURL/conflicting_flags (0.00s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/x/sku/client/cli    0.237s
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/full_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid
+--- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt (0.64s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment (0.13s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment (0.16s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/full_payment (0.11s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full (0.12s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid (0.11s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch
+--- PASS: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts (0.23s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch (0.11s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch (0.11s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder
+--- PASS: TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder (0.10s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/x/billing/keeper    1.112s
