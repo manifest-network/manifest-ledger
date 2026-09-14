@@ -3,7 +3,7 @@ ARG BUILD_CMD=build
 
 SHELL ["/bin/sh", "-ecuxo", "pipefail"]
 
-RUN apk add --no-cache ca-certificates build-base git
+RUN apk add --no-cache ca-certificates build-base git curl
 
 WORKDIR /code
 
@@ -14,7 +14,9 @@ RUN set -eux; \
     if [ ! -z "${WASM_VERSION}" ]; then \
       WASMVM_REPO=$(echo $WASM_VERSION | awk '{print $1}'); \
       WASMVM_VERS=$(echo $WASM_VERSION | awk '{print $2}'); \
-      wget -O /lib/libwasmvm_muslc.a https://${WASMVM_REPO%/v2}/releases/download/${WASMVM_VERS}/libwasmvm_muslc.${ARCH}.a; \
+      curl --fail --location --retry 5 --retry-delay 3 --retry-max-time 180 \
+        --connect-timeout 15 --max-time 120 --output /lib/libwasmvm_muslc.a \
+        "https://${WASMVM_REPO%/v2}/releases/download/${WASMVM_VERS}/libwasmvm_muslc.${ARCH}.a"; \
       chmod +x /lib/libwasmvm_muslc.a; \
       ln -s /lib/libwasmvm_muslc.a /lib/libwasmvm_muslc.${ARCH}.a; \
     fi; \
