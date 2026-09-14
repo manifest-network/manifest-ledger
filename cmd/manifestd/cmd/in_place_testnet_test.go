@@ -733,6 +733,8 @@ func TestInitAppForTestnetFreezesValidatorLifecycle(t *testing.T) {
 	key := ed25519.GenPrivKey().PubKey()
 	blocked := []sdk.Msg{
 		&poa.MsgSetPower{}, &poa.MsgRemoveValidator{}, &poa.MsgCreateValidator{},
+		&stakingtypes.MsgCreateValidator{}, &stakingtypes.MsgDelegate{}, &stakingtypes.MsgUndelegate{},
+		&stakingtypes.MsgBeginRedelegate{}, &stakingtypes.MsgCancelUnbondingDelegation{}, &stakingtypes.MsgUpdateParams{},
 		&circuittypes.MsgResetCircuitBreaker{},
 	}
 	for _, msg := range blocked {
@@ -743,17 +745,20 @@ func TestInitAppForTestnetFreezesValidatorLifecycle(t *testing.T) {
 	require.NoError(t, initAppForTestnet(chainApp, key.Address(), key, operator, ""))
 	before := snapshotInPlaceTestnetStores(t, ctx, chainApp)
 	for _, msg := range blocked {
-		// Router rejection protects direct and nested authz/group dispatch, before
+		// Router rejection protects direct and nested authz/group/Wasm dispatch, before
 		// any PoA narrowing, validator writes, or circuit reset can execute.
 		handler := chainApp.MsgServiceRouter().Handler(msg)
 		require.NotNil(t, handler)
 		_, err := handler(ctx, msg)
-		require.ErrorContains(t, err, "circuit breaker disables execution of this message")
+		require.ErrorContains(t, err, "circuit breaker disables execution of this message", sdk.MsgTypeURL(msg))
 	}
 	require.Equal(t, before, snapshotInPlaceTestnetStores(t, ctx, chainApp))
 	allowed, err := chainApp.CircuitKeeper.IsAllowed(ctx, sdk.MsgTypeURL(&upgradetypes.MsgSoftwareUpgrade{}))
 	require.NoError(t, err)
 	require.True(t, allowed, "upgrade rehearsals remain available")
+	allowed, err = chainApp.CircuitKeeper.IsAllowed(ctx, sdk.MsgTypeURL(&stakingtypes.MsgEditValidator{}))
+	require.NoError(t, err)
+	require.True(t, allowed, "PoA-supported validator metadata edits remain available")
 }
 
 func TestDeleteTestnetPrefixAcrossBatches(t *testing.T) {

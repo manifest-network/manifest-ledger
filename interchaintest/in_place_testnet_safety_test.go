@@ -19,6 +19,7 @@ import (
 
 	sdked25519 "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
 	poa "github.com/strangelove-ventures/poa"
 )
@@ -44,7 +45,9 @@ func assertInPlaceTestnetPreflight(t *testing.T, ctx context.Context, node *cosm
 		_, stderr, err := node.Exec(rejectCtx, node.BinCommand("in-place-testnet", requestedChainID, operator, "--skip-confirmation"), node.Chain.Config().Env)
 		require.Error(t, err, "%s must fail before conversion", name)
 		require.NotContains(t, err.Error(), "context deadline exceeded", "%s unexpectedly started: %s", name, stderr)
-		require.Contains(t, string(stderr), expectedError, "%s: unexpected failure: %v", name, err)
+		// The pinned interchaintest Exec embeds stdout/stderr in the error and
+		// returns empty output buffers when a process exits unsuccessfully.
+		require.Contains(t, err.Error(), expectedError, "%s: unexpected failure: %s", name, stderr)
 		require.Equal(t, before, inPlaceTestnetFileSnapshot(t, ctx, node), "%s modified the copied home", name)
 	}
 	reject("source chain ID", node.Chain.Config().ChainID, "requires a new chain ID different from source chain")
@@ -69,7 +72,13 @@ func assertInPlaceTestnetPreflight(t *testing.T, ctx context.Context, node *cosm
 }
 
 func inPlaceTestnetDisabledMessages() []string {
-	return []string{sdk.MsgTypeURL(&poa.MsgSetPower{}), sdk.MsgTypeURL(&poa.MsgRemoveValidator{}), sdk.MsgTypeURL(&poa.MsgCreateValidator{}), sdk.MsgTypeURL(&circuittypes.MsgResetCircuitBreaker{})}
+	return []string{
+		sdk.MsgTypeURL(&poa.MsgSetPower{}), sdk.MsgTypeURL(&poa.MsgRemoveValidator{}),
+		sdk.MsgTypeURL(&poa.MsgCreateValidator{}), sdk.MsgTypeURL(&circuittypes.MsgResetCircuitBreaker{}),
+		sdk.MsgTypeURL(&stakingtypes.MsgCreateValidator{}), sdk.MsgTypeURL(&stakingtypes.MsgDelegate{}),
+		sdk.MsgTypeURL(&stakingtypes.MsgUndelegate{}), sdk.MsgTypeURL(&stakingtypes.MsgBeginRedelegate{}),
+		sdk.MsgTypeURL(&stakingtypes.MsgCancelUnbondingDelegation{}), sdk.MsgTypeURL(&stakingtypes.MsgUpdateParams{}),
+	}
 }
 
 func assertInPlaceTestnetCircuit(t *testing.T, ctx context.Context, node *cosmos.ChainNode) {

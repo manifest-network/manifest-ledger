@@ -197,10 +197,13 @@ func initAppForTestnet(chainApp *app.ManifestApp, newValAddr cmtbytes.HexBytes, 
 	// The SDK's fixed power exceeds PoA's removal arithmetic, and nonzero
 	// changes leave inconsistent power indexes/pool accounting in this PoA
 	// version. These forks therefore keep one immutable validator until ENG-945.
-	// The router's circuit check also covers messages dispatched by authz/group.
+	// PoA's ante filter cannot inspect group or Wasm router dispatch. Apply the
+	// same staking restrictions at the router, alongside the PoA lifecycle guard.
 	// Disable reset itself so an authority transaction cannot remove this guard.
 	for _, msg := range []sdk.Msg{
 		&poa.MsgSetPower{}, &poa.MsgRemoveValidator{}, &poa.MsgCreateValidator{},
+		&stakingtypes.MsgCreateValidator{}, &stakingtypes.MsgDelegate{}, &stakingtypes.MsgUndelegate{},
+		&stakingtypes.MsgBeginRedelegate{}, &stakingtypes.MsgCancelUnbondingDelegation{}, &stakingtypes.MsgUpdateParams{},
 		&circuittypes.MsgResetCircuitBreaker{},
 	} {
 		if err := chainApp.CircuitKeeper.DisableList.Set(ctx, sdk.MsgTypeURL(msg)); err != nil {

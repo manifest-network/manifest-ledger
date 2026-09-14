@@ -123,13 +123,15 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade, releasedSource bool) {
 	upgradeName := strings.TrimSpace(string(version))
 	require.NotEmpty(t, upgradeName)
 
-	require.NoError(t, chain.StopAllNodes(ctx))
-	if !releasedSource {
-		for _, sourceNode := range chain.Validators {
+	// StopAllNodes also removes the containers. Copy the counters after each
+	// process exits, while its container still exists, before removing it.
+	for _, sourceNode := range chain.Nodes() {
+		require.NoError(t, sourceNode.StopContainer(ctx))
+		if !releasedSource {
 			dockerutil.CopyCoverageFromContainer(ctx, t, client, sourceNode.ContainerID(), sourceNode.HomeDir(), ExternalGoCoverDir)
 		}
+		require.NoError(t, sourceNode.RemoveContainer(ctx))
 	}
-	require.NoError(t, node.RemoveContainer(ctx))
 	node.Image = targetImage
 	chain.Config().Images[0] = targetImage
 	// Config returns the environment slice used by CreateNodeContainer as well,

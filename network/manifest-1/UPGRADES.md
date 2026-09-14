@@ -276,7 +276,10 @@ selected stopped copy before sizing a production-state rehearsal host.
 Initial voting power is `900000000000000`, matching the SDK's CometBFT replacement
 set; staking tokens include the chain's power reduction factor. The initializer
 disables PoA validator creation, power changes, and removal through the on-chain
-circuit breaker, including messages dispatched by authz or group execution. It
+circuit breaker. It also blocks standard staking creation, delegation,
+redelegation, undelegation, cancellation of unbonding, and parameter updates,
+including messages dispatched through authz, groups, or contracts. This preserves
+PoA's staking restrictions on routes that bypass its transaction filter. It
 also disables circuit-reset transactions so these guards cannot be removed by a
 transaction. Other existing circuit restrictions remain in effect. This fork
 supports a fixed single validator throughout its lifetime. The pinned POA module's

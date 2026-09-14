@@ -207,11 +207,34 @@ func runInPlaceTestnetReleasedUpgrade(t *testing.T, ctx context.Context, chain *
 	require.NoError(t, node.StartContainer(ctx))
 	rpc, err = rpchttp.NewWithClient(chain.GetHostRPCAddress(), "/websocket", &http.Client{Timeout: 5 * time.Second})
 	require.NoError(t, err)
-	waitForInPlaceTestnetHeight(t, ctx, rpc, chainID, height+5)
+	restartInitialHeight := waitForInPlaceTestnetAppHeight(t, ctx, rpc, chainID, height)
+	restartConfirmedHeight := waitForInPlaceTestnetAppHeight(t, ctx, rpc, chainID, restartInitialHeight+5)
 	require.Equal(t, upgradeHeight, inPlaceTestnetAppliedHeight(t, ctx, node, inPlaceTestnetFixtureVersion))
 	state.assertPreserved(t, ctx, node, true)
 	assertForkState(rpc)
-	t.Logf("Scheduled upgrade halted at %d; fixture image %s:%s applied the +1 billing parameter migration exactly once across ordinary restart", upgradeHeight, image.Repository, image.Version)
+	t.Logf("Scheduled upgrade halted at %d; fixture image %s:%s applied the +1 billing parameter migration exactly once; restarted application committed from %d to %d", upgradeHeight, image.Repository, image.Version, restartInitialHeight, restartConfirmedHeight)
+}
+
+// Status can report a stored block before the application commits it. Use
+// ABCIInfo for progress after restart and Status only to verify chain identity.
+func waitForInPlaceTestnetAppHeight(t *testing.T, ctx context.Context, rpc *rpchttp.HTTP, chainID string, target int64) int64 {
+	t.Helper()
+	waitCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	var height int64
+	require.Eventually(t, func() bool {
+		status, err := rpc.Status(waitCtx)
+		if err != nil || status.NodeInfo.Network != chainID {
+			return false
+		}
+		info, err := rpc.ABCIInfo(waitCtx)
+		if err != nil {
+			return false
+		}
+		height = info.Response.LastBlockHeight
+		return height >= target
+	}, 90*time.Second, time.Second, "fork application did not commit through height %d", target)
+	return height
 }
 
 func waitForInPlaceTestnetUpgradeHalt(t *testing.T, ctx context.Context, client *dockerclient.Client, node *cosmos.ChainNode, rpc *rpchttp.HTTP, height int64) {
