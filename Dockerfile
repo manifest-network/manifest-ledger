@@ -44,8 +44,27 @@ RUN sh ./scripts/validate-build-inputs.sh build-command "${BUILD_CMD}" \
   && (file /code/build/manifestd | grep "statically linked") \
   && test "$(/code/build/manifestd version)" = "${VERSION}"
 
+# Prepare writable paths for the minimal production runtime. Numeric ownership
+# avoids an account-management dependency in the final image.
+RUN mkdir -p /runtime/home/manifest/.manifest /runtime/tmp \
+  && chown -R 10001:10001 /runtime/home/manifest \
+  && chmod 1777 /runtime/tmp
+
+# Release publication uses this target. The static daemon and trust roots are
+# its complete runtime; Starship tools stay in the separate default target.
+FROM scratch AS production
+COPY --from=go-builder /runtime/ /
+COPY --from=go-builder /code/build/manifestd /usr/bin/manifestd
+COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+ENV HOME=/home/manifest
+USER 10001:10001
+WORKDIR /home/manifest
+EXPOSE 1317 26656 26657
+ENTRYPOINT ["/usr/bin/manifestd"]
+CMD ["version"]
+
 # --------------------------------------------------------
-FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce AS starship
 
 SHELL ["/bin/sh", "-ec"]
 

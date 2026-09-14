@@ -425,8 +425,15 @@ requests remain capped at 1,000 physical rows in every mode; this applies to
 Requests fail rather than return an inexact page or total. An omitted or zero
 limit defaults to 100 without implicitly enabling `countTotal`; clients that
 need a total must request it. `countTotal` is ignored when `key` is set,
-matching the SDK. The `CreditAccount` and `ProviderWithdrawable` queries are
-deliberately cursor-only.
+matching the SDK. `CreditAccount` and `ProviderWithdrawable` reject offset and
+total-count requests. `ProviderWithdrawable` is cursor-only. For `CreditAccount`,
+pass a `pagination` object to opt into cursor pages (default 100, maximum 1,000).
+Omitting it preserves a complete result for older clients only when the credit
+address has at most 1,000 bank denominations; larger accounts return
+`ResourceExhausted`, never a partial balance list. That ceiling includes fully
+locked denominations even though the returned balances exclude them. Regenerate
+older clients that lack the request/response pagination fields to read larger
+accounts, and follow `pagination.nextKey` until empty.
 
 ```ts
 import { cosmos, liftedinit } from "@manifest-network/manifestjs";

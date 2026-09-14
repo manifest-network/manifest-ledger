@@ -758,9 +758,14 @@ Settlement happens lazily at these points:
 **Note**: Lease queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state and do NOT trigger settlement. `WithdrawableAmount` calculates one lease's current amount. `ProviderWithdrawable` dry-runs exactly the returned ACTIVE-lease page in index order against page-local virtual tenant balances and reservations, so shared credit is counted once within that page. Each lease uses a nested cache: failed simulations are discarded, successful virtual effects feed later leases, and the outer query cache is never committed. This mirrors provider-wide withdrawal's best-effort per-lease behavior. Its pages are not additive snapshots. Every forward query page is comparable to one provider-wide withdrawal because the query limit is capped at the transaction maximum of 100. After commit, advance the query with the prior query response's first-unread cursor and the transaction with the prior transaction response's last-processed cursor; never interchange them. Settlement (actual token transfer) only happens during write operations.
 
 `CreditAccount` delegates to the SDK bank module's canonical balance query and
-returns all denoms through cursor pages (default 100, maximum 1000). Offset and
-`count_total` are rejected so bank-store work stays proportional to the
-requested page; `available_balances` covers the same page. Reverse pages follow
+returns spendable denoms through explicit cursor pages (default 100, maximum
+1000). An absent pagination message is the legacy complete-result mode: it
+reads at most 1000 bank balances plus one continuation key, returning
+`ResourceExhausted` if more denominations exist. It never silently truncates a
+legacy response whose client cannot observe the added cursor field. The limit
+counts bank denominations before excluding vesting locks. Offset and
+`count_total` are rejected so bank-store work stays bounded;
+`available_balances` covers the same page or complete legacy result. Reverse pages follow
 `x/bank` and return both coin lists in descending denomination order, so Go
 callers must call `Sort()` before using `sdk.Coins` operations that require
 canonical ascending order. It never scans leases. The embedded account

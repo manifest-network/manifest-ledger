@@ -2,6 +2,11 @@
 
 This document provides a comprehensive API reference for the billing module, covering both CLI commands and gRPC/REST endpoints.
 
+The [generated RPC and CLI reference](../../../docs/reference/BILLING_SKU.md)
+lists every registered request/response field, command, and flag. This guide
+provides validation rules, lifecycle behavior, and operational examples. Update
+the generated reference with `make docs-reference`; CI checks it for drift.
+
 ## Table of Contents
 
 - [CLI Commands](#cli-commands)
@@ -618,9 +623,10 @@ partial result. Cursor pagination remains the efficient, unbounded-history
 path. An omitted or zero limit defaults to 100 without implicitly enabling
 `count_total`; request the total explicitly when needed. A request that combines
 a page key with a nonzero offset fails with gRPC `InvalidArgument`; as in the
-SDK, `count_total` is ignored when a page key is present. The `CreditAccount`
-and `ProviderWithdrawable` queries remain cursor-only because they respectively
-traverse bank balances and simulate the settlement lifecycle. Query cursors are
+SDK, `count_total` is ignored when a page key is present. `CreditAccount` accepts
+cursor pages or a bounded complete legacy request with pagination absent;
+`ProviderWithdrawable` remains cursor-only. Both reject offset and total-count
+scans because they traverse bank balances or simulate settlement. Query cursors are
 not interchangeable with provider-wide `MsgWithdrawResponse.next_key`, whose
 separate contract is described below.
 
@@ -809,6 +815,12 @@ Reverse pages follow `x/bank` and return `balances` and `available_balances` in
 descending denomination order. Go callers must call `Sort()` before using
 `sdk.Coins` operations that require canonical ascending order (including
 `AmountOf`, `Add`, and `Validate`).
+
+The current CLI always sends an explicit page request, including when no flags
+are supplied. Older RPC clients that omit `pagination` receive all spendable
+balances only when the address has at most 1,000 bank denominations; larger
+accounts fail with gRPC `ResourceExhausted` instead of returning a partial list.
+See [QueryCreditAccount](#querycreditaccount) for the compatibility contract.
 
 **Response:**
 ```json
@@ -1169,7 +1181,8 @@ manifestd query billing credit-estimate manifest1abc...
 - A quotient at or above `18,446,744,073,709,551,615` seconds is saturated to that maximum `uint64` value; it is not reported as zero
 
 **Limitations:**
-- **Bounded work**: Active iteration uses the credit account's stored `active_lease_count`, not the current governance limit, so parameter reductions remain represented. `CreditEstimate` enforces the conservative ceiling of 11,000 ACTIVE leases (the exact v2 reachable maximum is 10,999) and 100,000 decoded lease items. Either work-bound violation returns `ErrLeaseQueryLimitExceeded` as gRPC `ResourceExhausted` instead of truncating the result. If an index contains more or fewer entries than its stored count, the query returns gRPC `Internal` with `ErrReservationInvariant`; it never returns a partial estimate. `CreditAccount` is independently cursor-paginated over bank balances and does not scan leases.
+- **Bounded work**: Active iteration uses the credit account's stored `active_lease_count`, not the current governance limit, so parameter reductions remain represented. `CreditEstimate` enforces the conservative ceiling of 11,000 ACTIVE leases (the exact v2 reachable maximum is 10,999) and 100,000 decoded lease items. Either work-bound violation returns `ErrLeaseQueryLimitExceeded` as gRPC `ResourceExhausted` instead of truncating the result. If an index contains more or fewer entries than its stored count, the query returns gRPC `Internal` with `ErrReservationInvariant`; it never returns a partial estimate. `CreditAccount` does not scan leases: explicit pagination bounds each bank-balance page, while absent pagination requires a complete result within 1,000 bank denominations or returns `ResourceExhausted`.
+- **Query budget and cancellation**: The daemon defaults to `query-gas-limit = "5000000"` for SDK queries. A request can exhaust that budget before reaching the lease/item ceilings; no partial estimate is returned. The pinned SDK reports metered-read exhaustion through ABCI as `ErrPanic` and through native gRPC as `Internal`, rather than the explicit work-bound `ResourceExhausted` above. Rates are accumulated incrementally by denomination and sorted once; vesting locks are computed once per estimate. Cancellation is checked between leases, pricing items, and bank reads. Native gRPC preserves its request context, but the SDK ABCI query entry point discards the transport context, so cancellation does not stop that server-side path. See [query-budget operations](OPERATIONS.md#module-query-budgets) for configuration and exposure limits.
 - **Not reservation-aware**: The quotient does not subtract PENDING or other-lease reservations. Those funds can be unavailable to a particular ACTIVE lease under the isolation invariant.
 - **Does not account for pending withdrawals**: The estimate does not subtract unsettled accrued amounts from existing leases.
 - **Not an auto-close prediction**: Per-lease tranche ownership, settlement timing, and rate changes can make lifecycle transitions happen earlier or later than the gross quotient.
@@ -1664,7 +1677,7 @@ message QueryLeasesResponse {
 
 #### QueryCreditAccount
 
-Get a tenant's credit-account metadata plus one bounded bank-balance page.
+Get a tenant's credit-account metadata and bounded spendable bank balances.
 
 **Endpoint:** `liftedinit.billing.v1.Query/CreditAccount`
 
@@ -1680,11 +1693,23 @@ message QueryCreditAccountRequest {
 ```protobuf
 message QueryCreditAccountResponse {
   CreditAccount credit_account = 1;
-  repeated cosmos.base.v1beta1.Coin balances = 2;  // Current bank-balance page
+  repeated cosmos.base.v1beta1.Coin balances = 2;  // Spendable bank balances
   repeated cosmos.base.v1beta1.Coin available_balances = 3;  // Same page minus reserved_amounts
   cosmos.base.query.v1beta1.PageResponse pagination = 4;
 }
 ```
+
+**Pagination and legacy clients:** When `pagination` is present, an empty
+request or zero `limit` defaults to 100 bank denominations per page, capped at
+1,000. Follow `pagination.next_key` until empty. Offset and total-count scans
+are unsupported. When `pagination` is absent, the query returns a complete
+spendable-balance list if the address has at most 1,000 bank denominations;
+otherwise it returns gRPC `ResourceExhausted` with no partial response. This
+ceiling counts bank denominations before excluding vesting locks. An old client
+whose descriptor has no request field 2 or response field 4 can therefore never
+mistake an incomplete page for the whole account. Regenerate the client and
+send explicit pagination to read larger accounts. The current CLI already
+sends an explicit page request, so its default remains 100.
 
 Reverse pages follow `x/bank` and return both coin lists in descending
 denomination order. Go callers must call `Sort()` before using `sdk.Coins`
@@ -1845,7 +1870,7 @@ message Lease {
 - `rejection_reason`: Set when a provider rejects a PENDING lease via `MsgRejectLease`. Contains the provider's explanation for rejecting the lease (e.g., "resources unavailable", "invalid configuration"). Maximum 256 UTF-8 bytes. Only present when `state` is `LEASE_STATE_REJECTED`.
 - `closure_reason`: Set when a lease is closed via `MsgCloseLease` with a reason, or automatically set to `"credit exhausted"` when a lease is auto-closed due to insufficient credit during settlement. Maximum 256 UTF-8 bytes. Only present when `state` is `LEASE_STATE_CLOSED`.
 - `meta_hash`: Optional immutable hash or reference linking to off-chain deployment data (e.g., deployment manifest hash, configuration reference). Set at lease creation and cannot be modified afterward. Maximum 64 bytes to accommodate SHA-256 or SHA-512 hashes.
-- `min_lease_duration_at_creation`: Snapshot of the `min_lease_duration` parameter at the time this lease was created. Used to calculate consistent credit reservations (`reservation = sum(locked_price × quantity) × min_lease_duration_at_creation`) regardless of subsequent governance changes to the parameter. This ensures existing reservations remain valid when parameters are updated.
+- `min_lease_duration_at_creation`: Snapshot of the `min_lease_duration` parameter at the time this lease was created. Defines the initial reservation ceiling (`sum(locked_price × quantity) × min_lease_duration_at_creation`) independently of later governance changes. ACTIVE settlement consumes the remaining guarantee; terminal leases retain none. Legacy leases normalized from aggregate-only genesis may begin below the nominal ceiling. The tenant reserved total equals the sum of remaining live-lease tranches, not the sum of their original ceilings.
 - `reservation`: Nullable only as a pre-v4 (v2/v3) genesis-format marker. Persisted v4 leases always initialize it. A modern live lease stores its remaining tranche; terminal and historical leases store an empty tranche.
 
 ```protobuf

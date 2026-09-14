@@ -6,6 +6,7 @@ import (
 
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
+	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 
 	sdkmath "cosmossdk.io/math"
 
@@ -93,6 +94,9 @@ var (
 		NoHostMount:    false,
 		EncodingConfig: AppEncoding(),
 		ModifyGenesis:  cosmos.ModifyGenesis(DefaultGenesis),
+		// Set this before the old binary starts too: legacy app.toml defaults to zero,
+		// which the candidate rejects when the upgrade process restarts.
+		ConfigFileOverrides: map[string]any{"config/app.toml": testutil.Toml{"query-gas-limit": "5000000"}},
 	}
 
 	// DefaultGenesisAmt is the amount assigned to funded interchain test users.

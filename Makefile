@@ -333,10 +333,31 @@ proto-gen:
 proto-format:
 	@$(protoImage) find ./ -name "*.proto" -exec clang-format -i {} \;
 
+proto-breaking:
+	@sh ./scripts/check-proto-breaking.sh $(protoImageName)
+
 proto-lint:
 	@$(protoImage) buf lint proto/ --error-format=json
 
-.PHONY: proto-all proto-gen proto-format proto-lint
+.PHONY: proto-all proto-gen proto-format proto-lint proto-breaking
+
+docs-reference:
+	@$(GO) run ./tools/docs-reference
+
+docs-reference-check:
+	@$(GO) run ./tools/docs-reference -check
+
+.PHONY: docs-reference docs-reference-check
+
+shellcheckImage=koalaman/shellcheck:v0.10.0@sha256:2097951f02e735b613f4a34de20c40f937a6c8f18ecb170612c88c34517221fb
+
+shellcheck:
+	@$(DOCKER) run --rm --network none --user "$$(id -u):$$(id -g)" \
+		-v "$(CURDIR):/workspace:ro" --workdir /workspace $(shellcheckImage) \
+		--external-sources scripts/lib/node-home.sh scripts/test_node.sh \
+		scripts/upload_contract.sh network/manifest-1/set-genesis-params.sh
+
+.PHONY: shellcheck
 
 #################
 ###  Linting  ###
@@ -390,7 +411,14 @@ govulncheck: ## Run govulncheck
 	@echo "--> Running govulncheck for the interchaintest module"
 	@$(GO) run ./tools/govulncheck-policy -govulncheck $(go_bin)/govulncheck -profile interchaintest -- -test ./interchaintest/...
 
-.PHONY: govulncheck govulncheck-install
+# Module/advisory evidence complements the reachability-enforcing symbol gate.
+# JSON mode preserves every advisory, including dependencies with no call path.
+govulncheck-module-report: govulncheck-install
+	@mkdir -p .review-tmp/module-advisories
+	@cd cmd/manifestd && GOWORK=off $(go_bin)/govulncheck -scan=module -format=json > ../../.review-tmp/module-advisories/root.json
+	@cd interchaintest && GOWORK=off $(go_bin)/govulncheck -scan=module -format=json > ../.review-tmp/module-advisories/interchaintest.json
+
+.PHONY: govulncheck govulncheck-install govulncheck-module-report
 
 #### VET ####
 

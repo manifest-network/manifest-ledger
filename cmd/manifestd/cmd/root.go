@@ -128,13 +128,14 @@ func initWasmConfig() (string, interface{}) {
 	}
 
 	srvCfg := serverconfig.DefaultConfig()
+	srvCfg.QueryGasLimit = defaultQueryGasLimit
 
 	customAppConfig := CustomAppConfig{
 		Config: *srvCfg,
 		WASM:   wasmtypes.DefaultNodeConfig(),
 	}
 
-	customAppTemplate := serverconfig.DefaultConfigTemplate + wasmtypes.DefaultConfigTemplate()
+	customAppTemplate := queryGasConfigTemplate() + wasmtypes.DefaultConfigTemplate()
 
 	return customAppTemplate, customAppConfig
 }

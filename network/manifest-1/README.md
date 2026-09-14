@@ -23,6 +23,13 @@ Some operator inputs change between releases and live outside this repo:
 
 For anyone bootstrapping a new chain from this repo (testnet, devnet, fork): use [`set-genesis-params.sh`](./set-genesis-params.sh) to generate a fresh genesis with custom PoA admin(s), denomination, and other parameters.
 
+Run it with Bash and an explicit disposable node home, for example
+`HOME_DIR="$HOME/.manifest-bootstrap" bash network/manifest-1/set-genesis-params.sh`
+from the repository root. The script removes that directory before initializing
+the new genesis. It requires `jq` and GNU-compatible `realpath -m`; system roots,
+the user home, and checkout/working-directory ancestors are rejected. Path text
+is never evaluated as shell code.
+
 Key knobs in the script:
 
 ```bash

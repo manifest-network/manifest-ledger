@@ -13913,9 +13913,12 @@ type QueryCreditAccountRequest struct {
 	// tenant is the address of the tenant.
 	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	// pagination bounds the bank balances returned for the derived credit
-	// address. The page size defaults to 100 and is capped at 1000. Cursor
-	// pagination is supported; offset and count_total are rejected so bank-store
-	// iteration remains proportional to the page size.
+	// address. When present, the page size defaults to 100 and is capped at 1000.
+	// When absent, legacy clients receive a complete spendable-balance result if
+	// the address has at most 1000 bank denominations; otherwise the query fails
+	// with ResourceExhausted, never partial success. The ceiling counts bank
+	// denominations before vesting locks are excluded. Cursor pagination is
+	// supported; offset and count_total are rejected to bound bank-store work.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 }
 
@@ -13962,7 +13965,8 @@ type QueryCreditAccountResponse struct {
 
 	// credit_account is the tenant's credit account.
 	CreditAccount *CreditAccount `protobuf:"bytes,1,opt,name=credit_account,json=creditAccount,proto3" json:"credit_account,omitempty"`
-	// balances is one bank-denomination page of spendable credit at the queried
+	// balances is one bank-denomination page (or the complete legacy result)
+	// of spendable credit at the queried
 	// block time: max(0, total balance - vesting locked coins). Fully locked
 	// denominations are omitted, so an empty result may still have next_key.
 	// Follow pagination.next_key until empty. Reverse pages

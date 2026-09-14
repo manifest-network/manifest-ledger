@@ -336,8 +336,8 @@ This is a script to assist with initializing and configuring a node. Ensure you 
 Also in this script are examples of how you could run it
 
 ```bash
-POA_ADMIN_ADDRESS=manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct CHAIN_ID="local-1" HOME_DIR="~/.manifest" TIMEOUT_COMMIT="500ms" CLEAN=true sh scripts/test_node.sh
-CHAIN_ID="local-2" HOME_DIR="~/.manifest2" CLEAN=true RPC=36657 REST=2317 PROFF=6061 P2P=36656 GRPC=8090 GRPC_WEB=8091 ROSETTA=8081 TIMEOUT_COMMIT="500ms" sh scripts/test_node.sh
+POA_ADMIN_ADDRESS=manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct CHAIN_ID="local-1" HOME_DIR="~/.manifest" TIMEOUT_COMMIT="500ms" CLEAN=true bash scripts/test_node.sh
+CHAIN_ID="local-2" HOME_DIR="~/.manifest2" CLEAN=true RPC=36657 REST=2317 PROFF=6061 P2P=36656 GRPC=8090 GRPC_WEB=8091 ROSETTA=8081 TIMEOUT_COMMIT="500ms" bash scripts/test_node.sh
 ```
 
 The succesful executation of these commands will result in 2 ibc connected instances of manifestd running on your local machine.
@@ -348,6 +348,14 @@ The succesful executation of these commands will result in 2 ibc connected insta
 
 This script is used to upload a contract to the network. It is used to upload the cosmwasm template contract to the network.
 
-`sh scripts/upload_contract.sh`
+`bash scripts/upload_contract.sh`
 
 > Running this script with no arguments will utilize the same environment variables as the test_node.sh script.
+
+These helpers require Bash, `jq`, GNU-compatible `realpath -m`, and GNU `sed`.
+`HOME_DIR` is a literal path; only leading `~` or `~/` is expanded, and spaces
+are supported. `CLEAN=true` requires an explicit `HOME_DIR` and removes that
+directory before initialization. System roots, the user home, and ancestors of
+the checkout or working directory are rejected. Use a dedicated disposable node
+directory. With `CLEAN=false`, the node helper configures and starts an existing
+node home. Check the helper scripts with `make shellcheck`.

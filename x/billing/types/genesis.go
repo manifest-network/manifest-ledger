@@ -439,6 +439,20 @@ func (gs *GenesisState) validate(options genesisValidationOptions) error {
 		// Balance is tracked in bank module, no validation needed here
 	}
 
+	// Specific withdrawal needs a credit account even to finalize a zero-payment
+	// or subsecond CLOSED interval. Preserve account-free terminal history only
+	// when it has no remaining interval to resolve. Apply this precondition to
+	// both aggregate-only imports and current consumable reservation state.
+	for i := range gs.Leases {
+		lease := &gs.Leases[i]
+		if lease.State == LEASE_STATE_CLOSED && lease.ClosedAt.After(lease.LastSettledAt) && !seenTenants[leaseTenantKeys[i]] {
+			return ErrInvalidCreditOperation.Wrapf(
+				"closed lease %s has a retained final interval but no credit account for tenant %s",
+				lease.Uuid, leaseTenantKeys[i],
+			)
+		}
+	}
+
 	legacyReservationState, err := gs.HasLegacyReservationState()
 	if err != nil {
 		return err

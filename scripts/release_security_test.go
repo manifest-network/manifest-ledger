@@ -409,9 +409,9 @@ func TestReleaseWorkflowsUseVerifiedToolsAndCollisionGate(t *testing.T) {
 	e2eWorkflow, err := os.ReadFile(filepath.Join(repoRoot, ".github/workflows/e2e.yml")) //nolint:gosec
 	require.NoError(t, err)
 	require.Equal(t, 2, strings.Count(string(e2eWorkflow), `sh ./scripts/install-trivy.sh "$TRIVY_INSTALL_DIR"`))
-	require.Equal(t, 2, strings.Count(string(e2eWorkflow), "--pkg-types os"))
-	require.Equal(t, 2, strings.Count(string(e2eWorkflow), "--ignore-unfixed=false"))
-	require.Equal(t, 2, strings.Count(string(e2eWorkflow), "--exit-code 1"))
+	require.Equal(t, 3, strings.Count(string(e2eWorkflow), "--pkg-types os"))
+	require.Equal(t, 3, strings.Count(string(e2eWorkflow), "--ignore-unfixed=false"))
+	require.Equal(t, 3, strings.Count(string(e2eWorkflow), "--exit-code 1"))
 	require.NotContains(t, string(e2eWorkflow), "aquasecurity/trivy-action")
 	for _, job := range []string{"build-docker", "build-docker-arm64"} {
 		jobBlock := workflowJobBlock(t, string(e2eWorkflow), job)
@@ -505,47 +505,13 @@ func TestCodeQLWorkflowUsesImmutableLocalCosmosQueries(t *testing.T) {
 }
 
 func TestSPDXReleaseProfileValidation(t *testing.T) {
-	valid := `{
-  "spdxVersion":"SPDX-2.3",
-  "dataLicense":"CC0-1.0",
-  "SPDXID":"SPDXRef-DOCUMENT",
-  "name":"manifest-ledger",
-  "documentNamespace":"https://example.com/spdx/manifest-ledger",
-  "creationInfo":{"created":"2026-09-01T00:00:00Z","creators":["Tool: syft-1.51.1"]},
-  "packages":[{"SPDXID":"SPDXRef-Package-manifestd","name":"manifestd"}],
-  "relationships":[{"spdxElementId":"SPDXRef-DOCUMENT","relationshipType":"DESCRIBES","relatedSpdxElement":"SPDXRef-Package-manifestd"}]
-}`
-
-	tests := []struct {
-		name      string
-		document  string
-		wantError bool
-	}{
-		{name: "complete Syft profile", document: valid},
-		{name: "unsupported SPDX version", document: strings.Replace(valid, "SPDX-2.3", "SPDX-2.2", 1), wantError: true},
-		{name: "no packages", document: strings.Replace(valid, `"packages":[{"SPDXID":"SPDXRef-Package-manifestd","name":"manifestd"}]`, `"packages":[]`, 1), wantError: true},
-		{name: "no document relationship", document: strings.Replace(valid, `"relationshipType":"DESCRIBES"`, `"relationshipType":"CONTAINS"`, 1), wantError: true},
-		{name: "unrelated describes relationship", document: strings.Replace(valid, `"spdxElementId":"SPDXRef-DOCUMENT"`, `"spdxElementId":"SPDXRef-Other"`, 1), wantError: true},
-		{name: "described package is absent", document: strings.Replace(valid, `"relatedSpdxElement":"SPDXRef-Package-manifestd"`, `"relatedSpdxElement":"SPDXRef-Package-missing"`, 1), wantError: true},
-		{name: "malformed JSON", document: `{`, wantError: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testDir := t.TempDir()
-			sbom := filepath.Join(testDir, "release.sbom.json")
-			require.NoError(t, os.WriteFile(sbom, []byte(tt.document), 0o600))
-			cmd := exec.Command("sh", "./verify-spdx-sbom.sh", sbom) //nolint:gosec
-			cmd.Dir = "."
-			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "LC_ALL=C"}
-			_, err := cmd.CombinedOutput()
-			if tt.wantError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
+	// The profile driver links a real, small Go binary with a replaced module,
+	// then rejects incomplete subjects, dependency sets, and evidence graphs.
+	// Official SPDX semantic validation is mandatory in the release wrapper;
+	// these offline comparator tests do not require Python third-party packages.
+	cmd := exec.Command("python3", "-B", "./verify_spdx_sbom_test.py")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(output))
 }
 
 func TestReleaseTagTargetVerificationFailsClosed(t *testing.T) {

@@ -4,6 +4,9 @@
 /.github/workflows/ @fmorency
 /.github/dependabot.yml @fmorency
 /.github/CODEOWNERS @fmorency
+/.github/release-controls.json @fmorency
+/codecov.yaml @fmorency
+/SECURITY.md @fmorency
 /.dockerignore @fmorency
 /.goreleaser.yaml @fmorency
 /Dockerfile @fmorency

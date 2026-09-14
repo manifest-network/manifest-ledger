@@ -232,6 +232,7 @@ func initTestnetFiles(
 	valPubKeys := make([]cryptotypes.PubKey, args.numValidators)
 
 	appConfig := srvconfig.DefaultConfig()
+	appConfig.QueryGasLimit = defaultQueryGasLimit
 	appConfig.MinGasPrices = args.minGasPrices
 	appConfig.API.Enable = true
 	appConfig.Telemetry.Enabled = true
@@ -378,7 +379,7 @@ func initTestnetFiles(
 			return err
 		}
 
-		srvconfig.SetConfigTemplate(srvconfig.DefaultConfigTemplate)
+		srvconfig.SetConfigTemplate(queryGasConfigTemplate())
 		srvconfig.WriteConfigFile(filepath.Join(nodeDir, "config", "app.toml"), appConfig)
 	}
 

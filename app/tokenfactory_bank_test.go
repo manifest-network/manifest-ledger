@@ -58,7 +58,7 @@ func TestTokenFactoryBankKeeperChecksCreditSourceBeforeWrites(t *testing.T) {
 					bank := &debitBankSpy{err: bankErr}
 					indexCalls := 0
 					guard := tokenFactoryBankKeeper{
-						BankKeeper: bank,
+						bank: bank,
 						creditAddresses: creditAddressIndexFunc(func(gotCtx context.Context, address sdk.AccAddress) (bool, error) {
 							indexCalls++
 							require.Equal(t, ctx, gotCtx)

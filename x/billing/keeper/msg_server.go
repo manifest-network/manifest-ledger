@@ -870,8 +870,16 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 			settleTime = lease.LastSettledAt // No duration, will return zero
 		}
 
-		// Perform settlement
-		result, err := ms.k.PerformSettlement(cacheCtx, lease, &creditAccount, settleTime)
+		// Imported CLOSED leases resolve their retained interval using the same
+		// capped overflow policy as other terminal closes. ACTIVE settlement
+		// retains its existing checked-accrual behavior.
+		finalizeClosedInterval := lease.State == types.LEASE_STATE_CLOSED && settleTime.After(lease.LastSettledAt)
+		var result *SettlementResult
+		if finalizeClosedInterval {
+			result, err = ms.k.PerformSettlementSilent(cacheCtx, lease, &creditAccount, settleTime)
+		} else {
+			result, err = ms.k.PerformSettlement(cacheCtx, lease, &creditAccount, settleTime)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -879,7 +887,6 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 		// Imported CLOSED leases may retain a final billable interval. Resolve
 		// that interval once, writing off any shortfall as other close paths do.
 		// A zero payment still finalizes it, but is not counted as a payout.
-		finalizeClosedInterval := lease.State == types.LEASE_STATE_CLOSED && settleTime.After(lease.LastSettledAt)
 		if result.TransferAmounts.IsZero() && !finalizeClosedInterval {
 			continue
 		}

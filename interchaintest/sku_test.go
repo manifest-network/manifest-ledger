@@ -1947,12 +1947,11 @@ func testSKUEmptyParams(ctx context.Context, t *testing.T, chain *cosmos.CosmosC
 	})
 
 	t.Run("fail: query SKUs by provider with empty uuid", func(t *testing.T) {
-		// Empty provider_uuid should be rejected or return empty
+		// An empty filter is an invalid request, not a successful empty page.
 		res, err := helpers.SKUQuerySKUsByProvider(ctx, chain, "")
-		if err == nil {
-			require.Empty(t, res.Skus, "query SKUs by empty provider should return empty")
-		}
-		t.Log("Handled query SKUs by empty provider uuid")
+		require.ErrorContains(t, err, "InvalidArgument")
+		require.ErrorContains(t, err, "provider_uuid cannot be empty")
+		require.Nil(t, res)
 	})
 
 	// Cleanup

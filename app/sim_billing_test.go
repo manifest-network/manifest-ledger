@@ -22,6 +22,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/simulation"
 
 	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 func TestSimulationBillingTransfers(t *testing.T) {
@@ -192,6 +193,10 @@ func TestBillingSimulationResultDiagnostics(t *testing.T) {
 			stats := simulation.EventStats{
 				billingtypes.ModuleName: {
 					sdk.MsgTypeURL(&billingtypes.MsgFundCredit{}): {"ok": tc.fundingOK, "failure": 50},
+				},
+				skutypes.ModuleName: {
+					sdk.MsgTypeURL(&skutypes.MsgCreateProvider{}): {"ok": 1},
+					sdk.MsgTypeURL(&skutypes.MsgCreateSKU{}):      {"ok": 1},
 				},
 			}
 			// The SDK exports partial statistics on signals and normal early

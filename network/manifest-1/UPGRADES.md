@@ -218,6 +218,20 @@ Before the upgrade:
   transaction result hashes) relative to v2.3.1. All validators must activate
   it together; update fixed-gas clients and pre-upgrade gas baselines rather
   than expecting byte-identical execution results across the boundary.
+- Container operators must also rehearse the production image's new runtime
+  contract: UID/GID `10001:10001`, home `/home/manifest/.manifest`, and `manifestd`
+  entrypoint (pass daemon arguments directly). Back up and migrate root-owned
+  volumes while the node is stopped. The separate `starship` Docker target
+  retains the development image contract. See [container migration and image
+  verification](../../docs/RELEASE.md#publication-contract).
+- Before the halt, set the top-level `query-gas-limit = "5000000"` in every node's
+  `config/app.toml` and review any `manifestd start --query-gas-limit` override.
+  The candidate rejects legacy explicit zero values at startup; the old binary
+  accepts this positive setting, so stage it before the automatic restart.
+  Rehearse ordinary module queries and large credit estimates at the selected
+  budget. Operators may select a higher positive cap after capacity checks.
+  This setting is separate from `[wasm]` query and simulation limits; see
+  [module query budgets](../../x/billing/docs/OPERATIONS.md#module-query-budgets).
 - Audit public crisis invocation, including unsigned transaction simulation,
   using the [invariant operations guide](../../x/billing/docs/OPERATIONS.md).
   Record current consensus gas, all circuit grantees and authority controls,
@@ -304,6 +318,13 @@ Before the upgrade:
   or testnet. Include upgrade, module-version checks, representative billing/SKU
   lifecycle tests, load tests, export with `--output-document`,
   `manifestd genesis validate /path/to/restart-genesis.json`, and import/re-export.
+  The periodic-vesting SDK optimization changes no account schema or gas
+  schedule, but it runs in consensus-sensitive balance calculations. With
+  otherwise identical application code and state, compare the parent and
+  patched SDK at vesting boundaries: locked/spendable balances, bank-send
+  acceptance, charged gas, and committed state must agree. Include existing
+  large and multi-denomination schedules. The SDK patch itself needs no state
+  migration; the Ledger module migrations below still apply.
   Store, instantiate, and execute a contract before the halt, then query and
   execute that same contract after the upgrade before uploading fresh code.
   This exercises wasmvm v2.2.4→v2.2.8 compiled-cache replacement and state
@@ -320,8 +341,21 @@ Before the upgrade:
   Cursor pages on those sparse filters may be short or empty while returning a
   non-empty `next_key`, so bulk consumers must continue until that cursor is
   empty. `count_total` remains zero unless requested and, following the SDK
-  contract, is ignored when a page key is present. `CreditAccount` and
-  `ProviderWithdrawable` remain cursor-only.
+  contract, is ignored when a page key is present. `ProviderWithdrawable`
+  remains cursor-only. `CreditAccount` supports explicit cursor pages and a
+  bounded complete response when pagination is absent; neither endpoint accepts
+  offset or total-count scans.
+- Regenerate `CreditAccount` clients to send request field 2 (`pagination`) and
+  consume response field 4 (`pagination.next_key`). Old descriptors omit the
+  request field and cannot observe a response cursor. Those legacy requests now
+  receive all spendable balances up to 1,000 bank denominations, or gRPC
+  `ResourceExhausted` above that ceiling; they never receive partial success.
+  The ceiling counts bank denominations before vesting locks are excluded.
+  Test accounts with more than 100 denominations and accounts above 1,000.
+  Explicit page requests, including an empty `PageRequest`, retain the default
+  100 and maximum 1,000; continue even when a fully locked page has no returned
+  coins but has a nonempty cursor. The current CLI always uses this explicit
+  pagination path.
 - Verify those clients preserve chain-returned identifiers as canonical
   lowercase UUIDv7 values when calling `LeasesByProvider`, `LeasesBySKU`, and
   `SKUsByProvider`. Empty fields keep their distinct `<field> cannot be empty`

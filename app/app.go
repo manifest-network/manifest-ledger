@@ -611,7 +611,7 @@ func NewApp(
 		maccPerms,
 		app.AccountKeeper,
 		tokenFactoryBankKeeper{
-			BankKeeper:      app.BankKeeper,
+			bank:            app.BankKeeper,
 			creditAddresses: app.BillingKeeper.CreditAddressIndex,
 		},
 		app.DistrKeeper,

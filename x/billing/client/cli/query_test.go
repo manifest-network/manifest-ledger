@@ -106,6 +106,31 @@ func TestPaginatedQueryCommandsDecodeBase64PageKey(t *testing.T) {
 	}
 }
 
+func TestCreditAccountCommandRequestsExplicitPagination(t *testing.T) {
+	server := &paginationCaptureServer{requests: make(chan *query.PageRequest, 1)}
+	clientCtx := newQueryClientContext(t, server)
+	for _, tc := range []struct {
+		name  string
+		args  []string
+		limit uint64
+	}{
+		{name: "omitted flags", limit: types.DefaultCreditAccountBalanceQueryLimit},
+		{name: "explicit zero", args: []string{"--limit", "0"}, limit: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := cli.GetCreditAccountCmd()
+			cmd.SetContext(t.Context())
+			require.NoError(t, client.SetCmdClientContext(cmd, clientCtx))
+			cmd.SetArgs(append([]string{"manifest1tenant"}, tc.args...))
+			require.NoError(t, cmd.Execute())
+			request := <-server.requests
+			require.NotNil(t, request, "CLI requests must opt into cursor pages, including an empty protobuf message")
+			require.Equal(t, tc.limit, request.Limit)
+			require.Empty(t, request.Key)
+		})
+	}
+}
+
 func TestProviderWithdrawableCommandLimit(t *testing.T) {
 	server := &paginationCaptureServer{requests: make(chan *query.PageRequest, 1)}
 	clientCtx := newQueryClientContext(t, server)

@@ -288,7 +288,11 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 		return nil, queryLookupError(err, types.ErrCreditAccountNotFound)
 	}
 
-	pageReqInput := query.PageRequest{Limit: types.DefaultCreditAccountBalanceQueryLimit}
+	// Before pagination was added, clients expected the entire balance list and
+	// cannot observe the new response cursor. Preserve complete results within
+	// the bank-page ceiling, or fail instead of silently truncating their view.
+	legacyComplete := req.Pagination == nil
+	pageReqInput := query.PageRequest{Limit: types.MaxCreditAccountBalanceQueryLimit}
 	if req.Pagination != nil {
 		pageReqInput = *req.Pagination
 		if pageReqInput.Limit == 0 {
@@ -313,6 +317,11 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 	})
 	if err != nil {
 		return nil, err
+	}
+	if legacyComplete && len(bankResponse.Pagination.GetNextKey()) != 0 {
+		return nil, status.Errorf(codes.ResourceExhausted,
+			"credit account exceeds %d bank denominations; supply pagination and follow pagination.next_key",
+			types.MaxCreditAccountBalanceQueryLimit)
 	}
 
 	// bank's reverse pagination preserves store order and therefore returns a
@@ -600,6 +609,9 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
 
 	if req.Tenant == "" {
 		return nil, status.Error(codes.InvalidArgument, "tenant cannot be empty")
@@ -631,13 +643,13 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		)
 	}
 
-	// Calculate total rate per second across all active leases.
-	// Also collect relevant denoms for per-denom balance queries (DoS mitigation).
-	rateCoins := make([]sdk.Coin, 0, 4)
+	// Fold each denomination as it is visited instead of retaining, cloning and
+	// sorting every pricing item. Indexes only locate already-encountered denoms;
+	// map iteration never determines arithmetic or result order.
+	totalRatePerSecond := make(sdk.Coins, 0, 4)
+	rateIndexByDenom := make(map[string]int)
 	var activeLeaseCount uint64
 	var leaseItemCount uint64
-	denomSet := make(map[string]struct{})
-	denoms := make([]string, 0, 4)
 
 	// Use TenantState compound index to iterate only over active leases - O(k) instead of O(n)
 	key := collections.Join(tenantAddr, int32(types.LEASE_STATE_ACTIVE))
@@ -653,6 +665,9 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 	}()
 
 	for ; activeLeaseCount < creditAccount.ActiveLeaseCount && iter.Valid(); iter.Next() {
+		if err := ctx.Err(); err != nil {
+			return nil, status.FromContextError(err).Err()
+		}
 		activeLeaseCount++
 
 		leaseUUID, err := iter.PrimaryKey()
@@ -675,6 +690,9 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 
 		// Sum up rates for all items in this lease
 		for _, item := range lease.Items {
+			if err := ctx.Err(); err != nil {
+				return nil, status.FromContextError(err).Err()
+			}
 			if err := types.ValidateLeaseItemPricing(item.LockedPrice, item.Quantity); err != nil {
 				return nil, status.Error(codes.Internal, errorsmod.Wrapf(
 					err,
@@ -689,10 +707,18 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 			if err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
 			}
-			rateCoins = append(rateCoins, itemRate)
-			if _, ok := denomSet[item.LockedPrice.Denom]; !ok {
-				denomSet[item.LockedPrice.Denom] = struct{}{}
-				denoms = append(denoms, item.LockedPrice.Denom)
+			if index, exists := rateIndexByDenom[itemRate.Denom]; exists {
+				amount, err := totalRatePerSecond[index].Amount.SafeAdd(itemRate.Amount)
+				if err != nil {
+					return nil, status.Error(codes.Internal, types.ErrArithmeticOverflow.Wrapf(
+						"cannot aggregate %s rates %s and %s", itemRate.Denom,
+						totalRatePerSecond[index].Amount.String(), itemRate.Amount.String(),
+					).Error())
+				}
+				totalRatePerSecond[index].Amount = amount
+			} else {
+				rateIndexByDenom[itemRate.Denom] = len(totalRatePerSecond)
+				totalRatePerSecond = append(totalRatePerSecond, itemRate)
 			}
 		}
 	}
@@ -702,15 +728,31 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 			creditAccount.Tenant, creditAccount.ActiveLeaseCount,
 		).Error())
 	}
-	totalRatePerSecond, err := types.SafeAggregateCoins(rateCoins)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
 	}
+	slices.SortFunc(totalRatePerSecond, func(left, right sdk.Coin) int {
+		return strings.Compare(left.Denom, right.Denom)
+	})
 
-	// Fetch balances for only the denoms used by active leases (DoS mitigation).
-	currentBalance, err := q.k.getCreditBalancesForDenoms(ctx, req.Tenant, denoms)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+	// Fetch only the already-validated, sorted ACTIVE denominations. Check the
+	// request between reads, and compute vesting locks once for the whole query.
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
+	currentBalance := make(sdk.Coins, 0, len(totalRatePerSecond))
+	if len(totalRatePerSecond) > 0 {
+		creditAddress := types.DeriveCreditAddress(tenantAddr)
+		locked := q.k.bankKeeper.LockedCoins(ctx, creditAddress)
+		for _, rateCoin := range totalRatePerSecond {
+			if err := ctx.Err(); err != nil {
+				return nil, status.FromContextError(err).Err()
+			}
+			balance := creditCoinAfterLocks(q.k.bankKeeper.GetBalance(ctx, creditAddress, rateCoin.Denom), locked)
+			if balance.IsPositive() {
+				currentBalance = append(currentBalance, balance)
+			}
+		}
 	}
 
 	// Calculate estimated duration
@@ -723,6 +765,9 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		balanceIndex := 0
 
 		for _, rateCoin := range totalRatePerSecond {
+			if err := ctx.Err(); err != nil {
+				return nil, status.FromContextError(err).Err()
+			}
 			if rateCoin.Amount.IsZero() {
 				continue
 			}

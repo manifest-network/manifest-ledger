@@ -47,8 +47,6 @@ sh "$(dirname "$0")/verify-checksum-manifest.sh" "$checksums" "$archive" "$sbom"
 	sha256sum --check "$(basename "$checksums")"
 )
 
-sh "$(dirname "$0")/verify-spdx-sbom.sh" "$sbom"
-
 if ! archive_listing="$(tar -tzf "$archive")"; then
 	echo "could not list release archive members" >&2
 	exit 1
@@ -70,6 +68,8 @@ if [ -L "$binary" ] || [ ! -f "$binary" ] || [ ! -x "$binary" ]; then
 	echo "release archive manifestd is not a regular executable" >&2
 	exit 1
 fi
+
+sh "$(dirname "$0")/verify-spdx-sbom.sh" "$sbom" "$archive" "$binary"
 
 "$(dirname "$0")/verify-release-binary.sh" "$binary"
 

@@ -358,13 +358,15 @@ These values are compile-time constants and cannot be changed via governance:
 | `MaxCustomDomainLength` | 253 | Maximum bytes for `LeaseItem.custom_domain` (RFC 1035 max FQDN length) |
 | `MaxWithdrawCursorLen` | 64 | Maximum bytes of the opaque `--key` cursor for provider-wide withdraw (a lease UUID is 36 bytes). Defined in `types/msgs.go`. |
 | `CreditAccountAddressPrefix` | `billing/credit/` | Prefix used for deterministic credit address derivation |
-| `DefaultCreditAccountBalanceQueryLimit` | 100 | Default bank-balance page size for `CreditAccount` |
-| `MaxCreditAccountBalanceQueryLimit` | 1000 | Maximum bank-balance page size for `CreditAccount` |
+| `DefaultCreditAccountBalanceQueryLimit` | 100 | Default bank-balance page size for `CreditAccount` when pagination is present |
+| `MaxCreditAccountBalanceQueryLimit` | 1000 | Maximum bank-balance page size and absent-pagination complete-result ceiling for `CreditAccount` |
 | `DefaultProviderWithdrawableQueryLimit` | 50 | Default page size for the ProviderWithdrawable query, matching provider-wide `MsgWithdraw`. The request's old top-level `limit` field was removed; proto field 2 is reserved. |
 | `MaxProviderWithdrawableQueryLimit` | 100 | Maximum page size for the ProviderWithdrawable query (`pagination.limit` is clamped to the transaction batch ceiling) |
 | `MaxCreditEstimateLeaseItems` | 100,000 | Maximum active lease items aggregated by one unpaginated `CreditEstimate` request |
 
-> **CreditEstimate iteration** follows the ACTIVE count stored on the tenant's credit account rather than the current governance limit. It enforces the conservative 11,000 ACTIVE bound, a 100,000-item work bound, and exact count/index agreement. `CreditAccount` does not scan leases: it returns spendable bank balances through bounded cursor pages (default 100, max 1000). Both queries reject rather than silently truncate work outside their documented contracts.
+> **CreditEstimate iteration** follows the ACTIVE count stored on the tenant's credit account rather than the current governance limit. It enforces the conservative 11,000 ACTIVE bound, a 100,000-item work bound, and exact count/index agreement. `CreditAccount` does not scan leases: explicit pagination returns spendable bank balances through bounded cursor pages (default 100, max 1000). Absent pagination returns the complete result up to 1,000 bank denominations or fails with `ResourceExhausted`. Both queries reject rather than silently truncate work outside their documented contracts.
+
+> The daemon also applies a default 5,000,000-gas budget to each SDK query, so a large `CreditEstimate` can fail before those absolute work ceilings. Incremental denomination aggregation reduces intermediate allocations; native gRPC cancellation is checked during scanning and balance reads. The SDK ABCI route does not propagate transport cancellation. Existing node configurations with `query-gas-limit = "0"` must select a positive budget before restart. See [query-budget operations](docs/OPERATIONS.md#module-query-budgets).
 
 ### Batch Operations
 
@@ -577,7 +579,7 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 | LeasesByTenant | List leases for a tenant |
 | LeasesByProvider | List leases for a provider (use `--state pending` filter for pending leases) |
 | LeasesBySKU | List leases using a specific SKU |
-| CreditAccount | Get a tenant's credit account plus one cursor-paginated page of spendable bank balances and page-aligned available balances |
+| CreditAccount | Get a tenant's credit account plus spendable and available bank balances: explicit cursor page, or complete result within 1,000 bank denominations when pagination is absent |
 | CreditAccounts | List all credit accounts |
 | CreditEstimate | Report gross spendable-balance runway at the aggregate ACTIVE rate (not reservation-aware or an auto-close forecast) |
 | CreditAddress | Derive credit address for a tenant |
@@ -595,7 +597,13 @@ pagination mode.
 Requests that cannot produce an exact page or total within the applicable
 ceiling fail. An omitted or zero limit does not implicitly request a total.
 Larger histories must use cursors. `CreditAccount` and `ProviderWithdrawable`
-remain cursor-only because their per-row work is more expensive.
+reject offset and total-count scans. `CreditAccount` requests with pagination
+absent preserve a complete spendable-balance result for old clients up to 1,000
+bank denominations, or return `ResourceExhausted` without a partial response.
+This ceiling includes fully locked denominations. Explicit pagination retains
+the default 100 and maximum 1,000; the current CLI always sends a page request.
+Clients with old descriptors must regenerate to page through larger accounts.
+`ProviderWithdrawable` remains cursor-only.
 
 **Events**: See [API Reference - Events](docs/API.md#events) for the complete list of events emitted by this module.
 

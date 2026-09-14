@@ -24,6 +24,7 @@ concurrency:
 
 jobs:
   tests:
+    name: simulation tests
     runs-on: ubuntu-24.04
     steps:
       - name: Check out source

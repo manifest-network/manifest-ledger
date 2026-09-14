@@ -34,3 +34,6 @@ coverage.txt
 go.work.sum
 
 .idea/
+
+# Python policy-check caches
+__pycache__/

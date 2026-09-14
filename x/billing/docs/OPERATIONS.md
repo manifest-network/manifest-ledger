@@ -145,3 +145,60 @@ No live network policy change is made by this PR. Production cardinality and
 peak-memory rehearsal remain an upgrade gate (ENG-890); streaming the complete
 reservation invariant is a separate optimization and would not itself close
 the generic crisis fee-rollback path.
+
+
+## Module query budgets
+
+The daemon defaults to a positive BaseApp `query-gas-limit` of 5,000,000.
+This budget applies to each SDK module query through both the native gRPC
+server and CometBFT's ABCI query route, including REST requests forwarded to
+those routes. It is separate from `wasm.query_gas_limit`, which controls Wasm
+smart queries, and from the transaction simulation limit described above.
+A query gas cap does not replace either simulation controls or gateway
+request-rate/concurrency limits.
+
+Before restarting the candidate binary, set this **top-level** value in every
+serving node's `config/app.toml`, outside the `[wasm]` section:
+
+```toml
+query-gas-limit = "5000000"
+```
+
+`manifestd start --query-gas-limit 5000000` provides an explicit launch-time
+override. New `init` and `testnet` configurations use the same default. Existing
+configurations containing zero must be updated before the coordinated upgrade:
+the candidate rejects zero at startup because the previous SDK interpretation
+was unbounded. Positive higher values remain available for operators who have
+measured the intended state and request mix; do not restore unbounded queries.
+Check the effective configuration and command-line overrides on every RPC node.
+
+`CreditEstimate` retains its absolute ceilings of 11,000 ACTIVE leases and
+100,000 decoded pricing items, but these are not a promise that every request
+under them fits the configured gas budget. A local fixture with 100 leases of
+100 items consumed about 2.0 million SDK gas; 1,000 such leases consumed about
+20.1 million. Encoded value sizes and index reads affect actual costs. Rehearse
+normal client requests and large real accounts before choosing a higher limit.
+An estimate that exceeds either bound fails without a partial response. Explicit
+lease/item ceiling errors are `ResourceExhausted`; the pinned SDK recovers
+metered-read gas panics as `ErrPanic` on ABCI and `Internal` on native gRPC.
+Clients must not treat these failures as a zero balance or zero runway.
+
+Rates are folded incrementally by denomination and sorted once. Native gRPC
+requests preserve cancellation, which billing checks between leases, items,
+and bank reads. The SDK ABCI entry point discards its transport context;
+disconnecting that client does not cancel the query's server-side computation.
+The finite meter still bounds its charged state reads. A gas limit is not a
+precise CPU, allocation, or concurrency bound: non-metered processing can occur
+between reads, and some RPC services, such as transaction simulation, use their
+own execution contexts.
+
+Periodic vesting accounts require particular care: many distinct denominations
+previously caused repeated copying and sorting of a growing coin total during
+both account creation/validation and spendable-balance queries. The coordinated
+SDK patch accumulates those schedule amounts once and sorts the final result,
+without excluding existing valid vesting accounts or changing credit-address
+registration. The account's encoded state read is charged before decoding, so
+the finite query meter also limits large account decoding on these routes.
+These measures do not provide an account-period policy or bound aggregate
+concurrent load; retain gateway rate/concurrency controls and production-size
+rehearsal as deployment requirements.

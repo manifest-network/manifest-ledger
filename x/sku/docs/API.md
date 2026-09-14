@@ -2,6 +2,11 @@
 
 This document provides a comprehensive API reference for the SKU module, covering both CLI commands and gRPC/REST endpoints.
 
+The [generated RPC and CLI reference](../../../docs/reference/BILLING_SKU.md)
+lists every registered request/response field, command, and flag. This guide
+provides validation rules and operational examples. Update the generated
+reference with `make docs-reference`; CI checks it for drift.
+
 ## Table of Contents
 
 - [CLI Commands](#cli-commands)

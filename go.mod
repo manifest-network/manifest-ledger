@@ -6,9 +6,10 @@ replace (
 	// core v0.12 was tagged wrong (SDK v51)
 	cosmossdk.io/core => cosmossdk.io/core v0.11.3
 
-	// go list -m github.com/manifest-network/cosmos-sdk@b62c931f451aee6927ae98b0ddb9452bfaa515c3
+	// go list -m github.com/manifest-network/cosmos-sdk@5359749658aa0cca6c589bad650dd6d9f6e70bb8
 	// https://github.com/manifest-network/cosmos-sdk/pull/3
-	github.com/cosmos/cosmos-sdk => github.com/manifest-network/cosmos-sdk v0.50.14-liftedinit.1.0.20260831215405-b62c931f451a
+	// https://github.com/manifest-network/cosmos-sdk/pull/5 (bounded periodic vesting aggregation)
+	github.com/cosmos/cosmos-sdk => github.com/manifest-network/cosmos-sdk v0.50.14-liftedinit.1.0.20260914180641-5359749658aa
 
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	github.com/spf13/viper => github.com/spf13/viper v1.17.0 // v1.18+ breaks app overrides
@@ -53,7 +54,7 @@ require (
 	github.com/strangelove-ventures/tokenfactory v0.50.7-wasmvm2
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa
-	google.golang.org/grpc v1.83.1
+	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -248,7 +249,7 @@ require (
 	golang.org/x/arch v0.17.0 // indirect
 	golang.org/x/crypto v0.56.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
-	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect

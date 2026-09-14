@@ -44,6 +44,7 @@ import (
 
 	"github.com/manifest-network/manifest-ledger/app"
 	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
+	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
 
 const (
@@ -601,7 +602,7 @@ func enableSimulationBillingTransfers(cdc codec.JSONCodec, state map[string]json
 
 // simulateWithBillingCoverage checks actual delivery statistics after every
 // run, including imported-state runs and determinism replays. Invariants over
-// empty billing state must not make a starved simulation look healthy.
+// empty billing or SKU state must not make a starved simulation look healthy.
 func simulateWithBillingCoverage(
 	tb testing.TB,
 	bApp *app.ManifestApp,
@@ -691,6 +692,9 @@ func checkBillingSimulationResult(output io.Writer, config simulationtypes.Confi
 	if err := billingSimulationCoverageError(stats); err != nil {
 		return fmt.Errorf("billing coverage at seed %d: %w", config.Seed, err)
 	}
+	if err := skuSimulationCoverageError(stats); err != nil {
+		return fmt.Errorf("SKU coverage at seed %d: %w", config.Seed, err)
+	}
 	return nil
 }
 
@@ -713,6 +717,28 @@ func billingSimulationCoverageError(stats simulation.EventStats) error {
 	creation := stats[billingtypes.ModuleName][sdk.MsgTypeURL(&billingtypes.MsgCreateLease{})]
 	if funding["ok"] > 0 && creation["ok"] == 0 && creation["failure"] >= minimumAttempts {
 		return fmt.Errorf("billing simulation delivered no lease creations after %d attempts despite successful funding", creation["failure"])
+	}
+	return nil
+}
+
+func skuSimulationCoverageError(stats simulation.EventStats) error {
+	// Match the billing gate: require module selection while allowing short
+	// smoke runs and intentionally disabled individual operation weights.
+	attempts := 0
+	for _, results := range stats[skutypes.ModuleName] {
+		attempts += results["ok"] + results["failure"]
+	}
+	if attempts == 0 {
+		return fmt.Errorf("no SKU operations selected; enable SKU operation weights and run enough blocks")
+	}
+	const minimumAttempts = 20
+	providers := stats[skutypes.ModuleName][sdk.MsgTypeURL(&skutypes.MsgCreateProvider{})]
+	if providers["ok"] == 0 && providers["failure"] >= minimumAttempts {
+		return fmt.Errorf("SKU simulation delivered no provider creations after %d attempts", providers["failure"])
+	}
+	skus := stats[skutypes.ModuleName][sdk.MsgTypeURL(&skutypes.MsgCreateSKU{})]
+	if skus["ok"] == 0 && skus["failure"] >= minimumAttempts {
+		return fmt.Errorf("SKU simulation delivered no SKU creations after %d attempts", skus["failure"])
 	}
 	return nil
 }

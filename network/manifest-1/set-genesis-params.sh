@@ -1,15 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
 # Takes a default genesis from manifestd and creates a new genesis file.
 
-make install
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+# shellcheck source=scripts/lib/node-home.sh
+source "$script_dir/../../scripts/lib/node-home.sh"
 
-export HOME_DIR=$(eval echo "${HOME_DIR:-"~/.manifest"}")
+require_explicit_reset_home "${HOME_DIR:-}"
+HOME_DIR=$(resolve_node_home "$HOME_DIR")
+export HOME_DIR
+validate_node_home "$HOME_DIR"
+export BINARY=${BINARY:-manifestd}
 
-rm -rf $HOME_DIR && echo "Removed $HOME_DIR"
+make -C "$script_dir/../.." install
 
-manifestd init moniker --chain-id=manifest-1 --default-denom=umfx
+rm -rf -- "$HOME_DIR"
+printf 'Removed %s\n' "$HOME_DIR"
+
+"$BINARY" --home "$HOME_DIR" init moniker --chain-id=manifest-1 --default-denom=umfx
 
 update_genesis () {
-    cat $HOME_DIR/config/genesis.json | jq "$1" > $HOME_DIR/config/tmp_genesis.json && mv $HOME_DIR/config/tmp_genesis.json $HOME_DIR/config/genesis.json
+    update_node_genesis "$@"
 }
 
 update_genesis '.consensus["params"]["block"]["max_gas"]="-1"'

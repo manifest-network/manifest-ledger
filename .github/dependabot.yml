@@ -25,3 +25,7 @@ updates:
     directory: /interchaintest
     schedule:
       interval: weekly
+  - package-ecosystem: pip
+    directory: /scripts/spdx-validator
+    schedule:
+      interval: weekly

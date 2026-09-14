@@ -120,6 +120,9 @@ func AddReservation(reserved, toAdd sdk.Coins) (sdk.Coins, error) {
 
 // SubtractReservation subtracts amounts from reserved (for lease closure).
 // Returns the new reserved amounts. If a denom would go negative, it's set to zero.
+//
+// Deprecated: use SafeSubtractCoins, which rejects accounting underflow. This helper
+// retains its historical clamping behavior for source compatibility only.
 func SubtractReservation(reserved, toSubtract sdk.Coins) sdk.Coins {
 	if reserved.IsZero() {
 		return sdk.NewCoins()
@@ -226,6 +229,8 @@ func GetLeaseReservationAmount(lease *Lease, minLeaseDuration uint64) (sdk.Coins
 // Returns a map of denoms that would underflow and the amount of underflow for each.
 // An empty map indicates the release is safe with no underflow.
 // This is useful for observability/logging at the keeper level.
+//
+// Deprecated: use SafeSubtractCoins to validate and subtract in one checked operation.
 func CheckReservationRelease(reserved, toRelease sdk.Coins) map[string]sdkmath.Int {
 	underflows := make(map[string]sdkmath.Int)
 

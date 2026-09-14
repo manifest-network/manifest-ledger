@@ -24,6 +24,7 @@ concurrency:
 
 jobs:
   tests:
+    name: unit tests
     runs-on: ubuntu-24.04
     steps:
       - name: Check out source
@@ -37,6 +38,9 @@ jobs:
 
       - name: unit tests
         run: make test
+
+      - name: release-control and coverage policy tests
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: documentation examples
         run: |

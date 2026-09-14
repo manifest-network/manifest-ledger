@@ -1,15 +1,17 @@
-#!/bin/bash
-
-coverage_profile="$1"
-filtered_coverage_profile="$2"
-exclusion_file=".coverageignore"
-
-cp "$coverage_profile" "$filtered_coverage_profile"
-
-while read -r pattern; do
-  files_to_exclude=$(find . -type f -regex ".*$pattern")
-  for file in $files_to_exclude; do
-    relative_path=$(realpath --relative-to="." "$file")
-    grep -v "$relative_path" "$filtered_coverage_profile" > temp_coverage.out && mv temp_coverage.out "$filtered_coverage_profile"
-  done
-done < "$exclusion_file"
+#!/bin/sh
+set -eu
+if [ "$#" -ne 2 ]; then
+  echo "usage: $0 <profile> <filtered-profile>" >&2
+  exit 64
+fi
+python3 - "$1" "$2" <<'PYTHON'
+from fnmatch import fnmatchcase
+from pathlib import Path
+import sys
+patterns = [line.strip() for line in Path('.coverageignore').read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith('#')]
+lines = Path(sys.argv[1]).read_text().splitlines(keepends=True)
+filtered = [line for line in lines if line.startswith('mode:') or not any(
+    fnmatchcase(line.split(':', 1)[0], pattern) for pattern in patterns)]
+Path(sys.argv[2]).write_text(''.join(filtered))
+PYTHON

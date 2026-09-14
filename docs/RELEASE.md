@@ -9,7 +9,7 @@ any build starts.
 
 Before enabling publication, repository administrators must create an active
 ruleset covering **all tags** that restricts tag creation, update, deletion,
-and bypass to the release-admin group. Restricting only `v*` is insufficient:
+and bypass to the designated release maintainer. Restricting only `v*` is insufficient:
 an arbitrary tag can execute the workflow from the historical commit it points
 to, including older workflows that did not have the current validation gates.
 Administrators must also protect the GitHub
@@ -32,12 +32,38 @@ security updates or prevent a release credential from being committed. SHA
 enforcement also causes older floating-tag workflows to fail closed if an
 arbitrary historical tag is created, but does not replace the all-tags ruleset.
 
-Protect `main` with a ruleset that requires pull requests, CODEOWNER approval,
-stale-approval dismissal, conversation resolution, and the relevant build,
-test, simulation, E2E, and CodeQL checks. Restrict bypass to the smallest
-break-glass admin set. The checked-in CODEOWNERS file covers consensus modules
-and release infrastructure, but it is advisory until the branch ruleset
-requires code-owner review.
+The current sole-maintainer policy names `@fmorency` as the only tag-creation
+bypass actor and the required `release` environment reviewer. Self-approval is
+allowed; administrator environment bypass is disabled. A separate all-tags
+ruleset prevents updates and deletion without any bypass actors. The environment
+accepts only tags matching `v*`; canonical SemVer is checked by the workflow.
+Repository administrators remain trusted to edit these policies.
+
+`main` requires pull requests, conversation resolution, and the relevant build,
+unit, simulation, E2E, coverage, and CodeQL checks with strict up-to-date testing.
+The PR/check rules have no bypass actors. A separate update restriction permits
+only `@fmorency` to update `main` through a pull request, so other write-capable
+collaborators cannot merge without the maintainer. Required review count is zero and
+CODEOWNER approval is advisory because the project currently has one maintainer;
+requiring independent approval would prevent that maintainer from merging their
+own changes. Add independent CODEOWNER approval when another maintainer joins.
+
+The expected live configuration is recorded in
+[`.github/release-controls.json`](../.github/release-controls.json). Before
+creating a release tag and before approving publication, run:
+
+```sh
+python3 scripts/verify-release-controls.py
+```
+
+This read-only preflight uses the authenticated `gh` administrator session and
+fails on API errors, missing controls, or configuration drift. Ordinary workflow
+`GITHUB_TOKEN` permissions cannot inspect all administration endpoints, so this
+check is an operator gate, not an automatic workflow assertion. Do not add an
+administrative write credential to the build workflow to run it. Server-enforced
+tag and environment controls remain the authorization boundary. Policies were
+configured and read back on 2026-09-14; the preflight must still be run for each
+release.
 
 ## Publication contract
 
@@ -49,7 +75,7 @@ and end-to-end workflows. It then produces and verifies:
 - a provenance and SBOM attestation for the archive;
 - a statically linked `linux/amd64` and `linux/arm64` GHCR image manifest, with
   each target-architecture binary executed during its Buildx build and each
-  runtime filesystem scanned for known high/critical OS vulnerabilities before
+  exported runtime verified to contain only the daemon and CA bundle before
   the exact local OCI layout is promoted to GHCR; and
 - provenance and SBOM attestations for the published container manifest.
 
@@ -65,13 +91,27 @@ The downloadable tarball is currently **amd64 only**. ARM64 operators must use
 the matching multi-platform GHCR image or build from the release tag. Do not
 infer an ARM64 tarball from the general ARM64 runtime support statement.
 
-The published container intentionally retains the shell utilities required by
-the repository's Starship/interchaintest contract and currently uses the image
-default UID (`root`). Treat it as a chain/application image, not as a minimal
-distroless boundary. Production orchestrators should apply their normal
-read-only filesystem, capability, seccomp/AppArmor, network, and volume
-controls. Changing the image UID requires a separately rehearsed volume-
-ownership migration and is not part of a consensus software upgrade.
+The published container uses Docker's `production` target: a scratch filesystem
+containing the statically linked daemon, CA trust roots, and writable home/tmp
+paths. It runs as UID/GID `10001:10001`, uses `/home/manifest/.manifest`, and sets
+`manifestd` as its entrypoint. Invoke it with arguments, for example
+`docker run --rm IMAGE version`. It contains no shell or package manager.
+
+This changes the image's runtime/volume contract. Before upgrading an existing
+root-owned deployment, stop the node and back up its data, provision or migrate
+the mounted home to UID/GID `10001:10001`, and rehearse startup and restart with
+the production image on a snapshot. Mount the daemon home at
+`/home/manifest/.manifest` (or supply an explicit writable `--home`). A read-only
+root filesystem also needs writable daemon-home and `/tmp` mounts. Do not change
+ownership of a live node's data or assume a consensus migration changes Unix
+ownership. Configure capabilities, seccomp/AppArmor, and network access at the
+orchestrator boundary.
+
+The default Docker target, explicitly named `starship`, retains the root/tools
+contract required by Starship and interchaintest. Build it with
+`docker build --target starship .` for development; release publication explicitly
+selects `--target production`. The development image is not published under the
+production release aliases.
 
 ## Non-overwrite guarantees
 
@@ -211,3 +251,53 @@ The local target rebuilds the upgrade image from the working tree and checks
 its embedded version and commit. The similarly named target without `-local`
 is CI-only and consumes the content-identified image artifact built by the E2E
 workflow.
+
+## Compatibility and coverage gates
+
+`make proto-breaking` runs Buf's breaking-change checker against the released
+protobuf tree pinned by `.github/protobuf-baseline.ref` (currently `v2.3.1`).
+The tag must still resolve to the recorded commit. Advance that baseline to the
+new release only after publication; do not move it to a PR head to hide changes.
+Wire checks complement the old-descriptor `CreditAccount` tests: protobuf cannot
+detect semantic truncation of a successful response.
+
+`codecov.yaml` owns 80% project and patch floors. The reviewed combined CI profile
+was 85.2% on `6b02665`; future profiles now include `cmd/manifestd/cmd/testnet.go`.
+Only generated protobuf files are excluded. Billing and SKU have separate
+Codecov components, and CI publishes per-package coverage summaries and the raw
+combined profile for trend comparisons.
+
+The `govulncheck` CI job also retains module-level advisory JSON for both Go
+modules (`make govulncheck-module-report`). Review this inventory even when the
+symbol-reachability gate passes: affected modules can contain unused vulnerable
+features. The inventory is evidence for triage, not an assertion that every
+module advisory is exploitable in the daemon. Keep reachable findings governed
+by the existing narrowly scoped vulnerability policy.
+
+Release artifact verification requires an isolated hash-locked SPDX validator:
+
+```sh
+sh scripts/install-spdx-validator.sh /new/path/to/spdx-validator
+export SPDX_PYTHON=/new/path/to/spdx-validator/bin/python
+```
+
+The verifier runs the official SPDX 2.3 semantic validator and compares the SBOM
+with the actual archive and daemon: subject and binary SHA256, main module,
+standard-library version, every dependency/version from Go build information
+(including module replacements), and the connecting relationships. A valid but
+incomplete one-package document fails. CI installs the validator in both artifact
+preparation and final publication jobs; the downloaded artifacts are verified
+again before attestation.
+
+This verifies the dependency inventory represented by Go build information. It
+does not enumerate the internal Rust/C dependency graph of statically linked
+WasmVM or musl. Their pinned artifact/base-image checksums and native-binary
+checks remain separate controls; do not interpret a passing SPDX check as proof
+of a complete native dependency inventory or absence of vulnerabilities.
+
+The production filesystem verifier rejects extra regular files, symlinks, and
+special files. Trivy's OS scan still runs on the exported filesystems, but scratch
+has no OS package database, so that scan does not inventory statically linked
+native libraries. The development images retain APK metadata and their OS
+package scans remain applicable. Go reachability scans, native-library checksum
+verification, and the documented native advisory review remain separate gates.

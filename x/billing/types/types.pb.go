@@ -417,7 +417,10 @@ type Lease struct {
 	// min_lease_duration_at_creation stores the min_lease_duration parameter
 	// value at the time this lease was created. This ensures consistent
 	// reservation calculation regardless of subsequent parameter changes.
-	// reservation = sum(locked_price × quantity) × min_lease_duration_at_creation
+	// The initial reservation ceiling is sum(locked_price × quantity) times
+	// min_lease_duration_at_creation. ACTIVE settlement consumes the remaining
+	// guarantee; terminal leases have none. Legacy leases may start below this
+	// ceiling after aggregate-only genesis normalization.
 	MinLeaseDurationAtCreation uint64 `protobuf:"varint,15,opt,name=min_lease_duration_at_creation,json=minLeaseDurationAtCreation,proto3" json:"min_lease_duration_at_creation,omitempty,string"`
 	// reservation contains this modern lease's remaining consumable guarantee.
 	// It is intentionally nullable only as a genesis-format marker: absence

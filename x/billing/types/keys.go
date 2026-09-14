@@ -78,10 +78,11 @@ const (
 // Query limits to prevent DoS attacks on RPC nodes.
 const (
 	// DefaultCreditAccountBalanceQueryLimit is the default number of bank
-	// balances returned by CreditAccount.
+	// balances returned by CreditAccount when pagination is present.
 	DefaultCreditAccountBalanceQueryLimit uint64 = 100
 
-	// MaxCreditAccountBalanceQueryLimit bounds bank-store work and response size.
+	// MaxCreditAccountBalanceQueryLimit bounds bank-store work and response size,
+	// including the complete-result compatibility mode when pagination is absent.
 	MaxCreditAccountBalanceQueryLimit uint64 = 1000
 
 	// DefaultProviderWithdrawableQueryLimit matches provider-wide MsgWithdraw so
