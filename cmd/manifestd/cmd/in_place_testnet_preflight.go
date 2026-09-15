@@ -175,7 +175,7 @@ func preflightTestnetCommand(cmd *cobra.Command, args []string) error {
 	if err := validateTestnetFreshKey(key, state); err != nil {
 		return err
 	}
-	if appHeight < 1 || (appHeight != state.LastBlockHeight && appHeight != state.LastBlockHeight-1 && appHeight != state.LastBlockHeight+1) {
+	if appHeight < 1 || (appHeight != state.LastBlockHeight && appHeight != state.LastBlockHeight+1) {
 		return fmt.Errorf("unsupported source application/Comet heights %d/%d", appHeight, state.LastBlockHeight)
 	}
 	if trigger := v.GetString(server.KeyTriggerTestnetUpgrade); trigger != "" {
@@ -425,7 +425,7 @@ func validateTestnetHome(home string, cfg *cmtcfg.Config, v *viper.Viper) error 
 			}
 		}
 	}
-	for _, listener := range []string{cfg.RPC.ListenAddress, cfg.ProxyApp, cfg.P2P.ListenAddress, v.GetString("grpc.address"), v.GetString("api.address")} {
+	for _, listener := range []string{cfg.RPC.ListenAddress, cfg.RPC.GRPCListenAddress, cfg.ProxyApp, cfg.P2P.ListenAddress, v.GetString("grpc.address"), v.GetString("api.address")} {
 		if strings.HasPrefix(listener, "unix:") {
 			return fmt.Errorf("unix socket listeners are unsupported for in-place testnet homes")
 		}
@@ -455,6 +455,9 @@ func validateTestnetIsolation(cfg *cmtcfg.Config, v *viper.Viper) error {
 	}
 	if cfg.PrivValidatorListenAddr != "" {
 		return fmt.Errorf("fork isolation requires a local validator key, without priv_validator_laddr")
+	}
+	if cfg.TxIndex.Indexer != "kv" && cfg.TxIndex.Indexer != "null" {
+		return fmt.Errorf("fork isolation requires tx_index.indexer to be kv or null; external transaction indexing is unsupported")
 	}
 	if cfg.DBBackend != "goleveldb" || (v.GetString("app-db-backend") != "" && v.GetString("app-db-backend") != "goleveldb") {
 		return fmt.Errorf("read-only fork preflight currently requires goleveldb application and Comet databases")
@@ -644,6 +647,9 @@ func validateTestnetRestart(journal testnetJournal, key privval.FilePVKey, state
 	if state.ChainID != journal.ChainID || !bytes.Equal(key.Address, journal.ConsensusAddress) {
 		return fmt.Errorf("fork chain ID or validator key disagrees with its conversion journal")
 	}
+	// Comet can recover an app-ahead crash using the stored block and ABCI
+	// response. This guard does not verify those recovery records, so it requires
+	// matching persisted commits even after a previously completed conversion.
 	if state.LastBlockHeight < journal.FirstCommitHeight || appHeight != state.LastBlockHeight || !bytes.Equal(appHash, state.AppHash) {
 		return fmt.Errorf("fork application and Comet commit are inconsistent with the conversion journal; create a fresh disposable copy")
 	}

@@ -222,9 +222,9 @@ func TestTestnetCommandPreflightRejectsWithoutWrites(t *testing.T) {
 			require.NoError(t, cmd.Flags().Set(server.KeyTriggerTestnetUpgrade, "no-such-handler"))
 		}},
 		{"skip trigger", "unsafe-skip-upgrades", func(t *testing.T, _ *testnetPreflightFixture, cmd *cobra.Command, _ []string) {
-			if version.Version == "" {
-				t.Skip("unversioned binary")
-			}
+			previousVersion := version.Version
+			version.Version = "preflight-upgrade"
+			t.Cleanup(func() { version.Version = previousVersion })
 			require.NoError(t, cmd.Flags().Set(server.KeyTriggerTestnetUpgrade, version.Version))
 			require.NoError(t, cmd.Flags().Set(server.FlagUnsafeSkipUpgrades, "4"))
 		}},
@@ -259,6 +259,94 @@ func TestTestnetCommandPreflightRejectsWithoutWrites(t *testing.T) {
 			require.Equal(t, before, snapshotTestnetFiles(t, f.home))
 			require.Nil(t, cmd.Context().Value(testnetPreflightContextKey{}))
 		})
+	}
+}
+
+func TestTestnetPreflightExternalServices(t *testing.T) {
+	for _, command := range []string{"in-place-testnet", "start"} {
+		for _, tc := range []struct {
+			name, indexer, listener, message string
+		}{
+			{name: "local index", indexer: "kv"},
+			{name: "no index", indexer: "null"},
+			{name: "external index", indexer: "psql", message: "external transaction indexing is unsupported"},
+			{name: "unknown index", indexer: "other", message: "tx_index.indexer to be kv or null"},
+			{name: "TCP broadcast", indexer: "kv", listener: "tcp://127.0.0.1:26658"},
+			{name: "unix broadcast", indexer: "kv", listener: "unix://", message: "unix socket listeners are unsupported"},
+		} {
+			t.Run(command+"/"+tc.name, func(t *testing.T) {
+				f := newTestnetPreflightFixture(t)
+				if command == "start" {
+					f.state.ChainID = "fork"
+					f.state.Validators = cmttypes.NewValidatorSet([]*cmttypes.Validator{cmttypes.NewValidator(f.key.Key.PubKey, 1)})
+					f.state.LastValidators = f.state.Validators.Copy()
+					f.state.NextValidators = f.state.Validators.Copy()
+					genesis := cmttypes.GenesisDoc{ChainID: "fork", InitialHeight: 1, ConsensusParams: cmttypes.DefaultConsensusParams()}
+					require.NoError(t, genesis.SaveAs(f.config.GenesisFile()))
+					f.saveState(t)
+					journal := testnetJournal{
+						Version: 1, Complete: true, SourceChainID: "source", ChainID: "fork", Operator: f.operator,
+						ConsensusAddress: f.key.Key.Address, SourceHeight: 2, FirstCommitHeight: 3,
+					}
+					require.NoError(t, writeTestnetJournal(f.home, journal, true))
+				}
+				f.config.TxIndex.Indexer = tc.indexer
+				f.config.TxIndex.PsqlConn = "postgresql://source.invalid/source"
+				f.config.RPC.GRPCListenAddress = tc.listener
+				outside := t.TempDir()
+				if tc.listener == "unix://" {
+					f.config.RPC.GRPCListenAddress += filepath.Join(outside, "grpc.sock")
+				}
+				cmtcfg.WriteConfigFile(filepath.Join(f.home, "config", "config.toml"), f.config)
+				before, outsideBefore := snapshotTestnetFiles(t, f.home), snapshotTestnetFiles(t, outside)
+				err := preflightTestnetCommand(f.command(t, command), []string{"fork", f.operator})
+				if tc.message == "" {
+					require.NoError(t, err)
+				} else {
+					require.ErrorContains(t, err, tc.message)
+				}
+				require.Equal(t, before, snapshotTestnetFiles(t, f.home))
+				require.Equal(t, outsideBefore, snapshotTestnetFiles(t, outside))
+			})
+		}
+	}
+}
+
+func TestTestnetPreflightSourceHeights(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		cometHeight int64
+		allowed     bool
+	}{
+		{"matching commits", 3, true},
+		{"application one ahead", 2, true},
+		{"application behind", 4, false},
+		{"application two ahead", 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newTestnetPreflightFixture(t)
+			f.state.LastBlockHeight = tc.cometHeight
+			f.saveState(t)
+			before := snapshotTestnetFiles(t, f.home)
+			err := preflightTestnetCommand(f.command(t, "in-place-testnet"), []string{"fork", f.operator})
+			if tc.allowed {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "unsupported source application/Comet heights")
+			}
+			require.Equal(t, before, snapshotTestnetFiles(t, f.home))
+		})
+	}
+}
+
+func TestTestnetRestartRejectsUnverifiedCrashRecovery(t *testing.T) {
+	f := newTestnetPreflightFixture(t)
+	journal := testnetJournal{ChainID: f.state.ChainID, ConsensusAddress: f.key.Key.Address, FirstCommitHeight: 2}
+	require.NoError(t, validateTestnetRestart(journal, f.key.Key, &f.state, 3, f.state.AppHash))
+	// A matching old hash cannot excuse the height mismatch; a new hash cannot
+	// be trusted without verifying the block and saved ABCI response for it.
+	for _, hash := range [][]byte{f.state.AppHash, bytes.Repeat([]byte{4}, 32)} {
+		require.ErrorContains(t, validateTestnetRestart(journal, f.key.Key, &f.state, 4, hash), "create a fresh disposable copy")
 	}
 }
 

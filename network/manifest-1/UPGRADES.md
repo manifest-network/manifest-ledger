@@ -219,6 +219,10 @@ Prepare the copied home before running the command:
 4. Give the fork a distinct chain ID, clear `persistent_peers` and `seeds`, disable
    peer exchange and state sync, and isolate its P2P network from production.
    The SDK clears the address book but does not clear configured peers or seeds.
+   Set `[tx_index] indexer` to `"kv"` or `"null"`; external PostgreSQL indexing is
+   rejected on conversion and restart. Unix socket listeners, including Comet's
+   `[rpc] grpc_laddr`, are also rejected to keep socket files inside the mutation
+   boundary. Use TCP listeners on ports reserved for the fork.
 5. Set `POA_ADMIN_ADDRESS` to the local operator's canonical lowercase **account**
    address before startup. Use an account with a local signing key; module
    accounts cannot serve as the funded operator. Retain that byte-identical value
@@ -316,6 +320,12 @@ Comet/application agreement. If initialization, commit, or the process fails and
 the marker remains incomplete or the stored identities disagree, discard that
 working copy and prepare a fresh one from the stopped source backup. Do not
 delete/edit the marker or repair signing state to retry an interrupted conversion.
+
+Use a clean stop for completed forks too. A crash or OOM kill between application
+commit and Comet's state save can leave the application one block ahead. Although
+Comet can normally recover that window, this fork guard does not verify the
+stored block and saved ABCI response needed for recovery and rejects the mismatch.
+Prepare a fresh disposable copy in that case; keep the marker and its protections.
 
 For a **forced first-block migration**, start from a fresh prepared copy and
 build the target migration code under an upgrade name that has **never completed

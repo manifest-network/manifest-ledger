@@ -1,7 +1,7 @@
 FROM golang:1.25-alpine AS go-builder
 ARG BUILD_CMD=build
 ARG BUILD_TAGS=muslc
-ARG VERSION=v2.3.1
+ARG VERSION
 
 SHELL ["/bin/sh", "-ecuxo", "pipefail"]
 
@@ -22,7 +22,9 @@ COPY . /code
 # force it to use static lib (from above) not standard libgo_cosmwasm.so file
 # then log output of file /code/bin/manifestd
 # then ensure static linking
-RUN LEDGER_ENABLED=false BUILD_TAGS="$BUILD_TAGS" VERSION="$VERSION" LINK_STATICALLY=true make "$BUILD_CMD" \
+# An omitted or empty override leaves version selection to the Makefile.
+RUN if [ -z "${VERSION:-}" ]; then unset VERSION; fi; \
+    LEDGER_ENABLED=false BUILD_TAGS="$BUILD_TAGS" LINK_STATICALLY=true make "$BUILD_CMD" \
   && file /code/build/manifestd \
   && echo "Ensuring binary is statically linked ..." \
   && (file /code/build/manifestd | grep "statically linked")
