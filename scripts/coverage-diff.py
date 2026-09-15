@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Gate Go statements in blocks intersecting added lines in a complete Git diff."""
+"""Gate changed executable Go statements across a complete local Git diff."""
 
 import argparse
-from bisect import bisect_left
+import json
+from bisect import bisect_right
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 from pathlib import Path, PurePosixPath
@@ -92,6 +93,23 @@ def added_lines(repo, base, head, path):
     return sorted(added)
 
 
+def source_statements(sources):
+    # Go's parser/scanner owns source syntax. Never execute source from the
+    # compared commits, and keep comments/blank lines out of change credit.
+    result = subprocess.run(
+        ["go", "run", "./tools/coverage", "statements"],
+        cwd=Path(__file__).resolve().parent.parent,
+        input=json.dumps(sources), capture_output=True, text=True, check=True,
+    )
+    rows = json.loads(result.stdout)
+    if not isinstance(rows, list) or len(rows) != len(sources):
+        raise ValueError("source analyzer returned an incomplete file list")
+    indexed = {row["path"]: row["statements"] or [] for row in rows}
+    if len(indexed) != len(rows) or set(indexed) != {row["path"] for row in sources}:
+        raise ValueError("source analyzer returned unexpected or duplicate files")
+    return indexed
+
+
 def analyze(profile, repo, base, head):
     base, head = revision(repo, base), revision(repo, head)
     go_mod = git(repo, "show", head + ":go.mod")
@@ -103,41 +121,47 @@ def analyze(profile, repo, base, head):
         repo, "diff", "--no-ext-diff", "--no-renames", "--name-only", "-z", base, head,
     ).split("\x00")
     changed = sorted(path for path in changed if path)
-    rows = []
-    absent = []
-    eligible_files = 0
-    added_count = 0
+    additions = {}
+    sources = []
     for path in changed:
-        if not eligible(path):
+        if eligible(path):
+            added = added_lines(repo, base, head, path)
+            if added:
+                additions[path] = set(added)
+                sources.append({"path": path, "source": git(repo, "show", head + ":" + path)})
+    statements = source_statements(sources) if sources else {}
+    rows, missing, declarations = [], {}, []
+    for path, added in additions.items():
+        logical = statements[path]
+        if not logical:
+            declarations.append(path)
             continue
-        added = added_lines(repo, base, head, path)
-        if not added:
-            continue
-        eligible_files += 1
-        added_count += len(added)
-        if path not in files:
-            absent.append(path)
-            continue
-        hits, statements, blocks = 0, 0, 0
-        for start, end, size, count in files[path]:
-            index = bisect_left(added, start[0])
-            if index < len(added) and added[index] <= end[0] and size:
-                blocks += 1
-                statements += size
-                hits += size if count else 0
-        if blocks:
-            rows.append((path, hits, statements, blocks))
+        blocks = [block for block in files.get(path, []) if block[2]]
+        starts = [block[0] for block in blocks]
+        hits, total = 0, 0
+        for statement in logical:
+            position = (statement["line"], statement["column"])
+            index = bisect_right(starts, position) - 1
+            block = blocks[index] if index >= 0 and position < blocks[index][1] else None
+            if block is None:
+                missing.setdefault(path, []).append(position)
+            if not added.intersection(statement["lines"]):
+                continue
+            total += 1
+            hits += 1 if block is not None and block[3] else 0
+        if total:
+            rows.append((path, hits, total))
     return {
         "base": base, "head": head, "changed_files": len(changed),
-        "eligible_files": eligible_files, "added_lines": added_count,
-        "rows": rows, "absent": absent,
+        "eligible_files": len(additions), "added_lines": sum(map(len, additions.values())),
+        "rows": rows, "missing": missing, "declarations": declarations,
         "covered": sum(row[1] for row in rows),
         "statements": sum(row[2] for row in rows),
     }
 
 
 def render(result, floor):
-    print("Full Git diff coverage: **Go statements in changed blocks**.\n")
+    print("Full Git diff coverage: **changed executable Go statements**.\n")
     print(f"Base: `{result['base']}`. Head: `{result['head']}`.\n")
     print(
         f"Scope: {result['changed_files']} changed files, "
@@ -146,26 +170,35 @@ def render(result, floor):
         "Git reads the full local comparison without an API file limit.\n"
     )
     print(
-        "Count each nonempty profile block once when its inclusive line range "
-        "intersects an added line; weight it by its Go statement count. "
-        "Renames count as deletion plus addition. Generated protobuf and Go test "
-        "files are excluded. This is not Codecov line coverage; its separate "
-        "project and patch requirements still apply.\n"
+        "Count each logical executable statement once when an added line contains "
+        "one of its own Go tokens. Nested bodies are measured separately; comments, "
+        "blank lines, and unchanged source lines receive no credit. Statements sharing "
+        "a changed physical line are counted together. Execution comes "
+        "from the Go profile block containing its first token. This AST statement "
+        "metric is distinct from Go NumStmt and Codecov line coverage. Generated "
+        "protobuf and Go test files are excluded. Renames count as deletion plus addition.\n"
     )
-    print("| File | Covered statements | Coverage | Changed blocks |\n| --- | ---: | ---: | ---: |")
-    for path, hits, total, blocks in result["rows"]:
+    print("| File | Covered changed statements | Coverage |\n| --- | ---: | ---: |")
+    for path, hits, total in result["rows"]:
         label = path.replace("&", "&amp;").replace("<", "&lt;").replace("|", "&#124;")
         label = label.replace("`", "&#96;").replace("\t", "&#9;").replace("\n", "&#10;")
-        print(f"| {label} | {hits}/{total} | {100 * hits / total:.2f}% | {blocks} |")
-    if result["absent"]:
-        print("\nChanged Go files with no blocks in the supplied profile. They contribute no statements to this metric; coverage-profile generation must establish source completeness:")
-        for path in result["absent"]:
+        print(f"| {label} | {hits}/{total} | {100 * hits / total:.2f}% |")
+    if result["declarations"]:
+        print("\nChanged sources with no logical executable statements (declarations or empty bodies):")
+        for path in result["declarations"]:
             print(f"\n- {path!r}")
+    if result["missing"]:
+        print("\n**FAIL: incomplete coverage evidence for executable source.** "
+              "Every statement in each changed executable file needs a profile block. "
+              "Collect its package/platform profile; omitted files are never waived automatically.")
+        for path, positions in result["missing"].items():
+            print(f"\n- {path!r}: {len(positions)} statement(s), first at {positions[0][0]}:{positions[0][1]}")
+        return 1
     total, covered = result["statements"], result["covered"]
     if not total:
-        print("\nChanged-block coverage: **N/A — no eligible statements intersect added lines**. No percentage is claimed.")
+        print("\nChanged-statement coverage: **N/A — no executable statement tokens intersect added lines**. No percentage is claimed.")
         return 0
-    print(f"\nChanged-block statements: **{covered}/{total} ({100 * covered / total:.2f}%)**, required: **{floor:g}%**.")
+    print(f"\nChanged executable statements: **{covered}/{total} ({100 * covered / total:.2f}%)**, required: **{floor:g}%**.")
     return 0 if Decimal(100 * covered) >= floor * total else 1
 
 
@@ -189,4 +222,6 @@ if __name__ == "__main__":
         sys.exit(main())
     except (OSError, ValueError, InvalidOperation, subprocess.CalledProcessError) as error:
         print(f"full-diff coverage validation failed: {error}", file=sys.stderr)
+        if isinstance(error, subprocess.CalledProcessError) and error.stderr:
+            print(error.stderr, file=sys.stderr)
         sys.exit(2)

@@ -263,20 +263,40 @@ detect semantic truncation of a successful response.
 
 `codecov.yaml` owns the 80% project and patch **line coverage** floors. Both
 Codecov checks remain required. Separately, CI requires 80% Go statement coverage
-across the combined profile and 80% Go statements in changed coverage blocks.
-The latter check (`scripts/coverage-diff.py`) reads the complete local Git diff
-against the PR base or the previous main commit, without a provider API file
-limit. It counts each profile block once when its inclusive line range intersects
-an added line, weighted by that block's statement count. Renames count as deletion
-plus addition. This statement metric does not replace either Codecov line metric.
+across the combined profile and 80% changed executable Go statements. The latter
+check (`scripts/coverage-diff.py`) reads the complete local Git diff against the PR
+base or the previous main commit, without a provider API file limit. Go's parser
+and scanner identify logical statements and their own token-bearing lines. A
+statement counts once when one of those lines is added; its execution is taken
+from the coverage block containing its first token. Nested bodies count
+separately. Comments, blank lines, empty statements, and statements whose own
+tokens are only on unchanged lines receive no credit. Statements sharing a
+changed physical line count together; this is a line-based diff, not a token
+diff. Renames count as deletion plus addition.
+This AST metric is distinct from Go's block-level `NumStmt` and does not replace
+either Codecov line metric. It does not measure branches or individual
+expressions: case/communication headers have no independent statement counter,
+and package variable initializers outside function bodies are not instrumented
+by Go. Package-scope function literal bodies are included. Source-position line
+directives are unsupported and fail explicitly.
 
 The combined profile includes `cmd/manifestd/cmd/testnet.go`; generated protobuf
-files are excluded. The diff check also excludes Go test files. It reports changed
-Go files absent from the supplied profile explicitly; profile generation remains
-responsible for source completeness. A patch with no intersecting statement blocks
-reports N/A and passes without claiming 100% coverage. Billing and SKU have separate
-Codecov components, and CI retains the raw combined profile, per-package statement
-summaries, and full-diff statement summary, including when a coverage floor fails.
+files are excluded. Ordinary `go test -coverprofile` output is merged with runtime
+`covdata` output using Go's maintained profile parser; this retains zero-count leaf
+packages that binary coverage can omit. Merge hit counts are normalized to zero
+or one to avoid double-counting the same test runs. Each invocation cleans a
+dedicated binary merge directory, so a previous invocation's counters cannot
+supply stale hits. The diff check also excludes Go test
+files and independently requires a profile block for every executable statement
+in each changed Go file. A missing file or partially missing function fails even
+if the remaining measured coverage exceeds 80%. Declaration-only files and empty
+bodies need no execution evidence. There are no automatic platform/build-tag
+waivers: collect the relevant package/platform profile when it contains changed
+executable source. A patch with no changed executable tokens reports N/A only
+after completeness validation, without claiming 100% coverage. Billing and SKU
+have separate Codecov components, and CI retains the raw combined profile,
+per-package Go statement summary, and full-diff AST statement summary, including
+when a coverage floor fails.
 
 The `govulncheck` CI job also retains module-level advisory JSON for both Go
 modules (`make govulncheck-module-report`). Review this inventory even when the

@@ -258,6 +258,7 @@ test:
 COV_ROOT := /tmp/manifest-ledger-coverage
 COV_UNIT_E2E := ${COV_ROOT}/unit-e2e
 COV_SIMULATION := ${COV_ROOT}/simulation
+COV_MERGED := ${COV_ROOT}/merged
 COV_PKG := github.com/manifest-network/manifest-ledger/...
 COV_SIM_CMD := ${COV_SIMULATION}/simulation.test
 # Race and coverage instrumentation make the sequential interchaintest package
@@ -283,9 +284,9 @@ coverage: ## Run coverage report
 	@echo "--> GOROOT: $(GOROOT)"
 
 	@echo "--> Creating GOCOVERDIR"
-	@mkdir -p ${COV_UNIT_E2E} ${COV_SIMULATION}
+	@mkdir -p ${COV_UNIT_E2E} ${COV_SIMULATION} ${COV_MERGED}
 	@echo "--> Cleaning up coverage files, if any"
-	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/*
+	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/* ${COV_MERGED}/*
 	@echo "--> Building instrumented simulation test binary"
 	@$(GO) test -c ./app -mod=readonly -covermode=atomic -coverpkg=${COV_PKG} -cover -o ${COV_SIM_CMD}
 	@echo "  --> Running Full App Simulation (seed: ${SIM_SEED})"
@@ -295,11 +296,13 @@ coverage: ## Run coverage report
 	@echo "  --> Running App State Determinism Simulation (seed: ${SIM_SEED})"
 	$(call run_coverage_simulation,determinism,TestAppStateDeterminism)
 	@echo "--> Running unit & e2e tests coverage"
-	@$(GO) test -p 1 -timeout ${COV_TEST_TIMEOUT} -race -covermode=atomic -v -cpu=$$(nproc) -cover $$($(GO) list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
+	@$(GO) test -p 1 -timeout ${COV_TEST_TIMEOUT} -race -covermode=atomic -v -cpu=$$(nproc) -cover -coverprofile=${COV_ROOT}/coverage-unit-e2e.out $$($(GO) list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
 	@echo "--> Merging coverage reports"
-	@$(GO) tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_ROOT}
+	@$(GO) tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_MERGED}
 	@echo "--> Converting binary coverage report to text format"
-	@$(GO) tool covdata textfmt -i=${COV_ROOT} -o ${COV_ROOT}/coverage-merged.out
+	@$(GO) tool covdata textfmt -i=${COV_MERGED} -o ${COV_ROOT}/coverage-runtime.out
+	@echo "--> Including zero-count packages omitted by binary coverage"
+	@$(GO) run ./tools/coverage merge -output ${COV_ROOT}/coverage-merged.out ${COV_ROOT}/coverage-runtime.out ${COV_ROOT}/coverage-unit-e2e.out
 	@echo "--> Filtering coverage reports"
 	@./scripts/filter-coverage.sh ${COV_ROOT}/coverage-merged.out ${COV_ROOT}/coverage-merged-filtered.out
 	@echo "--> Generating coverage report"
@@ -424,12 +427,16 @@ govulncheck-module-report: govulncheck-install
 
 # Pulsar output is generator-owned and currently contains deliberate trailing
 # panics after exhaustive switches that Go's unreachable analyzer rejects.
+# Go 1.26.8 shares cached vet output between direct and dependency-only visits.
+# Force fresh analysis so cached dependency diagnostics cannot defeat this
+# exclusion or hide diagnostics for selected packages. This rebuilds dependencies
+# and makes this standalone target slower, without disabling any analyzer.
 vet: ## Run go vet
 	@echo "--> Running go vet"
 	@packages="$$($(GO) list ./...)" || exit $$?; \
 		packages="$$(printf '%s\n' "$$packages" | grep -v '/api/')"; \
 		test -n "$$packages"; \
-		$(GO) vet $$packages
+		$(GO) vet -a $$packages
 
 .PHONY: vet
 

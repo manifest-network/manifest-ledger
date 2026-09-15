@@ -36,7 +36,7 @@ jobs:
           python3 scripts/coverage-summary.py /tmp/manifest-ledger-coverage/coverage-merged-filtered.out 80 > coverage-summary.md || coverage_status=$?
           cat coverage-summary.md >> "$GITHUB_STEP_SUMMARY"
           exit "$coverage_status"
-      - name: Enforce full Git diff statement-block coverage floor
+      - name: Enforce full Git diff executable-statement coverage floor
         if: ${{ !cancelled() && steps.coverage.outcome == 'success' }}
         env:
           COVERAGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}

@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -10,6 +12,25 @@ import (
 )
 
 func TestNewRootCmdRemovesTemporaryApplicationHome(t *testing.T) {
+	// Root command construction seals the process-global SDK configuration.
+	// Exercise each invocation in a fresh process, as the daemon does, so this
+	// test neither depends on package order nor breaks repeated test runs.
+	const childProcess = "MANIFEST_ROOT_COMMAND_TEST_PROCESS"
+	if os.Getenv(childProcess) != "1" {
+		executable, err := os.Executable()
+		require.NoError(t, err)
+		args := []string{"-test.run=^TestNewRootCmdRemovesTemporaryApplicationHome$"}
+		// Preserve this test binary's subprocess counters in coverage runs.
+		if directory := flag.Lookup("test.gocoverdir"); directory != nil && directory.Value.String() != "" {
+			args = append(args, "-test.gocoverdir="+directory.Value.String())
+		}
+		command := exec.CommandContext(t.Context(), executable, args...) //nolint:gosec // Relaunch this test binary with a fixed test selection.
+		command.Env = append(os.Environ(), childProcess+"=1")
+		output, err := command.CombinedOutput()
+		require.NoError(t, err, "%s", output)
+		return
+	}
+
 	originalTempDir := tempDir
 	t.Cleanup(func() { tempDir = originalTempDir })
 

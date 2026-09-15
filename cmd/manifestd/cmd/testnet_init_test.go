@@ -44,8 +44,8 @@ const testnetInitFilesSubcommand = "init-files"
 
 func testnetApplicationFixture(t *testing.T) *app.ManifestApp {
 	t.Helper()
-	// Match the root command's encoding/basic-module construction. app.Setup
-	// also resets SDK address prefixes, which an earlier root test may seal.
+	// Match the root command's encoding/basic-module construction without
+	// app.Setup's additional mutation of the process-global SDK address prefixes.
 	application := app.NewApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true,
 		app.DefaultCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(t.TempDir()))
 	t.Cleanup(func() { require.NoError(t, application.Close()) })
