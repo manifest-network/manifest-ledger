@@ -149,6 +149,38 @@ the generic crisis fee-rollback path.
 
 ## Module query budgets
 
+### Unsolicited denominations and legacy balance queries
+
+Incoming bank transfers to a derived credit address are permissionless. An
+outsider can send dust in enough distinct denominations to exceed the 1,000
+physical-bank-denomination ceiling for `CreditAccount` requests without
+pagination, including REST requests that omit pagination parameters. The query
+then returns `ResourceExhausted` (HTTP 429 through the REST gateway), rather than
+a truncated successful balance list. The account's balance count is not under
+the tenant's exclusive control, even if it has only one lease denomination.
+
+This can persist indefinitely. A derived credit address has no signing key and
+the tenant has no general dust-sweep or refund operation. Tokenfactory issuer
+debits from registered credit accounts are deliberately blocked. Ordinary
+billing payouts can remove denominations used by a lease, but are not a general
+or guaranteed cleanup procedure; an outsider can also send more dust. Restarting
+the node or raising query gas does not change the denomination ceiling.
+
+Treat this error as an unavailable balance view, not as zero credit, insolvency,
+or evidence of fund loss. Explicit cursor pages remain available. Use the
+current `manifestd query billing credit-account` command, or raw REST with
+`pagination.limit=100` and URL-encoded base64 `pagination.key`, following the
+response's `pagination.next_key` until empty. This also gives operators a
+fallback when a legacy generated client cannot be upgraded. See the
+[frontend pagination guidance](../../../docs/FRONTEND.md#pagination). Applications
+that cannot use a paginated fallback must expose the degraded-view error.
+
+Returning only reserved or ACTIVE-lease denominations would omit other usable
+deposits. The complete-or-error contract is retained; the residual denial of
+legacy query service is an explicit compatibility limitation.
+
+### Metered query work
+
 The daemon defaults to a positive BaseApp `query-gas-limit` of 5,000,000.
 This budget applies to each SDK module query through both the native gRPC
 server and CometBFT's ABCI query route, including REST requests forwarded to

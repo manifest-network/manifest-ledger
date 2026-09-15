@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -98,11 +99,8 @@ func TestQueryCreditAccountLegacyWire(t *testing.T) {
 				require.Nil(t, response, "old clients must never mistake an incomplete response for all balances")
 			} else {
 				require.NoError(t, err)
-				wireResponse, err := response.Marshal()
-				require.NoError(t, err)
-				oldResponse := dynamicpb.NewMessage(responseDescriptor)
-				require.NoError(t, (proto.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(wireResponse, oldResponse))
-				require.Empty(t, oldResponse.GetUnknown(), "legacy clients cannot use the new response cursor")
+				oldResponse, retainedPagination := decodeLegacyCreditAccountResponse(t, responseDescriptor, response)
+				require.Equal(t, query.PageResponse{}, retainedPagination, "a legacy success must not hide continuation in unknown fields")
 				for field, expected := range map[protoreflect.Name]sdk.Coins{
 					"balances": coins, "available_balances": coins,
 				} {
@@ -121,8 +119,9 @@ func TestQueryCreditAccountLegacyWire(t *testing.T) {
 			// the legacy complete-result ceiling rejects this same account.
 			pageRequest := &query.PageRequest{}
 			var paged sdk.Coins
+			pageCount := (count + int(types.DefaultCreditAccountBalanceQueryLimit) - 1) / int(types.DefaultCreditAccountBalanceQueryLimit)
 			for page := 0; ; page++ {
-				require.Less(t, page, 12, "cursor traversal must terminate")
+				require.Less(t, page, pageCount, "cursor traversal must terminate")
 				response, err := querier.CreditAccount(f.Ctx, &types.QueryCreditAccountRequest{
 					Tenant: tenant.String(), Pagination: pageRequest,
 				})
@@ -130,6 +129,11 @@ func TestQueryCreditAccountLegacyWire(t *testing.T) {
 				if page == 0 {
 					require.Len(t, response.Balances, int(types.DefaultCreditAccountBalanceQueryLimit))
 					require.NotEmpty(t, response.Pagination.NextKey)
+					// Decode a real partial page with the same old descriptor. This
+					// proves the retained-field check detects a nonempty cursor.
+					_, retainedPagination := decodeLegacyCreditAccountResponse(t, responseDescriptor, response)
+					require.Equal(t, *response.Pagination, retainedPagination)
+					require.NotEmpty(t, retainedPagination.NextKey)
 				}
 				paged = append(paged, response.Balances...)
 				if len(response.Pagination.NextKey) == 0 {
@@ -140,4 +144,26 @@ func TestQueryCreditAccountLegacyWire(t *testing.T) {
 			require.Equal(t, coins, paged)
 		})
 	}
+}
+
+func decodeLegacyCreditAccountResponse(t *testing.T, descriptor protoreflect.MessageDescriptor, response *types.QueryCreditAccountResponse) (*dynamicpb.Message, query.PageResponse) {
+	t.Helper()
+	wire, err := response.Marshal()
+	require.NoError(t, err)
+	oldResponse := dynamicpb.NewMessage(descriptor)
+	require.NoError(t, proto.Unmarshal(wire, oldResponse))
+
+	// The old schema cannot interpret field 4, but retaining its wire bytes
+	// lets this test inspect the PageResponse that an old client would ignore.
+	unknown := oldResponse.GetUnknown()
+	number, wireType, tagSize := protowire.ConsumeTag(unknown)
+	require.Positive(t, tagSize, "pagination must survive as an unknown field")
+	require.Equal(t, protowire.Number(4), number)
+	require.Equal(t, protowire.BytesType, wireType)
+	encodedPage, valueSize := protowire.ConsumeBytes(unknown[tagSize:])
+	require.Positive(t, valueSize)
+	require.Empty(t, unknown[tagSize+valueSize:], "unexpected additional response fields")
+	var page query.PageResponse
+	require.NoError(t, page.Unmarshal(encodedPage))
+	return oldResponse, page
 }

@@ -261,11 +261,22 @@ new release only after publication; do not move it to a PR head to hide changes.
 Wire checks complement the old-descriptor `CreditAccount` tests: protobuf cannot
 detect semantic truncation of a successful response.
 
-`codecov.yaml` owns 80% project and patch floors. The reviewed combined CI profile
-was 85.2% on `6b02665`; future profiles now include `cmd/manifestd/cmd/testnet.go`.
-Only generated protobuf files are excluded. Billing and SKU have separate
-Codecov components, and CI publishes per-package coverage summaries and the raw
-combined profile for trend comparisons.
+`codecov.yaml` owns the 80% project and patch **line coverage** floors. Both
+Codecov checks remain required. Separately, CI requires 80% Go statement coverage
+across the combined profile and 80% Go statements in changed coverage blocks.
+The latter check (`scripts/coverage-diff.py`) reads the complete local Git diff
+against the PR base or the previous main commit, without a provider API file
+limit. It counts each profile block once when its inclusive line range intersects
+an added line, weighted by that block's statement count. Renames count as deletion
+plus addition. This statement metric does not replace either Codecov line metric.
+
+The combined profile includes `cmd/manifestd/cmd/testnet.go`; generated protobuf
+files are excluded. The diff check also excludes Go test files. It reports changed
+Go files absent from the supplied profile explicitly; profile generation remains
+responsible for source completeness. A patch with no intersecting statement blocks
+reports N/A and passes without claiming 100% coverage. Billing and SKU have separate
+Codecov components, and CI retains the raw combined profile, per-package statement
+summaries, and full-diff statement summary, including when a coverage floor fails.
 
 The `govulncheck` CI job also retains module-level advisory JSON for both Go
 modules (`make govulncheck-module-report`). Review this inventory even when the

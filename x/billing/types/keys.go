@@ -1,6 +1,10 @@
 package types
 
-import "cosmossdk.io/collections"
+import (
+	"cosmossdk.io/collections"
+
+	"github.com/manifest-network/manifest-ledger/pkg/pagination"
+)
 
 // Storage prefixes for collections.
 var (
@@ -83,7 +87,8 @@ const (
 
 	// MaxCreditAccountBalanceQueryLimit bounds bank-store work and response size,
 	// including the complete-result compatibility mode when pagination is absent.
-	MaxCreditAccountBalanceQueryLimit uint64 = 1000
+	// Match the shared paginator's enforced ceiling so advertised limits agree.
+	MaxCreditAccountBalanceQueryLimit uint64 = pagination.MaxPageLimit
 
 	// DefaultProviderWithdrawableQueryLimit matches provider-wide MsgWithdraw so
 	// an omitted limit previews the same number of leases.

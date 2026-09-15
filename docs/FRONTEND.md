@@ -431,9 +431,23 @@ pass a `pagination` object to opt into cursor pages (default 100, maximum 1,000)
 Omitting it preserves a complete result for older clients only when the credit
 address has at most 1,000 bank denominations; larger accounts return
 `ResourceExhausted`, never a partial balance list. That ceiling includes fully
-locked denominations even though the returned balances exclude them. Regenerate
-older clients that lack the request/response pagination fields to read larger
-accounts, and follow `pagination.nextKey` until empty.
+locked denominations even though the returned balances exclude them. Anyone
+can send additional denominations to a credit address, so unsolicited dust can
+make this legacy mode fail indefinitely. The keyless address has no general
+tenant-controlled sweep operation. A balance-query failure means the view is
+unavailable; it does not mean the tenant has zero credit or lost its funds.
+
+Use a client with explicit pagination and follow `pagination.nextKey` until
+empty. If an older client cannot be regenerated, read through the current
+`manifestd query billing credit-account` command or raw REST instead. REST also
+uses legacy mode when pagination is omitted: start with
+`GET /liftedinit/billing/v1/credit/{tenant}?pagination.limit=100`, then pass the
+response's base64 `pagination.next_key` as the URL-encoded `pagination.key` on
+each following request. Continue until the key is empty, even if a page's
+spendable balances are empty. Display the degraded-view error if the application
+cannot use either fallback. Filtering results to lease/reservation denominations
+would hide other usable deposits and would not preserve complete-balance
+semantics.
 
 ```ts
 import { cosmos, liftedinit } from "@manifest-network/manifestjs";

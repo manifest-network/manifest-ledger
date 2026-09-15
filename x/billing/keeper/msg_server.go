@@ -871,8 +871,9 @@ func (ms msgServer) withdrawFromLeases(ctx context.Context, msg *types.MsgWithdr
 		}
 
 		// Imported CLOSED leases resolve their retained interval using the same
-		// capped overflow policy as other terminal closes. ACTIVE settlement
-		// retains its existing checked-accrual behavior.
+		// capped overflow policy as other terminal closes. ACTIVE accrual overflow
+		// already takes the auto-close path above; surviving ACTIVE leases use
+		// checked settlement below.
 		finalizeClosedInterval := lease.State == types.LEASE_STATE_CLOSED && settleTime.After(lease.LastSettledAt)
 		var result *SettlementResult
 		if finalizeClosedInterval {

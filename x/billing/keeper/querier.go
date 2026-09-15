@@ -303,10 +303,6 @@ func (q Querier) CreditAccount(ctx context.Context, req *types.QueryCreditAccoun
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	if pageReq.Limit > types.MaxCreditAccountBalanceQueryLimit {
-		pageReq.Limit = types.MaxCreditAccountBalanceQueryLimit
-	}
-
 	creditAddr, err := types.DeriveCreditAddressFromBech32(req.Tenant)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())

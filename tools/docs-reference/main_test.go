@@ -1,6 +1,10 @@
 package main
 
 import (
+	"flag"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,7 +14,76 @@ import (
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
+
+	"github.com/manifest-network/manifest-ledger/app"
 )
+
+func TestRunGeneratesActualReference(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "reference", "billing-sku.md")
+	checkReferenceProcess(t, output, "generate")
+	content, err := os.ReadFile(output) //nolint:gosec // Generated reference below t.TempDir.
+	require.NoError(t, err)
+	for _, name := range []string{"liftedinit.billing.v1.Query/CreditAccount", "liftedinit.sku.v1.Msg/CreateSKU", "--home"} {
+		require.Contains(t, string(content), name, "missing generated surface: %s", name)
+	}
+	require.NotContains(t, string(content), "manifest-docs-reference-", "temporary paths must not leak into published defaults")
+
+	// The production command seals the SDK configuration. Each further CLI
+	// invocation therefore needs a fresh process, just as it does for users.
+	checkReferenceProcess(t, output, "current")
+	stale := []byte(strings.Replace(string(content), "liftedinit.billing.v1.Query/CreditAccount", "REMOVED-RPC", 1))
+	require.NoError(t, os.WriteFile(output, stale, 0o600)) //nolint:gosec // The destination is fixed beneath t.TempDir, independent of generated content.
+	checkReferenceProcess(t, output, "stale")
+	afterCheck, err := os.ReadFile(output) //nolint:gosec // Generated reference below t.TempDir.
+	require.NoError(t, err)
+	require.Equal(t, stale, afterCheck, "check mode reports drift without repairing the evidence")
+	require.NoError(t, os.Remove(output))
+	checkReferenceProcess(t, output, "missing")
+	blocked := filepath.Join(t.TempDir(), "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("keep"), 0o600))
+	checkReferenceProcess(t, filepath.Join(blocked, "reference.md"), "blocked")
+	unchanged, err := os.ReadFile(blocked) //nolint:gosec // Deliberate fixture below t.TempDir.
+	require.NoError(t, err)
+	require.Equal(t, "keep", string(unchanged))
+}
+
+func checkReferenceProcess(t *testing.T, output, scenario string) {
+	t.Helper()
+	executable, err := os.Executable()
+	require.NoError(t, err)
+	args := []string{"-test.run=^TestReferenceCommandProcess$"}
+	// Go's test harness merges counter files from this same test binary.
+	// Preserve subprocess coverage when the enclosing run is instrumented.
+	if directory := flag.Lookup("test.gocoverdir"); directory != nil && directory.Value.String() != "" {
+		args = append(args, "-test.gocoverdir="+directory.Value.String())
+	}
+	process := exec.CommandContext(t.Context(), executable, args...) //nolint:gosec // Relaunch this test binary, with fixed test selection.
+	process.Env = append(os.Environ(), "MANIFEST_DOCS_TEST_SCENARIO="+scenario, "MANIFEST_DOCS_TEST_OUTPUT="+output)
+	result, err := process.CombinedOutput()
+	require.NoError(t, err, "%s: %s", scenario, result)
+}
+
+func TestReferenceCommandProcess(t *testing.T) {
+	scenario := os.Getenv("MANIFEST_DOCS_TEST_SCENARIO")
+	if scenario == "" {
+		t.Skip("invoked by the reference command integration test")
+	}
+	originalHome := app.DefaultNodeHome
+	err := run(os.Getenv("MANIFEST_DOCS_TEST_OUTPUT"), scenario != "blocked" && scenario != "generate")
+	switch scenario {
+	case "current", "generate":
+		require.NoError(t, err)
+	case "stale":
+		require.ErrorContains(t, err, "reference is stale")
+	case "missing":
+		require.ErrorIs(t, err, os.ErrNotExist)
+	case "blocked":
+		require.Error(t, err)
+	default:
+		t.Fatalf("unknown command fixture %q", scenario)
+	}
+	require.Equal(t, originalHome, app.DefaultNodeHome, "successful and failed commands restore the application home")
+}
 
 func TestRenderIncludesReachableFieldsAndAllCommands(t *testing.T) {
 	var file descriptorpb.FileDescriptorProto
