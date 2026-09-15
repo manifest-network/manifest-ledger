@@ -175,8 +175,12 @@ func preflightTestnetCommand(cmd *cobra.Command, args []string) error {
 	if err := validateTestnetFreshKey(key, state); err != nil {
 		return err
 	}
-	if appHeight < 1 || (appHeight != state.LastBlockHeight && appHeight != state.LastBlockHeight+1) {
-		return fmt.Errorf("unsupported source application/Comet heights %d/%d", appHeight, state.LastBlockHeight)
+	storeHeight, err := readTestnetBlockStoreHeight(cfg)
+	if err != nil {
+		return err
+	}
+	if err := validateTestnetSourceHeights(appHeight, state.LastBlockHeight, storeHeight); err != nil {
+		return err
 	}
 	if trigger := v.GetString(server.KeyTriggerTestnetUpgrade); trigger != "" {
 		if trigger != version.Version {
@@ -425,8 +429,11 @@ func validateTestnetHome(home string, cfg *cmtcfg.Config, v *viper.Viper) error 
 			}
 		}
 	}
-	for _, listener := range []string{cfg.RPC.ListenAddress, cfg.RPC.GRPCListenAddress, cfg.ProxyApp, cfg.P2P.ListenAddress, v.GetString("grpc.address"), v.GetString("api.address")} {
-		if strings.HasPrefix(listener, "unix:") {
+	// Comet splits rpc.laddr into trimmed, comma-separated endpoints and opens
+	// each listener separately. The remaining listener settings are single-valued.
+	listeners := append(strings.Split(cfg.RPC.ListenAddress, ","), cfg.RPC.GRPCListenAddress, cfg.ProxyApp, cfg.P2P.ListenAddress, v.GetString("grpc.address"), v.GetString("api.address"))
+	for _, listener := range listeners {
+		if strings.HasPrefix(strings.TrimSpace(listener), "unix:") {
 			return fmt.Errorf("unix socket listeners are unsupported for in-place testnet homes")
 		}
 	}

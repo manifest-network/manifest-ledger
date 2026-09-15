@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,9 @@ import (
 	"github.com/cometbft/cometbft/crypto/secp256k1"
 	cmtjson "github.com/cometbft/cometbft/libs/json"
 	"github.com/cometbft/cometbft/privval"
+	cmtstoreproto "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtstate "github.com/cometbft/cometbft/state"
+	cmtstore "github.com/cometbft/cometbft/store"
 	cmttypes "github.com/cometbft/cometbft/types"
 
 	dbm "github.com/cosmos/cosmos-db"
@@ -85,6 +88,7 @@ func newTestnetPreflightFixture(t *testing.T) *testnetPreflightFixture {
 	require.NoError(t, db.Close())
 	f := &testnetPreflightFixture{home: home, config: cfg, key: key, sourceKey: sourceKey, operator: sdk.AccAddress(bytes.Repeat([]byte{7}, 20)).String(), state: state}
 	f.saveState(t)
+	f.saveBlockStore(t, state.LastBlockHeight)
 	t.Setenv("POA_ADMIN_ADDRESS", f.operator)
 	t.Setenv(poaSimulationEnvVar, "")
 	return f
@@ -103,6 +107,30 @@ func (f *testnetPreflightFixture) saveState(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.SetSync([]byte("genesisDoc"), genesis))
 	require.NoError(t, db.Close())
+}
+
+func (f *testnetPreflightFixture) saveBlockStore(t *testing.T, height int64) {
+	t.Helper()
+	db, err := cmtdb.NewGoLevelDB("blockstore", f.config.DBDir())
+	require.NoError(t, err)
+	cmtstore.SaveBlockStoreState(&cmtstoreproto.BlockStoreState{Base: 1, Height: height}, db)
+	require.NoError(t, db.Close())
+}
+
+func (f *testnetPreflightFixture) completeFork(t *testing.T) {
+	t.Helper()
+	f.state.ChainID = "fork"
+	f.state.Validators = cmttypes.NewValidatorSet([]*cmttypes.Validator{cmttypes.NewValidator(f.key.Key.PubKey, 1)})
+	f.state.LastValidators = f.state.Validators.Copy()
+	f.state.NextValidators = f.state.Validators.Copy()
+	genesis := cmttypes.GenesisDoc{ChainID: "fork", InitialHeight: 1, ConsensusParams: cmttypes.DefaultConsensusParams()}
+	require.NoError(t, genesis.SaveAs(f.config.GenesisFile()))
+	f.saveState(t)
+	journal := testnetJournal{
+		Version: 1, Complete: true, SourceChainID: "source", ChainID: "fork", Operator: f.operator,
+		ConsensusAddress: f.key.Key.Address, SourceHeight: 2, FirstCommitHeight: 3,
+	}
+	require.NoError(t, writeTestnetJournal(f.home, journal, true))
 }
 
 func (f *testnetPreflightFixture) command(t *testing.T, name string) *cobra.Command {
@@ -277,18 +305,7 @@ func TestTestnetPreflightExternalServices(t *testing.T) {
 			t.Run(command+"/"+tc.name, func(t *testing.T) {
 				f := newTestnetPreflightFixture(t)
 				if command == "start" {
-					f.state.ChainID = "fork"
-					f.state.Validators = cmttypes.NewValidatorSet([]*cmttypes.Validator{cmttypes.NewValidator(f.key.Key.PubKey, 1)})
-					f.state.LastValidators = f.state.Validators.Copy()
-					f.state.NextValidators = f.state.Validators.Copy()
-					genesis := cmttypes.GenesisDoc{ChainID: "fork", InitialHeight: 1, ConsensusParams: cmttypes.DefaultConsensusParams()}
-					require.NoError(t, genesis.SaveAs(f.config.GenesisFile()))
-					f.saveState(t)
-					journal := testnetJournal{
-						Version: 1, Complete: true, SourceChainID: "source", ChainID: "fork", Operator: f.operator,
-						ConsensusAddress: f.key.Key.Address, SourceHeight: 2, FirstCommitHeight: 3,
-					}
-					require.NoError(t, writeTestnetJournal(f.home, journal, true))
+					f.completeFork(t)
 				}
 				f.config.TxIndex.Indexer = tc.indexer
 				f.config.TxIndex.PsqlConn = "postgresql://source.invalid/source"
@@ -316,25 +333,35 @@ func TestTestnetPreflightSourceHeights(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		cometHeight int64
+		storeHeight int64
 		allowed     bool
 	}{
-		{"matching commits", 3, true},
-		{"application one ahead", 2, true},
-		{"application behind", 4, false},
-		{"application two ahead", 1, false},
+		{"matching commits", 3, 3, true},
+		{"stored uncommitted halt block", 3, 4, true},
+		{"application one ahead", 2, 3, true},
+		{"interrupted hard rollback", 2, 2, false},
+		{"application behind", 4, 4, false},
+		{"application two ahead", 1, 3, false},
+		{"blockstore behind", 3, 2, false},
+		{"blockstore two ahead", 3, 5, false},
+		{"blockstore height overflow", 3, math.MaxInt64 - 1, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newTestnetPreflightFixture(t)
 			f.state.LastBlockHeight = tc.cometHeight
 			f.saveState(t)
+			f.saveBlockStore(t, tc.storeHeight)
 			before := snapshotTestnetFiles(t, f.home)
-			err := preflightTestnetCommand(f.command(t, "in-place-testnet"), []string{"fork", f.operator})
+			cmd := f.command(t, "in-place-testnet")
+			err := preflightTestnetCommand(cmd, []string{"fork", f.operator})
 			if tc.allowed {
 				require.NoError(t, err)
 			} else {
-				require.ErrorContains(t, err, "unsupported source application/Comet heights")
+				require.ErrorContains(t, err, "unsupported source application/Comet/blockstore heights")
+				require.Nil(t, cmd.Context().Value(testnetPreflightContextKey{}))
 			}
 			require.Equal(t, before, snapshotTestnetFiles(t, f.home))
+			require.NoFileExists(t, filepath.Join(f.home, inPlaceTestnetMarker))
 		})
 	}
 }

@@ -209,7 +209,9 @@ Prepare the copied home before running the command:
    block and seen commit; a snapshot alone is insufficient. Keep a backup of the
    copied home so a failed conversion can be retried from the original copy.
    Include the source's `wasm/` bytecode: this application does not currently
-   register the Wasm snapshot extension.
+   register the Wasm snapshot extension. Preflight checks application, Comet state
+   and blockstore heights before recording conversion. If an interrupted rollback
+   left those heights inconsistent, recover the source before taking another copy.
 3. Install a complete, freshly generated local consensus key. Never use a
    production `priv_validator_key.json`. Keep the signing-state file present and
    replace its contents with `{"height":"0","round":0,"step":0}`. Use a fresh node
@@ -222,7 +224,8 @@ Prepare the copied home before running the command:
    Set `[tx_index] indexer` to `"kv"` or `"null"`; external PostgreSQL indexing is
    rejected on conversion and restart. Unix socket listeners, including Comet's
    `[rpc] grpc_laddr`, are also rejected to keep socket files inside the mutation
-   boundary. Use TCP listeners on ports reserved for the fork.
+   boundary. Every comma-separated endpoint in `[rpc] laddr` is checked. Use TCP
+   listeners on ports reserved for the fork.
 5. Set `POA_ADMIN_ADDRESS` to the local operator's canonical lowercase **account**
    address before startup. Use an account with a local signing key; module
    accounts cannot serve as the funded operator. Retain that byte-identical value
