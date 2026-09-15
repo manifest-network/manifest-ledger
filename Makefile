@@ -50,7 +50,11 @@ endif
 export MANIFEST_BUILD_COMMIT MANIFEST_BUILD_VERSION MANIFEST_E2E_IMAGE_VERSION
 
 GO ?= go
-PACKAGES_SIMTEST=$(shell $(GO) list ./... | grep '/simulation')
+# Root commands validate the same module graph used by Docker and release
+# binaries. The nested workspace is reserved for the interchaintest host client.
+override export GOWORK := off
+ICT_GOWORK := $(CURDIR)/interchaintest/go.work
+PACKAGES_SIMTEST=$(shell GOWORK=off $(GO) list ./... | grep '/simulation')
 DOCKER := $(shell which docker)
 LEDGER_ENABLED ?= true
 BINDIR ?= $(GOPATH)/bin
@@ -143,28 +147,28 @@ build-vendored: validate-build-inputs
 ###############################################################################
 
 ictest-ibc:
-	cd interchaintest && $(GO) test -race -v -run '^TestIBC$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -run '^TestIBC$$' . -count=1
 
 ictest-tokenfactory:
-	cd interchaintest && $(GO) test -race -v -run '^TestTokenFactory$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -run '^TestTokenFactory$$' . -count=1
 
 ictest-manifest:
-	cd interchaintest && $(GO) test -race -v -run '^TestManifestModule$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -run '^TestManifestModule$$' . -count=1
 
 ictest-poa:
-	cd interchaintest && $(GO) test -race -v -run '^TestPOA$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -run '^TestPOA$$' . -count=1
 
 ictest-poa-unjail-dup:
-	cd interchaintest && $(GO) test -timeout 25m -race -v -run '^TestPOAUnjailDup$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -timeout 25m -race -v -run '^TestPOAUnjailDup$$' . -count=1
 
 ictest-poa-unjail-dup-bug:
-	cd interchaintest && UNJAIL_DUP_IMAGE=ghcr.io/manifest-network/manifest-ledger:2.1.1 $(GO) test -timeout 25m -race -v -run '^TestPOAUnjailDup$$' . -count=1
+	cd interchaintest && UNJAIL_DUP_IMAGE=ghcr.io/manifest-network/manifest-ledger:2.1.1 GOWORK="$(ICT_GOWORK)" $(GO) test -timeout 25m -race -v -run '^TestPOAUnjailDup$$' . -count=1
 
 ictest-group-poa:
-	cd interchaintest && $(GO) test -timeout 25m -race -v -run '^TestGroupPOA$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -timeout 25m -race -v -run '^TestGroupPOA$$' . -count=1
 
 ictest-cosmwasm:
-	cd interchaintest && $(GO) test -race -v -run '^TestCosmWasm$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -run '^TestCosmWasm$$' . -count=1
 
 define verify_chain_upgrade_image
 $(DOCKER) run --rm \
@@ -193,41 +197,41 @@ ictest-chain-upgrade: validate-build-inputs
 	@test "$${CI:-}" = "true" || \
 		(printf '%s\n' "local upgrade rehearsals must use: make ictest-chain-upgrade-local"; exit 1)
 	@$(verify_chain_upgrade_image)
-	cd interchaintest && MANIFEST_UPGRADE_VERSION="$${MANIFEST_E2E_IMAGE_VERSION}" $(GO) test -timeout 20m -race -v -run '^TestBasicManifestUpgrade$$' . -count=1
+	cd interchaintest && MANIFEST_UPGRADE_VERSION="$${MANIFEST_E2E_IMAGE_VERSION}" GOWORK="$(ICT_GOWORK)" $(GO) test -timeout 20m -race -v -run '^TestBasicManifestUpgrade$$' . -count=1
 
 ictest-chain-upgrade-local: local-image
 	@$(verify_chain_upgrade_image)
-	cd interchaintest && MANIFEST_UPGRADE_VERSION="$${MANIFEST_E2E_IMAGE_VERSION}" $(GO) test -timeout 20m -race -v -run '^TestBasicManifestUpgrade$$' . -count=1
+	cd interchaintest && MANIFEST_UPGRADE_VERSION="$${MANIFEST_E2E_IMAGE_VERSION}" GOWORK="$(ICT_GOWORK)" $(GO) test -timeout 20m -race -v -run '^TestBasicManifestUpgrade$$' . -count=1
 
 ictest-group:
-	cd interchaintest && $(GO) test -race -v -run '^TestGroupMetadataLimits$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -run '^TestGroupMetadataLimits$$' . -count=1
 
 ictest-sku:
-	cd interchaintest && $(GO) test -timeout 20m -race -v -run '^TestSKU$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -timeout 20m -race -v -run '^TestSKU$$' . -count=1
 
 # Full local aggregate. CI runs these suites as separate matrix jobs so each retains
 # an independent 45m hang guard.
 ictest-billing:
-	cd interchaintest && $(GO) test -race -v -timeout 60m -run "^TestBilling(Lease|Credit|Advanced|State|Reservation)$$" . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -timeout 60m -run "^TestBilling(Lease|Credit|Advanced|State|Reservation)$$" . -count=1
 
 # Extra billing e2e tests run as their own parallel CI job.
 ictest-billing-extra:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run "^TestBilling(AcknowledgeActiveCap|CustomDomain)$$" . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -timeout 45m -run "^TestBilling(AcknowledgeActiveCap|CustomDomain)$$" . -count=1
 
 ictest-billing-lease:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingLease$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -timeout 45m -run '^TestBillingLease$$' . -count=1
 
 ictest-billing-credit:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingCredit$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -timeout 45m -run '^TestBillingCredit$$' . -count=1
 
 ictest-billing-advanced:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingAdvanced$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -timeout 45m -run '^TestBillingAdvanced$$' . -count=1
 
 ictest-billing-state:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingState$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -timeout 45m -run '^TestBillingState$$' . -count=1
 
 ictest-billing-reservation:
-	cd interchaintest && $(GO) test -race -v -timeout 45m -run '^TestBillingReservation$$' . -count=1
+	cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -race -v -timeout 45m -run '^TestBillingReservation$$' . -count=1
 
 .PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-poa-unjail-dup ictest-poa-unjail-dup-bug ictest-group-poa ictest-cosmwasm verify-chain-upgrade-image ictest-chain-upgrade ictest-chain-upgrade-local ictest-group ictest-sku ictest-billing ictest-billing-extra ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-reservation
 
@@ -279,7 +283,10 @@ define run_coverage_simulation
 		rm -f "$$log_file"
 endef
 
-coverage: ## Run coverage report
+verify-coverage-toolchain:
+	@sh ./scripts/verify-coverage-toolchain.sh "$$($(GO) env GOVERSION)"
+
+coverage: verify-coverage-toolchain ## Run coverage report
 	@echo "--> Using Go: $(shell $(GO) version)"
 	@echo "--> GOROOT: $(GOROOT)"
 
@@ -287,6 +294,7 @@ coverage: ## Run coverage report
 	@mkdir -p ${COV_UNIT_E2E} ${COV_SIMULATION} ${COV_MERGED}
 	@echo "--> Cleaning up coverage files, if any"
 	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/* ${COV_MERGED}/*
+	@rm -f ${COV_ROOT}/coverage-unit-e2e.out ${COV_ROOT}/coverage-interchaintest.out ${COV_ROOT}/coverage-runtime.out ${COV_ROOT}/coverage-merged.out ${COV_ROOT}/coverage-merged-filtered.out
 	@echo "--> Building instrumented simulation test binary"
 	@$(GO) test -c ./app -mod=readonly -covermode=atomic -coverpkg=${COV_PKG} -cover -o ${COV_SIM_CMD}
 	@echo "  --> Running Full App Simulation (seed: ${SIM_SEED})"
@@ -295,26 +303,29 @@ coverage: ## Run coverage report
 	$(call run_coverage_simulation,after-import,TestAppSimulationAfterImport)
 	@echo "  --> Running App State Determinism Simulation (seed: ${SIM_SEED})"
 	$(call run_coverage_simulation,determinism,TestAppStateDeterminism)
-	@echo "--> Running unit & e2e tests coverage"
-	@$(GO) test -p 1 -timeout ${COV_TEST_TIMEOUT} -race -covermode=atomic -v -cpu=$$(nproc) -cover -coverprofile=${COV_ROOT}/coverage-unit-e2e.out $$($(GO) list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
+	@echo "--> Running root module unit test coverage"
+	@$(GO) test -p 1 -timeout ${COV_TEST_TIMEOUT} -count=1 -race -covermode=atomic -v -cpu=$$(nproc) -cover -coverprofile=${COV_ROOT}/coverage-unit-e2e.out $$($(GO) list ./...) -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
+	@echo "--> Running e2e tests and collecting daemon container coverage"
+	@cd interchaintest && GOWORK="$(ICT_GOWORK)" $(GO) test -p 1 -timeout ${COV_TEST_TIMEOUT} -count=1 -race -covermode=atomic -v -cpu=$$(nproc) -cover -coverprofile=${COV_ROOT}/coverage-interchaintest.out ./... -coverpkg=github.com/manifest-network/manifest-ledger/interchaintest/... -args -test.gocoverdir="${COV_UNIT_E2E}"
 	@echo "--> Merging coverage reports"
 	@$(GO) tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_MERGED}
 	@echo "--> Converting binary coverage report to text format"
 	@$(GO) tool covdata textfmt -i=${COV_MERGED} -o ${COV_ROOT}/coverage-runtime.out
 	@echo "--> Including zero-count packages omitted by binary coverage"
-	@$(GO) run ./tools/coverage merge -output ${COV_ROOT}/coverage-merged.out ${COV_ROOT}/coverage-runtime.out ${COV_ROOT}/coverage-unit-e2e.out
+	@$(GO) run ./tools/coverage merge -output ${COV_ROOT}/coverage-merged.out ${COV_ROOT}/coverage-runtime.out ${COV_ROOT}/coverage-unit-e2e.out ${COV_ROOT}/coverage-interchaintest.out
 	@echo "--> Filtering coverage reports"
 	@./scripts/filter-coverage.sh ${COV_ROOT}/coverage-merged.out ${COV_ROOT}/coverage-merged-filtered.out
 	@echo "--> Generating coverage report"
-	@$(GO) tool cover -func=${COV_ROOT}/coverage-merged-filtered.out
+	@GOWORK="$(ICT_GOWORK)" $(GO) tool cover -func=${COV_ROOT}/coverage-merged-filtered.out
 	@echo "--> Generating HTML coverage report"
-	@$(GO) tool cover -html=${COV_ROOT}/coverage-merged-filtered.out -o coverage.html
+	@GOWORK="$(ICT_GOWORK)" $(GO) tool cover -html=${COV_ROOT}/coverage-merged-filtered.out -o coverage.html
 	@echo "--> Coverage report available at coverage.html"
 	@echo "--> Cleaning up coverage files"
-	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/*
+	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/* ${COV_MERGED}/*
+	@rm -f ${COV_ROOT}/coverage-unit-e2e.out ${COV_ROOT}/coverage-interchaintest.out ${COV_ROOT}/coverage-runtime.out
 	@echo "--> Running coverage complete"
 
-.PHONY: coverage
+.PHONY: coverage verify-coverage-toolchain
 
 
 ##################
@@ -374,13 +385,13 @@ lint:
 	@echo "--> Running linter"
 	@GOBIN=$(go_bin) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(golangci_version)
 	@$(golangci_lint_cmd) run ./... --timeout 15m
-	@cd interchaintest && $(golangci_lint_cmd) run ./... --timeout 15m
+	@cd interchaintest && GOWORK="$(ICT_GOWORK)" $(golangci_lint_cmd) run ./... --timeout 15m
 
 lint-fix:
 	@echo "--> Running linter and fixing issues"
 	@GOBIN=$(go_bin) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(golangci_version)
 	@$(golangci_lint_cmd) run ./... --fix --timeout 15m
-	@cd interchaintest && $(golangci_lint_cmd) run ./... --fix --timeout 15m
+	@cd interchaintest && GOWORK="$(ICT_GOWORK)" $(golangci_lint_cmd) run ./... --fix --timeout 15m
 
 .PHONY: lint lint-fix
 
@@ -412,7 +423,7 @@ govulncheck: ## Run govulncheck
 	@echo "--> Running govulncheck for the linux/amd64 muslc container build"
 	@GOWORK=off $(GO) run ./tools/govulncheck-policy -govulncheck $(go_bin)/govulncheck -goos linux -goarch amd64 -- -tags=netgo,muslc ./...
 	@echo "--> Running govulncheck for the interchaintest module"
-	@$(GO) run ./tools/govulncheck-policy -govulncheck $(go_bin)/govulncheck -profile interchaintest -- -test ./interchaintest/...
+	@GOWORK="$(ICT_GOWORK)" $(GO) run ./tools/govulncheck-policy -govulncheck $(go_bin)/govulncheck -profile interchaintest -- -test ./interchaintest/...
 
 # Module/advisory evidence complements the reachability-enforcing symbol gate.
 # JSON mode preserves every advisory, including dependencies with no call path.

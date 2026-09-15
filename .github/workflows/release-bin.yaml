@@ -11,6 +11,7 @@ concurrency:
 
 env:
   GO_VERSION: 1.26.8
+  GOWORK: "off"
   GORELEASER_VERSION: v2.18.0
   GORELEASER_TOOLCHAIN: go1.27.1
   SYFT_CHECK_FOR_APP_UPDATE: "false"

@@ -209,6 +209,12 @@ make local-image
 
 ## Testing
 
+Root builds, unit tests, simulations, and coverage use the root module's
+`go.mod`, matching the shipped daemon. The root `go.work` includes only that
+module. The `ictest-*` targets explicitly use `interchaintest/go.work` for the
+host test client, whose dependencies remain separate from the daemon. When
+running interchaintest directly, change into `interchaintest/` first.
+
 There are various make commands to run tests for the modules with custom implementations
 
 **To test the Proof of Authority implementation run:**
@@ -307,7 +313,7 @@ its default sentinel, so do not use it for reproducible determinism runs. Append
 To generate a coverage report for the modules run:
 
 ```bash
-make local-image
+make local-image-cover
 make coverage
 ```
 

@@ -21,9 +21,48 @@ func TestMergePreservesUncoveredBlocksAndDeduplicatesObservations(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "mode: atomic\nexample.com/a/a.go:2.1,2.8 3 1\nexample.com/a/a.go:2.8,2.8 0 1\nexample.com/a/b.go:3.1,3.9 2 0\n"
+	want := "mode: set\nexample.com/a/a.go:2.1,2.8 3 1\nexample.com/a/a.go:2.8,2.8 0 1\nexample.com/a/b.go:3.1,3.9 2 0\n"
 	if string(merged) != want {
 		t.Fatalf("merged profile:\n%s\nwant:\n%s", merged, want)
+	}
+}
+
+func TestMergePreservesPositiveStatementEmptyRanges(t *testing.T) {
+	directory := t.TempDir()
+	first, second := filepath.Join(directory, "first.out"), filepath.Join(directory, "second.out")
+	// Empty ranges may sort before, inside, or after a nonempty range. They
+	// contribute Go's statement weights but do not occupy source positions.
+	writeFixture(t, first, "mode: atomic\nexample.com/a.go:2.1,2.1 1 0\nexample.com/a.go:2.1,3.1 3 7\nexample.com/a.go:2.5,2.5 1 0\nexample.com/a.go:3.1,3.1 1 0\n")
+	writeFixture(t, second, "mode: atomic\nexample.com/a.go:2.5,2.5 1 9\nexample.com/a.go:4.1,5.1 3 2\n")
+	merged, err := mergeProfiles([]string{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "mode: set\nexample.com/a.go:2.1,2.1 1 0\nexample.com/a.go:2.1,3.1 3 1\nexample.com/a.go:2.5,2.5 1 1\nexample.com/a.go:3.1,3.1 1 0\nexample.com/a.go:4.1,5.1 3 1\n"
+	if string(merged) != want {
+		t.Fatalf("merged profile:\n%s\nwant:\n%s", merged, want)
+	}
+}
+
+func TestMergeEmptyRangesCannotConcealOverlaps(t *testing.T) {
+	directory := t.TempDir()
+	first, second := filepath.Join(directory, "first.out"), filepath.Join(directory, "second.out")
+	for _, separateInputs := range []bool{false, true} {
+		t.Run(fmt.Sprintf("separate_inputs_%t", separateInputs), func(t *testing.T) {
+			firstBody := "example.com/a.go:2.1,5.1 3 0\nexample.com/a.go:3.1,3.1 1 1\n"
+			secondBody := "example.com/a.go:4.1,6.1 2 1\n"
+			inputs := []string{first}
+			if separateInputs {
+				writeFixture(t, second, "mode: atomic\n"+secondBody)
+				inputs = append(inputs, second)
+			} else {
+				firstBody += secondBody
+			}
+			writeFixture(t, first, "mode: atomic\n"+firstBody)
+			if _, err := mergeProfiles(inputs); err == nil || !strings.Contains(err.Error(), "overlapping") {
+				t.Fatalf("expected overlapping nonempty ranges to fail, got %v", err)
+			}
+		})
 	}
 }
 
@@ -38,7 +77,6 @@ func TestMergeRejectsInvalidOrIncompatibleProfiles(t *testing.T) {
 		"mode: atomic\nexample.com/a/a.go:0.1,3.9 1 1\n",
 		"mode: atomic\nexample.com/a/a.go:2.0,3.9 1 1\n",
 		"mode: atomic\nexample.com/a/a.go:4.1,3.9 1 1\n",
-		"mode: atomic\nexample.com/a/a.go:2.1,2.1 1 1\n",
 		"mode: atomic\nexample.com/a/a.go:2.1,3.9 1 -1\n",
 		"mode: atomic\n../a.go:2.1,3.9 1 1\n",
 		"mode: atomic\n/a.go:2.1,3.9 1 1\n",
@@ -185,6 +223,57 @@ label:
 	}
 	for _, statement := range statements {
 		mappedBlock(t, statement, profiles[0].Blocks)
+	}
+}
+
+func TestRealGoProfileMergesNestedBlocksAndSeparatedStatements(t *testing.T) {
+	directory := t.TempDir()
+	writeFixture(t, filepath.Join(directory, "go.mod"), "module example.com/fixture\n\ngo 1.26.8\n")
+	// Go 1.27 splits at the blank/comment gap, repeating the basic block's
+	// NumStmt for both ranges. The standalone block after the if creates a
+	// zero-width positive-NumStmt range, as in gogoproto generated methods.
+	source := `package fixture
+func Example(flag bool) int {
+ value := 0
+
+ // Separate source ranges, within the same basic block.
+ value++
+ if flag {
+  {
+   value++
+  }
+ }
+ return value
+}
+`
+	writeFixture(t, filepath.Join(directory, "fixture.go"), source)
+	writeFixture(t, filepath.Join(directory, "fixture_test.go"), "package fixture\nimport \"testing\"\nfunc TestExample(t *testing.T) { if Example(false) != 1 { t.Fatal(\"value\") } }\n")
+	input, output := filepath.Join(directory, "input.out"), filepath.Join(directory, "output.out")
+	runGo(t, directory, "test", "-count=1", "-covermode=atomic", "-coverprofile="+input, "./...")
+	if err := run([]string{mergeCommand, "-output", output, input, input}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	// The official coverage consumer must accept the output too.
+	runGo(t, directory, "tool", "cover", "-func="+output)
+	profiles, err := cover.ParseProfiles(output)
+	if err != nil || len(profiles) != 1 {
+		t.Fatalf("read merged real coverage profile: %v", err)
+	}
+	if profiles[0].Mode != "set" {
+		t.Fatalf("normalized Boolean counts must be labeled set, got %q", profiles[0].Mode)
+	}
+	statements, err := sourceStatements(sourceFile{Path: "fixture.go", Source: source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	covered := 0
+	for _, statement := range statements {
+		if mappedBlock(t, statement, profiles[0].Blocks).Count > 0 {
+			covered++
+		}
+	}
+	if len(statements) != 5 || covered != 4 {
+		t.Fatalf("logical statement coverage = %d/%d, want 4/5", covered, len(statements))
 	}
 }
 

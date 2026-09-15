@@ -1,6 +1,5 @@
 go 1.26.8
 
-use (
-	.
-	./interchaintest
-)
+// Keep root development commands on the shipped module graph. The test-client
+// workspace that also includes interchaintest lives in interchaintest/go.work.
+use .

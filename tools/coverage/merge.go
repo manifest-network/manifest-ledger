@@ -12,6 +12,8 @@ import (
 	"golang.org/x/tools/cover"
 )
 
+const setMode = "set"
+
 type blockKey struct {
 	file             string
 	startLine, start int
@@ -25,8 +27,8 @@ type mergedBlock struct {
 }
 
 // mergeProfiles preserves Go's ranges and statement counts, but normalizes
-// execution counts to zero or one. Only hit/miss coverage is claimed: the unit
-// text profile and covdata may contain observations from the same test runs.
+// execution counts to zero or one and emits set mode. Only hit/miss coverage is
+// claimed: the unit text profile and covdata may observe the same test runs.
 func mergeProfiles(paths []string) ([]byte, error) {
 	blocks := make(map[blockKey]mergedBlock)
 	mode := ""
@@ -37,7 +39,7 @@ func mergeProfiles(paths []string) ([]byte, error) {
 		}
 		header, _, _ := strings.Cut(string(data), "\n")
 		current := strings.TrimPrefix(header, "mode: ")
-		if header == current || (current != "set" && current != "count" && current != "atomic") {
+		if header == current || (current != setMode && current != "count" && current != "atomic") {
 			return nil, fmt.Errorf("invalid coverage mode in %s", source)
 		}
 		if mode != "" && mode != current {
@@ -85,14 +87,17 @@ func mergeProfiles(paths []string) ([]byte, error) {
 		return a.key.end - b.key.end
 	})
 	var result bytes.Buffer
-	fmt.Fprintf(&result, "mode: %s\n", mode)
-	for index, block := range ordered {
+	result.WriteString("mode: " + setMode + "\n")
+	var previous blockKey
+	for _, block := range ordered {
 		key := block.key
-		if index > 0 {
-			previous := ordered[index-1].key
+		// Empty ranges have no source positions to overlap. Keep the previous
+		// nonempty range so an intervening empty range cannot hide an overlap.
+		if before(key.startLine, key.start, key.endLine, key.end) {
 			if previous.file == key.file && before(key.startLine, key.start, previous.endLine, previous.end) {
 				return nil, fmt.Errorf("overlapping merged profile ranges in %s", key.file)
 			}
+			previous = key
 		}
 		count := 0
 		if block.hit {
@@ -109,18 +114,21 @@ func validateProfile(profile *cover.Profile) error {
 		strings.ContainsAny(name, "\x00\r\n") || !strings.HasSuffix(name, ".go") {
 		return fmt.Errorf("invalid coverage source path %q", name)
 	}
-	for index, block := range profile.Blocks {
+	var previous cover.ProfileBlock
+	for _, block := range profile.Blocks {
 		if block.StartLine <= 0 || block.StartCol <= 0 || block.EndLine <= 0 || block.EndCol <= 0 ||
 			before(block.EndLine, block.EndCol, block.StartLine, block.StartCol) || block.NumStmt < 0 || block.Count < 0 ||
-			(block.StartLine == block.EndLine && block.StartCol == block.EndCol && block.NumStmt != 0) ||
-			(profile.Mode == "set" && block.Count > 1) {
+			(profile.Mode == setMode && block.Count > 1) {
 			return fmt.Errorf("invalid coverage range or count in %s", name)
 		}
-		if index > 0 {
-			previous := profile.Blocks[index-1]
+		// Go 1.27 can attach positive NumStmt to an empty range when a basic
+		// block contains only braces. Preserve its metadata without treating
+		// the empty half-open interval as overlapping a nonempty range.
+		if before(block.StartLine, block.StartCol, block.EndLine, block.EndCol) {
 			if before(block.StartLine, block.StartCol, previous.EndLine, previous.EndCol) {
 				return fmt.Errorf("overlapping coverage ranges in %s", name)
 			}
+			previous = block
 		}
 	}
 	return nil

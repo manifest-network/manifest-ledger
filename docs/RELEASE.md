@@ -272,7 +272,8 @@ from the coverage block containing its first token. Nested bodies count
 separately. Comments, blank lines, empty statements, and statements whose own
 tokens are only on unchanged lines receive no credit. Statements sharing a
 changed physical line count together; this is a line-based diff, not a token
-diff. Renames count as deletion plus addition.
+diff. Renames are compared with their original contents, so unchanged statements
+receive no new credit.
 This AST metric is distinct from Go's block-level `NumStmt` and does not replace
 either Codecov line metric. It does not measure branches or individual
 expressions: case/communication headers have no independent statement counter,
@@ -280,13 +281,27 @@ and package variable initializers outside function bodies are not instrumented
 by Go. Package-scope function literal bodies are included. Source-position line
 directives are unsupported and fail explicitly.
 
-The combined profile includes `cmd/manifestd/cmd/testnet.go`; generated protobuf
-files are excluded. Ordinary `go test -coverprofile` output is merged with runtime
+The combined profile includes `cmd/manifestd/cmd/testnet.go`; profile filtering
+and the diff check share `.coverageignore` and Go's fixture-directory exclusions.
+Generated protobuf files and Go's `testdata/` fixture directories are excluded.
+Executable fixture source under `testdata/` is outside `go list ./...` and this
+coverage gate; exercise its behavior through tests in a regular package, and
+keep application implementation in regular packages.
+Ordinary `go test -coverprofile` output is merged with runtime
 `covdata` output using Go's maintained profile parser; this retains zero-count leaf
-packages that binary coverage can omit. Merge hit counts are normalized to zero
-or one to avoid double-counting the same test runs. Each invocation cleans a
+packages that binary coverage can omit. Root unit tests, simulations, and the
+instrumented daemon use the shipping root module graph with `GOWORK=off`. The
+E2E client harness uses its separate workspace with coverage limited to its own
+module, and copies ledger coverage from the containerized daemon. Imported root
+module code is not instrumented in the host harness, so its different dependency
+graph cannot supply ledger coverage credit.
+Merge hit counts are normalized to zero or one in a `mode: set` profile to avoid
+double-counting the same test runs. Each invocation cleans a
 dedicated binary merge directory, so a previous invocation's counters cannot
-supply stale hits. The diff check also excludes Go test
+supply stale hits. On success, temporary profiles and binary counters are removed;
+the combined profiles and HTML report remain available. Failed runs retain
+intermediate evidence for diagnosis, which the next invocation clears before
+collecting fresh coverage. The diff check also excludes Go test
 files and independently requires a profile block for every executable statement
 in each changed Go file. A missing file or partially missing function fails even
 if the remaining measured coverage exceeds 80%. Declaration-only files and empty
@@ -294,9 +309,18 @@ bodies need no execution evidence. There are no automatic platform/build-tag
 waivers: collect the relevant package/platform profile when it contains changed
 executable source. A patch with no changed executable tokens reports N/A only
 after completeness validation, without claiming 100% coverage. Billing and SKU
-have separate Codecov components, and CI retains the raw combined profile,
-per-package Go statement summary, and full-diff AST statement summary, including
-when a coverage floor fails.
+have separate Codecov components, and CI retains both the unfiltered and filtered
+combined profiles, per-package Go statement summary, and full-diff AST statement
+summary, including when a coverage floor fails.
+
+Coverage collection requires the host Go toolchain to match the Dockerfile's
+pinned builder version. `make verify-coverage-toolchain` checks this before CI
+builds the image, and `make coverage` checks it before running simulations. For
+local collection, select that version with `GOTOOLCHAIN` and rebuild the coverage
+image (`make local-image-cover coverage`). CI reads its Go version from `go.mod`;
+update that version and the digest-pinned Docker builder together. Re-measure the
+project and patch coverage when advancing Go: instrumentation ranges and Go's
+statement counts can change between toolchain releases.
 
 The `govulncheck` CI job also retains module-level advisory JSON for both Go
 modules (`make govulncheck-module-report`). Review this inventory even when the

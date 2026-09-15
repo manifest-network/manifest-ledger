@@ -23,7 +23,9 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.8'
+          go-version-file: go.mod
+      - name: Verify host and container coverage toolchains agree
+        run: make verify-coverage-toolchain
       - name: Make local image
         run: make local-image-cover
       - name: Run coverage
@@ -55,6 +57,7 @@ jobs:
         with:
           name: coverage-profile
           path: |
+            /tmp/manifest-ledger-coverage/coverage-merged.out
             /tmp/manifest-ledger-coverage/coverage-merged-filtered.out
             coverage-summary.md
             coverage-diff-summary.md

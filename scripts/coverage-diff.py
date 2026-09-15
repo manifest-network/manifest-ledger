@@ -11,8 +11,8 @@ import re
 import subprocess
 import sys
 
+from coverage_policy import eligible, patterns
 
-GENERATED_SUFFIXES = (".pb.go", ".pb.gw.go", ".pulsar.go")
 BLOCK = re.compile(r"(.+):(\d+)\.(\d+),(\d+)\.(\d+) (\d+) (\d+)")
 HUNK = re.compile(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@(?:.*)")
 
@@ -29,10 +29,6 @@ def revision(repo, value):
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", resolved):
         raise ValueError("revision did not resolve to one commit")
     return resolved
-
-
-def eligible(path):
-    return path.endswith(".go") and not path.endswith(("_test.go", *GENERATED_SUFFIXES))
 
 
 def parse_profile(profile, module):
@@ -57,8 +53,9 @@ def parse_profile(profile, module):
         start = (int(start_line), int(start_column))
         end = (int(end_line), int(end_column))
         statements, count = int(statements), int(count)
-        # Go emits zero-length, zero-statement blocks for empty branches.
-        if min(*start, *end) <= 0 or start > end or (start == end and statements):
+        # Go 1.27 can emit zero-width ranges with positive statement counts
+        # when a split basic-block range contains only braces.
+        if min(*start, *end) <= 0 or start > end:
             raise ValueError(f"invalid source range on profile line {number}")
         if lines[0] == "mode: set" and count > 1:
             raise ValueError("set-mode coverage count must be zero or one")
@@ -68,21 +65,45 @@ def parse_profile(profile, module):
         previous_end = None
         locations = set()
         for start, end, _, _ in blocks:
-            if (start, end) in locations or (previous_end is not None and start < previous_end):
+            if (start, end) in locations or (start != end and previous_end is not None and start < previous_end):
                 raise ValueError(f"duplicate or overlapping blocks in merged profile: {path}")
             locations.add((start, end))
-            previous_end = end
-    if not any(block[2] for path, blocks in files.items() if eligible(path) for block in blocks):
-        raise ValueError("profile contains no eligible Go statements")
+            if start != end:
+                previous_end = end
+    if not any(block[2] for blocks in files.values() for block in blocks):
+        raise ValueError("profile contains no Go statements")
     return files
 
 
-def added_lines(repo, base, head, path):
+def changed_paths(repo, base, head):
+    # Detect renames over the complete comparison before narrowing to a file.
+    # Explicit flags avoid user config and rename-limit-dependent results.
+    fields = git(repo, "diff", "--no-ext-diff", "--no-textconv", "--find-renames=50%",
+                 "-l0", "--name-status", "-z", base, head).split("\x00")
+    changes = []
+    index, total = 0, 0
+    while index < len(fields) - 1:
+        status, path = fields[index:index + 2]
+        index += 2
+        total += 1
+        if status.startswith("R"):
+            destination = fields[index]
+            index += 1
+            changes.append((destination, path))
+        elif status != "D":
+            changes.append((path, path if status != "A" else None))
+    return sorted(changes), total
+
+
+def added_lines(repo, base, head, path, old_path=None):
     # Literal pathspecs and a separate argv element preserve spaces, tabs,
     # glob characters, and leading dashes in tracked filenames.
+    # Compare the globally matched blobs directly: limiting tree diff to the
+    # destination would lose rename detection and count the whole file again.
+    comparison = (base + ":" + old_path, head + ":" + path) if old_path else (base, head, "--", path)
     patch = git(
         repo, "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--text",
-        "--no-color", "--inter-hunk-context=0", "--unified=0", base, head, "--", path,
+        "--no-color", "--inter-hunk-context=0", "--unified=0", *comparison,
     )
     added = set()
     for line in patch.split("\n"):
@@ -117,15 +138,16 @@ def analyze(profile, repo, base, head):
     if not module:
         raise ValueError("head go.mod has no module declaration")
     files = parse_profile(profile, module[1])
-    changed = git(
-        repo, "diff", "--no-ext-diff", "--no-renames", "--name-only", "-z", base, head,
-    ).split("\x00")
-    changed = sorted(path for path in changed if path)
+    ignores = patterns(git(repo, "show", head + ":.coverageignore"))
+    changed, changed_count = changed_paths(repo, base, head)
     additions = {}
     sources = []
-    for path in changed:
-        if eligible(path):
-            added = added_lines(repo, base, head, path)
+    for path, old_path in changed:
+        if eligible(path, module[1], ignores):
+            # Moving excluded source into the measured scope is an addition.
+            if old_path and not eligible(old_path, module[1], ignores):
+                old_path = None
+            added = added_lines(repo, base, head, path, old_path)
             if added:
                 additions[path] = set(added)
                 sources.append({"path": path, "source": git(repo, "show", head + ":" + path)})
@@ -136,7 +158,7 @@ def analyze(profile, repo, base, head):
         if not logical:
             declarations.append(path)
             continue
-        blocks = [block for block in files.get(path, []) if block[2]]
+        blocks = [block for block in files.get(path, []) if block[2] and block[0] != block[1]]
         starts = [block[0] for block in blocks]
         hits, total = 0, 0
         for statement in logical:
@@ -152,7 +174,7 @@ def analyze(profile, repo, base, head):
         if total:
             rows.append((path, hits, total))
     return {
-        "base": base, "head": head, "changed_files": len(changed),
+        "base": base, "head": head, "changed_files": changed_count,
         "eligible_files": len(additions), "added_lines": sum(map(len, additions.values())),
         "rows": rows, "missing": missing, "declarations": declarations,
         "covered": sum(row[1] for row in rows),
@@ -176,7 +198,9 @@ def render(result, floor):
         "a changed physical line are counted together. Execution comes "
         "from the Go profile block containing its first token. This AST statement "
         "metric is distinct from Go NumStmt and Codecov line coverage. Generated "
-        "protobuf and Go test files are excluded. Renames count as deletion plus addition.\n"
+        "sources matching .coverageignore, Go tests, and testdata fixtures are excluded. "
+        "Renames use 50% similarity detection over the complete comparison; unchanged "
+        "renamed lines receive no credit.\n"
     )
     print("| File | Covered changed statements | Coverage |\n| --- | ---: | ---: |")
     for path, hits, total in result["rows"]:

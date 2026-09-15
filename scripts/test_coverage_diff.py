@@ -25,21 +25,23 @@ class ProfileTest(unittest.TestCase):
     def test_adjacent_blocks_and_empty_branch_are_valid(self):
         parsed = coverage.parse_profile(profile(
             "a.go:2.1,2.5 2 100", "a.go:2.5,2.9 8 0", "a.go:3.1,3.1 0 1",
+            "a.go:2.3,2.3 1 0",
         ), MODULE)
-        self.assertEqual(3, len(parsed["a.go"]))
+        self.assertEqual(4, len(parsed["a.go"]))
 
     def test_malformed_and_unmerged_profiles_fail(self):
         for text in (
             "", "mode: other\n", "mode: count\n", "mode: count\ninvalid\n",
             profile("a.go:1.1,2.1 -1 0"), profile("a.go:1.1,2.1 1 -1"),
             profile("a.go:0.1,2.1 1 0"), profile("a.go:1.0,2.1 1 0"),
-            profile("a.go:2.1,1.1 1 0"), profile("a.go:1.1,1.1 1 0"),
+            profile("a.go:2.1,1.1 1 0"),
             profile("a.go:1.1,2.1 1 2", mode="set"),
             profile("../a.go:1.1,2.1 1 0"), profile("/a.go:1.1,2.1 1 0"),
             profile("a//b.go:1.1,2.1 1 0"), profile("./a.go:1.1,2.1 1 0"),
             profile("a.txt:1.1,2.1 1 0"), "mode: count\nforeign/a.go:1.1,2.1 1 0\n",
             profile("a.go:1.1,2.1 1 0", "a.go:1.1,2.1 1 1"),
             profile("a.go:1.1,4.1 1 0", "a.go:3.1,5.1 2 1"),
+            profile("a.go:1.1,4.1 1 0", "a.go:2.1,2.1 1 0", "a.go:3.1,5.1 2 1"),
             profile("a.go:1.1,2.1 1 1", "a.go:3.1,3.1 0 0", "a.go:3.1,3.1 0 1"),
         ):
             with self.subTest(profile=text), self.assertRaises(ValueError):
@@ -56,6 +58,7 @@ class GitDiffTest(unittest.TestCase):
         self.artifacts.mkdir()
         self.git("init", "--quiet")
         self.write("go.mod", f"module {MODULE}\n")
+        self.write(".coverageignore", "*.pb.go\n*.pb.gw.go\n*.pulsar.go\n")
         self.write("unchanged.go", "package fixture\nfunc Unchanged() { println(1) }\n")
         self.base = self.commit()
 
@@ -136,7 +139,8 @@ class GitDiffTest(unittest.TestCase):
         # These are actual Go block weights. Crediting the entire old block
         # would incorrectly report 172/214 (80.37%) for this one-line edit.
         blocks = coverage.parse_profile(actual, MODULE)["changed.go"]
-        self.assertEqual([172, 42], [block[2] for block in blocks])
+        # Go 1.27 can repeat a basic block's NumStmt across split ranges.
+        self.assertEqual({172, 42}, {block[2] for block in blocks})
         result = self.analyze(actual)
         self.assertEqual([("changed.go", 1, 43)], result["rows"])
         self.assertEqual({}, result["missing"])
@@ -158,6 +162,67 @@ class GitDiffTest(unittest.TestCase):
         self.assertIn("N/A", output)
         self.assertNotIn("100.00%", output)
 
+    def test_pure_rename_cannot_dilute_new_uncovered_statements(self):
+        self.write("covered.go", "package fixture\nfunc Covered() {\n" + "".join(
+            f" println({number})\n" for number in range(40)
+        ) + "}\n")
+        self.cover_function("Covered")
+        self.base = self.commit()
+        self.git("mv", "covered.go", "moved.go")
+        self.write("new.go", "package fixture\nfunc New() { println(1) }\n")
+        result = self.analyze(self.actual_profile())
+        self.assertEqual([("new.go", 0, 1)], result["rows"])
+        self.assertEqual(1, self.rendered(result)[0])
+
+    def test_modified_rename_counts_only_changed_statement_tokens(self):
+        original = "package fixture\nfunc Covered() {\n" + "".join(
+            f" println({number})\n" for number in range(40)
+        ) + "}\n"
+        self.write("covered.go", original)
+        self.cover_function("Covered")
+        self.base = self.commit()
+        self.git("mv", "covered.go", "moved.go")
+        self.write("moved.go", original.replace("println(0)", "println(999)"))
+        self.write("new.go", "package fixture\nfunc New() { println(1) }\n")
+        # Repository/user defaults must not disable rename detection.
+        self.git("config", "diff.renames", "false")
+        self.git("config", "diff.renameLimit", "1")
+        result = self.analyze(self.actual_profile())
+        self.assertEqual([("moved.go", 1, 1), ("new.go", 0, 1)], result["rows"])
+        self.assertEqual({}, result["missing"])
+        self.assertEqual(1, self.rendered(result)[0])
+
+    def test_literal_rename_paths_and_excluded_source_entering_scope(self):
+        original = "package fixture\nfunc Covered() { println(1) }\n"
+        self.write("old [glob]:name.go", original)
+        self.write("generated.pb.go", original)
+        self.base = self.commit()
+        self.git("mv", "--", "old [glob]:name.go", "new\tname.go")
+        self.git("mv", "generated.pb.go", "included.go")
+        result = self.analyze(profile("included.go:2.1,2.40 1 0"))
+        self.assertEqual([("included.go", 0, 1)], result["rows"])
+        self.assertEqual(1, self.rendered(result)[0])
+
+    def test_shared_filter_policy_and_testdata_exclusions(self):
+        self.write(".coverageignore", "# custom profile-path patterns\n*.pb.go\n"
+                   f"{MODULE}/ignored:*.go\n")
+        names = ("ignored:file.go", "a.pb.go", "testdata/fixture.go", "nested/testdata/fixture.go")
+        for name in names:
+            self.write(name, "package fixture\nfunc Ignored() { println(1) }\n")
+        self.write("included.go", "package fixture\nfunc Included() { println(1) }\n")
+        raw = self.artifacts / "raw.out"
+        raw.write_text(profile("unchanged.go:2.1,2.40 1 1", "included.go:2.1,2.40 1 0",
+                               *(f"{name}:2.1,2.40 1 1" for name in names)))
+        filtered = self.artifacts / "filtered.out"
+        subprocess.run([str(SCRIPT.with_name("filter-coverage.sh")), str(raw), str(filtered)],
+                       cwd=self.repo, check=True, capture_output=True, text=True)
+        result = self.analyze(filtered.read_text())
+        self.assertEqual([("included.go", 0, 1)], result["rows"])
+        self.assertEqual({}, result["missing"])
+        self.assertEqual(1, self.rendered(result)[0])
+        for name in names:
+            self.assertNotIn(name + ":", filtered.read_text())
+
     def test_covdata_omitted_untested_leaf_fails_despite_other_coverage(self):
         self.write("changed.go", "package fixture\nfunc Covered() {\n" + "".join(
             f" println({number})\n" for number in range(9)
@@ -178,7 +243,7 @@ class GitDiffTest(unittest.TestCase):
         # The gate must inspect its changed source instead of blessing N/A.
         self.assertNotIn(MODULE + "/leaf/leaf.go:", actual)
         leaf_blocks = coverage.parse_profile(ordinary.read_text(), MODULE)["leaf/leaf.go"]
-        self.assertEqual(42, sum(block[2] for block in leaf_blocks))
+        self.assertEqual(42, max(block[2] for block in leaf_blocks))
         self.assertTrue(all(block[3] == 0 for block in leaf_blocks))
         head = self.commit()
         result = self.analyze(actual, head=head)

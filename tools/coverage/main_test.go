@@ -52,7 +52,7 @@ func TestRunMergeWritesOnlyValidatedProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(output) //nolint:gosec // Output is inside this test's temporary directory.
-	if err != nil || string(data) != "mode: atomic\nexample.com/a/a.go:1.1,1.9 1 1\n" {
+	if err != nil || string(data) != "mode: set\nexample.com/a/a.go:1.1,1.9 1 1\n" {
 		t.Fatalf("merged profile: %s, %v", data, err)
 	}
 	writeFixture(t, input, "invalid")

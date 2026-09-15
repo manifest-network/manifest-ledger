@@ -18,6 +18,7 @@ concurrency:
 
 env:
   GO_VERSION: 1.26.8
+  GOWORK: "off"
 
 jobs:
   analyze:
