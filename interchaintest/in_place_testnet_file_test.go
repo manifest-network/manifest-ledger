@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -55,7 +57,7 @@ func TestInPlaceTestnetLiveFileUpload(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
 	node.DockerClient = client
-	require.NoError(t, writeInPlaceTestnetLiveFile(context.Background(), node, "counter.wasm", content))
+	require.NoError(t, writeLiveNodeFile(context.Background(), node, "counter.wasm", content))
 	require.Equal(t, 1, requests)
 	for _, tc := range []struct{ name, file, owner string }{
 		{"empty name", "", "1025:1026"},
@@ -72,8 +74,59 @@ func TestInPlaceTestnetLiveFileUpload(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			node.Image.UIDGID = tc.owner
-			require.Error(t, writeInPlaceTestnetLiveFile(context.Background(), node, tc.file, content))
+			require.Error(t, writeLiveNodeFile(context.Background(), node, tc.file, content))
 			require.Equal(t, 1, requests, "invalid input must not reach the Docker API")
+		})
+	}
+}
+
+func TestInPlaceTestnetLiveContractUploadFailure(t *testing.T) {
+	for _, missingFile := range []bool{true, false} {
+		name := "archive API failure"
+		if missingFile {
+			name = "missing local contract"
+		}
+		t.Run(name, func(t *testing.T) {
+			chain := cosmos.NewCosmosChain(t.Name(), ibc.ChainConfig{Name: "live-home", ChainID: "live-chain"}, 1, 0, zap.NewNop())
+			node := &cosmos.ChainNode{Chain: chain, TestName: t.Name(), Validator: true, Image: ibc.DockerImage{UIDGID: "1025:1026"}}
+			fileName := filepath.Join(t.TempDir(), "counter.wasm")
+			content := []byte("\x00asm\x01\x00\x00\x00")
+			if !missingFile {
+				require.NoError(t, os.WriteFile(fileName, content, 0o600))
+			}
+			requests := 0
+			client, err := dockerclient.NewClientWithOpts(
+				dockerclient.WithHost("http://docker.invalid"), dockerclient.WithVersion("1.44"),
+				dockerclient.WithHTTPClient(&http.Client{Transport: inPlaceTestnetRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+					requests++
+					require.Equal(t, http.MethodPut, request.Method, "upload failure must not create a helper or start a transaction")
+					require.Equal(t, "/v1.44/containers/"+node.Name()+"/archive", request.URL.Path)
+					require.Equal(t, node.HomeDir(), request.URL.Query().Get("path"))
+					reader := tar.NewReader(request.Body)
+					header, err := reader.Next()
+					require.NoError(t, err)
+					require.Equal(t, "counter.wasm", header.Name)
+					actual, err := io.ReadAll(reader)
+					require.NoError(t, err)
+					require.Equal(t, content, actual)
+					_, err = reader.Next()
+					require.ErrorIs(t, err, io.EOF)
+					return &http.Response{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"message":"archive refused"}`))}, nil
+				})}),
+			)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, client.Close()) })
+			node.DockerClient = client
+			codeID, err := storeLiveNodeContract(context.Background(), node, "uploader", fileName)
+			require.ErrorContains(t, err, "writing contract file to docker volume")
+			require.Empty(t, codeID)
+			if missingFile {
+				require.ErrorIs(t, err, os.ErrNotExist)
+				require.Zero(t, requests)
+			} else {
+				require.ErrorContains(t, err, "archive refused")
+				require.Equal(t, 1, requests)
+			}
 		})
 	}
 }

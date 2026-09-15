@@ -52,7 +52,7 @@ func seedInPlaceTestnetReleasedState(t *testing.T, ctx context.Context, chain *c
 	contractCode, err := os.ReadFile("../scripts/cw_template.wasm")
 	require.NoError(t, err)
 	const contractFile = "cw_template.wasm"
-	require.NoError(t, writeInPlaceTestnetLiveFile(ctx, node, contractFile, contractCode))
+	require.NoError(t, writeLiveNodeFile(ctx, node, contractFile, contractCode))
 	_, err = node.ExecTx(ctx, user.KeyName(), "wasm", "store", path.Join(node.HomeDir(), contractFile), "--gas", "auto")
 	require.NoError(t, err)
 	require.NoError(t, testutil.WaitForBlocks(ctx, 5, chain))

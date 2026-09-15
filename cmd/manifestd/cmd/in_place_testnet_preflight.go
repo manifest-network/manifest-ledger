@@ -47,6 +47,7 @@ import (
 
 const (
 	inPlaceTestnetCommandName = "in-place-testnet"
+	startCommandName          = "start"
 	inPlaceTestnetMarker      = "in-place-testnet.json"
 	poaSimulationEnvVar       = "POA_BYPASS_ADMIN_CHECK_FOR_SIMULATION_TESTING_ONLY"
 )
@@ -77,7 +78,7 @@ type testnetPreflight struct {
 func testnetAppCommand(cmd *cobra.Command) bool {
 	for current := cmd; current != nil; current = current.Parent() {
 		switch current.Name() {
-		case "start", "export", "snapshots", "prune", "rollback", "bootstrap-state", "module-hash-by-height":
+		case startCommandName, "export", "snapshots", "prune", "rollback", "bootstrap-state", "module-hash-by-height":
 			return true
 		}
 	}
@@ -181,6 +182,11 @@ func preflightTestnetCommand(cmd *cobra.Command, args []string) error {
 	}
 	if err := validateTestnetSourceHeights(appHeight, state.LastBlockHeight, storeHeight); err != nil {
 		return err
+	}
+	// At aligned heights both databases describe the same committed block.
+	// An app one block ahead is reconciled from saved execution records by the SDK.
+	if appHeight == state.LastBlockHeight && !bytes.Equal(appHash, state.AppHash) {
+		return fmt.Errorf("source application hash disagrees with Comet state at height %d; recover the source node before copying it", appHeight)
 	}
 	if trigger := v.GetString(server.KeyTriggerTestnetUpgrade); trigger != "" {
 		if trigger != version.Version {
@@ -433,7 +439,9 @@ func validateTestnetHome(home string, cfg *cmtcfg.Config, v *viper.Viper) error 
 	// each listener separately. The remaining listener settings are single-valued.
 	listeners := append(strings.Split(cfg.RPC.ListenAddress, ","), cfg.RPC.GRPCListenAddress, cfg.ProxyApp, cfg.P2P.ListenAddress, v.GetString("grpc.address"), v.GetString("api.address"))
 	for _, listener := range listeners {
-		if strings.HasPrefix(strings.TrimSpace(listener), "unix:") {
+		network, _, _ := strings.Cut(strings.TrimSpace(listener), ":")
+		switch network {
+		case "unix", "unixpacket", "unixgram":
 			return fmt.Errorf("unix socket listeners are unsupported for in-place testnet homes")
 		}
 	}

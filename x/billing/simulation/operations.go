@@ -286,9 +286,17 @@ func SimulateMsgCreateLease(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
 		}
 
-		activeLeaseCount, err := k.CountActiveLeasesByTenant(ctx, tenant.Address.String())
-		if err != nil || activeLeaseCount >= params.MaxLeasesPerTenant {
+		// Use the same counters as createLeaseInternal; both active and pending
+		// limits must pass before generating a transaction.
+		creditAccount, err := k.GetCreditAccount(ctx, tenant.Address.String())
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "credit account not found"), nil, nil
+		}
+		if creditAccount.ActiveLeaseCount >= params.MaxLeasesPerTenant {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant at max lease limit"), nil, nil
+		}
+		if creditAccount.PendingLeaseCount >= params.MaxPendingLeasesPerTenant {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant at max pending lease limit"), nil, nil
 		}
 
 		// Create lease items (1-3 items from same provider)
@@ -377,9 +385,17 @@ func SimulateMsgCreateLeaseForTenant(txGen client.TxConfig, k keeper.Keeper, sk 
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "failed to get params"), nil, nil
 		}
 
-		activeLeaseCount, err := k.CountActiveLeasesByTenant(ctx, tenant.Address.String())
-		if err != nil || activeLeaseCount >= params.MaxLeasesPerTenant {
+		// Use the same counters as createLeaseInternal; both active and pending
+		// limits must pass before generating a transaction.
+		creditAccount, err := k.GetCreditAccount(ctx, tenant.Address.String())
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "credit account not found"), nil, nil
+		}
+		if creditAccount.ActiveLeaseCount >= params.MaxLeasesPerTenant {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant at max lease limit"), nil, nil
+		}
+		if creditAccount.PendingLeaseCount >= params.MaxPendingLeasesPerTenant {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "tenant at max pending lease limit"), nil, nil
 		}
 
 		// Create lease items (1-3 items from same provider)

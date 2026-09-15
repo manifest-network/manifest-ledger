@@ -10,15 +10,21 @@ import (
 )
 
 func TestTestnetPreflightRPCListenerList(t *testing.T) {
-	for _, command := range []string{"in-place-testnet", "start"} {
+	for _, command := range []string{inPlaceTestnetCommandName, startCommandName} {
 		for _, tc := range []struct {
 			name, prefix, suffix string
 			unix                 bool
+			network              string
 		}{
 			{name: "single TCP", prefix: "tcp://127.0.0.1:26657"},
 			{name: "multiple TCP", prefix: "tcp://127.0.0.1:26657, tcp://127.0.0.1:26658"},
 			{name: "empty entries", prefix: " , tcp://127.0.0.1:26657, , "},
 			{name: "single unix", unix: true},
+			{name: "single unixpacket", unix: true, network: "unixpacket"},
+			{name: "unixpacket after TCP", prefix: "tcp://127.0.0.1:26657, ", unix: true, network: "unixpacket"},
+			{name: "unixpacket before TCP", suffix: ", tcp://127.0.0.1:26657", unix: true, network: "unixpacket"},
+			{name: "unixpacket with whitespace", prefix: "  ", suffix: "  ", unix: true, network: "unixpacket"},
+			{name: "single unixgram", unix: true, network: "unixgram"},
 			{name: "unix after TCP", prefix: "tcp://127.0.0.1:26657,", unix: true},
 			{name: "unix before TCP", suffix: ",tcp://127.0.0.1:26657", unix: true},
 			{name: "leading whitespace", prefix: "  ", unix: true},
@@ -26,13 +32,17 @@ func TestTestnetPreflightRPCListenerList(t *testing.T) {
 		} {
 			t.Run(command+"/"+tc.name, func(t *testing.T) {
 				f := newTestnetPreflightFixture(t)
-				if command == "start" {
+				if command == startCommandName {
 					f.completeFork(t)
 				}
 				outside := t.TempDir()
 				listener := tc.prefix
 				if tc.unix {
-					listener += "unix://" + filepath.Join(outside, "rpc.sock")
+					network := tc.network
+					if network == "" {
+						network = "unix"
+					}
+					listener += network + "://" + filepath.Join(outside, "rpc.sock")
 				}
 				f.config.RPC.ListenAddress = listener + tc.suffix
 				cmtcfg.WriteConfigFile(filepath.Join(f.home, "config", "config.toml"), f.config)

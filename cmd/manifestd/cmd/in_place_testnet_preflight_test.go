@@ -304,7 +304,7 @@ func TestTestnetPreflightExternalServices(t *testing.T) {
 		} {
 			t.Run(command+"/"+tc.name, func(t *testing.T) {
 				f := newTestnetPreflightFixture(t)
-				if command == "start" {
+				if command == startCommandName {
 					f.completeFork(t)
 				}
 				f.config.TxIndex.Indexer = tc.indexer
