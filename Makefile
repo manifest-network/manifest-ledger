@@ -186,17 +186,25 @@ local-image:
 	@echo "--> Building local image"
 	docker build . -t manifest:local
 
-local-image-coverage:
-	@echo "--> Building local image with coverage"
-	docker build . --build-arg BUILD_CMD=build-coverage -t manifest:local
+COVERAGE_GO_VERSION = $(patsubst go%,%,$(shell $(GO) env GOVERSION))
 
-local-image-testnet-upgrade:
+# Coverage blocks must come from the same compiler as the host test binaries.
+# Custom/development Go versions cannot be mapped to official Docker image tags.
+check-coverage-go-version:
+	@echo "$(COVERAGE_GO_VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || \
+		{ echo "Coverage images require an official Go release; select one with GO=/path/to/go" >&2; exit 1; }
+
+local-image-coverage: check-coverage-go-version
+	@echo "--> Building local image with coverage"
+	docker build . --build-arg GO_VERSION=$(COVERAGE_GO_VERSION) --build-arg BUILD_CMD=build-coverage -t manifest:local
+
+local-image-testnet-upgrade: check-coverage-go-version
 	@echo "--> Building test-only upgrade image with coverage"
-	docker build . --build-arg BUILD_CMD=build-coverage \
+	docker build . --build-arg GO_VERSION=$(COVERAGE_GO_VERSION) --build-arg BUILD_CMD=build-coverage \
 		--build-arg BUILD_TAGS='muslc testnet_upgrade_fixture' \
 		--build-arg VERSION=eng879-test-upgrade -t manifest-testnet-upgrade:local
 
-.PHONY: local-image local-image-coverage local-image-testnet-upgrade
+.PHONY: local-image local-image-coverage local-image-testnet-upgrade check-coverage-go-version
 
 #################
 ###   Test    ###
@@ -211,6 +219,7 @@ test:
 COV_ROOT="/tmp/manifest-ledger-coverage"
 COV_UNIT_E2E="${COV_ROOT}/unit-e2e"
 COV_SIMULATION="${COV_ROOT}/simulation"
+COV_MERGED="${COV_ROOT}/merged"
 COV_PKG="github.com/manifest-network/manifest-ledger/..."
 COV_SIM_CMD=${COV_SIMULATION}/simulation.test
 COV_SIM_COMMON=-Enabled=True -NumBlocks=100 -Commit=true -Period=5 -Params=$(shell pwd)/simulation/sim_params.json -Verbose=false -test.v -test.gocoverdir=${COV_SIMULATION}
@@ -220,11 +229,11 @@ coverage: ## Run coverage report
 	@echo "--> GOROOT: $(GOROOT)"
 
 	@echo "--> Creating GOCOVERDIR"
-	@mkdir -p ${COV_UNIT_E2E} ${COV_SIMULATION}
+	@mkdir -p ${COV_UNIT_E2E} ${COV_SIMULATION} ${COV_MERGED}
 	@echo "--> Cleaning up coverage files, if any"
-	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/*
+	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/* ${COV_MERGED}/*
 	@echo "--> Building instrumented simulation test binary"
-	@go test -c ./app -mod=readonly -covermode=atomic -coverpkg=${COV_PKG} -cover -o ${COV_SIM_CMD}
+	@$(GO) test -c ./app -mod=readonly -covermode=atomic -coverpkg=${COV_PKG} -cover -o ${COV_SIM_CMD}
 	@echo "  --> Running Full App Simulation"
 	@${COV_SIM_CMD} -test.run TestFullAppSimulation ${COV_SIM_COMMON} > /dev/null 2>&1
 	@echo "  --> Running App Simulation After Import"
@@ -232,17 +241,17 @@ coverage: ## Run coverage report
 	@echo "  --> Running App State Determinism Simulation"
 	@${COV_SIM_CMD} -test.run TestAppStateDeterminism ${COV_SIM_COMMON} > /dev/null 2>&1
 	@echo "--> Running unit & e2e tests coverage"
-	@go test -p 1 -timeout 150m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
+	@$(GO) test -p 1 -timeout 150m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$($(GO) list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
 	@echo "--> Merging coverage reports"
-	@go tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_ROOT}
+	@$(GO) tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_MERGED}
 	@echo "--> Converting binary coverage report to text format"
-	@go tool covdata textfmt -i=${COV_ROOT} -o ${COV_ROOT}/coverage-merged.out
+	@$(GO) tool covdata textfmt -i=${COV_MERGED} -o ${COV_ROOT}/coverage-merged.out
 	@echo "--> Filtering coverage reports"
 	@./scripts/filter-coverage.sh ${COV_ROOT}/coverage-merged.out ${COV_ROOT}/coverage-merged-filtered.out
 	@echo "--> Generating coverage report"
-	@go tool cover -func=${COV_ROOT}/coverage-merged-filtered.out
+	@$(GO) tool cover -func=${COV_ROOT}/coverage-merged-filtered.out
 	@echo "--> Generating HTML coverage report"
-	@go tool cover -html=${COV_ROOT}/coverage-merged-filtered.out -o coverage.html
+	@$(GO) tool cover -html=${COV_ROOT}/coverage-merged-filtered.out -o coverage.html
 	@echo "--> Coverage report available at coverage.html"
 	@echo "--> Cleaning up coverage files"
 	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/*
