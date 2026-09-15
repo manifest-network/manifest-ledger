@@ -1,0 +1,5 @@
+{
+        "GOCACHE": "/home/fmorency/.cache/go-build",
+        "GOMODCACHE": "/home/fmorency/go/pkg/mod",
+        "GOROOT": "/home/fmorency/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.8.linux-amd64"
+}

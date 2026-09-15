@@ -1,0 +1,40 @@
+package keeper_test
+
+import (
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/x/auth/vesting"
+	vestingtypes "github.com/cosmos/cosmos-sdk/x/auth/vesting/types"
+	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
+	"github.com/manifest-network/manifest-ledger/x/billing/types"
+	"github.com/stretchr/testify/require"
+	"testing"
+	"time"
+)
+
+func TestReviewProbeOriginalLockedCreditAndRecovery(t *testing.T) {
+	f := initFixture(t)
+	tenant, providerAddress, attacker := f.TestAccs[0], f.TestAccs[1], f.TestAccs[2]
+	credit := types.DeriveCreditAddress(tenant)
+	f.fundAccount(t, attacker, sdk.NewCoins(sdk.NewInt64Coin(testDenom, 1)))
+	_, err := vesting.NewMsgServerImpl(f.App.AccountKeeper, f.App.BankKeeper).CreatePermanentLockedAccount(f.Ctx, vestingtypes.NewMsgCreatePermanentLockedAccount(attacker, credit, sdk.NewCoins(sdk.NewInt64Coin(testDenom, 1))))
+	require.NoError(t, err)
+	f.fundAccount(t, tenant, sdk.NewCoins(sdk.NewInt64Coin(testDenom, 10800)))
+	ms := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+	_, err = ms.FundCredit(f.Ctx, &types.MsgFundCredit{Sender: tenant.String(), Tenant: tenant.String(), Amount: sdk.NewInt64Coin(testDenom, 7200)})
+	require.NoError(t, err)
+	provider := f.createTestProvider(t, providerAddress.String(), providerAddress.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+	uuid := f.createAndAcknowledgeLease(t, ms, tenant, providerAddress, []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}})
+	ctx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(3 * time.Hour))
+	_, err = ms.CloseLease(ctx, &types.MsgCloseLease{Sender: tenant.String(), LeaseUuids: []string{uuid}})
+	require.ErrorContains(t, err, "spendable balance 7200umfx is smaller than 7201umfx")
+	t.Logf("Reproduced original close failure: %v", err)
+	_, err = ms.FundCredit(ctx, &types.MsgFundCredit{Sender: tenant.String(), Tenant: tenant.String(), Amount: sdk.NewInt64Coin(testDenom, 3600)})
+	require.NoError(t, err)
+	_, err = ms.CloseLease(ctx, &types.MsgCloseLease{Sender: tenant.String(), LeaseUuids: []string{uuid}})
+	require.NoError(t, err)
+	lease, getErr := f.App.BillingKeeper.GetLease(ctx, uuid)
+	require.NoError(t, getErr)
+	require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+	t.Log("Original implementation can close after an unlocked top-up covers accrued service; forever/permanent irrecoverability is refuted")
+}

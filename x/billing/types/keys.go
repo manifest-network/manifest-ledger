@@ -1,6 +1,10 @@
 package types
 
-import "cosmossdk.io/collections"
+import (
+	"cosmossdk.io/collections"
+
+	"github.com/manifest-network/manifest-ledger/pkg/pagination"
+)
 
 // Storage prefixes for collections.
 var (
@@ -56,6 +60,7 @@ var (
 	CustomDomainIndexKey = collections.NewPrefix(12)
 )
 
+// Module identity constants define the billing store and legacy query route.
 const (
 	ModuleName = "billing"
 
@@ -76,12 +81,28 @@ const (
 
 // Query limits to prevent DoS attacks on RPC nodes.
 const (
-	// DefaultProviderWithdrawableQueryLimit is the default limit for ProviderWithdrawable queries.
-	DefaultProviderWithdrawableQueryLimit uint64 = 100
+	// DefaultCreditAccountBalanceQueryLimit is the default number of bank
+	// balances returned by CreditAccount when pagination is present.
+	DefaultCreditAccountBalanceQueryLimit uint64 = 100
+
+	// MaxCreditAccountBalanceQueryLimit bounds bank-store work and response size,
+	// including the complete-result compatibility mode when pagination is absent.
+	// Match the shared paginator's enforced ceiling so advertised limits agree.
+	MaxCreditAccountBalanceQueryLimit uint64 = pagination.MaxPageLimit
+
+	// DefaultProviderWithdrawableQueryLimit matches provider-wide MsgWithdraw so
+	// an omitted limit previews the same number of leases.
+	DefaultProviderWithdrawableQueryLimit uint64 = DefaultProviderWithdrawLimit
 
 	// MaxProviderWithdrawableQueryLimit is the maximum limit for ProviderWithdrawable queries.
-	// This prevents queries from iterating over unbounded numbers of leases.
-	MaxProviderWithdrawableQueryLimit uint64 = 1000
+	// Match the transaction ceiling because each lease runs the full settlement
+	// lifecycle in a discarded cache context.
+	MaxProviderWithdrawableQueryLimit uint64 = MaxBatchLeaseSize
+
+	// MaxCreditEstimateLeaseItems bounds the total stored pricing items decoded
+	// and aggregated by one unpaginated CreditEstimate request. Keep this ceiling
+	// independent from ProviderWithdrawable's settlement-simulation limit.
+	MaxCreditEstimateLeaseItems uint64 = 100_000
 )
 
 // EndBlocker limits to prevent DoS attacks.
@@ -142,6 +163,8 @@ const (
 	AttributeKeyCustomDomain      = "custom_domain"
 	AttributeKeySetBy             = "set_by"
 	AttributeKeyServiceName       = "service_name"
+	AttributeKeyFailedLeaseCount  = "failed_lease_count"
+	AttributeKeyFailedLeaseUUIDs  = "failed_lease_uuids"
 )
 
 // Rejection reasons for lease cancellation/rejection.

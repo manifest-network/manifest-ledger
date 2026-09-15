@@ -1,0 +1,358 @@
+{
+  "head_commit": "8492a4ad18996d0877a7425b8039ed355cc94726",
+  "checks": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:35:38Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610706946/job/103300193282",
+      "name": "build amd64 for darwin",
+      "startedAt": "2026-09-11T14:32:17Z",
+      "status": "COMPLETED",
+      "workflowName": "Build Manifest"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:39:18Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610706812/job/103300192852",
+      "name": "Analyze",
+      "startedAt": "2026-09-11T14:32:18Z",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T16:21:44Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707216/job/103300193216",
+      "name": "build",
+      "startedAt": "2026-09-11T14:32:17Z",
+      "status": "COMPLETED",
+      "workflowName": "Codecov"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:36:30Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103300193796",
+      "name": "build-docker",
+      "startedAt": "2026-09-11T14:32:18Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:39:22Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707220/job/103300193419",
+      "name": "tests",
+      "startedAt": "2026-09-11T14:32:18Z",
+      "status": "COMPLETED",
+      "workflowName": "Simulation Tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:37:53Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610706829/job/103300193044",
+      "name": "tests",
+      "startedAt": "2026-09-11T14:32:17Z",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:35:56Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610706946/job/103300193372",
+      "name": "build amd64 for linux",
+      "startedAt": "2026-09-11T14:32:18Z",
+      "status": "COMPLETED",
+      "workflowName": "Build Manifest"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:39:36Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610706946/job/103300192977",
+      "name": "lint",
+      "startedAt": "2026-09-11T14:32:17Z",
+      "status": "COMPLETED",
+      "workflowName": "Build Manifest"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T15:18:14Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103300193516",
+      "name": "build-docker-arm64",
+      "startedAt": "2026-09-11T14:32:17Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:32:45Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610706946/job/103300193270",
+      "name": "tidy",
+      "startedAt": "2026-09-11T14:32:18Z",
+      "status": "COMPLETED",
+      "workflowName": "Build Manifest"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:38:38Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629089",
+      "name": "e2e-tests (ictest-ibc)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:38:03Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629126",
+      "name": "e2e-tests (ictest-poa)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:38:35Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629017",
+      "name": "e2e-tests (ictest-poa-unjail-dup)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:38:29Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629158",
+      "name": "e2e-tests (ictest-tokenfactory)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:39:03Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629075",
+      "name": "e2e-tests (ictest-manifest)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:53:22Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629098",
+      "name": "e2e-tests (ictest-group-poa)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:38:00Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629125",
+      "name": "e2e-tests (ictest-group)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:38:16Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629106",
+      "name": "e2e-tests (ictest-cosmwasm)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:45:20Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629133",
+      "name": "e2e-tests (ictest-chain-upgrade)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:46:27Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629174",
+      "name": "e2e-tests (ictest-sku)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:42:42Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629233",
+      "name": "e2e-tests (ictest-billing-lease)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:41:21Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629081",
+      "name": "e2e-tests (ictest-billing-credit)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:49:22Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629226",
+      "name": "e2e-tests (ictest-billing-advanced)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:54:37Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629221",
+      "name": "e2e-tests (ictest-billing-state)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:43:00Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629108",
+      "name": "e2e-tests (ictest-billing-reservation)",
+      "startedAt": "2026-09-11T14:36:33Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:43:06Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629202",
+      "name": "e2e-tests (ictest-billing-extra)",
+      "startedAt": "2026-09-11T14:36:35Z",
+      "status": "COMPLETED",
+      "workflowName": "E2E"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:33:32Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610706946/job/103300193322",
+      "name": "protobuf",
+      "startedAt": "2026-09-11T14:32:17Z",
+      "status": "COMPLETED",
+      "workflowName": "Build Manifest"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:36:18Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610706946/job/103300193182",
+      "name": "govulncheck",
+      "startedAt": "2026-09-11T14:32:17Z",
+      "status": "COMPLETED",
+      "workflowName": "Build Manifest"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:39:26Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610706946/job/103300193401",
+      "name": "goreleaser snapshot",
+      "startedAt": "2026-09-11T14:32:17Z",
+      "status": "COMPLETED",
+      "workflowName": "Build Manifest"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T14:39:10Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/manifest-network/manifest-ledger/runs/103302492534",
+      "name": "CodeQL",
+      "startedAt": "2026-09-11T14:39:06Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T16:22:21Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://app.codecov.io/gh/manifest-network/manifest-ledger/pull/179",
+      "name": "codecov/patch",
+      "startedAt": "2026-09-11T16:22:21Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "e2e_run": {
+    "head_sha": "8492a4ad18996d0877a7425b8039ed355cc94726",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111"
+  },
+  "billing_state_job_url": "https://github.com/manifest-network/manifest-ledger/actions/runs/34610707111/job/103301629221",
+  "fetch_argv": [
+    "gh",
+    "run",
+    "view",
+    "34610707111",
+    "--repo",
+    "manifest-network/manifest-ledger",
+    "--job",
+    "103301629221",
+    "--log"
+  ],
+  "fetch_cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "fetch_exit_status": 0,
+  "full_fetched_log_sha256": "eb471abe2fcba9e7d79eb8b9aa0a394f8b7d2c40a0633cf4d2d557d1ed6415a4",
+  "excerpt_sha256": "3904a7f13bee5b56119009543c2ee4b091c0a257ec1f4bb16817e1decaefe9f9",
+  "excerpt_selection": "Lines containing HEAD is now, or PendingLeaseExpiration plus === RUN or --- PASS:",
+  "excerpt_normalization": "expandtabs(8), rstrip each line, one final LF; explanatory first line added",
+  "archives": [
+    {
+      "path": "docs/reviews/2026-09-11-claude-review-validation/interchain-expiration/docker-context.tar.gz",
+      "bytes": 1036743,
+      "sha256": "744c32de2902755b2b2d3b1595d5bee5c412597bf4d7c1854bd28d029d4446c4"
+    },
+    {
+      "path": "docs/reviews/2026-09-11-claude-review-validation/interchain-expiration/interchain-inputs.tar.gz",
+      "bytes": 238297,
+      "sha256": "7c26467e8860e76b5d3f61891fe579e96a321c269053e0c7436b028c1b404e17"
+    },
+    {
+      "path": "docs/reviews/2026-09-10-claude-follow-up-review-validation/mutation-provenance/inputs/baseline-b4d8403.tar.gz",
+      "bytes": 1454723,
+      "sha256": "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51"
+    }
+  ],
+  "archive_total_bytes": 2729763
+}

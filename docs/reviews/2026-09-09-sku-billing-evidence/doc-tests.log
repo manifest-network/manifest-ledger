@@ -1,0 +1,16 @@
+✔ frontend authentication survives wallet confirmation across second boundaries (7.082708ms)
+▶ documented withdrawal workflow handles committed SDK envelopes and restart checkpoints
+  ✔ success (1508.336927ms)
+  ✔ timeout (3798.522136ms)
+  ✔ execution-error (1448.415393ms)
+  ✔ decode-error (686.477307ms)
+  ✔ broadcast-error (77.613116ms)
+✔ documented withdrawal workflow handles committed SDK envelopes and restart checkpoints (7537.588782ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7656.380546

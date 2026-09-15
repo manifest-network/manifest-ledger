@@ -1,0 +1,5 @@
+--- a/x/sku/module.go
++++ b/x/sku/module.go
+@@ -87 +87 @@
+-	return data.Validate()
++	return nil

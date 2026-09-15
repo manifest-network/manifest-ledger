@@ -1,0 +1,62 @@
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls/positive_block_fallback
+    crisis_simulate_test.go:122:
+            Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/app/crisis_simulate_test.go:122
+            Error:          Not equal:
+                            expected: types.Coin{Denom:"umfx", Amount:math.Int{i:(*big.Int)(0x2a053c2779c0)}}
+                            actual  : types.Coin{Denom:"umfx", Amount:math.Int{i:(*big.Int)(0x2a053c48f220)}}
+
+                            Diff:
+                            --- Expected
+                            +++ Actual
+                            @@ -6,3 +6,3 @@
+                                abs: (big.nat) (len=1) {
+                            -    (big.Word) 100000
+                            +    (big.Word) 99983
+                                }
+            Test:           TestCrisisSimulationHonorsNodeGasAndCircuitControls/positive_block_fallback
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_positive_node_limit
+    crisis_simulate_test.go:122:
+            Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/app/crisis_simulate_test.go:122
+            Error:          Not equal:
+                            expected: types.Coin{Denom:"umfx", Amount:math.Int{i:(*big.Int)(0x2a053d4509e0)}}
+                            actual  : types.Coin{Denom:"umfx", Amount:math.Int{i:(*big.Int)(0x2a053d451720)}}
+
+                            Diff:
+                            --- Expected
+                            +++ Actual
+                            @@ -6,3 +6,3 @@
+                                abs: (big.nat) (len=1) {
+                            -    (big.Word) 100000
+                            +    (big.Word) 99983
+                                }
+            Test:           TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_positive_node_limit
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_node_limit_exhaustion
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls/block_fallback_exhaustion
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_node_limit_overrides_smaller_block_limit
+    crisis_simulate_test.go:122:
+            Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/app/crisis_simulate_test.go:122
+            Error:          Not equal:
+                            expected: types.Coin{Denom:"umfx", Amount:math.Int{i:(*big.Int)(0x2a053b041980)}}
+                            actual  : types.Coin{Denom:"umfx", Amount:math.Int{i:(*big.Int)(0x2a053b846ea0)}}
+
+                            Diff:
+                            --- Expected
+                            +++ Actual
+                            @@ -6,3 +6,3 @@
+                                abs: (big.nat) (len=1) {
+                            -    (big.Word) 100000
+                            +    (big.Word) 99983
+                                }
+            Test:           TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_node_limit_overrides_smaller_block_limit
+=== RUN   TestCrisisSimulationHonorsNodeGasAndCircuitControls/circuit_rejects_before_invariant_work
+--- FAIL: TestCrisisSimulationHonorsNodeGasAndCircuitControls (0.47s)
+    --- FAIL: TestCrisisSimulationHonorsNodeGasAndCircuitControls/positive_block_fallback (0.11s)
+    --- FAIL: TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_positive_node_limit (0.08s)
+    --- PASS: TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_node_limit_exhaustion (0.09s)
+    --- PASS: TestCrisisSimulationHonorsNodeGasAndCircuitControls/block_fallback_exhaustion (0.08s)
+    --- FAIL: TestCrisisSimulationHonorsNodeGasAndCircuitControls/explicit_node_limit_overrides_smaller_block_limit (0.05s)
+    --- PASS: TestCrisisSimulationHonorsNodeGasAndCircuitControls/circuit_rejects_before_invariant_work (0.06s)
+FAIL
+FAIL    github.com/manifest-network/manifest-ledger/app 0.659s
+FAIL

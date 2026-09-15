@@ -1,0 +1,43 @@
+https://raw.githubusercontent.com/cosmos/cosmos-sdk/store/v1.0.2/store/types/commit_info.pb.go
+.review-tmp/final-export-store-v1.0.2-commit-info.go.txt
+sha256 f55b86a976561d372be2a7bc712c5929685dc0ba414a3beb2cada6e863225190
+relevant lines: 35, 85, 87, 254, 385, 511, 538
+https://raw.githubusercontent.com/cosmos/cosmos-sdk/store/v1.0.2/store/rootmulti/store.go
+.review-tmp/final-export-store-v1.0.2-rootmulti.go.txt
+sha256 134e248aa7df8244accf79843e7eb9ee3345c6c080bb6d8078be8ab9ae646119
+relevant lines: 483, 1099, 1100
+https://raw.githubusercontent.com/manifest-network/cosmos-sdk/24d6e6cf46beb55d9789c041db68a5ab3093c064/baseapp/abci.go
+.review-tmp/final-export-historical-sdk-abci.go.txt
+sha256 9c9b1557954b80e5b71a1a77e6a4da67de5bc69faa023cbc262b398d41c297f7
+relevant lines: 917, 927, 1241
+
+Manifest dependency provenance: commit 2c74394e7e9c7ed4b44e7b11b916a95cfc541044 (parent of b16de8e), go.mod lines11/29 pins SDK fork 24d6e6cf46be and cosmossdk.io/store v1.0.2.
+Source implication: normal pre-bump BaseApp commits call SetCommitHeader before rootmulti.Commit, which persists protobuf Timestamp field3. The field did not postdate store v1.0.2. Actual retained live network metadata was not inspected. Restore/rollback can still omit it.
+
+final-export-store-v1.0.2-commit-info.go.txt
+32: type CommitInfo struct {
+33:     Version    int64       `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+34:     StoreInfos []StoreInfo `protobuf:"bytes,2,rep,name=store_infos,json=storeInfos,proto3" json:"store_infos"`
+35:     Timestamp  time.Time   `protobuf:"bytes,3,opt,name=timestamp,proto3,stdtime" json:"timestamp"`
+36: }
+
+final-export-historical-sdk-abci.go.txt
+917: func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
+918:    header := app.finalizeBlockState.Context().BlockHeader()
+919:    retainHeight := app.GetBlockRetentionHeight(header.Height)
+920:
+921:    if app.precommiter != nil {
+922:        app.precommiter(app.finalizeBlockState.Context())
+923:    }
+924:
+925:    rms, ok := app.cms.(*rootmulti.Store)
+926:    if ok {
+927:        rms.SetCommitHeader(header)
+928:    }
+929:
+930:    app.cms.Commit()
+
+final-export-store-v1.0.2-rootmulti.go.txt
+482:    rs.lastCommitInfo = commitStores(version, rs.stores, rs.removalMap)
+483:    rs.lastCommitInfo.Timestamp = rs.commitHeader.Time
+484:    defer rs.flushMetadata(rs.db, version, rs.lastCommitInfo)

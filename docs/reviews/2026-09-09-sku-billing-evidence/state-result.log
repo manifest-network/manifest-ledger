@@ -1,0 +1,13 @@
+=== RUN   TestReviewV3PreflightMismatch
+=== RUN   TestReviewV3PreflightMismatch/LEASE_STATE_ACTIVE
+    review_state_findings_test.go:26: preflight predicted 10; direct v3 migration allocated 5
+=== RUN   TestReviewV3PreflightMismatch/LEASE_STATE_PENDING
+    review_state_findings_test.go:26: preflight predicted 10; direct v3 migration rejected: plan consumable reservations for tenant "manifest1wl0v99s5y08w8qsl96lvq45mmxqlkyssfrv56g": old aggregate cannot fully back exact PENDING reservations 10umfx: cannot subtract umfx amount 10 from 5: invalid credit operation: billing reservation invariant violated: billing reservation invariant violated [/home/fmorency/go/pkg/mod/cosmossdk.io/errors@v1.0.2/errors.go:155]
+--- PASS: TestReviewV3PreflightMismatch (0.88s)
+    --- PASS: TestReviewV3PreflightMismatch/LEASE_STATE_ACTIVE (0.54s)
+    --- PASS: TestReviewV3PreflightMismatch/LEASE_STATE_PENDING (0.34s)
+=== RUN   TestReviewInvariantAcceptsMissingReservation
+    review_state_findings_test.go:40: both invariants passed; withdrawal rejected: lease 01a086c8-bc46-7000-9568-034892a7910a has no initialized reservation: billing reservation invariant violated [/home/fmorency/go/pkg/mod/cosmossdk.io/errors@v1.0.2/errors.go:155]
+--- PASS: TestReviewInvariantAcceptsMissingReservation (0.28s)
+PASS
+ok  	github.com/manifest-network/manifest-ledger/x/billing/keeper	1.289s

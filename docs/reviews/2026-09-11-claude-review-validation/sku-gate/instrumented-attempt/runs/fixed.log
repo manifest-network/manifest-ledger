@@ -1,0 +1,33 @@
+=== RUN   TestAppModuleBasicValidateGenesisAcceptsValidImports
+=== RUN   TestAppModuleBasicValidateGenesisAcceptsValidImports/default_genesis
+=== RUN   TestAppModuleBasicValidateGenesisAcceptsValidImports/populated_genesis
+=== RUN   TestAppModuleBasicValidateGenesisAcceptsValidImports/historical_Bech32_spellings
+--- PASS: TestAppModuleBasicValidateGenesisAcceptsValidImports (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisAcceptsValidImports/default_genesis (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisAcceptsValidImports/populated_genesis (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisAcceptsValidImports/historical_Bech32_spellings (0.00s)
+=== RUN   TestAppModuleBasicValidateGenesisRejectsMalformedJSON
+=== RUN   TestAppModuleBasicValidateGenesisRejectsMalformedJSON/invalid_syntax
+=== RUN   TestAppModuleBasicValidateGenesisRejectsMalformedJSON/invalid_sequence
+=== RUN   TestAppModuleBasicValidateGenesisRejectsMalformedJSON/invalid_providers
+--- PASS: TestAppModuleBasicValidateGenesisRejectsMalformedJSON (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRejectsMalformedJSON/invalid_syntax (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRejectsMalformedJSON/invalid_sequence (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRejectsMalformedJSON/invalid_providers (0.00s)
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants/invalid_allowed_address
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants/invalid_provider_payout_address
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants/missing_SKU_provider
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants/nonintegral_per-second_price
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants/low_provider_sequence
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants/low_SKU_sequence
+--- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants/invalid_allowed_address (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants/invalid_provider_payout_address (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants/missing_SKU_provider (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants/nonintegral_per-second_price (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants/low_provider_sequence (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants/low_SKU_sequence (0.00s)
+PASS
+coverage: 24.3% of statements
+ok      github.com/manifest-network/manifest-ledger/x/sku       0.026s  coverage: 24.3% of statements

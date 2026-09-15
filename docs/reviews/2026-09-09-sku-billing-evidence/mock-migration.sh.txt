@@ -1,0 +1,12 @@
+#!/bin/bash
+manifestd() {
+ if [[ "$1 $2 $3" == "tx billing acknowledge-lease" ]]; then
+  echo "invalid lease UUID" >&2; return 1
+ elif [[ "$1 $2" == "query tx" ]]; then
+  echo '{"code":17,"height":"123","events":[],"raw_log":"insufficient credit"}'
+ else
+  echo '{"code":0,"txhash":"1234567890123456789012345678901234567890123456789012345678901234"}'
+ fi
+}
+sleep() { :; }
+source .review-tmp/billing-state/migration-example.sh

@@ -1,0 +1,23 @@
+--- a/x/billing/keeper/msg_server.go
++++ b/x/billing/keeper/msg_server.go
+@@ -828 +827,0 @@
+-	finalizedClosedLease := false
+@@ -879,5 +878,2 @@
+-		// Imported CLOSED leases may retain a final billable interval. Resolve
+-		// that interval once, writing off any shortfall as other close paths do.
+-		// A zero payment still finalizes it, but is not counted as a payout.
+-		finalizeClosedInterval := lease.State == types.LEASE_STATE_CLOSED && settleTime.After(lease.LastSettledAt)
+-		if result.TransferAmounts.IsZero() && !finalizeClosedInterval {
++		// Skip leases with zero withdrawable amount (don't fail, just skip)
++		if result.AccruedAmounts.IsZero() {
+@@ -900,4 +895,0 @@
+-		finalizedClosedLease = finalizedClosedLease || finalizeClosedInterval
+-		if result.TransferAmounts.IsZero() {
+-			continue
+-		}
+@@ -913,3 +905,2 @@
+-	// A terminal write-off must commit even without a payout. Returning an
+-	// error would roll it back and let a later deposit revive the old interval.
+-	if withdrawalCount == 0 && len(autoClosedLeases) == 0 && !finalizedClosedLease {
++	// Check if there was nothing to withdraw from any lease
++	if withdrawalCount == 0 && len(autoClosedLeases) == 0 {

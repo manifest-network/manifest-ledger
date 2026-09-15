@@ -1,0 +1,19 @@
+{
+  "baseline_commit": "b4d8403977b8f18eeaad699239e9661efa2a4a8a",
+  "previous_commit": "4b89fdacb8d840b074ffda3e64efb34f5a4b71b3",
+  "baseline_archive": {
+    "file": "baseline-b4d8403.tar.gz",
+    "sha256": "ea988e91a0000786d495aad0a47fa8e4862c0fb1d8deb5a27621355f252d1e51",
+    "uncompressed_sha256": "235e4171af8b0581fff909ac1613efef183ef1fad78b3fcfc5c81d566e4130ef"
+  },
+  "previous_files": {
+    "app/export.go": {
+      "file": "previous-export.go.txt",
+      "sha256": "ff42a24fe733c859b973e488e662ea5d1e2f7321a19f8714435a441d573f8c53"
+    },
+    "x/billing/keeper/provider_withdrawal.go": {
+      "file": "previous-provider-withdrawal.go.txt",
+      "sha256": "e1d875a223a36b73f95f65c068eb2ac13a73114a55b33a3f7c72372f3543a92d"
+    }
+  }
+}

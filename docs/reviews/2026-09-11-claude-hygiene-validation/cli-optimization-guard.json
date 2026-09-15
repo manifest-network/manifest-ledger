@@ -1,0 +1,43 @@
+{
+  "driver_sha256": "3d429376ca25f78f2657d29f8c35c9907b37a7a74db8e3760f9c5aedbc267bfd",
+  "note": "No binary or output arguments are provided; rejection occurs before any argument or fixture access.",
+  "runs": [
+    {
+      "argv": [
+        "/usr/sbin/python3",
+        "-O",
+        "docs/reviews/2026-09-10-claude-export-runbook-validation/verify_export_cli.py"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {},
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "This fixture uses test assertions; run Python without -O/-OO or PYTHONOPTIMIZE.\n"
+    },
+    {
+      "argv": [
+        "/usr/sbin/python3",
+        "-OO",
+        "docs/reviews/2026-09-10-claude-export-runbook-validation/verify_export_cli.py"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {},
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "This fixture uses test assertions; run Python without -O/-OO or PYTHONOPTIMIZE.\n"
+    },
+    {
+      "argv": [
+        "/usr/sbin/python3",
+        "docs/reviews/2026-09-10-claude-export-runbook-validation/verify_export_cli.py"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {
+        "PYTHONOPTIMIZE": "1"
+      },
+      "exit_status": 1,
+      "stdout": "",
+      "stderr": "This fixture uses test assertions; run Python without -O/-OO or PYTHONOPTIMIZE.\n"
+    }
+  ]
+}

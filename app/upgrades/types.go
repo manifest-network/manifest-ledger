@@ -1,3 +1,4 @@
+// Package upgrades defines application upgrade handlers and their dependencies.
 package upgrades
 
 import (
@@ -14,6 +15,7 @@ import (
 	skukeeper "github.com/manifest-network/manifest-ledger/x/sku/keeper"
 )
 
+// AppKeepers contains the keepers available to application upgrade handlers.
 type AppKeepers struct {
 	AccountKeeper authkeeper.AccountKeeper
 	BankKeeper    bankkeeper.BaseKeeper

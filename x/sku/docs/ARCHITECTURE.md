@@ -18,8 +18,18 @@ graph TD
 ```
 
 The SKU module:
-- **Authority**: holds the PoA admin address as its `authority` string (injected in `app.go` via `helpers.GetPoAAdmin()`); it makes no calls into `x/poa`. Authorization is a string compare against that address plus `Params.AllowedList`.
+- **Authority**: holds a constructor-injected Bech32 address. Production's
+  manual `app.go` wiring supplies `helpers.GetPoAAdmin()`; the keeper makes no
+  calls into `x/poa`. Authorization decodes the configured authority, sender,
+  and `Params.AllowedList` entries with the SDK Bech32 parser and compares the
+  resulting account-address bytes.
 - **Depended on by**: `x/billing` for SKU and Provider information
+- **Bank policy**: `CreateProvider` and `UpdateProvider` use `BlockedAddr` to reject protected payout destinations before writing state or advancing a UUID sequence. Historical payouts remain repairable through an update to an allowed address.
+
+The generic `depinject.go` provider instead supplies the SDK governance module
+address. An application changing from this repository's manual keeper assembly
+to depinject must deliberately preserve its intended authority; the two wiring
+paths are not interchangeable defaults.
 
 ## Data Model
 
@@ -92,8 +102,11 @@ The SKU module supports configurable parameters to control access and behavior:
 
 ### Parameter Validation
 
-- All addresses in `AllowedList` must be valid bech32 addresses.
-- No duplicate addresses are allowed.
+- All addresses in `AllowedList` must be valid Bech32 account addresses.
+- `AllowedList` may contain at most 100 entries. This compile-time bound keeps
+  authorization scans bounded and cannot be raised through `MsgUpdateParams`.
+- No duplicate decoded address identities are allowed; equivalent Bech32
+  spellings count as duplicates.
 
 Parameters can be updated only via `MsgUpdateParams` from the POA authority (allow-listed addresses cannot modify params), and changes are emitted as `params_updated` events.
 
@@ -135,6 +148,67 @@ graph LR
 | `ProvidersByAddress` | `(AccAddress, string)` | `bool` | Index for address → provider lookups |
 | `ProvidersByActive` | `(bool, string)` | `bool` | Index for active status → provider lookups |
 
+The registered `state` invariant verifies that provider and SKU collection keys
+match their value UUIDs, then applies the full genesis validator to the live
+export. This covers provider references, sequence monotonicity, pricing, URL,
+address, metadata, and parameter constraints. It also checks both directions of
+the provider address/active and SKU provider/active/provider-active indexes,
+rejecting missing, stale, or mismatched rows. Collections owns secondary-index
+updates and commits them atomically with each primary record; the explicit
+invariant provides corruption detection beyond that normal-write guarantee.
+
+Genesis validation and the `state` invariant deliberately preserve historical
+providers whose payout is valid Bech32 but is blocked by the bank recipient
+policy. They validate the stored address format, not payment eligibility; the
+new message checks do not make those records unimportable. Billing rejects a
+nonzero settlement to a blocked payout, and an authorized administrator can
+repair it with `UpdateProvider` while preserving the provider's current
+activation state. Operators must complete the
+[provider payout preflight](../../billing/docs/MIGRATION.md#provider-payout-policy-preflight)
+before an upgrade; a successful import or invariant check is not a payout audit.
+
+### Public Models Versus Stored Values
+
+The `Provider` and `Params` types in the data model are the public protobuf
+contract. Transactions, queries, JSON genesis, and exports use Bech32 strings.
+Collections expose those same Go types to keeper code, but custom value codecs
+translate address identities at the storage boundary:
+
+| Collection | Public value | Persistent value |
+|------------|--------------|------------------|
+| `Params` | `allowed_list: repeated string` | Disk-only `allowed_addresses: repeated bytes` |
+| `Providers` | `address` and `payout_address` as strings | Disk-only raw address bytes; all non-address fields are preserved |
+| `SKUs` | Public `SKU` protobuf | Public `SKU` protobuf; it contains no account address |
+
+Params and Provider values carry the unambiguous storage tags
+`\x00sku/params/v1` and `\x00sku/provider/v1`. The `v1` suffix names the
+disk-message format; the module consensus version that introduced it is v2.
+Unknown tag-zero formats fail closed. Legacy untagged values remain decodable so
+the registered migration can read them, while every new write uses the tagged
+raw-byte form. Decoding for keeper callers and exports returns canonical Bech32.
+
+Address-bearing keys follow the same rule. `ProvidersByAddress` uses the SDK's
+`AccAddressKey`; it never stores a Bech32 string in its key. The remaining keys
+are UUIDs, booleans, or sequences and do not carry account identities.
+
+### Module Consensus v1→v2
+
+At an application upgrade, `RunMigrations` invokes `Migrate1to2` when the stored
+SKU module version is 1. The migration:
+
+1. Canonicalizes and deduplicates `Params.allowed_list` by decoded address bytes,
+   preserving first-seen order.
+2. Validates the canonical Params, including the 100-entry hard cap, before any
+   migration write.
+3. Rewrites Params through the current value codec.
+4. Reads Providers in ascending primary-key pages of 1,000, closes each iterator,
+   and then rewrites that page through the current value codec.
+
+Provider indexes were already byte-addressed and are left intact. SKU values,
+sequences, and bank state are not changed. Because the codecs read both legacy
+and current values but always write the current representation, rerunning the
+migration produces the same bytes.
+
 ### Key Prefixes
 
 ```go
@@ -161,6 +235,9 @@ The module uses deterministic UUIDv7 generation for consensus compatibility:
 - **Format**: Standard UUIDv7 with version 7 and variant bits set correctly
 
 This ensures all validators generate the same UUID for the same transaction.
+Before advancing either Collections sequence, the keeper calls `Peek`. A stored
+value of `math.MaxUint64` returns `ErrSequenceExhausted` without calling `Next`,
+so an imported or corrupt counter cannot wrap to zero or mutate state.
 
 ## Message Flow
 
@@ -174,7 +251,7 @@ sequenceDiagram
     participant Store
 
     User->>MsgServer: MsgCreateProvider
-    MsgServer->>MsgServer: isAuthorizedSender() (GetAuthority string compare + AllowedList params lookup)
+    MsgServer->>MsgServer: isAuthorizedSender() (decoded authority/sender identity + AllowedList lookup)
     alt Not authority AND not in AllowedList
         MsgServer-->>User: Unauthorized
     else Authorized
@@ -200,7 +277,7 @@ sequenceDiagram
     participant Store
 
     User->>MsgServer: MsgCreateSKU
-    MsgServer->>MsgServer: isAuthorizedSender() (GetAuthority string compare + AllowedList params lookup)
+    MsgServer->>MsgServer: isAuthorizedSender() (decoded authority/sender identity + AllowedList lookup)
     alt Not authority AND not in AllowedList
         MsgServer-->>User: Unauthorized
     else Authorized
@@ -233,7 +310,7 @@ sequenceDiagram
     participant Store
 
     User->>MsgServer: MsgUpdateSKU
-    MsgServer->>MsgServer: isAuthorizedSender() (GetAuthority string compare + AllowedList params lookup)
+    MsgServer->>MsgServer: isAuthorizedSender() (decoded authority/sender identity + AllowedList lookup)
     alt Not authority AND not in AllowedList
         MsgServer-->>User: Unauthorized
     else Authorized
@@ -277,41 +354,32 @@ sequenceDiagram
 
 SKU prices must be evenly divisible by their unit's seconds to ensure exact per-second rate calculations. See [Pricing and Exact Divisibility](../README.md#pricing-and-exact-divisibility) for the user-facing explanation.
 
-**Implementation** (`x/sku/types/unit.go`):
-```go
-func ValidatePriceAndUnit(basePrice sdk.Coin, unit Unit) error {
-    divisor, ok := divisorForUnit(unit)
-    if !ok {
-        return fmt.Errorf("invalid unit: %s", unit)
-    }
+**Exported helper contract** ([`types/unit.go`](../types/unit.go)):
 
-    perSecond := basePrice.Amount.Quo(divisor)
+Both `ValidatePriceAndUnit(basePrice, unit)` and
+`CalculatePricePerSecond(basePrice, unit)` validate the unit and `sdk.Coin`
+before dividing. Callers do not need to prevalidate the Coin. Supported units
+are `UNIT_PER_HOUR` (3600 seconds) and `UNIT_PER_DAY` (86400 seconds); a valid
+price must produce a positive, exact integer per-second rate.
 
-    // Check if per-second rate is zero (would result in free usage)
-    if perSecond.IsZero() {
-        return &PriceValidationError{
-            BasePrice: basePrice,
-            Unit:      unit,
-            IsZero:    true,
-        }
-    }
+`ValidatePriceAndUnit` returns `nil` on success. Its failures are:
 
-    // Check if division is exact (no remainder)
-    remainder := basePrice.Amount.Mod(divisor)
-    if !remainder.IsZero() {
-        return &PriceValidationError{
-            BasePrice: basePrice,
-            Unit:      unit,
-            IsZero:    false,
-            Remainder: remainder,
-        }
-    }
+| Input | Error contract |
+|-------|----------------|
+| Unsupported or unspecified unit | An ordinary error beginning `invalid unit:` |
+| Invalid denomination, uninitialized amount, or negative amount | An error beginning `invalid base price:`, wrapping the underlying Coin validation error |
+| Valid Coin whose amount is zero or smaller than the unit's seconds | `*PriceValidationError` with `IsZero=true`, indicating a zero per-second rate |
+| Positive quotient with a nonzero division remainder | `*PriceValidationError` with `IsZero=false` and the exact `Remainder` |
 
-    return nil
-}
-```
+Unit validation precedes Coin validation. Only the two rate-calculation failures
+use `*PriceValidationError`; callers must also handle the ordinary validation
+errors. `BasePrice` and `Unit` identify the rejected input in either structured
+error case.
 
-The divisor comes from the unexported `divisorForUnit(unit)` (3600 for `UNIT_PER_HOUR`, 86400 for `UNIT_PER_DAY`). On failure the function returns a `*PriceValidationError` with two modes: `IsZero=true` ("results in zero per-second rate") when the price truncates to a zero rate, and `IsZero=false` ("not evenly divisible ... remainder: %s") when division leaves a remainder.
+`CalculatePricePerSecond` applies the same validation and returns the calculated
+`math.Int` with `true` on success. On any failure it returns an initialized zero
+`math.Int` with `false`; use `ValidatePriceAndUnit` when the error details are
+needed. Both exported helpers share the same internal validation/conversion path.
 
 ### Provider State Validation
 
@@ -319,6 +387,7 @@ The divisor comes from the unexported `divisorForUnit(unit)` (3600 for `UNIT_PER
 - Cannot create SKU for inactive provider
 - A SKU cannot be re-parented — `MsgUpdateSKU.provider_uuid` must equal the SKU's existing `provider_uuid`, else `ErrInvalidSKU: provider_uuid mismatch`
 - Deactivating provider cascades to deactivate all its SKUs (paginated for gas safety)
+- Reactivating a provider requires that the cascade has finished: no active SKUs may remain. Metadata updates that keep the current active status do not require this check.
 
 ## Events and Error Codes
 
@@ -346,9 +415,9 @@ Both providers and SKUs use soft delete (active flag):
 
 ### Input Validation
 
-- SKU names: Max 256 characters (`MaxSKUNameLength`)
-- API URLs: Max 2048 characters (`MaxAPIURLLength`), HTTPS required
-- Provider/Payout addresses: Valid bech32 addresses
+- SKU names: Max 256 UTF-8 bytes (`MaxSKUNameLength`)
+- Newly supplied API URLs: Max 2048 UTF-8 bytes (`MaxAPIURLLength`), HTTPS, nonempty hostname, no credentials, and explicit ports in the range 1–65535. Genesis import and state invariants preserve historical URL-validation rules; existing metadata can be preserved, replaced, or cleared.
+- Provider/Payout addresses: Valid bech32 addresses; provider writes reject payout addresses blocked by bank policy
 - Prices: Positive, divisible by unit seconds
 - Meta hash: Optional, max 64 bytes (SHA-256/SHA-512)
 

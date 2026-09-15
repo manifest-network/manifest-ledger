@@ -17,15 +17,15 @@
 //
 // # Cross-Chain Collision Resistance
 //
-// By incorporating block header hash and chain ID into UUID generation, we ensure
-// that even if two chains have identical timestamps and sequences, they will
-// generate different UUIDs. This enables safe multi-chain deployments without
-// UUID collision concerns.
+// Block header hash and chain ID help distinguish otherwise identical timestamps
+// and sequences on different chains. The truncated, non-cryptographic hash does
+// not guarantee collision resistance against adversarial inputs.
 package uuid
 
 import (
 	"encoding/binary"
 	"fmt"
+	"hash/fnv"
 	"regexp"
 	"time"
 
@@ -45,13 +45,13 @@ var uuidRegex = regexp.MustCompile(uuidPattern)
 //
 // The UUID incorporates:
 //   - Block timestamp (48 bits) - provides time-ordering
-//   - Sequence number (12 bits) - provides uniqueness within a block
-//   - Block header hash + Chain ID + Module name (62 bits) - provides cross-chain uniqueness
+//   - Low sequence bits (12 bits) - distinguish nearby counter values
+//   - Hash of header, chain ID, namespace, and full sequence (62 bits)
 //
 // UUIDv7 structure (128 bits):
 //   - 48 bits: Unix timestamp in milliseconds
 //   - 4 bits: Version (7)
-//   - 12 bits: Sequence (for uniqueness within same millisecond)
+//   - 12 bits: Low sequence bits
 //   - 2 bits: Variant (RFC 4122)
 //   - 62 bits: Node ID (derived from header hash + chain ID + module + sequence)
 func GenerateUUIDv7(ctx sdk.Context, moduleName string, sequence uint64) string {
@@ -66,9 +66,9 @@ func GenerateUUIDv7(ctx sdk.Context, moduleName string, sequence uint64) string 
 //
 // Parameters:
 //   - t: timestamp for the UUID (typically block time)
-//   - headerHash: block header hash for cross-chain uniqueness (can be nil for testing)
-//   - chainID: chain identifier for cross-chain uniqueness
-//   - moduleName: module generating the UUID (e.g., "sku", "billing")
+//   - headerHash: block header hash to distinguish chains and blocks (can be nil for testing)
+//   - chainID: chain identifier to distinguish chains
+//   - moduleName: entity namespace ("sku-provider", "sku-sku", or "billing")
 //   - sequence: monotonically increasing sequence within the module
 func GenerateUUIDv7WithEntropy(t time.Time, headerHash []byte, chainID, moduleName string, sequence uint64) string {
 	// Get milliseconds since Unix epoch
@@ -79,12 +79,12 @@ func GenerateUUIDv7WithEntropy(t time.Time, headerHash []byte, chainID, moduleNa
 	var uuid [16]byte
 
 	// Bytes 0-5: 48-bit timestamp (big-endian)
-	uuid[0] = byte(ms >> 40)
-	uuid[1] = byte(ms >> 32)
-	uuid[2] = byte(ms >> 24)
-	uuid[3] = byte(ms >> 16)
-	uuid[4] = byte(ms >> 8)
-	uuid[5] = byte(ms)
+	uuid[0] = byte((ms >> 40) & 0xFF)
+	uuid[1] = byte((ms >> 32) & 0xFF)
+	uuid[2] = byte((ms >> 24) & 0xFF)
+	uuid[3] = byte((ms >> 16) & 0xFF)
+	uuid[4] = byte((ms >> 8) & 0xFF)
+	uuid[5] = byte(ms & 0xFF)
 
 	// Bytes 6-7: version (7) and 12-bit sequence
 	// High 4 bits of byte 6 = version 7
@@ -93,79 +93,54 @@ func GenerateUUIDv7WithEntropy(t time.Time, headerHash []byte, chainID, moduleNa
 	uuid[7] = byte(sequence & 0xFF)
 
 	// Bytes 8-15: variant (10) and 62-bit node derived from all entropy sources
-	// This ensures cross-chain uniqueness even with same timestamp and sequence
+	// Chain and namespace inputs help distinguish otherwise identical counters.
 	nodeHash := hashEntropy(headerHash, chainID, moduleName, sequence)
 
 	// Byte 8: variant (10xx xxxx) + high bits of node
 	uuid[8] = 0x80 | byte((nodeHash>>56)&0x3F)
 
 	// Bytes 9-15: remaining node bits
-	uuid[9] = byte(nodeHash >> 48)
-	uuid[10] = byte(nodeHash >> 40)
-	uuid[11] = byte(nodeHash >> 32)
-	uuid[12] = byte(nodeHash >> 24)
-	uuid[13] = byte(nodeHash >> 16)
-	uuid[14] = byte(nodeHash >> 8)
-	uuid[15] = byte(nodeHash)
+	uuid[9] = byte((nodeHash >> 48) & 0xFF)
+	uuid[10] = byte((nodeHash >> 40) & 0xFF)
+	uuid[11] = byte((nodeHash >> 32) & 0xFF)
+	uuid[12] = byte((nodeHash >> 24) & 0xFF)
+	uuid[13] = byte((nodeHash >> 16) & 0xFF)
+	uuid[14] = byte((nodeHash >> 8) & 0xFF)
+	uuid[15] = byte(nodeHash & 0xFF)
 
 	return formatUUID(uuid)
 }
 
 // GenerateUUIDv7FromTime generates a deterministic UUIDv7 from a specific time.
 // Useful for testing and migration scenarios where block context is not available.
-// Note: This does not include header hash or chain ID, so cross-chain uniqueness
-// is not guaranteed. Use GenerateUUIDv7 or GenerateUUIDv7WithEntropy for production.
+// Note: This omits header hash and chain ID, so matching time, namespace, and
+// sequence inputs collide across chains. Use GenerateUUIDv7 or
+// GenerateUUIDv7WithEntropy for production.
 func GenerateUUIDv7FromTime(t time.Time, moduleName string, sequence uint64) string {
 	return GenerateUUIDv7WithEntropy(t, nil, "", moduleName, sequence)
 }
 
-// hashEntropy creates a deterministic hash from all entropy sources.
-// Uses FNV-1a for determinism across all validators.
+// hashEntropy hashes the existing consensus byte encoding with FNV-1a.
+// Inputs are concatenated without delimiters; the sequence is big-endian.
+// Changing the algorithm, framing, or input order would change future UUIDs.
 //
 // The hash incorporates:
-//   - Header hash: unique per block, provides randomness from previous block
-//   - Chain ID: unique per chain, prevents cross-chain collisions
-//   - Module name: unique per module, prevents intra-chain collisions
-//   - Sequence: unique per entity within module
+//   - Header hash: consensus block context
+//   - Chain ID: chain namespace
+//   - Module name: entity namespace
+//   - Sequence: full entity counter
 func hashEntropy(headerHash []byte, chainID, moduleName string, sequence uint64) uint64 {
-	// FNV-1a 64-bit constants
-	const (
-		fnvPrime  = 1099511628211
-		fnvOffset = 14695981039346656037
-	)
+	hash := fnv.New64a()
+	// hash.Hash.Write always returns a nil error.
+	_, _ = hash.Write(headerHash)
+	_, _ = hash.Write([]byte(chainID))
+	_, _ = hash.Write([]byte(moduleName))
 
-	hash := uint64(fnvOffset)
-
-	// Hash header hash (if available)
-	// This is typically the hash of the previous block, providing
-	// unpredictable but deterministic entropy
-	for _, b := range headerHash {
-		hash ^= uint64(b)
-		hash *= fnvPrime
-	}
-
-	// Hash chain ID
-	// This ensures different chains produce different UUIDs
-	for _, b := range []byte(chainID) {
-		hash ^= uint64(b)
-		hash *= fnvPrime
-	}
-
-	// Hash module name
-	for _, b := range []byte(moduleName) {
-		hash ^= uint64(b)
-		hash *= fnvPrime
-	}
-
-	// Hash sequence (as 8 bytes)
 	var seqBytes [8]byte
 	binary.BigEndian.PutUint64(seqBytes[:], sequence)
-	for _, b := range seqBytes {
-		hash ^= uint64(b)
-		hash *= fnvPrime
-	}
+	_, _ = hash.Write(seqBytes[:])
 
-	return hash
+	return hash.Sum64()
 }
 
 // formatUUID formats 16 bytes as a UUID string.

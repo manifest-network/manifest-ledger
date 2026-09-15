@@ -92,10 +92,13 @@ var DefaultConsensusParams = &tmproto.ConsensusParams{
 	},
 }
 
+// EmptyAppOptions is an application-options implementation with no values.
 type EmptyAppOptions struct{}
 
+// Get returns nil for every application option.
 func (EmptyAppOptions) Get(_ string) interface{} { return nil }
 
+// Setup creates an initialized in-memory application for tests.
 func Setup(t *testing.T) (sdk.Context, *ManifestApp) {
 	t.Helper()
 
@@ -134,7 +137,7 @@ func SetupWithGenesisValSet(t *testing.T, valSet *tmtypes.ValidatorSet, genAccs 
 
 	app, genesisState := setup(t, true)
 
-	ctx := app.BaseApp.NewUncachedContext(true, tmproto.Header{Height: 1, ChainID: "testing", Time: time.Now().UTC()})
+	ctx := app.NewUncachedContext(true, tmproto.Header{Height: 1, ChainID: "testing", Time: time.Now().UTC()})
 
 	genesisState = genesisStateWithValSet(t, app, genesisState, valSet, genAccs, balances...)
 
@@ -159,7 +162,7 @@ func SetupWithGenesisValSet(t *testing.T, valSet *tmtypes.ValidatorSet, genAccs 
 	require.NoError(t, err)
 
 	// checking the error here throws for standard collection types. Likely something with encoding
-	app.BeginBlocker(ctx) // nolint:errcheck
+	app.BeginBlocker(ctx) //nolint:errcheck,gosec // the test intentionally exercises the resulting state
 
 	return ctx, app
 }
@@ -325,6 +328,7 @@ func keyPubAddr() (crypto.PrivKey, crypto.PubKey, sdk.AccAddress) {
 	return key, pub, addr
 }
 
+// RandomAccountAddress creates a random account address for tests.
 func RandomAccountAddress() sdk.AccAddress {
 	_, _, addr := keyPubAddr()
 	return addr
@@ -336,7 +340,7 @@ func NewTestNetworkFixture() network.TestFixture {
 	if err != nil {
 		panic(fmt.Sprintf("failed creating temporary directory: %v", err))
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	app := NewApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true, DefaultCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(dir))
 	appCtr := func(val network.ValidatorI) servertypes.Application {
@@ -367,7 +371,7 @@ func makeTestDir(t *testing.T) string {
 	tempDir, err := os.MkdirTemp("", "manifest-test")
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		os.RemoveAll(tempDir)
+		require.NoError(t, os.RemoveAll(tempDir))
 	})
 	return tempDir
 }

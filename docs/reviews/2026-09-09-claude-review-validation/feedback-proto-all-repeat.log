@@ -1,0 +1,4 @@
+Generating protobuf files...
+Generating gogo proto code
+Generating pulsar proto code
+Complete make proto-all (format + lint + generation + tidy) is idempotent across all tracked files.

@@ -1,3 +1,4 @@
+// Package next defines the placeholder handler for the next application upgrade.
 package next
 
 import (
@@ -11,8 +12,9 @@ import (
 	"github.com/manifest-network/manifest-ledger/app/upgrades"
 )
 
-// NewUpgrade creates a noop upgrade handler for the next version.
-// The x/sku and x/billing modules were already added in v2.0.0.
+// NewUpgrade creates a module-migration-only upgrade handler for the next
+// version. The x/sku and x/billing modules were already added in v2.0.0, so no
+// store keys need to be mounted or removed.
 func NewUpgrade(name string) upgrades.Upgrade {
 	return upgrades.Upgrade{
 		UpgradeName:          name,
@@ -21,7 +23,8 @@ func NewUpgrade(name string) upgrades.Upgrade {
 	}
 }
 
-// CreateUpgradeHandler returns a noop upgrade handler that only runs module migrations.
+// CreateUpgradeHandler returns an upgrade handler that runs every registered
+// module migration from the on-chain version map to the binary's versions.
 func CreateUpgradeHandler(
 	mm *module.Manager,
 	configurator module.Configurator,

@@ -1,0 +1,356 @@
+{
+  "driver_sha256": "23ab77638c54c0c2d0391888d65a15fb9196c4cf76851362d8b92e435bc8fb92",
+  "binary_sha256": "0a4602bd53f364c32a4b77ca00fc9d87906d5b9e6f5a45d42fcc7156cd2dec80",
+  "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "environment_overrides": {
+    "GOMAXPROCS": "4"
+  },
+  "inherited_tmpdir": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build",
+  "runs": [
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "query",
+        "consensus",
+        "params",
+        "--help",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli"
+      ],
+      "returncode": 0,
+      "recorded_at_utc": "2026-09-11T14:09:28.001731+00:00",
+      "stdout_sha256": "4f16235f2e00f6912bf11a51489ec00b05e1d548d0ea8f5e715382bbdf4b83ce",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "query",
+        "circuit",
+        "disabled-list",
+        "--help",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli"
+      ],
+      "returncode": 0,
+      "recorded_at_utc": "2026-09-11T14:09:28.177102+00:00",
+      "stdout_sha256": "3bbf0bf8ec7990981286ee42b4f5ebe08036914bfc82bea5415b4eee30e33f3f",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "query",
+        "circuit",
+        "accounts",
+        "--help",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli"
+      ],
+      "returncode": 0,
+      "recorded_at_utc": "2026-09-11T14:09:28.387549+00:00",
+      "stdout_sha256": "d69942213b5e6fe943ae58a1493365637bade4a755cd8798ba2068fc5f3bfcc5",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "query",
+        "circuit",
+        "account",
+        "--help",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli"
+      ],
+      "returncode": 0,
+      "recorded_at_utc": "2026-09-11T14:09:28.522690+00:00",
+      "stdout_sha256": "6272a35cdb65fc041e8c1bb6160a35b1efaed07b0f06ae4b0126a72215e0afc6",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "genesis",
+        "validate",
+        "--help",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli"
+      ],
+      "returncode": 0,
+      "recorded_at_utc": "2026-09-11T14:09:28.653935+00:00",
+      "stdout_sha256": "714635638a6bad3bcf55a1c81427145f6d4d7999d27f472923c319571bdb8f3a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "query",
+        "consensus",
+        "params",
+        "--height",
+        "2",
+        "--output",
+        "json",
+        "--node",
+        "tcp://127.0.0.1:1",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli"
+      ],
+      "returncode": 1,
+      "recorded_at_utc": "2026-09-11T14:09:28.818376+00:00",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "5407fbcb4ded9aeebe86086045b613ceee97f033bee580f031da29e03a77d38f"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "query",
+        "circuit",
+        "disabled-list",
+        "--height",
+        "2",
+        "--output",
+        "json",
+        "--node",
+        "tcp://127.0.0.1:1",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli"
+      ],
+      "returncode": 1,
+      "recorded_at_utc": "2026-09-11T14:09:28.961425+00:00",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "5407fbcb4ded9aeebe86086045b613ceee97f033bee580f031da29e03a77d38f"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "query",
+        "circuit",
+        "accounts",
+        "--page-limit",
+        "100",
+        "--height",
+        "2",
+        "--output",
+        "json",
+        "--node",
+        "tcp://127.0.0.1:1",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli"
+      ],
+      "returncode": 1,
+      "recorded_at_utc": "2026-09-11T14:09:29.123783+00:00",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "5407fbcb4ded9aeebe86086045b613ceee97f033bee580f031da29e03a77d38f"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "query",
+        "circuit",
+        "accounts",
+        "--page-limit",
+        "100",
+        "--page-key",
+        "AQ==",
+        "--height",
+        "2",
+        "--output",
+        "json",
+        "--node",
+        "tcp://127.0.0.1:1",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli"
+      ],
+      "returncode": 1,
+      "recorded_at_utc": "2026-09-11T14:09:29.279426+00:00",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "5407fbcb4ded9aeebe86086045b613ceee97f033bee580f031da29e03a77d38f"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "testnet",
+        "init-files",
+        "--v",
+        "1",
+        "--output-dir",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/network",
+        "--node-daemon-home",
+        "daemon",
+        "--chain-id",
+        "export-cli-fixture",
+        "--keyring-backend",
+        "test",
+        "--single-host",
+        "--commit-timeout",
+        "200ms",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli"
+      ],
+      "returncode": 0,
+      "recorded_at_utc": "2026-09-11T14:09:29.638001+00:00",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "b0ec6c1264da5bb5ab0f0c98a331c1bb79ec0df64f475c8df1109dce54ca088e"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "query",
+        "circuit",
+        "accounts",
+        "--page-limit",
+        "100",
+        "--height",
+        "3",
+        "--output",
+        "json",
+        "--node",
+        "http://127.0.0.1:36859",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/network/node0/daemon"
+      ],
+      "returncode": 0,
+      "recorded_at_utc": "2026-09-11T14:09:31.841769+00:00",
+      "stdout_sha256": "84843b01b2c1b18e1f3d234b54c834752e399ba72364a1538dba7764b878ce3f",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "query",
+        "circuit",
+        "account",
+        "manifest1ga2e82assx5lak47t7p2tfcju5aph9sgy6lnx4",
+        "--height",
+        "3",
+        "--output",
+        "json",
+        "--node",
+        "http://127.0.0.1:36859",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/network/node0/daemon"
+      ],
+      "returncode": 1,
+      "recorded_at_utc": "2026-09-11T14:09:32.032269+00:00",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "6d01ad66409917f29e090ae338c6f824dedab51912513eea8c4e13942e59a504"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "start",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/network/node0/daemon",
+        "--rpc.laddr",
+        "tcp://127.0.0.1:36859",
+        "--p2p.laddr",
+        "tcp://127.0.0.1:0",
+        "--p2p.seeds",
+        "",
+        "--p2p.persistent_peers",
+        "",
+        "--p2p.pex=false",
+        "--grpc.enable=false",
+        "--api.enable=false",
+        "--pruning",
+        "nothing",
+        "--minimum-gas-prices",
+        "0testtoken"
+      ],
+      "returncode": 0,
+      "recorded_at_utc": "2026-09-11T14:09:32.096041+00:00",
+      "stdout_sha256": "a792bfb25dd1ceac3661db9a700f068954a01b72f1c76124ef5dbb28d78f6428",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_includes_redirected_stderr": true,
+      "termination": "fixture sends SIGTERM; SIGKILL fallback after 20 seconds"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "export",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/network/node0/daemon",
+        "--height",
+        "3",
+        "--for-zero-height"
+      ],
+      "returncode": 0,
+      "recorded_at_utc": "2026-09-11T14:09:32.633231+00:00",
+      "stdout_sha256": "933630f98c3197e87afd46cdd5d9a6fa1558001d196a883a136c59b9cd507fd9",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "genesis",
+        "validate",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/redirected-genesis.json",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/validate"
+      ],
+      "returncode": 1,
+      "recorded_at_utc": "2026-09-11T14:09:32.790436+00:00",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "1e7a9f4c3e90177acf55f1fb9e49a2d4cd6723f237d342d557fb6579d7cbf202"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "export",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/network/node0/daemon",
+        "--height",
+        "3",
+        "--for-zero-height",
+        "--output-document",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/exported-genesis.json"
+      ],
+      "returncode": 0,
+      "recorded_at_utc": "2026-09-11T14:09:33.147966+00:00",
+      "stdout_sha256": "e5db2f3a64e08526d51ca08ced17b21c0ab3c92b7fabe16cff66d64351d03f8f",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "genesis",
+        "validate",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/restart-genesis.json",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/validate"
+      ],
+      "returncode": 0,
+      "recorded_at_utc": "2026-09-11T14:09:33.366345+00:00",
+      "stdout_sha256": "27de81b12f35834a030f40fe7029a3aafcaba60ab268ea3a91cc770e5f3b6da5",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "genesis",
+        "validate",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/restart-genesis.json",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/default-home"
+      ],
+      "returncode": 0,
+      "recorded_at_utc": "2026-09-11T14:09:33.609416+00:00",
+      "stdout_sha256": "27de81b12f35834a030f40fe7029a3aafcaba60ab268ea3a91cc770e5f3b6da5",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd",
+        "genesis",
+        "validate",
+        "--home",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/default-home"
+      ],
+      "returncode": 1,
+      "recorded_at_utc": "2026-09-11T14:09:33.823571+00:00",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "09148f96bccb32e331d12ccb22d080c7970b03a2f4e1de04adec142fc9912ca9"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+ok  	github.com/manifest-network/manifest-ledger/x/sku	0.088s	coverage: 13.5% of statements
+ok  	github.com/manifest-network/manifest-ledger/x/sku/client/cli	0.173s	coverage: 30.4% of statements
+	github.com/manifest-network/manifest-ledger/x/sku/internal/types		coverage: 0.0% of statements
+ok  	github.com/manifest-network/manifest-ledger/x/sku/keeper	33.109s	coverage: 85.6% of statements
+ok  	github.com/manifest-network/manifest-ledger/x/sku/simulation	0.166s	coverage: 50.5% of statements
+ok  	github.com/manifest-network/manifest-ledger/x/sku/types	0.146s	coverage: 8.4% of statements
+ok  	github.com/manifest-network/manifest-ledger/x/billing	0.197s	coverage: 31.0% of statements
+ok  	github.com/manifest-network/manifest-ledger/x/billing/client/cli	0.436s	coverage: 51.9% of statements
+	github.com/manifest-network/manifest-ledger/x/billing/internal/types		coverage: 0.0% of statements
+ok  	github.com/manifest-network/manifest-ledger/x/billing/keeper	230.171s	coverage: 84.7% of statements
+ok  	github.com/manifest-network/manifest-ledger/x/billing/simulation	1.994s	coverage: 69.5% of statements
+ok  	github.com/manifest-network/manifest-ledger/x/billing/types	0.589s	coverage: 7.7% of statements
+ok  	github.com/manifest-network/manifest-ledger/pkg/pagination	0.163s	coverage: 89.8% of statements
+ok  	github.com/manifest-network/manifest-ledger/pkg/sanitize	0.014s	coverage: 100.0% of statements
+ok  	github.com/manifest-network/manifest-ledger/pkg/uuid	0.070s	coverage: 97.6% of statements
+ok  	github.com/manifest-network/manifest-ledger/internal/collectionsutil	0.038s	coverage: 19.5% of statements
+ok  	github.com/manifest-network/manifest-ledger/internal/storagecodec	0.064s	coverage: 100.0% of statements
+ok  	github.com/manifest-network/manifest-ledger/app	0.672s	coverage: 44.4% of statements
+	github.com/manifest-network/manifest-ledger/app/apptesting		coverage: 0.0% of statements
+ok  	github.com/manifest-network/manifest-ledger/app/decorators	0.121s	coverage: 66.7% of statements
+	github.com/manifest-network/manifest-ledger/app/helpers		coverage: 0.0% of statements
+	github.com/manifest-network/manifest-ledger/app/params		coverage: 0.0% of statements
+?   	github.com/manifest-network/manifest-ledger/app/upgrades	[no test files]
+	github.com/manifest-network/manifest-ledger/app/upgrades/next		coverage: 0.0% of statements
+ok  	github.com/manifest-network/manifest-ledger/cmd/manifestd/cmd	0.599s	coverage: 38.9% of statements

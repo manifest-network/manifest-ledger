@@ -1,0 +1,19 @@
+Statement coverage from the final complete affected-suite command.
+Excludes *.pb.go, *.pb.gw.go, *.pulsar.go and api/.
+Simulation campaign, race and fuzz executions are separate; not merged here.
+
+internal/collectionsutil: 8/41 = 19.5%
+internal/storagecodec: 58/58 = 100.0%
+x/billing: 13/42 = 31.0%
+x/billing ALL: 4115/5149 = 79.9%
+x/billing/client/cli: 286/551 = 51.9%
+x/billing/keeper: 2636/3111 = 84.7%
+x/billing/simulation: 407/586 = 69.5%
+x/billing/types: 773/859 = 90.0%
+x/sku: 5/37 = 13.5%
+x/sku + x/billing ALL: 5152/6700 = 76.9%
+x/sku ALL: 1037/1551 = 66.9%
+x/sku/client/cli: 89/293 = 30.4%
+x/sku/keeper: 571/667 = 85.6%
+x/sku/simulation: 145/287 = 50.5%
+x/sku/types: 227/267 = 85.0%

@@ -1,0 +1,77 @@
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd query consensus params --help --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli
+exit: 0
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd query circuit disabled-list --help --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli
+exit: 0
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd query circuit accounts --help --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli
+exit: 0
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd query circuit account --help --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli
+exit: 0
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd genesis validate --help --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli
+exit: 0
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd query consensus params --height 2 --output json --node tcp://127.0.0.1:1 --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli
+exit: 1
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd query circuit disabled-list --height 2 --output json --node tcp://127.0.0.1:1 --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli
+exit: 1
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd query circuit accounts --page-limit 100 --height 2 --output json --node tcp://127.0.0.1:1 --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli
+exit: 1
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd query circuit accounts --page-limit 100 --page-key AQ== --height 2 --output json --node tcp://127.0.0.1:1 --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli
+exit: 1
+All help/flag checks reached their expected command or closed loopback port.
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd testnet init-files --v 1 --output-dir /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/network --node-daemon-home daemon --chain-id export-cli-fixture --keyring-backend test --single-host --commit-timeout 200ms --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/cli
+exit: 0
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd query circuit accounts --page-limit 100 --height 3 --output json --node http://127.0.0.1:36859 --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/network/node0/daemon
+exit: 0
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd query circuit account manifest1ga2e82assx5lak47t7p2tfcju5aph9sgy6lnx4 --height 3 --output json --node http://127.0.0.1:36859 --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/network/node0/daemon
+exit: 1
+Isolated single-validator fixture; no peers or public listener.
+Selected committed height: 3
+Source block time: 2026-09-11T14:09:31.187544383Z
+Circuit inventory: {
+  "pagination": {}
+}
+Absent explicit account lookup exit: 1
+rpc error: code = InvalidArgument desc = collections: not found: key 'hexBytes:475593abb081a9fedabe5f82a5a712e53a1b9608' of type github.com/cosmos/gogoproto/cosmos.circuit.v1.Permissions: invalid request
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd start --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/network/node0/daemon --rpc.laddr tcp://127.0.0.1:36859 --p2p.laddr tcp://127.0.0.1:0 --p2p.seeds '' --p2p.persistent_peers '' --p2p.pex=false --grpc.enable=false --api.enable=false --pruning nothing --minimum-gas-prices 0testtoken
+exit: 0
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd export --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/network/node0/daemon --height 3 --for-zero-height
+exit: 0
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd genesis validate /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/redirected-genesis.json --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/validate
+exit: 1
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd export --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/network/node0/daemon --height 3 --for-zero-height --output-document /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/exported-genesis.json
+exit: 0
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd genesis validate /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/restart-genesis.json --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/validate
+exit: 0
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd genesis validate /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/restart-genesis.json --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/default-home
+exit: 0
+$ /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-manifestd genesis validate --home /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/default-home
+exit: 1
+Captured stdout was written to the redirected-genesis fixture by Python, not shell redirection.
+stdout invariant log count: 16
+redirected file JSON decode: failed (expected)
+genesis validate redirected file exit: 1
+Usage:
+  manifestd genesis validate [file] [flags]
+
+Aliases:
+  validate, validate-genesis
+
+Flags:
+  -h, --help   help for validate
+
+Global Flags:
+      --home string         directory for config and data (default "/home/fmorency/.manifest")
+      --log_format string   The logging format (json|plain) (default "plain")
+      --log_level string    The logging level (trace|debug|info|warn|error|fatal|panic|disabled or '*:<level>,<key>:<level>') (default "info")
+      --log_no_color        Disable colored logs
+      --trace               print out full stack trace on errors
+
+error at offset 3: invalid character ':' after top-level value
+export exit: 0
+output document JSON decode: passed
+output document preserves original genesis_time; initial_height: 0
+stdout invariant log count: 16
+Separate restart copy uses source block time; raw export hash unchanged.
+validation exit: 0
+File at /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/export-cli-fixture-c07ck8g7/restart-genesis.json is a valid genesis file
+
+Explicit genesis path passes even with invalid default-home genesis; omitted path fails.

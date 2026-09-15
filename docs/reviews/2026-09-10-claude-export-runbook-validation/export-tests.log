@@ -1,0 +1,24 @@
+=== RUN   TestZeroHeightExportRetainsBillingBlockTime
+=== RUN   TestZeroHeightExportRetainsBillingBlockTime/in_process
+=== RUN   TestZeroHeightExportRetainsBillingBlockTime/reopened_latest
+=== RUN   TestZeroHeightExportRetainsBillingBlockTime/reopened_historical_height
+--- PASS: TestZeroHeightExportRetainsBillingBlockTime (0.88s)
+    --- PASS: TestZeroHeightExportRetainsBillingBlockTime/in_process (0.23s)
+    --- PASS: TestZeroHeightExportRetainsBillingBlockTime/reopened_latest (0.33s)
+    --- PASS: TestZeroHeightExportRetainsBillingBlockTime/reopened_historical_height (0.32s)
+=== RUN   TestZeroHeightExportRequiresFirstCommit
+=== RUN   TestZeroHeightExportRequiresFirstCommit/initial_height_0
+=== RUN   TestZeroHeightExportRequiresFirstCommit/initial_height_1
+--- PASS: TestZeroHeightExportRequiresFirstCommit (0.10s)
+    --- PASS: TestZeroHeightExportRequiresFirstCommit/initial_height_0 (0.05s)
+    --- PASS: TestZeroHeightExportRequiresFirstCommit/initial_height_1 (0.05s)
+=== RUN   TestZeroHeightExportStillRejectsFutureBillingTimestamp
+--- PASS: TestZeroHeightExportStillRejectsFutureBillingTimestamp (0.32s)
+=== RUN   TestZeroHeightBillingImportRequiresUpdatedGenesisTime
+--- PASS: TestZeroHeightBillingImportRequiresUpdatedGenesisTime (0.38s)
+=== RUN   TestZeroHeightExportRequiresSourceTimeAfterRollback
+--- PASS: TestZeroHeightExportRequiresSourceTimeAfterRollback (0.30s)
+=== RUN   TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback
+--- PASS: TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback (0.18s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/app 2.260s

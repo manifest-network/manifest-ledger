@@ -7050,7 +7050,11 @@ type QueryProvidersRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// pagination defines an optional pagination for the request.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active providers when true.
 	ActiveOnly bool `protobuf:"varint,2,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`
@@ -7090,7 +7094,8 @@ func (x *QueryProvidersRequest) GetActiveOnly() bool {
 	return false
 }
 
-// QueryProvidersResponse is the response type for the Query/Providers RPC method.
+// QueryProvidersResponse is the response type for the Query/Providers RPC
+// method.
 type QueryProvidersResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -7216,7 +7221,11 @@ type QuerySKUsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// pagination defines an optional pagination for the request.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active SKUs when true.
 	ActiveOnly bool `protobuf:"varint,2,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`
@@ -7309,9 +7318,14 @@ type QuerySKUsByProviderRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// provider_uuid is the unique identifier of the SKU provider.
+	// provider_uuid is the SKU provider's canonical lowercase UUIDv7. Malformed,
+	// uppercase, or non-v7 values are rejected with InvalidArgument.
 	ProviderUuid string `protobuf:"bytes,1,opt,name=provider_uuid,json=providerUuid,proto3" json:"provider_uuid,omitempty"`
-	// pagination defines an optional pagination for the request.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active SKUs when true.
 	ActiveOnly bool `protobuf:"varint,3,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`
@@ -7405,8 +7419,8 @@ func (x *QuerySKUsByProviderResponse) GetPagination() *v1beta1.PageResponse {
 	return nil
 }
 
-// QueryProviderByAddressRequest is the request type for the Query/ProviderByAddress
-// RPC method.
+// QueryProviderByAddressRequest is the request type for the
+// Query/ProviderByAddress RPC method.
 type QueryProviderByAddressRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -7414,7 +7428,15 @@ type QueryProviderByAddressRequest struct {
 
 	// address is the management address of the provider.
 	Address string `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
-	// pagination defines an optional pagination for the request.
+	// pagination supports Cosmos SDK key/offset and explicit count_total
+	// behavior, and caps limit at 1000. An omitted or zero limit defaults to 100
+	// without implicitly requesting a total. Key pagination is recommended.
+	// Offset and exact-total compatibility scans are limited to 20000 rows;
+	// requests that cannot be completed within that bound fail.
+	// Value-filtered pages inspect at most 1000 physical index rows in every
+	// pagination mode. Cursor pages may therefore be short or empty while
+	// returning a continuation cursor; compatibility requests that cannot
+	// produce the exact requested page or total within that bound fail.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// active_only filters to return only active providers when true.
 	ActiveOnly bool `protobuf:"varint,3,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`
@@ -7461,8 +7483,8 @@ func (x *QueryProviderByAddressRequest) GetActiveOnly() bool {
 	return false
 }
 
-// QueryProviderByAddressResponse is the response type for the Query/ProviderByAddress
-// RPC method.
+// QueryProviderByAddressResponse is the response type for the
+// Query/ProviderByAddress RPC method.
 type QueryProviderByAddressResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

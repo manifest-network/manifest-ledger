@@ -32,6 +32,7 @@ The chain runs Proof of Authority (`x/poa`) consensus, with plans to evolve towa
 - [System Requirements](#system-requirements)
 - [Installation](#install--run)
 - [Testing](#testing)
+- [Release engineering](./docs/RELEASE.md)
 - [Helper](#helper)
 - [Modules](./MODULE.md)
 - [Validators](./network/manifest-1/POST_GENESIS.md)
@@ -208,6 +209,12 @@ make local-image
 
 ## Testing
 
+Root builds, unit tests, simulations, and coverage use the root module's
+`go.mod`, matching the shipped daemon. The root `go.work` includes only that
+module. The `ictest-*` targets explicitly use `interchaintest/go.work` for the
+host test client, whose dependencies remain separate from the daemon. When
+running interchaintest directly, change into `interchaintest/` first.
+
 There are various make commands to run tests for the modules with custom implementations
 
 **To test the Proof of Authority implementation run:**
@@ -243,8 +250,13 @@ make ictest-group-poa
 **To test the chain upgrade run:**
 
 ```bash
-make ictest-chain-upgrade
+make ictest-chain-upgrade-local
 ```
+
+This target rebuilds `manifest:local` from the current working tree and verifies
+the embedded version and commit before starting the pinned v2.3.1 upgrade
+rehearsal. `ictest-chain-upgrade` is reserved for CI, where it verifies the
+separately built Docker artifact instead of rebuilding it.
 
 **To Test cosmwasm functionality run:**
 
@@ -272,6 +284,12 @@ make ictest-billing
 make sim-full-app
 ```
 
+**To verify simulation state across export and import:**
+
+```bash
+make sim-import-export
+```
+
 **To execute the application simulation after state import run:**
 
 ```bash
@@ -284,14 +302,18 @@ make sim-after-import
 make sim-app-determinism
 ```
 
-Append `-random` to the end of the commands above to run the simulation with a random seed, e.g., `make sim-full-app-random`.
+These targets use the fixed, non-sentinel seed
+`SIM_SEED=2507940531156952020` by default so their
+results are reproducible across invocations. Cosmos SDK reserves seed `42` as
+its default sentinel, so do not use it for reproducible determinism runs. Append
+`-random` to run with a random seed, for example `make sim-full-app-random`.
 
 ## Coverage
 
 To generate a coverage report for the modules run:
 
 ```bash
-make local-image
+make local-image-cover
 make coverage
 ```
 
@@ -320,8 +342,8 @@ This is a script to assist with initializing and configuring a node. Ensure you 
 Also in this script are examples of how you could run it
 
 ```bash
-POA_ADMIN_ADDRESS=manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct CHAIN_ID="local-1" HOME_DIR="~/.manifest" TIMEOUT_COMMIT="500ms" CLEAN=true sh scripts/test_node.sh
-CHAIN_ID="local-2" HOME_DIR="~/.manifest2" CLEAN=true RPC=36657 REST=2317 PROFF=6061 P2P=36656 GRPC=8090 GRPC_WEB=8091 ROSETTA=8081 TIMEOUT_COMMIT="500ms" sh scripts/test_node.sh
+POA_ADMIN_ADDRESS=manifest1hj5fveer5cjtn4wd6wstzugjfdxzl0xp8ws9ct CHAIN_ID="local-1" HOME_DIR="~/.manifest" TIMEOUT_COMMIT="500ms" CLEAN=true bash scripts/test_node.sh
+CHAIN_ID="local-2" HOME_DIR="~/.manifest2" CLEAN=true RPC=36657 REST=2317 PROFF=6061 P2P=36656 GRPC=8090 GRPC_WEB=8091 ROSETTA=8081 TIMEOUT_COMMIT="500ms" bash scripts/test_node.sh
 ```
 
 The succesful executation of these commands will result in 2 ibc connected instances of manifestd running on your local machine.
@@ -332,6 +354,14 @@ The succesful executation of these commands will result in 2 ibc connected insta
 
 This script is used to upload a contract to the network. It is used to upload the cosmwasm template contract to the network.
 
-`sh scripts/upload_contract.sh`
+`bash scripts/upload_contract.sh`
 
 > Running this script with no arguments will utilize the same environment variables as the test_node.sh script.
+
+These helpers require Bash, `jq`, GNU-compatible `realpath -m`, and GNU `sed`.
+`HOME_DIR` is a literal path; only leading `~` or `~/` is expanded, and spaces
+are supported. `CLEAN=true` requires an explicit `HOME_DIR` and removes that
+directory before initialization. System roots, the user home, and ancestors of
+the checkout or working directory are rejected. Use a dedicated disposable node
+directory. With `CLEAN=false`, the node helper configures and starts an existing
+node home. Check the helper scripts with `make shellcheck`.

@@ -1,0 +1,1431 @@
+--> Running app after import simulation (blocks: 100, commit: true, period: 5, seed: 2507940531156952020, params: /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/simulation/sim_params.json
+=== RUN   TestAppSimulationAfterImport
+Starting SimulateFromSeed with randomness created with seed 2507940531156952020
+Randomized simulation params:
+{}
+Selected randomly generated parameters for simulated genesis:
+{
+  stake_per_account: "481534762988",
+  initially_bonded_validators: "167"
+}
+Selected randomly generated auth parameters:
+{
+ "max_memo_characters": 160,
+ "tx_sig_limit": 9,
+ "tx_size_cost_per_byte": 7,
+ "sig_verify_cost_ed25519": 931,
+ "sig_verify_cost_secp256k1": 598
+}
+Selected randomly generated bank parameters:
+{
+ "default_send_enabled": true
+}
+Selected randomly generated capability parameters:
+{
+ "index": 338,
+ "owners": null
+}
+Selected randomly generated distribution parameters:
+{
+ "params": {
+  "community_tax": "0.000000000000000000",
+  "base_proposer_reward": "0",
+  "bonus_proposer_reward": "0",
+  "withdraw_addr_enabled": true
+ },
+ "fee_pool": {
+  "community_pool": []
+ },
+ "delegator_withdraw_infos": null,
+ "outstanding_rewards": null,
+ "validator_accumulated_commissions": null,
+ "validator_historical_rewards": null,
+ "validator_current_rewards": null,
+ "delegator_starting_infos": null,
+ "validator_slash_events": null
+}
+Selected randomly generated evidence parameters:
+{}
+Selected randomly generated governance parameters:
+{
+ "starting_proposal_id": 17,
+ "params": {
+  "min_deposit": [
+   {
+    "denom": "stake",
+    "amount": "216"
+   }
+  ],
+  "max_deposit_period": 254299000000000,
+  "voting_period": 249347000000000,
+  "quorum": "0.347000000000000000",
+  "threshold": "0.455000000000000000",
+  "veto_threshold": "0.278000000000000000",
+  "min_initial_deposit_ratio": "0.350000000000000000",
+  "proposal_cancel_ratio": "0.470000000000000000",
+  "expedited_voting_period": 158120000000000,
+  "expedited_threshold": "0.538000000000000000",
+  "expedited_min_deposit": [
+   {
+    "denom": "stake",
+    "amount": "832"
+   }
+  ],
+  "burn_vote_veto": true,
+  "min_deposit_ratio": "0.010000000000000000"
+ }
+}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": [],
+  "params": {
+   "upgrade_timeout": {
+    "height": {},
+    "timestamp": 600000000000
+   }
+  }
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated minting parameters:
+{
+ "minter": {
+  "inflation": "0.000000000000000000",
+  "annual_provisions": "0.000000000000000000"
+ },
+ "params": {
+  "mint_denom": "stake",
+  "inflation_rate_change": "0.000000000000000000",
+  "inflation_max": "0.000000000000000000",
+  "inflation_min": "0.000000000000000000",
+  "goal_bonded": "0.670000000000000000",
+  "blocks_per_year": 6311520
+ }
+}
+Selected randomly generated poa genesis :
+{
+ "vals": []
+}
+Selected randomly generated slashing parameters:
+{
+ "params": {
+  "signed_blocks_window": 88,
+  "min_signed_per_window": "0.000000000000000000",
+  "downtime_jail_duration": 70631000000000,
+  "slash_fraction_double_sign": "0.000000000000000000",
+  "slash_fraction_downtime": "0.000000000000000000"
+ },
+ "signing_infos": [],
+ "missed_blocks": []
+}
+Selected randomly generated staking parameters:
+{
+ "unbonding_time": 71754000000000,
+ "max_validators": 250,
+ "max_entries": 7,
+ "historical_entries": 7927,
+ "bond_denom": "stake",
+ "min_commission_rate": "0"
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "zmqiquekskvujsxjunfx",
+ "denom_traces": [],
+ "params": {
+  "send_enabled": true,
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Selected randomly generated consensus parameters:
+{
+ "block": {
+  "max_bytes": 20433305,
+  "max_gas": -1
+ },
+ "evidence": {
+  "max_age_num_blocks": 11959,
+  "max_age_duration": 71754000000000
+ },
+ "validator": {
+  "pub_key_types": [
+   "ed25519"
+  ]
+ }
+}
+Starting the simulation from time Tue Jun 11 20:43:13 UTC 2075 (unixtime 3327511393)
+
+Simulating... block 1/100, operation 0/0.
+Simulating... block 1/100, operation 0/103.
+Simulating... block 1/100, operation 50/103.
+Simulating... block 1/100, operation 100/103.
+Simulating... block 2/100, operation 0/103.
+Simulating... block 2/100, operation 0/737.
+Simulating... block 2/100, operation 50/737.
+Simulating... block 2/100, operation 100/737.
+Simulating... block 2/100, operation 150/737.
+Simulating... block 2/100, operation 200/737.
+Simulating... block 2/100, operation 250/737.
+Simulating... block 2/100, operation 300/737.
+Simulating... block 2/100, operation 350/737.
+Simulating... block 2/100, operation 400/737.
+Simulating... block 2/100, operation 450/737.
+Simulating... block 2/100, operation 500/737.
+Simulating... block 2/100, operation 550/737.
+Simulating... block 2/100, operation 600/737.
+Simulating... block 2/100, operation 650/737.
+Simulating... block 2/100, operation 700/737.
+Simulating... block 3/100, operation 0/737.
+Simulating... block 3/100, operation 0/372.
+Simulating... block 3/100, operation 50/372.
+Simulating... block 3/100, operation 100/372.
+Simulating... block 3/100, operation 150/372.
+Simulating... block 3/100, operation 200/372.
+Simulating... block 3/100, operation 250/372.
+Simulating... block 3/100, operation 300/372.
+Simulating... block 3/100, operation 350/372.
+Simulating... block 4/100, operation 0/372.
+Simulating... block 4/100, operation 0/111.
+Simulating... block 4/100, operation 50/111.
+Simulating... block 4/100, operation 100/111.
+Simulating... block 5/100, operation 0/111.
+Simulating... block 5/100, operation 0/169.
+Simulating... block 5/100, operation 50/169.
+Simulating... block 5/100, operation 100/169.
+Simulating... block 5/100, operation 150/169.
+Simulating... block 6/100, operation 0/169.
+Simulating... block 6/100, operation 0/110.
+Simulating... block 6/100, operation 50/110.
+Simulating... block 6/100, operation 100/110.
+Simulating... block 7/100, operation 0/110.
+Simulating... block 8/100, operation 0/0.
+Simulating... block 9/100, operation 0/0.
+Simulating... block 10/100, operation 0/0.
+Simulating... block 11/100, operation 0/0.
+Simulating... block 12/100, operation 0/0.
+Simulating... block 13/100, operation 0/0.
+Simulating... block 14/100, operation 0/0.
+Simulating... block 15/100, operation 0/0.
+Simulating... block 16/100, operation 0/0.
+Simulating... block 17/100, operation 0/0.
+Simulating... block 18/100, operation 0/0.
+Simulating... block 19/100, operation 0/0.
+Simulating... block 20/100, operation 0/0.
+Simulating... block 21/100, operation 0/0.
+Simulating... block 22/100, operation 0/0.
+Simulating... block 23/100, operation 0/0.
+Simulating... block 24/100, operation 0/0.
+Simulating... block 25/100, operation 0/0.
+Simulating... block 26/100, operation 0/0.
+Simulating... block 27/100, operation 0/0.
+Simulating... block 28/100, operation 0/0.
+Simulating... block 29/100, operation 0/0.
+Simulating... block 30/100, operation 0/0.
+Simulating... block 31/100, operation 0/0.
+Simulating... block 32/100, operation 0/0.
+Simulating... block 33/100, operation 0/0.
+Simulating... block 34/100, operation 0/0.
+Simulating... block 35/100, operation 0/0.
+Simulating... block 36/100, operation 0/0.
+Simulating... block 37/100, operation 0/0.
+Simulating... block 38/100, operation 0/0.
+Simulating... block 39/100, operation 0/0.
+Simulating... block 40/100, operation 0/0.
+Simulating... block 41/100, operation 0/0.
+Simulating... block 42/100, operation 0/0.
+Simulating... block 43/100, operation 0/0.
+Simulating... block 44/100, operation 0/0.
+Simulating... block 45/100, operation 0/0.
+Simulating... block 46/100, operation 0/0.
+Simulating... block 47/100, operation 0/0.
+Simulating... block 48/100, operation 0/0.
+Simulating... block 49/100, operation 0/0.
+Simulating... block 50/100, operation 0/0.
+Simulating... block 51/100, operation 0/0.
+Simulating... block 52/100, operation 0/0.
+Simulating... block 53/100, operation 0/0.
+Simulating... block 54/100, operation 0/0.
+Simulating... block 55/100, operation 0/0.
+Simulating... block 56/100, operation 0/0.
+Simulating... block 57/100, operation 0/0.
+Simulating... block 58/100, operation 0/0.
+Simulating... block 59/100, operation 0/0.
+Simulating... block 60/100, operation 0/0.
+Simulating... block 61/100, operation 0/0.
+Simulating... block 62/100, operation 0/0.
+Simulating... block 63/100, operation 0/0.
+Simulating... block 64/100, operation 0/0.
+Simulating... block 65/100, operation 0/0.
+Simulating... block 66/100, operation 0/0.
+Simulating... block 67/100, operation 0/0.
+Simulating... block 68/100, operation 0/0.
+Simulating... block 69/100, operation 0/0.
+Simulating... block 70/100, operation 0/0.
+Simulating... block 71/100, operation 0/0.
+Simulating... block 72/100, operation 0/0.
+Simulating... block 73/100, operation 0/0.
+Simulating... block 74/100, operation 0/0.
+Simulating... block 75/100, operation 0/0.
+Simulating... block 76/100, operation 0/0.
+Simulating... block 77/100, operation 0/0.
+Simulating... block 78/100, operation 0/0.
+Simulating... block 79/100, operation 0/0.
+Simulating... block 80/100, operation 0/0.
+Simulating... block 81/100, operation 0/0.
+Simulating... block 82/100, operation 0/0.
+Simulating... block 83/100, operation 0/0.
+Simulating... block 84/100, operation 0/0.
+Simulating... block 85/100, operation 0/0.
+Simulating... block 86/100, operation 0/0.
+Simulating... block 87/100, operation 0/0.
+Simulating... block 88/100, operation 0/0.
+Simulating... block 89/100, operation 0/0.
+Simulating... block 90/100, operation 0/0.
+Simulating... block 91/100, operation 0/0.
+Simulating... block 91/100, operation 0/48.
+Simulating... block 92/100, operation 0/48.
+Simulating... block 92/100, operation 0/224.
+Simulating... block 92/100, operation 50/224.
+Simulating... block 92/100, operation 100/224.
+Simulating... block 92/100, operation 150/224.
+Simulating... block 92/100, operation 200/224.
+Simulating... block 93/100, operation 0/224.
+Simulating... block 93/100, operation 0/32.
+Simulating... block 94/100, operation 0/32.
+Simulating... block 94/100, operation 0/177.
+Simulating... block 94/100, operation 50/177.
+Simulating... block 94/100, operation 100/177.
+Simulating... block 94/100, operation 150/177.
+Simulating... block 95/100, operation 0/177.
+Simulating... block 95/100, operation 0/149.
+Simulating... block 95/100, operation 50/149.
+Simulating... block 95/100, operation 100/149.
+Simulating... block 96/100, operation 0/149.
+Simulating... block 96/100, operation 0/113.
+Simulating... block 96/100, operation 50/113.
+Simulating... block 96/100, operation 100/113.
+Simulating... block 97/100, operation 0/113.
+Simulating... block 97/100, operation 0/601.
+Simulating... block 97/100, operation 50/601.
+Simulating... block 97/100, operation 100/601.
+Simulating... block 97/100, operation 150/601.
+Simulating... block 97/100, operation 200/601.
+Simulating... block 97/100, operation 250/601.
+Simulating... block 97/100, operation 300/601.
+Simulating... block 97/100, operation 350/601. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 97/100, operation 400/601.
+Simulating... block 97/100, operation 450/601.
+Simulating... block 97/100, operation 500/601.
+Simulating... block 97/100, operation 550/601.
+Simulating... block 97/100, operation 600/601.
+Simulating... block 98/100, operation 0/601.
+Simulating... block 98/100, operation 0/292.
+Simulating... block 98/100, operation 50/292.
+Simulating... block 98/100, operation 100/292.
+Simulating... block 98/100, operation 150/292.
+Simulating... block 98/100, operation 200/292.
+Simulating... block 98/100, operation 250/292.
+Simulating... block 99/100, operation 0/292.
+Simulating... block 99/100, operation 0/541.
+Simulating... block 99/100, operation 50/541.
+Simulating... block 99/100, operation 100/541.
+Simulating... block 99/100, operation 150/541.
+Simulating... block 99/100, operation 200/541.
+Simulating... block 99/100, operation 250/541.
+Simulating... block 99/100, operation 300/541.
+Simulating... block 99/100, operation 350/541.
+Simulating... block 99/100, operation 400/541. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 99/100, operation 450/541.
+Simulating... block 99/100, operation 500/541.
+Simulating... block 100/100, operation 0/541.
+Simulating... block 100/100, operation 0/525.
+Simulating... block 100/100, operation 50/525.
+Simulating... block 100/100, operation 100/525.
+Simulating... block 100/100, operation 150/525.
+Simulating... block 100/100, operation 200/525.
+Simulating... block 100/100, operation 250/525.
+Simulating... block 100/100, operation 300/525.
+Simulating... block 100/100, operation 350/525.
+Simulating... block 100/100, operation 400/525.
+Simulating... block 100/100, operation 450/525.
+Simulating... block 100/100, operation 500/525.
+Simulation complete; Final height (blocks): 101, final time (seconds): 2075-06-20 09:09:44 -0400 EDT, operations ran: 4304
+Exporting simulation statistics...
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 69,
+   "ok": 7
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 102
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 100
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgMultiSend": {
+   "ok": 10
+  },
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "failure": 1,
+   "ok": 93
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 6
+  },
+  "signing": {
+   "missed": 1490,
+   "signed": 15128
+  }
+ },
+ "billing": {
+  "/liftedinit.billing.v1.MsgAcknowledgeLease": {
+   "failure": 13,
+   "ok": 18
+  },
+  "/liftedinit.billing.v1.MsgCancelLease": {
+   "failure": 3,
+   "ok": 9
+  },
+  "/liftedinit.billing.v1.MsgCloseLease": {
+   "failure": 3,
+   "ok": 17
+  },
+  "/liftedinit.billing.v1.MsgCreateLease": {
+   "failure": 1,
+   "ok": 40
+  },
+  "/liftedinit.billing.v1.MsgCreateLeaseForTenant": {
+   "failure": 1,
+   "ok": 11
+  },
+  "/liftedinit.billing.v1.MsgFundCredit": {
+   "ok": 47
+  },
+  "/liftedinit.billing.v1.MsgRejectLease": {
+   "failure": 2,
+   "ok": 3
+  },
+  "/liftedinit.billing.v1.MsgSetItemCustomDomain": {
+   "failure": 5,
+   "ok": 14
+  },
+  "/liftedinit.billing.v1.MsgUpdateParams": {
+   "ok": 7
+  },
+  "/liftedinit.billing.v1.MsgWithdraw": {
+   "failure": 16,
+   "ok": 18
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 52
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "ok": 59
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "failure": 6,
+   "ok": 53
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "kicked": 6
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 101
+  },
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 89
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgCancelProposal": {
+   "failure": 2
+  },
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 33,
+   "ok": 53
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "failure": 1,
+   "ok": 1235
+  },
+  "/cosmos.gov.v1.MsgVote": {
+   "failure": 67,
+   "ok": 1
+  },
+  "/cosmos.gov.v1.MsgVoteWeighted": {
+   "failure": 34
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 111
+  },
+  "/cosmos.group.v1.MsgCreateGroupPolicy": {
+   "failure": 8,
+   "ok": 46
+  },
+  "/cosmos.group.v1.MsgCreateGroupWithPolicy": {
+   "ok": 42
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 88
+  },
+  "/cosmos.group.v1.MsgLeaveGroup": {
+   "failure": 2,
+   "ok": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 140,
+   "ok": 53
+  },
+  "/cosmos.group.v1.MsgUpdateGroupAdmin": {
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgUpdateGroupMembers": {
+   "ok": 2
+  },
+  "/cosmos.group.v1.MsgUpdateGroupMetadata": {
+   "failure": 1,
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgUpdateGroupPolicyAdmin": {
+   "failure": 6,
+   "ok": 2
+  },
+  "/cosmos.group.v1.MsgUpdateGroupPolicyDecisionPolicy": {
+   "failure": 5,
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgUpdateGroupPolicyMetadata": {
+   "failure": 2,
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 85,
+   "ok": 8
+  },
+  "/cosmos.group.v1.MsgWithdrawProposal": {
+   "failure": 22,
+   "ok": 1
+  }
+ },
+ "manifest": {
+  "/liftedinit.manifest.v1.MsgBurnHeldBalance": {
+   "failure": 93,
+   "ok": 8
+  },
+  "/liftedinit.manifest.v1.MsgPayout": {
+   "ok": 110
+  }
+ },
+ "sku": {
+  "/liftedinit.sku.v1.MsgCreateProvider": {
+   "ok": 31
+  },
+  "/liftedinit.sku.v1.MsgCreateSKU": {
+   "ok": 40
+  },
+  "/liftedinit.sku.v1.MsgDeactivateProvider": {
+   "ok": 8
+  },
+  "/liftedinit.sku.v1.MsgDeactivateSKU": {
+   "ok": 16
+  },
+  "/liftedinit.sku.v1.MsgUpdateParams": {
+   "ok": 4
+  },
+  "/liftedinit.sku.v1.MsgUpdateProvider": {
+   "ok": 27
+  },
+  "/liftedinit.sku.v1.MsgUpdateSKU": {
+   "ok": 41
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 96
+  }
+ },
+ "tokenfactory": {
+  "/osmosis.tokenfactory.v1beta1.MsgBurn": {
+   "failure": 100
+  },
+  "/osmosis.tokenfactory.v1beta1.MsgChangeAdmin": {
+   "failure": 89,
+   "ok": 3
+  },
+  "/osmosis.tokenfactory.v1beta1.MsgCreateDenom": {
+   "failure": 1,
+   "ok": 110
+  },
+  "/osmosis.tokenfactory.v1beta1.MsgMint": {
+   "failure": 81,
+   "ok": 2
+  },
+  "/osmosis.tokenfactory.v1beta1.MsgSetDenomMetadata": {
+   "failure": 88
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgExecuteContract": {
+   "ok": 102
+  },
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 96
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 52
+  },
+  "/cosmwasm.wasm.v1.MsgUpdateAdmin": {
+   "ok": 1
+  },
+  "clear-contract-admin": {
+   "failure": 13
+  },
+  "execute": {
+   "failure": 3
+  },
+  "migrate": {
+   "failure": 34
+  },
+  "update-contract-admin": {
+   "failure": 27
+  }
+ }
+}
+
+LevelDB Stats
+Compactions
+ Level |   Tables   |    Size(MB)   |    Time(sec)  |    Read(MB)   |   Write(MB)
+-------+------------+---------------+---------------+---------------+---------------
+   0   |          0 |       0.00000 |       0.61969 |       0.00000 |      11.22882
+   1   |          2 |       3.38189 |       0.88423 |      30.19130 |      22.34437
+-------+------------+---------------+---------------+---------------+---------------
+ Total |          2 |       3.38189 |       1.50392 |      30.19130 |      33.57319
+
+LevelDB cached block size 6755378
+exporting genesis...
+importing genesis...
+Starting SimulateFromSeed with randomness created with seed 2507940531156952021
+Randomized simulation params:
+{}
+Selected randomly generated consensus parameters:
+{
+ "block": {
+  "max_bytes": 27654534,
+  "max_gas": -1
+ },
+ "evidence": {
+  "max_age_num_blocks": 11959,
+  "max_age_duration": 71754000000000
+ },
+ "validator": {
+  "pub_key_types": [
+   "ed25519"
+  ]
+ }
+}
+Starting the simulation from time Thu Jun 20 10:28:42 UTC 2075 (unixtime 3328252122)
+
+Simulating... block 1/100, operation 0/0.
+Simulating... block 1/100, operation 0/575.
+Simulating... block 1/100, operation 50/575.
+Simulating... block 1/100, operation 100/575.
+Simulating... block 1/100, operation 150/575.
+Simulating... block 1/100, operation 200/575. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 1/100, operation 250/575.
+Simulating... block 1/100, operation 300/575.
+Simulating... block 1/100, operation 350/575.
+Simulating... block 1/100, operation 400/575.
+Simulating... block 1/100, operation 450/575. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 1/100, operation 500/575.
+Simulating... block 1/100, operation 550/575.
+Simulating... block 2/100, operation 0/575.
+Simulating... block 2/100, operation 0/661.
+Simulating... block 2/100, operation 50/661.
+Simulating... block 2/100, operation 100/661.
+Simulating... block 2/100, operation 150/661.
+Simulating... block 2/100, operation 200/661.
+Simulating... block 2/100, operation 250/661.
+Simulating... block 2/100, operation 300/661.
+Simulating... block 2/100, operation 350/661.
+Simulating... block 2/100, operation 400/661.
+Simulating... block 2/100, operation 450/661.
+Simulating... block 2/100, operation 500/661.
+Simulating... block 2/100, operation 550/661.
+Simulating... block 2/100, operation 600/661.
+Simulating... block 2/100, operation 650/661.
+Simulating... block 3/100, operation 0/661.
+Simulating... block 3/100, operation 0/422.
+Simulating... block 3/100, operation 50/422. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 3/100, operation 100/422.
+Simulating... block 3/100, operation 150/422.
+Simulating... block 3/100, operation 200/422.
+Simulating... block 3/100, operation 250/422.
+Simulating... block 3/100, operation 300/422. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 3/100, operation 350/422.
+Simulating... block 3/100, operation 400/422.
+Simulating... block 4/100, operation 0/422.
+Simulating... block 4/100, operation 0/249.
+Simulating... block 4/100, operation 50/249.
+Simulating... block 4/100, operation 100/249. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 4/100, operation 150/249. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 4/100, operation 200/249.
+Simulating... block 5/100, operation 0/249.
+Simulating... block 5/100, operation 0/264.
+Simulating... block 5/100, operation 50/264.
+Simulating... block 5/100, operation 100/264.
+Simulating... block 5/100, operation 150/264.
+Simulating... block 5/100, operation 200/264.
+Simulating... block 5/100, operation 250/264.
+Simulating... block 6/100, operation 0/264.
+Simulating... block 6/100, operation 0/415.
+Simulating... block 6/100, operation 50/415.
+Simulating... block 6/100, operation 100/415.
+Simulating... block 6/100, operation 150/415.
+Simulating... block 6/100, operation 200/415. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 6/100, operation 250/415.
+Simulating... block 6/100, operation 300/415.
+Simulating... block 6/100, operation 350/415.
+Simulating... block 6/100, operation 400/415.
+Simulating... block 7/100, operation 0/415.
+Simulating... block 7/100, operation 0/208. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 7/100, operation 50/208.
+Simulating... block 7/100, operation 100/208. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 7/100, operation 150/208.
+Simulating... block 7/100, operation 200/208.
+Simulating... block 8/100, operation 0/208.
+Simulating... block 8/100, operation 0/279.
+Simulating... block 8/100, operation 50/279.
+Simulating... block 8/100, operation 100/279. [!] POA: Bypassing admin check for simulation testing
+[!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 8/100, operation 150/279.
+Simulating... block 8/100, operation 200/279.
+Simulating... block 8/100, operation 250/279.
+Simulating... block 9/100, operation 0/279.
+Simulating... block 9/100, operation 0/36.
+Simulating... block 10/100, operation 0/36.
+Simulating... block 10/100, operation 0/337.
+Simulating... block 10/100, operation 50/337.
+Simulating... block 10/100, operation 100/337.
+Simulating... block 10/100, operation 150/337.
+Simulating... block 10/100, operation 200/337.
+Simulating... block 10/100, operation 250/337.
+Simulating... block 10/100, operation 300/337.
+Simulating... block 11/100, operation 0/337.
+Simulating... block 11/100, operation 0/372.
+Simulating... block 11/100, operation 50/372.
+Simulating... block 11/100, operation 100/372.
+Simulating... block 11/100, operation 150/372.
+Simulating... block 11/100, operation 200/372.
+Simulating... block 11/100, operation 250/372.
+Simulating... block 11/100, operation 300/372.
+Simulating... block 11/100, operation 350/372.
+Simulating... block 12/100, operation 0/372.
+Simulating... block 12/100, operation 0/108.
+Simulating... block 12/100, operation 50/108.
+Simulating... block 12/100, operation 100/108.
+Simulating... block 13/100, operation 0/108.
+Simulating... block 13/100, operation 0/330.
+Simulating... block 13/100, operation 50/330.
+Simulating... block 13/100, operation 100/330.
+Simulating... block 13/100, operation 150/330.
+Simulating... block 13/100, operation 200/330.
+Simulating... block 13/100, operation 250/330.
+Simulating... block 13/100, operation 300/330. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 14/100, operation 0/330.
+Simulating... block 14/100, operation 0/202.
+Simulating... block 14/100, operation 50/202.
+Simulating... block 14/100, operation 100/202.
+Simulating... block 14/100, operation 150/202.
+Simulating... block 14/100, operation 200/202.
+Simulating... block 15/100, operation 0/202.
+Simulating... block 15/100, operation 0/104.
+Simulating... block 15/100, operation 50/104. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 15/100, operation 100/104.
+Simulating... block 16/100, operation 0/104.
+Simulating... block 16/100, operation 0/194.
+Simulating... block 16/100, operation 50/194.
+Simulating... block 16/100, operation 100/194.
+Simulating... block 16/100, operation 150/194.
+Simulating... block 17/100, operation 0/194.
+Simulating... block 18/100, operation 0/0.
+Simulating... block 19/100, operation 0/0.
+Simulating... block 20/100, operation 0/0.
+Simulating... block 21/100, operation 0/0.
+Simulating... block 22/100, operation 0/0.
+Simulating... block 23/100, operation 0/0.
+Simulating... block 24/100, operation 0/0.
+Simulating... block 25/100, operation 0/0.
+Simulating... block 26/100, operation 0/0.
+Simulating... block 27/100, operation 0/0.
+Simulating... block 28/100, operation 0/0.
+Simulating... block 29/100, operation 0/0.
+Simulating... block 30/100, operation 0/0.
+Simulating... block 31/100, operation 0/0.
+Simulating... block 32/100, operation 0/0.
+Simulating... block 33/100, operation 0/0.
+Simulating... block 34/100, operation 0/0.
+Simulating... block 35/100, operation 0/0.
+Simulating... block 36/100, operation 0/0.
+Simulating... block 37/100, operation 0/0.
+Simulating... block 38/100, operation 0/0.
+Simulating... block 39/100, operation 0/0.
+Simulating... block 40/100, operation 0/0.
+Simulating... block 41/100, operation 0/0.
+Simulating... block 42/100, operation 0/0.
+Simulating... block 43/100, operation 0/0.
+Simulating... block 44/100, operation 0/0.
+Simulating... block 45/100, operation 0/0.
+Simulating... block 46/100, operation 0/0.
+Simulating... block 47/100, operation 0/0.
+Simulating... block 48/100, operation 0/0.
+Simulating... block 49/100, operation 0/0.
+Simulating... block 50/100, operation 0/0.
+Simulating... block 51/100, operation 0/0.
+Simulating... block 52/100, operation 0/0.
+Simulating... block 53/100, operation 0/0.
+Simulating... block 54/100, operation 0/0.
+Simulating... block 54/100, operation 0/104.
+Simulating... block 54/100, operation 50/104.
+Simulating... block 54/100, operation 100/104.
+Simulating... block 55/100, operation 0/104.
+Simulating... block 55/100, operation 0/32.
+Simulating... block 56/100, operation 0/32.
+Simulating... block 56/100, operation 0/122.
+Simulating... block 56/100, operation 50/122.
+Simulating... block 56/100, operation 100/122.
+Simulating... block 57/100, operation 0/122.
+Simulating... block 57/100, operation 0/104.
+Simulating... block 57/100, operation 50/104.
+Simulating... block 57/100, operation 100/104.
+Simulating... block 58/100, operation 0/104.
+Simulating... block 58/100, operation 0/397.
+Simulating... block 58/100, operation 50/397.
+Simulating... block 58/100, operation 100/397.
+Simulating... block 58/100, operation 150/397. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 58/100, operation 200/397.
+Simulating... block 58/100, operation 250/397.
+Simulating... block 58/100, operation 300/397.
+Simulating... block 58/100, operation 350/397.
+Simulating... block 59/100, operation 0/397.
+Simulating... block 59/100, operation 0/158.
+Simulating... block 59/100, operation 50/158.
+Simulating... block 59/100, operation 100/158.
+Simulating... block 59/100, operation 150/158.
+Simulating... block 60/100, operation 0/158.
+Simulating... block 60/100, operation 0/155.
+Simulating... block 60/100, operation 50/155.
+Simulating... block 60/100, operation 100/155.
+Simulating... block 60/100, operation 150/155.
+Simulating... block 61/100, operation 0/155.
+Simulating... block 61/100, operation 0/115. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 61/100, operation 50/115.
+Simulating... block 61/100, operation 100/115.
+Simulating... block 62/100, operation 0/115.
+Simulating... block 62/100, operation 0/379.
+Simulating... block 62/100, operation 50/379.
+Simulating... block 62/100, operation 100/379.
+Simulating... block 62/100, operation 150/379.
+Simulating... block 62/100, operation 200/379. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 62/100, operation 250/379. [!] POA: Bypassing admin check for simulation testing
+[!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 62/100, operation 300/379.
+Simulating... block 62/100, operation 350/379.
+Simulating... block 63/100, operation 0/379.
+Simulating... block 63/100, operation 0/153.
+Simulating... block 63/100, operation 50/153.
+Simulating... block 63/100, operation 100/153.
+Simulating... block 63/100, operation 150/153.
+Simulating... block 64/100, operation 0/153.
+Simulating... block 64/100, operation 0/339.
+Simulating... block 64/100, operation 50/339.
+Simulating... block 64/100, operation 100/339.
+Simulating... block 64/100, operation 150/339.
+Simulating... block 64/100, operation 200/339.
+Simulating... block 64/100, operation 250/339. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 64/100, operation 300/339. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 65/100, operation 0/339.
+Simulating... block 65/100, operation 0/27.
+Simulating... block 66/100, operation 0/27.
+Simulating... block 66/100, operation 0/7.
+Simulating... block 67/100, operation 0/7.
+Simulating... block 67/100, operation 0/339.
+Simulating... block 67/100, operation 50/339.
+Simulating... block 67/100, operation 100/339.
+Simulating... block 67/100, operation 150/339.
+Simulating... block 67/100, operation 200/339.
+Simulating... block 67/100, operation 250/339. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 67/100, operation 300/339.
+Simulating... block 68/100, operation 0/339.
+Simulating... block 68/100, operation 0/148.
+Simulating... block 68/100, operation 50/148.
+Simulating... block 68/100, operation 100/148.
+Simulating... block 69/100, operation 0/148.
+Simulating... block 69/100, operation 0/211.
+Simulating... block 69/100, operation 50/211.
+Simulating... block 69/100, operation 100/211.
+Simulating... block 69/100, operation 150/211. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 69/100, operation 200/211.
+Simulating... block 70/100, operation 0/211.
+Simulating... block 70/100, operation 0/200.
+Simulating... block 70/100, operation 50/200.
+Simulating... block 70/100, operation 100/200.
+Simulating... block 70/100, operation 150/200.
+Simulating... block 71/100, operation 0/200.
+Simulating... block 71/100, operation 0/9.
+Simulating... block 72/100, operation 0/9.
+Simulating... block 72/100, operation 0/2.
+Simulating... block 73/100, operation 0/2.
+Simulating... block 73/100, operation 0/287.
+Simulating... block 73/100, operation 50/287.
+Simulating... block 73/100, operation 100/287. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 73/100, operation 150/287. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 73/100, operation 200/287.
+Simulating... block 73/100, operation 250/287.
+Simulating... block 74/100, operation 0/287.
+Simulating... block 74/100, operation 0/245.
+Simulating... block 74/100, operation 50/245.
+Simulating... block 74/100, operation 100/245.
+Simulating... block 74/100, operation 150/245.
+Simulating... block 74/100, operation 200/245. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 75/100, operation 0/245.
+Simulating... block 75/100, operation 0/223.
+Simulating... block 75/100, operation 50/223.
+Simulating... block 75/100, operation 100/223.
+Simulating... block 75/100, operation 150/223.
+Simulating... block 75/100, operation 200/223.
+Simulating... block 76/100, operation 0/223.
+Simulating... block 76/100, operation 0/333.
+Simulating... block 76/100, operation 50/333.
+Simulating... block 76/100, operation 100/333.
+Simulating... block 76/100, operation 150/333.
+Simulating... block 76/100, operation 200/333.
+Simulating... block 76/100, operation 250/333.
+Simulating... block 76/100, operation 300/333.
+Simulating... block 77/100, operation 0/333.
+Simulating... block 77/100, operation 0/190.
+Simulating... block 77/100, operation 50/190.
+Simulating... block 77/100, operation 100/190.
+Simulating... block 77/100, operation 150/190.
+Simulating... block 78/100, operation 0/190.
+Simulating... block 78/100, operation 0/140. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 78/100, operation 50/140.
+Simulating... block 78/100, operation 100/140.
+Simulating... block 79/100, operation 0/140.
+Simulating... block 79/100, operation 0/31.
+Simulating... block 80/100, operation 0/31.
+Simulating... block 80/100, operation 0/317. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 80/100, operation 50/317.
+Simulating... block 80/100, operation 100/317.
+Simulating... block 80/100, operation 150/317. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 80/100, operation 200/317.
+Simulating... block 80/100, operation 250/317.
+Simulating... block 80/100, operation 300/317.
+Simulating... block 81/100, operation 0/317.
+Simulating... block 81/100, operation 0/163.
+Simulating... block 81/100, operation 50/163.
+Simulating... block 81/100, operation 100/163.
+Simulating... block 81/100, operation 150/163.
+Simulating... block 82/100, operation 0/163.
+Simulating... block 82/100, operation 0/186.
+Simulating... block 82/100, operation 50/186.
+Simulating... block 82/100, operation 100/186.
+Simulating... block 82/100, operation 150/186.
+Simulating... block 83/100, operation 0/186.
+Simulating... block 83/100, operation 0/148.
+Simulating... block 83/100, operation 50/148.
+Simulating... block 83/100, operation 100/148.
+Simulating... block 84/100, operation 0/148.
+Simulating... block 84/100, operation 0/135.
+Simulating... block 84/100, operation 50/135. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 84/100, operation 100/135.
+Simulating... block 85/100, operation 0/135.
+Simulating... block 85/100, operation 0/191.
+Simulating... block 85/100, operation 50/191.
+Simulating... block 85/100, operation 100/191.
+Simulating... block 85/100, operation 150/191.
+Simulating... block 86/100, operation 0/191.
+Simulating... block 86/100, operation 0/145.
+Simulating... block 86/100, operation 50/145. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 86/100, operation 100/145.
+Simulating... block 87/100, operation 0/145.
+Simulating... block 87/100, operation 0/347.
+Simulating... block 87/100, operation 50/347.
+Simulating... block 87/100, operation 100/347. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 87/100, operation 150/347.
+Simulating... block 87/100, operation 200/347.
+Simulating... block 87/100, operation 250/347.
+Simulating... block 87/100, operation 300/347.
+Simulating... block 88/100, operation 0/347.
+Simulating... block 88/100, operation 0/63.
+Simulating... block 88/100, operation 50/63.
+Simulating... block 89/100, operation 0/63.
+Simulating... block 89/100, operation 0/252. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 89/100, operation 50/252. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 89/100, operation 100/252.
+Simulating... block 89/100, operation 150/252. [!] POA: Bypassing admin check for simulation testing
+[!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 89/100, operation 200/252.
+Simulating... block 89/100, operation 250/252.
+Simulating... block 90/100, operation 0/252.
+Simulating... block 90/100, operation 0/110.
+Simulating... block 90/100, operation 50/110.
+Simulating... block 90/100, operation 100/110.
+Simulating... block 91/100, operation 0/110.
+Simulating... block 91/100, operation 0/188.
+Simulating... block 91/100, operation 50/188.
+Simulating... block 91/100, operation 100/188. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 91/100, operation 150/188.
+Simulating... block 92/100, operation 0/188.
+Simulating... block 92/100, operation 0/91. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 92/100, operation 50/91.
+Simulating... block 93/100, operation 0/91.
+Simulating... block 93/100, operation 0/764.
+Simulating... block 93/100, operation 50/764.
+Simulating... block 93/100, operation 100/764. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 93/100, operation 150/764.
+Simulating... block 93/100, operation 200/764.
+Simulating... block 93/100, operation 250/764.
+Simulating... block 93/100, operation 300/764.
+Simulating... block 93/100, operation 350/764.
+Simulating... block 93/100, operation 400/764.
+Simulating... block 93/100, operation 450/764.
+Simulating... block 93/100, operation 500/764.
+Simulating... block 93/100, operation 550/764. [!] POA: Bypassing admin check for simulation testing
+[!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 93/100, operation 600/764. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 93/100, operation 650/764.
+Simulating... block 93/100, operation 700/764.
+Simulating... block 93/100, operation 750/764.
+Simulating... block 94/100, operation 0/764.
+Simulating... block 94/100, operation 0/77.
+Simulating... block 94/100, operation 50/77.
+Simulating... block 95/100, operation 0/77.
+Simulating... block 95/100, operation 0/696. [!] POA: Bypassing admin check for simulation testing
+[!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 95/100, operation 50/696.
+Simulating... block 95/100, operation 100/696.
+Simulating... block 95/100, operation 150/696.
+Simulating... block 95/100, operation 200/696.
+Simulating... block 95/100, operation 250/696.
+Simulating... block 95/100, operation 300/696.
+Simulating... block 95/100, operation 350/696. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 95/100, operation 400/696.
+Simulating... block 95/100, operation 450/696.
+Simulating... block 95/100, operation 500/696.
+Simulating... block 95/100, operation 550/696.
+Simulating... block 95/100, operation 600/696.
+Simulating... block 95/100, operation 650/696.
+Simulating... block 96/100, operation 0/696.
+Simulating... block 96/100, operation 0/452.
+Simulating... block 96/100, operation 50/452.
+Simulating... block 96/100, operation 100/452.
+Simulating... block 96/100, operation 150/452.
+Simulating... block 96/100, operation 200/452.
+Simulating... block 96/100, operation 250/452.
+Simulating... block 96/100, operation 300/452.
+Simulating... block 96/100, operation 350/452.
+Simulating... block 96/100, operation 400/452.
+Simulating... block 96/100, operation 450/452.
+Simulating... block 97/100, operation 0/452.
+Simulating... block 97/100, operation 0/679.
+Simulating... block 97/100, operation 50/679. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 97/100, operation 100/679. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 97/100, operation 150/679. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 97/100, operation 200/679. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 97/100, operation 250/679.
+Simulating... block 97/100, operation 300/679.
+Simulating... block 97/100, operation 350/679. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 97/100, operation 400/679. [!] POA: Bypassing admin check for simulation testing
+[!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 97/100, operation 450/679. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 97/100, operation 500/679.
+Simulating... block 97/100, operation 550/679.
+Simulating... block 97/100, operation 600/679.
+Simulating... block 97/100, operation 650/679.
+Simulating... block 98/100, operation 0/679.
+Simulating... block 98/100, operation 0/252.
+Simulating... block 98/100, operation 50/252.
+Simulating... block 98/100, operation 100/252. [!] POA: Bypassing admin check for simulation testing
+
+Simulating... block 98/100, operation 150/252.
+Simulating... block 98/100, operation 200/252.
+Simulating... block 98/100, operation 250/252.
+Simulating... block 99/100, operation 0/252.
+Simulating... block 99/100, operation 0/1.
+Simulating... block 100/100, operation 0/1.
+Simulating... block 100/100, operation 0/368.
+Simulating... block 100/100, operation 50/368.
+Simulating... block 100/100, operation 100/368.
+Simulating... block 100/100, operation 150/368.
+Simulating... block 100/100, operation 200/368.
+Simulating... block 100/100, operation 250/368.
+Simulating... block 100/100, operation 300/368.
+Simulating... block 100/100, operation 350/368.
+Simulation complete; Final height (blocks): 101, final time (seconds): 2075-06-29 03:40:10 +0000 UTC, operations ran: 14831
+Exporting simulation statistics...
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 260,
+   "ok": 44
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 355
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 286
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgMultiSend": {
+   "ok": 42
+  },
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "ok": 317
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 189
+  },
+  "signing": {
+   "missed": 1306,
+   "signed": 6864
+  }
+ },
+ "billing": {
+  "/liftedinit.billing.v1.MsgAcknowledgeLease": {
+   "failure": 41,
+   "ok": 66
+  },
+  "/liftedinit.billing.v1.MsgCancelLease": {
+   "failure": 19,
+   "ok": 14
+  },
+  "/liftedinit.billing.v1.MsgCloseLease": {
+   "failure": 17,
+   "ok": 63
+  },
+  "/liftedinit.billing.v1.MsgCreateLease": {
+   "ok": 141
+  },
+  "/liftedinit.billing.v1.MsgCreateLeaseForTenant": {
+   "ok": 44
+  },
+  "/liftedinit.billing.v1.MsgFundCredit": {
+   "failure": 2,
+   "ok": 182
+  },
+  "/liftedinit.billing.v1.MsgRejectLease": {
+   "failure": 14,
+   "ok": 21
+  },
+  "/liftedinit.billing.v1.MsgSetItemCustomDomain": {
+   "failure": 3,
+   "ok": 62
+  },
+  "/liftedinit.billing.v1.MsgUpdateParams": {
+   "ok": 19
+  },
+  "/liftedinit.billing.v1.MsgWithdraw": {
+   "failure": 61,
+   "ok": 48
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 176
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "ok": 169
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "failure": 22,
+   "ok": 137
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "kicked": 149
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "failure": 2,
+   "ok": 328
+  },
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 331
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgCancelProposal": {
+   "failure": 17
+  },
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 206,
+   "ok": 143
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "failure": 15,
+   "ok": 4324
+  },
+  "/cosmos.gov.v1.MsgVote": {
+   "failure": 223,
+   "ok": 3
+  },
+  "/cosmos.gov.v1.MsgVoteWeighted": {
+   "failure": 105
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 352
+  },
+  "/cosmos.group.v1.MsgCreateGroupPolicy": {
+   "failure": 18,
+   "ok": 157
+  },
+  "/cosmos.group.v1.MsgCreateGroupWithPolicy": {
+   "ok": 171
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 292
+  },
+  "/cosmos.group.v1.MsgLeaveGroup": {
+   "failure": 8,
+   "ok": 8
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 415,
+   "ok": 204
+  },
+  "/cosmos.group.v1.MsgUpdateGroupAdmin": {
+   "failure": 2,
+   "ok": 20
+  },
+  "/cosmos.group.v1.MsgUpdateGroupMembers": {
+   "failure": 3,
+   "ok": 16
+  },
+  "/cosmos.group.v1.MsgUpdateGroupMetadata": {
+   "failure": 2,
+   "ok": 8
+  },
+  "/cosmos.group.v1.MsgUpdateGroupPolicyAdmin": {
+   "failure": 11,
+   "ok": 5
+  },
+  "/cosmos.group.v1.MsgUpdateGroupPolicyDecisionPolicy": {
+   "failure": 6,
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgUpdateGroupPolicyMetadata": {
+   "failure": 9,
+   "ok": 5
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 304,
+   "ok": 41
+  },
+  "/cosmos.group.v1.MsgWithdrawProposal": {
+   "failure": 71,
+   "ok": 12
+  }
+ },
+ "manifest": {
+  "/liftedinit.manifest.v1.MsgBurnHeldBalance": {
+   "failure": 299,
+   "ok": 21
+  },
+  "/liftedinit.manifest.v1.MsgPayout": {
+   "ok": 335
+  }
+ },
+ "sku": {
+  "/liftedinit.sku.v1.MsgCreateProvider": {
+   "ok": 107
+  },
+  "/liftedinit.sku.v1.MsgCreateSKU": {
+   "ok": 154
+  },
+  "/liftedinit.sku.v1.MsgDeactivateProvider": {
+   "ok": 33
+  },
+  "/liftedinit.sku.v1.MsgDeactivateSKU": {
+   "ok": 76
+  },
+  "/liftedinit.sku.v1.MsgUpdateParams": {
+   "ok": 14
+  },
+  "/liftedinit.sku.v1.MsgUpdateProvider": {
+   "ok": 69
+  },
+  "/liftedinit.sku.v1.MsgUpdateSKU": {
+   "ok": 92
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 342
+  }
+ },
+ "tokenfactory": {
+  "/osmosis.tokenfactory.v1beta1.MsgBurn": {
+   "failure": 324,
+   "ok": 4
+  },
+  "/osmosis.tokenfactory.v1beta1.MsgChangeAdmin": {
+   "failure": 280,
+   "ok": 29
+  },
+  "/osmosis.tokenfactory.v1beta1.MsgCreateDenom": {
+   "failure": 2,
+   "ok": 337
+  },
+  "/osmosis.tokenfactory.v1beta1.MsgMint": {
+   "failure": 303,
+   "ok": 53
+  },
+  "/osmosis.tokenfactory.v1beta1.MsgSetDenomMetadata": {
+   "failure": 309,
+   "ok": 38
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgClearAdmin": {
+   "ok": 3
+  },
+  "/cosmwasm.wasm.v1.MsgExecuteContract": {
+   "ok": 344
+  },
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 346
+  },
+  "/cosmwasm.wasm.v1.MsgMigrateContract": {
+   "ok": 20
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 180
+  },
+  "/cosmwasm.wasm.v1.MsgUpdateAdmin": {
+   "ok": 9
+  },
+  "clear-contract-admin": {
+   "failure": 25
+  },
+  "migrate": {
+   "failure": 150
+  },
+  "update-contract-admin": {
+   "failure": 68
+  }
+ }
+}
+--- PASS: TestAppSimulationAfterImport (92.79s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/app 92.927s

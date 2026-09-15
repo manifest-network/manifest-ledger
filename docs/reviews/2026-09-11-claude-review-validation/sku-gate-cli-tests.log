@@ -1,0 +1,658 @@
+=== RUN   TestProvideModuleInjectsSimulationKeepers
+--- PASS: TestProvideModuleInjectsSimulationKeepers (0.00s)
+=== RUN   TestModuleDescriptorRegistrationPackage
+--- PASS: TestModuleDescriptorRegistrationPackage (0.00s)
+=== RUN   TestAppModuleBasicValidateGenesisAcceptsValidImports
+=== RUN   TestAppModuleBasicValidateGenesisAcceptsValidImports/default_genesis
+=== RUN   TestAppModuleBasicValidateGenesisAcceptsValidImports/populated_genesis
+=== RUN   TestAppModuleBasicValidateGenesisAcceptsValidImports/historical_Bech32_spellings
+--- PASS: TestAppModuleBasicValidateGenesisAcceptsValidImports (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisAcceptsValidImports/default_genesis (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisAcceptsValidImports/populated_genesis (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisAcceptsValidImports/historical_Bech32_spellings (0.00s)
+=== RUN   TestAppModuleBasicValidateGenesisRejectsMalformedJSON
+=== RUN   TestAppModuleBasicValidateGenesisRejectsMalformedJSON/invalid_sequence
+=== RUN   TestAppModuleBasicValidateGenesisRejectsMalformedJSON/invalid_providers
+=== RUN   TestAppModuleBasicValidateGenesisRejectsMalformedJSON/invalid_syntax
+--- PASS: TestAppModuleBasicValidateGenesisRejectsMalformedJSON (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRejectsMalformedJSON/invalid_sequence (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRejectsMalformedJSON/invalid_providers (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRejectsMalformedJSON/invalid_syntax (0.00s)
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants/invalid_allowed_address
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants/invalid_provider_payout_address
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants/missing_SKU_provider
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants/nonintegral_per-second_price
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants/low_provider_sequence
+=== RUN   TestAppModuleBasicValidateGenesisRetainsImportInvariants/low_SKU_sequence
+--- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants/invalid_allowed_address (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants/invalid_provider_payout_address (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants/missing_SKU_provider (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants/nonintegral_per-second_price (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants/low_provider_sequence (0.00s)
+    --- PASS: TestAppModuleBasicValidateGenesisRetainsImportInvariants/low_SKU_sequence (0.00s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/x/sku       0.130s
+=== RUN   TestWithdrawResultCmd
+=== RUN   TestWithdrawResultCmd/decoded_module_response_preserves_cursor_and_failures
+=== RUN   TestWithdrawResultCmd/explicit_second_message
+=== RUN   TestWithdrawResultCmd/empty_final_page
+=== RUN   TestWithdrawResultCmd/not_yet_indexed
+=== RUN   TestWithdrawResultCmd/sync_admission_is_not_execution
+=== RUN   TestWithdrawResultCmd/nil_result
+=== RUN   TestWithdrawResultCmd/failed_execution
+=== RUN   TestWithdrawResultCmd/malformed_envelope
+=== RUN   TestWithdrawResultCmd/missing_responses
+=== RUN   TestWithdrawResultCmd/empty_response_entry
+=== RUN   TestWithdrawResultCmd/wrong_message
+=== RUN   TestWithdrawResultCmd/malformed_response
+=== RUN   TestWithdrawResultCmd/index_too_large
+--- PASS: TestWithdrawResultCmd (0.00s)
+    --- PASS: TestWithdrawResultCmd/decoded_module_response_preserves_cursor_and_failures (0.00s)
+    --- PASS: TestWithdrawResultCmd/explicit_second_message (0.00s)
+    --- PASS: TestWithdrawResultCmd/empty_final_page (0.00s)
+    --- PASS: TestWithdrawResultCmd/not_yet_indexed (0.00s)
+    --- PASS: TestWithdrawResultCmd/sync_admission_is_not_execution (0.00s)
+    --- PASS: TestWithdrawResultCmd/nil_result (0.00s)
+    --- PASS: TestWithdrawResultCmd/failed_execution (0.00s)
+    --- PASS: TestWithdrawResultCmd/malformed_envelope (0.00s)
+    --- PASS: TestWithdrawResultCmd/missing_responses (0.00s)
+    --- PASS: TestWithdrawResultCmd/empty_response_entry (0.00s)
+    --- PASS: TestWithdrawResultCmd/wrong_message (0.00s)
+    --- PASS: TestWithdrawResultCmd/malformed_response (0.00s)
+    --- PASS: TestWithdrawResultCmd/index_too_large (0.00s)
+=== RUN   TestWithdrawResultCmdRejectsMalformedHash
+--- PASS: TestWithdrawResultCmdRejectsMalformedHash (0.00s)
+=== RUN   TestWithdrawCmd
+=== RUN   TestWithdrawCmd/specific_lease_with_default_flags
+=== RUN   TestWithdrawCmd/multiple_specific_leases
+=== RUN   TestWithdrawCmd/provider_with_default_pagination
+=== RUN   TestWithdrawCmd/provider_with_cursor_and_limit
+=== RUN   TestWithdrawCmd/provider_with_explicit_default_pagination
+=== RUN   TestWithdrawCmd/specific_lease_with_cursor
+=== RUN   TestWithdrawCmd/specific_lease_with_empty_cursor
+=== RUN   TestWithdrawCmd/specific_lease_with_limit
+=== RUN   TestWithdrawCmd/specific_lease_with_zero_limit
+=== RUN   TestWithdrawCmd/mixed_modes
+=== RUN   TestWithdrawCmd/missing_mode
+=== RUN   TestWithdrawCmd/provider_with_malformed_cursor
+--- PASS: TestWithdrawCmd (0.03s)
+    --- PASS: TestWithdrawCmd/specific_lease_with_default_flags (0.01s)
+    --- PASS: TestWithdrawCmd/multiple_specific_leases (0.00s)
+    --- PASS: TestWithdrawCmd/provider_with_default_pagination (0.00s)
+    --- PASS: TestWithdrawCmd/provider_with_cursor_and_limit (0.00s)
+    --- PASS: TestWithdrawCmd/provider_with_explicit_default_pagination (0.00s)
+    --- PASS: TestWithdrawCmd/specific_lease_with_cursor (0.00s)
+    --- PASS: TestWithdrawCmd/specific_lease_with_empty_cursor (0.00s)
+    --- PASS: TestWithdrawCmd/specific_lease_with_limit (0.00s)
+    --- PASS: TestWithdrawCmd/specific_lease_with_zero_limit (0.00s)
+    --- PASS: TestWithdrawCmd/mixed_modes (0.00s)
+    --- PASS: TestWithdrawCmd/missing_mode (0.00s)
+    --- PASS: TestWithdrawCmd/provider_with_malformed_cursor (0.00s)
+=== RUN   TestUpdateParamsConstructionSnapshot
+=== RUN   TestUpdateParamsConstructionSnapshot/latest_omitted_lists
+=== RUN   TestUpdateParamsConstructionSnapshot/pinned_omitted_lists
+=== RUN   TestUpdateParamsConstructionSnapshot/explicit_clear_snapshots_other_list
+=== RUN   TestUpdateParamsConstructionSnapshot/explicit_lists_do_not_query
+=== RUN   TestUpdateParamsConstructionSnapshot/negative_height
+--- PASS: TestUpdateParamsConstructionSnapshot (0.01s)
+    --- PASS: TestUpdateParamsConstructionSnapshot/latest_omitted_lists (0.00s)
+    --- PASS: TestUpdateParamsConstructionSnapshot/pinned_omitted_lists (0.00s)
+    --- PASS: TestUpdateParamsConstructionSnapshot/explicit_clear_snapshots_other_list (0.00s)
+    --- PASS: TestUpdateParamsConstructionSnapshot/explicit_lists_do_not_query (0.00s)
+    --- PASS: TestUpdateParamsConstructionSnapshot/negative_height (0.00s)
+=== RUN   TestUpdateParamsGRPCSnapshotHeightOverridesInheritedMetadata
+=== RUN   TestUpdateParamsGRPCSnapshotHeightOverridesInheritedMetadata/pinned
+=== RUN   TestUpdateParamsGRPCSnapshotHeightOverridesInheritedMetadata/explicit_latest
+=== RUN   TestUpdateParamsGRPCSnapshotHeightOverridesInheritedMetadata/default_latest
+--- PASS: TestUpdateParamsGRPCSnapshotHeightOverridesInheritedMetadata (0.01s)
+    --- PASS: TestUpdateParamsGRPCSnapshotHeightOverridesInheritedMetadata/pinned (0.00s)
+    --- PASS: TestUpdateParamsGRPCSnapshotHeightOverridesInheritedMetadata/explicit_latest (0.00s)
+    --- PASS: TestUpdateParamsGRPCSnapshotHeightOverridesInheritedMetadata/default_latest (0.01s)
+=== RUN   TestPaginatedQueryCommandsDecodeBase64PageKey
+=== RUN   TestPaginatedQueryCommandsDecodeBase64PageKey/leases
+=== RUN   TestPaginatedQueryCommandsDecodeBase64PageKey/leases_by_tenant
+=== RUN   TestPaginatedQueryCommandsDecodeBase64PageKey/leases_by_provider
+=== RUN   TestPaginatedQueryCommandsDecodeBase64PageKey/credit_account
+=== RUN   TestPaginatedQueryCommandsDecodeBase64PageKey/provider_withdrawable
+=== RUN   TestPaginatedQueryCommandsDecodeBase64PageKey/credit_accounts
+=== RUN   TestPaginatedQueryCommandsDecodeBase64PageKey/leases_by_SKU
+--- PASS: TestPaginatedQueryCommandsDecodeBase64PageKey (0.00s)
+    --- PASS: TestPaginatedQueryCommandsDecodeBase64PageKey/leases (0.00s)
+    --- PASS: TestPaginatedQueryCommandsDecodeBase64PageKey/leases_by_tenant (0.00s)
+    --- PASS: TestPaginatedQueryCommandsDecodeBase64PageKey/leases_by_provider (0.00s)
+    --- PASS: TestPaginatedQueryCommandsDecodeBase64PageKey/credit_account (0.00s)
+    --- PASS: TestPaginatedQueryCommandsDecodeBase64PageKey/provider_withdrawable (0.00s)
+    --- PASS: TestPaginatedQueryCommandsDecodeBase64PageKey/credit_accounts (0.00s)
+    --- PASS: TestPaginatedQueryCommandsDecodeBase64PageKey/leases_by_SKU (0.00s)
+=== RUN   TestProviderWithdrawableCommandLimit
+=== RUN   TestProviderWithdrawableCommandLimit/omitted
+=== RUN   TestProviderWithdrawableCommandLimit/explicit_zero
+=== RUN   TestProviderWithdrawableCommandLimit/explicit_small_page
+=== RUN   TestProviderWithdrawableCommandLimit/explicit_maximum
+--- PASS: TestProviderWithdrawableCommandLimit (0.00s)
+    --- PASS: TestProviderWithdrawableCommandLimit/omitted (0.00s)
+    --- PASS: TestProviderWithdrawableCommandLimit/explicit_zero (0.00s)
+    --- PASS: TestProviderWithdrawableCommandLimit/explicit_small_page (0.00s)
+    --- PASS: TestProviderWithdrawableCommandLimit/explicit_maximum (0.00s)
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/lease/not-a-uuid
+Error: invalid lease_uuid format: not-a-uuid
+Usage:
+  lease [lease-uuid] [flags]
+
+Examples:
+lease 01902a9b-1234-7000-8000-000000000001
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for lease
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/lease/01912345-6789-7ABC-8DEF-0123456789AB
+Error: invalid lease_uuid format: 01912345-6789-7ABC-8DEF-0123456789AB
+Usage:
+  lease [lease-uuid] [flags]
+
+Examples:
+lease 01902a9b-1234-7000-8000-000000000001
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for lease
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/lease/01912345-6789-4abc-8def-0123456789ab
+Error: invalid lease_uuid format: 01912345-6789-4abc-8def-0123456789ab
+Usage:
+  lease [lease-uuid] [flags]
+
+Examples:
+lease 01902a9b-1234-7000-8000-000000000001
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for lease
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/leases_by_provider/not-a-uuid
+Error: invalid provider_uuid format: not-a-uuid
+Usage:
+  leases-by-provider [provider-uuid] [flags]
+
+Examples:
+leases-by-provider 01902a9b-1234-7000-8000-000000000001 --state pending
+
+Flags:
+      --count-total        count total number of records in leases to query for
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for leases-by-provider
+      --limit uint         pagination limit of leases to query for (default 100)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+      --offset uint        pagination offset of leases to query for
+  -o, --output string      Output format (text|json) (default "text")
+      --page uint          pagination page of leases to query for. This sets offset to a multiple of limit (default 1)
+      --page-key string    pagination page-key of leases to query for
+      --reverse            results are sorted in descending order
+      --state string       Filter by lease state (pending, active, closed, rejected, expired)
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/leases_by_provider/01912345-6789-7ABC-8DEF-0123456789AB
+Error: invalid provider_uuid format: 01912345-6789-7ABC-8DEF-0123456789AB
+Usage:
+  leases-by-provider [provider-uuid] [flags]
+
+Examples:
+leases-by-provider 01902a9b-1234-7000-8000-000000000001 --state pending
+
+Flags:
+      --count-total        count total number of records in leases to query for
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for leases-by-provider
+      --limit uint         pagination limit of leases to query for (default 100)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+      --offset uint        pagination offset of leases to query for
+  -o, --output string      Output format (text|json) (default "text")
+      --page uint          pagination page of leases to query for. This sets offset to a multiple of limit (default 1)
+      --page-key string    pagination page-key of leases to query for
+      --reverse            results are sorted in descending order
+      --state string       Filter by lease state (pending, active, closed, rejected, expired)
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/leases_by_provider/01912345-6789-4abc-8def-0123456789ab
+Error: invalid provider_uuid format: 01912345-6789-4abc-8def-0123456789ab
+Usage:
+  leases-by-provider [provider-uuid] [flags]
+
+Examples:
+leases-by-provider 01902a9b-1234-7000-8000-000000000001 --state pending
+
+Flags:
+      --count-total        count total number of records in leases to query for
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for leases-by-provider
+      --limit uint         pagination limit of leases to query for (default 100)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+      --offset uint        pagination offset of leases to query for
+  -o, --output string      Output format (text|json) (default "text")
+      --page uint          pagination page of leases to query for. This sets offset to a multiple of limit (default 1)
+      --page-key string    pagination page-key of leases to query for
+      --reverse            results are sorted in descending order
+      --state string       Filter by lease state (pending, active, closed, rejected, expired)
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/withdrawable/not-a-uuid
+Error: invalid lease_uuid format: not-a-uuid
+Usage:
+  withdrawable [lease-uuid] [flags]
+
+Examples:
+withdrawable 01902a9b-1234-7000-8000-000000000001
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for withdrawable
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/withdrawable/01912345-6789-7ABC-8DEF-0123456789AB
+Error: invalid lease_uuid format: 01912345-6789-7ABC-8DEF-0123456789AB
+Usage:
+  withdrawable [lease-uuid] [flags]
+
+Examples:
+withdrawable 01902a9b-1234-7000-8000-000000000001
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for withdrawable
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/withdrawable/01912345-6789-4abc-8def-0123456789ab
+Error: invalid lease_uuid format: 01912345-6789-4abc-8def-0123456789ab
+Usage:
+  withdrawable [lease-uuid] [flags]
+
+Examples:
+withdrawable 01902a9b-1234-7000-8000-000000000001
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for withdrawable
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/provider_withdrawable/not-a-uuid
+Error: invalid provider_uuid format: not-a-uuid
+Usage:
+  provider-withdrawable [provider-uuid] [flags]
+
+Examples:
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for provider-withdrawable
+      --limit uint         pagination limit of provider-withdrawable to query for (default 50)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of provider-withdrawable to query for
+      --reverse            results are sorted in descending order
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/provider_withdrawable/01912345-6789-7ABC-8DEF-0123456789AB
+Error: invalid provider_uuid format: 01912345-6789-7ABC-8DEF-0123456789AB
+Usage:
+  provider-withdrawable [provider-uuid] [flags]
+
+Examples:
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for provider-withdrawable
+      --limit uint         pagination limit of provider-withdrawable to query for (default 50)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of provider-withdrawable to query for
+      --reverse            results are sorted in descending order
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/provider_withdrawable/01912345-6789-4abc-8def-0123456789ab
+Error: invalid provider_uuid format: 01912345-6789-4abc-8def-0123456789ab
+Usage:
+  provider-withdrawable [provider-uuid] [flags]
+
+Examples:
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for provider-withdrawable
+      --limit uint         pagination limit of provider-withdrawable to query for (default 50)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of provider-withdrawable to query for
+      --reverse            results are sorted in descending order
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/leases_by_SKU/not-a-uuid
+Error: invalid sku_uuid format: not-a-uuid
+Usage:
+  leases-by-sku [sku-uuid] [flags]
+
+Examples:
+leases-by-sku 01902a9b-1234-7000-8000-000000000001 --state active
+
+Flags:
+      --count-total        count total number of records in leases to query for
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for leases-by-sku
+      --limit uint         pagination limit of leases to query for (default 100)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+      --offset uint        pagination offset of leases to query for
+  -o, --output string      Output format (text|json) (default "text")
+      --page uint          pagination page of leases to query for. This sets offset to a multiple of limit (default 1)
+      --page-key string    pagination page-key of leases to query for
+      --reverse            results are sorted in descending order
+      --state string       Filter by lease state (pending, active, closed, rejected, expired)
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/leases_by_SKU/01912345-6789-7ABC-8DEF-0123456789AB
+Error: invalid sku_uuid format: 01912345-6789-7ABC-8DEF-0123456789AB
+Usage:
+  leases-by-sku [sku-uuid] [flags]
+
+Examples:
+leases-by-sku 01902a9b-1234-7000-8000-000000000001 --state active
+
+Flags:
+      --count-total        count total number of records in leases to query for
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for leases-by-sku
+      --limit uint         pagination limit of leases to query for (default 100)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+      --offset uint        pagination offset of leases to query for
+  -o, --output string      Output format (text|json) (default "text")
+      --page uint          pagination page of leases to query for. This sets offset to a multiple of limit (default 1)
+      --page-key string    pagination page-key of leases to query for
+      --reverse            results are sorted in descending order
+      --state string       Filter by lease state (pending, active, closed, rejected, expired)
+
+=== RUN   TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/leases_by_SKU/01912345-6789-4abc-8def-0123456789ab
+Error: invalid sku_uuid format: 01912345-6789-4abc-8def-0123456789ab
+Usage:
+  leases-by-sku [sku-uuid] [flags]
+
+Examples:
+leases-by-sku 01902a9b-1234-7000-8000-000000000001 --state active
+
+Flags:
+      --count-total        count total number of records in leases to query for
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for leases-by-sku
+      --limit uint         pagination limit of leases to query for (default 100)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+      --offset uint        pagination offset of leases to query for
+  -o, --output string      Output format (text|json) (default "text")
+      --page uint          pagination page of leases to query for. This sets offset to a multiple of limit (default 1)
+      --page-key string    pagination page-key of leases to query for
+      --reverse            results are sorted in descending order
+      --state string       Filter by lease state (pending, active, closed, rejected, expired)
+
+--- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/lease/not-a-uuid (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/lease/01912345-6789-7ABC-8DEF-0123456789AB (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/lease/01912345-6789-4abc-8def-0123456789ab (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/leases_by_provider/not-a-uuid (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/leases_by_provider/01912345-6789-7ABC-8DEF-0123456789AB (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/leases_by_provider/01912345-6789-4abc-8def-0123456789ab (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/withdrawable/not-a-uuid (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/withdrawable/01912345-6789-7ABC-8DEF-0123456789AB (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/withdrawable/01912345-6789-4abc-8def-0123456789ab (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/provider_withdrawable/not-a-uuid (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/provider_withdrawable/01912345-6789-7ABC-8DEF-0123456789AB (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/provider_withdrawable/01912345-6789-4abc-8def-0123456789ab (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/leases_by_SKU/not-a-uuid (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/leases_by_SKU/01912345-6789-7ABC-8DEF-0123456789AB (0.00s)
+    --- PASS: TestUUIDQueryCommandsRejectNonCanonicalIDsLocally/leases_by_SKU/01912345-6789-4abc-8def-0123456789ab (0.00s)
+=== RUN   TestCursorOnlyCommandsRejectOffsetModesLocally
+=== RUN   TestCursorOnlyCommandsRejectOffsetModesLocally/credit-account/--page=2
+Error: use --page-key for continuation; --page greater than 1 is unsupported
+Usage:
+  credit-account [tenant] [flags]
+
+Examples:
+credit-account manifest1abc...
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for credit-account
+      --limit uint         pagination limit of balances to query for (default 100)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of balances to query for
+      --reverse            results are sorted in descending order
+
+=== RUN   TestCursorOnlyCommandsRejectOffsetModesLocally/credit-account/--page=2,--limit=0
+Error: use --page-key for continuation; --page greater than 1 is unsupported
+Usage:
+  credit-account [tenant] [flags]
+
+Examples:
+credit-account manifest1abc...
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for credit-account
+      --limit uint         pagination limit of balances to query for (default 100)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of balances to query for
+      --reverse            results are sorted in descending order
+
+=== RUN   TestCursorOnlyCommandsRejectOffsetModesLocally/credit-account/--page=9223372036854775809,--limit=2
+Error: use --page-key for continuation; --page greater than 1 is unsupported
+Usage:
+  credit-account [tenant] [flags]
+
+Examples:
+credit-account manifest1abc...
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for credit-account
+      --limit uint         pagination limit of balances to query for (default 100)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of balances to query for
+      --reverse            results are sorted in descending order
+
+=== RUN   TestCursorOnlyCommandsRejectOffsetModesLocally/credit-account/--offset=1
+Error: use --page-key for continuation; --page > 1, nonzero --offset and --count-total are unsupported: offset pagination is not supported; use pagination.key
+Usage:
+  credit-account [tenant] [flags]
+
+Examples:
+credit-account manifest1abc...
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for credit-account
+      --limit uint         pagination limit of balances to query for (default 100)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of balances to query for
+      --reverse            results are sorted in descending order
+
+=== RUN   TestCursorOnlyCommandsRejectOffsetModesLocally/credit-account/--count-total
+Error: use --page-key for continuation; --page > 1, nonzero --offset and --count-total are unsupported: count_total is not supported; follow pagination.next_key
+Usage:
+  credit-account [tenant] [flags]
+
+Examples:
+credit-account manifest1abc...
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for credit-account
+      --limit uint         pagination limit of balances to query for (default 100)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of balances to query for
+      --reverse            results are sorted in descending order
+
+=== RUN   TestCursorOnlyCommandsRejectOffsetModesLocally/provider-withdrawable/--page=2
+Error: use --page-key for continuation; --page greater than 1 is unsupported
+Usage:
+  provider-withdrawable [provider-uuid] [flags]
+
+Examples:
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for provider-withdrawable
+      --limit uint         pagination limit of provider-withdrawable to query for (default 50)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of provider-withdrawable to query for
+      --reverse            results are sorted in descending order
+
+=== RUN   TestCursorOnlyCommandsRejectOffsetModesLocally/provider-withdrawable/--page=2,--limit=0
+Error: use --page-key for continuation; --page greater than 1 is unsupported
+Usage:
+  provider-withdrawable [provider-uuid] [flags]
+
+Examples:
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for provider-withdrawable
+      --limit uint         pagination limit of provider-withdrawable to query for (default 50)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of provider-withdrawable to query for
+      --reverse            results are sorted in descending order
+
+=== RUN   TestCursorOnlyCommandsRejectOffsetModesLocally/provider-withdrawable/--page=9223372036854775809,--limit=2
+Error: use --page-key for continuation; --page greater than 1 is unsupported
+Usage:
+  provider-withdrawable [provider-uuid] [flags]
+
+Examples:
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for provider-withdrawable
+      --limit uint         pagination limit of provider-withdrawable to query for (default 50)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of provider-withdrawable to query for
+      --reverse            results are sorted in descending order
+
+=== RUN   TestCursorOnlyCommandsRejectOffsetModesLocally/provider-withdrawable/--offset=1
+Error: use --page-key for continuation; --page > 1, nonzero --offset and --count-total are unsupported: offset pagination is not supported; use pagination.key
+Usage:
+  provider-withdrawable [provider-uuid] [flags]
+
+Examples:
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for provider-withdrawable
+      --limit uint         pagination limit of provider-withdrawable to query for (default 50)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of provider-withdrawable to query for
+      --reverse            results are sorted in descending order
+
+=== RUN   TestCursorOnlyCommandsRejectOffsetModesLocally/provider-withdrawable/--count-total
+Error: use --page-key for continuation; --page > 1, nonzero --offset and --count-total are unsupported: count_total is not supported; follow pagination.next_key
+Usage:
+  provider-withdrawable [provider-uuid] [flags]
+
+Examples:
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001
+provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 100
+
+Flags:
+      --grpc-addr string   the gRPC endpoint to use for this chain
+      --grpc-insecure      allow gRPC over insecure channels, if not the server must use TLS
+      --height int         Use a specific height to query state at (this can error if the node is pruning state)
+  -h, --help               help for provider-withdrawable
+      --limit uint         pagination limit of provider-withdrawable to query for (default 50)
+      --node string        <host>:<port> to CometBFT RPC interface for this chain (default "tcp://localhost:26657")
+  -o, --output string      Output format (text|json) (default "text")
+      --page-key string    pagination page-key of provider-withdrawable to query for
+      --reverse            results are sorted in descending order
+
+--- PASS: TestCursorOnlyCommandsRejectOffsetModesLocally (0.00s)
+    --- PASS: TestCursorOnlyCommandsRejectOffsetModesLocally/credit-account/--page=2 (0.00s)
+    --- PASS: TestCursorOnlyCommandsRejectOffsetModesLocally/credit-account/--page=2,--limit=0 (0.00s)
+    --- PASS: TestCursorOnlyCommandsRejectOffsetModesLocally/credit-account/--page=9223372036854775809,--limit=2 (0.00s)
+    --- PASS: TestCursorOnlyCommandsRejectOffsetModesLocally/credit-account/--offset=1 (0.00s)
+    --- PASS: TestCursorOnlyCommandsRejectOffsetModesLocally/credit-account/--count-total (0.00s)
+    --- PASS: TestCursorOnlyCommandsRejectOffsetModesLocally/provider-withdrawable/--page=2 (0.00s)
+    --- PASS: TestCursorOnlyCommandsRejectOffsetModesLocally/provider-withdrawable/--page=2,--limit=0 (0.00s)
+    --- PASS: TestCursorOnlyCommandsRejectOffsetModesLocally/provider-withdrawable/--page=9223372036854775809,--limit=2 (0.00s)
+    --- PASS: TestCursorOnlyCommandsRejectOffsetModesLocally/provider-withdrawable/--offset=1 (0.00s)
+    --- PASS: TestCursorOnlyCommandsRejectOffsetModesLocally/provider-withdrawable/--count-total (0.00s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/x/billing/client/cli        0.219s

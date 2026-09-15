@@ -1,0 +1,51 @@
+
+#!/bin/bash
+# migration_script.sh
+
+AUTHORITY_KEY="authority"
+PROVIDER_KEY="provider"
+DENOM="upwr"  # or your factory denom
+
+# Array of tenant migrations: "address|sku_items|credit_amount"
+MIGRATIONS=(
+  "manifest1abc...|<sku-uuid>:2|100000000"
+  "manifest1def...|<sku-uuid-1>:1 <sku-uuid-2>:1|50000000"
+  "manifest1ghi...|<sku-uuid-3>:5|200000000"
+)
+
+for migration in "${MIGRATIONS[@]}"; do
+  IFS='|' read -r tenant items credit <<< "$migration"
+
+  echo "Processing tenant: $tenant"
+
+  # Fund credit account
+  echo "  Funding ${credit}${DENOM}..."
+  manifestd tx billing fund-credit "$tenant" "${credit}${DENOM}" \
+    --from "$AUTHORITY_KEY" -y --gas auto --gas-adjustment 1.5
+
+  sleep 6  # Wait for block
+
+  # Create lease (starts in PENDING state)
+  echo "  Creating lease with items: $items..."
+  RESULT=$(manifestd tx billing create-lease-for-tenant "$tenant" $items \
+    --from "$AUTHORITY_KEY" -y --gas auto --gas-adjustment 1.5 --output json)
+
+  # In sync broadcast mode the tx response carries only code/txhash/raw_log and no
+  # events, so capture the txhash, wait a block, then query the tx for its events.
+  TXHASH=$(echo "$RESULT" | jq -r '.txhash')
+
+  sleep 6  # Wait for block
+
+  LEASE_UUID=$(manifestd query tx "$TXHASH" --output json | jq -r '.events[] | select(.type=="lease_created") | .attributes[] | select(.key=="lease_uuid") | .value')
+
+  # Acknowledge lease (transitions to ACTIVE, billing starts)
+  echo "  Acknowledging lease $LEASE_UUID..."
+  manifestd tx billing acknowledge-lease "$LEASE_UUID" \
+    --from "$PROVIDER_KEY" -y --gas auto --gas-adjustment 1.5
+
+  sleep 6  # Wait for block
+
+  echo "  Done!"
+done
+
+echo "Migration complete!"

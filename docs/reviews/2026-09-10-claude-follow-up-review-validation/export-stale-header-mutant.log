@@ -1,0 +1,9 @@
+=== RUN   TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback
+    export_billing_test.go:152:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/hygiene-bundled-reproduction/baseline/app/export_billing_test.go:152
+                Error:          An error is expected but got nil.
+                Test:           TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback
+--- FAIL: TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback (0.20s)
+FAIL
+FAIL    github.com/manifest-network/manifest-ledger/app 0.287s
+FAIL

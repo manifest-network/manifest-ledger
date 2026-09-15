@@ -1,3 +1,4 @@
+// Package cli defines manifest module command-line commands.
 package cli
 
 import (
@@ -8,6 +9,7 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
+// GetQueryCmd returns the manifest module's query command.
 func GetQueryCmd() *cobra.Command {
 	queryCmd := &cobra.Command{
 		Use:                        types.ModuleName,

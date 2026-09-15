@@ -1,0 +1,226 @@
+{
+  "records": [
+    {
+      "source_path": "x/billing/keeper/msg_server.go",
+      "baseline_sha256": "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+      "patch": "original.patch",
+      "patch_sha256": "6361963001276f46ed6e7e7b73457846cded1ca833e0909d0caca4e89ae93273",
+      "mutant_sha256": "ac6768d1d77d60e8ce516bd81338a29d31a8e00ff9c842a5907d5a747f665a0e",
+      "name": "original",
+      "baseline": {
+        "kind": "file",
+        "path": "fixed.go.txt"
+      },
+      "steps": [
+        {
+          "name": "init",
+          "portable_argv": [
+            "git",
+            "init",
+            "--quiet",
+            "{work}/original"
+          ]
+        },
+        {
+          "name": "seed-baseline",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "seed",
+            "--file",
+            "{evidence}/fixed.go.txt",
+            "--sha256",
+            "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+            "--destination",
+            "{work}/original/x/billing/keeper/msg_server.go"
+          ]
+        },
+        {
+          "name": "verify-patch",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{evidence}/original.patch",
+            "6361963001276f46ed6e7e7b73457846cded1ca833e0909d0caca4e89ae93273"
+          ]
+        },
+        {
+          "name": "apply-patch",
+          "portable_argv": [
+            "git",
+            "-C",
+            "{work}/original",
+            "apply",
+            "--unidiff-zero",
+            "{evidence}/original.patch"
+          ]
+        },
+        {
+          "name": "verify-result",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{work}/original/x/billing/keeper/msg_server.go",
+            "ac6768d1d77d60e8ce516bd81338a29d31a8e00ff9c842a5907d5a747f665a0e"
+          ]
+        }
+      ]
+    },
+    {
+      "source_path": "x/billing/keeper/msg_server.go",
+      "baseline_sha256": "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+      "patch": "retained-cursor.patch",
+      "patch_sha256": "8d0010b714cc3b8b37f02aaab296f75380d24681c208fd5d47aa3a8d0d292777",
+      "mutant_sha256": "e5d987868623487cb18b86ab2bbca1b96a8b319075d54c505adee4d8b9a95117",
+      "name": "retained-cursor",
+      "baseline": {
+        "kind": "file",
+        "path": "fixed.go.txt"
+      },
+      "steps": [
+        {
+          "name": "init",
+          "portable_argv": [
+            "git",
+            "init",
+            "--quiet",
+            "{work}/retained-cursor"
+          ]
+        },
+        {
+          "name": "seed-baseline",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "seed",
+            "--file",
+            "{evidence}/fixed.go.txt",
+            "--sha256",
+            "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+            "--destination",
+            "{work}/retained-cursor/x/billing/keeper/msg_server.go"
+          ]
+        },
+        {
+          "name": "verify-patch",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{evidence}/retained-cursor.patch",
+            "8d0010b714cc3b8b37f02aaab296f75380d24681c208fd5d47aa3a8d0d292777"
+          ]
+        },
+        {
+          "name": "apply-patch",
+          "portable_argv": [
+            "git",
+            "-C",
+            "{work}/retained-cursor",
+            "apply",
+            "--unidiff-zero",
+            "{evidence}/retained-cursor.patch"
+          ]
+        },
+        {
+          "name": "verify-result",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{work}/retained-cursor/x/billing/keeper/msg_server.go",
+            "e5d987868623487cb18b86ab2bbca1b96a8b319075d54c505adee4d8b9a95117"
+          ]
+        }
+      ]
+    },
+    {
+      "source_path": "x/billing/keeper/msg_server.go",
+      "baseline_sha256": "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+      "patch": "skipped-zero.patch",
+      "patch_sha256": "35286acd651758b344af6aee80a19410a838935c72bc7a656f168042630b3c01",
+      "mutant_sha256": "7a9ff9dc06e9b1ca968d6e11f1e6f225f858048de574059973ba7d303cbf0a50",
+      "name": "skipped-zero",
+      "baseline": {
+        "kind": "file",
+        "path": "fixed.go.txt"
+      },
+      "steps": [
+        {
+          "name": "init",
+          "portable_argv": [
+            "git",
+            "init",
+            "--quiet",
+            "{work}/skipped-zero"
+          ]
+        },
+        {
+          "name": "seed-baseline",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "seed",
+            "--file",
+            "{evidence}/fixed.go.txt",
+            "--sha256",
+            "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+            "--destination",
+            "{work}/skipped-zero/x/billing/keeper/msg_server.go"
+          ]
+        },
+        {
+          "name": "verify-patch",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{evidence}/skipped-zero.patch",
+            "35286acd651758b344af6aee80a19410a838935c72bc7a656f168042630b3c01"
+          ]
+        },
+        {
+          "name": "apply-patch",
+          "portable_argv": [
+            "git",
+            "-C",
+            "{work}/skipped-zero",
+            "apply",
+            "--unidiff-zero",
+            "{evidence}/skipped-zero.patch"
+          ]
+        },
+        {
+          "name": "verify-result",
+          "portable_argv": [
+            "{python}",
+            "-I",
+            "-O",
+            "{verifier}",
+            "hash",
+            "{work}/skipped-zero/x/billing/keeper/msg_server.go",
+            "7a9ff9dc06e9b1ca968d6e11f1e6f225f858048de574059973ba7d303cbf0a50"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+=== RUN   TestReviewTokenfactoryReservationBacking
+=== RUN   TestReviewTokenfactoryReservationBacking/burn
+    review_tokenfactory_credit_test.go:52: close 01a086ce-68a1-7000-9568-034892a7910a: calculate spendable credit for lease 01a086ce-68a1-7000-9568-034892a7910a: credit balance does not back total reservation: cannot subtract absent denom factory/manifest1709nqprwvanp6jxwpnndvnjesnlrq6f5d26wee/review amount 3600: invalid credit operation: billing reservation invariant violated [/home/fmorency/go/pkg/mod/cosmossdk.io/errors@v1.0.2/errors.go:155]
+    review_tokenfactory_credit_test.go:64: billing: reservation-accounting invariant
+        under-backed reservation state: credit account for manifest19uawu3upv5wf3f3atdka299jayg4lappukjgsn has bank balance 0factory/manifest1709nqprwvanp6jxwpnndvnjesnlrq6f5d26wee/review below reservation 3600factory/manifest1709nqprwvanp6jxwpnndvnjesnlrq6f5d26wee/review: billing reservation invariant violated [/home/fmorency/go/pkg/mod/cosmossdk.io/errors@v1.0.2/errors.go:155]
+
+=== RUN   TestReviewTokenfactoryReservationBacking/force-transfer
+    review_tokenfactory_credit_test.go:52: close 01a086ce-699c-7000-9568-034892a7910a: calculate spendable credit for lease 01a086ce-699c-7000-9568-034892a7910a: credit balance does not back total reservation: cannot subtract absent denom factory/manifest1jz4etp2kpwuplpmugpd84xqk24nuwwpdkk6pg7/review amount 3600: invalid credit operation: billing reservation invariant violated [/home/fmorency/go/pkg/mod/cosmossdk.io/errors@v1.0.2/errors.go:155]
+    review_tokenfactory_credit_test.go:64: billing: reservation-accounting invariant
+        under-backed reservation state: credit account for manifest13mvgq6qsw99hkxdq50qvvqwvwnkud230n47cvn has bank balance 0factory/manifest1jz4etp2kpwuplpmugpd84xqk24nuwwpdkk6pg7/review below reservation 3600factory/manifest1jz4etp2kpwuplpmugpd84xqk24nuwwpdkk6pg7/review: billing reservation invariant violated [/home/fmorency/go/pkg/mod/cosmossdk.io/errors@v1.0.2/errors.go:155]
+
+--- PASS: TestReviewTokenfactoryReservationBacking (0.53s)
+    --- PASS: TestReviewTokenfactoryReservationBacking/burn (0.26s)
+    --- PASS: TestReviewTokenfactoryReservationBacking/force-transfer (0.27s)
+PASS
+ok  	github.com/manifest-network/manifest-ledger/x/billing/keeper	0.656s

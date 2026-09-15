@@ -1,0 +1,171 @@
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  7.178MB
+
+Step 1/19 : FROM golang:1.26.8-alpine3.24@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628 AS go-builder
+1.26.8-alpine3.24: Pulling from library/golang
+a01ef6a60160: Pulling fs layer
+7c3a144dfd22: Pulling fs layer
+2cb3e687d353: Pulling fs layer
+4f4fb700ef54: Pulling fs layer
+6fd9da4cb4bd: Download complete
+4f4fb700ef54: Already exists
+4f4fb700ef54: Pull complete
+7675f8118280: Download complete
+7c3a144dfd22: Download complete
+2cb3e687d353: Download complete
+a01ef6a60160: Download complete
+7c3a144dfd22: Pull complete
+2cb3e687d353: Pull complete
+a01ef6a60160: Pull complete
+Digest: sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628
+Status: Downloaded newer image for golang:1.26.8-alpine3.24@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628
+ ---> ce864e7223ac
+Step 2/19 : ARG BUILD_CMD=build
+ ---> Running in 0a168ad53fa1
+ ---> Removed intermediate container 0a168ad53fa1
+ ---> 08e7635887c1
+Step 3/19 : ARG COMMIT=unknown
+ ---> Running in 21d30d454204
+ ---> Removed intermediate container 21d30d454204
+ ---> a684407def7c
+Step 4/19 : ARG VERSION=dev
+ ---> Running in 3df286cddf5a
+ ---> Removed intermediate container 3df286cddf5a
+ ---> 79df285d1aa0
+Step 5/19 : SHELL ["/bin/sh", "-ecuxo", "pipefail"]
+ ---> Running in a91414054e8a
+ ---> Removed intermediate container a91414054e8a
+ ---> 272af604150e
+Step 6/19 : RUN apk add --no-cache     ca-certificates=20260611-r0     build-base=0.5-r4     git=2.54.0-r0     libcrypto3=3.5.8-r0     libssl3=3.5.8-r0     linux-headers=7.0.0-r1     musl=1.2.6-r2     musl-dev=1.2.6-r2
+ ---> Running in 7a14427307ee
+[91m+ apk add --no-cache 'ca-certificates=20260611-r0' 'build-base=0.5-r4' 'git=2.54.0-r0' 'libcrypto3=3.5.8-r0' 'libssl3=3.5.8-r0' 'linux-headers=7.0.0-r1' 'musl=1.2.6-r2' 'musl-dev=1.2.6-r2'
+[0m( 1/36) Upgrading libcrypto3 (3.5.7-r0 -> 3.5.8-r0)
+( 2/36) Upgrading libssl3 (3.5.7-r0 -> 3.5.8-r0)
+( 3/36) Installing libgcc (15.2.0-r5)
+( 4/36) Installing jansson (2.15.0-r0)
+( 5/36) Installing libstdc++ (15.2.0-r5)
+( 6/36) Installing zstd-libs (1.5.7-r2)
+( 7/36) Installing binutils (2.45.1-r1)
+( 8/36) Installing libmagic (5.47-r2)
+( 9/36) Installing file (5.47-r2)
+(10/36) Installing libgcc-static (15.2.0-r5)
+(11/36) Installing libgomp (15.2.0-r5)
+(12/36) Installing libatomic (15.2.0-r5)
+(13/36) Installing gmp (6.3.0-r4)
+(14/36) Installing isl26 (0.26-r2)
+(15/36) Installing mpfr4 (4.2.2-r0)
+(16/36) Installing mpc1 (1.3.1-r1)
+(17/36) Installing gcc (15.2.0-r5)
+(18/36) Installing libstdc++-dev (15.2.0-r5)
+(19/36) Installing musl-dev (1.2.6-r2)
+(20/36) Installing g++ (15.2.0-r5)
+(21/36) Installing make (4.4.1-r4)
+(22/36) Installing fortify-headers (3.0.1-r2)
+(23/36) Installing patch (2.8-r0)
+(24/36) Installing build-base (0.5-r4)
+(25/36) Installing brotli-libs (1.2.0-r1)
+(26/36) Installing c-ares (1.34.8-r0)
+(27/36) Installing libunistring (1.4.2-r0)
+(28/36) Installing libidn2 (2.3.8-r0)
+(29/36) Installing nghttp2-libs (1.69.0-r0)
+(30/36) Installing libpsl (0.21.5-r3)
+(31/36) Installing libcurl (8.22.0-r0)
+(32/36) Installing libexpat (2.8.4-r0)
+(33/36) Installing pcre2 (10.48-r0)
+(34/36) Installing git (2.54.0-r0)
+(35/36) Installing git-init-template (2.54.0-r0)
+(36/36) Installing linux-headers (7.0.0-r1)
+Executing busybox-1.37.0-r31.trigger
+Executing ca-certificates-20260611-r0.trigger
+OK: 294.4 MiB in 51 packages
+ ---> Removed intermediate container 7a14427307ee
+ ---> e80f1d0877e3
+Step 7/19 : WORKDIR /code
+ ---> Running in 72ed1c29cc64
+ ---> Removed intermediate container 72ed1c29cc64
+ ---> f341ac76512d
+Step 8/19 : COPY go.mod go.sum ./
+ ---> 9583b09c7284
+Step 9/19 : COPY scripts/install-wasmvm-muslc.sh ./scripts/
+ ---> 59c5caa9f1f6
+Step 10/19 : RUN ./scripts/install-wasmvm-muslc.sh   && go mod download   && go mod verify   && mkdir -p /go/pkg/mod/cache/download/github.com/manifest-network/manifest-ledger/@v   && chmod 1777 /go/pkg/mod/cache/download/github.com/manifest-network/manifest-ledger/@v
+ ---> Running in 89ede551c54a
+[91m+ ./scripts/install-wasmvm-muslc.sh
+[0m/tmp/tmp.EgPJGi/libwasmvm_muslc.x86_64.a: OK
+[91m+ go mod download
+[0m[91m+ go mod verify
+[0mall modules verified
+[91m+ mkdir -p /go/pkg/mod/cache/download/github.com/manifest-network/manifest-ledger/@v
++ chmod 1777 /go/pkg/mod/cache/download/github.com/manifest-network/manifest-ledger/@v
+[0m ---> Removed intermediate container 89ede551c54a
+ ---> fe2bdfecbc65
+Step 11/19 : COPY . /code
+ ---> b989e768cdd7
+Step 12/19 : RUN sh ./scripts/validate-build-inputs.sh build-command "${BUILD_CMD}"   && VERSION="${VERSION}" COMMIT="${COMMIT}" LEDGER_ENABLED=false BUILD_TAGS=muslc LINK_STATICALLY=true make "${BUILD_CMD}"   && file /code/build/manifestd   && echo "Ensuring binary is statically linked ..."   && (file /code/build/manifestd | grep "statically linked")   && test "$(/code/build/manifestd version)" = "${VERSION}"
+ ---> Running in df845984c714
+[91m+ sh ./scripts/validate-build-inputs.sh build-command build
+[0m[91m+ VERSION=review-pr179-sep11-9d25368 COMMIT=9d253689dfbac54009dcbbed7c0345ab0cd05b44 LEDGER_ENABLED=false BUILD_TAGS=muslc LINK_STATICALLY=true make build
+[0mgo build -mod=readonly -tags "${MANIFEST_BUILD_TAGS}" -ldflags "$(sh ./scripts/build-ldflags.sh)" -trimpath -o ./build/manifestd ./cmd/manifestd
+/code/build/manifestd: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, BuildID[sha1]=3e48072a6caf46a9b27b0ae3a9482ccc706f17eb, with debug_info, not stripped
+Ensuring binary is statically linked ...
+/code/build/manifestd: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, BuildID[sha1]=3e48072a6caf46a9b27b0ae3a9482ccc706f17eb, with debug_info, not stripped
+[91m+ file /code/build/manifestd
+[0m[91m+ echo 'Ensuring binary is statically linked ...'
++ file /code/build/manifestd
++ grep 'statically linked'
++ /code/build/manifestd version
+[0m[91m+ test review-pr179-sep11-9d25368 '=' review-pr179-sep11-9d25368
+[0m ---> Removed intermediate container df845984c714
+ ---> e9d85a68488f
+Step 13/19 : FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+ ---> 14358309a308
+Step 14/19 : SHELL ["/bin/sh", "-ec"]
+ ---> Using cache
+ ---> f08d52ce1f99
+Step 15/19 : COPY --from=go-builder /code/build/manifestd /usr/bin/manifestd
+ ---> d887f687c676
+Step 16/19 : RUN apk add --no-cache       ca-certificates-bundle=20260611-r0       bash=5.2.37-r0       curl=8.14.1-r3       jq=1.8.2-r0       libcrypto3=3.5.8-r0       libssl3=3.5.8-r0       make=4.4.1-r3       musl=1.2.5-r12       sed=4.9-r2;     command -v bash curl jq make sed >/dev/null
+ ---> Running in ea06612660a4
+fetch https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/APKINDEX.tar.gz
+fetch https://dl-cdn.alpinelinux.org/alpine/v3.22/community/x86_64/APKINDEX.tar.gz
+(1/19) Upgrading libcrypto3 (3.5.7-r0 -> 3.5.8-r0)
+(2/19) Upgrading libssl3 (3.5.7-r0 -> 3.5.8-r0)
+(3/19) Installing ncurses-terminfo-base (6.5_p20250503-r0)
+(4/19) Installing libncursesw (6.5_p20250503-r0)
+(5/19) Installing readline (8.2.13-r1)
+(6/19) Installing bash (5.2.37-r0)
+Executing bash-5.2.37-r0.post-install
+(7/19) Installing brotli-libs (1.1.0-r2)
+(8/19) Installing c-ares (1.34.8-r0)
+(9/19) Installing libunistring (1.3-r0)
+(10/19) Installing libidn2 (2.3.7-r0)
+(11/19) Installing nghttp2-libs (1.69.0-r0)
+(12/19) Installing libpsl (0.21.5-r3)
+(13/19) Installing zstd-libs (1.5.7-r0)
+(14/19) Installing libcurl (8.14.1-r3)
+(15/19) Installing curl (8.14.1-r3)
+(16/19) Installing oniguruma (6.9.10-r0)
+(17/19) Installing jq (1.8.2-r0)
+(18/19) Installing make (4.4.1-r3)
+(19/19) Installing sed (4.9-r2)
+Executing busybox-1.37.0-r20.trigger
+OK: 15 MiB in 33 packages
+ ---> Removed intermediate container ea06612660a4
+ ---> 27c7c57f00ff
+Step 17/19 : WORKDIR /opt
+ ---> Running in 00ce3511f225
+ ---> Removed intermediate container 00ce3511f225
+ ---> cb715feafc4e
+Step 18/19 : EXPOSE 1317 26656 26657
+ ---> Running in b068bae90329
+ ---> Removed intermediate container b068bae90329
+ ---> 5db0488aeb2a
+Step 19/19 : CMD ["/usr/bin/manifestd", "version"]
+ ---> Running in 9e39353fd9fc
+ ---> Removed intermediate container 9e39353fd9fc
+ ---> ef27053903b5
+Successfully built ef27053903b5
+Successfully tagged manifest:review-pr179-sep11-9d25368

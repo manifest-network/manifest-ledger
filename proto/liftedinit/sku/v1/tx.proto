@@ -18,24 +18,29 @@ service Msg {
   rpc CreateProvider(MsgCreateProvider) returns (MsgCreateProviderResponse);
 
   // UpdateProvider updates an existing provider.
-  // Can reactivate an inactive provider but cannot deactivate an active one.
+  // Can reactivate an inactive provider only after no active SKUs remain.
+  // Cannot deactivate an active provider.
   // Use DeactivateProvider to deactivate (ensures proper SKU cascade).
   rpc UpdateProvider(MsgUpdateProvider) returns (MsgUpdateProviderResponse);
 
   // DeactivateProvider deactivates a provider (soft delete).
-  // Deactivated providers cannot create new SKUs but existing SKUs continue.
-  rpc DeactivateProvider(MsgDeactivateProvider) returns (MsgDeactivateProviderResponse);
+  // Deactivated providers cannot create new SKUs or leases. Existing SKUs are
+  // deactivated in bounded pages; call again while has_more is true. Existing
+  // leases continue at their locked prices.
+  rpc DeactivateProvider(MsgDeactivateProvider)
+      returns (MsgDeactivateProviderResponse);
 
   // CreateSKU creates a new SKU.
   rpc CreateSKU(MsgCreateSKU) returns (MsgCreateSKUResponse);
 
   // UpdateSKU updates an existing SKU.
-  // Can reactivate an inactive SKU (if provider is active) but cannot deactivate an active one.
-  // Use DeactivateSKU to deactivate.
+  // Can reactivate an inactive SKU (if provider is active) but cannot
+  // deactivate an active one. Use DeactivateSKU to deactivate.
   rpc UpdateSKU(MsgUpdateSKU) returns (MsgUpdateSKUResponse);
 
   // DeactivateSKU deactivates a SKU (soft delete).
-  // Deactivated SKUs cannot be used for new leases but existing leases continue.
+  // Deactivated SKUs cannot be used for new leases but existing leases
+  // continue.
   rpc DeactivateSKU(MsgDeactivateSKU) returns (MsgDeactivateSKUResponse);
 
   // UpdateParams updates the module parameters.
@@ -74,6 +79,8 @@ message MsgCreateProviderResponse {
 // MsgUpdateProvider is the Msg/UpdateProvider request type.
 // Note: Setting active=false on an active provider will fail.
 // Use MsgDeactivateProvider instead to ensure proper SKU cascade.
+// Reactivation requires completing the cascade: no active SKUs may remain.
+// Payout changes apply to already-accrued unsettled charges and future charges.
 message MsgUpdateProvider {
   option (cosmos.msg.v1.signer) = "authority";
   option (gogoproto.equal) = false;
@@ -82,7 +89,8 @@ message MsgUpdateProvider {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // uuid is the unique identifier of the provider to update.
+  // uuid is the provider's canonical lowercase UUIDv7. Empty, malformed,
+  // uppercase, or non-v7 values fail message validation.
   string uuid = 2;
 
   // address is the management address of the provider.
@@ -91,23 +99,30 @@ message MsgUpdateProvider {
   // payout_address is the address where payments are sent.
   string payout_address = 4 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // meta_hash is a hash of the off-chain metadata.
+  // meta_hash replaces the hash of off-chain metadata. An empty value clears
+  // it; clients must resend the current bytes when preserving the hash.
   bytes meta_hash = 5;
 
   // active indicates whether the provider is active.
   bool active = 6;
 
   // api_url is the HTTPS endpoint where the provider's off-chain API is hosted.
+  // An empty value preserves the existing URL unless clear_api_url is true.
   string api_url = 7;
+
+  // clear_api_url clears the provider's existing API URL when true.
+  // It cannot be combined with a non-empty api_url.
+  bool clear_api_url = 8;
 }
 
 // MsgUpdateProviderResponse is the Msg/UpdateProvider response type.
 message MsgUpdateProviderResponse {}
 
 // MsgDeactivateProvider is the Msg/DeactivateProvider request type.
-// This performs a soft delete - the provider remains in state but is marked inactive.
-// SKU deactivation is paginated to prevent gas exhaustion with many SKUs.
-// If has_more is true in the response, call again to continue deactivating SKUs.
+// This performs a soft delete - the provider remains in state but is marked
+// inactive. SKU deactivation is paginated to prevent gas exhaustion with many
+// SKUs. If has_more is true in the response, call again to continue
+// deactivating SKUs.
 message MsgDeactivateProvider {
   option (cosmos.msg.v1.signer) = "authority";
   option (gogoproto.equal) = false;
@@ -116,7 +131,8 @@ message MsgDeactivateProvider {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // uuid is the unique identifier of the provider to deactivate.
+  // uuid is the provider's canonical lowercase UUIDv7. Empty, malformed,
+  // uppercase, or non-v7 values fail message validation.
   string uuid = 2;
 
   // limit is the maximum number of SKUs to deactivate in this call.
@@ -143,7 +159,8 @@ message MsgCreateSKU {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // provider_uuid is the unique identifier of the SKU provider.
+  // provider_uuid is the SKU provider's canonical lowercase UUIDv7. Empty,
+  // malformed, uppercase, or non-v7 values fail message validation.
   string provider_uuid = 2;
 
   // name is the human-readable name of the SKU.
@@ -181,10 +198,12 @@ message MsgUpdateSKU {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // uuid is the unique identifier of the SKU to update.
+  // uuid is the SKU's canonical lowercase UUIDv7. Empty, malformed, uppercase,
+  // or non-v7 values fail message validation.
   string uuid = 2;
 
-  // provider_uuid is the unique identifier of the SKU provider.
+  // provider_uuid is the SKU provider's canonical lowercase UUIDv7. Empty,
+  // malformed, uppercase, or non-v7 values fail message validation.
   string provider_uuid = 3;
 
   // name is the human-readable name of the SKU.
@@ -201,7 +220,8 @@ message MsgUpdateSKU {
     (gogoproto.casttype) = "github.com/cosmos/cosmos-sdk/types.Coin"
   ];
 
-  // meta_hash is a hash of the off-chain metadata.
+  // meta_hash replaces the hash of off-chain metadata. An empty value clears
+  // it; clients must resend the current bytes when preserving the hash.
   bytes meta_hash = 7;
 
   // active indicates whether the SKU is active.
@@ -212,7 +232,8 @@ message MsgUpdateSKU {
 message MsgUpdateSKUResponse {}
 
 // MsgDeactivateSKU is the Msg/DeactivateSKU request type.
-// This performs a soft delete - the SKU remains in state but is marked inactive.
+// This performs a soft delete - the SKU remains in state but is marked
+// inactive.
 message MsgDeactivateSKU {
   option (cosmos.msg.v1.signer) = "authority";
   option (gogoproto.equal) = false;
@@ -221,7 +242,8 @@ message MsgDeactivateSKU {
   // authority is the address of the controlling account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // uuid is the unique identifier of the SKU to deactivate.
+  // uuid is the SKU's canonical lowercase UUIDv7. Empty, malformed, uppercase,
+  // or non-v7 values fail message validation.
   string uuid = 2;
 }
 
@@ -237,7 +259,8 @@ message MsgUpdateParams {
   // authority is the address of the governance account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 
-  // params defines the module parameters to update.
+  // params replaces all module parameters. Omitted allowed_list clears it;
+  // no execution-time merge or preservation occurs.
   Params params = 2 [ (gogoproto.nullable) = false ];
 }
 

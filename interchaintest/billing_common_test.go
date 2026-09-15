@@ -7,13 +7,14 @@ import (
 	"fmt"
 	"testing"
 
-	sdkmath "cosmossdk.io/math"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
+
+	sdkmath "cosmossdk.io/math"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 )
@@ -37,8 +38,8 @@ type billingTestContext struct {
 	unauthorizedUser ibc.Wallet
 	pwrDenom         string
 	providerUUID     string
-	skuUUID          string  // per-hour pricing SKU
-	skuUUID2         string  // per-day pricing SKU
+	skuUUID          string // per-hour pricing SKU
+	skuUUID2         string // per-day pricing SKU
 }
 
 // setupBillingTest creates chain and infrastructure for billing tests.
@@ -82,7 +83,7 @@ func setupBillingTest(t *testing.T, testName string) (context.Context, *billingT
 	}
 
 	// Setup test infrastructure (PWR denom, provider, SKUs)
-	setupBillingInfrastructure(t, ctx, tc)
+	setupBillingInfrastructure(ctx, t, tc)
 
 	// Return cleanup function
 	cleanup := func() {
@@ -94,7 +95,7 @@ func setupBillingTest(t *testing.T, testName string) (context.Context, *billingT
 }
 
 // setupBillingInfrastructure creates the PWR denom, provider, and SKUs needed for tests.
-func setupBillingInfrastructure(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func setupBillingInfrastructure(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Helper()
 	t.Log("=== Setting up Billing Test Infrastructure ===")
 
@@ -163,11 +164,12 @@ func setupBillingInfrastructure(t *testing.T, ctx context.Context, tc *billingTe
 }
 
 // fundTenantCredit is a helper to fund a tenant's credit account.
-func fundTenantCredit(t *testing.T, ctx context.Context, tc *billingTestContext, tenant ibc.Wallet, amount int64) {
+func fundTenantCredit(ctx context.Context, t *testing.T, tc *billingTestContext, tenant ibc.Wallet) {
 	t.Helper()
+	const amount int64 = 100_000_000
 
 	// First send PWR to tenant
-	err := tc.chain.GetNode().SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err := tc.chain.GetNode().BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(amount),

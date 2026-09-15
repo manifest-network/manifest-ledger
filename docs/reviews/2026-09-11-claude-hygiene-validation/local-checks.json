@@ -1,0 +1,31 @@
+{
+  "baseline_commit": "8492a4ad18996d0877a7425b8039ed355cc94726",
+  "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "build_shell_command": "GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=\"$PWD/.review-tmp/build\" go build -p 2 -o .review-tmp/round74-manifestd ./cmd/manifestd > .review-tmp/round74-cli-build.log 2>&1",
+  "build_exit_status": 0,
+  "binary_sha256": "29425e14fb7fbb8b43717bd2ca82b30f50d2191bac98446dc6a7464a00a675b6",
+  "help_shell_command": "TMPDIR=\"$PWD/.review-tmp/build\" .review-tmp/round74-manifestd tx sku update-provider --help --home .review-tmp/round74-help-home > .review-tmp/round74-update-provider-help.log",
+  "help_exit_status": 0,
+  "cli_fixture_shell_command": "TMPDIR=\"$PWD/.review-tmp/build\" python3 docs/reviews/2026-09-10-claude-export-runbook-validation/verify_export_cli.py .review-tmp/round74-manifestd .review-tmp/round74-export-cli.log > .review-tmp/round74-export-cli-driver.log 2>&1",
+  "cli_fixture_exit_status": 0,
+  "lint_shell_command": "GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 GOROOT=/home/fmorency/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.8.linux-amd64 PATH=/home/fmorency/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.8.linux-amd64/bin:$PATH TMPDIR=\"$PWD/.review-tmp/build\" GOLANGCI_LINT_CACHE=\"$PWD/.review-tmp/final-lint-cache\" /home/fmorency/go/bin/golangci-lint run --concurrency 2 ./... > .review-tmp/round74-lint.log 2>&1",
+  "lint_exit_status": 0,
+  "log_normalization": "UTF-8 display, splitlines, expandtabs(8), rstrip each line, rstrip overall, one LF",
+  "source_sha256": {
+    "x/sku/client/cli/tx.go": "5763fd0b130758b4ea37f67d8691599ebd9f4470d26c0c8f40ab54ca534ec06b",
+    "x/billing/keeper/msg_server.go": "3dc672a14ac306209418e09aa3c6245c2d0b2c72b1c654bddb5c628646f6b78e",
+    "go.mod": "5b9e467e5816f015cc94cb1cf9f567b94f6cc51d890b232624cfcb31fef465ca",
+    "go.sum": "48659d7d23c50077a81d452aec65fd1655fc45e602f85c4750545d5537b3aee2"
+  },
+  "evidence_sha256": {
+    "sku-cli-tests.log": "43dd207bea96097dec745dcd5cfd9754fc004a55a3ebc7b7144ac3649937afc1",
+    "provider-tests.log": "02beba96022bca8fc44eb4485303e7ae0bca91ce1aab17d9b2a9e4876c35a759",
+    "documentation-tests.log": "07baf73688f6ed8d55f3c43997c8241941b94bf0144f438f46dc608ee292a06a",
+    "product-commands.log": "13e996000110ff64e351a3098a271a0951cc0946167afad78434bb4f6238a432",
+    "lint.log": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+    "export-cli.log": "720905c0d1ec468c41105ea8b2551af95a77a20fd5ceeb0bef84c851a47d9f4c",
+    "export-cli.json": "8d20d4cff2a3225c131ca479940d0014374eb9ebc6b25ac59df20c36162795a0",
+    "update-provider-help.log": "71ff00d769ea26fb5c8292a44ea741c8a41bf7cd3cf25791029e8eb2f69f5c04",
+    "cli-optimization-guard.json": "6f551f838d5420179bcbea8955f6b9581cb6e0814ee512f55d0f15def8052fd9"
+  }
+}

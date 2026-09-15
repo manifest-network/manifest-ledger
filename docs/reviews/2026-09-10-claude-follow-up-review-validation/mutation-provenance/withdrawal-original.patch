@@ -1,0 +1,16 @@
+--- a/x/billing/keeper/provider_withdrawal.go
++++ b/x/billing/keeper/provider_withdrawal.go
+@@ -27 +26,0 @@
+-// Caller-owned lease values and reservation aliases remain unchanged on error.
+@@ -78,3 +77 @@
+-	settledLease := *lease
+-	settledLease.Reservation = cloneLeaseReservation(lease.Reservation)
+-	result, err := k.PerformSettlementSilent(ctx, &settledLease, &creditAccount, blockTime)
++	result, err := k.PerformSettlementSilent(ctx, lease, &creditAccount, blockTime)
+@@ -94,2 +91,2 @@
+-	settledLease.LastSettledAt = result.SettledThrough
+-	if err := k.SetLease(ctx, settledLease); err != nil {
++	lease.LastSettledAt = result.SettledThrough
++	if err := k.SetLease(ctx, *lease); err != nil {
+@@ -110 +106,0 @@
+-	*lease = settledLease

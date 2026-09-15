@@ -1,0 +1,18 @@
+=== RUN   TestZeroHeightExportRetainsBillingBlockTime
+=== RUN   TestZeroHeightExportRetainsBillingBlockTime/in_process
+=== RUN   TestZeroHeightExportRetainsBillingBlockTime/reopened_latest
+=== RUN   TestZeroHeightExportRetainsBillingBlockTime/reopened_historical_height
+--- PASS: TestZeroHeightExportRetainsBillingBlockTime (0.95s)
+    --- PASS: TestZeroHeightExportRetainsBillingBlockTime/in_process (0.25s)
+    --- PASS: TestZeroHeightExportRetainsBillingBlockTime/reopened_latest (0.37s)
+    --- PASS: TestZeroHeightExportRetainsBillingBlockTime/reopened_historical_height (0.33s)
+=== RUN   TestZeroHeightExportStillRejectsFutureBillingTimestamp
+--- PASS: TestZeroHeightExportStillRejectsFutureBillingTimestamp (0.28s)
+=== RUN   TestZeroHeightBillingImportRequiresUpdatedGenesisTime
+--- PASS: TestZeroHeightBillingImportRequiresUpdatedGenesisTime (0.34s)
+=== RUN   TestZeroHeightExportRequiresSourceTimeAfterRollback
+--- PASS: TestZeroHeightExportRequiresSourceTimeAfterRollback (0.29s)
+=== RUN   TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback
+--- PASS: TestZeroHeightExportRejectsStaleCheckTxTimeAfterRollback (0.19s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/app 2.138s

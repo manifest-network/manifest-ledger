@@ -1,0 +1,7 @@
+--- a/x/billing/keeper/msg_server.go
++++ b/x/billing/keeper/msg_server.go
+@@ -894 +894,3 @@
+-			lease.LastSettledAt = settleTime
++			if result.TransferAmounts.Equal(result.AccruedAmounts) {
++				lease.LastSettledAt = settleTime
++			}

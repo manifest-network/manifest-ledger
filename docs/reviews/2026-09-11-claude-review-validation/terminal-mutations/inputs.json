@@ -1,0 +1,13 @@
+{
+  "original": {
+    "file": "original.go.txt",
+    "sha256": "ac6768d1d77d60e8ce516bd81338a29d31a8e00ff9c842a5907d5a747f665a0e",
+    "provenance": "x/billing/keeper/msg_server.go from 9d253689dfbac54009dcbbed7c0345ab0cd05b44"
+  },
+  "required_source_sha256": {
+    "x/billing/keeper/msg_server.go": "04e23cbbda86e72b4eaac68ed14e25cd8c2672b9738ce55736269b60b1fad01f",
+    "x/billing/keeper/terminal_withdrawal_test.go": "2d96c5a9b3db94e7f9127a73939092c32b0dee4261c18617bc81900b1a900a3a",
+    "go.mod": "5b9e467e5816f015cc94cb1cf9f567b94f6cc51d890b232624cfcb31fef465ca",
+    "go.sum": "48659d7d23c50077a81d452aec65fd1655fc45e602f85c4750545d5537b3aee2"
+  }
+}

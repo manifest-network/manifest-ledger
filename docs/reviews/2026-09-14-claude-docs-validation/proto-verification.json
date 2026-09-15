@@ -1,0 +1,32 @@
+{
+  "protobuf_file": "proto/liftedinit/billing/v1/types.proto",
+  "protobuf_before_sha256": "dd89d619ac75ee033ec7a9bce0eb0357a339eb6868dc2a89cc90b8a80ad08bf9",
+  "protobuf_after_sha256": "330ef8b3531103e27071e90c1b2f0566e99c9a3134117a861ae6d6db8f26f797",
+  "protobuf_noncomment_lines_identical": true,
+  "changed_go_files": [
+    "api/liftedinit/billing/v1/types.pulsar.go",
+    "x/billing/types/types.pb.go"
+  ],
+  "generated_go_noncomment_tokens": [
+    {
+      "before": ".review-tmp/sep14-proto-before-types.pb.go",
+      "after": "x/billing/types/types.pb.go",
+      "token_count": 18992,
+      "before_noncomment_token_sha256": "43a9c3656f1d072ed389edf4506638f9c74eaaa2977a5dd3db0f1d28e3e8697e",
+      "after_noncomment_token_sha256": "43a9c3656f1d072ed389edf4506638f9c74eaaa2977a5dd3db0f1d28e3e8697e",
+      "noncomment_tokens_equal": true
+    },
+    {
+      "before": ".review-tmp/sep14-proto-before-types.pulsar.go",
+      "after": "api/liftedinit/billing/v1/types.pulsar.go",
+      "token_count": 43253,
+      "before_noncomment_token_sha256": "83c7e962378a085b0db626e9204c183bcfdaad30e8d7470880b279a66c307bb2",
+      "after_noncomment_token_sha256": "83c7e962378a085b0db626e9204c183bcfdaad30e8d7470880b279a66c307bb2",
+      "noncomment_tokens_equal": true
+    }
+  ],
+  "descriptor_note": "All generated non-comment Go tokens are identical, including all descriptor byte literals; no descriptor, wire tag, declaration or executable token changed.",
+  "go_mod_unchanged": true,
+  "go_sum_unchanged": true,
+  "unexpected_generated_changes": []
+}

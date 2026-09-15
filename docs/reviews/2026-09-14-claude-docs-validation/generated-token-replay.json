@@ -1,0 +1,59 @@
+{
+  "verified_at_utc": "2026-09-14T13:25:51.136233+00:00",
+  "baseline_commit": "9659d1641ad6f6e971c9cd5ceebafe2cdba3d4b5",
+  "directory_setup": "Create a new empty .review-tmp/sep14-generated-replay directory.",
+  "verifier_copy": {
+    "source": "docs/reviews/2026-09-14-claude-docs-validation/generated-token-check.go.txt",
+    "destination": ".review-tmp/sep14-generated-replay/token-check.go",
+    "sha256": "86760403ed5aa2d456a311cea61aed3204818074db9c8e5411799332f60f73a7"
+  },
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "show",
+        "9659d1641ad6f6e971c9cd5ceebafe2cdba3d4b5:x/billing/types/types.pb.go"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "exit_status": 0,
+      "stdout_written_to": ".review-tmp/sep14-generated-replay/before-types.pb.go",
+      "stdout_sha256": "cd083bffc6844ce678f2f40e92b6dbccb8e0abb1942365d5ad232a111d54b0bd",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "show",
+        "9659d1641ad6f6e971c9cd5ceebafe2cdba3d4b5:api/liftedinit/billing/v1/types.pulsar.go"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "exit_status": 0,
+      "stdout_written_to": ".review-tmp/sep14-generated-replay/before-types.pulsar.go",
+      "stdout_sha256": "b4b66e73c4ba61e9773f13db6eed9580a2cc74b58060d4b42900428d4cc7eb08",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "run",
+        "-p",
+        "2",
+        ".review-tmp/sep14-generated-replay/token-check.go",
+        "--",
+        ".review-tmp/sep14-generated-replay/before-types.pb.go",
+        "x/billing/types/types.pb.go",
+        ".review-tmp/sep14-generated-replay/before-types.pulsar.go",
+        "api/liftedinit/billing/v1/types.pulsar.go"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {
+        "GOTOOLCHAIN": "go1.26.8",
+        "GOMAXPROCS": "4",
+        "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build"
+      },
+      "exit_status": 0,
+      "stdout": "[\n  {\n    \"before\": \".review-tmp/sep14-generated-replay/before-types.pb.go\",\n    \"after\": \"x/billing/types/types.pb.go\",\n    \"token_count\": 18992,\n    \"before_noncomment_token_sha256\": \"43a9c3656f1d072ed389edf4506638f9c74eaaa2977a5dd3db0f1d28e3e8697e\",\n    \"after_noncomment_token_sha256\": \"43a9c3656f1d072ed389edf4506638f9c74eaaa2977a5dd3db0f1d28e3e8697e\",\n    \"noncomment_tokens_equal\": true\n  },\n  {\n    \"before\": \".review-tmp/sep14-generated-replay/before-types.pulsar.go\",\n    \"after\": \"api/liftedinit/billing/v1/types.pulsar.go\",\n    \"token_count\": 43253,\n    \"before_noncomment_token_sha256\": \"83c7e962378a085b0db626e9204c183bcfdaad30e8d7470880b279a66c307bb2\",\n    \"after_noncomment_token_sha256\": \"83c7e962378a085b0db626e9204c183bcfdaad30e8d7470880b279a66c307bb2\",\n    \"noncomment_tokens_equal\": true\n  }\n]\n",
+      "stderr": ""
+    }
+  ]
+}

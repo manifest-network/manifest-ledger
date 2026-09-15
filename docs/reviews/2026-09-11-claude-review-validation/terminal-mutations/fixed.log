@@ -1,0 +1,22 @@
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/full_payment
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full
+=== RUN   TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid
+--- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt (0.56s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/zero_payment (0.13s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/partial_payment (0.12s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/full_payment (0.09s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_paid_in_full (0.11s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseFinalizesWithoutDebt/one_denomination_unpaid (0.12s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch
+=== RUN   TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch
+--- PASS: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts (0.22s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/zero-payment_batch (0.11s)
+    --- PASS: TestMsgWithdrawImportedClosedLeaseBatchCountsOnlyPayouts/paid_and_zero-payment_batch (0.11s)
+=== RUN   TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder
+--- PASS: TestMsgWithdrawImportedClosedLeaseDiscardsSubsecondRemainder (0.10s)
+PASS
+ok      github.com/manifest-network/manifest-ledger/x/billing/keeper    0.963s

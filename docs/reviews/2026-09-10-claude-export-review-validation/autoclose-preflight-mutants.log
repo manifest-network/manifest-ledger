@@ -1,0 +1,38 @@
+--- FAIL: TestLeaseFreePreflightAcceptsImportSafeAllowedListAliases (0.00s)
+    reservation_preflight_empty_test.go:90:
+            Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/reservation_preflight_empty_test.go:90
+            Error:          Received unexpected error:
+                            lease-free billing state has no reservation format marker; cannot infer legacy repair versus a current-state audit: invalid params: duplicate address in allowed list: manifest1qyqszqgpqyqszqgpqyqszqgpqyqszqgpn3rfe5: invalid params: invalid params [/home/fmorency/go/pkg/mod/cosmossdk.io/errors@v1.0.2/errors.go:155]
+            Test:           TestLeaseFreePreflightAcceptsImportSafeAllowedListAliases
+--- FAIL: TestAutoCloseLeaseFailureLeavesCallerUnchanged (0.76s)
+    --- FAIL: TestAutoCloseLeaseFailureLeavesCallerUnchanged/lease_persistence (0.22s)
+        auto_close_atomicity_test.go:55:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/auto_close_atomicity_test.go:55
+                Error:          Not equal:
+                                expected: "uuid:\"01a08bcb-c1b0-7000-9568-034892a7910a\" tenant:\"manifest1w4ns8w8p9r40gnld44g9s4mje3rmh55htfdu7s\" provider_uuid:\"01a08bcb-c1b0-7000-8d37-cc9b911a8a8a\" items:<sku_uuid:\"01a08bcb-c1b0-7000-bfe6-1539384e3b34\" quantity:1 locked_price:<denom:\"umfx\" amount:\"1\" > custom_domain:\"auto-close-atomicity.example.com\" > state:LEASE_STATE_ACTIVE created_at:<seconds:1789051781 nanos:552545507 > last_settled_at:<seconds:1789051781 nanos:552545507 > acknowledged_at:<seconds:1789051781 nanos:552545507 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:\"umfx\" amount:\"3600\" > > "
+                                actual  : "uuid:\"01a08bcb-c1b0-7000-9568-034892a7910a\" tenant:\"manifest1w4ns8w8p9r40gnld44g9s4mje3rmh55htfdu7s\" provider_uuid:\"01a08bcb-c1b0-7000-8d37-cc9b911a8a8a\" items:<sku_uuid:\"01a08bcb-c1b0-7000-bfe6-1539384e3b34\" quantity:1 locked_price:<denom:\"umfx\" amount:\"1\" > custom_domain:\"auto-close-atomicity.example.com\" > state:LEASE_STATE_CLOSED created_at:<seconds:1789051781 nanos:552545507 > closed_at:<seconds:1989051781 nanos:552545507 > last_settled_at:<seconds:1989051781 nanos:552545507 > acknowledged_at:<seconds:1789051781 nanos:552545507 > closure_reason:\"credit exhausted\" min_lease_duration_at_creation:3600 reservation:<> "
+
+                                Diff:
+                                --- Expected
+                                +++ Actual
+                                @@ -1 +1 @@
+                                -uuid:"01a08bcb-c1b0-7000-9568-034892a7910a" tenant:"manifest1w4ns8w8p9r40gnld44g9s4mje3rmh55htfdu7s" provider_uuid:"01a08bcb-c1b0-7000-8d37-cc9b911a8a8a" items:<sku_uuid:"01a08bcb-c1b0-7000-bfe6-1539384e3b34" quantity:1 locked_price:<denom:"umfx" amount:"1" > custom_domain:"auto-close-atomicity.example.com" > state:LEASE_STATE_ACTIVE created_at:<seconds:1789051781 nanos:552545507 > last_settled_at:<seconds:1789051781 nanos:552545507 > acknowledged_at:<seconds:1789051781 nanos:552545507 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:"umfx" amount:"3600" > >
+                                +uuid:"01a08bcb-c1b0-7000-9568-034892a7910a" tenant:"manifest1w4ns8w8p9r40gnld44g9s4mje3rmh55htfdu7s" provider_uuid:"01a08bcb-c1b0-7000-8d37-cc9b911a8a8a" items:<sku_uuid:"01a08bcb-c1b0-7000-bfe6-1539384e3b34" quantity:1 locked_price:<denom:"umfx" amount:"1" > custom_domain:"auto-close-atomicity.example.com" > state:LEASE_STATE_CLOSED created_at:<seconds:1789051781 nanos:552545507 > closed_at:<seconds:1989051781 nanos:552545507 > last_settled_at:<seconds:1989051781 nanos:552545507 > acknowledged_at:<seconds:1789051781 nanos:552545507 > closure_reason:"credit exhausted" min_lease_duration_at_creation:3600 reservation:<>
+                Test:           TestAutoCloseLeaseFailureLeavesCallerUnchanged/lease_persistence
+    --- FAIL: TestAutoCloseLeaseFailureLeavesCallerUnchanged/credit_account_persistence (0.16s)
+        auto_close_atomicity_test.go:55:
+                Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/x/billing/keeper/auto_close_atomicity_test.go:55
+                Error:          Not equal:
+                                expected: "uuid:\"01a08bcb-c256-7000-9568-034892a7910a\" tenant:\"manifest19q5jslwy9s5hg99ttmlpkxgq9dsgv2al36lekc\" provider_uuid:\"01a08bcb-c256-7000-8d37-cc9b911a8a8a\" items:<sku_uuid:\"01a08bcb-c256-7000-bfe6-1539384e3b34\" quantity:1 locked_price:<denom:\"umfx\" amount:\"1\" > custom_domain:\"auto-close-atomicity.example.com\" > state:LEASE_STATE_ACTIVE created_at:<seconds:1789051781 nanos:718418109 > last_settled_at:<seconds:1789051781 nanos:718418109 > acknowledged_at:<seconds:1789051781 nanos:718418109 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:\"umfx\" amount:\"3600\" > > "
+                                actual  : "uuid:\"01a08bcb-c256-7000-9568-034892a7910a\" tenant:\"manifest19q5jslwy9s5hg99ttmlpkxgq9dsgv2al36lekc\" provider_uuid:\"01a08bcb-c256-7000-8d37-cc9b911a8a8a\" items:<sku_uuid:\"01a08bcb-c256-7000-bfe6-1539384e3b34\" quantity:1 locked_price:<denom:\"umfx\" amount:\"1\" > custom_domain:\"auto-close-atomicity.example.com\" > state:LEASE_STATE_CLOSED created_at:<seconds:1789051781 nanos:718418109 > closed_at:<seconds:1989051781 nanos:718418109 > last_settled_at:<seconds:1989051781 nanos:718418109 > acknowledged_at:<seconds:1789051781 nanos:718418109 > closure_reason:\"credit exhausted\" min_lease_duration_at_creation:3600 reservation:<> "
+
+                                Diff:
+                                --- Expected
+                                +++ Actual
+                                @@ -1 +1 @@
+                                -uuid:"01a08bcb-c256-7000-9568-034892a7910a" tenant:"manifest19q5jslwy9s5hg99ttmlpkxgq9dsgv2al36lekc" provider_uuid:"01a08bcb-c256-7000-8d37-cc9b911a8a8a" items:<sku_uuid:"01a08bcb-c256-7000-bfe6-1539384e3b34" quantity:1 locked_price:<denom:"umfx" amount:"1" > custom_domain:"auto-close-atomicity.example.com" > state:LEASE_STATE_ACTIVE created_at:<seconds:1789051781 nanos:718418109 > last_settled_at:<seconds:1789051781 nanos:718418109 > acknowledged_at:<seconds:1789051781 nanos:718418109 > min_lease_duration_at_creation:3600 reservation:<remaining_amounts:<denom:"umfx" amount:"3600" > >
+                                +uuid:"01a08bcb-c256-7000-9568-034892a7910a" tenant:"manifest19q5jslwy9s5hg99ttmlpkxgq9dsgv2al36lekc" provider_uuid:"01a08bcb-c256-7000-8d37-cc9b911a8a8a" items:<sku_uuid:"01a08bcb-c256-7000-bfe6-1539384e3b34" quantity:1 locked_price:<denom:"umfx" amount:"1" > custom_domain:"auto-close-atomicity.example.com" > state:LEASE_STATE_CLOSED created_at:<seconds:1789051781 nanos:718418109 > closed_at:<seconds:1989051781 nanos:718418109 > last_settled_at:<seconds:1989051781 nanos:718418109 > acknowledged_at:<seconds:1789051781 nanos:718418109 > closure_reason:"credit exhausted" min_lease_duration_at_creation:3600 reservation:<>
+                Test:           TestAutoCloseLeaseFailureLeavesCallerUnchanged/credit_account_persistence
+FAIL
+FAIL    github.com/manifest-network/manifest-ledger/x/billing/keeper    0.985s
+FAIL

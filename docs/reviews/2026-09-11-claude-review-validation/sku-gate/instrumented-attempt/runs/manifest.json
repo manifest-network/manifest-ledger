@@ -1,0 +1,171 @@
+{
+  "driver_argv": [
+    "/usr/sbin/python3",
+    "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/sku-gate/reproduce.py",
+    "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+    "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-reproduction",
+    "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/sku-gate/runs"
+  ],
+  "driver_sha256": "7378bf76b59e3bf443481125190c7d86dc02e16b66fbcbaa8d39aafb0867a99e",
+  "inputs_manifest_sha256": "52985edd0a1a78489c23d287e53e8239efebcaa657ac0b0affc6208933406361",
+  "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "environment_overrides": {
+    "GOTOOLCHAIN": "go1.26.8",
+    "GOMAXPROCS": "4",
+    "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-reproduction/build",
+    "GOWORK": "off",
+    "GOFLAGS": "-mod=readonly"
+  },
+  "environment_note": "Other normal host environment entries are inherited; credentials are not archived. Go workspace and module-write behavior are explicitly controlled.",
+  "source_sha256": {
+    "x/sku/module.go": "c6e2f80e56608a8904acfa76ee4efd873de730de68c8fb14cd42b7d5382e0be3",
+    "x/sku/module_test.go": "50911c00cb37041412d26fab2167ddff20f026ac3a3813b1d27be6e63bd73822",
+    "go.mod": "5b9e467e5816f015cc94cb1cf9f567b94f6cc51d890b232624cfcb31fef465ca",
+    "go.sum": "48659d7d23c50077a81d452aec65fd1655fc45e602f85c4750545d5537b3aee2"
+  },
+  "archived_sha256": {
+    "module-fixed.go.txt": "c6e2f80e56608a8904acfa76ee4efd873de730de68c8fb14cd42b7d5382e0be3",
+    "module-skip-validation.go.txt": "b490afd490b2e43a67f2717c2a4bb81ca38f69f2680487047d25da99a3bf7de3",
+    "module-test.go.txt": "50911c00cb37041412d26fab2167ddff20f026ac3a3813b1d27be6e63bd73822",
+    "skip-validation.patch": "f00ec82fe4d4ab6fcd6d949e0bd898f06ec098a840c1f8f63c8afdf8a5ded95a"
+  },
+  "runs": [
+    {
+      "name": "go-version",
+      "argv": [
+        "go",
+        "version"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {
+        "GOTOOLCHAIN": "go1.26.8",
+        "GOMAXPROCS": "4",
+        "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-reproduction/build",
+        "GOWORK": "off",
+        "GOFLAGS": "-mod=readonly"
+      },
+      "started_at_utc": "2026-09-11T14:18:01.205856+00:00",
+      "completed_at_utc": "2026-09-11T14:18:01.256039+00:00",
+      "exit_status": 0,
+      "expected_exit_status": 0,
+      "combined_output": "go-version.log",
+      "combined_output_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00",
+      "combined_output_bytes": 32,
+      "raw_output": "go-version-raw.json",
+      "raw_output_file_sha256": "bc0cd082caa99ebec0f9f2899b42d4e2dee958ff950972acb2dc3aacf0631db5",
+      "display_output_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00",
+      "display_normalization": "Tabs expanded at 8-column stops, line endings normalized, trailing whitespace and EOF blank lines removed, one final LF; exact original bytes are retained in raw JSON."
+    },
+    {
+      "name": "go-paths",
+      "argv": [
+        "go",
+        "env",
+        "-json",
+        "GOCACHE",
+        "GOMODCACHE",
+        "GOROOT"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {
+        "GOTOOLCHAIN": "go1.26.8",
+        "GOMAXPROCS": "4",
+        "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-reproduction/build",
+        "GOWORK": "off",
+        "GOFLAGS": "-mod=readonly"
+      },
+      "started_at_utc": "2026-09-11T14:18:01.256313+00:00",
+      "completed_at_utc": "2026-09-11T14:18:01.266432+00:00",
+      "exit_status": 0,
+      "expected_exit_status": 0,
+      "combined_output": "go-paths.log",
+      "combined_output_sha256": "837ff14525cb5c9a2c1d67222d01f73b0eb8978dd358bf1875f132e11e94d606",
+      "combined_output_bytes": 182,
+      "raw_output": "go-paths-raw.json",
+      "raw_output_file_sha256": "b651bdaf819832b02f11144e75f168e7a471fe05e08e182a4a173410179b3d26",
+      "display_output_sha256": "89346bf47830ff104811efb4dcf994b9510c04ee5a3a28a61f31b2da8b8857da",
+      "display_normalization": "Tabs expanded at 8-column stops, line endings normalized, trailing whitespace and EOF blank lines removed, one final LF; exact original bytes are retained in raw JSON."
+    },
+    {
+      "name": "fixed",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-overlay",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/sku-gate/runs/fixed-overlay.json",
+        "./x/sku",
+        "-run",
+        "^TestAppModuleBasicValidateGenesis",
+        "-count=1",
+        "-v",
+        "-coverprofile=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/sku-gate/runs/fixed-coverage.out",
+        "-timeout=120s"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {
+        "GOTOOLCHAIN": "go1.26.8",
+        "GOMAXPROCS": "4",
+        "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-reproduction/build",
+        "GOWORK": "off",
+        "GOFLAGS": "-mod=readonly"
+      },
+      "started_at_utc": "2026-09-11T14:18:01.266912+00:00",
+      "completed_at_utc": "2026-09-11T14:18:08.798859+00:00",
+      "exit_status": 0,
+      "expected_exit_status": 0,
+      "combined_output": "fixed.log",
+      "combined_output_sha256": "378850d4a15981b103071352025f950c30fae80f3e27cfb771df650a8e24e3a4",
+      "combined_output_bytes": 2763,
+      "overlay": "fixed-overlay.json",
+      "overlay_sha256": "e17cab04eaff8a22ab7ff5677e38119c6e082c94bfcf6239eba3e7cfd6d47a97",
+      "replacement_source": "module-fixed.go.txt",
+      "replacement_sha256": "c6e2f80e56608a8904acfa76ee4efd873de730de68c8fb14cd42b7d5382e0be3",
+      "coverage_profile": "fixed-coverage.out",
+      "coverage_profile_sha256": "c2941fc63ae1b1dae3d46a043c9e5597d6239b16b61bf9a48739021f4e875e92",
+      "raw_output": "fixed-raw.json",
+      "raw_output_file_sha256": "c9786fe08fe64d5a799cc2b2fc85487e94cbf0229d79f2a8f743abc7ddc9fe2c",
+      "display_output_sha256": "2719cb8e25fa6276ee5879f4b8450651e7641151e23596121cda1b88ac764b6a",
+      "display_normalization": "Tabs expanded at 8-column stops, line endings normalized, trailing whitespace and EOF blank lines removed, one final LF; exact original bytes are retained in raw JSON."
+    },
+    {
+      "name": "skip-validation",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-overlay",
+        "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/sku-gate/runs/skip-validation-overlay.json",
+        "./x/sku",
+        "-run",
+        "^TestAppModuleBasicValidateGenesis",
+        "-count=1",
+        "-v",
+        "-coverprofile=/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/docs/reviews/2026-09-11-claude-review-validation/sku-gate/runs/skip-validation-coverage.out",
+        "-timeout=120s"
+      ],
+      "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+      "environment_overrides": {
+        "GOTOOLCHAIN": "go1.26.8",
+        "GOMAXPROCS": "4",
+        "TMPDIR": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/sep11-sku-gate-archived-reproduction/build",
+        "GOWORK": "off",
+        "GOFLAGS": "-mod=readonly"
+      },
+      "started_at_utc": "2026-09-11T14:18:08.802811+00:00",
+      "completed_at_utc": "2026-09-11T14:18:14.700689+00:00",
+      "exit_status": 0,
+      "expected_exit_status": 1,
+      "combined_output": "skip-validation.log",
+      "combined_output_sha256": "9da1e04ae9ce6ca3bd2b89bde57c6f7eeb585c056dddc88b77ee7ceaf59537a5",
+      "combined_output_bytes": 2763,
+      "raw_output": "skip-validation-raw.json",
+      "raw_output_file_sha256": "db87760e14cc0b877962b2781574aa80afcaba7714ce562368ab3eb1854c105a",
+      "display_output_sha256": "f73aa603b27bedab9a7f8dd4e7a7612e53ba02c6780aa9625c39347159ac173e",
+      "display_normalization": "Tabs expanded at 8-column stops, line endings normalized, trailing whitespace and EOF blank lines removed, one final LF; exact original bytes are retained in raw JSON."
+    }
+  ],
+  "archival_note": "Display normalization and raw JSON preservation added after the diagnostic run; recorded argv, driver hash, raw byte hashes, and exit statuses are unchanged."
+}

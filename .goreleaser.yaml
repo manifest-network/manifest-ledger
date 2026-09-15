@@ -1,4 +1,6 @@
 ---
+version: 2
+
 project_name: manifest-ledger
 
 release:
@@ -11,13 +13,22 @@ builds:
     main: ./cmd/manifestd
     binary: manifestd
     mod_timestamp: "{{ .CommitTimestamp }}"
+    tags:
+      - netgo
+      - muslc
+      - ledger
     flags:
-      - -tags=netgo ledger
       - -trimpath
+      - -mod=readonly
     ldflags:
-      - -s -w -X main.commit={{.Commit}} -X main.date={{ .CommitDate }} -X github.com/cosmos/cosmos-sdk/version.Name=manifest -X github.com/cosmos/cosmos-sdk/version.AppName=manifestd -X github.com/cosmos/cosmos-sdk/version.Version=v{{ .Version }} -X github.com/cosmos/cosmos-sdk/version.Commit={{ .Commit }} -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,ledger -X github.com/manifest-network/manifest-ledger/app.Bech32Prefix=manifest
+      - -s -w -linkmode=external -extldflags "-Wl,-z,muldefs -static" -X github.com/cosmos/cosmos-sdk/version.Name=manifest -X github.com/cosmos/cosmos-sdk/version.AppName=manifestd -X github.com/cosmos/cosmos-sdk/version.Version=v{{ .Version }} -X github.com/cosmos/cosmos-sdk/version.Commit={{ .Commit }} -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,muslc,ledger -X github.com/manifest-network/manifest-ledger/app.Bech32Prefix=manifest
     env:
       - CGO_ENABLED=1
+      - CC=gcc
+    hooks:
+      post:
+        - cmd: ./scripts/verify-release-binary.sh "{{ .Path }}"
+          output: true
     goos:
       - linux
 #      - darwin
@@ -26,11 +37,17 @@ builds:
 #      - arm64
 
 archives:
-  - format: tar.gz
+  - formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
 
+sboms:
+  - id: archive
+    artifacts: archive
+    disable: false
+
 snapshot:
-  name_template: '{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}'
+  version_template: '{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}'
 
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'

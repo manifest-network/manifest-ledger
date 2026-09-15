@@ -9,22 +9,65 @@ on:
       - main
     types: [opened, reopened, synchronize]
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: coverage
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version: 'stable'
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Verify host and container coverage toolchains agree
+        run: make verify-coverage-toolchain
       - name: Make local image
-        run: make local-image
+        run: make local-image-cover
       - name: Run coverage
+        id: coverage
         run: make coverage
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          file: /tmp/manifest-ledger-coverage/coverage-merged-filtered.out
-          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Enforce project floor and summarize package coverage
+        if: ${{ !cancelled() && steps.coverage.outcome == 'success' }}
+        run: |
+          coverage_status=0
+          python3 scripts/coverage-summary.py /tmp/manifest-ledger-coverage/coverage-merged-filtered.out 80 > coverage-summary.md || coverage_status=$?
+          cat coverage-summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$coverage_status"
+      - name: Enforce full Git diff executable-statement coverage floor
+        if: ${{ !cancelled() && steps.coverage.outcome == 'success' }}
         env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          COVERAGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          COVERAGE_HEAD: ${{ github.sha }}
+        run: |
+          coverage_diff_status=0
+          python3 scripts/coverage-diff.py /tmp/manifest-ledger-coverage/coverage-merged-filtered.out "$COVERAGE_BASE" "$COVERAGE_HEAD" 80 > coverage-diff-summary.md || coverage_diff_status=$?
+          if [ "$coverage_diff_status" -gt 1 ]; then
+            echo 'Full Git diff coverage validation failed; inspect the step log for the invalid input.' >> coverage-diff-summary.md
+          fi
+          cat coverage-diff-summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$coverage_diff_status"
+      - name: Retain coverage profile and package trends
+        if: ${{ !cancelled() && steps.coverage.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-profile
+          path: |
+            /tmp/manifest-ledger-coverage/coverage-merged.out
+            /tmp/manifest-ledger-coverage/coverage-merged-filtered.out
+            coverage-summary.md
+            coverage-diff-summary.md
+          retention-days: 30
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() && steps.coverage.outcome == 'success' }}
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: /tmp/manifest-ledger-coverage/coverage-merged-filtered.out
+          disable_search: true
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          version: v11.3.1

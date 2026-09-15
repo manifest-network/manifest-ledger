@@ -1,3 +1,4 @@
+// Package params defines application-wide denomination and address settings.
 package params
 
 import (
@@ -7,8 +8,10 @@ import (
 )
 
 const (
+	// BondDenom is the chain's staking denomination.
 	BondDenom = "umfx"
 
+	// Bech32PrefixAccAddr is the Bech32 prefix for account addresses.
 	Bech32PrefixAccAddr = "manifest"
 )
 
@@ -30,6 +33,7 @@ func init() {
 	RegisterDenoms()
 }
 
+// RegisterDenoms registers the chain's native denomination with the SDK.
 func RegisterDenoms() {
 	err := sdk.RegisterDenom(BondDenom, math.LegacyOneDec())
 	if err != nil {
@@ -37,6 +41,7 @@ func RegisterDenoms() {
 	}
 }
 
+// SetAddressPrefixes configures the chain's Bech32 address prefixes.
 func SetAddressPrefixes() {
 	config := sdk.GetConfig()
 	config.SetBech32PrefixForAccount(Bech32PrefixAccAddr, Bech32PrefixAccPub)

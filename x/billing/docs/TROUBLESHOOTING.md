@@ -15,9 +15,21 @@ manifestd tx billing fund-credit [tenant-address] [amount] --from [key]
 
 The credit account is created automatically when first funded.
 
+### Funding denomination is send-disabled
+
+**Cause**: `FundCredit` checks the bank module's current send-enabled policy,
+including the default for denominations without an explicit setting. A disabled
+denomination cannot be newly deposited through billing. The rejected deposit
+does not transfer funds, create a credit account, or emit a funding event.
+
+**Solution**: Check the bank send-enabled configuration and contact the
+authorized bank-policy operator if it should change. Existing credit remains
+available for lease settlement, which does not apply this denomination check.
+Funding another denomination only helps leases whose SKUs use that denomination.
+
 ### "insufficient credit balance"
 
-**Cause**: The check is against *available* credit (available = balance − reserved_amounts), where reserved_amounts is the sum of reservations held by the tenant's existing PENDING and ACTIVE leases — not the raw balance. A tenant whose balance covers the `min_lease_duration` requirement can still hit this error if existing leases have that credit reserved. The full error text includes both balance and reserved, e.g. `insufficient available credit for denom <denom>: need <x>, have <y> available (balance: <b>, reserved: <r>)`. Check the `available_balances` field of `query billing credit-account` rather than the raw balance.
+**Cause**: The check is against *available* credit (available = balance − reserved_amounts), not the raw balance. In v4, `reserved_amounts` is the exact remaining aggregate `R = sum(live modern remaining tranches) + unattributed_reserved_amounts`; it is not a fixed sum of original nominal reservations. A tenant whose balance covers the new lease's `min_lease_duration` requirement can still hit this error if existing leases have that credit reserved. The full error text includes both balance and reserved, e.g. `insufficient available credit for denom <denom>: need <x>, have <y> available (balance: <b>, reserved: <r>)`. Check the `available_balances` field of `query billing credit-account` rather than the raw balance.
 
 **Solution**: 
 1. Check current balances:
@@ -37,6 +49,41 @@ The credit account is created automatically when first funded.
 **Example**: For a lease with SKU1 (10 upwr/second) and SKU2 (5 umfx/second) with `min_lease_duration` of 3600 seconds:
 - Need at least 36,000 upwr
 - Need at least 18,000 umfx
+
+### v4 upgrade/import reports under-backed PENDING reservations
+
+**Cause**: The v4 cutover never mints or moves tokens. For every tenant and
+denomination, the aggregate produced by v2→v3 or direct-import preparation must
+cover all modern PENDING nominal claims. Preparation deterministically repairs
+the historical aggregate to the modern provable floor while preserving unknown
+excess only for a live opaque legacy cohort. A short aggregate after that repair
+is inconsistent state and stops the migration. A smaller bank balance is
+historically reachable under v2 settlement and is handled without minting: if
+any denomination is short, the cutover expires that tenant's entire modern
+PENDING cohort atomically.
+
+**Preflight and resolution**:
+
+1. Sum `locked_price × quantity × min_lease_duration_at_creation` for the
+   tenant's modern PENDING leases in each denomination.
+2. Confirm the pre-v4 aggregate is at least that sum. A normal sequential v2→v3
+   upgrade repairs the provable aggregate floor; investigate index/state
+   corruption if it still falls short.
+3. Compare the derived credit address's bank balance with that sum. If any
+   denomination is short, record every modern PENDING lease for the tenant: all
+   will become EXPIRED at the upgrade/genesis block with an empty tranche.
+4. Notify affected clients that they may resubmit after cutover. Do not edit
+   per-lease allocations or manufacture backing: the deterministic cutover
+   either preserves the complete tenant cohort or expires it, then distributes
+   the remaining bank-backed historical budget across ACTIVE and historical
+   claims with Hamilton's largest-remainder method.
+
+The static genesis validation command cannot detect a bank shortfall because it
+has no bank keeper context; successful static validation does not replace this
+preflight and does not guarantee that pre-v4 PENDING leases remain pending.
+Tenant-wide expiration is only a pre-v4 cutover policy. An already-v4
+consumable import whose aggregate exceeds its bank backing is rejected by
+`InitGenesis` before billing state is written.
 
 ### "invalid denomination for credit account"
 
@@ -155,7 +202,7 @@ manifestd tx billing create-lease <sku-uuid>:2:web <sku-uuid>:3:db --from tenant
 manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1 --from tenant
 ```
 
-## Lease Acknowledgement Issues
+## Lease Acknowledgement and Pending Domain Issues
 
 ### "lease not in pending state"
 
@@ -168,6 +215,37 @@ manifestd query billing lease [lease-uuid]
 
 Only PENDING leases can be acknowledged/rejected by providers or cancelled by tenants.
 
+### "lease acknowledgement deadline exceeded"
+
+**Cause**: Block time is strictly after
+`lease.created_at + current pending_timeout`. Error code 34 applies to both
+acknowledgement and nonempty `set-item-custom-domain` calls on PENDING leases,
+including an idempotent re-set of the existing domain. This is a hard gate even
+when the lease still appears PENDING because EndBlock has not expired it yet.
+The exact cutoff remains valid.
+
+**Solution**: With unchanged timeout parameters, retrying acknowledgement or
+a nonempty domain claim will still fail. The provider can reject the overdue
+lease, the tenant can cancel it while it remains PENDING, or either party can
+wait for EndBlock expiration before the tenant creates a replacement lease.
+To release an existing domain immediately, an authorized editor can clear it
+while the lease remains PENDING:
+
+```bash
+manifestd tx billing set-item-custom-domain [lease-uuid] [service-name] "" --from [authorized-key]
+```
+
+Clearing does not reactivate the lease or extend its deadline. Terminal leases
+are immutable; their live domain claim has already been released.
+
+### "lease acknowledgement active cap exceeded"
+
+**Cause**: Applying the complete acknowledgement batch would make at least one tenant's active
+lease count exceed `max_leases_per_tenant`. The cap is evaluated independently per tenant.
+
+**Solution**: Close active leases for the capped tenant before acknowledging more. Splitting a
+batch does not bypass the cap; only a batch whose resulting count is within the limit can succeed.
+
 ### "unauthorized" (for acknowledge/reject)
 
 **Cause**: The sender is neither the provider's management address for the SKUs in the lease nor the module authority. (Note: `allowed_list` does NOT grant acknowledge/reject — it only covers `CreateLeaseForTenant` and `SetItemCustomDomain`.)
@@ -179,11 +257,11 @@ manifestd tx billing acknowledge-lease [lease-uuid] --from [provider-key]
 
 ### "invalid rejection reason"
 
-**Cause**: The rejection reason provided to `reject-lease` exceeds the maximum length of 256 characters.
+**Cause**: The rejection reason provided to `reject-lease` exceeds the maximum encoded length of 256 UTF-8 bytes.
 
 **Solution**: Provide a shorter rejection reason:
 ```bash
-# Maximum 256 characters
+# Maximum 256 UTF-8 bytes
 manifestd tx billing reject-lease [lease-uuid] --reason "Service unavailable" --from provider
 ```
 
@@ -191,9 +269,10 @@ manifestd tx billing reject-lease [lease-uuid] --reason "Service unavailable" --
 
 **What happens**:
 1. Lease remains in PENDING state
-2. After `pending_timeout` (default 30 minutes), the EndBlocker expires the lease
-3. Lease state changes to EXPIRED
-4. Credit is unlocked and remains in tenant's account
+2. At `created_at + pending_timeout` the exact-cutoff acknowledgement is still valid
+3. Strictly after that hard deadline, acknowledgement is rejected
+4. The rate-limited EndBlocker eventually changes the lease to EXPIRED
+5. Credit is unlocked and remains in tenant's account
 
 **What tenant can do**:
 - Wait for automatic expiration
@@ -242,9 +321,9 @@ manifestd query billing lease [lease-uuid]
 
 **Cause**: 
 1. The lease is in PENDING state (billing hasn't started), OR
-2. The lease has no accrued charges yet (just acknowledged or just settled), OR
-3. The lease is not active (closed), OR
-4. The provider already withdrew recently
+2. The ACTIVE lease has no accrued charges yet (just acknowledged or recently withdrawn), OR
+3. The CLOSED lease's final interval is already finalized (`last_settled_at == closed_at`), OR
+4. The lease is REJECTED or EXPIRED and has no billable interval
 
 **Solution**: 
 1. Check the lease state and withdrawable amount:
@@ -254,7 +333,14 @@ manifestd query billing lease [lease-uuid]
    ```
 2. For PENDING leases, wait for acknowledgement or acknowledge it first
 3. For ACTIVE leases, wait for more time to pass for charges to accrue
-4. For closed leases, you cannot withdraw (settlement happened during close)
+4. Normal close paths finalize the cursor at `closed_at`, leaving nothing more
+   to withdraw. An imported CLOSED lease can instead have
+   `last_settled_at < closed_at`; use its explicit UUID to finalize that interval
+   once. Payment is capped by lease-spendable credit, and any shortfall is
+   written off. Zero payment still commits the final cursor with no payout
+   count/event; later funding cannot revive the interval. See the
+   [withdrawal API](API.md#withdraw).
+5. REJECTED and EXPIRED leases have no charges to withdraw.
 
 ### "unauthorized"
 
@@ -276,26 +362,158 @@ manifestd tx billing withdraw [lease-uuid] --from [provider-key]
    ```
 2. Use a valid provider UUID.
 
+### Rotate an eligible provider payout address
+
+Payout addresses are live: updating one redirects all unsettled accrual,
+including charges earned before the update, to the new recipient. For an
+ordinary rotation where the old recipient can still receive funds:
+
+1. Query the provider and preserve its address, activation state, and metadata.
+2. Withdraw to the old recipient first. Follow the
+   [provider withdrawal checkpoint workflow](API.md#withdraw) through every page,
+   wait for execution success, and retry all `failed_lease_uuids` before proceeding.
+3. Update the payout, preserving the other fields:
+   ```bash
+   manifestd query sku provider [provider-uuid]
+   manifestd tx sku update-provider [provider-uuid] [current-provider-address] [new-payout-address] [current-active] --meta-hash [current-meta-hash-hex] --from [authorized-key]
+   ```
+4. Wait for execution success and query the provider to verify the new payout.
+
+Query `meta_hash` is base64; convert its bytes to hex for `--meta-hash`.
+Withdrawal and update in separate transactions are not an atomic cutover:
+charges accruing between the last withdrawal and the update go to the new
+recipient. Agree on that boundary with both recipients before rotating.
+
+If the old payout is blocked or equals a tenant's own credit address, withdrawal
+cannot repair it. Use the repair-first procedures below, which deliberately
+send previously unsettled accrual to the corrected recipient.
+
+### "provider payout address must not equal tenant credit address"
+
+**Cause**: The provider's payout address SDK-decodes to the same account as the
+affected tenant's deterministically derived billing credit address. Alternate
+Bech32 casing is only a different wire spelling, not a different account. A
+bank self-send would leave credit in place while appearing to settle it, so
+billing rejects this configuration.
+
+**What happens**:
+1. `create-lease` and `create-lease-for-tenant` reject the configuration before
+   reserving credit or allocating a lease UUID. `acknowledge-lease` rechecks
+   the current payout for every tenant in the batch; one collision rejects the
+   entire batch before any lease becomes ACTIVE or any reservation changes.
+2. A specific-lease `Withdraw` or `CloseLease` batch fails atomically: no
+   transfer, lease timestamp/state, count, reservation, or event from any lease
+   in that batch is committed.
+3. Provider-wide withdraw is best-effort per lease: it logs and skips the
+   affected lease, returns its UUID in `failed_lease_uuids`, leaves that lease
+   unchanged, and continues with other leases.
+
+**Solution**: Update the provider to use a payout account distinct from every
+tenant-derived credit address, preserving its current activation state, then
+retry the affected lease explicitly:
+```bash
+manifestd query sku provider [provider-uuid]
+manifestd tx sku update-provider [provider-uuid] [provider-address] [new-payout-address] [current-active] --meta-hash [current-meta-hash-hex] --from [authorized-key]
+manifestd tx billing withdraw [lease-uuid] --from [provider-key]
+```
+
+Replace `[current-active]` with `false` if the provider is inactive or `true` if
+it is active, and preserve its other settings. Query `meta_hash` is base64;
+convert those bytes to hex for `--meta-hash`, or explicitly use an empty value
+only when clearing it. Changing the payout redirects all unsettled accrual to
+the new recipient. An ordinary payout rotation should withdraw first when
+possible; a blocked recipient requires repair first. An inactive provider's payout
+can be repaired with `false` even during a partial deactivation cascade;
+reactivation is a separate action and requires finishing that cascade first.
+
+For a PENDING lease, the tenant can cancel or the provider can reject it to
+release its reservation without transferring funds. Alternatively, retry
+`acknowledge-lease` after repair while its deadline and tenant active cap still
+allow activation. Pending timeout expiry also remains available. Historical
+genesis import deliberately accepts these records, so operators must
+[audit live lease payout collisions before upgrading](MIGRATION.md#provider-payout-policy-preflight).
+
+### Provider payout address is blocked from receiving funds
+
+**Cause**: Before transferring a nonzero amount, billing rejects payout
+addresses blocked by the bank module, including protected module accounts.
+The governance (`gov`) module account is the sole module-account receiving
+exemption in this app; receiving funds gives it no additional signing or
+governance authority.
+New provider create/update messages reject those addresses, but a provider
+stored by an older binary may still need repair. The error identifies the
+blocked payout address. Both `create-lease` and `create-lease-for-tenant` reject
+new leases for such a provider before reserving credit or allocating a lease
+UUID. `acknowledge-lease` also checks the current payout, including for a
+PENDING lease created before the upgrade or before a payout update. Rejection
+leaves the whole batch PENDING and its reservations unchanged.
+
+**What happens**:
+1. A specific-lease withdrawal or `CloseLease` batch fails atomically; accrued
+   charges, reservations, lease state, and balances remain unchanged.
+2. Provider-wide withdrawal continues, reports each failed lease in
+   `failed_lease_uuids`, and advances its cursor past those leases. If every
+   attempted transfer is blocked, the call can succeed with zero withdrawals
+   and a nonempty failure list.
+3. `ProviderWithdrawable` reports the same failures in its discarded simulation.
+   Zero-transfer paths do not attempt a payment to the blocked address.
+
+`WithdrawableAmount` calculates the lease's accrued, spendable-capped amount;
+it does not attempt a transfer or check the payout recipient, so it may still
+return a positive amount for this configuration.
+
+**Solution**: An authorized operator must update the provider's payout address
+to an eligible account, preserving its other settings, then retry each reported
+lease UUID explicitly. Use `query sku provider [provider-uuid]` to inspect the
+current record and `tx sku update-provider --help` for the update syntax. No
+lease recreation or accrual reset is needed. A provider's payout address is
+shared by its leases, so repair it before retrying the remaining pages.
+Preserve the queried `active` value: `false` repairs an inactive provider
+without reactivating it, including while a deactivation cascade is unfinished.
+Using `true` in that case would reject the repair until the cascade completes.
+For PENDING leases, cancellation and provider rejection still release the
+reservation without a payment, and normal timeout expiry remains available.
+Retry acknowledgement after repair only if its deadline and active-cap checks
+still pass.
+
+Genesis import deliberately retains historical providers with valid Bech32
+payout addresses even if the candidate binary's bank policy blocks those
+destinations. Import success does not prove that their leases can settle.
+Operators must [audit and repair provider payouts before the upgrade](MIGRATION.md#provider-payout-policy-preflight).
+
 ### Lease not included in provider-wide withdraw results
 
 **Cause**: A provider-wide withdraw processes each lease in its own cached context; if a single lease fails, it is logged and skipped so the rest of the batch still succeeds. Two things determine what appears in the results:
 
-1. **Only ACTIVE leases are considered.** Provider-wide withdraw iterates the provider's ACTIVE leases only — CLOSED leases are already fully settled at close and never appear.
-2. **Leases are skipped for two different reasons.** A *normal* skip happens when the lease has nothing to settle — no elapsed time since the last settlement, or a zero withdrawable amount — and is silent and expected. An *error* skip happens when the lease's settlement or store operation fails — a bank transfer failure, a missing or invalid provider payout address, or a `last_settled_at` that is after the block time — in which case that lease's changes are discarded.
+1. **Only ACTIVE leases are considered.** CLOSED leases never appear in provider-wide pages. Normal close paths finalize their settlement cursor; historical CLOSED imports may retain a final interval that must be finalized separately with an explicit lease UUID.
+2. **Leases are skipped for two different reasons.** A *normal* skip happens
+   when the lease has nothing to settle — no elapsed time since the last
+   settlement, or a zero withdrawable amount — and is silent and expected. An
+   *error* skip happens when a lease-local settlement or store operation fails
+   — for example, a bank transfer failure, malformed stored lease/account data,
+   a bank-blocked payout address or one equal to that tenant's derived credit address, or a
+   `last_settled_at` after block time — in which case that lease's changes are
+   discarded. Provider lookup, authorization, and payout-address decoding are
+   request-wide gates and fail the transaction before any page lease runs.
 
 **What happens**:
 1. The skipped lease is left unchanged; other leases in the batch are processed normally
 2. The overall transaction still succeeds
-3. No error is returned for a skipped lease — error skips are logged, normal (nothing-to-settle) skips are silent
+3. No transaction error is returned for a skipped lease. Error skips are logged,
+   returned in ordered `failed_lease_uuids`, and included in the provider-wide
+   `batch_withdraw` event's `failed_lease_count` and comma-separated
+   `failed_lease_uuids` attributes. Normal nothing-to-settle skips remain silent.
 
-> **Arithmetic overflow does NOT skip the lease.** If a lease's accrued charge overflows (settlement duration beyond ~100 years, `MaxDurationSeconds`), the silent settlement path instead transfers the tenant's **entire remaining credit** in that lease's denoms to the provider and force-closes the lease. The funds are **not** preserved. Overflow is effectively unreachable in normal operation but can arise from a genesis import with an ancient `last_settled_at`.
+> **Arithmetic overflow does NOT skip the lease.** If an accrued charge exceeds the SDK's 256-bit `math.Int` representation (during price × quantity, elapsed-seconds multiplication, or same-denom aggregation), the silent settlement path clamps each overflowed denomination to this lease's spendable credit `B - (R - A)`, settles exact charges in unaffected denominations normally, and force-closes the lease. Long intervals do not overflow by themselves. Non-silent settlement and paths whose result cannot be spendable-capped return `ErrArithmeticOverflow` (billing code 20) without changing state; withdrawable queries return the exact spendable-capped amount.
 
 **Solution**:
-1. Use specific lease withdrawal for the problematic lease to see the actual error:
+1. Save the response's `failed_lease_uuids` before advancing `next_key`; the
+   transaction cursor resumes after failed leases too.
+2. Use specific lease withdrawal for a problematic lease to see the actual error:
    ```bash
    manifestd tx billing withdraw [lease-uuid] --from provider
    ```
-2. Verify the provider's payout address is set and valid (`manifestd query sku provider [provider-uuid]`), then retry.
+3. Verify the provider's payout address is set and valid (`manifestd query sku provider [provider-uuid]`), then retry every reported UUID.
 
 ---
 
@@ -327,11 +545,19 @@ manifestd tx billing withdraw [lease-uuid] --from [key]
 manifestd tx billing withdraw --provider [provider-uuid] --from [key]
 ```
 
-### "key (pagination cursor) is only valid in provider-wide mode"
+### "--key and --limit require --provider and cannot be used with lease UUIDs"
 
-**Cause**: `--key` was passed together with positional lease UUIDs. The cursor is only meaningful in provider-wide mode.
+**Cause**: The CLI was given `--key` or `--limit` together with positional lease
+UUIDs. Both flags are restricted to provider-wide mode, including explicitly
+supplied empty `--key` or zero `--limit` values.
 
-**Solution**: Drop `--key`, or drop the lease UUIDs and use provider-wide mode.
+**Solution**: Drop both flags, or drop the lease UUIDs and use `--provider`.
+
+Clients submitting `MsgWithdraw` directly have a distinct compatibility
+contract: a nonempty `key` with `lease_uuids` is rejected by `ValidateBasic` with
+`key (pagination cursor) is only valid in provider-wide mode`; `limit` is
+accepted and ignored in specific-lease mode. The explicit UUID list remains
+bounded to 100 leases. This server behavior is unchanged by the stricter CLI.
 
 ### "key length N exceeds maximum 64"
 
@@ -365,6 +591,8 @@ manifestd tx billing withdraw --provider [provider-uuid] --limit 100 --key [next
 - Authorization failure on one lease (e.g., not the provider for that lease)
 - One lease doesn't exist
 - Leases belong to different providers (for operations requiring same-provider)
+- An acknowledgement lease is strictly past its hard pending deadline
+- An acknowledgement batch would exceed any tenant's post-batch active cap
 
 **Solution:**
 1. Check each lease individually to identify the problem:
@@ -427,10 +655,43 @@ manifestd query tx [txhash] --output json | jq '.events[] | select(.type | start
 
 **Cause**: The lease UUID is not in valid UUIDv7 format.
 
-**Solution**: Ensure you're using a valid UUID (format: `xxxxxxxx-xxxx-7xxx-xxxx-xxxxxxxxxxxx`):
+**Solution**: Use a lowercase UUIDv7 in the format
+`xxxxxxxx-xxxx-7xxx-yxxx-xxxxxxxxxxxx`, where `y` is `8`, `9`, `a`, or `b`:
 ```bash
 manifestd query billing lease 01912345-6789-7abc-8def-0123456789ab
 ```
+
+### "provider_uuid must be a valid UUIDv7" or "sku_uuid must be a valid UUIDv7"
+
+**Errors**:
+
+- Direct `LeasesByProvider` RPC: `provider_uuid must be a valid UUIDv7`.
+- Direct `LeasesBySKU` RPC: `sku_uuid must be a valid UUIDv7`.
+- `leases-by-provider` CLI: `invalid provider_uuid format: {uuid}`.
+- `provider-withdrawable` CLI: `invalid provider_uuid format: {uuid}`.
+- `leases-by-sku` CLI: `invalid sku_uuid format: {uuid}`.
+
+**Cause**: The two collection RPCs require non-empty canonical lowercase
+UUIDv7 values. A non-empty malformed, uppercase, or non-v7 value is rejected
+with gRPC `InvalidArgument` and the corresponding `must be a valid UUIDv7`
+message. An empty field is rejected earlier, also with `InvalidArgument`, as
+`provider_uuid cannot be empty` or `sku_uuid cannot be empty`.
+
+These billing CLI commands validate their UUID arguments locally before
+constructing an RPC, so they report the `invalid ... format` messages above
+instead of server messages. Omitting a required positional argument produces
+Cobra's argument-count error; passing an explicitly empty argument produces the
+local format error.
+
+Direct `Lease`, `WithdrawableAmount`, and `ProviderWithdrawable` RPCs use an
+exact lookup for every non-empty identifier, so malformed and unknown keys both
+return `NotFound`. They do not mask state corruption: an unexpected
+primary-store or value-decoding failure returns gRPC `Internal` and requires
+operator investigation.
+
+**Solution**: Use the canonical lowercase UUIDv7 returned by the SKU module.
+For these two collection queries, an unknown canonical lowercase UUIDv7 is
+valid input and returns an empty page.
 
 ### "invalid tenant address"
 
@@ -441,20 +702,46 @@ manifestd query billing lease 01912345-6789-7abc-8def-0123456789ab
 manifestd query billing credit-account manifest1abc...
 ```
 
+### CreditEstimate returns `ResourceExhausted`
+
+**Cause**: `CreditEstimate` is intentionally unpaginated. It accepts the
+conservative historical bound of 11,000 ACTIVE leases (the exact v2 reachable
+maximum is 10,999) and at most 100,000 active lease items. A stored count or
+item total above those bounds returns `ErrLeaseQueryLimitExceeded` (billing
+code 37) as gRPC `ResourceExhausted`; the response is never silently truncated.
+
+**Resolution**: A stored ACTIVE count above 11,000 is malformed; audit the
+credit account and its tenant/state index. More than 100,000 items can be valid
+state but is intentionally unsupported by this unpaginated aggregate query;
+use paginated lease queries for inspection. A count/index mismatch returns
+`ErrReservationInvariant` (billing code 36) as gRPC `Internal`, again without a
+partial response.
+
+`CreditAccount` is separate: bank balances are cursor-paginated (default 100,
+maximum 1000). Follow `pagination.next_key`; offset and `count_total` are
+rejected to keep each request bounded.
+
 ## Pending Lease Expiration
 
 ### Understanding Pending Expiration
 
-Pending leases expire automatically if providers don't acknowledge them within `pending_timeout` (default 30 minutes).
+Pending leases expire automatically if providers do not acknowledge them by the hard
+`created_at + current pending_timeout` deadline (default 30 minutes). The exact cutoff is valid;
+strictly later block times are not.
 
 **How it works**:
 1. EndBlocker runs each block
 2. Checks pending leases against `created_at + pending_timeout`
 3. Expired leases transition to EXPIRED state
-4. Credit is unlocked (was never billed since lease was never active)
+4. The exact remaining reservation is released. Modern PENDING leases release
+   their full own tranche; a historical member decrements the persisted cohort
+   count in O(1), releasing the exact remaining shared `U` only when the final
+   member terminates. Bank credit itself was never billed while PENDING.
 5. `lease_expired` event is emitted (attributes: lease_uuid, tenant, provider_uuid, reason="pending_timeout")
 
 **Rate limiting**: Max 100 expirations per block to prevent DoS.
+An overdue lease waiting behind this limit can still appear PENDING, but acknowledgement already
+fails synchronously; rejection and cancellation remain available.
 
 ### Lease expired while waiting for provider
 
@@ -472,7 +759,7 @@ Pending leases expire automatically if providers don't acknowledge them within `
 
 ### Understanding Auto-Close
 
-Auto-close is triggered when an ACTIVE lease's projected accrual meets or exceeds the credit balance for any denom the lease bills in (accrued >= balance) — the balance does not have to reach exactly zero. When no time has elapsed since the last settlement, a zero balance in any lease denom triggers it. It happens during write operations only:
+Auto-close is triggered when an ACTIVE lease's projected accrual meets or exceeds that lease's spendable credit for any billed denomination. With tenant balance `B`, aggregate reservation `R`, and this lease's allocation `A`, the threshold is `B - (R - A)`, not the raw balance. When no time has elapsed since the last settlement, zero lease-spendable credit in any lease denomination triggers it. It happens during write operations only:
 - `Withdraw` - If credit exhausted after settlement
 - `CloseLease` - If credit was already exhausted
 
@@ -484,8 +771,8 @@ Auto-close is triggered when an ACTIVE lease's projected accrual meets or exceed
 ### Lease closed automatically
 
 **What happened**:
-1. During a Withdraw or CloseLease operation, the system detected zero credit
-2. Final settlement was performed (any remaining balance transferred to provider)
+1. During a Withdraw or CloseLease operation, the system detected exhausted lease-spendable credit
+2. Final settlement was performed (the lease's own tranche plus genuinely unreserved credit was transferred, without consuming other leases' reservations)
 3. The lease was closed
 
 **How to verify**:
@@ -502,16 +789,20 @@ Events to look for (the event depends on which write path triggered the auto-clo
 - `provider_withdraw` with `auto_closed="true"` (auto-close via specific-lease `Withdraw`)
 - `lease_auto_closed` with `reason="credit_exhausted"` (auto-close via provider-wide `Withdraw`)
 
+Both withdrawal auto-close events include the actual final `amount` (possibly
+empty/zero) and `payout_address`; they do not use a zero sentinel for a positive
+transfer.
+
 **Resolution**: 
 1. Fund the credit account again
 2. Create a new lease
 
 ### Why doesn't my query show accurate accrued amounts?
 
-**Cause**: Lease queries (`Lease`, `Leases`, etc.) return stored state without performing settlement calculations. The `last_settled_at` field shows when settlement last occurred.
+**Cause**: Lease queries (`Lease`, `Leases`, etc.) return stored state without performing settlement calculations. For an ACTIVE lease, `last_settled_at` is the accrual cursor through which complete seconds have settled; it can precede the latest withdrawal by less than one second because that fractional time is carried forward.
 
 **Explanation**: 
-- Lease queries return the stored `last_settled_at` timestamp
+- Lease queries return the stored `last_settled_at` accrual cursor
 - They don't calculate time elapsed since then
 - PENDING leases don't accrue charges (billing starts at acknowledgement)
 - Use `WithdrawableAmount` or `ProviderWithdrawable` queries to get **real-time calculated amounts**:
@@ -522,11 +813,23 @@ Events to look for (the event depends on which write path triggered the auto-clo
   # Get real-time withdrawable for a provider's ACTIVE leases, one page at a time
   manifestd query billing provider-withdrawable [provider-uuid]
   ```
-  A single `provider-withdrawable` response is a partial, per-page total over the
-  provider's ACTIVE leases (page size default 100, max 1000). Loop, passing
-  `pagination.next_key` back as `--page-key`, and sum the per-page `amounts` until
-  `next_key` is empty. This query no longer has a `has_more` field — branch on
-  `len(pagination.next_key) > 0`.
+  A single `provider-withdrawable` response is an ordered execution estimate
+  for that page. Earlier leases consume page-local virtual tenant balances and
+  their own tranches, so shared credit is counted once within the page. Failed
+  lease simulations are discarded and listed in `failed_lease_uuids`, just as
+  provider-wide withdrawal reports lease-level failures; successful virtual
+  effects feed later estimates, and
+  `lease_count` matches a comparable transaction's `withdrawal_count`, including
+  successful auto-closes that transfer zero. Do not
+  sum separately queried pages: each begins from current chain state and may
+  count the same tenant balance. Every forward query page is comparable to one
+  provider-wide withdrawal because the query limit is capped at the transaction
+  maximum of 100. Commit that transaction, then
+  query the next segment with the prior query's `pagination.next_key`, while
+  the next transaction uses the prior transaction response's `next_key`.
+  Never interchange those inclusive-query and exclusive-transaction cursors.
+  Reverse pages are read-only estimates only. Query limits above 100 are
+  clamped to 100; offset and count-total requests are rejected.
 
 ## Parameter Issues
 
@@ -540,7 +843,8 @@ Events to look for (the event depends on which write path triggered the auto-clo
 - `max_items_per_lease` must be > 0 and ≤ 100
 - `max_pending_leases_per_tenant` must be > 0 and ≤ 1000
 - `pending_timeout` must be between 60 (1 min) and 86400 (24 hours)
-- `reserved_domain_suffixes`: each entry must start with '.', the part after the dot must be a valid FQDN, and duplicates are rejected
+- `allowed_list` accepts at most 100 valid, distinct decoded account identities
+- `reserved_domain_suffixes` accepts at most 100 entries; each must start with '.', the part after the dot must be a lowercase DNS zone (including a single-label zone such as `.internal`), and duplicates are rejected
 
 **Solution**: Check current params and ensure new values are valid:
 ```bash

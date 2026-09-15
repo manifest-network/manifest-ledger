@@ -1,0 +1,13 @@
+--- a/app/export.go
++++ b/app/export.go
+@@ -7 +6,0 @@
+-	"time"
+@@ -30,7 +29 @@
+-	sourceHeight := app.LastBlockHeight()
+-	if header.Height != sourceHeight {
+-		// An in-process rollback can retain the old CheckTx header after the
+-		// store moves to an earlier height. Its clock is not a valid fallback.
+-		header.Time = time.Time{}
+-	}
+-	header.Height = sourceHeight
++	header.Height = app.LastBlockHeight()

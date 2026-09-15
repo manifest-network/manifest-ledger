@@ -1,0 +1,23 @@
+command: timeout 180s node --test --test-reporter=tap scripts/docs_examples.test.mjs scripts/provider_auth_examples.test.mjs
+exit_status: 1
+initial log: sep14-front-doc-tests-initial.log (fixed harness newline after fenced snippet trailing comment)
+command: timeout 180s node --test --test-reporter=tap scripts/docs_examples.test.mjs scripts/provider_auth_examples.test.mjs
+exit_status: 0
+Mutation fixture: .review-tmp/sep14-front-metadata-mutant; copy scripts/docs_examples.test.mjs unchanged; copy docs/FRONTEND.md with only 'metaHash: currentProvider.metaHash,' replaced by 'metaHash: new Uint8Array(),'
+Mutation fixture: .review-tmp/sep14-front-active-mutant; copy scripts/docs_examples.test.mjs unchanged; copy docs/FRONTEND.md with only 'active: currentProvider.active,' replaced by 'active: true,'
+command: timeout 60s node --test --test-reporter=tap --test-name-pattern='frontend provider API URL clearing' .review-tmp/sep14-front-metadata-mutant/scripts/docs_examples.test.mjs
+exit_status: 1 (expected 1)
+command: timeout 60s node --test --test-reporter=tap --test-name-pattern='frontend provider API URL clearing' .review-tmp/sep14-front-active-mutant/scripts/docs_examples.test.mjs
+exit_status: 1 (expected 1)
+Final source freeze: 2026-09-14
+Baseline commit: 9659d1641ad6f6e971c9cd5ceebafe2cdba3d4b5
+Node: v24.15.0
+All Node fixture commands ran with host process permissions.
+A2 spendable-credit query comments were edited after the final full Node run. They are outside the exercised section; the tested provider snippet and test source remained unchanged afterward.
+This regression captures the generated composer input; no JavaScript SDK wire/integration run is claimed.
+command: sha256sum docs/FRONTEND.md scripts/docs_examples.test.mjs
+2eaadc82282660d89d317a384def900f9117792bb34300d47e2c15ea46529e49  docs/FRONTEND.md
+c871cdbfe9da737eb08e895cd1a7375cdd91c00212fcf00f8b4652c1bc321ccd  scripts/docs_examples.test.mjs
+exit_status: 0
+command: git diff --check
+exit_status: 0

@@ -1,0 +1,51 @@
+✔ frontend authentication survives wallet confirmation across second boundaries (3.513175ms)
+▶ documented withdrawal workflow handles committed SDK envelopes and restart checkpoints
+  ✔ success (323.561056ms)
+  ✔ timeout (2799.521062ms)
+  ✔ execution-error (726.113402ms)
+  ✔ decode-error (526.842307ms)
+  ✔ broadcast-error (129.979569ms)
+✔ documented withdrawal workflow handles committed SDK envelopes and restart checkpoints (4507.653963ms)
+▶ migration recipe confirms every stage and resumes without duplicate funding or leases
+  ✔ success (1251.129943ms)
+  ✔ delayed (1714.579572ms)
+  ✔ timeout (3378.120505ms)
+  ✔ missing-event (356.480261ms)
+  ✔ ambiguous-event (253.895046ms)
+  ✔ fund-broadcast-error (57.680232ms)
+  ✔ fund-broadcast-rejection (98.067388ms)
+  ✔ fund-execution-error (148.702973ms)
+  ✔ create-broadcast-error (208.359056ms)
+  ✔ create-broadcast-rejection (198.3367ms)
+  ✔ create-execution-error (247.369661ms)
+  ✔ ack-broadcast-error (286.65334ms)
+  ✔ ack-broadcast-rejection (323.686487ms)
+  ✔ ack-execution-error (422.575057ms)
+✔ migration recipe confirms every stage and resumes without duplicate funding or leases (8954.537711ms)
+▶ deactivation recipe completes 151 SKUs using committed receipts and bounded state queries
+  ✔ success (916.093569ms)
+  ✔ delayed (1198.309049ms)
+  ✔ timeout (2748.336714ms)
+  ✔ deactivate-execution-error (163.128478ms)
+  ✔ deactivate-broadcast-rejection (56.020129ms)
+  ✔ deactivate-broadcast-error (66.964587ms)
+  ✔ query-error (686.702117ms)
+✔ deactivation recipe completes 151 SKUs using committed receipts and bounded state queries (5838.236788ms)
+✔ UUID extraction recipes use committed SDK events with empty legacy logs (28.667541ms)
+✔ domain lookup documentation uses the registered billing command (2.871064ms)
+▶ deactivation restart rejects a provider reactivated after its saved receipt
+  ✔ 0 active SKUs (1040.958451ms)
+  ✔ 3 active SKUs (1161.464885ms)
+✔ deactivation restart rejects a provider reactivated after its saved receipt (2203.18732ms)
+✔ provider auth v2 matches the fixed canonical message vector (2.029279ms)
+✔ provider auth v2 rejects replay into another trusted context (8.632815ms)
+✔ provider auth v2 pins expiration, future skew, hash and version rules (2.307452ms)
+✔ provider auth v2 includes a canonical HTTPS API base path (0.37567ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21667.819451

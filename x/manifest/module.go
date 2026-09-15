@@ -48,6 +48,7 @@ type AppModuleBasic struct {
 	cdc codec.Codec
 }
 
+// AppModule implements the manifest application module.
 type AppModule struct {
 	AppModuleBasic
 
@@ -68,14 +69,17 @@ func NewAppModule(
 	}
 }
 
+// Name returns the manifest module name.
 func (a AppModuleBasic) Name() string {
 	return types.ModuleName
 }
 
+// DefaultGenesis returns the manifest module's default genesis state.
 func (a AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
 	return cdc.MustMarshalJSON(&types.GenesisState{})
 }
 
+// ValidateGenesis validates the manifest module's genesis state.
 func (a AppModuleBasic) ValidateGenesis(marshaler codec.JSONCodec, _ client.TxEncodingConfig, message json.RawMessage) error {
 	var data types.GenesisState
 	if err := marshaler.UnmarshalJSON(message, &data); err != nil {
@@ -84,14 +88,14 @@ func (a AppModuleBasic) ValidateGenesis(marshaler codec.JSONCodec, _ client.TxEn
 	return data.Validate()
 }
 
+// RegisterRESTRoutes registers the manifest module's legacy REST routes.
 func (a AppModuleBasic) RegisterRESTRoutes(_ client.Context, _ *mux.Router) {
 }
 
+// RegisterGRPCGatewayRoutes registers the manifest module's gRPC gateway routes.
 func (a AppModuleBasic) RegisterGRPCGatewayRoutes(client.Context, *runtime.ServeMux) {}
 
 // AutoCLIOptions implements the autocli.HasAutoCLIConfig interface.
-//
-//nolint:stylecheck
 func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 	return &autocliv1.ModuleOptions{
 		Query: &autocliv1.ServiceCommandDescriptor{
@@ -105,22 +109,27 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 	}
 }
 
+// GetTxCmd returns the manifest module's transaction command.
 func (a AppModuleBasic) GetTxCmd() *cobra.Command {
 	return cli.NewTxCmd()
 }
 
+// GetQueryCmd returns the manifest module's query command.
 func (a AppModuleBasic) GetQueryCmd() *cobra.Command {
 	return cli.GetQueryCmd()
 }
 
+// RegisterLegacyAminoCodec registers the manifest module's Amino types.
 func (AppModuleBasic) RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	types.RegisterLegacyAminoCodec(cdc)
 }
 
+// RegisterInterfaces registers the manifest module's protobuf interfaces.
 func (a AppModuleBasic) RegisterInterfaces(r codectypes.InterfaceRegistry) {
 	types.RegisterInterfaces(r)
 }
 
+// InitGenesis initializes the manifest module's genesis state.
 func (am AppModule) InitGenesis(ctx sdk.Context, marshaler codec.JSONCodec, message json.RawMessage) []abci.ValidatorUpdate {
 	var genesisState types.GenesisState
 	marshaler.MustUnmarshalJSON(message, &genesisState)
@@ -132,18 +141,22 @@ func (am AppModule) InitGenesis(ctx sdk.Context, marshaler codec.JSONCodec, mess
 	return nil
 }
 
+// ExportGenesis exports the manifest module's genesis state.
 func (am AppModule) ExportGenesis(ctx sdk.Context, marshaler codec.JSONCodec) json.RawMessage {
 	genState := am.keeper.ExportGenesis(ctx)
 	return marshaler.MustMarshalJSON(genState)
 }
 
+// RegisterInvariants registers the manifest module's invariants.
 func (am AppModule) RegisterInvariants(_ sdk.InvariantRegistry) {
 }
 
+// QuerierRoute returns the manifest module's legacy query route.
 func (am AppModule) QuerierRoute() string {
 	return types.QuerierRoute
 }
 
+// RegisterServices registers the manifest module's gRPC services.
 func (am AppModule) RegisterServices(cfg module.Configurator) {
 	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImpl(am.keeper))
 	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQuerier(am.keeper))
@@ -157,6 +170,7 @@ func (am AppModule) ConsensusVersion() uint64 {
 	return ConsensusVersion
 }
 
+// GenerateGenesisState contributes the manifest module's simulated genesis state.
 func (AppModule) GenerateGenesisState(_ *module.SimulationState) {
 }
 

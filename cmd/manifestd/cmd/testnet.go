@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/pflag"
 
 	cmtconfig "github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/libs/tempfile"
 	cmttime "github.com/cometbft/cometbft/types/time"
 
 	"cosmossdk.io/math"
@@ -231,6 +232,7 @@ func initTestnetFiles(
 	valPubKeys := make([]cryptotypes.PubKey, args.numValidators)
 
 	appConfig := srvconfig.DefaultConfig()
+	appConfig.QueryGasLimit = defaultQueryGasLimit
 	appConfig.MinGasPrices = args.minGasPrices
 	appConfig.API.Enable = true
 	appConfig.Telemetry.Enabled = true
@@ -377,7 +379,7 @@ func initTestnetFiles(
 			return err
 		}
 
-		srvconfig.SetConfigTemplate(srvconfig.DefaultConfigTemplate)
+		srvconfig.SetConfigTemplate(queryGasConfigTemplate())
 		srvconfig.WriteConfigFile(filepath.Join(nodeDir, "config", "app.toml"), appConfig)
 	}
 
@@ -524,12 +526,12 @@ func calculateIP(ip string, i int) (string, error) {
 func writeFile(name, dir string, contents []byte) error {
 	file := filepath.Join(dir, name)
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("could not create directory %q: %w", dir, err)
 	}
 
-	if err := os.WriteFile(file, contents, 0o600); err != nil {
-		return err
+	if err := tempfile.WriteFileAtomic(file, contents, 0o600); err != nil {
+		return fmt.Errorf("could not atomically write file %q: %w", file, err)
 	}
 
 	return nil

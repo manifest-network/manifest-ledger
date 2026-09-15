@@ -1,0 +1,18 @@
+[
+  {
+    "before": ".review-tmp/sep14-proto-before-types.pb.go",
+    "after": "x/billing/types/types.pb.go",
+    "token_count": 18992,
+    "before_noncomment_token_sha256": "43a9c3656f1d072ed389edf4506638f9c74eaaa2977a5dd3db0f1d28e3e8697e",
+    "after_noncomment_token_sha256": "43a9c3656f1d072ed389edf4506638f9c74eaaa2977a5dd3db0f1d28e3e8697e",
+    "noncomment_tokens_equal": true
+  },
+  {
+    "before": ".review-tmp/sep14-proto-before-types.pulsar.go",
+    "after": "api/liftedinit/billing/v1/types.pulsar.go",
+    "token_count": 43253,
+    "before_noncomment_token_sha256": "83c7e962378a085b0db626e9204c183bcfdaad30e8d7470880b279a66c307bb2",
+    "after_noncomment_token_sha256": "83c7e962378a085b0db626e9204c183bcfdaad30e8d7470880b279a66c307bb2",
+    "noncomment_tokens_equal": true
+  }
+]

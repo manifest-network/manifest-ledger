@@ -1,0 +1,13 @@
+=== RUN   TestContainerizedGoReleaserUsesPinnedOfflineToolchain
+=== RUN   TestContainerizedGoReleaserUsesPinnedOfflineToolchain/standalone_repository
+=== RUN   TestContainerizedGoReleaserUsesPinnedOfflineToolchain/logical_root_from_nested_directory
+    release_security_test.go:275:
+            Error Trace:    /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/scripts/release_security_test.go:275
+            Error:          "run\n--rm\n--user\n1000:1000\n--env\nCGO_ENABLED=1\n--env\nGOCACHE=/tmp/manifest-go-build\n--env\nGOPROXY=off\n--env\nGOTOOLCHAIN=local\n--env\nGOWORK=off\n--env\nHOME=/tmp/manifest-release-home\n--env\nSYFT_CHECK_FOR_APP_UPDATE=false\n--volume\n/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/TestContainerizedGoReleaserUsesPinnedOfflineToolchain3639018564/001/linked-repository:/workspace\n--volume\n/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/TestContainerizedGoReleaserUsesPinnedOfflineToolchain3639018564/001/syft:/usr/local/bin/syft:ro\n--volume\n/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/TestContainerizedGoReleaserUsesPinnedOfflineToolchain3639018564/001/goreleaser:/usr/local/bin/goreleaser:ro\n--workdir\n/workspace\nmanifest-release-builder:test\n/bin/sh\n-ec\nmkdir -p \"$HOME\" \"$GOCACHE\"; exec /usr/local/bin/goreleaser \"$@\"\ngoreleaser\nrelease\n--snapshot\n--clean\n--skip=publish\n" does not contain "--volume\n/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909/.review-tmp/build/TestContainerizedGoReleaserUsesPinnedOfflineToolchain3639018564/001/repository:/workspace\n"
+            Test:           TestContainerizedGoReleaserUsesPinnedOfflineToolchain/logical_root_from_nested_directory
+--- FAIL: TestContainerizedGoReleaserUsesPinnedOfflineToolchain (0.03s)
+    --- PASS: TestContainerizedGoReleaserUsesPinnedOfflineToolchain/standalone_repository (0.01s)
+    --- FAIL: TestContainerizedGoReleaserUsesPinnedOfflineToolchain/logical_root_from_nested_directory (0.01s)
+FAIL
+FAIL    github.com/manifest-network/manifest-ledger/scripts 0.056s
+FAIL

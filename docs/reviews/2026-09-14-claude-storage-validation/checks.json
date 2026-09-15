@@ -1,0 +1,34 @@
+{
+  "baseline_commit": "fe6ccd30f8f3df3bbf2e3a108c581fe2f2e59cd7",
+  "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "proto_shell_command": "GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=\"$PWD/.review-tmp/build\" make proto-all > .review-tmp/sep14-storage-final-proto-all.log 2>&1",
+  "proto_exit_status": 0,
+  "focused_go_shell_command": "GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=\"$PWD/.review-tmp/build\" go test -p 2 -count=1 -v -run '^Test(StorageValueCodecs|LeaseStorageValueCodec|MsgWithdrawImportedClosedLease|ReservationLifecycleReleasesExactRemainingTranche|Migrate2to3Then3to4ExpiresReachableUnderbackedPendingLease|Migrate3to4ExpiresAllModernPendingWhenOneDenomIsUnderbacked)' ./x/billing/keeper > .review-tmp/sep14-storage-focused-go.log 2>&1",
+  "focused_go_exit_status": 0,
+  "source_sha256": {
+    "proto/liftedinit/billing/internal/v1/storage.proto": "7c6a9c2f9ff9092c67d67dc889d9d2b1b69f8f23528a5c5c06c8d7e21d5ab3b6",
+    "proto/liftedinit/billing/v1/types.proto": "34ac3a48fd1940ac8b6a3882a49d08914712f725fb2034076283e8c02dd0349f",
+    "x/billing/internal/types/storage.pb.go": "09d18c796cbd0489e6f337328852f1b811a2c1d279f63445f0d66d5ff94ddc43",
+    "api/liftedinit/billing/internal/v1/storage.pulsar.go": "b3503e315c612a39079021b4d3be751cf17905f1cd9a0fefa6a20fd506f74477",
+    "x/billing/types/types.pb.go": "26993493fc249463156841214990a3f9061a26d0e0a53e499f4cf1c5de612ff2",
+    "api/liftedinit/billing/v1/types.pulsar.go": "d0bce4e2fe01bcccaefbf65ff64a075ffd3bed4c9040de1af351759ed712aed9"
+  },
+  "dependency_files_unchanged": [
+    "go.mod",
+    "go.sum"
+  ],
+  "log_normalization": "UTF-8 splitlines, expandtabs(8), trim trailing whitespace on each line and overall, exactly one LF",
+  "logs": {
+    "proto-all.log": {
+      "raw_source": ".review-tmp/sep14-storage-final-proto-all.log",
+      "raw_sha256": "9b218b522ea111fd418c6a76afc78d9351b617b9bdfdd282ede9f029059841de",
+      "display_sha256": "9b218b522ea111fd418c6a76afc78d9351b617b9bdfdd282ede9f029059841de"
+    },
+    "focused-go.log": {
+      "raw_source": ".review-tmp/sep14-storage-focused-go.log",
+      "raw_sha256": "2581c02852398c2c9d651a0b06ef115e190ee9ed786dddfa439ea18d94f1c4f6",
+      "display_sha256": "60161b82ca54d5819d11a79497133ccdb75ae8782d4bc97caa7f9ae2e30fed4e"
+    }
+  },
+  "scope": "Comments only. No new tests, executable code, dependencies, wire definitions, or migration changed. Existing focused regressions and full proto generation passed; broader suites not rerun locally."
+}

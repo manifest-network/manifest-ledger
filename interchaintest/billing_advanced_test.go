@@ -8,11 +8,12 @@ import (
 	"fmt"
 	"testing"
 
-	sdkmath "cosmossdk.io/math"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
+
+	sdkmath "cosmossdk.io/math"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
@@ -32,30 +33,30 @@ func TestBillingAdvanced(t *testing.T) {
 
 	// Run advanced test suites
 	t.Run("CreateLeaseForTenant", func(t *testing.T) {
-		testCreateLeaseForTenantIndependent(t, ctx, tc)
+		testCreateLeaseForTenantIndependent(ctx, t, tc)
 	})
 	t.Run("AutoCloseMechanism", func(t *testing.T) {
-		testAutoCloseMechanismIndependent(t, ctx, tc)
+		testAutoCloseMechanismIndependent(ctx, t, tc)
 	})
 	t.Run("ProviderWithdrawLimits", func(t *testing.T) {
-		testProviderWithdrawLimitsIndependent(t, ctx, tc)
+		testProviderWithdrawLimitsIndependent(ctx, t, tc)
 	})
 	t.Run("ProviderDeactivation", func(t *testing.T) {
-		testProviderDeactivationIndependent(t, ctx, tc)
+		testProviderDeactivationIndependent(ctx, t, tc)
 	})
 	t.Run("SKUDeactivation", func(t *testing.T) {
-		testSKUDeactivationIndependent(t, ctx, tc)
+		testSKUDeactivationIndependent(ctx, t, tc)
 	})
 	t.Run("AllowedListAuthorization", func(t *testing.T) {
-		testAllowedListAuthorizationIndependent(t, ctx, tc)
+		testAllowedListAuthorizationIndependent(ctx, t, tc)
 	})
 	t.Run("MultiDenom", func(t *testing.T) {
-		testMultiDenomIndependent(t, ctx, tc)
+		testMultiDenomIndependent(ctx, t, tc)
 	})
 }
 
 // testCreateLeaseForTenantIndependent tests authority creating leases for tenants.
-func testCreateLeaseForTenantIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testCreateLeaseForTenantIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Create Lease For Tenant (Authority Only) ===")
 
 	// Create a new tenant for these tests
@@ -254,7 +255,7 @@ func testCreateLeaseForTenantIndependent(t *testing.T, ctx context.Context, tc *
 }
 
 // testAutoCloseMechanismIndependent tests the lazy auto-close mechanism.
-func testAutoCloseMechanismIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testAutoCloseMechanismIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Auto-Close Mechanism ===")
 
 	// For auto-close tests, we temporarily set a very low minLeaseDuration (10 seconds)
@@ -572,7 +573,7 @@ func testAutoCloseMechanismIndependent(t *testing.T, ctx context.Context, tc *bi
 }
 
 // testProviderWithdrawLimitsIndependent tests provider withdraw limit functionality.
-func testProviderWithdrawLimitsIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testProviderWithdrawLimitsIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	// Create a new tenant for these tests
 	users := interchaintest.GetAndFundTestUsers(t, ctx, "provider-withdraw-limit-tenant", DefaultGenesisAmt, tc.chain)
 	tenant := users[0]
@@ -643,7 +644,7 @@ func testProviderWithdrawLimitsIndependent(t *testing.T, ctx context.Context, tc
 }
 
 // testProviderDeactivationIndependent tests behavior when a provider is deactivated.
-func testProviderDeactivationIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testProviderDeactivationIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	// Create a new user specifically for the deactivation test provider
 	users := interchaintest.GetAndFundTestUsers(t, ctx, "deactivation-provider-wallet", DefaultGenesisAmt, tc.chain)
 	deactivationProviderWallet := users[0]
@@ -820,7 +821,7 @@ func testProviderDeactivationIndependent(t *testing.T, ctx context.Context, tc *
 }
 
 // testSKUDeactivationIndependent tests behavior when an individual SKU is deactivated.
-func testSKUDeactivationIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testSKUDeactivationIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing SKU Deactivation (Individual) ===")
 
 	// Create a new provider specifically for SKU deactivation tests
@@ -973,7 +974,7 @@ func testSKUDeactivationIndependent(t *testing.T, ctx context.Context, tc *billi
 }
 
 // testAllowedListAuthorizationIndependent tests the allowed_list authorization.
-func testAllowedListAuthorizationIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testAllowedListAuthorizationIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing AllowedList Authorization ===")
 
 	// Create test users
@@ -1106,7 +1107,7 @@ func testAllowedListAuthorizationIndependent(t *testing.T, ctx context.Context, 
 }
 
 // testMultiDenomIndependent tests multi-denom support.
-func testMultiDenomIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testMultiDenomIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Multi-Denom Support ===")
 
 	node := tc.chain.GetNode()
@@ -1166,7 +1167,7 @@ func testMultiDenomIndependent(t *testing.T, ctx context.Context, tc *billingTes
 	// Setup: fund tenant with both denoms
 	t.Log("Funding tenant with both denoms...")
 	// Send PWR denom
-	err = node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err = node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(500_000_000), // 500M PWR
@@ -1174,7 +1175,7 @@ func testMultiDenomIndependent(t *testing.T, ctx context.Context, tc *billingTes
 	require.NoError(t, err, "failed to send PWR to tenant")
 
 	// Send second denom
-	err = node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err = node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tenant.FormattedAddress(),
 		Denom:   secondDenom,
 		Amount:  sdkmath.NewInt(500_000_000), // 500M second denom
@@ -1333,7 +1334,7 @@ func testMultiDenomIndependent(t *testing.T, ctx context.Context, tc *billingTes
 		oneDenomTenant := oneUsers[0]
 
 		// Send only PWR denom
-		err := node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+		err := node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 			Address: oneDenomTenant.FormattedAddress(),
 			Denom:   tc.pwrDenom,
 			Amount:  sdkmath.NewInt(500_000_000),
@@ -1378,7 +1379,7 @@ func testMultiDenomIndependent(t *testing.T, ctx context.Context, tc *billingTes
 		sameDenomTenant := sameUsers[0]
 
 		// Fund with PWR
-		err = node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+		err = node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 			Address: sameDenomTenant.FormattedAddress(),
 			Denom:   tc.pwrDenom,
 			Amount:  sdkmath.NewInt(500_000_000),

@@ -12,6 +12,7 @@ Test Coverage:
 package types
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -161,6 +162,18 @@ func TestMsgCreateSKUValidate(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "exceeds maximum length",
+		},
+		{
+			name: "invalid: multibyte name exceeds byte limit",
+			msg: &MsgCreateSKU{
+				Authority:    authority.String(),
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
+				Name:         strings.Repeat("é", MaxSKUNameLength/2+1),
+				Unit:         Unit_UNIT_PER_HOUR,
+				BasePrice:    sdk.NewCoin(testDenom, math.NewInt(3600)),
+			},
+			expectErr: true,
+			errMsg:    "maximum length of 256 bytes",
 		},
 		{
 			name: "invalid: unspecified unit",
@@ -701,6 +714,22 @@ func TestValidateAPIURL(t *testing.T) {
 			expectErr: false,
 		},
 		{
+			name:   "valid: minimum port",
+			apiURL: "https://example.com:1",
+		},
+		{
+			name:   "valid: maximum port",
+			apiURL: "https://example.com:65535",
+		},
+		{
+			name:   "valid: IPv6 without explicit port",
+			apiURL: "https://[2001:db8::1]/api",
+		},
+		{
+			name:   "valid: IPv6 with explicit port",
+			apiURL: "https://[2001:db8::1]:8443/api",
+		},
+		{
 			name:      "valid: HTTPS URL with query params",
 			apiURL:    "https://example.com/api?version=1",
 			expectErr: false,
@@ -724,12 +753,48 @@ func TestValidateAPIURL(t *testing.T) {
 			errMsg:    "must have a valid host",
 		},
 		{
+			name:      "invalid: port without hostname",
+			apiURL:    "https://:443",
+			expectErr: true,
+			errMsg:    "must have a valid host",
+		},
+		{
+			name:      "invalid: empty explicit port",
+			apiURL:    "https://example.com:",
+			expectErr: true,
+			errMsg:    "port must be between 1 and 65535",
+		},
+		{
+			name:      "invalid: zero port",
+			apiURL:    "https://example.com:0",
+			expectErr: true,
+			errMsg:    "port must be between 1 and 65535",
+		},
+		{
+			name:      "invalid: oversized port",
+			apiURL:    "https://example.com:65536",
+			expectErr: true,
+			errMsg:    "port must be between 1 and 65535",
+		},
+		{
+			name:      "invalid: IPv6 with empty explicit port",
+			apiURL:    "https://[2001:db8::1]:",
+			expectErr: true,
+			errMsg:    "port must be between 1 and 65535",
+		},
+		{
+			name:      "invalid: IPv6 with zero port",
+			apiURL:    "https://[2001:db8::1]:0",
+			expectErr: true,
+			errMsg:    "port must be between 1 and 65535",
+		},
+		{
 			name:      "invalid: FTP scheme",
 			apiURL:    "ftp://example.com",
 			expectErr: true,
 			errMsg:    "must use HTTPS scheme",
 		},
-		{
+		{ //nolint:gosec // deliberately invalid credential-bearing URL
 			name:      "invalid: contains credentials",
 			apiURL:    "https://user:pass@example.com",
 			expectErr: true,
@@ -740,6 +805,12 @@ func TestValidateAPIURL(t *testing.T) {
 			apiURL:    "https://example.com/" + string(make([]byte, MaxAPIURLLength)),
 			expectErr: true,
 			errMsg:    "exceeds maximum length",
+		},
+		{
+			name:      "invalid: multibyte URL exceeds byte limit",
+			apiURL:    "https://example.com/" + strings.Repeat("é", MaxAPIURLLength/2),
+			expectErr: true,
+			errMsg:    "maximum length of 2048 bytes",
 		},
 	}
 
@@ -845,6 +916,32 @@ func TestMsgUpdateProviderValidateNewFields(t *testing.T) {
 				Active:        true,
 			},
 			expectErr: false,
+		},
+		{
+			name: "valid: explicitly clear api_url",
+			msg: &MsgUpdateProvider{
+				Authority:     authority.String(),
+				Uuid:          "01912345-6789-7abc-8def-0123456789ac",
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				Active:        true,
+				ClearApiUrl:   true,
+			},
+			expectErr: false,
+		},
+		{
+			name: "invalid: set and clear api_url",
+			msg: &MsgUpdateProvider{
+				Authority:     authority.String(),
+				Uuid:          "01912345-6789-7abc-8def-0123456789ac",
+				Address:       providerAddr.String(),
+				PayoutAddress: payoutAddr.String(),
+				Active:        true,
+				ApiUrl:        "https://api.provider.com",
+				ClearApiUrl:   true,
+			},
+			expectErr: true,
+			errMsg:    "clear_api_url cannot be true when api_url is non-empty",
 		},
 		{
 			name: "invalid: HTTP API URL",

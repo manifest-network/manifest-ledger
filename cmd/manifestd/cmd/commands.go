@@ -1,3 +1,4 @@
+// Package cmd defines manifestd's command-line interface.
 package cmd
 
 import (
@@ -15,6 +16,7 @@ import (
 	"cosmossdk.io/log"
 	confixcmd "cosmossdk.io/tools/confix/cmd"
 
+	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/debug"
 	"github.com/cosmos/cosmos-sdk/client/flags"
@@ -72,6 +74,7 @@ func initAppConfig() (string, interface{}) {
 	// Optionally allow the chain developer to overwrite the SDK's default
 	// server config.
 	srvCfg := serverconfig.DefaultConfig()
+	srvCfg.QueryGasLimit = defaultQueryGasLimit
 	// The SDK's default minimum gas price is set to "" (empty value) inside
 	// app.toml. If left empty by validators, the node will halt on startup.
 	// However, the chain developer can set a default app.toml value for their
@@ -95,7 +98,7 @@ func initAppConfig() (string, interface{}) {
 		},
 	}
 
-	customAppTemplate := serverconfig.DefaultConfigTemplate + `
+	customAppTemplate := queryGasConfigTemplate() + `
 [wasm]
 # This is the maximum sdk gas (wasm and storage) that we allow for any x/wasm "smart" queries
 query_gas_limit = {{ .WASM.QueryGasLimit }}
@@ -132,7 +135,7 @@ func initRootCmd(
 	// add keybase, auxiliary RPC, query, genesis, and tx child commands
 	rootCmd.AddCommand(
 		server.StatusCommand(),
-		genesisCommand(txConfig, basicManager),
+		genesisCommand(txConfig, basicManager, newBillingMigrationPreflightCmd()),
 		queryCommand(),
 		txCommand(),
 		keys.Commands(),
@@ -140,6 +143,7 @@ func initRootCmd(
 }
 
 func addModuleInitFlags(startCmd *cobra.Command) {
+	configureQueryGasLimit(startCmd)
 	crisis.AddModuleInitFlags(startCmd)
 	wasm.AddModuleInitFlags(startCmd)
 }
@@ -207,7 +211,11 @@ func newApp(
 	traceStore io.Writer,
 	appOpts servertypes.AppOptions,
 ) servertypes.Application {
-	baseappOptions := server.DefaultBaseappOptions(appOpts)
+	limit, err := queryGasLimit(appOpts)
+	if err != nil {
+		panic(err)
+	}
+	baseappOptions := append(server.DefaultBaseappOptions(appOpts), baseapp.SetQueryGasLimit(limit))
 
 	return app.NewApp(
 		logger, db, traceStore, true, app.DefaultCommissionRateMinMax,
@@ -260,9 +268,7 @@ func appExport(
 var tempDir = func() string {
 	dir, err := os.MkdirTemp("", "manifest")
 	if err != nil {
-		dir = app.DefaultNodeHome
+		panic("failed to create temporary application home: " + err.Error())
 	}
-	defer os.RemoveAll(dir)
-
 	return dir
 }

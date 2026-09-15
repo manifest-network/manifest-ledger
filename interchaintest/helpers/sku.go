@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"strconv"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
 	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
+
+const skuModule = "sku"
 
 // PageResponseJSON is needed because cosmos-sdk's query.PageResponse.Total lacks the
 // `,string` JSON tag. CLI output encodes uint64 as strings, causing unmarshal failures
@@ -61,7 +64,7 @@ func (r *SKUsResponseJSON) GetNextKeyString() string {
 
 // SKUCreateProvider creates a new provider.
 func SKUCreateProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, address, payoutAddress string, metaHash string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "create-provider", address, payoutAddress}
+	cmd := []string{"tx", skuModule, "create-provider", address, payoutAddress}
 	if metaHash != "" {
 		flags = append(flags, "--meta-hash", metaHash)
 	}
@@ -70,7 +73,7 @@ func SKUCreateProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.
 
 // SKUCreateProviderFull creates a new provider with all fields including api_url.
 func SKUCreateProviderFull(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, address, payoutAddress, metaHash, apiURL string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "create-provider", address, payoutAddress}
+	cmd := []string{"tx", skuModule, "create-provider", address, payoutAddress}
 	if metaHash != "" {
 		flags = append(flags, "--meta-hash", metaHash)
 	}
@@ -82,7 +85,7 @@ func SKUCreateProviderFull(ctx context.Context, chain *cosmos.CosmosChain, user 
 
 // SKUUpdateProvider updates an existing provider.
 func SKUUpdateProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, uuid, address, payoutAddress string, active bool, metaHash string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "update-provider", uuid, address, payoutAddress, strconv.FormatBool(active)}
+	cmd := []string{"tx", skuModule, "update-provider", uuid, address, payoutAddress, strconv.FormatBool(active)}
 	if metaHash != "" {
 		flags = append(flags, "--meta-hash", metaHash)
 	}
@@ -91,7 +94,7 @@ func SKUUpdateProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.
 
 // SKUUpdateProviderFull updates an existing provider with all fields.
 func SKUUpdateProviderFull(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, uuid, address, payoutAddress string, active bool, metaHash, apiURL string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "update-provider", uuid, address, payoutAddress, strconv.FormatBool(active)}
+	cmd := []string{"tx", skuModule, "update-provider", uuid, address, payoutAddress, strconv.FormatBool(active)}
 	if metaHash != "" {
 		flags = append(flags, "--meta-hash", metaHash)
 	}
@@ -103,7 +106,7 @@ func SKUUpdateProviderFull(ctx context.Context, chain *cosmos.CosmosChain, user 
 
 // SKUDeactivateProvider deactivates a provider (soft delete).
 func SKUDeactivateProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, uuid string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "deactivate-provider", uuid}
+	cmd := []string{"tx", skuModule, "deactivate-provider", uuid}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
@@ -111,7 +114,7 @@ func SKUDeactivateProvider(ctx context.Context, chain *cosmos.CosmosChain, user 
 
 // SKUCreateSKU creates a new SKU.
 func SKUCreateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, providerUUID, name string, unit int, basePrice string, metaHash string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "create-sku", providerUUID, name, strconv.Itoa(unit), basePrice}
+	cmd := []string{"tx", skuModule, "create-sku", providerUUID, name, strconv.Itoa(unit), basePrice}
 	if metaHash != "" {
 		flags = append(flags, "--meta-hash", metaHash)
 	}
@@ -120,7 +123,7 @@ func SKUCreateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Walle
 
 // SKUUpdateSKU updates an existing SKU.
 func SKUUpdateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, uuid, providerUUID, name string, unit int, basePrice string, active bool, metaHash string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "update-sku", uuid, providerUUID, name, strconv.Itoa(unit), basePrice, strconv.FormatBool(active)}
+	cmd := []string{"tx", skuModule, "update-sku", uuid, providerUUID, name, strconv.Itoa(unit), basePrice, strconv.FormatBool(active)}
 	if metaHash != "" {
 		flags = append(flags, "--meta-hash", metaHash)
 	}
@@ -129,13 +132,13 @@ func SKUUpdateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Walle
 
 // SKUDeactivateSKU deactivates a SKU (soft delete).
 func SKUDeactivateSKU(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, uuid string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "deactivate-sku", uuid}
+	cmd := []string{"tx", skuModule, "deactivate-sku", uuid}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
 // SKUUpdateParams updates the SKU module parameters.
 func SKUUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, allowedList string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "sku", "update-params", "--allowed-list", allowedList}
+	cmd := []string{"tx", skuModule, "update-params", "--allowed-list", allowedList}
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
@@ -144,7 +147,7 @@ func SKUUpdateParams(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wa
 // SKUQueryParams queries the SKU module parameters.
 func SKUQueryParams(ctx context.Context, chain *cosmos.CosmosChain) (*skutypes.QueryParamsResponse, error) {
 	var res skutypes.QueryParamsResponse
-	cmd := []string{"query", "sku", "params"}
+	cmd := []string{queryCommand, skuModule, "params"}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -154,7 +157,7 @@ func SKUQueryParams(ctx context.Context, chain *cosmos.CosmosChain) (*skutypes.Q
 // SKUQueryProvider queries a provider by UUID.
 func SKUQueryProvider(ctx context.Context, chain *cosmos.CosmosChain, uuid string) (*skutypes.QueryProviderResponse, error) {
 	var res skutypes.QueryProviderResponse
-	cmd := []string{"query", "sku", "provider", uuid}
+	cmd := []string{queryCommand, skuModule, "provider", uuid}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -163,8 +166,20 @@ func SKUQueryProvider(ctx context.Context, chain *cosmos.CosmosChain, uuid strin
 
 // SKUQueryProviderByAddress queries a provider by their address.
 func SKUQueryProviderByAddress(ctx context.Context, chain *cosmos.CosmosChain, address string) (*ProviderByAddressResponseJSON, error) {
+	return skuQueryProviderByAddress(ctx, chain, address, false)
+}
+
+// SKUQueryActiveProviderByAddress queries active providers by management address.
+func SKUQueryActiveProviderByAddress(ctx context.Context, chain *cosmos.CosmosChain, address string) (*ProviderByAddressResponseJSON, error) {
+	return skuQueryProviderByAddress(ctx, chain, address, true)
+}
+
+func skuQueryProviderByAddress(ctx context.Context, chain *cosmos.CosmosChain, address string, activeOnly bool) (*ProviderByAddressResponseJSON, error) {
 	var res ProviderByAddressResponseJSON
-	cmd := []string{"query", "sku", "provider-by-address", address}
+	cmd := []string{queryCommand, skuModule, "provider-by-address", address}
+	if activeOnly {
+		cmd = append(cmd, "--active-only")
+	}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -173,8 +188,20 @@ func SKUQueryProviderByAddress(ctx context.Context, chain *cosmos.CosmosChain, a
 
 // SKUQueryProviders queries all providers.
 func SKUQueryProviders(ctx context.Context, chain *cosmos.CosmosChain) (*ProvidersResponseJSON, error) {
+	return skuQueryProviders(ctx, chain, false)
+}
+
+// SKUQueryActiveProviders queries providers through the active-status index.
+func SKUQueryActiveProviders(ctx context.Context, chain *cosmos.CosmosChain) (*ProvidersResponseJSON, error) {
+	return skuQueryProviders(ctx, chain, true)
+}
+
+func skuQueryProviders(ctx context.Context, chain *cosmos.CosmosChain, activeOnly bool) (*ProvidersResponseJSON, error) {
 	var res ProvidersResponseJSON
-	cmd := []string{"query", "sku", "providers"}
+	cmd := []string{queryCommand, skuModule, "providers"}
+	if activeOnly {
+		cmd = append(cmd, "--active-only")
+	}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -185,7 +212,7 @@ func SKUQueryProviders(ctx context.Context, chain *cosmos.CosmosChain) (*Provide
 // Returns the response and the base64-encoded next key for subsequent pagination calls.
 func SKUQueryProvidersPaginated(ctx context.Context, chain *cosmos.CosmosChain, limit uint64, key string) (*ProvidersResponseJSON, string, error) {
 	var res ProvidersResponseJSON
-	cmd := []string{"query", "sku", "providers", "--limit", strconv.FormatUint(limit, 10)}
+	cmd := []string{queryCommand, skuModule, "providers", limitFlag, strconv.FormatUint(limit, 10)}
 	if key != "" {
 		cmd = append(cmd, "--page-key", key)
 	}
@@ -198,7 +225,7 @@ func SKUQueryProvidersPaginated(ctx context.Context, chain *cosmos.CosmosChain, 
 // SKUQuerySKU queries a SKU by UUID.
 func SKUQuerySKU(ctx context.Context, chain *cosmos.CosmosChain, uuid string) (*skutypes.QuerySKUResponse, error) {
 	var res skutypes.QuerySKUResponse
-	cmd := []string{"query", "sku", "sku", uuid}
+	cmd := []string{queryCommand, skuModule, skuModule, uuid}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -207,8 +234,20 @@ func SKUQuerySKU(ctx context.Context, chain *cosmos.CosmosChain, uuid string) (*
 
 // SKUQuerySKUs queries all SKUs.
 func SKUQuerySKUs(ctx context.Context, chain *cosmos.CosmosChain) (*SKUsResponseJSON, error) {
+	return skuQuerySKUs(ctx, chain, false)
+}
+
+// SKUQueryActiveSKUs queries SKUs through the active-status index.
+func SKUQueryActiveSKUs(ctx context.Context, chain *cosmos.CosmosChain) (*SKUsResponseJSON, error) {
+	return skuQuerySKUs(ctx, chain, true)
+}
+
+func skuQuerySKUs(ctx context.Context, chain *cosmos.CosmosChain, activeOnly bool) (*SKUsResponseJSON, error) {
 	var res SKUsResponseJSON
-	cmd := []string{"query", "sku", "skus"}
+	cmd := []string{queryCommand, skuModule, "skus"}
+	if activeOnly {
+		cmd = append(cmd, "--active-only")
+	}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -219,7 +258,7 @@ func SKUQuerySKUs(ctx context.Context, chain *cosmos.CosmosChain) (*SKUsResponse
 // Returns the response and the base64-encoded next key for subsequent pagination calls.
 func SKUQuerySKUsPaginated(ctx context.Context, chain *cosmos.CosmosChain, limit uint64, key string) (*SKUsResponseJSON, string, error) {
 	var res SKUsResponseJSON
-	cmd := []string{"query", "sku", "skus", "--limit", strconv.FormatUint(limit, 10)}
+	cmd := []string{queryCommand, skuModule, "skus", limitFlag, strconv.FormatUint(limit, 10)}
 	if key != "" {
 		cmd = append(cmd, "--page-key", key)
 	}
@@ -231,8 +270,21 @@ func SKUQuerySKUsPaginated(ctx context.Context, chain *cosmos.CosmosChain, limit
 
 // SKUQuerySKUsByProvider queries SKUs by provider UUID.
 func SKUQuerySKUsByProvider(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string) (*SKUsResponseJSON, error) {
+	return skuQuerySKUsByProvider(ctx, chain, providerUUID, false)
+}
+
+// SKUQueryActiveSKUsByProvider queries SKUs through the compound
+// provider-and-active-status index.
+func SKUQueryActiveSKUsByProvider(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string) (*SKUsResponseJSON, error) {
+	return skuQuerySKUsByProvider(ctx, chain, providerUUID, true)
+}
+
+func skuQuerySKUsByProvider(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string, activeOnly bool) (*SKUsResponseJSON, error) {
 	var res SKUsResponseJSON
-	cmd := []string{"query", "sku", "skus-by-provider", providerUUID}
+	cmd := []string{queryCommand, skuModule, "skus-by-provider", providerUUID}
+	if activeOnly {
+		cmd = append(cmd, "--active-only")
+	}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
@@ -243,7 +295,7 @@ func SKUQuerySKUsByProvider(ctx context.Context, chain *cosmos.CosmosChain, prov
 // Returns the response and the base64-encoded next key for subsequent pagination calls.
 func SKUQuerySKUsByProviderPaginated(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string, limit uint64, key string) (*SKUsResponseJSON, string, error) {
 	var res SKUsResponseJSON
-	cmd := []string{"query", "sku", "skus-by-provider", providerUUID, "--limit", strconv.FormatUint(limit, 10)}
+	cmd := []string{queryCommand, skuModule, "skus-by-provider", providerUUID, limitFlag, strconv.FormatUint(limit, 10)}
 	if key != "" {
 		cmd = append(cmd, "--page-key", key)
 	}

@@ -1,0 +1,60 @@
+{
+  "baseline_commit": "9659d1641ad6f6e971c9cd5ceebafe2cdba3d4b5",
+  "cwd": "/home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909",
+  "focused_go_shell_command": "GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR=\"$PWD/.review-tmp/build\" go test -p 2 -count=1 -v -run '^Test(UpdateProvider|MsgUpdateProvider|MsgWithdrawImportedClosedLease)' ./x/sku/keeper ./x/sku/types ./x/sku/client/cli ./x/billing/keeper > .review-tmp/sep14-focused-go.log 2>&1",
+  "focused_go_exit_status": 0,
+  "source_sha256": {
+    "MODULE.md": "1f6703baafd4ff6ce904488f970cb9150b8c496503f3dc0d0f9ce9e51d46f6e4",
+    "docs/FRONTEND.md": "2eaadc82282660d89d317a384def900f9117792bb34300d47e2c15ea46529e49",
+    "scripts/docs_examples.test.mjs": "c871cdbfe9da737eb08e895cd1a7375cdd91c00212fcf00f8b4652c1bc321ccd",
+    "x/sku/docs/TROUBLESHOOTING.md": "9724300bdf4c1db9e0c993f4c501c269510d4c82145913ab51bf7ce59b8e4347",
+    "x/billing/README.md": "9cdc52c521ed20fa0531f6b5b394d821db3512d4c2740d549d153a12e5d088ef",
+    "proto/liftedinit/billing/v1/types.proto": "330ef8b3531103e27071e90c1b2f0566e99c9a3134117a861ae6d6db8f26f797",
+    "x/billing/types/types.pb.go": "42485ddec83c2c0863a32ddde1ea6dab1faacddbb71e7b66191bef158808ba14",
+    "api/liftedinit/billing/v1/types.pulsar.go": "605ff0ec341b6a6ec11fcb074e591b0ce944c8828dd6b41d387e779d65c84e19"
+  },
+  "display_log_normalization": "UTF-8 splitlines, expandtabs(8), trim trailing whitespace per line and overall, exactly one LF",
+  "logs": {
+    "focused-go.log": {
+      "raw_source": ".review-tmp/sep14-focused-go.log",
+      "raw_sha256": "98acdc45877bead38233611835cabd5b6fbe7b792db86d6860f439d27804b7e9",
+      "display_sha256": "7705ee1fe2d5c990913e5c7cafb532a09b97ce0e503d5b0431476133bf45793a"
+    },
+    "documentation-tests.log": {
+      "raw_source": ".review-tmp/sep14-front-doc-tests.log",
+      "raw_sha256": "222e7c31163a92bef99187d8f29084e00bc702e14545d8dfe6ebbe1bda3e8601",
+      "display_sha256": "222e7c31163a92bef99187d8f29084e00bc702e14545d8dfe6ebbe1bda3e8601"
+    },
+    "documentation-initial-attempt.log": {
+      "raw_source": ".review-tmp/sep14-front-doc-tests-initial.log",
+      "raw_sha256": "bba7469d429f4a26f63c7c5b89b57215ac0b13aadc2b4dbdcd1da7c9f9392f87",
+      "display_sha256": "bba7469d429f4a26f63c7c5b89b57215ac0b13aadc2b4dbdcd1da7c9f9392f87"
+    },
+    "documentation-commands.log": {
+      "raw_source": ".review-tmp/sep14-front-commands.log",
+      "raw_sha256": "b21d63fde2917cde832f55697035e7ba6fde8df62969dfaa24ab60e63fa8d436",
+      "display_sha256": "b21d63fde2917cde832f55697035e7ba6fde8df62969dfaa24ab60e63fa8d436"
+    },
+    "metadata-mutant.log": {
+      "raw_source": ".review-tmp/sep14-front-metadata-mutant.log",
+      "raw_sha256": "acfda028e377ec3c1640e237b4031e54a3dbd972a7e5f5efe02a91cf59a763a9",
+      "display_sha256": "eff7ca4d96c7f9bc0221d22ab81cbe98461945bb96f41b497562a357c0c617aa"
+    },
+    "active-mutant.log": {
+      "raw_source": ".review-tmp/sep14-front-active-mutant.log",
+      "raw_sha256": "23dea6a1b6b4ef7bc48bc98bfad8fc3ed13fb6734b6b80d9803ba0d6a1a9d787",
+      "display_sha256": "9c6b394955c2377680366034239b85f2ebd06b7ba4a38d4cc8ab1e205e57c615"
+    },
+    "proto-all.log": {
+      "raw_source": ".review-tmp/sep14-proto-all.log",
+      "raw_sha256": "9b218b522ea111fd418c6a76afc78d9351b617b9bdfdd282ede9f029059841de",
+      "display_sha256": "9b218b522ea111fd418c6a76afc78d9351b617b9bdfdd282ede9f029059841de"
+    },
+    "generated-tokens.log": {
+      "raw_source": ".review-tmp/sep14-proto-token-check.log",
+      "raw_sha256": "44ca445dc6d08200135b38e5be9f05ff003d854bab6841f67d5389c9c096a51f",
+      "display_sha256": "44ca445dc6d08200135b38e5be9f05ff003d854bab6841f67d5389c9c096a51f"
+    }
+  },
+  "scope": "Documentation/examples, one executable documentation regression, and regenerated comments. No full root suite, lint, simulation, coverage or Docker rerun in this follow-up."
+}

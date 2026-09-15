@@ -1,0 +1,67 @@
+package keeper_test
+
+import (
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
+	"github.com/manifest-network/manifest-ledger/x/billing/types"
+	tfkeeper "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/keeper"
+	tftypes "github.com/strangelove-ventures/tokenfactory/x/tokenfactory/types"
+	"github.com/stretchr/testify/require"
+	"testing"
+	"time"
+)
+
+// This local review fixture verifies the billing assumption that reserved bank
+// balances cannot change through an independently authorized denomination admin.
+func TestReviewTokenfactoryReservationBacking(t *testing.T) {
+	for _, action := range []string{"burn", "force-transfer"} {
+		t.Run(action, func(t *testing.T) {
+			f := initFixture(t)
+			tenant, providerAddr, denomAdmin := f.TestAccs[0], f.TestAccs[1], f.TestAccs[2]
+			tf := tfkeeper.NewMsgServerImpl(f.App.TokenFactoryKeeper)
+			tfParams := f.App.TokenFactoryKeeper.GetParams(f.Ctx)
+			f.fundAccount(t, denomAdmin, tfParams.DenomCreationFee)
+			created, err := tf.CreateDenom(f.Ctx, &tftypes.MsgCreateDenom{Sender: denomAdmin.String(), Subdenom: "review"})
+			require.NoError(t, err)
+			denom := created.NewTokenDenom
+			provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+			factorySKU := f.createTestSKUWithDenom(t, provider.Uuid, 3600, denom)
+			ordinarySKU := f.createTestSKUWithDenom(t, provider.Uuid, 3600, "uordinary")
+			creditAddr := types.DeriveCreditAddress(tenant)
+			_, err = tf.Mint(f.Ctx, &tftypes.MsgMint{Sender: denomAdmin.String(), Amount: sdk.NewInt64Coin(denom, 10000), MintToAddress: creditAddr.String()})
+			require.NoError(t, err)
+			f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewInt64Coin("uordinary", 10000)))
+			k := f.App.BillingKeeper
+			require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{Tenant: tenant.String(), CreditAddress: creditAddr.String()}))
+			ms := keeper.NewMsgServerImpl(k)
+			factoryLease := f.createAndAcknowledgeLease(t, ms, tenant, providerAddr, []types.LeaseItemInput{{SkuUuid: factorySKU.Uuid, Quantity: 1}, {SkuUuid: ordinarySKU.Uuid, Quantity: 1}})
+			ordinaryLease := f.createAndAcknowledgeLease(t, ms, tenant, providerAddr, []types.LeaseItemInput{{SkuUuid: ordinarySKU.Uuid, Quantity: 1}})
+			_, broken := keeper.ReservationAccountingInvariant(k)(f.Ctx)
+			require.False(t, broken)
+			if action == "burn" {
+				_, err = tf.Burn(f.Ctx, &tftypes.MsgBurn{Sender: denomAdmin.String(), Amount: sdk.NewInt64Coin(denom, 10000), BurnFromAddress: creditAddr.String()})
+			} else {
+				_, err = tf.ForceTransfer(f.Ctx, &tftypes.MsgForceTransfer{Sender: denomAdmin.String(), Amount: sdk.NewInt64Coin(denom, 10000), TransferFromAddress: creditAddr.String(), TransferToAddress: denomAdmin.String()})
+			}
+			require.NoError(t, err, "denomination admin operation is accepted by the real tokenfactory handler")
+			require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom).IsZero())
+			f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(time.Minute))
+			for _, id := range []string{factoryLease} {
+				_, err = ms.CloseLease(f.Ctx, &types.MsgCloseLease{Sender: tenant.String(), LeaseUuids: []string{id}})
+				require.ErrorIs(t, err, types.ErrReservationInvariant)
+				t.Logf("close %s: %v", id, err)
+				stored, err := k.GetLease(f.Ctx, id)
+				require.NoError(t, err)
+				require.Equal(t, types.LEASE_STATE_ACTIVE, stored.State)
+			}
+			_, err = ms.CloseLease(f.Ctx, &types.MsgCloseLease{Sender: tenant.String(), LeaseUuids: []string{ordinaryLease}})
+			require.NoError(t, err, "a separate lease using only an unaffected denomination remains operable")
+			account, err := k.GetCreditAccount(f.Ctx, tenant.String())
+			require.NoError(t, err)
+			require.Equal(t, int64(3600), account.ReservedAmounts.AmountOf("uordinary").Int64())
+			message, broken := keeper.ReservationAccountingInvariant(k)(f.Ctx)
+			require.True(t, broken)
+			t.Log(message)
+		})
+	}
+}

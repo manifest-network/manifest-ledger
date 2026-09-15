@@ -31,28 +31,28 @@ func TestBillingLease(t *testing.T) {
 	testSKUUUID2 = tc.skuUUID2
 
 	// Fund tenant1 credit account for lease tests
-	fundTenantCredit(t, ctx, tc, tc.tenant1, 100_000_000)
+	fundTenantCredit(ctx, t, tc, tc.tenant1)
 
 	// Run lease lifecycle tests
 	t.Run("Create", func(t *testing.T) {
-		testLeaseCreateIndependent(t, ctx, tc)
+		testLeaseCreateIndependent(ctx, t, tc)
 	})
 
 	t.Run("Query", func(t *testing.T) {
-		testLeaseQueryIndependent(t, ctx, tc)
+		testLeaseQueryIndependent(ctx, t, tc)
 	})
 
 	t.Run("Close", func(t *testing.T) {
-		testLeaseCloseIndependent(t, ctx, tc)
+		testLeaseCloseIndependent(ctx, t, tc)
 	})
 
 	t.Run("RejectAndCancel", func(t *testing.T) {
-		testLeaseRejectAndCancelIndependent(t, ctx, tc)
+		testLeaseRejectAndCancelIndependent(ctx, t, tc)
 	})
 }
 
 // testLeaseCreateIndependent tests lease creation scenarios.
-func testLeaseCreateIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testLeaseCreateIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Lease Create ===")
 
 	t.Run("success: tenant creates lease with single SKU", func(t *testing.T) {
@@ -152,8 +152,8 @@ func testLeaseCreateIndependent(t *testing.T, ctx context.Context, tc *billingTe
 		require.Equal(t, "web", leaseRes.Lease.Items[0].ServiceName)
 		require.Equal(t, "db", leaseRes.Lease.Items[1].ServiceName)
 		// Both items should reference the same SKU
-		require.Equal(t, tc.skuUUID, leaseRes.Lease.Items[0].SkuUuid)
-		require.Equal(t, tc.skuUUID, leaseRes.Lease.Items[1].SkuUuid)
+		require.Equal(t, tc.skuUUID, leaseRes.Lease.Items[0].SkuUUID)
+		require.Equal(t, tc.skuUUID, leaseRes.Lease.Items[1].SkuUUID)
 
 		// Acknowledge the lease to make it ACTIVE
 		ackRes, err := helpers.BillingAcknowledgeLease(ctx, tc.chain, tc.providerWallet, leaseID)
@@ -222,7 +222,7 @@ func testLeaseCreateIndependent(t *testing.T, ctx context.Context, tc *billingTe
 }
 
 // testLeaseQueryIndependent tests lease query operations.
-func testLeaseQueryIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testLeaseQueryIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Lease Query ===")
 
 	t.Run("success: query all leases", func(t *testing.T) {
@@ -246,7 +246,7 @@ func testLeaseQueryIndependent(t *testing.T, ctx context.Context, tc *billingTes
 		require.NoError(t, err)
 		require.NotEmpty(t, res.Leases)
 		for _, lease := range res.Leases {
-			require.Equal(t, tc.providerUUID, lease.ProviderUuid)
+			require.Equal(t, tc.providerUUID, lease.ProviderUUID)
 		}
 	})
 
@@ -260,7 +260,7 @@ func testLeaseQueryIndependent(t *testing.T, ctx context.Context, tc *billingTes
 }
 
 // testLeaseCloseIndependent tests lease close operations.
-func testLeaseCloseIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testLeaseCloseIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Lease Close ===")
 
 	// Create a fresh lease for close testing
@@ -381,7 +381,7 @@ func testLeaseCloseIndependent(t *testing.T, ctx context.Context, tc *billingTes
 }
 
 // testLeaseRejectAndCancelIndependent tests lease reject and cancel operations.
-func testLeaseRejectAndCancelIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testLeaseRejectAndCancelIndependent(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Lease Reject and Cancel ===")
 
 	node := tc.chain.GetNode()
@@ -391,7 +391,7 @@ func testLeaseRejectAndCancelIndependent(t *testing.T, ctx context.Context, tc *
 	rejectTenant := rejectUsers[0]
 
 	// Fund tenant with PWR tokens
-	err := node.SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err := node.BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: rejectTenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  DefaultGenesisAmt,

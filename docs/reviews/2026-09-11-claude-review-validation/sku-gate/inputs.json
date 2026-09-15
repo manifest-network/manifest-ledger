@@ -1,0 +1,14 @@
+{
+  "required_source_sha256": {
+    "x/sku/module.go": "c6e2f80e56608a8904acfa76ee4efd873de730de68c8fb14cd42b7d5382e0be3",
+    "x/sku/module_test.go": "50911c00cb37041412d26fab2167ddff20f026ac3a3813b1d27be6e63bd73822",
+    "go.mod": "5b9e467e5816f015cc94cb1cf9f567b94f6cc51d890b232624cfcb31fef465ca",
+    "go.sum": "48659d7d23c50077a81d452aec65fd1655fc45e602f85c4750545d5537b3aee2"
+  },
+  "archived_sha256": {
+    "module-fixed.go.txt": "c6e2f80e56608a8904acfa76ee4efd873de730de68c8fb14cd42b7d5382e0be3",
+    "module-skip-validation.go.txt": "b490afd490b2e43a67f2717c2a4bb81ca38f69f2680487047d25da99a3bf7de3",
+    "module-test.go.txt": "50911c00cb37041412d26fab2167ddff20f026ac3a3813b1d27be6e63bd73822",
+    "skip-validation.patch": "f00ec82fe4d4ab6fcd6d949e0bd898f06ec098a840c1f8f63c8afdf8a5ded95a"
+  }
+}

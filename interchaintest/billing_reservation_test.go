@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"testing"
 
-	sdkmath "cosmossdk.io/math"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
+
+	sdkmath "cosmossdk.io/math"
 
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 )
@@ -31,29 +32,29 @@ func TestBillingReservation(t *testing.T) {
 	testSKUUUID2 = tc.skuUUID2
 
 	t.Run("OverbookingPrevention", func(t *testing.T) {
-		testOverbookingPrevention(t, ctx, tc)
+		testOverbookingPrevention(ctx, t, tc)
 	})
 
 	t.Run("ReservationReleaseOnClose", func(t *testing.T) {
-		testReservationReleaseOnClose(t, ctx, tc)
+		testReservationReleaseOnClose(ctx, t, tc)
 	})
 
 	t.Run("ReservationReleaseOnReject", func(t *testing.T) {
-		testReservationReleaseOnReject(t, ctx, tc)
+		testReservationReleaseOnReject(ctx, t, tc)
 	})
 
 	t.Run("ReservationReleaseOnCancel", func(t *testing.T) {
-		testReservationReleaseOnCancel(t, ctx, tc)
+		testReservationReleaseOnCancel(ctx, t, tc)
 	})
 
 	t.Run("AvailableBalancesQuery", func(t *testing.T) {
-		testAvailableBalancesQuery(t, ctx, tc)
+		testAvailableBalancesQuery(ctx, t, tc)
 	})
 }
 
 // testOverbookingPrevention verifies that the credit reservation system prevents
 // creating more leases than available credit can support.
-func testOverbookingPrevention(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testOverbookingPrevention(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Overbooking Prevention ===")
 
 	// Create a new tenant for this test to have isolated credit
@@ -69,7 +70,7 @@ func testOverbookingPrevention(t *testing.T, ctx context.Context, tc *billingTes
 	fundAmount := int64(8_000_000)
 
 	// Send PWR to tenant
-	err := tc.chain.GetNode().SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err := tc.chain.GetNode().BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(fundAmount),
@@ -163,7 +164,7 @@ func testOverbookingPrevention(t *testing.T, ctx context.Context, tc *billingTes
 }
 
 // testReservationReleaseOnClose verifies that closing an active lease releases its reservation.
-func testReservationReleaseOnClose(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testReservationReleaseOnClose(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Reservation Release On Close ===")
 
 	// Create a new tenant for this test
@@ -173,7 +174,7 @@ func testReservationReleaseOnClose(t *testing.T, ctx context.Context, tc *billin
 	// Fund with enough for 2 leases but not 3
 	fundAmount := int64(8_000_000)
 
-	err := tc.chain.GetNode().SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err := tc.chain.GetNode().BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(fundAmount),
@@ -251,7 +252,7 @@ func testReservationReleaseOnClose(t *testing.T, ctx context.Context, tc *billin
 }
 
 // testReservationReleaseOnReject verifies that rejecting a pending lease releases its reservation.
-func testReservationReleaseOnReject(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testReservationReleaseOnReject(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Reservation Release On Reject ===")
 
 	// Create a new tenant for this test
@@ -261,7 +262,7 @@ func testReservationReleaseOnReject(t *testing.T, ctx context.Context, tc *billi
 	// Fund with enough for 2 leases but not 3
 	fundAmount := int64(8_000_000)
 
-	err := tc.chain.GetNode().SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err := tc.chain.GetNode().BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(fundAmount),
@@ -346,7 +347,7 @@ func testReservationReleaseOnReject(t *testing.T, ctx context.Context, tc *billi
 }
 
 // testReservationReleaseOnCancel verifies that cancelling a pending lease releases its reservation.
-func testReservationReleaseOnCancel(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testReservationReleaseOnCancel(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Reservation Release On Cancel ===")
 
 	// Create a new tenant for this test
@@ -356,7 +357,7 @@ func testReservationReleaseOnCancel(t *testing.T, ctx context.Context, tc *billi
 	// Fund with enough for 2 leases but not 3
 	fundAmount := int64(8_000_000)
 
-	err := tc.chain.GetNode().SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err := tc.chain.GetNode().BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(fundAmount),
@@ -441,7 +442,7 @@ func testReservationReleaseOnCancel(t *testing.T, ctx context.Context, tc *billi
 }
 
 // testAvailableBalancesQuery verifies the credit account query returns correct available_balances.
-func testAvailableBalancesQuery(t *testing.T, ctx context.Context, tc *billingTestContext) {
+func testAvailableBalancesQuery(ctx context.Context, t *testing.T, tc *billingTestContext) {
 	t.Log("=== Testing Available Balances Query ===")
 
 	// Create a new tenant for this test
@@ -450,7 +451,7 @@ func testAvailableBalancesQuery(t *testing.T, ctx context.Context, tc *billingTe
 
 	fundAmount := int64(10_000_000)
 
-	err := tc.chain.GetNode().SendFunds(ctx, tc.authority.KeyName(), ibc.WalletAmount{
+	err := tc.chain.GetNode().BankSend(ctx, tc.authority.KeyName(), ibc.WalletAmount{
 		Address: tenant.FormattedAddress(),
 		Denom:   tc.pwrDenom,
 		Amount:  sdkmath.NewInt(fundAmount),

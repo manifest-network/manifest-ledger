@@ -2,10 +2,10 @@
 package manifestv1
 
 import (
+	v1beta1 "cosmossdk.io/api/cosmos/base/v1beta1"
 	fmt "fmt"
 	_ "github.com/cosmos/cosmos-proto"
 	runtime "github.com/cosmos/cosmos-proto/runtime"
-	types "cosmossdk.io/api/cosmos/base/v1beta1"
 	_ "github.com/cosmos/cosmos-sdk/types/msgservice"
 	_ "github.com/cosmos/cosmos-sdk/types/tx/amino"
 	_ "github.com/cosmos/gogoproto/gogoproto"
@@ -749,7 +749,7 @@ func (x *fastReflection_PayoutPair) Set(fd protoreflect.FieldDescriptor, value p
 	case "liftedinit.manifest.v1.PayoutPair.address":
 		x.Address = value.Interface().(string)
 	case "liftedinit.manifest.v1.PayoutPair.coin":
-		x.Coin = value.Message().Interface().(*types.Coin)
+		x.Coin = value.Message().Interface().(*v1beta1.Coin)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: liftedinit.manifest.v1.PayoutPair"))
@@ -772,7 +772,7 @@ func (x *fastReflection_PayoutPair) Mutable(fd protoreflect.FieldDescriptor) pro
 	switch fd.FullName() {
 	case "liftedinit.manifest.v1.PayoutPair.coin":
 		if x.Coin == nil {
-			x.Coin = new(types.Coin)
+			x.Coin = new(v1beta1.Coin)
 		}
 		return protoreflect.ValueOfMessage(x.Coin.ProtoReflect())
 	case "liftedinit.manifest.v1.PayoutPair.address":
@@ -793,7 +793,7 @@ func (x *fastReflection_PayoutPair) NewField(fd protoreflect.FieldDescriptor) pr
 	case "liftedinit.manifest.v1.PayoutPair.address":
 		return protoreflect.ValueOfString("")
 	case "liftedinit.manifest.v1.PayoutPair.coin":
-		m := new(types.Coin)
+		m := new(v1beta1.Coin)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	default:
 		if fd.IsExtension() {
@@ -1033,7 +1033,7 @@ func (x *fastReflection_PayoutPair) ProtoMethods() *protoiface.Methods {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
 				if x.Coin == nil {
-					x.Coin = &types.Coin{}
+					x.Coin = &v1beta1.Coin{}
 				}
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Coin); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
@@ -1433,7 +1433,7 @@ func (x *fastReflection_MsgPayoutResponse) ProtoMethods() *protoiface.Methods {
 var _ protoreflect.List = (*_MsgBurnHeldBalance_2_list)(nil)
 
 type _MsgBurnHeldBalance_2_list struct {
-	list *[]*types.Coin
+	list *[]*v1beta1.Coin
 }
 
 func (x *_MsgBurnHeldBalance_2_list) Len() int {
@@ -1449,18 +1449,18 @@ func (x *_MsgBurnHeldBalance_2_list) Get(i int) protoreflect.Value {
 
 func (x *_MsgBurnHeldBalance_2_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	(*x.list)[i] = concreteValue
 }
 
 func (x *_MsgBurnHeldBalance_2_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*types.Coin)
+	concreteValue := valueUnwrapped.Interface().(*v1beta1.Coin)
 	*x.list = append(*x.list, concreteValue)
 }
 
 func (x *_MsgBurnHeldBalance_2_list) AppendMutable() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
@@ -1473,7 +1473,7 @@ func (x *_MsgBurnHeldBalance_2_list) Truncate(n int) {
 }
 
 func (x *_MsgBurnHeldBalance_2_list) NewElement() protoreflect.Value {
-	v := new(types.Coin)
+	v := new(v1beta1.Coin)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
@@ -1683,7 +1683,7 @@ func (x *fastReflection_MsgBurnHeldBalance) Mutable(fd protoreflect.FieldDescrip
 	switch fd.FullName() {
 	case "liftedinit.manifest.v1.MsgBurnHeldBalance.burn_coins":
 		if x.BurnCoins == nil {
-			x.BurnCoins = []*types.Coin{}
+			x.BurnCoins = []*v1beta1.Coin{}
 		}
 		value := &_MsgBurnHeldBalance_2_list{list: &x.BurnCoins}
 		return protoreflect.ValueOfList(value)
@@ -1705,7 +1705,7 @@ func (x *fastReflection_MsgBurnHeldBalance) NewField(fd protoreflect.FieldDescri
 	case "liftedinit.manifest.v1.MsgBurnHeldBalance.authority":
 		return protoreflect.ValueOfString("")
 	case "liftedinit.manifest.v1.MsgBurnHeldBalance.burn_coins":
-		list := []*types.Coin{}
+		list := []*v1beta1.Coin{}
 		return protoreflect.ValueOfList(&_MsgBurnHeldBalance_2_list{list: &list})
 	default:
 		if fd.IsExtension() {
@@ -1948,7 +1948,7 @@ func (x *fastReflection_MsgBurnHeldBalance) ProtoMethods() *protoiface.Methods {
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.BurnCoins = append(x.BurnCoins, &types.Coin{})
+				x.BurnCoins = append(x.BurnCoins, &v1beta1.Coin{})
 				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.BurnCoins[len(x.BurnCoins)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
@@ -2409,8 +2409,8 @@ type PayoutPair struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Address string      `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
-	Coin    *types.Coin `protobuf:"bytes,2,opt,name=coin,proto3" json:"coin,omitempty"`
+	Address string        `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	Coin    *v1beta1.Coin `protobuf:"bytes,2,opt,name=coin,proto3" json:"coin,omitempty"`
 }
 
 func (x *PayoutPair) Reset() {
@@ -2440,7 +2440,7 @@ func (x *PayoutPair) GetAddress() string {
 	return ""
 }
 
-func (x *PayoutPair) GetCoin() *types.Coin {
+func (x *PayoutPair) GetCoin() *v1beta1.Coin {
 	if x != nil {
 		return x.Coin
 	}
@@ -2484,7 +2484,7 @@ type MsgBurnHeldBalance struct {
 	// sender is the address of the tokenholder.
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
 	// burn_coins are the coins to be burned by the tokenholder.
-	BurnCoins []*types.Coin `protobuf:"bytes,2,rep,name=burn_coins,json=burnCoins,proto3" json:"burn_coins,omitempty"`
+	BurnCoins []*v1beta1.Coin `protobuf:"bytes,2,rep,name=burn_coins,json=burnCoins,proto3" json:"burn_coins,omitempty"`
 }
 
 func (x *MsgBurnHeldBalance) Reset() {
@@ -2514,7 +2514,7 @@ func (x *MsgBurnHeldBalance) GetAuthority() string {
 	return ""
 }
 
-func (x *MsgBurnHeldBalance) GetBurnCoins() []*types.Coin {
+func (x *MsgBurnHeldBalance) GetBurnCoins() []*v1beta1.Coin {
 	if x != nil {
 		return x.BurnCoins
 	}
@@ -2659,7 +2659,7 @@ var file_liftedinit_manifest_v1_tx_proto_goTypes = []interface{}{
 	(*MsgPayoutResponse)(nil),          // 2: liftedinit.manifest.v1.MsgPayoutResponse
 	(*MsgBurnHeldBalance)(nil),         // 3: liftedinit.manifest.v1.MsgBurnHeldBalance
 	(*MsgBurnHeldBalanceResponse)(nil), // 4: liftedinit.manifest.v1.MsgBurnHeldBalanceResponse
-	(*types.Coin)(nil),                 // 5: cosmos.base.v1beta1.Coin
+	(*v1beta1.Coin)(nil),               // 5: cosmos.base.v1beta1.Coin
 }
 var file_liftedinit_manifest_v1_tx_proto_depIdxs = []int32{
 	1, // 0: liftedinit.manifest.v1.MsgPayout.payout_pairs:type_name -> liftedinit.manifest.v1.PayoutPair

@@ -1,0 +1,30 @@
+Round 74 product/help and terminal-settlement documentation verification
+Baseline: 8492a4ad18996d0877a7425b8039ed355cc94726
+Working directory: /home/fmorency/dev/manifest-ledger/.review-worktrees/sku-billing-20260909
+Commands below were executed through the host-permission executor for SDK/subprocess fixtures.
+No production behavior, protobuf field, or event contract changed. Existing provider protobuf comments were already correct; generation was not run.
+
+$ GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR="$PWD/.review-tmp/build" go test -p 2 -count=1 ./x/sku/client/cli > .review-tmp/round74-sku-cli.log 2>&1
+Exit status: 0
+PASS: x/sku/client/cli (0.189s).
+The outer go process remained alive for several minutes after package output, then exited normally. The cause of the delay was not diagnosed; no cancellation, telemetry change, or test rerun was required.
+
+$ GOTOOLCHAIN=go1.26.8 GOMAXPROCS=4 TMPDIR="$PWD/.review-tmp/build" go test -p 2 -count=1 -run '^Test(UpdateProvider|MsgUpdateProvider)' ./x/sku/keeper ./x/sku/types > .review-tmp/round74-provider-semantics.log 2>&1
+Exit status: 0
+PASS: x/sku/keeper (1.282s), x/sku/types (0.120s), filtered to provider-update tests.
+
+$ timeout 180s node --test --test-reporter=tap scripts/docs_examples.test.mjs scripts/provider_auth_examples.test.mjs > .review-tmp/round74-doc-examples.log 2>&1
+Exit status: 0
+PASS: 39 tests; 0 failures; 0 skipped; duration 47214.864683ms.
+
+$ git diff --check
+Exit status: 0
+No whitespace errors.
+
+$ ./.review-tmp/round74-manifestd tx sku update-provider --help > .review-tmp/round74-provider-help.log
+Default sandbox attempt exit status: 2
+Pinned SDK testutil/network initialization attempted a localhost listener and failed with socket: operation not permitted before help rendered.
+
+$ ./.review-tmp/round74-manifestd tx sku update-provider --help > .review-tmp/round74-provider-help.log 2>&1
+Host-permission rerun exit status: 0
+Rendered help includes the metadata replacement warning, current-hash examples, matching preserve/clear flag help, and unchanged API URL preserve/clear semantics.

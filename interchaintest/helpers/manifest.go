@@ -4,16 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"testing"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	manifesttypes "github.com/manifest-network/manifest-ledger/x/manifest/types"
 )
 
-func ManifestStakeholderPayout(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, poaAdmin ibc.Wallet, payouts []manifesttypes.PayoutPair, flags ...string) (sdk.TxResponse, error) {
+// ManifestStakeholderPayout distributes manifest funds to the configured stakeholders.
+func ManifestStakeholderPayout(ctx context.Context, chain *cosmos.CosmosChain, poaAdmin ibc.Wallet, payouts []manifesttypes.PayoutPair, flags ...string) (sdk.TxResponse, error) {
 	output := ""
 	for _, payout := range payouts {
 		output += fmt.Sprintf("%s:%s%s,", payout.Address, payout.Coin.Amount.String(), payout.Coin.Denom)
@@ -29,7 +30,8 @@ func ManifestStakeholderPayout(t *testing.T, ctx context.Context, chain *cosmos.
 	return ExecuteTransaction(ctx, chain, cmd)
 }
 
-func ManifestBurnTokens(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, keyName string, amount string, flags ...string) (sdk.TxResponse, error) {
+// ManifestBurnTokens burns the requested amount from the named key.
+func ManifestBurnTokens(ctx context.Context, chain *cosmos.CosmosChain, keyName string, amount string, flags ...string) (sdk.TxResponse, error) {
 	txCmd := []string{"tx", "manifest", "burn-coins", amount}
 	fmt.Println("ManifestBurnTokens", txCmd)
 	cmd := TxCommandBuilder(ctx, chain, txCmd, keyName, flags...)

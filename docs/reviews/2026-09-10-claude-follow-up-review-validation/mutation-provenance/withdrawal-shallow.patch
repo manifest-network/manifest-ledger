@@ -1,0 +1,4 @@
+--- a/x/billing/keeper/provider_withdrawal.go
++++ b/x/billing/keeper/provider_withdrawal.go
+@@ -79 +78,0 @@
+-	settledLease.Reservation = cloneLeaseReservation(lease.Reservation)

@@ -1,0 +1,25 @@
+baseline_commit (plain): rejected; Go calls=0
+previous_commit (plain): rejected; Go calls=0
+compressed_archive (plain): rejected; Go calls=0
+uncompressed_archive (plain): rejected; Go calls=0
+previous_withdrawal (plain): rejected; Go calls=0
+previous_export (plain): rejected; Go calls=0
+clone_assignment (plain): rejected; Go calls=0
+bad_exit (plain): rejected; Go calls=3
+no_tests (plain): rejected; Go calls=3
+no_mutant_failure (plain): rejected; Go calls=5
+source_changed (plain): rejected; Go calls=7
+driver_changed (plain): rejected; Go calls=7
+baseline_commit (-O): rejected; Go calls=0
+previous_commit (-O): rejected; Go calls=0
+compressed_archive (-O): rejected; Go calls=0
+uncompressed_archive (-O): rejected; Go calls=0
+previous_withdrawal (-O): rejected; Go calls=0
+previous_export (-O): rejected; Go calls=0
+clone_assignment (-O): rejected; Go calls=0
+bad_exit (-O): rejected; Go calls=3
+no_tests (-O): rejected; Go calls=3
+no_mutant_failure (-O): rejected; Go calls=5
+source_changed (-O): rejected; Go calls=7
+driver_changed (-O): rejected; Go calls=7
+All 24 plain/optimized driver checks passed; no real Go command was executed.

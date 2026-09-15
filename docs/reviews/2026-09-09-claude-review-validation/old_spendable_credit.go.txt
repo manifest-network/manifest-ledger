@@ -1,0 +1,15 @@
+package keeper
+
+import (
+	"context"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
+)
+
+// Reproduction only: deliberately restore the original total-balance policy.
+// This overlay must never replace the production spendable-credit implementation.
+func (k *Keeper) spendableCreditCoin(ctx context.Context, address sdk.AccAddress, denom string) sdk.Coin {
+	return creditCoinAfterLocks(k.bankKeeper.GetBalance(ctx, address, denom), k.bankKeeper.LockedCoins(ctx, address))
+}
+
+func creditCoinAfterLocks(balance sdk.Coin, _ sdk.Coins) sdk.Coin { return balance }

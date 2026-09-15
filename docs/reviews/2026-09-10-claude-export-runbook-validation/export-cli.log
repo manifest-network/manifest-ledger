@@ -1,0 +1,42 @@
+HISTORICAL DISPLAY SUMMARY — the $ manifestd lines below omit fixture-specific arguments and are not exact executed argv.
+Superseded by ../2026-09-11-claude-review-validation/export-cli.log and export-cli.json, generated from actual subprocess argument arrays.
+
+Isolated single-validator fixture; no peers or public listener.
+Selected committed height: 3
+Source block time: 2026-09-10T18:56:41.015225824Z
+Circuit inventory: {
+  "pagination": {}
+}
+Absent explicit account lookup exit: 1
+rpc error: code = InvalidArgument desc = collections: not found: key 'hexBytes:188f4f0ef63ad3b5fbb6d85ea4327765806a3328' of type github.com/cosmos/gogoproto/cosmos.circuit.v1.Permissions: invalid request
+$ manifestd export --home /fixture/node --height SOURCE_HEIGHT --for-zero-height > /fixture/redirected-genesis.json
+export exit: 0
+stdout invariant log count: 16
+redirected file JSON decode: failed (expected)
+genesis validate redirected file exit: 1
+Usage:
+  manifestd genesis validate [file] [flags]
+
+Aliases:
+  validate, validate-genesis
+
+Flags:
+  -h, --help   help for validate
+
+Global Flags:
+      --home string         directory for config and data (default "/home/fmorency/.manifest")
+      --log_format string   The logging format (json|plain) (default "plain")
+      --log_level string    The logging level (trace|debug|info|warn|error|fatal|panic|disabled or '*:<level>,<key>:<level>') (default "info")
+      --log_no_color        Disable colored logs
+      --trace               print out full stack trace on errors
+
+error at offset 2: invalid character ':' after top-level value
+$ manifestd export --home /fixture/node --height SOURCE_HEIGHT --for-zero-height --output-document /fixture/exported-genesis.json
+export exit: 0
+output document JSON decode: passed
+output document preserves original genesis_time; initial_height: 0
+stdout invariant log count: 16
+Separate restart copy uses source block time; raw export hash unchanged.
+$ manifestd genesis validate /fixture/restart-genesis.json
+validation exit: 0
+File at /fixture/restart-genesis.json is a valid genesis file

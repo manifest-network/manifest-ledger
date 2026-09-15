@@ -1,0 +1,24 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 0%
+    patch:
+      default:
+        target: 80%
+        threshold: 0%
+ignore:
+  - "**/*.pb.go"
+  - "**/*.pb.gw.go"
+  - "**/*.pulsar.go"
+component_management:
+  individual_components:
+    - component_id: billing
+      name: billing
+      paths:
+        - x/billing/**
+    - component_id: sku
+      name: sku
+      paths:
+        - x/sku/**
