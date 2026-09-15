@@ -177,12 +177,12 @@ This is the ledger wiring for [ENG-879](https://linear.app/liftedinit/issue/ENG-
 and [ENG-886](https://linear.app/liftedinit/issue/ENG-886). Four-validator promotion
 and the deployment playbooks are separate follow-ups.
 
-This branch pins [SDK `v0.50.14-liftedinit.2`](https://github.com/manifest-network/cosmos-sdk/releases/tag/v0.50.14-liftedinit.2),
+This branch pins [SDK `v0.50.14-liftedinit.3`](https://github.com/manifest-network/cosmos-sdk/releases/tag/v0.50.14-liftedinit.3),
 which includes the [ENG-885 fix](https://github.com/manifest-network/cosmos-sdk/pull/4)
 for extended commits and the cached genesis chain ID. The older
 `v0.50.14-liftedinit.1` lacks these fixes and cannot start a fork with vote
 extensions enabled. Keep extensions enabled and follow the
-[SDK operator preparation instructions](https://github.com/manifest-network/cosmos-sdk/blob/v0.50.14-liftedinit.2/docs/docs/user/run-node/05-run-testnet.md),
+[SDK operator preparation instructions](https://github.com/manifest-network/cosmos-sdk/blob/v0.50.14-liftedinit.3/docs/docs/user/run-node/05-run-testnet.md),
 including redirecting configured absolute paths into the disposable copy and
 choosing a separate, writable address-book path. The fixed SDK does not establish
 the fork binary's state compatibility with the source chain; verify that separately.
@@ -210,8 +210,9 @@ Prepare the copied home before running the command:
    copied home so a failed conversion can be retried from the original copy.
    Include the source's `wasm/` bytecode: this application does not currently
    register the Wasm snapshot extension. Preflight checks application, Comet state
-   and blockstore heights before recording conversion. If an interrupted rollback
-   left those heights inconsistent, recover the source before taking another copy.
+   and blockstore heights before recording conversion. At matching application and
+   Comet heights, their application hashes must also match. If a rollback or mixed
+   database copy left them inconsistent, recover the source before copying it.
 3. Install a complete, freshly generated local consensus key. Never use a
    production `priv_validator_key.json`. Keep the signing-state file present and
    replace its contents with `{"height":"0","round":0,"step":0}`. Use a fresh node
@@ -222,7 +223,8 @@ Prepare the copied home before running the command:
    peer exchange and state sync, and isolate its P2P network from production.
    The SDK clears the address book but does not clear configured peers or seeds.
    Set `[tx_index] indexer` to `"kv"` or `"null"`; external PostgreSQL indexing is
-   rejected on conversion and restart. Unix socket listeners, including Comet's
+   rejected on conversion and restart. Unix socket listeners (`unix`, `unixpacket`
+   and `unixgram`), including Comet's
    `[rpc] grpc_laddr`, are also rejected to keep socket files inside the mutation
    boundary. Every comma-separated endpoint in `[rpc] laddr` is checked. Use TCP
    listeners on ports reserved for the fork.

@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.25
+ARG GO_VERSION=1.25.14
 FROM golang:${GO_VERSION}-alpine AS go-builder
 ARG BUILD_CMD=build
 ARG BUILD_TAGS=muslc

@@ -29,7 +29,7 @@ func readTestnetBlockStoreHeight(cfg *cmtcfg.Config) (_ int64, err error) {
 }
 
 func validateTestnetSourceHeights(appHeight, stateHeight, storeHeight int64) error {
-	// SDK v0.50.14-liftedinit.2 accepts aligned commits, a stored uncommitted
+	// SDK v0.50.14-liftedinit.3 accepts aligned commits, a stored uncommitted
 	// block (including --halt-height), or an app commit before Comet state save.
 	// Conversion writes validator history through the reconciled height + 2.
 	if stateHeight < 1 || storeHeight < 1 || storeHeight > math.MaxInt64-2 ||

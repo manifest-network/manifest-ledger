@@ -18,7 +18,7 @@ permissions:
   packages: write
 
 env:
-  GO_VERSION: 1.25.9
+  GO_VERSION: 1.25.14
   TAR_PATH: /tmp/manifest-docker-image.tar
   IMAGE_NAME: manifest-docker-image
   UPGRADE_TAR_PATH: /tmp/manifest-testnet-upgrade-image.tar
@@ -29,6 +29,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-docker-arm64:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build ARM64 image
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        with:
+          context: .
+          platforms: linux/arm64
+          push: false
+          build-args: |
+            GO_VERSION=${{ env.GO_VERSION }}
+            BUILD_CMD=build
+
   build-docker:
     runs-on: ubuntu-latest
     steps:
@@ -50,6 +71,7 @@ jobs:
           tags: manifest:local
           outputs: type=docker,dest=${{ env.TAR_PATH }}
           build-args: |
+            GO_VERSION=${{ env.GO_VERSION }}
             BUILD_CMD=build-coverage
 
       - name: Upload artifact
@@ -65,6 +87,7 @@ jobs:
           tags: manifest-testnet-upgrade:local
           outputs: type=docker,dest=${{ env.UPGRADE_TAR_PATH }}
           build-args: |
+            GO_VERSION=${{ env.GO_VERSION }}
             BUILD_CMD=build-coverage
             BUILD_TAGS=muslc testnet_upgrade_fixture
             VERSION=eng879-test-upgrade
@@ -93,7 +116,11 @@ jobs:
           - "ictest-chain-upgrade"
           - "ictest-in-place-testnet"
           - "ictest-sku"
-          - "ictest-billing"
+          - "ictest-billing-advanced"
+          - "ictest-billing-credit"
+          - "ictest-billing-lease"
+          - "ictest-billing-reservation"
+          - "ictest-billing-state"
           - "ictest-billing-extra"
           - "ictest-billing-upgrade"
       fail-fast: false

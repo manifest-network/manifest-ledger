@@ -12,7 +12,7 @@ on:
     types: [opened, reopened, synchronize]
 
 env:
-    GO_VERSION: 1.25.9
+    GO_VERSION: 1.25.14
 
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,6 +20,7 @@ concurrency:
 
 jobs:
   tests:
+    name: unit tests
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
