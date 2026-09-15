@@ -1,13 +1,18 @@
 package interchaintest
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"path"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/stretchr/testify/require"
@@ -23,6 +28,39 @@ import (
 
 	poa "github.com/strangelove-ventures/poa"
 )
+
+// The upstream WriteFile recursively chowns the entire volume, racing live
+// database compaction. Set ownership on this archive entry only. Use the stable
+// container name because the initial fork has a separate container lifecycle.
+func writeInPlaceTestnetLiveFile(ctx context.Context, node *cosmos.ChainNode, name string, content []byte) error {
+	if name == "" || name == "." || name == ".." || path.Base(name) != name {
+		return fmt.Errorf("live upload requires a file name, got %q", name)
+	}
+	uidText, gidText, ok := strings.Cut(node.Image.UIDGID, ":")
+	if !ok {
+		return fmt.Errorf("live upload requires numeric UID:GID, got %q", node.Image.UIDGID)
+	}
+	uid, err := strconv.Atoi(uidText)
+	if err != nil || uid < 0 {
+		return fmt.Errorf("invalid upload UID %q", uidText)
+	}
+	gid, err := strconv.Atoi(gidText)
+	if err != nil || gid < 0 {
+		return fmt.Errorf("invalid upload GID %q", gidText)
+	}
+	var archive bytes.Buffer
+	writer := tar.NewWriter(&archive)
+	if err := writer.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: int64(len(content)), Uid: uid, Gid: gid}); err != nil {
+		return err
+	}
+	if _, err := writer.Write(content); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	return node.DockerClient.CopyToContainer(ctx, node.Name(), node.HomeDir(), &archive, container.CopyToContainerOptions{})
+}
 
 // The snapshot excludes Go coverage output, which each CLI process may emit even
 // when preflight rejects the command. All application, consensus, and key files
@@ -107,7 +145,7 @@ func broadcastInPlaceTestnetMessage(t *testing.T, ctx context.Context, node *cos
 	builder.SetGasLimit(400_000)
 	unsigned, err := txConfig.TxJSONEncoder()(builder.GetTx())
 	require.NoError(t, err)
-	require.NoError(t, node.WriteFile(ctx, unsigned, "testnet-unsigned.json"))
+	require.NoError(t, writeInPlaceTestnetLiveFile(ctx, node, "testnet-unsigned.json", unsigned))
 	_, stderr, err := node.Exec(ctx, node.NodeCommand("tx", "sign", path.Join(node.HomeDir(), "testnet-unsigned.json"),
 		"--from", keyName, "--chain-id", chainID, "--keyring-backend", "test", "--sign-mode", "direct",
 		"--output-document", path.Join(node.HomeDir(), "testnet-signed.json")), node.Chain.Config().Env)

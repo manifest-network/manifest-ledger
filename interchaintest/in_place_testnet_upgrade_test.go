@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"testing"
@@ -17,6 +19,7 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
+	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
 
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
@@ -46,8 +49,17 @@ func seedInPlaceTestnetReleasedState(t *testing.T, ctx context.Context, chain *c
 	version, stderr, err := node.ExecBin(ctx, "version")
 	require.NoError(t, err, "%s", stderr)
 	require.Equal(t, "v2.3.1", strings.TrimSpace(string(version)))
-	codeID, err := node.StoreContract(ctx, user.KeyName(), "../scripts/cw_template.wasm")
+	contractCode, err := os.ReadFile("../scripts/cw_template.wasm")
 	require.NoError(t, err)
+	const contractFile = "cw_template.wasm"
+	require.NoError(t, writeInPlaceTestnetLiveFile(ctx, node, contractFile, contractCode))
+	_, err = node.ExecTx(ctx, user.KeyName(), "wasm", "store", path.Join(node.HomeDir(), contractFile), "--gas", "auto")
+	require.NoError(t, err)
+	require.NoError(t, testutil.WaitForBlocks(ctx, 5, chain))
+	var codes cosmos.CodeInfosResponse
+	require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "wasm", "list-code", "--reverse"), &codes))
+	require.Len(t, codes.CodeInfos, 1)
+	codeID := codes.CodeInfos[0].CodeID
 	contract, err := node.InstantiateContract(ctx, user.KeyName(), codeID, `{"count":41}`, true)
 	require.NoError(t, err)
 	execution, err := node.ExecuteContract(ctx, user.KeyName(), contract, `{"increment":{}}`)
