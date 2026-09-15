@@ -1,0 +1,4 @@
+# Version, architecture and SHA-256 of the musl static archive.
+# Source: https://github.com/CosmWasm/wasmvm/releases/download/v2.2.4/checksums.txt
+v2.2.4 aarch64 27fb13821dbc519119f4f98c30a42cb32429b111b0fdc883686c34a41777488f
+v2.2.4 x86_64 70c989684d2b48ca17bbd55bb694bbb136d75c393c067ef3bdbca31d2b23b578

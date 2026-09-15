@@ -7,6 +7,7 @@ exclusion_file=".coverageignore"
 cp "$coverage_profile" "$filtered_coverage_profile"
 
 while read -r pattern; do
+  [[ -z "$pattern" || "$pattern" == \#* ]] && continue
   files_to_exclude=$(find . -type f -regex ".*$pattern")
   for file in $files_to_exclude; do
     relative_path=$(realpath --relative-to="." "$file")

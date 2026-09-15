@@ -29,6 +29,12 @@ import (
 // NewRootCmd creates a new root commaxnd for wasmd. It is called once in the
 // main function.
 func NewRootCmd() *cobra.Command {
+	if err := rejectSimulationAdminBypass(); err != nil {
+		return &cobra.Command{
+			Use: "manifestd", SilenceUsage: true, DisableFlagParsing: true,
+			RunE: func(_ *cobra.Command, _ []string) error { return err },
+		}
+	}
 	cfg := sdk.GetConfig()
 	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
 	cfg.SetBech32PrefixForValidator(app.Bech32PrefixValAddr, app.Bech32PrefixValPub)
@@ -58,20 +64,29 @@ func NewRootCmd() *cobra.Command {
 		Use:           "manifestd",
 		Short:         "Manifest Network",
 		SilenceErrors: true,
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if err := preflightTestnetCommand(cmd, args); err != nil {
+				return err
+			}
 			// set the default command outputs
 			cmd.SetOut(cmd.OutOrStdout())
 			cmd.SetErr(cmd.ErrOrStderr())
 
 			initClientCtx = initClientCtx.WithCmdContext(cmd.Context())
-			initClientCtx, err := client.ReadPersistentCommandFlags(initClientCtx, cmd.Flags())
-			if err != nil {
-				return err
-			}
-
-			initClientCtx, err = config.ReadFromClientConfig(initClientCtx)
-			if err != nil {
-				return err
+			var err error
+			if preflight, ok := cmd.Context().Value(testnetPreflightContextKey{}).(*testnetPreflight); ok {
+				// Server startup needs no operator keyring. Loading persistent
+				// client flags would otherwise create one before the journal.
+				initClientCtx = initClientCtx.WithHomeDir(preflight.home).WithChainID(preflight.journal.ChainID)
+			} else {
+				initClientCtx, err = client.ReadPersistentCommandFlags(initClientCtx, cmd.Flags())
+				if err != nil {
+					return err
+				}
+				initClientCtx, err = config.ReadFromClientConfig(initClientCtx)
+				if err != nil {
+					return err
+				}
 			}
 
 			// This needs to go after ReadFromClientConfig, as that function
@@ -94,22 +109,31 @@ func NewRootCmd() *cobra.Command {
 				initClientCtx = initClientCtx.WithTxConfig(txConfig)
 			}
 
-			if err := client.SetCmdClientContextHandler(initClientCtx, cmd); err != nil {
-				return err
+			if cmd.Context().Value(testnetPreflightContextKey{}) != nil {
+				if err := client.SetCmdClientContext(cmd, initClientCtx); err != nil {
+					return err
+				}
+			} else {
+				if err := client.SetCmdClientContextHandler(initClientCtx, cmd); err != nil {
+					return err
+				}
 			}
 
 			customAppTemplate, customAppConfig := initWasmConfig()
 			customCMTConfig := initCometBFTConfig()
 
-			return server.InterceptConfigsPreRunHandler(cmd, customAppTemplate, customAppConfig, customCMTConfig)
+			if err := server.InterceptConfigsPreRunHandler(cmd, customAppTemplate, customAppConfig, customCMTConfig); err != nil {
+				return err
+			}
+			return configureTestnetServerContext(cmd)
 		},
 	}
 
 	initRootCmd(rootCmd, encodingConfig.TxConfig, tempApp.BasicModuleManager)
 
-	// add keyring to autocli opts
+	// Client configuration is loaded after the selected home has been checked.
+	// Reading it here can create files in the default home before CLI parsing.
 	autoCliOpts := tempApp.AutoCliOpts()
-	initClientCtx, _ = config.ReadFromClientConfig(initClientCtx)
 	autoCliOpts.ClientCtx = initClientCtx
 
 	if err := autoCliOpts.EnhanceRootCommand(rootCmd); err != nil {

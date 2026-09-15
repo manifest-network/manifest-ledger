@@ -1,4 +1,6 @@
-*.pb.go
-*.pb.gw.go
-*.pulsar.go
-testnet.go
+# Suffix regexes for find -regex (not globs); scripts/filter-coverage.sh prepends .*
+\.pb\.go
+\.pb\.gw\.go
+\.pulsar\.go
+/testnet\.go
+/app/upgrades/next/handler_fixture\.go
