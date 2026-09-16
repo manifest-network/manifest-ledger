@@ -32,7 +32,10 @@ esac
 EOF
 cat > "$test_dir/docker" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$COVERAGE_BUILD_LOG"
+# Preserve argument boundaries: an unquoted BUILD_TAGS value must not look like
+# the correctly quoted single argument when it contains spaces.
+printf '%q ' "$@" >> "$COVERAGE_BUILD_LOG"
+printf '\n' >> "$COVERAGE_BUILD_LOG"
 EOF
 chmod +x "$test_dir/selected-go" "$test_dir/go" "$test_dir/docker"
 
@@ -40,10 +43,14 @@ for version in go1.25.9 go1.27.1; do
   export TEST_GO_VERSION="$version"
   : > "$COVERAGE_BUILD_LOG"
   make --no-print-directory local-image-coverage local-image-testnet-upgrade GO="$test_dir/selected-go"
-  test "$(grep -Fc -- "--build-arg GO_VERSION=${version#go} " "$COVERAGE_BUILD_LOG")" -eq 2
-  test "$(grep -Fc -- '--build-arg BUILD_CMD=build-coverage' "$COVERAGE_BUILD_LOG")" -eq 2
-  grep -Fq -- '--build-arg BUILD_TAGS=muslc testnet_upgrade_fixture --build-arg VERSION=eng879-test-upgrade' "$COVERAGE_BUILD_LOG"
-  grep -Fq -- '--build-arg VERSION=eng879-test-upgrade -t manifest-testnet-upgrade:local' "$COVERAGE_BUILD_LOG"
+  test "$(wc -l < "$COVERAGE_BUILD_LOG")" -eq 2
+  printf -v expected '%q ' build . --build-arg "GO_VERSION=${version#go}" \
+    --build-arg BUILD_CMD=build-coverage -t manifest:local
+  grep -Fxq -- "$expected" "$COVERAGE_BUILD_LOG"
+  printf -v expected '%q ' build . --build-arg "GO_VERSION=${version#go}" \
+    --build-arg BUILD_CMD=build-coverage --build-arg 'BUILD_TAGS=muslc testnet_upgrade_fixture' \
+    --build-arg VERSION=eng879-test-upgrade -t manifest-testnet-upgrade:local
+  grep -Fxq -- "$expected" "$COVERAGE_BUILD_LOG"
 
   make --no-print-directory -n coverage GO="$test_dir/selected-go" > "$test_dir/coverage-plan"
   test "$(grep -Fc -- "$test_dir/selected-go test " "$test_dir/coverage-plan")" -eq 2
@@ -76,7 +83,8 @@ done
 # The production image target remains independent of the coverage compiler check.
 : > "$COVERAGE_BUILD_LOG"
 make --no-print-directory local-image GO="$test_dir/selected-go"
-grep -Fxq 'build . -t manifest:local' "$COVERAGE_BUILD_LOG"
+printf -v expected '%q ' build . -t manifest:local
+grep -Fxq -- "$expected" "$COVERAGE_BUILD_LOG"
 
 # Selecting coverage's GO must not export its GOROOT into ordinary bare-go builds.
 : > "$COVERAGE_GO_LOG"

@@ -22,6 +22,8 @@ import (
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
 	poa "github.com/strangelove-ventures/poa"
+
+	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 )
 
 // The snapshot excludes Go coverage output, which each CLI process may emit even
@@ -107,7 +109,7 @@ func broadcastInPlaceTestnetMessage(t *testing.T, ctx context.Context, node *cos
 	builder.SetGasLimit(400_000)
 	unsigned, err := txConfig.TxJSONEncoder()(builder.GetTx())
 	require.NoError(t, err)
-	require.NoError(t, writeLiveNodeFile(ctx, node, "testnet-unsigned.json", unsigned))
+	require.NoError(t, helpers.WriteLiveNodeFile(ctx, node, "testnet-unsigned.json", unsigned))
 	_, stderr, err := node.Exec(ctx, node.NodeCommand("tx", "sign", path.Join(node.HomeDir(), "testnet-unsigned.json"),
 		"--from", keyName, "--chain-id", chainID, "--keyring-backend", "test", "--sign-mode", "direct",
 		"--output-document", path.Join(node.HomeDir(), "testnet-signed.json")), node.Chain.Config().Env)

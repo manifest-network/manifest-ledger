@@ -60,4 +60,38 @@ We use the [GitHub Flow](https://guides.github.com/introduction/flow/index.html)
 
 PRs created without filling in the PR template will be ignored and closed. Please follow the template as best as you can, removing any irrelevant sections and filling in the rest to the best of your ability.
 
-Make sure your changes follow the project conventions captured in [`CLAUDE.md`](./CLAUDE.md) (build commands, linting, import order, Cosmos SDK patterns) — CI runs `make lint`, `make build`, the unit-test suite (`make test`), the e2e integration matrix (`make ictest-*`), and the simulation suite (`make sim-*`) — see [`.github/workflows/`](./.github/workflows/) for the canonical list. Verifying locally first will save a round-trip.
+Follow the project conventions in [`CLAUDE.md`](./CLAUDE.md). CI runs lint, module
+tidy checks, native Linux/Darwin builds, unit tests, simulations, the E2E matrix,
+ARM64 Docker compilation, `make proto-check`, `make govulncheck`, CodeQL, the
+GoReleaser snapshot build and coverage. See [`.github/workflows/`](./.github/workflows/)
+for the canonical commands. The snapshot and release jobs both use Ubuntu 22.04;
+changing that runner can raise the glibc version required by shipped binaries.
+Coverage requires both instrumented Docker images and a matching official host Go
+release; follow the [coverage instructions](README.md#coverage).
+
+### Vulnerability policy
+
+`GOTOOLCHAIN=go1.25.14 make govulncheck` installs scanner v1.7.0 under `build/` and
+runs the same script as CI. It scans `./cmd/manifestd` with release tags
+`netgo,ledger`, including hardware-wallet dependencies. Keep the tags aligned with
+`.goreleaser.yaml`. The raw JSON report is retained at
+`build/vulnerability/govulncheck.json`. Module/package findings remain visible;
+the gate fails on reachable symbol findings unless a reviewed exception matches.
+This scan covers Go dependencies, not native C/Rust libraries or container packages.
+
+`scripts/govulncheck-exceptions.json` maps an advisory ID to these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `module`, `version` | Exact affected module path and selected version. |
+| `advisory_modified` | Exact advisory revision timestamp that was reviewed. |
+| `expires` | First rejected UTC date, in `YYYY-MM-DD` format. |
+| `reason` | Why this exact finding is excepted, including follow-up tracking. |
+| `evidence` | Source supporting the exception. |
+
+An exception also requires the advisory to remain `UNREVIEWED` and to report no
+fixed version. Any version/revision change, new reachable finding, or expiry
+fails the gate. Re-review evidence before changing an exception; extending a date
+alone does not establish safety. Run `python3 scripts/test-vulnerability-report.py`
+after editing the policy or its parser. The current MessagePack exception is
+tracked in ENG-867 and expires on 2026-10-15.

@@ -3,9 +3,11 @@ package interchaintest
 import (
 	"archive/tar"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +17,10 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/cosmos/cosmos-sdk/x/group"
+
+	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
 )
 
 type inPlaceTestnetRoundTripFunc func(*http.Request) (*http.Response, error)
@@ -57,7 +63,7 @@ func TestInPlaceTestnetLiveFileUpload(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
 	node.DockerClient = client
-	require.NoError(t, writeLiveNodeFile(context.Background(), node, "counter.wasm", content))
+	require.NoError(t, helpers.WriteLiveNodeFile(context.Background(), node, "counter.wasm", content))
 	require.Equal(t, 1, requests)
 	for _, tc := range []struct{ name, file, owner string }{
 		{"empty name", "", "1025:1026"},
@@ -74,7 +80,7 @@ func TestInPlaceTestnetLiveFileUpload(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			node.Image.UIDGID = tc.owner
-			require.Error(t, writeLiveNodeFile(context.Background(), node, tc.file, content))
+			require.Error(t, helpers.WriteLiveNodeFile(context.Background(), node, tc.file, content))
 			require.Equal(t, 1, requests, "invalid input must not reach the Docker API")
 		})
 	}
@@ -127,6 +133,86 @@ func TestInPlaceTestnetLiveContractUploadFailure(t *testing.T) {
 				require.ErrorContains(t, err, "archive refused")
 				require.Equal(t, 1, requests)
 			}
+		})
+	}
+}
+
+// Exercise the group helpers themselves so returning to the upstream recursive
+// volume writer fails before any transaction runs. Docker is fully mocked.
+func TestInPlaceTestnetLiveGroupFileUpload(t *testing.T) {
+	for _, proposal := range []bool{false, true} {
+		name := "create group"
+		if proposal {
+			name = "submit proposal"
+		}
+		t.Run(name, func(t *testing.T) {
+			config := ibc.ChainConfig{Name: "group-home", ChainID: "group-chain", Bin: "manifestd", GasPrices: "0umfx"}
+			chain := cosmos.NewCosmosChain(t.Name(), config, 1, 0, zap.NewNop())
+			image := ibc.DockerImage{Repository: "manifest", Version: "local", UIDGID: "1025:1026"}
+			node := cosmos.NewChainNode(zap.NewNop(), true, chain, nil, "test-network", t.Name(), image, 0)
+			chain.Validators = cosmos.ChainNodes{node}
+			file := "members.json"
+			expectedJSON := `{"members":[{"address":"admin","weight":"1","metadata":"user"}]}`
+			expectedCommand := []string{"manifestd", "tx", "group", "create-group", "admin", "group metadata", path.Join(node.HomeDir(), file), "--gas", "20000000", "--gas-adjustment", "2.0"}
+			prop := &group.MsgSubmitProposal{GroupPolicyAddress: "policy", Proposers: []string{"admin"}, Metadata: "proposal metadata"}
+			if proposal {
+				file = "proposal.json"
+				expectedJSON = `{"group_policy_address":"policy","proposers":["admin"],"metadata":"proposal metadata"}`
+				expectedCommand = []string{"manifestd", "tx", "group", "submit-proposal", path.Join(node.HomeDir(), file), "--gas", "8000000", "--gas-adjustment", "2.0"}
+			}
+			uploads, transactions := 0, 0
+			client, err := dockerclient.NewClientWithOpts(
+				dockerclient.WithHost("http://docker.invalid"), dockerclient.WithVersion("1.44"),
+				dockerclient.WithHTTPClient(&http.Client{Transport: inPlaceTestnetRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+					status, body := http.StatusOK, `{}`
+					switch request.URL.Path {
+					case "/v1.44/containers/" + node.Name() + "/archive":
+						require.Equal(t, http.MethodPut, request.Method)
+						require.Equal(t, node.HomeDir(), request.URL.Query().Get("path"))
+						reader := tar.NewReader(request.Body)
+						header, err := reader.Next()
+						require.NoError(t, err)
+						require.Equal(t, file, header.Name)
+						require.Equal(t, int64(0o600), header.Mode)
+						require.Equal(t, 1025, header.Uid)
+						require.Equal(t, 1026, header.Gid)
+						content, err := io.ReadAll(reader)
+						require.NoError(t, err)
+						require.JSONEq(t, expectedJSON, string(content))
+						_, err = reader.Next()
+						require.ErrorIs(t, err, io.EOF)
+						uploads++
+					case "/v1.44/images/manifest:local/json":
+						require.Equal(t, http.MethodGet, request.Method)
+					case "/v1.44/containers/json":
+						require.Equal(t, http.MethodGet, request.Method)
+						body = `[]`
+					case "/v1.44/containers/create":
+						require.Equal(t, http.MethodPost, request.Method)
+						require.Equal(t, 1, uploads, "the file must be uploaded before executing its transaction")
+						var command struct{ Cmd []string }
+						require.NoError(t, json.NewDecoder(request.Body).Decode(&command))
+						require.GreaterOrEqual(t, len(command.Cmd), len(expectedCommand))
+						require.Equal(t, expectedCommand, command.Cmd[:len(expectedCommand)])
+						transactions++
+						status, body = http.StatusInternalServerError, `{"message":"stop before executing transaction"}`
+					default:
+						t.Fatalf("unexpected Docker request: %s %s", request.Method, request.URL)
+					}
+					return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+				})}),
+			)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, client.Close()) })
+			node.DockerClient = client
+			if proposal {
+				_, err = helpers.SubmitGroupProposal(context.Background(), t, chain, &config, "admin", prop)
+			} else {
+				_, err = helpers.CreateGroupWithMetadata(context.Background(), t, chain, "admin", "group metadata")
+			}
+			require.ErrorContains(t, err, "stop before executing transaction")
+			require.Equal(t, 1, uploads)
+			require.Equal(t, 1, transactions)
 		})
 	}
 }

@@ -18,15 +18,20 @@ func TestTestnetPreflightSourceApplicationHash(t *testing.T) {
 		{"aligned height with mixed databases", 3, 3, true, false},
 		{"stored halt block", 3, 4, false, true},
 		{"stored halt block with mixed databases", 3, 4, true, false},
-		{"app ahead requires SDK reconciliation", 2, 3, true, true},
+		{"app ahead with matching recovery records", 2, 3, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newTestnetPreflightFixture(t)
 			f.state.LastBlockHeight = tc.stateHeight
+			f.state.LastBlockID = f.blockIDs[tc.stateHeight]
+			f.state.AppHash = testnetPreflightCommitInfo(tc.stateHeight).Hash()
 			if tc.mismatch {
 				f.state.AppHash = bytes.Repeat([]byte{0x42}, 32)
 			}
 			f.saveState(t)
+			if tc.storeHeight > 3 {
+				f.saveBlocks(t, tc.storeHeight)
+			}
 			f.saveBlockStore(t, tc.storeHeight)
 			before := snapshotTestnetFiles(t, f.home)
 			cmd := f.command(t, inPlaceTestnetCommandName)

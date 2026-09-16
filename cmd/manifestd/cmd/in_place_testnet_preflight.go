@@ -183,10 +183,8 @@ func preflightTestnetCommand(cmd *cobra.Command, args []string) error {
 	if err := validateTestnetSourceHeights(appHeight, state.LastBlockHeight, storeHeight); err != nil {
 		return err
 	}
-	// At aligned heights both databases describe the same committed block.
-	// An app one block ahead is reconciled from saved execution records by the SDK.
-	if appHeight == state.LastBlockHeight && !bytes.Equal(appHash, state.AppHash) {
-		return fmt.Errorf("source application hash disagrees with Comet state at height %d; recover the source node before copying it", appHeight)
+	if err := validateTestnetSourceCommit(cfg, state, appHeight, appHash); err != nil {
+		return err
 	}
 	if trigger := v.GetString(server.KeyTriggerTestnetUpgrade); trigger != "" {
 		if trigger != version.Version {

@@ -146,7 +146,7 @@ ictest-group:
 	cd interchaintest && go test -race -v -run TestGroupMetadataLimits . -count=1
 
 ictest-sku:
-	cd interchaintest && go test -race -v -run TestSKU . -count=1
+	cd interchaintest && go test -race -v -timeout 20m -run TestSKU . -count=1
 
 ictest-billing:
 	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(Lease|Credit|Advanced|State|Reservation)$$" . -count=1
@@ -318,16 +318,18 @@ format: ## Run formatter (goimports)
 
 #### GOVULNCHECK ####
 govulncheck_version=v1.7.0
+GOVULNCHECK_BIN := $(CURDIR)/build/vulnerability-tools/govulncheck
 
 govulncheck-install:
 	@echo "--> Installing govulncheck $(govulncheck_version)"
-	@go install golang.org/x/vuln/cmd/govulncheck@$(govulncheck_version)
+	@GOBIN="$(dir $(GOVULNCHECK_BIN))" go install golang.org/x/vuln/cmd/govulncheck@$(govulncheck_version)
 	@echo "--> Installing govulncheck $(govulncheck_version) complete"
 
-govulncheck: ## Run govulncheck
+govulncheck: govulncheck-install ## Scan the daemon with the same release tags and policy as CI
 	@echo "--> Running govulncheck"
-	$(MAKE) govulncheck-install
-	@govulncheck ./...
+	@GOVULNCHECK="$(GOVULNCHECK_BIN)" bash scripts/scan-vulnerabilities.sh
+
+.PHONY: govulncheck govulncheck-install
 
 #### VET ####
 

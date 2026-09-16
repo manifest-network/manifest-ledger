@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -25,6 +26,7 @@ import (
 	cmtjson "github.com/cometbft/cometbft/libs/json"
 	"github.com/cometbft/cometbft/privval"
 	cmtstoreproto "github.com/cometbft/cometbft/proto/tendermint/store"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtstate "github.com/cometbft/cometbft/state"
 	cmtstore "github.com/cometbft/cometbft/store"
 	cmttypes "github.com/cometbft/cometbft/types"
@@ -51,6 +53,11 @@ type testnetPreflightFixture struct {
 	sourceKey ed25519.PrivKey
 	operator  string
 	state     cmtstate.State
+	blockIDs  map[int64]cmttypes.BlockID
+}
+
+func testnetPreflightCommitInfo(height int64) storetypes.CommitInfo {
+	return storetypes.CommitInfo{Version: height, StoreInfos: []storetypes.StoreInfo{{Name: "bank", CommitId: storetypes.CommitID{Version: height, Hash: bytes.Repeat([]byte{byte(height)}, 32)}}}}
 }
 
 func newTestnetPreflightFixture(t *testing.T) *testnetPreflightFixture {
@@ -75,7 +82,7 @@ func newTestnetPreflightFixture(t *testing.T) *testnetPreflightFixture {
 	require.NoError(t, err)
 	state.LastBlockHeight = 3
 	state.LastValidators = state.Validators.Copy()
-	info := storetypes.CommitInfo{Version: 3, StoreInfos: []storetypes.StoreInfo{{Name: "bank", CommitId: storetypes.CommitID{Version: 3, Hash: bytes.Repeat([]byte{1}, 32)}}}}
+	info := testnetPreflightCommitInfo(3)
 	state.AppHash = info.Hash()
 	db, err := cmtdb.NewGoLevelDB("application", filepath.Join(home, "data"))
 	require.NoError(t, err)
@@ -86,12 +93,50 @@ func newTestnetPreflightFixture(t *testing.T) *testnetPreflightFixture {
 	require.NoError(t, err)
 	require.NoError(t, db.SetSync([]byte("s/3"), commit))
 	require.NoError(t, db.Close())
-	f := &testnetPreflightFixture{home: home, config: cfg, key: key, sourceKey: sourceKey, operator: sdk.AccAddress(bytes.Repeat([]byte{7}, 20)).String(), state: state}
+	f := &testnetPreflightFixture{home: home, config: cfg, key: key, sourceKey: sourceKey, operator: sdk.AccAddress(bytes.Repeat([]byte{7}, 20)).String(), state: state, blockIDs: map[int64]cmttypes.BlockID{}}
+	f.saveBlocks(t, 3)
+	f.state.LastBlockID = f.blockIDs[3]
 	f.saveState(t)
-	f.saveBlockStore(t, state.LastBlockHeight)
+	f.saveResponse(t, 3, &abci.ResponseFinalizeBlock{AppHash: info.Hash(), TxResults: []*abci.ExecTxResult{{Code: 0}}})
 	t.Setenv("POA_ADMIN_ADDRESS", f.operator)
 	t.Setenv(poaSimulationEnvVar, "")
 	return f
+}
+
+func (f *testnetPreflightFixture) saveBlocks(t *testing.T, height int64) {
+	t.Helper()
+	db, err := cmtdb.NewGoLevelDB("blockstore", f.config.DBDir())
+	require.NoError(t, err)
+	store := cmtstore.NewBlockStore(db)
+	lastCommit := &cmttypes.Commit{}
+	if store.Height() > 0 {
+		lastCommit = store.LoadSeenCommit(store.Height())
+	}
+	for h := store.Height() + 1; h <= height; h++ {
+		block := cmttypes.MakeBlock(h, []cmttypes.Tx{[]byte("source transaction")}, lastCommit, nil)
+		block.Populate(f.state.Version.Consensus, f.state.ChainID, time.Unix(1700000000+h, 0), f.blockIDs[h-1],
+			f.state.Validators.Hash(), f.state.NextValidators.Hash(), f.state.ConsensusParams.Hash(),
+			testnetPreflightCommitInfo(h-1).Hash(), nil, f.sourceKey.PubKey().Address())
+		parts, err := block.MakePartSet(cmttypes.BlockPartSizeBytes)
+		require.NoError(t, err)
+		id := cmttypes.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+		vote := cmttypes.Vote{Type: cmtproto.PrecommitType, Height: h, BlockID: id, Timestamp: block.Time, ValidatorAddress: f.sourceKey.PubKey().Address()}
+		vote.Signature, err = f.sourceKey.Sign(cmttypes.VoteSignBytes(f.state.ChainID, vote.ToProto()))
+		require.NoError(t, err)
+		commit := &cmttypes.Commit{Height: h, BlockID: id, Signatures: []cmttypes.CommitSig{vote.CommitSig()}}
+		store.SaveBlock(block, parts, commit)
+		f.blockIDs[h] = id
+		lastCommit = commit
+	}
+	require.NoError(t, db.Close())
+}
+
+func (f *testnetPreflightFixture) saveResponse(t *testing.T, height int64, response *abci.ResponseFinalizeBlock) {
+	t.Helper()
+	db, err := cmtdb.NewGoLevelDB("state", f.config.DBDir())
+	require.NoError(t, err)
+	require.NoError(t, cmtstate.NewStore(db, cmtstate.StoreOptions{}).SaveFinalizeBlockResponse(height, response))
+	require.NoError(t, db.Close())
 }
 
 func (f *testnetPreflightFixture) saveState(t *testing.T) {
@@ -349,7 +394,12 @@ func TestTestnetPreflightSourceHeights(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newTestnetPreflightFixture(t)
 			f.state.LastBlockHeight = tc.cometHeight
+			f.state.LastBlockID = f.blockIDs[tc.cometHeight]
+			f.state.AppHash = testnetPreflightCommitInfo(tc.cometHeight).Hash()
 			f.saveState(t)
+			if tc.allowed && tc.storeHeight > 3 {
+				f.saveBlocks(t, tc.storeHeight)
+			}
 			f.saveBlockStore(t, tc.storeHeight)
 			before := snapshotTestnetFiles(t, f.home)
 			cmd := f.command(t, "in-place-testnet")

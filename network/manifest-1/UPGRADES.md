@@ -210,8 +210,11 @@ Prepare the copied home before running the command:
    copied home so a failed conversion can be retried from the original copy.
    Include the source's `wasm/` bytecode: this application does not currently
    register the Wasm snapshot extension. Preflight checks application, Comet state
-   and blockstore heights before recording conversion. At matching application and
-   Comet heights, their application hashes must also match. If a rollback or mixed
+   and blockstore heights, the full committed block and its metadata before
+   recording conversion. At matching application and Comet heights, the application
+   hashes and last block IDs must match. When the application is one block ahead,
+   its block must extend the Comet state and have a consistent persisted execution
+   response, including transaction results and consensus parameter updates. If a rollback or mixed
    database copy left them inconsistent, recover the source before copying it.
 3. Install a complete, freshly generated local consensus key. Never use a
    production `priv_validator_key.json`. Keep the signing-state file present and
