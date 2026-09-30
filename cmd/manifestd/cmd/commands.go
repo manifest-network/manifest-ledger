@@ -129,7 +129,9 @@ func initRootCmd(
 
 	server.AddCommands(rootCmd, app.DefaultNodeHome, newApp, appExport, addModuleInitFlags)
 	server.AddTestnetCreatorCommand(rootCmd, newJournaledTestnetApp, addModuleInitFlags)
-	protectInPlaceTestnetCommand(rootCmd)
+	if err := protectInPlaceTestnetCommand(rootCmd); err != nil {
+		panic(err)
+	}
 
 	// add keybase, auxiliary RPC, query, genesis, and tx child commands
 	rootCmd.AddCommand(

@@ -10,11 +10,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
 
+	"github.com/spf13/cast"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -37,9 +39,11 @@ import (
 	"cosmossdk.io/log"
 	storetypes "cosmossdk.io/store/types"
 
+	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/server"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
+	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/version"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
@@ -50,6 +54,8 @@ const (
 	startCommandName          = "start"
 	inPlaceTestnetMarker      = "in-place-testnet.json"
 	poaSimulationEnvVar       = "POA_BYPASS_ADMIN_CHECK_FOR_SIMULATION_TESTING_ONLY"
+	// Server-context option carrying the checked journal to the app creator.
+	testnetJournalOption = "manifest-in-place-testnet-journal"
 )
 
 type testnetPreflightContextKey struct{}
@@ -75,17 +81,32 @@ type testnetPreflight struct {
 	journal testnetJournal
 }
 
+// The command's path below the root. A command without a parent is its own path.
+func testnetCommandPath(cmd *cobra.Command) []string {
+	path := []string{cmd.Name()}
+	for current := cmd.Parent(); current != nil && current.HasParent(); current = current.Parent() {
+		path = append([]string{current.Name()}, path...)
+	}
+	return path
+}
+
+// Match full paths: client commands such as `keys export`, `tx feegrant prune`
+// and `testnet start` share names with the application commands.
 func testnetAppCommand(cmd *cobra.Command) bool {
-	for current := cmd; current != nil; current = current.Parent() {
-		switch current.Name() {
-		case startCommandName, "export", "snapshots", "prune", "rollback", "bootstrap-state", "module-hash-by-height":
-			return true
-		}
+	path := testnetCommandPath(cmd)
+	switch path[0] {
+	case startCommandName, "export", "prune", "rollback", "module-hash-by-height":
+		return len(path) == 1
+	case "snapshots":
+		return true
+	case "comet":
+		return len(path) == 2 && path[1] == "bootstrap-state"
 	}
 	return false
 }
 
-func rejectSimulationAdminBypass() error {
+// RejectSimulationAdminBypass refuses the PoA simulation-only admin bypass.
+func RejectSimulationAdminBypass() error {
 	if os.Getenv(poaSimulationEnvVar) != "" {
 		return fmt.Errorf("%s must be unset when running manifestd", poaSimulationEnvVar)
 	}
@@ -95,7 +116,7 @@ func rejectSimulationAdminBypass() error {
 // Run this before client configuration, keyrings, SDK configuration interception,
 // profiling, tracing, or any database opener can mutate the selected home.
 func preflightTestnetCommand(cmd *cobra.Command, args []string) error {
-	if err := rejectSimulationAdminBypass(); err != nil {
+	if err := RejectSimulationAdminBypass(); err != nil {
 		return err
 	}
 	conversion := cmd.Name() == inPlaceTestnetCommandName
@@ -151,6 +172,10 @@ func preflightTestnetCommand(cmd *cobra.Command, args []string) error {
 		if chainID := v.GetString("chain-id"); chainID != "" && chainID != state.ChainID {
 			return fmt.Errorf("configured chain ID disagrees with the fork conversion journal")
 		}
+		// Rolling back the first fork block restores the unmodified source state.
+		if path := testnetCommandPath(cmd); len(path) == 1 && path[0] == "rollback" && state.LastBlockHeight <= journal.FirstCommitHeight {
+			return fmt.Errorf("rollback would remove the fork's first block %d and restore unmodified source state; make a fresh disposable copy instead", journal.FirstCommitHeight)
+		}
 		cmd.SetContext(context.WithValue(cmd.Context(), testnetPreflightContextKey{}, &testnetPreflight{home: home, config: cfg, options: v, journal: journal}))
 		return nil
 	}
@@ -159,6 +184,10 @@ func preflightTestnetCommand(cmd *cobra.Command, args []string) error {
 	}
 	if _, err := os.Lstat(filepath.Join(home, inPlaceTestnetMarker)); !os.IsNotExist(err) {
 		return fmt.Errorf("in-place-testnet conversion journal already exists; use normal start for a completed fork or make a fresh disposable copy")
+	}
+	// Completing the journal creates this file exclusively after the first commit.
+	if _, err := os.Lstat(filepath.Join(home, inPlaceTestnetMarker+".next")); !os.IsNotExist(err) {
+		return fmt.Errorf("stale in-place-testnet journal update %s exists; make a fresh disposable copy", inPlaceTestnetMarker+".next")
 	}
 	if args[0] == "" || len(args[0]) > cmttypes.MaxChainIDLen || args[0] == state.ChainID {
 		return fmt.Errorf("in-place-testnet requires a new chain ID different from source chain %q", state.ChainID)
@@ -195,6 +224,12 @@ func preflightTestnetCommand(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("testnet upgrade height %d is in --unsafe-skip-upgrades", height)
 			}
 		}
+	}
+	if err := validateTestnetHaltSettings(v, appHeight+1); err != nil {
+		return err
+	}
+	if err := probeTestnetListeners(cfg, v); err != nil {
+		return err
 	}
 	preflight := &testnetPreflight{home: home, config: cfg, options: v, journal: testnetJournal{
 		Version: 1, SourceChainID: state.ChainID, ChainID: args[0], Operator: operator.String(),
@@ -294,6 +329,9 @@ func inspectTestnetTree(home string) error {
 			return err
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			if resolved, err := filepath.EvalSymlinks(home); err == nil && resolved != home {
+				return fmt.Errorf("fork home ancestor %q must be a real directory, without symlinks; use the resolved home %q", path, resolved)
+			}
 			return fmt.Errorf("fork home ancestor %q must be a real directory, without symlinks", path)
 		}
 		if path == filepath.Dir(path) {
@@ -302,7 +340,13 @@ func inspectTestnetTree(home string) error {
 	}
 	return filepath.WalkDir(home, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			// A directory the node user can neither list nor enter, such as a
+			// root-owned lost+found at a volume root, is equally out of the
+			// node's reach, so nothing conversion or startup uses can be there.
+			if entry != nil && entry.IsDir() && path != home && errors.Is(err, fs.ErrPermission) && syscall.Access(path, 1 /* X_OK */) != nil {
+				return fs.SkipDir
+			}
+			return fmt.Errorf("inspect fork home: %w", err)
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
 			if path == filepath.Join(home, "cosmovisor", "current") {
@@ -313,6 +357,7 @@ func inspectTestnetTree(home string) error {
 						return nil // Cosmovisor's read-only binary selection link.
 					}
 				}
+				return testnetCosmovisorLinkError(home, path)
 			}
 			return fmt.Errorf("fork home contains symlink %q; use an independent copy", path)
 		}
@@ -331,6 +376,58 @@ func inspectTestnetTree(home string) error {
 		}
 		return nil
 	})
+}
+
+// Cosmovisor records an absolute target under the original DAEMON_HOME, so a
+// copy's link keeps selecting the source's binaries until it is re-pointed.
+func testnetCosmovisorLinkError(home, path string) error {
+	cosmovisor := filepath.Join(home, "cosmovisor")
+	target, err := os.Readlink(path)
+	if err != nil {
+		return fmt.Errorf("cosmovisor/current must select a directory inside %s: %w", cosmovisor, err)
+	}
+	marker := string(filepath.Separator) + "cosmovisor" + string(filepath.Separator)
+	if index := strings.LastIndex(target, marker); index >= 0 {
+		candidate := filepath.Join(cosmovisor, target[index+len(marker):])
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() && testnetPathInside(cosmovisor, candidate) {
+			return fmt.Errorf("cosmovisor/current points to %q outside this copy; re-point it with: ln -sfn %s %s", target, candidate, path)
+		}
+	}
+	return fmt.Errorf("cosmovisor/current points to %q; re-point it to a directory inside %s", target, cosmovisor)
+}
+
+// BaseApp loads a plugin for every [streaming.<service>] table, not only abci.
+func testnetStreamingEnabled(v *viper.Viper) bool {
+	if strings.TrimSpace(v.GetString("streaming.abci.plugin")) != "" {
+		return true
+	}
+	for service := range cast.ToStringMap(v.Get(baseapp.StreamingTomlKey)) {
+		key := fmt.Sprintf("%s.%s.%s", baseapp.StreamingTomlKey, service, baseapp.StreamingABCIPluginTomlKey)
+		if strings.TrimSpace(cast.ToString(v.Get(key))) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// The SDK finds config/config and config/app by name, trying viper's extensions
+// in order and parsing the first match as TOML, so a file whose extension sorts
+// before toml would silently replace the configuration checked here.
+func rejectTestnetShadowConfig(home string) error {
+	for _, ext := range viper.SupportedExts {
+		if ext == "toml" {
+			return nil
+		}
+		for _, name := range []string{"config", "app"} {
+			path := filepath.Join(home, "config", name+"."+ext)
+			if _, err := os.Lstat(path); err == nil {
+				return fmt.Errorf("fork home contains %q, which would replace %s.toml; remove it", path, name)
+			} else if !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func testnetPathInside(home, path string) bool {
@@ -374,8 +471,11 @@ func validateTestnetHome(home string, cfg *cmtcfg.Config, v *viper.Viper) error 
 			files[key] = absolute
 		}
 	}
-	if v.GetString("streaming.abci.plugin") != "" || len(v.GetStringSlice("store.streamers")) != 0 {
+	if testnetStreamingEnabled(v) || len(v.GetStringSlice("store.streamers")) != 0 {
 		return fmt.Errorf("external store streaming must be disabled for an isolated fork")
+	}
+	if err := rejectTestnetShadowConfig(home); err != nil {
+		return err
 	}
 	dirs := map[string]string{
 		"application DB": filepath.Join(home, "data", "application.db"), "snapshots": filepath.Join(home, "data", "snapshots"),
@@ -477,6 +577,58 @@ func validateTestnetIsolation(cfg *cmtcfg.Config, v *viper.Viper) error {
 	}
 	if (v.IsSet("with-comet") && !v.GetBool("with-comet")) || v.GetBool("grpc-only") {
 		return fmt.Errorf("fork startup requires CometBFT enabled")
+	}
+	// Push sinks would deliver fork metrics, labelled as the source chain, to
+	// production collectors. The in-memory sink only serves local scrapes.
+	if v.GetBool("telemetry.enabled") {
+		switch sink := v.GetString("telemetry.metrics-sink"); sink {
+		case telemetry.MetricSinkStatsd, telemetry.MetricSinkDogsStatsd:
+			return fmt.Errorf("fork isolation forbids the %s telemetry sink; use the in-memory sink", sink)
+		}
+	}
+	return nil
+}
+
+// BaseApp refuses to finalize any block at or above a nonzero halt-height and
+// any block at or after a nonzero halt-time. A copied setting would stop the
+// fork before its first commit and leave the conversion incomplete.
+func validateTestnetHaltSettings(opts servertypes.AppOptions, firstHeight int64) error {
+	// The SDK reads halt-height as uint64; firstHeight is a positive block height.
+	if height := cast.ToUint64(opts.Get(server.FlagHaltHeight)); height != 0 && firstHeight > 0 && height <= uint64(firstHeight) { //nolint:gosec // guarded above
+		return fmt.Errorf("halt-height %d would stop the fork before its first block %d commits; clear it before conversion", height, firstHeight)
+	}
+	if cast.ToUint64(opts.Get(server.FlagHaltTime)) != 0 {
+		return fmt.Errorf("halt-time must be unset for conversion; set it only after the fork commits its first block")
+	}
+	return nil
+}
+
+// CometBFT binds its listeners, and the SDK its gRPC and API servers, only
+// after testnetify has rewritten the copy. Probe them first so an address in
+// use cannot strand a converted home before its first commit.
+func probeTestnetListeners(cfg *cmtcfg.Config, v *viper.Viper) error {
+	addresses := append(strings.Split(cfg.RPC.ListenAddress, ","), cfg.P2P.ListenAddress, cfg.RPC.GRPCListenAddress)
+	for _, service := range []string{"grpc", "api"} {
+		if v.GetBool(service + ".enable") {
+			addresses = append(addresses, v.GetString(service+".address"))
+		}
+	}
+	for _, address := range addresses {
+		address = strings.TrimSpace(address)
+		if address == "" {
+			continue
+		}
+		network, host, ok := strings.Cut(address, "://")
+		if !ok {
+			network, host = "tcp", address
+		}
+		listener, err := net.Listen(network, host)
+		if err != nil {
+			return fmt.Errorf("fork listener %s is unavailable: %w", address, err)
+		}
+		if err := listener.Close(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -687,6 +839,22 @@ func configureTestnetServerContext(cmd *cobra.Command) error {
 	if err := validateTestnetIsolation(serverContext.Config, serverContext.Viper); err != nil {
 		return err
 	}
+	// The SDK locates its configuration files itself. It must resolve the same
+	// identity, genesis and databases that preflight checked and journals.
+	actual, checked := serverContext.Config, preflight.config
+	for _, paths := range [][3]string{
+		{"validator key", actual.PrivValidatorKeyFile(), checked.PrivValidatorKeyFile()},
+		{"validator signing state", actual.PrivValidatorStateFile(), checked.PrivValidatorStateFile()},
+		{"node key", actual.NodeKeyFile(), checked.NodeKeyFile()},
+		{"genesis", actual.GenesisFile(), checked.GenesisFile()},
+		{"database directory", actual.DBDir(), checked.DBDir()},
+		{"address book", actual.P2P.AddrBookFile(), checked.P2P.AddrBookFile()},
+		{"consensus WAL", actual.Consensus.WalFile(), checked.Consensus.WalFile()},
+	} {
+		if paths[1] != paths[2] {
+			return fmt.Errorf("SDK configuration resolves the %s to %q, not the checked %q", paths[0], paths[1], paths[2])
+		}
+	}
 	serverContext.Viper.Set(flags.FlagChainID, preflight.journal.ChainID)
 	return nil
 }
@@ -706,7 +874,13 @@ func readTestnetJournal(home string) (testnetJournal, error) {
 	return journal, nil
 }
 
-func writeTestnetJournal(home string, journal testnetJournal, create bool) error {
+// Tests replace this to exercise failed writes.
+var writeTestnetJournalData = func(file *os.File, data []byte) error {
+	_, err := file.Write(data)
+	return err
+}
+
+func writeTestnetJournal(home string, journal testnetJournal, create bool) (err error) {
 	bz, err := json.MarshalIndent(journal, "", "  ")
 	if err != nil {
 		return err
@@ -719,33 +893,53 @@ func writeTestnetJournal(home string, journal testnetJournal, create bool) error
 	if err != nil {
 		return err
 	}
-	_, writeErr := file.Write(bz)
+	// Never leave a partial record: an incomplete marker would refuse retries of
+	// a conversion that never started, and a stale update blocks the next one.
+	defer func() {
+		if err != nil {
+			_ = os.Remove(name)
+		}
+	}()
+	writeErr := writeTestnetJournalData(file, bz)
 	syncErr := file.Sync()
 	closeErr := file.Close()
-	if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
-		return err
+	if joined := errors.Join(writeErr, syncErr, closeErr); joined != nil {
+		return joined
 	}
 	if !create {
 		if err := os.Rename(name, filepath.Join(home, inPlaceTestnetMarker)); err != nil {
 			return err
 		}
 	}
-	dir, err := os.Open(home)
+	return syncTestnetDirectory(home)
+}
+
+// Like goleveldb, tolerate filesystems that cannot sync a directory.
+func syncTestnetDirectory(path string) error {
+	dir, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer dir.Close()
-	return dir.Sync()
+	if err := dir.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) {
+		return err
+	}
+	return nil
 }
 
-// Keep the SDK confirmation before creating the incomplete journal, and then
-// delegate conversion/startup to its existing command implementation.
-func protectInPlaceTestnetCommand(root *cobra.Command) {
+// Keep the SDK confirmation in front of conversion and hand the checked journal
+// to the application creator, which records it before testnetify's first write.
+func protectInPlaceTestnetCommand(root *cobra.Command) error {
+	protected := 0
 	for _, cmd := range root.Commands() {
 		if cmd.Name() != inPlaceTestnetCommandName {
 			continue
 		}
 		run := cmd.RunE
+		if run == nil {
+			return fmt.Errorf("%s has no RunE to protect", inPlaceTestnetCommandName)
+		}
+		protected++
 		cmd.RunE = func(cmd *cobra.Command, args []string) error {
 			preflight, ok := cmd.Context().Value(testnetPreflightContextKey{}).(*testnetPreflight)
 			if !ok {
@@ -762,15 +956,17 @@ func protectInPlaceTestnetCommand(root *cobra.Command) {
 					return nil
 				}
 			}
-			if err := writeTestnetJournal(preflight.home, preflight.journal, true); err != nil {
-				return fmt.Errorf("create incomplete conversion journal: %w", err)
-			}
+			serverContext.Viper.Set(testnetJournalOption, preflight.journal)
 			if err := cmd.Flags().Set("skip-confirmation", "true"); err != nil {
 				return err
 			}
 			return run(cmd, args)
 		}
 	}
+	if protected != 1 {
+		return fmt.Errorf("found %d %s commands to protect, want 1", protected, inPlaceTestnetCommandName)
+	}
+	return nil
 }
 
 type journaledTestnetApp struct {
@@ -781,14 +977,20 @@ type journaledTestnetApp struct {
 
 func newJournaledTestnetApp(logger log.Logger, db dbm.DB, trace io.Writer, opts servertypes.AppOptions) servertypes.Application {
 	home, _ := opts.Get(flags.FlagHome).(string)
-	journal, err := readTestnetJournal(home)
-	if err != nil {
-		panic(err)
+	journal, ok := opts.Get(testnetJournalOption).(testnetJournal)
+	if !ok || journal.Complete {
+		panic("in-place-testnet conversion journal was not prepared by its read-only preflight")
 	}
-	if journal.Complete {
-		panic("in-place-testnet conversion journal is already complete")
+	application := newTestnetApp(logger, db, trace, opts)
+	// Every check that can reject this copy without changing it has now passed:
+	// the SDK's configuration, pruning, profiling and tracing checks, testnetify's
+	// checks before this call, and the application rewrite, which stays in memory
+	// until the first commit. Preflight mirrors testnetify's final reconciliation.
+	// Record the conversion before testnetify's first write.
+	if err := writeTestnetJournal(home, journal, true); err != nil {
+		panic(fmt.Errorf("create incomplete conversion journal: %w", err))
 	}
-	return &journaledTestnetApp{Application: newTestnetApp(logger, db, trace, opts), home: home, journal: journal}
+	return &journaledTestnetApp{Application: application, home: home, journal: journal}
 }
 
 func (app *journaledTestnetApp) Commit() (*abci.ResponseCommit, error) {

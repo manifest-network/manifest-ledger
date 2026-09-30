@@ -29,9 +29,10 @@ import (
 // NewRootCmd creates a new root commaxnd for wasmd. It is called once in the
 // main function.
 func NewRootCmd() *cobra.Command {
-	if err := rejectSimulationAdminBypass(); err != nil {
+	if err := RejectSimulationAdminBypass(); err != nil {
+		// The caller prints the returned error once.
 		return &cobra.Command{
-			Use: "manifestd", SilenceUsage: true, DisableFlagParsing: true,
+			Use: "manifestd", SilenceUsage: true, SilenceErrors: true, DisableFlagParsing: true,
 			RunE: func(_ *cobra.Command, _ []string) error { return err },
 		}
 	}
@@ -77,7 +78,8 @@ func NewRootCmd() *cobra.Command {
 			if preflight, ok := cmd.Context().Value(testnetPreflightContextKey{}).(*testnetPreflight); ok {
 				// Server startup needs no operator keyring. Loading persistent
 				// client flags would otherwise create one before the journal.
-				initClientCtx = initClientCtx.WithHomeDir(preflight.home).WithChainID(preflight.journal.ChainID)
+				initClientCtx = initClientCtx.WithHomeDir(preflight.home).WithChainID(preflight.journal.ChainID).
+					WithOutputFormat(testnetOutputFormat(cmd, preflight.home))
 			} else {
 				initClientCtx, err = client.ReadPersistentCommandFlags(initClientCtx, cmd.Flags())
 				if err != nil {
@@ -115,6 +117,9 @@ func NewRootCmd() *cobra.Command {
 				}
 			} else {
 				if err := client.SetCmdClientContextHandler(initClientCtx, cmd); err != nil {
+					return err
+				}
+				if err := rejectTestnetClientChain(cmd); err != nil {
 					return err
 				}
 			}
