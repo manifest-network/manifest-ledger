@@ -31,23 +31,36 @@ func testnetOutputFormat(cmd *cobra.Command, home string) string {
 // a fork home with another chain ID, so a transaction meant for the fork cannot
 // be signed for, and broadcast to, the source chain. Queries are not checked:
 // their risk is the node they reach, which a chain ID cannot reveal.
+//
+// Call this after the SDK's configuration interceptor: it applies app.toml,
+// config.toml and environment values to unset flags, which then take precedence
+// over client.toml when the transaction runs.
 func rejectTestnetClientChain(cmd *cobra.Command) error {
 	if path := testnetCommandPath(cmd); path[0] != "tx" {
 		return nil
 	}
+	// Resolve the home and chain ID as client.ReadPersistentCommandFlags does for
+	// the transaction, without building its keyring or node clients.
 	clientCtx := client.GetClientContextFromCmd(cmd)
-	if _, err := os.Lstat(filepath.Join(clientCtx.HomeDir, inPlaceTestnetMarker)); os.IsNotExist(err) {
+	home, chainID := clientCtx.HomeDir, clientCtx.ChainID
+	if home == "" || cmd.Flags().Changed(flags.FlagHome) {
+		home, _ = cmd.Flags().GetString(flags.FlagHome)
+	}
+	if chainID == "" || cmd.Flags().Changed(flags.FlagChainID) {
+		chainID, _ = cmd.Flags().GetString(flags.FlagChainID)
+	}
+	if _, err := os.Lstat(filepath.Join(home, inPlaceTestnetMarker)); os.IsNotExist(err) {
 		return nil
 	} else if err != nil {
 		return err
 	}
-	journal, err := readTestnetJournal(clientCtx.HomeDir)
+	journal, err := readTestnetJournal(home)
 	if err != nil {
 		return err
 	}
-	if clientCtx.ChainID != "" && clientCtx.ChainID != journal.ChainID {
+	if chainID != "" && chainID != journal.ChainID {
 		return fmt.Errorf("client chain ID %q is not this fork's %q; set chain-id and node in %s, or pass --chain-id and --node",
-			clientCtx.ChainID, journal.ChainID, filepath.Join(clientCtx.HomeDir, "config", "client.toml"))
+			chainID, journal.ChainID, filepath.Join(home, "config", "client.toml"))
 	}
 	return nil
 }

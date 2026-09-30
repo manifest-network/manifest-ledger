@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -401,7 +403,7 @@ func testnetStreamingEnabled(v *viper.Viper) bool {
 	if strings.TrimSpace(v.GetString("streaming.abci.plugin")) != "" {
 		return true
 	}
-	for service := range cast.ToStringMap(v.Get(baseapp.StreamingTomlKey)) {
+	for _, service := range slices.Sorted(maps.Keys(cast.ToStringMap(v.Get(baseapp.StreamingTomlKey)))) {
 		key := fmt.Sprintf("%s.%s.%s", baseapp.StreamingTomlKey, service, baseapp.StreamingABCIPluginTomlKey)
 		if strings.TrimSpace(cast.ToString(v.Get(key))) != "" {
 			return true
@@ -606,13 +608,21 @@ func validateTestnetHaltSettings(opts servertypes.AppOptions, firstHeight int64)
 // CometBFT binds its listeners, and the SDK its gRPC and API servers, only
 // after testnetify has rewritten the copy. Probe them first so an address in
 // use cannot strand a converted home before its first commit.
-func probeTestnetListeners(cfg *cmtcfg.Config, v *viper.Viper) error {
+func probeTestnetListeners(cfg *cmtcfg.Config, v *viper.Viper) (err error) {
 	addresses := append(strings.Split(cfg.RPC.ListenAddress, ","), cfg.P2P.ListenAddress, cfg.RPC.GRPCListenAddress)
 	for _, service := range []string{"grpc", "api"} {
 		if v.GetBool(service + ".enable") {
 			addresses = append(addresses, v.GetString(service+".address"))
 		}
 	}
+	// Hold every probe until all are checked: endpoints that share a port each
+	// bind alone, but the node fails on the second once it holds the first.
+	var listeners []net.Listener
+	defer func() {
+		for _, listener := range listeners {
+			err = errors.Join(err, listener.Close())
+		}
+	}()
 	for _, address := range addresses {
 		address = strings.TrimSpace(address)
 		if address == "" {
@@ -622,13 +632,11 @@ func probeTestnetListeners(cfg *cmtcfg.Config, v *viper.Viper) error {
 		if !ok {
 			network, host = "tcp", address
 		}
-		listener, err := net.Listen(network, host)
-		if err != nil {
-			return fmt.Errorf("fork listener %s is unavailable: %w", address, err)
+		listener, listenErr := net.Listen(network, host)
+		if listenErr != nil {
+			return fmt.Errorf("fork listener %s is unavailable: %w", address, listenErr)
 		}
-		if err := listener.Close(); err != nil {
-			return err
-		}
+		listeners = append(listeners, listener)
 	}
 	return nil
 }

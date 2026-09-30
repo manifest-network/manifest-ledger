@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -243,6 +244,56 @@ func TestTestnetClientChainGuard(t *testing.T) {
 			} else {
 				require.ErrorContains(t, err, tc.message)
 			}
+		})
+	}
+}
+
+// The SDK's configuration interceptor applies app.toml and environment values to
+// unset flags after client.toml is read; transactions then sign with them.
+func TestTestnetClientChainGuardSeesSDKConfiguration(t *testing.T) {
+	exe, err := os.Executable()
+	require.NoError(t, err)
+	prefix := strings.NewReplacer(".", "_", "-", "_").Replace(filepath.Base(exe))
+	for _, tc := range []struct {
+		name, explicit, message string
+		configure               func(*testing.T, *testnetPreflightFixture)
+	}{
+		{name: "environment", message: `client chain ID "source" is not this fork's "fork"`, configure: func(t *testing.T, _ *testnetPreflightFixture) {
+			t.Setenv(prefix+"_CHAIN_ID", "source")
+		}},
+		{name: "app.toml", message: `client chain ID "source" is not this fork's "fork"`, configure: func(t *testing.T, f *testnetPreflightFixture) {
+			f.appendAppConfig(t, "chain-id = 'source'\n")
+		}},
+		{name: "explicit flag wins", explicit: "fork", configure: func(t *testing.T, _ *testnetPreflightFixture) {
+			t.Setenv(prefix+"_CHAIN_ID", "source")
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newTestnetPreflightFixture(t)
+			f.completeFork(t)
+			root := &cobra.Command{Use: "manifestd"}
+			tx := &cobra.Command{Use: "tx"}
+			send := &cobra.Command{Use: "send"}
+			root.AddCommand(tx)
+			tx.AddCommand(send)
+			flags.AddTxFlagsToCmd(send)
+			send.Flags().String(flags.FlagHome, "", "")
+			require.NoError(t, send.Flags().Set(flags.FlagHome, f.home))
+			if tc.explicit != "" {
+				require.NoError(t, send.Flags().Set(flags.FlagChainID, tc.explicit))
+			}
+			send.SetContext(context.Background())
+			// client.toml already names the fork.
+			require.NoError(t, client.SetCmdClientContext(send, client.Context{}.WithHomeDir(f.home).WithChainID("fork")))
+			require.NoError(t, rejectTestnetClientChain(send))
+			tc.configure(t, f)
+			_, err := server.InterceptConfigsAndCreateContext(send, "", nil, initCometBFTConfig())
+			require.NoError(t, err)
+			if tc.message == "" {
+				require.NoError(t, rejectTestnetClientChain(send))
+				return
+			}
+			require.ErrorContains(t, rejectTestnetClientChain(send), tc.message)
 		})
 	}
 }

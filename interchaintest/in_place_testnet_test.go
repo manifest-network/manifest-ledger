@@ -450,15 +450,20 @@ func haltInPlaceTestnetSource(t *testing.T, ctx context.Context, chain *cosmos.C
 	waitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	for {
-		// The blockstore serves the stored block while Comet state stays one below.
+		// The blockstore serves the stored halt block, and /status reports the
+		// blockstore height, so read the application's committed height instead.
 		_, blockErr := rpc.Block(waitCtx, &haltHeight)
-		status, statusErr := rpc.Status(waitCtx)
-		if blockErr == nil && statusErr == nil && status.SyncInfo.LatestBlockHeight == haltHeight-1 {
+		info, infoErr := rpc.ABCIInfo(waitCtx)
+		if blockErr == nil && infoErr == nil && info.Response.LastBlockHeight == haltHeight-1 {
 			return haltHeight - 1
+		}
+		committed := int64(-1)
+		if infoErr == nil {
+			committed = info.Response.LastBlockHeight
 		}
 		select {
 		case <-waitCtx.Done():
-			require.FailNow(t, "source did not stop at its halt height", "halt height %d, block error %v, status error %v", haltHeight, blockErr, statusErr)
+			require.FailNow(t, "source did not stop at its halt height", "halt height %d, committed height %d, block error %v, ABCI info error %v", haltHeight, committed, blockErr, infoErr)
 		case <-time.After(time.Second):
 		}
 	}

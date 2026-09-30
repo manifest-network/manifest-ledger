@@ -119,15 +119,17 @@ func NewRootCmd() *cobra.Command {
 				if err := client.SetCmdClientContextHandler(initClientCtx, cmd); err != nil {
 					return err
 				}
-				if err := rejectTestnetClientChain(cmd); err != nil {
-					return err
-				}
 			}
 
 			customAppTemplate, customAppConfig := initWasmConfig()
 			customCMTConfig := initCometBFTConfig()
 
 			if err := server.InterceptConfigsPreRunHandler(cmd, customAppTemplate, customAppConfig, customCMTConfig); err != nil {
+				return err
+			}
+			// The interceptor has applied configuration and environment values to
+			// the flags that transaction commands will read.
+			if err := rejectTestnetClientChain(cmd); err != nil {
 				return err
 			}
 			return configureTestnetServerContext(cmd)

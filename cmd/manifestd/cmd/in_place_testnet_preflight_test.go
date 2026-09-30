@@ -354,6 +354,15 @@ func TestTestnetCommandPreflightRejectsWithoutWrites(t *testing.T) {
 			t.Cleanup(func() { _ = listener.Close() })
 			f.config.RPC.ListenAddress = "tcp://127.0.0.1:0,tcp://" + listener.Addr().String()
 		}},
+		{"shared listener port", "is unavailable", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			// Each endpoint binds alone; the node would fail on the second.
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			address := "tcp://" + listener.Addr().String()
+			require.NoError(t, listener.Close())
+			f.config.RPC.ListenAddress = address
+			f.config.P2P.ListenAddress = address
+		}},
 		{"gRPC server in use", "is unavailable", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
 			require.NoError(t, err)
