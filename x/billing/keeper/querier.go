@@ -714,3 +714,39 @@ func (q Querier) LeaseByCustomDomain(ctx context.Context, req *types.QueryLeaseB
 	}
 	return &types.QueryLeaseByCustomDomainResponse{Lease: lease, ServiceName: serviceName}, nil
 }
+
+// PendingLeaseUpdates returns the provider's ACTIVE leases carrying a pending
+// manifest update, walking the PendingUpdateIndex so the cost is proportional
+// to the number of pending updates rather than to the provider's lease count.
+func (q Querier) PendingLeaseUpdates(ctx context.Context, req *types.QueryPendingLeaseUpdatesRequest) (*types.QueryPendingLeaseUpdatesResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	if req.ProviderUuid == "" {
+		return nil, status.Error(codes.InvalidArgument, "provider_uuid cannot be empty")
+	}
+
+	iter, err := pagination.MatchExactKeySetWithOrder(ctx, q.k.PendingUpdateIndex, req.ProviderUuid, req.Pagination)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	// No filter: the index only holds ACTIVE leases with a non-empty
+	// pending_meta_hash, reconciled on every write in SetLease.
+	leases, pageRes, err := pagination.PaginateStringIndex(
+		ctx,
+		iter,
+		q.k.Leases.Get,
+		req.Pagination,
+		nil,
+	)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &types.QueryPendingLeaseUpdatesResponse{
+		Leases:     leases,
+		Pagination: pageRes,
+	}, nil
+}

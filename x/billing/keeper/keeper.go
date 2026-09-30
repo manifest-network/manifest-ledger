@@ -154,6 +154,19 @@ type Keeper struct {
 	// (wraps the lease + index updates in a CacheContext), so a uniqueness
 	// conflict cannot leave a partially-applied lease record.
 	CustomDomainIndex collections.Map[string, types.CustomDomainTarget]
+	// PendingUpdateIndex is the set of (provider_uuid, lease_uuid) pairs for
+	// leases awaiting a provider decision on a requested manifest update.
+	// Maintained automatically by SetLease via reconcilePendingUpdateIndex,
+	// which derives membership from (lease.State, lease.PendingMetaHash): the
+	// entry exists iff the lease is ACTIVE and PendingMetaHash is non-empty.
+	// Not part of LeaseIndexes for the same reason as CustomDomainIndex —
+	// membership is conditional, not a total function of the lease.
+	//
+	// A pending update is deliberately NOT a LeaseState: the lease is still
+	// active and billing, and only its manifest commitment has a request in
+	// flight. Keeping the two orthogonal leaves every `state == ACTIVE`
+	// predicate in the module untouched.
+	PendingUpdateIndex collections.KeySet[collections.Pair[string, string]]
 
 	authority string
 
@@ -226,6 +239,12 @@ func NewKeeper(
 			collections.StringKey,
 			codec.CollValue[types.CustomDomainTarget](cdc),
 		),
+		PendingUpdateIndex: collections.NewKeySet(
+			sb,
+			types.PendingLeaseUpdateIndexKey,
+			"leases_with_pending_update",
+			collections.PairKeyCodec(collections.StringKey, collections.StringKey), // (provider_uuid, lease_uuid)
+		),
 	}
 
 	schema, err := sb.Build()
@@ -246,6 +265,34 @@ func (k *Keeper) Logger() log.Logger {
 // GetAuthority returns the module's authority.
 func (k *Keeper) GetAuthority() string {
 	return k.authority
+}
+
+// ValidateProviderAuthorization verifies the sender may act on behalf of the
+// given provider — it is either the provider's registered address or the module
+// authority. Returns the provider when authorised.
+//
+// Note that params.AllowedList deliberately does NOT grant provider-side
+// operations: it covers acting for a tenant (see IsAuthorizedForTenant), not
+// standing in for a provider.
+//
+// operation names the attempted action and appears in the error message
+// ("acknowledge", "withdraw from", …).
+func (k *Keeper) ValidateProviderAuthorization(ctx context.Context, sender, providerUUID, operation string) (skutypes.Provider, error) {
+	provider, err := k.skuKeeper.GetProvider(ctx, providerUUID)
+	if err != nil {
+		return skutypes.Provider{}, types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
+	}
+
+	if sender != provider.Address && sender != k.GetAuthority() {
+		return skutypes.Provider{}, types.ErrUnauthorized.Wrapf(
+			"sender %s is not authorized to %s leases for provider %s",
+			sender,
+			operation,
+			providerUUID,
+		)
+	}
+
+	return provider, nil
 }
 
 // SetAuthority sets the module's authority (used for testing).
@@ -433,6 +480,20 @@ func (k *Keeper) SetLease(ctx context.Context, lease types.Lease) error {
 		return err
 	}
 
+	// A pending manifest update is only meaningful while the lease is ACTIVE:
+	// all four lease-update messages require that state, so a pending hash on a
+	// terminal lease could never be cleared by any message and would persist in
+	// state and in every genesis export. Normalising here makes the fields
+	// derived from state rather than a rule each caller has to remember, and
+	// repairs a hand-crafted genesis on import — InitGenesis writes through
+	// SetLease. The explicit clears on the ACTIVE → CLOSED paths remain, because
+	// those callers keep using their own copy of the lease after the write.
+	//
+	// lease is a value parameter, so this only affects what gets stored.
+	if lease.State != types.LEASE_STATE_ACTIVE {
+		clearPendingLeaseUpdate(&lease)
+	}
+
 	if err := k.Leases.Set(cacheCtx, lease.Uuid, lease); err != nil {
 		return err
 	}
@@ -448,7 +509,45 @@ func (k *Keeper) SetLease(ctx context.Context, lease types.Lease) error {
 		return err
 	}
 
+	if err := k.reconcilePendingUpdateIndex(cacheCtx, prev, hadPrev, lease); err != nil {
+		return err
+	}
+
 	write()
+	return nil
+}
+
+// reconcilePendingUpdateIndex enforces the (state, pending_meta_hash) → index
+// invariant after a SetLease write: the (provider_uuid, lease_uuid) entry
+// exists iff the lease is ACTIVE and carries a non-empty PendingMetaHash.
+//
+// Doing this centrally in SetLease means every path that touches a lease —
+// requesting an update, acknowledging or rejecting it, closing the lease,
+// auto-closing on credit exhaustion, importing genesis — maintains the index
+// for free, and none of them has to remember to.
+//
+// The previous entry is removed on its own key rather than the current one:
+// provider_uuid is immutable today, but keying removal off the stale snapshot
+// keeps the index correct even if that ever changes.
+func (k *Keeper) reconcilePendingUpdateIndex(ctx context.Context, prev types.Lease, hadPrev bool, lease types.Lease) error {
+	hadEntry := hadPrev && prev.State == types.LEASE_STATE_ACTIVE && len(prev.PendingMetaHash) > 0
+	wantEntry := lease.State == types.LEASE_STATE_ACTIVE && len(lease.PendingMetaHash) > 0
+
+	if hadEntry {
+		// Compare the components, not two collections.Pair values: Pair stores
+		// *K1/*K2 and Join takes the address of fresh copies, so `!=` on two
+		// Joins compares pointers and is always true.
+		sameKey := prev.ProviderUuid == lease.ProviderUuid && prev.Uuid == lease.Uuid
+		if !wantEntry || !sameKey {
+			if err := k.PendingUpdateIndex.Remove(ctx, collections.Join(prev.ProviderUuid, prev.Uuid)); err != nil {
+				return err
+			}
+		}
+	}
+
+	if wantEntry {
+		return k.PendingUpdateIndex.Set(ctx, collections.Join(lease.ProviderUuid, lease.Uuid))
+	}
 	return nil
 }
 
@@ -1079,6 +1178,10 @@ func (k *Keeper) AutoCloseLease(ctx context.Context, lease *types.Lease, closeTi
 	lease.ClosedAt = &closeTime
 	lease.LastSettledAt = closeTime
 	lease.ClosureReason = types.ClosureReasonCreditExhausted
+
+	// A closed lease will never be updated again, so drop any request the
+	// provider had not acted on.
+	clearPendingLeaseUpdate(lease)
 
 	if err := k.SetLease(ctx, *lease); err != nil {
 		return nil, err

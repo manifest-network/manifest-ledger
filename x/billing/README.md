@@ -134,6 +134,68 @@ service-name mode instead.
 - `lease_custom_domain_set` — attributes: `lease_uuid`, `tenant`, `provider_uuid`, `service_name`, `custom_domain`, `set_by`
 - `lease_custom_domain_cleared` — same attributes (`custom_domain` carries the previous value)
 
+### Deployment Updates (the `meta_hash` handshake)
+
+`meta_hash` is the tenant's on-chain SHA-256 commitment to an off-chain
+deployment manifest. At lease creation it is revision 0. Updating a running
+deployment goes through a second handshake so every manifest *version* carries
+its own verifiable commitment, and so the reprovision invariant
+`SHA-256(stored payload) == lease.meta_hash` keeps holding.
+
+```
+tenant   MsgUpdateLease(new_hash)          → pending_meta_hash = new_hash
+tenant   uploads the payload off-chain        (meta_hash UNCHANGED)
+provider validates, persists, applies it
+provider MsgAcknowledgeLeaseUpdate(new_hash) → meta_hash = new_hash, revision++
+```
+
+The committed `meta_hash` advances only on the final step. That is deliberate:
+on an ACTIVE lease the on-chain hash and the off-chain payload cannot move
+atomically, so if the chain advanced first and the upload then failed, the
+provider would hold only the old payload while the chain named the new hash and
+reprovisioning would fail closed. Keeping the commitment behind the payload
+means a half-completed update always leaves the lease reprovisionable.
+
+**Authorisation.** `MsgUpdateLease` and `MsgCancelLeaseUpdate` accept the lease
+tenant, the module authority, or any address in `params.allowed_list`.
+`MsgAcknowledgeLeaseUpdate` and `MsgRejectLeaseUpdate` accept the lease's
+provider or the authority — `allowed_list` does **not** grant provider-side
+verbs. All four require the lease to be **ACTIVE**: a PENDING lease still has
+its create-time handshake, and changing the hash there would race the provider's
+`MsgAcknowledgeLease`.
+
+**Supersession guard.** Acknowledge and reject both require a `meta_hash` equal
+to the lease's current `pending_meta_hash`, so a provider cannot commit a request
+the tenant submitted after the provider read the lease. Cancel takes no hash —
+the tenant authored the request and always means the current one.
+
+**No expiry.** An unacknowledged request is inert: it never affects `meta_hash`.
+The chain therefore never sweeps for stale requests (which would add per-block
+work), and providers apply their own staleness policy over
+`pending_meta_hash_at`.
+
+**Provider discovery.** `QueryPendingLeaseUpdates{provider_uuid}` walks the
+`PendingUpdateIndex` (prefix `0x0D`, a `(provider_uuid, lease_uuid)` key set
+reconciled inside `SetLease`), so catching up after downtime costs O(pending)
+rather than a scan of every lease the provider owns. A pending update is
+deliberately *not* a `LeaseState` — the lease is still active and billing, and
+only its manifest commitment has a request in flight.
+
+**Audit trail.** History lives in events plus the monotonic
+`meta_hash_revision`, not in on-chain state. Rolling back to an earlier manifest
+still increments the revision, so a rollback is a visible new event rather than a
+silent rewind.
+
+**Events**:
+- `lease_update_requested` — `lease_uuid`, `tenant`, `provider_uuid`, `pending_meta_hash`, `meta_hash_revision`, `requested_by`, and `superseded_meta_hash` when it replaced an earlier request
+- `lease_update_acknowledged` — `lease_uuid`, `tenant`, `provider_uuid`, `meta_hash`, `previous_meta_hash`, `meta_hash_revision`, `acknowledged_by`
+- `lease_update_rejected` — `lease_uuid`, `tenant`, `provider_uuid`, `pending_meta_hash`, `reason`, `rejected_by`
+- `lease_update_cancelled` — `lease_uuid`, `tenant`, `provider_uuid`, `pending_meta_hash`, `cancelled_by`
+
+See [Integration Guide](docs/INTEGRATION.md#deployment-data-update---optional)
+for the off-chain contract: the ADR-036 signing string, which field to validate
+against when, and the provider's obligations.
+
 `set_by` ∈ {`tenant`, `authority`, `allowed`} indicates the role under which
 the call was authorised.
 
@@ -292,7 +354,10 @@ Leases stored at key prefix `0x01`:
 | last_settled_at | Timestamp | Last settlement time |
 | rejection_reason | string | Provider's rejection reason (max 256 chars) |
 | closure_reason | string | Closure reason (max 256 chars) |
-| meta_hash | bytes | Hash/reference to off-chain deployment data (max 64 bytes, immutable) |
+| meta_hash | bytes | Hash/reference to the **committed** off-chain deployment data (max 64 bytes). Set at creation; afterwards advanced only by `MsgAcknowledgeLeaseUpdate` |
+| pending_meta_hash | bytes | Requested next manifest hash awaiting the provider's decision (max 64 bytes). Only set on an ACTIVE lease; does not affect `meta_hash` |
+| pending_meta_hash_at | Timestamp | When the pending update was requested. Never expired by the chain — providers apply their own staleness policy |
+| meta_hash_revision | uint64 | Monotonic count of acknowledged manifest versions; `0` is the creation-time hash |
 | min_lease_duration_at_creation | uint64 | Snapshot of `min_lease_duration` param at creation (for consistent reservation calculation) |
 
 ### LeaseItem
@@ -407,6 +472,10 @@ The billing module supports the following transaction messages:
 | `MsgCloseLease` | Close an active lease |
 | `MsgWithdraw` | Withdraw accrued funds (specific leases or provider-wide) |
 | `MsgSetItemCustomDomain` | Set or clear `custom_domain` on a specific lease item (tenant / authority / `allowed_list`) |
+| `MsgUpdateLease` | Request a new deployment manifest hash on an ACTIVE lease (tenant / authority / `allowed_list`) |
+| `MsgAcknowledgeLeaseUpdate` | Promote the requested hash to `meta_hash` after applying the payload (provider / authority) |
+| `MsgRejectLeaseUpdate` | Refuse a requested update, leaving `meta_hash` untouched (provider / authority) |
+| `MsgCancelLeaseUpdate` | Withdraw a requested update (tenant / authority / `allowed_list`) |
 | `MsgUpdateParams` | Update module parameters (authority only) |
 
 For detailed message definitions, request/response formats, and CLI usage, see [API Reference](docs/API.md#cli-commands).

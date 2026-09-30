@@ -59,6 +59,7 @@ func GetQueryCmd() *cobra.Command {
 		GetWithdrawableAmountCmd(),
 		GetProviderWithdrawableCmd(),
 		GetLeaseByCustomDomainCmd(),
+		GetPendingLeaseUpdatesCmd(),
 	)
 
 	return cmd
@@ -583,5 +584,54 @@ func GetLeaseByCustomDomainCmd() *cobra.Command {
 	}
 
 	flags.AddQueryFlagsToCmd(cmd)
+	return cmd
+}
+
+// GetPendingLeaseUpdatesCmd returns the command to query a provider's leases
+// awaiting a decision on a requested manifest update.
+func GetPendingLeaseUpdatesCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "pending-lease-updates [provider-uuid]",
+		Short: "Query a provider's leases with a pending manifest update",
+		Long: `List the provider's ACTIVE leases whose tenants have requested a manifest update
+that has not been acknowledged or rejected yet.
+
+This is how a provider catches up on requests it missed while down, without
+scanning every lease it owns.`,
+		Example: `pending-lease-updates 01902a9b-1234-7000-8000-000000000001`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			providerUUID := args[0]
+			if !pkguuid.IsValidUUID(providerUUID) {
+				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
+			}
+
+			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			queryClient := types.NewQueryClient(clientCtx)
+
+			res, err := queryClient.PendingLeaseUpdates(cmd.Context(), &types.QueryPendingLeaseUpdatesRequest{
+				ProviderUuid: providerUUID,
+				Pagination:   pageReq,
+			})
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
+	flags.AddPaginationFlagsToCmd(cmd, "pending-lease-updates")
+
 	return cmd
 }
