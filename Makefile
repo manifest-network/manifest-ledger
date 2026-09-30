@@ -8,8 +8,6 @@ BINDIR ?= $(GOPATH)/bin
 BUILD_DIR = ./build
 VERSION ?= v2.3.1
 GO ?= go
-GOROOT := $(shell $(GO) env GOROOT)
-export GOROOT
 
 export GO111MODULE = on
 
@@ -82,31 +80,37 @@ BUILD_FLAGS := -tags "$(build_tags_comma_sep)" -ldflags '$(ldflags)' -trimpath
 
 all: install
 
-install:
+build-coverage install-coverage: COVERAGE_FLAGS = -cover -covermode=atomic -coverpkg=github.com/manifest-network/manifest-ledger/...
+
+install install-coverage:
 	@echo "--> ensure dependencies have not been modified"
 	@go mod verify
-	@echo "--> installing manifestd instrumented for coverage"
-	@go install $(BUILD_FLAGS) -cover -covermode=atomic -mod=readonly -coverpkg=github.com/manifest-network/manifest-ledger/... ./cmd/manifestd
+	@echo "--> installing manifestd"
+	@go install $(BUILD_FLAGS) $(COVERAGE_FLAGS) -mod=readonly ./cmd/manifestd
 
 init:
 	./scripts/init.sh
 
-build:
+build build-coverage:
 ifeq ($(OS),Windows_NT)
 	$(error demo server not supported)
 	exit 1
 else
-	go build -mod=readonly $(BUILD_FLAGS) -cover -covermode=atomic -coverpkg=github.com/manifest-network/manifest-ledger/... -o $(BUILD_DIR)/manifestd ./cmd/manifestd
+	go build -mod=readonly $(BUILD_FLAGS) $(COVERAGE_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 endif
 
 build-vendored:
 	go build -mod=vendor $(BUILD_FLAGS) -o $(BUILD_DIR)/manifestd ./cmd/manifestd
 
-.PHONY: all build build-linux install init lint build-vendored
+.PHONY: all build build-coverage build-linux install install-coverage init lint build-vendored
 
 ###############################################################################
 ###                          INTERCHAINTEST (ictest)                        ###
 ###############################################################################
+
+.PHONY: ictest-unit
+ictest-unit:
+	cd interchaintest && go test -short -v -run '^TestInPlaceTestnet' . -count=1
 
 ictest-ibc:
 	cd interchaintest && go test -race -v -run TestIBC . -count=1
@@ -135,39 +139,41 @@ ictest-cosmwasm:
 ictest-chain-upgrade:
 	cd interchaintest && go test -race -v -run TestBasicManifestUpgrade . -count=1
 
+ictest-in-place-testnet:
+	cd interchaintest && go test -timeout 20m -race -v -run '^TestInPlaceTestnet' . -count=1
+
 ictest-group:
 	cd interchaintest && go test -race -v -run TestGroupMetadataLimits . -count=1
 
 ictest-sku:
-	cd interchaintest && go test -race -v -run TestSKU . -count=1
+	cd interchaintest && go test -race -v -timeout 20m -run TestSKU . -count=1
 
 ictest-billing:
 	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(Lease|Credit|Advanced|State|Reservation)$$" . -count=1
 
-# Extra billing e2e tests kept out of the main ictest-billing batch so it stays under the 45m
-# timeout. Runs as its own parallel CI job.
+# Extra billing e2e tests run as their own parallel CI job.
 ictest-billing-extra:
 	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(CreditEstimateOvershoot|CustomDomain)$$" . -count=1
 
 ictest-billing-lease:
-	cd interchaintest && go test -race -v -timeout 45m -run TestBillingLease . -count=1
+	cd interchaintest && go test -race -v -timeout 45m -run "^TestBillingLease$$" . -count=1
 
 ictest-billing-credit:
-	cd interchaintest && go test -race -v -timeout 45m -run TestBillingCredit . -count=1
+	cd interchaintest && go test -race -v -timeout 45m -run "^TestBillingCredit$$" . -count=1
 
 ictest-billing-advanced:
-	cd interchaintest && go test -race -v -timeout 45m -run TestBillingAdvanced . -count=1
+	cd interchaintest && go test -race -v -timeout 45m -run "^TestBillingAdvanced$$" . -count=1
 
 ictest-billing-state:
-	cd interchaintest && go test -race -v -timeout 45m -run TestBillingState . -count=1
+	cd interchaintest && go test -race -v -timeout 45m -run "^TestBillingState$$" . -count=1
 
 ictest-billing-upgrade:
 	cd interchaintest && go test -race -v -timeout 45m -run TestBillingModuleUpgrade . -count=1
 
 ictest-billing-reservation:
-	cd interchaintest && go test -race -v -timeout 45m -run TestBillingReservation . -count=1
+	cd interchaintest && go test -race -v -timeout 45m -run "^TestBillingReservation$$" . -count=1
 
-.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-poa-unjail-dup ictest-poa-unjail-dup-bug ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-group ictest-sku ictest-billing ictest-billing-extra ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-upgrade ictest-billing-reservation
+.PHONY: ictest-ibc ictest-tokenfactory ictest-manifest ictest-poa ictest-poa-unjail-dup ictest-poa-unjail-dup-bug ictest-group-poa ictest-cosmwasm ictest-chain-upgrade ictest-in-place-testnet ictest-group ictest-sku ictest-billing ictest-billing-extra ictest-billing-lease ictest-billing-credit ictest-billing-advanced ictest-billing-state ictest-billing-upgrade ictest-billing-reservation
 
 ###############################################################################
 ###                                Build Image                              ###
@@ -177,7 +183,25 @@ local-image:
 	@echo "--> Building local image"
 	docker build . -t manifest:local
 
-.PHONY: local-image
+COVERAGE_GO_VERSION = $(patsubst go%,%,$(shell $(GO) env GOVERSION))
+
+# Coverage blocks must come from the same compiler as the host test binaries.
+# Custom/development Go versions cannot be mapped to official Docker image tags.
+check-coverage-go-version:
+	@echo "$(COVERAGE_GO_VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || \
+		{ echo "Coverage requires an official Go release; select one with GO=/path/to/go" >&2; exit 1; }
+
+local-image-coverage: check-coverage-go-version
+	@echo "--> Building local image with coverage"
+	docker build . --build-arg GO_VERSION=$(COVERAGE_GO_VERSION) --build-arg BUILD_CMD=build-coverage -t manifest:local
+
+local-image-testnet-upgrade: check-coverage-go-version
+	@echo "--> Building test-only upgrade image with coverage"
+	docker build . --build-arg GO_VERSION=$(COVERAGE_GO_VERSION) --build-arg BUILD_CMD=build-coverage \
+		--build-arg BUILD_TAGS='muslc testnet_upgrade_fixture' \
+		--build-arg VERSION=eng879-test-upgrade -t manifest-testnet-upgrade:local
+
+.PHONY: local-image local-image-coverage local-image-testnet-upgrade check-coverage-go-version
 
 #################
 ###   Test    ###
@@ -192,20 +216,23 @@ test:
 COV_ROOT="/tmp/manifest-ledger-coverage"
 COV_UNIT_E2E="${COV_ROOT}/unit-e2e"
 COV_SIMULATION="${COV_ROOT}/simulation"
+COV_MERGED="${COV_ROOT}/merged"
 COV_PKG="github.com/manifest-network/manifest-ledger/..."
 COV_SIM_CMD=${COV_SIMULATION}/simulation.test
-COV_SIM_COMMON=-Enabled=True -NumBlocks=100 -Commit=true -Period=5 -Params=$(shell pwd)/simulation/sim_params.json -Verbose=false -test.v -test.gocoverdir=${COV_SIMULATION}
+COV_SIM_COMMON=-Enabled=True -NumBlocks=100 -Commit=true -Period=5 -Params=$(shell pwd)/simulation/sim_params.json -Verbose=false -Seed=${SIM_SEED} -test.v -test.gocoverdir=${COV_SIMULATION}
 
-coverage: ## Run coverage report
+coverage-init: check-coverage-go-version
 	@echo "--> Using Go: $(shell $(GO) version)"
-	@echo "--> GOROOT: $(GOROOT)"
+	@echo "--> GOROOT: $(shell $(GO) env GOROOT)"
 
 	@echo "--> Creating GOCOVERDIR"
-	@mkdir -p ${COV_UNIT_E2E} ${COV_SIMULATION}
+	@mkdir -p ${COV_UNIT_E2E} ${COV_SIMULATION} ${COV_MERGED}
 	@echo "--> Cleaning up coverage files, if any"
-	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/*
+	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/* ${COV_MERGED}/*
+
+coverage: coverage-init ## Run coverage report
 	@echo "--> Building instrumented simulation test binary"
-	@go test -c ./app -mod=readonly -covermode=atomic -coverpkg=${COV_PKG} -cover -o ${COV_SIM_CMD}
+	@$(GO) test -c ./app -mod=readonly -covermode=atomic -coverpkg=${COV_PKG} -cover -o ${COV_SIM_CMD}
 	@echo "  --> Running Full App Simulation"
 	@${COV_SIM_CMD} -test.run TestFullAppSimulation ${COV_SIM_COMMON} > /dev/null 2>&1
 	@echo "  --> Running App Simulation After Import"
@@ -213,31 +240,30 @@ coverage: ## Run coverage report
 	@echo "  --> Running App State Determinism Simulation"
 	@${COV_SIM_CMD} -test.run TestAppStateDeterminism ${COV_SIM_COMMON} > /dev/null 2>&1
 	@echo "--> Running unit & e2e tests coverage"
-	@go test -p 1 -timeout 90m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$(go list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
+	@$(GO) test -p 1 -timeout 150m -race -covermode=atomic -v -cpu=$$(nproc) -cover $$($(GO) list ./...) ./interchaintest/... -coverpkg=${COV_PKG} -args -test.gocoverdir="${COV_UNIT_E2E}"
 	@echo "--> Merging coverage reports"
-	@go tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_ROOT}
+	@$(GO) tool covdata merge -i=${COV_UNIT_E2E},${COV_SIMULATION} -o ${COV_MERGED}
 	@echo "--> Converting binary coverage report to text format"
-	@go tool covdata textfmt -i=${COV_ROOT} -o ${COV_ROOT}/coverage-merged.out
+	@$(GO) tool covdata textfmt -i=${COV_MERGED} -o ${COV_ROOT}/coverage-merged.out
 	@echo "--> Filtering coverage reports"
 	@./scripts/filter-coverage.sh ${COV_ROOT}/coverage-merged.out ${COV_ROOT}/coverage-merged-filtered.out
 	@echo "--> Generating coverage report"
-	@go tool cover -func=${COV_ROOT}/coverage-merged-filtered.out
+	@$(GO) tool cover -func=${COV_ROOT}/coverage-merged-filtered.out
 	@echo "--> Generating HTML coverage report"
-	@go tool cover -html=${COV_ROOT}/coverage-merged-filtered.out -o coverage.html
+	@$(GO) tool cover -html=${COV_ROOT}/coverage-merged-filtered.out -o coverage.html
 	@echo "--> Coverage report available at coverage.html"
 	@echo "--> Cleaning up coverage files"
 	@rm -rf ${COV_UNIT_E2E}/* ${COV_SIMULATION}/*
 	@echo "--> Running coverage complete"
 
-.PHONY: coverage
-
+.PHONY: coverage coverage-init
 
 ##################
 ###  Protobuf  ###
 ##################
 
 protoVer=0.14.0
-protoImageName=ghcr.io/cosmos/proto-builder:$(protoVer)
+protoImageName=ghcr.io/cosmos/proto-builder:$(protoVer)@sha256:93e2035b90e5780b4d56210a88ecb0afed881c7bb828285d4a61a897cebb54fb
 protoImage=$(DOCKER) run --rm -v $(CURDIR):/workspace --workdir /workspace $(protoImageName)
 
 proto-all: proto-format proto-lint proto-gen
@@ -253,7 +279,10 @@ proto-format:
 proto-lint:
 	@$(protoImage) buf lint proto/ --error-format=json
 
-.PHONY: proto-all proto-gen proto-format proto-lint
+proto-check:
+	@PROTO_IMAGE="$(protoImageName)" bash ./scripts/check-proto.sh
+
+.PHONY: proto-all proto-gen proto-format proto-lint proto-check
 
 #################
 ###  Linting  ###
@@ -288,17 +317,19 @@ format: ## Run formatter (goimports)
 	@find . -name '*.go' -not -name '*.pulsar.go' -not -name '*.pb.go' -exec goimports -w -local github.com/manifest-network/manifest-ledger {} \;
 
 #### GOVULNCHECK ####
-govulncheck_version=latest
+govulncheck_version=v1.7.0
+GOVULNCHECK_BIN := $(CURDIR)/build/vulnerability-tools/govulncheck
 
 govulncheck-install:
 	@echo "--> Installing govulncheck $(govulncheck_version)"
-	@go install golang.org/x/vuln/cmd/govulncheck@$(govulncheck_version)
+	@GOBIN="$(dir $(GOVULNCHECK_BIN))" go install golang.org/x/vuln/cmd/govulncheck@$(govulncheck_version)
 	@echo "--> Installing govulncheck $(govulncheck_version) complete"
 
-govulncheck: ## Run govulncheck
+govulncheck: govulncheck-install ## Scan the daemon with the same release tags and policy as CI
 	@echo "--> Running govulncheck"
-	$(MAKE) govulncheck-install
-	@govulncheck ./...
+	@GOVULNCHECK="$(GOVULNCHECK_BIN)" bash scripts/scan-vulnerabilities.sh
+
+.PHONY: govulncheck govulncheck-install
 
 #### VET ####
 
@@ -317,7 +348,8 @@ SIM_COMMIT ?= true
 SIM_ENABLED ?= true
 SIM_VERBOSE ?= false
 SIM_TIMEOUT ?= 24h
-SIM_SEED ?= 42
+# 42 asks the SDK determinism test to choose a random seed.
+SIM_SEED ?= 43
 SIM_COMMON_ARGS = -NumBlocks=${SIM_NUM_BLOCKS} -Enabled=${SIM_ENABLED} -Commit=${SIM_COMMIT} -Period=${SIM_PERIOD} -Params=${SIM_PARAMS} -Verbose=${SIM_VERBOSE} -Seed=${SIM_SEED} -v -timeout ${SIM_TIMEOUT}
 
 sim-full-app:

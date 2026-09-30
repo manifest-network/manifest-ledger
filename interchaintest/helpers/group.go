@@ -8,12 +8,12 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cosmos/cosmos-sdk/x/group"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
-	"github.com/strangelove-ventures/interchaintest/v8/dockerutil"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cosmos/cosmos-sdk/x/group"
 )
 
 // SubmitGroupProposal submits a group proposal to the chain.
@@ -26,8 +26,7 @@ func SubmitGroupProposal(ctx context.Context, t *testing.T, chain *cosmos.Cosmos
 
 	tn := chain.GetNode()
 
-	fw := dockerutil.NewFileWriter(nil, tn.DockerClient, tn.TestName)
-	err = fw.WriteFile(ctx, tn.VolumeName, file, propJson)
+	err = WriteLiveNodeFile(ctx, tn, file, propJson)
 	require.NoError(t, err)
 
 	submitCommand := []string{
@@ -61,8 +60,7 @@ func CreateGroupWithMetadata(ctx context.Context, t *testing.T, chain *cosmos.Co
 
 	tn := chain.GetNode()
 
-	fw := dockerutil.NewFileWriter(nil, tn.DockerClient, tn.TestName)
-	err = fw.WriteFile(ctx, tn.VolumeName, file, membersJson)
+	err = WriteLiveNodeFile(ctx, tn, file, membersJson)
 	require.NoError(t, err)
 
 	createCommand := []string{

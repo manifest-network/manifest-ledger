@@ -8,7 +8,7 @@ Manifest Ledger is a Cosmos SDK-based blockchain for decentralized AI infrastruc
 
 **Binary**: `manifestd`
 **Bech32 Prefix**: `manifest`
-**Go Version**: 1.25.9
+**Go Version**: 1.25.14 for builds/CI; module minimum 1.25.9
 
 ## Testing
 
@@ -22,8 +22,18 @@ go test -v ./x/billing/keeper -run TestAccrualCalculation
 ```
 
 ### Integration Tests (Interchaintest)
-All e2e tests require the local Docker image first: `make local-image`. Same for `make coverage`.
+E2E tests require the local Docker image first: `make local-image`.
+Coverage requires instrumented images and an identical official host/image Go release:
+`GOTOOLCHAIN=go1.25.14 make local-image-coverage local-image-testnet-upgrade`, then
+`GOTOOLCHAIN=go1.25.14 make coverage`.
 The `ictest-*` and `sim-*` targets in the Makefile are the entry points.
+
+### CI Validation
+
+Run `make proto-check` for compilation, lint and generated-source drift;
+`GOTOOLCHAIN=go1.25.14 make govulncheck` for the release-tagged daemon scan and
+reviewed-exception policy. See `CONTRIBUTING.md` for all CI gates and exception fields.
+GoReleaser snapshot and release archives use Ubuntu 22.04 to preserve the glibc floor.
 
 ## Architecture
 

@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Exercise Make's compiler selection without compiling binaries or building images.
+cd "$(dirname "$0")/.."
+test_dir=$(mktemp -d)
+trap 'rm -rf "$test_dir"' EXIT
+export COVERAGE_BUILD_LOG="$test_dir/docker.log"
+export COVERAGE_GO_LOG="$test_dir/go.log"
+export PATH="$test_dir:$PATH"
+
+# The image must consume the compiler selected by Make, not a fixed builder tag.
+grep -Eq '^ARG GO_VERSION=' Dockerfile
+grep -Fxq 'FROM golang:${GO_VERSION}-alpine AS go-builder' Dockerfile
+
+cat > "$test_dir/selected-go" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  'env GOVERSION') printf '%s\n' "$TEST_GO_VERSION" ;;
+  'env GOROOT') printf '%s\n' /selected/go/root ;;
+  'version') printf 'go version %s linux/amd64\n' "$TEST_GO_VERSION" ;;
+  *) printf '%s\n' "$*" >> "$COVERAGE_GO_LOG"; echo "Unexpected Go invocation: $*" >&2; exit 1 ;;
+esac
+EOF
+cat > "$test_dir/go" <<'EOF'
+#!/usr/bin/env bash
+printf 'GOROOT=%s %s\n' "${GOROOT-<unset>}" "$*" >> "$COVERAGE_GO_LOG"
+case "$1" in
+  build) ;;
+  *) echo "Unexpected ordinary Go invocation: $*" >&2; exit 1 ;;
+esac
+EOF
+cat > "$test_dir/docker" <<'EOF'
+#!/usr/bin/env bash
+# Preserve argument boundaries: an unquoted BUILD_TAGS value must not look like
+# the correctly quoted single argument when it contains spaces.
+printf '%q ' "$@" >> "$COVERAGE_BUILD_LOG"
+printf '\n' >> "$COVERAGE_BUILD_LOG"
+EOF
+chmod +x "$test_dir/selected-go" "$test_dir/go" "$test_dir/docker"
+
+for version in go1.25.9 go1.27.1; do
+  export TEST_GO_VERSION="$version"
+  : > "$COVERAGE_BUILD_LOG"
+  make --no-print-directory local-image-coverage local-image-testnet-upgrade GO="$test_dir/selected-go"
+  test "$(wc -l < "$COVERAGE_BUILD_LOG")" -eq 2
+  printf -v expected '%q ' build . --build-arg "GO_VERSION=${version#go}" \
+    --build-arg BUILD_CMD=build-coverage -t manifest:local
+  grep -Fxq -- "$expected" "$COVERAGE_BUILD_LOG"
+  printf -v expected '%q ' build . --build-arg "GO_VERSION=${version#go}" \
+    --build-arg BUILD_CMD=build-coverage --build-arg 'BUILD_TAGS=muslc testnet_upgrade_fixture' \
+    --build-arg VERSION=eng879-test-upgrade -t manifest-testnet-upgrade:local
+  grep -Fxq -- "$expected" "$COVERAGE_BUILD_LOG"
+
+  make --no-print-directory -n coverage GO="$test_dir/selected-go" > "$test_dir/coverage-plan"
+  test "$(grep -Fc -- "$test_dir/selected-go test " "$test_dir/coverage-plan")" -eq 2
+  grep -Fq -- "$test_dir/selected-go list ./..." "$test_dir/coverage-plan"
+  for tool in 'covdata merge' 'covdata textfmt' 'cover -func=' 'cover -html='; do
+    grep -Fq -- "$test_dir/selected-go tool $tool" "$test_dir/coverage-plan"
+  done
+done
+
+# Invalid/custom compilers must fail before Docker, compilation or coverage cleanup.
+rejected_root="$test_dir/rejected-coverage"
+mkdir -p "$rejected_root/unit-e2e"
+touch "$rejected_root/unit-e2e/covmeta.retained"
+for version in '' 'devel go1.28' 'go1.27.1-X:nodwarf5'; do
+  export TEST_GO_VERSION="$version"
+  for target in local-image-coverage local-image-testnet-upgrade coverage; do
+    : > "$COVERAGE_BUILD_LOG"
+    : > "$COVERAGE_GO_LOG"
+    if make --no-print-directory "$target" GO="$test_dir/selected-go" COV_ROOT="$rejected_root" > "$test_dir/rejected" 2>&1; then
+      echo "Unexpected $target success for Go version '$version'" >&2
+      exit 1
+    fi
+    grep -Fq 'Coverage requires an official Go release' "$test_dir/rejected"
+    test ! -s "$COVERAGE_BUILD_LOG"
+    test ! -s "$COVERAGE_GO_LOG"
+    test -f "$rejected_root/unit-e2e/covmeta.retained"
+  done
+done
+
+# The production image target remains independent of the coverage compiler check.
+: > "$COVERAGE_BUILD_LOG"
+make --no-print-directory local-image GO="$test_dir/selected-go"
+printf -v expected '%q ' build . -t manifest:local
+grep -Fxq -- "$expected" "$COVERAGE_BUILD_LOG"
+
+# Selecting coverage's GO must not export its GOROOT into ordinary bare-go builds.
+: > "$COVERAGE_GO_LOG"
+GO="$test_dir/selected-go" GOROOT=/ordinary/go/root make --no-print-directory build
+(
+  unset GOROOT
+  make --no-print-directory build GO="$test_dir/selected-go"
+)
+test "$(wc -l < "$COVERAGE_GO_LOG")" -eq 2
+grep -Fq 'GOROOT=/ordinary/go/root build ' "$COVERAGE_GO_LOG"
+grep -Fq 'GOROOT=<unset> build ' "$COVERAGE_GO_LOG"
+
+# Run only the real Make recipe's initialization against a disposable coverage root.
+# Existing top-level metadata is retained but textfmt must read only the cleared merge dir.
+export TEST_GO_VERSION=go1.25.9
+coverage_root="$test_dir/coverage"
+mkdir -p "$coverage_root"/{unit-e2e,simulation,merged}
+touch "$coverage_root"/{unit-e2e,simulation,merged}/covmeta.stale "$coverage_root/covmeta.legacy"
+make --no-print-directory coverage-init GO="$test_dir/selected-go" COV_ROOT="$coverage_root"
+for directory in unit-e2e simulation merged; do
+  test ! -e "$coverage_root/$directory/covmeta.stale"
+done
+test -f "$coverage_root/covmeta.legacy"
+make --no-print-directory -n coverage GO="$test_dir/selected-go" COV_ROOT="$coverage_root" > "$test_dir/coverage-plan"
+grep -Fq -- "tool covdata merge -i=\"$coverage_root/unit-e2e\",\"$coverage_root/simulation\" -o \"$coverage_root/merged\"" "$test_dir/coverage-plan"
+grep -Fq -- "tool covdata textfmt -i=\"$coverage_root/merged\" -o $coverage_root/coverage-merged.out" "$test_dir/coverage-plan"
+
+echo 'Coverage build selection and stale-output checks passed.'

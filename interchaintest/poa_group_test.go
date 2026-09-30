@@ -178,7 +178,7 @@ func testWasmContract(t *testing.T, ctx context.Context, chain *cosmos.CosmosCha
 func testWasmContractInvalidUploader(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, accAddr string) {
 	t.Log("\n===== TEST GROUP WASM STORE AND INSTANTIATE (INVALID UPLOADER) =====")
 
-	_, err := chain.GetNode().StoreContract(ctx, accAddr, wasmFile)
+	_, err := storeLiveNodeContract(ctx, chain.GetNode(), accAddr, wasmFile)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "can not create code: unauthorized")
 }

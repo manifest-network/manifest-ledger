@@ -258,11 +258,14 @@ make ictest-cosmwasm
 make ictest-sku
 ```
 
-**To test the Billing module run:**
+**To test the Billing module, run the separate suites used by CI:**
 
 ```bash
-make ictest-billing
+make ictest-billing-advanced ictest-billing-credit ictest-billing-lease
+make ictest-billing-reservation ictest-billing-state ictest-billing-extra ictest-billing-upgrade
 ```
+
+`make ictest-billing` remains a local aggregate of the first five suites and shares one 45-minute timeout.
 
 ## Simulation
 
@@ -288,12 +291,22 @@ Append `-random` to the end of the commands above to run the simulation with a r
 
 ## Coverage
 
-To generate a coverage report for the modules run:
+Use an official Go release (CI uses 1.25.14) to build both instrumented images
+and collect host coverage with the same compiler:
 
 ```bash
-make local-image
-make coverage
+GOTOOLCHAIN=go1.25.14 make local-image-coverage local-image-testnet-upgrade
+GOTOOLCHAIN=go1.25.14 make coverage
 ```
+
+The production `local-image` target does not collect coverage. Development/custom
+Go versions are rejected before collection; when selecting `GO=/path/to/go`, use
+the same selection for both commands. Codecov's `target: auto` compares patch
+coverage to the base commit's overall coverage, with no allowed decrease.
+
+For the daemon vulnerability scan used by CI, run `GOTOOLCHAIN=go1.25.14 make
+govulncheck`. See [the contributor guide](CONTRIBUTING.md#vulnerability-policy)
+for scan scope and reviewed exceptions.
 
 ## JavaScript / TypeScript SDK
 

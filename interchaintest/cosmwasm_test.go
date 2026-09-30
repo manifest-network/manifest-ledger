@@ -71,7 +71,7 @@ func TestCosmWasm(t *testing.T) {
 		// Store contract directly using local file path
 		wasmFile := "../scripts/cw_template.wasm"
 		t.Logf("Storing contract from local path: %s", wasmFile)
-		codeIdStr, err := chain.GetNode().StoreContract(ctx, user1Wallet.KeyName(), wasmFile)
+		codeIdStr, err := storeLiveNodeContract(ctx, chain.GetNode(), user1Wallet.KeyName(), wasmFile)
 		codeId = codeIdStr
 		require.NoError(t, err)
 		t.Logf("Received code ID: %s", codeId)

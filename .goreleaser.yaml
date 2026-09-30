@@ -1,4 +1,5 @@
 ---
+version: 2
 project_name: manifest-ledger
 
 release:
@@ -12,8 +13,11 @@ builds:
     binary: manifestd
     mod_timestamp: "{{ .CommitTimestamp }}"
     flags:
-      - -tags=netgo ledger
+      - -mod=readonly
       - -trimpath
+    tags:
+      - netgo
+      - ledger
     ldflags:
       - -s -w -X main.commit={{.Commit}} -X main.date={{ .CommitDate }} -X github.com/cosmos/cosmos-sdk/version.Name=manifest -X github.com/cosmos/cosmos-sdk/version.AppName=manifestd -X github.com/cosmos/cosmos-sdk/version.Version=v{{ .Version }} -X github.com/cosmos/cosmos-sdk/version.Commit={{ .Commit }} -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,ledger -X github.com/manifest-network/manifest-ledger/app.Bech32Prefix=manifest
     env:
@@ -26,11 +30,11 @@ builds:
 #      - arm64
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
 
 snapshot:
-  name_template: '{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}'
+  version_template: '{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}'
 
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'

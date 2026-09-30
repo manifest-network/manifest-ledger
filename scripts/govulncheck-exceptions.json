@@ -1,0 +1,10 @@
+{
+  "GO-2026-4740": {
+    "module": "github.com/shamaton/msgpack/v2",
+    "version": "v2.4.1",
+    "advisory_modified": "2026-03-23T18:14:47Z",
+    "expires": "2026-10-15",
+    "reason": "The unreviewed advisory still marks all versions affected; upstream fixed the truncated extension-frame decoder in the selected v2.4.1. Recheck the advisory in ENG-867 before expiry.",
+    "evidence": "https://github.com/shamaton/msgpack/issues/59#issuecomment-4451323967"
+  }
+}
