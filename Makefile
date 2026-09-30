@@ -348,8 +348,10 @@ SIM_COMMIT ?= true
 SIM_ENABLED ?= true
 SIM_VERBOSE ?= false
 SIM_TIMEOUT ?= 24h
-# 42 asks the SDK determinism test to choose a random seed.
-SIM_SEED ?= 43
+# 42 asks the SDK determinism test to choose a random seed. Seed 20 runs all 100
+# blocks and succeeds with about three times as many operations as seed 43,
+# including authz, tokenfactory, group-policy and tenant-lease messages.
+SIM_SEED ?= 20
 SIM_COMMON_ARGS = -NumBlocks=${SIM_NUM_BLOCKS} -Enabled=${SIM_ENABLED} -Commit=${SIM_COMMIT} -Period=${SIM_PERIOD} -Params=${SIM_PARAMS} -Verbose=${SIM_VERBOSE} -Seed=${SIM_SEED} -v -timeout ${SIM_TIMEOUT}
 
 sim-full-app:

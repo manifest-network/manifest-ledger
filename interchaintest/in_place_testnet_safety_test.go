@@ -37,20 +37,25 @@ func inPlaceTestnetFileSnapshot(t *testing.T, ctx context.Context, node *cosmos.
 	return string(stdout)
 }
 
+func rejectInPlaceTestnetConversion(t *testing.T, ctx context.Context, node *cosmos.ChainNode, name, chainID, operator, expectedError string) {
+	t.Helper()
+	before := inPlaceTestnetFileSnapshot(t, ctx, node)
+	rejectCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	_, stderr, err := node.Exec(rejectCtx, node.BinCommand("in-place-testnet", chainID, operator, "--skip-confirmation"), node.Chain.Config().Env)
+	require.Error(t, err, "%s must fail before conversion", name)
+	require.NotContains(t, err.Error(), "context deadline exceeded", "%s unexpectedly started: %s", name, stderr)
+	// The pinned interchaintest Exec embeds stdout/stderr in the error and
+	// returns empty output buffers when a process exits unsuccessfully.
+	require.Contains(t, err.Error(), expectedError, "%s: unexpected failure: %s", name, stderr)
+	require.Equal(t, before, inPlaceTestnetFileSnapshot(t, ctx, node), "%s modified the copied home", name)
+}
+
 func assertInPlaceTestnetPreflight(t *testing.T, ctx context.Context, node *cosmos.ChainNode, chainID, operator string, sourceKey, freshKey []byte) {
 	t.Helper()
 	reject := func(name, requestedChainID, expectedError string) {
 		t.Helper()
-		before := inPlaceTestnetFileSnapshot(t, ctx, node)
-		rejectCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-		_, stderr, err := node.Exec(rejectCtx, node.BinCommand("in-place-testnet", requestedChainID, operator, "--skip-confirmation"), node.Chain.Config().Env)
-		require.Error(t, err, "%s must fail before conversion", name)
-		require.NotContains(t, err.Error(), "context deadline exceeded", "%s unexpectedly started: %s", name, stderr)
-		// The pinned interchaintest Exec embeds stdout/stderr in the error and
-		// returns empty output buffers when a process exits unsuccessfully.
-		require.Contains(t, err.Error(), expectedError, "%s: unexpected failure: %s", name, stderr)
-		require.Equal(t, before, inPlaceTestnetFileSnapshot(t, ctx, node), "%s modified the copied home", name)
+		rejectInPlaceTestnetConversion(t, ctx, node, name, requestedChainID, operator, expectedError)
 	}
 	reject("source chain ID", node.Chain.Config().ChainID, "requires a new chain ID different from source chain")
 	require.NoError(t, node.OverwritePrivValFile(ctx, sourceKey))

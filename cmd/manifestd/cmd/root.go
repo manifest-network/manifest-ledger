@@ -29,9 +29,10 @@ import (
 // NewRootCmd creates a new root commaxnd for wasmd. It is called once in the
 // main function.
 func NewRootCmd() *cobra.Command {
-	if err := rejectSimulationAdminBypass(); err != nil {
+	if err := RejectSimulationAdminBypass(); err != nil {
+		// The caller prints the returned error once.
 		return &cobra.Command{
-			Use: "manifestd", SilenceUsage: true, DisableFlagParsing: true,
+			Use: "manifestd", SilenceUsage: true, SilenceErrors: true, DisableFlagParsing: true,
 			RunE: func(_ *cobra.Command, _ []string) error { return err },
 		}
 	}
@@ -77,7 +78,8 @@ func NewRootCmd() *cobra.Command {
 			if preflight, ok := cmd.Context().Value(testnetPreflightContextKey{}).(*testnetPreflight); ok {
 				// Server startup needs no operator keyring. Loading persistent
 				// client flags would otherwise create one before the journal.
-				initClientCtx = initClientCtx.WithHomeDir(preflight.home).WithChainID(preflight.journal.ChainID)
+				initClientCtx = initClientCtx.WithHomeDir(preflight.home).WithChainID(preflight.journal.ChainID).
+					WithOutputFormat(testnetOutputFormat(cmd, preflight.home))
 			} else {
 				initClientCtx, err = client.ReadPersistentCommandFlags(initClientCtx, cmd.Flags())
 				if err != nil {
@@ -123,6 +125,11 @@ func NewRootCmd() *cobra.Command {
 			customCMTConfig := initCometBFTConfig()
 
 			if err := server.InterceptConfigsPreRunHandler(cmd, customAppTemplate, customAppConfig, customCMTConfig); err != nil {
+				return err
+			}
+			// The interceptor has applied configuration and environment values to
+			// the flags that transaction commands will read.
+			if err := rejectTestnetClientChain(cmd); err != nil {
 				return err
 			}
 			return configureTestnetServerContext(cmd)

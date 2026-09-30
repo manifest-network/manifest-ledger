@@ -95,7 +95,7 @@ func testStakingDisabled(t *testing.T, ctx context.Context, chain *cosmos.Cosmos
 	nested := []string{"tx", "staking", "delegate", validators[0], "1stake"}
 	nestedCmd := helpers.TxCommandBuilder(ctx, chain, nested, granter.FormattedAddress())
 
-	_, err = chain.GetNode().AuthzExec(ctx, grantee, nestedCmd)
+	_, err = helpers.AuthzExec(ctx, chain.GetNode(), grantee, nestedCmd)
 	require.Error(t, err)
 	require.ErrorContains(t, err, poa.ErrStakingActionNotAllowed.Error())
 }

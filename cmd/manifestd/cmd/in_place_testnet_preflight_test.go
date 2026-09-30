@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"math"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,9 +63,14 @@ func testnetPreflightCommitInfo(height int64) storetypes.CommitInfo {
 
 func newTestnetPreflightFixture(t *testing.T) *testnetPreflightFixture {
 	t.Helper()
-	home := t.TempDir()
+	// Fork homes must not traverse symlinks; macOS temporary directories do.
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	cfg := cmtcfg.DefaultConfig().SetRoot(home)
 	cfg.P2P.PexReactor = false
+	// Conversion probes its listeners, so avoid ports a local node may hold.
+	cfg.RPC.ListenAddress = "tcp://127.0.0.1:0"
+	cfg.P2P.ListenAddress = "tcp://127.0.0.1:0"
 	require.NoError(t, os.MkdirAll(filepath.Join(home, "config"), 0o700))
 	require.NoError(t, os.MkdirAll(filepath.Join(home, "data", "cs.wal"), 0o700))
 	cmtcfg.WriteConfigFile(filepath.Join(home, "config", "config.toml"), cfg)
@@ -152,6 +158,15 @@ func (f *testnetPreflightFixture) saveState(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.SetSync([]byte("genesisDoc"), genesis))
 	require.NoError(t, db.Close())
+}
+
+func (f *testnetPreflightFixture) appendAppConfig(t *testing.T, content string) {
+	t.Helper()
+	file, err := os.OpenFile(filepath.Join(f.home, "config", "app.toml"), os.O_APPEND|os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = file.WriteString(content)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
 }
 
 func (f *testnetPreflightFixture) saveBlockStore(t *testing.T, height int64) {
@@ -318,6 +333,93 @@ func TestTestnetCommandPreflightRejectsWithoutWrites(t *testing.T) {
 		{"hard link", "hard-linked", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
 			require.NoError(t, os.Link(f.config.GenesisFile(), filepath.Join(t.TempDir(), "genesis.json")))
 		}},
+		{"completed conversion", "journal already exists", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			f.completeFork(t)
+		}},
+		{"stale journal update", "stale in-place-testnet journal update", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			require.NoError(t, os.WriteFile(filepath.Join(f.home, inPlaceTestnetMarker+".next"), []byte("{}"), 0o600))
+		}},
+		{"halt height at first block", "halt-height 4 would stop the fork", func(t *testing.T, _ *testnetPreflightFixture, cmd *cobra.Command, _ []string) {
+			require.NoError(t, cmd.Flags().Set(server.FlagHaltHeight, "4"))
+		}},
+		{"halt height before source", "halt-height 2 would stop the fork", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			f.appendAppConfig(t, "halt-height = 2\n")
+		}},
+		{"halt time", "halt-time must be unset", func(t *testing.T, _ *testnetPreflightFixture, cmd *cobra.Command, _ []string) {
+			require.NoError(t, cmd.Flags().Set(server.FlagHaltTime, "1"))
+		}},
+		{"listener in use", "is unavailable", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = listener.Close() })
+			f.config.RPC.ListenAddress = "tcp://127.0.0.1:0,tcp://" + listener.Addr().String()
+		}},
+		{"shared listener port", "is unavailable", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			// Each endpoint binds alone; the node would fail on the second.
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			address := "tcp://" + listener.Addr().String()
+			require.NoError(t, listener.Close())
+			f.config.RPC.ListenAddress = address
+			f.config.P2P.ListenAddress = address
+		}},
+		{"gRPC server in use", "is unavailable", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = listener.Close() })
+			f.appendAppConfig(t, fmt.Sprintf("[grpc]\nenable = true\naddress = %q\n", listener.Addr().String()))
+		}},
+		{"named streaming service", "streaming must be disabled", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			f.appendAppConfig(t, "[streaming.indexer]\nplugin = \"abci\"\n")
+		}},
+		{"statsd telemetry", "telemetry sink", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			f.appendAppConfig(t, "[telemetry]\nenabled = true\nmetrics-sink = \"statsd\"\nstatsd-addr = \"collector.invalid:8125\"\n")
+		}},
+		{"shadowing Comet config", "would replace config.toml", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			require.NoError(t, os.WriteFile(filepath.Join(f.home, "config", "config.json"), []byte("priv_validator_key_file = 'config/source.json'\n"), 0o600))
+		}},
+		{"shadowing app config", "would replace app.toml", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			require.NoError(t, os.WriteFile(filepath.Join(f.home, "config", "app.json"), []byte("halt-height = 4\n"), 0o600))
+		}},
+		{"other database backend", "requires goleveldb", func(_ *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			f.config.DBBackend = "pebbledb"
+		}},
+		{"standalone ABCI", "requires CometBFT enabled", func(t *testing.T, _ *testnetPreflightFixture, cmd *cobra.Command, _ []string) {
+			require.NoError(t, cmd.Flags().Set("with-comet", "false"))
+		}},
+		{"inconsistent key", "must agree", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			key := f.key.Key
+			key.Address = ed25519.GenPrivKey().PubKey().Address()
+			bz, err := cmtjson.Marshal(key)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(f.config.PrivValidatorKeyFile(), bz, 0o600))
+		}},
+		{"genesis chain ID", "genesis and persisted Comet chain IDs disagree", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			genesis := cmttypes.GenesisDoc{ChainID: "other-source", InitialHeight: 1, ConsensusParams: cmttypes.DefaultConsensusParams()}
+			require.NoError(t, genesis.SaveAs(f.config.GenesisFile()))
+		}},
+		{"cached genesis chain ID", "cached genesis and persisted Comet chain IDs disagree", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			genesis := cmttypes.GenesisDoc{ChainID: "other-source", InitialHeight: 1, ConsensusParams: cmttypes.DefaultConsensusParams()}
+			bz, err := cmtjson.Marshal(genesis)
+			require.NoError(t, err)
+			f.writeRecord(t, "state", "genesisDoc", bz)
+		}},
+		{"application commit info", "invalid persisted application commit info", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			info := testnetPreflightCommitInfo(2)
+			bz, err := info.Marshal()
+			require.NoError(t, err)
+			f.writeRecord(t, "application", "s/3", bz)
+		}},
+		{"block from another chain", "disagrees with Comet state or metadata", func(t *testing.T, f *testnetPreflightFixture, _ *cobra.Command, _ []string) {
+			// Every hash link is consistent; only the block's chain ID differs.
+			require.NoError(t, os.RemoveAll(filepath.Join(f.config.DBDir(), "blockstore.db")))
+			f.blockIDs = map[int64]cmttypes.BlockID{}
+			f.state.ChainID = "other-source"
+			f.saveBlocks(t, 3)
+			f.state.ChainID = "source"
+			f.state.LastBlockID = f.blockIDs[3]
+			f.saveState(t)
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -481,11 +583,41 @@ func TestTestnetCosmovisorBinaryLink(t *testing.T) {
 	require.ErrorContains(t, preflightTestnetCommand(f.command(t, "in-place-testnet"), []string{"fork", f.operator}), "traverses a symlink")
 }
 
+// Cosmovisor writes absolute links under its original DAEMON_HOME.
+func TestTestnetCosmovisorAbsoluteBinaryLink(t *testing.T) {
+	f := newTestnetPreflightFixture(t)
+	upgrade := filepath.Join(f.home, "cosmovisor", "upgrades", "v2.3.1")
+	require.NoError(t, os.MkdirAll(filepath.Join(upgrade, "bin"), 0o700))
+	link := filepath.Join(f.home, "cosmovisor", "current")
+	// Copied from another DAEMON_HOME: rejected, with the re-point command.
+	source := filepath.Join(t.TempDir(), "source-home")
+	require.NoError(t, os.MkdirAll(filepath.Join(source, "cosmovisor", "upgrades", "v2.3.1"), 0o700))
+	require.NoError(t, os.Symlink(filepath.Join(source, "cosmovisor", "upgrades", "v2.3.1"), link))
+	before := snapshotTestnetFiles(t, f.home)
+	err := preflightTestnetCommand(f.command(t, "in-place-testnet"), []string{"fork", f.operator})
+	require.ErrorContains(t, err, "outside this copy; re-point it with: ln -sfn "+upgrade+" "+link)
+	require.Equal(t, before, snapshotTestnetFiles(t, f.home))
+	// Re-pointed with an absolute path inside the copy: accepted.
+	require.NoError(t, os.Remove(link))
+	require.NoError(t, os.Symlink(upgrade, link))
+	require.NoError(t, preflightTestnetCommand(f.command(t, "in-place-testnet"), []string{"fork", f.operator}))
+	// A target the copy lacks gets the generic instruction.
+	require.NoError(t, os.Remove(link))
+	require.NoError(t, os.Symlink(t.TempDir(), link))
+	require.ErrorContains(t, preflightTestnetCommand(f.command(t, "in-place-testnet"), []string{"fork", f.operator}), "re-point it to a directory inside")
+}
+
 func TestTestnetBypassRejectedBeforeRootConstruction(t *testing.T) {
 	t.Setenv(poaSimulationEnvVar, "not_for-production")
+	require.ErrorContains(t, RejectSimulationAdminBypass(), poaSimulationEnvVar+" must be unset")
 	cmd := NewRootCmd()
+	// The caller prints the returned error; cobra must not print it first.
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
 	cmd.SetArgs([]string{"start", "--home", t.TempDir()})
 	require.ErrorContains(t, cmd.Execute(), poaSimulationEnvVar+" must be unset")
+	require.Empty(t, output.String())
 	for _, name := range []string{"export", "snapshots", "init"} {
 		cmd.SetArgs([]string{name})
 		require.ErrorContains(t, cmd.Execute(), poaSimulationEnvVar+" must be unset")
@@ -522,12 +654,13 @@ func TestTestnetJournalCommitAndConfirmation(t *testing.T) {
 	called := false
 	cmd.RunE = func(_ *cobra.Command, _ []string) error {
 		called = true
-		journal, err := readTestnetJournal(f.home)
-		require.NoError(t, err)
-		require.False(t, journal.Complete)
+		// The SDK still has to validate its own configuration, so nothing is
+		// recorded yet; the application creator receives the checked journal.
+		require.NoFileExists(t, filepath.Join(f.home, inPlaceTestnetMarker))
+		require.Equal(t, preflight.journal, serverContext.Viper.Get(testnetJournalOption))
 		return nil
 	}
-	protectInPlaceTestnetCommand(root)
+	require.NoError(t, protectInPlaceTestnetCommand(root))
 	before := snapshotTestnetFiles(t, f.home)
 	cmd.SetIn(strings.NewReader("no\n"))
 	require.NoError(t, cmd.RunE(cmd, []string{"fork", f.operator}))
@@ -536,6 +669,9 @@ func TestTestnetJournalCommitAndConfirmation(t *testing.T) {
 	cmd.SetIn(strings.NewReader("yes\n"))
 	require.NoError(t, cmd.RunE(cmd, []string{"fork", f.operator}))
 	require.True(t, called)
+	require.Equal(t, before, snapshotTestnetFiles(t, f.home))
+	// newJournaledTestnetApp records the journal once the application is built.
+	require.NoError(t, writeTestnetJournal(f.home, preflight.journal, true))
 	fake := &testnetCommitRecorder{height: 4, err: fmt.Errorf("commit failed")}
 	app := &journaledTestnetApp{Application: fake, home: f.home, journal: preflight.journal}
 	_, err := app.Commit()
@@ -610,22 +746,45 @@ func TestTestnetConfigCannotOverrideDefaultHome(t *testing.T) {
 	}
 }
 
+// Attach the fixture command below a root, as the real CLI does.
+func (f *testnetPreflightFixture) nestedCommand(t *testing.T, path ...string) *cobra.Command {
+	t.Helper()
+	parent := &cobra.Command{Use: "manifestd"}
+	for _, name := range path[:len(path)-1] {
+		child := &cobra.Command{Use: name}
+		parent.AddCommand(child)
+		parent = child
+	}
+	cmd := f.command(t, path[len(path)-1])
+	parent.AddCommand(cmd)
+	return cmd
+}
+
 func TestTestnetApplicationCommandsProtected(t *testing.T) {
-	for _, name := range []string{"start", "export", "prune", "rollback", "bootstrap-state", "module-hash-by-height"} {
-		t.Run(name, func(t *testing.T) {
+	for _, path := range [][]string{{"start"}, {"export"}, {"prune"}, {"rollback"}, {"module-hash-by-height"}, {"comet", "bootstrap-state"}, {"snapshots", "restore"}} {
+		t.Run(strings.Join(path, " "), func(t *testing.T) {
 			f := newTestnetPreflightFixture(t)
 			journal := testnetJournal{Version: 1, SourceChainID: "source", ChainID: "fork", Operator: f.operator, ConsensusAddress: f.key.Key.Address, SourceHeight: 3}
 			require.NoError(t, writeTestnetJournal(f.home, journal, true))
+			cmd := f.nestedCommand(t, path...)
+			require.True(t, testnetAppCommand(cmd))
 			before := snapshotTestnetFiles(t, f.home)
-			require.ErrorContains(t, preflightTestnetCommand(f.command(t, name), nil), "incomplete")
+			require.ErrorContains(t, preflightTestnetCommand(cmd, nil), "incomplete")
 			require.Equal(t, before, snapshotTestnetFiles(t, f.home))
 		})
 	}
-	f := newTestnetPreflightFixture(t)
-	parent := &cobra.Command{Use: "snapshots"}
-	child := f.command(t, "restore")
-	parent.AddCommand(child)
-	require.True(t, testnetAppCommand(child))
+	// Client commands share these names but never open the application databases.
+	for _, path := range [][]string{{"keys", "export"}, {"tx", "feegrant", "prune"}, {"testnet", "start"}, {"comet", "show-node-id"}} {
+		t.Run(strings.Join(path, " "), func(t *testing.T) {
+			f := newTestnetPreflightFixture(t)
+			journal := testnetJournal{Version: 1, SourceChainID: "source", ChainID: "fork", Operator: f.operator, ConsensusAddress: f.key.Key.Address, SourceHeight: 3}
+			require.NoError(t, writeTestnetJournal(f.home, journal, true))
+			cmd := f.nestedCommand(t, path...)
+			require.False(t, testnetAppCommand(cmd))
+			require.NoError(t, preflightTestnetCommand(cmd, nil))
+			require.Nil(t, cmd.Context().Value(testnetPreflightContextKey{}))
+		})
+	}
 }
 
 func TestTestnetSDKEnvironmentBindingsCannotEscapeHome(t *testing.T) {

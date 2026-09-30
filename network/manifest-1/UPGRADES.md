@@ -194,6 +194,10 @@ type, local file signing, isolated peer settings, and the configured mutable
 paths. Targets must stay inside the copied home and cannot alias other files
 that the conversion reads, overwrites, or removes. Correct copied configuration
 before retrying a rejected preflight; do not point it back at production files.
+The conversion journal is written only after every check that can reject the
+copy without changing it has passed. That covers the preflight, the SDK's own
+configuration, pruning, profiling and tracing checks, and the application rewrite,
+so a rejected copy can be corrected and retried in place.
 
 Prepare the copied home before running the command:
 
@@ -230,8 +234,32 @@ Prepare the copied home before running the command:
    and `unixgram`), including Comet's
    `[rpc] grpc_laddr`, are also rejected to keep socket files inside the mutation
    boundary. Every comma-separated endpoint in `[rpc] laddr` is checked. Use TCP
-   listeners on ports reserved for the fork.
-5. Set `POA_ADMIN_ADDRESS` to the local operator's canonical lowercase **account**
+   listeners on ports reserved for the fork. Conversion binds each Comet listener
+   and each enabled SDK gRPC or API address once before writing anything, and
+   refuses to start if any of them is in use.
+   Disable every `[streaming.<service>]` plugin and any `statsd` or `dogstatsd`
+   telemetry sink, so the fork cannot stream blocks or push metrics labelled as the
+   source chain to production collectors. Keep configuration only in
+   `config/config.toml` and `config/app.toml`: the SDK would read a
+   `config/config.json` or `config/app.json` in their place, so preflight rejects
+   both.
+   Clear `halt-height` and `halt-time` from the copied `app.toml`. A source stopped
+   with `halt-height` stores the block at that height without committing it.
+   Conversion replays that block as the fork's first block, so a copied halt
+   setting would stop the fork before its first commit. Conversion rejects any
+   `halt-height` at or below that block, and any `halt-time`. Set either only
+   after the fork commits its first block.
+5. Set `chain-id` in `config/client.toml` to the fork's chain ID and `node` to the
+   fork RPC. A copied `client.toml` names the source chain, and `init` wrote it
+   that way. `tx` commands on a fork home refuse any other chain ID, so a
+   transaction meant for the fork cannot be signed for the source chain. Queries
+   are not checked: with a stale `node`, they silently read the source network.
+6. Pass the home as a resolved path. Preflight rejects a home reached through a
+   symlinked directory, such as `/tmp` on macOS, and names the resolved path to
+   use instead. Cosmovisor records absolute `current` links under the original
+   `DAEMON_HOME`, so re-point `cosmovisor/current` into the copy. Preflight prints
+   the `ln -sfn` command when the copy contains the matching directory.
+7. Set `POA_ADMIN_ADDRESS` to the local operator's canonical lowercase **account**
    address before startup. Use an account with a local signing key; module
    accounts cannot serve as the funded operator. Retain that byte-identical value
    for **every ordinary restart, service/container launch and cosmovisor binary
@@ -264,7 +292,11 @@ In a normal daemon process, this application's sole upgrade handler is named
 after its build version. Unless an upgrade is due on the first fork block,
 `x/upgrade` requires a handler for the last completed upgrade during its startup
 check. An ordinary replay retains any pending source plan; account for its halt
-height when choosing the copied state and planning the rehearsal.
+height when choosing the copied state and planning the rehearsal. Conversion
+applies `x/upgrade`'s first-block decision before writing anything. It rejects a
+binary that lacks the last completed upgrade's handler, lacks the handler for a
+plan due at the first fork block, or registers a pending plan's handler before
+that plan's height.
 
 The initializer replaces all source validators, including jailed/unbonded records,
 consensus and power indices, delegation records and unbonding/redelegation queues.
@@ -322,12 +354,14 @@ binary swap. Run `in-place-testnet` only once per copied home; the first fork
 block persists the application rewrite.
 
 Conversion is not a transaction across all files and databases. The marker is
-written as incomplete before conversion and becomes complete only after the
-first successful fork application commit. A restart also checks persisted
-Comet/application agreement. If initialization, commit, or the process fails and
-the marker remains incomplete or the stored identities disagree, discard that
-working copy and prepare a fresh one from the stopped source backup. Do not
-delete/edit the marker or repair signing state to retry an interrupted conversion.
+written as incomplete just before conversion rewrites the copy, and becomes
+complete only after the first successful fork application commit. A restart also
+checks persisted Comet/application agreement. If conversion, commit, or the
+process fails and the marker remains incomplete or the stored identities disagree,
+discard that working copy and prepare a fresh one from the stopped source backup.
+Do not delete/edit the marker or repair signing state to retry an interrupted
+conversion. `rollback` refuses to remove the fork's first committed block, which
+would restore the unmodified source state.
 
 Use a clean stop for completed forks too. A crash or OOM kill between application
 commit and Comet's state save can leave the application one block ahead. Although

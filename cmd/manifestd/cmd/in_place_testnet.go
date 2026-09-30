@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	stdmath "math"
@@ -18,6 +19,7 @@ import (
 	"cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
 	circuittypes "cosmossdk.io/x/circuit/types"
+	upgradekeeper "cosmossdk.io/x/upgrade/keeper"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
@@ -70,6 +72,10 @@ func newTestnetApp(logger log.Logger, db dbm.DB, traceStore io.Writer, appOpts s
 	}
 
 	chainApp := newApp(logger, db, traceStore, appOpts).(*app.ManifestApp)
+	// BaseApp applies these options to every block, including the fork's first.
+	if err := validateTestnetHaltSettings(appOpts, chainApp.LastBlockHeight()+1); err != nil {
+		panic(fmt.Errorf("initialize in-place testnet: %w", err))
+	}
 	if err := initAppForTestnet(chainApp, newValAddr, newValPubKey, newOperatorAddress, cast.ToString(appOpts.Get(server.KeyTriggerTestnetUpgrade))); err != nil {
 		panic(fmt.Errorf("initialize in-place testnet: %w", err))
 	}
@@ -119,16 +125,20 @@ func initAppForTestnet(chainApp *app.ManifestApp, newValAddr cmtbytes.HexBytes, 
 	if err := validateTestnetAuthority(operator, chainApp.POAKeeper.GetAdmin(ctx)); err != nil {
 		return err
 	}
+	if chainApp.LastBlockHeight() > stdmath.MaxInt64-testnetUpgradeDelay {
+		return fmt.Errorf("testnet upgrade height overflows int64")
+	}
+	// A triggered plan runs at the fork's first block.
+	firstHeight := chainApp.LastBlockHeight() + testnetUpgradeDelay
 	if upgradeToTrigger != "" {
 		if !chainApp.UpgradeKeeper.HasHandler(upgradeToTrigger) {
 			return fmt.Errorf("testnet upgrade handler %q is not registered in this binary", upgradeToTrigger)
 		}
-		if chainApp.LastBlockHeight() > stdmath.MaxInt64-testnetUpgradeDelay {
-			return fmt.Errorf("testnet upgrade height overflows int64")
+		if chainApp.UpgradeKeeper.IsSkipHeight(firstHeight) {
+			return fmt.Errorf("testnet upgrade height %d is in --unsafe-skip-upgrades", firstHeight)
 		}
-		if height := chainApp.LastBlockHeight() + testnetUpgradeDelay; chainApp.UpgradeKeeper.IsSkipHeight(height) {
-			return fmt.Errorf("testnet upgrade height %d is in --unsafe-skip-upgrades", height)
-		}
+	} else if err := validateTestnetFirstBlockUpgrade(ctx, chainApp.UpgradeKeeper, firstHeight); err != nil {
+		return err
 	}
 	ctx, write := ctx.CacheContext()
 	valAddr := sdk.ValAddress(operator)
@@ -229,6 +239,37 @@ func initAppForTestnet(chainApp *app.ManifestApp, newValAddr cmtbytes.HexBytes, 
 		}
 	}
 	write()
+	return nil
+}
+
+// Without a trigger, the fork's first block runs x/upgrade's PreBlocker against
+// the source's upgrade state. Mirror its decisions so a binary that would stop
+// there is rejected before conversion writes anything.
+func validateTestnetFirstBlockUpgrade(ctx sdk.Context, keeper *upgradekeeper.Keeper, height int64) error {
+	plan, err := keeper.GetUpgradePlan(ctx)
+	if err != nil && !errors.Is(err, upgradetypes.ErrNoUpgradePlanFound) {
+		return err
+	}
+	found := err == nil
+	due := found && plan.ShouldExecute(height)
+	skipped := due && keeper.IsSkipHeight(height)
+	if !due || skipped {
+		last, _, err := keeper.GetLastCompletedUpgrade(ctx)
+		if err != nil {
+			return err
+		}
+		if last != "" && !keeper.HasHandler(last) {
+			return fmt.Errorf("this binary has no handler for the source's last completed upgrade %q, so x/upgrade would stop the fork at its first block; convert with the binary that completed it, or use --%s", last, server.KeyTriggerTestnetUpgrade)
+		}
+	}
+	switch {
+	case !found, skipped:
+		return nil
+	case due && !keeper.HasHandler(plan.Name):
+		return fmt.Errorf("source upgrade %q is due at the fork's first block %d, but this binary has no handler for it", plan.Name, height)
+	case !due && keeper.HasHandler(plan.Name):
+		return fmt.Errorf("this binary registers the pending source upgrade %q before its height %d, so x/upgrade would stop the fork at its first block", plan.Name, plan.Height)
+	}
 	return nil
 }
 

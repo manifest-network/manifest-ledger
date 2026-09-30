@@ -4,16 +4,19 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	dockerclient "github.com/moby/moby/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
@@ -49,13 +52,16 @@ func TestInPlaceTestnet(t *testing.T) {
 
 	for _, triggerUpgrade := range []bool{false, true} {
 		t.Run(fmt.Sprintf("trigger_upgrade=%t", triggerUpgrade), func(t *testing.T) {
-			testInPlaceTestnet(t, triggerUpgrade, false)
+			testInPlaceTestnet(t, triggerUpgrade, false, false)
 		})
 	}
-	t.Run("released_source_upgrade", func(t *testing.T) { testInPlaceTestnet(t, false, true) })
+	t.Run("released_source_upgrade", func(t *testing.T) { testInPlaceTestnet(t, false, true, false) })
+	t.Run("stored_halt_block", func(t *testing.T) { testInPlaceTestnet(t, false, false, true) })
 }
 
-func testInPlaceTestnet(t *testing.T, triggerUpgrade, releasedSource bool) {
+// haltedSource stops the source with app.toml's halt-height, as operators do, so
+// the copied home holds one stored block above its committed application state.
+func testInPlaceTestnet(t *testing.T, triggerUpgrade, releasedSource, haltedSource bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
@@ -122,6 +128,9 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade, releasedSource bool) {
 	require.NoError(t, err, "%s", stderr)
 	upgradeName := strings.TrimSpace(string(version))
 	require.NotEmpty(t, upgradeName)
+	if haltedSource {
+		sourceHeight = haltInPlaceTestnetSource(t, ctx, chain, client, releasedSource)
+	}
 
 	// StopAllNodes also removes the containers. Copy the counters after each
 	// process exits, while its container still exists, before removing it.
@@ -161,9 +170,19 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade, releasedSource bool) {
 		},
 		"statesync": testutil.Toml{"enable": false},
 	}))
+	// A copied client.toml names the source chain, as `init --chain-id` wrote it.
+	require.NoError(t, testutil.ModifyTomlConfigFile(ctx, logger, client, t.Name(), node.VolumeName, "config/client.toml", testutil.Toml{
+		"chain-id": cfg.ChainID,
+	}))
 
 	forkChainID := "manifest-in-place-testnet"
 	assertInPlaceTestnetPreflight(t, ctx, node, forkChainID, operator.FormattedAddress(), sourceKeyJSON, keyJSON)
+	if haltedSource {
+		// The copied setting would stop the fork at its first block, the stored one.
+		rejectInPlaceTestnetConversion(t, ctx, node, "copied halt-height", forkChainID, operator.FormattedAddress(),
+			fmt.Sprintf("halt-height %d would stop the fork before its first block %d commits", sourceHeight+1, sourceHeight+1))
+		require.NoError(t, testutil.ModifyTomlConfigFile(ctx, logger, client, t.Name(), node.VolumeName, "config/app.toml", testutil.Toml{"halt-height": 0}))
+	}
 	command := node.BinCommand("in-place-testnet", forkChainID, operator.FormattedAddress(), "--skip-confirmation")
 	if triggerUpgrade {
 		command = append(command, "--trigger-testnet-upgrade", upgradeName)
@@ -292,6 +311,12 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade, releasedSource bool) {
 	require.NoError(t, json.Unmarshal(genesisJSON, &genesis))
 	require.Equal(t, forkChainID, genesis.ChainID)
 
+	// Signing from the fork home with the copied source chain ID is refused
+	// before a transaction valid on the source chain can exist.
+	_, _, err = node.Exec(ctx, node.NodeCommand("tx", "bank", "send", operator.KeyName(), existingUser.FormattedAddress(), "1"+cfg.Denom,
+		"--keyring-backend", "test", "--yes"), node.Chain.Config().Env)
+	require.ErrorContains(t, err, fmt.Sprintf("client chain ID %q is not this fork's %q", cfg.ChainID, forkChainID))
+
 	// Prove that the replacement account can sign and spend its balance on the
 	// new chain ID. Use explicit flags because ChainConfig still names the source.
 	sendInPlaceTestnetTx(t, ctx, node, operator.KeyName(), forkChainID,
@@ -388,6 +413,60 @@ func decodeInPlaceTestnetDelegations(data []byte) (inPlaceTestnetDelegationsResp
 	var response inPlaceTestnetDelegationsResponse
 	err := json.Unmarshal(data, &response)
 	return response, err
+}
+
+// Restart the source validators with app.toml's halt-height and wait until they
+// store the halt block but refuse to finalize it. Returns the committed height,
+// one below the stored block.
+func haltInPlaceTestnetSource(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, client *dockerclient.Client, releasedSource bool) int64 {
+	t.Helper()
+	height, err := chain.Height(ctx)
+	require.NoError(t, err)
+	// Leave room for blocks committed while the validators stop.
+	haltHeight := height + 6
+	logger := zaptest.NewLogger(t)
+	for _, node := range chain.Nodes() {
+		require.NoError(t, node.StopContainer(ctx))
+		if !releasedSource {
+			dockerutil.CopyCoverageFromContainer(ctx, t, client, node.ContainerID(), node.HomeDir(), ExternalGoCoverDir)
+		}
+		require.NoError(t, node.RemoveContainer(ctx))
+		require.NoError(t, testutil.ModifyTomlConfigFile(ctx, logger, client, t.Name(), node.VolumeName, "config/app.toml", testutil.Toml{"halt-height": haltHeight}))
+	}
+	// Two equal validators need each other: a lone node stays in block sync.
+	nodes := chain.Nodes()
+	errs := make([]error, len(nodes))
+	var wg sync.WaitGroup
+	for i, node := range nodes {
+		wg.Go(func() {
+			if errs[i] = node.CreateNodeContainer(ctx); errs[i] == nil {
+				errs[i] = node.StartContainer(ctx)
+			}
+		})
+	}
+	wg.Wait()
+	require.NoError(t, errors.Join(errs...))
+	rpc := chain.Validators[0].Client
+	waitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	for {
+		// The blockstore serves the stored halt block, and /status reports the
+		// blockstore height, so read the application's committed height instead.
+		_, blockErr := rpc.Block(waitCtx, &haltHeight)
+		info, infoErr := rpc.ABCIInfo(waitCtx)
+		if blockErr == nil && infoErr == nil && info.Response.LastBlockHeight == haltHeight-1 {
+			return haltHeight - 1
+		}
+		committed := int64(-1)
+		if infoErr == nil {
+			committed = info.Response.LastBlockHeight
+		}
+		select {
+		case <-waitCtx.Done():
+			require.FailNow(t, "source did not stop at its halt height", "halt height %d, committed height %d, block error %v, ABCI info error %v", haltHeight, committed, blockErr, infoErr)
+		case <-time.After(time.Second):
+		}
+	}
 }
 
 func waitForInPlaceTestnetHeight(t *testing.T, ctx context.Context, rpc *rpchttp.HTTP, chainID string, target int64) int64 {
