@@ -438,6 +438,12 @@ func testnetPathInside(home, path string) bool {
 }
 
 func rejectTestnetPathSymlinks(home, path string) error {
+	if home == "" || !filepath.IsAbs(home) || filepath.Clean(home) != home {
+		return fmt.Errorf("fork home must be an absolute, clean directory path")
+	}
+	if !testnetPathInside(home, path) {
+		return fmt.Errorf("writable fork path %q must remain inside the fork home", path)
+	}
 	for current := path; current != home; current = filepath.Dir(current) {
 		info, err := os.Lstat(current)
 		if os.IsNotExist(err) {
@@ -494,10 +500,11 @@ func validateTestnetHome(home string, cfg *cmtcfg.Config, v *viper.Viper) error 
 	if !testnetPathInside(home, cfg.DBDir()) || filepath.Clean(cfg.DBDir()) != cfg.DBDir() {
 		return fmt.Errorf("database directory must remain inside the fork home")
 	}
-	// Stable traversal makes the first validation error reproducible when
+	// Lexical label order makes the first validation error reproducible when
 	// multiple paths are invalid or collide.
 	fileLabels := slices.Sorted(maps.Keys(files))
 	dirLabels := slices.Sorted(maps.Keys(dirs))
+	wal := cfg.Consensus.WalFile()
 	for _, label := range fileLabels {
 		path := files[label]
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path || !testnetPathInside(home, path) {
@@ -513,13 +520,13 @@ func validateTestnetHome(home string, cfg *cmtcfg.Config, v *viper.Viper) error 
 		if err == nil && !info.Mode().IsRegular() {
 			return fmt.Errorf("%s must name a regular file", label)
 		}
+		if label != "consensus WAL" && isTestnetWALRotation(wal, path) {
+			return fmt.Errorf("%s path collides with a consensus WAL rotation", label)
+		}
 		for _, other := range fileLabels {
 			otherPath := files[other]
 			if other != label && (path == otherPath || testnetPathInside(path, otherPath)) {
 				return fmt.Errorf("%s path collides with %s", label, other)
-			}
-			if other != "consensus WAL" && isTestnetWALRotation(cfg.Consensus.WalFile(), otherPath) {
-				return fmt.Errorf("%s path collides with a consensus WAL rotation", other)
 			}
 		}
 		for _, dirLabel := range dirLabels {

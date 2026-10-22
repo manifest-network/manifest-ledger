@@ -1,6 +1,8 @@
 module github.com/manifest-network/manifest-ledger
 
-go 1.26.10
+go 1.26.0
+
+toolchain go1.26.10
 
 replace (
 	// core v0.12 was tagged wrong (SDK v51)

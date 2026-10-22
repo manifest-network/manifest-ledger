@@ -28,7 +28,14 @@ If you are a validator joining the network after the initial genesis launch, fol
 
 ### Dependencies
 
-> Prerequisite: go1.25+, git, gcc, make, jq
+> Prerequisite: the Go toolchain specified by the selected release (currently Go 1.26.10), git, gcc, make, jq
+
+After checking out the release, check its `go.mod` toolchain directive. For the
+current source, build with `GOTOOLCHAIN=go1.26.10 make install`; older release tags
+may specify a different compiler. Go's default `GOTOOLCHAIN=auto` can download
+the suggested compiler, while `GOTOOLCHAIN=local` disables automatic switching.
+See the [Go upgrade notes](../../README.md#go-toolchain-and-upgrade-notes) for
+runtime behavior changes.
 
 **Arch Linux:**
 

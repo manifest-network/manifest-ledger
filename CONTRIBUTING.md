@@ -69,6 +69,13 @@ changing that runner can raise the glibc version required by shipped binaries.
 Coverage requires both instrumented Docker images and a matching official host Go
 release; follow the [coverage instructions](README.md#coverage).
 
+CI reads the `toolchain` directive in `go.mod` with `setup-go` v6; the `go`
+directive is the dependency minimum, not the release compiler pin. Keep the
+toolchain suggestions in `go.work` and `interchaintest/go.mod` and the direct
+Docker build default aligned with it. `scripts/test-coverage-build.sh` checks
+that alignment. Docker CI and release builds pass the selected compiler version
+explicitly to the Dockerfile.
+
 ### Vulnerability policy
 
 `GOTOOLCHAIN=go1.26.10 make govulncheck` installs scanner v1.7.0 under `build/` and

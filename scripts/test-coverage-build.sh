@@ -10,7 +10,14 @@ export COVERAGE_GO_LOG="$test_dir/go.log"
 export PATH="$test_dir:$PATH"
 
 # The image must consume the compiler selected by Make, not a fixed builder tag.
-grep -Eq '^ARG GO_VERSION=' Dockerfile
+# Direct Docker builds keep a default; CI reads the toolchain from go.mod.
+# Catch drift in that default and the workspace/module toolchain suggestions.
+toolchain=$(awk '$1 == "toolchain" {print $2}' go.mod)
+[[ "$toolchain" =~ ^go[0-9]+\.[0-9]+\.[0-9]+$ ]]
+grep -Fxq "ARG GO_VERSION=${toolchain#go}" Dockerfile
+for manifest in go.work interchaintest/go.mod; do
+  test "$(awk '$1 == "toolchain" {print $2}' "$manifest")" = "$toolchain"
+done
 grep -Fxq 'FROM golang:${GO_VERSION}-alpine AS go-builder' Dockerfile
 
 cat > "$test_dir/selected-go" <<'EOF'

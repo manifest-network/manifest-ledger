@@ -38,6 +38,12 @@ jobs:
       - name: Check out the repo
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      - name: Set up Go
+        id: go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
@@ -69,6 +75,7 @@ jobs:
           file: Dockerfile
           context: .
           build-args: |
+            GO_VERSION=${{ steps.go.outputs.go-version }}
             VERSION=${{ github.event.release.tag_name || github.ref_name }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
