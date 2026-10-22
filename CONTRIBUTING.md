@@ -71,7 +71,7 @@ release; follow the [coverage instructions](README.md#coverage).
 
 ### Vulnerability policy
 
-`GOTOOLCHAIN=go1.25.14 make govulncheck` installs scanner v1.7.0 under `build/` and
+`GOTOOLCHAIN=go1.26.10 make govulncheck` installs scanner v1.7.0 under `build/` and
 runs the same script as CI. It scans `./cmd/manifestd` with release tags
 `netgo,ledger`, including hardware-wallet dependencies. Keep the tags aligned with
 `.goreleaser.yaml`. The raw JSON report is retained at
@@ -93,5 +93,8 @@ An exception also requires the advisory to remain `UNREVIEWED` and to report no
 fixed version. Any version/revision change, new reachable finding, or expiry
 fails the gate. Re-review evidence before changing an exception; extending a date
 alone does not establish safety. Run `python3 scripts/test-vulnerability-report.py`
-after editing the policy or its parser. The current MessagePack exception is
-tracked in ENG-867 and expires on 2026-10-15.
+after editing the policy or its parser. No exceptions are currently active.
+The former MessagePack exception for [GO-2026-4740](https://pkg.go.dev/vuln/GO-2026-4740)
+was removed after that advisory was withdrawn as a duplicate of
+[GO-2026-4513](https://pkg.go.dev/vuln/GO-2026-4513), which is fixed in the selected
+MessagePack v2.4.1.

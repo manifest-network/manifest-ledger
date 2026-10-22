@@ -291,12 +291,12 @@ Append `-random` to the end of the commands above to run the simulation with a r
 
 ## Coverage
 
-Use an official Go release (CI uses 1.25.14) to build both instrumented images
+Use an official Go release (CI uses 1.26.10) to build both instrumented images
 and collect host coverage with the same compiler:
 
 ```bash
-GOTOOLCHAIN=go1.25.14 make local-image-coverage local-image-testnet-upgrade
-GOTOOLCHAIN=go1.25.14 make coverage
+GOTOOLCHAIN=go1.26.10 make local-image-coverage local-image-testnet-upgrade
+GOTOOLCHAIN=go1.26.10 make coverage
 ```
 
 The production `local-image` target does not collect coverage. Development/custom
@@ -304,7 +304,7 @@ Go versions are rejected before collection; when selecting `GO=/path/to/go`, use
 the same selection for both commands. Codecov's `target: auto` compares patch
 coverage to the base commit's overall coverage, with no allowed decrease.
 
-For the daemon vulnerability scan used by CI, run `GOTOOLCHAIN=go1.25.14 make
+For the daemon vulnerability scan used by CI, run `GOTOOLCHAIN=go1.26.10 make
 govulncheck`. See [the contributor guide](CONTRIBUTING.md#vulnerability-policy)
 for scan scope and reviewed exceptions.
 
