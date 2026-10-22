@@ -161,7 +161,7 @@ Use [`@manifest-network/manifestjs`](#javascript--typescript-sdk) — a generate
 
 **Software Dependencies**
 
-1. The Go programming language - <https://go.dev/>
+1. The Go toolchain declared in [`go.mod`](./go.mod) (currently Go 1.26.10) - <https://go.dev/>
 2. Git distributed version control - <https://git-scm.com/>
 3. Docker - <https://www.docker.com/get-started/>
 4. GNU Make - <https://www.gnu.org/software/make/>
@@ -198,13 +198,39 @@ Then run:
 
 ```bash
 # build the base binary for interaction
-make install
+GOTOOLCHAIN=go1.26.10 make install
 mv $GOPATH/bin/manifestd /usr/local/bin
 manifestd
 
 # build docker image for e2e testing
 make local-image
 ```
+
+### Go toolchain and upgrade notes
+
+The modules require Go 1.26.0 or newer, as do the patched `golang.org/x`
+dependencies. The `toolchain go1.26.10` directive suggests the patched compiler
+for this repository without requiring downstream importers to use that exact
+patch. CI and releases read this directive from `go.mod`. Use the selected
+release's compiler version when building a node; older release tags can differ.
+With `GOTOOLCHAIN=auto`, Go may download the suggested toolchain. Setting
+`GOTOOLCHAIN=local` disables that switching and uses only your installed compiler.
+
+This release adopts the Go 1.26 standard-library defaults, including these
+operator-visible changes:
+
+- `urlstrictcolons`: malformed URL hosts are rejected. Use bracketed IPv6 RPC
+  addresses such as `--node 'http://[::1]:26657'`.
+- `cryptocustomrand`: affected crypto operations use secure randomness rather
+  than custom random readers; deterministic test readers may need updating.
+- `tlssecpmlkem`: TLS offers the hybrid SecP256r1MLKEM768 and SecP384r1MLKEM1024
+  key exchanges by default.
+- `httpservecontentmaxranges`: `http.ServeContent` limits Range headers to 200
+  ranges by default; headers over the limit are ignored and the full content is
+  served.
+
+See the [Go 1.26 release notes](https://go.dev/doc/go1.26) and
+[GODEBUG compatibility settings](https://go.dev/doc/godebug) for details.
 
 ## Testing
 
@@ -291,12 +317,12 @@ Append `-random` to the end of the commands above to run the simulation with a r
 
 ## Coverage
 
-Use an official Go release (CI uses 1.25.14) to build both instrumented images
+Use an official Go release (CI uses 1.26.10) to build both instrumented images
 and collect host coverage with the same compiler:
 
 ```bash
-GOTOOLCHAIN=go1.25.14 make local-image-coverage local-image-testnet-upgrade
-GOTOOLCHAIN=go1.25.14 make coverage
+GOTOOLCHAIN=go1.26.10 make local-image-coverage local-image-testnet-upgrade
+GOTOOLCHAIN=go1.26.10 make coverage
 ```
 
 The production `local-image` target does not collect coverage. Development/custom
@@ -304,7 +330,7 @@ Go versions are rejected before collection; when selecting `GO=/path/to/go`, use
 the same selection for both commands. Codecov's `target: auto` compares patch
 coverage to the base commit's overall coverage, with no allowed decrease.
 
-For the daemon vulnerability scan used by CI, run `GOTOOLCHAIN=go1.25.14 make
+For the daemon vulnerability scan used by CI, run `GOTOOLCHAIN=go1.26.10 make
 govulncheck`. See [the contributor guide](CONTRIBUTING.md#vulnerability-policy)
 for scan scope and reviewed exceptions.
 

@@ -708,6 +708,74 @@ func TestTestnetHomeMutationPaths(t *testing.T) {
 	require.ErrorContains(t, validateTestnetHome(f.home, f.config, v), "streaming must be disabled")
 }
 
+func TestTestnetHomeDeterministicValidationErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(*testnetPreflightFixture, *viper.Viper) string
+	}{
+		{"multiple invalid files", func(f *testnetPreflightFixture, v *viper.Viper) string {
+			outside := filepath.Join(filepath.Dir(f.home), "outside")
+			v.Set("trace-store", filepath.Join(outside, "trace.log"))
+			v.Set("cpu-profile", filepath.Join(outside, "cpu.log"))
+			return fmt.Sprintf("cpu-profile path %q must be a clean file path inside the fork home", filepath.Join(outside, "cpu.log"))
+		}},
+		{"multiple file collisions", func(f *testnetPreflightFixture, v *viper.Viper) string {
+			v.Set("trace-store", f.config.GenesisFile())
+			v.Set("cpu-profile", f.config.GenesisFile())
+			return "cpu-profile path collides with genesis"
+		}},
+		{"multiple directory collisions", func(f *testnetPreflightFixture, _ *viper.Viper) string {
+			f.config.Mempool.WalPath = filepath.Join(f.home, "data", "application.db")
+			f.config.StateSync.TempDir = filepath.Join(f.home, "data", "snapshots")
+			return "application DB directory collides with mempool WAL"
+		}},
+		{"multiple WAL rotation collisions", func(f *testnetPreflightFixture, v *viper.Viper) string {
+			v.Set("trace-store", f.config.Consensus.WalFile()+".002")
+			v.Set("cpu-profile", f.config.Consensus.WalFile()+".001")
+			return "cpu-profile path collides with a consensus WAL rotation"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newTestnetPreflightFixture(t)
+			v := viper.New()
+			want := tc.setup(f, v)
+			// Each call recreates the path maps. Unsorted traversal must not
+			// change which error the operator sees when several paths fail.
+			for range 100 {
+				require.EqualError(t, validateTestnetHome(f.home, f.config, v), want)
+			}
+		})
+	}
+}
+
+func TestRejectTestnetPathSymlinks(t *testing.T) {
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	path := filepath.Join(home, "nested", "output")
+	for _, tc := range []struct {
+		name, home, path, want string
+	}{
+		{"missing descendant", home, path, ""},
+		{"trailing separator", home + string(filepath.Separator), path, "absolute, clean directory path"},
+		{"unclean home", home + string(filepath.Separator) + ".", path, "absolute, clean directory path"},
+		{"relative home", "relative", path, "absolute, clean directory path"},
+		{"empty home", "", path, "absolute, clean directory path"},
+		{"outside home", home, filepath.Dir(home), "must remain inside the fork home"},
+		{"home itself", home, home, "must remain inside the fork home"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := rejectTestnetPathSymlinks(tc.home, tc.path)
+			if tc.want == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.want)
+			}
+		})
+	}
+	require.NoError(t, os.Symlink(t.TempDir(), filepath.Join(home, "nested")))
+	require.ErrorContains(t, rejectTestnetPathSymlinks(home, path), "traverses a symlink")
+}
+
 func TestTestnetSigningStateAndJournalMalformed(t *testing.T) {
 	f := newTestnetPreflightFixture(t)
 	for _, data := range []string{"{", `{"height":"0","round":0,"step":0,"signature":"AQ=="}`} {
