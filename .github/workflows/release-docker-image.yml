@@ -44,6 +44,12 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # setup-go can select the minimum Go version when GOTOOLCHAIN=local.
+      - name: Verify release Go toolchain
+        env:
+          SELECTED_GO_VERSION: ${{ steps.go.outputs.go-version }}
+        run: test "go${SELECTED_GO_VERSION}" = "$(awk '$1 == "toolchain" { print $2 }' go.mod)"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
