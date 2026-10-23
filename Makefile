@@ -6,7 +6,7 @@ DOCKER := $(shell which docker)
 LEDGER_ENABLED ?= true
 BINDIR ?= $(GOPATH)/bin
 BUILD_DIR = ./build
-VERSION ?= v2.3.1
+VERSION ?= v2.4.0
 GO ?= go
 
 export GO111MODULE = on
