@@ -201,7 +201,17 @@ local-image-testnet-upgrade: check-coverage-go-version
 		--build-arg BUILD_TAGS='muslc testnet_upgrade_fixture' \
 		--build-arg VERSION=eng879-test-upgrade -t manifest-testnet-upgrade:local
 
-.PHONY: local-image local-image-coverage local-image-testnet-upgrade check-coverage-go-version
+# The released-source in-place e2e converts state whose last completed upgrade is
+# this release. x/upgrade refuses to start a binary without that upgrade's handler,
+# so the conversion image takes the source's version, never the release VERSION.
+IN_PLACE_SOURCE_VERSION ?= v2.3.1
+
+local-image-in-place-base: check-coverage-go-version
+	@echo "--> Building in-place conversion base image with coverage"
+	docker build . --build-arg GO_VERSION=$(COVERAGE_GO_VERSION) --build-arg BUILD_CMD=build-coverage \
+		--build-arg VERSION=$(IN_PLACE_SOURCE_VERSION) -t manifest-in-place-base:local
+
+.PHONY: local-image local-image-coverage local-image-testnet-upgrade local-image-in-place-base check-coverage-go-version
 
 #################
 ###   Test    ###

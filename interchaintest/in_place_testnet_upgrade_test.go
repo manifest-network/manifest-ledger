@@ -31,7 +31,12 @@ import (
 
 const inPlaceTestnetFixtureVersion = "eng879-test-upgrade"
 
-// The source is synthetic state produced by the released v2.3.1 image. The target
+// inPlaceTestnetReleasedVersion is the published release that produces the
+// released-source state, and that state's last completed upgrade. The conversion
+// base image (`make local-image-in-place-base`) must report the same version.
+const inPlaceTestnetReleasedVersion = "v2.3.1"
+
+// The source is synthetic state produced by a released image. The target
 // fixture changes one billing parameter after RunMigrations; normal builds never
 // include this handler. This proves execution without inventing a production
 // schema migration for a release that already has the current module versions.
@@ -50,7 +55,7 @@ func seedInPlaceTestnetReleasedState(t *testing.T, ctx context.Context, chain *c
 	node := chain.GetNode()
 	version, stderr, err := node.ExecBin(ctx, "version")
 	require.NoError(t, err, "%s", stderr)
-	require.Equal(t, "v2.3.1", strings.TrimSpace(string(version)))
+	require.Equal(t, inPlaceTestnetReleasedVersion, strings.TrimSpace(string(version)))
 	contractCode, err := os.ReadFile("../scripts/cw_template.wasm")
 	require.NoError(t, err)
 	const contractFile = "cw_template.wasm"
@@ -79,7 +84,7 @@ func seedInPlaceTestnetReleasedState(t *testing.T, ctx context.Context, chain *c
 	require.NoError(t, err)
 	scheduleInPlaceTestnetUpgrade(t, ctx, node, authority, chain.Config().ChainID, inPlaceTestnetFixtureVersion, height+1000, rpc)
 	state := &inPlaceTestnetReleasedState{
-		codeID: codeID, contract: contract, completedName: "v2.3.1", completedHeight: completedHeight,
+		codeID: codeID, contract: contract, completedName: inPlaceTestnetReleasedVersion, completedHeight: completedHeight,
 		codeInfo:       queryInPlaceTestnet(t, ctx, node, "wasm", "code-info", codeID),
 		contractInfo:   queryInPlaceTestnet(t, ctx, node, "wasm", "contract", contract),
 		contractState:  queryInPlaceTestnet(t, ctx, node, "wasm", "contract-state", "all", contract),
@@ -96,7 +101,8 @@ func seedInPlaceTestnetReleasedState(t *testing.T, ctx context.Context, chain *c
 	state.maxLeases, err = strconv.ParseUint(maxLeases, 10, 64)
 	require.NoError(t, err)
 	state.assertPreserved(t, ctx, node, false)
-	t.Logf("Released source image ghcr.io/manifest-network/manifest-ledger:2.3.1, synthetic two-validator state: contract %s count=42, completed upgrade at %d, pending target %s", contract, completedHeight, inPlaceTestnetFixtureVersion)
+	image := chain.Config().Images[0]
+	t.Logf("Released source image %s:%s, synthetic two-validator state: contract %s count=42, completed upgrade at %d, pending target %s", image.Repository, image.Version, contract, completedHeight, inPlaceTestnetFixtureVersion)
 	return state
 }
 
@@ -137,7 +143,7 @@ func completeInPlaceTestnetSourceUpgrade(t *testing.T, ctx context.Context, node
 		status, err := rpc.Status(ctx)
 		require.NoError(t, err)
 		response := broadcastInPlaceTestnetMessage(t, ctx, node, authority.KeyName(), chainID, &upgradetypes.MsgSoftwareUpgrade{
-			Authority: authority.FormattedAddress(), Plan: upgradetypes.Plan{Name: "v2.3.1", Height: status.SyncInfo.LatestBlockHeight + 2},
+			Authority: authority.FormattedAddress(), Plan: upgradetypes.Plan{Name: inPlaceTestnetReleasedVersion, Height: status.SyncInfo.LatestBlockHeight + 2},
 		})
 		if response.Code == 0 {
 			status, err = rpc.Status(ctx)
@@ -149,7 +155,7 @@ func completeInPlaceTestnetSourceUpgrade(t *testing.T, ctx context.Context, node
 			require.Contains(t, response.RawLog, "upgrade cannot be scheduled in the past")
 			continue
 		}
-		applied := inPlaceTestnetAppliedHeight(t, ctx, node, "v2.3.1")
+		applied := inPlaceTestnetAppliedHeight(t, ctx, node, inPlaceTestnetReleasedVersion)
 		require.Equal(t, response.Height+1, applied)
 		return applied
 	}

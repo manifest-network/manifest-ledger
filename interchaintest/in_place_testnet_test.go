@@ -25,6 +25,7 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/testreporter"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -70,13 +71,22 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade, releasedSource, haltedSour
 	cfg.Name = "in-place-testnet"
 	cfg.Env = append([]string(nil), cfg.Env...)
 	targetImage := inPlaceTestnetImage(t, "IN_PLACE_TESTNET_IMAGE", "manifest:local")
+	if releasedSource {
+		// x/upgrade refuses to start a binary without a handler for the source's
+		// last completed upgrade, so the conversion binary reports the release's version.
+		targetImage = inPlaceTestnetImage(t, "IN_PLACE_TESTNET_BASE_IMAGE", "manifest-in-place-base:local")
+	}
 	cfg.Images = []ibc.DockerImage{targetImage}
 	cfg.EncodingConfig = AppEncoding()
 	circuittypes.RegisterInterfaces(cfg.EncodingConfig.InterfaceRegistry)
 	cfg.WithCodeCoverage()
 	if releasedSource {
 		// This is synthetic state produced by the published release, not a mainnet snapshot.
-		cfg.Images[0] = ibc.DockerImage{Repository: "ghcr.io/manifest-network/manifest-ledger", Version: "2.3.1", UIDGID: "1025:1025"}
+		cfg.Images[0] = ibc.DockerImage{
+			Repository: "ghcr.io/manifest-network/manifest-ledger",
+			Version:    strings.TrimPrefix(inPlaceTestnetReleasedVersion, "v"),
+			UIDGID:     "1025:1025",
+		}
 		cfg.Env[len(cfg.Env)-1] = "GOCOVERDIR=" // Do not mix released-binary counters into PR coverage.
 	}
 	validatorCount, fullNodeCount := 2, 0
@@ -91,6 +101,9 @@ func testInPlaceTestnet(t *testing.T, triggerUpgrade, releasedSource, haltedSour
 	require.NoError(t, err)
 	chain := chains[0].(*cosmos.CosmosChain)
 	client, network := interchaintest.DockerSetup(t)
+	if releasedSource {
+		requireInPlaceTestnetImageVersion(t, ctx, logger, client, network, targetImage, cfg.Bin, inPlaceTestnetReleasedVersion)
+	}
 	ic := interchaintest.NewInterchain().AddChain(chain)
 	t.Cleanup(func() { _ = ic.Close() })
 	require.NoError(t, ic.Build(ctx, testreporter.NewNopReporter().RelayerExecReporter(t), interchaintest.InterchainBuildOptions{
@@ -380,6 +393,20 @@ func inPlaceTestnetImage(t *testing.T, variable, fallback string) ibc.DockerImag
 	require.Greater(t, separator, strings.LastIndex(ref, "/"), "%s must be repository:tag", variable)
 	require.Less(t, separator, len(ref)-1, "%s requires a tag", variable)
 	return ibc.DockerImage{Repository: ref[:separator], Version: ref[separator+1:], UIDGID: "1025:1025"}
+}
+
+// requireInPlaceTestnetImageVersion fails before any chain starts when an image
+// reports the wrong version. Otherwise the mismatch only surfaces as the fork's
+// "upgrade handler is missing" error after the source has been seeded.
+func requireInPlaceTestnetImageVersion(t *testing.T, ctx context.Context, logger *zap.Logger, client *dockerclient.Client, network string, image ibc.DockerImage, bin, want string) {
+	t.Helper()
+	// The image's default user can create the client config that every command
+	// writes first; the node user has no writable home outside a chain volume.
+	result := dockerutil.NewImage(logger, client, network, t.Name(), image.Repository, image.Version).
+		Run(ctx, []string{bin, "version"}, dockerutil.ContainerOptions{})
+	require.NoError(t, result.Err, "%s", result.Stderr)
+	require.Equal(t, want, strings.TrimSpace(string(result.Stdout)),
+		"%s:%s must report the released source's version; build it with `make local-image-in-place-base`", image.Repository, image.Version)
 }
 
 // inPlaceTestnetPoolResponse projects the staking pool's quoted token amounts.
