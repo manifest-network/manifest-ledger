@@ -913,6 +913,15 @@ func NewApp(
 	app.SetEndBlocker(app.EndBlocker)
 	app.SetProcessProposal(app.ProcessProposalHandler)
 
+	// Contract bytecode lives under wasm/, outside the IAVL stores, so state-sync
+	// snapshots carry it only through this extension. It must be registered before
+	// loading the latest version, and needs the snapshot store set as a BaseApp option.
+	if manager := app.SnapshotManager(); manager != nil {
+		if err := manager.RegisterExtensions(wasmkeeper.NewWasmSnapshotter(app.CommitMultiStore(), &app.WasmKeeper)); err != nil {
+			panic(fmt.Errorf("failed to register snapshot extension: %w", err))
+		}
+	}
+
 	app.ScopedIBCKeeper = scopedIBCKeeper
 	app.ScopedTransferKeeper = scopedTransferKeeper
 	app.ScopedICAHostKeeper = scopedICAHostKeeper
