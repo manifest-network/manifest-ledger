@@ -20,7 +20,7 @@ jobs:
       - name: Check coverage build selection
         run: bash scripts/test-coverage-build.sh
       - name: Make coverage images
-        run: make local-image-coverage local-image-testnet-upgrade
+        run: make local-image-coverage local-image-testnet-upgrade local-image-in-place-base
       - name: Run coverage
         run: make coverage
       - name: Upload coverage to Codecov

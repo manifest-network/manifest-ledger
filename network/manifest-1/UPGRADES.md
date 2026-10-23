@@ -515,10 +515,10 @@ authority, keeping the same `POA_ADMIN_ADDRESS` throughout. Ensure
 `config/client.toml`: cosmovisor uses that command without an explicit `--node`.
 
 Regression entry points are `go test ./cmd/manifestd/cmd`, `make ictest-unit`, and
-`make ictest-poa-unjail-dup`. Build both local images before the fork scenarios:
+`make ictest-poa-unjail-dup`. Build the local images before the fork scenarios:
 
 ```bash
-make local-image-coverage local-image-testnet-upgrade
+make local-image-coverage local-image-testnet-upgrade local-image-in-place-base
 make ictest-in-place-testnet
 ```
 
@@ -528,6 +528,12 @@ with the published v2.3.1 image, includes Wasm code, schedules an upgrade, obser
 the halt, and swaps to a distinct target image. That image alone enables the
 `testnet_upgrade_fixture` build tag: its handler performs a measurable test-only
 parameter migration, checked again after restart to catch repeat execution.
-Normal production builds do not include that fixture. This verifies the release
+Normal production builds do not include that fixture. The released-source
+conversion runs in `manifest-in-place-base:local`, built with
+`IN_PLACE_SOURCE_VERSION` rather than `VERSION`, because x/upgrade requires a
+handler for the source's last completed upgrade; a release-prep `VERSION` bump
+leaves it unchanged. When a newer release becomes the source, move
+`IN_PLACE_SOURCE_VERSION` and `inPlaceTestnetReleasedVersion` together; the test
+checks the image's version before it starts. This verifies the release
 and binary-swap mechanics; it does not replace rehearsing the actual target
 migration against a real mainnet copy and measuring its resource requirements.

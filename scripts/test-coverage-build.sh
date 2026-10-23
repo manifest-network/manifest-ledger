@@ -49,14 +49,22 @@ chmod +x "$test_dir/selected-go" "$test_dir/go" "$test_dir/docker"
 for version in go1.25.9 go1.27.1; do
   export TEST_GO_VERSION="$version"
   : > "$COVERAGE_BUILD_LOG"
-  make --no-print-directory local-image-coverage local-image-testnet-upgrade GO="$test_dir/selected-go"
-  test "$(wc -l < "$COVERAGE_BUILD_LOG")" -eq 2
+  make --no-print-directory local-image-coverage local-image-testnet-upgrade local-image-in-place-base GO="$test_dir/selected-go"
+  test "$(wc -l < "$COVERAGE_BUILD_LOG")" -eq 3
   printf -v expected '%q ' build . --build-arg "GO_VERSION=${version#go}" \
     --build-arg BUILD_CMD=build-coverage -t manifest:local
   grep -Fxq -- "$expected" "$COVERAGE_BUILD_LOG"
   printf -v expected '%q ' build . --build-arg "GO_VERSION=${version#go}" \
     --build-arg BUILD_CMD=build-coverage --build-arg 'BUILD_TAGS=muslc testnet_upgrade_fixture' \
     --build-arg VERSION=eng879-test-upgrade -t manifest-testnet-upgrade:local
+  grep -Fxq -- "$expected" "$COVERAGE_BUILD_LOG"
+  # The conversion base keeps the released source's version when release prep
+  # bumps VERSION; only IN_PLACE_SOURCE_VERSION moves it.
+  printf -v expected '%q ' build . --build-arg "GO_VERSION=${version#go}" \
+    --build-arg BUILD_CMD=build-coverage --build-arg VERSION=v2.3.1 -t manifest-in-place-base:local
+  grep -Fxq -- "$expected" "$COVERAGE_BUILD_LOG"
+  : > "$COVERAGE_BUILD_LOG"
+  make --no-print-directory local-image-in-place-base GO="$test_dir/selected-go" VERSION=v9.9.9
   grep -Fxq -- "$expected" "$COVERAGE_BUILD_LOG"
 
   make --no-print-directory -n coverage GO="$test_dir/selected-go" > "$test_dir/coverage-plan"
@@ -73,7 +81,7 @@ mkdir -p "$rejected_root/unit-e2e"
 touch "$rejected_root/unit-e2e/covmeta.retained"
 for version in '' 'devel go1.28' 'go1.27.1-X:nodwarf5'; do
   export TEST_GO_VERSION="$version"
-  for target in local-image-coverage local-image-testnet-upgrade coverage; do
+  for target in local-image-coverage local-image-testnet-upgrade local-image-in-place-base coverage; do
     : > "$COVERAGE_BUILD_LOG"
     : > "$COVERAGE_GO_LOG"
     if make --no-print-directory "$target" GO="$test_dir/selected-go" COV_ROOT="$rejected_root" > "$test_dir/rejected" 2>&1; then

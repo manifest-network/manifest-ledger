@@ -24,7 +24,7 @@ go test -v ./x/billing/keeper -run TestAccrualCalculation
 ### Integration Tests (Interchaintest)
 E2E tests require the local Docker image first: `make local-image`.
 Coverage requires instrumented images and an identical official host/image Go release:
-`GOTOOLCHAIN=go1.26.10 make local-image-coverage local-image-testnet-upgrade`, then
+`GOTOOLCHAIN=go1.26.10 make local-image-coverage local-image-testnet-upgrade local-image-in-place-base`, then
 `GOTOOLCHAIN=go1.26.10 make coverage`.
 The `ictest-*` and `sim-*` targets in the Makefile are the entry points.
 
