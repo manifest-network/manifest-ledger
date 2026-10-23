@@ -161,5 +161,11 @@ jobs:
         if: matrix.test == 'ictest-in-place-testnet'
         run: docker image load -i ${{ env.UPGRADE_TAR_PATH }}
 
+      # Only this suite needs it, so it is built here rather than delaying every
+      # matrix job behind a third image in build-docker.
+      - name: Build in-place conversion base image
+        if: matrix.test == 'ictest-in-place-testnet'
+        run: make local-image-in-place-base
+
       - name: Run Test
         run: make ${{ matrix.test }}

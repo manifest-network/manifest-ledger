@@ -317,11 +317,11 @@ Append `-random` to the end of the commands above to run the simulation with a r
 
 ## Coverage
 
-Use an official Go release (CI uses 1.26.10) to build both instrumented images
+Use an official Go release (CI uses 1.26.10) to build the instrumented images
 and collect host coverage with the same compiler:
 
 ```bash
-GOTOOLCHAIN=go1.26.10 make local-image-coverage local-image-testnet-upgrade
+GOTOOLCHAIN=go1.26.10 make local-image-coverage local-image-testnet-upgrade local-image-in-place-base
 GOTOOLCHAIN=go1.26.10 make coverage
 ```
 
