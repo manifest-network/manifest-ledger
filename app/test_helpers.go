@@ -167,37 +167,7 @@ func SetupWithGenesisValSet(t *testing.T, valSet *tmtypes.ValidatorSet, genAccs 
 //nolint:all
 func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 	t.Helper()
-	db := dbm.NewMemDB()
-	nodeHome := t.TempDir()
-	snapshotDir := filepath.Join(nodeHome, "data", "snapshots")
-
-	snapshotDB, err := dbm.NewDB("metadata", dbm.GoLevelDBBackend, snapshotDir)
-	require.NoError(t, err)
-	t.Cleanup(func() { snapshotDB.Close() })
-	snapshotStore, err := snapshots.NewStore(snapshotDB, snapshotDir)
-	require.NoError(t, err)
-
-	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = nodeHome // ensure unique folder
-
-	// Set the POA admin address if not already set
-	if adminAddr := os.Getenv("POA_ADMIN_ADDRESS"); adminAddr == "" {
-		_, _, newAdminAddr := testdata.KeyTestPubAddr()
-		err = os.Setenv("POA_ADMIN_ADDRESS", newAdminAddr.String())
-		require.NoError(t, err)
-	}
-
-	// Initialize app with unique wasm directory
-	app := NewApp(
-		log.NewNopLogger(),
-		db,
-		nil,
-		true,
-		DefaultCommissionRateMinMax,
-		appOptions,
-		bam.SetChainID(SimAppChainID),
-		bam.SetSnapshot(snapshotStore, snapshottypes.SnapshotOptions{KeepRecent: 2}),
-	)
+	app := newTestApp(t)
 
 	// Setup Context
 	ctx := app.BaseApp.NewUncachedContext(false, tmproto.Header{
@@ -233,6 +203,45 @@ func setup(t *testing.T, withGenesis bool) (*ManifestApp, GenesisState) {
 	}
 
 	return app, GenesisState{}
+}
+
+// newTestApp returns an app with an empty store, its own home and wasm
+// directory, and a snapshot store.
+func newTestApp(t *testing.T) *ManifestApp {
+	t.Helper()
+	db := dbm.NewMemDB()
+	nodeHome := t.TempDir()
+	snapshotDir := filepath.Join(nodeHome, "data", "snapshots")
+
+	snapshotDB, err := dbm.NewDB("metadata", dbm.GoLevelDBBackend, snapshotDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { snapshotDB.Close() })
+	snapshotStore, err := snapshots.NewStore(snapshotDB, snapshotDir)
+	require.NoError(t, err)
+
+	appOptions := make(simtestutil.AppOptionsMap, 0)
+	appOptions[flags.FlagHome] = nodeHome // ensure unique folder
+
+	// Set the POA admin address if not already set
+	if adminAddr := os.Getenv("POA_ADMIN_ADDRESS"); adminAddr == "" {
+		_, _, newAdminAddr := testdata.KeyTestPubAddr()
+		err = os.Setenv("POA_ADMIN_ADDRESS", newAdminAddr.String())
+		require.NoError(t, err)
+	}
+
+	// Initialize app with unique wasm directory
+	app := NewApp(
+		log.NewNopLogger(),
+		db,
+		nil,
+		true,
+		DefaultCommissionRateMinMax,
+		appOptions,
+		bam.SetChainID(SimAppChainID),
+		bam.SetSnapshot(snapshotStore, snapshottypes.SnapshotOptions{KeepRecent: 2}),
+	)
+
+	return app
 }
 
 func genesisStateWithValSet(t *testing.T,

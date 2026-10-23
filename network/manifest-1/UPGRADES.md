@@ -212,8 +212,11 @@ Prepare the copied home before running the command:
    block-sync several more blocks before stopping. The SDK needs a local full
    block and seen commit; a snapshot alone is insufficient. Keep a backup of the
    copied home so a failed conversion can be retried from the original copy.
-   Include the source's `wasm/` bytecode: this application does not currently
-   register the Wasm snapshot extension. Preflight checks application, Comet state
+   Include the source's `wasm/` bytecode. Releases up to `v2.3.1` do not register
+   the Wasm snapshot extension, so a node state-synced from them has contract
+   metadata but no bytecode; copy the source's `wasm/` before that node
+   block-syncs. Snapshots taken by later releases carry the bytecode.
+   Preflight checks application, Comet state
    and blockstore heights, the full committed block and its metadata before
    recording conversion. At matching application and Comet heights, the application
    hashes and last block IDs must match. When the application is one block ahead,
