@@ -19,16 +19,20 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Msg_FundCredit_FullMethodName           = "/liftedinit.billing.v1.Msg/FundCredit"
-	Msg_CreateLease_FullMethodName          = "/liftedinit.billing.v1.Msg/CreateLease"
-	Msg_CreateLeaseForTenant_FullMethodName = "/liftedinit.billing.v1.Msg/CreateLeaseForTenant"
-	Msg_AcknowledgeLease_FullMethodName     = "/liftedinit.billing.v1.Msg/AcknowledgeLease"
-	Msg_RejectLease_FullMethodName          = "/liftedinit.billing.v1.Msg/RejectLease"
-	Msg_CancelLease_FullMethodName          = "/liftedinit.billing.v1.Msg/CancelLease"
-	Msg_CloseLease_FullMethodName           = "/liftedinit.billing.v1.Msg/CloseLease"
-	Msg_Withdraw_FullMethodName             = "/liftedinit.billing.v1.Msg/Withdraw"
-	Msg_UpdateParams_FullMethodName         = "/liftedinit.billing.v1.Msg/UpdateParams"
-	Msg_SetItemCustomDomain_FullMethodName  = "/liftedinit.billing.v1.Msg/SetItemCustomDomain"
+	Msg_FundCredit_FullMethodName             = "/liftedinit.billing.v1.Msg/FundCredit"
+	Msg_CreateLease_FullMethodName            = "/liftedinit.billing.v1.Msg/CreateLease"
+	Msg_CreateLeaseForTenant_FullMethodName   = "/liftedinit.billing.v1.Msg/CreateLeaseForTenant"
+	Msg_AcknowledgeLease_FullMethodName       = "/liftedinit.billing.v1.Msg/AcknowledgeLease"
+	Msg_RejectLease_FullMethodName            = "/liftedinit.billing.v1.Msg/RejectLease"
+	Msg_CancelLease_FullMethodName            = "/liftedinit.billing.v1.Msg/CancelLease"
+	Msg_CloseLease_FullMethodName             = "/liftedinit.billing.v1.Msg/CloseLease"
+	Msg_Withdraw_FullMethodName               = "/liftedinit.billing.v1.Msg/Withdraw"
+	Msg_UpdateParams_FullMethodName           = "/liftedinit.billing.v1.Msg/UpdateParams"
+	Msg_SetItemCustomDomain_FullMethodName    = "/liftedinit.billing.v1.Msg/SetItemCustomDomain"
+	Msg_UpdateLease_FullMethodName            = "/liftedinit.billing.v1.Msg/UpdateLease"
+	Msg_AcknowledgeLeaseUpdate_FullMethodName = "/liftedinit.billing.v1.Msg/AcknowledgeLeaseUpdate"
+	Msg_RejectLeaseUpdate_FullMethodName      = "/liftedinit.billing.v1.Msg/RejectLeaseUpdate"
+	Msg_CancelLeaseUpdate_FullMethodName      = "/liftedinit.billing.v1.Msg/CancelLeaseUpdate"
 )
 
 // MsgClient is the client API for Msg service.
@@ -66,6 +70,26 @@ type MsgClient interface {
 	// lease must be in PENDING or ACTIVE state; an empty custom_domain clears
 	// the field and frees the index entry.
 	SetItemCustomDomain(ctx context.Context, in *MsgSetItemCustomDomain, opts ...grpc.CallOption) (*MsgSetItemCustomDomainResponse, error)
+	// UpdateLease requests a new deployment manifest for an ACTIVE lease by
+	// recording its hash in lease.pending_meta_hash. The committed
+	// lease.meta_hash is unchanged until the provider acknowledges, so the
+	// previously committed payload stays valid for the whole window.
+	// Authorised senders: the lease's tenant, the module authority, or any
+	// address in params.allowed_list.
+	UpdateLease(ctx context.Context, in *MsgUpdateLease, opts ...grpc.CallOption) (*MsgUpdateLeaseResponse, error)
+	// AcknowledgeLeaseUpdate promotes a lease's pending_meta_hash to meta_hash
+	// once the provider has validated, persisted and applied the matching
+	// payload, and increments meta_hash_revision. Authorised senders: the
+	// provider that owns the lease, or the module authority.
+	AcknowledgeLeaseUpdate(ctx context.Context, in *MsgAcknowledgeLeaseUpdate, opts ...grpc.CallOption) (*MsgAcknowledgeLeaseUpdateResponse, error)
+	// RejectLeaseUpdate discards a pending update the provider will not apply,
+	// leaving meta_hash untouched. Authorised senders: the provider that owns
+	// the lease, or the module authority.
+	RejectLeaseUpdate(ctx context.Context, in *MsgRejectLeaseUpdate, opts ...grpc.CallOption) (*MsgRejectLeaseUpdateResponse, error)
+	// CancelLeaseUpdate withdraws a pending update the tenant no longer wants.
+	// Authorised senders: the lease's tenant, the module authority, or any
+	// address in params.allowed_list.
+	CancelLeaseUpdate(ctx context.Context, in *MsgCancelLeaseUpdate, opts ...grpc.CallOption) (*MsgCancelLeaseUpdateResponse, error)
 }
 
 type msgClient struct {
@@ -166,6 +190,42 @@ func (c *msgClient) SetItemCustomDomain(ctx context.Context, in *MsgSetItemCusto
 	return out, nil
 }
 
+func (c *msgClient) UpdateLease(ctx context.Context, in *MsgUpdateLease, opts ...grpc.CallOption) (*MsgUpdateLeaseResponse, error) {
+	out := new(MsgUpdateLeaseResponse)
+	err := c.cc.Invoke(ctx, Msg_UpdateLease_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) AcknowledgeLeaseUpdate(ctx context.Context, in *MsgAcknowledgeLeaseUpdate, opts ...grpc.CallOption) (*MsgAcknowledgeLeaseUpdateResponse, error) {
+	out := new(MsgAcknowledgeLeaseUpdateResponse)
+	err := c.cc.Invoke(ctx, Msg_AcknowledgeLeaseUpdate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) RejectLeaseUpdate(ctx context.Context, in *MsgRejectLeaseUpdate, opts ...grpc.CallOption) (*MsgRejectLeaseUpdateResponse, error) {
+	out := new(MsgRejectLeaseUpdateResponse)
+	err := c.cc.Invoke(ctx, Msg_RejectLeaseUpdate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) CancelLeaseUpdate(ctx context.Context, in *MsgCancelLeaseUpdate, opts ...grpc.CallOption) (*MsgCancelLeaseUpdateResponse, error) {
+	out := new(MsgCancelLeaseUpdateResponse)
+	err := c.cc.Invoke(ctx, Msg_CancelLeaseUpdate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MsgServer is the server API for Msg service.
 // All implementations must embed UnimplementedMsgServer
 // for forward compatibility
@@ -201,6 +261,26 @@ type MsgServer interface {
 	// lease must be in PENDING or ACTIVE state; an empty custom_domain clears
 	// the field and frees the index entry.
 	SetItemCustomDomain(context.Context, *MsgSetItemCustomDomain) (*MsgSetItemCustomDomainResponse, error)
+	// UpdateLease requests a new deployment manifest for an ACTIVE lease by
+	// recording its hash in lease.pending_meta_hash. The committed
+	// lease.meta_hash is unchanged until the provider acknowledges, so the
+	// previously committed payload stays valid for the whole window.
+	// Authorised senders: the lease's tenant, the module authority, or any
+	// address in params.allowed_list.
+	UpdateLease(context.Context, *MsgUpdateLease) (*MsgUpdateLeaseResponse, error)
+	// AcknowledgeLeaseUpdate promotes a lease's pending_meta_hash to meta_hash
+	// once the provider has validated, persisted and applied the matching
+	// payload, and increments meta_hash_revision. Authorised senders: the
+	// provider that owns the lease, or the module authority.
+	AcknowledgeLeaseUpdate(context.Context, *MsgAcknowledgeLeaseUpdate) (*MsgAcknowledgeLeaseUpdateResponse, error)
+	// RejectLeaseUpdate discards a pending update the provider will not apply,
+	// leaving meta_hash untouched. Authorised senders: the provider that owns
+	// the lease, or the module authority.
+	RejectLeaseUpdate(context.Context, *MsgRejectLeaseUpdate) (*MsgRejectLeaseUpdateResponse, error)
+	// CancelLeaseUpdate withdraws a pending update the tenant no longer wants.
+	// Authorised senders: the lease's tenant, the module authority, or any
+	// address in params.allowed_list.
+	CancelLeaseUpdate(context.Context, *MsgCancelLeaseUpdate) (*MsgCancelLeaseUpdateResponse, error)
 	mustEmbedUnimplementedMsgServer()
 }
 
@@ -237,6 +317,18 @@ func (UnimplementedMsgServer) UpdateParams(context.Context, *MsgUpdateParams) (*
 }
 func (UnimplementedMsgServer) SetItemCustomDomain(context.Context, *MsgSetItemCustomDomain) (*MsgSetItemCustomDomainResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetItemCustomDomain not implemented")
+}
+func (UnimplementedMsgServer) UpdateLease(context.Context, *MsgUpdateLease) (*MsgUpdateLeaseResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateLease not implemented")
+}
+func (UnimplementedMsgServer) AcknowledgeLeaseUpdate(context.Context, *MsgAcknowledgeLeaseUpdate) (*MsgAcknowledgeLeaseUpdateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AcknowledgeLeaseUpdate not implemented")
+}
+func (UnimplementedMsgServer) RejectLeaseUpdate(context.Context, *MsgRejectLeaseUpdate) (*MsgRejectLeaseUpdateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RejectLeaseUpdate not implemented")
+}
+func (UnimplementedMsgServer) CancelLeaseUpdate(context.Context, *MsgCancelLeaseUpdate) (*MsgCancelLeaseUpdateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CancelLeaseUpdate not implemented")
 }
 func (UnimplementedMsgServer) mustEmbedUnimplementedMsgServer() {}
 
@@ -431,6 +523,78 @@ func _Msg_SetItemCustomDomain_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Msg_UpdateLease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgUpdateLease)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).UpdateLease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_UpdateLease_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).UpdateLease(ctx, req.(*MsgUpdateLease))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_AcknowledgeLeaseUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgAcknowledgeLeaseUpdate)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).AcknowledgeLeaseUpdate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_AcknowledgeLeaseUpdate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).AcknowledgeLeaseUpdate(ctx, req.(*MsgAcknowledgeLeaseUpdate))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_RejectLeaseUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgRejectLeaseUpdate)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).RejectLeaseUpdate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_RejectLeaseUpdate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).RejectLeaseUpdate(ctx, req.(*MsgRejectLeaseUpdate))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_CancelLeaseUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgCancelLeaseUpdate)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).CancelLeaseUpdate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_CancelLeaseUpdate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).CancelLeaseUpdate(ctx, req.(*MsgCancelLeaseUpdate))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Msg_ServiceDesc is the grpc.ServiceDesc for Msg service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -477,6 +641,22 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetItemCustomDomain",
 			Handler:    _Msg_SetItemCustomDomain_Handler,
+		},
+		{
+			MethodName: "UpdateLease",
+			Handler:    _Msg_UpdateLease_Handler,
+		},
+		{
+			MethodName: "AcknowledgeLeaseUpdate",
+			Handler:    _Msg_AcknowledgeLeaseUpdate_Handler,
+		},
+		{
+			MethodName: "RejectLeaseUpdate",
+			Handler:    _Msg_RejectLeaseUpdate_Handler,
+		},
+		{
+			MethodName: "CancelLeaseUpdate",
+			Handler:    _Msg_CancelLeaseUpdate_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

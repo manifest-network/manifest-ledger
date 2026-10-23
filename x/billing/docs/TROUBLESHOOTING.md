@@ -170,7 +170,7 @@ Only PENDING leases can be acknowledged/rejected by providers or cancelled by te
 
 ### "unauthorized" (for acknowledge/reject)
 
-**Cause**: The sender is neither the provider's management address for the SKUs in the lease nor the module authority. (Note: `allowed_list` does NOT grant acknowledge/reject — it only covers `CreateLeaseForTenant` and `SetItemCustomDomain`.)
+**Cause**: The sender is neither the provider's management address for the SKUs in the lease nor the module authority. (Note: `allowed_list` does NOT grant acknowledge/reject — it only covers `CreateLeaseForTenant`, `SetItemCustomDomain`, `UpdateLease` and `CancelLeaseUpdate`. The provider-side lease-update verbs `AcknowledgeLeaseUpdate` and `RejectLeaseUpdate` follow the same provider-or-authority rule as acknowledge/reject.)
 
 **Solution**: Use the correct provider key:
 ```bash
@@ -595,9 +595,65 @@ If you encounter an issue not covered here:
    manifestd query tx [txhash] --output json | jq '.events'
    ```
 
+## Deployment Update Errors
+
+### "lease has no pending update"
+
+**Cause**: `acknowledge-lease-update`, `reject-lease-update` or
+`cancel-lease-update` was sent for a lease whose `pending_meta_hash` is empty —
+either no `update-lease` was submitted, or the request was already resolved.
+
+**Solution**: Check the current state before acting:
+```bash
+manifestd query billing lease [lease-uuid] --output json | jq '.lease.pending_meta_hash'
+```
+
+Providers should drive off the work list rather than guessing:
+```bash
+manifestd query billing pending-lease-updates [provider-uuid]
+```
+
+### "meta_hash does not match the lease's pending update"
+
+**Cause**: The hash passed to `acknowledge-lease-update` or
+`reject-lease-update` is not the lease's current `pending_meta_hash`. Almost
+always this means the tenant superseded the request with a new `update-lease`
+after you read the lease. That is exactly what this guard is for — it stops you
+committing a manifest you have not validated.
+
+**Solution**: Re-read the lease, then validate and apply the *new* pending
+payload before acknowledging it. Do not retry with the old hash.
+
+### "lease not active" on an update command
+
+**Cause**: All four lease-update commands require `LEASE_STATE_ACTIVE`. A
+PENDING lease still has its create-time handshake, so its hash cannot be
+changed; closed, rejected and expired leases are terminal.
+
+**Solution**: For a PENDING lease with a wrong `meta_hash`, cancel it and create
+a new one:
+```bash
+manifestd tx billing cancel-lease [lease-uuid] --from [tenant-key]
+```
+
+### Update applied off-chain but `meta_hash` never changed
+
+**Cause**: The provider applied the payload but never sent
+`acknowledge-lease-update`, so the committed hash still names the previous
+manifest. This is a provider-side gap, not a chain one — the chain only advances
+`meta_hash` when asked to.
+
+**Solution**: The provider must acknowledge after applying. Until it does, a
+reprovision replays the *previous* payload, which is the intended fail-safe
+rather than a failure. Tenants can see how long a request has been outstanding:
+```bash
+manifestd query billing lease [lease-uuid] --output json | jq '.lease.pending_meta_hash_at'
+```
+
 ## Related Documentation
 
 - [Billing README](../README.md) - Complete billing module overview
 - [Migration Guide](MIGRATION.md) - Migrating existing off-chain leases
 - [API Reference](API.md) - Detailed API documentation
 - [Architecture](ARCHITECTURE.md) - Technical architecture details
+- [Integration Guide](INTEGRATION.md) - Off-chain provider contract

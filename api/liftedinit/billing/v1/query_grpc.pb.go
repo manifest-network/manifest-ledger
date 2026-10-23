@@ -32,6 +32,7 @@ const (
 	Query_LeasesBySKU_FullMethodName          = "/liftedinit.billing.v1.Query/LeasesBySKU"
 	Query_CreditEstimate_FullMethodName       = "/liftedinit.billing.v1.Query/CreditEstimate"
 	Query_LeaseByCustomDomain_FullMethodName  = "/liftedinit.billing.v1.Query/LeaseByCustomDomain"
+	Query_PendingLeaseUpdates_FullMethodName  = "/liftedinit.billing.v1.Query/PendingLeaseUpdates"
 )
 
 // QueryClient is the client API for Query service.
@@ -65,6 +66,11 @@ type QueryClient interface {
 	// LeaseByCustomDomain returns the active or pending lease that has claimed
 	// the given custom_domain, if any.
 	LeaseByCustomDomain(ctx context.Context, in *QueryLeaseByCustomDomainRequest, opts ...grpc.CallOption) (*QueryLeaseByCustomDomainResponse, error)
+	// PendingLeaseUpdates returns the provider's ACTIVE leases that carry a
+	// pending_meta_hash awaiting acknowledgement or rejection. This is how a
+	// provider catches up on update requests it missed, without scanning every
+	// lease it owns.
+	PendingLeaseUpdates(ctx context.Context, in *QueryPendingLeaseUpdatesRequest, opts ...grpc.CallOption) (*QueryPendingLeaseUpdatesResponse, error)
 }
 
 type queryClient struct {
@@ -192,6 +198,15 @@ func (c *queryClient) LeaseByCustomDomain(ctx context.Context, in *QueryLeaseByC
 	return out, nil
 }
 
+func (c *queryClient) PendingLeaseUpdates(ctx context.Context, in *QueryPendingLeaseUpdatesRequest, opts ...grpc.CallOption) (*QueryPendingLeaseUpdatesResponse, error) {
+	out := new(QueryPendingLeaseUpdatesResponse)
+	err := c.cc.Invoke(ctx, Query_PendingLeaseUpdates_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServer is the server API for Query service.
 // All implementations must embed UnimplementedQueryServer
 // for forward compatibility
@@ -223,6 +238,11 @@ type QueryServer interface {
 	// LeaseByCustomDomain returns the active or pending lease that has claimed
 	// the given custom_domain, if any.
 	LeaseByCustomDomain(context.Context, *QueryLeaseByCustomDomainRequest) (*QueryLeaseByCustomDomainResponse, error)
+	// PendingLeaseUpdates returns the provider's ACTIVE leases that carry a
+	// pending_meta_hash awaiting acknowledgement or rejection. This is how a
+	// provider catches up on update requests it missed, without scanning every
+	// lease it owns.
+	PendingLeaseUpdates(context.Context, *QueryPendingLeaseUpdatesRequest) (*QueryPendingLeaseUpdatesResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }
 
@@ -268,6 +288,9 @@ func (UnimplementedQueryServer) CreditEstimate(context.Context, *QueryCreditEsti
 }
 func (UnimplementedQueryServer) LeaseByCustomDomain(context.Context, *QueryLeaseByCustomDomainRequest) (*QueryLeaseByCustomDomainResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LeaseByCustomDomain not implemented")
+}
+func (UnimplementedQueryServer) PendingLeaseUpdates(context.Context, *QueryPendingLeaseUpdatesRequest) (*QueryPendingLeaseUpdatesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PendingLeaseUpdates not implemented")
 }
 func (UnimplementedQueryServer) mustEmbedUnimplementedQueryServer() {}
 
@@ -516,6 +539,24 @@ func _Query_LeaseByCustomDomain_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_PendingLeaseUpdates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryPendingLeaseUpdatesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).PendingLeaseUpdates(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_PendingLeaseUpdates_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).PendingLeaseUpdates(ctx, req.(*QueryPendingLeaseUpdatesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Query_ServiceDesc is the grpc.ServiceDesc for Query service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -574,6 +615,10 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "LeaseByCustomDomain",
 			Handler:    _Query_LeaseByCustomDomain_Handler,
+		},
+		{
+			MethodName: "PendingLeaseUpdates",
+			Handler:    _Query_PendingLeaseUpdates_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

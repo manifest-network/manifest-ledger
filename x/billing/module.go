@@ -37,7 +37,14 @@ const (
 	// state shape is forward-compatible (proto3 zero values + a fresh store
 	// prefix), and operators seed ReservedDomainSuffixes at upgrade time or via
 	// post-upgrade MsgUpdateParams rather than baking values into the binary.
-	ConsensusVersion = 2
+	//
+	// v3 introduced the on-chain lease-update handshake: the Lease
+	// pending_meta_hash / pending_meta_hash_at / meta_hash_revision fields, the
+	// PendingUpdateIndex, and the four lease-update messages. Migrate2to3 is a
+	// no-op for the same reason — proto3 zero values are already the correct
+	// semantics for existing leases, and the index starts empty at a fresh
+	// store prefix.
+	ConsensusVersion = 3
 )
 
 var (
@@ -176,6 +183,9 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 	migrator := keeper.NewMigrator(am.keeper)
 	if err := cfg.RegisterMigration(types.ModuleName, 1, migrator.Migrate1to2); err != nil {
 		panic(fmt.Errorf("failed to register %s migration v1→v2: %w", types.ModuleName, err))
+	}
+	if err := cfg.RegisterMigration(types.ModuleName, 2, migrator.Migrate2to3); err != nil {
+		panic(fmt.Errorf("failed to register %s migration v2→v3: %w", types.ModuleName, err))
 	}
 }
 

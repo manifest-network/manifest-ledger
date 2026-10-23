@@ -209,7 +209,13 @@ message Lease {
   string closure_reason = 13 [(gogoproto.jsontag) = "closure_reason,omitempty"];
 
   // meta_hash is an optional hash/reference to off-chain deployment data.
-  // Set once at lease creation and immutable. Maximum 64 bytes.
+  // Maximum 64 bytes. Set at lease creation and thereafter advanced only by the
+  // lease-update handshake: the tenant requests a new hash with MsgUpdateLease
+  // (recorded in pending_meta_hash) and the provider promotes it here with
+  // MsgAcknowledgeLeaseUpdate once it has validated, persisted and applied the
+  // matching payload. It therefore always names the manifest version the
+  // provider has committed to, which is what an off-chain reprovision check
+  // must compare against.
   bytes meta_hash = 14 [(gogoproto.jsontag) = "meta_hash,omitempty"];
 
   // min_lease_duration_at_creation stores the min_lease_duration parameter value
@@ -218,6 +224,29 @@ message Lease {
   // reservation = sum(locked_price × quantity) × min_lease_duration_at_creation
   uint64 min_lease_duration_at_creation = 15
       [(gogoproto.jsontag) = "min_lease_duration_at_creation,omitempty,string"];
+
+  // pending_meta_hash is the next manifest hash the tenant has requested via
+  // MsgUpdateLease but the provider has not acknowledged yet. Maximum 64 bytes.
+  // It is only ever set on an ACTIVE lease, and it deliberately does not affect
+  // meta_hash: until the provider acknowledges, the previously committed payload
+  // remains the valid one, so an update that never completes cannot leave the
+  // lease unable to reprovision.
+  bytes pending_meta_hash = 16 [(gogoproto.jsontag) = "pending_meta_hash,omitempty"];
+
+  // pending_meta_hash_at is the timestamp of the pending update request.
+  // Only set while pending_meta_hash is set. The chain never expires a pending
+  // request; providers use this to apply their own staleness policy.
+  google.protobuf.Timestamp pending_meta_hash_at = 17 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "pending_meta_hash_at,omitempty"
+  ];
+
+  // meta_hash_revision counts acknowledged manifest versions. It is 0 for the
+  // hash supplied at lease creation and increments on every
+  // MsgAcknowledgeLeaseUpdate, giving each version a monotonic identifier even
+  // when a tenant rolls back to an earlier manifest.
+  uint64 meta_hash_revision = 18
+      [(gogoproto.jsontag) = "meta_hash_revision,omitempty,string"];
 }
 
 // CustomDomainTarget identifies which lease + item a custom_domain resolves to.
