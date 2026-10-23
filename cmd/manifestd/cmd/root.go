@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -26,16 +27,29 @@ import (
 	"github.com/manifest-network/manifest-ledger/app/params"
 )
 
+// errorRootCmd returns a root command that only reports err, for failures found
+// before the command tree can be built. The caller prints the returned error once.
+func errorRootCmd(err error) *cobra.Command {
+	return &cobra.Command{
+		Use: "manifestd", SilenceUsage: true, SilenceErrors: true, DisableFlagParsing: true,
+		RunE: func(_ *cobra.Command, _ []string) error { return err },
+	}
+}
+
 // NewRootCmd creates a new root commaxnd for wasmd. It is called once in the
 // main function.
 func NewRootCmd() *cobra.Command {
 	if err := RejectSimulationAdminBypass(); err != nil {
-		// The caller prints the returned error once.
-		return &cobra.Command{
-			Use: "manifestd", SilenceUsage: true, SilenceErrors: true, DisableFlagParsing: true,
-			RunE: func(_ *cobra.Command, _ []string) error { return err },
-		}
+		return errorRootCmd(err)
 	}
+	// The temporary app below only supplies the encoding configuration, but its
+	// Wasm keeper creates files under its home. Give it a fresh directory and
+	// remove only that one: never fall back to a real node home.
+	tempHome, err := os.MkdirTemp("", "manifest")
+	if err != nil {
+		return errorRootCmd(fmt.Errorf("create a temporary home for the encoding app: %w", err))
+	}
+	defer os.RemoveAll(tempHome)
 	cfg := sdk.GetConfig()
 	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
 	cfg.SetBech32PrefixForValidator(app.Bech32PrefixValAddr, app.Bech32PrefixValPub)
@@ -43,7 +57,7 @@ func NewRootCmd() *cobra.Command {
 	cfg.Seal()
 	// we "pre"-instantiate the application for getting the injected/configured encoding configuration
 	// note, this is not necessary when using app wiring, as depinject can be directly used (see root_v2.go)
-	tempApp := app.NewApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true, app.DefaultCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(tempDir()))
+	tempApp := app.NewApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true, app.DefaultCommissionRateMinMax, simtestutil.NewAppOptionsWithFlagHome(tempHome))
 	encodingConfig := params.EncodingConfig{
 		InterfaceRegistry: tempApp.InterfaceRegistry(),
 		Codec:             tempApp.AppCodec(),
