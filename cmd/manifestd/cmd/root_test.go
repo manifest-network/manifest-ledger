@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,7 +71,17 @@ func TestRootCmdTempHome(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, content, 0o600))
 			}
 
-			child := exec.Command(os.Args[0], "-test.run=^TestRootCmdTempHome$", "-test.count=1") // #nosec G204 -- re-runs this test binary
+			args := []string{"-test.run=^TestRootCmdTempHome$", "-test.count=1"}
+			if testing.CoverMode() != "" {
+				// A coverage build writes its counters on exit, into a directory it
+				// creates under TMPDIR unless given one, and TMPDIR may be broken here.
+				dir := flag.Lookup("test.gocoverdir").Value.String()
+				if dir == "" {
+					dir = t.TempDir()
+				}
+				args = append(args, "-test.gocoverdir="+dir)
+			}
+			child := exec.Command(os.Args[0], args...) // #nosec G204 -- re-runs this test binary
 			// Later duplicates win, so these replace the inherited values.
 			child.Env = append(os.Environ(),
 				"HOME="+fakeHome, "TMPDIR="+tc.tmpdir(t, fakeHome), rootTempHomeChildEnv+"="+tc.mode)
