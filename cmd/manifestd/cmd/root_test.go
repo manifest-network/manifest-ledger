@@ -26,7 +26,9 @@ func TestRootCmdTempHome(t *testing.T) {
 	case "unusable":
 		require.Equal(t, os.Getenv("HOME"), filepath.Dir(app.DefaultNodeHome))
 		root := NewRootCmd()
-		root.SetArgs([]string{"version", "--home", t.TempDir()})
+		// TMPDIR is unusable here, so t.TempDir would fail without GOTMPDIR. The
+		// command fails before it reads --home, which therefore need not exist.
+		root.SetArgs([]string{"version", "--home", filepath.Join(os.Getenv("HOME"), "other-home")})
 		require.ErrorContains(t, svrcmd.Execute(root, "MANIFESTD", app.DefaultNodeHome), "create a temporary home for the encoding app")
 		return
 	case "usable":
