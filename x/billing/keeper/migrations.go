@@ -33,3 +33,17 @@ func NewMigrator(k Keeper) Migrator {
 func (m Migrator) Migrate1to2(_ sdk.Context) error {
 	return nil
 }
+
+// Migrate2to3 marks the v2→v3 consensus-version bump for the on-chain
+// lease-update handshake (MsgUpdateLease / MsgAcknowledgeLeaseUpdate /
+// MsgRejectLeaseUpdate / MsgCancelLeaseUpdate). It is a no-op.
+//
+// The three new Lease fields decode to their proto3 zero values on existing
+// records, and those zero values are already the correct semantics: no pending
+// update, and meta_hash_revision 0 meaning "the hash supplied at lease
+// creation". The PendingUpdateIndex lives at a fresh store prefix and correctly
+// starts empty, since no lease created before this upgrade can carry a pending
+// update.
+func (m Migrator) Migrate2to3(_ sdk.Context) error {
+	return nil
+}

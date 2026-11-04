@@ -57,6 +57,33 @@ service Msg {
   // the field and frees the index entry.
   rpc SetItemCustomDomain(MsgSetItemCustomDomain)
       returns (MsgSetItemCustomDomainResponse);
+
+  // UpdateLease requests a new deployment manifest for an ACTIVE lease by
+  // recording its hash in lease.pending_meta_hash. The committed
+  // lease.meta_hash is unchanged until the provider acknowledges, so the
+  // previously committed payload stays valid for the whole window.
+  // Authorised senders: the lease's tenant, the module authority, or any
+  // address in params.allowed_list.
+  rpc UpdateLease(MsgUpdateLease) returns (MsgUpdateLeaseResponse);
+
+  // AcknowledgeLeaseUpdate promotes a lease's pending_meta_hash to meta_hash
+  // once the provider has validated, persisted and applied the matching
+  // payload, and increments meta_hash_revision. Authorised senders: the
+  // provider that owns the lease, or the module authority.
+  rpc AcknowledgeLeaseUpdate(MsgAcknowledgeLeaseUpdate)
+      returns (MsgAcknowledgeLeaseUpdateResponse);
+
+  // RejectLeaseUpdate discards a pending update the provider will not apply,
+  // leaving meta_hash untouched. Authorised senders: the provider that owns
+  // the lease, or the module authority.
+  rpc RejectLeaseUpdate(MsgRejectLeaseUpdate)
+      returns (MsgRejectLeaseUpdateResponse);
+
+  // CancelLeaseUpdate withdraws a pending update the tenant no longer wants.
+  // Authorised senders: the lease's tenant, the module authority, or any
+  // address in params.allowed_list.
+  rpc CancelLeaseUpdate(MsgCancelLeaseUpdate)
+      returns (MsgCancelLeaseUpdateResponse);
 }
 
 // LeaseItemInput is the input for creating a lease item.
@@ -135,7 +162,8 @@ message MsgCreateLease {
 
   // meta_hash is an optional hash/reference to off-chain deployment data.
   // Maximum 64 bytes to accommodate SHA-256/SHA-512 hashes.
-  // Immutable once set at lease creation.
+  // This is revision 0 of the lease's manifest; later revisions go through
+  // MsgUpdateLease / MsgAcknowledgeLeaseUpdate.
   bytes meta_hash = 3 [(gogoproto.jsontag) = "meta_hash,omitempty"];
 }
 
@@ -172,7 +200,8 @@ message MsgCreateLeaseForTenant {
 
   // meta_hash is an optional hash/reference to off-chain deployment data.
   // Maximum 64 bytes to accommodate SHA-256/SHA-512 hashes.
-  // Immutable once set at lease creation.
+  // This is revision 0 of the lease's manifest; later revisions go through
+  // MsgUpdateLease / MsgAcknowledgeLeaseUpdate.
   bytes meta_hash = 4 [(gogoproto.jsontag) = "meta_hash,omitempty"];
 }
 
@@ -436,3 +465,141 @@ message MsgSetItemCustomDomain {
 // MsgSetItemCustomDomainResponse is the response type for
 // MsgSetItemCustomDomain.
 message MsgSetItemCustomDomainResponse {}
+
+// MsgUpdateLease requests a new deployment manifest for an ACTIVE lease.
+// The hash is recorded as lease.pending_meta_hash and only becomes the
+// committed lease.meta_hash when the provider sends
+// MsgAcknowledgeLeaseUpdate. Sending this again supersedes an earlier pending
+// request that has not been acknowledged yet.
+message MsgUpdateLease {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (amino.name) = "lifted/billing/MsgUpdateLease";
+
+  // sender is the address signing the transaction. Must be the lease tenant,
+  // the module authority, or an address in params.allowed_list.
+  string sender = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "sender,omitempty"
+  ];
+
+  // lease_uuid is the UUID of the lease to update.
+  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+
+  // meta_hash is the hash of the new off-chain deployment data.
+  // Required, maximum 64 bytes to accommodate SHA-256/SHA-512 hashes.
+  bytes meta_hash = 3 [(gogoproto.jsontag) = "meta_hash,omitempty"];
+}
+
+// MsgUpdateLeaseResponse is the response type for MsgUpdateLease.
+message MsgUpdateLeaseResponse {
+  // requested_at is the timestamp recorded as lease.pending_meta_hash_at.
+  google.protobuf.Timestamp requested_at = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "requested_at"
+  ];
+}
+
+// MsgAcknowledgeLeaseUpdate promotes a lease's pending_meta_hash to meta_hash.
+// The provider sends this only after it has validated, persisted and applied
+// the payload matching the pending hash.
+message MsgAcknowledgeLeaseUpdate {
+  option (cosmos.msg.v1.signer) = "sender";
+  // Abbreviated: amino msg names are capped at 39 characters for Ledger nano
+  // signing, and "lifted/billing/MsgAcknowledgeLeaseUpdate" is 40. The verb is
+  // shortened rather than the shared LeaseUpdate suffix so the four
+  // lease-update messages still read as a family.
+  option (amino.name) = "lifted/billing/MsgAckLeaseUpdate";
+
+  // sender is the provider's address or the module authority.
+  string sender = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "sender,omitempty"
+  ];
+
+  // lease_uuid is the UUID of the lease whose update is being acknowledged.
+  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+
+  // meta_hash must equal the lease's current pending_meta_hash. It is required
+  // so that a request the provider has not evaluated — one the tenant
+  // submitted after the provider read the lease — cannot be acknowledged by
+  // accident.
+  bytes meta_hash = 3 [(gogoproto.jsontag) = "meta_hash,omitempty"];
+}
+
+// MsgAcknowledgeLeaseUpdateResponse is the response type for
+// MsgAcknowledgeLeaseUpdate.
+message MsgAcknowledgeLeaseUpdateResponse {
+  // acknowledged_at is the timestamp when the update was acknowledged.
+  google.protobuf.Timestamp acknowledged_at = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "acknowledged_at"
+  ];
+
+  // meta_hash_revision is the lease's revision after the promotion.
+  uint64 meta_hash_revision = 2
+      [(gogoproto.jsontag) = "meta_hash_revision,omitempty,string"];
+}
+
+// MsgRejectLeaseUpdate discards a pending update the provider will not apply.
+// The committed meta_hash is left untouched.
+message MsgRejectLeaseUpdate {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (amino.name) = "lifted/billing/MsgRejectLeaseUpdate";
+
+  // sender is the provider's address or the module authority.
+  string sender = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "sender,omitempty"
+  ];
+
+  // lease_uuid is the UUID of the lease whose update is being rejected.
+  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+
+  // meta_hash must equal the lease's current pending_meta_hash, for the same
+  // reason as on MsgAcknowledgeLeaseUpdate.
+  bytes meta_hash = 3 [(gogoproto.jsontag) = "meta_hash,omitempty"];
+
+  // reason is an optional explanation for the rejection.
+  // Maximum 256 characters.
+  string reason = 4 [(gogoproto.jsontag) = "reason,omitempty"];
+}
+
+// MsgRejectLeaseUpdateResponse is the response type for MsgRejectLeaseUpdate.
+message MsgRejectLeaseUpdateResponse {
+  // rejected_at is the timestamp when the update was rejected.
+  google.protobuf.Timestamp rejected_at = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "rejected_at"
+  ];
+}
+
+// MsgCancelLeaseUpdate withdraws a pending update. Unlike the provider-side
+// verbs it takes no meta_hash: the tenant authored the request and always
+// means the current one.
+message MsgCancelLeaseUpdate {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (amino.name) = "lifted/billing/MsgCancelLeaseUpdate";
+
+  // sender is the address signing the transaction. Must be the lease tenant,
+  // the module authority, or an address in params.allowed_list.
+  string sender = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "sender,omitempty"
+  ];
+
+  // lease_uuid is the UUID of the lease whose update is being cancelled.
+  string lease_uuid = 2 [(gogoproto.jsontag) = "lease_uuid,omitempty"];
+}
+
+// MsgCancelLeaseUpdateResponse is the response type for MsgCancelLeaseUpdate.
+message MsgCancelLeaseUpdateResponse {
+  // cancelled_at is the timestamp when the update was cancelled.
+  google.protobuf.Timestamp cancelled_at = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "cancelled_at"
+  ];
+}

@@ -96,7 +96,7 @@ manifestd tx billing create-lease 01912345-6789-7abc-8def-0123456789ab:1:web 019
 - Lease starts in PENDING state awaiting provider acknowledgement
 - Credit is locked but billing does not start until acknowledgement
 - Returns the lease UUID on success
-- `meta_hash` is optional and immutable once set
+- `meta_hash` is optional at creation; afterwards it changes only through the lease-update handshake (`update-lease` → `acknowledge-lease-update`)
 - `service_name` enables stack deployments where the same SKU maps to different named services
 
 ---
@@ -433,6 +433,40 @@ manifestd tx billing set-item-custom-domain 01902a9b-1234-7000-8000-000000000001
 - Domain must not match any entry in `params.reserved_domain_suffixes` (case-insensitive, label-boundary suffix check; entries also match their apex).
 - Domain must be globally unique across all PENDING/ACTIVE leases. Re-setting the same domain on the same item is idempotent (no state change, no event).
 
+#### Lease update commands
+
+Four commands drive the deployment-manifest update handshake. All hashes are hex-encoded (max 64 bytes) and all four require the lease to be `ACTIVE`.
+
+```bash
+manifestd tx billing update-lease              [lease-uuid] [meta-hash] [flags]
+manifestd tx billing acknowledge-lease-update  [lease-uuid] [meta-hash] [flags]
+manifestd tx billing reject-lease-update       [lease-uuid] [meta-hash] --reason "..." [flags]
+manifestd tx billing cancel-lease-update       [lease-uuid] [flags]
+```
+
+**Example — a full update cycle:**
+```bash
+# 1. Tenant hashes the new manifest and requests the update.
+NEW_HASH=$(sha256sum deployment-v2.yaml | cut -d' ' -f1)
+manifestd tx billing update-lease "$LEASE_UUID" "$NEW_HASH" --from tenant-key
+
+# The committed hash has NOT moved yet — the old payload is still the valid one.
+manifestd query billing lease "$LEASE_UUID" -o json | jq '{meta_hash, pending_meta_hash, meta_hash_revision}'
+
+# 2. Tenant uploads the payload off-chain (see INTEGRATION.md for the auth token).
+
+# 3. Provider finds the work, validates and applies the payload, then commits.
+manifestd query billing pending-lease-updates "$PROVIDER_UUID"
+manifestd tx billing acknowledge-lease-update "$LEASE_UUID" "$NEW_HASH" --from provider-key
+```
+
+**Constraints:**
+- `update-lease` / `cancel-lease-update`: sender must be the lease tenant, the module authority, or an address in `params.allowed_list`.
+- `acknowledge-lease-update` / `reject-lease-update`: sender must be the lease's provider address or the module authority. `allowed_list` does **not** grant these.
+- `[meta-hash]` on acknowledge and reject must equal the lease's current `pending_meta_hash`, otherwise `ErrLeaseUpdateMismatch`. This is the guard against committing a request the provider has not evaluated.
+- `update-lease` supersedes an unacknowledged request. Re-requesting the identical hash is a no-op.
+- `cancel-lease-update` takes no hash — the tenant always means the request currently pending.
+
 **Notes:**
 - Emits `lease_custom_domain_set` (with `set_by` ∈ `{tenant, authority, allowed}`) on a successful set, or `lease_custom_domain_cleared` on clear. No event is emitted for an idempotent re-set or a clear of an already-empty domain.
 - The transaction requires lowercase `custom_domain` — `MsgSetItemCustomDomain.ValidateBasic()` rejects mixed case before the keeper runs. Lower-case any user-supplied input client-side. The keeper does its own `strings.ToLower(strings.TrimSpace(...))` as defence-in-depth on the storage path, but you can't rely on it as a normalisation point for input.
@@ -570,7 +604,7 @@ manifestd query billing lease [lease-uuid]
 - `expired_at` is set when pending lease times out (EXPIRED state)
 - `rejection_reason` contains the provider's reason for rejection (max 256 chars)
 - `closure_reason` contains the reason for closure (max 256 chars)
-- `meta_hash` contains the optional hash/reference to off-chain deployment data (max 64 bytes, immutable)
+- `meta_hash` contains the optional hash/reference to the **committed** off-chain deployment data (max 64 bytes). `pending_meta_hash` / `pending_meta_hash_at` describe an update awaiting the provider's decision, and `meta_hash_revision` counts acknowledged versions (`0` = the creation-time hash)
 - `min_lease_duration_at_creation` stores the `min_lease_duration` parameter value at creation time for consistent reservation calculation
 
 ---
@@ -974,6 +1008,51 @@ manifestd query billing lease-by-domain app.example.com
 
 ---
 
+#### pending-lease-updates
+
+List a provider's ACTIVE leases whose tenants have requested a manifest update that has not been acknowledged or rejected yet. This is how a provider catches up on requests it missed while down.
+
+```bash
+manifestd query billing pending-lease-updates [provider-uuid] [flags]
+```
+
+**Arguments:**
+| Argument | Type | Description |
+|----------|------|-------------|
+| provider-uuid | string | UUID of the provider |
+
+**Example:**
+```bash
+manifestd query billing pending-lease-updates 01912345-6789-7abc-8def-fedcba987654
+```
+
+**Response:**
+```json
+{
+  "leases": [
+    {
+      "uuid": "01902a9b-1234-7000-8000-000000000001",
+      "tenant": "manifest1abc...",
+      "provider_uuid": "01912345-6789-7abc-8def-fedcba987654",
+      "state": "LEASE_STATE_ACTIVE",
+      "meta_hash": "oLLD1OX2...",
+      "pending_meta_hash": "ERERERER...",
+      "pending_meta_hash_at": "2026-08-12T10:15:00Z",
+      "meta_hash_revision": "2"
+    }
+  ],
+  "pagination": { "next_key": null }
+}
+```
+
+**Notes:**
+- Backed by the `PendingUpdateIndex` `(provider_uuid, lease_uuid)` key set, so the cost is proportional to the number of outstanding requests, not to the provider's lease count.
+- No state filter: the index only ever holds ACTIVE leases with a request outstanding. Entries appear on `update-lease` and disappear on acknowledge, reject, cancel, or lease closure.
+- `meta_hash` is what the provider is currently serving; `pending_meta_hash` is what the tenant is asking for. Validate an update upload against the latter, and a reprovision against the former.
+- Supports standard `--limit` / `--page-key` pagination.
+
+---
+
 ## gRPC API
 
 ### Msg Service
@@ -993,6 +1072,10 @@ service Msg {
   rpc Withdraw(MsgWithdraw) returns (MsgWithdrawResponse);
   rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
   rpc SetItemCustomDomain(MsgSetItemCustomDomain) returns (MsgSetItemCustomDomainResponse);
+  rpc UpdateLease(MsgUpdateLease) returns (MsgUpdateLeaseResponse);
+  rpc AcknowledgeLeaseUpdate(MsgAcknowledgeLeaseUpdate) returns (MsgAcknowledgeLeaseUpdateResponse);
+  rpc RejectLeaseUpdate(MsgRejectLeaseUpdate) returns (MsgRejectLeaseUpdateResponse);
+  rpc CancelLeaseUpdate(MsgCancelLeaseUpdate) returns (MsgCancelLeaseUpdateResponse);
 }
 ```
 
@@ -1283,6 +1366,111 @@ Both carry attributes `lease_uuid`, `tenant`, `provider_uuid` (v2.2.0+), `servic
 
 ---
 
+#### Lease update messages
+
+Four messages implement the deployment-manifest update handshake. The committed `lease.meta_hash` advances only on acknowledgement, so the payload the provider is already serving stays valid against it for the whole window — see [Architecture › Deployment Updates](ARCHITECTURE.md#deployment-updates-the-meta_hash-handshake) for why, and [Integration](INTEGRATION.md#deployment-data-update---optional) for the off-chain contract.
+
+All four require the lease to be in `ACTIVE` state (`ErrLeaseNotActive` otherwise).
+
+##### MsgUpdateLease
+
+Request a new deployment manifest hash. Recorded as `lease.pending_meta_hash`; `lease.meta_hash` is unchanged.
+
+**Authorisation.** `sender` must be the lease tenant, the module authority, or an address in `params.allowed_list`.
+
+```protobuf
+message MsgUpdateLease {
+  string sender = 1;      // Tenant, authority, or allowed_list member
+  string lease_uuid = 2;  // Target lease (must be ACTIVE)
+  bytes  meta_hash = 3;   // Required, non-empty, max 64 bytes
+}
+
+message MsgUpdateLeaseResponse {
+  google.protobuf.Timestamp requested_at = 1;
+}
+```
+
+**Behaviour notes:**
+- Supersedes a pending request the provider has not acted on; the replaced hash appears on the event as `superseded_meta_hash`.
+- Re-requesting the byte-identical hash is a no-op: no state change, no event, and `pending_meta_hash_at` is not refreshed (which would otherwise reset the provider's staleness clock).
+- An empty `meta_hash` is rejected (`ErrInvalidMetaHash`) — use `MsgCancelLeaseUpdate` to withdraw.
+
+##### MsgAcknowledgeLeaseUpdate
+
+Promote the pending hash to `lease.meta_hash` and increment `meta_hash_revision`. Send only after the matching payload has been validated, persisted and applied.
+
+**Authorisation.** `sender` must be the lease's provider address or the module authority. `allowed_list` does **not** grant this.
+
+```protobuf
+message MsgAcknowledgeLeaseUpdate {
+  string sender = 1;      // Provider or authority
+  string lease_uuid = 2;
+  bytes  meta_hash = 3;   // Must equal lease.pending_meta_hash
+}
+
+message MsgAcknowledgeLeaseUpdateResponse {
+  google.protobuf.Timestamp acknowledged_at = 1;
+  uint64 meta_hash_revision = 2;
+}
+```
+
+**Behaviour notes:**
+- `ErrNoPendingLeaseUpdate` when nothing is pending.
+- `ErrLeaseUpdateMismatch` when `meta_hash` is not the current pending hash — normally because the tenant superseded the request after the provider read the lease. This guard is what stops a provider committing a manifest it never evaluated; retry against the new request rather than the old hash.
+
+##### MsgRejectLeaseUpdate
+
+Discard a pending request the provider will not apply. `lease.meta_hash` and `meta_hash_revision` are untouched.
+
+**Authorisation.** Same as acknowledge: provider or authority.
+
+```protobuf
+message MsgRejectLeaseUpdate {
+  string sender = 1;
+  string lease_uuid = 2;
+  bytes  meta_hash = 3;   // Must equal lease.pending_meta_hash
+  string reason = 4;      // Optional, max 256 characters
+}
+
+message MsgRejectLeaseUpdateResponse {
+  google.protobuf.Timestamp rejected_at = 1;
+}
+```
+
+Rejecting explicitly rather than silently never acknowledging is what lets the tenant tell refusal from delay.
+
+##### MsgCancelLeaseUpdate
+
+Withdraw a pending request.
+
+**Authorisation.** Same as `MsgUpdateLease`: tenant, authority, or `allowed_list`.
+
+```protobuf
+message MsgCancelLeaseUpdate {
+  string sender = 1;
+  string lease_uuid = 2;
+}
+
+message MsgCancelLeaseUpdateResponse {
+  google.protobuf.Timestamp cancelled_at = 1;
+}
+```
+
+Takes no `meta_hash`: the tenant authored the request and always means the one currently pending. `ErrNoPendingLeaseUpdate` when nothing is pending.
+
+**Emitted events:**
+
+| Event | Attributes |
+|-------|-----------|
+| `lease_update_requested` | `lease_uuid`, `tenant`, `provider_uuid`, `pending_meta_hash`, `meta_hash_revision`, `requested_by`, plus `superseded_meta_hash` when it replaced an earlier request |
+| `lease_update_acknowledged` | `lease_uuid`, `tenant`, `provider_uuid`, `meta_hash`, `previous_meta_hash`, `meta_hash_revision`, `acknowledged_by` |
+| `lease_update_rejected` | `lease_uuid`, `tenant`, `provider_uuid`, `pending_meta_hash`, `reason`, `rejected_by` |
+| `lease_update_cancelled` | `lease_uuid`, `tenant`, `provider_uuid`, `pending_meta_hash`, `cancelled_by` |
+
+Hash attributes are hex-encoded. `requested_by` and `cancelled_by` carry the authorisation role (`tenant` / `authority` / `allowed`); `acknowledged_by` and `rejected_by` carry the sender address.
+
+---
+
 ### Query Service
 
 The Query service provides read-only access to state.
@@ -1303,6 +1491,7 @@ service Query {
   rpc WithdrawableAmount(QueryWithdrawableAmountRequest) returns (QueryWithdrawableAmountResponse);
   rpc ProviderWithdrawable(QueryProviderWithdrawableRequest) returns (QueryProviderWithdrawableResponse);
   rpc LeaseByCustomDomain(QueryLeaseByCustomDomainRequest) returns (QueryLeaseByCustomDomainResponse);
+  rpc PendingLeaseUpdates(QueryPendingLeaseUpdatesRequest) returns (QueryPendingLeaseUpdatesResponse);
 }
 ```
 
@@ -1521,15 +1710,20 @@ message Lease {
   string rejection_reason = 11;       // Provider's rejection reason (max 256 chars)
   google.protobuf.Timestamp expired_at = 12;
   string closure_reason = 13;         // Closure reason (max 256 chars)
-  bytes meta_hash = 14;               // Hash/reference to off-chain deployment data (max 64 bytes, immutable)
+  bytes meta_hash = 14;               // Committed hash/reference to off-chain deployment data (max 64 bytes)
   uint64 min_lease_duration_at_creation = 15; // Snapshot of min_lease_duration param at creation
+  bytes pending_meta_hash = 16;       // Requested next manifest, awaiting the provider's decision
+  google.protobuf.Timestamp pending_meta_hash_at = 17; // When it was requested
+  uint64 meta_hash_revision = 18;     // Count of acknowledged versions; 0 = the creation-time hash
 }
 ```
 
 **Field Notes:**
 - `rejection_reason`: Set when a provider rejects a PENDING lease via `MsgRejectLease`. Contains the provider's explanation for rejecting the lease (e.g., "resources unavailable", "invalid configuration"). Maximum 256 characters. Only present when `state` is `LEASE_STATE_REJECTED`.
 - `closure_reason`: Set when a lease is closed via `MsgCloseLease` with a reason, or automatically set to `"credit exhausted"` when a lease is auto-closed due to insufficient credit during settlement. Maximum 256 characters. Only present when `state` is `LEASE_STATE_CLOSED`.
-- `meta_hash`: Optional immutable hash or reference linking to off-chain deployment data (e.g., deployment manifest hash, configuration reference). Set at lease creation and cannot be modified afterward. Maximum 64 bytes to accommodate SHA-256 or SHA-512 hashes.
+- `meta_hash`: Optional hash or reference linking to the **committed** off-chain deployment data (e.g., deployment manifest hash, configuration reference). Set at lease creation as revision 0; afterwards it advances only when a provider acknowledges an update via `MsgAcknowledgeLeaseUpdate`, so it always names the manifest version the provider has committed to. Maximum 64 bytes to accommodate SHA-256 or SHA-512 hashes.
+- `pending_meta_hash` / `pending_meta_hash_at`: A manifest update the tenant has requested but the provider has not yet acknowledged or rejected. Only ever set while the lease is `ACTIVE`, and deliberately does not affect `meta_hash` — see [Lease update messages](#lease-update-messages).
+- `meta_hash_revision`: Monotonic count of acknowledged manifest versions, `0` being the hash supplied at lease creation. Increments even when a tenant rolls back to an earlier manifest, so a rollback is a distinguishable new version rather than a silent rewind.
 - `min_lease_duration_at_creation`: Snapshot of the `min_lease_duration` parameter at the time this lease was created. Used to calculate consistent credit reservations (`reservation = sum(locked_price × quantity) × min_lease_duration_at_creation`) regardless of subsequent governance changes to the parameter. This ensures existing reservations remain valid when parameters are updated.
 
 ### LeaseItem
@@ -1745,6 +1939,10 @@ manifestd query tx [txhash] --output json | jq -r '.logs[0].events[] | select(.t
 | CloseLease | ✓ (own leases) | ✓ | ✓ | ✗ |
 | Withdraw | ✗ | ✓ | ✓ | ✗ |
 | SetItemCustomDomain | ✓ (own leases) | ✗ | ✓ | ✓ |
+| UpdateLease | ✓ (own leases) | ✗ | ✓ | ✓ |
+| CancelLeaseUpdate | ✓ (own leases) | ✗ | ✓ | ✓ |
+| AcknowledgeLeaseUpdate | ✗ | ✓ | ✓ | ✗ |
+| RejectLeaseUpdate | ✗ | ✓ | ✓ | ✗ |
 | UpdateParams | ✗ | ✗ | ✓ | ✗ |
 
 **Notes:**

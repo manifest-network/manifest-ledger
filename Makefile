@@ -153,7 +153,7 @@ ictest-billing:
 
 # Extra billing e2e tests run as their own parallel CI job.
 ictest-billing-extra:
-	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(CreditEstimateOvershoot|CustomDomain)$$" . -count=1
+	cd interchaintest && go test -race -v -timeout 45m -run "^TestBilling(CreditEstimateOvershoot|CustomDomain|LeaseUpdate)$$" . -count=1
 
 ictest-billing-lease:
 	cd interchaintest && go test -race -v -timeout 45m -run "^TestBillingLease$$" . -count=1

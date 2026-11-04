@@ -158,6 +158,30 @@ func (gs *GenesisState) Validate() error {
 			return ErrInvalidMetaHash.Wrapf("lease %s has meta_hash exceeding maximum length of %d bytes", lease.Uuid, MaxMetaHashLength)
 		}
 
+		// Validate the lease-update fields. A pending update is only ever
+		// created on an ACTIVE lease and is cleared when the lease closes, so
+		// carrying one on any other state would describe a lease the msg layer
+		// could never have produced.
+		if len(lease.PendingMetaHash) > MaxMetaHashLength {
+			return ErrInvalidMetaHash.Wrapf("lease %s has pending_meta_hash exceeding maximum length of %d bytes", lease.Uuid, MaxMetaHashLength)
+		}
+		if len(lease.PendingMetaHash) > 0 {
+			if lease.State != LEASE_STATE_ACTIVE {
+				return ErrInvalidLease.Wrapf("lease %s has a pending_meta_hash but is in state %s", lease.Uuid, lease.State)
+			}
+			if lease.PendingMetaHashAt == nil || lease.PendingMetaHashAt.IsZero() {
+				return ErrInvalidLease.Wrapf("lease %s has a pending_meta_hash but no pending_meta_hash_at timestamp", lease.Uuid)
+			}
+		} else if lease.PendingMetaHashAt != nil {
+			return ErrInvalidLease.Wrapf("lease %s has a pending_meta_hash_at timestamp but no pending_meta_hash", lease.Uuid)
+		}
+
+		// A non-zero revision means an update was acknowledged, which always
+		// promotes a non-empty hash into meta_hash.
+		if lease.MetaHashRevision > 0 && len(lease.MetaHash) == 0 {
+			return ErrInvalidMetaHash.Wrapf("lease %s has meta_hash_revision %d but no meta_hash", lease.Uuid, lease.MetaHashRevision)
+		}
+
 		// Note: min_lease_duration_at_creation is a uint64 and doesn't require validation.
 		// Zero value is valid for legacy leases (will fall back to current param).
 

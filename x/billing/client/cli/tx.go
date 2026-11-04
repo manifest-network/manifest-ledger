@@ -39,19 +39,19 @@ func NewTxCmd() *cobra.Command {
 		NewWithdrawCmd(),
 		NewUpdateParamsCmd(),
 		NewSetItemCustomDomainCmd(),
+		NewUpdateLeaseCmd(),
+		NewAcknowledgeLeaseUpdateCmd(),
+		NewRejectLeaseUpdateCmd(),
+		NewCancelLeaseUpdateCmd(),
 	)
 
 	return cmd
 }
 
-// parseMetaHashFlag parses and validates the --meta-hash flag value.
-// Returns nil if the flag is empty. Returns an error if the value is not valid hex
-// or exceeds the maximum allowed length.
-func parseMetaHashFlag(cmd *cobra.Command) ([]byte, error) {
-	metaHashStr, _ := cmd.Flags().GetString("meta-hash")
-	if metaHashStr == "" {
-		return nil, nil
-	}
+// decodeMetaHash decodes a hex-encoded meta_hash and bounds its length.
+// Shared by the --meta-hash flag and the positional argument the lease-update
+// commands take.
+func decodeMetaHash(metaHashStr string) ([]byte, error) {
 	// Defense-in-depth: check hex string length before decoding
 	if len(metaHashStr) > types.MaxMetaHashLength*2 {
 		return nil, fmt.Errorf("meta-hash too long: max %d hex characters", types.MaxMetaHashLength*2)
@@ -64,6 +64,17 @@ func parseMetaHashFlag(cmd *cobra.Command) ([]byte, error) {
 		return nil, fmt.Errorf("meta-hash exceeds maximum length of %d bytes", types.MaxMetaHashLength)
 	}
 	return metaHash, nil
+}
+
+// parseMetaHashFlag parses and validates the --meta-hash flag value.
+// Returns nil if the flag is empty. Returns an error if the value is not valid hex
+// or exceeds the maximum allowed length.
+func parseMetaHashFlag(cmd *cobra.Command) ([]byte, error) {
+	metaHashStr, _ := cmd.Flags().GetString("meta-hash")
+	if metaHashStr == "" {
+		return nil, nil
+	}
+	return decodeMetaHash(metaHashStr)
 }
 
 // parseLeaseItemInputs parses CLI arguments into LeaseItemInput values.
@@ -697,6 +708,181 @@ set-item-custom-domain 01902a9b-1234-7000-8000-000000000001 web "" --from tenant
 				LeaseUuid:    leaseUUID,
 				ServiceName:  args[1],
 				CustomDomain: args[2],
+			}
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+// NewUpdateLeaseCmd returns the update-lease command.
+func NewUpdateLeaseCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "update-lease [lease-uuid] [meta-hash]",
+		Short: "Request a new deployment manifest for an ACTIVE lease",
+		Long: `Record the hash of a new deployment manifest as the lease's pending update.
+
+The lease's committed meta_hash is NOT changed by this command: it advances only
+when the provider runs acknowledge-lease-update, after it has validated,
+persisted and applied the matching payload. Until then the previously committed
+payload stays valid, so an update that never completes cannot leave the lease
+unable to reprovision.
+
+[meta-hash] is hex-encoded, max 64 bytes. Sending this again replaces a pending
+request the provider has not acted on yet. Authorised senders are the lease
+tenant, the module authority, or any address in params.allowed_list.`,
+		Example: `update-lease 01902a9b-1234-7000-8000-000000000001 a1b2c3d4e5f6... --from tenant-key`,
+		Args:    cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			leaseUUID := args[0]
+			if !pkguuid.IsValidUUID(leaseUUID) {
+				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+			}
+
+			metaHash, err := decodeMetaHash(args[1])
+			if err != nil {
+				return err
+			}
+
+			msg := &types.MsgUpdateLease{
+				Sender:    clientCtx.GetFromAddress().String(),
+				LeaseUuid: leaseUUID,
+				MetaHash:  metaHash,
+			}
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+// NewAcknowledgeLeaseUpdateCmd returns the acknowledge-lease-update command.
+func NewAcknowledgeLeaseUpdateCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "acknowledge-lease-update [lease-uuid] [meta-hash]",
+		Short: "Promote a lease's pending update to its committed meta_hash",
+		Long: `Commit a requested manifest update on-chain, incrementing meta_hash_revision.
+
+Run this only after the payload matching [meta-hash] has been validated,
+persisted and applied: the committed meta_hash is what a reprovision check
+compares the stored payload against.
+
+[meta-hash] is hex-encoded and must equal the lease's current pending_meta_hash.
+It is required so a request submitted after you read the lease — one you have
+not evaluated — cannot be acknowledged by accident. Authorised senders are the
+lease's provider or the module authority.`,
+		Example: `acknowledge-lease-update 01902a9b-1234-7000-8000-000000000001 a1b2c3d4e5f6... --from provider-key`,
+		Args:    cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			leaseUUID := args[0]
+			if !pkguuid.IsValidUUID(leaseUUID) {
+				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+			}
+
+			metaHash, err := decodeMetaHash(args[1])
+			if err != nil {
+				return err
+			}
+
+			msg := &types.MsgAcknowledgeLeaseUpdate{
+				Sender:    clientCtx.GetFromAddress().String(),
+				LeaseUuid: leaseUUID,
+				MetaHash:  metaHash,
+			}
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+// NewRejectLeaseUpdateCmd returns the reject-lease-update command.
+func NewRejectLeaseUpdateCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "reject-lease-update [lease-uuid] [meta-hash]",
+		Short: "Discard a pending lease update the provider will not apply",
+		Long: `Refuse a requested manifest update, leaving the committed meta_hash untouched.
+
+Rejecting explicitly — rather than simply never acknowledging — is what lets the
+tenant tell refusal from delay.
+
+[meta-hash] is hex-encoded and must equal the lease's current pending_meta_hash.
+Authorised senders are the lease's provider or the module authority.`,
+		Example: `reject-lease-update 01902a9b-1234-7000-8000-000000000001 a1b2c3d4e5f6... --reason "unsupported image" --from provider-key`,
+		Args:    cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			leaseUUID := args[0]
+			if !pkguuid.IsValidUUID(leaseUUID) {
+				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+			}
+
+			metaHash, err := decodeMetaHash(args[1])
+			if err != nil {
+				return err
+			}
+
+			reason, _ := cmd.Flags().GetString("reason")
+
+			msg := &types.MsgRejectLeaseUpdate{
+				Sender:    clientCtx.GetFromAddress().String(),
+				LeaseUuid: leaseUUID,
+				MetaHash:  metaHash,
+				Reason:    reason,
+			}
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	cmd.Flags().String("reason", "", "Reason for rejecting the update (max 256 characters)")
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+// NewCancelLeaseUpdateCmd returns the cancel-lease-update command.
+func NewCancelLeaseUpdateCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "cancel-lease-update [lease-uuid]",
+		Short: "Withdraw a pending lease update",
+		Long: `Withdraw a manifest update request the provider has not acted on yet.
+
+Takes no meta-hash: as the request's author you always mean the one currently
+pending. Authorised senders are the lease tenant, the module authority, or any
+address in params.allowed_list.`,
+		Example: `cancel-lease-update 01902a9b-1234-7000-8000-000000000001 --from tenant-key`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			leaseUUID := args[0]
+			if !pkguuid.IsValidUUID(leaseUUID) {
+				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+			}
+
+			msg := &types.MsgCancelLeaseUpdate{
+				Sender:    clientCtx.GetFromAddress().String(),
+				LeaseUuid: leaseUUID,
 			}
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
