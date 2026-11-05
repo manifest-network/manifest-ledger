@@ -10,7 +10,6 @@ import (
 
 	cmtdb "github.com/cometbft/cometbft-db"
 	cmtstoreproto "github.com/cometbft/cometbft/proto/tendermint/store"
-	cmtstore "github.com/cometbft/cometbft/store"
 )
 
 func TestTestnetSourceHeightBoundaries(t *testing.T) {
@@ -71,7 +70,7 @@ func TestTestnetPreflightRejectsUnavailableBlockStore(t *testing.T) {
 		{"inverted range", func(t *testing.T, f *testnetPreflightFixture) {
 			db, err := cmtdb.NewGoLevelDB("blockstore", f.config.DBDir())
 			require.NoError(t, err)
-			cmtstore.SaveBlockStoreState(&cmtstoreproto.BlockStoreState{Base: 4, Height: 3}, db)
+			saveBlockStoreState(t, db, &cmtstoreproto.BlockStoreState{Base: 4, Height: 3})
 			require.NoError(t, db.Close())
 		}, "invalid persisted Comet blockstore range"},
 	} {
@@ -94,7 +93,7 @@ func TestReadTestnetBlockStoreHeightLegacyDescriptor(t *testing.T) {
 	db, err := cmtdb.NewGoLevelDB("blockstore", f.config.DBDir())
 	require.NoError(t, err)
 	// Comet accepts descriptors written before the base field existed.
-	cmtstore.SaveBlockStoreState(&cmtstoreproto.BlockStoreState{Height: 3}, db)
+	saveBlockStoreState(t, db, &cmtstoreproto.BlockStoreState{Height: 3})
 	require.NoError(t, db.Close())
 	before := snapshotTestnetFiles(t, f.home)
 	height, err := readTestnetBlockStoreHeight(f.config)

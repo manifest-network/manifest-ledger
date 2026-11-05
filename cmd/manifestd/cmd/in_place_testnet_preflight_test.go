@@ -173,8 +173,18 @@ func (f *testnetPreflightFixture) saveBlockStore(t *testing.T, height int64) {
 	t.Helper()
 	db, err := cmtdb.NewGoLevelDB("blockstore", f.config.DBDir())
 	require.NoError(t, err)
-	cmtstore.SaveBlockStoreState(&cmtstoreproto.BlockStoreState{Base: 1, Height: height}, db)
+	saveBlockStoreState(t, db, &cmtstoreproto.BlockStoreState{Base: 1, Height: height})
 	require.NoError(t, db.Close())
+}
+
+// saveBlockStoreState writes the descriptor through Comet's batch API; the
+// direct SaveBlockStoreState is deprecated.
+func saveBlockStoreState(t *testing.T, db cmtdb.DB, state *cmtstoreproto.BlockStoreState) {
+	t.Helper()
+	batch := db.NewBatch()
+	cmtstore.SaveBlockStoreStateBatch(state, batch)
+	require.NoError(t, batch.WriteSync())
+	require.NoError(t, batch.Close())
 }
 
 func (f *testnetPreflightFixture) completeFork(t *testing.T) {
