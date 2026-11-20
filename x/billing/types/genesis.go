@@ -1,21 +1,14 @@
 package types
 
 import (
-	"cmp"
 	"maps"
 	"slices"
 	"time"
-
-	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 )
-
-// streamRemainderLimit is the exclusive upper bound of StreamState.Remainder:
-// one whole unit of the denom, expressed in (denom units × nanoseconds).
-var streamRemainderLimit = sdkmath.NewInt(1_000_000_000)
 
 // DefaultGenesis returns the default genesis state.
 func DefaultGenesis() *GenesisState {
@@ -177,17 +170,20 @@ func (gs *GenesisState) Validate() error {
 		}
 	}
 
-	// Validate credit accounts
+	// Validate credit accounts. Tenants are compared by address, not by how the
+	// address is spelled: the cross-checks below key their maps with
+	// CanonicalAddress, because a lease and its credit account may store the
+	// same tenant in different (upper/lower case) bech32 spellings.
 	seenTenants := make(map[string]bool)
 	for _, ca := range gs.CreditAccounts {
 		if ca.Tenant == "" {
 			return ErrInvalidCreditOperation.Wrap("credit account has empty tenant")
 		}
 
-		if seenTenants[ca.Tenant] {
+		if seenTenants[CanonicalAddress(ca.Tenant)] {
 			return ErrInvalidCreditOperation.Wrapf("duplicate credit account for tenant: %s", ca.Tenant)
 		}
-		seenTenants[ca.Tenant] = true
+		seenTenants[CanonicalAddress(ca.Tenant)] = true
 
 		if _, err := sdk.AccAddressFromBech32(ca.Tenant); err != nil {
 			return ErrInvalidCreditOperation.Wrapf("credit account has invalid tenant address: %s", err)
@@ -223,7 +219,7 @@ func (gs *GenesisState) Validate() error {
 
 	// Check each credit account's reserved_amounts matches expected
 	for _, ca := range gs.CreditAccounts {
-		expected := expectedReservations[ca.Tenant]
+		expected := expectedReservations[CanonicalAddress(ca.Tenant)]
 		if expected == nil {
 			expected = sdk.NewCoins()
 		}
@@ -259,14 +255,14 @@ func (gs *GenesisState) Validate() error {
 	for _, lease := range gs.Leases {
 		switch lease.State {
 		case LEASE_STATE_ACTIVE:
-			activeCounts[lease.Tenant]++
+			activeCounts[CanonicalAddress(lease.Tenant)]++
 		case LEASE_STATE_PENDING:
-			pendingCounts[lease.Tenant]++
+			pendingCounts[CanonicalAddress(lease.Tenant)]++
 		}
 	}
 
 	for _, ca := range gs.CreditAccounts {
-		expectedActive := activeCounts[ca.Tenant]
+		expectedActive := activeCounts[CanonicalAddress(ca.Tenant)]
 		if ca.ActiveLeaseCount != expectedActive {
 			return ErrInvalidCreditOperation.Wrapf(
 				"credit account for %s has active_lease_count %d but has %d active leases",
@@ -274,7 +270,7 @@ func (gs *GenesisState) Validate() error {
 			)
 		}
 
-		expectedPending := pendingCounts[ca.Tenant]
+		expectedPending := pendingCounts[CanonicalAddress(ca.Tenant)]
 		if ca.PendingLeaseCount != expectedPending {
 			return ErrInvalidCreditOperation.Wrapf(
 				"credit account for %s has pending_lease_count %d but has %d pending leases",
@@ -341,10 +337,12 @@ func (gs *GenesisState) ValidateStreams() error {
 		if stream.State.LastSettledAt.IsZero() {
 			return ErrInvalidLease.Wrapf("stream %v has no last_settled_at timestamp", id)
 		}
-		// The remainder is what a settlement could not pay as a whole unit: it
-		// is the rest of a division by 1e9 (see StreamState.remainder).
-		if r := stream.State.Remainder; !r.IsNil() && (r.IsNegative() || r.GTE(streamRemainderLimit)) {
-			return ErrInvalidLease.Wrapf("stream %v has remainder %s outside [0, %s)", id, r, streamRemainderLimit)
+		// The remainder is accrual carried to the next settlement. After a
+		// settlement it is below one unit (1e9), but it can be larger when the
+		// stream carries a debt that could not be paid (see StreamState.remainder),
+		// so only its sign is constrained.
+		if r := stream.State.Remainder; !r.IsNil() && r.IsNegative() {
+			return ErrInvalidLease.Wrapf("stream %v has negative remainder %s", id, r)
 		}
 
 		want, ok := expected[id]
@@ -365,23 +363,12 @@ func (gs *GenesisState) ValidateStreams() error {
 		}
 	}
 
-	// Every stream the leases imply must be present. Report the smallest
-	// missing one so the error is the same on every run.
-	missing := make([]StreamID, 0)
-	for id := range expected {
+	// Every stream the leases imply must be present. Walk the expected streams
+	// in sorted order so the error names the same one on every run.
+	for _, id := range slices.SortedFunc(maps.Keys(expected), CompareStreamIDs) {
 		if !seen[id] {
-			missing = append(missing, id)
+			return ErrInvalidLease.Wrapf("active leases imply stream %v but it is missing", id)
 		}
-	}
-	if len(missing) > 0 {
-		slices.SortFunc(missing, func(a, b StreamID) int {
-			return cmp.Or(
-				cmp.Compare(a.ProviderUUID, b.ProviderUUID),
-				cmp.Compare(a.Tenant, b.Tenant),
-				cmp.Compare(a.Denom, b.Denom),
-			)
-		})
-		return ErrInvalidLease.Wrapf("active leases imply stream %v but it is missing", missing[0])
 	}
 
 	return nil

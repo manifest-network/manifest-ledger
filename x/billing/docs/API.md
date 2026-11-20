@@ -814,9 +814,9 @@ manifestd query billing streams-by-provider [provider-uuid] --page-key <base64-n
 | `last_settled_at` | Time up to which the stream has been paid: the block time of its last settlement. |
 | `lease_count` | Number of ACTIVE leases the stream aggregates |
 | `exhausted_at` | Present only on a frozen stream: the block time at which a settlement found the tenant's credit exhausted. A frozen stream no longer accrues, and its leases are closed by the EndBlocker. |
-| `remainder` | Accrual that did not amount to a whole unit of `denom` at the last settlement, carried to the next one. In (denom units × nanoseconds), always at least 0 and less than 1,000,000,000. |
+| `remainder` | Accrual carried to the next settlement, in (denom units × nanoseconds): 1,000,000,000 is one whole unit of `denom`. After a settlement it is what did not amount to a whole unit, so it is below 1,000,000,000. It holds a whole unit or more only when the stream carries a debt that could not be paid (see [Stream](#stream)). Never negative. |
 
-**Note:** This returns stored state. What a stream has accrued at time `T` is exactly `(remainder + rate × nanoseconds between last_settled_at and T) / 1,000,000,000`, rounded down, capped at the tenant's credit balance in `denom`. `rate × seconds elapsed` is a close approximation of it (it ignores the carried remainder). `provider-withdrawable` computes the exact sum for you.
+**Note:** This returns stored state. What a stream has accrued at time `T` is exactly `(remainder + rate × nanoseconds between last_settled_at and T) / 1,000,000,000`, rounded down, capped at the tenant's credit balance in `denom`. `rate × seconds elapsed` is a close approximation of it as long as `remainder` is below one unit; it ignores the carried remainder, so it understates a stream that carries an unpaid debt. `provider-withdrawable` computes the exact sum for you.
 
 ---
 
@@ -1747,14 +1747,15 @@ message StreamState {
   google.protobuf.Timestamp last_settled_at = 2; // Time up to which accrual has been settled
   uint64 lease_count = 3;                      // Number of ACTIVE leases contributing to rate
   google.protobuf.Timestamp exhausted_at = 4;  // Set when the tenant's credit was found exhausted
-  string remainder = 5;                        // cosmos.Int: accrual below one unit of the denom, carried to the next settlement
+  string remainder = 5;                        // cosmos.Int: accrual carried to the next settlement (1,000,000,000 = one unit of the denom)
 }
 ```
 
 **Field Notes:**
 - `rate`: `sum(locked_price × quantity)` over the items priced in `denom` of all ACTIVE leases of `tenant` with `provider_uuid`.
 - `last_settled_at`: Set to the block time by every settlement, so it always equals the time of the stream's last settlement.
-- `remainder`: Rates are per second and time is tracked to the nanosecond, so it is expressed in (denom units × nanoseconds) and is always in `[0, 1,000,000,000)`. A settlement at time `T` computes `total = remainder + rate × nanoseconds since last_settled_at`, pays `total / 1,000,000,000` (capped at the tenant's credit balance) and stores `total % 1,000,000,000` as the new `remainder`. No fraction of a second is dropped between settlements, and a lease that joins a stream is never charged for time before it joined. Genesis validation rejects a value outside that range.
+- `remainder`: Rates are per second and time is tracked to the nanosecond, so it is expressed in (denom units × nanoseconds): 1,000,000,000 is one whole unit of the denom. A settlement at time `T` computes `total = remainder + rate × nanoseconds since last_settled_at`, pays `total / 1,000,000,000` (capped at the tenant's credit balance) and stores `total % 1,000,000,000` as the new `remainder`, which is therefore below 1,000,000,000 after a settlement. No fraction of a second is dropped between settlements, and a lease that joins a stream is never charged for time before it joined. It can hold a whole unit or more only when the stream carries a debt that could not be paid (the 2 → 3 store migration stores a failed payout here); the next settlement pays it along with what accrued since. Genesis validation rejects a negative value and sets no upper bound.
+- `tenant` (on `Stream`): Always the canonical lower-case bech32 spelling of the tenant's address. Bech32 is also valid in upper case and a lease stores its tenant as it was sent, so `Lease.tenant` may be upper case for the same account. Compare them as addresses, not as strings.
 - `exhausted_at`: Unset on a healthy stream. Once set, the stream is frozen: it stops accruing, a top-up does not unfreeze it, and its leases are closed by the EndBlocker. The stream is deleted when its last lease is closed.
 - A stream exists if and only if `lease_count > 0`.
 

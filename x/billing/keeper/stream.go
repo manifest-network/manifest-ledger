@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"cosmossdk.io/collections"
@@ -84,7 +85,7 @@ func (s StreamSettlement) creditExhausted() bool {
 }
 
 // nanosPerSecond scales the sub-second remainder a stream carries.
-const nanosPerSecond = int64(time.Second)
+var nanosPerSecond = big.NewInt(int64(time.Second))
 
 // streamRemainder returns the sub-unit accrual a stream carries, treating an
 // unset value as zero.
@@ -100,14 +101,19 @@ func streamRemainder(state types.StreamState) sdkmath.Int {
 // Rates are per second and block time has nanosecond precision, so accrual is
 // computed exactly: remainder + rate × elapsed nanoseconds, divided by 1e9.
 // The quotient is what is payable in whole units of the denom (accrued) and
-// what is left over (remainder, always < 1e9) is carried to the next
+// what is left over (remainder, below 1e9) is carried to the next
 // settlement. Nothing is rounded away between settlements, and because the
 // stream's clock always advances to now, a lease that joins the stream is
 // never charged for time before it joined.
 //
 // A frozen stream, or one last settled at or after now, accrues nothing. ok is
-// false when the accrual is not representable (the gap exceeds
-// MaxDurationSeconds or the arithmetic overflows).
+// false when the accrual is not representable: the gap exceeds
+// MaxDurationSeconds, or the amount payable does not fit sdkmath.Int.
+//
+// The intermediate product is computed with arbitrary precision. rate × elapsed
+// nanoseconds is 1e9 times larger than the amount it yields, so it can exceed
+// the 256 bits of sdkmath.Int while the charge itself fits comfortably; only
+// the charge decides whether the accrual is representable.
 func streamAccrual(state types.StreamState, now time.Time) (accrued, remainder sdkmath.Int, ok bool) {
 	remainder = streamRemainder(state)
 	if state.IsExhausted() {
@@ -116,21 +122,25 @@ func streamAccrual(state types.StreamState, now time.Time) (accrued, remainder s
 
 	elapsed := now.Sub(state.LastSettledAt)
 	if elapsed <= 0 {
-		return sdkmath.ZeroInt(), remainder, true
+		// Nothing accrues, but a carried remainder of a whole unit or more (a
+		// debt the migration could not pay) is payable right away.
+		elapsed = 0
 	}
 	if int64(elapsed/time.Second) > MaxDurationSeconds {
 		return sdkmath.ZeroInt(), sdkmath.ZeroInt(), false
 	}
 
-	scaled, err := state.Rate.SafeMul(sdkmath.NewInt(int64(elapsed)))
-	if err != nil {
+	total := new(big.Int)
+	if !state.Rate.IsNil() {
+		total.Mul(state.Rate.BigInt(), big.NewInt(int64(elapsed)))
+	}
+	total.Add(total, remainder.BigInt())
+
+	units, rest := new(big.Int).QuoRem(total, nanosPerSecond, new(big.Int))
+	if units.BitLen() > sdkmath.MaxBitLen {
 		return sdkmath.ZeroInt(), sdkmath.ZeroInt(), false
 	}
-	total, err := scaled.SafeAdd(remainder)
-	if err != nil {
-		return sdkmath.ZeroInt(), sdkmath.ZeroInt(), false
-	}
-	return total.QuoRaw(nanosPerSecond), total.ModRaw(nanosPerSecond), true
+	return sdkmath.NewIntFromBigInt(units), sdkmath.NewIntFromBigInt(rest), true
 }
 
 // streamWithdrawable returns what settling a stream at now would pay the

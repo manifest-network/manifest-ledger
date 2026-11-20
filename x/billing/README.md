@@ -149,7 +149,7 @@ Accrual is settled per **stream**, not per lease. A stream is the aggregate of e
 - `last_settled_at`: the time of the stream's last settlement
 - `lease_count`: how many ACTIVE leases it aggregates
 - `exhausted_at`: set once the tenant's credit ran out (see [Overdraw and Auto-Close](#overdraw-and-auto-close))
-- `remainder`: the accrual that did not amount to a whole unit of the denom at the last settlement, carried to the next one
+- `remainder`: accrual carried to the next settlement: what did not amount to a whole unit of the denom at the last one (see [Stream](#stream) for the one case where it holds more)
 
 A stream exists if and only if it has at least one ACTIVE lease. A lease priced in two denoms belongs to two streams.
 
@@ -363,9 +363,11 @@ Settlement streams stored at key prefix `0x0D`, keyed by `(provider_uuid, tenant
 | last_settled_at | Timestamp | Time up to which the stream's accrual has been settled. Every settlement sets it to the block time. |
 | lease_count | uint64 | Number of ACTIVE leases contributing to `rate` |
 | exhausted_at | Timestamp | Set when a settlement found the tenant's credit exhausted. A frozen stream stops accruing and its leases are closed by the EndBlocker. |
-| remainder | Int | Accrual that did not amount to a whole unit of the denom at the last settlement, carried to the next one. Expressed in (denom units × nanoseconds), always in `[0, 1,000,000,000)`. |
+| remainder | Int | Accrual carried to the next settlement, in (denom units × nanoseconds): 1,000,000,000 is one whole unit of the denom. After a settlement it is what did not amount to a whole unit, so it is below 1,000,000,000. It holds a whole unit or more only when the stream carries a debt that could not be paid (the 2 → 3 store migration stores a failed payout here); the next settlement pays it along with what accrued since. Never negative. |
 
 In genesis and in query responses a stream is a `Stream`: `provider_uuid`, `tenant`, `denom` and the `state` above.
+
+**Tenant spelling:** a stream identifies its tenant by address, not by how the address string is spelled. Bech32 is also valid in upper case and a lease stores its tenant as it was sent, so `Lease.tenant` may be upper case while `Stream.tenant` is always the canonical lower-case spelling. Compare the two as addresses, not as strings.
 
 **Invariant:** for every `(provider_uuid, tenant, denom)`, `rate` equals the sum of `locked_price × quantity` over the items in that denom of all ACTIVE leases of that tenant with that provider, `lease_count` equals the number of those leases, and a stream exists if and only if `lease_count > 0`. A frozen stream keeps its rate and lease count; it only stops accruing.
 
@@ -609,7 +611,7 @@ invalid credit operation: tenant manifest1def... has lease reservations totaling
 ### Other Genesis Validations
 
 - **Lease UUIDs**: All leases must have valid UUIDv7 format, no duplicates
-- **Tenant/Provider addresses**: All addresses must be valid bech32 format
+- **Tenant/Provider addresses**: All addresses must be valid bech32 format. The cross-checks between leases, credit accounts and streams compare tenants as canonical addresses, so the same tenant spelled in upper case in one record and lower case in another still matches (and two credit accounts for one address in different spellings are duplicates)
 - **Credit address derivation**: Credit addresses must match deterministic derivation from tenant address
 - **Lease state consistency**: CLOSED leases must have a non-nil, non-zero `closed_at`. At InitGenesis, a lease's `created_at` and `closed_at` must not be after the block time.
 - **Deprecated `last_settled_at`**: A lease that carries `last_settled_at` is rejected. Such a genesis was exported before stream settlement and its leases have no streams.
@@ -619,7 +621,7 @@ invalid credit operation: tenant manifest1def... has lease reservations totaling
 
 `GenesisState.streams` must be exactly the streams the ACTIVE leases imply:
 
-- Every stream has a valid tenant address, a positive `rate`, a non-zero `last_settled_at`, a `remainder` in `[0, 1,000,000,000)`, and appears only once
+- Every stream has a valid tenant address, a positive `rate`, a non-zero `last_settled_at`, a `remainder` that is not negative, and appears only once
 - Every stream matches at least one ACTIVE lease, and its `rate` and `lease_count` equal what those leases sum to
 - Every `(provider_uuid, tenant, denom)` with an ACTIVE lease has its stream
 - At InitGenesis, a stream's `last_settled_at` and `exhausted_at` must not be after the block time

@@ -646,13 +646,16 @@ type StreamState struct {
 	// in the stream's denom. An exhausted stream stops accruing and its leases
 	// are closed by the EndBlocker.
 	ExhaustedAt *time.Time `protobuf:"bytes,4,opt,name=exhausted_at,json=exhaustedAt,proto3,stdtime" json:"exhausted_at,omitempty"`
-	// remainder is the accrual that did not amount to a whole unit of the denom
-	// at the last settlement, carried to the next one. Rates are per second and
-	// time is tracked to the nanosecond, so it is expressed in
-	// (denom units × nanoseconds) and is always less than 1,000,000,000.
-	// Carrying it keeps accrual exact across settlements and rate changes: no
-	// fraction of a second is dropped, and a lease that joins a stream is never
-	// charged for time before it joined.
+	// remainder is accrual carried to the next settlement. Rates are per second
+	// and time is tracked to the nanosecond, so it is expressed in
+	// (denom units × nanoseconds): 1,000,000,000 is one whole unit of the denom.
+	// After a settlement it is what did not amount to a whole unit, and is
+	// therefore below 1,000,000,000. Carrying it keeps accrual exact across
+	// settlements and rate changes: no fraction of a second is dropped, and a
+	// lease that joins a stream is never charged for time before it joined.
+	// It can hold a whole unit or more only when the stream carries a debt that
+	// could not be paid (the 2 → 3 store migration stores a failed payout here);
+	// the next settlement pays it along with what accrued since.
 	Remainder cosmossdk_io_math.Int `protobuf:"bytes,5,opt,name=remainder,proto3,customtype=cosmossdk.io/math.Int" json:"remainder"`
 }
 

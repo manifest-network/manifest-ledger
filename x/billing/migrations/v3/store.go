@@ -4,8 +4,9 @@
 package v3
 
 import (
-	"cmp"
 	"context"
+	"maps"
+	"math/big"
 	"slices"
 	"time"
 
@@ -17,10 +18,9 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
-// maxBackdateSeconds bounds how far a stream may be back-dated to carry an
-// unpaid debt. It matches the keeper's MaxDurationSeconds (~100 years), beyond
-// which a settlement treats the accrual as an overflow.
-const maxBackdateSeconds = 100 * 365 * 24 * 60 * 60
+// nanosPerSecond converts an amount in whole units of a denom into the unit of
+// StreamState.Remainder (denom units × nanoseconds).
+const nanosPerSecond = 1_000_000_000
 
 // Keeper is the part of the billing keeper the migration works through.
 type Keeper interface {
@@ -75,8 +75,8 @@ type pending struct {
 //
 // A data problem affecting one stream (for example a payout that fails) does
 // not abort the upgrade: the payment is discarded, the problem is logged, and
-// the stream is back-dated so the debt is still collected by its first
-// settlement. The migration fails only if the result is internally
+// what could not be paid is carried in the stream's remainder so its first
+// settlement still collects it. The migration fails only if the result is internally
 // inconsistent, since continuing would misprice every later settlement.
 func MigrateStore(ctx sdk.Context, k Keeper) error {
 	now := ctx.BlockTime()
@@ -114,8 +114,10 @@ func MigrateStore(ctx sdk.Context, k Keeper) error {
 				continue
 			}
 
+			// Group by the tenant's address, not by lease.Tenant: v2 stored the
+			// tenant as it was sent, and bech32 is also valid in upper case.
 			for _, rate := range rates {
-				p := get(types.StreamID{ProviderUUID: lease.ProviderUuid, Tenant: lease.Tenant, Denom: rate.Denom}, tenant)
+				p := get(types.NewStreamID(lease.ProviderUuid, tenant, rate.Denom), tenant)
 				p.addOwed(rate.Amount, secs)
 
 				// Only ACTIVE leases form a stream; a CLOSED lease only settles
@@ -142,17 +144,7 @@ func MigrateStore(ctx sdk.Context, k Keeper) error {
 
 	// Process in a fixed order: the result must not depend on map iteration,
 	// and when a tenant's credit is short the order decides who is paid.
-	ids := make([]types.StreamID, 0, len(byStream))
-	for id := range byStream {
-		ids = append(ids, id)
-	}
-	slices.SortFunc(ids, func(a, b types.StreamID) int {
-		return cmp.Or(
-			cmp.Compare(a.Tenant, b.Tenant),
-			cmp.Compare(a.ProviderUUID, b.ProviderUUID),
-			cmp.Compare(a.Denom, b.Denom),
-		)
-	})
+	ids := slices.SortedFunc(maps.Keys(byStream), types.CompareStreamIDs)
 
 	for _, id := range ids {
 		p := byStream[id]
@@ -193,9 +185,11 @@ func MigrateStore(ctx sdk.Context, k Keeper) error {
 		}
 		switch {
 		case !paid:
-			// Keep the debt: start the stream far enough in the past that its
-			// first settlement accrues what could not be paid now.
-			state.LastSettledAt = backdate(now, owed, p.rate)
+			// Keep the whole debt: carry it in the stream's remainder, which
+			// the first settlement adds to what the stream accrues by then.
+			// Back-dating the stream instead would lose whatever is smaller
+			// than one second of its rate.
+			state.Remainder = carriedDebt(owed)
 		case p.overflowed || owed.GTE(balance):
 			// Same rule as a normal settlement: the accrual consumed the whole
 			// balance, so the stream is frozen and its leases will be closed.
@@ -280,15 +274,16 @@ func (p *pending) addOwed(rate sdkmath.Int, secs int64) {
 	p.owed = total
 }
 
-// backdate returns the settlement time that makes a stream of the given rate
-// accrue owed by now.
-func backdate(now time.Time, owed, rate sdkmath.Int) time.Time {
-	if !rate.IsPositive() {
-		return now
+// carriedDebt converts an amount that could not be paid into the stream
+// remainder that carries it: the same amount in (denom units × nanoseconds).
+// The product only fails to fit for amounts within 30 bits of the 256-bit
+// limit of sdkmath.Int; such a debt is carried up to the largest representable
+// remainder, which still exceeds any credit balance.
+func carriedDebt(amount sdkmath.Int) sdkmath.Int {
+	carried, err := amount.SafeMul(sdkmath.NewInt(nanosPerSecond))
+	if err != nil {
+		limit := new(big.Int).Lsh(big.NewInt(1), sdkmath.MaxBitLen)
+		return sdkmath.NewIntFromBigInt(limit.Sub(limit, big.NewInt(1)))
 	}
-	secs := owed.Quo(rate)
-	if !secs.IsInt64() || secs.Int64() > maxBackdateSeconds {
-		return now.Add(-maxBackdateSeconds * time.Second)
-	}
-	return now.Add(-time.Duration(secs.Int64()) * time.Second)
+	return carried
 }

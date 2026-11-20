@@ -312,7 +312,7 @@ manifestd query billing streams-by-provider [provider-uuid]
 2. The overall transaction still succeeds
 3. No error is returned for such a stream — error skips are logged by the node, normal (nothing-to-pay) settlements are silent
 
-> **Arithmetic overflow does NOT skip the stream.** If a stream's accrual is not representable (more than ~100 years since its last settlement, `MaxDurationSeconds`, or an overflowing product), the settlement instead transfers the tenant's **entire remaining credit** in the stream's denom to the provider and freezes the stream, so the EndBlocker closes its leases. The funds are **not** preserved. Overflow is effectively unreachable in normal operation but can arise from a genesis import with an ancient stream `last_settled_at`.
+> **Arithmetic overflow does NOT skip the stream.** If a stream's accrual is not representable (more than ~100 years since its last settlement, `MaxDurationSeconds`, or a payable amount too large to fit the chain's 256-bit integer), the settlement instead transfers the tenant's **entire remaining credit** in the stream's denom to the provider and freezes the stream, so the EndBlocker closes its leases. The funds are **not** preserved. Overflow is effectively unreachable in normal operation but can arise from a genesis import with an ancient stream `last_settled_at`.
 
 **Solution**:
 1. Inspect the stream: its `last_settled_at` tells you whether the last withdraw settled it, and `exhausted_at` whether it is frozen:
@@ -569,7 +569,7 @@ If the stream is already frozen (`exhausted_at` set) and the lease is still ACTI
   `pagination.next_key` back as `--page-key` (the base64 string exactly as printed),
   and sum the per-page `amounts` until `next_key` is empty. This query has no
   `has_more` field — branch on `len(pagination.next_key) > 0`.
-- For one tenant's share, read its stream from `streams-by-provider`. The exact accrual is `(remainder + rate × nanoseconds since last_settled_at) / 1,000,000,000`, rounded down and capped at the tenant's credit balance in that denom. `rate ×` seconds since `last_settled_at` is a close approximation
+- For one tenant's share, read its stream from `streams-by-provider`. The exact accrual is `(remainder + rate × nanoseconds since last_settled_at) / 1,000,000,000`, rounded down and capped at the tenant's credit balance in that denom. `rate ×` seconds since `last_settled_at` is a close approximation as long as `remainder` is below 1,000,000,000 (one unit). A larger `remainder` means the stream carries a debt that could not be paid earlier (a failed payout during the 2 → 3 migration); the next settlement pays it too
 
 ### "invalid --page-key" on a stream query
 

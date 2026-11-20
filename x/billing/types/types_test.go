@@ -1244,7 +1244,8 @@ func TestGenesisState_Validate(t *testing.T) {
 			errMsg:    "no last_settled_at",
 		},
 		{
-			// The remainder is the rest of a division by 1e9: it lies in [0, 1e9).
+			// The remainder is accrual carried to the next settlement: below one
+			// unit (1e9) after a settlement, larger when it carries an unpaid debt.
 			name: "stream remainder just below one unit",
 			genesis: &types.GenesisState{
 				Params:         types.DefaultParams(),
@@ -1256,16 +1257,15 @@ func TestGenesisState_Validate(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name: "stream remainder of a whole unit",
+			name: "stream remainder of a whole unit or more is a carried debt",
 			genesis: &types.GenesisState{
 				Params:         types.DefaultParams(),
 				Leases:         []types.Lease{validLease},
 				CreditAccounts: []types.CreditAccount{validCreditAccount},
 				LeaseSequence:  1,
-				Streams:        withStream(func(s *types.Stream) { s.State.Remainder = math.NewInt(1_000_000_000) }),
+				Streams:        withStream(func(s *types.Stream) { s.State.Remainder = math.NewInt(5_000_000_000) }),
 			},
-			expectErr: true,
-			errMsg:    "remainder 1000000000 outside",
+			expectErr: false,
 		},
 		{
 			name: "stream with negative remainder",
@@ -1277,7 +1277,7 @@ func TestGenesisState_Validate(t *testing.T) {
 				Streams:        withStream(func(s *types.Stream) { s.State.Remainder = math.NewInt(-1) }),
 			},
 			expectErr: true,
-			errMsg:    "remainder -1 outside",
+			errMsg:    "negative remainder -1",
 		},
 		{
 			name: "stream with invalid tenant",

@@ -1,7 +1,10 @@
 package types_test
 
 import (
+	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -137,7 +140,111 @@ func TestExpectedStreamAggregates(t *testing.T) {
 func TestStreamState_IsExhausted(t *testing.T) {
 	require.False(t, types.StreamState{}.IsExhausted())
 
+	now := time.Now()
+	require.True(t, types.StreamState{ExhaustedAt: &now}.IsExhausted())
+}
+
+// TestStreamIdentityIgnoresAddressSpelling checks that a stream is identified
+// by the tenant's address, not by how the address is spelled. Bech32 is also
+// valid in upper case and leases store the tenant as it was sent.
+func TestStreamIdentityIgnoresAddressSpelling(t *testing.T) {
 	_, _, addr := testdata.KeyTestPubAddr()
-	stream := types.Stream{ProviderUuid: "p", Tenant: addr.String(), Denom: "umfx"}
-	require.Equal(t, types.StreamID{ProviderUUID: "p", Tenant: addr.String(), Denom: "umfx"}, stream.ID())
+	lower := addr.String()
+	upper := strings.ToUpper(lower)
+	require.NotEqual(t, lower, upper)
+
+	t.Run("CanonicalAddress", func(t *testing.T) {
+		require.Equal(t, lower, types.CanonicalAddress(lower))
+		require.Equal(t, lower, types.CanonicalAddress(upper))
+		require.Equal(t, "not-an-address", types.CanonicalAddress("not-an-address"), "an invalid address is returned unchanged")
+		require.Empty(t, types.CanonicalAddress(""))
+	})
+
+	t.Run("stream identifiers", func(t *testing.T) {
+		want := types.StreamID{ProviderUUID: "p", Tenant: lower, Denom: "umfx"}
+		require.Equal(t, want, types.NewStreamID("p", addr, "umfx"))
+		require.Equal(t, want, types.Stream{ProviderUuid: "p", Tenant: lower, Denom: "umfx"}.ID())
+		require.Equal(t, want, types.Stream{ProviderUuid: "p", Tenant: upper, Denom: "umfx"}.ID())
+	})
+
+	t.Run("leases spelled differently share one stream", func(t *testing.T) {
+		item := types.LeaseItem{Quantity: 1, LockedPrice: sdk.NewCoin("umfx", math.NewInt(10))}
+		leases := []types.Lease{
+			{Uuid: "l1", Tenant: lower, ProviderUuid: "p", State: types.LEASE_STATE_ACTIVE, Items: []types.LeaseItem{item}},
+			{Uuid: "l2", Tenant: upper, ProviderUuid: "p", State: types.LEASE_STATE_ACTIVE, Items: []types.LeaseItem{item}},
+		}
+		got, err := types.ExpectedStreamAggregates(leases)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		agg := got[types.NewStreamID("p", addr, "umfx")]
+		require.True(t, agg.Rate.Equal(math.NewInt(20)))
+		require.Equal(t, uint64(2), agg.LeaseCount)
+	})
+
+	t.Run("an active lease with an invalid tenant is an error", func(t *testing.T) {
+		_, err := types.ExpectedStreamAggregates([]types.Lease{
+			{Uuid: "l1", Tenant: "not-an-address", ProviderUuid: "p", State: types.LEASE_STATE_ACTIVE},
+		})
+		require.ErrorContains(t, err, "invalid tenant address")
+	})
+
+	t.Run("genesis validation compares tenants by address", func(t *testing.T) {
+		now := time.Now().UTC()
+		lease := func(uuid, tenant string) types.Lease {
+			return types.Lease{
+				Uuid:         uuid,
+				Tenant:       tenant,
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+				Items: []types.LeaseItem{
+					{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin("umfx", math.NewInt(100))},
+				},
+				State:     types.LEASE_STATE_ACTIVE,
+				CreatedAt: now,
+			}
+		}
+		// The two leases, the credit account and the stream name the same
+		// tenant in different spellings.
+		gs := &types.GenesisState{
+			Params: types.DefaultParams(),
+			Leases: []types.Lease{
+				lease("01912345-6789-7abc-8def-0123456789ab", upper),
+				lease("01912345-6789-7abc-8def-0123456789ae", lower),
+			},
+			CreditAccounts: []types.CreditAccount{{
+				Tenant:           upper,
+				CreditAddress:    types.DeriveCreditAddress(addr).String(),
+				ActiveLeaseCount: 2,
+				ReservedAmounts:  sdk.NewCoins(sdk.NewCoin("umfx", math.NewInt(720_000))),
+			}},
+			LeaseSequence: 2,
+			Streams: []types.Stream{{
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+				Tenant:       lower,
+				Denom:        "umfx",
+				State:        types.StreamState{Rate: math.NewInt(200), LastSettledAt: now, LeaseCount: 2},
+			}},
+		}
+		require.NoError(t, gs.Validate())
+
+		// The same stream listed under both spellings is a duplicate.
+		gs.Streams = append(gs.Streams, gs.Streams[0])
+		gs.Streams[1].Tenant = upper
+		require.ErrorContains(t, gs.Validate(), "duplicate stream")
+	})
+}
+
+func TestCompareStreamIDs(t *testing.T) {
+	ids := []types.StreamID{
+		{ProviderUUID: "p2", Tenant: "b", Denom: "x"},
+		{ProviderUUID: "p1", Tenant: "b", Denom: "y"},
+		{ProviderUUID: "p1", Tenant: "b", Denom: "x"},
+		{ProviderUUID: "p9", Tenant: "a", Denom: "z"},
+	}
+	slices.SortFunc(ids, types.CompareStreamIDs)
+	require.Equal(t, []types.StreamID{
+		{ProviderUUID: "p9", Tenant: "a", Denom: "z"},
+		{ProviderUUID: "p1", Tenant: "b", Denom: "x"},
+		{ProviderUUID: "p1", Tenant: "b", Denom: "y"},
+		{ProviderUUID: "p2", Tenant: "b", Denom: "x"},
+	}, ids, "ordered by tenant, then provider, then denom")
 }

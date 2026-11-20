@@ -186,9 +186,11 @@ A stream aggregates every ACTIVE lease one tenant holds with one provider in one
 | `last_settled_at` | `Timestamp` | Time up to which the stream's accrual has been settled. Every settlement sets it to the block time. |
 | `lease_count` | `uint64` | Number of ACTIVE leases contributing to `rate` |
 | `exhausted_at` | `*Timestamp` | Set when a settlement found the tenant's credit exhausted in the stream's denom. An exhausted (frozen) stream stops accruing and its leases are closed by the EndBlocker. |
-| `remainder` | `math.Int` | Accrual that did not amount to a whole unit of the denom at the last settlement, carried to the next one. Expressed in (denom units × nanoseconds), always in `[0, 1,000,000,000)`. See [Accrual Formula](#accrual-formula). |
+| `remainder` | `math.Int` | Accrual carried to the next settlement, in (denom units × nanoseconds): 1,000,000,000 is one whole unit of the denom. After a settlement it is what did not amount to a whole unit, so it is below 1,000,000,000. It holds a whole unit or more only when the stream carries a debt that could not be paid (the 2 → 3 store migration stores a failed payout here); the next settlement pays it along with what accrued since. Never negative. See [Accrual Formula](#accrual-formula). |
 
 `Stream` (`provider_uuid`, `tenant`, `denom`, `state`) is the shape used in genesis and in query responses.
+
+**Tenant identity.** A stream identifies its tenant by address, not by how the address string is spelled. Bech32 is also valid in upper case and a lease stores its tenant as it was sent, so `Lease.tenant` may be upper case while `Stream.tenant` is always the canonical lower-case spelling. Stream identifiers are built from the parsed address (`types.NewStreamID`), and string spellings are canonicalized before they are compared or used as map keys (`types.CanonicalAddress`).
 
 **Invariant** (`types/stream.go`, checked by `Keeper.CheckStreamInvariant`): for every `(provider_uuid, tenant, denom)`,
 
@@ -477,7 +479,7 @@ sequenceDiagram
         Keeper->>Keeper: accrued = total / 1e9, remainder = total % 1e9
         Note over Keeper: last_settled_at = now<br/>(what is less than one unit of the denom stays in remainder)
         
-        alt Accrual not representable (gap > MaxDurationSeconds or overflow)
+        alt Accrual not representable (gap > MaxDurationSeconds or amount does not fit)
             Keeper->>Keeper: accrued = balance, remainder = 0
         end
         
@@ -755,7 +757,7 @@ write()
 - Failed streams don't affect the success of the overall operation
 - A skipped stream keeps its `last_settled_at` and `remainder`, so nothing is lost: it is paid by the next settlement that succeeds
 
-> **Accrual overflow is NOT a skip.** If a stream's accrual is not representable — the gap since `last_settled_at` exceeds `MaxDurationSeconds` (~100 years, `keeper/accrual.go`) or the arithmetic overflows — the settlement does *not* skip and does *not* preserve the funds. It transfers the tenant's entire remaining credit in the stream's denom to the provider, sets `last_settled_at` to the block time, clears `remainder` and freezes the stream (`keeper/stream.go`), so the EndBlocker closes its leases. This is deliberate — zeroing it out would grant free service to the tenant. Overflow is effectively unreachable in normal operation (a stream would have to go ~100 years without settlement) but can arise from a genesis import with an ancient stream `last_settled_at`.
+> **Accrual overflow is NOT a skip.** If a stream's accrual is not representable — the gap since `last_settled_at` exceeds `MaxDurationSeconds` (~100 years, `keeper/accrual.go`) or the payable amount itself does not fit `sdkmath.Int` — the settlement does *not* skip and does *not* preserve the funds. It transfers the tenant's entire remaining credit in the stream's denom to the provider, sets `last_settled_at` to the block time, clears `remainder` and freezes the stream (`keeper/stream.go`), so the EndBlocker closes its leases. This is deliberate — zeroing it out would grant free service to the tenant. Overflow is effectively unreachable in normal operation (a stream would have to go ~100 years without settlement) but can arise from a genesis import with an ancient stream `last_settled_at`.
 
 This pattern ensures that partial failures don't corrupt state while still providing best-effort batch processing.
 
@@ -1006,14 +1008,18 @@ transfer           = min(accrued, tenant credit balance in the stream's denom)
 stream.last_settled_at = block time
 ```
 
-Rates are per second and block time has nanosecond precision, so the product `rate × elapsed_ns` is in (denom units × nanoseconds); dividing by 10⁹ gives whole units. The part that does not amount to a whole unit is not paid and not dropped: it stays in `remainder`, which is therefore always in `[0, 1,000,000,000)`. Two properties follow:
+Rates are per second and block time has nanosecond precision, so the product `rate × elapsed_ns` is in (denom units × nanoseconds); dividing by 10⁹ gives whole units. The part that does not amount to a whole unit is not paid and not dropped: it stays in `remainder`, which is therefore below 1,000,000,000 after every settlement. Two properties follow:
 
 - **Nothing is lost between settlements, however often a stream is settled.** At rate 1 per second, a settlement after 1.5s pays 1 and keeps a remainder of 500,000,000; a further settlement 0.5s later pays the second unit. The total paid over any period is the same whether the stream was settled once or many times.
 - **A lease is never charged for time before it joined.** `last_settled_at` always moves to the settlement time, so when a lease joins mid-second the higher rate only applies from that instant on.
 
 `stream.rate` is maintained incrementally: it grows by `lease_rate` when a lease is acknowledged and drops by it when the lease is closed, and the stream is settled at the old rate first in both cases. Each lease is therefore charged `lease_rate` for exactly the time it was ACTIVE, as long as the tenant's credit covers it.
 
-A stream last settled at or after the block time accrues nothing, and a frozen stream accrues nothing and keeps its `remainder` as it was.
+A stream last settled at or after the block time accrues nothing new (elapsed time counts as zero), and a frozen stream accrues nothing and keeps its `remainder` as it was.
+
+**A remainder of a whole unit or more is a carried debt.** The formula does not require `remainder` to be below one unit on input. The 2 → 3 store migration uses this: when a payout fails, it stores the whole unpaid amount in the new stream's `remainder` (amount × 1,000,000,000). The stream's first successful settlement then pays exactly that amount plus what accrued since, even if no time has elapsed, and leaves a remainder below one unit again.
+
+The intermediate `rate × elapsed_ns + remainder` is computed with arbitrary precision (`math/big`). It is 10⁹ times larger than the amount it yields, so it may exceed the 256 bits of `sdkmath.Int` while the charge itself fits; only the payable amount has to fit.
 
 Off-chain, `rate × whole seconds since last_settled_at` is a good estimate of what a stream has accrued, but it is an approximation: the chain's figure also includes the carried `remainder` and the fraction of a second elapsed, and is capped at the tenant's balance. `ProviderWithdrawable` returns the exact amount.
 
@@ -1054,13 +1060,19 @@ For the complete reference of module parameters, events, error codes, and author
 
 ### Overflow Protection
 
-Accrual calculations use safe math operations (`SafeMul`, `SafeAdd`) and report an unrepresentable result instead of panicking:
+Accrual is computed without intermediate overflow and reports an unrepresentable result instead of panicking:
 
 ```go
 // streamAccrual computes what a stream owes at now: remainder + rate × elapsed
 // nanoseconds, divided by 1e9. A frozen stream, or one last settled at or
-// after now, accrues nothing. ok is false when the accrual is not representable
-// (the gap exceeds MaxDurationSeconds or the arithmetic overflows).
+// after now, accrues nothing. ok is false when the accrual is not
+// representable: the gap exceeds MaxDurationSeconds, or the amount payable
+// does not fit sdkmath.Int.
+//
+// The intermediate product is computed with arbitrary precision. rate × elapsed
+// nanoseconds is 1e9 times larger than the amount it yields, so it can exceed
+// the 256 bits of sdkmath.Int while the charge itself fits comfortably; only
+// the charge decides whether the accrual is representable.
 func streamAccrual(state types.StreamState, now time.Time) (accrued, remainder sdkmath.Int, ok bool) {
     remainder = streamRemainder(state)
     if state.IsExhausted() {
@@ -1069,23 +1081,29 @@ func streamAccrual(state types.StreamState, now time.Time) (accrued, remainder s
 
     elapsed := now.Sub(state.LastSettledAt)
     if elapsed <= 0 {
-        return sdkmath.ZeroInt(), remainder, true
+        // Nothing accrues, but a carried remainder of a whole unit or more (a
+        // debt the migration could not pay) is payable right away.
+        elapsed = 0
     }
     if int64(elapsed/time.Second) > MaxDurationSeconds {
         return sdkmath.ZeroInt(), sdkmath.ZeroInt(), false
     }
 
-    scaled, err := state.Rate.SafeMul(sdkmath.NewInt(int64(elapsed)))
-    if err != nil {
+    total := new(big.Int)
+    if !state.Rate.IsNil() {
+        total.Mul(state.Rate.BigInt(), big.NewInt(int64(elapsed)))
+    }
+    total.Add(total, remainder.BigInt())
+
+    units, rest := new(big.Int).QuoRem(total, nanosPerSecond, new(big.Int))
+    if units.BitLen() > sdkmath.MaxBitLen {
         return sdkmath.ZeroInt(), sdkmath.ZeroInt(), false
     }
-    total, err := scaled.SafeAdd(remainder)
-    if err != nil {
-        return sdkmath.ZeroInt(), sdkmath.ZeroInt(), false
-    }
-    return total.QuoRaw(nanosPerSecond), total.ModRaw(nanosPerSecond), true
+    return sdkmath.NewIntFromBigInt(units), sdkmath.NewIntFromBigInt(rest), true
 }
 ```
+
+Overflow therefore means one of two things: the gap since `last_settled_at` exceeds `MaxDurationSeconds`, or the payable amount itself does not fit `sdkmath.Int`. A large rate whose intermediate product exceeds 256 bits is not an overflow as long as the charge fits, so such a stream is settled normally rather than treated as exhausted.
 
 An unrepresentable accrual certainly exceeds the tenant's balance, so the settlement pays the provider everything that remains and freezes the stream. The same care applies where rates are built: `types.LeaseRatesPerSecond` returns an error on overflow, and a lease whose rate would overflow its stream's rate cannot be acknowledged (`ErrInvalidLease`).
 
@@ -1168,13 +1186,15 @@ The module also validates credit accounts:
 1. **Address Derivation**: Credit address must match the deterministically derived address from the tenant
 2. **Tenant Uniqueness**: No duplicate credit accounts for the same tenant
 
+Tenants are compared by address, not by spelling. A lease and its credit account may store the same tenant in different (upper/lower case) bech32 spellings, so the cross-checks between leases and credit accounts (reservations, active and pending lease counts, duplicate accounts) key on `types.CanonicalAddress`.
+
 ### Stream Validation
 
 `GenesisState.streams` carries the settlement streams, and they must be exactly the streams the ACTIVE leases imply. The check runs in both directions and at two levels:
 
 1. **`GenesisState.Validate`** (stateless, `types/genesis.go`), through `GenesisState.ValidateStreams`:
    - a lease that carries the deprecated `last_settled_at` is rejected: such a genesis was exported before stream settlement and its leases have no streams
-   - every stream has a valid tenant address, a positive `rate`, a non-zero `last_settled_at`, a `remainder` in `[0, 1,000,000,000)`, and is not duplicated
+   - every stream has a valid tenant address, a positive `rate`, a non-zero `last_settled_at`, a `remainder` that is not negative (it has no upper bound: a stream may carry an unpaid debt), and is not duplicated. Streams are matched to leases by canonical tenant address, so the spelling of `Stream.tenant` and `Lease.tenant` need not agree
    - every stream corresponds to at least one ACTIVE lease, and its `rate` and `lease_count` equal what those leases sum to (`types.ExpectedStreamAggregates`)
    - every stream the ACTIVE leases imply is present
 2. **`ValidateWithBlockTime`** (at `InitGenesis`): a stream's `last_settled_at` and `exhausted_at` must not be after the block time. A stream settled in the future would accrue nothing until block time caught up, giving the tenant free service.
@@ -1317,13 +1337,13 @@ The billing module relies on block timestamps for accrual calculations. Cosmos S
 
 ### Arithmetic Precision
 
-All billing calculations use `math.Int` (arbitrary precision integers):
+All billing calculations are integer arithmetic. Stored amounts and rates are `sdkmath.Int` (integers of up to 256 bits); the intermediate accrual product is computed with arbitrary precision (`math/big`):
 
 ```go
 // Accrual calculation (no floating point)
 stream_rate = sum(locked_price × quantity)   // over the stream's ACTIVE leases
-total       = remainder + stream_rate × elapsed_nanoseconds
-accrued     = total / 1e9                    // whole units of the denom, paid
+total       = remainder + stream_rate × elapsed_nanoseconds   // arbitrary precision
+accrued     = total / 1e9                    // whole units of the denom, paid; must fit sdkmath.Int
 remainder   = total % 1e9                    // carried to the next settlement
 ```
 
@@ -1334,7 +1354,8 @@ remainder   = total % 1e9                    // carried to the next settlement
 
 **Overflow protection:**
 - `MaxDurationSeconds` (~100 years) bounds the gap a stream may accrue in one settlement
-- `streamAccrual` reports an unrepresentable accrual instead of wrapping or panicking; the settlement then pays the remaining credit and freezes the stream
+- The intermediate `rate × elapsed_nanoseconds + remainder` cannot overflow: it is 10⁹ times larger than the charge and is computed with arbitrary precision, so a large rate is never mistaken for an exhausted stream
+- `streamAccrual` reports an unrepresentable accrual (a gap beyond `MaxDurationSeconds`, or a payable amount that does not fit `sdkmath.Int`) instead of wrapping or panicking; the settlement then pays the remaining credit and freezes the stream
 - Withdraw settles each stream in its own cached context to isolate failures
 
 ### Future Improvement Plans

@@ -15,6 +15,7 @@ Test Coverage:
 package keeper_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -950,4 +951,133 @@ func TestStream_Queries(t *testing.T) {
 		require.Equal(t, uint64(1), resp.ActiveLeaseCount)
 		require.Equal(t, uint64(3450), resp.EstimatedDurationSeconds)
 	})
+}
+
+// TestStream_TenantAddressSpelling checks that streams identify a tenant by
+// its address, not by how the address was spelled. Bech32 is also valid in
+// upper case and the handlers store the tenant string as it was sent, so the
+// same tenant can appear under two spellings in leases while stream keys and
+// exported streams always use the canonical lower-case form.
+func TestStream_TenantAddressSpelling(t *testing.T) {
+	tests := []struct {
+		name string
+		// spelling of the tenant in MsgFundCredit and in MsgCreateLease
+		fund, lease func(addr sdk.AccAddress) string
+	}{
+		{
+			name:  "upper case everywhere",
+			fund:  func(a sdk.AccAddress) string { return strings.ToUpper(a.String()) },
+			lease: func(a sdk.AccAddress) string { return strings.ToUpper(a.String()) },
+		},
+		{
+			name:  "funded in lower case, leased in upper case",
+			fund:  func(a sdk.AccAddress) string { return a.String() },
+			lease: func(a sdk.AccAddress) string { return strings.ToUpper(a.String()) },
+		},
+		{
+			name:  "funded in upper case, leased in lower case",
+			fund:  func(a sdk.AccAddress) string { return strings.ToUpper(a.String()) },
+			lease: func(a sdk.AccAddress) string { return a.String() },
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newStreamFixture(t, testDenom)
+			tenant := s.TestAccs[0]
+			funder := s.TestAccs[3]
+			s.fundAccount(t, funder, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))))
+
+			_, err := s.msgServer.FundCredit(s.Ctx, &types.MsgFundCredit{
+				Sender: funder.String(),
+				Tenant: tc.fund(tenant),
+				Amount: sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000)),
+			})
+			require.NoError(t, err)
+
+			// Two leases, one per spelling, must share one stream. Each is
+			// acknowledged in its own message: the batch handlers key their
+			// credit-account bookkeeping by the stored tenant string, which is
+			// a separate matter from how streams identify a tenant.
+			for _, spelling := range []string{tc.lease(tenant), tenant.String()} {
+				created, err := s.msgServer.CreateLease(s.Ctx, &types.MsgCreateLease{
+					Tenant: spelling,
+					Items:  []types.LeaseItemInput{{SkuUuid: s.sku.Uuid, Quantity: 1}},
+				})
+				require.NoError(t, err)
+				_, err = s.msgServer.AcknowledgeLease(s.Ctx, &types.MsgAcknowledgeLease{
+					Sender:     s.providerAddr.String(),
+					LeaseUuids: []string{created.LeaseUuid},
+				})
+				require.NoError(t, err)
+			}
+
+			state, exists := s.stream(t, tenant, testDenom)
+			require.True(t, exists)
+			require.Equal(t, sdkmath.NewInt(2), state.Rate)
+			require.Equal(t, uint64(2), state.LeaseCount)
+
+			// The stream invariant holds and the exported genesis validates and
+			// re-imports (requireInvariants runs both).
+			s.requireInvariants(t)
+			gs := s.App.BillingKeeper.ExportGenesis(s.Ctx)
+			require.NoError(t, gs.Validate())
+			require.Len(t, gs.Streams, 1)
+			require.Equal(t, tenant.String(), gs.Streams[0].Tenant, "streams are exported under the canonical spelling")
+
+			s.advance(100 * time.Second)
+			require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(200))), s.withdraw(t, 0, nil).TotalAmounts)
+			s.requireInvariants(t)
+		})
+	}
+}
+
+// TestStream_LargeRateDoesNotOverflowAccrual checks that a rate whose product
+// with the elapsed nanoseconds does not fit 256 bits is still settled exactly.
+// Only the intermediate is wide; the charge itself fits, so the stream must
+// pay that charge and must not be treated as exhausted.
+func TestStream_LargeRateDoesNotOverflowAccrual(t *testing.T) {
+	s := newStreamFixture(t, testDenom)
+	tenant := s.TestAccs[0]
+
+	// 10^70 per second: the rate has 233 bits, and rate × 1e9 ns has 263.
+	perSecond, ok := sdkmath.NewIntFromString("1" + strings.Repeat("0", 70))
+	require.True(t, ok)
+	perHour := perSecond.MulRaw(3600)
+
+	skuUUID, err := s.App.SKUKeeper.GenerateSKUUUID(s.Ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.App.SKUKeeper.SetSKU(s.Ctx, skutypes.SKU{
+		Uuid:         skuUUID,
+		ProviderUuid: s.provider.Uuid,
+		Name:         "huge",
+		Unit:         skutypes.Unit_UNIT_PER_HOUR,
+		BasePrice:    sdk.NewCoin(testDenom, perHour),
+		Active:       true,
+	}))
+
+	// Credit for exactly one hour (also the reservation of the lease).
+	creditAddr := types.DeriveCreditAddress(tenant)
+	s.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, perHour)))
+	require.NoError(t, s.App.BillingKeeper.SetCreditAccount(s.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+	s.createAndAcknowledgeLease(t, s.msgServer, tenant, s.providerAddr, []types.LeaseItemInput{
+		{SkuUuid: skuUUID, Quantity: 1},
+	})
+
+	// One second: one second's worth is paid, not the whole balance.
+	s.advance(time.Second)
+	resp := s.withdraw(t, 0, nil)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, perSecond)), resp.TotalAmounts)
+	state, _ := s.stream(t, tenant, testDenom)
+	require.False(t, state.IsExhausted(), "an intermediate overflow is not credit exhaustion")
+	require.True(t, state.Remainder.IsZero())
+
+	// Half a second: the sub-second part is exact as well.
+	s.advance(500 * time.Millisecond)
+	resp = s.withdraw(t, 0, nil)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, perSecond.QuoRaw(2))), resp.TotalAmounts)
+	s.requireInvariants(t)
 }

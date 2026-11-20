@@ -351,16 +351,17 @@ func TestGenesisValidation_Streams(t *testing.T) {
 				gs.Streams[0].State.LastSettledAt = blockTime.Add(-time.Hour)
 			},
 		},
-		// The remainder is the rest of a division by 1e9: it lies in [0, 1e9).
+		// The remainder is accrual carried to the next settlement. It is below
+		// one unit (1e9) after a settlement, but a stream may carry more: the
+		// migration stores a debt it could not pay there. Only its sign is checked.
 		{
 			name:        "negative remainder",
 			mutate:      func(gs *types.GenesisState) { gs.Streams[0].State.Remainder = sdkmath.NewInt(-1) },
-			validateErr: "has remainder -1 outside [0, 1000000000)",
+			validateErr: "has negative remainder -1",
 		},
 		{
-			name:        "remainder of exactly 1e9",
-			mutate:      func(gs *types.GenesisState) { gs.Streams[0].State.Remainder = sdkmath.NewInt(1_000_000_000) },
-			validateErr: "has remainder 1000000000 outside [0, 1000000000)",
+			name:   "remainder of a whole unit or more is a carried debt",
+			mutate: func(gs *types.GenesisState) { gs.Streams[0].State.Remainder = sdkmath.NewInt(5_000_000_000) },
 		},
 		{
 			name:   "remainder of 1e9-1 is valid",
@@ -483,14 +484,14 @@ func TestInitGenesis_Streams(t *testing.T) {
 		{
 			name:    "negative remainder",
 			mutate:  func(gs *types.GenesisState, _ time.Time) { gs.Streams[0].State.Remainder = sdkmath.NewInt(-1) },
-			wantErr: "has remainder -1 outside [0, 1000000000)",
+			wantErr: "has negative remainder -1",
 		},
 		{
-			name: "remainder of exactly 1e9",
+			// A carried debt of whole units is imported as is.
+			name: "remainder of a whole unit or more",
 			mutate: func(gs *types.GenesisState, _ time.Time) {
-				gs.Streams[0].State.Remainder = sdkmath.NewInt(1_000_000_000)
+				gs.Streams[0].State.Remainder = sdkmath.NewInt(5_000_000_000)
 			},
-			wantErr: "has remainder 1000000000 outside [0, 1000000000)",
 		},
 	}
 

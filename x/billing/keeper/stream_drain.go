@@ -127,8 +127,14 @@ func (k *Keeper) collectExhaustedStreams(ctx context.Context, limit int) (entrie
 		return nil
 	}
 
+	// collect mutates entries and truncated, so it must not be called inside the
+	// return statement that reads them: Go leaves the order of those reads
+	// relative to the call unspecified.
 	if start == nil {
-		return entries, nil, truncated, collect(nil)
+		if err := collect(nil); err != nil {
+			return nil, nil, false, err
+		}
+		return entries, nil, truncated, nil
 	}
 
 	// Streams after the start key first, then wrap around up to and including it.

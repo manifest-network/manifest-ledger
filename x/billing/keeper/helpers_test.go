@@ -359,7 +359,7 @@ func CheckReservationConsistencyInvariant(ctx context.Context, k keeper.Keeper) 
 	}
 
 	for _, ca := range accounts {
-		exp := expected[ca.Tenant]
+		exp := expected[types.CanonicalAddress(ca.Tenant)]
 		if exp == nil {
 			exp = sdk.NewCoins()
 		}
@@ -399,9 +399,9 @@ func CheckLeaseCountConsistencyInvariant(ctx context.Context, k keeper.Keeper) I
 	for _, lease := range allLeases {
 		switch lease.State {
 		case types.LEASE_STATE_ACTIVE:
-			activeCounts[lease.Tenant]++
+			activeCounts[types.CanonicalAddress(lease.Tenant)]++
 		case types.LEASE_STATE_PENDING:
-			pendingCounts[lease.Tenant]++
+			pendingCounts[types.CanonicalAddress(lease.Tenant)]++
 		}
 	}
 
@@ -415,7 +415,7 @@ func CheckLeaseCountConsistencyInvariant(ctx context.Context, k keeper.Keeper) I
 	}
 
 	for _, ca := range accounts {
-		expectedActive := activeCounts[ca.Tenant]
+		expectedActive := activeCounts[types.CanonicalAddress(ca.Tenant)]
 		if ca.ActiveLeaseCount != expectedActive {
 			return InvariantResult{
 				Name:   "LeaseCountConsistency",
@@ -426,7 +426,7 @@ func CheckLeaseCountConsistencyInvariant(ctx context.Context, k keeper.Keeper) I
 			}
 		}
 
-		expectedPending := pendingCounts[ca.Tenant]
+		expectedPending := pendingCounts[types.CanonicalAddress(ca.Tenant)]
 		if ca.PendingLeaseCount != expectedPending {
 			return InvariantResult{
 				Name:   "LeaseCountConsistency",

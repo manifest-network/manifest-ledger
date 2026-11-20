@@ -574,13 +574,6 @@ func TestAdversarial_GenesisRejectsStreamsThatDoNotMatchLeases(t *testing.T) {
 			wantErr: "remainder",
 		},
 		{
-			name: "remainder of a whole unit",
-			corrupt: func(gs *types.GenesisState) {
-				gs.Streams[0].State.Remainder = sdkmath.NewInt(1_000_000_000)
-			},
-			wantErr: "remainder",
-		},
-		{
 			name: "stream settled in the future",
 			corrupt: func(gs *types.GenesisState) {
 				gs.Streams[0].State.LastSettledAt = future

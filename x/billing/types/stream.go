@@ -1,6 +1,7 @@
 package types
 
 import (
+	"cmp"
 	"fmt"
 
 	sdkmath "cosmossdk.io/math"
@@ -27,10 +28,30 @@ import (
 
 // StreamID identifies a stream by its bech32/UUID string parts. It is
 // comparable, so it can key a map.
+//
+// Tenant is always the canonical (lower-case) bech32 spelling of the tenant's
+// address. Bech32 is also valid in upper case and leases store the tenant as
+// it was sent, so a StreamID must be built with NewStreamID (or Stream.ID),
+// never from a raw tenant string: otherwise one tenant spelled two ways would
+// look like two.
 type StreamID struct {
 	ProviderUUID string
 	Tenant       string
 	Denom        string
+}
+
+// NewStreamID builds the identifier of the stream of a provider, tenant and denom.
+func NewStreamID(providerUUID string, tenant sdk.AccAddress, denom string) StreamID {
+	return StreamID{ProviderUUID: providerUUID, Tenant: tenant.String(), Denom: denom}
+}
+
+// CompareStreamIDs orders stream identifiers by tenant, then provider, then denom.
+func CompareStreamIDs(a, b StreamID) int {
+	return cmp.Or(
+		cmp.Compare(a.Tenant, b.Tenant),
+		cmp.Compare(a.ProviderUUID, b.ProviderUUID),
+		cmp.Compare(a.Denom, b.Denom),
+	)
 }
 
 // StreamAggregate is the part of a stream that is derived from leases.
@@ -85,12 +106,16 @@ func ExpectedStreamAggregates(leases []Lease) (map[StreamID]StreamAggregate, err
 		if lease.State != LEASE_STATE_ACTIVE {
 			continue
 		}
+		tenant, err := sdk.AccAddressFromBech32(lease.Tenant)
+		if err != nil {
+			return nil, fmt.Errorf("lease %s: invalid tenant address: %w", lease.Uuid, err)
+		}
 		rates, err := LeaseRatesPerSecond(lease.Items)
 		if err != nil {
 			return nil, fmt.Errorf("lease %s: %w", lease.Uuid, err)
 		}
 		for _, rate := range rates {
-			id := StreamID{ProviderUUID: lease.ProviderUuid, Tenant: lease.Tenant, Denom: rate.Denom}
+			id := NewStreamID(lease.ProviderUuid, tenant, rate.Denom)
 			agg, ok := expected[id]
 			if !ok {
 				agg = StreamAggregate{Rate: sdkmath.ZeroInt()}
@@ -107,9 +132,11 @@ func ExpectedStreamAggregates(leases []Lease) (map[StreamID]StreamAggregate, err
 	return expected, nil
 }
 
-// ID returns the stream's identifier.
+// ID returns the stream's identifier, with the tenant in its canonical
+// spelling. A tenant that is not a valid address is kept as is; validation
+// rejects such a stream separately.
 func (s Stream) ID() StreamID {
-	return StreamID{ProviderUUID: s.ProviderUuid, Tenant: s.Tenant, Denom: s.Denom}
+	return StreamID{ProviderUUID: s.ProviderUuid, Tenant: CanonicalAddress(s.Tenant), Denom: s.Denom}
 }
 
 // IsExhausted reports whether the stream is frozen awaiting lease closure.

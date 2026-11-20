@@ -318,21 +318,26 @@ const { streams } = await client.liftedinit.billing.v1.streamsByProvider({
   pagination: undefined,                        // page size defaults to 100, capped at 1000
 });
 for (const s of streams) {
-  // s.tenant, s.denom           — who pays, in what
+  // s.tenant, s.denom           — who pays, in what (tenant: canonical lower-case bech32)
   // s.state.rate                — summed per-second rate of the tenant's active leases
   // s.state.lastSettledAt       — paid up to here (time of the last settlement)
   // s.state.leaseCount          — active leases aggregated
   // s.state.exhaustedAt         — set => frozen: credit ran out, leases are being closed
-  // s.state.remainder           — accrual below one unit of the denom, carried to the
-  //                               next settlement; in (denom units × nanoseconds), < 1e9
+  // s.state.remainder           — accrual carried to the next settlement, in
+  //                               (denom units × nanoseconds): 1e9 = one unit. Below 1e9
+  //                               after a settlement; 1e9 or more only when the stream
+  //                               carries a debt that could not be paid. Never negative.
 }
 // Exact accrual at time T, as the chain computes it:
 //   (remainder + rate × nanoseconds between lastSettledAt and T) / 1_000_000_000,
 //   rounded down, capped at the tenant's credit balance in that denom.
-// For display, rate × seconds elapsed is a close APPROXIMATION (it ignores the
-// carried remainder). Use providerWithdrawable when you need the exact figure.
-// A frozen stream accrues nothing.
+//   Use BigInt: the intermediate product can be far larger than the result.
+// For display, rate × seconds elapsed is a close APPROXIMATION while remainder is
+// below 1e9 (it ignores the carried remainder). Use providerWithdrawable when you
+// need the exact figure. A frozen stream accrues nothing.
 ```
+
+> **Compare tenants as addresses, not strings.** Bech32 is also valid in upper case, and a lease stores its tenant as it was sent, so `lease.tenant` may be upper case while `stream.tenant` is always the canonical lower-case spelling of the same account. Lower-case both (or decode them) before matching a stream to its leases.
 
 Tenant dashboards can call `streamsByTenant({ tenant })` the same way to show what the tenant is paying each provider and to warn when a stream is frozen. There is no per-lease settlement time any more: `Lease.lastSettledAt` is deprecated and never set.
 

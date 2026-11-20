@@ -75,7 +75,7 @@ This document provides a comprehensive overview of the Billing module's capabili
 
 Accrual is not tracked per lease. Every ACTIVE lease a tenant holds with a provider in a given denom is aggregated into one **stream**, keyed by `(provider, tenant, denom)`:
 
-- The stream stores the summed per-second rate of its leases, the time it was last settled, its lease count, whether it is frozen, and a `remainder` (accrual below one unit of the denom, carried to the next settlement)
+- The stream stores the summed per-second rate of its leases, the time it was last settled, its lease count, whether it is frozen, and a `remainder` (accrual carried to the next settlement: normally below one unit of the denom, more only when the stream carries a debt that could not be paid)
 - Settling a stream pays what it accrued since its last settlement, capped at the tenant's credit balance, with one bank transfer. Accrual is exact: `remainder + rate × elapsed nanoseconds`, paid in whole units of the denom, with the rest carried in `remainder`. Nothing is dropped between settlements, and a lease that joins a stream is never charged for time before it joined
 - A lease joins its streams when acknowledged and leaves them when closed; a stream exists only while it has at least one lease
 - A lease priced in several denoms belongs to one stream per denom
