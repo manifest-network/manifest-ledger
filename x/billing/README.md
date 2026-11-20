@@ -149,7 +149,8 @@ Accrual is settled per **stream**, not per lease. A stream is the aggregate of e
 - `last_settled_at`: the time of the stream's last settlement
 - `lease_count`: how many ACTIVE leases it aggregates
 - `exhausted_at`: set once the tenant's credit ran out (see [Overdraw and Auto-Close](#overdraw-and-auto-close))
-- `remainder`: accrual carried to the next settlement: what did not amount to a whole unit of the denom at the last one (see [Stream](#stream) for the one case where it holds more)
+- `remainder`: accrual carried to the next settlement: what did not amount to a whole unit of the denom at the last one
+- `arrears`: an amount, in whole units of the denom, that the stream owes the provider on top of what it accrues (zero unless the 2 → 3 store migration set it)
 
 A stream exists if and only if it has at least one ACTIVE lease. A lease priced in two denoms belongs to two streams.
 
@@ -157,12 +158,14 @@ Accrual is exact. Rates are per second and block time has nanosecond precision, 
 
 ```
 total           = remainder + rate × nanoseconds elapsed since last_settled_at
-payable         = total / 1,000,000,000        (whole units of the denom)
+accrued         = total / 1,000,000,000        (whole units of the denom)
 remainder       = total % 1,000,000,000        (carried to the next settlement)
+due             = arrears + accrued
+arrears         = 0
 last_settled_at = T
 ```
 
-It pays the provider `payable`, capped at the tenant's credit balance in that denom, with a **single** bank transfer to the provider's payout address, whatever the number of leases behind it. Nothing is rounded away between settlements, however often a stream is settled, and because `last_settled_at` always moves to the settlement time, a lease that joins a stream is never charged for time before it joined.
+It pays the provider `due`, capped at the tenant's credit balance in that denom, with a **single** bank transfer to the provider's payout address, whatever the number of leases behind it. Nothing is rounded away between settlements, however often a stream is settled, and because `last_settled_at` always moves to the settlement time, a lease that joins a stream is never charged for time before it joined.
 
 Settlement is performed **lazily** (on-touch):
 - When a provider withdraws (`MsgWithdraw`): every stream of the page is settled
@@ -175,10 +178,10 @@ This design keeps on-chain operations light and avoids per-block token transfers
 
 ### Overdraw and Auto-Close
 
-If a tenant's credit balance cannot cover what a stream has accrued, the stream is **frozen** and its leases are closed by the EndBlocker.
+If a tenant's credit balance cannot cover what a stream owes (its accrual plus any `arrears`), the stream is **frozen** and its leases are closed by the EndBlocker.
 
 **How it works:**
-1. A settlement (on withdraw, acknowledge or close) finds `accrued >= credit balance` for the stream's denom
+1. A settlement (on withdraw, acknowledge or close) finds `due >= credit balance` for the stream's denom, where `due` is the stream's accrual plus its `arrears`
 2. Inside that transaction the settlement:
    - Transfers what is left of the balance to the provider
    - Sets the stream's `exhausted_at` to the block time (the stream is now frozen) and queues it for the EndBlocker
@@ -363,7 +366,8 @@ Settlement streams stored at key prefix `0x0D`, keyed by `(provider_uuid, tenant
 | last_settled_at | Timestamp | Time up to which the stream's accrual has been settled. Every settlement sets it to the block time. |
 | lease_count | uint64 | Number of ACTIVE leases contributing to `rate` |
 | exhausted_at | Timestamp | Set when a settlement found the tenant's credit exhausted. A frozen stream stops accruing and its leases are closed by the EndBlocker. |
-| remainder | Int | Accrual carried to the next settlement, in (denom units × nanoseconds): 1,000,000,000 is one whole unit of the denom. After a settlement it is what did not amount to a whole unit, so it is below 1,000,000,000. It can hold a whole unit or more only when the stream carries a debt that could not be paid: the 2 → 3 store migration dates such a stream back and keeps here what is left of the debt, which is smaller than the stream's rate. The next settlement pays it along with what accrued since. Never negative. |
+| remainder | Int | Accrual that did not amount to a whole unit of the denom at the last settlement, carried to the next one. Expressed in (denom units × nanoseconds), always in `[0, 1,000,000,000)`: less than one whole unit. |
+| arrears | Int | Amount, in whole units of the denom, that the stream owes the provider on top of what it accrues since `last_settled_at`. The next settlement pays it together with the accrual, in one transfer, and sets it to 0. If the credit does not cover it, the settlement pays the whole balance and freezes the stream as for any shortfall; the unpaid part is not kept. The 2 → 3 store migration sets it to what the stream's leases had accrued under per-lease settlement and not yet been paid; it is zero otherwise. Never negative. |
 
 In genesis and in query responses a stream is a `Stream`: `provider_uuid`, `tenant`, `denom` and the `state` above.
 
@@ -458,9 +462,9 @@ Because settlement is per stream, `total_settled_amounts` in the response is wha
 For each stream of the provider in the page:
 
 1. Calculate what the stream accrued: its carried `remainder` plus `rate ×` the time elapsed since its last_settled_at, to the nanosecond
-2. Transfer the whole units of that amount, capped at the tenant's credit balance, to the provider's payout address
-3. Store what is left over (less than one unit) as the new `remainder` and set the stream's last_settled_at to the block time
-4. If the accrual consumed the whole balance, freeze the stream and queue it for the EndBlocker
+2. Transfer the whole units of that amount plus the stream's `arrears`, capped at the tenant's credit balance, to the provider's payout address
+3. Store what is left over of the accrual (less than one unit) as the new `remainder`, set `arrears` to 0 and set the stream's last_settled_at to the block time
+4. If what was due consumed the whole balance, freeze the stream and queue it for the EndBlocker
 
 No lease is read or written.
 
@@ -495,11 +499,11 @@ For detailed message definitions, request/response formats, and CLI usage, see [
 | LeasesBySKU | List leases using a specific SKU |
 | CreditAccount | Get a tenant's credit account |
 | CreditAccounts | List all credit accounts |
-| CreditEstimate | Estimate remaining credit duration. The burn rate comes from the tenant's non-frozen streams, and what they have accrued but not yet settled is deducted from the balance. `current_balance` covers the denoms of all the tenant's streams, frozen ones included. |
+| CreditEstimate | Estimate remaining credit duration. The burn rate comes from the tenant's non-frozen streams, and what they owe but have not yet settled (accrual plus `arrears`) is deducted from the balance. `current_balance` covers the denoms of all the tenant's streams, frozen ones included. |
 | CreditAddress | Derive credit address for a tenant |
 | WithdrawableAmount | **Deprecated.** Returns gRPC `Unimplemented`: a lease has no withdrawable amount of its own. Use ProviderWithdrawable or StreamsByProvider. |
-| ProviderWithdrawable | Withdrawable amount across the provider's streams, one page at a time — sum `amounts` across pages until `pagination.next_key` is empty. `lease_count` is the number of leases covered by the streams of the current page that have a non-zero withdrawable amount. |
-| StreamsByProvider | List the settlement streams of a provider (rate, last_settled_at, lease_count, exhausted_at per tenant and denom) |
+| ProviderWithdrawable | Withdrawable amount across the provider's streams (per stream: `arrears` plus accrual, capped at the tenant's credit balance), one page at a time — sum `amounts` across pages until `pagination.next_key` is empty. `lease_count` is the number of leases covered by the streams of the current page that have a non-zero withdrawable amount. |
+| StreamsByProvider | List the settlement streams of a provider (rate, last_settled_at, lease_count, exhausted_at, remainder, arrears per tenant and denom) |
 | StreamsByTenant | List the settlement streams paid by a tenant |
 | LeaseByCustomDomain | Look up the active or pending lease that has claimed a given custom_domain (and the `service_name` of the matching item) |
 
@@ -621,7 +625,7 @@ invalid credit operation: tenant manifest1def... has lease reservations totaling
 
 `GenesisState.streams` must be exactly the streams the ACTIVE leases imply:
 
-- Every stream has a valid tenant address, a positive `rate`, a non-zero `last_settled_at`, a `remainder` that is not negative, and appears only once
+- Every stream has a valid tenant address, a positive `rate`, a non-zero `last_settled_at`, a `remainder` in `[0, 1,000,000,000)`, `arrears` that are not negative, and appears only once
 - Every stream matches at least one ACTIVE lease, and its `rate` and `lease_count` equal what those leases sum to
 - Every `(provider_uuid, tenant, denom)` with an ACTIVE lease has its stream
 - At InitGenesis, a stream's `last_settled_at` and `exhausted_at` must not be after the block time

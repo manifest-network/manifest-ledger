@@ -86,6 +86,9 @@ type StreamStateJSON struct {
 	// at the last settlement, in denom units × nanoseconds. It is always less
 	// than NanosPerSecond and is carried to the next settlement.
 	Remainder sdkmath.Int `json:"remainder"`
+	// Arrears is an amount, in whole units of the denom, that the stream owes
+	// on top of its accrual. The next settlement pays it and clears it.
+	Arrears sdkmath.Int `json:"arrears"`
 }
 
 // NanosPerSecond is the scale of StreamStateJSON.Remainder: rates are per
@@ -116,6 +119,17 @@ func (s StreamStateJSON) AccrualAt(now time.Time) (paid, remainder sdkmath.Int) 
 	}
 	total := s.Rate.MulRaw(int64(elapsed)).Add(remainder)
 	return total.QuoRaw(NanosPerSecond), total.ModRaw(NanosPerSecond)
+}
+
+// DueAt returns what settling the stream at the block time now pays, ignoring
+// the tenant's credit balance: its accrual (see AccrualAt) plus its arrears.
+// A frozen stream owes nothing.
+func (s StreamStateJSON) DueAt(now time.Time) (paid, remainder sdkmath.Int) {
+	paid, remainder = s.AccrualAt(now)
+	if s.IsExhausted() || s.Arrears.IsNil() {
+		return paid, remainder
+	}
+	return paid.Add(s.Arrears), remainder
 }
 
 // StreamJSON is a JSON-compatible version of Stream, the shape returned by the

@@ -1445,6 +1445,7 @@ func (q *streamQueryFixture) expected(
 			LeaseCount:    leases,
 			// Every settlement of the fixture falls on a whole second.
 			Remainder: sdkmath.ZeroInt(),
+			Arrears:   sdkmath.ZeroInt(),
 		},
 	}
 	if frozen {

@@ -631,9 +631,10 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		}
 		rates[denom] = rate
 
-		// An accrual, or a sum of accruals, that is not representable certainly
-		// exceeds the balance: the tenant has no time left.
-		accrued, _, representable := streamAccrual(state, blockTime)
+		// What a stream owes (its accrual plus any arrears), or the sum of what
+		// the streams owe, certainly exceeds the balance when it is not
+		// representable: the tenant has no time left.
+		accrued, _, representable := streamDue(state, blockTime)
 		if !representable {
 			accrualOverflow = true
 			continue

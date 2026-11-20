@@ -329,7 +329,7 @@ manifestd tx billing withdraw --provider 01912345-6789-7abc-8def-0123456789ab --
 
 **Notes:**
 - Settles up to `limit` streams of the provider, in key order (tenant address, then denom)
-- For each stream, transfers what the stream accrued since its `last_settled_at` — its carried `remainder` plus `rate ×` the elapsed time, to the nanosecond, in whole units of the denom — capped at the tenant's credit balance, to the provider's payout address: one bank transfer per stream, whatever the number of leases it aggregates. What is less than one unit is carried in the stream's `remainder` to the next settlement, and `last_settled_at` is set to the block time
+- For each stream, transfers what the stream owes — its `arrears` plus what it accrued since its `last_settled_at` (its carried `remainder` plus `rate ×` the elapsed time, to the nanosecond, in whole units of the denom) — capped at the tenant's credit balance, to the provider's payout address: one bank transfer per stream, whatever the number of leases it aggregates. What is less than one unit is carried in the stream's `remainder` to the next settlement, `arrears` is set to 0 and `last_settled_at` is set to the block time
 - Response includes `has_more` and an opaque `next_key` cursor if more streams remain
 - Pass the returned `next_key` back as `--key` on the next call and repeat until `has_more` is false. Calling again *without* `--key` restarts from the first stream and never advances past `limit`.
 - The decoded cursor may not exceed 512 bytes (`MaxWithdrawCursorLen`); a cursor that does not decode is rejected
@@ -757,12 +757,12 @@ manifestd query billing provider-withdrawable [provider-uuid] --limit 500 --page
 **Fields:**
 | Field | Description |
 |-------|-------------|
-| `amounts` | Sum, per denom, of what settling each stream of the page would pay now: the stream's accrual capped at its tenant's credit balance. A frozen stream contributes nothing. |
+| `amounts` | Sum, per denom, of what settling each stream of the page would pay now: `min(arrears + accrual, the tenant's credit balance)`. A frozen stream contributes nothing. |
 | `lease_count` | Number of leases covered by the streams of the page that have a non-zero withdrawable amount. It is not the number of transfers a withdrawal would make (that is the number of streams). |
 
 When `pagination.next_key` is non-empty, `amounts` is a partial total: re-query passing that base64 string verbatim as `--page-key` and sum the per-page `amounts` until `next_key` is empty. This is the read-only complement to `MsgWithdraw`.
 
-**Note:** This calculates the real-time total withdrawable amount across the provider's streams, with the same exact arithmetic as a settlement (carried `remainder` plus `rate ×` elapsed time, in whole units of the denom). It is a read-only query and does NOT trigger actual settlement. For providers with many streams, paginate as shown above (thread `pagination.next_key` via `--page-key`) to process in batches.
+**Note:** This calculates the real-time total withdrawable amount across the provider's streams, with the same exact arithmetic as a settlement (`arrears` plus the accrual: carried `remainder` plus `rate ×` elapsed time, in whole units of the denom). It is a read-only query and does NOT trigger actual settlement. For providers with many streams, paginate as shown above (thread `pagination.next_key` via `--page-key`) to process in batches.
 
 ---
 
@@ -796,7 +796,8 @@ manifestd query billing streams-by-provider [provider-uuid] --page-key <base64-n
         "rate": "200",
         "last_settled_at": "2024-01-01T00:10:00.250Z",
         "lease_count": "2",
-        "remainder": "50000000"
+        "remainder": "50000000",
+        "arrears": "0"
       }
     }
   ],
@@ -814,9 +815,10 @@ manifestd query billing streams-by-provider [provider-uuid] --page-key <base64-n
 | `last_settled_at` | Time up to which the stream has been paid: the block time of its last settlement. |
 | `lease_count` | Number of ACTIVE leases the stream aggregates |
 | `exhausted_at` | Present only on a frozen stream: the block time at which a settlement found the tenant's credit exhausted. A frozen stream no longer accrues, and its leases are closed by the EndBlocker. |
-| `remainder` | Accrual carried to the next settlement, in (denom units × nanoseconds): 1,000,000,000 is one whole unit of `denom`. After a settlement it is what did not amount to a whole unit, so it is below 1,000,000,000. It holds a whole unit or more only when the stream carries a debt that could not be paid (see [Stream](#stream)). Never negative. |
+| `remainder` | Accrual that did not amount to a whole unit of `denom` at the last settlement, carried to the next one. In (denom units × nanoseconds), always at least 0 and less than 1,000,000,000 (one whole unit). |
+| `arrears` | Amount, in whole units of `denom`, that the stream owes the provider on top of what it accrues since `last_settled_at`. The next settlement pays it with the accrual and sets it to `"0"`. Set by the 2 → 3 store migration to the accrual that was unpaid at the upgrade; `"0"` otherwise. Never negative. |
 
-**Note:** This returns stored state. What a stream has accrued at time `T` is exactly `(remainder + rate × nanoseconds between last_settled_at and T) / 1,000,000,000`, rounded down, capped at the tenant's credit balance in `denom`. `rate × seconds elapsed` is a close approximation of it: it only ignores the carried `remainder`, which is worth less than one unit, or less than one nanosecond of the stream's rate for a stream carrying an unpaid debt. `provider-withdrawable` computes the exact sum for you.
+**Note:** This returns stored state. What a stream has accrued at time `T` is exactly `(remainder + rate × nanoseconds between last_settled_at and T) / 1,000,000,000`, rounded down; `rate × seconds elapsed` is a close approximation of it (it only ignores the carried `remainder`, worth less than one unit). What the stream owes is `arrears` plus that accrual, and what a withdrawal would pay is `min(arrears + accrual, the tenant's credit balance in denom)`. `provider-withdrawable` computes the exact sum for you.
 
 ---
 
@@ -984,8 +986,8 @@ manifestd query billing credit-estimate manifest1abc...
 - The estimate is calculated in real-time from the tenant's settlement streams, not from its leases
 - If the tenant has no accruing stream, `estimated_duration_seconds` will be `0` and `total_rate_per_second` will be empty. `current_balance` still lists the denoms of any frozen streams
 - With multi-denom support, the estimate returns the minimum duration across all denominations (the limiting factor)
-- **Unsettled accrual is deducted**: per denom, `remaining = balance − accrued since each stream's last_settled_at` (the exact accrual, including each stream's carried `remainder`, in whole units), and the estimate is `remaining ÷ rate`. If nothing remains in some denom, the estimate is `0`
-- **Sums are checked, not assumed to fit**: per-denom rates and unsettled accruals are added with overflow checks. If a stream's unsettled accrual, or the sum of the accruals of the tenant's streams in a denom, is not representable, the estimate is `0` (such a debt certainly exceeds the balance). If the summed rate itself is not representable, the query fails with gRPC `OutOfRange`.
+- **Unsettled amounts are deducted**: per denom, `remaining = balance − what each stream owes` (its `arrears` plus the exact accrual since its `last_settled_at`, including its carried `remainder`, in whole units), and the estimate is `remaining ÷ rate`. If nothing remains in some denom, the estimate is `0`
+- **Sums are checked, not assumed to fit**: per-denom rates and unsettled amounts are added with overflow checks. If what a stream owes, or the sum of what the tenant's streams owe in a denom, is not representable, the estimate is `0` (such a debt certainly exceeds the balance). If the summed rate itself is not representable, the query fails with gRPC `OutOfRange`.
 - **Frozen streams are left out of the burn rate**: a stream frozen for exhausted credit no longer accrues, so it contributes neither to `total_rate_per_second` nor to the estimate. Its denom is still reported in `current_balance`. Its leases are still counted in `active_lease_count` until the EndBlocker closes them
 
 **Limitations:**
@@ -1748,14 +1750,16 @@ message StreamState {
   google.protobuf.Timestamp last_settled_at = 2; // Time up to which accrual has been settled
   uint64 lease_count = 3;                      // Number of ACTIVE leases contributing to rate
   google.protobuf.Timestamp exhausted_at = 4;  // Set when the tenant's credit was found exhausted
-  string remainder = 5;                        // cosmos.Int: accrual carried to the next settlement (1,000,000,000 = one unit of the denom)
+  string remainder = 5;                        // cosmos.Int: accrual below one unit of the denom, carried to the next settlement
+  string arrears = 6;                          // cosmos.Int: amount owed on top of the accrual, in whole units of the denom
 }
 ```
 
 **Field Notes:**
 - `rate`: `sum(locked_price × quantity)` over the items priced in `denom` of all ACTIVE leases of `tenant` with `provider_uuid`.
 - `last_settled_at`: Set to the block time by every settlement, so it always equals the time of the stream's last settlement.
-- `remainder`: Rates are per second and time is tracked to the nanosecond, so it is expressed in (denom units × nanoseconds): 1,000,000,000 is one whole unit of the denom. A settlement at time `T` computes `total = remainder + rate × nanoseconds since last_settled_at`, pays `total / 1,000,000,000` (capped at the tenant's credit balance) and stores `total % 1,000,000,000` as the new `remainder`, which is therefore below 1,000,000,000 after a settlement. No fraction of a second is dropped between settlements, and a lease that joins a stream is never charged for time before it joined. It can hold a whole unit or more only when the stream carries a debt that could not be paid: the 2 → 3 store migration dates such a stream back and keeps in `remainder` what is left of the debt, which is smaller than the stream's rate. The next settlement pays it along with what accrued since. Genesis validation rejects a negative value and sets no upper bound.
+- `remainder`: Rates are per second and time is tracked to the nanosecond, so it is expressed in (denom units × nanoseconds) and is always in `[0, 1,000,000,000)`: less than one whole unit of the denom. A settlement at time `T` computes `total = remainder + rate × nanoseconds since last_settled_at`, accrues `total / 1,000,000,000` and stores `total % 1,000,000,000` as the new `remainder`. No fraction of a second is dropped between settlements, and a lease that joins a stream is never charged for time before it joined. Genesis validation rejects a value outside that range.
+- `arrears`: An amount, in whole units of the denom, that the stream owes the provider on top of what it accrues since `last_settled_at`. What a stream owes at time `T` is `arrears + floor((remainder + rate × elapsed nanoseconds) / 1,000,000,000)`. The next settlement pays the arrears together with the accrual, in one transfer, and sets `arrears` to 0. If the tenant's credit does not cover the total, the settlement pays the whole balance and freezes the stream as for any shortfall; the unpaid part is not kept on a frozen stream. A settlement that fails changes nothing, so the arrears stay. The 2 → 3 store migration sets it to what the stream's leases had accrued under per-lease settlement and not yet been paid at the upgrade; it is zero otherwise. Genesis validation rejects a negative value.
 - `tenant` (on `Stream`): Always the canonical lower-case bech32 spelling of the tenant's address. Bech32 is also valid in upper case and a lease stores its tenant as it was sent, so `Lease.tenant` may be upper case for the same account. Compare them as addresses, not as strings.
 - `exhausted_at`: Unset on a healthy stream. Once set, the stream is frozen: it stops accruing, a top-up does not unfreeze it, and its leases are closed by the EndBlocker. The stream is deleted when its last lease is closed.
 - A stream exists if and only if `lease_count > 0`.

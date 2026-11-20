@@ -498,7 +498,31 @@ The cost grew with leases because the lease was the unit of accounting: nothing 
 - State: `Streams` (prefix 13), `StreamsByTenant` (14), `StreamLeases` (15), `ExhaustedStreams` (16), `ExhaustedStreamsStart` (17, the drain's rotation key). See [Architecture](ARCHITECTURE.md#storage-layout).
 - A per-message stream cache settles and writes each touched stream once, so acknowledging or closing many leases of one stream does one transfer.
 - Deprecated protobuf surface is kept and rejected explicitly rather than deleted, per ADR-044, so existing clients get an error that names the replacement instead of a decoding or missing-method failure.
-- The store migration lives in `x/billing/migrations/v3`, per ADR-041, and the module's `ConsensusVersion` goes from 2 to 3. It pays every lease's accrual up to the upgrade block, creates the streams and clears `last_settled_at`. See [Migration Guide](MIGRATION.md#store-migration-2--3-settlement-streams).
+- The store migration lives in `x/billing/migrations/v3`, per ADR-041, and the module's `ConsensusVersion` goes from 2 to 3. It moves no coins: it creates the streams, records what each stream's leases had accrued and not yet been paid as the stream's `arrears`, and clears `last_settled_at` (see [Decision 21](#decision-21-unpaid-amounts-are-state-arrears-and-the-migration-moves-no-coins)). See [Migration Guide](MIGRATION.md#store-migration-2--3-settlement-streams).
+
+## Decision 21: Unpaid Amounts Are State (Arrears), and the Migration Moves No Coins
+
+**Decision:** An amount a stream owes on top of its accrual is stored as an explicit field, `StreamState.arrears`, in whole units of the denom. The 2 → 3 store migration pays nobody: it records what each stream's leases had accrued under per-lease settlement and not yet been paid as the stream's `arrears`. The stream's first settlement after the upgrade pays the arrears with the accrual, through the normal path.
+
+**Alternatives Considered:**
+1. Pay at the upgrade, and keep arrears only for payments that fail
+2. Back-date the stream's `last_settled_at` by `owed / rate` so that it accrues the debt again
+3. Scale the debt into `remainder` (`owed × 1,000,000,000`)
+4. Explicit arrears, and a migration that moves no coins (chosen)
+
+**Rationale:**
+- **Encoding a debt into accrual fields kept producing defects.** Three review rounds each found one. A debt scaled by 10⁹ into `remainder` overflowed for large debts. Back-dating by `owed / rate` lost amounts smaller than the rate, and broke when the debt came from CLOSED leases, which the stream's rate does not include.
+- **An explicit amount is exact for any size and any rate.** What a stream owes is `arrears + floor((remainder + rate × elapsed) / 10⁹)`, and `remainder` keeps a single meaning: always less than one unit.
+- **One path instead of two.** Paying at the upgrade would make the outcome of the migration depend on bank transfers, which can fail, and what could not be paid would need a second path. Keeping the debt as state needs only one: the ordinary settlement, with its events and its credit-exhaustion rule.
+- **Nothing is paid later than before.** Under per-lease settlement that accrual was also only paid when the provider withdrew.
+- **Precedent.** Sablier Flow computes a stream's total debt as a snapshot debt plus an ongoing debt (rate × time since the snapshot). The Cosmos SDK's x/distribution keeps outstanding rewards as state until they are withdrawn.
+
+**Trade-offs:**
+- One more field on every stream, zero outside the migration
+- Providers are not paid at the upgrade height; their first withdrawal after it includes the pre-upgrade accrual
+- A tenant that cannot cover what it owed is not frozen at the upgrade but at its stream's first settlement; when it owes several providers more than it holds, whoever settles first is paid first
+- If the credit does not cover the arrears, the settlement pays the whole balance and freezes the stream; the unpaid part is not kept on the frozen stream
+- Unpaid accrual of CLOSED leases with no ACTIVE lease in the same (provider, tenant, denom) has no stream to carry it and is only logged. Handlers always settle a lease up to its closure, so this needs a hand-written genesis
 
 ## Future Considerations
 
@@ -534,7 +558,7 @@ The cost grew with leases because the lease was the unit of accounting: nothing 
 ### Migration Considerations
 
 When implementing breaking changes:
-- Settle what is owed before changing how accrual is tracked (the 2 → 3 migration pays every lease's accrual up to the upgrade block before it creates the streams)
+- Carry over what is owed when changing how accrual is tracked, as explicit state rather than by paying inside the migration (the 2 → 3 migration records every lease's unpaid accrual as its stream's `arrears` and moves no coins)
 - Preserve credit account balances
 - Maintain lease history
 - Update indexes atomically

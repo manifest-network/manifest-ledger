@@ -72,8 +72,9 @@ type inPlaceTestnetBilling struct {
 	providerUUID     string
 	denom            string
 	leases           []inPlaceTestnetLease
-	// Balances once the leases are ACTIVE. Settlement is lazy, so nothing moves
-	// between the two until the migration settles the leases.
+	// Balances once the leases are ACTIVE. Settlement is lazy and the migration
+	// moves no coins, so nothing moves between the two until the provider
+	// withdraws on the migrated state.
 	providerBalance, creditBalance sdkmath.Int
 }
 
@@ -218,32 +219,37 @@ func (billing *inPlaceTestnetBilling) stream(t *testing.T, ctx context.Context, 
 }
 
 // assertMigrated requires the migration, which ran at the upgrade block's time,
-// to have settled every lease up to that time and replaced per-lease settlement
-// by one stream. It must run before anything settles the stream again.
+// to have replaced per-lease settlement by one stream that carries, as its
+// arrears, what every lease had accrued up to that time, without moving any
+// coins. It must run before anything settles the stream.
 func (billing *inPlaceTestnetBilling) assertMigrated(t *testing.T, ctx context.Context, node *cosmos.ChainNode, upgradeTime time.Time) {
 	t.Helper()
 
 	// What the leases accrued under per-lease settlement and were never paid.
-	// The migration settles each lease the way the release would have: for the
-	// whole seconds since its own last settlement. Exact, sub-second accrual
-	// only starts with the stream it creates.
+	// The migration counts each lease the way the release would have settled
+	// it: for the whole seconds since its own last settlement. Exact,
+	// sub-second accrual only starts with the stream it creates.
 	var owed int64
 	for _, lease := range billing.leases {
 		seconds := int64(upgradeTime.Sub(lease.accruesFrom) / time.Second)
 		require.Positive(t, seconds, "lease %s should have accrued before the upgrade", lease.uuid)
 		owed += lease.rate * seconds
 	}
-	paid := inPlaceTestnetBalance(t, ctx, node, billing.provider.FormattedAddress(), billing.denom).Sub(billing.providerBalance)
-	require.Equal(t, sdkmath.NewInt(owed).String(), paid.String(), "migration should pay the provider what the leases accrued up to the upgrade")
+	require.Equal(t, billing.providerBalance.String(),
+		inPlaceTestnetBalance(t, ctx, node, billing.provider.FormattedAddress(), billing.denom).String(),
+		"the migration moves no coins: the provider is paid by its first withdrawal")
 	credit := billing.credit(t, ctx, node)
-	require.Equal(t, billing.creditBalance.SubRaw(owed).String(), credit.Balances.AmountOf(billing.denom).String(),
-		"migration should charge the tenant exactly what it paid the provider")
+	require.Equal(t, billing.creditBalance.String(), credit.Balances.AmountOf(billing.denom).String(),
+		"the migration moves no coins: the tenant is charged by the stream's first settlement")
 	require.Equal(t, uint64(len(billing.leases)), credit.CreditAccount.ActiveLeaseCount)
 
 	stream := billing.stream(t, ctx, node)
 	require.Equal(t, sdkmath.NewInt(billing.rate()).String(), stream.Rate.String(), "stream rate should be the sum of the lease rates")
 	require.Equal(t, uint64(len(billing.leases)), stream.LeaseCount)
-	require.True(t, upgradeTime.Equal(stream.LastSettledAt), "stream settled at %s, upgrade block time %s", stream.LastSettledAt, upgradeTime)
+	require.True(t, upgradeTime.Equal(stream.LastSettledAt), "stream accrues from %s, upgrade block time %s", stream.LastSettledAt, upgradeTime)
+	require.False(t, stream.Arrears.IsNil(), "the migrated stream has no arrears field")
+	require.Equal(t, sdkmath.NewInt(owed).String(), stream.Arrears.String(),
+		"the stream should carry what the leases accrued up to the upgrade as its arrears")
 	require.False(t, stream.Remainder.IsNil(), "the migrated stream has no remainder field")
 	require.True(t, stream.Remainder.IsZero(), "a migrated stream starts without a remainder, got %s", stream.Remainder)
 	require.False(t, stream.IsExhausted(), "the tenant's credit covers the accrual")
@@ -256,13 +262,14 @@ func (billing *inPlaceTestnetBilling) assertMigrated(t *testing.T, ctx context.C
 }
 
 // assertWithdraw requires a provider withdrawal on the migrated state to settle
-// the stream at the time of its block and to pay its exact accrual since the
-// migration, to the nanosecond:
+// the stream at the time of its block and to pay exactly what it owes: the
+// arrears the migration carried over (what the leases had accrued before the
+// upgrade) plus its accrual since the migration, to the nanosecond:
 //
 //	total = remainder + rate × (block time − last_settled_at, in nanoseconds)
 //
 // of which total / 1e9 is paid and total % 1e9 stays as the stream's remainder.
-// Nothing more is paid: the accrual before the upgrade was settled by the migration.
+// The arrears are paid once: the settlement clears them.
 func (billing *inPlaceTestnetBilling) assertWithdraw(t *testing.T, ctx context.Context, node *cosmos.ChainNode, rpc *rpchttp.HTTP, chainID string) {
 	t.Helper()
 	before := billing.stream(t, ctx, node)
@@ -286,11 +293,16 @@ func (billing *inPlaceTestnetBilling) assertWithdraw(t *testing.T, ctx context.C
 	after := billing.stream(t, ctx, node)
 	require.True(t, withdrawTime.Equal(after.LastSettledAt),
 		"stream settled at %s, the withdrawal's block %d has time %s", after.LastSettledAt, response.Height, withdrawTime)
-	expected, remainder := before.AccrualAt(withdrawTime)
-	require.True(t, expected.IsPositive(), "rate %s over %s should pay something", before.Rate, withdrawTime.Sub(before.LastSettledAt))
+	require.True(t, before.Arrears.IsPositive(), "the migrated stream should still carry its arrears")
+	accrued, _ := before.AccrualAt(withdrawTime)
+	require.True(t, accrued.IsPositive(), "rate %s over %s should accrue something", before.Rate, withdrawTime.Sub(before.LastSettledAt))
+	expected, remainder := before.DueAt(withdrawTime)
 	paid := inPlaceTestnetBalance(t, ctx, node, billing.provider.FormattedAddress(), billing.denom).Sub(balance)
 	require.Equal(t, expected.String(), paid.String(),
-		"withdrawal should pay the exact accrual of rate %s over %s", before.Rate, withdrawTime.Sub(before.LastSettledAt))
+		"withdrawal should pay the arrears %s plus the exact accrual of rate %s over %s", before.Arrears, before.Rate, withdrawTime.Sub(before.LastSettledAt))
+	require.Equal(t, billing.creditBalance.Sub(expected).String(), billing.credit(t, ctx, node).Balances.AmountOf(billing.denom).String(),
+		"the tenant should be charged exactly what the provider was paid")
+	require.True(t, after.Arrears.IsZero(), "the settlement should clear the arrears, got %s", after.Arrears)
 	require.Equal(t, remainder.String(), after.Remainder.String(), "what did not amount to a whole unit should be carried as the remainder")
 
 	require.Equal(t, before.Rate.String(), after.Rate.String())

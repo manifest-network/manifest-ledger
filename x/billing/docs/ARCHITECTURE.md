@@ -82,6 +82,7 @@ erDiagram
         uint64 lease_count
         timestamp exhausted_at
         Int remainder
+        Int arrears
     }
     
     LEASE_ITEM {
@@ -186,7 +187,8 @@ A stream aggregates every ACTIVE lease one tenant holds with one provider in one
 | `last_settled_at` | `Timestamp` | Time up to which the stream's accrual has been settled. Every settlement sets it to the block time. |
 | `lease_count` | `uint64` | Number of ACTIVE leases contributing to `rate` |
 | `exhausted_at` | `*Timestamp` | Set when a settlement found the tenant's credit exhausted in the stream's denom. An exhausted (frozen) stream stops accruing and its leases are closed by the EndBlocker. |
-| `remainder` | `math.Int` | Accrual carried to the next settlement, in (denom units × nanoseconds): 1,000,000,000 is one whole unit of the denom. After a settlement it is what did not amount to a whole unit, so it is below 1,000,000,000. It can hold a whole unit or more only when the stream carries a debt that could not be paid: the 2 → 3 store migration dates such a stream back and keeps here what is left of the debt, which is smaller than the stream's rate. The next settlement pays it along with what accrued since. Never negative. See [Accrual Formula](#accrual-formula). |
+| `remainder` | `math.Int` | Accrual that did not amount to a whole unit of the denom at the last settlement, carried to the next one. Expressed in (denom units × nanoseconds), always in `[0, 1,000,000,000)`: less than one whole unit. See [Accrual Formula](#accrual-formula). |
+| `arrears` | `math.Int` | Amount, in whole units of the denom, that the stream owes the provider on top of what it accrues since `last_settled_at`. The next settlement pays it together with the accrual and sets it to 0; if the credit does not cover it, the stream freezes as for any other shortfall. The 2 → 3 store migration sets it to what the stream's leases had accrued under per-lease settlement and not yet been paid at the upgrade; it is zero otherwise. Never negative. |
 
 `Stream` (`provider_uuid`, `tenant`, `denom`, `state`) is the shape used in genesis and in query responses.
 
@@ -477,20 +479,21 @@ sequenceDiagram
         Keeper->>Bank: Get Credit Balance (stream denom)
         Keeper->>Keeper: total = remainder + rate × nanoseconds since last_settled_at
         Keeper->>Keeper: accrued = total / 1e9, remainder = total % 1e9
-        Note over Keeper: last_settled_at = now<br/>(what is less than one unit of the denom stays in remainder)
+        Keeper->>Keeper: due = arrears + accrued
+        Note over Keeper: last_settled_at = now, arrears = 0<br/>(what is less than one unit of the denom stays in remainder)
         
-        alt Accrual not representable (gap > MaxDurationSeconds or amount does not fit)
-            Keeper->>Keeper: accrued = balance, remainder = 0
+        alt Amount not representable (gap > MaxDurationSeconds or amount does not fit)
+            Keeper->>Keeper: due = balance, remainder = 0
         end
         
-        Keeper->>Keeper: transfer = min(accrued, balance)
+        Keeper->>Keeper: transfer = min(due, balance)
         
         alt transfer > 0
             Keeper->>Bank: One SendCoins(credit_addr → Provider Payout Address)
             Keeper->>Keeper: Emit stream_settled
         end
         
-        alt Overflow, or accrued >= balance
+        alt Overflow, or due >= balance
             Keeper->>Keeper: exhausted_at = now (stream frozen)
             Keeper->>Store: ExhaustedStreams.Set(key)
             Keeper->>Keeper: Emit stream_exhausted
@@ -504,7 +507,7 @@ sequenceDiagram
 
 **Once per message.** `AcknowledgeLease`, `CloseLease` and each EndBlocker closure go through a per-message `streamCache` (`keeper/stream.go`): a stream is read once, settled once and written once however many leases of the batch belong to it. Closing 382 leases of one stream therefore does one transfer and one stream write, not 382. `streamCache.join` adds a lease to its streams, `streamCache.leave` removes it, and `flush` writes every touched stream in first-touch order, deleting any stream left without leases.
 
-**`PaidInFull`.** A stream freezes on a GTE boundary (`accrued >= balance`), so it also freezes when the credit exactly covers a positive charge. `PaidInFull` records that case; a settlement is a genuine credit exhaustion only when the stream is frozen and the charge was not simply paid in full (an unpaid remainder, an accrual overflow, a zero balance with nothing accrued, or a stream that was already frozen).
+**`PaidInFull`.** A stream freezes on a GTE boundary (`due >= balance`, where `due` is the accrual plus any arrears), so it also freezes when the credit exactly covers a positive charge. `PaidInFull` records that case; a settlement is a genuine credit exhaustion only when the stream is frozen and the charge was not simply paid in full (an unpaid remainder, an accrual overflow, a zero balance with nothing accrued, or a stream that was already frozen).
 
 ### Close Lease with Settlement
 
@@ -588,7 +591,7 @@ sequenceDiagram
                 Note over Keeper: discard the cache, log, skip this stream
             else Settled
                 Keeper->>Bank: One transfer to Provider Payout Address (if accrued > 0)
-                Note over Keeper: last_settled_at = block time, store remainder,<br/>freeze + queue the stream if credit is exhausted
+                Note over Keeper: last_settled_at = block time, store remainder, clear arrears,<br/>freeze + queue the stream if credit is exhausted
             end
         end
         
@@ -755,9 +758,9 @@ write()
 - If settlement fails for one stream (e.g., a bank transfer error, or a missing or invalid provider payout address), only that stream is skipped and the failure is logged
 - Other streams of the page are processed normally
 - Failed streams don't affect the success of the overall operation
-- A skipped stream keeps its `last_settled_at` and `remainder`, so nothing is lost: it is paid by the next settlement that succeeds
+- A skipped stream keeps its `last_settled_at`, `remainder` and `arrears`, so nothing is lost: it is paid by the next settlement that succeeds
 
-> **Accrual overflow is NOT a skip.** If a stream's accrual is not representable — the gap since `last_settled_at` exceeds `MaxDurationSeconds` (~100 years, `keeper/accrual.go`) or the payable amount itself does not fit `sdkmath.Int` — the settlement does *not* skip and does *not* preserve the funds. It transfers the tenant's entire remaining credit in the stream's denom to the provider, sets `last_settled_at` to the block time, clears `remainder` and freezes the stream (`keeper/stream.go`), so the EndBlocker closes its leases. This is deliberate — zeroing it out would grant free service to the tenant. Overflow is effectively unreachable in normal operation (a stream would have to go ~100 years without settlement) but can arise from a genesis import with an ancient stream `last_settled_at`.
+> **Accrual overflow is NOT a skip.** If what a stream owes is not representable — the gap since `last_settled_at` exceeds `MaxDurationSeconds` (~100 years, `keeper/accrual.go`) or the payable amount (accrual plus arrears) does not fit `sdkmath.Int` — the settlement does *not* skip and does *not* preserve the funds. It transfers the tenant's entire remaining credit in the stream's denom to the provider, sets `last_settled_at` to the block time, clears `remainder` and `arrears` and freezes the stream (`keeper/stream.go`), so the EndBlocker closes its leases. This is deliberate — zeroing it out would grant free service to the tenant. Overflow is effectively unreachable in normal operation (a stream would have to go ~100 years without settlement) but can arise from a genesis import with an ancient stream `last_settled_at`.
 
 This pattern ensures that partial failures don't corrupt state while still providing best-effort batch processing.
 
@@ -767,7 +770,7 @@ Credit exhaustion is handled in two steps: a transaction **freezes** the stream,
 
 ```mermaid
 flowchart TD
-    A[Settlement of a stream<br/>Withdraw / AcknowledgeLease / CloseLease] --> B{accrued >= balance<br/>or accrual overflow?}
+    A[Settlement of a stream<br/>Withdraw / AcknowledgeLease / CloseLease] --> B{accrual + arrears >= balance<br/>or accrual overflow?}
     B -->|No| C[Stream stays healthy]
     B -->|Yes| D[Transfer what is left to provider]
     D --> E[Set exhausted_at = block time]
@@ -1004,26 +1007,28 @@ elapsed_ns         = block time − stream.last_settled_at, in nanoseconds
 total              = stream.remainder + stream.rate × elapsed_ns
 accrued            = total / 1,000,000,000     (whole units of the denom)
 stream.remainder   = total % 1,000,000,000     (carried to the next settlement)
-transfer           = min(accrued, tenant credit balance in the stream's denom)
+due                = stream.arrears + accrued
+transfer           = min(due, tenant credit balance in the stream's denom)
+stream.arrears     = 0
 stream.last_settled_at = block time
 ```
 
-Rates are per second and block time has nanosecond precision, so the product `rate × elapsed_ns` is in (denom units × nanoseconds); dividing by 10⁹ gives whole units. The part that does not amount to a whole unit is not paid and not dropped: it stays in `remainder`, which is therefore below 1,000,000,000 after every settlement. Two properties follow:
+Rates are per second and block time has nanosecond precision, so the product `rate × elapsed_ns` is in (denom units × nanoseconds); dividing by 10⁹ gives whole units. The part that does not amount to a whole unit is not paid and not dropped: it stays in `remainder`, which is therefore always in `[0, 1,000,000,000)`. Two properties follow:
 
 - **Nothing is lost between settlements, however often a stream is settled.** At rate 1 per second, a settlement after 1.5s pays 1 and keeps a remainder of 500,000,000; a further settlement 0.5s later pays the second unit. The total paid over any period is the same whether the stream was settled once or many times.
 - **A lease is never charged for time before it joined.** `last_settled_at` always moves to the settlement time, so when a lease joins mid-second the higher rate only applies from that instant on.
 
 `stream.rate` is maintained incrementally: it grows by `lease_rate` when a lease is acknowledged and drops by it when the lease is closed, and the stream is settled at the old rate first in both cases. Each lease is therefore charged `lease_rate` for exactly the time it was ACTIVE, as long as the tenant's credit covers it.
 
-A stream last settled at or after the block time accrues nothing new (elapsed time counts as zero), and a frozen stream accrues nothing and keeps its `remainder` as it was.
+A stream last settled at or after the block time accrues nothing, and a frozen stream accrues nothing, owes nothing and keeps its `remainder` as it was.
 
-**Carrying a debt.** The formula does not require `remainder` to be below one unit on input, and a stream can be made to owe any amount by choosing its `last_settled_at` and `remainder`. The 2 → 3 store migration uses this when a payout fails (`carryDebt` in `x/billing/migrations/v3`). The debt in (denom units × nanoseconds) is `owed × 1,000,000,000`; dividing it by the stream's rate gives how far back to date `last_settled_at` (the quotient, in nanoseconds) and the `remainder` (the rest, smaller than the rate). The stream then owes exactly `owed` at the upgrade block time, nothing is rounded away, and neither value needs more bits than the rate does, however large the debt. Its first successful settlement pays that amount plus what accrued since and leaves a remainder below one unit again. This is the only case in which a stored `remainder` can be one unit or more (when the rate itself exceeds 1,000,000,000).
+**Arrears.** `arrears` is an amount the stream owes on top of its accrual, kept as a field of its own in whole units of the denom. What a stream owes at time `t` is `arrears + floor((remainder + rate × elapsed_ns) / 1,000,000,000)`. A settlement pays the arrears with the accrual in one transfer and sets them to 0. If the tenant's credit does not cover the total, the settlement pays the whole balance and freezes the stream as for any shortfall; the unpaid part is not kept on the frozen stream. A settlement that fails (for example, an unusable payout address) changes nothing, so the arrears stay for the next one. `ProviderWithdrawable`, `Withdraw`, `CreditEstimate` (which deducts it as unsettled) and the stream queries all include it.
 
-If the debt is not representable, or would date the stream more than `MaxDurationSeconds` back, the stream is dated just beyond that limit, so its first settlement follows the accrual-overflow rule: the provider receives the tenant's whole remaining balance and the stream is frozen.
+The only writer of a non-zero `arrears` is the 2 → 3 store migration, which records there what each stream's leases had accrued under per-lease settlement and not yet been paid at the upgrade (see [Migration Guide](MIGRATION.md#store-migration-2--3-settlement-streams)). It is kept apart from `last_settled_at` and `remainder` so that it is exact whatever its size and whatever the stream's rate; see [Design Decisions](DESIGN_DECISIONS.md).
 
 The intermediate `rate × elapsed_ns + remainder` is computed with arbitrary precision (`math/big`). It is 10⁹ times larger than the amount it yields, so it may exceed the 256 bits of `sdkmath.Int` while the charge itself fits; only the payable amount has to fit.
 
-Off-chain, `rate × whole seconds since last_settled_at` is a good estimate of what a stream has accrued, but it is an approximation: the chain's figure also includes the carried `remainder` and the fraction of a second elapsed, and is capped at the tenant's balance. `ProviderWithdrawable` returns the exact amount.
+Off-chain, `rate × whole seconds since last_settled_at` is a good estimate of what a stream has accrued, but it is an approximation: the chain's figure also includes the carried `remainder` and the fraction of a second elapsed. What the stream owes is that accrual plus its `arrears`, capped at the tenant's balance. `ProviderWithdrawable` returns the exact amount.
 
 ### Multi-Denom Settlement
 
@@ -1065,9 +1070,9 @@ For the complete reference of module parameters, events, error codes, and author
 Accrual is computed without intermediate overflow and reports an unrepresentable result instead of panicking:
 
 ```go
-// streamAccrual computes what a stream owes at now: remainder + rate × elapsed
-// nanoseconds, divided by 1e9. A frozen stream, or one last settled at or
-// after now, accrues nothing. ok is false when the accrual is not
+// streamAccrual computes what a stream has accrued at now: remainder + rate ×
+// elapsed nanoseconds, divided by 1e9. A frozen stream, or one last settled at
+// or after now, accrues nothing. ok is false when the accrual is not
 // representable: the gap exceeds MaxDurationSeconds, or the amount payable
 // does not fit sdkmath.Int.
 //
@@ -1083,9 +1088,7 @@ func streamAccrual(state types.StreamState, now time.Time) (accrued, remainder s
 
     elapsed := now.Sub(state.LastSettledAt)
     if elapsed <= 0 {
-        // Nothing accrues, but a carried remainder of a whole unit or more (a
-        // debt the migration could not pay) is payable right away.
-        elapsed = 0
+        return sdkmath.ZeroInt(), remainder, true
     }
     if int64(elapsed/time.Second) > MaxDurationSeconds {
         return sdkmath.ZeroInt(), sdkmath.ZeroInt(), false
@@ -1105,7 +1108,7 @@ func streamAccrual(state types.StreamState, now time.Time) (accrued, remainder s
 }
 ```
 
-Overflow therefore means one of two things: the gap since `last_settled_at` exceeds `MaxDurationSeconds`, or the payable amount itself does not fit `sdkmath.Int`. A large rate whose intermediate product exceeds 256 bits is not an overflow as long as the charge fits, so such a stream is settled normally rather than treated as exhausted.
+What a stream owes is this accrual plus its `arrears` (`streamDue`), added with an overflow check. Overflow therefore means one of two things: the gap since `last_settled_at` exceeds `MaxDurationSeconds`, or the payable amount itself (the accrual, or the accrual plus arrears) does not fit `sdkmath.Int`. A large rate whose intermediate product exceeds 256 bits is not an overflow as long as the charge fits, so such a stream is settled normally rather than treated as exhausted.
 
 An unrepresentable accrual certainly exceeds the tenant's balance, so the settlement pays the provider everything that remains and freezes the stream. The same care applies where rates are built: `types.LeaseRatesPerSecond` returns an error on overflow, and a lease whose rate would overflow its stream's rate cannot be acknowledged (`ErrInvalidLease`).
 
@@ -1196,7 +1199,7 @@ Tenants are compared by address, not by spelling. A lease and its credit account
 
 1. **`GenesisState.Validate`** (stateless, `types/genesis.go`), through `GenesisState.ValidateStreams`:
    - a lease that carries the deprecated `last_settled_at` is rejected: such a genesis was exported before stream settlement and its leases have no streams
-   - every stream has a valid tenant address, a positive `rate`, a non-zero `last_settled_at`, a `remainder` that is not negative (it has no upper bound: a stream may carry an unpaid debt), and is not duplicated. Streams are matched to leases by canonical tenant address, so the spelling of `Stream.tenant` and `Lease.tenant` need not agree
+   - every stream has a valid tenant address, a positive `rate`, a non-zero `last_settled_at`, a `remainder` in `[0, 1,000,000,000)`, `arrears` that are not negative, and is not duplicated. Streams are matched to leases by canonical tenant address, so the spelling of `Stream.tenant` and `Lease.tenant` need not agree
    - every stream corresponds to at least one ACTIVE lease, and its `rate` and `lease_count` equal what those leases sum to (`types.ExpectedStreamAggregates`)
    - every stream the ACTIVE leases imply is present
 2. **`ValidateWithBlockTime`** (at `InitGenesis`): a stream's `last_settled_at` and `exhausted_at` must not be after the block time. A stream settled in the future would accrue nothing until block time caught up, giving the tenant free service.

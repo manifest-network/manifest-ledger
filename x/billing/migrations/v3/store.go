@@ -18,14 +18,6 @@ import (
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
-// nanosPerSecond converts an amount in whole units of a denom into the unit of
-// StreamState.Remainder (denom units × nanoseconds).
-const nanosPerSecond = 1_000_000_000
-
-// maxSettlementGapSeconds matches the keeper's MaxDurationSeconds (~100 years):
-// a stream last settled longer ago than this is settled as an accrual overflow.
-const maxSettlementGapSeconds = 100 * 365 * 24 * 60 * 60
-
 // Keeper is the part of the billing keeper the migration works through.
 type Keeper interface {
 	Logger() log.Logger
@@ -37,14 +29,8 @@ type Keeper interface {
 	// touching its indexes.
 	RewriteLease(ctx context.Context, lease types.Lease) error
 
-	// CreditBalance returns the tenant's credit balance in denom.
-	CreditBalance(ctx context.Context, tenant sdk.AccAddress, denom string) sdkmath.Int
-	// PayProvider transfers amount from the tenant's credit account to the
-	// provider's payout address.
-	PayProvider(ctx context.Context, providerUUID string, tenant sdk.AccAddress, amount sdk.Coin) error
-
-	// SetMigratedStream writes a stream with its reverse lookup, its membership
-	// entries for leaseUUIDs and, when exhausted, its drain queue entry.
+	// SetMigratedStream writes a stream with its reverse lookup and its
+	// membership entries for leaseUUIDs.
 	SetMigratedStream(ctx context.Context, stream types.Stream, leaseUUIDs []string) error
 	// CheckStreamInvariant verifies the streams match the ACTIVE leases.
 	CheckStreamInvariant(ctx context.Context) error
@@ -53,7 +39,6 @@ type Keeper interface {
 // pending is what one (provider, tenant, denom) owes and aggregates at the
 // upgrade height.
 type pending struct {
-	tenant sdk.AccAddress
 	// rate and leaseUUIDs describe the stream to create; they stay empty when
 	// only CLOSED leases owe something.
 	rate       sdkmath.Int
@@ -66,22 +51,27 @@ type pending struct {
 }
 
 // MigrateStore converts per-lease settlement to settlement streams at the
-// upgrade block time T0:
+// upgrade block time T0. It only rewrites the billing store: no coins move.
 //
-//  1. Every lease's unsettled accrual up to T0 is summed per
-//     (provider, tenant, denom) and paid with one transfer, capped at the
-//     tenant's credit balance.
+//  1. Every lease's unsettled accrual up to T0, as per-lease settlement
+//     computed it, is summed per (provider, tenant, denom).
 //  2. A stream is created for each (provider, tenant, denom) with ACTIVE
-//     leases, settled at T0. Where the credit could not cover what was owed
-//     the stream starts frozen, so the EndBlocker closes its leases in the
-//     blocks after the upgrade exactly as it does for any exhausted stream.
+//     leases. It starts accruing at T0 and carries that sum as its arrears.
 //  3. The deprecated last_settled_at is cleared on every lease.
 //
-// A data problem affecting one stream (for example a payout that fails) does
-// not abort the upgrade: the payment is discarded, the problem is logged, and
-// the stream is created owing exactly what could not be paid, so its first
-// settlement still collects it. The migration fails only if the result is internally
-// inconsistent, since continuing would misprice every later settlement.
+// The provider's first settlement after the upgrade (a withdrawal, or a lease
+// joining or leaving the stream) pays the arrears together with what accrued
+// since, through the same code path, events and credit-exhaustion rule as any
+// other settlement. Under per-lease settlement that amount was likewise only
+// paid when the provider withdrew, so nothing is paid later than it would
+// have been.
+//
+// Paying at the upgrade instead would make the outcome of the migration
+// depend on the bank module (a transfer can fail), which needs a second path
+// for what could not be paid; keeping the debt as state needs only one.
+//
+// The migration fails only if the result is internally inconsistent, since
+// continuing would misprice every later settlement.
 func MigrateStore(ctx sdk.Context, k Keeper) error {
 	now := ctx.BlockTime()
 
@@ -91,10 +81,10 @@ func MigrateStore(ctx sdk.Context, k Keeper) error {
 	}
 
 	byStream := make(map[types.StreamID]*pending)
-	get := func(id types.StreamID, tenant sdk.AccAddress) *pending {
+	get := func(id types.StreamID) *pending {
 		p, ok := byStream[id]
 		if !ok {
-			p = &pending{tenant: tenant, rate: sdkmath.ZeroInt(), owed: sdkmath.ZeroInt()}
+			p = &pending{rate: sdkmath.ZeroInt(), owed: sdkmath.ZeroInt()}
 			byStream[id] = p
 		}
 		return p
@@ -121,10 +111,10 @@ func MigrateStore(ctx sdk.Context, k Keeper) error {
 			// Group by the tenant's address, not by lease.Tenant: v2 stored the
 			// tenant as it was sent, and bech32 is also valid in upper case.
 			for _, rate := range rates {
-				p := get(types.NewStreamID(lease.ProviderUuid, tenant, rate.Denom), tenant)
+				p := get(types.NewStreamID(lease.ProviderUuid, tenant, rate.Denom))
 				p.addOwed(rate.Amount, secs)
 
-				// Only ACTIVE leases form a stream; a CLOSED lease only settles
+				// Only ACTIVE leases form a stream; a CLOSED lease only adds
 				// what it still owed up to its closure.
 				if lease.State == types.LEASE_STATE_ACTIVE {
 					total, addErr := p.rate.SafeAdd(rate.Amount)
@@ -146,71 +136,58 @@ func MigrateStore(ctx sdk.Context, k Keeper) error {
 		}
 	}
 
-	// Process in a fixed order: the result must not depend on map iteration,
-	// and when a tenant's credit is short the order decides who is paid.
+	// Write in a fixed order, so the store writes (and the gas they consume)
+	// do not depend on map iteration.
 	ids := slices.SortedFunc(maps.Keys(byStream), types.CompareStreamIDs)
 
+	streams := 0
 	for _, id := range ids {
 		p := byStream[id]
 
-		// Re-read the balance each time: an earlier payment of this loop may
-		// have drawn on the same credit account.
-		balance := k.CreditBalance(ctx, p.tenant, id.Denom)
-		owed := p.owed
+		// What was owed is not representable, so it exceeds any balance. The
+		// largest representable amount has the same effect: the first
+		// settlement pays the whole balance and freezes the stream.
+		arrears := p.owed
 		if p.overflowed {
-			owed = balance
-		}
-		pay := sdkmath.MinInt(owed, balance)
-
-		paid := true
-		if pay.IsPositive() {
-			// Pay in a CacheContext so a failed transfer leaves nothing behind.
-			cacheCtx, write := ctx.CacheContext()
-			if payErr := k.PayProvider(cacheCtx, id.ProviderUUID, p.tenant, sdk.NewCoin(id.Denom, pay)); payErr != nil {
-				k.Logger().Error("stream migration could not pay a provider, carrying the debt into the stream",
-					"provider_uuid", id.ProviderUUID, "tenant", id.Tenant, "denom", id.Denom,
-					"amount", pay.String(), "error", payErr)
-				paid = false
-			} else {
-				write()
-			}
+			arrears = maxInt()
 		}
 
-		// Nothing more to do when only CLOSED leases owed something.
 		if len(p.leaseUUIDs) == 0 {
+			// Only CLOSED leases owed something, and with no ACTIVE lease there
+			// is no stream to carry it. Handler-closed leases are always
+			// settled up to their closure, so this needs a hand-written
+			// genesis; it is reported rather than silently dropped.
+			if arrears.IsPositive() {
+				k.Logger().Error("stream migration found closed leases with unsettled accrual and no stream to carry it",
+					"provider_uuid", id.ProviderUUID, "tenant", id.Tenant, "denom", id.Denom,
+					"amount", arrears.String())
+			}
 			continue
 		}
 
-		state := types.StreamState{
-			Rate:          p.rate,
-			LastSettledAt: now,
-			LeaseCount:    uint64(len(p.leaseUUIDs)),
-			Remainder:     sdkmath.ZeroInt(),
+		stream := types.Stream{
+			ProviderUuid: id.ProviderUUID,
+			Tenant:       id.Tenant,
+			Denom:        id.Denom,
+			State: types.StreamState{
+				Rate:          p.rate,
+				LastSettledAt: now,
+				LeaseCount:    uint64(len(p.leaseUUIDs)),
+				Remainder:     sdkmath.ZeroInt(),
+				Arrears:       arrears,
+			},
 		}
-		switch {
-		case !paid:
-			// Keep the whole debt: date the stream and set its remainder so
-			// that it owes exactly this amount now. Its first settlement then
-			// pays it along with what accrues until then.
-			state.LastSettledAt, state.Remainder = carryDebt(now, owed, p.rate, p.overflowed)
-		case p.overflowed || owed.GTE(balance):
-			// Same rule as a normal settlement: the accrual consumed the whole
-			// balance, so the stream is frozen and its leases will be closed.
-			exhaustedAt := now
-			state.ExhaustedAt = &exhaustedAt
-		}
-
-		stream := types.Stream{ProviderUuid: id.ProviderUUID, Tenant: id.Tenant, Denom: id.Denom, State: state}
 		if err := k.SetMigratedStream(ctx, stream, p.leaseUUIDs); err != nil {
 			return err
 		}
+		streams++
 	}
 
 	if err := k.CheckStreamInvariant(ctx); err != nil {
 		return types.ErrInvalidLease.Wrapf("stream migration produced inconsistent state: %s", err)
 	}
 
-	k.Logger().Info("migrated billing to settlement streams", "leases", len(leases), "streams_or_debts", len(ids))
+	k.Logger().Info("migrated billing to settlement streams", "leases", len(leases), "streams", streams)
 	return nil
 }
 
@@ -277,32 +254,8 @@ func (p *pending) addOwed(rate sdkmath.Int, secs int64) {
 	p.owed = total
 }
 
-// carryDebt returns the settlement time and remainder that make a stream of
-// the given rate owe exactly owed at now.
-//
-// A stream accrues remainder + rate × nanoseconds since last_settled_at, in
-// (denom units × nanoseconds). The debt in that unit is owed × 1e9; dividing
-// it by the rate gives how far back to date the stream (the quotient, in
-// nanoseconds) and what is left to put in the remainder (the rest, smaller
-// than the rate). Nothing is rounded away, and neither value needs more bits
-// than the rate does, however large the debt: scaling the debt to nanosecond
-// units and storing that in the remainder alone would not fit for large debts.
-//
-// When the debt is not representable, or would date the stream further back
-// than a settlement can accrue over, the stream is dated just beyond that
-// limit. Its first settlement then follows the accrual-overflow rule (pay the
-// whole balance and freeze), which is how a lease left unsettled for that long
-// was treated before streams.
-func carryDebt(now time.Time, owed, rate sdkmath.Int, unrepresentable bool) (lastSettledAt time.Time, remainder sdkmath.Int) {
-	beyondLimit := now.Add(-(maxSettlementGapSeconds + 1) * time.Second)
-	if unrepresentable || !rate.IsPositive() {
-		return beyondLimit, sdkmath.ZeroInt()
-	}
-
-	scaled := new(big.Int).Mul(owed.BigInt(), big.NewInt(nanosPerSecond))
-	gap, rest := new(big.Int).QuoRem(scaled, rate.BigInt(), new(big.Int))
-	if !gap.IsInt64() || gap.Int64()/nanosPerSecond > maxSettlementGapSeconds {
-		return beyondLimit, sdkmath.ZeroInt()
-	}
-	return now.Add(-time.Duration(gap.Int64())), sdkmath.NewIntFromBigInt(rest)
+// maxInt returns the largest amount sdkmath.Int can hold.
+func maxInt() sdkmath.Int {
+	limit := new(big.Int).Lsh(big.NewInt(1), sdkmath.MaxBitLen)
+	return sdkmath.NewIntFromBigInt(limit.Sub(limit, big.NewInt(1)))
 }

@@ -400,7 +400,7 @@ Validates without blockchain context:
 - Leases, credit accounts and streams agree with each other. These cross-checks compare tenants as canonical addresses, not as strings: bech32 is also valid in upper case and a lease stores its tenant as it was sent, so the same tenant may be spelled differently in a lease, its credit account and its stream
 - No lease carries the deprecated `last_settled_at`
 - `streams` are exactly the settlement streams the ACTIVE leases imply:
-  - each stream has a valid tenant address, a positive `rate`, a non-zero `last_settled_at`, a `remainder` that is not negative, and is listed once
+  - each stream has a valid tenant address, a positive `rate`, a non-zero `last_settled_at`, a `remainder` of at least 0 and less than 1,000,000,000, `arrears` that are not negative, and is listed once
   - each stream matches at least one ACTIVE lease, and its `rate` and `lease_count` equal what those leases sum to
   - every `(provider_uuid, tenant, denom)` with an ACTIVE lease has a stream
 
@@ -410,7 +410,8 @@ lease 0191... has last_settled_at set: the field is deprecated, settlement is tr
 active leases imply stream {0191... manifest1abc... upwr} but it is missing
 stream {0191... manifest1abc... upwr} has rate 5 but its active leases sum to 6
 stream {0191... manifest1abc... upwr} has no active lease
-stream {0191... manifest1abc... upwr} has negative remainder -1
+stream {0191... manifest1abc... upwr} has remainder 1000000000 outside [0, 1000000000)
+stream {0191... manifest1abc... upwr} has negative arrears -1
 ```
 
 The stream identifier in these messages always shows the tenant in its canonical lower-case spelling.
@@ -449,40 +450,44 @@ These checks require the SKU module to be initialized first, which the genesis o
 ### Phase 4: Stream Restoration and Invariant Check (`InitGenesis`)
 
 After the leases and credit accounts are stored, `InitGenesis`:
-- runs the stream validation of Phase 1 itself (`GenesisState.ValidateStreams`): no lease may carry the deprecated `last_settled_at`, every stream needs a positive `rate`, a non-zero `last_settled_at` and a `remainder` that is not negative, and the streams must be exactly the ones the ACTIVE leases imply
+- runs the stream validation of Phase 1 itself (`GenesisState.ValidateStreams`): no lease may carry the deprecated `last_settled_at`, every stream needs a positive `rate`, a non-zero `last_settled_at`, a `remainder` in `[0, 1,000,000,000)` and `arrears` that are not negative, and the streams must be exactly the ones the ACTIVE leases imply
 - stores each stream and rebuilds what is derived from it and from the leases: the tenant reverse lookup, the lease membership of each stream, and the queue of frozen streams (one entry per stream with `exhausted_at` set)
 - runs the stream invariant check on the stored state as defence in depth
 
 `ValidateGenesis` (Phase 1) is not run on InitChain, so Phase 4 is what stops a chain from starting with malformed streams. This matters because streams decide what is paid to whom: a stream without `last_settled_at`, for example, would look centuries overdue and pay the tenant's whole credit to the provider on its first settlement.
 
-A stream imported with `exhausted_at` set is drained normally: the EndBlocker closes its leases in the first blocks after genesis. A stream's `remainder` (the accrual it carries to its next settlement: normally less than one unit of the denom; possibly more, but less than the stream's rate, for a stream carrying a debt that could not be paid) is imported as exported, so an export/import round trip changes nothing in what is owed. That is why validation only rejects a negative `remainder` and sets no upper bound.
+A stream imported with `exhausted_at` set is drained normally: the EndBlocker closes its leases in the first blocks after genesis. A stream's `remainder` (the accrual below one unit of the denom that it carries to its next settlement) and its `arrears` (an amount it owes on top of its accrual) are imported as exported, so an export/import round trip changes nothing in what is owed.
 
 ## Store Migration 2 → 3: Settlement Streams
 
 This section is for node operators and authority members preparing the chain upgrade that takes the billing module from consensus version 2 (per-lease settlement) to 3 (settlement streams). The migration runs once, automatically, in the upgrade block. It is implemented in `x/billing/migrations/v3`. The streams live at new prefixes of the existing billing store, so no store is added or removed.
 
-With `T0` the block time of the upgrade block, the migration does three things.
+The migration is a pure store transformation: **no coins move at the upgrade block.** With `T0` the block time of the upgrade block, it does three things.
 
-**What it pays.** Every lease's unsettled accrual up to `T0` is summed per `(provider, tenant, denom)` and paid to the provider's payout address with one transfer per group, capped at the tenant's credit balance. This last per-lease payment counts whole seconds, as per-lease settlement always did.
+**What it computes.** Every lease's unsettled accrual up to `T0`, as per-lease settlement computed it (rate × whole seconds since the lease's own last settlement), is summed per `(provider, tenant, denom)`.
 - An ACTIVE lease owes from its `last_settled_at` to `T0`. If `last_settled_at` is missing or earlier than the acknowledgement, it owes from `acknowledged_at`. If it is in the future, it owes nothing.
-- A CLOSED lease normally owes nothing (it was settled when it closed). One whose `last_settled_at` is before its `closed_at`, which is only reachable through a hand-written genesis, is paid the difference.
+- A CLOSED lease normally owes nothing (it was settled when it closed). One whose `last_settled_at` is before its `closed_at`, which is only reachable through a hand-written genesis, adds the difference to the sum of its `(provider, tenant, denom)`.
 - Leases are grouped by the tenant's address, not by how `Lease.tenant` is spelled, so leases of one tenant stored in upper and lower case end up in the same stream. The stream's `tenant` is written in the canonical lower-case spelling.
-- Groups are processed in a fixed order (tenant, then provider UUID, then denom). When a tenant owes several providers more than it holds, the earlier groups are paid in full and the later ones get what is left.
 
-**What it creates.** One stream per `(provider, tenant, denom)` that has ACTIVE leases, with the summed rate and lease count of those leases, `last_settled_at = T0` and `remainder = 0` (a stream whose payout failed is dated earlier and may have a non-zero `remainder`, see the failure policy below), together with its reverse lookup and membership entries. From `T0` on, accrual is exact to the nanosecond, with the part below one unit of the denom carried in the stream's `remainder`. If the tenant's credit could not cover what was owed (`owed >= balance`, the same rule as a normal settlement), the stream is created **frozen**. The migration closes no lease itself: the EndBlocker closes the leases of frozen streams from the upgrade block on, at most 100 closures per block shared between all frozen streams, exactly as it does for any exhausted stream. If many tenants are exhausted at the upgrade, their streams drain side by side over several blocks.
+**What it creates.** One stream per `(provider, tenant, denom)` that has ACTIVE leases, with the summed rate and lease count of those leases, `last_settled_at = T0`, `remainder = 0`, not frozen, and `arrears` set to the sum above: what those leases had accrued under per-lease settlement and not yet been paid at `T0`. The stream's reverse lookup and membership entries are written with it. From `T0` on, accrual is exact to the nanosecond, with the part below one unit of the denom carried in the stream's `remainder`.
 
 **What it clears.** The deprecated `last_settled_at` is removed from every lease that carries it. Leases are rewritten in place; their indexes are not touched.
 
-**Failure policy.** The migration is written not to abort the upgrade over one bad record.
-- If a payment fails (for example, the lease's provider no longer exists or has an invalid payout address), that payment is discarded and logged, and the debt is carried in the stream: the stream is created, not frozen, owing exactly the unpaid amount at `T0`. That amount is expressed as a back-dated `last_settled_at` plus a `remainder`: the debt in (denom units × nanoseconds) is `owed × 1,000,000,000`; dividing it by the stream's rate gives how far before `T0` the stream is dated (the quotient, in nanoseconds) and the `remainder` (the rest, smaller than the rate). Nothing is rounded away. The stream's first successful settlement after the upgrade pays exactly what was owed plus what accrued since, capped as usual at the tenant's credit balance. `streams-by-provider` shows such a stream with a `last_settled_at` earlier than the upgrade block. A failed payment owed only by CLOSED leases has no stream to carry it and is only logged.
-- If such a debt is not representable, or would date the stream more than about 100 years back (`MaxDurationSeconds`), the stream is dated just beyond that limit. Its first settlement then follows the accrual-overflow rule: the provider receives the tenant's whole remaining balance in that denom and the stream is frozen.
-- An accrual too large to represent is treated as exceeding the balance: the provider receives the tenant's remaining credit and the stream starts frozen.
-- The migration ends with the stream invariant check. It fails, and the upgrade with it, only if the resulting streams do not match the ACTIVE leases, since continuing would misprice every later settlement. An overflow of a stream's summed rate also fails it.
+**How the pre-upgrade accrual gets paid.** The stream's first settlement after the upgrade (the provider's `Withdraw`, or a lease joining or leaving the stream) pays `arrears` plus what accrued since `T0`, in one transfer, through the normal path and with the normal `stream_settled` event, and sets `arrears` to 0.
+
+**Consequences.**
+- **Providers are not paid at the upgrade height.** Their first `Withdraw` after it includes the pre-upgrade accrual. Under per-lease settlement that accrual was also only paid when the provider withdrew, so nothing is paid later than it would have been.
+- **A tenant whose credit cannot cover what it owed is not frozen at the upgrade.** Its stream freezes at its first settlement, which pays the provider the whole remaining balance, and the EndBlocker then closes its leases: the same lazy discovery as in normal operation. A top-up that lands before that first settlement still counts.
+- **When one tenant owes several providers more than it holds, whoever settles first is paid first**, as under per-lease settlement.
+- **A debt too large to represent** is stored as the largest representable amount. It exceeds any balance, so the first settlement pays the whole balance and freezes the stream.
+- **Unpaid accrual of CLOSED leases with no ACTIVE lease in the same `(provider, tenant, denom)`** has no stream to carry it: it is logged as an error and not paid. This needs a hand-written genesis, because the handlers always settle a lease up to its closure; a scan of mainnet (1,432 CLOSED leases) and testnet (96) on 2026-11-20 found none.
+- **The migration cannot fail on a payment**, because it makes none. It ends with the stream invariant check and fails, and the upgrade with it, only if the resulting streams do not match the ACTIVE leases, since continuing would misprice every later settlement. An overflow of a stream's summed rate also fails it.
 
 **What operators should expect and do.**
-- Providers receive, in the upgrade block, what their leases had accrued up to it. A provider that withdraws just before the upgrade simply receives less from the migration.
-- Tenants whose credit cannot cover what their leases owe at the upgrade see those leases closed with reason `credit exhausted`, starting in the upgrade block. Topping up enough to cover it **before** the upgrade height avoids this; topping up after does not.
-- Search the node log of the upgrade block for `stream migration could not pay a provider` and `in stream migration` to find records the migration skipped or could not pay. On success it logs `migrated billing to settlement streams`.
+- Right after the upgrade, `manifestd query billing streams-by-provider [provider-uuid]` shows the pre-upgrade accrual of each stream as `arrears`, and `provider-withdrawable` includes it.
+- Providers collect it with their next `manifestd tx billing withdraw --provider [provider-uuid]`. Withdrawing just before the upgrade works too and simply leaves smaller arrears.
+- Tenants who are short of credit should top up before their provider's first withdrawal after the upgrade. Once that settlement has frozen the stream, a top-up does not save its leases.
+- Search the node log of the upgrade block for `in stream migration` (leases skipped for an invalid tenant address or an unrepresentable rate) and `closed leases with unsettled accrual and no stream to carry it`. On success the migration logs `migrated billing to settlement streams`.
 - After the upgrade, clients must use the stream-based surface: `withdraw --provider`, `provider-withdrawable`, `streams-by-provider`, `streams-by-tenant`. `MsgWithdraw.lease_uuids` is rejected and `Query/WithdrawableAmount` returns `Unimplemented`. See [API Reference](API.md).
 - Event consumers must adapt: `provider_withdraw` is no longer emitted, `lease_closed` no longer carries `settled_amounts` or `duration_seconds`, and `lease_auto_closed` is emitted from the EndBlocker as a block event. See [API Reference - Events](API.md#events).
 

@@ -5,10 +5,16 @@ import (
 	"slices"
 	"time"
 
+	sdkmath "cosmossdk.io/math"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 )
+
+// streamRemainderLimit is the exclusive upper bound of StreamState.Remainder:
+// one whole unit of the denom, expressed in (denom units × nanoseconds).
+var streamRemainderLimit = sdkmath.NewInt(1_000_000_000)
 
 // DefaultGenesis returns the default genesis state.
 func DefaultGenesis() *GenesisState {
@@ -337,12 +343,14 @@ func (gs *GenesisState) ValidateStreams() error {
 		if stream.State.LastSettledAt.IsZero() {
 			return ErrInvalidLease.Wrapf("stream %v has no last_settled_at timestamp", id)
 		}
-		// The remainder is accrual carried to the next settlement. After a
-		// settlement it is below one unit (1e9), but it can be larger when the
-		// stream carries a debt that could not be paid (see StreamState.remainder),
-		// so only its sign is constrained.
-		if r := stream.State.Remainder; !r.IsNil() && r.IsNegative() {
-			return ErrInvalidLease.Wrapf("stream %v has negative remainder %s", id, r)
+		// The remainder is what a settlement could not pay as a whole unit: it
+		// is the rest of a division by 1e9 (see StreamState.remainder).
+		if r := stream.State.Remainder; !r.IsNil() && (r.IsNegative() || r.GTE(streamRemainderLimit)) {
+			return ErrInvalidLease.Wrapf("stream %v has remainder %s outside [0, %s)", id, r, streamRemainderLimit)
+		}
+		// Arrears are an amount owed on top of the accrual (see StreamState.arrears).
+		if a := stream.State.Arrears; !a.IsNil() && a.IsNegative() {
+			return ErrInvalidLease.Wrapf("stream %v has negative arrears %s", id, a)
 		}
 
 		want, ok := expected[id]

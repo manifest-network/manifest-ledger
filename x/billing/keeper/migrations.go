@@ -5,7 +5,6 @@ import (
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/log"
-	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
@@ -84,22 +83,6 @@ func (a v3Migration) RewriteLease(ctx context.Context, lease types.Lease) error 
 	return a.k.storeService.OpenKVStore(ctx).Set(key, bz)
 }
 
-func (a v3Migration) CreditBalance(ctx context.Context, tenant sdk.AccAddress, denom string) sdkmath.Int {
-	return a.k.bankKeeper.GetBalance(ctx, types.DeriveCreditAddress(tenant), denom).Amount
-}
-
-func (a v3Migration) PayProvider(ctx context.Context, providerUUID string, tenant sdk.AccAddress, amount sdk.Coin) error {
-	provider, err := a.k.skuKeeper.GetProvider(ctx, providerUUID)
-	if err != nil {
-		return types.ErrProviderNotFound.Wrapf("provider_uuid %s not found", providerUUID)
-	}
-	payoutAddr, err := sdk.AccAddressFromBech32(provider.PayoutAddress)
-	if err != nil {
-		return types.ErrProviderNotFound.Wrapf("invalid payout address: %s", err)
-	}
-	return a.k.bankKeeper.SendCoins(ctx, types.DeriveCreditAddress(tenant), payoutAddr, sdk.NewCoins(amount))
-}
-
 func (a v3Migration) SetMigratedStream(ctx context.Context, stream types.Stream, leaseUUIDs []string) error {
 	tenant, err := sdk.AccAddressFromBech32(stream.Tenant)
 	if err != nil {
@@ -117,9 +100,6 @@ func (a v3Migration) SetMigratedStream(ctx context.Context, stream types.Stream,
 		if err := a.k.StreamLeases.Set(ctx, collections.Join(key, leaseUUID)); err != nil {
 			return err
 		}
-	}
-	if stream.State.IsExhausted() {
-		return a.k.ExhaustedStreams.Set(ctx, key, "")
 	}
 	return nil
 }

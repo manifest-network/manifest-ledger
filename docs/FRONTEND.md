@@ -323,19 +323,39 @@ for (const s of streams) {
   // s.state.lastSettledAt       — paid up to here (time of the last settlement)
   // s.state.leaseCount          — active leases aggregated
   // s.state.exhaustedAt         — set => frozen: credit ran out, leases are being closed
-  // s.state.remainder           — accrual carried to the next settlement, in
-  //                               (denom units × nanoseconds): 1e9 = one unit. Below 1e9
-  //                               after a settlement. Never negative. Don't assume an
-  //                               upper bound: a stream carrying an unpaid debt from the
-  //                               2 → 3 migration may hold more (less than its rate).
+  // s.state.remainder           — accrual below one unit of the denom, carried to the
+  //                               next settlement; in (denom units × nanoseconds),
+  //                               always >= 0 and < 1e9
+  // s.state.arrears             — amount owed on top of the accrual, in whole units of
+  //                               the denom ("0" unless the 2 → 3 chain upgrade set it:
+  //                               accrual that was unpaid at the upgrade). Paid and
+  //                               reset to "0" by the next settlement.
 }
 // Exact accrual at time T, as the chain computes it:
-//   (remainder + rate × nanoseconds between lastSettledAt and T) / 1_000_000_000,
-//   rounded down, capped at the tenant's credit balance in that denom.
-//   Use BigInt: the intermediate product can be far larger than the result.
-// For display, rate × seconds elapsed is a close APPROXIMATION (it ignores the
-// carried remainder). Use providerWithdrawable when you need the exact figure.
-// A frozen stream accrues nothing.
+//   accrual = (remainder + rate × nanoseconds between lastSettledAt and T) / 1_000_000_000,
+//   rounded down. Use BigInt: the intermediate product can be far larger than the result.
+// What the stream owes       = arrears + accrual
+// What a withdrawal would pay = min(arrears + accrual, tenant's credit balance in that denom)
+// For display, rate × seconds elapsed is a close APPROXIMATION of the accrual (it
+// ignores the carried remainder); add arrears to it. Use providerWithdrawable when
+// you need the exact figure. A frozen stream accrues and owes nothing.
+```
+
+A stream as returned by the REST gateway (`/liftedinit/billing/v1/provider/{provider_uuid}/streams`):
+
+```json
+{
+  "provider_uuid": "01912345-6789-7abc-8def-fedcba987654",
+  "tenant": "manifest1abc...",
+  "denom": "upwr",
+  "state": {
+    "rate": "200",
+    "last_settled_at": "2024-01-01T00:10:00.250Z",
+    "lease_count": "2",
+    "remainder": "50000000",
+    "arrears": "0"
+  }
+}
 ```
 
 > **Compare tenants as addresses, not strings.** Bech32 is also valid in upper case, and a lease stores its tenant as it was sent, so `lease.tenant` may be upper case while `stream.tenant` is always the canonical lower-case spelling of the same account. Lower-case both (or decode them) before matching a stream to its leases.

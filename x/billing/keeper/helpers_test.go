@@ -511,7 +511,12 @@ func (f *testFixture) syncStreams(t *testing.T, settledAt time.Time) {
 			state, err := k.Streams.Get(f.Ctx, key)
 			if err != nil {
 				require.ErrorIs(t, err, collections.ErrNotFound)
-				state = types.StreamState{Rate: sdkmath.ZeroInt(), LastSettledAt: settledAt, Remainder: sdkmath.ZeroInt()}
+				state = types.StreamState{
+					Rate:          sdkmath.ZeroInt(),
+					LastSettledAt: settledAt,
+					Remainder:     sdkmath.ZeroInt(),
+					Arrears:       sdkmath.ZeroInt(),
+				}
 				require.NoError(t, k.StreamsByTenant.Set(f.Ctx,
 					collections.Join(tenant, collections.Join(lease.ProviderUuid, rate.Denom))))
 			}

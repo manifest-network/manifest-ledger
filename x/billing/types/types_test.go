@@ -1244,8 +1244,8 @@ func TestGenesisState_Validate(t *testing.T) {
 			errMsg:    "no last_settled_at",
 		},
 		{
-			// The remainder is accrual carried to the next settlement: below one
-			// unit (1e9) after a settlement, larger when it carries an unpaid debt.
+			// The remainder is the accrual below one unit (1e9) carried to the
+			// next settlement.
 			name: "stream remainder just below one unit",
 			genesis: &types.GenesisState{
 				Params:         types.DefaultParams(),
@@ -1257,15 +1257,40 @@ func TestGenesisState_Validate(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name: "stream remainder of a whole unit or more is a carried debt",
+			name: "stream remainder of a whole unit",
 			genesis: &types.GenesisState{
 				Params:         types.DefaultParams(),
 				Leases:         []types.Lease{validLease},
 				CreditAccounts: []types.CreditAccount{validCreditAccount},
 				LeaseSequence:  1,
-				Streams:        withStream(func(s *types.Stream) { s.State.Remainder = math.NewInt(5_000_000_000) }),
+				Streams:        withStream(func(s *types.Stream) { s.State.Remainder = math.NewInt(1_000_000_000) }),
+			},
+			expectErr: true,
+			errMsg:    "remainder 1000000000 outside [0, 1000000000)",
+		},
+		{
+			// Arrears are an amount owed on top of the accrual, of any size.
+			name: "stream with arrears",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.State.Arrears = math.NewInt(5_000_000_000) }),
 			},
 			expectErr: false,
+		},
+		{
+			name: "stream with negative arrears",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.State.Arrears = math.NewInt(-1) }),
+			},
+			expectErr: true,
+			errMsg:    "negative arrears -1",
 		},
 		{
 			name: "stream with negative remainder",
@@ -1277,7 +1302,7 @@ func TestGenesisState_Validate(t *testing.T) {
 				Streams:        withStream(func(s *types.Stream) { s.State.Remainder = math.NewInt(-1) }),
 			},
 			expectErr: true,
-			errMsg:    "negative remainder -1",
+			errMsg:    "remainder -1 outside [0, 1000000000)",
 		},
 		{
 			name: "stream with invalid tenant",

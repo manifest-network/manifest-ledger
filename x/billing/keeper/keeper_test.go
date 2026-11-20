@@ -104,6 +104,7 @@ func TestInitGenesis(t *testing.T) {
 					LastSettledAt: settledAt,
 					LeaseCount:    1,
 					Remainder:     remainder,
+					Arrears:       sdkmath.ZeroInt(),
 				},
 			},
 		},
@@ -225,6 +226,7 @@ func streamGenesis(t *testing.T, f *testFixture) *types.GenesisState {
 					LastSettledAt: blockTime,
 					LeaseCount:    2,
 					Remainder:     sdkmath.ZeroInt(),
+					Arrears:       sdkmath.ZeroInt(),
 				},
 			},
 		},
@@ -351,17 +353,26 @@ func TestGenesisValidation_Streams(t *testing.T) {
 				gs.Streams[0].State.LastSettledAt = blockTime.Add(-time.Hour)
 			},
 		},
-		// The remainder is accrual carried to the next settlement. It is below
-		// one unit (1e9) after a settlement, but a stream may carry more: the
-		// migration stores a debt it could not pay there. Only its sign is checked.
+		// The remainder is the accrual below one unit (1e9) carried to the next
+		// settlement. A debt of whole units is not accrual: it goes in arrears.
 		{
 			name:        "negative remainder",
 			mutate:      func(gs *types.GenesisState) { gs.Streams[0].State.Remainder = sdkmath.NewInt(-1) },
-			validateErr: "has negative remainder -1",
+			validateErr: "has remainder -1 outside [0, 1000000000)",
 		},
 		{
-			name:   "remainder of a whole unit or more is a carried debt",
-			mutate: func(gs *types.GenesisState) { gs.Streams[0].State.Remainder = sdkmath.NewInt(5_000_000_000) },
+			name:        "remainder of a whole unit",
+			mutate:      func(gs *types.GenesisState) { gs.Streams[0].State.Remainder = sdkmath.NewInt(1_000_000_000) },
+			validateErr: "has remainder 1000000000 outside [0, 1000000000)",
+		},
+		{
+			name:   "arrears of any size are valid",
+			mutate: func(gs *types.GenesisState) { gs.Streams[0].State.Arrears = sdkmath.NewInt(5_000_000_000) },
+		},
+		{
+			name:        "negative arrears",
+			mutate:      func(gs *types.GenesisState) { gs.Streams[0].State.Arrears = sdkmath.NewInt(-1) },
+			validateErr: "has negative arrears -1",
 		},
 		{
 			name:   "remainder of 1e9-1 is valid",
@@ -484,14 +495,26 @@ func TestInitGenesis_Streams(t *testing.T) {
 		{
 			name:    "negative remainder",
 			mutate:  func(gs *types.GenesisState, _ time.Time) { gs.Streams[0].State.Remainder = sdkmath.NewInt(-1) },
-			wantErr: "has negative remainder -1",
+			wantErr: "has remainder -1 outside [0, 1000000000)",
 		},
 		{
-			// A carried debt of whole units is imported as is.
-			name: "remainder of a whole unit or more",
+			name: "remainder of a whole unit",
 			mutate: func(gs *types.GenesisState, _ time.Time) {
-				gs.Streams[0].State.Remainder = sdkmath.NewInt(5_000_000_000)
+				gs.Streams[0].State.Remainder = sdkmath.NewInt(1_000_000_000)
 			},
+			wantErr: "has remainder 1000000000 outside [0, 1000000000)",
+		},
+		{
+			// An unpaid debt is imported as is.
+			name: "arrears are imported",
+			mutate: func(gs *types.GenesisState, _ time.Time) {
+				gs.Streams[0].State.Arrears = sdkmath.NewInt(5_000_000_000)
+			},
+		},
+		{
+			name:    "negative arrears",
+			mutate:  func(gs *types.GenesisState, _ time.Time) { gs.Streams[0].State.Arrears = sdkmath.NewInt(-1) },
+			wantErr: "has negative arrears -1",
 		},
 	}
 
@@ -821,6 +844,7 @@ func TestExportGenesis(t *testing.T) {
 				LastSettledAt: settledAt,
 				LeaseCount:    1,
 				Remainder:     sdkmath.ZeroInt(),
+				Arrears:       sdkmath.ZeroInt(),
 			},
 		},
 	}, genState.Streams)
@@ -2349,6 +2373,7 @@ func TestGenesisExportImportWithReservations(t *testing.T) {
 				LastSettledAt: f.Ctx.BlockTime(),
 				LeaseCount:    1,
 				Remainder:     sdkmath.ZeroInt(),
+				Arrears:       sdkmath.ZeroInt(),
 			},
 		},
 	}, exportedGenesis.Streams)

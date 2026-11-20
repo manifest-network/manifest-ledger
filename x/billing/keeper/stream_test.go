@@ -15,6 +15,7 @@ Test Coverage:
 package keeper_test
 
 import (
+	"math/big"
 	"strings"
 	"testing"
 	"time"
@@ -1137,4 +1138,122 @@ func TestStream_CreditEstimateWithHugeUnsettledAccrual(t *testing.T) {
 	require.Equal(t, uint64(2), resp.ActiveLeaseCount)
 	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, perSecond.MulRaw(2))), resp.TotalRatePerSecond)
 	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, perHour.MulRaw(2))), resp.CurrentBalance)
+}
+
+// TestStream_Arrears checks an amount a stream owes on top of its accrual: it
+// is reported by the queries, paid once by the next settlement, survives a
+// settlement that cannot pay, and is exported and imported with the stream.
+func TestStream_Arrears(t *testing.T) {
+	s := newStreamFixture(t, testDenom)
+	tenant := s.TestAccs[0]
+	querier := keeper.NewQuerier(s.App.BillingKeeper)
+	s.fundTenant(t, tenant, testDenom, 1_000_000)
+	s.lease(t, tenant)
+
+	key := keeper.NewStreamKey(s.provider.Uuid, tenant, testDenom)
+	state, ok := s.stream(t, tenant, testDenom)
+	require.True(t, ok)
+	rate := state.Rate
+	state.Arrears = sdkmath.NewInt(500)
+	require.NoError(t, s.App.BillingKeeper.Streams.Set(s.Ctx, key, state))
+	s.requireInvariants(t)
+
+	// Due right away, before anything accrues.
+	withdrawable, err := querier.ProviderWithdrawable(s.Ctx, &types.QueryProviderWithdrawableRequest{ProviderUuid: s.provider.Uuid})
+	require.NoError(t, err)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(500))), withdrawable.Amounts)
+
+	s.advance(10 * time.Second)
+	due := sdkmath.NewInt(500).Add(rate.MulRaw(10))
+	withdrawable, err = querier.ProviderWithdrawable(s.Ctx, &types.QueryProviderWithdrawableRequest{ProviderUuid: s.provider.Uuid})
+	require.NoError(t, err)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, due)), withdrawable.Amounts)
+
+	// The tenant's estimate counts the arrears as already spent.
+	estimate, err := querier.CreditEstimate(s.Ctx, &types.QueryCreditEstimateRequest{Tenant: tenant.String()})
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(1_000_000).Sub(due).Quo(rate).Uint64(), estimate.EstimatedDurationSeconds)
+
+	// Export and import keep the arrears.
+	exported := s.App.BillingKeeper.ExportGenesis(s.Ctx)
+	require.NoError(t, exported.Validate())
+	require.Len(t, exported.Streams, 1)
+	require.Equal(t, sdkmath.NewInt(500), exported.Streams[0].State.Arrears)
+
+	// A settlement that cannot pay changes nothing.
+	broken := s.provider
+	broken.PayoutAddress = "not-an-address"
+	require.NoError(t, s.App.SKUKeeper.SetProvider(s.Ctx, broken))
+	require.True(t, s.withdraw(t, 0, nil).TotalAmounts.IsZero())
+	kept, ok := s.stream(t, tenant, testDenom)
+	require.True(t, ok)
+	require.Equal(t, state, kept)
+	require.NoError(t, s.App.SKUKeeper.SetProvider(s.Ctx, s.provider))
+
+	// The next settlement pays the arrears with the accrual, once.
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, due)), s.withdraw(t, 0, nil).TotalAmounts)
+	require.Equal(t, due, s.payout(testDenom))
+	settled, ok := s.stream(t, tenant, testDenom)
+	require.True(t, ok)
+	require.True(t, settled.Arrears.IsZero())
+	require.False(t, settled.IsExhausted())
+
+	s.advance(10 * time.Second)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, rate.MulRaw(10))), s.withdraw(t, 0, nil).TotalAmounts)
+	s.requireInvariants(t)
+}
+
+// TestStream_ArrearsBeyondCredit checks arrears the credit cannot cover: the
+// settlement pays everything that remains and freezes the stream, as it does
+// for an accrual the credit cannot cover. That includes arrears so large that
+// adding the accrual to them is not representable.
+func TestStream_ArrearsBeyondCredit(t *testing.T) {
+	maxInt := sdkmath.NewIntFromBigInt(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1)))
+
+	tests := []struct {
+		name    string
+		arrears sdkmath.Int
+	}{
+		{name: "exactly the credit", arrears: sdkmath.NewInt(1_000_000)},
+		{name: "more than the credit", arrears: sdkmath.NewInt(1_000_001)},
+		{name: "the largest representable amount", arrears: maxInt},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newStreamFixture(t, testDenom)
+			tenant := s.TestAccs[0]
+			querier := keeper.NewQuerier(s.App.BillingKeeper)
+			s.fundTenant(t, tenant, testDenom, 1_000_000)
+			leaseUUID := s.lease(t, tenant)
+
+			key := keeper.NewStreamKey(s.provider.Uuid, tenant, testDenom)
+			state, ok := s.stream(t, tenant, testDenom)
+			require.True(t, ok)
+			state.Arrears = tc.arrears
+			require.NoError(t, s.App.BillingKeeper.Streams.Set(s.Ctx, key, state))
+
+			s.advance(10 * time.Second)
+			withdrawable, err := querier.ProviderWithdrawable(s.Ctx, &types.QueryProviderWithdrawableRequest{ProviderUuid: s.provider.Uuid})
+			require.NoError(t, err)
+			require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))), withdrawable.Amounts)
+			estimate, err := querier.CreditEstimate(s.Ctx, &types.QueryCreditEstimateRequest{Tenant: tenant.String()})
+			require.NoError(t, err)
+			require.Zero(t, estimate.EstimatedDurationSeconds)
+
+			require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))), s.withdraw(t, 0, nil).TotalAmounts)
+			require.True(t, s.credit(tenant, testDenom).IsZero())
+			frozen, ok := s.stream(t, tenant, testDenom)
+			require.True(t, ok)
+			require.True(t, frozen.IsExhausted())
+			require.True(t, frozen.Arrears.IsZero())
+			s.requireInvariants(t)
+
+			require.NoError(t, s.App.BillingKeeper.EndBlocker(s.Ctx))
+			lease, err := s.App.BillingKeeper.GetLease(s.Ctx, leaseUUID)
+			require.NoError(t, err)
+			require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+			require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason)
+			s.requireInvariants(t)
+		})
+	}
 }

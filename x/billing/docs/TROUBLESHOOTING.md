@@ -308,7 +308,7 @@ manifestd query billing streams-by-provider [provider-uuid]
 3. **The page may not have reached it.** A withdraw settles at most `--limit` streams (default 50, max 100). If the response has `has_more: true`, the stream may be on a later page.
 
 **What happens**:
-1. After an error skip the stream is left unchanged, including its `last_settled_at` and `remainder`, so what it accrued is paid by the next settlement that succeeds; other streams of the page are processed normally
+1. After an error skip the stream is left unchanged, including its `last_settled_at`, `remainder` and `arrears`, so what it owes is paid by the next settlement that succeeds; other streams of the page are processed normally
 2. The overall transaction still succeeds
 3. No error is returned for such a stream — error skips are logged by the node, normal (nothing-to-pay) settlements are silent
 
@@ -555,7 +555,7 @@ If the stream is already frozen (`exhausted_at` set) and the lease is still ACTI
 **Cause**: Lease and stream queries return stored state without performing settlement calculations. A lease carries no settlement time at all (`Lease.last_settled_at` is deprecated and never set); a stream's `last_settled_at` shows when that stream was last settled.
 
 **Explanation**: 
-- `streams-by-provider` and `streams-by-tenant` return each stream's stored `rate`, `last_settled_at` and `remainder`
+- `streams-by-provider` and `streams-by-tenant` return each stream's stored `rate`, `last_settled_at`, `remainder` and `arrears`
 - They don't calculate time elapsed since then
 - PENDING leases don't accrue charges (billing starts at acknowledgement)
 - There is no per-lease accrued amount: accrual is tracked per stream, which aggregates every active lease of a tenant with a provider in a denom
@@ -569,7 +569,13 @@ If the stream is already frozen (`exhausted_at` set) and the lease is still ACTI
   `pagination.next_key` back as `--page-key` (the base64 string exactly as printed),
   and sum the per-page `amounts` until `next_key` is empty. This query has no
   `has_more` field — branch on `len(pagination.next_key) > 0`.
-- For one tenant's share, read its stream from `streams-by-provider`. The exact accrual is `(remainder + rate × nanoseconds since last_settled_at) / 1,000,000,000`, rounded down and capped at the tenant's credit balance in that denom. `rate ×` seconds since `last_settled_at` is a close approximation: it only ignores the carried `remainder`. A stream whose `last_settled_at` is earlier than the 2 → 3 upgrade block carries a debt from a payout that failed during the migration; the same formula covers it, and the next settlement pays it
+- For one tenant's share, read its stream from `streams-by-provider`. The exact accrual is `(remainder + rate × nanoseconds since last_settled_at) / 1,000,000,000`, rounded down; `rate ×` seconds since `last_settled_at` is a close approximation (it only ignores the carried `remainder`, worth less than one unit). What the stream owes is its `arrears` plus that accrual, and what a withdrawal would pay is that total capped at the tenant's credit balance in that denom
+
+### A stream shows non-zero `arrears`
+
+**Cause**: `arrears` is an amount the stream owes the provider on top of what it accrues. The 2 → 3 store migration sets it: the upgrade moves no coins, so what each stream's leases had accrued under per-lease settlement and not yet been paid is recorded there. It is expected right after that upgrade and is zero otherwise.
+
+**Solution**: Nothing to fix. The provider's next withdrawal (or a lease of that stream being acknowledged or closed) pays the arrears with the accrual and resets them to 0. If the tenant's credit does not cover the total, that settlement pays the whole balance and freezes the stream, as for any shortfall.
 
 ### "invalid --page-key" on a stream query
 

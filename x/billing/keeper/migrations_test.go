@@ -2,22 +2,25 @@
 Package keeper_test contains unit tests for the billing store migrations.
 
 Test Coverage (Migrate2to3, per-lease settlement to settlement streams):
-  - Unsettled accrual of ACTIVE leases is paid once per stream at the upgrade
-  - Streams are built from the ACTIVE leases and settled at the upgrade time
-  - A tenant whose credit cannot cover what is owed gets a frozen stream that
-    the EndBlocker then drains
-  - CLOSED leases that still owed something are paid; fully settled ones are not
+  - Streams are built from the ACTIVE leases and accrue from the upgrade time
+  - What the leases had accrued is carried as the stream's arrears; the
+    migration moves no coins and the first settlement pays them
+  - A tenant whose credit cannot cover what is owed is frozen by that first
+    settlement, and the EndBlocker then drains the stream
+  - CLOSED leases: debt joins the stream's arrears, and forms no stream alone
   - Missing and future last_settled_at values
-  - A failing payout does not abort the upgrade and the whole debt is carried
-
-- Tenants are grouped by address, whatever the spelling stored in the lease
+  - The migration does not depend on the provider or on the bank module
+  - Tenants are grouped by address, whatever the spelling stored in the lease
   - The deprecated field is cleared, stored bytes are canonical, indexes intact
-  - Payment order is deterministic when credit is short
+  - Large and unrepresentable debts
+  - A model of per-lease settlement, on random v2 states
 */
 package keeper_test
 
 import (
+	"fmt"
 	"math/big"
+	"math/rand/v2"
 	"strings"
 	"testing"
 	"time"
@@ -124,6 +127,17 @@ func (s *v2State) migrate() {
 	require.NoError(s.t, keeper.NewMigrator(s.App.BillingKeeper).Migrate2to3(s.Ctx))
 }
 
+// withdraw has the provider (owned by TestAccs[1], see provider) withdraw.
+func (s *v2State) withdraw(providerUUID string) *types.MsgWithdrawResponse {
+	s.t.Helper()
+	resp, err := keeper.NewMsgServerImpl(s.App.BillingKeeper).Withdraw(s.Ctx, &types.MsgWithdraw{
+		Sender:       s.TestAccs[1].String(),
+		ProviderUuid: providerUUID,
+	})
+	require.NoError(s.t, err)
+	return resp
+}
+
 func (s *v2State) balance(addr sdk.AccAddress) sdkmath.Int {
 	return s.App.BankKeeper.GetBalance(s.Ctx, addr, testDenom).Amount
 }
@@ -152,7 +166,7 @@ func TestMigrate2to3_EmptyState(t *testing.T) {
 	s.requireInvariants()
 }
 
-func TestMigrate2to3_PaysAccrualAndBuildsStreams(t *testing.T) {
+func TestMigrate2to3_BuildsStreamsCarryingAccrualAsArrears(t *testing.T) {
 	s := newV2State(t)
 	now := s.Ctx.BlockTime()
 	tenant := s.TestAccs[0]
@@ -169,14 +183,17 @@ func TestMigrate2to3_PaysAccrualAndBuildsStreams(t *testing.T) {
 	s.Ctx = s.Ctx.WithEventManager(sdk.NewEventManager())
 	s.migrate()
 
-	require.Equal(t, sdkmath.NewInt(160), s.balance(payout), "each lease is paid up to the upgrade")
-	require.Equal(t, 1, countEvents(s.Ctx, "transfer"), "one transfer per stream, not per lease")
+	require.True(t, s.balance(payout).IsZero(), "the migration moves no coins")
+	require.Equal(t, sdkmath.NewInt(1_000_000), s.balance(types.DeriveCreditAddress(tenant)))
+	require.Zero(t, countEvents(s.Ctx, "transfer"))
 
 	state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
 	require.NoError(t, err)
 	require.Equal(t, sdkmath.NewInt(3), state.Rate)
 	require.Equal(t, uint64(3), state.LeaseCount)
-	require.Equal(t, now, state.LastSettledAt, "the stream starts settled at the upgrade time")
+	require.Equal(t, now, state.LastSettledAt, "the stream accrues from the upgrade time")
+	require.Equal(t, sdkmath.NewInt(160), state.Arrears, "what each lease accrued up to the upgrade is carried as arrears")
+	require.True(t, state.Remainder.IsZero())
 	require.False(t, state.IsExhausted())
 
 	for _, uuid := range uuids {
@@ -187,17 +204,26 @@ func TestMigrate2to3_PaysAccrualAndBuildsStreams(t *testing.T) {
 	}
 	s.requireInvariants()
 
-	// Settlement continues from the upgrade time: 10s later, 3 leases × 10s.
-	s.Ctx = s.Ctx.WithBlockTime(now.Add(10 * time.Second))
-	resp, err := keeper.NewMsgServerImpl(s.App.BillingKeeper).Withdraw(s.Ctx, &types.MsgWithdraw{
-		Sender:       s.TestAccs[1].String(),
-		ProviderUuid: provider.Uuid,
-	})
+	// The first withdrawal, 10s later, pays the arrears and 3 leases × 10s with
+	// one transfer, and clears the arrears.
+	s.Ctx = s.Ctx.WithBlockTime(now.Add(10 * time.Second)).WithEventManager(sdk.NewEventManager())
+	resp := s.withdraw(provider.Uuid)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(190))), resp.TotalAmounts)
+	require.Equal(t, sdkmath.NewInt(190), s.balance(payout))
+	require.Equal(t, 1, countEvents(s.Ctx, "transfer"), "one transfer per stream, not per lease")
+
+	state, err = s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
 	require.NoError(t, err)
+	require.True(t, state.Arrears.IsZero(), "arrears are paid once")
+
+	// The next one only pays what accrued since.
+	s.Ctx = s.Ctx.WithBlockTime(now.Add(20 * time.Second))
+	resp = s.withdraw(provider.Uuid)
 	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(30))), resp.TotalAmounts)
+	s.requireInvariants()
 }
 
-func TestMigrate2to3_ExhaustedTenantGetsFrozenStream(t *testing.T) {
+func TestMigrate2to3_ExhaustedTenantFreezesAtFirstSettlement(t *testing.T) {
 	s := newV2State(t)
 	now := s.Ctx.BlockTime()
 	tenant := s.TestAccs[0]
@@ -210,16 +236,27 @@ func TestMigrate2to3_ExhaustedTenantGetsFrozenStream(t *testing.T) {
 
 	s.migrate()
 
-	require.Equal(t, sdkmath.NewInt(7_200), s.balance(payout), "the provider receives everything that remains")
-	require.True(t, s.balance(types.DeriveCreditAddress(tenant)).IsZero())
-
+	// Exhaustion is discovered by a settlement, as it was under per-lease
+	// settlement; the migration itself settles nothing.
 	state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
 	require.NoError(t, err)
-	require.True(t, state.IsExhausted(), "the migration does not close leases itself; it queues the stream")
+	require.False(t, state.IsExhausted())
+	require.Equal(t, sdkmath.NewInt(20_000), state.Arrears)
+	require.True(t, s.balance(payout).IsZero())
+	s.requireInvariants()
+
+	resp := s.withdraw(provider.Uuid)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(7_200))), resp.TotalAmounts, "the provider receives everything that remains")
+	require.True(t, s.balance(types.DeriveCreditAddress(tenant)).IsZero())
+
+	state, err = s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+	require.NoError(t, err)
+	require.True(t, state.IsExhausted())
+	require.True(t, state.Arrears.IsZero(), "what the credit could not cover is not carried by a frozen stream")
 	require.Equal(t, uint64(2), state.LeaseCount)
 	s.requireInvariants()
 
-	// The normal EndBlocker drain closes the leases after the upgrade.
+	// The normal EndBlocker drain closes the leases.
 	require.NoError(t, s.App.BillingKeeper.EndBlocker(s.Ctx))
 	for _, uuid := range []string{first, second} {
 		lease, err := s.App.BillingKeeper.GetLease(s.Ctx, uuid)
@@ -230,7 +267,35 @@ func TestMigrate2to3_ExhaustedTenantGetsFrozenStream(t *testing.T) {
 	s.requireInvariants()
 }
 
-func TestMigrate2to3_ClosedLeases(t *testing.T) {
+// TestMigrate2to3_TopUpBeforeFirstSettlementCounts checks that a tenant short
+// of credit at the upgrade is not frozen by it: credit added before the
+// stream's first settlement pays the arrears and keeps the leases running.
+func TestMigrate2to3_TopUpBeforeFirstSettlementCounts(t *testing.T) {
+	s := newV2State(t)
+	now := s.Ctx.BlockTime()
+	tenant := s.TestAccs[0]
+	provider, sku, payout := s.provider()
+	s.fund(tenant, 7_200)
+
+	// Two leases owe 2 × 10000 against a balance of 7200.
+	s.lease(tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, 10_000*time.Second), nil)
+	s.lease(tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, 10_000*time.Second), nil)
+
+	s.migrate()
+	s.fund(tenant, 1_000_000)
+
+	resp := s.withdraw(provider.Uuid)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(20_000))), resp.TotalAmounts)
+	require.Equal(t, sdkmath.NewInt(20_000), s.balance(payout))
+
+	state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+	require.NoError(t, err)
+	require.False(t, state.IsExhausted())
+	require.True(t, state.Arrears.IsZero())
+	s.requireInvariants()
+}
+
+func TestMigrate2to3_ClosedLeasesFormNoStream(t *testing.T) {
 	s := newV2State(t)
 	now := s.Ctx.BlockTime()
 	tenant := s.TestAccs[0]
@@ -240,13 +305,13 @@ func TestMigrate2to3_ClosedLeases(t *testing.T) {
 	closedAt := ago(now, time.Hour)
 	// Settled up to its closure, as every handler-closed lease is.
 	settled := s.lease(tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_CLOSED, closedAt, closedAt)
-	// Still owing 40s up to its closure (only reachable through genesis).
+	// Still owing 40s up to its closure (only reachable through genesis). With
+	// no ACTIVE lease there is no stream to carry it: it is logged, not paid.
 	residual := s.lease(tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_CLOSED, ago(*closedAt, 40*time.Second), closedAt)
 
 	s.migrate()
 
-	require.Equal(t, sdkmath.NewInt(40), s.balance(payout), "only the residual of the closed lease is paid")
-
+	require.True(t, s.balance(payout).IsZero(), "the migration moves no coins")
 	streams, err := s.App.BillingKeeper.GetAllStreams(s.Ctx)
 	require.NoError(t, err)
 	require.Empty(t, streams, "closed leases form no stream")
@@ -260,11 +325,53 @@ func TestMigrate2to3_ClosedLeases(t *testing.T) {
 	s.requireInvariants()
 }
 
-func TestMigrate2to3_MissingAndFutureLastSettledAt(t *testing.T) {
+// TestMigrate2to3_ClosedLeaseDebtJoinsTheStreamArrears checks that what a
+// CLOSED lease still owed is carried by the stream of the same provider,
+// tenant and denom, as an amount. That debt has nothing to do with the
+// stream's rate (which only counts ACTIVE leases): 4e9 units owed against a
+// rate of 1/s is "127 years of the rate", yet it is an ordinary, payable debt.
+func TestMigrate2to3_ClosedLeaseDebtJoinsTheStreamArrears(t *testing.T) {
 	s := newV2State(t)
 	now := s.Ctx.BlockTime()
 	tenant := s.TestAccs[0]
 	provider, sku, payout := s.provider()
+	s.fund(tenant, 5_000_000_000)
+
+	// A CLOSED lease at 4e9/s owes the second from T-2s to T-1s.
+	closedAt := ago(now, time.Second)
+	s.leasePriced(sdkmath.NewInt(4_000_000_000), tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_CLOSED, ago(now, 2*time.Second), closedAt)
+	// An ACTIVE lease at 1/s is settled up to the upgrade.
+	s.lease(tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, 0), nil)
+
+	s.migrate()
+
+	state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(1), state.Rate, "only the ACTIVE lease sets the rate")
+	require.Equal(t, sdkmath.NewInt(4_000_000_000), state.Arrears)
+	require.Equal(t, now, state.LastSettledAt)
+	s.requireInvariants()
+
+	// One second later: the debt plus one second of the ACTIVE lease, and the
+	// stream keeps running on the credit that is left.
+	s.Ctx = s.Ctx.WithBlockTime(now.Add(time.Second))
+	resp := s.withdraw(provider.Uuid)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(4_000_000_001))), resp.TotalAmounts)
+	require.Equal(t, sdkmath.NewInt(4_000_000_001), s.balance(payout))
+	require.Equal(t, sdkmath.NewInt(999_999_999), s.balance(types.DeriveCreditAddress(tenant)))
+
+	state, err = s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+	require.NoError(t, err)
+	require.False(t, state.IsExhausted())
+	require.True(t, state.Arrears.IsZero())
+	s.requireInvariants()
+}
+
+func TestMigrate2to3_MissingAndFutureLastSettledAt(t *testing.T) {
+	s := newV2State(t)
+	now := s.Ctx.BlockTime()
+	tenant := s.TestAccs[0]
+	provider, sku, _ := s.provider()
 	s.fund(tenant, 1_000_000_000)
 
 	// No last_settled_at: billing started at acknowledgement, 24h ago.
@@ -275,41 +382,65 @@ func TestMigrate2to3_MissingAndFutureLastSettledAt(t *testing.T) {
 
 	s.migrate()
 
-	require.Equal(t, sdkmath.NewInt(24*3600), s.balance(payout))
 	state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
 	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(24*3600), state.Arrears)
 	require.Equal(t, sdkmath.NewInt(2), state.Rate)
 	require.Equal(t, now, state.LastSettledAt, "a future last_settled_at does not leak into the stream")
 	s.requireInvariants()
 }
 
-func TestMigrate2to3_FailingPayoutCarriesTheDebt(t *testing.T) {
+// TestMigrate2to3_DoesNotDependOnProviderOrBank checks that the migration
+// succeeds whatever the state of the provider or of its payout address, since
+// it pays nothing, and that the arrears stay on the stream until a settlement
+// can actually pay them.
+func TestMigrate2to3_DoesNotDependOnProviderOrBank(t *testing.T) {
 	s := newV2State(t)
 	now := s.Ctx.BlockTime()
 	tenant := s.TestAccs[0]
-	_, sku, _ := s.provider()
+	provider, sku, payout := s.provider()
 	s.fund(tenant, 1_000_000)
 
-	// The lease names a provider that does not exist, so the payout fails.
+	// A lease naming a provider that does not exist, and one whose provider has
+	// an unusable payout address.
 	missingProvider := "01912345-0000-7000-8000-00000000dead"
-	uuid := s.lease(tenant, missingProvider, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, 500*time.Second), nil)
+	s.lease(tenant, missingProvider, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, 500*time.Second), nil)
+	// Two leases at 1/s, one settled at the upgrade and one a second earlier:
+	// 1 unit is owed against a stream rate of 2/s, less than a second of it.
+	s.lease(tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, 0), nil)
+	s.lease(tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, time.Second), nil)
+	broken := provider
+	broken.PayoutAddress = "not-an-address"
+	require.NoError(t, s.App.SKUKeeper.SetProvider(s.Ctx, broken))
 
-	// The upgrade must not fail over one bad stream.
 	s.migrate()
+	require.Equal(t, sdkmath.NewInt(1_000_000), s.balance(types.DeriveCreditAddress(tenant)))
 
-	require.Equal(t, sdkmath.NewInt(1_000_000), s.balance(types.DeriveCreditAddress(tenant)), "the failed payment left nothing behind")
-
-	state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(missingProvider, tenant, testDenom))
+	orphan, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(missingProvider, tenant, testDenom))
 	require.NoError(t, err)
-	require.False(t, state.IsExhausted())
-	// 500 units at 1/s: the stream is dated 500s back, so it owes exactly the
-	// 500 units that could not be paid.
-	require.Equal(t, now.Add(-500*time.Second), state.LastSettledAt)
-	require.True(t, state.Remainder.IsZero())
+	require.Equal(t, sdkmath.NewInt(500), orphan.Arrears)
+	require.Equal(t, now, orphan.LastSettledAt)
 
-	lease, err := s.App.BillingKeeper.GetLease(s.Ctx, uuid)
+	key := keeper.NewStreamKey(provider.Uuid, tenant, testDenom)
+	state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, key)
 	require.NoError(t, err)
-	require.Nil(t, lease.LastSettledAt) //nolint:staticcheck // asserting the deprecated field is cleared
+	require.Equal(t, sdkmath.NewInt(1), state.Arrears)
+	s.requireInvariants()
+
+	// A settlement that cannot pay leaves the stream, arrears included, as it was.
+	s.Ctx = s.Ctx.WithBlockTime(now.Add(time.Second))
+	resp := s.withdraw(provider.Uuid)
+	require.True(t, resp.TotalAmounts.IsZero())
+	unchanged, err := s.App.BillingKeeper.Streams.Get(s.Ctx, key)
+	require.NoError(t, err)
+	require.Equal(t, state, unchanged)
+
+	// Once the payout works again, the provider receives the carried unit plus
+	// one second of both leases: 1 + 2.
+	require.NoError(t, s.App.SKUKeeper.SetProvider(s.Ctx, provider))
+	resp = s.withdraw(provider.Uuid)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(3))), resp.TotalAmounts)
+	require.Equal(t, sdkmath.NewInt(3), s.balance(payout))
 	s.requireInvariants()
 }
 
@@ -351,7 +482,10 @@ func TestMigrate2to3_RewritesLeasesCanonicallyWithoutTouchingIndexes(t *testing.
 	require.Len(t, bySKU, 1)
 }
 
-func TestMigrate2to3_PaymentOrderIsDeterministicWhenCreditIsShort(t *testing.T) {
+// TestMigrate2to3_ShortCreditIsPaidInSettlementOrder checks a tenant that owes
+// two providers more than it holds: as under per-lease settlement, whoever
+// settles first is paid first.
+func TestMigrate2to3_ShortCreditIsPaidInSettlementOrder(t *testing.T) {
 	s := newV2State(t)
 	now := s.Ctx.BlockTime()
 	tenant := s.TestAccs[0]
@@ -364,22 +498,17 @@ func TestMigrate2to3_PaymentOrderIsDeterministicWhenCreditIsShort(t *testing.T) 
 	s.lease(tenant, providerB.Uuid, skuB.Uuid, types.LEASE_STATE_ACTIVE, ago(now, 5_000*time.Second), nil)
 
 	s.migrate()
+	s.requireInvariants()
 
-	// Streams are processed in (tenant, provider_uuid, denom) order, so the
-	// provider with the smaller UUID is paid in full and the other gets the rest.
-	firstPayout, secondPayout := payoutA, payoutB
-	firstProvider, secondProvider := providerA.Uuid, providerB.Uuid
-	if providerB.Uuid < providerA.Uuid {
-		firstPayout, secondPayout = payoutB, payoutA
-		firstProvider, secondProvider = providerB.Uuid, providerA.Uuid
-	}
-	require.Equal(t, sdkmath.NewInt(5_000), s.balance(firstPayout))
-	require.Equal(t, sdkmath.NewInt(2_200), s.balance(secondPayout))
+	s.withdraw(providerB.Uuid)
+	s.withdraw(providerA.Uuid)
+	require.Equal(t, sdkmath.NewInt(5_000), s.balance(payoutB))
+	require.Equal(t, sdkmath.NewInt(2_200), s.balance(payoutA))
 
-	first, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(firstProvider, tenant, testDenom))
+	first, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(providerB.Uuid, tenant, testDenom))
 	require.NoError(t, err)
 	require.False(t, first.IsExhausted(), "paid in full with credit to spare")
-	second, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(secondProvider, tenant, testDenom))
+	second, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(providerA.Uuid, tenant, testDenom))
 	require.NoError(t, err)
 	require.True(t, second.IsExhausted(), "the credit ran out on the second stream")
 	s.requireInvariants()
@@ -393,7 +522,7 @@ func TestMigrate2to3_TenantAddressSpelling(t *testing.T) {
 	s := newV2State(t)
 	now := s.Ctx.BlockTime()
 	tenant := s.TestAccs[0]
-	provider, sku, payout := s.provider()
+	provider, sku, _ := s.provider()
 	s.fund(tenant, 1_000_000)
 
 	lower := s.lease(tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, 100*time.Second), nil)
@@ -408,13 +537,13 @@ func TestMigrate2to3_TenantAddressSpelling(t *testing.T) {
 
 	s.migrate()
 
-	require.Equal(t, sdkmath.NewInt(150), s.balance(payout))
 	streams, err := s.App.BillingKeeper.GetAllStreams(s.Ctx)
 	require.NoError(t, err)
 	require.Len(t, streams, 1, "both spellings are one tenant, so one stream")
 	require.Equal(t, tenant.String(), streams[0].Tenant)
 	require.Equal(t, sdkmath.NewInt(2), streams[0].State.Rate)
 	require.Equal(t, uint64(2), streams[0].State.LeaseCount)
+	require.Equal(t, sdkmath.NewInt(150), streams[0].State.Arrears)
 
 	for _, uuid := range []string{lower, upper} {
 		member, err := s.App.BillingKeeper.StreamLeases.Has(s.Ctx,
@@ -425,95 +554,206 @@ func TestMigrate2to3_TenantAddressSpelling(t *testing.T) {
 	s.requireInvariants()
 }
 
-// TestMigrate2to3_FailedPayoutKeepsTheWholeDebt checks that when the migration
-// cannot pay a provider, the stream carries exactly what was owed, including
-// the part smaller than one second of the stream's rate.
-func TestMigrate2to3_FailedPayoutKeepsTheWholeDebt(t *testing.T) {
-	s := newV2State(t)
-	now := s.Ctx.BlockTime()
-	tenant := s.TestAccs[0]
-	provider, sku, payout := s.provider()
-	s.fund(tenant, 1_000_000)
-
-	// Two leases at 1/s, one settled at the upgrade and one a second earlier:
-	// 1 unit is owed in total, against a stream rate of 2/s. Expressing that
-	// debt as whole seconds of the stream's rate would round it down to zero.
-	s.lease(tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, 0), nil)
-	s.lease(tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, time.Second), nil)
-
-	// Make the payout fail during the migration.
-	broken := provider
-	broken.PayoutAddress = "not-an-address"
-	require.NoError(t, s.App.SKUKeeper.SetProvider(s.Ctx, broken))
-
-	s.migrate()
-	require.True(t, s.balance(payout).IsZero(), "nothing could be paid during the migration")
-
-	state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
-	require.NoError(t, err)
-	require.False(t, state.IsExhausted())
-	s.requireInvariants()
-
-	// Once the payout works again, one second later the provider receives the
-	// carried unit plus one second of both leases: 1 + 2.
-	require.NoError(t, s.App.SKUKeeper.SetProvider(s.Ctx, provider))
-	s.Ctx = s.Ctx.WithBlockTime(now.Add(time.Second))
-	resp, err := keeper.NewMsgServerImpl(s.App.BillingKeeper).Withdraw(s.Ctx, &types.MsgWithdraw{
-		Sender:       s.TestAccs[1].String(),
-		ProviderUuid: provider.Uuid,
-	})
-	require.NoError(t, err)
-	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(3))), resp.TotalAmounts)
-	require.Equal(t, sdkmath.NewInt(3), s.balance(payout))
-	s.requireInvariants()
-}
-
-// TestMigrate2to3_FailedPayoutKeepsALargeDebtExactly checks that a debt the
-// migration could not pay is carried exactly even when it is too large to be
-// scaled to nanosecond units: the debt, the rate, the reservation and the
-// balance all fit sdkmath.Int, but the debt times 1e9 does not.
-func TestMigrate2to3_FailedPayoutKeepsALargeDebtExactly(t *testing.T) {
-	s := newV2State(t)
-	now := s.Ctx.BlockTime()
-	tenant := s.TestAccs[0]
-	provider, sku, payout := s.provider()
-
-	// 2^240 per second; 2^245 of credit covers the lease's reservation and more.
-	rate := sdkmath.NewIntFromBigInt(new(big.Int).Lsh(big.NewInt(1), 240))
+// hugeCredit funds the tenant's credit account with 2^253 of testDenom.
+func (s *v2State) hugeCredit(tenant sdk.AccAddress) sdkmath.Int {
+	s.t.Helper()
 	credit := sdkmath.NewIntFromBigInt(new(big.Int).Lsh(big.NewInt(1), 253))
 	creditAddr := types.DeriveCreditAddress(tenant)
-	s.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, credit)))
-	require.NoError(t, s.App.BillingKeeper.SetCreditAccount(s.Ctx, types.CreditAccount{
+	s.fundAccount(s.t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, credit)))
+	require.NoError(s.t, s.App.BillingKeeper.SetCreditAccount(s.Ctx, types.CreditAccount{
 		Tenant:        tenant.String(),
 		CreditAddress: creditAddr.String(),
 	}))
+	return credit
+}
 
-	// One second unsettled at the upgrade: 2^240 is owed.
+// TestMigrate2to3_LargeArrearsAreExact checks that a debt is carried exactly
+// whatever its size: here the debt, the rate and the balance all fit
+// sdkmath.Int, but the debt scaled to nanosecond units would not.
+func TestMigrate2to3_LargeArrearsAreExact(t *testing.T) {
+	s := newV2State(t)
+	now := s.Ctx.BlockTime()
+	tenant := s.TestAccs[0]
+	provider, sku, payout := s.provider()
+	s.hugeCredit(tenant)
+
+	// 2^240 per second, one second unsettled at the upgrade: 2^240 is owed.
+	rate := sdkmath.NewIntFromBigInt(new(big.Int).Lsh(big.NewInt(1), 240))
 	s.leasePriced(rate, tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, time.Second), nil)
 
-	broken := provider
-	broken.PayoutAddress = "not-an-address"
-	require.NoError(t, s.App.SKUKeeper.SetProvider(s.Ctx, broken))
-
 	s.migrate()
-	require.True(t, s.balance(payout).IsZero())
+	state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+	require.NoError(t, err)
+	require.Equal(t, rate, state.Arrears)
 	s.requireInvariants()
 
-	// One second later the payout works: the carried second plus the new one.
-	require.NoError(t, s.App.SKUKeeper.SetProvider(s.Ctx, provider))
+	// One second later: the carried second plus the new one.
 	s.Ctx = s.Ctx.WithBlockTime(now.Add(time.Second))
-	resp, err := keeper.NewMsgServerImpl(s.App.BillingKeeper).Withdraw(s.Ctx, &types.MsgWithdraw{
-		Sender:       s.TestAccs[1].String(),
-		ProviderUuid: provider.Uuid,
-	})
-	require.NoError(t, err)
+	resp := s.withdraw(provider.Uuid)
 	want := rate.MulRaw(2)
 	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, want)), resp.TotalAmounts)
 	require.True(t, s.balance(payout).Equal(want))
 
+	state, err = s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+	require.NoError(t, err)
+	require.False(t, state.IsExhausted())
+	require.True(t, state.Arrears.IsZero())
+	require.True(t, state.Remainder.IsZero())
+	s.requireInvariants()
+}
+
+// TestMigrate2to3_UnrepresentableDebtTakesTheWholeBalance checks a debt that
+// does not fit sdkmath.Int at all. It exceeds any balance, so the first
+// settlement pays everything that remains and freezes the stream, which is how
+// per-lease settlement treated an accrual overflow.
+func TestMigrate2to3_UnrepresentableDebtTakesTheWholeBalance(t *testing.T) {
+	s := newV2State(t)
+	tenant := s.TestAccs[0]
+	provider, sku, payout := s.provider()
+	credit := s.hugeCredit(tenant)
+
+	// 2^240 per second, unsettled since its acknowledgement 24h ago:
+	// 86400 × 2^240 exceeds 2^256.
+	rate := sdkmath.NewIntFromBigInt(new(big.Int).Lsh(big.NewInt(1), 240))
+	s.leasePriced(rate, tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, nil, nil)
+
+	s.migrate()
 	state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
 	require.NoError(t, err)
 	require.False(t, state.IsExhausted())
-	require.True(t, state.Remainder.IsZero())
+	require.Equal(t, sdkmath.MaxBitLen, state.Arrears.BigInt().BitLen(), "the largest representable amount stands for the debt")
 	s.requireInvariants()
+
+	s.Ctx = s.Ctx.WithBlockTime(s.Ctx.BlockTime().Add(time.Second))
+	resp := s.withdraw(provider.Uuid)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, credit)), resp.TotalAmounts)
+	require.True(t, s.balance(payout).Equal(credit))
+
+	state, err = s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+	require.NoError(t, err)
+	require.True(t, state.IsExhausted())
+	s.requireInvariants()
+}
+
+// TestMigrate2to3_MatchesPerLeaseSettlement compares the migration against a
+// model of per-lease settlement on random v2 states.
+//
+// The model is what consensus version 2 would have paid a provider that
+// withdrew at the upgrade block (each lease's rate × its whole unsettled
+// seconds, capped per tenant at the credit balance), plus what the stream
+// accrues exactly from the upgrade to the withdrawal. The migrated chain must
+// pay the provider the same amount on its first withdrawal, charge each tenant
+// the same, and freeze exactly the streams whose tenant could not cover it.
+// The model is computed from how the leases were built, not by the migration's
+// own code.
+func TestMigrate2to3_MatchesPerLeaseSettlement(t *testing.T) {
+	const day = 24 * time.Hour // leases are acknowledged a day before the upgrade
+
+	type tenantModel struct {
+		addr   sdk.AccAddress
+		active bool
+		owed   *big.Int // unsettled under per-lease settlement at the upgrade
+		rate   *big.Int // summed rate of the ACTIVE leases
+	}
+
+	for seed := uint64(1); seed <= 40; seed++ {
+		t.Run(fmt.Sprintf("seed %d", seed), func(t *testing.T) {
+			rng := rand.New(rand.NewPCG(seed, seed))
+			s := newV2State(t)
+			now := s.Ctx.BlockTime()
+			provider, sku, payout := s.provider()
+
+			tenants := []*tenantModel{{addr: s.TestAccs[0]}, {addr: s.TestAccs[2]}, {addr: s.TestAccs[3]}}
+			for _, tm := range tenants {
+				tm.owed, tm.rate = new(big.Int), new(big.Int)
+				s.fund(tm.addr, 0)
+
+				for range rng.IntN(5) {
+					price := rng.Int64N(1_000) + 1
+					// A duration with a sub-second part: per-lease settlement
+					// only counted whole seconds.
+					unsettled := time.Duration(rng.Int64N(int64(6 * time.Hour)))
+					secs := int64(unsettled / time.Second)
+
+					switch rng.IntN(5) {
+					case 0: // ACTIVE, never settled: accrues from its acknowledgement
+						s.leasePriced(sdkmath.NewInt(price), tm.addr, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, nil, nil)
+						secs = int64(day / time.Second)
+						tm.active = true
+						tm.rate.Add(tm.rate, big.NewInt(price))
+					case 1, 2: // ACTIVE, last settled a while ago
+						s.leasePriced(sdkmath.NewInt(price), tm.addr, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, unsettled), nil)
+						tm.active = true
+						tm.rate.Add(tm.rate, big.NewInt(price))
+					case 3: // CLOSED and settled up to its closure, as handlers leave it
+						closedAt := ago(now, unsettled)
+						s.leasePriced(sdkmath.NewInt(price), tm.addr, provider.Uuid, sku.Uuid, types.LEASE_STATE_CLOSED, closedAt, closedAt)
+						secs = 0
+					case 4: // CLOSED while still owing up to its closure
+						closedAt := ago(now, time.Duration(rng.Int64N(int64(time.Hour))))
+						s.leasePriced(sdkmath.NewInt(price), tm.addr, provider.Uuid, sku.Uuid, types.LEASE_STATE_CLOSED, ago(*closedAt, unsettled), closedAt)
+					}
+					tm.owed.Add(tm.owed, new(big.Int).Mul(big.NewInt(price), big.NewInt(secs)))
+				}
+
+				// Credit: exactly the reservation of the ACTIVE leases (often
+				// less than what is owed), or plenty.
+				account, err := s.App.BillingKeeper.GetCreditAccount(s.Ctx, tm.addr.String())
+				require.NoError(t, err)
+				credit := account.ReservedAmounts.AmountOf(testDenom).Int64()
+				if rng.IntN(2) == 0 {
+					credit += 1_000_000_000_000
+				}
+				s.fund(tm.addr, credit)
+			}
+
+			s.migrate()
+			s.requireInvariants()
+			require.True(t, s.balance(payout).IsZero(), "the migration moves no coins")
+
+			// The provider withdraws some time after the upgrade, not on a
+			// whole second.
+			elapsed := time.Duration(rng.Int64N(int64(2 * time.Minute)))
+			s.Ctx = s.Ctx.WithBlockTime(now.Add(elapsed))
+
+			credits := make(map[string]sdkmath.Int)
+			for _, tm := range tenants {
+				credits[tm.addr.String()] = s.balance(types.DeriveCreditAddress(tm.addr))
+			}
+			s.withdraw(provider.Uuid)
+
+			wantPayout := new(big.Int)
+			for _, tm := range tenants {
+				key := keeper.NewStreamKey(provider.Uuid, tm.addr, testDenom)
+				before := credits[tm.addr.String()]
+				after := s.balance(types.DeriveCreditAddress(tm.addr))
+
+				if !tm.active {
+					has, err := s.App.BillingKeeper.Streams.Has(s.Ctx, key)
+					require.NoError(t, err)
+					require.False(t, has, "no ACTIVE lease, no stream")
+					require.Equal(t, before.String(), after.String())
+					continue
+				}
+
+				// due = owed + floor(rate × elapsed ns / 1e9), capped at the credit.
+				due := new(big.Int).Mul(tm.rate, big.NewInt(int64(elapsed)))
+				due.Quo(due, big.NewInt(int64(time.Second)))
+				due.Add(due, tm.owed)
+				pay := new(big.Int).Set(due)
+				if pay.Cmp(before.BigInt()) > 0 {
+					pay.Set(before.BigInt())
+				}
+				wantPayout.Add(wantPayout, pay)
+
+				require.Equal(t, pay.String(), before.Sub(after).String(), "tenant charge (owed %s, rate %s, elapsed %s, credit %s)", tm.owed, tm.rate, elapsed, before)
+				state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, key)
+				require.NoError(t, err)
+				require.Equal(t, due.Cmp(before.BigInt()) >= 0, state.IsExhausted(), "frozen exactly when the credit does not exceed what is owed")
+				require.True(t, state.Arrears.IsZero())
+			}
+			require.Equal(t, wantPayout.String(), s.balance(payout).String())
+			s.requireInvariants()
+		})
+	}
 }

@@ -96,7 +96,16 @@ func streamRemainder(state types.StreamState) sdkmath.Int {
 	return state.Remainder
 }
 
-// streamAccrual computes what a stream owes at now.
+// streamArrears returns the unpaid amount a stream carries on top of its
+// accrual, treating an unset value as zero.
+func streamArrears(state types.StreamState) sdkmath.Int {
+	if state.Arrears.IsNil() {
+		return sdkmath.ZeroInt()
+	}
+	return state.Arrears
+}
+
+// streamAccrual computes what a stream has accrued at now.
 //
 // Rates are per second and block time has nanosecond precision, so accrual is
 // computed exactly: remainder + rate × elapsed nanoseconds, divided by 1e9.
@@ -122,9 +131,7 @@ func streamAccrual(state types.StreamState, now time.Time) (accrued, remainder s
 
 	elapsed := now.Sub(state.LastSettledAt)
 	if elapsed <= 0 {
-		// Nothing accrues, but a carried remainder of a whole unit or more (a
-		// debt the migration could not pay) is payable right away.
-		elapsed = 0
+		return sdkmath.ZeroInt(), remainder, true
 	}
 	if int64(elapsed/time.Second) > MaxDurationSeconds {
 		return sdkmath.ZeroInt(), sdkmath.ZeroInt(), false
@@ -143,8 +150,28 @@ func streamAccrual(state types.StreamState, now time.Time) (accrued, remainder s
 	return sdkmath.NewIntFromBigInt(units), sdkmath.NewIntFromBigInt(rest), true
 }
 
+// streamDue computes what a stream owes the provider at now: what it has
+// accrued (see streamAccrual) plus its arrears, an amount that was due earlier
+// and could not be transferred. remainder is the sub-unit accrual to carry.
+// A frozen stream owes nothing. ok is false when the amount is not
+// representable.
+func streamDue(state types.StreamState, now time.Time) (due, remainder sdkmath.Int, ok bool) {
+	accrued, remainder, ok := streamAccrual(state, now)
+	if !ok {
+		return sdkmath.ZeroInt(), sdkmath.ZeroInt(), false
+	}
+	if state.IsExhausted() {
+		return sdkmath.ZeroInt(), remainder, true
+	}
+	due, err := accrued.SafeAdd(streamArrears(state))
+	if err != nil {
+		return sdkmath.ZeroInt(), sdkmath.ZeroInt(), false
+	}
+	return due, remainder, true
+}
+
 // streamWithdrawable returns what settling a stream at now would pay the
-// provider: its accrual capped at the tenant's credit balance. It is read-only.
+// provider: what it owes, capped at the tenant's credit balance. It is read-only.
 func (k *Keeper) streamWithdrawable(ctx context.Context, key StreamKey, state types.StreamState, now time.Time) sdk.Coin {
 	_, tenant, denom := streamKeyParts(key)
 	if state.IsExhausted() {
@@ -152,18 +179,18 @@ func (k *Keeper) streamWithdrawable(ctx context.Context, key StreamKey, state ty
 	}
 
 	balance := k.bankKeeper.GetBalance(ctx, types.DeriveCreditAddress(tenant), denom).Amount
-	accrued, _, ok := streamAccrual(state, now)
+	due, _, ok := streamDue(state, now)
 	if !ok {
-		// An unrepresentable accrual certainly exceeds the balance.
+		// An unrepresentable amount certainly exceeds the balance.
 		return sdk.NewCoin(denom, balance)
 	}
-	return sdk.NewCoin(denom, sdkmath.MinInt(accrued, balance))
+	return sdk.NewCoin(denom, sdkmath.MinInt(due, balance))
 }
 
 // settleStreamState settles a stream up to now: it pays the provider what the
-// stream accrued since last_settled_at (capped at the tenant's credit balance),
-// moves last_settled_at to now, and freezes the stream when the credit is
-// exhausted.
+// stream owes (its accrual since last_settled_at plus any arrears, capped at
+// the tenant's credit balance), moves last_settled_at to now, and freezes the
+// stream when the credit is exhausted.
 //
 // It mutates state but does not persist it; the caller writes the stream. The
 // bank transfer, the drain queue entry and the events are written to ctx, so
@@ -183,11 +210,14 @@ func (k *Keeper) settleStreamState(ctx context.Context, key StreamKey, state *ty
 
 	// Accrue exactly up to now. What does not amount to a whole unit of the
 	// denom is carried in the remainder, so the clock can always move to now.
-	accrued, remainder, representable := streamAccrual(*state, now)
+	// Arrears are due in full: they are either paid by this settlement or, if
+	// the credit does not cover them, forgiven with the rest of the shortfall
+	// when the stream freezes.
+	accrued, remainder, representable := streamDue(*state, now)
 	overflowed := !representable
 	if overflowed {
-		// The accrual is not representable, so it certainly exceeds the balance:
-		// the provider receives everything that remains.
+		// What is owed is not representable, so it certainly exceeds the
+		// balance: the provider receives everything that remains.
 		k.logger.Warn("stream accrual overflow, transferring remaining credit",
 			"provider_uuid", providerUUID,
 			"tenant", tenant.String(),
@@ -200,6 +230,7 @@ func (k *Keeper) settleStreamState(ctx context.Context, key StreamKey, state *ty
 		result.PaidInFull = accrued.IsPositive() && accrued.LTE(balance)
 	}
 	state.Remainder = remainder
+	state.Arrears = sdkmath.ZeroInt()
 	// A stream dated in the future (only reachable through a hand-written
 	// genesis, which validation rejects) accrues nothing and keeps its date.
 	if now.After(state.LastSettledAt) {
@@ -360,7 +391,12 @@ func (c *streamCache) entry(ctx context.Context, key StreamKey, create bool) (*s
 		if !create {
 			return nil, none, nil
 		}
-		e.state = types.StreamState{Rate: sdkmath.ZeroInt(), LastSettledAt: c.now, Remainder: sdkmath.ZeroInt()}
+		e.state = types.StreamState{
+			Rate:          sdkmath.ZeroInt(),
+			LastSettledAt: c.now,
+			Remainder:     sdkmath.ZeroInt(),
+			Arrears:       sdkmath.ZeroInt(),
+		}
 	default:
 		return nil, none, err
 	}

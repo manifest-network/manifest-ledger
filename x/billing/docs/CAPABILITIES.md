@@ -75,8 +75,8 @@ This document provides a comprehensive overview of the Billing module's capabili
 
 Accrual is not tracked per lease. Every ACTIVE lease a tenant holds with a provider in a given denom is aggregated into one **stream**, keyed by `(provider, tenant, denom)`:
 
-- The stream stores the summed per-second rate of its leases, the time it was last settled, its lease count, whether it is frozen, and a `remainder` (accrual carried to the next settlement: below one unit of the denom after a settlement)
-- Settling a stream pays what it accrued since its last settlement, capped at the tenant's credit balance, with one bank transfer. Accrual is exact: `remainder + rate × elapsed nanoseconds`, paid in whole units of the denom, with the rest carried in `remainder`. Nothing is dropped between settlements, and a lease that joins a stream is never charged for time before it joined
+- The stream stores the summed per-second rate of its leases, the time it was last settled, its lease count, whether it is frozen, a `remainder` (accrual below one unit of the denom, carried to the next settlement), and `arrears` (an amount owed on top of the accrual; zero unless the 2 → 3 store migration set it)
+- Settling a stream pays what it accrued since its last settlement plus its arrears, capped at the tenant's credit balance, with one bank transfer. Accrual is exact: `remainder + rate × elapsed nanoseconds`, paid in whole units of the denom, with the rest carried in `remainder`. Nothing is dropped between settlements, and a lease that joins a stream is never charged for time before it joined
 - A lease joins its streams when acknowledged and leaves them when closed; a stream exists only while it has at least one lease
 - A lease priced in several denoms belongs to one stream per denom
 
@@ -127,7 +127,7 @@ A top-up that arrives before the freezing settlement keeps the leases alive; a t
 | `CreditAddress` | Derive credit address for a tenant |
 | `WithdrawableAmount` | **Deprecated**: returns `Unimplemented`. A lease has no withdrawable amount of its own; use `ProviderWithdrawable` or `StreamsByProvider` |
 | `ProviderWithdrawable` | Withdrawable amount across the provider's streams, one page at a time — sum `amounts` across pages until `pagination.next_key` is empty for the provider total |
-| `StreamsByProvider` | The provider's settlement streams (rate, last settlement, lease count, frozen or not, carried remainder), per tenant and denom |
+| `StreamsByProvider` | The provider's settlement streams (rate, last settlement, lease count, frozen or not, carried remainder, arrears), per tenant and denom |
 | `StreamsByTenant` | The settlement streams a tenant pays, per provider and denom |
 | `LeaseByCustomDomain` | Look up the PENDING/ACTIVE lease + item that owns a given `custom_domain` (v2.1.0+) |
 
