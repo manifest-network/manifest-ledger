@@ -186,7 +186,7 @@ A stream aggregates every ACTIVE lease one tenant holds with one provider in one
 | `last_settled_at` | `Timestamp` | Time up to which the stream's accrual has been settled. Every settlement sets it to the block time. |
 | `lease_count` | `uint64` | Number of ACTIVE leases contributing to `rate` |
 | `exhausted_at` | `*Timestamp` | Set when a settlement found the tenant's credit exhausted in the stream's denom. An exhausted (frozen) stream stops accruing and its leases are closed by the EndBlocker. |
-| `remainder` | `math.Int` | Accrual carried to the next settlement, in (denom units × nanoseconds): 1,000,000,000 is one whole unit of the denom. After a settlement it is what did not amount to a whole unit, so it is below 1,000,000,000. It holds a whole unit or more only when the stream carries a debt that could not be paid (the 2 → 3 store migration stores a failed payout here); the next settlement pays it along with what accrued since. Never negative. See [Accrual Formula](#accrual-formula). |
+| `remainder` | `math.Int` | Accrual carried to the next settlement, in (denom units × nanoseconds): 1,000,000,000 is one whole unit of the denom. After a settlement it is what did not amount to a whole unit, so it is below 1,000,000,000. It can hold a whole unit or more only when the stream carries a debt that could not be paid: the 2 → 3 store migration dates such a stream back and keeps here what is left of the debt, which is smaller than the stream's rate. The next settlement pays it along with what accrued since. Never negative. See [Accrual Formula](#accrual-formula). |
 
 `Stream` (`provider_uuid`, `tenant`, `denom`, `state`) is the shape used in genesis and in query responses.
 
@@ -1017,7 +1017,9 @@ Rates are per second and block time has nanosecond precision, so the product `ra
 
 A stream last settled at or after the block time accrues nothing new (elapsed time counts as zero), and a frozen stream accrues nothing and keeps its `remainder` as it was.
 
-**A remainder of a whole unit or more is a carried debt.** The formula does not require `remainder` to be below one unit on input. The 2 → 3 store migration uses this: when a payout fails, it stores the whole unpaid amount in the new stream's `remainder` (amount × 1,000,000,000). The stream's first successful settlement then pays exactly that amount plus what accrued since, even if no time has elapsed, and leaves a remainder below one unit again.
+**Carrying a debt.** The formula does not require `remainder` to be below one unit on input, and a stream can be made to owe any amount by choosing its `last_settled_at` and `remainder`. The 2 → 3 store migration uses this when a payout fails (`carryDebt` in `x/billing/migrations/v3`). The debt in (denom units × nanoseconds) is `owed × 1,000,000,000`; dividing it by the stream's rate gives how far back to date `last_settled_at` (the quotient, in nanoseconds) and the `remainder` (the rest, smaller than the rate). The stream then owes exactly `owed` at the upgrade block time, nothing is rounded away, and neither value needs more bits than the rate does, however large the debt. Its first successful settlement pays that amount plus what accrued since and leaves a remainder below one unit again. This is the only case in which a stored `remainder` can be one unit or more (when the rate itself exceeds 1,000,000,000).
+
+If the debt is not representable, or would date the stream more than `MaxDurationSeconds` back, the stream is dated just beyond that limit, so its first settlement follows the accrual-overflow rule: the provider receives the tenant's whole remaining balance and the stream is frozen.
 
 The intermediate `rate × elapsed_ns + remainder` is computed with arbitrary precision (`math/big`). It is 10⁹ times larger than the amount it yields, so it may exceed the 256 bits of `sdkmath.Int` while the charge itself fits; only the payable amount has to fit.
 

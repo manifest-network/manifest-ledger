@@ -325,16 +325,17 @@ for (const s of streams) {
   // s.state.exhaustedAt         — set => frozen: credit ran out, leases are being closed
   // s.state.remainder           — accrual carried to the next settlement, in
   //                               (denom units × nanoseconds): 1e9 = one unit. Below 1e9
-  //                               after a settlement; 1e9 or more only when the stream
-  //                               carries a debt that could not be paid. Never negative.
+  //                               after a settlement. Never negative. Don't assume an
+  //                               upper bound: a stream carrying an unpaid debt from the
+  //                               2 → 3 migration may hold more (less than its rate).
 }
 // Exact accrual at time T, as the chain computes it:
 //   (remainder + rate × nanoseconds between lastSettledAt and T) / 1_000_000_000,
 //   rounded down, capped at the tenant's credit balance in that denom.
 //   Use BigInt: the intermediate product can be far larger than the result.
-// For display, rate × seconds elapsed is a close APPROXIMATION while remainder is
-// below 1e9 (it ignores the carried remainder). Use providerWithdrawable when you
-// need the exact figure. A frozen stream accrues nothing.
+// For display, rate × seconds elapsed is a close APPROXIMATION (it ignores the
+// carried remainder). Use providerWithdrawable when you need the exact figure.
+// A frozen stream accrues nothing.
 ```
 
 > **Compare tenants as addresses, not strings.** Bech32 is also valid in upper case, and a lease stores its tenant as it was sent, so `lease.tenant` may be upper case while `stream.tenant` is always the canonical lower-case spelling of the same account. Lower-case both (or decode them) before matching a stream to its leases.

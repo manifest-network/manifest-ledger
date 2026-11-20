@@ -1081,3 +1081,60 @@ func TestStream_LargeRateDoesNotOverflowAccrual(t *testing.T) {
 	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, perSecond.QuoRaw(2))), resp.TotalAmounts)
 	s.requireInvariants(t)
 }
+
+// TestStream_CreditEstimateWithHugeUnsettledAccrual checks that CreditEstimate
+// reports an exhausted tenant, instead of panicking, when the accruals of its
+// streams each fit sdkmath.Int but their sum does not.
+func TestStream_CreditEstimateWithHugeUnsettledAccrual(t *testing.T) {
+	s := newStreamFixture(t, testDenom)
+	tenant := s.TestAccs[0]
+	querier := keeper.NewQuerier(s.App.BillingKeeper)
+
+	// 10^70 per second.
+	perSecond, ok := sdkmath.NewIntFromString("1" + strings.Repeat("0", 70))
+	require.True(t, ok)
+	perHour := perSecond.MulRaw(3600)
+
+	hugeSKU := func(providerUUID string) string {
+		uuid, err := s.App.SKUKeeper.GenerateSKUUUID(s.Ctx)
+		require.NoError(t, err)
+		require.NoError(t, s.App.SKUKeeper.SetSKU(s.Ctx, skutypes.SKU{
+			Uuid:         uuid,
+			ProviderUuid: providerUUID,
+			Name:         "huge",
+			Unit:         skutypes.Unit_UNIT_PER_HOUR,
+			BasePrice:    sdk.NewCoin(testDenom, perHour),
+			Active:       true,
+		}))
+		return uuid
+	}
+
+	// Two providers, so the tenant has two streams in the same denom.
+	otherProviderAddr := s.TestAccs[3]
+	otherProvider := s.createTestProvider(t, otherProviderAddr.String(), s.TestAccs[4].String())
+
+	// Credit for the two reservations (one hour each).
+	creditAddr := types.DeriveCreditAddress(tenant)
+	s.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, perHour.MulRaw(2))))
+	require.NoError(t, s.App.BillingKeeper.SetCreditAccount(s.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+	s.createAndAcknowledgeLease(t, s.msgServer, tenant, s.providerAddr, []types.LeaseItemInput{
+		{SkuUuid: hugeSKU(s.provider.Uuid), Quantity: 1},
+	})
+	s.createAndAcknowledgeLease(t, s.msgServer, tenant, otherProviderAddr, []types.LeaseItemInput{
+		{SkuUuid: hugeSKU(otherProvider.Uuid), Quantity: 1},
+	})
+
+	// After 10^7 seconds each stream has accrued 10^77, which fits 256 bits;
+	// the two together (2 × 10^77) do not.
+	s.advance(10_000_000 * time.Second)
+
+	resp, err := querier.CreditEstimate(s.Ctx, &types.QueryCreditEstimateRequest{Tenant: tenant.String()})
+	require.NoError(t, err)
+	require.Zero(t, resp.EstimatedDurationSeconds, "what is owed exceeds the balance many times over")
+	require.Equal(t, uint64(2), resp.ActiveLeaseCount)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, perSecond.MulRaw(2))), resp.TotalRatePerSecond)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, perHour.MulRaw(2))), resp.CurrentBalance)
+}

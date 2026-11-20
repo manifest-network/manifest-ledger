@@ -654,8 +654,9 @@ type StreamState struct {
 	// settlements and rate changes: no fraction of a second is dropped, and a
 	// lease that joins a stream is never charged for time before it joined.
 	// It can hold a whole unit or more only when the stream carries a debt that
-	// could not be paid (the 2 → 3 store migration stores a failed payout here);
-	// the next settlement pays it along with what accrued since.
+	// could not be paid: the 2 → 3 store migration dates such a stream back and
+	// keeps here what is left of the debt (less than one nanosecond of the
+	// stream's rate). The next settlement pays it along with what accrued since.
 	Remainder cosmossdk_io_math.Int `protobuf:"bytes,5,opt,name=remainder,proto3,customtype=cosmossdk.io/math.Int" json:"remainder"`
 }
 

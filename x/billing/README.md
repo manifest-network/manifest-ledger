@@ -363,7 +363,7 @@ Settlement streams stored at key prefix `0x0D`, keyed by `(provider_uuid, tenant
 | last_settled_at | Timestamp | Time up to which the stream's accrual has been settled. Every settlement sets it to the block time. |
 | lease_count | uint64 | Number of ACTIVE leases contributing to `rate` |
 | exhausted_at | Timestamp | Set when a settlement found the tenant's credit exhausted. A frozen stream stops accruing and its leases are closed by the EndBlocker. |
-| remainder | Int | Accrual carried to the next settlement, in (denom units × nanoseconds): 1,000,000,000 is one whole unit of the denom. After a settlement it is what did not amount to a whole unit, so it is below 1,000,000,000. It holds a whole unit or more only when the stream carries a debt that could not be paid (the 2 → 3 store migration stores a failed payout here); the next settlement pays it along with what accrued since. Never negative. |
+| remainder | Int | Accrual carried to the next settlement, in (denom units × nanoseconds): 1,000,000,000 is one whole unit of the denom. After a settlement it is what did not amount to a whole unit, so it is below 1,000,000,000. It can hold a whole unit or more only when the stream carries a debt that could not be paid: the 2 → 3 store migration dates such a stream back and keeps here what is left of the debt, which is smaller than the stream's rate. The next settlement pays it along with what accrued since. Never negative. |
 
 In genesis and in query responses a stream is a `Stream`: `provider_uuid`, `tenant`, `denom` and the `state` above.
 

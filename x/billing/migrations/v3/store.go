@@ -22,6 +22,10 @@ import (
 // StreamState.Remainder (denom units × nanoseconds).
 const nanosPerSecond = 1_000_000_000
 
+// maxSettlementGapSeconds matches the keeper's MaxDurationSeconds (~100 years):
+// a stream last settled longer ago than this is settled as an accrual overflow.
+const maxSettlementGapSeconds = 100 * 365 * 24 * 60 * 60
+
 // Keeper is the part of the billing keeper the migration works through.
 type Keeper interface {
 	Logger() log.Logger
@@ -75,7 +79,7 @@ type pending struct {
 //
 // A data problem affecting one stream (for example a payout that fails) does
 // not abort the upgrade: the payment is discarded, the problem is logged, and
-// what could not be paid is carried in the stream's remainder so its first
+// the stream is created owing exactly what could not be paid, so its first
 // settlement still collects it. The migration fails only if the result is internally
 // inconsistent, since continuing would misprice every later settlement.
 func MigrateStore(ctx sdk.Context, k Keeper) error {
@@ -185,11 +189,10 @@ func MigrateStore(ctx sdk.Context, k Keeper) error {
 		}
 		switch {
 		case !paid:
-			// Keep the whole debt: carry it in the stream's remainder, which
-			// the first settlement adds to what the stream accrues by then.
-			// Back-dating the stream instead would lose whatever is smaller
-			// than one second of its rate.
-			state.Remainder = carriedDebt(owed)
+			// Keep the whole debt: date the stream and set its remainder so
+			// that it owes exactly this amount now. Its first settlement then
+			// pays it along with what accrues until then.
+			state.LastSettledAt, state.Remainder = carryDebt(now, owed, p.rate, p.overflowed)
 		case p.overflowed || owed.GTE(balance):
 			// Same rule as a normal settlement: the accrual consumed the whole
 			// balance, so the stream is frozen and its leases will be closed.
@@ -274,16 +277,32 @@ func (p *pending) addOwed(rate sdkmath.Int, secs int64) {
 	p.owed = total
 }
 
-// carriedDebt converts an amount that could not be paid into the stream
-// remainder that carries it: the same amount in (denom units × nanoseconds).
-// The product only fails to fit for amounts within 30 bits of the 256-bit
-// limit of sdkmath.Int; such a debt is carried up to the largest representable
-// remainder, which still exceeds any credit balance.
-func carriedDebt(amount sdkmath.Int) sdkmath.Int {
-	carried, err := amount.SafeMul(sdkmath.NewInt(nanosPerSecond))
-	if err != nil {
-		limit := new(big.Int).Lsh(big.NewInt(1), sdkmath.MaxBitLen)
-		return sdkmath.NewIntFromBigInt(limit.Sub(limit, big.NewInt(1)))
+// carryDebt returns the settlement time and remainder that make a stream of
+// the given rate owe exactly owed at now.
+//
+// A stream accrues remainder + rate × nanoseconds since last_settled_at, in
+// (denom units × nanoseconds). The debt in that unit is owed × 1e9; dividing
+// it by the rate gives how far back to date the stream (the quotient, in
+// nanoseconds) and what is left to put in the remainder (the rest, smaller
+// than the rate). Nothing is rounded away, and neither value needs more bits
+// than the rate does, however large the debt: scaling the debt to nanosecond
+// units and storing that in the remainder alone would not fit for large debts.
+//
+// When the debt is not representable, or would date the stream further back
+// than a settlement can accrue over, the stream is dated just beyond that
+// limit. Its first settlement then follows the accrual-overflow rule (pay the
+// whole balance and freeze), which is how a lease left unsettled for that long
+// was treated before streams.
+func carryDebt(now time.Time, owed, rate sdkmath.Int, unrepresentable bool) (lastSettledAt time.Time, remainder sdkmath.Int) {
+	beyondLimit := now.Add(-(maxSettlementGapSeconds + 1) * time.Second)
+	if unrepresentable || !rate.IsPositive() {
+		return beyondLimit, sdkmath.ZeroInt()
 	}
-	return carried
+
+	scaled := new(big.Int).Mul(owed.BigInt(), big.NewInt(nanosPerSecond))
+	gap, rest := new(big.Int).QuoRem(scaled, rate.BigInt(), new(big.Int))
+	if !gap.IsInt64() || gap.Int64()/nanosPerSecond > maxSettlementGapSeconds {
+		return beyondLimit, sdkmath.ZeroInt()
+	}
+	return now.Add(-time.Duration(gap.Int64())), sdkmath.NewIntFromBigInt(rest)
 }

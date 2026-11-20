@@ -17,6 +17,7 @@ Test Coverage (Migrate2to3, per-lease settlement to settlement streams):
 package keeper_test
 
 import (
+	"math/big"
 	"strings"
 	"testing"
 	"time"
@@ -79,6 +80,12 @@ func (s *v2State) fund(tenant sdk.AccAddress, amount int64) {
 // reservation consistent with it.
 func (s *v2State) lease(tenant sdk.AccAddress, providerUUID, skuUUID string, state types.LeaseState, settledAt, closedAt *time.Time) string {
 	s.t.Helper()
+	return s.leasePriced(sdkmath.NewInt(1), tenant, providerUUID, skuUUID, state, settledAt, closedAt)
+}
+
+// leasePriced is lease with an explicit per-second price.
+func (s *v2State) leasePriced(perSecond sdkmath.Int, tenant sdk.AccAddress, providerUUID, skuUUID string, state types.LeaseState, settledAt, closedAt *time.Time) string {
+	s.t.Helper()
 	k := s.App.BillingKeeper
 
 	leaseSeq, err := k.GetNextLeaseSequence(s.Ctx)
@@ -92,7 +99,7 @@ func (s *v2State) lease(tenant sdk.AccAddress, providerUUID, skuUUID string, sta
 		Uuid:                       uuid,
 		Tenant:                     tenant.String(),
 		ProviderUuid:               providerUUID,
-		Items:                      []types.LeaseItem{{SkuUuid: skuUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))}},
+		Items:                      []types.LeaseItem{{SkuUuid: skuUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, perSecond)}},
 		State:                      state,
 		CreatedAt:                  ackAt,
 		AcknowledgedAt:             &ackAt,
@@ -295,9 +302,10 @@ func TestMigrate2to3_FailingPayoutCarriesTheDebt(t *testing.T) {
 	state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(missingProvider, tenant, testDenom))
 	require.NoError(t, err)
 	require.False(t, state.IsExhausted())
-	require.Equal(t, now, state.LastSettledAt)
-	require.Equal(t, sdkmath.NewInt(500).MulRaw(1_000_000_000), state.Remainder,
-		"the 500 units that could not be paid are carried in the remainder")
+	// 500 units at 1/s: the stream is dated 500s back, so it owes exactly the
+	// 500 units that could not be paid.
+	require.Equal(t, now.Add(-500*time.Second), state.LastSettledAt)
+	require.True(t, state.Remainder.IsZero())
 
 	lease, err := s.App.BillingKeeper.GetLease(s.Ctx, uuid)
 	require.NoError(t, err)
@@ -457,5 +465,55 @@ func TestMigrate2to3_FailedPayoutKeepsTheWholeDebt(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(3))), resp.TotalAmounts)
 	require.Equal(t, sdkmath.NewInt(3), s.balance(payout))
+	s.requireInvariants()
+}
+
+// TestMigrate2to3_FailedPayoutKeepsALargeDebtExactly checks that a debt the
+// migration could not pay is carried exactly even when it is too large to be
+// scaled to nanosecond units: the debt, the rate, the reservation and the
+// balance all fit sdkmath.Int, but the debt times 1e9 does not.
+func TestMigrate2to3_FailedPayoutKeepsALargeDebtExactly(t *testing.T) {
+	s := newV2State(t)
+	now := s.Ctx.BlockTime()
+	tenant := s.TestAccs[0]
+	provider, sku, payout := s.provider()
+
+	// 2^240 per second; 2^245 of credit covers the lease's reservation and more.
+	rate := sdkmath.NewIntFromBigInt(new(big.Int).Lsh(big.NewInt(1), 240))
+	credit := sdkmath.NewIntFromBigInt(new(big.Int).Lsh(big.NewInt(1), 253))
+	creditAddr := types.DeriveCreditAddress(tenant)
+	s.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, credit)))
+	require.NoError(t, s.App.BillingKeeper.SetCreditAccount(s.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+
+	// One second unsettled at the upgrade: 2^240 is owed.
+	s.leasePriced(rate, tenant, provider.Uuid, sku.Uuid, types.LEASE_STATE_ACTIVE, ago(now, time.Second), nil)
+
+	broken := provider
+	broken.PayoutAddress = "not-an-address"
+	require.NoError(t, s.App.SKUKeeper.SetProvider(s.Ctx, broken))
+
+	s.migrate()
+	require.True(t, s.balance(payout).IsZero())
+	s.requireInvariants()
+
+	// One second later the payout works: the carried second plus the new one.
+	require.NoError(t, s.App.SKUKeeper.SetProvider(s.Ctx, provider))
+	s.Ctx = s.Ctx.WithBlockTime(now.Add(time.Second))
+	resp, err := keeper.NewMsgServerImpl(s.App.BillingKeeper).Withdraw(s.Ctx, &types.MsgWithdraw{
+		Sender:       s.TestAccs[1].String(),
+		ProviderUuid: provider.Uuid,
+	})
+	require.NoError(t, err)
+	want := rate.MulRaw(2)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, want)), resp.TotalAmounts)
+	require.True(t, s.balance(payout).Equal(want))
+
+	state, err := s.App.BillingKeeper.Streams.Get(s.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+	require.NoError(t, err)
+	require.False(t, state.IsExhausted())
+	require.True(t, state.Remainder.IsZero())
 	s.requireInvariants()
 }

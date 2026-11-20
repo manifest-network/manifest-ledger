@@ -569,7 +569,7 @@ If the stream is already frozen (`exhausted_at` set) and the lease is still ACTI
   `pagination.next_key` back as `--page-key` (the base64 string exactly as printed),
   and sum the per-page `amounts` until `next_key` is empty. This query has no
   `has_more` field — branch on `len(pagination.next_key) > 0`.
-- For one tenant's share, read its stream from `streams-by-provider`. The exact accrual is `(remainder + rate × nanoseconds since last_settled_at) / 1,000,000,000`, rounded down and capped at the tenant's credit balance in that denom. `rate ×` seconds since `last_settled_at` is a close approximation as long as `remainder` is below 1,000,000,000 (one unit). A larger `remainder` means the stream carries a debt that could not be paid earlier (a failed payout during the 2 → 3 migration); the next settlement pays it too
+- For one tenant's share, read its stream from `streams-by-provider`. The exact accrual is `(remainder + rate × nanoseconds since last_settled_at) / 1,000,000,000`, rounded down and capped at the tenant's credit balance in that denom. `rate ×` seconds since `last_settled_at` is a close approximation: it only ignores the carried `remainder`. A stream whose `last_settled_at` is earlier than the 2 → 3 upgrade block carries a debt from a payout that failed during the migration; the same formula covers it, and the next settlement pays it
 
 ### "invalid --page-key" on a stream query
 

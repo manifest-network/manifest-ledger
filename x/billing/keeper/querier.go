@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"cosmossdk.io/collections"
+	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
@@ -582,8 +583,11 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 
 	blockTime := sdk.UnwrapSDKContext(ctx).BlockTime()
 
-	totalRatePerSecond := sdk.NewCoins()
-	unsettled := sdk.NewCoins()
+	// Per-denom totals are summed with checked arithmetic: every stream's rate
+	// and accrual fits sdkmath.Int, but their sum over several streams may
+	// not, and sdk.Coins.Add panics on overflow.
+	rates := make(map[string]sdkmath.Int)
+	unsettled := make(map[string]sdkmath.Int)
 	denomSet := make(map[string]struct{})
 	denoms := make([]string, 0, 4)
 
@@ -621,15 +625,36 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 			continue
 		}
 
-		totalRatePerSecond = totalRatePerSecond.Add(sdk.NewCoin(denom, state.Rate))
+		rate, err := addChecked(rates[denom], state.Rate)
+		if err != nil {
+			return nil, status.Errorf(codes.OutOfRange, "total rate in %s is not representable: %s", denom, err)
+		}
+		rates[denom] = rate
+
+		// An accrual, or a sum of accruals, that is not representable certainly
+		// exceeds the balance: the tenant has no time left.
 		accrued, _, representable := streamAccrual(state, blockTime)
 		if !representable {
-			// An unrepresentable accrual certainly exceeds the balance.
 			accrualOverflow = true
-		} else {
-			unsettled = unsettled.Add(sdk.NewCoin(denom, accrued))
+			continue
+		}
+		owed, err := addChecked(unsettled[denom], accrued)
+		if err != nil {
+			accrualOverflow = true
+			continue
+		}
+		unsettled[denom] = owed
+	}
+
+	// denoms is in store order; NewCoins sorts, so the result does not depend
+	// on map iteration.
+	rateCoins := make([]sdk.Coin, 0, len(denoms))
+	for _, denom := range denoms {
+		if rate, ok := rates[denom]; ok {
+			rateCoins = append(rateCoins, sdk.NewCoin(denom, rate))
 		}
 	}
+	totalRatePerSecond := sdk.NewCoins(rateCoins...)
 
 	// Fetch balances for only the denoms used by the streams (DoS mitigation).
 	currentBalance, err := q.k.getCreditBalancesForDenoms(ctx, req.Tenant, denoms)
@@ -649,7 +674,10 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 				continue
 			}
 			// What is already accrued is not available to pay for future time.
-			remaining := currentBalance.AmountOf(rateCoin.Denom).Sub(unsettled.AmountOf(rateCoin.Denom))
+			remaining := currentBalance.AmountOf(rateCoin.Denom)
+			if owed, ok := unsettled[rateCoin.Denom]; ok {
+				remaining = remaining.Sub(owed)
+			}
 			if !remaining.IsPositive() {
 				// Nothing left for this denom means immediate exhaustion
 				estimatedDurationSeconds = 0
@@ -678,6 +706,15 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		EstimatedDurationSeconds: estimatedDurationSeconds,
 		ActiveLeaseCount:         creditAccount.ActiveLeaseCount,
 	}, nil
+}
+
+// addChecked adds b to a, treating an unset a as zero, and returns an error
+// instead of panicking when the sum does not fit sdkmath.Int.
+func addChecked(a, b sdkmath.Int) (sdkmath.Int, error) {
+	if a.IsNil() {
+		return b, nil
+	}
+	return a.SafeAdd(b)
 }
 
 // paginateSKUIndex paginates over the LeaseBySKUIndex iterator.
