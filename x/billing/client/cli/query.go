@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -8,6 +9,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
+	"github.com/cosmos/cosmos-sdk/types/query"
 
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
@@ -56,8 +58,9 @@ func GetQueryCmd() *cobra.Command {
 		GetCreditAccountsCmd(),
 		GetCreditAddressCmd(),
 		GetCreditEstimateCmd(),
-		GetWithdrawableAmountCmd(),
 		GetProviderWithdrawableCmd(),
+		GetStreamsByProviderCmd(),
+		GetStreamsByTenantCmd(),
 		GetLeaseByCustomDomainCmd(),
 	)
 
@@ -340,12 +343,39 @@ func GetCreditAddressCmd() *cobra.Command {
 	return cmd
 }
 
-// GetWithdrawableAmountCmd returns the command to query withdrawable amount for a lease.
-func GetWithdrawableAmountCmd() *cobra.Command {
+// readStreamPageRequest reads the pagination flags of a query that pages over
+// settlement streams. A stream key contains raw address bytes, which cannot be
+// typed on a command line, so --page-key takes the base64 next_key exactly as a
+// previous response printed it.
+func readStreamPageRequest(cmd *cobra.Command) (*query.PageRequest, error) {
+	pageReq, err := client.ReadPageRequest(cmd.Flags())
+	if err != nil {
+		return nil, err
+	}
+	if len(pageReq.Key) > 0 {
+		key, err := base64.StdEncoding.DecodeString(string(pageReq.Key))
+		if err != nil {
+			return nil, fmt.Errorf("invalid --page-key: must be the base64-encoded next_key from a prior response: %w", err)
+		}
+		pageReq.Key = key
+	}
+	return pageReq, nil
+}
+
+// GetStreamsByProviderCmd returns the command to query a provider's settlement streams.
+func GetStreamsByProviderCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "withdrawable [lease-uuid]",
-		Short:   "Query the withdrawable amount for a lease",
-		Example: `withdrawable 01902a9b-1234-7000-8000-000000000001`,
+		Use:   "streams-by-provider [provider-uuid]",
+		Short: "Query the settlement streams of a provider",
+		Long: `Query the settlement streams of a provider.
+
+A stream aggregates every active lease one tenant holds with the provider in
+one denom: its summed per-second rate, when it was last settled, how many
+leases it covers, and whether it is frozen for exhausted credit.
+
+To page, pass the response's pagination.next_key (base64, as printed) as
+--page-key on the next call.`,
+		Example: `streams-by-provider 01902a9b-1234-7000-8000-000000000001`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -353,15 +383,21 @@ func GetWithdrawableAmountCmd() *cobra.Command {
 				return err
 			}
 
-			leaseUUID := args[0]
-			if !pkguuid.IsValidUUID(leaseUUID) {
-				return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
+			providerUUID := args[0]
+			if !pkguuid.IsValidUUID(providerUUID) {
+				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
+			}
+
+			pageReq, err := readStreamPageRequest(cmd)
+			if err != nil {
+				return err
 			}
 
 			queryClient := types.NewQueryClient(clientCtx)
 
-			res, err := queryClient.WithdrawableAmount(cmd.Context(), &types.QueryWithdrawableAmountRequest{
-				LeaseUuid: leaseUUID,
+			res, err := queryClient.StreamsByProvider(cmd.Context(), &types.QueryStreamsByProviderRequest{
+				ProviderUuid: providerUUID,
+				Pagination:   pageReq,
 			})
 			if err != nil {
 				return err
@@ -371,6 +407,49 @@ func GetWithdrawableAmountCmd() *cobra.Command {
 		},
 	}
 
+	flags.AddPaginationFlagsToCmd(cmd, "streams-by-provider")
+	flags.AddQueryFlagsToCmd(cmd)
+
+	return cmd
+}
+
+// GetStreamsByTenantCmd returns the command to query the settlement streams paid by a tenant.
+func GetStreamsByTenantCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "streams-by-tenant [tenant]",
+		Short: "Query the settlement streams paid by a tenant",
+		Long: `Query the settlement streams paid by a tenant.
+
+To page, pass the response's pagination.next_key (base64, as printed) as
+--page-key on the next call.`,
+		Example: `streams-by-tenant manifest1...`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := readStreamPageRequest(cmd)
+			if err != nil {
+				return err
+			}
+
+			queryClient := types.NewQueryClient(clientCtx)
+
+			res, err := queryClient.StreamsByTenant(cmd.Context(), &types.QueryStreamsByTenantRequest{
+				Tenant:     args[0],
+				Pagination: pageReq,
+			})
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddPaginationFlagsToCmd(cmd, "streams-by-tenant")
 	flags.AddQueryFlagsToCmd(cmd)
 
 	return cmd
@@ -380,12 +459,13 @@ func GetWithdrawableAmountCmd() *cobra.Command {
 func GetProviderWithdrawableCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "provider-withdrawable [provider-uuid]",
-		Short: "Query the total withdrawable amount for a provider across its active leases",
-		Long: `Query the withdrawable amount for a provider across its active leases.
+		Short: "Query the total withdrawable amount for a provider across its streams",
+		Long: `Query the withdrawable amount for a provider across its settlement streams.
 
-Results are paginated over the provider's active leases (page size default 100,
-max 1000). When the response's pagination.next_key is non-empty, pass it as
---page-key on the next call and sum the per-page amounts until next_key is empty.`,
+Results are paginated over the provider's streams (page size default 100,
+max 1000). When the response's pagination.next_key is non-empty, pass it (base64,
+as printed) as --page-key on the next call and sum the per-page amounts until
+next_key is empty.`,
 		Example: `provider-withdrawable 01902a9b-1234-7000-8000-000000000001
 provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 500`,
 		Args: cobra.ExactArgs(1),
@@ -400,7 +480,7 @@ provider-withdrawable 01902a9b-1234-7000-8000-000000000001 --limit 500`,
 				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
 			}
 
-			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			pageReq, err := readStreamPageRequest(cmd)
 			if err != nil {
 				return err
 			}

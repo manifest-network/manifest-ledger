@@ -61,7 +61,7 @@ for version in go1.25.9 go1.27.1; do
   # The conversion base keeps the released source's version when release prep
   # bumps VERSION; only IN_PLACE_SOURCE_VERSION moves it.
   printf -v expected '%q ' build . --build-arg "GO_VERSION=${version#go}" \
-    --build-arg BUILD_CMD=build-coverage --build-arg VERSION=v2.3.1 -t manifest-in-place-base:local
+    --build-arg BUILD_CMD=build-coverage --build-arg VERSION=v2.4.0 -t manifest-in-place-base:local
   grep -Fxq -- "$expected" "$COVERAGE_BUILD_LOG"
   : > "$COVERAGE_BUILD_LOG"
   make --no-print-directory local-image-in-place-base GO="$test_dir/selected-go" VERSION=v9.9.9

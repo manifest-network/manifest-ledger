@@ -6,7 +6,7 @@ DOCKER := $(shell which docker)
 LEDGER_ENABLED ?= true
 BINDIR ?= $(GOPATH)/bin
 BUILD_DIR = ./build
-VERSION ?= v2.4.0
+VERSION ?= v2.5.0
 GO ?= go
 
 export GO111MODULE = on
@@ -204,7 +204,7 @@ local-image-testnet-upgrade: check-coverage-go-version
 # The released-source in-place e2e converts state whose last completed upgrade is
 # this release. x/upgrade refuses to start a binary without that upgrade's handler,
 # so the conversion image takes the source's version, never the release VERSION.
-IN_PLACE_SOURCE_VERSION ?= v2.3.1
+IN_PLACE_SOURCE_VERSION ?= v2.4.0
 
 local-image-in-place-base: check-coverage-go-version
 	@echo "--> Building in-place conversion base image with coverage"

@@ -10,11 +10,11 @@ Akash is a decentralized cloud compute marketplace with on-chain order matching 
 
 | Aspect | Manifest Billing/SKU | Akash |
 |--------|---------------------|-------|
-| **Settlement Model** | Lazy (on-touch) - O(1) per operation | Per-block escrow - O(n) active leases |
+| **Settlement Model** | Lazy (on-touch), aggregated per (provider, tenant, denom) stream - a withdrawal is O(streams), independent of lease count | Per-block escrow - O(n) active leases |
 | **Price Discovery** | Off-chain (fixed SKU prices) | On-chain order book + bidding |
 | **Lease Creation** | 1-2 tx (create + acknowledge) | 4+ tx (order → bid → accept → lease) |
 | **State Complexity** | Simple (Provider, SKU, Lease, Credit) | Complex (Deployment, Group, Order, Bid, Lease) |
-| **EndBlocker Load** | Light (pending expiration only, capped at 100/block) | Heavy (escrow settlement for all active leases) |
+| **EndBlocker Load** | Light (pending expiration, and closing the leases of streams already found exhausted; each capped at 100/block; no settlement) | Heavy (escrow settlement for all active leases) |
 | **Provider Matching** | Manual (tenant selects SKU) | Automatic (providers bid on orders) |
 | **Price Model** | Fixed per-SKU pricing | Dynamic auction-based |
 
@@ -22,13 +22,13 @@ Akash is a decentralized cloud compute marketplace with on-chain order matching 
 
 **Manifest is significantly lighter on-chain.** The key architectural decisions that reduce chain load:
 
-1. **Lazy Settlement**: Charges are calculated on-demand during `Withdraw` or `CloseLease` operations, not every block. This eliminates O(n) EndBlocker overhead.
+1. **Lazy Settlement**: Charges are calculated on-demand during `Withdraw`, `AcknowledgeLease` or `CloseLease` operations, not every block. This eliminates O(n) EndBlocker overhead.
 
 2. **Off-Chain Discovery**: Price discovery and provider selection happen off-chain. The chain only records the final lease agreement.
 
 3. **Simple State Machine**: PENDING → ACTIVE → CLOSED is simpler than Akash's multi-phase deployment lifecycle.
 
-4. **Batched Operations**: Provider-wide withdrawals process multiple leases in one transaction.
+4. **Aggregated Settlement**: Accrual is kept per stream (one per provider, tenant and denom), so a provider withdrawal makes one transfer per stream, however many leases each stream aggregates, and pages through up to 100 streams per transaction.
 
 ## What We Gained
 
@@ -68,6 +68,7 @@ Akash is a decentralized cloud compute marketplace with on-chain order matching 
 | **Soft deletes** | Closed leases remain in state forever | Consider archival/pruning after X days |
 | **Index overhead** | 8 indexes per lease (tenant, provider, state, provider+state, tenant+state, SKU, state+created_at, custom_domain) | Monitor storage costs at scale |
 | **Provider/SKU accumulation** | Inactive entities never removed | Acceptable - provides audit trail |
+| **Settlement streams** | One record per (provider, tenant, denom) with ACTIVE leases, plus a reverse-lookup entry and one membership entry per ACTIVE lease and denom. All are deleted when the stream's last lease closes | None needed - scales with active state and does not accumulate |
 
 ### Estimated State Sizes
 
@@ -85,6 +86,9 @@ Projected growth:
 - 100K credit accounts: ~10 MB
 
 Note: Closed leases accumulate indefinitely under current design.
+Note: Settlement streams are not included above. They exist only for
+      (provider, tenant, denom) combinations with ACTIVE leases and are removed
+      with their last lease, so they do not contribute to long-term growth.
 ```
 
 ### Missing Features vs Cloud Platforms
@@ -159,7 +163,7 @@ This section provides a detailed technical comparison of the internal architectu
 | **Lease creation flow** | Order → Bid → Lease (auction) | Direct lease creation with price lock |
 | **Price discovery** | Providers bid, tenants select winning bid | Fixed SKU pricing, locked at lease creation |
 | **Billing granularity** | Per-block (escrow drains continuously) | Per-second with lazy settlement |
-| **Settlement timing** | Block-by-block micropayments | On-touch (withdraw triggers settlement) |
+| **Settlement timing** | Block-by-block micropayments | On-touch, per stream (withdraw, acknowledge and close trigger settlement) |
 | **Multi-denom** | Supported via IBC token conversion | Native support via `sdk.Coins` |
 
 ### Escrow vs Credit Accounts
@@ -178,9 +182,9 @@ Tenant → Escrow Account (x/escrow) → Provider (block-by-block)
 Tenant → Credit Account (bank module) → Provider (on settlement)
 ```
 - Uses Cosmos bank module with derived addresses (`billing/credit/{tenant}`)
-- No separate escrow state - just bank balances + reservation tracking
+- No separate escrow state - just bank balances + reservation tracking + one settlement stream per (provider, tenant, denom)
 - Lazy settlement reduces on-chain operations
-- Settlement only during explicit operations (withdraw, close)
+- Settlement only during explicit operations (withdraw, acknowledge, close), one transfer per stream
 
 ### Overbooking Prevention
 
@@ -261,20 +265,18 @@ Manifest handles side effects inline where they occur. For example, in `CloseLea
 
 ```go
 // In msg_server.go - CloseLease
-// 1. Settlement (branch depends on whether credit is exhausted)
-shouldAutoClose, autoCloseTime, err := ms.k.ShouldAutoCloseLease(cacheCtx, &leases[i])
-if shouldAutoClose {
-    // Credit exhausted: settle in silent mode (doesn't fail on overflow)
-    result, err := ms.k.PerformSettlementSilent(cacheCtx, &leases[i], autoCloseTime)
-    settledAmounts = result.TransferAmounts
-} else {
-    // Normal close: settle accrued charges up to block time
-    settledAmounts, err = ms.settleLease(cacheCtx, &leases[i], closeTime)
-}
+// 1. Settlement: settle the lease's streams up to now (once per message)
+//    and remove the lease from them
+settlement, err := streams.leave(cacheCtx, &leases[i])
 
 // 2. State update
 leases[i].State = types.LEASE_STATE_CLOSED
 leases[i].ClosedAt = &closeTime
+if settlement.CreditExhausted {
+    leases[i].ClosureReason = types.ClosureReasonCreditExhausted
+} else {
+    leases[i].ClosureReason = msg.Reason
+}
 
 // 3. Persist lease
 if err := ms.k.SetLease(cacheCtx, leases[i]); err != nil { ... }
@@ -295,7 +297,7 @@ if err := ms.k.SetCreditAccount(cacheCtx, creditAccount); err != nil { ... }
 leaseEvents = append(leaseEvents, leaseEvent{...})
 ```
 
-This pattern repeats in `RejectLease`, `CancelLease`, `ExpirePendingLease`, and auto-close handlers.
+This pattern repeats in `RejectLease`, `CancelLease`, `ExpirePendingLease`, and the EndBlocker's `closeExhaustedLease` (which closes the leases of streams frozen for exhausted credit).
 
 ### Comparison
 

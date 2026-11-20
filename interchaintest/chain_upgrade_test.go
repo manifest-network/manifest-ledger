@@ -19,6 +19,9 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v8/testreporter"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
+
+	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
 const (
@@ -30,7 +33,7 @@ var (
 	// baseChain is the current version of the chain that will be upgraded from
 	baseChain = ibc.DockerImage{
 		Repository: "ghcr.io/manifest-network/manifest-ledger",
-		Version:    "2.3.1",
+		Version:    "2.4.0",
 		UIDGID:     "1025:1025",
 	}
 
@@ -126,7 +129,7 @@ func TestBasicManifestUpgrade(t *testing.T) {
 	haltHeight := height + haltHeightDelta
 
 	// The upgrade name must match app.Version() in the new binary
-	upgradeName := "v2.4.0"
+	upgradeName := "v2.5.0"
 
 	t.Logf("Upgrade name: %s", upgradeName)
 	t.Logf("Current height: %d, halt height: %d", height, haltHeight)
@@ -181,6 +184,18 @@ func TestBasicManifestUpgrade(t *testing.T) {
 	require.NoError(t, err, "error fetching height after upgrade")
 
 	require.GreaterOrEqual(t, height, haltHeight+blocksAfterUpgrade, "height did not increment enough after upgrade")
+
+	// The production upgrade handler runs the module migrations. x/billing's
+	// replaces per-lease settlement with settlement streams; the released-source
+	// in-place test covers it with real leases, but through its fixture handler,
+	// so check here that the regular handler ran it and serves the stream queries.
+	moduleVersions, stderr, err := chain.GetNode().ExecQuery(ctx, "upgrade", "module-versions")
+	require.NoError(t, err, "%s", stderr)
+	require.Equal(t, inPlaceTestnetTargetBillingVersion, decodeInPlaceTestnetModuleVersions(t, moduleVersions)[billingtypes.ModuleName],
+		"upgrade should migrate x/billing to its current consensus version")
+	streams, err := helpers.BillingQueryStreamsByProvider(ctx, chain, nonExistentUUID)
+	require.NoError(t, err, "the upgraded chain should serve the stream queries")
+	require.Empty(t, streams.Streams, "no lease was active before the upgrade, so the migration should create no stream")
 
 	// Test CosmWasm functionality after upgrade
 	t.Log("Testing CosmWasm functionality after upgrade")

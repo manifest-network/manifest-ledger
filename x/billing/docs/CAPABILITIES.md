@@ -26,10 +26,11 @@ This document provides a comprehensive overview of the Billing module's capabili
 | **Lease Lifecycle** | PENDING → ACTIVE → CLOSED/REJECTED/EXPIRED states |
 | **Two-Phase Commit** | Tenant creates, provider acknowledges (or rejects) |
 | **Price Locking** | SKU prices locked at lease creation for duration |
-| **Lazy Settlement** | Charges calculated on-touch (withdraw/close), not per-block |
-| **Auto-Close** | Leases automatically close when credit exhausted |
+| **Lazy Settlement** | Charges calculated on-touch (withdraw/acknowledge/close), not per-block |
+| **Settlement Streams** | Accrual is aggregated per (provider, tenant, denom) and paid with one transfer per stream, so a withdrawal costs the same however many leases a tenant holds |
+| **Auto-Close** | When credit is exhausted the stream is frozen and the EndBlocker closes its leases |
 | **Multi-Denom Support** | Credit accounts can hold multiple token types |
-| **Batch Operations** | Provider-wide withdrawal, batch acknowledge/reject |
+| **Batch Operations** | Provider-wide withdrawal (paginated over streams), batch acknowledge/reject/cancel/close |
 | **Pending Timeout** | Unacknowledged leases expire automatically (EndBlocker) |
 | **Per-Item Custom Domains** | Tenants attach FQDNs to lease items post-creation; provider routes traffic and provisions HTTP-01 TLS. Globally unique while the lease is PENDING/ACTIVE; reserved suffixes block claims on provider wildcard zones. (v2.1.0+) |
 
@@ -70,28 +71,42 @@ This document provides a comprehensive overview of the Billing module's capabili
 - Internally converted to per-second rate for precise billing
 - Example: 3600 tokens/hour = 1 token/second
 
+### Settlement Streams
+
+Accrual is not tracked per lease. Every ACTIVE lease a tenant holds with a provider in a given denom is aggregated into one **stream**, keyed by `(provider, tenant, denom)`:
+
+- The stream stores the summed per-second rate of its leases, the time it was last settled, its lease count, whether it is frozen, and a `remainder` (accrual below one unit of the denom, carried to the next settlement)
+- Settling a stream pays what it accrued since its last settlement, capped at the tenant's credit balance, with one bank transfer. Accrual is exact: `remainder + rate × elapsed nanoseconds`, paid in whole units of the denom, with the rest carried in `remainder`. Nothing is dropped between settlements, and a lease that joins a stream is never charged for time before it joined
+- A lease joins its streams when acknowledged and leaves them when closed; a stream exists only while it has at least one lease
+- A lease priced in several denoms belongs to one stream per denom
+
+A lease therefore has no settlement timestamp and no withdrawable amount of its own (`Lease.last_settled_at` and `Query/WithdrawableAmount` are deprecated).
+
 ### Lazy Evaluation
 
 Settlement is performed **on-touch**, not per-block:
-- When provider withdraws from a lease
-- When a lease is closed
-- When checking for auto-close during withdrawal
+- When a provider withdraws (each stream of the page is settled)
+- When a lease is acknowledged (its streams are settled before their rate grows)
+- When a lease is closed (its streams are settled before their rate drops)
 
 This design enables:
-- O(1) operations per lease
+- Withdrawal cost proportional to the provider's streams, independent of its lease count
 - No EndBlocker overhead for settlement
-- Supports millions of leases without performance degradation
+- A provider's lease count can grow without its withdrawal fee growing with it
 
 ### Overdraw Handling
 
-When credit is exhausted:
+When a settlement finds a tenant's credit exhausted (`accrued >= balance` in the stream's denom):
 1. Transfer available balance to provider (partial payment)
-2. Auto-close the lease
-3. Emit an auto-close event whose type depends on the path: `lease_auto_closed` (reason=`credit_exhausted`) from provider-wide withdraw; `lease_closed` with `closed_by=credit_exhaustion` from CloseLease on a genuine exhaustion (shortfall, accrual overflow, or a zero-balance close) — a fully-paid CloseLease keeps the caller's reason/role; `provider_withdraw` with `auto_closed=true` from specific-lease withdraw
+2. Freeze the stream (it stops accruing) and emit `stream_exhausted`. No lease is closed in that transaction
+3. The EndBlocker closes the frozen stream's leases, at most 100 closures per block shared fairly between all frozen streams, and emits `lease_auto_closed` (reason=`credit_exhausted`) for each
+4. A lease of a frozen stream closed through CloseLease before the EndBlocker reaches it emits `lease_closed` with `closed_by=credit_exhaustion` — a CloseLease whose credit exactly covered the charge keeps the caller's reason/role
+
+A top-up that arrives before the freezing settlement keeps the leases alive; a top-up after the freeze does not.
 
 ### Overflow Protection
 
-- Maximum duration capped at ~100 years (`MaxDurationSeconds`)
+- Maximum gap a stream may accrue in one settlement capped at ~100 years (`MaxDurationSeconds`); beyond it the settlement pays the remaining credit and freezes the stream
 - Maximum quantity per item: 1 billion (`MaxQuantityPerItem`)
 - Uses `math.Int` (big.Int) for all arithmetic
 
@@ -108,10 +123,12 @@ When credit is exhausted:
 | `LeasesBySKU` | All leases using a specific SKU |
 | `CreditAccount` | Balance and lease counts for a tenant |
 | `CreditAccounts` | List all credit accounts |
-| `CreditEstimate` | Estimated remaining duration based on active leases |
+| `CreditEstimate` | Estimated remaining duration based on the tenant's streams, net of what they have accrued but not yet settled |
 | `CreditAddress` | Derive credit address for a tenant |
-| `WithdrawableAmount` | Accrued amount for a specific lease |
-| `ProviderWithdrawable` | Withdrawable amount across the provider's ACTIVE leases, one page at a time — sum `amounts` across pages until `pagination.next_key` is empty for the provider total |
+| `WithdrawableAmount` | **Deprecated**: returns `Unimplemented`. A lease has no withdrawable amount of its own; use `ProviderWithdrawable` or `StreamsByProvider` |
+| `ProviderWithdrawable` | Withdrawable amount across the provider's streams, one page at a time — sum `amounts` across pages until `pagination.next_key` is empty for the provider total |
+| `StreamsByProvider` | The provider's settlement streams (rate, last settlement, lease count, frozen or not, carried remainder), per tenant and denom |
+| `StreamsByTenant` | The settlement streams a tenant pays, per provider and denom |
 | `LeaseByCustomDomain` | Look up the PENDING/ACTIVE lease + item that owns a given `custom_domain` (v2.1.0+) |
 
 ---
@@ -145,7 +162,7 @@ For the complete authorization matrix, see [API Reference - Authorization](API.m
 
 ### Key Design Principles
 
-1. **Lazy Evaluation** - O(1) per-lease operations, no EndBlocker bottleneck for settlement
+1. **Lazy Evaluation** - Settlement per stream on touch; the EndBlocker never computes accrual and only closes leases of streams already found exhausted, a bounded number per block
 2. **Atomic Operations** - CacheContext ensures state consistency on partial failures
 3. **Soft Deletes** - Audit trail preserved, graceful deprecation of providers/SKUs
 4. **Multi-Denom Native** - No assumptions about token type
@@ -313,9 +330,10 @@ func (ms msgServer) ScaleLease(ctx context.Context, msg *types.MsgScaleLease) (*
     // 3. Use CacheContext for atomicity
     cacheCtx, write := sdkCtx.CacheContext()
 
-    // 4. Settle up to now (before rate changes)
-    _, err = ms.k.PerformSettlement(cacheCtx, &lease, blockTime)
-    if err != nil {
+    // 4. Take the lease out of its streams at the old rate. This settles each
+    //    stream up to now (once), so the old quantity is charged up to this block.
+    streams := ms.k.newStreamCache(blockTime)
+    if _, err := streams.leave(cacheCtx, &lease); err != nil {
         return nil, err
     }
 
@@ -326,11 +344,17 @@ func (ms msgServer) ScaleLease(ctx context.Context, msg *types.MsgScaleLease) (*
         }
     }
 
-    // 6. Update quantity and timestamp
+    // 6. Update quantity, then put the lease back into its streams at the new
+    //    rate. The streams were already settled by step 4, so nothing is paid twice.
     lease.Items[itemIdx].Quantity = newQuantity
-    lease.LastSettledAt = blockTime
+    if _, err := streams.join(cacheCtx, &lease); err != nil {
+        return nil, err
+    }
 
     if err := ms.k.SetLease(cacheCtx, lease); err != nil {
+        return nil, err
+    }
+    if err := streams.flush(cacheCtx); err != nil {
         return nil, err
     }
 
@@ -425,7 +449,7 @@ manifestd query billing lease [lease-uuid]
 |---------|-------------|
 | **No Service Interruption** | Scale without closing/reopening lease |
 | **Price Lock Preserved** | Original locked price applies to all quantities |
-| **Clean Settlement** | Automatic settlement before rate change |
+| **Clean Settlement** | The lease's streams are settled before their rate changes |
 | **Audit Trail** | Events track all scaling operations |
 | **Simple UX** | Single transaction to scale |
 
@@ -515,6 +539,8 @@ message SKU {
 ```
 
 ### Settlement Logic
+
+Task charges are discrete, one-off transfers. They do not accrue over time, so they would not go through settlement streams: a stream aggregates per-second rates, and the stream invariant derives every stream from `locked_price × quantity` of the ACTIVE leases. A TASK-mode lease, whose `locked_price` is per task, must therefore be excluded from stream aggregation (`types.LeaseRatesPerSecond` / `types.ExpectedStreamAggregates`), or its per-task price would be billed as a per-second rate.
 
 ```go
 func (ms msgServer) CompleteTask(ctx context.Context, msg *types.MsgCompleteTask) (*types.MsgCompleteTaskResponse, error) {
@@ -723,6 +749,8 @@ manifestd query billing lease [lease-uuid]
 - Existing leases default to `BILLING_MODE_TIME`
 - New field `billing_mode` with default value
 - SKUs need migration to specify their billing mode
+- Stream aggregation, the stream invariant and genesis stream validation currently count every ACTIVE lease; they would have to skip TASK-mode leases, so that a TASK lease joins no stream on acknowledgement and existing streams are unaffected
+- A consensus-version bump and store migration in the style of `x/billing/migrations/v3` (the 2 → 3 migration that introduced streams) would carry the change; see [Migration Guide](MIGRATION.md#store-migration-2--3-settlement-streams)
 - No breaking changes to existing functionality
 
 ### Security Considerations

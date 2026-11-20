@@ -279,16 +279,19 @@ Key events:
 - `lease_created` - Contains `lease_uuid`, `tenant`, `provider_uuid`
 - `lease_acknowledged` - Contains `lease_uuid`, `tenant`, `provider_uuid`, `acknowledged_by` (the ack timestamp comes from the `acknowledged_at` field of `MsgAcknowledgeLeaseResponse`, not the event)
 - `lease_rejected` - Contains `lease_uuid`, `tenant`, `provider_uuid`, `rejected_by`, `rejection_reason`
-- `lease_closed` - Contains `lease_uuid`, `tenant`, `settled_amounts`
+- `lease_closed` - Contains `lease_uuid`, `tenant`, `provider_uuid`, `closed_by`, `active_lease_count` (what was paid is in the `stream_settled` events of the same transaction)
+- `stream_settled` - Contains `provider_uuid`, `tenant`, `amount`, `payout_address`
 - `credit_funded` - Contains `tenant`, `amount`, `credit_address`
 
 ### Settlement
 
 Leases created via `MsgCreateLeaseForTenant` work exactly like tenant-created leases:
-- Billing only starts after provider acknowledgement (ACTIVE state)
-- Settlement happens during `Withdraw` or `CloseLease` operations
-- Auto-close triggers when credit is exhausted during write operations
+- Billing only starts after provider acknowledgement (ACTIVE state). On acknowledgement the lease joins a settlement stream: one per provider, tenant and denom, shared with the tenant's other active leases with that provider
+- Settlement is per stream and happens during `Withdraw`, `AcknowledgeLease` and `CloseLease` operations
+- When a settlement finds the credit exhausted, the stream is frozen and the EndBlocker closes its leases (at most 100 closures per block, shared between all frozen streams). A top-up after that point does not save them
 - Tenants can close their own leases (even if created by authority)
+
+**Migration tip:** acknowledging a migrated lease settles the tenant's existing stream with that provider first. If the tenant's credit is already exhausted at that moment, the stream freezes and the newly acknowledged lease is closed with the others. Fund credit accounts (Step 3) before creating and acknowledging leases.
 
 ## Rollback Considerations
 
@@ -307,13 +310,13 @@ If a migration needs to be reversed:
    manifestd tx billing close-lease [lease-uuid] --from authority
    ```
 
-3. **Settlement happens automatically**: Any accrued amount is transferred to the provider during closure
+3. **Settlement happens automatically**: Closing a lease settles the stream it belongs to, so what the tenant's active leases with that provider have accrued is transferred to the provider during closure
 
 4. **Credit remains**: Any unspent credit stays in the tenant's credit account for future use
 
-5. **Provider withdrawal**: Provider should withdraw any accrued funds before/after closing if needed
+5. **Provider withdrawal**: A closure already pays the provider for the closed lease's streams. To collect what the provider's other streams have accrued, withdraw for the provider (withdrawing from a single lease is no longer supported)
    ```bash
-   manifestd tx billing withdraw [lease-uuid] --from provider
+   manifestd tx billing withdraw --provider [provider-uuid] --from provider
    ```
 
 ## Common Issues
@@ -386,7 +389,7 @@ If the lease expires (remains in PENDING past `pending_timeout`), it transitions
 
 ## Genesis Import Validation
 
-When importing billing state via genesis (e.g., during chain upgrades or migrations), the module performs two-phase validation:
+When importing billing state via genesis (e.g., during chain upgrades or migrations), the module validates in phases:
 
 ### Phase 1: Static Validation (`ValidateGenesis`)
 
@@ -394,6 +397,22 @@ Validates without blockchain context:
 - Lease UUIDs are valid and unique
 - Credit account addresses are correctly derived
 - Required fields are present
+- No lease carries the deprecated `last_settled_at`
+- `streams` are exactly the settlement streams the ACTIVE leases imply:
+  - each stream has a valid tenant address, a positive `rate`, a non-zero `last_settled_at`, a `remainder` of at least 0 and less than 1,000,000,000, and is listed once
+  - each stream matches at least one ACTIVE lease, and its `rate` and `lease_count` equal what those leases sum to
+  - every `(provider_uuid, tenant, denom)` with an ACTIVE lease has a stream
+
+**Error Examples:**
+```
+lease 0191... has last_settled_at set: the field is deprecated, settlement is tracked in streams
+active leases imply stream {0191... manifest1abc... upwr} but it is missing
+stream {0191... manifest1abc... upwr} has rate 5 but its active leases sum to 6
+stream {0191... manifest1abc... upwr} has no active lease
+stream {0191... manifest1abc... upwr} has remainder 1000000000 outside [0, 1000000000)
+```
+
+**Resolution:** A genesis with ACTIVE leases must carry matching `streams`. A genesis exported by a binary that settled per lease (leases with `last_settled_at`, no `streams`) cannot be imported directly: upgrade that chain in place so the [store migration](#store-migration-2--3-settlement-streams) builds the streams, then export.
 
 ### Phase 2: Time-Based Validation (`ValidateWithBlockTime`)
 
@@ -401,18 +420,19 @@ Validates timestamps against block time during `InitGenesis`:
 
 | Field | Validation |
 |-------|------------|
-| `last_settled_at` | Must not be in the future |
-| `created_at` | Must not be in the future |
-| `closed_at` | Must not be in the future (for CLOSED leases with a non-nil `closed_at`) |
+| Stream `last_settled_at` | Must not be in the future |
+| Stream `exhausted_at` | Must not be in the future (when set) |
+| Lease `created_at` | Must not be in the future |
+| Lease `closed_at` | Must not be in the future (for CLOSED leases with a non-nil `closed_at`) |
 
 **Note:** `rejected_at`, `expired_at`, and `acknowledged_at` are NOT time-validated at genesis, so a future-dated value in those fields will import silently.
 
 **Error Example:**
 ```
-lease abc123 has last_settled_at (2025-01-08T00:00:00Z) in the future relative to block time (2025-01-07T12:00:00Z)
+stream {0191... manifest1abc... upwr} has last_settled_at (2025-01-08T00:00:00Z) in the future relative to block time (2025-01-07T12:00:00Z)
 ```
 
-**Resolution:** Ensure all timestamps in genesis state are at or before the genesis block time.
+**Resolution:** Ensure all timestamps in genesis state are at or before the genesis block time. A stream settled in the future would accrue nothing until block time caught up.
 
 ### Phase 3: Cross-Module Validation (`InitGenesis`)
 
@@ -422,6 +442,44 @@ During `InitGenesis`, the module additionally performs cross-module checks again
 - Each SKU's `provider_uuid` must match the lease's `provider_uuid`
 
 These checks require the SKU module to be initialized first, which the genesis order (`sku -> billing`) guarantees.
+
+### Phase 4: Stream Restoration and Invariant Check (`InitGenesis`)
+
+After the leases and credit accounts are stored, `InitGenesis`:
+- runs the stream validation of Phase 1 itself (`GenesisState.ValidateStreams`): no lease may carry the deprecated `last_settled_at`, every stream needs a positive `rate`, a non-zero `last_settled_at` and a `remainder` in `[0, 1,000,000,000)`, and the streams must be exactly the ones the ACTIVE leases imply
+- stores each stream and rebuilds what is derived from it and from the leases: the tenant reverse lookup, the lease membership of each stream, and the queue of frozen streams (one entry per stream with `exhausted_at` set)
+- runs the stream invariant check on the stored state as defence in depth
+
+`ValidateGenesis` (Phase 1) is not run on InitChain, so Phase 4 is what stops a chain from starting with malformed streams. This matters because streams decide what is paid to whom: a stream without `last_settled_at`, for example, would look centuries overdue and pay the tenant's whole credit to the provider on its first settlement.
+
+A stream imported with `exhausted_at` set is drained normally: the EndBlocker closes its leases in the first blocks after genesis. A stream's `remainder` (the accrual below one unit of the denom that it carries to its next settlement) is imported as exported, so an export/import round trip changes nothing in what is owed.
+
+## Store Migration 2 → 3: Settlement Streams
+
+This section is for node operators and authority members preparing the chain upgrade that takes the billing module from consensus version 2 (per-lease settlement) to 3 (settlement streams). The migration runs once, automatically, in the upgrade block. It is implemented in `x/billing/migrations/v3`. The streams live at new prefixes of the existing billing store, so no store is added or removed.
+
+With `T0` the block time of the upgrade block, the migration does three things.
+
+**What it pays.** Every lease's unsettled accrual up to `T0` is summed per `(provider, tenant, denom)` and paid to the provider's payout address with one transfer per group, capped at the tenant's credit balance. This last per-lease payment counts whole seconds, as per-lease settlement always did.
+- An ACTIVE lease owes from its `last_settled_at` to `T0`. If `last_settled_at` is missing or earlier than the acknowledgement, it owes from `acknowledged_at`. If it is in the future, it owes nothing.
+- A CLOSED lease normally owes nothing (it was settled when it closed). One whose `last_settled_at` is before its `closed_at`, which is only reachable through a hand-written genesis, is paid the difference.
+- Groups are processed in a fixed order (tenant, then provider UUID, then denom). When a tenant owes several providers more than it holds, the earlier groups are paid in full and the later ones get what is left.
+
+**What it creates.** One stream per `(provider, tenant, denom)` that has ACTIVE leases, with the summed rate and lease count of those leases, `last_settled_at = T0` and `remainder = 0`, together with its reverse lookup and membership entries. From `T0` on, accrual is exact to the nanosecond, with the part below one unit of the denom carried in the stream's `remainder`. If the tenant's credit could not cover what was owed (`owed >= balance`, the same rule as a normal settlement), the stream is created **frozen**. The migration closes no lease itself: the EndBlocker closes the leases of frozen streams from the upgrade block on, at most 100 closures per block shared between all frozen streams, exactly as it does for any exhausted stream. If many tenants are exhausted at the upgrade, their streams drain side by side over several blocks.
+
+**What it clears.** The deprecated `last_settled_at` is removed from every lease that carries it. Leases are rewritten in place; their indexes are not touched.
+
+**Failure policy.** The migration is written not to abort the upgrade over one bad record.
+- If a payment fails (for example, the lease's provider no longer exists or has an invalid payout address), that payment is discarded and logged, and the stream is created back-dated, so its first successful settlement after the upgrade still collects the debt. A failed payment owed only by CLOSED leases has no stream to carry it and is only logged.
+- An accrual too large to represent is treated as exceeding the balance: the provider receives the tenant's remaining credit and the stream starts frozen.
+- The migration ends with the stream invariant check. It fails, and the upgrade with it, only if the resulting streams do not match the ACTIVE leases, since continuing would misprice every later settlement. An overflow of a stream's summed rate also fails it.
+
+**What operators should expect and do.**
+- Providers receive, in the upgrade block, what their leases had accrued up to it. A provider that withdraws just before the upgrade simply receives less from the migration.
+- Tenants whose credit cannot cover what their leases owe at the upgrade see those leases closed with reason `credit exhausted`, starting in the upgrade block. Topping up enough to cover it **before** the upgrade height avoids this; topping up after does not.
+- Search the node log of the upgrade block for `stream migration could not pay a provider` and `in stream migration` to find records the migration skipped or could not pay. On success it logs `migrated billing to settlement streams`.
+- After the upgrade, clients must use the stream-based surface: `withdraw --provider`, `provider-withdrawable`, `streams-by-provider`, `streams-by-tenant`. `MsgWithdraw.lease_uuids` is rejected and `Query/WithdrawableAmount` returns `Unimplemented`. See [API Reference](API.md).
+- Event consumers must adapt: `provider_withdraw` is no longer emitted, `lease_closed` no longer carries `settled_amounts` or `duration_seconds`, and `lease_auto_closed` is emitted from the EndBlocker as a block event. See [API Reference - Events](API.md#events).
 
 ## Related Documentation
 

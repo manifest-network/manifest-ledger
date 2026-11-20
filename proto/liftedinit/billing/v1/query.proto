@@ -54,18 +54,37 @@ service Query {
         "/liftedinit/billing/v1/credit-address/{tenant}";
   }
 
-  // WithdrawableAmount queries the amount available for provider withdrawal from a lease.
+  // WithdrawableAmount queried the amount available for provider withdrawal from a lease.
+  //
+  // Deprecated: settlement is per stream, so a lease has no withdrawable
+  // amount of its own. The method returns an Unimplemented error; use
+  // ProviderWithdrawable or StreamsByProvider.
   rpc WithdrawableAmount(QueryWithdrawableAmountRequest)
       returns (QueryWithdrawableAmountResponse) {
+    option deprecated = true;
     option (google.api.http).get =
         "/liftedinit/billing/v1/lease/{lease_uuid}/withdrawable";
   }
 
-  // ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
+  // ProviderWithdrawable queries the total amount available for a provider to withdraw across its streams.
   rpc ProviderWithdrawable(QueryProviderWithdrawableRequest)
       returns (QueryProviderWithdrawableResponse) {
     option (google.api.http).get =
         "/liftedinit/billing/v1/provider/{provider_uuid}/withdrawable";
+  }
+
+  // StreamsByProvider queries the settlement streams of a provider.
+  rpc StreamsByProvider(QueryStreamsByProviderRequest)
+      returns (QueryStreamsByProviderResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/provider/{provider_uuid}/streams";
+  }
+
+  // StreamsByTenant queries the settlement streams paid by a tenant.
+  rpc StreamsByTenant(QueryStreamsByTenantRequest)
+      returns (QueryStreamsByTenantResponse) {
+    option (google.api.http).get =
+        "/liftedinit/billing/v1/credit/{tenant}/streams";
   }
 
   // CreditAccounts queries all credit accounts with pagination.
@@ -281,32 +300,82 @@ message QueryProviderWithdrawableRequest {
   reserved 2; // was: uint64 limit (superseded by pagination.limit)
   reserved "limit";
 
-  // pagination defines optional pagination. Only ACTIVE leases are iterated
-  // (the only ones that can contribute a withdrawable amount). Page size
-  // defaults to 100 and is capped at 1000. Loop until pagination.next_key is
-  // empty and sum the response amounts for the provider's full withdrawable total.
+  // pagination defines optional pagination over the provider's streams. Page
+  // size defaults to 100 and is capped at 1000. Loop until pagination.next_key
+  // is empty and sum the response amounts for the provider's full withdrawable total.
   cosmos.base.query.v1beta1.PageRequest pagination = 3;
 }
 
 // QueryProviderWithdrawableResponse is the response type for the
 // Query/ProviderWithdrawable RPC method.
 message QueryProviderWithdrawableResponse {
-  // amounts is the total amounts available for withdrawal across all leases (one per denom).
+  // amounts is the total amounts available for withdrawal across the streams of this page (one per denom).
   repeated cosmos.base.v1beta1.Coin amounts = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
     (gogoproto.jsontag) = "amounts"
   ];
 
-  // lease_count is the number of leases with a non-zero withdrawable amount in this page.
+  // lease_count is the number of leases covered by the streams of this page
+  // that have a non-zero withdrawable amount. It is summed per stream, so a
+  // lease priced in several denoms is counted once per denom.
   uint64 lease_count = 2 [(gogoproto.jsontag) = "lease_count,omitempty,string"];
 
   reserved 3; // was: bool has_more (superseded by pagination.next_key)
   reserved "has_more";
 
   // pagination defines the pagination in the response. A non-empty next_key
-  // means more leases remain; pass it as the next request's pagination.key.
+  // means more streams remain; pass it as the next request's pagination.key.
   cosmos.base.query.v1beta1.PageResponse pagination = 4;
+}
+
+// QueryStreamsByProviderRequest is the request type for the
+// Query/StreamsByProvider RPC method.
+message QueryStreamsByProviderRequest {
+  // provider_uuid is the UUID of the provider.
+  string provider_uuid = 1 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+}
+
+// QueryStreamsByProviderResponse is the response type for the
+// Query/StreamsByProvider RPC method.
+message QueryStreamsByProviderResponse {
+  // streams is the list of the provider's streams.
+  repeated Stream streams = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "streams"
+  ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryStreamsByTenantRequest is the request type for the
+// Query/StreamsByTenant RPC method.
+message QueryStreamsByTenantRequest {
+  // tenant is the address of the tenant.
+  string tenant = 1 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+}
+
+// QueryStreamsByTenantResponse is the response type for the
+// Query/StreamsByTenant RPC method.
+message QueryStreamsByTenantResponse {
+  // streams is the list of the streams paid by the tenant.
+  repeated Stream streams = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "streams"
+  ];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
 }
 
 // QueryCreditAccountsRequest is the request type for the Query/CreditAccounts

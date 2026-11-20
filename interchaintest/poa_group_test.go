@@ -1028,16 +1028,30 @@ func testGroupLeaseCreation(t *testing.T, ctx context.Context, chain *cosmos.Cos
 		initialBalance, err := chain.GetBalance(ctx, payoutAddr, pwrDenom)
 		require.NoError(t, err)
 
+		// Settlement is per (provider, tenant, denom) stream, so a withdrawal
+		// names the provider; a single lease can no longer be withdrawn on its own.
+		streamsBefore := snapshotProviderStreams(t, ctx, chain, providerUUID)
+		leaseStream := streamKey{providerUUID: providerUUID, tenant: tenantAddr, denom: pwrDenom}
+		require.Contains(t, streamsBefore, leaseStream, "the acknowledged lease should have a stream")
+		require.Equal(t, uint64(1), streamsBefore[leaseStream].LeaseCount)
+
 		withdrawMsg := billingtypes.MsgWithdraw{
-			Sender:     groupAddr,
-			LeaseUuids: []string{withdrawLeaseID},
+			Sender:       groupAddr,
+			ProviderUuid: providerUUID,
 		}
 		createAndRunProposalSuccess(t, ctx, chain, config, proposerAddr, []*types.Any{createAny(t, &withdrawMsg)})
 
-		// Verify provider received funds
+		// Verify provider received exactly what its streams accrued up to the
+		// block that executed the proposal: settledBetween checks each stream's
+		// exact accrual (rate × elapsed nanoseconds, plus the carried remainder).
+		settlement := settledBetween(t, streamsBefore, snapshotProviderStreams(t, ctx, chain, providerUUID))
+		require.Contains(t, settlement.Settled, leaseStream, "the withdrawal should settle the lease's stream")
+		paid := settlement.Paid.AmountOf(pwrDenom)
 		newBalance, err := chain.GetBalance(ctx, payoutAddr, pwrDenom)
 		require.NoError(t, err)
-		require.True(t, newBalance.GTE(initialBalance), "provider should have received funds")
+		require.True(t, paid.IsPositive(), "the stream accrued while the proposal ran")
+		require.Equal(t, paid.String(), newBalance.Sub(initialBalance).String(),
+			"provider should have received the accrued funds")
 		t.Logf("Provider payout address balance changed: %s -> %s", initialBalance, newBalance)
 	})
 

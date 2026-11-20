@@ -831,7 +831,7 @@ func NewApp(
 		ibcfeetypes.ModuleName,
 		tokenfactorytypes.ModuleName,
 		manifesttypes.ModuleName,
-		billingtypes.ModuleName, // batch settlement
+		billingtypes.ModuleName, // pending lease expiration, then auto-close of exhausted streams
 		wasmtypes.ModuleName,
 	)
 

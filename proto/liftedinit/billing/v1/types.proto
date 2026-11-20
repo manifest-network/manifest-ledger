@@ -170,12 +170,14 @@ message Lease {
     (gogoproto.jsontag) = "closed_at,omitempty"
   ];
 
-  // last_settled_at is the timestamp of the last settlement/withdrawal.
-  // Only applicable for ACTIVE and CLOSED states.
+  // last_settled_at was the timestamp of the lease's last settlement.
+  //
+  // Deprecated: settlement is tracked per stream (see Stream.state), not per
+  // lease. The field is never set and is rejected in genesis.
   google.protobuf.Timestamp last_settled_at = 8 [
-    (gogoproto.nullable) = false,
+    deprecated = true,
     (gogoproto.stdtime) = true,
-    (gogoproto.jsontag) = "last_settled_at"
+    (gogoproto.jsontag) = "last_settled_at,omitempty"
   ];
 
   // acknowledged_at is the timestamp when the provider acknowledged the lease.
@@ -265,5 +267,75 @@ message CreditAccount {
     (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
     (gogoproto.jsontag) = "reserved_amounts"
+  ];
+}
+
+// StreamState is the settlement aggregate stored for one
+// (provider_uuid, tenant, denom) stream. A stream sums the per-second rate of
+// every ACTIVE lease the tenant holds with the provider in that denom, so
+// accrual is settled once per stream instead of once per lease.
+message StreamState {
+  // rate is the summed per-second rate of the stream's ACTIVE leases:
+  // sum(locked_price × quantity) over their items priced in the stream's denom.
+  string rate = 1 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "rate"
+  ];
+
+  // last_settled_at is the time up to which the stream's accrual has been
+  // settled.
+  google.protobuf.Timestamp last_settled_at = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "last_settled_at"
+  ];
+
+  // lease_count is the number of ACTIVE leases contributing to rate.
+  uint64 lease_count = 3 [(gogoproto.jsontag) = "lease_count,omitempty,string"];
+
+  // exhausted_at is set when a settlement found the tenant's credit exhausted
+  // in the stream's denom. An exhausted stream stops accruing and its leases
+  // are closed by the EndBlocker.
+  google.protobuf.Timestamp exhausted_at = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.jsontag) = "exhausted_at,omitempty"
+  ];
+
+  // remainder is the accrual that did not amount to a whole unit of the denom
+  // at the last settlement, carried to the next one. Rates are per second and
+  // time is tracked to the nanosecond, so it is expressed in
+  // (denom units × nanoseconds) and is always less than 1,000,000,000.
+  // Carrying it keeps accrual exact across settlements and rate changes: no
+  // fraction of a second is dropped, and a lease that joins a stream is never
+  // charged for time before it joined.
+  string remainder = 5 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "remainder"
+  ];
+}
+
+// Stream is a StreamState together with the key that identifies it. It is the
+// shape used in genesis and in query responses.
+message Stream {
+  // provider_uuid is the UUID of the provider being paid.
+  string provider_uuid = 1 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
+
+  // tenant is the address of the tenant whose credit account pays the stream.
+  string tenant = 2 [
+    (cosmos_proto.scalar) = "cosmos.AddressString",
+    (gogoproto.jsontag) = "tenant,omitempty"
+  ];
+
+  // denom is the denomination the stream accrues in.
+  string denom = 3 [(gogoproto.jsontag) = "denom,omitempty"];
+
+  // state is the stream's settlement aggregate.
+  StreamState state = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "state"
   ];
 }

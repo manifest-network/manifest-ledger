@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"cosmossdk.io/collections"
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -149,42 +150,259 @@ func TestAdversarial_ProviderCannotCloseOtherProvidersLease(t *testing.T) {
 	require.Contains(t, err.Error(), "unauthorized")
 }
 
-// TestAdversarial_ProviderCannotWithdrawFromOtherProvidersLease tests that a provider
-// cannot withdraw from leases belonging to a different provider.
-func TestAdversarial_ProviderCannotWithdrawFromOtherProvidersLease(t *testing.T) {
+// withdrawAccessFixture is two providers that each serve the same two tenants,
+// 100 seconds after acknowledgement: four streams, each owing 100.
+type withdrawAccessFixture struct {
+	*testFixture
+	msgServer types.MsgServer
+	tenants   []sdk.AccAddress
+	// provider 1 is the victim, provider 2 the other provider.
+	provider1, provider2         string
+	providerAddr1, providerAddr2 sdk.AccAddress
+	payout1, payout2             sdk.AccAddress
+}
+
+func newWithdrawAccessFixture(t *testing.T) *withdrawAccessFixture {
+	t.Helper()
 	f := initFixture(t)
-	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+	w := &withdrawAccessFixture{
+		testFixture:   f,
+		msgServer:     keeper.NewMsgServerImpl(f.App.BillingKeeper),
+		tenants:       []sdk.AccAddress{f.TestAccs[0], f.TestAccs[1]},
+		providerAddr1: f.TestAccs[2],
+		providerAddr2: f.TestAccs[3],
+		payout1:       sdk.AccAddress("adv-access-payout-1_"),
+		payout2:       sdk.AccAddress("adv-access-payout-2_"),
+	}
 
-	tenant := f.TestAccs[0]
-	providerAddr1 := f.TestAccs[1]
-	providerAddr2 := f.TestAccs[2]
+	w.provider1 = f.createTestProvider(t, w.providerAddr1.String(), w.payout1.String()).Uuid
+	w.provider2 = f.createTestProvider(t, w.providerAddr2.String(), w.payout2.String()).Uuid
+	sku1 := f.createTestSKU(t, w.provider1, 3600)
+	sku2 := f.createTestSKU(t, w.provider2, 3600)
 
-	provider1 := f.createTestProvider(t, providerAddr1.String(), providerAddr1.String())
-	f.createTestProvider(t, providerAddr2.String(), providerAddr2.String())
-	sku1 := f.createTestSKU(t, provider1.Uuid, 3600)
-
-	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
-	require.NoError(t, err)
-	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))))
-	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
-		Tenant:        tenant.String(),
-		CreditAddress: creditAddr.String(),
-	})
-	require.NoError(t, err)
-
-	leaseID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr1, []types.LeaseItemInput{
-		{SkuUuid: sku1.Uuid, Quantity: 1},
-	})
+	for _, tenant := range w.tenants {
+		creditAddr := types.DeriveCreditAddress(tenant)
+		f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))))
+		require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+			Tenant:        tenant.String(),
+			CreditAddress: creditAddr.String(),
+		}))
+		f.createAndAcknowledgeLease(t, w.msgServer, tenant, w.providerAddr1, []types.LeaseItemInput{{SkuUuid: sku1.Uuid, Quantity: 1}})
+		f.createAndAcknowledgeLease(t, w.msgServer, tenant, w.providerAddr2, []types.LeaseItemInput{{SkuUuid: sku2.Uuid, Quantity: 1}})
+	}
 
 	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+	return w
+}
 
-	// Provider2 tries to withdraw from provider1's lease
-	_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-		Sender:     providerAddr2.String(),
-		LeaseUuids: []string{leaseID},
+func (w *withdrawAccessFixture) balance(addr sdk.AccAddress) sdkmath.Int {
+	return w.App.BankKeeper.GetBalance(w.Ctx, addr, testDenom).Amount
+}
+
+// streamsOf returns the stored streams of one provider.
+func (w *withdrawAccessFixture) streamsOf(t *testing.T, providerUUID string) []types.Stream {
+	t.Helper()
+	all, err := w.App.BillingKeeper.GetAllStreams(w.Ctx)
+	require.NoError(t, err)
+	out := make([]types.Stream, 0, len(all))
+	for _, stream := range all {
+		if stream.ProviderUuid == providerUUID {
+			out = append(out, stream)
+		}
+	}
+	return out
+}
+
+// TestAdversarial_ThirdPartyCannotWithdrawAnotherProvidersStreams tests that
+// nobody but a provider (or the authority) can settle that provider's streams:
+// not a stranger, not a tenant, not another provider, and not with a pagination
+// key crafted to point into the victim's streams.
+func TestAdversarial_ThirdPartyCannotWithdrawAnotherProvidersStreams(t *testing.T) {
+	cursorCodec := collections.PairKeyCodec(sdk.AccAddressKey, collections.StringKey)
+	cursor := func(t *testing.T, tenant sdk.AccAddress, denom string) []byte {
+		t.Helper()
+		key := collections.Join(tenant, denom)
+		buf := make([]byte, cursorCodec.Size(key))
+		_, err := cursorCodec.Encode(buf, key)
+		require.NoError(t, err)
+		return buf
+	}
+
+	t.Run("a sender that is not the provider is rejected and settles nothing", func(t *testing.T) {
+		w := newWithdrawAccessFixture(t)
+		stranger := w.TestAccs[4]
+
+		tests := []struct {
+			name   string
+			sender sdk.AccAddress
+			key    []byte
+		}{
+			{name: "stranger", sender: stranger},
+			{name: "tenant of the provider", sender: w.tenants[0]},
+			{name: "the provider's own payout address", sender: w.payout1},
+			{name: "another provider", sender: w.providerAddr2},
+			{name: "another provider's payout address", sender: w.payout2},
+			{name: "another provider with a cursor into the victim's streams", sender: w.providerAddr2, key: cursor(t, w.tenants[0], "")},
+			{name: "stranger with a cursor naming a real stream", sender: stranger, key: cursor(t, w.tenants[1], testDenom)},
+		}
+
+		before := w.streamsOf(t, w.provider1)
+		require.Len(t, before, 2)
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				for _, limit := range []uint64{0, 1, types.MaxBatchLeaseSize} {
+					_, err := w.msgServer.Withdraw(w.Ctx, &types.MsgWithdraw{
+						Sender:       tc.sender.String(),
+						ProviderUuid: w.provider1,
+						Limit:        limit,
+						Key:          tc.key,
+					})
+					require.ErrorIs(t, err, types.ErrUnauthorized)
+				}
+
+				// Nothing moved: no payout, no debit, and the streams still owe
+				// what they owed.
+				require.True(t, w.balance(w.payout1).IsZero())
+				require.True(t, w.balance(tc.sender).IsZero())
+				for _, tenant := range w.tenants {
+					require.Equal(t, sdkmath.NewInt(1_000_000), w.balance(types.DeriveCreditAddress(tenant)))
+				}
+				require.Equal(t, before, w.streamsOf(t, w.provider1))
+			})
+		}
+
+		// The provider itself is still owed, and paid, everything.
+		resp, err := w.msgServer.Withdraw(w.Ctx, &types.MsgWithdraw{
+			Sender:       w.providerAddr1.String(),
+			ProviderUuid: w.provider1,
+		})
+		require.NoError(t, err)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(200))), resp.TotalAmounts)
+		require.Equal(t, w.payout1.String(), resp.PayoutAddress)
+		require.Equal(t, sdkmath.NewInt(200), w.balance(w.payout1))
+		requireInvariants(t, w.testFixture)
 	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "unauthorized")
+
+	t.Run("a provider withdrawing its own streams cannot reach another provider's with a crafted key", func(t *testing.T) {
+		longAddr := make([]byte, 255)
+		for i := range longAddr {
+			longAddr[i] = 0xff
+		}
+
+		tests := []struct {
+			name string
+			key  func(t *testing.T, w *withdrawAccessFixture) []byte
+			// rejected is true when the key is refused outright.
+			rejected bool
+		}{
+			{name: "cursor before every stream", key: func(t *testing.T, _ *withdrawAccessFixture) []byte {
+				return cursor(t, sdk.AccAddress(make([]byte, 20)), "")
+			}},
+			{name: "cursor on a tenant both providers serve", key: func(t *testing.T, w *withdrawAccessFixture) []byte {
+				return cursor(t, w.tenants[0], testDenom)
+			}},
+			{name: "cursor after every stream", key: func(t *testing.T, _ *withdrawAccessFixture) []byte {
+				return cursor(t, sdk.AccAddress(longAddr), "\xff\xff\xff\xff")
+			}},
+			{name: "cursor with an empty tenant", key: func(t *testing.T, _ *withdrawAccessFixture) []byte {
+				return cursor(t, sdk.AccAddress{}, testDenom)
+			}},
+			{name: "cursor whose denom embeds the victim's provider uuid", key: func(t *testing.T, w *withdrawAccessFixture) []byte {
+				return cursor(t, w.tenants[0], "\x00"+w.provider1+"\x00"+string(w.tenants[0])+testDenom)
+			}},
+			{name: "cursor whose tenant is the victim's provider uuid", key: func(t *testing.T, w *withdrawAccessFixture) []byte {
+				return cursor(t, sdk.AccAddress(w.provider1+"\x00"), testDenom)
+			}},
+			{name: "truncated cursor", rejected: true, key: func(*testing.T, *withdrawAccessFixture) []byte {
+				return []byte{0xff}
+			}},
+			{name: "length prefix longer than the key", rejected: true, key: func(*testing.T, *withdrawAccessFixture) []byte {
+				return []byte{20, 1, 2, 3}
+			}},
+			{name: "oversized key", rejected: true, key: func(*testing.T, *withdrawAccessFixture) []byte {
+				return make([]byte, types.MaxWithdrawCursorLen+1)
+			}},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				w := newWithdrawAccessFixture(t)
+				before := w.streamsOf(t, w.provider1)
+				require.Len(t, before, 2)
+
+				var (
+					resp *types.MsgWithdrawResponse
+					err  error
+				)
+				require.NotPanics(t, func() {
+					resp, err = w.msgServer.Withdraw(w.Ctx, &types.MsgWithdraw{
+						Sender:       w.providerAddr2.String(),
+						ProviderUuid: w.provider2,
+						Limit:        types.MaxBatchLeaseSize,
+						Key:          tc.key(t, w),
+					})
+				})
+
+				paid := w.balance(w.payout2)
+				if tc.rejected {
+					require.ErrorIs(t, err, types.ErrInvalidRequest)
+					require.True(t, paid.IsZero())
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, w.payout2.String(), resp.PayoutAddress)
+					// A cursor can only skip the caller's own streams: provider 2
+					// is paid for at most its own two streams, never more.
+					require.True(t, paid.LTE(sdkmath.NewInt(200)), "provider 2 was paid %s for streams owing 200", paid)
+					require.Equal(t, paid.String(), resp.TotalAmounts.AmountOf(testDenom).String())
+				}
+
+				// The victim's streams were not settled and its payout address
+				// received nothing.
+				require.True(t, w.balance(w.payout1).IsZero())
+				require.Equal(t, before, w.streamsOf(t, w.provider1))
+
+				// The tenants paid exactly what provider 2 received.
+				debited := sdkmath.ZeroInt()
+				for _, tenant := range w.tenants {
+					debited = debited.Add(sdkmath.NewInt(1_000_000).Sub(w.balance(types.DeriveCreditAddress(tenant))))
+				}
+				require.Equal(t, paid.String(), debited.String())
+
+				// Provider 1 still collects everything it is owed.
+				own, err := w.msgServer.Withdraw(w.Ctx, &types.MsgWithdraw{
+					Sender:       w.providerAddr1.String(),
+					ProviderUuid: w.provider1,
+				})
+				require.NoError(t, err)
+				require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(200))), own.TotalAmounts)
+				requireInvariants(t, w.testFixture)
+			})
+		}
+	})
+
+	t.Run("the authority may settle a provider's streams, but only to that provider's payout address", func(t *testing.T) {
+		w := newWithdrawAccessFixture(t)
+		resp, err := w.msgServer.Withdraw(w.Ctx, &types.MsgWithdraw{
+			Sender:       w.Authority.String(),
+			ProviderUuid: w.provider1,
+		})
+		require.NoError(t, err)
+		require.Equal(t, w.payout1.String(), resp.PayoutAddress)
+		require.Equal(t, sdkmath.NewInt(200), w.balance(w.payout1))
+		require.True(t, w.balance(w.Authority).IsZero())
+		require.True(t, w.balance(w.payout2).IsZero())
+		requireInvariants(t, w.testFixture)
+	})
+
+	t.Run("an unknown provider uuid is rejected", func(t *testing.T) {
+		w := newWithdrawAccessFixture(t)
+		_, err := w.msgServer.Withdraw(w.Ctx, &types.MsgWithdraw{
+			Sender:       w.providerAddr2.String(),
+			ProviderUuid: testProviderUUID,
+		})
+		require.ErrorIs(t, err, types.ErrProviderNotFound)
+	})
 }
 
 // TestAdversarial_BatchCloseWithMixedAuthRoles tests that batch close rejects
@@ -439,15 +657,26 @@ func TestAdversarial_ManyActiveLeasesFundConservation(t *testing.T) {
 
 	providerBalBefore := f.App.BankKeeper.GetBalance(f.Ctx, providerAddr, testDenom)
 
+	// All 50 leases share one stream
+	state, err := f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(int64(numLeases)), state.Rate)
+	require.Equal(t, uint64(numLeases), state.LeaseCount) //nolint:gosec // test code, numLeases is 50
+	requireInvariants(t, f)
+
 	// Advance time
 	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 
-	// Close all leases in a batch
-	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+	// Close all leases in a batch: the stream is settled once, with one transfer
+	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+	resp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
 		Sender:     tenant.String(),
 		LeaseUuids: leaseIDs,
 	})
 	require.NoError(t, err)
+	// 50 leases at 1/s for 100 seconds
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(5000))), resp.TotalSettledAmounts)
+	require.Equal(t, 1, countEvents(f.Ctx, "transfer"))
 
 	// Fund conservation check
 	providerBalAfter := f.App.BankKeeper.GetBalance(f.Ctx, providerAddr, testDenom)
@@ -456,9 +685,16 @@ func TestAdversarial_ManyActiveLeasesFundConservation(t *testing.T) {
 	providerGain := providerBalAfter.Amount.Sub(providerBalBefore.Amount)
 	totalAccounted := providerGain.Add(creditBalAfter.Amount)
 
+	require.Equal(t, sdkmath.NewInt(5000), providerGain)
 	require.Equal(t, initialFunding, totalAccounted,
 		"fund conservation violated: provider gained %s + credit remaining %s = %s, but started with %s",
 		providerGain, creditBalAfter.Amount, totalAccounted, initialFunding)
+
+	// The emptied stream is gone
+	streams, err := f.App.BillingKeeper.GetAllStreams(f.Ctx)
+	require.NoError(t, err)
+	require.Empty(t, streams)
+	requireInvariants(t, f)
 }
 
 // =============================================================================
