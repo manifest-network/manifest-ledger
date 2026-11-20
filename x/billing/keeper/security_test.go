@@ -12,11 +12,13 @@ package keeper_test
 
 import (
 	"fmt"
+	"math/big"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"cosmossdk.io/collections"
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -94,7 +96,7 @@ func TestSecurity_UnauthorizedProviderWithdrawal(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create and acknowledge a lease
-	leaseID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+	f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
 		{SkuUuid: sku.Uuid, Quantity: 1},
 	})
 
@@ -102,13 +104,26 @@ func TestSecurity_UnauthorizedProviderWithdrawal(t *testing.T) {
 	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 	f.Ctx = newCtx
 
-	// Attacker (not the provider) tries to withdraw from the lease
+	streamKey := keeper.NewStreamKey(provider.Uuid, tenant, testDenom)
+	streamBefore, err := f.App.BillingKeeper.Streams.Get(f.Ctx, streamKey)
+	require.NoError(t, err)
+
+	// Attacker (not the provider) tries to withdraw the provider's streams
 	_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-		Sender:     attacker.String(),
-		LeaseUuids: []string{leaseID},
+		Sender:       attacker.String(),
+		ProviderUuid: provider.Uuid,
 	})
-	require.Error(t, err)
+	require.ErrorIs(t, err, types.ErrUnauthorized)
 	require.Contains(t, err.Error(), "unauthorized")
+
+	// The rejected withdrawal settled nothing: no transfer, stream untouched.
+	require.Equal(t, sdkmath.NewInt(10000), f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom).Amount)
+	require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, providerAddr, testDenom).IsZero())
+	require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, attacker, testDenom).IsZero())
+	streamAfter, err := f.App.BillingKeeper.Streams.Get(f.Ctx, streamKey)
+	require.NoError(t, err)
+	require.Equal(t, streamBefore, streamAfter)
+	requireInvariants(t, f)
 }
 
 func TestSecurity_UnauthorizedLeaseAcknowledgement(t *testing.T) {
@@ -201,51 +216,125 @@ func TestSecurity_UnauthorizedLeaseRejection(t *testing.T) {
 // Overflow Protection Tests
 // ============================================================================
 
+// TestSecurity_AccrualOverflowProtection verifies that an accrual that cannot be
+// represented never panics, never errors out of the message, and never pays the
+// provider more than the tenant's remaining credit. Both overflow guards are
+// covered: a gap longer than MaxDurationSeconds, and a rate × seconds product
+// that does not fit in 256 bits.
 func TestSecurity_AccrualOverflowProtection(t *testing.T) {
-	f := initFixture(t)
+	const funded = int64(1_000_000_000_000)
 
-	k := f.App.BillingKeeper
-	tenant := f.TestAccs[0]
-	providerAddr := f.TestAccs[1]
+	// hugeRate × 4 seconds overflows sdkmath.Int (256 bits) while the gap is far
+	// below MaxDurationSeconds, so only the SafeMul guard can catch it.
+	hugeRate := sdkmath.NewIntFromBigInt(new(big.Int).Lsh(big.NewInt(1), 254))
 
-	// Create provider
-	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
-
-	// Fund tenant credit account
-	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
-	require.NoError(t, err)
-	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000_000_000))))
-
-	// Create lease with normal price
-	now := f.Ctx.BlockTime()
-	lease := types.Lease{
-		Uuid:         "01912345-6789-7abc-8def-0123456789ab",
-		Tenant:       tenant.String(),
-		ProviderUuid: provider.Uuid,
-		Items: []types.LeaseItem{
-			{SkuUuid: "01912345-6789-7abc-8def-0123456789ae", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1000))},
-		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+	tests := []struct {
+		name    string
+		rate    sdkmath.Int
+		elapsed time.Duration
+		// viaClose settles through CloseLease instead of Withdraw.
+		viaClose bool
+	}{
+		{name: "gap over 100 years, withdraw", rate: sdkmath.NewInt(1000), elapsed: 101 * 365 * 24 * time.Hour},
+		{name: "gap over 100 years, close", rate: sdkmath.NewInt(1000), elapsed: 101 * 365 * 24 * time.Hour, viaClose: true},
+		{name: "rate times seconds overflows 256 bits, withdraw", rate: hugeRate, elapsed: 4 * time.Second},
+		{name: "rate times seconds overflows 256 bits, close", rate: hugeRate, elapsed: 4 * time.Second, viaClose: true},
 	}
-	err = k.SetLease(f.Ctx, lease)
-	require.NoError(t, err)
 
-	// Try to settle for an extremely long duration (>100 years)
-	veryFarFuture := now.Add(101 * 365 * 24 * time.Hour)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := initFixture(t)
+			k := f.App.BillingKeeper
+			msgServer := keeper.NewMsgServerImpl(k)
 
-	// PerformSettlement should error on overflow
-	_, err = k.PerformSettlement(f.Ctx, &lease, veryFarFuture)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "overflow")
+			tenant := f.TestAccs[0]
+			providerAddr := f.TestAccs[1]
+			payoutAddr := f.TestAccs[2]
+			provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
 
-	// PerformSettlementSilent should NOT error (silently handles overflow)
-	result, err := k.PerformSettlementSilent(f.Ctx, &lease, veryFarFuture)
-	require.NoError(t, err)
-	// On overflow, all remaining credit should be transferred to the provider
-	require.Equal(t, int64(1_000_000_000_000), result.AccruedAmounts.AmountOf(testDenom).Int64())
-	require.Equal(t, int64(1_000_000_000_000), result.TransferAmounts.AmountOf(testDenom).Int64())
+			creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
+			require.NoError(t, err)
+			f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(funded))))
+			// The handlers cannot create a lease with such a rate (its reservation
+			// would exceed any balance), so write it and its stream directly. A
+			// one-second reservation keeps the reservation arithmetic in range, so
+			// the accrual is the only thing that can overflow.
+			require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
+				Tenant:           tenant.String(),
+				CreditAddress:    creditAddr.String(),
+				ActiveLeaseCount: 1,
+				ReservedAmounts:  sdk.NewCoins(sdk.NewCoin(testDenom, tc.rate)),
+			}))
+			now := f.Ctx.BlockTime()
+			require.NoError(t, k.SetLease(f.Ctx, types.Lease{
+				Uuid:         testLeaseUUID1,
+				Tenant:       tenant.String(),
+				ProviderUuid: provider.Uuid,
+				Items: []types.LeaseItem{
+					{SkuUuid: testSKUUUID, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, tc.rate)},
+				},
+				State:                      types.LEASE_STATE_ACTIVE,
+				CreatedAt:                  now,
+				MinLeaseDurationAtCreation: 1,
+			}))
+			f.syncStreams(t, now)
+
+			f.Ctx = f.Ctx.WithBlockTime(now.Add(tc.elapsed))
+			want := sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(funded)))
+
+			if tc.viaClose {
+				resp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+					Sender:     tenant.String(),
+					LeaseUuids: []string{testLeaseUUID1},
+					Reason:     "done",
+				})
+				require.NoError(t, err)
+				require.Equal(t, want, resp.TotalSettledAmounts)
+
+				lease, err := k.GetLease(f.Ctx, testLeaseUUID1)
+				require.NoError(t, err)
+				require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+				require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason,
+					"an unrepresentable accrual is credit exhaustion, whatever the caller says")
+			} else {
+				resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+					Sender:       providerAddr.String(),
+					ProviderUuid: provider.Uuid,
+				})
+				require.NoError(t, err)
+				require.Equal(t, want, resp.TotalAmounts)
+				require.Equal(t, uint64(1), resp.WithdrawalCount)
+
+				// The stream is frozen, so a second withdrawal pays nothing more.
+				state, err := k.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+				require.NoError(t, err)
+				require.True(t, state.IsExhausted())
+				again, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+					Sender:       providerAddr.String(),
+					ProviderUuid: provider.Uuid,
+				})
+				require.NoError(t, err)
+				require.True(t, again.TotalAmounts.IsZero())
+			}
+
+			// All remaining credit went to the provider, and not a unit more.
+			require.Equal(t, sdkmath.NewInt(funded), f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom).Amount)
+			require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom).IsZero())
+
+			// The frozen stream is drained like any other: the lease is closed for
+			// exhausted credit and its reservation is released.
+			require.NoError(t, k.EndBlocker(f.Ctx))
+			lease, err := k.GetLease(f.Ctx, testLeaseUUID1)
+			require.NoError(t, err)
+			require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+			require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason)
+			account, err := k.GetCreditAccount(f.Ctx, tenant.String())
+			require.NoError(t, err)
+			require.Zero(t, account.ActiveLeaseCount)
+			require.True(t, account.ReservedAmounts.IsZero())
+			require.NoError(t, k.CheckStreamInvariant(f.Ctx))
+		})
+	}
 }
 
 func TestSecurity_ExtremeQuantityValues(t *testing.T) {
@@ -652,19 +741,37 @@ func TestSecurity_WithdrawFromClosedLease(t *testing.T) {
 	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 	f.Ctx = newCtx
 
-	// Close the lease
-	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+	// Close the lease: the close settles the 100 seconds it ran.
+	closeResp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
 		Sender:     tenant.String(),
 		LeaseUuids: []string{leaseID},
 	})
 	require.NoError(t, err)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(100))), closeResp.TotalSettledAmounts)
 
-	// Try to withdraw from closed lease (should fail - no withdrawable amount)
+	// The closed lease left its stream, which is gone with its last lease.
+	_, err = f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+	require.ErrorIs(t, err, collections.ErrNotFound)
+
+	// However much later the provider withdraws, a closed lease pays nothing more.
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+	resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.TotalAmounts.IsZero())
+	require.Zero(t, resp.WithdrawalCount)
+	require.Equal(t, sdkmath.NewInt(100), f.App.BankKeeper.GetBalance(f.Ctx, providerAddr, testDenom).Amount)
+	require.Equal(t, sdkmath.NewInt(9900), f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, testDenom).Amount)
+
+	// The removed per-lease withdrawal cannot be used to reach it either.
 	_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
 		Sender:     providerAddr.String(),
-		LeaseUuids: []string{leaseID},
+		LeaseUuids: []string{leaseID}, //nolint:staticcheck // exercising the deprecated field
 	})
-	require.Error(t, err)
+	require.ErrorIs(t, err, types.ErrInvalidRequest)
+	requireInvariants(t, f)
 }
 
 // ============================================================================
@@ -709,20 +816,27 @@ func TestSecurity_DenomSpamDoesNotAffectSettlement(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create and acknowledge a lease
-	leaseID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+	f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
 		{SkuUuid: sku.Uuid, Quantity: 1},
 	})
+
+	// Dust never creates a stream: the tenant has exactly one, in the lease's denom.
+	streams, err := f.App.BillingKeeper.GetAllStreams(f.Ctx)
+	require.NoError(t, err)
+	require.Len(t, streams, 1)
+	require.Equal(t, testDenom, streams[0].Denom)
 
 	// Advance time so there's something to settle
 	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 
 	// Withdraw (triggers settlement)
 	resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-		Sender:     providerAddr.String(),
-		LeaseUuids: []string{leaseID},
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
 	})
 	require.NoError(t, err)
-	require.NotNil(t, resp)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(100))), resp.TotalAmounts)
+	require.Equal(t, uint64(1), resp.WithdrawalCount)
 
 	// Verify: provider received ONLY the lease denom, not dust
 	for _, denom := range dustDenoms {
@@ -738,13 +852,16 @@ func TestSecurity_DenomSpamDoesNotAffectSettlement(t *testing.T) {
 
 	// Verify: the lease's real denom was settled correctly
 	providerBal := f.App.BankKeeper.GetBalance(f.Ctx, sdk.MustAccAddressFromBech32(provider.PayoutAddress), testDenom)
-	require.True(t, providerBal.IsPositive(), "provider should have received settlement in %s", testDenom)
+	require.Equal(t, sdkmath.NewInt(100), providerBal.Amount, "provider should have received settlement in %s", testDenom)
+	requireInvariants(t, f)
 }
 
 // TestSecurity_DenomSpamDoesNotAffectAutoClose verifies that dust tokens
-// on a credit address do not interfere with the auto-close decision.
+// on a credit address do not interfere with the credit-exhaustion decision:
+// the stream freezes on its own denom's balance and the EndBlocker closes it.
 func TestSecurity_DenomSpamDoesNotAffectAutoClose(t *testing.T) {
 	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
 
 	tenant := f.TestAccs[0]
 	providerAddr := f.TestAccs[1]
@@ -753,13 +870,14 @@ func TestSecurity_DenomSpamDoesNotAffectAutoClose(t *testing.T) {
 	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
 	sku := f.createTestSKU(t, provider.Uuid, 3600)
 
-	// Fund credit account with a small amount (will be exhausted quickly)
+	// Fund credit account with exactly the lease's reservation (one hour at 1/s)
 	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
 	require.NoError(t, err)
-	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(10))))
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(3600))))
 
 	// Spam dust denoms
-	for _, denom := range []string{"spam1", "spam2", "spam3"} {
+	spamDenoms := []string{"spam1", "spam2", "spam3"}
+	for _, denom := range spamDenoms {
 		f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(999_999_999))))
 	}
 
@@ -769,36 +887,48 @@ func TestSecurity_DenomSpamDoesNotAffectAutoClose(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Build a lease manually in ACTIVE state
-	lease := types.Lease{
-		Uuid:         testLeaseUUID1,
-		Tenant:       tenant.String(),
+	leaseID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+		{SkuUuid: sku.Uuid, Quantity: 1},
+	})
+
+	// Advance time one second past the point where the real denom is exhausted
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(3601 * time.Second))
+
+	// The stream must freeze based on the lease's denom (umfx), not be confused
+	// by the large balances in spam denoms.
+	resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:       providerAddr.String(),
 		ProviderUuid: provider.Uuid,
-		Items: []types.LeaseItem{
-			{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
-		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(3600))), resp.TotalAmounts)
+
+	state, err := f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+	require.NoError(t, err)
+	require.True(t, state.IsExhausted(), "stream should freeze: real denom exhausted despite large dust balances")
+	requireInvariants(t, f)
+
+	// The EndBlocker closes the lease for exhausted credit.
+	require.NoError(t, f.App.BillingKeeper.EndBlocker(f.Ctx))
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+	require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason)
+
+	// The spam balances were neither spent nor moved.
+	for _, denom := range spamDenoms {
+		require.Equal(t, sdkmath.NewInt(999_999_999), f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom).Amount)
+		require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, providerAddr, denom).IsZero())
 	}
-	err = f.App.BillingKeeper.SetLease(f.Ctx, lease)
-	require.NoError(t, err)
-
-	// Advance time far enough to exhaust the real denom balance
-	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(3600 * time.Second))
-
-	// Auto-close should trigger based on the lease's denom (umfx), not be
-	// confused by the large balances in spam denoms.
-	shouldClose, _, err := f.App.BillingKeeper.ShouldAutoCloseLease(f.Ctx, &lease)
-	require.NoError(t, err)
-	require.True(t, shouldClose, "lease should auto-close: real denom exhausted despite large dust balances")
+	requireInvariants(t, f)
 }
 
 // TestSecurity_DenomSpamDoesNotLeakOnOverflow verifies that when accrual
-// overflows (duration > ~100 years) and PerformSettlementSilent transfers
-// all remaining credit, only the lease's denoms are transferred — not dust.
+// overflows (duration > ~100 years) and the settlement transfers all
+// remaining credit, only the stream's denom is transferred — not dust.
 func TestSecurity_DenomSpamDoesNotLeakOnOverflow(t *testing.T) {
 	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
 
 	tenant := f.TestAccs[0]
 	providerAddr := f.TestAccs[1]
@@ -824,34 +954,23 @@ func TestSecurity_DenomSpamDoesNotLeakOnOverflow(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Build a lease manually in ACTIVE state
-	lease := types.Lease{
-		Uuid:         testLeaseUUID1,
-		Tenant:       tenant.String(),
-		ProviderUuid: provider.Uuid,
-		Items: []types.LeaseItem{
-			{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(1))},
-		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     f.Ctx.BlockTime(),
-		LastSettledAt: f.Ctx.BlockTime(),
-	}
-	err = f.App.BillingKeeper.SetLease(f.Ctx, lease)
-	require.NoError(t, err)
+	f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+		{SkuUuid: sku.Uuid, Quantity: 1},
+	})
 
-	// Settle with a time > 100 years in the future to trigger accrual overflow.
-	// PerformSettlementSilent handles overflow by transferring all remaining
-	// credit rather than returning an error.
-	overflowTime := f.Ctx.BlockTime().Add(101 * 365 * 24 * time.Hour)
-	result, err := f.App.BillingKeeper.PerformSettlementSilent(f.Ctx, &lease, overflowTime)
+	// Settle more than 100 years later to trigger the accrual overflow guard.
+	// The settlement handles it by transferring all remaining credit rather
+	// than returning an error.
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(101 * 365 * 24 * time.Hour))
+	resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
+	})
 	require.NoError(t, err)
-	require.NotNil(t, result)
 
 	// Verify: only the lease's denom was transferred, not dust
-	require.Len(t, result.TransferAmounts, 1, "overflow settlement should transfer exactly one denom")
-	require.Equal(t, testDenom, result.TransferAmounts[0].Denom)
-	require.Equal(t, sdkmath.NewInt(5000), result.TransferAmounts[0].Amount,
-		"overflow settlement should transfer all remaining credit in the lease's denom")
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(5000))), resp.TotalAmounts,
+		"overflow settlement should transfer all remaining credit in the lease's denom and nothing else")
 
 	// Verify: provider received none of the dust denoms
 	payoutAddr := sdk.MustAccAddressFromBech32(provider.PayoutAddress)

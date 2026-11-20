@@ -54,6 +54,31 @@ var (
 	// SetItemCustomDomain. Entries are reconciled by reconcileCustomDomainIndex
 	// inside SetLease, derived from each item's (state, custom_domain).
 	CustomDomainIndexKey = collections.NewPrefix(12)
+
+	// StreamKey saves the settlement streams, keyed by
+	// (provider_uuid, (tenant, denom)). Provider-first ordering lets a provider
+	// withdrawal range over exactly its own streams.
+	StreamKey = collections.NewPrefix(13)
+
+	// StreamByTenantIndexKey saves the (tenant, (provider_uuid, denom)) reverse
+	// lookup for streams. It is written only when a stream is created or
+	// deleted, never on settlement.
+	StreamByTenantIndexKey = collections.NewPrefix(14)
+
+	// StreamLeaseKey saves the (stream key, lease_uuid) membership of each
+	// stream: one entry per ACTIVE lease and denom it is priced in. It lets the
+	// EndBlocker enumerate exactly the leases of an exhausted stream.
+	StreamLeaseKey = collections.NewPrefix(15)
+
+	// ExhaustedStreamKey saves the queue of exhausted streams whose leases the
+	// EndBlocker still has to close. The value is the drain cursor: the UUID of
+	// the last lease attempted.
+	ExhaustedStreamKey = collections.NewPrefix(16)
+
+	// ExhaustedStreamStartKey saves where the EndBlocker drain resumes its walk
+	// of the exhausted-stream queue: the key of the last stream it served. It
+	// is only set while more streams are queued than one block can serve.
+	ExhaustedStreamStartKey = collections.NewPrefix(17)
 )
 
 const (
@@ -67,10 +92,11 @@ const (
 // CreditAccountAddressPrefix is the prefix used to derive credit account addresses.
 const CreditAccountAddressPrefix = "billing/credit/"
 
-// Provider-wide withdraw limits to prevent DoS attacks.
+// Provider withdraw limits to prevent DoS attacks.
 const (
-	// DefaultProviderWithdrawLimit is the default limit when limit=0 is specified
-	// for provider-wide withdrawal mode. This prevents unbounded iterations over all leases.
+	// DefaultProviderWithdrawLimit is the number of streams a withdrawal settles
+	// when limit=0 is specified. This prevents unbounded iteration over all of a
+	// provider's streams.
 	DefaultProviderWithdrawLimit uint64 = 50
 )
 
@@ -80,7 +106,7 @@ const (
 	DefaultProviderWithdrawableQueryLimit uint64 = 100
 
 	// MaxProviderWithdrawableQueryLimit is the maximum limit for ProviderWithdrawable queries.
-	// This prevents queries from iterating over unbounded numbers of leases.
+	// This prevents queries from iterating over unbounded numbers of streams.
 	MaxProviderWithdrawableQueryLimit uint64 = 1000
 )
 
@@ -90,6 +116,11 @@ const (
 	// that can be expired in a single block. This prevents DoS attacks where
 	// many pending leases expire simultaneously, causing block timeouts.
 	MaxPendingLeaseExpirationsPerBlock = 100
+
+	// MaxAutoClosesPerBlock is the maximum number of lease closures the
+	// EndBlocker attempts per block while draining exhausted streams. EndBlocker
+	// work is not gas-metered, so it must be bounded per block.
+	MaxAutoClosesPerBlock = 100
 )
 
 // Event types for the billing module.
@@ -106,11 +137,13 @@ const (
 	EventTypeLeaseCancelled           = "lease_cancelled"
 	EventTypeBatchCancelled           = "batch_cancelled"
 	EventTypeLeaseExpired             = "lease_expired"
-	EventTypeProviderWithdraw         = "provider_withdraw"
+	EventTypeProviderWithdraw         = "provider_withdraw" // no longer emitted: withdrawals settle per stream (see stream_settled)
 	EventTypeBatchWithdraw            = "batch_withdraw"
 	EventTypeParamsUpdated            = "params_updated"
 	EventTypeLeaseCustomDomainSet     = "lease_custom_domain_set"
 	EventTypeLeaseCustomDomainCleared = "lease_custom_domain_cleared"
+	EventTypeStreamSettled            = "stream_settled"
+	EventTypeStreamExhausted          = "stream_exhausted"
 
 	// Attribute keys for events.
 	AttributeKeyTenant            = "tenant"
@@ -127,7 +160,7 @@ const (
 	AttributeKeyItemCount         = "item_count"
 	AttributeKeyTotalRate         = "total_rate_per_second"
 	AttributeKeyClosedBy          = "closed_by"
-	AttributeKeyDuration          = "duration_seconds"
+	AttributeKeyDuration          = "duration_seconds" // no longer emitted: leases are not settled individually
 	AttributeKeyActiveLeaseCount  = "active_lease_count"
 	AttributeKeyPendingLeaseCount = "pending_lease_count"
 	AttributeKeyCreatedBy         = "created_by"
@@ -142,6 +175,9 @@ const (
 	AttributeKeyCustomDomain      = "custom_domain"
 	AttributeKeySetBy             = "set_by"
 	AttributeKeyServiceName       = "service_name"
+	AttributeKeyDenom             = "denom"
+	AttributeKeyStreamCount       = "stream_count"
+	AttributeKeyExhaustedCount    = "exhausted_count"
 )
 
 // Rejection reasons for lease cancellation/rejection.

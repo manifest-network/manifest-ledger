@@ -37,7 +37,13 @@ const (
 	// state shape is forward-compatible (proto3 zero values + a fresh store
 	// prefix), and operators seed ReservedDomainSuffixes at upgrade time or via
 	// post-upgrade MsgUpdateParams rather than baking values into the binary.
-	ConsensusVersion = 2
+	//
+	// v3 replaced per-lease settlement with settlement streams: one aggregate
+	// per (provider_uuid, tenant, denom), so a provider withdrawal costs
+	// O(streams) instead of O(leases). Migrate2to3 pays what every lease
+	// accrued up to the upgrade, builds the streams from the ACTIVE leases and
+	// clears the deprecated Lease.last_settled_at.
+	ConsensusVersion = 3
 )
 
 var (
@@ -176,6 +182,9 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 	migrator := keeper.NewMigrator(am.keeper)
 	if err := cfg.RegisterMigration(types.ModuleName, 1, migrator.Migrate1to2); err != nil {
 		panic(fmt.Errorf("failed to register %s migration v1→v2: %w", types.ModuleName, err))
+	}
+	if err := cfg.RegisterMigration(types.ModuleName, 2, migrator.Migrate2to3); err != nil {
+		panic(fmt.Errorf("failed to register %s migration v2→v3: %w", types.ModuleName, err))
 	}
 }
 

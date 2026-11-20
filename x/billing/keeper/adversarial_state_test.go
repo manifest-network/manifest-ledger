@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"cosmossdk.io/collections"
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -158,6 +159,7 @@ func TestAdversarial_ReservationMatchesAfterFullLifecycle(t *testing.T) {
 		"reservation should be zero after close, got: %s", ca.ReservedAmounts)
 	require.Equal(t, uint64(0), ca.ActiveLeaseCount)
 	require.Equal(t, uint64(0), ca.PendingLeaseCount)
+	requireInvariants(t, f)
 }
 
 // TestAdversarial_MultipleLeaseReservationAccumulation tests that creating multiple
@@ -194,16 +196,26 @@ func TestAdversarial_MultipleLeaseReservationAccumulation(t *testing.T) {
 	ca, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), ca.ActiveLeaseCount)
-	require.False(t, ca.ReservedAmounts.IsZero())
+	// Quantities 1..5 at 1/s, reserved for an hour each
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(15*3600))), ca.ReservedAmounts)
+
+	// The stream accumulates the same leases: its rate is the sum of theirs
+	streamKey := keeper.NewStreamKey(provider.Uuid, tenant, testDenom)
+	state, err := f.App.BillingKeeper.Streams.Get(f.Ctx, streamKey)
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(15), state.Rate)
+	require.Equal(t, uint64(5), state.LeaseCount)
+	requireInvariants(t, f)
 
 	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 
 	// Close all leases
-	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+	resp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
 		Sender:     tenant.String(),
 		LeaseUuids: leaseIDs,
 	})
 	require.NoError(t, err)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1500))), resp.TotalSettledAmounts)
 
 	// Everything must be clean
 	ca, err = f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
@@ -211,6 +223,9 @@ func TestAdversarial_MultipleLeaseReservationAccumulation(t *testing.T) {
 	require.True(t, ca.ReservedAmounts.IsZero(),
 		"reservation should be zero after closing all leases, got: %s", ca.ReservedAmounts)
 	require.Equal(t, uint64(0), ca.ActiveLeaseCount)
+	_, err = f.App.BillingKeeper.Streams.Get(f.Ctx, streamKey)
+	require.ErrorIs(t, err, collections.ErrNotFound, "a stream without leases is deleted")
+	requireInvariants(t, f)
 }
 
 // =============================================================================
@@ -274,13 +289,15 @@ func TestAdversarial_LeaseCountAfterExpiration(t *testing.T) {
 // =============================================================================
 
 // TestAdversarial_GenesisExportImportRoundTrip tests that exporting genesis and
-// re-importing it produces identical state. This is critical for chain upgrades.
+// re-importing it produces identical state, including the settlement streams
+// and everything derived from them. This is critical for chain upgrades.
 func TestAdversarial_GenesisExportImportRoundTrip(t *testing.T) {
 	f := initFixture(t)
 	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
 
 	tenant := f.TestAccs[0]
 	providerAddr := f.TestAccs[1]
+	poorTenant := f.TestAccs[2]
 
 	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
 	sku := f.createTestSKU(t, provider.Uuid, 3600)
@@ -291,6 +308,25 @@ func TestAdversarial_GenesisExportImportRoundTrip(t *testing.T) {
 	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
 		Tenant:        tenant.String(),
 		CreditAddress: creditAddr.String(),
+	})
+	require.NoError(t, err)
+
+	// A second tenant whose stream is frozen for exhausted credit and still
+	// waiting for the EndBlocker when the state is exported.
+	poorCreditAddr := types.DeriveCreditAddress(poorTenant)
+	f.fundAccount(t, poorCreditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(3600))))
+	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        poorTenant.String(),
+		CreditAddress: poorCreditAddr.String(),
+	})
+	require.NoError(t, err)
+	frozenLeaseID := f.createAndAcknowledgeLease(t, msgServer, poorTenant, providerAddr, []types.LeaseItemInput{
+		{SkuUuid: sku.Uuid, Quantity: 1},
+	})
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(2 * time.Hour))
+	_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
 	})
 	require.NoError(t, err)
 
@@ -311,12 +347,15 @@ func TestAdversarial_GenesisExportImportRoundTrip(t *testing.T) {
 	closedLeaseID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
 		{SkuUuid: sku.Uuid, Quantity: 1},
 	})
-	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
-	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+	// 100.5s at 3/s accrue 301.5: the close pays 301 and leaves half a unit in
+	// the stream's remainder, which must survive the export and the import.
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100*time.Second + 500*time.Millisecond))
+	closeResp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
 		Sender:     tenant.String(),
 		LeaseUuids: []string{closedLeaseID},
 	})
 	require.NoError(t, err)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(301))), closeResp.TotalSettledAmounts)
 
 	// Export genesis
 	exported := f.App.BillingKeeper.ExportGenesis(f.Ctx)
@@ -339,10 +378,255 @@ func TestAdversarial_GenesisExportImportRoundTrip(t *testing.T) {
 	require.Equal(t, types.LEASE_STATE_ACTIVE, leasesByUUID[activeLeaseID].State)
 	require.Equal(t, types.LEASE_STATE_PENDING, leasesByUUID[pendingResp.LeaseUuid].State)
 	require.Equal(t, types.LEASE_STATE_CLOSED, leasesByUUID[closedLeaseID].State)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, leasesByUUID[frozenLeaseID].State)
+	for _, l := range exported.Leases {
+		require.Nil(t, l.LastSettledAt, "the deprecated field is never exported") //nolint:staticcheck // asserting the deprecated field stays unset
+	}
 
 	// Verify credit accounts in export
-	require.Len(t, exported.CreditAccounts, 1)
-	require.Equal(t, tenant.String(), exported.CreditAccounts[0].Tenant)
+	require.Len(t, exported.CreditAccounts, 2)
+
+	// Verify streams in export: one per tenant, built from the ACTIVE leases only
+	// (the pending and the closed lease contribute nothing).
+	require.Len(t, exported.Streams, 2)
+	streamsByTenant := make(map[string]types.StreamState)
+	for _, stream := range exported.Streams {
+		require.Equal(t, provider.Uuid, stream.ProviderUuid)
+		require.Equal(t, testDenom, stream.Denom)
+		streamsByTenant[stream.Tenant] = stream.State
+	}
+	healthy := streamsByTenant[tenant.String()]
+	require.Equal(t, sdkmath.NewInt(2), healthy.Rate)
+	require.Equal(t, uint64(1), healthy.LeaseCount)
+	require.False(t, healthy.IsExhausted())
+	require.Equal(t, f.Ctx.BlockTime(), healthy.LastSettledAt, "settled by the close of the other lease")
+	require.Equal(t, sdkmath.NewInt(500_000_000), healthy.Remainder, "the half unit the close could not pay")
+	frozen := streamsByTenant[poorTenant.String()]
+	require.Equal(t, sdkmath.NewInt(1), frozen.Rate)
+	require.Equal(t, uint64(1), frozen.LeaseCount)
+	require.True(t, frozen.IsExhausted())
+	require.False(t, frozen.Remainder.IsNil(), "an exported remainder is zero, never unset")
+	require.True(t, frozen.Remainder.IsZero())
+
+	// Re-import into a fresh chain that knows the same provider and SKU.
+	f2 := initFixture(t)
+	f2.Ctx = f2.Ctx.WithBlockTime(f.Ctx.BlockTime())
+	require.NoError(t, f2.App.SKUKeeper.SetProvider(f2.Ctx, provider))
+	require.NoError(t, f2.App.SKUKeeper.SetSKU(f2.Ctx, sku))
+	require.NoError(t, f2.App.BillingKeeper.InitGenesis(f2.Ctx, exported))
+
+	// Exporting again yields the same genesis, byte for byte.
+	want, err := exported.Marshal()
+	require.NoError(t, err)
+	got, err := f2.App.BillingKeeper.ExportGenesis(f2.Ctx).Marshal()
+	require.NoError(t, err)
+	require.Equal(t, want, got, "export -> import -> export must be the identity")
+
+	// What is derived from the streams was rebuilt: membership and reverse
+	// lookup (checked by the stream invariant) and the drain queue.
+	requireInvariants(t, f2)
+	queued, err := f2.App.BillingKeeper.ExhaustedStreams.Has(f2.Ctx, keeper.NewStreamKey(provider.Uuid, poorTenant, testDenom))
+	require.NoError(t, err)
+	require.True(t, queued, "a frozen stream must be queued for the drain after import")
+
+	// The imported chain carries on where the exported one stopped: its
+	// EndBlocker closes the frozen stream's lease, and the healthy stream
+	// keeps billing from its last settlement, remainder included.
+	f2.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))))
+	f2.Ctx = f2.Ctx.WithBlockTime(f2.Ctx.BlockTime().Add(50*time.Second + 250*time.Millisecond))
+	require.NoError(t, f2.App.BillingKeeper.EndBlocker(f2.Ctx))
+	frozenLease, err := f2.App.BillingKeeper.GetLease(f2.Ctx, frozenLeaseID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_CLOSED, frozenLease.State)
+	require.Equal(t, types.ClosureReasonCreditExhausted, frozenLease.ClosureReason)
+
+	resp, err := keeper.NewMsgServerImpl(f2.App.BillingKeeper).Withdraw(f2.Ctx, &types.MsgWithdraw{
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
+	})
+	require.NoError(t, err)
+	// 2/s for 50.25s accrue 100.5; with the imported half unit that is exactly
+	// 101. Without the remainder the provider would get 100.
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(101))), resp.TotalAmounts)
+	imported, err := f2.App.BillingKeeper.Streams.Get(f2.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+	require.NoError(t, err)
+	require.True(t, imported.Remainder.IsZero())
+	requireInvariants(t, f2)
+}
+
+// TestAdversarial_GenesisRejectsStreamsThatDoNotMatchLeases tests that a
+// genesis whose streams disagree with its ACTIVE leases is rejected, both by
+// Validate and by InitGenesis (which does not run Validate). Any such mismatch
+// would misprice every later settlement.
+func TestAdversarial_GenesisRejectsStreamsThatDoNotMatchLeases(t *testing.T) {
+	f := initFixture(t)
+	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+
+	tenant := f.TestAccs[0]
+	providerAddr := f.TestAccs[1]
+	otherTenant := f.TestAccs[2]
+
+	provider := f.createTestProvider(t, providerAddr.String(), providerAddr.String())
+	sku := f.createTestSKU(t, provider.Uuid, 3600)
+
+	creditAddr := types.DeriveCreditAddress(tenant)
+	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenant.String(),
+		CreditAddress: creditAddr.String(),
+	}))
+	for range 2 {
+		f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		})
+	}
+
+	// A valid genesis to corrupt: two ACTIVE leases and their single stream.
+	valid := func() *types.GenesisState {
+		gs := f.App.BillingKeeper.ExportGenesis(f.Ctx)
+		require.NoError(t, gs.Validate())
+		require.Len(t, gs.Streams, 1)
+		return gs
+	}
+	future := f.Ctx.BlockTime().Add(time.Hour)
+
+	tests := []struct {
+		name    string
+		corrupt func(gs *types.GenesisState)
+		wantErr string
+		// onlyWithBlockTime marks corruptions that only ValidateWithBlockTime
+		// (run by InitGenesis) can see.
+		onlyWithBlockTime bool
+		// notEnforcedOnInit marks corruptions that Validate rejects but that
+		// leave a consistent state when imported anyway.
+		notEnforcedOnInit bool
+	}{
+		{
+			name:    "active leases without their stream",
+			corrupt: func(gs *types.GenesisState) { gs.Streams = nil },
+			wantErr: "missing",
+		},
+		{
+			name: "stream rate lower than the leases imply",
+			corrupt: func(gs *types.GenesisState) {
+				gs.Streams[0].State.Rate = sdkmath.NewInt(1)
+			},
+			wantErr: "rate",
+		},
+		{
+			name: "stream rate higher than the leases imply",
+			corrupt: func(gs *types.GenesisState) {
+				gs.Streams[0].State.Rate = sdkmath.NewInt(1_000_000)
+			},
+			wantErr: "rate",
+		},
+		{
+			name: "stream lease count off by one",
+			corrupt: func(gs *types.GenesisState) {
+				gs.Streams[0].State.LeaseCount = 3
+			},
+			wantErr: "lease_count",
+		},
+		{
+			name: "stream for a tenant without active leases",
+			corrupt: func(gs *types.GenesisState) {
+				extra := gs.Streams[0]
+				extra.Tenant = otherTenant.String()
+				gs.Streams = append(gs.Streams, extra)
+			},
+			wantErr: "no active lease",
+		},
+		{
+			name: "stream in a denom no lease is priced in",
+			corrupt: func(gs *types.GenesisState) {
+				extra := gs.Streams[0]
+				extra.Denom = testDenom2
+				gs.Streams = append(gs.Streams, extra)
+			},
+			wantErr: "no active lease",
+		},
+		{
+			name: "duplicate stream",
+			corrupt: func(gs *types.GenesisState) {
+				gs.Streams = append(gs.Streams, gs.Streams[0])
+			},
+			wantErr:           "duplicate stream",
+			notEnforcedOnInit: true,
+		},
+		{
+			name: "stream left behind by leases that are all closed",
+			corrupt: func(gs *types.GenesisState) {
+				closedAt := f.Ctx.BlockTime()
+				for i := range gs.Leases {
+					gs.Leases[i].State = types.LEASE_STATE_CLOSED
+					gs.Leases[i].ClosedAt = &closedAt
+				}
+				gs.CreditAccounts[0].ActiveLeaseCount = 0
+				gs.CreditAccounts[0].ReservedAmounts = nil
+			},
+			wantErr: "no active lease",
+		},
+		{
+			name: "negative remainder",
+			corrupt: func(gs *types.GenesisState) {
+				gs.Streams[0].State.Remainder = sdkmath.NewInt(-1)
+			},
+			wantErr: "remainder",
+		},
+		{
+			name: "stream settled in the future",
+			corrupt: func(gs *types.GenesisState) {
+				gs.Streams[0].State.LastSettledAt = future
+			},
+			wantErr:           "in the future",
+			onlyWithBlockTime: true,
+		},
+		{
+			name: "stream exhausted in the future",
+			corrupt: func(gs *types.GenesisState) {
+				gs.Streams[0].State.ExhaustedAt = &future
+			},
+			wantErr:           "in the future",
+			onlyWithBlockTime: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gs := valid()
+			tc.corrupt(gs)
+
+			if tc.onlyWithBlockTime {
+				err := gs.ValidateWithBlockTime(f.Ctx.BlockTime())
+				require.ErrorIs(t, err, types.ErrInvalidLease)
+				require.ErrorContains(t, err, tc.wantErr)
+			} else {
+				err := gs.Validate()
+				require.ErrorIs(t, err, types.ErrInvalidLease)
+				require.ErrorContains(t, err, tc.wantErr)
+			}
+
+			if tc.notEnforcedOnInit {
+				return
+			}
+			// InitChain does not run Validate, so InitGenesis must refuse the
+			// same state on its own. Import into a scratch context.
+			ctx, _ := f.Ctx.CacheContext()
+			require.NoError(t, f.App.BillingKeeper.Streams.Clear(ctx, nil))
+			require.NoError(t, f.App.BillingKeeper.StreamsByTenant.Clear(ctx, nil))
+			require.NoError(t, f.App.BillingKeeper.StreamLeases.Clear(ctx, nil))
+			require.NoError(t, f.App.BillingKeeper.ExhaustedStreams.Clear(ctx, nil))
+			require.ErrorIs(t, f.App.BillingKeeper.InitGenesis(ctx, gs), types.ErrInvalidLease)
+		})
+	}
+
+	// The uncorrupted genesis imports cleanly through the same procedure.
+	ctx, _ := f.Ctx.CacheContext()
+	require.NoError(t, f.App.BillingKeeper.Streams.Clear(ctx, nil))
+	require.NoError(t, f.App.BillingKeeper.StreamsByTenant.Clear(ctx, nil))
+	require.NoError(t, f.App.BillingKeeper.StreamLeases.Clear(ctx, nil))
+	require.NoError(t, f.App.BillingKeeper.ExhaustedStreams.Clear(ctx, nil))
+	require.NoError(t, f.App.BillingKeeper.InitGenesis(ctx, valid()))
 }
 
 // TestAdversarial_GenesisValidationRejectsMismatchedReservations tests that genesis
@@ -370,7 +654,6 @@ func TestAdversarial_GenesisValidationRejectsMismatchedReservations(t *testing.T
 				Items:                      []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
 				State:                      types.LEASE_STATE_ACTIVE,
 				CreatedAt:                  f.Ctx.BlockTime(),
-				LastSettledAt:              f.Ctx.BlockTime(),
 				MinLeaseDurationAtCreation: 3600,
 			},
 		},
@@ -414,7 +697,6 @@ func TestAdversarial_GenesisValidationRejectsMismatchedCounts(t *testing.T) {
 				Items:                      []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
 				State:                      types.LEASE_STATE_ACTIVE,
 				CreatedAt:                  f.Ctx.BlockTime(),
-				LastSettledAt:              f.Ctx.BlockTime(),
 				MinLeaseDurationAtCreation: 3600,
 			},
 		},
@@ -450,24 +732,22 @@ func TestAdversarial_GenesisRejectsDuplicateLeaseUUID(t *testing.T) {
 		Params: types.DefaultParams(),
 		Leases: []types.Lease{
 			{
-				Uuid:          testLeaseUUID1,
-				Tenant:        tenant.String(),
-				ProviderUuid:  provider.Uuid,
-				Items:         []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
-				State:         types.LEASE_STATE_CLOSED,
-				CreatedAt:     f.Ctx.BlockTime(),
-				LastSettledAt: f.Ctx.BlockTime(),
-				ClosedAt:      &closedAt,
+				Uuid:         testLeaseUUID1,
+				Tenant:       tenant.String(),
+				ProviderUuid: provider.Uuid,
+				Items:        []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
+				State:        types.LEASE_STATE_CLOSED,
+				CreatedAt:    f.Ctx.BlockTime(),
+				ClosedAt:     &closedAt,
 			},
 			{
-				Uuid:          testLeaseUUID1, // DUPLICATE UUID
-				Tenant:        tenant.String(),
-				ProviderUuid:  provider.Uuid,
-				Items:         []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
-				State:         types.LEASE_STATE_CLOSED,
-				CreatedAt:     f.Ctx.BlockTime(),
-				LastSettledAt: f.Ctx.BlockTime(),
-				ClosedAt:      &closedAt,
+				Uuid:         testLeaseUUID1, // DUPLICATE UUID
+				Tenant:       tenant.String(),
+				ProviderUuid: provider.Uuid,
+				Items:        []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
+				State:        types.LEASE_STATE_CLOSED,
+				CreatedAt:    f.Ctx.BlockTime(),
+				ClosedAt:     &closedAt,
 			},
 		},
 	}
@@ -498,7 +778,6 @@ func TestAdversarial_GenesisRejectsTenantWithLeaseButNoCreditAccount(t *testing.
 				Items:                      []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, sdkmath.NewInt(100))}},
 				State:                      types.LEASE_STATE_ACTIVE,
 				CreatedAt:                  f.Ctx.BlockTime(),
-				LastSettledAt:              f.Ctx.BlockTime(),
 				MinLeaseDurationAtCreation: 3600,
 			},
 		},
@@ -560,6 +839,14 @@ func TestAdversarial_LeaseBySKUIndexConsistencyAfterClose(t *testing.T) {
 	require.Len(t, leases, 1)
 	require.Equal(t, leaseID, leases[0].Uuid)
 	require.Equal(t, types.LEASE_STATE_CLOSED, leases[0].State)
+
+	// The stream membership index, unlike the SKU index, is not historical: a
+	// closed lease is no longer a member of any stream.
+	members, err := f.App.BillingKeeper.StreamLeases.Has(f.Ctx,
+		collections.Join(keeper.NewStreamKey(provider.Uuid, tenant, testDenom), leaseID))
+	require.NoError(t, err)
+	require.False(t, members)
+	requireInvariants(t, f)
 }
 
 // =============================================================================

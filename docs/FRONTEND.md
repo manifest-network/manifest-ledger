@@ -222,7 +222,7 @@ await signingClient.signAndBroadcast(tenant, [cancel], "auto");
 
 ### Close an active lease (`MsgCloseLease`)
 
-Tenant, provider, or authority can close. Final settlement happens at close.
+Tenant, provider, or authority can close. Final settlement happens at close: the chain settles the stream the lease belongs to (all of the tenant's active leases with that provider in that denom), so `totalSettledAmounts` in the response can exceed the closed lease's own share.
 
 ```ts
 const close = liftedinit.billing.v1.MessageComposer.encoded.closeLease({
@@ -254,44 +254,45 @@ const reject = liftedinit.billing.v1.MessageComposer.encoded.rejectLease({
 
 ### Withdraw (`MsgWithdraw`)
 
-Two mutually-exclusive modes. Specific-leases mode is atomic across the batch; provider-wide mode is paginated.
+A withdrawal is always for a provider, never for individual leases. The chain settles accrual per **stream**: one stream per `(provider, tenant, denom)`, aggregating every ACTIVE lease that tenant holds with the provider in that denom. `MsgWithdraw` settles the provider's streams, paginated, with one transfer per stream, so its cost depends on how many tenants and denoms the provider serves, not on how many leases.
+
+> **Deprecated: `leaseUuids`.** Withdrawing from specific leases is no longer supported. The field still exists on the message, but a `MsgWithdraw` with a non-empty `leaseUuids` is rejected. Always leave it empty and set `providerUuid`.
 
 ```ts
-// Mode 1 — specific leases (1-100):
-const withdraw = liftedinit.billing.v1.MessageComposer.encoded.withdraw({
-  sender: providerKey,
-  leaseUuids: [lease1, lease2],
-  providerUuid: "",
-  limit: 0n,
-});
-
-// Mode 2 — provider-wide (paginated). You MUST echo the cursor each round,
-// or the loop restarts from the first ACTIVE lease and never terminates.
+// Paginated over the provider's streams. You MUST echo the cursor each round,
+// or the loop restarts from the first stream and never terminates.
 async function withdrawAll(providerUuid: string) {
   let key = new Uint8Array();                   // empty = start from the beginning
   while (true) {
     const msg = liftedinit.billing.v1.MessageComposer.encoded.withdraw({
       sender: providerKey,
-      leaseUuids: [],
-      providerUuid,
-      limit: 100n,                             // max 100; 0 = default 50
+      leaseUuids: [],                          // deprecated: must stay empty
+      providerUuid,                            // required
+      limit: 100n,                             // streams per tx: max 100; 0 = default 50
       key,                                     // opaque cursor from the previous response
     });
     const res = await signingClient.signAndBroadcast(providerKey, [msg], "auto");
     const decoded = liftedinit.billing.v1.MsgWithdrawResponse.decode(res.msgResponses[0].value);
+    // decoded.totalAmounts    — what this page paid, per denom
+    // decoded.withdrawalCount — number of STREAMS that paid out (not leases)
     if (!decoded.hasMore) return;              // stop when chain says no more
-    key = decoded.nextKey;                     // advance past the last processed lease
+    key = decoded.nextKey;                     // advance past the last processed stream
   }
 }
 ```
 
+Things a provider UI should know:
+
+- **One transaction is enough unless the provider has more than `limit` tenant/denom pairs.** Only then is a second page needed.
+- **Nothing to withdraw is a success**, with empty `totalAmounts` and `withdrawalCount` 0. Don't treat it as an error.
+- **`nextKey` is opaque.** It encodes a tenant and denom, not a lease UUID. Pass it back unchanged.
+- **A withdrawal never closes a lease.** If a tenant's credit is exhausted, the withdrawal pays what is left and freezes that stream (`stream_exhausted` event); the chain closes the stream's leases at the end of that block or the next few (see [Subscribing to chain events](#subscribing-to-chain-events)).
+
 Read-only "what would I withdraw" estimates:
 
 ```ts
-const perLease = await client.liftedinit.billing.v1.withdrawableAmount({ leaseUuid });
-
-// Provider-wide is paginated over the provider's ACTIVE leases; each response is
-// one PAGE, so sum across pages until the cursor is empty for the true total.
+// Paginated over the provider's STREAMS; each response is one PAGE, so sum
+// across pages until the cursor is empty for the true total.
 let pageKey = new Uint8Array();
 const totals: Record<string, bigint> = {};
 do {
@@ -302,10 +303,64 @@ do {
   for (const c of page.amounts) totals[c.denom] = (totals[c.denom] ?? 0n) + BigInt(c.amount);
   pageKey = page.pagination?.nextKey ?? new Uint8Array();
 } while (pageKey.length > 0);
-// `totals` = full per-denom withdrawable across ACTIVE leases.
-// page.amounts is this page's subtotal; page.leaseCount counts only leases with a
-// non-zero withdrawable amount in that page. (`limit`/`has_more` were removed in v2.2.0.)
+// `totals` = full per-denom withdrawable across the provider's streams.
+// page.amounts is this page's subtotal; page.leaseCount is the number of leases
+// covered by the streams of that page that have a non-zero withdrawable amount.
 ```
+
+> **Deprecated: `withdrawableAmount({ leaseUuid })`.** A lease has no withdrawable amount of its own, and `Query/WithdrawableAmount` now always fails with gRPC `Unimplemented`. Use `providerWithdrawable` for totals, or list the streams for a per-tenant breakdown.
+
+Per-tenant breakdown, from the streams themselves (requires a manifestjs build generated from protos that include `Query/StreamsByProvider`):
+
+```ts
+const { streams } = await client.liftedinit.billing.v1.streamsByProvider({
+  providerUuid,
+  pagination: undefined,                        // page size defaults to 100, capped at 1000
+});
+for (const s of streams) {
+  // s.tenant, s.denom           — who pays, in what (tenant: canonical lower-case bech32)
+  // s.state.rate                — summed per-second rate of the tenant's active leases
+  // s.state.lastSettledAt       — paid up to here (time of the last settlement)
+  // s.state.leaseCount          — active leases aggregated
+  // s.state.exhaustedAt         — set => frozen: credit ran out, leases are being closed
+  // s.state.remainder           — accrual below one unit of the denom, carried to the
+  //                               next settlement; in (denom units × nanoseconds),
+  //                               always >= 0 and < 1e9
+  // s.state.arrears             — amount owed on top of the accrual, in whole units of
+  //                               the denom ("0" unless the 2 → 3 chain upgrade set it:
+  //                               accrual that was unpaid at the upgrade). Paid and
+  //                               reset to "0" by the next settlement.
+}
+// Exact accrual at time T, as the chain computes it:
+//   accrual = (remainder + rate × nanoseconds between lastSettledAt and T) / 1_000_000_000,
+//   rounded down. Use BigInt: the intermediate product can be far larger than the result.
+// What the stream owes       = arrears + accrual
+// What a withdrawal would pay = min(arrears + accrual, tenant's credit balance in that denom)
+// For display, rate × seconds elapsed is a close APPROXIMATION of the accrual (it
+// ignores the carried remainder); add arrears to it. Use providerWithdrawable when
+// you need the exact figure. A frozen stream accrues and owes nothing.
+```
+
+A stream as returned by the REST gateway (`/liftedinit/billing/v1/provider/{provider_uuid}/streams`):
+
+```json
+{
+  "provider_uuid": "01912345-6789-7abc-8def-fedcba987654",
+  "tenant": "manifest1abc...",
+  "denom": "upwr",
+  "state": {
+    "rate": "200",
+    "last_settled_at": "2024-01-01T00:10:00.250Z",
+    "lease_count": "2",
+    "remainder": "50000000",
+    "arrears": "0"
+  }
+}
+```
+
+> **Compare tenants as addresses, not strings.** Bech32 is also valid in upper case, and a lease stores its tenant as it was sent, so `lease.tenant` may be upper case while `stream.tenant` is always the canonical lower-case spelling of the same account. Lower-case both (or decode them) before matching a stream to its leases.
+
+Tenant dashboards can call `streamsByTenant({ tenant })` the same way to show what the tenant is paying each provider and to warn when a stream is frozen. There is no per-lease settlement time any more: `Lease.lastSettledAt` is deprecated and never set.
 
 ### Tenant authentication to your provider API
 
@@ -398,7 +453,7 @@ const skus = await client.liftedinit.sku.v1.sKUsByProvider({
 
 ## Subscribing to chain events
 
-For push-style reactivity (e.g. provider notification on `lease_created`), open a CometBFT websocket. Custom event types from `x/billing` are emitted as standard ABCI events and queryable via `tm.event='Tx'` plus an attribute filter.
+For push-style reactivity (e.g. provider notification on `lease_created`), open a CometBFT websocket. Custom event types from `x/billing` are emitted as standard ABCI events. Those emitted by a transaction are queryable via `tm.event='Tx'` plus an attribute filter; `lease_auto_closed` is emitted by the EndBlocker and is a block event (see [Credit exhaustion](#credit-exhaustion-a-transaction-event-then-block-events)).
 
 ```ts
 import { connectComet } from "@cosmjs/tendermint-rpc";
@@ -425,13 +480,48 @@ Common subscriptions for a provider control plane:
 |---|---|
 | New pending leases for me | `lease_created.provider_uuid='<UUID>'` |
 | Tenants cancelling pending leases | `lease_cancelled.provider_uuid='<UUID>'` |
-| Auto-close via provider-wide withdraw | `lease_auto_closed.provider_uuid='<UUID>'` |
-| Auto-close via `CloseLease` | `lease_closed.provider_uuid='<UUID>'`, then keep rows where `closed_by='credit_exhaustion'` |
-| Auto-close via specific-lease withdraw | `provider_withdraw.provider_uuid='<UUID>'`, then keep rows where `auto_closed='true'` |
+| Leases closed by a transaction | `lease_closed.provider_uuid='<UUID>'` (keep rows where `closed_by='credit_exhaustion'` for closures of a frozen stream's lease) |
+| A tenant's credit ran out (stream frozen) | `stream_exhausted.provider_uuid='<UUID>'` (attributes: `provider_uuid`, `tenant`, `denom`) |
+| Payments to me | `stream_settled.provider_uuid='<UUID>'` (attributes: `provider_uuid`, `tenant`, `amount`, `payout_address`). Also emitted as a block event when the EndBlocker settles a stream while closing a multi-denom lease |
+| My withdrawals | `batch_withdraw.provider_uuid='<UUID>'` (attributes: `provider_uuid`, `amount`, `stream_count`, `payout_address`, `exhausted_count`) |
+| Leases auto-closed for exhausted credit | `lease_auto_closed` — a **block event**, not reachable with `subscribeTx` (see below) |
 | Domain set on my leases | `lease_custom_domain_set.provider_uuid='<UUID>'` (v2.2.0+) |
 | Domain cleared on my leases | `lease_custom_domain_cleared.provider_uuid='<UUID>'` (v2.2.0+) |
 
-> **Credit exhaustion emits different events by path.** `lease_auto_closed` fires **only** from provider-wide withdraw. A close triggered by `MsgCloseLease` emits `lease_closed` with `closed_by='credit_exhaustion'`, and one triggered by a specific-lease `MsgWithdraw` emits `provider_withdraw` with `auto_closed='true'`. To catch *every* credit-exhaustion closure, watch all three.
+### Credit exhaustion: a transaction event, then block events
+
+Credit exhaustion is reported in two steps, and only the first is a transaction event:
+
+1. **`stream_exhausted`** (transaction event). A settlement — in a `MsgWithdraw`, `MsgAcknowledgeLease` or `MsgCloseLease` — found that the tenant's credit cannot cover what the stream accrued. The provider is paid what is left and the stream is frozen. No lease is closed yet.
+2. **`lease_auto_closed`** (block event, `reason='credit_exhausted'`). The chain's EndBlocker closes the frozen stream's leases, starting in the same block. It attempts at most 100 closures per block, shared between all frozen streams, so the events for one stream can be spread over several blocks. One event per lease, with `lease_uuid`, `tenant` and `provider_uuid`.
+
+Because `lease_auto_closed` is emitted by the EndBlocker, it belongs to no transaction: a `tm.event='Tx'` subscription (`subscribeTx`) never delivers it. Read it from the block instead. Over the raw CometBFT websocket, subscribe to block events:
+
+```
+tm.event='NewBlockEvents' AND lease_auto_closed.provider_uuid='<UUID>'
+```
+
+or, with the CosmJS client, read each new block's results:
+
+```ts
+// Block events live in block_results.finalize_block_events (exposed by the
+// CometBFT 0.38 client as `finalizeBlockEvents`).
+const headers = tm.subscribeNewBlockHeader();
+(async () => {
+  for await (const header of headers) {
+    const results = await tm.blockResults(header.height);
+    for (const ev of results.finalizeBlockEvents) {
+      if (ev.type !== "lease_auto_closed") continue;
+      const attr = (k: string) => ev.attributes.find(a => a.key === k)?.value;
+      if (attr("provider_uuid") === providerUuid) onLeaseAutoClosed(attr("lease_uuid")!);
+    }
+  }
+})();
+```
+
+> **To catch *every* credit-exhaustion closure, watch two events.** `lease_auto_closed` (block event) covers leases closed by the EndBlocker. `lease_closed` with `closed_by='credit_exhaustion'` (transaction event) covers a lease of a frozen stream that someone closed with `MsgCloseLease` before the EndBlocker reached it. `provider_withdraw` is no longer emitted, and `lease_closed` no longer carries `settled_amounts` or `duration_seconds`.
+
+> **A top-up after `stream_exhausted` is too late for that stream's leases.** They are still closed. Surface low-credit warnings from `creditEstimate` before the credit runs out rather than reacting to `stream_exhausted`.
 
 The full event catalogue and attributes live in [`x/billing/docs/API.md#events`](../x/billing/docs/API.md#events).
 

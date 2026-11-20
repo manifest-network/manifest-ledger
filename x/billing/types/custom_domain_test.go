@@ -143,9 +143,8 @@ func TestGenesisValidate_RejectsAmbiguousCustomDomain(t *testing.T) {
 				{SkuUuid: skuUUID1, Quantity: 1, LockedPrice: sdk.NewCoin("umfx", math.NewInt(1)), CustomDomain: "x.example.com"},
 				{SkuUuid: skuUUID2, Quantity: 1, LockedPrice: sdk.NewCoin("umfx", math.NewInt(1))},
 			},
-			State:         types.LEASE_STATE_PENDING,
-			CreatedAt:     now,
-			LastSettledAt: now,
+			State:     types.LEASE_STATE_PENDING,
+			CreatedAt: now,
 		}},
 	}
 	err := gs.Validate()
@@ -182,9 +181,8 @@ func TestGenesisValidate_RejectsReservedSuffixCustomDomain(t *testing.T) {
 					CustomDomain: "app.barney0.manifest0.net",
 				},
 			},
-			State:         types.LEASE_STATE_PENDING,
-			CreatedAt:     now,
-			LastSettledAt: now,
+			State:     types.LEASE_STATE_PENDING,
+			CreatedAt: now,
 		}},
 	}
 	err := gs.Validate()

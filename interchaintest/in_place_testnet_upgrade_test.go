@@ -24,9 +24,13 @@ import (
 
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 
+	sdkmath "cosmossdk.io/math"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
 	"github.com/manifest-network/manifest-ledger/interchaintest/helpers"
+	billingtypes "github.com/manifest-network/manifest-ledger/x/billing/types"
 )
 
 const inPlaceTestnetFixtureVersion = "eng879-test-upgrade"
@@ -34,12 +38,20 @@ const inPlaceTestnetFixtureVersion = "eng879-test-upgrade"
 // inPlaceTestnetReleasedVersion is the published release that produces the
 // released-source state, and that state's last completed upgrade. The conversion
 // base image (`make local-image-in-place-base`) must report the same version.
-const inPlaceTestnetReleasedVersion = "v2.3.1"
+const inPlaceTestnetReleasedVersion = "v2.4.0"
+
+// x/billing's consensus version in the released source and in the target. The
+// upgrade runs the real migration between them (per-lease settlement to
+// settlement streams); every other module keeps the version the release has.
+const (
+	inPlaceTestnetSourceBillingVersion = uint64(2)
+	inPlaceTestnetTargetBillingVersion = uint64(3)
+)
 
 // The source is synthetic state produced by a released image. The target
 // fixture changes one billing parameter after RunMigrations; normal builds never
-// include this handler. This proves execution without inventing a production
-// schema migration for a release that already has the current module versions.
+// include this handler. That parameter proves the handler ran exactly once; the
+// billing state seeded by the release proves RunMigrations converted it.
 type inPlaceTestnetReleasedState struct {
 	codeID, contract                                      string
 	codeInfo, contractInfo, contractState, moduleVersions []byte
@@ -48,6 +60,276 @@ type inPlaceTestnetReleasedState struct {
 	completedName                                         string
 	completedHeight                                       int64
 	pendingPlan                                           []byte
+	billing                                               *inPlaceTestnetBilling
+}
+
+// inPlaceTestnetBilling is billing state written by the released binary, which
+// settles per lease: a funded tenant holding ACTIVE leases with one provider,
+// each lease carrying its own last_settled_at. The target's migration must turn
+// them into one settlement stream without losing or double-paying any accrual.
+type inPlaceTestnetBilling struct {
+	provider, tenant ibc.Wallet
+	providerUUID     string
+	denom            string
+	leases           []inPlaceTestnetLease
+	// Balances once the leases are ACTIVE. Settlement is lazy and the migration
+	// moves no coins, so nothing moves between the two until the provider
+	// withdraws on the migrated state.
+	providerBalance, creditBalance sdkmath.Int
+}
+
+type inPlaceTestnetLease struct {
+	uuid string
+	// rate is what the lease accrues per second.
+	rate int64
+	// settledAt is the lease's last_settled_at as the released binary stored it.
+	settledAt time.Time
+	// accruesFrom is where the lease's unsettled accrual starts: its last
+	// settlement, or its acknowledgement if that is later.
+	accruesFrom time.Time
+}
+
+// inPlaceTestnetLeaseView is what this test follows of a lease. The pointers
+// tell a lease that carries last_settled_at from one that does not: the CLI
+// prints an unset timestamp as null.
+type inPlaceTestnetLeaseView struct {
+	State          string     `json:"state"`
+	AcknowledgedAt *time.Time `json:"acknowledged_at"`
+	LastSettledAt  *time.Time `json:"last_settled_at"`
+}
+
+func queryInPlaceTestnetLease(t *testing.T, ctx context.Context, node *cosmos.ChainNode, uuid string) inPlaceTestnetLeaseView {
+	t.Helper()
+	var response struct {
+		Lease inPlaceTestnetLeaseView `json:"lease"`
+	}
+	require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "billing", "lease", uuid), &response))
+	return response.Lease
+}
+
+// seedInPlaceTestnetBilling runs on the released source, so it only uses
+// commands that release has: per-lease settlement, no stream queries.
+func seedInPlaceTestnetBilling(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, authority ibc.Wallet) *inPlaceTestnetBilling {
+	t.Helper()
+	node := chain.GetNode()
+	committed := func(action string, response sdk.TxResponse, err error) string {
+		t.Helper()
+		require.NoError(t, err, action)
+		result, err := chain.GetTransaction(response.TxHash)
+		require.NoError(t, err, action)
+		require.Zero(t, result.Code, "%s: %s", action, result.RawLog)
+		return response.TxHash
+	}
+
+	// Dedicated accounts: the test separately asserts the balance of its
+	// preserved user, which billing payouts must not disturb.
+	users := interchaintest.GetAndFundTestUsers(t, ctx, "billing", DefaultGenesisAmt, chain, chain)
+	billing := &inPlaceTestnetBilling{provider: users[0], tenant: users[1], denom: chain.Config().Denom}
+
+	response, txErr := helpers.SKUCreateProvider(ctx, chain, authority, billing.provider.FormattedAddress(), billing.provider.FormattedAddress(), "")
+	providerUUID, err := helpers.GetProviderUUIDFromTxHash(ctx, chain, committed("create provider", response, txErr))
+	require.NoError(t, err)
+	billing.providerUUID = providerUUID
+	// 3600 per hour is 1 per second for each unit leased.
+	response, txErr = helpers.SKUCreateSKU(ctx, chain, authority, billing.providerUUID, "in-place", 1, "3600"+billing.denom, "")
+	skuUUID, err := helpers.GetSKUUUIDFromTxHash(ctx, chain, committed("create SKU", response, txErr))
+	require.NoError(t, err)
+	response, txErr = helpers.BillingFundCredit(ctx, chain, billing.tenant, billing.tenant.FormattedAddress(), "1000000"+billing.denom)
+	committed("fund credit", response, txErr)
+
+	// Two leases of different rates, so the stream has to aggregate them.
+	var uuids []string
+	for _, quantity := range []int64{1, 2} {
+		response, txErr = helpers.BillingCreateLease(ctx, chain, billing.tenant, []string{fmt.Sprintf("%s:%d", skuUUID, quantity)})
+		uuid, err := helpers.GetLeaseIDFromTxHash(ctx, chain, committed("create lease", response, txErr))
+		require.NoError(t, err)
+		uuids = append(uuids, uuid)
+		billing.leases = append(billing.leases, inPlaceTestnetLease{uuid: uuid, rate: quantity})
+	}
+	response, txErr = helpers.BillingAcknowledgeLeases(ctx, chain, billing.provider, uuids)
+	committed("acknowledge leases", response, txErr)
+
+	for i := range billing.leases {
+		lease := &billing.leases[i]
+		view := queryInPlaceTestnetLease(t, ctx, node, lease.uuid)
+		require.Equal(t, "LEASE_STATE_ACTIVE", view.State)
+		require.NotNil(t, view.AcknowledgedAt)
+		require.NotNil(t, view.LastSettledAt, "the released binary settles per lease, so every lease carries last_settled_at")
+		lease.settledAt, lease.accruesFrom = *view.LastSettledAt, *view.LastSettledAt
+		if view.AcknowledgedAt.After(lease.accruesFrom) {
+			lease.accruesFrom = *view.AcknowledgedAt
+		}
+	}
+	billing.providerBalance = inPlaceTestnetBalance(t, ctx, node, billing.provider.FormattedAddress(), billing.denom)
+	billing.creditBalance = billing.credit(t, ctx, node).Balances.AmountOf(billing.denom)
+	require.True(t, billing.creditBalance.IsPositive())
+	return billing
+}
+
+func (billing *inPlaceTestnetBilling) credit(t *testing.T, ctx context.Context, node *cosmos.ChainNode) billingtypes.QueryCreditAccountResponse {
+	t.Helper()
+	var response billingtypes.QueryCreditAccountResponse
+	require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "billing", "credit-account", billing.tenant.FormattedAddress()), &response))
+	return response
+}
+
+// rate is the summed per-second rate of the seeded leases.
+func (billing *inPlaceTestnetBilling) rate() int64 {
+	var rate int64
+	for _, lease := range billing.leases {
+		rate += lease.rate
+	}
+	return rate
+}
+
+// assertUnmigrated requires the leases to be exactly as the release left them.
+// It holds on the source and on the fork until the upgrade: the conversion
+// binary must not settle or rewrite billing state it has not migrated.
+func (billing *inPlaceTestnetBilling) assertUnmigrated(t *testing.T, ctx context.Context, node *cosmos.ChainNode) {
+	t.Helper()
+	for _, lease := range billing.leases {
+		view := queryInPlaceTestnetLease(t, ctx, node, lease.uuid)
+		require.Equal(t, "LEASE_STATE_ACTIVE", view.State)
+		require.NotNil(t, view.LastSettledAt, "lease %s lost last_settled_at before the migration", lease.uuid)
+		require.True(t, lease.settledAt.Equal(*view.LastSettledAt), "lease %s was settled before the migration", lease.uuid)
+	}
+	require.Equal(t, billing.providerBalance.String(),
+		inPlaceTestnetBalance(t, ctx, node, billing.provider.FormattedAddress(), billing.denom).String(), "provider was paid before the migration")
+	require.Equal(t, billing.creditBalance.String(),
+		billing.credit(t, ctx, node).Balances.AmountOf(billing.denom).String(), "tenant was charged before the migration")
+}
+
+// stream requires the provider to have exactly one stream, the seeded
+// tenant's, and returns it. The same stream must be listed for the tenant.
+func (billing *inPlaceTestnetBilling) stream(t *testing.T, ctx context.Context, node *cosmos.ChainNode) helpers.StreamStateJSON {
+	t.Helper()
+	var byProvider, byTenant helpers.StreamsResponseJSON
+	require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "billing", "streams-by-provider", billing.providerUUID), &byProvider))
+	require.Len(t, byProvider.Streams, 1, "one stream per (provider, tenant, denom), whatever the number of leases")
+	stream := byProvider.Find(billing.providerUUID, billing.tenant.FormattedAddress(), billing.denom)
+	require.NotNil(t, stream, "unexpected stream %+v", byProvider.Streams[0])
+
+	require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "billing", "streams-by-tenant", billing.tenant.FormattedAddress()), &byTenant))
+	require.Len(t, byTenant.Streams, 1)
+	listed := byTenant.Find(billing.providerUUID, billing.tenant.FormattedAddress(), billing.denom)
+	require.NotNil(t, listed, "streams-by-tenant does not list the provider's stream")
+	require.True(t, stream.State.LastSettledAt.Equal(listed.State.LastSettledAt))
+	require.Equal(t, stream.State.Rate.String(), listed.State.Rate.String())
+	return stream.State
+}
+
+// assertMigrated requires the migration, which ran at the upgrade block's time,
+// to have replaced per-lease settlement by one stream that carries, as its
+// arrears, what every lease had accrued up to that time, without moving any
+// coins. It must run before anything settles the stream.
+func (billing *inPlaceTestnetBilling) assertMigrated(t *testing.T, ctx context.Context, node *cosmos.ChainNode, upgradeTime time.Time) {
+	t.Helper()
+
+	// What the leases accrued under per-lease settlement and were never paid.
+	// The migration counts each lease the way the release would have settled
+	// it: for the whole seconds since its own last settlement. Exact,
+	// sub-second accrual only starts with the stream it creates.
+	var owed int64
+	for _, lease := range billing.leases {
+		seconds := int64(upgradeTime.Sub(lease.accruesFrom) / time.Second)
+		require.Positive(t, seconds, "lease %s should have accrued before the upgrade", lease.uuid)
+		owed += lease.rate * seconds
+	}
+	require.Equal(t, billing.providerBalance.String(),
+		inPlaceTestnetBalance(t, ctx, node, billing.provider.FormattedAddress(), billing.denom).String(),
+		"the migration moves no coins: the provider is paid by its first withdrawal")
+	credit := billing.credit(t, ctx, node)
+	require.Equal(t, billing.creditBalance.String(), credit.Balances.AmountOf(billing.denom).String(),
+		"the migration moves no coins: the tenant is charged by the stream's first settlement")
+	require.Equal(t, uint64(len(billing.leases)), credit.CreditAccount.ActiveLeaseCount)
+
+	stream := billing.stream(t, ctx, node)
+	require.Equal(t, sdkmath.NewInt(billing.rate()).String(), stream.Rate.String(), "stream rate should be the sum of the lease rates")
+	require.Equal(t, uint64(len(billing.leases)), stream.LeaseCount)
+	require.True(t, upgradeTime.Equal(stream.LastSettledAt), "stream accrues from %s, upgrade block time %s", stream.LastSettledAt, upgradeTime)
+	require.False(t, stream.Arrears.IsNil(), "the migrated stream has no arrears field")
+	require.Equal(t, sdkmath.NewInt(owed).String(), stream.Arrears.String(),
+		"the stream should carry what the leases accrued up to the upgrade as its arrears")
+	require.False(t, stream.Remainder.IsNil(), "the migrated stream has no remainder field")
+	require.True(t, stream.Remainder.IsZero(), "a migrated stream starts without a remainder, got %s", stream.Remainder)
+	require.False(t, stream.IsExhausted(), "the tenant's credit covers the accrual")
+
+	for _, lease := range billing.leases {
+		view := queryInPlaceTestnetLease(t, ctx, node, lease.uuid)
+		require.Equal(t, "LEASE_STATE_ACTIVE", view.State, "lease %s", lease.uuid)
+		require.Nil(t, view.LastSettledAt, "lease %s still carries the deprecated last_settled_at", lease.uuid)
+	}
+}
+
+// assertWithdraw requires a provider withdrawal on the migrated state to settle
+// the stream at the time of its block and to pay exactly what it owes: the
+// arrears the migration carried over (what the leases had accrued before the
+// upgrade) plus its accrual since the migration, to the nanosecond:
+//
+//	total = remainder + rate × (block time − last_settled_at, in nanoseconds)
+//
+// of which total / 1e9 is paid and total % 1e9 stays as the stream's remainder.
+// The arrears are paid once: the settlement clears them.
+func (billing *inPlaceTestnetBilling) assertWithdraw(t *testing.T, ctx context.Context, node *cosmos.ChainNode, rpc *rpchttp.HTTP, chainID string) {
+	t.Helper()
+	before := billing.stream(t, ctx, node)
+	balance := inPlaceTestnetBalance(t, ctx, node, billing.provider.FormattedAddress(), billing.denom)
+
+	response := broadcastInPlaceTestnetMessage(t, ctx, node, billing.provider.KeyName(), chainID, &billingtypes.MsgWithdraw{
+		Sender: billing.provider.FormattedAddress(), ProviderUuid: billing.providerUUID,
+	})
+	require.Zero(t, response.Code, "%s", response.RawLog)
+	status, err := rpc.Status(ctx)
+	require.NoError(t, err)
+	waitForInPlaceTestnetHeight(t, ctx, rpc, chainID, status.SyncInfo.LatestBlockHeight+3)
+	require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "tx", response.TxHash), &response))
+	require.Zero(t, response.Code, "%s", response.RawLog)
+
+	withdrawBlock, err := rpc.Block(ctx, &response.Height)
+	require.NoError(t, err)
+	withdrawTime := withdrawBlock.Block.Time
+	require.True(t, withdrawTime.After(before.LastSettledAt), "the stream accrued for several blocks since the upgrade")
+
+	after := billing.stream(t, ctx, node)
+	require.True(t, withdrawTime.Equal(after.LastSettledAt),
+		"stream settled at %s, the withdrawal's block %d has time %s", after.LastSettledAt, response.Height, withdrawTime)
+	require.True(t, before.Arrears.IsPositive(), "the migrated stream should still carry its arrears")
+	accrued, _ := before.AccrualAt(withdrawTime)
+	require.True(t, accrued.IsPositive(), "rate %s over %s should accrue something", before.Rate, withdrawTime.Sub(before.LastSettledAt))
+	expected, remainder := before.DueAt(withdrawTime)
+	paid := inPlaceTestnetBalance(t, ctx, node, billing.provider.FormattedAddress(), billing.denom).Sub(balance)
+	require.Equal(t, expected.String(), paid.String(),
+		"withdrawal should pay the arrears %s plus the exact accrual of rate %s over %s", before.Arrears, before.Rate, withdrawTime.Sub(before.LastSettledAt))
+	require.Equal(t, billing.creditBalance.Sub(expected).String(), billing.credit(t, ctx, node).Balances.AmountOf(billing.denom).String(),
+		"the tenant should be charged exactly what the provider was paid")
+	require.True(t, after.Arrears.IsZero(), "the settlement should clear the arrears, got %s", after.Arrears)
+	require.Equal(t, remainder.String(), after.Remainder.String(), "what did not amount to a whole unit should be carried as the remainder")
+
+	require.Equal(t, before.Rate.String(), after.Rate.String())
+	require.Equal(t, before.LeaseCount, after.LeaseCount)
+	require.False(t, after.IsExhausted())
+	for _, lease := range billing.leases {
+		require.Equal(t, "LEASE_STATE_ACTIVE", queryInPlaceTestnetLease(t, ctx, node, lease.uuid).State, "lease %s", lease.uuid)
+	}
+}
+
+// decodeInPlaceTestnetModuleVersions indexes `query upgrade module-versions` by module name.
+func decodeInPlaceTestnetModuleVersions(t *testing.T, data []byte) map[string]uint64 {
+	t.Helper()
+	var response struct {
+		ModuleVersions []struct {
+			Name    string `json:"name"`
+			Version uint64 `json:"version,string"`
+		} `json:"module_versions"`
+	}
+	require.NoError(t, json.Unmarshal(data, &response), "%s", data)
+	require.NotEmpty(t, response.ModuleVersions)
+	versions := make(map[string]uint64, len(response.ModuleVersions))
+	for _, module := range response.ModuleVersions {
+		require.NotContains(t, versions, module.Name, "module listed twice")
+		versions[module.Name] = module.Version
+	}
+	return versions
 }
 
 func seedInPlaceTestnetReleasedState(t *testing.T, ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet) *inPlaceTestnetReleasedState {
@@ -75,6 +357,7 @@ func seedInPlaceTestnetReleasedState(t *testing.T, ctx context.Context, chain *c
 	authority, err := interchaintest.GetAndFundTestUserWithMnemonic(ctx, "source-authority", accMnemonic, DefaultGenesisAmt, chain)
 	require.NoError(t, err)
 	require.Equal(t, accAddr, authority.FormattedAddress())
+	billing := seedInPlaceTestnetBilling(t, ctx, chain, authority)
 	rpc, err := rpchttp.NewWithClient(chain.GetHostRPCAddress(), "/websocket", &http.Client{Timeout: 5 * time.Second})
 	require.NoError(t, err)
 	completedHeight := completeInPlaceTestnetSourceUpgrade(t, ctx, node, authority, chain.Config().ChainID, rpc)
@@ -84,7 +367,7 @@ func seedInPlaceTestnetReleasedState(t *testing.T, ctx context.Context, chain *c
 	require.NoError(t, err)
 	scheduleInPlaceTestnetUpgrade(t, ctx, node, authority, chain.Config().ChainID, inPlaceTestnetFixtureVersion, height+1000, rpc)
 	state := &inPlaceTestnetReleasedState{
-		codeID: codeID, contract: contract, completedName: inPlaceTestnetReleasedVersion, completedHeight: completedHeight,
+		codeID: codeID, contract: contract, completedName: inPlaceTestnetReleasedVersion, completedHeight: completedHeight, billing: billing,
 		codeInfo:       queryInPlaceTestnet(t, ctx, node, "wasm", "code-info", codeID),
 		contractInfo:   queryInPlaceTestnet(t, ctx, node, "wasm", "contract", contract),
 		contractState:  queryInPlaceTestnet(t, ctx, node, "wasm", "contract-state", "all", contract),
@@ -100,9 +383,11 @@ func seedInPlaceTestnetReleasedState(t *testing.T, ctx context.Context, chain *c
 	require.True(t, ok)
 	state.maxLeases, err = strconv.ParseUint(maxLeases, 10, 64)
 	require.NoError(t, err)
+	require.Equal(t, inPlaceTestnetSourceBillingVersion, decodeInPlaceTestnetModuleVersions(t, state.moduleVersions)[billingtypes.ModuleName],
+		"the released source no longer has the billing consensus version this test migrates from")
 	state.assertPreserved(t, ctx, node, false)
 	image := chain.Config().Images[0]
-	t.Logf("Released source image %s:%s, synthetic two-validator state: contract %s count=42, completed upgrade at %d, pending target %s", image.Repository, image.Version, contract, completedHeight, inPlaceTestnetFixtureVersion)
+	t.Logf("Released source image %s:%s, synthetic two-validator state: contract %s count=42, %d active leases of provider %s, completed upgrade at %d, pending target %s", image.Repository, image.Version, contract, len(billing.leases), billing.providerUUID, completedHeight, inPlaceTestnetFixtureVersion)
 	return state
 }
 
@@ -114,7 +399,18 @@ func (state *inPlaceTestnetReleasedState) assertPreserved(t *testing.T, ctx cont
 	var count GetCountResponse
 	require.NoError(t, json.Unmarshal(queryInPlaceTestnet(t, ctx, node, "wasm", "contract-state", "smart", state.contract, `{"get_count":{}}`), &count))
 	require.Equal(t, 42, count.Data.Count)
-	require.JSONEq(t, string(state.moduleVersions), string(queryInPlaceTestnet(t, ctx, node, "upgrade", "module-versions")))
+	moduleVersions := queryInPlaceTestnet(t, ctx, node, "upgrade", "module-versions")
+	if migrated {
+		// The upgrade migrates billing and nothing else: every other module
+		// keeps the consensus version of the release.
+		expectedVersions := decodeInPlaceTestnetModuleVersions(t, state.moduleVersions)
+		require.Equal(t, inPlaceTestnetSourceBillingVersion, expectedVersions[billingtypes.ModuleName])
+		expectedVersions[billingtypes.ModuleName] = inPlaceTestnetTargetBillingVersion
+		require.Equal(t, expectedVersions, decodeInPlaceTestnetModuleVersions(t, moduleVersions))
+	} else {
+		require.JSONEq(t, string(state.moduleVersions), string(moduleVersions))
+		state.billing.assertUnmigrated(t, ctx, node)
+	}
 	require.Equal(t, state.completedHeight, inPlaceTestnetAppliedHeight(t, ctx, node, state.completedName))
 	var params struct {
 		Params map[string]any `json:"params"`
@@ -219,6 +515,11 @@ func runInPlaceTestnetReleasedUpgrade(t *testing.T, ctx context.Context, chain *
 	require.Equal(t, inPlaceTestnetFixtureVersion, strings.TrimSpace(string(version)))
 	require.Equal(t, upgradeHeight, inPlaceTestnetAppliedHeight(t, ctx, node, inPlaceTestnetFixtureVersion))
 	state.assertPreserved(t, ctx, node, true)
+	// The migration ran in the upgrade block, at that block's time.
+	upgradeBlock, err := rpc.Block(ctx, &upgradeHeight)
+	require.NoError(t, err)
+	upgradeTime := upgradeBlock.Block.Time
+	state.billing.assertMigrated(t, ctx, node, upgradeTime)
 	assertForkState(rpc)
 	require.NoError(t, node.StopContainer(ctx))
 	dockerutil.CopyCoverageFromContainer(ctx, t, client, node.ContainerID(), node.HomeDir(), ExternalGoCoverDir)
@@ -231,8 +532,13 @@ func runInPlaceTestnetReleasedUpgrade(t *testing.T, ctx context.Context, chain *
 	restartConfirmedHeight := waitForInPlaceTestnetAppHeight(t, ctx, rpc, chainID, restartInitialHeight+5)
 	require.Equal(t, upgradeHeight, inPlaceTestnetAppliedHeight(t, ctx, node, inPlaceTestnetFixtureVersion))
 	state.assertPreserved(t, ctx, node, true)
+	// The migrated billing state survives the restart untouched, and only then
+	// is the stream settled for the first time since the migration.
+	state.billing.assertMigrated(t, ctx, node, upgradeTime)
 	assertForkState(rpc)
-	t.Logf("Scheduled upgrade halted at %d; fixture image %s:%s applied the +1 billing parameter migration exactly once; restarted application committed from %d to %d", upgradeHeight, image.Repository, image.Version, restartInitialHeight, restartConfirmedHeight)
+	state.billing.assertWithdraw(t, ctx, node, rpc, chainID)
+	assertForkState(rpc)
+	t.Logf("Scheduled upgrade halted at %d; fixture image %s:%s migrated billing %d -> %d (%d leases into one stream) and applied the +1 billing parameter exactly once; restarted application committed from %d to %d", upgradeHeight, image.Repository, image.Version, inPlaceTestnetSourceBillingVersion, inPlaceTestnetTargetBillingVersion, len(state.billing.leases), restartInitialHeight, restartConfirmedHeight)
 }
 
 // Status can report a stored block before the application commits it. Use

@@ -288,37 +288,36 @@ close-lease 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-0000000
 	return cmd
 }
 
-// NewWithdrawCmd returns the command to withdraw from leases.
+// NewWithdrawCmd returns the command to withdraw a provider's accrued funds.
 func NewWithdrawCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "withdraw [lease-uuid]...",
-		Short: "Withdraw accrued funds from leases",
-		Long: fmt.Sprintf(`Withdraw accrued funds from leases. Only the provider or authority can withdraw.
+		Use:   "withdraw --provider [provider-uuid]",
+		Short: "Withdraw the funds accrued by a provider's settlement streams",
+		Long: fmt.Sprintf(`Withdraw the funds accrued by a provider's settlement streams. Only the
+provider or authority can withdraw.
 
-Two modes are supported:
-1. Specific leases: provide lease UUIDs as arguments (1-%d leases)
-2. Provider-wide: use --provider flag for paginated withdrawal from all provider's leases
+Accrual is settled per stream: one stream per (provider, tenant, denom),
+aggregating every active lease the tenant holds with the provider. The cost of
+a withdrawal therefore depends on the number of streams, not leases.
 
-In specific lease mode, all leases must belong to the same provider and
-withdrawals are processed atomically - either all succeed or all fail.
-
-In provider-wide mode, leases are processed with cursor pagination. Use --limit
-to control batch size (default %d, max %d). When has_more is true in the
-response, pass the response's next_key (base64) via --key to fetch the next
-page, and repeat until has_more is false.`, types.MaxBatchLeaseSize,
+Streams are processed with cursor pagination. Use --limit to control how many
+streams are settled per transaction (default %d, max %d). When has_more is true
+in the response, pass the response's next_key (base64) via --key to fetch the
+next page, and repeat until has_more is false.`,
 			types.DefaultProviderWithdrawLimit, types.MaxBatchLeaseSize),
-		Example: `# Withdraw from specific leases
-withdraw 01902a9b-1234-7000-8000-000000000001 --from provider-key
-withdraw 01902a9b-1234-7000-8000-000000000001 01902a9b-1234-7000-8000-000000000002 --from provider-key
-
-# Withdraw from all provider's leases (paginated)
+		Example: `# Withdraw from all of the provider's streams (paginated)
 withdraw --provider 01902a9b-1234-7000-8000-000000000001 --from provider-key
 withdraw --provider 01902a9b-1234-7000-8000-000000000001 --limit 100 --from provider-key
 
 # Continue paging using the next_key from the previous response
 withdraw --provider 01902a9b-1234-7000-8000-000000000001 --key <base64-next-key> --from provider-key`,
-		Args: cobra.ArbitraryArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return fmt.Errorf("withdrawing from individual leases is no longer supported: settlement is per stream, use --provider")
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
 				return err
@@ -334,33 +333,9 @@ withdraw --provider 01902a9b-1234-7000-8000-000000000001 --key <base64-next-key>
 				return err
 			}
 
-			// Validate mutually exclusive modes
-			if len(args) > 0 && providerUUID != "" {
-				return fmt.Errorf("cannot specify both lease UUIDs and --provider flag")
+			if providerUUID == "" {
+				return fmt.Errorf("must specify the --provider flag")
 			}
-			if len(args) == 0 && providerUUID == "" {
-				return fmt.Errorf("must specify lease UUIDs or --provider flag")
-			}
-
-			// Mode 1: Specific leases
-			if len(args) > 0 {
-				if len(args) > types.MaxBatchLeaseSize {
-					return fmt.Errorf("cannot withdraw from more than %d leases at once", types.MaxBatchLeaseSize)
-				}
-				for _, leaseUUID := range args {
-					if !pkguuid.IsValidUUID(leaseUUID) {
-						return fmt.Errorf("invalid lease_uuid format: %s", leaseUUID)
-					}
-				}
-
-				msg := &types.MsgWithdraw{
-					Sender:     clientCtx.GetFromAddress().String(),
-					LeaseUuids: args,
-				}
-				return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
-			}
-
-			// Mode 2: Provider-wide
 			if !pkguuid.IsValidUUID(providerUUID) {
 				return fmt.Errorf("invalid provider_uuid format: %s", providerUUID)
 			}
@@ -387,9 +362,9 @@ withdraw --provider 01902a9b-1234-7000-8000-000000000001 --key <base64-next-key>
 		},
 	}
 
-	cmd.Flags().String("provider", "", "Provider UUID for paginated withdrawal from all leases")
-	cmd.Flags().Uint64("limit", 0, fmt.Sprintf("Maximum leases to process in provider mode (0 = default %d, max %d)", types.DefaultProviderWithdrawLimit, types.MaxBatchLeaseSize))
-	cmd.Flags().String("key", "", "Base64 pagination cursor (next_key from the previous provider-wide withdraw response) to continue paging")
+	cmd.Flags().String("provider", "", "Provider UUID whose streams are withdrawn (required)")
+	cmd.Flags().Uint64("limit", 0, fmt.Sprintf("Maximum streams to settle (0 = default %d, max %d)", types.DefaultProviderWithdrawLimit, types.MaxBatchLeaseSize))
+	cmd.Flags().String("key", "", "Base64 pagination cursor (next_key from the previous withdraw response) to continue paging")
 	flags.AddTxFlagsToCmd(cmd)
 
 	return cmd
