@@ -161,7 +161,7 @@ Use [`@manifest-network/manifestjs`](#javascript--typescript-sdk) — a generate
 
 **Software Dependencies**
 
-1. The Go toolchain declared in [`go.mod`](./go.mod) (currently Go 1.26.10) - <https://go.dev/>
+1. The Go toolchain declared in [`go.mod`](./go.mod) (currently Go 1.26.11) - <https://go.dev/>
 2. Git distributed version control - <https://git-scm.com/>
 3. Docker - <https://www.docker.com/get-started/>
 4. GNU Make - <https://www.gnu.org/software/make/>
@@ -198,7 +198,7 @@ Then run:
 
 ```bash
 # build the base binary for interaction
-GOTOOLCHAIN=go1.26.10 make install
+GOTOOLCHAIN=go1.26.11 make install
 mv $GOPATH/bin/manifestd /usr/local/bin
 manifestd
 
@@ -209,7 +209,7 @@ make local-image
 ### Go toolchain and upgrade notes
 
 The modules require Go 1.26.0 or newer, as do the patched `golang.org/x`
-dependencies. The `toolchain go1.26.10` directive suggests the patched compiler
+dependencies. The `toolchain go1.26.11` directive suggests the patched compiler
 for this repository without requiring downstream importers to use that exact
 patch. CI and releases read this directive from `go.mod`. Use the selected
 release's compiler version when building a node; older release tags can differ.
@@ -317,12 +317,12 @@ Append `-random` to the end of the commands above to run the simulation with a r
 
 ## Coverage
 
-Use an official Go release (CI uses 1.26.10) to build the instrumented images
+Use an official Go release (CI uses 1.26.11) to build the instrumented images
 and collect host coverage with the same compiler:
 
 ```bash
-GOTOOLCHAIN=go1.26.10 make local-image-coverage local-image-testnet-upgrade local-image-in-place-base
-GOTOOLCHAIN=go1.26.10 make coverage
+GOTOOLCHAIN=go1.26.11 make local-image-coverage local-image-testnet-upgrade local-image-in-place-base
+GOTOOLCHAIN=go1.26.11 make coverage
 ```
 
 The production `local-image` target does not collect coverage. Development/custom
@@ -330,7 +330,7 @@ Go versions are rejected before collection; when selecting `GO=/path/to/go`, use
 the same selection for both commands. Codecov's `target: auto` compares patch
 coverage to the base commit's overall coverage, with no allowed decrease.
 
-For the daemon vulnerability scan used by CI, run `GOTOOLCHAIN=go1.26.10 make
+For the daemon vulnerability scan used by CI, run `GOTOOLCHAIN=go1.26.11 make
 govulncheck`. See [the contributor guide](CONTRIBUTING.md#vulnerability-policy)
 for scan scope and reviewed exceptions.
 
