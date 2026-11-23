@@ -78,7 +78,7 @@ explicitly to the Dockerfile.
 
 ### Vulnerability policy
 
-`GOTOOLCHAIN=go1.26.10 make govulncheck` installs scanner v1.7.0 under `build/` and
+`GOTOOLCHAIN=go1.26.11 make govulncheck` installs scanner v1.7.0 under `build/` and
 runs the same script as CI. It scans `./cmd/manifestd` with release tags
 `netgo,ledger`, including hardware-wallet dependencies. Keep the tags aligned with
 `.goreleaser.yaml`. The raw JSON report is retained at
